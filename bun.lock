@@ -165,7 +165,7 @@
     },
     "apps/examples/desktop-app": {
       "name": "@cline/code",
-      "version": "0.0.25",
+      "version": "0.0.28",
       "dependencies": {
         "@base-ui/react": "^1.2.0",
         "@cline/core": "workspace:*",
@@ -359,7 +359,7 @@
     },
     "apps/vscode": {
       "name": "claude-dev",
-      "version": "4.1.17",
+      "version": "4.1.18",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.37.0",
         "@bufbuild/protobuf": "^2.2.5",

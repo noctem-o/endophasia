@@ -9,187 +9,159 @@
 <p><strong>Instrumented cognition for coding agents.</strong></p>
 
 <p>
-A Cline-derived agent workbench for making the computation around a model<br>
-<strong>visible, controllable, comparable, and governable.</strong>
+A Cline-derived workbench for making agent computation<br>
+<strong>visible, steerable, comparable, and governable.</strong>
 </p>
 
 <p>
   <a href="#current-boundary"><img src="https://img.shields.io/badge/status-experimental%20fork-637d69?style=flat-square" alt="Status: experimental fork"></a>
   <a href="https://github.com/cline/cline"><img src="https://img.shields.io/badge/upstream-Cline-536c85?style=flat-square" alt="Upstream: Cline"></a>
-  <a href="#model-access"><img src="https://img.shields.io/badge/models-API%20%C2%B7%20local%20%C2%B7%20open--weight-2f6f4e?style=flat-square" alt="Models: API, local, and open-weight"></a>
+  <a href="#runtime-model"><img src="https://img.shields.io/badge/runtime-adapter--oriented-2f6f4e?style=flat-square" alt="Runtime: adapter-oriented"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-94765e?style=flat-square" alt="License: Apache-2.0"></a>
 </p>
 
 <p>
   <a href="#why-endophasia">Why</a> &nbsp; · &nbsp;
-  <a href="#the-control-deck">Controls</a> &nbsp; · &nbsp;
-  <a href="#work--dream">Dream</a> &nbsp; · &nbsp;
+  <a href="#mission-trace">Mission Trace</a> &nbsp; · &nbsp;
+  <a href="#work--dream">Work / Dream</a> &nbsp; · &nbsp;
   <a href="#architecture">Architecture</a> &nbsp; · &nbsp;
-  <a href="#current-boundary">Status</a> &nbsp; · &nbsp;
-  <a href="#upstream">Upstream</a>
+  <a href="#current-boundary">Status</a>
 </p>
 
 </div>
 
 ---
 
-Most coding-agent interfaces show the prompt, the answer, and the tools.
+Most coding-agent interfaces show the prompt, the tools, and the answer.
 
-Increasingly, the interesting part is everything in between:
+The interesting system is increasingly everything around the model:
 
 ```text
+context selection
 reasoning budget
-      │
-      ├── context selection
-      ├── branching
-      ├── tool policy
-      ├── retries
-      ├── verification
-      ├── model-native thinking controls
-      └── local latent interventions
+retrieval
+verification
+runtime state
+peer review
+action proposals
+human steering
 ```
 
-**Endophasia is an attempt to turn that hidden harness into an instrument panel.**
+**Endophasia turns that hidden harness into an instrument panel.**
 
-The name is borrowed from *endophasia*: inner speech — language carried internally rather than spoken aloud.
+Not a chain-of-thought viewer. Not an agent swarm dashboard. A systems surface for seeing and steering what actually happened.
 
 > [!IMPORTANT]
-> **Endophasia is experimental.** The repository currently begins as a clean fork of [Cline](https://github.com/cline/cline). The cognitive controls, Dream Mode, J-space instrumentation, Pallium telemetry, and governed Magpie/Deadbolt seams described below are a research direction unless explicitly marked implemented. This README is a design boundary, not a claim that the roadmap already exists in code.
-
-<table>
-<tr>
-<td width="33%" valign="top">
-<sub>01 / OBSERVE</sub><br><br>
-<strong>Make the harness legible</strong><br><br>
-Expose real session, branch, tool, verification, provider, and runtime events instead of decorating the UI with invented activity.
-</td>
-<td width="33%" valign="top">
-<sub>02 / CONTROL</sub><br><br>
-<strong>Give computation explicit knobs</strong><br><br>
-Reasoning, exploration, verification, tool initiative, compute appetite, and local latent controls should resolve to inspectable runtime configuration.
-</td>
-<td width="33%" valign="top">
-<sub>03 / GOVERN</sub><br><br>
-<strong>Keep cognition separate from authority</strong><br><br>
-A model may reason, branch, critique, and propose without silently acquiring epistemic standing or permission to act.
-</td>
-</tr>
-</table>
+> **Endophasia is experimental.** The repository currently begins as a fork of [Cline](https://github.com/cline/cline). The controls, Mission Trace, Pallium integration, Magpie evidence surfaces, Deadbolt authority views, runtime adapters, and local white-box instrumentation described below are research direction unless explicitly marked implemented.
 
 ## Why Endophasia
 
-A modern agent is no longer just a single model call.
+A capable agent should be allowed to reason flexibly without making its surrounding system vague.
 
-It is a runtime that chooses what context to expose, how much compute to spend, when to branch, when to retry, when to call tools, when to ask another model, when to compact history, and when to declare work complete.
-
-Those decisions are consequential, but most interfaces reduce them to one or two controls such as `reasoning: high`.
-
-Endophasia asks a different question:
-
-> **What if the cognitive runtime itself were inspectable and steerable?**
-
-Not as a theatrical chain-of-thought viewer. As a real systems surface.
+Endophasia is being shaped around five rules:
 
 ```text
-user intent
-    │
-    ▼
-agent runtime
-    │
-    ├── provider reasoning
-    ├── context / memory
-    ├── branches / peers
-    ├── tools / effects
-    ├── critics / tests
-    └── completion claims
-    │
-    ▼
-observable semantic trace
+preserve continuity
+instrument reality
+escalate cognition selectively
+keep plans inspectable
+keep authority outside the model
 ```
 
-The aim is to make the model harness feel less like a black box with a chat panel and more like a well-instrumented machine.
-
-## The control deck
-
-The intended interface separates controls that belong to the **provider**, the **harness**, and the **white-box model runtime**.
-
-| Control | What it means | API models | Local / open models |
-| :--- | :--- | :---: | :---: |
-| **Reasoning** | Provider-native test-time reasoning effort or budget. | ✓ when exposed | ✓ |
-| **Epistemic Rigour** | Named verification / evidence policy selected by the harness. | ✓ | ✓ |
-| **Explore** | Breadth of materially different candidate trajectories. | ✓ | ✓ |
-| **Verify** | Tests, critics, counterexample search, and independent checking budget. | ✓ | ✓ |
-| **Compute Appetite** | How readily the harness spends more calls, tokens, branches, and time under uncertainty. | ✓ | ✓ |
-| **Tool Initiative** | How readily the agent inspects, searches, tests, or proposes effects. | ✓ | ✓ |
-| **Latent Deliberation** | Activation-level steering where the runtime permits it; otherwise a provider-level fallback. | provider-dependent | experimental |
-| **J-space** | White-box latent workspace readout / intervention research. | — | experimental |
-
-The UI may be continuous. The semantics underneath should not be vague.
+A short version:
 
 ```text
-UI
-
-VERIFY      ─────────────●──  HIGH
-EXPLORE     ───────●────────  4
-LATENT      ─────────●──────  +0.42
-
-                  │
-                  ▼
-
-runtime configuration
-
-verify_profile     = pallium.verify.v1/high
-branch_budget      = 4
-latent_vector      = reasoning-v3
-latent_scale       = +0.42
-apply_boundary     = next_turn
+Endophasia exposes.
+Pallium reasons.
+Instruments measure.
+Magpie remembers.
+Deadbolt permits.
 ```
 
-A slider is useful only if the system can say what moving it changed.
+No line implies another.
 
-### Some things should not be floating-point policy
+## Mission Trace
 
-A value such as:
+The centre of Endophasia should be one **Mission Trace**: a real, observable timeline of work.
 
 ```text
-epistemic_rigour = 0.783
+08:14  mission started
+08:15  primary inspected runtime/
+08:18  hypothesis H1 created
+08:21  test contradicted H1
+08:24  independent challenge requested
+        └─ checker found a counterexample
+08:29  candidate patch
+08:31  tests passed
+08:33  benchmark regressed
+08:36  candidate rejected
+08:43  second candidate verified
 ```
 
-looks precise while saying almost nothing.
-
-Endophasia should prefer stable, versioned policy positions for semantic controls:
+The default model is continuity-first:
 
 ```text
-EXPLORATORY ─ BALANCED ─ RIGOROUS ─ ADVERSARIAL
-                         ▲
-
-magpie.epistemic.rigour/v3/rigorous
+task
+ │
+ ▼
+PRIMARY AGENT
+ │
+ ├─ inspect
+ ├─ reason
+ ├─ edit
+ ├─ test
+ └─ retain orientation
+      │
+      │ when useful
+      ▼
+ independent peer
+      │
+   challenge
+      │
+      ▼
+   PRIMARY AGENT
 ```
 
-Continuous values remain appropriate where the underlying quantity is genuinely continuous: activation scale, sampling temperature, branch budget, token budget, or control-vector strength.
+Peers are useful for **independent verification, adversarial challenge, orthogonal search, or genuine isolation**. They are not the default way to divide ordinary sequential thought.
+
+> Parallelize search when it helps. Preserve continuity when it matters.
+
+The trace should contain observable semantic events, not hidden private chain-of-thought:
+
+```text
+context.selected
+hypothesis.created
+hypothesis.rejected
+tool.started
+tool.finished
+benchmark.recorded
+verification.requested
+verification.passed
+peer.challenge.completed
+proposal.created
+approval.requested
+```
+
+If the UI says something happened, a real event should exist underneath it.
 
 ## WORK / DREAM
-
-Endophasia is intended to have two obvious cognitive postures.
 
 <table>
 <tr>
 <td width="50%" valign="top">
 <sub>WORK</sub><br><br>
 <strong>Convergent execution</strong><br><br>
-One primary trajectory. Bounded context. Conditional critique. Minimal branching. Fast deterministic checks where possible.<br><br>
-Optimized for getting the task done without spending compute merely because it is available.
+One primary trajectory. Bounded exploration. Deterministic checks early. Selective review. Optimized for getting the task done without spending compute merely because it is available.
 </td>
 <td width="50%" valign="top">
 <sub>DREAM</sub><br><br>
 <strong>Exploratory cognition</strong><br><br>
-Adaptive branches. Counterfactuals. Peer criticism. Broader retrieval. Latent experiments where available. Explicit synthesis before convergence.<br><br>
-Optimized for exploring a problem before committing to one interpretation or plan.
+Broader retrieval. More hypotheses retained. Counterfactuals. Stronger falsification. Optional independent challenge. White-box experiments where supported.
 </td>
 </tr>
 </table>
 
-Dream Mode is not an autonomy bypass.
+Dream does not mean "spawn more agents."
 
 ```text
 more cognition ≠ more authority
@@ -197,320 +169,314 @@ more branches  ≠ more truth
 more agreement ≠ more permission
 ```
 
-The mode changes how the system **thinks around a task**, not what it is entitled to do.
+## Steering
 
-### Dream Trace
-
-The trace should be driven by real runtime events, not decorative animation.
+Long-running agents need richer interaction than another chat message.
 
 ```text
-                         prompt
-                    ┌──────┴──────┐
-                    │             │
-                approach A    approach B
-                    │             │
-                  tool          critic
-                    │             │
-                  test         rejected
-                    │
-                 verify
-                    │
-                    └──────┬──────┘
-                           ▼
-                       synthesis
+STEER      change the active trajectory
+QUEUE      deliver after current work settles
+ANNOTATE   add context without replacing the objective
+CHALLENGE  ask an independent checker
+STOP       terminate future work
 ```
 
-Candidate event families include:
+Those are different operations and should produce different runtime events.
+
+## The control deck
+
+| Control | Meaning |
+| :--- | :--- |
+| **Reasoning** | Provider-native or local reasoning budget. |
+| **Epistemic Rigour** | Named verification and evidence policy. |
+| **Explore** | Breadth of materially different alternatives considered. |
+| **Verify** | Falsification, deterministic checks, and independent-review budget. |
+| **Compute Appetite** | How readily more tokens, calls, tests, or branches are spent under uncertainty. |
+| **Tool Initiative** | How readily the runtime inspects, retrieves, benchmarks, or proposes actions. |
+| **Latent Deliberation** | White-box intervention where the runtime actually supports it. |
+| **J-space** | Experimental latent-state observation for compatible local models. |
+
+Controls should resolve to explicit runtime configuration.
+
+Semantic policy should prefer named, versioned positions over meaningless precision:
 
 ```text
-intent.admitted
-branch.created
-branch.pruned
-tool.proposed
-tool.started
-tool.finished
-verification.started
-verification.failed
-verification.passed
-synthesis.started
-run.terminated
+EXPLORATORY ─ BALANCED ─ RIGOROUS ─ ADVERSARIAL
 ```
 
-A dimmed branch should mean something actually happened to that branch.
+A slider is useful only if the system can say what moving it changed.
 
-## J-space
+## Instruments and evidence
 
-J-space is the intentionally white-box corner of the project.
-
-For models where internal activations are available, Endophasia may experiment with a sparse, human-inspectable latent workspace and with recurrent latent reasoning interfaces.
-
-The UI should distinguish the thing itself from its projection.
+If ordinary software can establish something mechanically, Endophasia should prefer that instrument before asking a model to judge itself.
 
 ```text
-high-dimensional latent state
-            │
-            ▼
-      J-space readout
-            │
-            ▼
-   fixed projection / view
-            │
-            ▼
-      PROJECTED J-SPACE
+compiler
+tests
+benchmark
+Git state
+CI
+runtime metrics
+static analysis
 ```
 
-A three-dimensional visualization is a view of the representation, not a claim that the underlying representation is three-dimensional.
-
-For API-only models, this panel should say **unavailable** rather than fabricate an equivalent.
-
-A separate **semantic workspace** may still visualize agent-visible concepts from retrieved context, tool results, memory, and generated text. That is useful, but it is not J-space.
-
-## Model access
-
-Endophasia should degrade honestly according to what the selected model exposes.
+A useful hierarchy is:
 
 ```text
-                     model selected
-                          │
-                  capability resolver
-                 /         |          \
-                /          |           \
-               ▼           ▼            ▼
-        provider-native  harness-native  white-box
-           controls        controls      controls
-
-        reasoning effort   explore       J-space
-        thinking budget    verify        control vectors
-        structured tools   tool policy   layer probes
-                           dream mode     activations
+deterministic observation
+        ↓
+derived measurement
+        ↓
+independent verification
+        ↓
+model interpretation
 ```
 
-Example:
+Evidence should also retain **how it was obtained**. An exact observation, sampled metric, derived claim, historical record, external source, and model report are not interchangeable.
+
+Missing should remain missing rather than becoming a fabricated zero or guessed state.
+
+## Plans are not effects
+
+A model proposal should be inspectable before it becomes consequential.
 
 ```text
-API MODEL
-────────────────────────────
-Reasoning        HIGH
-Explore          4
-Verify           RIGOROUS
-Dream Trace      LIVE
-J-space          UNAVAILABLE
-Latent Steering  PROVIDER-LEVEL ONLY
-
-LOCAL OPEN MODEL
-────────────────────────────
-Reasoning        HIGH
-Explore          4
-Verify           RIGOROUS
-Dream Trace      LIVE
-J-space          AVAILABLE / EXPERIMENTAL
-Latent Steering  +0.42
-Layer Range      24–48
+model intent
+    │
+    ▼
+structured proposal
+    │
+    ▼
+inspectable plan
+    │
+    ├─ operations
+    ├─ dependencies
+    ├─ bounds
+    └─ required authority
+    │
+    ▼
+review / policy
 ```
 
-Unsupported capability should be visible as unsupported.
+A valid plan is still only a proposal.
+
+Consequential effects belong behind an explicit authority boundary:
+
+```text
+agent
+  │ proposes
+  ▼
+plan
+  │
+  ▼
+DEADBOLT
+  ├─ typed route
+  ├─ policy
+  ├─ lease
+  ├─ confirmation
+  └─ receipt
+       │
+       ▼
+real effect
+```
+
+## Runtime model
+
+Endophasia begins with Cline, but Endophasia-specific semantics should not permanently depend on one harness.
+
+```text
+                    ENDOPHASIA
+                        │
+                  runtime contract
+                        │
+       ┌────────────────┼────────────────┐
+       ▼                ▼                ▼
+ Cline runtime      remote harness    durable backend
+       │                │                │
+     models           agents          workflows
+     tools            machines        services
+```
+
+A runtime adapter needs surprisingly little conceptually:
+
+```text
+attach
+invoke
+observe
+steer
+queue
+cancel
+resume
+identify workspace
+report capability
+```
+
+Different substrates may provide more. Endophasia should not pretend they are identical.
 
 ## Architecture
 
-Endophasia starts from Cline's existing open-source agent harness, SDK, sessions, provider integrations, tools, plugins, CLI, and desktop work.
-
-The intended Endophasia-specific layers sit **around** that runtime rather than pretending to replace all of it at once.
-
 ```mermaid
 flowchart TB
-    H["Human"] --> E["Endophasia\ncontrol deck + workbench"]
-    E --> C["Cline-derived runtime\nsessions · tools · providers · plugins"]
+    H["Human"] --> E["Endophasia\nsteering · Mission Trace · controls"]
 
-    C --> API["API models"]
-    C --> LOCAL["Local / open-weight models"]
-    C --> TOOLS["Tools / workspace"]
+    E --> P["Pallium\ncognition · coordination · evaluation"]
+    P --> R["Runtime adapters\nCline · local · external · durable"]
+    R --> MODEL["Models\nAPI · local · open-weight"]
+    R --> INST["Instruments\ntests · CI · benchmarks · observers"]
 
-    LOCAL -. "white-box telemetry\ncontrol vectors / J-space" .-> W["Latent sidecar / local instrumentation"]
-    W -.-> E
+    INST --> EV["Evidence"]
+    P --> EV
+    EV --> M["Magpie\nprovenance · replay · standing"]
 
-    C -. "semantic observations" .-> P["Pallium\nruntime semantics · coordination · evaluation"]
-    P -. "candidate evidence" .-> M["Magpie\nevidence · provenance · standing"]
-    C -. "proposed consequential effect" .-> D["Deadbolt\nauthority · consent · capability"]
-    D -. "authorized effect" .-> TOOLS
+    P --> PLAN["Structured proposal"]
+    PLAN --> D["Deadbolt\nauthority · consent · capability"]
+    D --> FX["Consequential effect"]
+    FX --> REC["Receipt / observation"]
+    REC --> M
+    REC --> E
 ```
-
-> [!NOTE]
-> Dashed edges are intended research seams, not claims that those integrations are already present in this fork.
 
 ### The boundary matters
 
 | Layer | Owns | Must not silently become |
 | :--- | :--- | :--- |
-| **Endophasia** | Human-facing cognitive controls, runtime telemetry, model capability presentation. | Epistemic authority or blanket execution permission. |
-| **Cline-derived runtime** | Sessions, agent loop, tools, providers, persistence, plugins. | Root of trust merely because it runs the loop. |
-| **Pallium** | Cognition, coordination, semantic runtime experiments, evaluation. | Truth or execution authority. |
-| **Magpie** | Evidence, provenance, replayable history, policy-defined standing. | General agent runtime. |
-| **Deadbolt** | Consequential-action authority, consent, narrow capabilities. | Memory or cognition. |
-| **Local latent layer** | White-box model inspection and interventions. | Evidence that an interpretation of a latent state is true. |
+| **Endophasia** | Human steering, visualization, cognitive controls, traces. | Truth or execution authority. |
+| **Pallium** | Cognitive continuity, selective coordination, evaluation. | Canonical epistemic history or permission. |
+| **Runtime adapter** | Sessions, tools, provider/process lifecycle. | Root of trust merely because it executes. |
+| **Instruments** | Measurements and bounded observations. | General reasoning agents. |
+| **Magpie** | Evidence, provenance, replayable epistemic history, standing. | General orchestration. |
+| **Deadbolt** | Consequential-action authority and receipts. | Cognition or memory. |
+| **Local latent layer** | White-box observation and intervention. | Proof that an interpretation is true. |
 
-A useful shorthand:
+## J-space
+
+J-space is the deliberately white-box edge of the project.
+
+Where local runtimes expose compatible internal state, Endophasia may experiment with latent readouts and interventions.
 
 ```text
-Endophasia exposes.
-Pallium reasons and measures.
-Magpie remembers.
-Deadbolt permits.
+model state → instrumentation → projection → J-SPACE VIEW
 ```
 
-No line implies another.
+The projection is a view, not the underlying representation itself. For API-only models, **UNAVAILABLE** is better than fake parity.
+
+J-space is research instrumentation, not the foundation of the product.
 
 ## Design rules
 
-Endophasia is being shaped around a few deliberately stubborn rules.
-
-| Rule | Consequence |
-| :--- | :--- |
-| **Telemetry should be real.** | If the UI says a branch exists, a runtime branch should exist. |
-| **A control should resolve to explicit configuration.** | Pretty sliders do not get to invent ambiguous semantics. |
-| **Reasoning is not authority.** | More compute does not widen permission. |
-| **Completion is a claim.** | A runtime terminal signal is not independent evidence that requested work is correct. |
-| **API and local models may expose different surfaces.** | Capability-aware UI beats fake parity. |
-| **White-box interpretation stays scoped.** | A latent probe is an instrument, not an oracle. |
-| **Upstream stays visible.** | Endophasia should preserve attribution and make divergence from Cline easy to inspect. |
+- **Telemetry should be real.** Decorative agent activity is worse than no telemetry.
+- **Continuity is valuable.** Do not create a handoff without a reason.
+- **Mechanical evidence beats self-report.** Completion is a claim until something checks it.
+- **Independent review should actually be independent.** Isolation is useful when it reduces anchoring.
+- **Plans are not effects.** Proposal, approval, execution, and receipt are separate states.
+- **Reasoning is not authority.** More compute never widens permission.
+- **Capability-aware UI beats fake parity.** Different runtimes expose different surfaces.
+- **A feature that cannot beat a simpler baseline stays experimental.**
 
 ## Current boundary
 
-### Inherited today
+Endophasia currently starts from the live [Cline](https://github.com/cline/cline) codebase, inheriting its sessions, providers, tools, plugins, MCP support, CLI, desktop surfaces, checkpoints, and agent runtime infrastructure.
 
-Endophasia currently starts from the live [Cline](https://github.com/cline/cline) codebase.
+Those are upstream capabilities, not Endophasia inventions.
 
-That inherited baseline includes, among other things:
+Endophasia-specific work is currently at the **identity / architecture foundation** stage.
 
-- the Cline SDK and layered agent runtime;
-- CLI and desktop application surfaces;
-- session persistence and checkpoints;
-- provider integrations for hosted and local models;
-- built-in tools and tool orchestration;
-- plugins and MCP integration;
-- multi-agent / subagent facilities;
-- scheduled and event-driven agent work.
+Not yet complete as Endophasia features:
 
-Those are upstream Cline capabilities, not Endophasia inventions.
+```text
+Mission Trace
+cognitive control deck
+Work / Dream policies
+runtime adapter boundary
+steer / queue / challenge controls
+deterministic instrument panel
+selective peer-checker flow
+Pallium telemetry
+Magpie evidence view
+Deadbolt action review
+local latent instrumentation / J-space
+```
 
-### Endophasia-specific status
-
-At the time this README is introduced, the fork is at the **identity / architecture foundation** stage.
-
-Not yet implemented as Endophasia features:
-
-- product-wide rename and application bundle identity;
-- cognitive control deck;
-- capability resolver UI;
-- Work / Dream runtime presets;
-- Dream Trace / Oneiroscope visualization;
-- Pallium semantic telemetry;
-- Magpie epistemic profiles;
-- Deadbolt authority integration;
-- local control-vector UI;
-- J-space observer or recurrent latent workspace.
-
-That list is intentionally explicit so the README cannot be mistaken for a feature-complete release announcement.
+This list is deliberately explicit so the README cannot be mistaken for a feature-complete release announcement.
 
 ## Roadmap
 
-The current preferred sequence is conservative:
+The preferred sequence is deliberately vertical:
 
 ```text
 0  identity + upstream hygiene
        ↓
-1  capability-aware control deck
+1  real Mission Trace from existing runtime events
        ↓
-2  real-time runtime / Dream Trace telemetry
+2  primary-agent continuity + steering
        ↓
-3  harness-native Explore / Verify / Compute controls
+3  deterministic verification / instrument surface
        ↓
-4  Pallium semantic observations and conformance hooks
+4  selective independent checker
        ↓
-5  local white-box latent controls and J-space research
+5  Work / Dream + versioned cognitive policies
        ↓
-6  governed Magpie / Deadbolt seams
+6  structured proposal / action review
+       ↓
+7  Magpie evidence + Deadbolt authority seams
+       ↓
+8  additional runtime adapters
+       ↓
+9  local white-box / J-space research
 ```
 
-The order may change as experiments falsify assumptions.
+The first important demonstration is not a swarm. It is one complete, legible loop:
 
-A feature that cannot beat a simpler baseline should remain an experiment.
+```text
+human task
+   ↓
+primary agent
+   ↓
+tools + instruments
+   ↓
+optional independent challenge
+   ↓
+evidence
+   ↓
+structured proposal
+   ↓
+authority review
+   ↓
+effect
+   ↓
+receipt
+```
 
 ## Upstream
 
 Endophasia is an independent experimental fork of [Cline](https://github.com/cline/cline).
 
-Cline provides the open-source agent harness and much of the working application substrate this project begins from. Endophasia intends to remain **upstream-aware** rather than erasing that lineage.
-
-Where practical:
+The goal is to remain upstream-aware and keep Endophasia-specific semantics narrow enough to inspect, test, and replace independently.
 
 ```text
-upstream/c​line
-     │
-     ├── provider / runtime improvements
-     ├── session / tool fixes
-     └── application infrastructure
-              │
-              ▼
-         Endophasia
-              │
-     narrow cognitive layers
+Cline
+  │
+  ├─ providers
+  ├─ sessions
+  ├─ tools
+  └─ application infrastructure
+        │
+        ▼
+   Endophasia
+        │
+   cognition · evidence · governance surfaces
 ```
 
-The goal is to keep Endophasia-specific changes reviewable and to make semantic divergence from upstream deliberate rather than accidental.
+## Name
 
-General Cline documentation remains the best reference for inherited behavior while the fork is young.
+*Endophasia* refers to inner speech: language carried internally rather than spoken aloud.
 
-## Development
+The project is interested in what happens around a model before the final answer appears — but only where those processes can be exposed honestly.
 
-This repository currently follows the upstream Cline monorepo and toolchain.
+The interface should illuminate computation.
 
-```sh
-git clone https://github.com/noctem-o/endophasia.git
-cd endophasia
-bun install
-bun run build:sdk
-```
-
-Useful root checks include:
-
-```sh
-bun run types
-bun run test
-bun run check
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the existing package documentation before making broad structural changes.
-
-For Endophasia-specific work, prefer small branches and narrow diffs so upstream synchronization remains tractable.
-
-## What this is not
-
-Endophasia is not a new foundation model.
-
-It is not a claim that chain-of-thought should be exposed.
-
-It is not a universal agent-runtime specification.
-
-It is not a proof that latent representations have the interpretation shown in a UI.
-
-It is not an execution sandbox or authority system.
-
-It is not evidence that more agents, more branches, or more reasoning tokens make an answer more correct.
-
-**It is a workbench for studying and controlling the systems wrapped around increasingly capable models.**
-
-## License and attribution
-
-Endophasia retains the repository's [Apache-2.0](LICENSE) license and upstream notices.
-
-[Cline](https://github.com/cline/cline) is developed by Cline Bot Inc. Endophasia is an independent experimental fork and is not presented as an official Cline product.
-
-Upstream copyright and attribution remain intact.
+It should not invent cognition for decoration.
 
 ---
 
-<div align="center">
-
-<sub>MAKE THE HIDDEN RUNTIME LEGIBLE.</sub>
-
-</div>
+**Status:** experimental · research-first · upstream-aware

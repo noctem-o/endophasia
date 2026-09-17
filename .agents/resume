@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# -*- shell-script -*-
+#
+# .agents/resume — read-only readiness verifier for Endophasia.
+#
+# Checks that a checkout is development-ready without mutating anything.
+# Does NOT install, download, modify files, change Git state, run fetch/pull,
+# repair dependencies, start services, or rewrite generated artifacts.
+#
+# A dirty worktree is NOT a failure — resume tolerates it.
+#
+# Exit codes:
+#   0  ready
+#   1  not ready (missing/broken readiness condition); tells caller to run setup
+#
+# Platform: Linux only (qualified). Darwin is not supported by this script
+# because the staleness check uses Linux-specific `stat -c '%Y'`.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPO_ROOT
+
+fail() {
+  printf '❌ %s\n' "$*" >&2
+  exit 1
+}
+
+info() { printf 'ℹ️  %s\n' "$*"; }
+ok()   { printf '✅ %s\n' "$*"; }
+warn() { printf '⚠️  %s\n' "$*" >&2; }
+
+# ── platform contract ──────────────────────────────────────────────────────
+
+case "$(uname -s)" in
+  Linux)
+    ;;
+  *)
+    fail "Unsupported OS: $(uname -s). .agents/resume targets Linux only."
+    ;;
+esac
+
+# ── find repo root ─────────────────────────────────────────────────────────
+
+if [[ ! -f "$REPO_ROOT/.tool-versions" ]]; then
+  fail "No .tool-versions in $REPO_ROOT — cannot identify expected toolchain."
+fi
+
+# ── expected toolchain from repository truth ───────────────────────────────
+
+get_tool_version() {
+  local tool="$1"
+  awk -v tool="$tool" '$1 == tool { print $2; found=1; exit }
+    END { if (!found) print "" }' "$REPO_ROOT/.tool-versions"
+}
+
+EXPECTED_BUN_VERSION="$(get_tool_version bun)"
+EXPECTED_NODE_MAJOR="$(get_tool_version node)"
+
+if [[ -z "$EXPECTED_BUN_VERSION" ]]; then
+  fail "Could not read expected Bun version from .tool-versions"
+fi
+if [[ -z "$EXPECTED_NODE_MAJOR" ]]; then
+  fail "Could not read expected Node major version from .tool-versions"
+fi
+
+info "Repository expects Bun $EXPECTED_BUN_VERSION and Node >= $EXPECTED_NODE_MAJOR."
+
+# ── Node compatibility (read-only) ─────────────────────────────────────────
+
+check_node_compatibility() {
+  local node_version
+  node_version="$(node --version 2>/dev/null || true)"
+
+  if [[ -z "$node_version" ]]; then
+    fail "node not found on PATH. The repository requires Node >= $EXPECTED_NODE_MAJOR. Run .agents/setup."
+  fi
+
+  # node --version prints "v26.8.2" or "v22.0.0". Strip leading "v" and take
+  # the first dot-separated field as the major version.
+  local major
+  major="${node_version#v}"
+  major="${major%%.*}"
+
+  if [[ ! "$major" =~ ^[0-9]+$ ]]; then
+    fail "Could not parse Node major version from '$node_version'."
+  fi
+
+  if [[ "$major" -lt "$EXPECTED_NODE_MAJOR" ]]; then
+    fail "Node $major is below the required minimum of $EXPECTED_NODE_MAJOR. " \
+         "Upgrade Node to >= $EXPECTED_NODE_MAJOR. Run .agents/setup."
+  fi
+
+  NODE_VERSION="$node_version"
+  NODE_MAJOR="$major"
+}
+
+check_node_compatibility
+ok "Node $NODE_VERSION (major $NODE_MAJOR) satisfies Node >= $EXPECTED_NODE_MAJOR."
+
+# ── a usable repo-correct Bun must be available ────────────────────────────
+
+# Prefer a repo-local pinned Bun (laid down by .agents/setup) over whatever
+# the shell would otherwise resolve. This is a read-only check: we only probe
+# for the binary, we do not install anything.
+LOCAL_BUN="$REPO_ROOT/.agents/.bun-local/bin/bun"
+
+RESUMED_BUN=""
+if [[ -x "$LOCAL_BUN" ]]; then
+  RESUMED_BUN="$LOCAL_BUN"
+fi
+
+# If no repo-local pin exists, fall back to whatever `bun` the shell sees — but
+# we still validate it reports the right version. This is what lets resume work
+# on a checkout that only has system Bun and has not run setup yet (it will fail
+# readiness and point at setup rather than silently accepting a wrong version).
+
+BUN_TO_USE="${RESUMED_BUN:-bun}"
+
+# Probing must not mutate PATH permanently. Use command -v / direct path.
+BUN_VERSION_OUTPUT="$("$BUN_TO_USE" --version 2>/dev/null || true)"
+
+if [[ -z "$BUN_VERSION_OUTPUT" ]]; then
+  fail "No usable Bun found. Expected $EXPECTED_BUN_VERSION. Run .agents/setup."
+fi
+
+BUN_ACTUAL_VERSION="${BUN_VERSION_OUTPUT%% *}"
+
+if [[ "$BUN_ACTUAL_VERSION" != "$EXPECTED_BUN_VERSION" ]]; then
+  fail "Bun version mismatch: found '$BUN_ACTUAL_VERSION', expected '$EXPECTED_BUN_VERSION'. Run .agents/setup."
+fi
+
+ok "Bun $BUN_ACTUAL_VERSION available (resolver: ${RESUMED_BUN:-$BUN_TO_USE})."
+
+# ── locate SDK workspace ───────────────────────────────────────────────────
+
+SDK_ROOT="$REPO_ROOT/sdk"
+
+if [[ ! -d "$SDK_ROOT" ]]; then
+  fail "SDK workspace root $SDK_ROOT missing."
+fi
+
+cd "$SDK_ROOT"
+
+# ── dependency readiness ───────────────────────────────────────────────────
+
+# The monorepo lockfile lives at the repository root (bun workspaces).
+if [[ ! -f "$REPO_ROOT/bun.lock" ]]; then
+  fail "bun.lock missing from repository root — dependencies not installed. Run .agents/setup."
+fi
+
+# node_modules lives at the repository root for this Bun workspace.
+if [[ ! -d "$REPO_ROOT/node_modules" ]]; then
+  fail "node_modules missing from repository root — dependencies not installed. Run .agents/setup."
+fi
+
+# Also check dist/ timestamps to detect stale builds — read-only.
+REQUIRED_SDK_PACKAGES=(
+  "sdk/packages/shared"
+  "sdk/packages/llms"
+  "sdk/packages/agents"
+  "sdk/packages/core"
+  "sdk/packages/sdk"
+  "sdk/packages/ui"
+)
+
+check_stale_builds() {
+  STALE=()
+  for pkg_dir in "${REQUIRED_SDK_PACKAGES[@]}"; do
+    local dist_dir="$REPO_ROOT/$pkg_dir/dist"
+    if [[ -d "$dist_dir" ]]; then
+      local dist_mtime
+      dist_mtime="$(stat -c '%Y' "$dist_dir" 2>/dev/null || echo 0)"
+      local src_mtime
+      src_mtime="$(find "$REPO_ROOT/$pkg_dir/src" -type f -name '*.ts' -exec stat -c '%Y' {} + 2>/dev/null | sort -nr | head -1 || echo 0)"
+      if [[ "$src_mtime" -gt "$dist_mtime" && "$src_mtime" -gt 0 ]]; then
+        STALE+=("$pkg_dir/dist (older than source)")
+      fi
+    fi
+  done
+}
+
+check_stale_builds
+
+if [[ ${#STALE[@]} -gt 0 ]]; then
+  printf '\n'
+  printf '⚠️  Stale build outputs detected:\n'
+  for s in "${STALE[@]}"; do
+    printf '     - %s\n' "$s"
+  done
+  printf '\n'
+  warn "Build outputs may be stale. Run .agents/setup to rebuild."
+fi
+
+ok "Frozen lockfile and node_modules present."
+
+# Verify that the installed dependency tree is consistent with the lockfile.
+# `bun pm ls` is read-only; it does not install or modify. We use it to detect
+# a corrupted or stale install without performing any repair.
+if ! "$BUN_TO_USE" pm ls --json >/dev/null 2>&1; then
+  warn "bun pm ls reported issues — dependency tree may be inconsistent."
+  warn "Run .agents/setup to repair dependencies."
+fi
+
+# ── required build outputs ─────────────────────────────────────────────────
+
+# SDK development requires compiled dist/ outputs. Each publishable SDK package
+# emits dist/ from its build script; missing dist/ is the clearest signal that
+# the SDK has not been built (or was cleaned).
+
+MISSING_DIST=()
+for pkg_dir in "${REQUIRED_SDK_PACKAGES[@]}"; do
+  if [[ ! -d "$REPO_ROOT/$pkg_dir/dist" ]]; then
+    MISSING_DIST+=("$pkg_dir/dist")
+  fi
+done
+
+if [[ ${#MISSING_DIST[@]} -gt 0 ]]; then
+  printf '\n'
+  printf '❌ Missing required SDK build outputs:\n'
+  for d in "${MISSING_DIST[@]}"; do
+    printf '     - %s\n' "$d"
+  done
+  printf '\n'
+  fail "SDK packages have not been built. Run .agents/setup."
+fi
+
+ok "Required SDK build outputs present (shared, llms, agents, core, sdk, ui)."
+
+# ── report ─────────────────────────────────────────────────────────────────
+
+printf '\n'
+printf '═══════════════════════════════════════════════════════════\n'
+printf '  Resume check: READY\n'
+printf '═══════════════════════════════════════════════════════════\n'
+printf '  repo root  : %s\n' "$REPO_ROOT"
+printf '  bun        : %s\n' "$BUN_VERSION_OUTPUT"
+printf '  node       : %s\n' "$NODE_VERSION"
+printf '  lockfile   : %s\n' "$(
+    if [[ -f "$REPO_ROOT/bun.lock" ]]; then
+      ls -la "$REPO_ROOT/bun.lock" 2>/dev/null | awk '{print $5, $NF}'
+    else
+      echo "missing"
+    fi
+  )"
+printf '  node_modules: present\n'
+printf '  sdk dist/  : present for all required packages\n'
+printf '\n'
+exit 0

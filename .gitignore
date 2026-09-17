@@ -76,6 +76,10 @@ apps/vscode/webview-ui/src/**/*.js
 apps/vscode/webview-ui/src/**/*.js.map
 
 
+# Agent bootstrap
+.agents/.bun-local/
+
+
 # SDK Session files / User data
 .cline/data
 .cline/tmp

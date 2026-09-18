@@ -55,3 +55,28 @@ export {
 	createAgent,
 	createAgentRuntime,
 } from "./agent-runtime";
+
+// =============================================================================
+// Mission Trace v0 — passive, deterministic semantic projection of
+// AgentRuntimeEvent. Experimental. Subject to change.
+// =============================================================================
+
+export type {
+	MissionTraceEventV0,
+	MissionTraceEventV0Started,
+	MissionTraceEventV0TurnStarted,
+	MissionTraceEventV0ModelCompleted,
+	MissionTraceEventV0ToolStarted,
+	MissionTraceEventV0ToolFinished,
+	MissionTraceEventV0TurnFinished,
+	MissionTraceEventV0Completed,
+	MissionTraceEventV0Aborted,
+	MissionTraceEventV0Failed,
+	MissionTraceSchemaVersion,
+} from "./mission-trace/types";
+export { isMissionTraceEventV0, missionTraceEventKind } from "./mission-trace/types";
+export {
+	MissionTraceProjectorV0,
+} from "./mission-trace/projector";
+export { MissionTraceSinkV0, type MissionTraceSnapshotV0 } from "./mission-trace/sink";
+export { attachMissionTraceV0, type MissionTraceAttachment } from "./mission-trace/attach";

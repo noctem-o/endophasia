@@ -53,6 +53,19 @@ function projectEvents(events: AgentRuntimeEvent[]): readonly MissionTraceEventV
 	return sink.snapshot().events;
 }
 
+/** Feed an array of events into a projector and return the populated sink. */
+function buildSink(events: AgentRuntimeEvent[]): MissionTraceSinkV0 {
+	const projector = new MissionTraceProjectorV0();
+	const sink = new MissionTraceSinkV0();
+	for (const event of events) {
+		const projected = projector.project(event);
+		if (projected !== undefined) {
+			sink.append(projected);
+		}
+	}
+	return sink;
+}
+
 /** Pretty-print an event's kind + sequence for diagnostics. */
 function eventTag(e: MissionTraceEventV0): string {
 	return `${e.kind.padEnd(27)}seq=${e.sequence}`;
@@ -1211,5 +1224,196 @@ describe("MissionTraceV0 — O. sink snapshot copy-isolation", () => {
 		snap.events[0].agentId = "hijacked";
 		expect(sink.snapshot().events[0].sequence).toBe(1);
 		expect(sink.snapshot().events[0].agentId).toBe("a");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// P. sink sinceSequence — minimal read-side seam
+// ---------------------------------------------------------------------------
+
+describe("MissionTraceV0 — P. sink sinceSequence (cursor read)", () => {
+	/** Build a deterministic trace: mission.started, turn.started, model.completed, turn.finished, mission.completed. */
+	function standardTrace(): MissionTraceSinkV0 {
+		return buildSink([
+			{ type: "run-started", snapshot: SNAP },
+			{ type: "turn-started", snapshot: SNAP, iteration: 1 },
+			assistantMessage(SNAP, 1, "stop", {
+				role: "assistant",
+				id: "msg-1",
+				content: [],
+				createdAt: 0,
+				modelInfo: undefined,
+			}),
+			{ type: "turn-finished", snapshot: SNAP, iteration: 1, toolCallCount: 0 },
+			runFinished(SNAP, "completed", 1, "ok"),
+		]);
+	}
+
+	// A sequence is 1..5: [started, turn.started, model.completed, turn.finished, completed]
+	function seqs(events: readonly MissionTraceEventV0[]): number[] {
+		return events.map((e) => e.sequence);
+	}
+
+	it("from=0 returns all events, identical in content to snapshot().events", () => {
+		const sink = standardTrace();
+		const all = sink.sinceSequence(0);
+		const snap = sink.snapshot();
+		expect(all).toHaveLength(5);
+		expect(seqs(all)).toEqual([1, 2, 3, 4, 5]);
+		// Same events as snapshot, same order, same content (deep-equal)
+		expect(all).toEqual(snap.events);
+	});
+
+	it("from=N returns empty; from>N returns empty", () => {
+		const sink = standardTrace();
+		expect(sink.sinceSequence(5)).toHaveLength(0);
+		expect(sink.sinceSequence(6)).toHaveLength(0);
+	});
+
+	it("from=k returns events k+1..N with no gap or duplicate", () => {
+		const sink = standardTrace();
+		// from=1 → [2,3,4,5]; from=2 → [3,4,5]; from=4 → [5]
+		expect(seqs(sink.sinceSequence(1))).toEqual([2, 3, 4, 5]);
+		expect(seqs(sink.sinceSequence(2))).toEqual([3, 4, 5]);
+		expect(seqs(sink.sinceSequence(4))).toEqual([5]);
+	});
+
+	it("from fractional k.f returns events k+1..N (exclusive floor bound)", () => {
+		const sink = standardTrace();
+		// 2.5 → [3,4,5]; 0.5 → [1,2,3,4,5]; 5.5 → []
+		expect(seqs(sink.sinceSequence(2.5))).toEqual([3, 4, 5]);
+		expect(seqs(sink.sinceSequence(0.5))).toEqual([1, 2, 3, 4, 5]);
+		expect(sink.sinceSequence(5.5)).toHaveLength(0);
+	});
+
+	it("negative and sub-one from return all events", () => {
+		const sink = standardTrace();
+		expect(seqs(sink.sinceSequence(-1))).toEqual([1, 2, 3, 4, 5]);
+		expect(seqs(sink.sinceSequence(-Infinity))).toEqual([1, 2, 3, 4, 5]);
+	});
+
+	it("NaN and +Infinity return empty (no sequence compares greater than them)", () => {
+		const sink = standardTrace();
+		expect(sink.sinceSequence(NaN)).toHaveLength(0);
+		expect(sink.sinceSequence(Infinity)).toHaveLength(0);
+	});
+
+	it("returns a fresh array and fresh event records (copy-isolation), and does not mutate the sink", () => {
+		const sink = standardTrace();
+		// Fresh array: mutating the returned array must not change the sink.
+		const arr = sink.sinceSequence(0);
+		arr.push({
+			schemaVersion: "mission-trace.v0",
+			sequence: 99,
+			kind: "mission.completed",
+			agentId: "a",
+			iterations: 1,
+		} as MissionTraceEventV0);
+		expect(sink.sinceSequence(0)).toHaveLength(5);
+		expect(sink.snapshot().count).toBe(5);
+
+		// Fresh event records: mutating a returned event must not rewrite the sink.
+		const evs = sink.sinceSequence(0);
+		evs[0].sequence = 999;
+		evs[0].agentId = "hijacked";
+		expect(sink.sinceSequence(0)[0].sequence).toBe(1);
+		expect(sink.sinceSequence(0)[0].agentId).toBe("a");
+	});
+
+	it("repeated identical reads are stable and equal (pure, no memoization side effects)", () => {
+		const sink = standardTrace();
+		const a = sink.sinceSequence(2);
+		const b = sink.sinceSequence(2);
+		expect(a).toEqual(b);
+		expect(seqs(a)).toEqual([3, 4, 5]);
+	});
+
+	// A real runtime run, then an incremental read.
+	it("works end-to-end through attachMissionTraceV0 (real runtime, incremental read)", async () => {
+		const model = new ScriptedModel([
+			() => syncToAsync([
+				{ type: "text-delta", text: "a" },
+				{ type: "finish", reason: "stop" },
+			]),
+			() => syncToAsync([
+				{ type: "text-delta", text: "b" },
+				{ type: "finish", reason: "stop" },
+			]),
+		]);
+
+		const runtime = new AgentRuntime({ model });
+		const attachment = attachMissionTraceV0(runtime);
+
+		await runtime.run("Hi");
+		// First incremental read: everything.
+		const first = attachment.sink.sinceSequence(0);
+		const firstSeq = first[first.length - 1].sequence;
+		expect(first.length).toBeGreaterThan(0);
+		expect(first[first.length - 1].kind).toBe("mission.completed");
+
+		// Second read with the same cursor must be empty (no dupes).
+		expect(attachment.sink.sinceSequence(firstSeq)).toHaveLength(0);
+
+		// Second run continues the same attachment; a cursor at the first
+		// terminal now returns exactly the second run's events — contiguous,
+		// no gap, no dupes.
+		await runtime.run("Hi again");
+		const second = attachment.sink.sinceSequence(firstSeq);
+		// The second run adds a new mission.started...mission.completed.
+		expect(second.length).toBeGreaterThan(0);
+		// No event from the first run re-appears.
+		expect(second.every((e) => e.sequence > firstSeq)).toBe(true);
+		// No gaps: the first event of `second` is exactly firstSeq + 1.
+		expect(second[0].sequence).toBe(firstSeq + 1);
+		// Terminal of second run is present.
+		expect(second.some((e) => e.kind === "mission.completed")).toBe(true);
+
+		attachment.detach();
+	});
+
+	// Independent attachments: each attachMissionTraceV0 owns its own projector
+	// and sink. Two attachments on the SAME runtime therefore have independent
+	// sequences and independent sinks; a cursor read over one attachment's sink
+	// must never see the other attachment's events.
+	it("is attachment-scoped — two attachments on the same runtime never leak each other's events", async () => {
+		const model = new ScriptedModel([
+			() => syncToAsync([{ type: "text-delta", text: "a" }, { type: "finish", reason: "stop" }]),
+		]);
+
+		const runtime = new AgentRuntime({ model });
+
+		// Two attachments on the same runtime. Each owns its own projector + sink.
+		const a = attachMissionTraceV0(runtime);
+		const b = attachMissionTraceV0(runtime);
+
+		await runtime.run("A");
+
+		const aRead = a.sink.sinceSequence(0);
+		const bRead = b.sink.sinceSequence(0);
+
+		// Both attachments captured the full run (both listeners fire on every
+		// event), but into independent sinks with independent sequences.
+		expect(aRead.length).toBeGreaterThan(0);
+		expect(bRead.length).toBeGreaterThan(0);
+		expect(aRead.length).toBe(bRead.length); // same count, same events
+		// Each starts at its own sequence 1.
+		expect(aRead[0].sequence).toBe(1);
+		expect(bRead[0].sequence).toBe(1);
+		expect(aRead[aRead.length - 1].kind).toBe("mission.completed");
+		expect(bRead[bRead.length - 1].kind).toBe("mission.completed");
+
+		// Independence: appending to / mutating one sink must not affect the
+		// other attachment's read.
+		const aCount = aRead.length;
+		// Mutate a read copy — must not leak into b's sink.
+		aRead[0].agentId = "hijacked-a";
+		expect(bRead[0].agentId).not.toBe("hijacked-a");
+
+		// Directly: b's sink must be untouched by a's read.
+		expect(b.sink.sinceSequence(0).length).toBe(aCount);
+		expect(b.sink.snapshot().count).toBe(aCount);
+
+		a.detach();
+		b.detach();
 	});
 });

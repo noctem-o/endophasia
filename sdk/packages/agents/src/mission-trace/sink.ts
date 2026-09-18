@@ -45,6 +45,34 @@ export class MissionTraceSinkV0 {
   }
 
 	/**
+	 * Return a read-only view of the events with `sequence > from`.
+	 *
+	 * `from` is an exclusive lower-bound cursor: the last sequence the
+	 * consumer has already seen. `0` means "none yet" (all events). Because
+	 * `sequence` is a positive integer starting at 1 and contiguous within a
+	 * projector lifetime, `sequence > from` is a total, gapless partition:
+	 *
+	 *   - `from < 1` (negative, 0, or fractional below 1) → all events.
+	 *   - `from` equal to an integer `k` → events `k+1 … N`.
+	 *   - `from` a fraction `k.f` (`0 < f < 1`) → events `k+1 … N`.
+	 *   - `from >= N` → empty array.
+	 *   - `from === NaN` → empty array (no sequence compares greater than
+	 *     NaN); `+Infinity` → empty; `-Infinity` → all events.
+	 *
+	 * The result is a fresh array whose events are fresh records
+	 * (copy-isolation, the same guarantee `snapshot()` provides). This is a
+	 * pure, synchronous, read-only function of the sink's current state: it
+	 * never appends, detaches, or mutates the sink, and it is never called
+	 * from the runtime emit path, so it cannot gate or affect runtime
+	 * execution.
+	 */
+	sinceSequence(from: number): readonly MissionTraceEventV0[] {
+		return this.events
+			.filter((event) => event.sequence > from)
+			.map((event) => ({ ...event }));
+	}
+
+	/**
 	 * Return a read-only snapshot of all events collected so far.
 	 *
 	 * The returned array is a fresh copy and each event is a fresh record

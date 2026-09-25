@@ -58,7 +58,8 @@ export interface UsageLedgerPageV0 {
 	nextAfterSequence: number;
 }
 
-function projectRow(row: UsageRow): UsageLedgerRowV0 {
+/** Package-internal: the one payload-minimal projection shared by the ledger inspector and the usage feed. */
+export function projectUsageLedgerRowV0(row: UsageRow): UsageLedgerRowV0 {
 	const { usage } = row;
 	return {
 		id: row.id,
@@ -102,7 +103,9 @@ export async function readUsageLedgerV0(
 	const rows =
 		afterSequence === Number.MAX_SAFE_INTEGER
 			? []
-			: (await session.scanUsage({ fromSeq: afterSequence + 1, order: "asc", limit }, context)).map(projectRow);
+			: (await session.scanUsage({ fromSeq: afterSequence + 1, order: "asc", limit }, context)).map(
+					projectUsageLedgerRowV0,
+				);
 	return {
 		schemaVersion: "usage-ledger.v0",
 		scope: "session",

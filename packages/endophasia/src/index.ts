@@ -2,6 +2,13 @@ import type { AgentHarness } from "@earendil-works/pi-agent-core";
 
 export type { ContinuityEntryV0, ContinuitySnapshotV0 } from "./continuity.ts";
 export { captureContinuityV0 } from "./continuity.ts";
+export type { ControlReceiptV0, ControlStateV0 } from "./control-deck.ts";
+export {
+	captureControlStateV0,
+	configureActiveToolsV0,
+	configureModelV0,
+	configureThinkingLevelV0,
+} from "./control-deck.ts";
 export type { OperationOutcomeV0 } from "./durable-outcomes.ts";
 export { captureOperationOutcomeV0 } from "./durable-outcomes.ts";
 export type { RuntimeMetricsV0 } from "./runtime-metrics.ts";

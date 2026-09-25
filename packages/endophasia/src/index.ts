@@ -16,6 +16,13 @@ export type {
 	SteeringStateV0,
 } from "./steering.ts";
 export { captureSteeringStateV0, queueFollowUpV0, steerV0, stopV0 } from "./steering.ts";
+export type {
+	UsageFeedListenerV0,
+	UsageFeedOptionsV0,
+	UsageFeedSourceV0,
+	UsageFeedSubscriptionV0,
+} from "./usage-feed.ts";
+export { attachUsageFeedV0 } from "./usage-feed.ts";
 export type { UsageLedgerPageV0, UsageLedgerQueryV0, UsageLedgerRowV0 } from "./usage-ledger.ts";
 export { readUsageLedgerV0 } from "./usage-ledger.ts";
 

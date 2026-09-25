@@ -42,14 +42,24 @@ export async function steerV0(
 	text: string,
 	context: Context,
 ): Promise<SteeringActionResultV0<Extract<SteeringReceiptV0, { kind: "steer.accepted" }>>> {
-	const result = await lane.steer(text, undefined, context);
-	if (!result.ok) {
-		return { ok: false, action: "steer", reason: result.error._tag === "Closed" ? "closed" : "invalid-message" };
+	try {
+		const result = await lane.steer(text, undefined, context);
+		if (!result.ok) {
+			return { ok: false, action: "steer", reason: result.error._tag === "Closed" ? "closed" : "invalid-message" };
+		}
+		return {
+			ok: true,
+			receipt: {
+				schemaVersion: "steering.v0",
+				kind: "steer.accepted",
+				lane: lane.name,
+				entryId: result.value.entryId,
+			},
+		};
+	} catch (error) {
+		if (error instanceof HarnessClosed) return { ok: false, action: "steer", reason: "closed" };
+		throw error;
 	}
-	return {
-		ok: true,
-		receipt: { schemaVersion: "steering.v0", kind: "steer.accepted", lane: lane.name, entryId: result.value.entryId },
-	};
 }
 
 /** Submit text to Pi's durable follow-up queue. Acceptance says nothing about later execution. */
@@ -58,14 +68,24 @@ export async function queueFollowUpV0(
 	text: string,
 	context: Context,
 ): Promise<SteeringActionResultV0<Extract<SteeringReceiptV0, { kind: "queue.accepted" }>>> {
-	const result = await lane.followUp(text, undefined, context);
-	if (!result.ok) {
-		return { ok: false, action: "queue", reason: result.error._tag === "Closed" ? "closed" : "invalid-message" };
+	try {
+		const result = await lane.followUp(text, undefined, context);
+		if (!result.ok) {
+			return { ok: false, action: "queue", reason: result.error._tag === "Closed" ? "closed" : "invalid-message" };
+		}
+		return {
+			ok: true,
+			receipt: {
+				schemaVersion: "steering.v0",
+				kind: "queue.accepted",
+				lane: lane.name,
+				entryId: result.value.entryId,
+			},
+		};
+	} catch (error) {
+		if (error instanceof HarnessClosed) return { ok: false, action: "queue", reason: "closed" };
+		throw error;
 	}
-	return {
-		ok: true,
-		receipt: { schemaVersion: "steering.v0", kind: "queue.accepted", lane: lane.name, entryId: result.value.entryId },
-	};
 }
 
 /** Request cancellation only of the run observed by inspectExecution. Never retarget a newer operation. */

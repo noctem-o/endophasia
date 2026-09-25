@@ -232,6 +232,29 @@ describe("Steering controls v0", () => {
 		expect(await stopV0(lane, BACKGROUND_CONTEXT)).toEqual({ ok: false, action: "stop", reason: "closed" });
 	});
 
+	it("maps concurrent harness closure to bounded STEER and QUEUE rejections", async () => {
+		const { harness, lane } = await fixture();
+		const entered = deferred();
+		const release = deferred();
+		const idleOwner = lane.runWhenIdle(async () => {
+			entered.resolve();
+			await release.promise;
+		}, BACKGROUND_CONTEXT);
+		await entered.promise;
+		const pending = Promise.all([
+			steerV0(lane, "steer-close-sentinel", BACKGROUND_CONTEXT),
+			queueFollowUpV0(lane, "queue-close-sentinel", BACKGROUND_CONTEXT),
+		]);
+		const closing = harness.close(BACKGROUND_CONTEXT);
+		release.resolve();
+		expect(await pending).toEqual([
+			{ ok: false, action: "steer", reason: "closed" },
+			{ ok: false, action: "queue", reason: "closed" },
+		]);
+		await idleOwner;
+		await closing;
+	});
+
 	it("steering-state reads are secret, copy-isolated, and leave Continuity unchanged", async () => {
 		const { harness, lane } = await fixture();
 		const trace = attachMissionTraceV0(harness);

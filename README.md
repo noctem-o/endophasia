@@ -572,12 +572,12 @@ The fork inherits Pi's agent loop, coding-agent CLI, models/providers, tools, ex
 
 Those are upstream capabilities, not Endophasia inventions.
 
-The active fork is currently at the **substrate migration / architecture foundation** stage. The previous Cline-based prototype established useful Mission Trace semantics; the Pi fork now implements Mission Trace v0 as a passive `AgentHarness.events` lifecycle projection with an in-memory read seam in `packages/endophasia`. It has no persistence, UI, or control semantics.
+The active fork is currently at the **substrate migration / architecture foundation** stage. The previous Cline-based prototype established useful Mission Trace semantics. The Pi fork implements Mission Trace v0 as a passive `AgentHarness.events` lifecycle projection and Continuity v0 as a read-only, lane-scoped projection of durable ancestry and Pi's compaction-bounded context-source window in `packages/endophasia`. These surfaces have no persistence, UI, or control semantics. The context-source window is not the final provider-visible prompt.
 
 Not yet complete as Endophasia features in this fork:
 
 ```text
-context / continuity inspector
+full session-wide branch inventory and exact provider-visible context inspection
 cognitive control deck
 Work / Dream policies
 runtime adapter boundary

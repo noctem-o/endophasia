@@ -1,5 +1,8 @@
 import type { AgentHarness } from "@earendil-works/pi-agent-core";
 
+export type { ContinuityEntryV0, ContinuitySnapshotV0 } from "./continuity.ts";
+export { captureContinuityV0 } from "./continuity.ts";
+
 interface TraceBaseV0 {
 	schemaVersion: "mission-trace.v0";
 	sequence: number;

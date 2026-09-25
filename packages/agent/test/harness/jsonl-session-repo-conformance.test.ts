@@ -10,6 +10,7 @@ import {
 	createSessionRepoMessageConformance,
 	createSessionRepoOwnershipConformance,
 	createSessionRepoStreamingForkConformance,
+	createSessionRepoUsageConformance,
 } from "../../src/harness/session/testing/index.ts";
 import type { ForkOptions } from "../../src/harness/session/types.ts";
 import { createTempDir } from "./session-test-utils.ts";
@@ -51,6 +52,9 @@ registerConformance("JsonlSessionRepo conformance", [
 		jsonlRepo.close(BACKGROUND_CONTEXT),
 	),
 	...createSessionRepoMessageConformance<JsonlSessionMetadata>(createConformanceRepo, () =>
+		jsonlRepo.close(BACKGROUND_CONTEXT),
+	),
+	...createSessionRepoUsageConformance<JsonlSessionMetadata>(createConformanceRepo, () =>
 		jsonlRepo.close(BACKGROUND_CONTEXT),
 	),
 	...createSessionRepoForkBehaviorConformance<JsonlSessionMetadata>(createConformanceRepo, () =>

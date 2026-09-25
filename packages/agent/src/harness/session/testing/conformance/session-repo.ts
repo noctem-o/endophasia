@@ -1171,6 +1171,73 @@ export function createSessionRepoForkConformance<TMetadata extends SessionMetada
 	];
 }
 
+/** Creates public Session.scanUsage cases for repositories that support session creation. */
+export function createSessionRepoUsageConformance<TMetadata extends SessionMetadata>(
+	backendFactory: () => Promise<Pick<SessionRepo<TMetadata>, "create">>,
+	onClose?: () => void | Promise<void>,
+): readonly ConformanceCase[] {
+	const factory = prepareRepoCaseFactory(backendFactory, onClose);
+	const row = (id: string, input: number): Omit<UsageRow, "seq"> => ({
+		id,
+		adjustment: false,
+		usage: {
+			input,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: input,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+	});
+	return [
+		createCase(factory, "usage", "scans committed usage rows through the public session", async ({ repo }) => {
+			const session = await repo.create({ id: "session" }, BACKGROUND_CONTEXT);
+			deepStrictEqual(await session.scanUsage({}, BACKGROUND_CONTEXT), []);
+
+			const seqs: number[] = [];
+			for (const [index, id] of [USAGE_ID, OPERATION_ID, PENDING_ID].entries()) {
+				const committed = await session.mutate(
+					(mutator) =>
+						mutator.commit(
+							[setValue(applicationValue, index), insertUsage(row(id, index + 1))],
+							BACKGROUND_CONTEXT,
+						),
+					BACKGROUND_CONTEXT,
+				);
+				seqs.push(committed.seqs[1]!);
+			}
+			const [first, second, third] = seqs as [number, number, number];
+			const ids = async (query: Parameters<Session["scanUsage"]>[0]) =>
+				(await session.scanUsage(query, BACKGROUND_CONTEXT)).map(({ id }) => id);
+
+			const all = await session.scanUsage({}, BACKGROUND_CONTEXT);
+			deepStrictEqual(
+				all.map(({ id, seq, usage }) => [id, seq, usage.input]),
+				[
+					[USAGE_ID, first, 1],
+					[OPERATION_ID, second, 2],
+					[PENDING_ID, third, 3],
+				],
+			);
+			deepStrictEqual(await ids({ fromSeq: second }), [OPERATION_ID, PENDING_ID]);
+			deepStrictEqual(await ids({ toSeq: second }), [USAGE_ID, OPERATION_ID]);
+			deepStrictEqual(await ids({ fromSeq: second, toSeq: second }), [OPERATION_ID]);
+			deepStrictEqual(await ids({ order: "asc" }), [USAGE_ID, OPERATION_ID, PENDING_ID]);
+			deepStrictEqual(await ids({ order: "desc" }), [PENDING_ID, OPERATION_ID, USAGE_ID]);
+			deepStrictEqual(await ids({ order: "asc", limit: 2 }), [USAGE_ID, OPERATION_ID]);
+			deepStrictEqual(await ids({ order: "desc", limit: 1 }), [PENDING_ID]);
+
+			const stats = await session.getStats(BACKGROUND_CONTEXT);
+			deepStrictEqual(await session.scanUsage({}, BACKGROUND_CONTEXT), all);
+			deepStrictEqual(await session.getStats(BACKGROUND_CONTEXT), stats);
+			strictEqual(stats.usage.input, 6);
+
+			await session.close(BACKGROUND_CONTEXT);
+			await rejects(session.scanUsage({}, BACKGROUND_CONTEXT));
+		}),
+	];
+}
+
 /** Creates every SessionRepo conformance case. */
 export function createSessionRepoConformance<TMetadata extends SessionMetadata>(
 	factory: () => Promise<SessionRepo<TMetadata>>,
@@ -1180,6 +1247,7 @@ export function createSessionRepoConformance<TMetadata extends SessionMetadata>(
 		...createSessionRepoLifecycleConformance(factory, onClose),
 		...createSessionRepoOwnershipConformance(factory, onClose),
 		...createSessionRepoMessageConformance(factory, onClose),
+		...createSessionRepoUsageConformance(factory, onClose),
 		...createSessionRepoForkConformance(factory, onClose),
 	];
 }

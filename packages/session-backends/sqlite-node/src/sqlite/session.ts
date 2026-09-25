@@ -11,6 +11,8 @@ import type {
 	SessionStats,
 	StorageBranchScan,
 	StoredValue,
+	UsageRow,
+	UsageScan,
 	Value,
 	ValueList,
 } from "@earendil-works/pi-agent-core";
@@ -120,6 +122,10 @@ export class SqliteOpenSession implements Session<SqliteSessionMetadata> {
 
 	getStats(context: Context): Promise<SessionStats> {
 		return this.admit(() => this.session.getStats(context));
+	}
+
+	scanUsage(query: UsageScan, context: Context): Promise<UsageRow[]> {
+		return this.admit(() => this.session.scanUsage(query, context));
 	}
 
 	getName(context: Context): Promise<string | undefined> {

@@ -243,6 +243,10 @@ class MemorySessionFacade implements Session {
 		return this.admit(() => this.session.getStats(context));
 	}
 
+	scanUsage(query: UsageScan, context: Context): Promise<UsageRow[]> {
+		return this.admit(() => this.session.scanUsage(query, context));
+	}
+
 	getName(context: Context): Promise<string | undefined> {
 		return this.admit(() => this.session.getName(context));
 	}

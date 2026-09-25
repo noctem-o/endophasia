@@ -532,6 +532,8 @@ export interface Session<TMetadata extends SessionMetadata = SessionMetadata> ex
 	readonly idGenerator: IdGenerator;
 	getEntry(id: string, context: Context): Promise<Entry | undefined>;
 	getStats(context: Context): Promise<SessionStats>;
+	/** Read committed usage rows by inclusive session-sequence range. */
+	scanUsage(query: UsageScan, context: Context): Promise<UsageRow[]>;
 	getName(context: Context): Promise<string | undefined>;
 	getLabel(targetId: string, context: Context): Promise<string | undefined>;
 	findEntries(query: EntryQuery | undefined, context: Context): Promise<Entry[]>;

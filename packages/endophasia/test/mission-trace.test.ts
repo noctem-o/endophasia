@@ -230,15 +230,20 @@ describe("Mission Trace v0", () => {
 			{ type: "message_end", lane: "main", message: fauxAssistantMessage("answer") },
 			BACKGROUND_CONTEXT,
 		);
+		expect(trace.sinceSequence(0)).toEqual([]);
+		await bus.emit(
+			{ type: "message_end", lane: "main", runId: "run", message: fauxAssistantMessage("answer") },
+			BACKGROUND_CONTEXT,
+		);
 		expect(trace.sinceSequence(0)).toEqual([
 			{
 				schemaVersion: "mission-trace.v0",
 				sequence: 1,
 				kind: "model.completed",
 				lane: "main",
+				runId: "run",
 			},
 		]);
-		expect(trace.sinceSequence(0)[0]).not.toHaveProperty("runId");
 		const queued = bus.emit({ type: "run_start", lane: "main", runId: "queued", startedAt: 1 }, BACKGROUND_CONTEXT);
 		trace.detach();
 		await queued;

@@ -24,7 +24,7 @@ export type MissionTraceEventV0 =
 	| (RunTraceBaseV0 & { kind: "mission.resumed" })
 	| (RunTraceBaseV0 & { kind: "mission.suspended" })
 	| (TurnTraceBaseV0 & { kind: "turn.started" })
-	| (TraceBaseV0 & { kind: "model.completed"; runId?: string })
+	| (RunTraceBaseV0 & { kind: "model.completed" })
 	| (ToolTraceBaseV0 & { kind: "tool.started" })
 	| (ToolTraceBaseV0 & { kind: "tool.finished"; isError: boolean })
 	| (TurnTraceBaseV0 & { kind: "turn.finished" })
@@ -55,8 +55,8 @@ export function attachMissionTraceV0(harness: Pick<AgentHarness, "events">): Mis
 			append({ kind: "turn.started", lane, runId, turnId }),
 		),
 		harness.events.on("message_end", ({ lane, runId, message }) => {
-			if (message.role === "assistant") {
-				append({ kind: "model.completed", lane, ...(runId === undefined ? {} : { runId }) });
+			if (message.role === "assistant" && runId !== undefined) {
+				append({ kind: "model.completed", lane, runId });
 			}
 		}),
 		harness.events.on("tool_start", ({ lane, runId, turnId, toolCallId, toolName }) =>

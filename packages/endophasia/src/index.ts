@@ -2,6 +2,8 @@ import type { AgentHarness } from "@earendil-works/pi-agent-core";
 
 export type { ContinuityEntryV0, ContinuitySnapshotV0 } from "./continuity.ts";
 export { captureContinuityV0 } from "./continuity.ts";
+export type { SessionLaneOverviewV0, SessionOverviewV0 } from "./session-overview.ts";
+export { captureSessionOverviewV0 } from "./session-overview.ts";
 export type {
 	SteeringActionResultV0,
 	SteeringActionV0,

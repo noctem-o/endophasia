@@ -1,5 +1,5 @@
 {
-	"name": "@endophasia/mission-trace",
+	"name": "@endophasia/core",
 	"version": "0.0.1",
 	"private": true,
 	"type": "module",
@@ -17,6 +17,6 @@
 		"test": "vitest --run"
 	},
 	"dependencies": {
-		"@earendil-works/pi-agent-core": "0.87.1"
+		"@earendil-works/pi-agent-core": "^0.87.1"
 	}
 }

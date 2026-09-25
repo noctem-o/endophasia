@@ -16,6 +16,8 @@ export type {
 	SteeringStateV0,
 } from "./steering.ts";
 export { captureSteeringStateV0, queueFollowUpV0, steerV0, stopV0 } from "./steering.ts";
+export type { UsageLedgerPageV0, UsageLedgerQueryV0, UsageLedgerRowV0 } from "./usage-ledger.ts";
+export { readUsageLedgerV0 } from "./usage-ledger.ts";
 
 interface TraceBaseV0 {
 	schemaVersion: "mission-trace.v0";

@@ -18,6 +18,8 @@ import type {
 	SessionStats,
 	Storage,
 	StorageBranchScan,
+	UsageRow,
+	UsageScan,
 	Write,
 } from "./types.ts";
 import {
@@ -305,6 +307,12 @@ export class StorageBackedSession<TMetadata extends SessionMetadata = SessionMet
 	async getStats(context: Context): Promise<SessionStats> {
 		this.assertOpen();
 		return this.storage.getStats(context);
+	}
+
+	async scanUsage(query: UsageScan, context: Context): Promise<UsageRow[]> {
+		this.assertOpen();
+		// Memory-backed storage returns its stored rows; callers must not be able to mutate the ledger.
+		return structuredClone(await this.storage.scanUsage(query, context));
 	}
 
 	async getName(context: Context): Promise<string | undefined> {

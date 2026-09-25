@@ -265,10 +265,13 @@ Pi already gives Endophasia two unusually useful native distinctions:
 steer()    → deliver after the current assistant turn and its tool calls,
              before the next model call
 
-followUp() → deliver after the current run settles
+followUp() → deliver at a run finish boundary when no earlier
+             conversational trigger remains
 ```
 
 Endophasia should preserve those distinctions rather than flattening them into generic chat messages.
+
+Steering Controls v0 now maps STEER to Pi's steer queue, QUEUE to its follow-up queue, and STOP to a durable abort request for the observed run. Receipts report acceptance, not consumption or terminal outcome. Pi currently also accepts steer and follow-up input while idle; later execution still follows Pi's queue rules.
 
 ANNOTATE and CHALLENGE require their own explicit semantics if implemented.
 
@@ -572,7 +575,7 @@ The fork inherits Pi's agent loop, coding-agent CLI, models/providers, tools, ex
 
 Those are upstream capabilities, not Endophasia inventions.
 
-The active fork is currently at the **substrate migration / architecture foundation** stage. The previous Cline-based prototype established useful Mission Trace semantics. The Pi fork implements Mission Trace v0 as a passive `AgentHarness.events` lifecycle projection and Continuity v0 as a read-only, lane-scoped projection of durable ancestry and Pi's compaction-bounded context-source window in `packages/endophasia`. These surfaces have no persistence, UI, or control semantics. The context-source window is not the final provider-visible prompt.
+The active fork is currently at the **substrate migration / architecture foundation** stage. The previous Cline-based prototype established useful Mission Trace semantics. In `packages/endophasia`, the Pi fork implements Mission Trace v0 as a passive `AgentHarness.events` lifecycle projection, Continuity v0 as a read-only, lane-scoped projection of durable ancestry and Pi's compaction-bounded context-source window, and Steering Controls v0 as bounded STEER / QUEUE / STOP calls with payload-minimal receipts and state. These surfaces have no persistence or UI. The context-source window is not the final provider-visible prompt.
 
 Not yet complete as Endophasia features in this fork:
 

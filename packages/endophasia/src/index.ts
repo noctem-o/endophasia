@@ -2,6 +2,14 @@ import type { AgentHarness } from "@earendil-works/pi-agent-core";
 
 export type { ContinuityEntryV0, ContinuitySnapshotV0 } from "./continuity.ts";
 export { captureContinuityV0 } from "./continuity.ts";
+export type {
+	SteeringActionResultV0,
+	SteeringActionV0,
+	SteeringReceiptV0,
+	SteeringRejectionReasonV0,
+	SteeringStateV0,
+} from "./steering.ts";
+export { captureSteeringStateV0, queueFollowUpV0, steerV0, stopV0 } from "./steering.ts";
 
 interface TraceBaseV0 {
 	schemaVersion: "mission-trace.v0";

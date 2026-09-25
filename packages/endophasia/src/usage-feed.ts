@@ -35,8 +35,9 @@ export interface UsageFeedSubscriptionV0 {
  * Attach a gap-safe feed of durable usage rows, delivered as the same payload-minimal rows as readUsageLedgerV0.
  *
  * Order: subscribe to `usage` events (buffering) → read the durable high-water H → replay rows in
- * (afterSequence, H] in bounded pages → drain buffered events → switch to live, all deduplicated by `seq > cursor`.
- * Resolves only once live. Rows are delivered one at a time, in increasing sequence.
+ * (afterSequence, H] in bounded pages → freeze the buffered events into one handoff batch and switch to live →
+ * deliver that batch, all deduplicated by `seq > cursor`. Resolves once the handoff batch is delivered; later events
+ * queue behind it. Rows are delivered one at a time, in increasing sequence.
  *
  * Within one healthy attachment no committed row is missed or delivered twice. Across reconnects delivery is
  * at-least-once: persist `row.sequence` after applying a row, and resume from it.
@@ -112,13 +113,17 @@ export async function attachUsageFeedV0(
 				if (page.length < pageSize) break;
 			}
 		}
-		while (buffered.length > 0) {
-			const batch = buffered;
-			buffered = [];
-			for (const row of batch) await deliver(row);
-		}
-		// No await between the empty-buffer check and this transition: each event is buffered or live, never neither.
+		// Freeze the rows buffered so far into one finite handoff batch, put it on the serialized live tail, and switch
+		// to live with no await in between: every event is in the batch or queued behind it, never neither. Events
+		// arriving while the batch delivers queue behind it (backpressuring their producer) instead of refilling a buffer.
+		const handoff = buffered;
+		buffered = [];
+		const handoffDelivery = liveTail.then(async () => {
+			for (const row of handoff) await deliver(row);
+		});
+		liveTail = handoffDelivery.catch(() => {});
 		state = "live";
+		await handoffDelivery;
 	} catch (error) {
 		stop();
 		throw error;

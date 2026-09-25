@@ -132,11 +132,18 @@ function fakeSource(initial: UsageRow[] = []) {
 		const event = { type: "usage", lane: "fake", row, totals: row.usage } as HarnessEvent;
 		for (const listener of [...listeners]) await listener(structuredClone(event), BACKGROUND_CONTEXT);
 	};
+	/** Commit and dispatch without awaiting: returns what each listener returned (a promise means backpressure). */
+	const emit = (row: UsageRow) => {
+		rows.push(row);
+		const event = { type: "usage", lane: "fake", row, totals: row.usage } as HarnessEvent;
+		return [...listeners].map((listener) => listener(structuredClone(event), BACKGROUND_CONTEXT));
+	};
 	return {
 		source: { events, session } satisfies UsageFeedSourceV0,
 		calls,
 		removed,
 		commit,
+		emit,
 		listenerCount: () => listeners.size,
 		onScan(hook: (call: number) => void | Promise<void>) {
 			beforeScan = hook;
@@ -294,6 +301,43 @@ describe("Usage Feed v0", () => {
 		]);
 		await fake.commit(row(100));
 		expect(seen.rows.at(-1)?.sequence).toBe(100);
+		feed.unsubscribe();
+	});
+
+	it("freezes one finite handoff batch and goes live before that batch finishes delivering", async () => {
+		const fake = fakeSource([row(1), row(2)]);
+		fake.onScan(async (call) => {
+			// While the first replay page is pending, B commits after the high-water mark and is buffered.
+			if (call === 1) await fake.commit(row(5));
+		});
+		const bEntered = deferred();
+		const releaseB = deferred();
+		const delivered: number[] = [];
+		const attaching = attachUsageFeedV0(
+			fake.source,
+			undefined,
+			async (next) => {
+				if (next.sequence === 5) {
+					bEntered.resolve();
+					await releaseB.promise;
+				}
+				delivered.push(next.sequence);
+			},
+			BACKGROUND_CONTEXT,
+		);
+		await bEntered.promise;
+		expect(delivered).toEqual([1, 2]);
+		// C arrives while B is blocked. A live feed queues C behind B and backpressures the producer with a
+		// pending promise; a feed still catching up would buffer C and return nothing, keeping the finish line moving.
+		const [cDelivery] = fake.emit(row(9));
+		expect(cDelivery).toBeInstanceOf(Promise);
+		expect(delivered).toEqual([1, 2]);
+		releaseB.resolve();
+		const feed = await attaching;
+		await cDelivery;
+		expect(delivered).toEqual([1, 2, 5, 9]);
+		expect(feed.afterSequence).toBe(9);
+		expect(feed.active).toBe(true);
 		feed.unsubscribe();
 	});
 

@@ -311,7 +311,8 @@ export class StorageBackedSession<TMetadata extends SessionMetadata = SessionMet
 
 	async scanUsage(query: UsageScan, context: Context): Promise<UsageRow[]> {
 		this.assertOpen();
-		return this.storage.scanUsage(query, context);
+		// Memory-backed storage returns its stored rows; callers must not be able to mutate the ledger.
+		return structuredClone(await this.storage.scanUsage(query, context));
 	}
 
 	async getName(context: Context): Promise<string | undefined> {

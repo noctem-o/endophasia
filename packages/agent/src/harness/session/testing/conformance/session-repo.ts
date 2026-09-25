@@ -1232,6 +1232,29 @@ export function createSessionRepoUsageConformance<TMetadata extends SessionMetad
 			deepStrictEqual(await session.getStats(BACKGROUND_CONTEXT), stats);
 			strictEqual(stats.usage.input, 6);
 
+			const nested: Omit<UsageRow, "seq"> = {
+				...row(UNKNOWN_ID, 4),
+				entryId: SIBLING_ID,
+				details: { nested: { sentinel: "original" } },
+			};
+			nested.usage.cost.total = 0.5;
+			const nestedSeq = (
+				await session.mutate(
+					(mutator) => mutator.commit([insertUsage(nested)], BACKGROUND_CONTEXT),
+					BACKGROUND_CONTEXT,
+				)
+			).seqs[0]!;
+			const durable: UsageRow = { ...structuredClone(nested), seq: nestedSeq };
+			const statsBefore = await session.getStats(BACKGROUND_CONTEXT);
+			const [returned] = await session.scanUsage({ fromSeq: nestedSeq }, BACKGROUND_CONTEXT);
+			deepStrictEqual(returned, durable);
+			returned!.usage.input = 999;
+			returned!.usage.cost.total = 999;
+			returned!.entryId = "tampered";
+			(returned!.details as { nested: { sentinel: string } }).nested.sentinel = "tampered";
+			deepStrictEqual(await session.scanUsage({ fromSeq: nestedSeq }, BACKGROUND_CONTEXT), [durable]);
+			deepStrictEqual(await session.getStats(BACKGROUND_CONTEXT), statsBefore);
+
 			await session.close(BACKGROUND_CONTEXT);
 			await rejects(session.scanUsage({}, BACKGROUND_CONTEXT));
 		}),

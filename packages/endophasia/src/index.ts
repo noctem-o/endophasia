@@ -11,6 +11,7 @@ export {
 } from "./control-deck.ts";
 export type { OperationOutcomeV0 } from "./durable-outcomes.ts";
 export { captureOperationOutcomeV0 } from "./durable-outcomes.ts";
+export { createEndophasiaInspectorFacetV0, EndophasiaInspectorV0 } from "./inspector-service.ts";
 export type { RuntimeMetricsV0 } from "./runtime-metrics.ts";
 export { captureRuntimeMetricsV0 } from "./runtime-metrics.ts";
 export type { SessionLaneOverviewV0, SessionOverviewV0 } from "./session-overview.ts";

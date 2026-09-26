@@ -347,6 +347,12 @@ export interface StartServerOptions {
 	readonly relayAuth?: AuthInput;
 	/** Explicit plugin packages. Undefined restores the logical server profile; an empty list clears it. */
 	readonly pluginPackages?: readonly string[];
+	/**
+	 * Trusted module that this server's newly launched Session workers run instead of the built-in entry. It is started
+	 * as an ordinary Session worker internal process and must run the Session worker. Workers discovered from a
+	 * replaced server are not checked against it. Automatic cold activation does not accept it.
+	 */
+	readonly sessionWorkerEntryUrl?: URL;
 	readonly onRelayStatus?: (status: RadiusRelayHostStatus) => void;
 }
 
@@ -614,8 +620,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
 		startupLease = await ensureCoordinator(socketPath, controlPath);
 		coordinator = new CoordinatorConnection({ controlPath, endpoint: serverPath });
 		const sessionDir = resolveSessionDirectory(options.sessionDir);
-		workers = new SessionWorkerManager(coordinator, sessionDir, workerModel, (count) =>
-			lifetime.setWorkerCount(count),
+		workers = new SessionWorkerManager(
+			coordinator,
+			sessionDir,
+			workerModel,
+			(count) => lifetime.setWorkerCount(count),
+			options.sessionWorkerEntryUrl,
 		);
 		backend = await startServerBackend(
 			{

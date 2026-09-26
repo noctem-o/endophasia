@@ -18,6 +18,12 @@ import { Models } from "../src/experimental/services/models.ts";
 import { PresentationPlugins, SessionPlugins } from "../src/experimental/services/plugins.ts";
 import { SessionDirectory, SessionManagement } from "../src/experimental/services/sessions.ts";
 import { Transcript } from "../src/experimental/services/transcript.ts";
+import {
+	SESSION_WORKER_CONTROL_ADDRESS_ENV,
+	SESSION_WORKER_CONTROL_TOKEN_ENV,
+	SESSION_WORKER_PEER_ID_ENV,
+	SESSION_WORKER_SESSION_KEY_ENV,
+} from "../src/experimental/session-worker.ts";
 import { createServerServiceBinding, createSessionServiceBinding } from "./experimental-service-binding.ts";
 import {
 	configureExperimentalWorkerModel,
@@ -657,6 +663,84 @@ describe("experimental durable server composition", () => {
 			}
 		} finally {
 			await services.dispose(BACKGROUND_CONTEXT);
+		}
+	});
+
+	test("launches new Session workers from a configured entry module", async ({ onTestFinished }) => {
+		const spawn = vi.spyOn(processRuntime, "spawnInternalProcess");
+		onTestFinished(() => spawn.mockRestore());
+		const directory = await mkdtemp(join("/tmp", "pwe-"));
+		directories.add(directory);
+		const runtime = await startServer({
+			...sessionWorkerModel,
+			directory,
+			sessionWorkerEntryUrl: fauxWorkerEntryUrl,
+		});
+		servers.add(runtime);
+		const client = await attachClient(runtime, "demo-1");
+
+		// Only the faux worker module provides KeyedProbe, so its presence proves which module the worker ran.
+		const services = createSessionServiceSource(client);
+		try {
+			await expect(services.catalogue(BACKGROUND_CONTEXT)).resolves.toContainEqual({
+				serviceId: KeyedProbe.id,
+				mode: "keyed",
+			});
+		} finally {
+			await services.dispose(BACKGROUND_CONTEXT);
+		}
+		const launches = spawn.mock.calls.filter(([role]) => role === "session-worker");
+		expect(launches).toHaveLength(1);
+		const [, args, options] = launches[0]!;
+		expect(options?.entryUrl).toBe(fauxWorkerEntryUrl);
+		expect(Object.keys(options?.env ?? {}).sort()).toEqual(
+			[
+				SESSION_WORKER_CONTROL_ADDRESS_ENV,
+				SESSION_WORKER_PEER_ID_ENV,
+				SESSION_WORKER_SESSION_KEY_ENV,
+				SESSION_WORKER_CONTROL_TOKEN_ENV,
+			].sort(),
+		);
+		expect(JSON.parse(args[0]!)).toMatchObject({ sessionDir: runtime.sessionDir, metadata: { id: "demo-1" } });
+
+		const pid = runtime.workerPids.get("demo-1");
+		expect(pid).toEqual(expect.any(Number));
+		await runtime.close();
+		expect(runtime.workerPids.size).toBe(0);
+		await expect.poll(() => processExists(pid!)).toBe(false);
+	});
+
+	test("leaves the built-in Session worker entry to the process helper by default", async ({ onTestFinished }) => {
+		const entryUrls: (URL | undefined)[] = [];
+		const spawn = vi.spyOn(processRuntime, "spawnInternalProcess").mockImplementation((role, args, options) => {
+			if (role !== "session-worker") return realSpawnInternalProcess(role, args, options);
+			entryUrls.push(options?.entryUrl);
+			return realSpawnInternalProcess(role, args, { ...options, entryUrl: fauxWorkerEntryUrl });
+		});
+		onTestFinished(() => spawn.mockRestore());
+		const { runtime } = await makeServer();
+		await attachClient(runtime, "demo-1");
+		expect(entryUrls).toEqual([undefined]);
+	});
+
+	test("fails a Session attach when the configured worker entry cannot start", async () => {
+		const directory = await mkdtemp(join("/tmp", "pwf-"));
+		directories.add(directory);
+		const runtime = await startServer({
+			...sessionWorkerModel,
+			directory,
+			sessionWorkerEntryUrl: new URL("fixtures/missing-session-worker.ts", import.meta.url),
+		});
+		servers.add(runtime);
+		const client = await Client.connect({
+			serverId: runtime.serverId,
+			transportFactory: createUnixTransportFactory({ path: runtime.socketPath }),
+		});
+		clients.add(client);
+
+		for (let attempt = 0; attempt < 2; attempt++) {
+			await expect(attachSession(client, "demo-1")).rejects.toThrow(ClientServerError);
+			expect(runtime.workerPids.size).toBe(0);
 		}
 	});
 

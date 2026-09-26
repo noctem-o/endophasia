@@ -111,6 +111,7 @@ export class SessionWorkerManager {
 	readonly #serviceSubscriptions = new Map<string, WorkerServiceSubscription>();
 	readonly #removeListener: () => void;
 	readonly #onWorkerCountChanged: ((count: number) => void) | undefined;
+	readonly #sessionWorkerEntryUrl: URL | undefined;
 	#discoveryPeers?: Set<string>;
 	#resolveDiscovery?: () => void;
 	#detached = false;
@@ -124,11 +125,14 @@ export class SessionWorkerManager {
 		sessionDir: string,
 		model?: { readonly provider?: string; readonly model: string },
 		onWorkerCountChanged?: (count: number) => void,
+		/** Entry module for workers this manager launches; undefined uses the built-in Session worker. */
+		sessionWorkerEntryUrl?: URL,
 	) {
 		this.#coordinator = coordinator;
 		this.#sessionDir = sessionDir;
 		this.#model = model;
 		this.#onWorkerCountChanged = onWorkerCountChanged;
+		this.#sessionWorkerEntryUrl = sessionWorkerEntryUrl;
 		this.#removeListener = coordinator.onEvent((event) => this.#handleCoordinatorEvent(event));
 	}
 
@@ -474,6 +478,7 @@ export class SessionWorkerManager {
 				...(this.#model ?? {}),
 			};
 			child = spawnInternalProcess("session-worker", [JSON.stringify(options)], {
+				entryUrl: this.#sessionWorkerEntryUrl,
 				env: {
 					[SESSION_WORKER_CONTROL_ADDRESS_ENV]: this.#coordinator.controlPath,
 					[SESSION_WORKER_CONTROL_TOKEN_ENV]: token,

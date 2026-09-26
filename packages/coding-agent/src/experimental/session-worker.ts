@@ -551,6 +551,7 @@ async function run(options: SessionWorkerOptions, createHarness: CreateSessionWo
 			lane,
 			modelRuntime: runtime.modelRuntime,
 			settingsManager: runtime.settingsManager,
+			hostFacets: runtime.hostFacets,
 			facetLoader: runtime.facetLoader,
 			publish: (scope, subscriptionId, update) =>
 				control.send({

@@ -216,6 +216,15 @@ describe("Runtime Control Deck v0", () => {
 		});
 		expect((await captureControlStateV0(lane, BACKGROUND_CONTEXT)).configuration.model).toEqual(modelB);
 		expect((await captureContinuityV0(lane, BACKGROUND_CONTEXT)).configuration.model).toEqual(modelB);
+		// Each setter returns its own receipt variant, so `configured` is typed without narrowing.
+		const modelReceipt = await configureModelV0(lane, modelB, BACKGROUND_CONTEXT);
+		const thinkingReceipt = await configureThinkingLevelV0(lane, "low", BACKGROUND_CONTEXT);
+		const toolsReceipt = await configureActiveToolsV0(lane, ["alpha"], BACKGROUND_CONTEXT);
+		expect([modelReceipt.configured.modelId, thinkingReceipt.configured, toolsReceipt.configured.join()]).toEqual([
+			"model-b",
+			"low",
+			"alpha",
+		]);
 		expect(await session.findEntries({ order: "asc" }, BACKGROUND_CONTEXT)).toEqual(entriesBefore);
 
 		faux.setResponses([(_context, _options, _state, model) => fauxAssistantMessage(`answered by ${model.id}`)]);

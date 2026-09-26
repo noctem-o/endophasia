@@ -64,7 +64,7 @@ export async function configureModelV0(
 	lane: Pick<AgentLane, "setModel" | "watch">,
 	model: ModelIdentity,
 	context: Context,
-): Promise<ControlReceiptV0> {
+): Promise<Extract<ControlReceiptV0, { kind: "model.configured" }>> {
 	const requested = { provider: model.provider, modelId: model.modelId };
 	await lane.setModel(requested, context);
 	const state = await captureControlStateV0(lane, context);
@@ -81,7 +81,7 @@ export async function configureThinkingLevelV0(
 	lane: Pick<AgentLane, "setThinkingLevel" | "watch">,
 	level: ThinkingLevel,
 	context: Context,
-): Promise<ControlReceiptV0> {
+): Promise<Extract<ControlReceiptV0, { kind: "thinking.configured" }>> {
 	await lane.setThinkingLevel(level, context);
 	const state = await captureControlStateV0(lane, context);
 	return {
@@ -97,7 +97,7 @@ export async function configureActiveToolsV0(
 	lane: Pick<AgentLane, "setActiveTools" | "watch">,
 	names: string[],
 	context: Context,
-): Promise<ControlReceiptV0> {
+): Promise<Extract<ControlReceiptV0, { kind: "tools.configured" }>> {
 	const requested = [...names];
 	await lane.setActiveTools(requested, context);
 	const state = await captureControlStateV0(lane, context);

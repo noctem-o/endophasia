@@ -212,4 +212,134 @@ describe("experimental plugin reload", () => {
 		}
 		expect(disposals).toEqual([2, 1]);
 	});
+
+	test("ignores plugin mutation of a retained facet ID when checking a reload", async () => {
+		const hostFacet = hostProbeFacet("host");
+		const retained = defineFacet({ id: "reloadable-session-plugin", setup() {} });
+		let generation = 0;
+		const facetLoader: FacetLoader = {
+			async load() {
+				generation++;
+				return {
+					facets: generation === 1 ? [retained] : [hostProbeFacet("plugin")],
+					async dispose() {},
+				};
+			},
+		};
+		const services = await createSessionWorkerServices({
+			lane: fakeLane(),
+			modelRuntime: undefined,
+			hostFacets: [hostFacet],
+			facetLoader,
+			publish: vi.fn(async () => {}),
+		});
+		try {
+			// Plugin code keeps its first-generation facet object and renames it after startup.
+			(retained as { id: string }).id = hostFacet.id;
+			await expect(
+				services.invoke({ serviceId: SessionPlugins.id, member: "reload", args: [] }, scope, BACKGROUND_CONTEXT),
+			).rejects.toThrow("Session plugin reload cannot replace facet @test/host-probe");
+			expect(
+				await services.invoke({ serviceId: HostProbe.id, member: "read", args: [] }, scope, BACKGROUND_CONTEXT),
+			).toBe("host");
+		} finally {
+			await services.dispose();
+		}
+	});
+
+	test("ignores plugin setup renaming another candidate facet during a reload", async () => {
+		const hostFacet = hostProbeFacet("host");
+		let generation = 0;
+		const facetLoader: FacetLoader = {
+			async load() {
+				generation++;
+				if (generation === 1) {
+					return {
+						facets: [defineFacet({ id: "plugin-a", setup() {} }), defineFacet({ id: "plugin-b", setup() {} })],
+						async dispose() {},
+					};
+				}
+				// Passes an ID check made before setup, then becomes a host impostor once plugin-a's setup runs.
+				const impostor = { ...hostProbeFacet("plugin"), id: "plugin-b" };
+				const renamer = defineFacet({
+					id: "plugin-a",
+					setup() {
+						impostor.id = hostFacet.id;
+					},
+				});
+				return { facets: [renamer, impostor], async dispose() {} };
+			},
+		};
+		const services = await createSessionWorkerServices({
+			lane: fakeLane(),
+			modelRuntime: undefined,
+			hostFacets: [hostFacet],
+			facetLoader,
+			publish: vi.fn(async () => {}),
+		});
+		try {
+			await expect(
+				services.invoke({ serviceId: SessionPlugins.id, member: "reload", args: [] }, scope, BACKGROUND_CONTEXT),
+			).rejects.toThrow("Reloaded facet plugin-b must preserve its service requirements and provisions");
+			expect(
+				await services.invoke({ serviceId: HostProbe.id, member: "read", args: [] }, scope, BACKGROUND_CONTEXT),
+			).toBe("host");
+		} finally {
+			await services.dispose();
+		}
+	});
 });
+
+describe("experimental plugin startup", () => {
+	test("ignores plugin setup renaming another plugin facet to a host facet ID", async () => {
+		const events: string[] = [];
+		const hostFacet = defineFacet({
+			id: "@test/host-probe",
+			setup(env) {
+				env.provide(HostProbe, { read: async () => "host" });
+				env.onActivate(() => {
+					events.push("host activated");
+				});
+				env.onDeactivate(() => {
+					events.push("host deactivated");
+				});
+			},
+		});
+		const renamed = defineFacet({
+			id: "plugin-b",
+			setup(env) {
+				env.onActivate(() => {
+					events.push("plugin-b activated");
+				});
+			},
+		});
+		const renamer = defineFacet({
+			id: "plugin-a",
+			setup() {
+				(renamed as { id: string }).id = hostFacet.id;
+			},
+		});
+		const services = await createSessionWorkerServices({
+			lane: fakeLane(),
+			modelRuntime: undefined,
+			hostFacets: [hostFacet],
+			facetLoader: { load: async () => ({ facets: [renamer, renamed], async dispose() {} }) },
+			publish: vi.fn(async () => {}),
+		});
+		try {
+			expect(events.sort()).toEqual(["host activated", "plugin-b activated"]);
+		} finally {
+			await services.dispose();
+		}
+		expect(events).toContain("host deactivated");
+	});
+});
+
+function hostProbeFacet(value: string) {
+	return defineFacet({
+		id: "@test/host-probe",
+		setup(env) {
+			env.provide(HostProbe, { read: async () => value });
+		},
+	});
+}

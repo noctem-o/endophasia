@@ -5,6 +5,7 @@ import {
 	createStaticFacetLoader,
 	defineFacet,
 	type Facet,
+	type FacetEnvironment,
 	type FacetHost,
 	type FacetLoader,
 	type JsonValue,
@@ -76,11 +77,15 @@ export async function createSessionWorkerServices(options: {
 		createTranscriptServiceFacet(options.lane),
 		...(options.hostFacets ?? []),
 	]).load();
+	// Captured before any plugin code runs; no plugin generation may replace these facets.
+	const hostFacetIds = new Set(builtins.facets.map(({ id }) => id));
 	const pluginLoader = options.facetLoader ?? createStaticFacetLoader([]);
 	let loadedPlugins = await pluginLoader.load();
 	let facetHost: FacetHost;
 	try {
-		facetHost = await createFacetHost({ facets: [...builtins.facets, ...loadedPlugins.facets] });
+		facetHost = await createFacetHost({
+			facets: [...builtins.facets, ...snapshotPluginFacets(loadedPlugins.facets)],
+		});
 	} catch (error) {
 		const cleanup = await Promise.allSettled([loadedPlugins.dispose(), builtins.dispose()]);
 		const cleanupErrors = cleanup.flatMap((result) => (result.status === "rejected" ? [result.reason] : []));
@@ -94,11 +99,11 @@ export async function createSessionWorkerServices(options: {
 		const operation = reloadTail.then(async () => {
 			const candidate = await pluginLoader.load();
 			try {
-				// FacetHost.reload() replaces facets by ID; confine it to the retiring plugin generation.
-				const pluginFacetIds = new Set(loadedPlugins.facets.map(({ id }) => id));
-				const foreign = candidate.facets.find(({ id }) => !pluginFacetIds.has(id));
-				if (foreign !== undefined) throw new Error(`Session plugin reload cannot replace facet ${foreign.id}`);
-				await facetHost.reload(candidate.facets);
+				// FacetHost.reload() replaces active facets by ID.
+				const facets = snapshotPluginFacets(candidate.facets);
+				const hostFacet = facets.find(({ id }) => hostFacetIds.has(id));
+				if (hostFacet !== undefined) throw new Error(`Session plugin reload cannot replace facet ${hostFacet.id}`);
+				await facetHost.reload(facets);
 			} catch (error) {
 				try {
 					await candidate.dispose();
@@ -155,6 +160,16 @@ export async function createSessionWorkerServices(options: {
 			if (errors.length > 1) throw new AggregateError(errors, "Failed to dispose Session facets");
 		},
 	};
+}
+
+/**
+ * Plugin code keeps its facet objects and may mutate them, even from another facet's setup. Give the FacetHost
+ * frozen copies whose IDs are read once, before any of their setup code runs.
+ */
+function snapshotPluginFacets(facets: readonly Facet[]): readonly Facet[] {
+	return facets.map((facet) => {
+		return Object.freeze({ id: facet.id, setup: (env: FacetEnvironment) => facet.setup(env) });
+	});
 }
 
 function serviceScopeKey(scope: WorkerServiceScope): string {

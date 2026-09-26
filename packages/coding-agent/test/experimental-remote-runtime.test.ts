@@ -1,8 +1,10 @@
+import { existsSync, readFileSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Context, createFacetHost, defineFacet, defineService } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
 import { Client, ServerError as ClientServerError } from "@earendil-works/pi-client";
 import { createUnixTransportFactory } from "@earendil-works/pi-client/unix";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -30,23 +32,26 @@ import {
 	createExperimentalSessions,
 	readExperimentalSessionState,
 } from "./experimental-session-support.ts";
+import { HOST_WORKER_FAIL_ONCE_ENV, HOST_WORKER_LOG_ENV } from "./fixtures/host-session-worker.ts";
 import { KeyedProbe } from "./fixtures/keyed-service.ts";
 
 const servers = new Set<RunningServer>();
 const clients = new Set<Client>();
 const directories = new Set<string>();
 const fauxWorkerEntryUrl = new URL("fixtures/faux-session-worker.ts", import.meta.url);
+const hostWorkerEntryUrl = new URL("fixtures/host-session-worker.ts", import.meta.url);
 const realSpawnInternalProcess = processRuntime.spawnInternalProcess;
 const sessionWorkerModel = { provider: "anthropic", model: "claude-sonnet-4-5" } as const;
 const SecondPluginService = defineService<{ read(context: Context): Promise<string> }>("test.second-plugin");
 let agentDir: string;
+let sessions: JsonlSessionMetadata[];
 
 beforeEach(async () => {
 	agentDir = await mkdtemp(join("/tmp", "pi-experimental-agent-"));
 	directories.add(agentDir);
 	await configureExperimentalWorkerModel(agentDir);
 	vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
-	await createExperimentalSessions(join(agentDir, "experimental", "sessions"), ["demo-1", "demo-2"]);
+	sessions = await createExperimentalSessions(join(agentDir, "experimental", "sessions"), ["demo-1", "demo-2"]);
 });
 
 async function makeServer(): Promise<{ directory: string; runtime: RunningServer }> {
@@ -548,7 +553,7 @@ describe("experimental durable server composition", () => {
 				realSpawnInternalProcess(
 					role,
 					args,
-					role === "session-worker" ? { ...options, entryUrl: fauxWorkerEntryUrl } : options,
+					role === "session-worker" ? { ...options, entryUrl: hostWorkerEntryUrl } : options,
 				),
 			);
 		onTestFinished(() => spawn.mockRestore());
@@ -674,12 +679,12 @@ describe("experimental durable server composition", () => {
 		const runtime = await startServer({
 			...sessionWorkerModel,
 			directory,
-			sessionWorkerEntryUrl: fauxWorkerEntryUrl,
+			sessionWorkerEntryUrl: hostWorkerEntryUrl,
 		});
 		servers.add(runtime);
 		const client = await attachClient(runtime, "demo-1");
 
-		// Only the faux worker module provides KeyedProbe, so its presence proves which module the worker ran.
+		// Only the host worker fixture provides KeyedProbe, so its presence proves which module the worker ran.
 		const services = createSessionServiceSource(client);
 		try {
 			await expect(services.catalogue(BACKGROUND_CONTEXT)).resolves.toContainEqual({
@@ -692,7 +697,7 @@ describe("experimental durable server composition", () => {
 		const launches = spawn.mock.calls.filter(([role]) => role === "session-worker");
 		expect(launches).toHaveLength(1);
 		const [, args, options] = launches[0]!;
-		expect(options?.entryUrl).toBe(fauxWorkerEntryUrl);
+		expect(options?.entryUrl).toBe(hostWorkerEntryUrl);
 		expect(Object.keys(options?.env ?? {}).sort()).toEqual(
 			[
 				SESSION_WORKER_CONTROL_ADDRESS_ENV,
@@ -741,6 +746,135 @@ describe("experimental durable server composition", () => {
 		for (let attempt = 0; attempt < 2; attempt++) {
 			await expect(attachSession(client, "demo-1")).rejects.toThrow(ClientServerError);
 			expect(runtime.workerPids.size).toBe(0);
+		}
+	});
+
+	test("runs the standard coding-agent worker with trusted host facets", async () => {
+		const directory = await mkdtemp(join("/tmp", "pwh-"));
+		directories.add(directory);
+		const log = join(directory, "host-worker.log");
+		vi.stubEnv(HOST_WORKER_LOG_ENV, log);
+		const runtime = await startServer({
+			...sessionWorkerModel,
+			directory,
+			sessionWorkerEntryUrl: hostWorkerEntryUrl,
+		});
+		servers.add(runtime);
+		const client = await attachClient(runtime, "demo-1");
+		const firstPid = runtime.workerPids.get("demo-1");
+
+		const source = createSessionServiceSource(client);
+		try {
+			const catalogue = await source.catalogue(BACKGROUND_CONTEXT);
+			expect(catalogue).toContainEqual({ serviceId: KeyedProbe.id, mode: "keyed" });
+			for (const service of [AgentController, Models, Transcript, SessionPlugins]) {
+				expect(catalogue).toContainEqual({ serviceId: service.id, mode: "singleton" });
+			}
+		} finally {
+			await source.dispose(BACKGROUND_CONTEXT);
+		}
+		// The standard bootstrap selected the configured model through the coding-agent ModelRuntime.
+		const services = createSessionServiceBinding(client, { services: [Models] });
+		const models = services.use(Models);
+		try {
+			await services.ready(BACKGROUND_CONTEXT);
+			expect(models.state.value?.configuration.model).toEqual({
+				provider: "anthropic",
+				modelId: "claude-sonnet-4-5",
+			});
+		} finally {
+			await services.dispose(BACKGROUND_CONTEXT);
+		}
+		expect(readHostWorkerLog(log)).toEqual([{ pid: firstPid, event: "host-facets", keys: ["harness"] }]);
+
+		// A replacement worker builds its own host facets.
+		process.kill(firstPid!, "SIGKILL");
+		await expect.poll(() => runtime.workerPids.has("demo-1")).toBe(false);
+		await attachSession(client, "demo-1");
+		const secondPid = runtime.workerPids.get("demo-1");
+		expect(secondPid).not.toBe(firstPid);
+		expect(readHostWorkerLog(log).filter((entry) => entry.event === "host-facets")).toEqual([
+			{ pid: firstPid, event: "host-facets", keys: ["harness"] },
+			{ pid: secondPid, event: "host-facets", keys: ["harness"] },
+		]);
+	});
+
+	test("closes the harness and releases the Session when host facet construction fails", async () => {
+		const directory = await mkdtemp(join("/tmp", "pwx-"));
+		directories.add(directory);
+		const log = join(directory, "host-worker.log");
+		const failOnce = join(directory, "fail-once");
+		await writeFile(failOnce, "");
+		vi.stubEnv(HOST_WORKER_LOG_ENV, log);
+		vi.stubEnv(HOST_WORKER_FAIL_ONCE_ENV, failOnce);
+		const runtime = await startServer({
+			...sessionWorkerModel,
+			directory,
+			sessionWorkerEntryUrl: hostWorkerEntryUrl,
+		});
+		servers.add(runtime);
+		const client = await Client.connect({
+			serverId: runtime.serverId,
+			transportFactory: createUnixTransportFactory({ path: runtime.socketPath }),
+		});
+		clients.add(client);
+
+		await expect(attachSession(client, "demo-1")).rejects.toThrow(ClientServerError);
+		expect(runtime.workerPids.size).toBe(0);
+		const [constructed, closed] = readHostWorkerLog(log);
+		expect(constructed).toMatchObject({ event: "host-facets" });
+		expect(closed).toEqual({ pid: constructed!.pid, event: "harness-closed" });
+		expect(existsSync(`${sessions[0]!.path}.lock`)).toBe(false);
+
+		// The failure does not poison the Session: the next launch starts normally.
+		await attachSession(client, "demo-1");
+		expect(runtime.workerPids.get("demo-1")).toEqual(expect.any(Number));
+		expect(readHostWorkerLog(log).filter((entry) => entry.event === "host-facets")).toHaveLength(2);
+	});
+
+	test("hosts trusted host facets beside reloadable Session plugins", async () => {
+		const directory = await mkdtemp(join("/tmp", "pwp-"));
+		directories.add(directory);
+		const log = join(directory, "host-worker.log");
+		vi.stubEnv(HOST_WORKER_LOG_ENV, log);
+		const runtime = await startServer({
+			...sessionWorkerModel,
+			directory,
+			sessionWorkerEntryUrl: hostWorkerEntryUrl,
+		});
+		servers.add(runtime);
+		const clientRuntime = await openClientRuntime({ command: "client" }, { directory });
+		const activated = await activateBuiltinClientServices(clientRuntime.servers[0]!);
+		await activated.plugins.prepareSession(
+			{
+				sessionId: "demo-1",
+				packagePaths: [fileURLToPath(new URL("../examples/plugins/pi-example-plugin", import.meta.url))],
+			},
+			BACKGROUND_CONTEXT,
+		);
+		await activated.management.attach("demo-1", BACKGROUND_CONTEXT);
+		const client = clientRuntime.servers[0]!.client;
+		const services = createSessionServiceBinding(client, { services: [ExampleFacetService, SessionPlugins] });
+		const source = createSessionServiceSource(client);
+		try {
+			await services.ready(BACKGROUND_CONTEXT);
+			await expect(
+				services.use(ExampleFacetService).greet({ name: "Armin" }, BACKGROUND_CONTEXT),
+			).resolves.toMatchObject({ workerActivations: 1 });
+			// The reloaded plugin generation starts with fresh state; the host facet is not rebuilt.
+			await services.use(SessionPlugins).reload(BACKGROUND_CONTEXT);
+			await expect(
+				services.use(ExampleFacetService).greet({ name: "Armin" }, BACKGROUND_CONTEXT),
+			).resolves.toMatchObject({ workerActivations: 1 });
+			await expect(source.catalogue(BACKGROUND_CONTEXT)).resolves.toContainEqual({
+				serviceId: KeyedProbe.id,
+				mode: "keyed",
+			});
+			expect(readHostWorkerLog(log).filter((entry) => entry.event === "host-facets")).toHaveLength(1);
+		} finally {
+			await source.dispose(BACKGROUND_CONTEXT);
+			await services.dispose(BACKGROUND_CONTEXT);
+			await clientRuntime.dispose();
 		}
 	});
 
@@ -909,6 +1043,14 @@ async function pathExists(path: string): Promise<boolean> {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
 		throw error;
 	}
+}
+
+function readHostWorkerLog(path: string): { pid: number; event: string; keys?: string[] }[] {
+	if (!existsSync(path)) return [];
+	return readFileSync(path, "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line) as { pid: number; event: string; keys?: string[] });
 }
 
 function processExists(pid: number): boolean {

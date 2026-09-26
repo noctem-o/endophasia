@@ -1,6 +1,7 @@
 import { createConnection, type Socket } from "node:net";
 import { isAbsolute } from "node:path";
 import {
+	type Facet,
 	isJsonValue,
 	type JsonValue,
 	parseServiceProviderUpdate,
@@ -803,10 +804,30 @@ export async function runSessionWorkerWithHarness(
 	}
 }
 
+/** Trusted application code that runs inside a coding-agent Session worker process. */
+export interface CodingAgentSessionWorkerHost {
+	/**
+	 * Build host-owned facets once the worker's harness exists. Runs once per worker process, before any Session plugin
+	 * loads; the facets share the worker's lifetime and are never part of plugin reload. Throwing fails worker startup.
+	 */
+	createHostFacets?(runtime: { readonly harness: AgentHarnessInstance }): readonly Facet[] | Promise<readonly Facet[]>;
+}
+
+/** Run the standard coding-agent Session worker, optionally with trusted host facets. */
+export function runCodingAgentSessionWorker(
+	args: readonly string[],
+	host: CodingAgentSessionWorkerHost = {},
+): Promise<void> {
+	return runSessionWorkerWithHarness(args, (session, options, executionEnv) =>
+		createCodingAgentHarness(session, options, executionEnv, host),
+	);
+}
+
 async function createCodingAgentHarness(
 	session: Session<JsonlSessionMetadata>,
 	options: SessionWorkerOptions,
 	executionEnv: NodeExecutionEnv,
+	host: CodingAgentSessionWorkerHost,
 ): Promise<SessionWorkerRuntime> {
 	const modelRuntime = await ModelRuntime.create();
 	const settingsManager = SettingsManager.create(session.metadata.cwd);
@@ -855,11 +876,13 @@ async function createCodingAgentHarness(
 		) {
 			await lane.setActiveTools(activeToolNames, TODO_CONTEXT);
 		}
+		const hostFacets = await host.createHostFacets?.(Object.freeze({ harness }));
 		return {
 			harness,
 			lane,
 			modelRuntime,
 			settingsManager,
+			hostFacets,
 			facetLoader: createSessionPluginFacetLoader(options.pluginManifestPaths),
 		};
 	} catch (error) {
@@ -873,7 +896,7 @@ async function createCodingAgentHarness(
 }
 
 export function runSessionWorkerProcess(args: readonly string[]): Promise<void> {
-	return runSessionWorkerWithHarness(args, createCodingAgentHarness);
+	return runCodingAgentSessionWorker(args);
 }
 
 if (isDirectInternalProcessEntry(import.meta.url)) {

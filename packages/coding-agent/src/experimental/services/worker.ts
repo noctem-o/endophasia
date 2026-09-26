@@ -4,6 +4,7 @@ import {
 	createRemoteServiceEndpoint,
 	createStaticFacetLoader,
 	defineFacet,
+	type Facet,
 	type FacetHost,
 	type FacetLoader,
 	type JsonValue,
@@ -25,6 +26,9 @@ export interface SessionWorkerRuntime {
 	readonly lane?: AgentLane;
 	readonly modelRuntime?: ModelRuntime;
 	readonly settingsManager?: SettingsManager;
+	/** Facets the application constructs with trusted capabilities. They share the host lifetime and never reload. */
+	readonly hostFacets?: readonly Facet[];
+	/** Reloadable plugin facets. They receive only their Chord facet environment. */
 	readonly facetLoader?: FacetLoader;
 }
 
@@ -48,6 +52,7 @@ export async function createSessionWorkerServices(options: {
 	readonly lane: AgentLane;
 	readonly modelRuntime: ModelRuntime | undefined;
 	readonly settingsManager?: SettingsManager;
+	readonly hostFacets?: readonly Facet[];
 	readonly facetLoader?: FacetLoader;
 	publish(scope: WorkerServiceScope, subscriptionId: string, update: ServiceProviderUpdate): Promise<void>;
 }): Promise<SessionWorkerServices> {
@@ -69,6 +74,7 @@ export async function createSessionWorkerServices(options: {
 		pluginRuntimeFacet,
 		createModelsServiceFacet(options),
 		createTranscriptServiceFacet(options.lane),
+		...(options.hostFacets ?? []),
 	]).load();
 	const pluginLoader = options.facetLoader ?? createStaticFacetLoader([]);
 	let loadedPlugins = await pluginLoader.load();
@@ -88,6 +94,10 @@ export async function createSessionWorkerServices(options: {
 		const operation = reloadTail.then(async () => {
 			const candidate = await pluginLoader.load();
 			try {
+				// FacetHost.reload() replaces facets by ID; confine it to the retiring plugin generation.
+				const pluginFacetIds = new Set(loadedPlugins.facets.map(({ id }) => id));
+				const foreign = candidate.facets.find(({ id }) => !pluginFacetIds.has(id));
+				if (foreign !== undefined) throw new Error(`Session plugin reload cannot replace facet ${foreign.id}`);
 				await facetHost.reload(candidate.facets);
 			} catch (error) {
 				try {

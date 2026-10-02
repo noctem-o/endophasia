@@ -46,6 +46,17 @@ Recorded 2026-10-02 at donor HEAD `ab4caf5a0`
   the runtime/presentation suites start real servers and Session worker
   processes).
 
+Re-measured 2026-10-02 (same donor HEAD, clean worktree, two
+consecutive runs): **1578 passed, 3 skipped (1581 total)** — the
+donor suite is stable at 1581. The original 1522 capture stands as
+recorded; no donor change explains the +59, so the original capture is
+attributed to a transient checkout state [INFERENCE]. The effective
+parity reference is the re-measured donor: the target matches the
+donor per-file on all 43 files, with one intentional exception —
+`prime-research-boundary.test.ts` carries +2 tests because its guard
+`it.each` root list was expanded 4 → 6 trees to cover the target
+split (§7.4).
+
 This is the "demonstrated semantics" reference: every migrated test must
 pass against the pinned Pi checkout in this repository with the same
 observable behaviour.
@@ -439,7 +450,14 @@ All nine Pi projection modules plus the aggregate seam move to
 - Protects: `presentation-client.test.ts` (all six services + profile
   hydration, degraded attachment proven by the six fixture workers,
   attach/detach/dispose), `websocket-transport.test.ts`,
-  `cockpit-integration.test.ts`, `runtime.test.ts`.
+  `runtime.test.ts`.
+- **Status (milestone e, done):** `websocket-transport.ts` byte-identical to
+  the donor (`cmp`-verified). `client.ts` is `cp` + retarget of its seven
+  `../src/*` imports (diff-verified, import lines only): six schema
+  type-imports → `protocol/{continuity,mission-trace,runtime-facts,
+  runtime-profile,session-overview,usage}.ts`, six Chord service
+  value-imports → `runtime/contracts/{continuity,inspector,mission-trace,
+  runtime-facts,runtime-profile,usage}.ts`.
 
 ### 5.8 Cockpit (browser)
 
@@ -471,6 +489,17 @@ All nine Pi projection modules plus the aggregate seam move to
   `cockpit-lifecycle.test.ts`, `cockpit-compaction.test.ts` (real harness;
   compaction removes earlier entries; bounded projections),
   `cockpit-integration.test.ts` (import-graph assertions).
+- **Status (milestone e, done):** `main.ts`, `view.ts`, `lifecycle.ts`,
+  `bootstrap.ts`, `index.html`, `styles.css` byte-identical to the donor
+  (`cmp`-verified). `controller.ts` (six type imports) and
+  `view-model.ts` (five type imports) retargeted to
+  `protocol/{continuity,mission-trace,runtime-facts,runtime-profile,
+  session-overview,usage}.ts` (diff-verified, import lines only);
+  `cockpit/tsconfig.json` `extends` retargeted to `../tsconfig.json`.
+  `scripts/check-cockpit-types.mjs` (ADAPT of the donor
+  `check-endophasia-cockpit-types.mjs`) passes with exactly one external
+  diagnostic, `pi/packages/ai/src/api/openai-codex-responses.ts(403,8)`
+  TS2769 — donor-identical.
 
 ### 5.9 Research (quarantined)
 
@@ -492,6 +521,26 @@ All nine Pi projection modules plus the aggregate seam move to
   `prime-097-remediation.test.ts` + `prime-097-review2…7.test.ts`
   (hostile mutations, in-memory only), `prime-acp-probe.test.ts`,
   `prime-rpc-probe.test.ts`.
+- **Status (milestone e, done):** 36 files copied; 15 path retargets,
+  each diff-verified against the donor to change only the intended line:
+  three donor-relative imports (`acp-client.ts` →
+  `adapters/prime/transport/process-group.ts`; `mission-trace.ts` →
+  `protocol/mission-trace.ts`; `projection.ts` → `protocol/runtime-facts.ts`
+  + `protocol/usage.ts`), ten layout-depth fixes — the three CLIs read
+  fixtures from `<root>/tests/fixtures/prime` (was
+  `<package>/test/fixtures/prime`) and `repoRoot` is now `<root>` itself
+  (two up, was four up): `offline-097.ts`, `cli-097.ts`, `cli.ts`
+  (fixture root, repo root, comment), `command.ts` (doc comment) — and
+  two instrument retargets: `instrument.ts` `INSTRUMENT_ROOT` two up
+  (was four) and the `requireCleanResearchInstrument` entry
+  `research/prime-conformance/cli-097.ts` (was
+  `packages/endophasia/research/…`); the
+  `prime-097-remediation.test.ts` synthetic temp repo was retargeted
+  to the same layout.
+  All data fixtures byte-identical (`diff -rq`: only the six retargeted
+  worker `.ts` fixtures differ); fixture digests intact (the prime-097
+  suites assert the report SHA-256, the 28-file golden inventory digest,
+  the capture commit and the research hash).
 
 ### 5.10 Tests
 
@@ -500,8 +549,17 @@ imports re-targeted, semantics unchanged. Import re-targeting rules:
 
 - `../../agent/src/harness/agent-harness.ts` → `../pi/packages/agent/src/harness/agent-harness.ts`
 - `../../agent/src/harness/context.ts` → `../pi/packages/agent/src/harness/context.ts`
-- `../src/<module>` / `../runtime/<module>` / `../presentation/<module>` /
-  `../cockpit/<module>` / `../research/<module>` → the §4 targets.
+- `../src/index.ts` → `../runtime/contracts/index.ts`; `../src/<schema>` →
+  `protocol/<name>.ts`; `../src/<service|facet>` →
+  `runtime/contracts/<name>.ts`; `../src/pi-runtime-observation.ts` →
+  `adapters/pi/observation-sources.ts`; `../runtime/prime/<module>` →
+  `adapters/prime/transport/<module>.ts`; `../runtime/<module>` /
+  `../presentation/<module>` / `../cockpit/<module>` / `../research/<module>`
+  are same-depth and unchanged.
+- Repo root from a test file: donor `packages/endophasia/test/x.test.ts`
+  used `new URL("../../../", import.meta.url)`; target `tests/x.test.ts`
+  uses `new URL("../", import.meta.url)`. Fixture files one level
+  deeper (`tests/fixtures/<dir>/`) stay three up.
 - Faux providers stay `@earendil-works/pi-ai` (workspace source).
 
 The 43 test files, by protection target:
@@ -509,7 +567,7 @@ The 43 test files, by protection target:
 | Category | Files |
 | :--- | :--- |
 | Contract binding (strict-JSON wire) | `continuity-service.test.ts`, `inspector-service.test.ts`, `mission-trace-service.test.ts`, `runtime-facts-service.test.ts`, `runtime-profile-service.test.ts`, `usage-service.test.ts` |
-| Neutral boundary (machine-verified) | `runtime-observation-boundary.test.ts` — **UPDATE** import-graph assertions (§7.1) |
+| Neutral boundary (machine-verified) | `runtime-observation-boundary.test.ts` — import-graph assertions retargeted in (c) (§7.1) |
 | Pi adapter (real harness) | `continuity.test.ts`, `control-deck.test.ts`, `durable-outcomes.test.ts`, `mission-trace.test.ts`, `runtime-metrics.test.ts`, `session-overview.test.ts`, `steering.test.ts`, `usage-feed.test.ts`, `usage-ledger.test.ts` |
 | Runtime host (real servers/workers) | `runtime.test.ts`, `session-host.test.ts`, `browser-server.test.ts`, `browser-listener.test.ts` |
 | Presentation/cockpit | `presentation-client.test.ts`, `websocket-transport.test.ts`, `cockpit-controller.test.ts`, `cockpit-view-model.test.ts`, `cockpit-lifecycle.test.ts`, `cockpit-compaction.test.ts`, `cockpit-host.test.ts` |
@@ -533,6 +591,32 @@ fixtures (`no-usage-`, `no-runtime-profile-`, `no-continuity-`,
 prime fixture trees (§5.9), and the `fake-*.mjs` servers
 (`fake-acp-server.mjs`, `fake-rpc-server.mjs`, `fake-prime-rpc.mjs`,
 `fake-reference-swap.mjs`, `publication-child.mjs`).
+- **Status (milestone e, done):** 43 `.test.ts` files + 4 helpers + 53
+  fixture files in place (donor count: 43). Fifteen suites +
+  `prime-097-controls.ts` byte-identical to the donor (same-depth
+  `../research/…` and `./fixtures/…` specifiers). Retargeted: the six
+  worker fixtures (imports → `runtime/contracts/*` +
+  `adapters/pi/observation-sources.ts`); `browser-server.test.ts` +
+  `presentation-client.test.ts` (source-resolver `new URL` →
+  `pi/packages/coding-agent/src/experimental/source-resolver.ts`);
+  `cockpit-compaction.test.ts` (five agent-harness imports →
+  `pi/packages/agent/…`); `cockpit-controller.test.ts` (barrel +
+  session-overview); `cockpit-view-model.test.ts` (five schema type
+  imports → `protocol/*`); `prime-rpc-probe.test.ts` (barrel `new URL`);
+  `conformance-prime-specimen.test.ts` (repo root three-up → one-up;
+  two `packages/endophasia/…` paths → target layout);
+  `prime-097-conformance.test.ts` (repo root depth for
+  `sourceDigestAtCommit`); `prime-097-remediation.test.ts` (synthetic
+  temp-repo layout → target layout: entry, transitive and generated
+  paths); the four boundary guards (§7.1 in (c); §7.2
+  `cockpit-integration`, §7.4 `prime-research-boundary`, and
+  `prime-runtime-ingress.test.ts` in (e): four imports →
+  `adapters/prime/transport/*`, the child-script import URL, and both
+  import-boundary tests re-pointed at the target tree — its file lists
+  now cover `protocol/ runtime/contracts/ runtime/observation/
+  adapters/pi/ presentation/ cockpit/` + `runtime/session-worker.ts`).
+  Stale-specifier greps (`../src/`, `../../agent/`, `../../coding-agent/`,
+  `../runtime/prime`) return nothing outside `pi/packages`.
 
 ### 5.11 Scripts and tooling
 
@@ -544,6 +628,11 @@ prime fixture trees (§5.9), and the `fake-*.mjs` servers
 | donor root `vitest.base.ts` + `packages/endophasia/vitest.config.ts` | `vitest.config.ts` | **REWRITE**: `test: { environment: "node", include: ["tests/**/*.test.ts"], testTimeout: 30_000 }`; `resolve.conditions: ["source"]` (+ ssr); aliases: every `@earendil-works/*` (incl. subpaths) → `pi/packages/*/src/*.ts`, plus `^@earendil-works/pi-coding-agent/experimental/(.+)$` → `pi/packages/coding-agent/src/experimental/$1.ts` |
 | donor `biome.json`, `.gitignore`, `LICENSE.md` | root | **KEEP** (biome config copied; ignore adds `pi`-generated artifacts as needed — the submodule itself is tracked) |
 | `docs/runtime-observation-boundary-v0.md`, `docs/continuity-remote-v0.md`, `docs/runtime-profile-v0.md`, `docs/conformance-lab-v0.md`, `docs/pi-upstream.md` | `docs/` | **KEEP** + path updates; the boundary docs define the seams §5.4 keeps deliberately |
+- **Status (milestone e, done):** `check-browser-smoke.mjs` REWRITTEN for
+  the §4 tree (two esbuild browser bundles, expected/forbidden sets per
+  §7.3) — first green run 2026-10-02, exit 0 in 0.20 s.
+  `endophasia-browser-transport-smoke-entry.ts` written (donor intent,
+  target paths). `check-cockpit-types.mjs` ADAPTED (see §5.8).
 
 ## 6. Contract leaks to sever (the REWRITES)
 
@@ -593,12 +682,17 @@ with path updates only.
    accepting Pi objects; (3) import-graph assertions: neutral modules reach
    only `@earendil-works/chord`; the adapter reaches
    `@earendil-works/pi-agent-core`; the worker imports Pi only through the
-   adapter. **UPDATE** the module paths to §4 targets.
+   adapter. **DONE (c)**: module paths retargeted to the §4 targets
+   (record in §10.1).
 2. **`cockpit-integration.test.ts`** (donor lines 348–362): `cockpit/**`
    may import only `presentation/websocket-transport.ts`,
    `@earendil-works/chord/context`, and — type-only — chord, the contract
    schemas, and the pi-coding-agent experimental service state shapes.
-   **UPDATE** paths.
+   **DONE (e)**: allow-set retargeted — value: `./`,
+   `../presentation/client.ts`,
+   `../presentation/websocket-transport.ts`,
+   `@earendil-works/chord/context`; type-only: chord, `../protocol/*`,
+   `@earendil-works/pi-coding-agent/experimental/services/*`.
 3. **Browser smoke** (`scripts/check-browser-smoke.mjs`, REWRITTEN): esbuild
    browser bundles over the §4 tree. The donor invariant is preserved
    file-for-file: the donor's service files (mixed, chord-only) map to
@@ -620,16 +714,25 @@ with path updates only.
      `runtime/{session-worker,server,browser-server,browser-listener,
      cockpit,cockpit-host,cockpit-main}.ts`, `runtime/observation/
      ports.ts`, `runtime/contracts/{usage,continuity,runtime-profile}-
-     facet.ts`, `adapters/pi/**` (all ten modules), `adapters/prime/**`,
+     facet.ts`, `adapters/pi/**` — resolved at the first green run to the
+     seven host-bound projection modules
+     (`adapters/pi/{observation-sources,mission-trace,runtime-metrics,
+     durable-outcomes,usage-feed,usage-ledger,continuity}.ts`);
+     `adapters/pi/session-overview.ts` is allowed (value-imported by
+     `runtime/contracts/inspector.ts`; its Pi imports are type-only) and
+     `adapters/pi/{steering,control-deck}.ts` are allowed (not in the
+     client tree); `adapters/prime/**`,
      `research/**`.
-   - The smoke entry file
-     (`scripts/endophasia-browser-transport-smoke-entry.ts`, donor) moves
-     to `scripts/` with the same intent; the expected/forbidden sets above
-     are pinned and re-checked at the first green run.
+   - First green run 2026-10-02; the smoke entry file
+     (`scripts/endophasia-browser-transport-smoke-entry.ts`) was written
+     for the target tree.
 4. **`prime-research-boundary.test.ts`**: transitive guard — src,
    runtime/prime, presentation, cockpit import no `research/` module; no
    `prime-agent`/`agentclientprotocol` dependency in `package.json` /
-   `package-lock.json`. **UPDATE** paths.
+   `package-lock.json`. **DONE (e)**: roots retargeted to the target tree
+   (`protocol/`, `research/` guard via `file.includes("/research/")`,
+   roots `["protocol", "runtime/contracts", "runtime/observation",
+   "adapters", "presentation", "cockpit"]`; repoRoot = package root).
 
 ## 8. Deferred (later mission phases, in order)
 
@@ -649,7 +752,7 @@ with path updates only.
 | :--- | :--- |
 | KEEP | `runtime/observation/ports.ts`, `runtime/cockpit-host.ts`, `runtime/cockpit-main.ts`, `runtime/prime/limits.ts`, all of `presentation/`, all of `cockpit/`, all of `research/` + fixtures, test helpers + worker fixtures, `biome.json`/`LICENSE.md`, boundary docs |
 | ADAPT | `protocol/primitives.ts` (new shared neutral literals), `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (all 5, byte-verified vs donor), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
-| REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6; the shared `protocol/primitives.ts` is ADAPT, not REWRITE), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 3 boundary-guard tests (assertion paths) |
+| REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6; the shared `protocol/primitives.ts` is ADAPT, not REWRITE), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 4 boundary-guard tests (assertion paths) |
 | RETIRE | nothing in Phase 0 — every demonstrated component has a target home; retirement decisions (e.g. Pi-internal portions of the donor browser-smoke script, donor `packages/endophasia` package metadata) apply to the donor copy, which stays read-only |
 | DEFER | §8 |
 
@@ -716,3 +819,54 @@ Milestone (c):
 - `browser-server.test.ts` stays in the donor for milestone e, with its
   cockpit/presentation dependencies plus the same one-line source-resolver
   URL retarget applied when it lands.
+
+### 10.3 Milestone (e) self-check record
+
+- `npx tsc --noEmit` (root): 0 errors (no new program-shape issues in
+  this wave; the (c) fixes suffice).
+- Import-direction check (DEVELOP baseline): `protocol/` imports
+  nothing below itself (its only non-chord imports are intra-protocol
+  `./primitives.ts` type imports); `adapters/pi` value edges exist only
+  in `runtime/` composition (`runtime/contracts/{inspector,
+  continuity-facet,index}.ts` + `runtime/session-worker.ts`); the only
+  Pi value import in `runtime/`+`adapters/pi/` is
+  `adapters/pi/steering.ts` (`HarnessClosed`); `research/` has zero Pi
+  imports. The 7 donor-identical Pi value imports in the host-bound app
+  layer (`presentation/client.ts` × 5: pi-client `Client`,
+  pi-protocol `DEFAULT_MAX_FRAME_LENGTH` in
+  `websocket-transport.ts`, pi-coding-agent experimental
+  `services/{connection,models,sessions,transcript}`;
+  `cockpit/view-model.ts` × 1: experimental `services/connection`) are
+  the demonstrated presentation/cockpit edges — the §10.3 rule's "host
+  entries" is interpreted as the host-bound app layer for (e).
+- `node scripts/check-cockpit-types.mjs`: exit 0 — 1 diagnostic outside
+  the cockpit (`pi/packages/ai/src/api/openai-codex-responses.ts(403,8)`
+  `error TS2769`), donor-identical.
+- `node scripts/check-browser-smoke.mjs`: exit 0 (first green run;
+  §7.3 forbidden set resolved as recorded there).
+- `npx biome check` on `protocol/ runtime/ adapters/ presentation/
+  cockpit/ research/ tests/ scripts/`: 140 files clean (10
+  import-organization/format fixes applied, then re-checked).
+- `grep -rn '@earendil-works/pi-' protocol/`: 0 matches.
+- Stale-specifier greps (`../src/`, `../../agent/`, `../../coding-agent/`,
+  `../runtime/prime`): clean outside the remediation synthetic strings.
+- Full `npx vitest --run`: **43/43 files, 1580 passed, 3 skipped,
+  0 failed** (~95 s). Parity with the re-measured donor (1578 passed,
+  3 skipped, 43 files; §2): identical per-file counts on all 43 files
+  except the intentional +2 in `prime-research-boundary.test.ts` (§7.4
+  root-list expansion).
+- Failure forensics (first two full runs of this phase): (1) `ENOENT`
+  on `<root>/test/fixtures/prime/0.9.7/rpc` — the research CLIs still
+  pointed at the donor fixture path / four-up repo roots; (2) `fatal:
+  not a git repository` in `sourceDigestAtCommit` — the repo-root URL
+  in the conformance suites was three-up (donor depth) and resolved to
+  the parent of the target root; one-up is correct from `tests/`.
+- The donor capture commit `45adf6b103bf484f40aa69b4774c089ccd170bda`
+  (the provenance `endophasiaCommit` asserted by the prime-097/
+  conformance suites; `sourceDigestAtCommit` hashes that commit's own
+  tree, repo-independently) is reachable via `refs/remotes/source/*`
+  and is now also pinned at `refs/migration/donor-capture` so
+  `git gc` / `git remote prune` cannot orphan the object the digest
+  checks hash against.
+- Donor worktree verified clean at HEAD `ab4caf5a0` before and after
+  the re-measurement runs.

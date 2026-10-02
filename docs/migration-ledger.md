@@ -1,0 +1,614 @@
+# Endophasia Migration Ledger
+
+Migration of the demonstrated Endophasia v0 from the Pi-fork monorepo
+(`../endophasia-source/`, the DONOR — read-only) into this standalone
+repository (the TARGET). This ledger records, per component, where it came
+from, where it goes, what changes, and which demonstrated tests protect it.
+
+## 1. Precedence and vocabulary
+
+When donor code and target design conflict, priority is:
+
+1. This repository's `README.md` architecture (the architectural contract).
+2. The demonstrated semantics and their tests in the donor (the baseline).
+3. A clean runtime-neutral design consistent with both.
+4. The current donor layout.
+
+The donor layout is **not** authoritative: the target tree follows the README
+"suggested repository shape", and the old `packages/endophasia/src`
+partition is preserved only where it marks a demonstrated boundary.
+
+Dispositions:
+
+- **KEEP** — copy into the target with path/import updates only; semantics
+  and wire shape unchanged.
+- **ADAPT** — move and modify imports/structure; demonstrated semantics
+  unchanged; protected by the same tests (re-targeted).
+- **REWRITE** — re-derive a module in the target design (e.g. split a
+  contract from its Pi coupling); demonstrated semantics and wire shape
+  unchanged; protected by the same tests plus the boundary guards.
+- **RETIRE** — remove; no demonstrated consumer in the target.
+- **DEFER** — a later mission phase; recorded here so it is not lost.
+
+## 2. Baseline record
+
+Recorded 2026-10-02 at donor HEAD `ab4caf5a0`
+(Merge PR #27 "research/conformance-lab-v0").
+
+- Install: `npm ci --no-audit --no-fund` at the donor root (341 packages).
+- Prerequisite: `cd packages/ai && npm run hydrate-model-data` — six test
+  suites reference gitignored generated provider data
+  (`packages/ai/src/providers/data/*.json`); without it they fail on missing
+  files. Run once per checkout.
+- Suite: `npx vitest --run` in `packages/endophasia` (node env,
+  testTimeout 30 s).
+- **Result: 43/43 test files, 1522 passed, 3 skipped, 0 failed** (~96 s;
+  the runtime/presentation suites start real servers and Session worker
+  processes).
+
+This is the "demonstrated semantics" reference: every migrated test must
+pass against the pinned Pi checkout in this repository with the same
+observable behaviour.
+
+## 3. Pi integration decision
+
+**Decision: a git submodule at `pi/` pinned to upstream commit
+`cb7969d212836b8939001dce159fbd2ed6ad395f`
+(`https://github.com/earendil-works/pi.git`), plus npm workspaces
+spanning `pi/packages/*` and `pi/packages/session-backends/*`.**
+
+Evidence:
+
+1. **All 13 Pi packages are consumed from source, never dist.** In the donor
+   every `@earendil-works/*` specifier resolves through (a) root tsconfig
+   `paths` to `packages/*/src/*.ts` for type-checking, (b) vitest aliases +
+   `resolve.conditions: ["source"]` for tests, and (c)
+   `packages/coding-agent/src/experimental/source-resolver.ts` (a
+   `node:module.registerHooks` resolver) for Node processes. Tests import
+   `AgentHarness` from the agent **source**
+   (`../../agent/src/harness/agent-harness.ts`), never a package entry.
+2. **The coding-agent experimental subpaths are source-only.**
+   `@earendil-works/pi-coding-agent` exports only `.`, `./rpc-entry`,
+   `./client`, `./experimental/plugin`; `files` excludes `dist/experimental`.
+   The Endophasia host entries and presentation client import
+   `experimental/server`, `experimental/session-worker`,
+   `experimental/process`, `experimental/services/*` — none of which resolve
+   from published npm. Consuming Pi from a git checkout is therefore the
+   demonstrated mechanism, not a migration invention.
+3. **Runtime workers self-resolve.** `source-resolver.ts` computes the Pi
+   root from its own file location (`../../../..`) and reads **that
+   checkout's** tsconfig `paths`. A worker process spawned from `pi/`
+   therefore resolves every `@earendil-works/*` import from the submodule's
+   source with zero standalone-side resolver machinery. The standalone only
+   needs its own aliases for its own tests and type-checks.
+4. **Pin choice.** The donor fork tracks upstream `earendil-works:main`; the
+   last upstream merge into the donor is `6355e6ea7`, whose upstream parent
+   is `cb7969d21` (`feat(durable): add durable task runtime`). After that
+   merge the donor added only two Pi-side commits — `d88ae28be`
+   (coding-agent: default Together to generated moonshotai/Kimi-K3) and
+   `95f9be445` (ai: Together catalog test selection) — plus endophasia-only
+   commits. The Endophasia suites use faux providers
+   (`createModels` + `fauxProvider` from `@earendil-works/pi-ai`) and do not
+   exercise Together, so the pin is behaviour-neutral; the scaffold
+   self-check re-runs the full suite against the pin to prove it.
+5. **Upstream methodology.** `docs/pi-upstream.md` (donor) requires the
+   explicit upstream remote and pinned revisions; Pi remains the reference
+   runtime, not authority. The standalone keeps this: `pi/` is a pinned
+   upstream checkout, and `pi-upstream.md` is migrated with the boundary
+   docs.
+6. **Workspaces.** The donor root workspaces are `packages/*`,
+   `packages/session-backends/*`, and five example extension workspaces.
+   The standalone declares only the first two (retargeted under `pi/`),
+   excluding the examples so their dependencies do not enter the install.
+   npm links the Pi packages into the root `node_modules` and installs their
+   external dependencies (photon-node, ws, typebox, …); the standalone's
+   own code is a single root package (no `packages/` wrapper), matching the
+   README tree.
+
+Consequences:
+
+- `pi/packages/endophasia` does not exist at the pinned upstream commit
+  (Endophasia was added by the fork), so there is no duplicated Endophasia
+  inside the submodule.
+- The standalone's tsconfig `paths` and vitest aliases point at
+  `pi/packages/*/src`; the runtime host entries load
+  `pi/packages/coding-agent/src/experimental/source-resolver.ts` via
+  `node --import` exactly as the donor does.
+
+## 4. Target layout (Phase 0)
+
+Only directories with a concrete Phase 0 purpose are created; the rest of
+the README tree is deferred.
+
+```text
+endophasia-standalone/
+├── pi/                    # git submodule — pinned upstream Pi monorepo
+├── protocol/              # Pi-free v0 wire schemas + capability catalogue
+│   ├── mission-trace.ts
+│   ├── runtime-facts.ts
+│   ├── usage.ts
+│   ├── continuity.ts      # REWRITTEN Pi-free (see §6)
+│   ├── runtime-profile.ts # capability catalogue + RuntimeProfileV0
+│   ├── session-overview.ts# REWRITTEN Pi-free (see §6)
+│   ├── steering.ts        # receipt/rejection types (from steering.ts)
+│   └── control.ts         # control state/receipt types (from control-deck.ts)
+├── runtime/
+│   ├── observation/
+│   │   └── ports.ts       # the four neutral observation ports (KEEP)
+│   ├── contracts/         # Chord service definitions + facets
+│   │   ├── index.ts       # public contract surface (was src/index.ts)
+│   │   ├── mission-trace.ts
+│   │   ├── runtime-facts.ts
+│   │   ├── usage.ts       # includes usage-facet logic (parse, copies, facet)
+│   │   ├── continuity.ts  # includes continuity-facet logic (remote limit)
+│   │   ├── runtime-profile.ts # includes profile validator + facet
+│   │   └── inspector.ts
+│   ├── session-worker.ts  # composition root (PI_STANDARD_RUNTIME_PROFILE_V0)
+│   ├── server.ts
+│   ├── browser-server.ts
+│   ├── browser-listener.ts
+│   ├── cockpit.ts         # esbuild asset build + host+server launch
+│   ├── cockpit-host.ts
+│   └── cockpit-main.ts
+├── adapters/
+│   ├── pi/                # the Pi boundary (type-only Pi imports; one value)
+│   │   ├── observation-sources.ts  # was src/pi-runtime-observation.ts
+│   │   ├── mission-trace.ts        # observe/attach projections
+│   │   ├── runtime-metrics.ts
+│   │   ├── durable-outcomes.ts
+│   │   ├── usage-ledger.ts
+│   │   ├── usage-feed.ts
+│   │   ├── continuity.ts
+│   │   ├── session-overview.ts     # capture only
+│   │   ├── steering.ts
+│   │   └── control-deck.ts
+│   └── prime/
+│       └── transport/     # was runtime/prime/ (jsonl, limits,
+│                          # process-group, rpc-connection, runtime-identity)
+├── presentation/
+│   ├── client.ts
+│   └── websocket-transport.ts
+├── cockpit/               # browser cockpit (KEEP; own tsconfig, DOM lib)
+│   ├── main.ts  view.ts  controller.ts  view-model.ts
+│   ├── lifecycle.ts  bootstrap.ts  index.html  styles.css
+├── research/              # quarantined (KEEP; never imported by production)
+│   ├── conformance/
+│   └── prime-conformance/
+├── tests/                 # migrated suites + helpers + fixtures
+├── docs/                  # this ledger + migrated boundary docs
+├── scripts/               # check-browser-smoke.mjs (rewritten), type checks
+├── package.json           # private root package "endophasia"
+├── tsconfig.json          # paths → pi/packages/*/src; excludes cockpit DOM files
+├── cockpit/tsconfig.json  # extends root; lib + DOM
+├── vitest.config.ts       # aliases → pi sources; conditions ["source"]
+├── biome.json  .gitignore  LICENSE.md  README.md
+```
+
+Dependency direction (README:982+): `protocol` → `runtime/contracts` →
+`adapters` → host entries / `presentation` / `cockpit`. The core rule
+(README:978): core contracts do not import concrete providers.
+
+## 5. Component ledger
+
+Source paths are relative to the donor `packages/endophasia/`. "Protects"
+lists the donor test file(s) whose semantics must survive.
+
+### 5.1 Neutral observation ports
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `src/runtime-observation.ts` | `runtime/observation/ports.ts` | **KEEP** |
+
+The four ports — `RuntimeMissionTraceSourceV0`, `RuntimeMetricsSourceV0`,
+`RuntimeOperationOutcomeSourceV0`, `RuntimeUsageSourceV0` (plus the optional
+aggregate `RuntimeObservationSourcesV0`) — are the runtime-neutral boundary.
+The module's only import is `type Context` from `@earendil-works/chord`.
+Also carries `UsageFeedListenerV0`, `UsageFeedSubscriptionV0` (idempotent
+unsubscribe), `RuntimeUsageTailV0`.
+
+- Deps: chord (type-only).
+- Risks: none — already neutral.
+- Protects: `runtime-observation-boundary.test.ts` (fake runtimes prove the
+  facets work from neutral capabilities alone; import-graph assertions).
+
+### 5.2 Protocol schemas (wire definitions)
+
+The schema halves of the six service modules split out of the donor
+`src/*-service.ts` files into `protocol/` (REWRITE as a pure move; wire
+shape byte-identical):
+
+| Source (schema content) | Target | Disposition | Notes |
+| :--- | :--- | :--- | :--- |
+| `src/mission-trace-service.ts` (event union, limits, observation type) | `protocol/mission-trace.ts` | **REWRITE** | `MissionTraceEventV0` discriminated union on `kind`; `MISSION_TRACE_REPLICATED_EVENT_LIMIT = 1024`; observation = bounded window since worker activation, NOT durable, sequence restarts at 1 |
+| `src/runtime-facts-service.ts` (metrics + outcome types) | `protocol/runtime-facts.ts` | **REWRITE** | `RuntimeMetricsV0` (cumulative session accounting incl. failed/retried/aborted; not context occupancy, not invoice); `OperationOutcomeV0` (immutable terminal record) |
+| `src/usage-service.ts` (ledger types) | `protocol/usage.ts` | **REWRITE** | `UsageLedgerQueryV0` (defaults 0/1000, max 10000), `UsageLedgerRowV0` (session-global sequence, gaps normal, no lane/cause/timestamp), `UsageLedgerPageV0` (not atomic), `USAGE_REPLICATED_ROW_LIMIT = 1024`, `UsageObservationV0` (sticky `hasEarlierRows`) |
+| `src/continuity-service.ts` (entry + snapshot types) | `protocol/continuity.ts` | **REWRITE** | see §6 for the Pi-free re-derivation |
+| `src/runtime-profile-service.ts` (catalogue + profile type) | `protocol/runtime-profile.ts` | **REWRITE** | `ENDOPHASIA_RUNTIME_CAPABILITY_IDS_V0` — the closed six-ID catalogue in canonical order (session-overview, mission-trace, runtime-metrics, operation-outcome, usage, continuity); Endophasia semantics, not Chord service IDs; Runtime Metrics and Operation Outcome are separate capabilities though one service exposes both |
+| `src/session-overview.ts` (overview types) | `protocol/session-overview.ts` | **REWRITE** | see §6 |
+| `src/steering.ts` (receipt/rejection types) | `protocol/steering.ts` | **REWRITE** | `SteeringReceiptV0`, `SteeringActionV0`, `SteeringRejectionReasonV0`, `SteeringActionResultV0` — Pi-free strings/ids only; acceptance ≠ consumption semantics preserved in docs |
+| `src/control-deck.ts` (state/receipt types) | `protocol/control.ts` | **REWRITE** | `ControlStateV0`, `ControlReceiptV0` ("Pi accepted the change and Endophasia then observed this configured value"); `ModelIdentity` leak → neutral `{provider, modelId}` (identical to the Pi shape, `agent-harness.ts:142`) |
+
+Protects (all): the corresponding `*-service.test.ts` Chord binding suites
+over the strict-JSON wire.
+
+### 5.3 Contracts (Chord services + facets)
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `src/mission-trace-service.ts` (service + facet) | `runtime/contracts/mission-trace.ts` | **REWRITE** | schema half to `protocol/mission-trace.ts` |
+| `src/runtime-facts-service.ts` (service + facet) | `runtime/contracts/runtime-facts.ts` | **REWRITE** | schema half to `protocol/runtime-facts.ts` |
+| `src/usage-service.ts` (service) | `runtime/contracts/usage.ts` | **REWRITE** | schema half to `protocol/usage.ts` |
+| `src/usage-facet.ts` (facet logic) | `runtime/contracts/usage-facet.ts` | **ADAPT** | query parsing, payload copies, `createEndophasiaUsageFacetV0` — chord-only |
+| `src/continuity-service.ts` (service) | `runtime/contracts/continuity.ts` | **REWRITE** | schema half to `protocol/continuity.ts` |
+| `src/continuity-facet.ts` (facet logic) | `runtime/contracts/continuity-facet.ts` | **ADAPT** | `withinRemoteLimit` (8 MiB, fail never truncate), `createEndophasiaContinuityFacetV0` — type-only Pi `AgentLane` handle |
+| `src/runtime-profile-service.ts` (service) | `runtime/contracts/runtime-profile.ts` | **REWRITE** | schema + catalogue half to `protocol/runtime-profile.ts` |
+| `src/runtime-profile-facet.ts` (facet logic) | `runtime/contracts/runtime-profile-facet.ts` | **ADAPT** | `runtimeProfileV0` validator, `createEndophasiaRuntimeProfileFacetV0` — chord-only |
+| `src/inspector-service.ts` (service + facet) | `runtime/contracts/inspector.ts` | **ADAPT** | type-only `AgentHarness` handle |
+| `src/index.ts` | `runtime/contracts/index.ts` | **ADAPT** | public contract surface, re-targeted |
+
+- Service identities unchanged: `endophasia.mission-trace.v0`,
+  `endophasia.runtime-facts.v0`, `endophasia.usage.v0`,
+  `endophasia.continuity.v0`, `endophasia.runtime-profile.v0`,
+  `endophasia.inspector.v0` (plus `endophasia.session-overview.v0` semantics
+  inside the inspector service).
+- Facet semantics preserved: mission-trace facet (BACKGROUND_CONTEXT,
+  payload-minimal copies); runtime-facts facet requires BOTH sources and
+  never synthesizes; usage facet (plain-object query parsing, bounded
+  window reseeded from ledger tail); continuity facet (8 MiB remote limit —
+  oversize FAILS, never truncates; failed capture fails the call, never an
+  empty snapshot); runtime-profile facet (one immutable validated copy;
+  malformed profile = bug, not input).
+- **Known v0 seam (kept as demonstrated):** the inspector facet takes
+  `Pick<AgentHarness, "lanes">` and the continuity facet takes
+  `Pick<AgentLane, "watch" | "findEntries">` — type-only Pi handles,
+  constructor-argument-only coupling, exactly as the donor boundary doc
+  sanctions ("seam to widen or wrap"). These two facets are browser-forbidden
+  (see §7) but the cockpit reaches their contract types type-only.
+- Risks: splitting a file that currently mixes schema/service/facet must not
+  change any exported name the tests or worker import.
+- Protects: `mission-trace-service.test.ts`, `runtime-facts-service.test.ts`,
+  `usage-service.test.ts`, `continuity-service.test.ts`,
+  `runtime-profile-service.test.ts`, `inspector-service.test.ts`,
+  `runtime-observation-boundary.test.ts`, plus every runtime-host suite that
+  exercises the facets over real transports.
+
+### 5.4 Pi adapter (the boundary)
+
+All nine Pi projection modules plus the aggregate seam move to
+`adapters/pi/`. They are the only production modules allowed to import
+`@earendil-works/pi-agent-core` (type-only, except one value — see below).
+
+| Source | Target | Disposition | Notes |
+| :--- | :--- | :--- | :--- |
+| `src/pi-runtime-observation.ts` | `adapters/pi/observation-sources.ts` | **ADAPT** | THE seam: `createPiRuntimeObservationSourcesV0(input): Required<RuntimeObservationSourcesV0>` — Pi supplies all four ports. Type-only Pi imports |
+| `src/mission-trace.ts` | `adapters/pi/mission-trace.ts` | **ADAPT** | `observeMissionTraceV0` (finished events numbered from 1, no retention, listener-throw isolation), `attachMissionTraceV0` (sync replay then live; cursor assertions) |
+| `src/runtime-metrics.ts` | `adapters/pi/runtime-metrics.ts` | **ADAPT** | `projectStats(SessionStats)`, `captureRuntimeMetricsV0` — short-lived `lane.watch()`; read failures propagate |
+| `src/durable-outcomes.ts` | `adapters/pi/durable-outcomes.ts` | **ADAPT** | `captureOperationOutcomeV0` — `undefined` → null; projected error → `errorCode` only |
+| `src/usage-ledger.ts` | `adapters/pi/usage-ledger.ts` | **ADAPT** | `projectUsageLedgerRowV0` (shared by ledger+feed), `readUsageLedgerV0` (afterSequence exclusive; Pi fromSeq = afterSequence+1; MAX_SAFE_INTEGER guard; RangeError on bad range), `readUsageLedgerTailV0` (one descending read of limit+1; never replays the whole ledger) |
+| `src/usage-feed.ts` | `adapters/pi/usage-feed.ts` | **ADAPT** | trusted precondition: same Pi harness+session (usage events carry no session identity); subscribe-then-replay-then-live; dedupe `seq > cursor`; at-least-once across reconnects; listener failure stops the feed without advancing past the failed row; slow listener backpressures the harness bus |
+| `src/continuity.ts` | `adapters/pi/continuity.ts` | **ADAPT** | `projectEntry` (payload-minimal: `hasSummary` = summary.length>0, `hasData` = data!==undefined, terminate flag), `projectContinuity` (boundary = transcript[0]; compaction only if that boundary is a compaction entry), `captureContinuityV0` (watch → snapshot → findEntries oldestFirst → project → unsubscribe in finally) |
+| `src/session-overview.ts` (capture half) | `adapters/pi/session-overview.ts` | **REWRITE** | `captureSessionOverviewV0(harness: Pick<AgentHarness,"lanes">, context)` moves with its only Pi dependency; types stay in `protocol/session-overview.ts` (§6) |
+| `src/steering.ts` | `adapters/pi/steering.ts` | **ADAPT** | `steerV0` (durable steer queue), `queueFollowUpV0` (follow-up boundary), `stopV0` (cancels ONLY the run observed by `inspectExecution`; never retargets), `captureSteeringStateV0`. **The only VALUE Pi import in production src: `HarnessClosed`** — re-homed here with its rejection semantics |
+| `src/control-deck.ts` | `adapters/pi/control-deck.ts` | **ADAPT** | `captureControlStateV0`, `configureModelV0`, `configureThinkingLevelV0`, `configureActiveToolsV0` (setter commits but failed readback rejects although config changed; nothing retried) |
+
+- **No neutral port yet** (steering, control-deck, session-overview capture,
+  continuity capture): per the donor boundary doc, those need their own
+  evidence before they get a boundary. Flagged for a later phase; Phase 0
+  keeps them Pi-direct behind `adapters/pi/`.
+- Risks: the adapter must keep importing the Pi types it needs by the same
+  structural shape the tests exercise (real `AgentHarness`, real lanes).
+- Protects: `continuity.test.ts`, `control-deck.test.ts`,
+  `durable-outcomes.test.ts`, `mission-trace.test.ts` (node:vm isolation),
+  `runtime-metrics.test.ts`, `session-overview.test.ts`, `steering.test.ts`
+  (HarnessClosed rejection), `usage-feed.test.ts` (gap-safe, resume cursor),
+  `usage-ledger.test.ts`, `runtime-observation-boundary.test.ts` (adapter
+  layer), and the six `*-session-worker.ts` fixtures that install adapter
+  facets.
+
+### 5.5 Host entries (Node-only)
+
+| Source | Target | Disposition | Notes |
+| :--- | :--- | :--- | :--- |
+| `runtime/session-worker.ts` | `runtime/session-worker.ts` | **ADAPT** | composition root: `PI_STANDARD_RUNTIME_PROFILE_V0` (frozen claim: schemaVersion `runtime-profile.v0`, scope `session-worker-lifetime`, runtimeFamily `pi`, adapterProfileId `endophasia.pi-standard.v0`, six capability IDs in canonical order) + `createEndophasiaSessionWorkerFacetsV0` (installs exactly six facets) + `runEndophasiaSessionWorker` entry guard (`isDirectInternalProcessEntry` + role `session-worker`) |
+| `runtime/server.ts` | `runtime/server.ts` | **ADAPT** | `startEndophasiaServer` = Pi `startServer` with `sessionWorkerEntryUrl` bound to this file; `EndophasiaServerOptions` |
+| `runtime/browser-server.ts` | `runtime/browser-server.ts` | **ADAPT** | adds the loopback WS listener; capability URL `ws://127.0.0.1:<port>/pi/<32-byte token>` |
+| `runtime/browser-listener.ts` | `runtime/browser-listener.ts` | **ADAPT** | origin allowlist (canonical http/https only; wildcards/`null`/paths/patterns rejected), binary-only frames, pending-byte backpressure (default 4 × `DEFAULT_MAX_FRAME_LENGTH` from pi-protocol), graceful close, exactly-one-terminal error/close on `WebSocketByteConnection` |
+| `runtime/cockpit.ts` | `runtime/cockpit.ts` | **ADAPT** | `buildCockpitAssets()` (esbuild in-memory bundle of `cockpit/main.ts`, platform browser/esm/es2022, `write:false`, plus index.html + styles.css) + launch |
+| `runtime/cockpit-host.ts` | `runtime/cockpit-host.ts` | **KEEP** | 127.0.0.1-only; exactly 4 routes under `/c/<32-byte base64url token>/`; `timingSafeEqual`; constant-time prefix; exact-Host loopback authority check (403, DNS-rebinding guard); GET/HEAD only; no-cache; CSP `cockpitContentSecurityPolicy(websocketOrigin)`; 503 bootstrap until `setBootstrap` |
+| `runtime/cockpit-main.ts` | `runtime/cockpit-main.ts` | **KEEP** | foreground CLI; strict parseArgs (provider/model/directory/port); prints page URL; SIGINT/SIGTERM stop |
+
+- `cockpit-host.ts`, `cockpit-main.ts` and the prime transport have **zero**
+  `@earendil-works` imports (verified) — KEEP means literal copy apart from
+  relative-path fixes.
+- Protects: `runtime.test.ts` (full server integration over unix transport),
+  `session-host.test.ts`, `browser-server.test.ts` (e2e via the browser WS
+  capability URL), `browser-listener.test.ts`, `cockpit-host.test.ts`,
+  `cockpit-integration.test.ts`.
+
+### 5.6 Prime ingress
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `runtime/prime/jsonl.ts` | `adapters/prime/transport/jsonl.ts` | **ADAPT** |
+| `runtime/prime/limits.ts` | `adapters/prime/transport/limits.ts` | **KEEP** |
+| `runtime/prime/process-group.ts` | `adapters/prime/transport/process-group.ts` | **ADAPT** |
+| `runtime/prime/rpc-connection.ts` | `adapters/prime/transport/rpc-connection.ts` | **ADAPT** |
+| `runtime/prime/runtime-identity.ts` | `adapters/prime/transport/runtime-identity.ts` | **ADAPT** |
+
+- Pure Node; **zero** `@earendil-works` imports; zero external importers in
+  the donor (grep-verified) — the transport layer of a Prime RPC ingress.
+- Semantics: `PrimeRpcResponseV0` (`success: false` = refusal, not error),
+  uninterpreted `PrimeRpcEventV0`, bounded-time shutdown, 64 MiB default
+  record limit, `MAX_TIMER_MS` guard, `PrimeInstallationV0`
+  (binary | source-checkout) — identity, not certification.
+- **Installs 0 Endophasia capabilities** — admission stays DORMANT; this is
+  the demonstrated state (README feature table: "It installs no Prime
+  semantic capability").
+- Sealed research evidence stays valid: Prime 0.9.7 study sealed at commit
+  `08ff1b2e2794ea9e8f4a08d12bc95408a66e1074`, `candidateForPR27 = []`,
+  report SHA-256 `d61a8b29…6a53`, golden inventory digest
+  `7e9f090a…9ac`, probe `prime-conformance-v0@0.14.7`, capture commit
+  `45adf6b1…0bda`, research hash `56e25aee…f0`.
+- Protects: `prime-runtime-ingress.test.ts` (strict JSONL framing held to
+  the research decoder by differential tests, correlation, ordered events,
+  listener isolation, bounded lifecycle, runtime identity, hermetic env,
+  import-graph boundaries; live smoke opt-in only via
+  `ENDOPHASIA_PRIME_LIVE_SMOKE=1`, never CI).
+
+### 5.7 Presentation
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `presentation/client.ts` | `presentation/client.ts` | **KEEP** |
+| `presentation/websocket-transport.ts` | `presentation/websocket-transport.ts` | **KEEP** |
+
+- `EndophasiaPresentationClientV0`: readonly `ReplicatedState` fields
+  (connection, attachment, sessions, transcript, models, missionTrace,
+  usage, runtimeProfile) + `attach/detach/sessionOverview/runtimeMetrics/
+  operationOutcome/usagePage/continuitySnapshot/dispose`. The profile state
+  is bound on its **own separate binding**; Pi clears all session bindings in
+  the same turn as reporting attaching. `usagePage` sends `query ?? {}`
+  (remote args cannot be undefined). `continuitySnapshot` fails over 8 MiB,
+  never truncates. `dispose()` = one shared promise; AggregateError if
+  cleanup also fails. Startup failure → dispose + AggregateError on cleanup
+  failure; a throwing `onError` is ignored.
+- `websocket-transport.ts`: duck-typed `BrowserWebSocket`
+  (`WEBSOCKET_OPEN = 1`), binary-only, framed-CBOR bytes pass through
+  unchanged, one arraybuffer socket per factory call, no reconnect,
+  pending-byte backpressure (default `DEFAULT_MAX_FRAME_LENGTH * 4`).
+- The Pi `Client` + `createServerServiceSource`/`createSessionServiceSource`
+  + `Models`/`SessionDirectory`/`SessionManagement`/`Transcript` imports are
+  the demonstrated presentation-side boundary (transport/service-source
+  plumbing, value imports). Kept as-is in Phase 0; a neutral transport
+  interface is a later phase.
+- Protects: `presentation-client.test.ts` (all six services + profile
+  hydration, degraded attachment proven by the six fixture workers,
+  attach/detach/dispose), `websocket-transport.test.ts`,
+  `cockpit-integration.test.ts`, `runtime.test.ts`.
+
+### 5.8 Cockpit (browser)
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `cockpit/main.ts` | `cockpit/main.ts` | **KEEP** |
+| `cockpit/view.ts` | `cockpit/view.ts` | **KEEP** |
+| `cockpit/controller.ts` | `cockpit/controller.ts` | **KEEP** |
+| `cockpit/view-model.ts` | `cockpit/view-model.ts` | **KEEP** |
+| `cockpit/lifecycle.ts` | `cockpit/lifecycle.ts` | **KEEP** |
+| `cockpit/bootstrap.ts` | `cockpit/bootstrap.ts` | **KEEP** |
+| `cockpit/index.html`, `cockpit/styles.css` | same | **KEEP** |
+
+- Imports only: `presentation/client.ts` + `presentation/websocket-transport.ts`,
+  chord `Context`/`BACKGROUND_CONTEXT`, and **type-only** Pi service state
+  shapes (`ServerConnectionState`, `SessionAttachmentState`, `ModelsState`,
+  `SessionDirectoryState`, `TranscriptState`). No value Pi imports.
+- `view-model.ts` bounds: `PREVIEW_LIMIT 2000`, `TEXT_LIMIT 20000`,
+  `MISSION_TRACE_ROW_LIMIT 50`, `USAGE_ROW_LIMIT 20`,
+  `CONTINUITY_ENTRY_ROW_LIMIT 100`; reasoning content = activity marker
+  only. `controller.ts`: 9-region burst-coalesced invalidation;
+  `CockpitPresentation = Pick<EndophasiaPresentationClientV0, …>`;
+  explicit-only captures. `lifecycle.ts`: pagehide → dispose always;
+  pageshow → reload only when persisted. `bootstrap.ts`: parseBootstrap
+  loopback `ws:` URL only.
+- Own `cockpit/tsconfig.json` with `lib: ["ES2024", "DOM", "DOM.Iterable"]`;
+  excluded from the root tsconfig (as in the donor).
+- Protects: `cockpit-controller.test.ts`, `cockpit-view-model.test.ts`,
+  `cockpit-lifecycle.test.ts`, `cockpit-compaction.test.ts` (real harness;
+  compaction removes earlier entries; bounded projections),
+  `cockpit-integration.test.ts` (import-graph assertions).
+
+### 5.9 Research (quarantined)
+
+| Source | Target | Disposition | Notes |
+| :--- | :--- | :--- | :--- |
+| `research/conformance/` (5 files) | `research/conformance/` | **KEEP** | `files.ts` (plain/member path assertions), `json.ts` (canonicalJson: sorted keys, preserved array order, UTF-8 LF — "a local format, not RFC 8785"), `order.ts` (study-declared order, never fs order), `reference.ts` (`ReferenceMember {path, sha256}`, 16 MiB cap, `verifyReference` closed inventory, `publishReference` Linux-only atomic exchange), `repository.ts` |
+| `research/prime-conformance/` (34 files) | `research/prime-conformance/` | **KEEP** | CLI chain (`cli.ts`, `cli-097.ts`, `offline-097.ts`), classification/comparison/probe/publication modules, sealed `audited-instrument-097.json` |
+| `test/fixtures/prime/0.9.6/` (12 scenario JSONs), `test/fixtures/prime/0.9.7/` (report + 12 rpc + 15 acp), `test/fixtures/conformance/prime-097-reference.json` (28-file golden inventory) | `tests/fixtures/…` | **KEEP** | byte-identical; digests must not change |
+
+- Never imported by production; guarded transitively (see §7.4).
+- Prime 0.9.7 findings that travel with it: Overview + Continuity
+  incompatible, Trace qualified fragments, Metrics qualified reconstruction,
+  Outcome unavailable/incompatible, Usage qualified durable projection.
+- Live gates (`check:prime-conformance*`) stay opt-in plain-node scripts
+  (env `PRIME_AGENT_BIN`/`PRIME_AGENT_ROOT`), never CI.
+- Protects: `conformance-lab.test.ts` (Linux-gated; SIGKILL crash-swap,
+  process boundary), `conformance-prime-specimen.test.ts` (golden read-side),
+  `prime-conformance.test.ts`, `prime-097-conformance.test.ts`,
+  `prime-097-remediation.test.ts` + `prime-097-review2…7.test.ts`
+  (hostile mutations, in-memory only), `prime-acp-probe.test.ts`,
+  `prime-rpc-probe.test.ts`.
+
+### 5.10 Tests
+
+`test/` → top-level `tests/` (README tree). Every test file is **ADAPT**:
+imports re-targeted, semantics unchanged. Import re-targeting rules:
+
+- `../../agent/src/harness/agent-harness.ts` → `../pi/packages/agent/src/harness/agent-harness.ts`
+- `../../agent/src/harness/context.ts` → `../pi/packages/agent/src/harness/context.ts`
+- `../src/<module>` / `../runtime/<module>` / `../presentation/<module>` /
+  `../cockpit/<module>` / `../research/<module>` → the §4 targets.
+- Faux providers stay `@earendil-works/pi-ai` (workspace source).
+
+The 43 test files, by protection target:
+
+| Category | Files |
+| :--- | :--- |
+| Contract binding (strict-JSON wire) | `continuity-service.test.ts`, `inspector-service.test.ts`, `mission-trace-service.test.ts`, `runtime-facts-service.test.ts`, `runtime-profile-service.test.ts`, `usage-service.test.ts` |
+| Neutral boundary (machine-verified) | `runtime-observation-boundary.test.ts` — **UPDATE** import-graph assertions (§7.1) |
+| Pi adapter (real harness) | `continuity.test.ts`, `control-deck.test.ts`, `durable-outcomes.test.ts`, `mission-trace.test.ts`, `runtime-metrics.test.ts`, `session-overview.test.ts`, `steering.test.ts`, `usage-feed.test.ts`, `usage-ledger.test.ts` |
+| Runtime host (real servers/workers) | `runtime.test.ts`, `session-host.test.ts`, `browser-server.test.ts`, `browser-listener.test.ts` |
+| Presentation/cockpit | `presentation-client.test.ts`, `websocket-transport.test.ts`, `cockpit-controller.test.ts`, `cockpit-view-model.test.ts`, `cockpit-lifecycle.test.ts`, `cockpit-compaction.test.ts`, `cockpit-host.test.ts` |
+| Cockpit integration | `cockpit-integration.test.ts` — **UPDATE** import-graph assertions (§7.2) |
+| Research/offline (no @earendil-works imports) | `conformance-lab.test.ts`, `conformance-prime-specimen.test.ts`, `prime-097-conformance.test.ts`, `prime-097-remediation.test.ts`, `prime-097-review2…7.test.ts`, `prime-acp-probe.test.ts`, `prime-conformance.test.ts`, `prime-research-boundary.test.ts` — **UPDATE** paths (§7.4), `prime-rpc-probe.test.ts`, `prime-runtime-ingress.test.ts` |
+
+Helpers (KEEP + path fixes): `strict-json-transport.ts` (chord
+`createFacetHost`/`createRemoteServiceBinding` over a strict-JSON wire with
+`$chord.service` control calls; `HOST_REQUEST` context key),
+`exact-usage-provider.ts` (faux provider reporting exact queued Usage),
+`continuity-synthetic.ts` (arbitrarily long synthetic ancestry for the
+8 MiB limit), `prime-097-controls.ts` (in-memory augmentation; never writes
+to the fixture directory).
+
+Fixtures (KEEP + path fixes): the six `*-session-worker.ts` degraded-entry
+fixtures (`no-usage-`, `no-runtime-profile-`, `no-continuity-`,
+`inspector-only-`, `inspector-and-trace-`, `large-continuity-`; each
+`runCodingAgentSessionWorker` with a facet subset +
+`consumeInternalProcessRole` guard; `no-continuity-` and
+`inspector-and-trace-` additionally import the Pi observation seam), the
+prime fixture trees (§5.9), and the `fake-*.mjs` servers
+(`fake-acp-server.mjs`, `fake-rpc-server.mjs`, `fake-prime-rpc.mjs`,
+`fake-reference-swap.mjs`, `publication-child.mjs`).
+
+### 5.11 Scripts and tooling
+
+| Source | Target | Disposition |
+| :--- | :--- | :--- |
+| `scripts/check-browser-smoke.mjs` (donor root) | `scripts/check-browser-smoke.mjs` | **REWRITE** for the §4 tree; Endophasia expected/forbidden set preserved (§7.3); the Pi-internal portions of the donor script belong to the Pi repo |
+| `scripts/check-endophasia-cockpit-types.mjs` (donor root) | `scripts/check-cockpit-types.mjs` | **ADAPT** (read before wiring; expected: runs tsc against the cockpit tsconfig) |
+| donor root `tsconfig.json` paths | `tsconfig.json` | **REWRITE**: same `@earendil-works/*` path map retargeted to `pi/packages/*/src`; include `protocol/ runtime/ adapters/ presentation/ cockpit/ research/ tests/ scripts/`; exclude `cockpit/main.ts` + `cockpit/view.ts` |
+| donor root `vitest.base.ts` + `packages/endophasia/vitest.config.ts` | `vitest.config.ts` | **REWRITE**: `test: { environment: "node", include: ["tests/**/*.test.ts"], testTimeout: 30_000 }`; `resolve.conditions: ["source"]` (+ ssr); aliases: every `@earendil-works/*` (incl. subpaths) → `pi/packages/*/src/*.ts`, plus `^@earendil-works/pi-coding-agent/experimental/(.+)$` → `pi/packages/coding-agent/src/experimental/$1.ts` |
+| donor `biome.json`, `.gitignore`, `LICENSE.md` | root | **KEEP** (biome config copied; ignore adds `pi`-generated artifacts as needed — the submodule itself is tracked) |
+| `docs/runtime-observation-boundary-v0.md`, `docs/continuity-remote-v0.md`, `docs/runtime-profile-v0.md`, `docs/conformance-lab-v0.md`, `docs/pi-upstream.md` | `docs/` | **KEEP** + path updates; the boundary docs define the seams §5.4 keeps deliberately |
+
+## 6. Contract leaks to sever (the REWRITES)
+
+Type-only Pi imports inside contract modules must end in `protocol/`.
+Shapes verified at the donor:
+
+1. **`src/continuity-service.ts:5`** — `import type { Entry, ThinkingLevel }
+   from "@earendil-works/pi-agent-core"`.
+   - `ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
+     "xhigh" | "max"` (donor `packages/agent/src/types.ts:345`) → local
+     literal union in `protocol/continuity.ts`.
+   - `Entry` union = `MessageEntry | CompactionEntry |
+     BranchSummaryEntry | CustomEntry`, `EntryType = "message" |
+     "compaction" | "branch_summary" | "custom"` (donor
+     `packages/agent/src/harness/session/types.ts:16,64`).
+     `ContinuityEntryV0` already projects entries payload-minimally (base
+     `{id, parentId, seq, timestamp}` + per-type minimal fields,
+     `hasSummary`/`hasData` booleans) — the neutral type set is exactly that
+     projection; no wire change.
+2. **`src/session-overview.ts:1`** — `import type { AgentHarness, Context,
+   LaneInfo, OperationStatus } from …`.
+   - `OperationStatus = "running" | "open" | "aborting"` (donor
+     `packages/agent/src/harness/agent-harness.ts:147`) → local literal
+     union.
+   - `LaneInfo` usage is via `harness.lanes` inside the capture function,
+     which moves to `adapters/pi/session-overview.ts`; the protocol types
+     (`SessionLaneOverviewV0`, `SessionOverviewV0` — per-lane consistency,
+     lanes sorted by name, aborting counts) are already Pi-free data.
+3. **`src/control-deck.ts:1`** — `ModelIdentity` =
+   `{ provider: string; modelId: string }` (donor
+   `packages/agent/src/harness/agent-harness.ts:142`) → neutral
+   `ModelIdentityV0` of the identical shape (also matches the continuity
+   configuration model shape already in `protocol/continuity.ts`).
+
+Wire shape is unchanged by all three rewrites: the projected values were
+already plain JSON-serializable data; only the type identities change.
+
+## 7. Machine-verified boundary invariants
+
+These tests encode the architecture; the migration must keep them green,
+with path updates only.
+
+1. **`runtime-observation-boundary.test.ts`** (donor lines 573–584): three
+   layers — (1) fake runtimes prove the facets work from the neutral ports
+   alone; (2) compile-time guards fail if the neutral boundary starts
+   accepting Pi objects; (3) import-graph assertions: neutral modules reach
+   only `@earendil-works/chord`; the adapter reaches
+   `@earendil-works/pi-agent-core`; the worker imports Pi only through the
+   adapter. **UPDATE** the module paths to §4 targets.
+2. **`cockpit-integration.test.ts`** (donor lines 348–362): `cockpit/**`
+   may import only `presentation/websocket-transport.ts`,
+   `@earendil-works/chord/context`, and — type-only — chord, the contract
+   schemas, and the pi-coding-agent experimental service state shapes.
+   **UPDATE** paths.
+3. **Browser smoke** (`scripts/check-browser-smoke.mjs`, REWRITTEN): esbuild
+   browser bundles over the §4 tree. The donor invariant is preserved
+   file-for-file: the donor's service files (mixed, chord-only) map to
+   `runtime/contracts/*` service files; the donor's facet-only files map to
+   `runtime/contracts/*-facet.ts`; the Pi projection modules map to
+   `adapters/pi/*`.
+   - Bundle 1 (transport smoke entry) MUST include:
+     `presentation/websocket-transport.ts`, `presentation/client.ts`,
+     `runtime/contracts/continuity.ts`, `runtime/contracts/
+     runtime-profile.ts`.
+   - Bundle 2 (`cockpit/main.ts`) MUST include: `cockpit/view.ts`,
+     `cockpit/controller.ts`, `runtime/contracts/{mission-trace,
+     runtime-facts,usage,continuity,runtime-profile}.ts`,
+     `presentation/{websocket-transport,client}.ts`,
+     `pi/packages/client/src/client.ts`,
+     `pi/packages/protocol/src/index.ts`.
+   - FORBIDDEN in both: `node:*`, `node_modules/ws`,
+     `node_modules/esbuild`, `pi/packages/agent/src/**`,
+     `runtime/{session-worker,server,browser-server,browser-listener,
+     cockpit,cockpit-host,cockpit-main}.ts`, `runtime/observation/
+     ports.ts`, `runtime/contracts/{usage,continuity,runtime-profile}-
+     facet.ts`, `adapters/pi/**` (all ten modules), `adapters/prime/**`,
+     `research/**`.
+   - The smoke entry file
+     (`scripts/endophasia-browser-transport-smoke-entry.ts`, donor) moves
+     to `scripts/` with the same intent; the expected/forbidden sets above
+     are pinned and re-checked at the first green run.
+4. **`prime-research-boundary.test.ts`**: transitive guard — src,
+   runtime/prime, presentation, cockpit import no `research/` module; no
+   `prime-agent`/`agentclientprotocol` dependency in `package.json` /
+   `package-lock.json`. **UPDATE** paths.
+
+## 8. Deferred (later mission phases, in order)
+
+- Protocol: events, objects, graph, experiments, evidence, visualization
+  schema families (the README `protocol/` sub-trees beyond v0).
+- Events/evidence, graph, replay, evaluation/conformance (lab), evolution
+  substrate (RRSI/GEPA), RRSI/REEF, trust providers.
+- Neutral ports for steering, control-deck, session-overview capture,
+  continuity capture (the §5.4 "no port yet" seams).
+- Prime conformance as a live gate; Codex adapter; visualization layer
+  beyond the cockpit; `storage/`, `cli/`, `models/`.
+- NOT started this phase: RRSI/REEF/Magpie/Deadbolt/Dream work.
+
+## 9. Disposition summary
+
+| Disposition | Components |
+| :--- | :--- |
+| KEEP | `runtime/observation/ports.ts`, `runtime/cockpit-host.ts`, `runtime/cockpit-main.ts`, `runtime/prime/limits.ts`, all of `presentation/`, all of `cockpit/`, all of `research/` + fixtures, test helpers + worker fixtures, `biome.json`/`LICENSE.md`, boundary docs |
+| ADAPT | `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (4 of 5), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
+| REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 3 boundary-guard tests (assertion paths) |
+| RETIRE | nothing in Phase 0 — every demonstrated component has a target home; retirement decisions (e.g. Pi-internal portions of the donor browser-smoke script, donor `packages/endophasia` package metadata) apply to the donor copy, which stays read-only |
+| DEFER | §8 |
+
+## 10. Verification plan (per milestone)
+
+After each milestone commit:
+
+1. `npx tsc --noEmit` (root) + `npx tsc --noEmit -p cockpit/tsconfig.json`.
+2. Migrated suites for the touched boundary (full `npx vitest --run` at the
+   DEVELOP baseline).
+3. Import-direction check: no `protocol/` import below it; no
+   `adapters/pi` import outside `runtime/` composition + tests; no Pi value
+   import outside `adapters/pi/steering.ts` (`HarnessClosed`) and the host
+   entries.
+4. Browser smoke script (rewritten) green.
+5. Accidental-Pi-coupling check: grep `protocol/` for
+   `@earendil-works/pi-` (must be empty); the three guard tests green.
+6. Ledger status updated; target README updated.

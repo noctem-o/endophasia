@@ -723,6 +723,58 @@ Design decisions (recorded per the handoff constraints):
 - **Status (2026-10-02, done):** four new source modules + the barrel
   exports + three suites (51 tests); self-check at §10.5.
 
+### 5.14 Phase 3 components (cognition graph)
+
+README "# Roadmap" Phase 3: the cognition graph — a normalized object
+store over the `endo.node.*` / `endo.edge.*` namespaces, budgeted
+traversal ("root → frontier → batched expansion → dedupe/visited set →
+emit snapshot → continue until depth/node/edge budget"),
+subscriptions, and temporal projection. The `DonorGraphScout` re-check
+(2026-10-02) confirmed the DONOR has no cognition graph and no object
+store: four negative greps found no graph/node/edge/frontier
+vocabulary in the overlay, and none of the README relation names
+appear in it. The closest demonstrated analogs are continuity
+`activePath` (a linearized tip→root parent chain), the mission-trace
+sequence discipline ("sequence is an order, not a time"), and the
+cursor-based attach pattern. Phase 3 therefore establishes new
+Endophasia capability from the README contract, reusing the
+demonstrated disciplines (append-only log, 1-based sequences, strict
+doors, the observation-ports subscription semantics) rather than
+porting donor code.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Typed cognition objects ("include:" 18 object types) | `protocol/graph.ts`: `ENDO_NODE_KINDS_V0` (18) plus the open `EndoObjectV0` kind grammar (`isWellFormedKindV0`, 1+ kebab/dot segments) — "include:" is an open list, so the validator enforces the grammar and the tuple is a documented recommendation |
+| Typed relationships ("include:" 10 relations) | `ENDO_EDGE_RELATIONS_V0` (10) plus the same open grammar on `EndoGraphEdgeV0.relation`; the edge envelope (`endo.edge.v0`) lands now, per the §5.12 deferral note |
+| Normalized object store | `graph/store.ts`: `createEndoGraphStoreV0()` — last-write-wins lookups with per-id revision history, a global 1-based append revision log (`EndoGraphRevisionV0`), adjacency index rebuilt on edge revision |
+| Incremental/budgeted traversal | `graph/traversal.ts`: `expandEndoGraphV0` implements the README pipeline verbatim — BFS frontier, dedupe/visited set, sorted snapshot emission, `maxDepth`/`maxNodes`/`maxEdges` budgets (absent = unbounded), `in`/`out`/`both` direction, relation filter (governs traversal only; the snapshot shows every recorded edge between visited nodes), honest `truncated` and `missing` |
+| Subscriptions | `graph/subscriptions.ts`: `createEndoGraphSubscribersV0()` mirrors `runtime/observation/ports.ts` (idempotent unsubscribe; a throwing listener must not stop the stream; unsubscribe-during-emit is safe); the store's `subscribe` delegates; one `EndoGraphChangeV0` per upsert |
+| Temporal projection ("the graph is not 'the truth'… a structured projection of recorded state") | `graph/projections.ts`: `projectEndoGraphAtV0(store, upToSequence)` replays the store's own revision log — honest because the log is evidence material; 0 = empty projection, beyond the log end = current state, sorted and deterministic |
+
+Design decisions (recorded per the handoff constraints):
+
+- Node kinds and edge relations are OPEN well-formed vocabularies
+  (kebab segments, dot segments allowed) with documented recommended
+  tuples — README "include:" semantics, not closed unions.
+- Dangling endpoints are legal: a recorded edge belongs to the graph
+  even when an endpoint object is never recorded; traversal reports
+  such endpoints in `snapshot.missing` (the README honesty rule), and
+  expansion from a missing root still follows its recorded edges.
+- Per-id revisions plus the global append sequence mirror the Phase 2
+  event-store discipline: the revision log is evidence material, not
+  implementation detail — it is what makes temporal projection honest.
+- Strict doors: `upsertObject`, `upsertEdge`, the
+  `expandEndoGraphV0` options, and `projectEndoGraphAtV0` validate
+  `unknown` and throw TypeError (the Phase 2 discipline continues).
+- The remaining deferred object envelopes (Artifact, Decision,
+  Proposal, Receipt, Evaluation, VisualizationState) stay v1, with
+  their identifier-kind namespaces as v1 additions.
+- No Chord service handle/facet yet (it lands with the first consumer)
+  and no Pi adapter yet.
+
+- **Status (2026-10-02, done):** `protocol/graph.ts` + five graph
+  modules + five suites (68 tests); self-check at §10.6.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -825,14 +877,14 @@ with path updates only.
 
 ## 8. Deferred (later mission phases, in order)
 
-- Protocol: the remaining seven of the README's 14 object types have no
-  v0 envelope yet (Artifact, Edge, Decision, Proposal, Receipt,
-  Evaluation, VisualizationState) and their namespaces are v1 additions
+- Protocol: the remaining six of the README's 14 object types have no
+  v0 envelope yet (Artifact, Decision, Proposal, Receipt, Evaluation,
+  VisualizationState) and their namespaces are v1 additions
   to `ENDO_IDENTIFIER_KINDS_V0` — each lands with the phase that owns it
-  (Edge with the Phase 3 cognition graph; Evaluation/Evidence result
-  types with Phases 5/6). The schema/IR/code-generation approach (README
-  line 714) lands only after the protocol stabilises.
-- Graph, evaluation/conformance (lab), evolution substrate (RRSI/GEPA),
+  (Evaluation/Evidence result types with Phases 5/6). The schema/IR/
+  code-generation approach (README line 714) lands only after the
+  protocol stabilises.
+- Evaluation/conformance (lab), evolution substrate (RRSI/GEPA),
   RRSI/REEF, trust providers.
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
@@ -1007,6 +1059,36 @@ Milestone (c):
   failed** (1620 pre-existing + 51 new).
 - Donor untouched (read-only): Phase 2 adds no donor files.
 
+### 10.6 Phase 3 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the ten scope directories: 124 files, no fixes
+  needed (after `--write` normalized the new protocol module, the five
+  graph modules, and the five suites + fixture).
+- `grep -rn '@earendil-works/pi-' protocol/ graph/`: 0 matches. Import
+  direction: `protocol/graph.ts` imports only `./identity.ts` and
+  `./object.ts` (intra-protocol; `protocol/` remains zero-dependency);
+  `graph/` imports only `protocol/` + `runtime/contracts/canonical-json.ts`
+  (store only) + intra-graph.
+- New suites: `tests/{endo-graph-protocol,endo-graph-store,endo-graph-traversal,endo-graph-projections,endo-graph-subscriptions}.test.ts`
+  + shared `tests/graph-fixture.ts` — 5 files, 68 passed: validator
+  accept/reject per field for the six new protocol shapes; the strict
+  ingestion doors (including the structural-pass / plain-JSON-fail
+  Date-payload seam); per-id revisions plus the global sequence;
+  adjacency rebuild on edge endpoint movement; the README traversal
+  pipeline verbatim (budgets, direction, relation filtering with the
+  snapshot-includes-all-edges-between-visited semantics, honest
+  `truncated`/`missing`, expansion from a missing root); temporal
+  projection over the revision log (sequence points, edge revisions,
+  beyond-log-end = current state); subscription semantics (registration
+  order, throwing listener, idempotent unsubscribe,
+  unsubscribe-during-emit).
+- Full `npx vitest --run`: **55/55 files, 1739 passed, 3 skipped, 0
+  failed** (1671 pre-existing + 68 new).
+- Donor untouched (read-only): Phase 3 adds no donor files; the
+  `DonorGraphScout` re-check found no donor cognition graph or object
+  store to port (§5.14).
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1026,5 +1108,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 3 (cognition graph — typed nodes/edges, normalized object store, incremental traversal; README "# Roadmap"). Phase 2 (event and evidence substrate) is recorded in §5.13 and verified in §10.5.
+Next: Phase 4 (real visual cognition — README "# Roadmap"). Phase 3 (cognition graph) is recorded in §5.14 and verified in §10.6.
 

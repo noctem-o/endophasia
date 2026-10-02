@@ -60,6 +60,7 @@
 	"files": ["pi/packages/coding-agent/src/utils/highlight-js.d.ts"],
 	"include": [
 		"protocol/**/*",
+		"graph/**/*",
 		"runtime/**/*",
 		"adapters/**/*",
 		"presentation/**/*",

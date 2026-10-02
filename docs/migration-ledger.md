@@ -634,6 +634,39 @@ prime fixture trees (§5.9), and the `fake-*.mjs` servers
   `endophasia-browser-transport-smoke-entry.ts` written (donor intent,
   target paths). `check-cockpit-types.mjs` ADAPTED (see §5.8).
 
+### 5.12 Phase 1 components (protocol + identity)
+
+Phase 1 (README "Phase 1 — Protocol + identity") builds the versioned
+protocol foundation. The donor has no Phase 1 counterpart (its v0 schemas
+are runtime-observation-specific); these are new target modules in the
+house style of `protocol/mission-trace.ts`: type-centric,
+`<name>.v0` schemaVersion literals, closed literal unions, and zero
+dependency outside `protocol/`.
+
+| README Phase 1 item | Disposition | Where |
+| :--- | :--- | :--- |
+| Versioned protocol | **BUILD** | `protocol/{identity,event,object,coordinates}.ts` + `JsonValueV0` in `protocol/primitives.ts`; every schema carries an `endo.*.v0` literal; the existing v0 modules (`mission-trace`, `runtime-profile`, …) are untouched |
+| Stable identifiers | **BUILD** | `protocol/identity.ts`: the `endo.<kind>.<local>` grammar; the closed 10-namespace v0 set is exactly the README example list (`endo.session.*` … `endo.evidence.*`); pure `parse`/`format`/`is` functions; the local part is opaque `[A-Za-z0-9._-]{1,256}` |
+| Event/object schemas | **BUILD** | `protocol/event.ts` (the envelope: closed 6-class `source` — the README "Those are not interchangeable" distinction; 2+-segment dotted `kind`; monotonic `sequence`; ISO-8601 UTC `at`; namespaced coordinates; `derivedFrom` lineage; strict-JSON `payload`) + `protocol/object.ts` (the minimal 4-field object envelope; the normalized object store is Phase 3) |
+| Capability vocabulary | **KEEP** (pre-existing) | `protocol/runtime-profile.ts` — the closed v0 capability catalogue is the Phase 1 capability vocabulary, carried verbatim from the donor |
+| Experiment/evidence coordinate model | **BUILD** | `protocol/coordinates.ts`: trial coordinates (experiment, optional candidate, 0-based trial index, optional recorded run) + evidence coordinates (evidence id, nested trial coordinates, optional replay run id) |
+
+Design decisions (recorded per the handoff constraints):
+
+- The event `source` class is a **closed** 6-literal union — the
+  distinction the README insists on; the event `kind` is **open but
+  well-formed** (the README kind list is "Examples:" and "Not every
+  runtime will emit every event"); identifier namespaces stay closed.
+- Strict-JSON discipline in the validators: unknown fields rejected,
+  non-finite numbers rejected, identifiers checked against the correct
+  namespace. Validators return the validated value unchanged (pure,
+  allocation-free) or null — never a throw.
+- `protocol/` remains zero-dependency: the new modules import only
+  `./identity.ts` and `./primitives.ts`.
+
+- **Status (2026-10-02, done):** all four modules + four suites green
+  (40 tests); self-check at §10.4.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -736,8 +769,13 @@ with path updates only.
 
 ## 8. Deferred (later mission phases, in order)
 
-- Protocol: events, objects, graph, experiments, evidence, visualization
-  schema families (the README `protocol/` sub-trees beyond v0).
+- Protocol: the remaining seven of the README's 14 object types have no
+  v0 envelope yet (Artifact, Edge, Decision, Proposal, Receipt,
+  Evaluation, VisualizationState) and their namespaces are v1 additions
+  to `ENDO_IDENTIFIER_KINDS_V0` — each lands with the phase that owns it
+  (Edge with the Phase 3 cognition graph; Evaluation/Evidence result
+  types with Phases 5/6). The schema/IR/code-generation approach (README
+  line 714) lands only after the protocol stabilises.
 - Events/evidence, graph, replay, evaluation/conformance (lab), evolution
   substrate (RRSI/GEPA), RRSI/REEF, trust providers.
 - Neutral ports for steering, control-deck, session-overview capture,
@@ -871,6 +909,24 @@ Milestone (c):
 - Donor worktree verified clean at HEAD `ab4caf5a0` before and after
   the re-measurement runs.
 
+### 10.4 Phase 1 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the nine scope directories: 148 files, no fixes
+  needed (after `--write` formatted the four new test files).
+- `grep -rn '@earendil-works/pi-' protocol/`: 0 matches. Import
+  direction: the new modules import only `./identity.ts` and
+  `./primitives.ts` (intra-protocol); `protocol/` remains
+  zero-dependency.
+- New suites: `tests/{endo-identity,endo-event,endo-object,endo-coordinates}.test.ts`
+  — 4 files, 40 passed: identifier grammar boundaries and the
+  `format ∘ parse = id` round-trip, envelope accept/reject per field,
+  namespace discipline for every identifier field, strict-JSON payload
+  discipline (non-finite numbers rejected).
+- Full `npx vitest --run`: **47/47 files, 1620 passed, 3 skipped, 0
+  failed** (1580 pre-existing + 40 new).
+- Donor untouched (read-only): Phase 1 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -890,4 +946,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 1 (protocol + identity) — §5.12.
+Next: Phase 2 (event and evidence substrate) — the README roadmap. Phase 1 (protocol + identity) is recorded in §5.12 and verified in §10.4.
+

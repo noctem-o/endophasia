@@ -1,5 +1,6 @@
-// Neutral v0 primitives shared by the Endophasia protocol schemas. Each redefines, with an identical wire shape, a
-// small vocabulary that a concrete runtime also reports, so the protocol never imports a concrete runtime.
+// Neutral v0 primitives shared by the Endophasia protocol schemas. Some redefine, with an identical wire shape, a
+// small vocabulary that a concrete runtime also reports; others are protocol-level shapes no runtime owns. The
+// protocol never imports a concrete runtime.
 
 /** A lane's in-flight operation status; identical literals to Pi's `OperationStatus`. */
 export type OperationStatusV0 = "running" | "open" | "aborting";
@@ -12,3 +13,6 @@ export interface ModelIdentityV0 {
 	provider: string;
 	modelId: string;
 }
+
+/** A strict JSON value: the wire shape every protocol payload carries. */
+export type JsonValueV0 = null | boolean | number | string | JsonValueV0[] | { [key: string]: JsonValueV0 };

@@ -61,6 +61,7 @@
 	"include": [
 		"protocol/**/*",
 		"graph/**/*",
+		"visualization/**/*",
 		"runtime/**/*",
 		"adapters/**/*",
 		"presentation/**/*",

@@ -775,6 +775,55 @@ Design decisions (recorded per the handoff constraints):
 - **Status (2026-10-02, done):** `protocol/graph.ts` + five graph
   modules + five suites (68 tests); self-check at §10.6.
 
+### 5.15 Phase 4 components (real visual cognition)
+
+README "# Roadmap" Phase 4: real visual cognition — semantic visual
+state, engineering cockpit, live graph updates, model/runtime-directed
+animation, a Dream mode renderer, graceful unavailable-state rendering,
+"use one state model for both renderers". The donor has no visual
+cognition substrate (the §5.14 scout found no cognition graph at all),
+so Phase 4 builds new capability on the Phase 3 cognition graph,
+reusing the demonstrated disciplines (1-based sequences, strict doors,
+the ports subscription semantics, honest degraded reporting).
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Semantic visual state | `protocol/visualization.ts` + `visualization/semantic-state.ts`: `buildEndoSemanticVisualStateV0(store, options?)` — whole-store, or rooted with the Phase 3 expansion options (`root`/`budgets`/`relations`/`direction`) passed through unchanged; per-component BFS depth from the smallest identifier; node signals (attention/cluster/uncertainty) projected from the recorded payload keys with the documented availability vocabulary; scene signals (atmosphere/camera-intent) decided by the smallest recording identifier; honest `missing`/`truncated`/`source` coordinates; `buildEndoSemanticVisualStateAtV0` re-derives at a past store sequence over the Phase 3 revision log (whole-store only) |
+| Engineering cockpit | `visualization/engineering.ts`: `renderEngineeringSceneV0` — four deterministic sections (claims-evidence, degraded-states, graph-inspector, status) of labelled rows with a tone; every absent thing renders an explicit row, never a silent hole |
+| Live graph updates / model-runtime-directed animation | `visualization/live.ts`: `createEndoSemanticVisualUpdaterV0` — subscribes to the Phase 3 store; every graph change delivers a rebuilt state carrying a derived temporal-motion signal (the sequence delta since the last successful delivery); a throwing listener drops its delivery without advancing the motion baseline; the initial delivery is synchronous; unsubscribe is idempotent |
+| Dream mode renderer | `visualization/dream.ts`: `renderDreamSceneV0` — topology (depth + recorded cluster), attention/uncertainty fields, active regions, branching hypotheses (hypothesis nodes with incident relations), recorded clusters, model/tool boundaries, scene signals; missing motion renders an explicit unavailable signal |
+| Graceful unavailable-state rendering | every signal is an `EndoVisualSignalV0` with the `available`/`unavailable`/`unrecognized` availability vocabulary and a recorded reason; out-of-range or mistyped recorded values are carried as-sent under `unrecognized`, never normalized or invented |
+| One state model for both renderers | both renderers validate the same `EndoSemanticVisualStateV0` with its own validator (TypeError at the door) and are pure projections of it |
+
+Design decisions:
+
+- Signals are projections of recorded cognition: node signals are read
+  from the node's recorded payload under the strict-JSON discipline;
+  availability is a three-way vocabulary — `available` (value +
+  `recorded` origin), `unavailable` (reason), `unrecognized` (value
+  as-sent + reason) — with the value/origin/reason co-presence
+  enforced by the validator.
+- Scene-signal precedence: the smallest node identifier among the
+  recorders decides; a scene signal with no recorder is an explicit
+  unavailable with a recorded reason.
+- Motion is derived, not recorded: a single build has no predecessor,
+  so the builder emits an unavailable motion with a reason; only the
+  live updater derives motion (the sequence delta), and it replaces
+  the builder's unavailable entry rather than duplicating it.
+- Depth is a graph fact, not a layout hint: BFS distance from each
+  component's smallest identifier (rooted builds measure from the
+  root), so the same state always yields the same topology.
+- Strict doors: `buildEndoSemanticVisualStateV0` options,
+  `buildEndoSemanticVisualStateAtV0`, and both renderers validate
+  `unknown` input and throw TypeError — the Phase 2/3 discipline
+  continues.
+- No Chord service handle/facet and no Pi adapter yet: both land with
+  the first cockpit consumer (the cockpit/ presentation wiring).
+
+- **Status (2026-10-02, done):** `protocol/visualization.ts` + four
+  visualization modules + five suites (65 tests); self-check at §10.7.
+
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -877,19 +926,21 @@ with path updates only.
 
 ## 8. Deferred (later mission phases, in order)
 
-- Protocol: the remaining six of the README's 14 object types have no
-  v0 envelope yet (Artifact, Decision, Proposal, Receipt, Evaluation,
-  VisualizationState) and their namespaces are v1 additions
-  to `ENDO_IDENTIFIER_KINDS_V0` — each lands with the phase that owns it
-  (Evaluation/Evidence result types with Phases 5/6). The schema/IR/
+- Protocol: the remaining five of the README's 14 object types have no
+  v0 envelope yet (Artifact, Decision, Proposal, Receipt, Evaluation)
+  and their namespaces are v1 additions to `ENDO_IDENTIFIER_KINDS_V0` —
+  each lands with the phase that owns it (Evaluation/Evidence result
+  types with Phases 5/6); the VisualizationState v0 envelope landed in
+  Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the
   protocol stabilises.
 - Evaluation/conformance (lab), evolution substrate (RRSI/GEPA),
   RRSI/REEF, trust providers.
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
-- Prime conformance as a live gate; Codex adapter; visualization layer
-  beyond the cockpit; `storage/`, `cli/`, `models/`.
+- Prime conformance as a live gate; Codex adapter; the cockpit/
+  presentation wiring for the Phase 4 scenes; `storage/`, `cli/`,
+  `models/`.
 - NOT started this phase: RRSI/REEF/Magpie/Deadbolt/Dream work.
 
 ## 9. Disposition summary
@@ -1089,6 +1140,37 @@ Milestone (c):
   `DonorGraphScout` re-check found no donor cognition graph or object
   store to port (§5.14).
 
+### 10.7 Phase 4 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the ten scope directories: 179 files, no fixes
+  needed (after `--write` formatted the four new modules and the five
+  suites + fixture).
+- `grep -rn '@earendil-works/pi-' protocol/ visualization/`: 0
+  matches. Import direction: `protocol/visualization.ts` imports only
+  `./identity.ts` and `./primitives.ts` (intra-protocol; `protocol/`
+  remains zero-dependency); `visualization/` imports only
+  `protocol/` + `graph/` (store, traversal, projections) +
+  intra-visualization.
+- New suites: `tests/{endo-visualization-protocol,endo-visualization-semantic-state,endo-visualization-engineering,endo-visualization-dream,endo-visualization-live}.test.ts`
+  + shared `tests/visualization-fixture.ts` — 5 files, 65 passed:
+  validator accept/reject per field for the fourteen new protocol
+  shapes plus the value/origin/reason co-presence per availability;
+  whole-store and rooted projection (per-component depth from the
+  smallest identifier, `missing`/`truncated` honesty, budgets,
+  relation filtering, expansion from an unstored root); the strict
+  options doors; temporal rebuild at a past store sequence;
+  engineering sections (every row, the empty-store explicit rows,
+  degraded-signal rows carrying the recorded reasons, stance
+  counting); dream projections (fields, regions, hypotheses,
+  clusters, boundaries, motion pass-through); live deliveries
+  (synchronous initial, derived motion delta, a dropped delivery not
+  advancing the baseline, idempotent unsubscribe,
+  unsubscribe-during-delivery).
+- Full `npx vitest --run`: **60/60 files, 1804 passed, 3 skipped, 0
+  failed** (1739 pre-existing + 65 new).
+- Donor untouched (read-only): Phase 4 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1108,5 +1190,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 4 (real visual cognition — README "# Roadmap"). Phase 3 (cognition graph) is recorded in §5.14 and verified in §10.6.
+Next: Phase 5 (Evaluation and Conformance Lab — README "# Roadmap"). Phase 4 (real visual cognition) is recorded in §5.15 and verified in §10.7.
 

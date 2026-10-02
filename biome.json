@@ -27,6 +27,7 @@
 		"includes": [
 			"protocol/**/*.ts",
 			"graph/**/*.ts",
+			"visualization/**/*.ts",
 			"runtime/**/*.ts",
 			"adapters/**/*.ts",
 			"presentation/**/*.ts",

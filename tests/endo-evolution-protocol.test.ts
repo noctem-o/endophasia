@@ -661,7 +661,7 @@ describe("validateEndoEvidenceLedgerEntryV0", () => {
 		).toBeNull();
 	});
 
-	it("rejects a kind outside the closed eleven-way", () => {
+	it("rejects a kind outside the closed fifteen-way", () => {
 		expect(
 			validateEndoEvidenceLedgerEntryV0(validEntry(1, "proposal" as EndoEvidenceKindV0, "endo.evidence.x")),
 		).toBeNull();

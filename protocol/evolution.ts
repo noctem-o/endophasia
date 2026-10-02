@@ -178,7 +178,11 @@ export type EndoEvidenceKindV0 =
 	| "selection-decision"
 	| "promotion-request"
 	| "promotion-decision"
-	| "experiment-transition";
+	| "experiment-transition"
+	| "witness"
+	| "standing"
+	| "lease"
+	| "receipt";
 
 /** The closed evidence ledger kinds. */
 export const ENDO_EVIDENCE_KINDS_V0 = [
@@ -193,6 +197,10 @@ export const ENDO_EVIDENCE_KINDS_V0 = [
 	"promotion-request",
 	"promotion-decision",
 	"experiment-transition",
+	"witness",
+	"standing",
+	"lease",
+	"receipt",
 ] as const satisfies readonly EndoEvidenceKindV0[];
 
 /**
@@ -887,9 +895,9 @@ export function validateEndoEvidenceLedgerEntryV0(value: unknown): EndoEvidenceL
  * The evidence ledger of an experiment: the append-only, sequence-ordered list of records the
  * experiment produced (evaluation results, conformance suites, experiment bundles, replay
  * comparisons, mutations, artifacts, candidates, selection decisions, promotion requests and
- * decisions, transitions). It is the per-experiment referential-integrity point: append order is
- * causal order, no record appears twice, and replay reconstructs the ledger from its entries
- * (evolution/evidence.ts).
+ * decisions, transitions, and the trust records — witnesses, standings, leases, receipts). It is
+ * the per-experiment referential-integrity point: append order is causal order, no record appears
+ * twice, and replay reconstructs the ledger from its entries (evolution/evidence.ts).
  */
 export interface EndoEvidenceLedgerV0 {
 	schemaVersion: "endo.evidence-ledger.v0";

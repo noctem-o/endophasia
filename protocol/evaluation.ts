@@ -255,11 +255,19 @@ function isNonNegativeIntegerV0(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+function isPlainRecordV0(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === null || proto === Object.prototype;
+}
+
 function isStrictJsonValue(value: unknown): value is JsonValueV0 {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return true;
 	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) return value.every(isStrictJsonValue);
-	if (typeof value === "object") return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	if (typeof value === "object" && isPlainRecordV0(value)) {
+		return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	}
 	return false;
 }
 

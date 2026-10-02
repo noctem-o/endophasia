@@ -943,6 +943,44 @@ Design decisions:
   two `adapters/reef/` modules + `evolution/index.ts` (+2 re-exports)
   + two suites (41 tests); self-check at §10.10.
 
+### 5.19 Phase 8 components (Trust integrations)
+
+Phase 8 scope (README "## Phase 8 — Trust integrations", lines
+1274–1282): the Cogitator witness integration, the Magpie
+epistemic integration, and the Deadbolt authority integration —
+kept optional and protocol-bound. Phase 8 is seams, not
+implementations: no Rust, no network, no filesystem, no provider
+internals in the tree — each provider stays external behind its
+seam. Donor re-check (read-only, case-insensitive, over the whole
+donor): 16 `cogitator|magpie|deadbolt` matches, all prose — 15 in
+`endophasia-source/README.md` (the roadmap's "Magpie integration,
+Deadbolt integration … are future work" and the "Magpie and
+Deadbolt" section, lines 372–405) and one in
+`docs/prime-runtime-conformance-v0.md:329` — and zero Cogitator
+matches anywhere; no trust-provider code in `packages/`: no
+Phase 8 analogue, BUILD.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Cogitator witness integration | `adapters/cogitator/{shapes,mapping}.ts`: a mirror of the documented witness bundle shape + a pure mapper to `endo.witness.v0` (`protocol/trust.ts`) — `runId` verbatim, `witnessRoot` and the optional `expectedRoot` 64 lowercase hex, `witnessAlgorithm` closed at `blake3`, and the verification state DERIVED, never trusted: recomputed root absent → `not-verified`, recomputed ≠ root → `recomputed-mismatched`, equal → `recomputed-matched`, `externally-confirmed` only when a separately recorded `expectedRoot` also agrees (the one level that detects wholesale bundle replacement); a root anchors integrity, not occurrence |
+| Magpie epistemic integration | `adapters/magpie/{shapes,mapping}.ts`: a mirror of the documented standing-output shape + a pure mapper to `endo.standing.v0` — `claimId` verbatim (1–256), `policy` closed at `v0`–`v4` (caller-selected, no default), `standing` closed at four values, `evidence` `endo.evidence.*` ids, and the door enforces the per-policy ceiling (`ENDO_STANDING_CEILING_V0`) — a standing above its policy's ceiling is a `TypeError`, never a repair; `v2`/`v3` never record `settled`, and failure is recorded, never falsified |
+| Deadbolt authority integration | `adapters/deadbolt/{shapes,mapping}.ts`: mirrors of the documented lease and receipt shapes + two pure mappers to `endo.lease.v0` / `endo.receipt.v0` — typed route (well-formed dotted kind, ≤128), the lease bound to the exact record, `outcome` closed three-way, `result` strict JSON — plus `trust/authority.ts::verifyEndoPromotionClosureV0(request, decision, lease, receipt)`: the derived closure report with the five conditions in fixed order (decision-granted, decision-matches-request, lease-binds-decision, receipt-closes-lease, receipt-route-matches); a rolled-back or refused receipt still closes the loop at its recorded outcome; a closure is a report, never a grant — "The model may suggest. Authority stays outside the model." |
+
+Design decisions:
+
+- **All four trust records live in `endo.evidence.*`**: witness, standing, lease, and receipt join the Phase 6 spine in the same append-only evidence ledger — the closed 10-way identifier union is intact, and a trust record is a record like any other: named, ordered, replayable.
+- **Ledger kind union 11 → 15, with forward-reference wiring**: `evolution/evidence.ts::referencesV0` gains four cases — witness → `[]` (a root stands on its own), standing → `record.evidence`, lease → `[record.boundTo]`, receipt → `[record.leaseId, ...(record.rollbackOf ?? [])]`; and the existing promotion-request case already references its `selectionId`, so the ledger enforces the full causal order: a lease before its decision, or a receipt before its lease, is not a ledger.
+- **Reports are derived views, not ledgerable**: `endo.witness-coverage.v0` and `endo.promotion-closure.v0` carry validators for serialization and round-trip, but they are outside the ledger's kind union — computed from named records, never recorded as if they were events.
+- **Seams, not implementations**: `trust/` imports only `protocol/`; `adapters/{cogitator,magpie}/` only `protocol/`; `adapters/deadbolt/` `protocol/` + `runtime/contracts/` (the strict-JSON door on the receipt result). No Rust, no HTTP, no Ed25519, no BLAKE3 in the tree — the providers' epistemic state is recorded, never re-derived: the signed chain, the hash chain, and the signed lease stay provider-side.
+- **The spine is a 21-entry ledger + the seven-step lifecycle + a closed closure report**: the integration drives two results, two witnesses, the selection → request → decision spine, a standing, a lease, and a receipt through the full lifecycle; the replayed ledger is content-identical, the state is `promoted`, and the closure report closes at the recorded `committed` outcome.
+- **Strict-JSON door hardening (house-wide)**: `protocol/trust.ts` and `protocol/evaluation.ts` carried an identical `isStrictJsonValue` with a prototype hole — `Object.entries(new Date())` is `[]`, so `Date`/`Map`/class instances passed as strict JSON, contradicting `runtime/contracts/canonical-json.ts::assertPlainJsonValueV0` in the same dependency chain. Both copies now gate on a plain-object prototype (Object.prototype or null) — what `JSON.parse` cannot produce is not strict JSON; the full-suite re-run confirms no pre-existing test pins the hole.
+
+- **Status (2026-10-02, done):** `protocol/trust.ts` + three
+  `trust/` modules + six `adapters/{cogitator,magpie,deadbolt}/`
+  modules + `protocol/evolution.ts` (ledger kind union 11 → 15) +
+  `protocol/evaluation.ts` (strict-JSON door) + four suites (106
+  tests); self-check at §10.11.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1054,7 +1092,7 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Trust providers (Phase 8).
+- Runtime expansion (Phase 9).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1391,6 +1429,56 @@ Milestone (c):
   policy + 23 adapter).
 - Donor untouched (read-only): Phase 7 adds no donor files.
 
+### 10.11 Phase 8 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the thirteen scope directories: 209 files,
+  no fixes applied (after `--write` formatted the new/changed
+  modules and the four suites).
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/ trust/ adapters/`:
+  0 matches outside `adapters/pi/`; the ten pre-existing
+  `adapters/pi/` matches (the only production modules allowed to
+  import Pi, §5.4) are untouched. Import direction: `trust/`
+  imports only `protocol/`; `adapters/{cogitator,magpie}/` only
+  `protocol/`; `adapters/deadbolt/` `protocol/` +
+  `runtime/contracts/`; `protocol/` remains zero-dependency, no
+  `node:crypto`.
+- New suites: `tests/endo-trust-protocol.test.ts` (52 tests) —
+  per-record accept/negative pairs on all four trust records
+  (closed schema versions, the `endo.evidence.*` namespace doors,
+  the run-id door, the hex64 root and digest doors, the closed
+  algorithm, the per-policy standing-ceiling matrix, the route
+  grammar including the 128-character bound, the receipt
+  strict-JSON door including the `Date` prototype hole) plus both
+  report validators (fixed condition order, closed/open
+  consistency) and the canonical-JSON round-trip of all six
+  shapes; `tests/endo-trust-ledger.test.ts` (10 tests) — the closed
+  15-way kind union, the forward-reference wiring (the witness
+  appends first since it references nothing; standing→evidence,
+  lease→boundTo, receipt→leaseId, rollback→superseded receipt,
+  each rejected before its reference exists), duplicate record
+  ids, the 8-entry full-trust-chain replay, an id-less conformance
+  suite's content-addressed identity preceding trust records, and
+  trust records reachable from the artifact builder;
+  `tests/endo-trust-adapters.test.ts` (33 tests) — per-mapper
+  accept/negative pairs: the Cogitator verification-state
+  derivation matrix, the expected-root honesty door, the Magpie
+  per-policy ceiling matrix and its refusals, the Deadbolt
+  route/grammar/hex doors and the receipt strict-JSON door, and
+  the rollback receipt superseding its predecessor;
+  `tests/endo-trust-core.test.ts` (11 tests) — `witnessCoverageV0`
+  (trial order, first matching witness wins, honest absence, the
+  doors) and `verifyEndoPromotionClosureV0` (the closed loop, each
+  of the five conditions broken in turn, a rolled-back/refused
+  receipt still closing at its recorded outcome, the doors, the
+  report validating through the protocol), and the 21-entry spine
+  integration (the seven-step lifecycle, the replay, the
+  lease-before-decision refusal).
+- Full `npx vitest --run`: **75/75 files, 2216 passed, 3 skipped,
+  0 failed** (2110 pre-existing at Phase 7 per §10.10 + 106 new:
+  52 protocol + 10 ledger + 33 adapters + 11 core).
+- Donor untouched (read-only): Phase 8 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1410,5 +1498,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 8 (Trust integrations — README "## Phase 8"). Phase 7 (RRSI + REEF provider seams) is recorded in §5.18 and verified in §10.10.
+Next: Phase 9 (Runtime expansion — README "## Phase 9"). Phase 8 (Trust integrations) is recorded in §5.19 and verified in §10.11.
 

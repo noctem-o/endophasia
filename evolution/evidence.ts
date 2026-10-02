@@ -9,8 +9,8 @@
  * - no record appears twice;
  * - a record's references must already be entries of this ledger (a candidate's mutations, a
  *   selection's evidence, a promotion request's selection, a promotion decision's request and
- *   evidence, a mutation's artifact, a transition's evidence). Append order is causal order: a
- *   record cannot reference evidence that was never produced.
+ *   evidence, a mutation's artifact, a transition's evidence, a standing's evidence, a lease's
+ *   bound record, a receipt's lease and rollback target). Append order is causal order: a
  *
  * `replayEndoEvidenceLedgerV0` re-validates a persisted ledger (shape, closed kinds, namespaces,
  * sequences exactly 1..n, duplicate record ids). Reference integrity is enforced at append time;
@@ -54,6 +54,18 @@ import {
 	validateEndoSelectionDecisionV0,
 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
+import type {
+	EndoLeaseRecordV0,
+	EndoReceiptRecordV0,
+	EndoStandingRecordV0,
+	EndoWitnessRecordV0,
+} from "../protocol/trust.ts";
+import {
+	validateEndoLeaseRecordV0,
+	validateEndoReceiptRecordV0,
+	validateEndoStandingRecordV0,
+	validateEndoWitnessRecordV0,
+} from "../protocol/trust.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 
 /** The closed set of record kinds the ledger can hold. */
@@ -68,7 +80,11 @@ type EndoLedgerRecordV0 =
 	| EndoSelectionDecisionV0
 	| EndoPromotionRequestV0
 	| EndoPromotionDecisionV0
-	| EndoExperimentTransitionV0;
+	| EndoExperimentTransitionV0
+	| EndoWitnessRecordV0
+	| EndoStandingRecordV0
+	| EndoLeaseRecordV0
+	| EndoReceiptRecordV0;
 
 /** The closed map from a record's schemaVersion to its ledger kind. */
 const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvidenceKindV0>> = {
@@ -83,6 +99,10 @@ const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvide
 	"endo.promotion-request.v0": "promotion-request",
 	"endo.promotion-decision.v0": "promotion-decision",
 	"endo.experiment-transition.v0": "experiment-transition",
+	"endo.witness.v0": "witness",
+	"endo.standing.v0": "standing",
+	"endo.lease.v0": "lease",
+	"endo.receipt.v0": "receipt",
 };
 
 /** The validator of each closed evidence record kind. */
@@ -99,6 +119,10 @@ const ENDO_EVIDENCE_VALIDATORS_V0: Readonly<Record<EndoEvidenceKindV0, (value: u
 		"promotion-request": validateEndoPromotionRequestV0,
 		"promotion-decision": validateEndoPromotionDecisionV0,
 		"experiment-transition": validateEndoExperimentTransitionV0,
+		witness: validateEndoWitnessRecordV0,
+		standing: validateEndoStandingRecordV0,
+		lease: validateEndoLeaseRecordV0,
+		receipt: validateEndoReceiptRecordV0,
 	};
 
 /** The ledger references a record must already have been appended with, by its schemaVersion. */
@@ -116,6 +140,14 @@ function referencesV0(record: EndoLedgerRecordV0): string[] {
 			return record.artifactId !== undefined ? [record.artifactId] : [];
 		case "endo.experiment-transition.v0":
 			return record.evidence ?? [];
+		case "endo.witness.v0":
+			return [];
+		case "endo.standing.v0":
+			return record.evidence;
+		case "endo.lease.v0":
+			return [record.boundTo];
+		case "endo.receipt.v0":
+			return [record.leaseId, ...(record.rollbackOf ?? [])];
 		default:
 			return [];
 	}

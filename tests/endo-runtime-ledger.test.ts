@@ -50,7 +50,7 @@ function admission(overrides: Record<string, unknown> = {}): Record<string, unkn
 }
 
 describe("the runtime admission in the evidence ledger", () => {
-	it("records the nineteen closed evidence kinds", () => {
+	it("records the twenty-five closed evidence kinds", () => {
 		expect([...ENDO_EVIDENCE_KINDS_V0]).toEqual([
 			"evaluation-result",
 			"conformance-suite",
@@ -71,6 +71,12 @@ describe("the runtime admission in the evidence ledger", () => {
 			"model-profile",
 			"model-pool",
 			"model-telemetry",
+			"collab-room",
+			"collab-discussion",
+			"collab-approval-request",
+			"collab-approval-decision",
+			"collab-patch",
+			"collab-steering",
 		]);
 	});
 

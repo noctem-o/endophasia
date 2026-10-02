@@ -18,6 +18,22 @@
  */
 
 import type {
+	EndoCollabApprovalDecisionV0,
+	EndoCollabApprovalRequestV0,
+	EndoCollabDiscussionV0,
+	EndoCollabPatchV0,
+	EndoCollabRoomV0,
+	EndoCollabSteeringV0,
+} from "../protocol/collab.ts";
+import {
+	validateEndoCollabApprovalDecisionV0,
+	validateEndoCollabApprovalRequestV0,
+	validateEndoCollabDiscussionV0,
+	validateEndoCollabPatchV0,
+	validateEndoCollabRoomV0,
+	validateEndoCollabSteeringV0,
+} from "../protocol/collab.ts";
+import type {
 	EndoConformanceSuiteV0,
 	EndoEvaluationResultV0,
 	EndoExperimentBundleV0,
@@ -96,7 +112,13 @@ type EndoLedgerRecordV0 =
 	| EndoRuntimeAdmissionV0
 	| EndoModelProfileV0
 	| EndoModelPoolV0
-	| EndoModelTelemetryV0;
+	| EndoModelTelemetryV0
+	| EndoCollabRoomV0
+	| EndoCollabDiscussionV0
+	| EndoCollabApprovalRequestV0
+	| EndoCollabApprovalDecisionV0
+	| EndoCollabPatchV0
+	| EndoCollabSteeringV0;
 
 /** The closed map from a record's schemaVersion to its ledger kind. */
 const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvidenceKindV0>> = {
@@ -119,6 +141,12 @@ const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvide
 	"endo.model-profile.v0": "model-profile",
 	"endo.model-pool.v0": "model-pool",
 	"endo.model-telemetry.v0": "model-telemetry",
+	"endo.collab-room.v0": "collab-room",
+	"endo.collab-discussion.v0": "collab-discussion",
+	"endo.collab-approval-request.v0": "collab-approval-request",
+	"endo.collab-approval-decision.v0": "collab-approval-decision",
+	"endo.collab-patch.v0": "collab-patch",
+	"endo.collab-steering.v0": "collab-steering",
 };
 
 /** The validator of each closed evidence record kind. */
@@ -143,6 +171,12 @@ const ENDO_EVIDENCE_VALIDATORS_V0: Readonly<Record<EndoEvidenceKindV0, (value: u
 		"model-profile": validateEndoModelProfileV0,
 		"model-pool": validateEndoModelPoolV0,
 		"model-telemetry": validateEndoModelTelemetryV0,
+		"collab-room": validateEndoCollabRoomV0,
+		"collab-discussion": validateEndoCollabDiscussionV0,
+		"collab-approval-request": validateEndoCollabApprovalRequestV0,
+		"collab-approval-decision": validateEndoCollabApprovalDecisionV0,
+		"collab-patch": validateEndoCollabPatchV0,
+		"collab-steering": validateEndoCollabSteeringV0,
 	};
 
 /** The ledger references a record must already have been appended with, by its schemaVersion. */
@@ -176,6 +210,18 @@ function referencesV0(record: EndoLedgerRecordV0): string[] {
 			return record.members.map((member) => member.modelId);
 		case "endo.model-telemetry.v0":
 			return [record.modelId];
+		case "endo.collab-room.v0":
+			return [];
+		case "endo.collab-discussion.v0":
+			return [record.roomId, record.candidateId, ...record.evidenceRefs, ...record.receiptRefs];
+		case "endo.collab-approval-request.v0":
+			return [record.roomId, record.candidateId, ...record.evidenceRefs];
+		case "endo.collab-approval-decision.v0":
+			return [record.requestId];
+		case "endo.collab-patch.v0":
+			return [record.roomId];
+		case "endo.collab-steering.v0":
+			return [record.roomId];
 		default:
 			return [];
 	}

@@ -47,7 +47,7 @@ function telemetry(id: string, modelId: string, overrides: Record<string, unknow
 }
 
 describe("the model records in the evidence ledger", () => {
-	it("records the nineteen closed evidence kinds", () => {
+	it("records the twenty-five closed evidence kinds", () => {
 		expect([...ENDO_EVIDENCE_KINDS_V0]).toEqual([
 			"evaluation-result",
 			"conformance-suite",
@@ -68,6 +68,12 @@ describe("the model records in the evidence ledger", () => {
 			"model-profile",
 			"model-pool",
 			"model-telemetry",
+			"collab-room",
+			"collab-discussion",
+			"collab-approval-request",
+			"collab-approval-decision",
+			"collab-patch",
+			"collab-steering",
 		]);
 	});
 

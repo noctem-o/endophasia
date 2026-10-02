@@ -661,7 +661,7 @@ describe("validateEndoEvidenceLedgerEntryV0", () => {
 		).toBeNull();
 	});
 
-	it("rejects a kind outside the closed nineteen-way", () => {
+	it("rejects a kind outside the closed twenty-five-way", () => {
 		expect(
 			validateEndoEvidenceLedgerEntryV0(validEntry(1, "proposal" as EndoEvidenceKindV0, "endo.evidence.x")),
 		).toBeNull();
@@ -676,6 +676,8 @@ describe("validateEndoEvidenceLedgerEntryV0", () => {
 		expect(
 			validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-telemetry", "endo.evidence.tele-1")),
 		).not.toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "collab-room", "endo.evidence.room-1"))).not.toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "collab-steering", "endo.model.steer-1"))).toBeNull();
 		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-profile", "endo.evidence.gpt-x"))).toBeNull();
 		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-pool", "endo.evidence.pool-1"))).toBeNull();
 	});

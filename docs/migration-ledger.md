@@ -1108,6 +1108,93 @@ Design decisions:
   namespace rule) + `evolution/evidence.ts` (ledger wiring) +
   three suites (67 tests); self-check at §10.13.
 
+### 5.22 Phase 11 components (Collaboration)
+
+Phase 11 scope (README "## Phase 11 — Collaboration",
+lines 1313–1322): add Buzz integration — experiments as
+rooms, candidate discussions, evidence/receipt links,
+approval flows, repository/patch context, and
+human-in-the-loop steering. Non-goal: nothing here runs a
+relay, opens a socket, signs a nostr event, or contacts
+Buzz — Phase 11 is records and one pure summarizer, not an
+integration. Donor re-check (read-only, case-insensitive,
+over the whole donor): zero `buzz` matches anywhere in
+`*.md`/`*.ts` (excluding node_modules); the
+`room`/`discussion`/`approval`/`steering`/`patch` matches
+are all colloquial or other-domain (the README's "leaves
+room for disagreement", the Pi tool-approval gates,
+release-lockstep patching, the README's STEER/QUEUE/STOP
+prose at README.md:39,88,155–156); `feature branch` → 0.
+No Phase 11 analogue in the donor: BUILD (seams only).
+**No Buzz adapter**: the donor documents no Buzz wire shape
+at all; the Buzz notes (`/tmp/p8/buzz-prime.md`) are prose
+only ("Agents are members, not bots"; "Name it, describe
+it, make it private"; the status table marks relay /
+channels / threads / DMs done and "Workflow approval gates"
+in progress). The seam is the record itself; an adapter
+would be invention.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Experiments as rooms | `protocol/collab.ts`: `endo.collab-room.v0` — `experimentId` cites the experiment seed by its `endo.experiment.*` id (provenance, not a ledger reference — §below), `title` 1–256, optional `summary` 1–4096, `visibility` closed two-way open/private |
+| Candidate discussions | `endo.collab-discussion.v0` — one post by a `human`/`agent` author (name 1–256) in a room about a candidate, body 1–8192, citing the room and the candidate |
+| Evidence/receipt links | the discussion's `evidenceRefs` / `receiptRefs` and the approval request's `evidenceRefs`: lists of unique `endo.evidence.*` identifiers that must already be ledger entries when the record is appended |
+| Approval flows | `endo.collab-approval-request.v0` (candidate, `rationale` 1–4096, cited evidence) and `endo.collab-approval-decision.v0` (cites the request by id, `outcome` closed three-way approved/rejected/changes-requested, `deciderKind`/`decider` 1–256, required `reason` 1–4096 — a decision without a reason is not a decision) |
+| Repository/patch context | `endo.collab-patch.v0` — `repo` 1–512, `branch` 1–256, `patchId` 1–256, `status` closed three-way open/merged/closed (the NIP-34 git-event vocabulary the Buzz notes name for patches and repo announcements) |
+| Human-in-the-loop steering | `endo.collab-steering.v0` — reuses `SteeringActionV0` from `protocol/steering.ts` (steer/queue/stop) with the door: `stop` carries no instruction, `steer`/`queue` require one (1–4096) |
+
+Design decisions:
+
+- **Six ledgerable kinds, one derived report**:
+  `collab-room`, `collab-discussion`,
+  `collab-approval-request`, `collab-approval-decision`,
+  `collab-patch`, and `collab-steering` join
+  `ENDO_EVIDENCE_KINDS_V0` (19 → 25) and the
+  `evolution/evidence.ts` kind/validator/references maps;
+  all six carry `endo.evidence.*` ids, so there is no new
+  identifier namespace and the entry namespace rule of
+  `validateEndoEvidenceLedgerEntryV0` is unchanged (the six
+  fall in the `endo.evidence.*` branch).
+  `endo.collab-room-report.v0` sits outside the kind union:
+  `collab/room-report.ts` `summarizeCollabRoomV0` derives it
+  from a validated room plus the presented room records —
+  per-candidate discussion counts (candidate order), the
+  sorted unique union of cited evidence and receipt
+  references, one approval row per presented request
+  (the decision's outcome, or `null` when undecided), patch
+  rows in patch-id order, and the steering counts; it
+  exits through `validateEndoCollabRoomReportV0`.
+- **A room references nothing**: the experiment is the
+  ledger's seed, not an appendable entry, so the room's
+  `referencesV0` is `[]`; `experimentId` is provenance
+  recorded on the room, and the ledger enforces it by
+  namespace, not by reference.
+- **Causal chains are the ledger's job**: a discussion
+  needs its room, candidate, and every cited ref already
+  appended; a request needs its room, candidate, and refs;
+  a decision needs its request; a patch and a steering
+  record need their room. Duplicated record ids are
+  rejected.
+- **Two decisions for one request is a door**: the
+  summarizer refuses the presented records instead of
+  adopting "last presented wins" — an ambiguous record
+  presentation is a defect, not a choice to make.
+- **Seams, not an integration**: `protocol/collab.ts`
+  imports only `protocol/identity.ts` and
+  `protocol/steering.ts` (zero-dependency, no
+  `node:crypto`); `collab/room-report.ts` imports
+  `protocol/collab.ts` and
+  `runtime/contracts/canonical-json.ts`. No network, no
+  sockets, no nostr, no filesystem, no Rust — a Buzz
+  adapter, if one is ever built, is a later phase against
+  a documented wire shape.
+
+- **Status (2026-10-02, done):** `protocol/collab.ts`
+  (seven shapes) + `collab/room-report.ts` (summarizer) +
+  `protocol/evolution.ts` (kind union 19 → 25) +
+  `evolution/evidence.ts` (ledger wiring) + three suites
+  (73 tests); self-check at §10.14.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1219,7 +1306,6 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Collaboration / Buzz integration (Phase 11).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1734,6 +1820,74 @@ Milestone (c):
   45 protocol + 6 ledger + 16 core).
 - Donor untouched (read-only): Phase 10 adds no donor files.
 
+### 10.14 Phase 11 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the thirteen scope directories plus
+  `collab/room-report.ts` (outside the thirteen): 226 files,
+  no fixes applied (after `--write` formatted the new modules
+  and the three suites).
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/ trust/ adapters/`:
+  0 matches outside `adapters/pi/`; the ten pre-existing
+  `adapters/pi/` matches are untouched; the Phase 11 files
+  (`protocol/collab.ts`, `collab/room-report.ts`) carry no Pi
+  imports. Import direction: `collab/room-report.ts` imports
+  only `protocol/collab.ts` and
+  `runtime/contracts/canonical-json.ts`; `protocol/collab.ts`
+  imports only `protocol/identity.ts` and
+  `protocol/steering.ts` (a type only); `protocol/` remains
+  zero-dependency, no `node:crypto`.
+- New suites: `tests/endo-collab-protocol.test.ts` (49 tests) —
+  the four closed sets (visibility, identity kind, approval
+  outcome, patch status) and the seven shapes: room
+  (experiment-namespace citation, the 1–256 title and 1–4096
+  summary caps, the closed two-way visibility), discussion
+  (the author-kind two-way, the 1–256 author and 1–8192 body
+  caps, unique evidence/receipt lists, the id/room/candidate
+  namespaces), approval request (the 1–4096 rationale, the
+  evidence list, the namespaces), approval decision (the
+  three-way outcome, the decider-kind two-way, the required
+  1–4096 reason — the "a decision without a reason is not a
+  decision" door), patch (the three-way NIP-34 status, the
+  1–512 repo / 1–256 branch / 1–256 patch-id caps), steering
+  (steer/queue/stop, the action-instruction door in both
+  directions, the 4096 cap), and the room report (the empty
+  report, the row grammars, the duplicate candidate/request/
+  patch keys, the steering-count grammar); each shape with a
+  canonical-JSON round-trip;
+  `tests/endo-collab-ledger.test.ts` (8 tests) — kind
+  derivation and record identity for `collab-room`, the
+  causal-order refusals (a discussion before its room,
+  candidate, or cited refs; a decision before its request; a
+  patch or steering record before its room), the duplicate
+  record-id refusal, and the 8-entry chain replay (candidate +
+  room + artifact + discussion + request + decision + patch +
+  steering), content-identical after
+  `replayEndoEvidenceLedgerV0`; `tests/endo-collab-core.test.ts`
+  (16 tests) — `summarizeCollabRoomV0`: the empty room, the
+  per-candidate grouping in candidate order, the sorted unique
+  union of evidence and receipt references, the decided and
+  undecided approval rows, the patch rows in patch-id order,
+  the steering counts, the exit through the report validator,
+  and the doors (invalid room, non-array records, a room
+  record or an unknown record shape in the list, a duplicate
+  record id, a record from another room, a decision citing an
+  absent request, two decisions for one request, a duplicate
+  patch id); plus the spine (a real ledger appending the
+  8-record chain in causal order, replay, summarizing the
+  collected records, full-report equality).
+- Updated suites: `tests/endo-runtime-ledger.test.ts` (the
+  closed kind list, nineteen → twenty-five),
+  `tests/endo-models-ledger.test.ts` (the twenty-five closed
+  kinds), and `tests/endo-evolution-protocol.test.ts` (the
+  closed twenty-five-way reject, and the entry-namespace pins
+  adding `collab-room` to `endo.evidence.*` with the
+  cross-namespace reject).
+- Full `npx vitest --run`: **85/85 files, 2423 passed, 3
+  skipped, 0 failed** (2350 pre-existing at Phase 10 per
+  §10.13 + 73 new: 49 protocol + 8 ledger + 16 core).
+- Donor untouched (read-only): Phase 11 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1753,5 +1907,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 11 (Collaboration — README "## Phase 11"). Phase 10 (Model/runtime orchestration) is recorded in §5.21 and verified in §10.13.
+Next: none — Phase 11 (Collaboration) is the final roadmap phase, recorded in §5.22 and verified in §10.14.
 

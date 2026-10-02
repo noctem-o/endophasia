@@ -187,7 +187,13 @@ export type EndoEvidenceKindV0 =
 	| "runtime-admission"
 	| "model-profile"
 	| "model-pool"
-	| "model-telemetry";
+	| "model-telemetry"
+	| "collab-room"
+	| "collab-discussion"
+	| "collab-approval-request"
+	| "collab-approval-decision"
+	| "collab-patch"
+	| "collab-steering";
 
 /** The closed evidence ledger kinds. */
 export const ENDO_EVIDENCE_KINDS_V0 = [
@@ -210,6 +216,12 @@ export const ENDO_EVIDENCE_KINDS_V0 = [
 	"model-profile",
 	"model-pool",
 	"model-telemetry",
+	"collab-room",
+	"collab-discussion",
+	"collab-approval-request",
+	"collab-approval-decision",
+	"collab-patch",
+	"collab-steering",
 ] as const satisfies readonly EndoEvidenceKindV0[];
 
 /**

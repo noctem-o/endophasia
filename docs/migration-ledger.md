@@ -823,6 +823,43 @@ Design decisions:
 - **Status (2026-10-02, done):** `protocol/visualization.ts` + four
   visualization modules + five suites (65 tests); self-check at §10.7.
 
+### 5.16 Phase 5 components (evaluation and conformance lab)
+
+Phase 5 scope (README "# Roadmap"): evaluation — the "Store:" list of
+producing coordinates, the "Distinguish:" list of data partitions, repeated
+trials — the conformance lab — a reusable conformance framework for testing
+runtime claims with a closed five-way classification — and the replay
+workflow — record, persist, replay, rebuild the graph, rebuild the visual
+state, compare against the original, and report exact/reconstructed/
+unreproducible per layer. Donor re-check (read-only): no Phase 5 analogue in
+production; the only conformance mention in `src/` is a JSDoc pointer in
+`runtime-profile-service.ts`, and the conformance/replay machinery sits
+quarantined in `research/`. Phase 5 is BUILD, as were Phases 1–4: new
+capability on the Phase 1–4 substrates (event records, the cognition graph,
+semantic visual state), reusing the demonstrated discipline — canonical
+JSON, SHA-256 digests, strict doors, honest availability.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Evaluation "Store:" — candidate revision, runtime/model identity, cognition policy, environment identity/revision/sandbox, evaluator and grader identity, recorded seeds, trial count, usage, wall time, raw results, derived metrics, result-bundle digest, selection policy, promotion state | `protocol/evaluation.ts`: `endo.evaluation-profile.v0` records the producing coordinates (experimentId, candidateId?, candidateRevision?, runtime, model, closed `work`/`dream` cognition policy, `endo.environment-profile.v0` environment — identity, optional revision, optional sandboxId, explicit `simulated` flag — evaluator?, grader?, seeds?, trialCount) and `endo.evaluation-result.v0` records what the process produced (id, profile stored verbatim, trials, usage?, wallTimeMs?, resultBundleDigest?, selectionPolicy?, promotionState?). The profile is stored, not merely digested: equal-looking outputs with different producing coordinates are different results |
+| Repeated trials | `lab/trials.ts`: `runEndoTrialsV0({id, profile, runTrial, usage?, wallTimeMs?})` — exactly `profile.trialCount` trials, in declared order; trial i draws seed `i % seeds.length` (absent seeds are an honest absence); per-trial coordinates from the Phase 1 trial-coordinates grammar (experimentId, candidateId?, trial index, the runId the outcome reports); the consumer's raw/derived split is copied through apart |
+| "Distinguish:" partitions — evolve-set, held-out, out-of-distribution, live-traffic, simulated, replay | `ENDO_EVALUATION_PARTITIONS_V0`: a closed six-literal vocabulary on each trial result. A partition is a statement about the trial's data, never about its quality; "a simulated result must say it was simulated" is the environment profile's explicit `simulated` flag |
+| Conformance lab — a reusable conformance framework for testing runtime claims (subject, version, scenario, decoder, predicate, expected meaning, observed result, classification, evidence, limitations) | `protocol/evaluation.ts`: `endo.conformance-study.v0` (the README field list, all ten fields) + `endo.conformance-suite.v0` (the studies in the order the study declared) and `lab/conformance.ts`: `studyEndoConformanceV0` / `runEndoConformanceSuiteV0`. The classification is a closed five-way union carrying the README's own UPPERCASE literals EXACT/QUALIFIED/PARTIAL/UNAVAILABLE/MISMATCH — a documented divergence from the house lowercase unions, because the README presents classifications as data values, not vocabulary keys. UNAVAILABLE is first-class: "nothing matched exactly" is a useful scientific result |
+| Result bundle digest (README "Store:") | `lab/experiment-bundle.ts`: `buildEndoExperimentBundleV0(id, result)` — `endo.experiment-bundle.v0` = the validated result + its canonical-JSON SHA-256 digest; the protocol validator checks the 64-hex grammar only (no node:crypto in `protocol/`), the lab recomputes |
+| Replay — per-layer exact/reconstructed/unreproducible, through graph and visual-state rebuild | `lab/replay-compare.ts`: `compareEndoReplayV0({record, originalGraph?, rebuildGraph?, originalVisual?})` — the events and derived layers carry the Phase 2 `replayEndoEventRecordV0` report verbatim (plus the computed digest); the graph layer is rebuilt through `projectEndoGraphAtV0` (the Phase 3 projection) and canonical-compared against the recorded snapshot; the visualState layer is rebuilt through `buildEndoSemanticVisualStateV0` (Phase 4) and compared. An absent input is an honest unreproducible; a present-but-malformed input is a TypeError at the door. Deterministic fixtures are a conformance aid, not proof that a real runtime is deterministic (README line 793) |
+
+Design decisions:
+
+- **New top-level `lab/` module** (precedent: `graph/` Phase 3, `visualization/` Phase 4): the README's "retain a reusable conformance framework for testing runtime claims" is a production capability, and the Prime conformance machinery stays quarantined in `research/`. `lab/` imports only `protocol/` + `runtime/contracts/` + `graph/` + `visualization/` + intra-lab; the prime-research-boundary guard now covers it (closing the Phase 3/4 gap).
+- **The lab is a service layer, not a framework**: every entry point is a pure function behind a strict door (TypeError); the lab owns no state, scheduler, or provider. The consumer supplies the doing — a trial function, a rebuild function, a conformance reading — and the lab supplies the discipline: the exact count, the declared order, the coordinates, the comparison, the digest. Providers, runtimes, and evaluators remain replaceable integrations around stable contracts.
+- **Recorded vs derived vs claim stay apart end-to-end**: raw/derived are separate fields on trial results; expected/observed/classification/limitations are separate fields on studies; results, suites, and comparisons are distinct records with `endo.evidence.*` identities — never events. An evaluator's judgement is never recorded as a runtime fact, and `selectionPolicy`/`promotionState` are recorded context, not gates: the decision that follows them is a Phase 6 record.
+- **The three-way replay vocabulary is extended, not replaced**: the events/derived layers carry the Phase 2 report's own values; `graph` and `visualState` are new layers with identical exact/reconstructed/unreproducible semantics (exact = the re-derivation equals the recorded original; reconstructed = re-derivable but different; unreproducible = the inputs are insufficient). The visualState layer cascades unreproducible from the graph layer: there is no rebuilt store to build a visual state from.
+- **Digest split**: protocol validators check the 64-hex grammar only, keeping `protocol/` dependency-free; lab services recompute the canonical digests and compare.
+- **Suite order discipline** (mirrors the quarantined `research/conformance/order.ts`; not imported from it): declared scenario order, unique non-empty scenarios of at most 256 characters, and every study names the suite's subject, version, and the scenario it was asked about; a hand-resorted suite is a different suite.
+- **Steer outcomes (2026-10-02 architecture review, 12 guardrails)**: the design was reviewed against all twelve and left as-is — it is consistent. Explicitly NOT adopted: a generic experiment event stream (evaluation results, conformance suites, and replay comparisons remain distinct records; not every observable state becomes a durable event, and Event/Artifact/Snapshot/Projection/Evidence stay distinct — no token-level durable events); a catch-all identity/context object (identity, coordinates, provenance, resource usage, evaluation context, and policy remain composable fields on separate shapes); flattening the graph into the event store (replay comparison consumes the Phase 3 projection; the graph keeps its own revision log and temporal projection); importing the research/Prime conformance machinery into production (the ordering/uniqueness discipline is mirrored, the quarantined modules are untouched). Explicitly adopted: honest unavailable/qualified states (UNAVAILABLE classification, unreproducible layers, the explicit `simulated` flag), consistent with the Phase 2 replay vocabulary and the Phase 4 availability model; and deterministic reconstruction over mutable presentation state (a replayed visual state is rebuilt from the rebuilt graph store, never read from a live presentation layer).
+- **Phase 6 boundary**: the selection/promotion gates, the evolution substrate (RRSI/GEPA), and the trust providers stay deferred (§8); Phase 5 records the fields they will gate on and decides nothing.
+
+- **Status (2026-10-02, done):** `protocol/evaluation.ts` + four lab modules + five suites (70 tests); self-check at §10.8.
 
 ## 6. Contract leaks to sever (the REWRITES)
 
@@ -929,13 +966,13 @@ with path updates only.
 - Protocol: the remaining five of the README's 14 object types have no
   v0 envelope yet (Artifact, Decision, Proposal, Receipt, Evaluation)
   and their namespaces are v1 additions to `ENDO_IDENTIFIER_KINDS_V0` —
-  each lands with the phase that owns it (Evaluation/Evidence result
-  types with Phases 5/6); the VisualizationState v0 envelope landed in
-  Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
-  code-generation approach (README line 714) lands only after the
-  protocol stabilises.
-- Evaluation/conformance (lab), evolution substrate (RRSI/GEPA),
-  RRSI/REEF, trust providers.
+  each lands with the phase that owns it (the Evaluation shapes landed
+  in Phase 5 as `endo.evaluation-*/conformance-*/replay-*/experiment-bundle.v0`;
+  the Evidence result types with Phase 6); the VisualizationState v0
+  envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
+  code-generation approach (README line 714) lands only after the protocol
+  stabilises.
+- Evolution substrate (RRSI/GEPA), RRSI/REEF, trust providers.
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1171,6 +1208,37 @@ Milestone (c):
   failed** (1739 pre-existing + 65 new).
 - Donor untouched (read-only): Phase 4 adds no donor files.
 
+### 10.8 Phase 5 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the eleven scope directories: 182 files, no
+  fixes applied (after `--write` formatted the five new modules and
+  suites and two unused imports were dropped).
+- `grep -rn '@earendil-works/pi-' protocol/ lab/`: 0 matches. Import
+  direction: `protocol/evaluation.ts` imports only intra-protocol
+  (`./coordinates.ts`, `./event-record.ts`, `./identity.ts`,
+  `./primitives.ts`; `protocol/` remains zero-dependency); `lab/`
+  imports only `protocol/` + `runtime/contracts/` + `graph/` (store,
+  projections) + `visualization/` (semantic state) + intra-lab.
+- New suites: `tests/{endo-evaluation-protocol,endo-lab-trials,endo-lab-conformance,endo-lab-bundle,endo-lab-replay-compare}.test.ts`
+  — 5 files, 70 passed: per-field validator accept/reject for the
+  eight new protocol shapes, the closed partition/policy/
+  classification unions, the declared-trial-count invariant, the
+  digest grammars; the trial service (exact count, declared order,
+  round-robin seeds, per-trial coordinates, raw/derived/partition
+  copied only when reported, usage and wall time optional through,
+  the strict doors); the conformance suite (declared order, unique
+  scenarios, the study names the suite's subject/version/scenario,
+  all five classifications first-class, the doors); the experiment
+  bundle (digest stable across ids, different across results,
+  reference-preserving, the doors); the replay comparison (exact
+  when the rebuild reproduces, reconstructed per differing layer,
+  unreproducible per absent input, the visualState cascade, the
+  doors, snapshot parse normalization).
+- Full `npx vitest --run`: **65/65 files, 1877 passed, 3 skipped, 0
+  failed** (1807 pre-existing + 70 new).
+- Donor untouched (read-only): Phase 5 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1190,5 +1258,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 5 (Evaluation and Conformance Lab — README "# Roadmap"). Phase 4 (real visual cognition) is recorded in §5.15 and verified in §10.7.
+Next: Phase 6 (Evolution substrate — README "# Roadmap"). Phase 5 (evaluation and conformance lab) is recorded in §5.16 and verified in §10.8.
 

@@ -42,18 +42,25 @@ function researchReachable(roots: string[], read: (path: string) => string, has:
 }
 
 describe("Prime research stays outside production", () => {
-	it.each(["protocol", "runtime/contracts", "runtime/observation", "adapters", "presentation", "cockpit"])(
-		"%s imports no research, directly or through another relative module",
-		(dir) => {
-			expect(
-				researchReachable(
-					files(join(packageRoot, dir)),
-					(p) => readFileSync(p, "utf8"),
-					(p) => existsSync(p) && statSync(p).isFile(),
-				),
-			).toEqual([]);
-		},
-	);
+	it.each([
+		"protocol",
+		"runtime/contracts",
+		"runtime/observation",
+		"adapters",
+		"presentation",
+		"cockpit",
+		"graph",
+		"visualization",
+		"lab",
+	])("%s imports no research, directly or through another relative module", (dir) => {
+		expect(
+			researchReachable(
+				files(join(packageRoot, dir)),
+				(p) => readFileSync(p, "utf8"),
+				(p) => existsSync(p) && statSync(p).isFile(),
+			),
+		).toEqual([]);
+	});
 	it("rejects indirect, type-only and dynamic import edges in a hostile graph", () => {
 		for (const statement of [
 			'import type { Evidence } from "../research/prime-conformance/evidence.ts";',

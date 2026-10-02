@@ -28,6 +28,7 @@
 			"protocol/**/*.ts",
 			"graph/**/*.ts",
 			"visualization/**/*.ts",
+			"lab/**/*.ts",
 			"runtime/**/*.ts",
 			"adapters/**/*.ts",
 			"presentation/**/*.ts",

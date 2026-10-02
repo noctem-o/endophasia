@@ -350,11 +350,18 @@ All nine Pi projection modules plus the aggregate seam move to
 | `runtime/cockpit-host.ts` | `runtime/cockpit-host.ts` | **KEEP** | 127.0.0.1-only; exactly 4 routes under `/c/<32-byte base64url token>/`; `timingSafeEqual`; constant-time prefix; exact-Host loopback authority check (403, DNS-rebinding guard); GET/HEAD only; no-cache; CSP `cockpitContentSecurityPolicy(websocketOrigin)`; 503 bootstrap until `setBootstrap` |
 | `runtime/cockpit-main.ts` | `runtime/cockpit-main.ts` | **KEEP** | foreground CLI; strict parseArgs (provider/model/directory/port); prints page URL; SIGINT/SIGTERM stop |
 
-- **Status (milestone c, done):** `runtime/session-worker.ts` is migrated
-  (pulled forward from milestone d because
+- **Status (milestone d, done):** all seven host entries are migrated.
+  `session-worker.ts` landed in milestone c (pulled forward because
   `runtime-profile-service.test.ts` imports
-  `PI_STANDARD_RUNTIME_PROFILE_V0` from it, as in the donor). The five
-  remaining host entries land in milestone d.
+  `PI_STANDARD_RUNTIME_PROFILE_V0` from it, as in the donor); the
+  remaining six landed in milestone d. `browser-server.ts`,
+  `browser-listener.ts` and `cockpit-host.ts` are byte-identical to the
+  donor (`cmp`); `server.ts` retargets only its loader-path comment
+  (`packages/coding-agent/…` → `pi/packages/coding-agent/…`); `cockpit.ts`
+  retargets only `REPOSITORY_ROOT` depth (`../../../` → `../`, so the
+  in-memory esbuild bundle resolves the target root's `tsconfig.json`);
+  `cockpit-main.ts` retargets only the comment script name (`npm run
+  endophasia:cockpit` → `npm run cockpit`, the target root script).
 
 - `cockpit-host.ts`, `cockpit-main.ts` and the prime transport have **zero**
   `@earendil-works` imports (verified) — KEEP means literal copy apart from
@@ -363,6 +370,12 @@ All nine Pi projection modules plus the aggregate seam move to
   `session-host.test.ts`, `browser-server.test.ts` (e2e via the browser WS
   capability URL), `browser-listener.test.ts`, `cockpit-host.test.ts`,
   `cockpit-integration.test.ts`.
+
+- Test placement: `browser-server.test.ts` migrates in milestone e with
+  the `cockpit/` and `presentation/` modules it imports
+  (`cockpit/controller.ts`, `presentation/client.ts`,
+  `presentation/websocket-transport.ts`); the other four host suites
+  migrated in milestone d.
 
 ### 5.6 Prime ingress
 
@@ -684,3 +697,22 @@ Milestone (c):
   `adapters/pi/{observation-sources,mission-trace,runtime-metrics,
   durable-outcomes,usage-feed,usage-ledger}.ts`; schema versions read from
   `protocol/{mission-trace,runtime-facts,usage}.ts`).
+
+### 10.2 Milestone (d) self-check record
+
+- `npx tsc --noEmit` (root): 0 errors. The new suites pulled
+  `pi/packages/agent/src/harness/**` and `pi/packages/coding-agent`
+  experimental-services sources into the program with no new
+  program-shape errors (the two (c) fixes suffice).
+- `npx biome check protocol/ runtime/ adapters/ tests/`: clean (two
+  import-organization fixes applied to retargeted `session-host.test.ts`).
+- `grep -rn '@earendil-works/pi-' protocol/`: 0 matches.
+- `npx vitest --run tests/`: 20 files, 266 passed + 1 skipped, 0 failed.
+- Host entries: three byte-identical to the donor (`browser-server.ts`,
+  `browser-listener.ts`, `cockpit-host.ts`, `cmp`-verified); three
+  one-line retargets (`server.ts` comment path, `cockpit.ts`
+  `REPOSITORY_ROOT` depth, `cockpit-main.ts` comment script name), each
+  `diff`-verified against the donor to change only the intended line.
+- `browser-server.test.ts` stays in the donor for milestone e, with its
+  cockpit/presentation dependencies plus the same one-line source-resolver
+  URL retarget applied when it lands.

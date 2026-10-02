@@ -235,10 +235,11 @@ unsubscribe), `RuntimeUsageTailV0`.
 
 The schema halves of the six service modules split out of the donor
 `src/*-service.ts` files into `protocol/` (REWRITE as a pure move; wire
-shape byte-identical):
+shape byte-identical), plus one new shared-primitives module:
 
 | Source (schema content) | Target | Disposition | Notes |
 | :--- | :--- | :--- | :--- |
+| (new; neutral re-derivation of Pi literals, §6) | `protocol/primitives.ts` | **ADAPT** | `OperationStatusV0 = "running" \| "open" \| "aborting"` (Pi `agent-harness.ts:147`), `ThinkingLevelV0` (Pi `types.ts:345`), `ModelIdentityV0 { provider, modelId }` (Pi `agent-harness.ts:142`), `MessageRoleV0 = "system" \| "user" \| "assistant" \| "toolResult"` (Pi message vocabulary, `CustomAgentMessages` empty); identical wire literals, shared by the continuity / session-overview / steering / control schemas |
 | `src/mission-trace-service.ts` (event union, limits, observation type) | `protocol/mission-trace.ts` | **REWRITE** | `MissionTraceEventV0` discriminated union on `kind`; `MISSION_TRACE_REPLICATED_EVENT_LIMIT = 1024`; observation = bounded window since worker activation, NOT durable, sequence restarts at 1 |
 | `src/runtime-facts-service.ts` (metrics + outcome types) | `protocol/runtime-facts.ts` | **REWRITE** | `RuntimeMetricsV0` (cumulative session accounting incl. failed/retried/aborted; not context occupancy, not invoice); `OperationOutcomeV0` (immutable terminal record) |
 | `src/usage-service.ts` (ledger types) | `protocol/usage.ts` | **REWRITE** | `UsageLedgerQueryV0` (defaults 0/1000, max 10000), `UsageLedgerRowV0` (session-global sequence, gaps normal, no lane/cause/timestamp), `UsageLedgerPageV0` (not atomic), `USAGE_REPLICATED_ROW_LIMIT = 1024`, `UsageObservationV0` (sticky `hasEarlierRows`) |
@@ -518,8 +519,8 @@ Shapes verified at the donor:
 1. **`src/continuity-service.ts:5`** — `import type { Entry, ThinkingLevel }
    from "@earendil-works/pi-agent-core"`.
    - `ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" |
-     "xhigh" | "max"` (donor `packages/agent/src/types.ts:345`) → local
-     literal union in `protocol/continuity.ts`.
+     "xhigh" | "max"` (donor `packages/agent/src/types.ts:345`) →
+     `ThinkingLevelV0` in `protocol/primitives.ts` (shared with control).
    - `Entry` union = `MessageEntry | CompactionEntry |
      BranchSummaryEntry | CustomEntry`, `EntryType = "message" |
      "compaction" | "branch_summary" | "custom"` (donor
@@ -531,8 +532,9 @@ Shapes verified at the donor:
 2. **`src/session-overview.ts:1`** — `import type { AgentHarness, Context,
    LaneInfo, OperationStatus } from …`.
    - `OperationStatus = "running" | "open" | "aborting"` (donor
-     `packages/agent/src/harness/agent-harness.ts:147`) → local literal
-     union.
+     `packages/agent/src/harness/agent-harness.ts:147`) →
+     `OperationStatusV0` in `protocol/primitives.ts` (shared with
+     steering and control).
    - `LaneInfo` usage is via `harness.lanes` inside the capture function,
      which moves to `adapters/pi/session-overview.ts`; the protocol types
      (`SessionLaneOverviewV0`, `SessionOverviewV0` — per-lane consistency,
@@ -612,8 +614,8 @@ with path updates only.
 | Disposition | Components |
 | :--- | :--- |
 | KEEP | `runtime/observation/ports.ts`, `runtime/cockpit-host.ts`, `runtime/cockpit-main.ts`, `runtime/prime/limits.ts`, all of `presentation/`, all of `cockpit/`, all of `research/` + fixtures, test helpers + worker fixtures, `biome.json`/`LICENSE.md`, boundary docs |
-| ADAPT | `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (4 of 5), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
-| REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 3 boundary-guard tests (assertion paths) |
+| ADAPT | `protocol/primitives.ts` (new shared neutral literals), `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (4 of 5), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
+| REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6; the shared `protocol/primitives.ts` is ADAPT, not REWRITE), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 3 boundary-guard tests (assertion paths) |
 | RETIRE | nothing in Phase 0 — every demonstrated component has a target home; retirement decisions (e.g. Pi-internal portions of the donor browser-smoke script, donor `packages/endophasia` package metadata) apply to the donor copy, which stays read-only |
 | DEFER | §8 |
 

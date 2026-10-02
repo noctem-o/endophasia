@@ -12,6 +12,3 @@ export interface ModelIdentityV0 {
 	provider: string;
 	modelId: string;
 }
-
-/** The message roles a Session entry can carry; identical literals to Pi's message vocabulary. */
-export type MessageRoleV0 = "system" | "user" | "assistant" | "toolResult";

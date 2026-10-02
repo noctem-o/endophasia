@@ -239,7 +239,7 @@ shape byte-identical), plus one new shared-primitives module:
 
 | Source (schema content) | Target | Disposition | Notes |
 | :--- | :--- | :--- | :--- |
-| (new; neutral re-derivation of Pi literals, §6) | `protocol/primitives.ts` | **ADAPT** | `OperationStatusV0 = "running" \| "open" \| "aborting"` (Pi `agent-harness.ts:147`), `ThinkingLevelV0` (Pi `types.ts:345`), `ModelIdentityV0 { provider, modelId }` (Pi `agent-harness.ts:142`), `MessageRoleV0 = "system" \| "user" \| "assistant" \| "toolResult"` (Pi message vocabulary, `CustomAgentMessages` empty); identical wire literals, shared by the continuity / session-overview / steering / control schemas |
+| (new; neutral re-derivation of Pi literals, §6) | `protocol/primitives.ts` | **ADAPT** | `OperationStatusV0 = "running" \| "open" \| "aborting"` (Pi `agent-harness.ts:147`), `ThinkingLevelV0` (Pi `types.ts:345`), `ModelIdentityV0 { provider, modelId }` (Pi `agent-harness.ts:142`); identical wire literals, shared by the session-overview / steering / control / runtime-facts / continuity schemas. The message role of a continuity entry is NOT a shared primitive: the pinned fork's `CustomAgentMessages` is non-empty (`harness/messages.ts:55–60`), so the donor's role type is the full 8-literal `AgentMessage` role union, redefined locally in `protocol/continuity.ts` |
 | `src/mission-trace-service.ts` (event union, limits, observation type) | `protocol/mission-trace.ts` | **REWRITE** | `MissionTraceEventV0` discriminated union on `kind`; `MISSION_TRACE_REPLICATED_EVENT_LIMIT = 1024`; observation = bounded window since worker activation, NOT durable, sequence restarts at 1 |
 | `src/runtime-facts-service.ts` (metrics + outcome types) | `protocol/runtime-facts.ts` | **REWRITE** | `RuntimeMetricsV0` (cumulative session accounting incl. failed/retried/aborted; not context occupancy, not invoice); `OperationOutcomeV0` (immutable terminal record) |
 | `src/usage-service.ts` (ledger types) | `protocol/usage.ts` | **REWRITE** | `UsageLedgerQueryV0` (defaults 0/1000, max 10000), `UsageLedgerRowV0` (session-global sequence, gaps normal, no lane/cause/timestamp), `UsageLedgerPageV0` (not atomic), `USAGE_REPLICATED_ROW_LIMIT = 1024`, `UsageObservationV0` (sticky `hasEarlierRows`) |
@@ -266,6 +266,13 @@ over the strict-JSON wire.
 | `src/runtime-profile-facet.ts` (facet logic) | `runtime/contracts/runtime-profile-facet.ts` | **ADAPT** | `runtimeProfileV0` validator, `createEndophasiaRuntimeProfileFacetV0` — chord-only |
 | `src/inspector-service.ts` (service + facet) | `runtime/contracts/inspector.ts` | **ADAPT** | type-only `AgentHarness` handle |
 | `src/index.ts` | `runtime/contracts/index.ts` | **ADAPT** | public contract surface, re-targeted |
+
+- **Status (milestone b, done):** the nine contract modules above (minus the
+  barrel) are migrated; the non-schema halves of `mission-trace`,
+  `runtime-facts`, `usage-facet`, `continuity-facet`, and
+  `runtime-profile-facet` are verbatim against the donor, retargeted only for
+  imports. The barrel `runtime/contracts/index.ts` lands with the adapter
+  modules it re-exports (milestone c).
 
 - Service identities unchanged: `endophasia.mission-trace.v0`,
   `endophasia.runtime-facts.v0`, `endophasia.usage.v0`,
@@ -311,6 +318,12 @@ All nine Pi projection modules plus the aggregate seam move to
 | `src/session-overview.ts` (capture half) | `adapters/pi/session-overview.ts` | **REWRITE** | `captureSessionOverviewV0(harness: Pick<AgentHarness,"lanes">, context)` moves with its only Pi dependency; types stay in `protocol/session-overview.ts` (§6) |
 | `src/steering.ts` | `adapters/pi/steering.ts` | **ADAPT** | `steerV0` (durable steer queue), `queueFollowUpV0` (follow-up boundary), `stopV0` (cancels ONLY the run observed by `inspectExecution`; never retargets), `captureSteeringStateV0`. **The only VALUE Pi import in production src: `HarnessClosed`** — re-homed here with its rejection semantics |
 | `src/control-deck.ts` | `adapters/pi/control-deck.ts` | **ADAPT** | `captureControlStateV0`, `configureModelV0`, `configureThinkingLevelV0`, `configureActiveToolsV0` (setter commits but failed readback rejects although config changed; nothing retried) |
+
+- **Status (milestone b, done):** `adapters/pi/continuity.ts` (capture half of
+  donor `src/continuity.ts`) and `adapters/pi/session-overview.ts` (capture
+  half of donor `src/session-overview.ts`) are migrated — the two capture
+  modules the contract facets import. The remaining eight adapter modules land
+  in milestone c with the test suites.
 
 - **No neutral port yet** (steering, control-deck, session-overview capture,
   continuity capture): per the donor boundary doc, those need their own

@@ -1,7 +1,21 @@
 // The Continuity v0 schema: a payload-minimal, read-only projection of the attached Session's main lane at one
 // durable tip. The service handle is in runtime/contracts/continuity.ts; the capture in adapters/pi/continuity.ts;
 // the host facet in runtime/contracts/continuity-facet.ts.
-import type { MessageRoleV0, ModelIdentityV0, ThinkingLevelV0 } from "./primitives.ts";
+import type { ModelIdentityV0, ThinkingLevelV0 } from "./primitives.ts";
+
+/**
+ * The message roles a Session entry can carry: the provider message roles plus the harness-level custom message
+ * roles. The neutral literal set is wire-identical to the AgentMessage role of the runtime it projects.
+ */
+type ContinuityMessageRoleV0 =
+	| "assistant"
+	| "bashExecution"
+	| "branchSummary"
+	| "compactionSummary"
+	| "custom"
+	| "system"
+	| "toolResult"
+	| "user";
 
 interface ContinuityEntryBaseV0 {
 	id: string;
@@ -13,7 +27,7 @@ interface ContinuityEntryBaseV0 {
 export type ContinuityEntryV0 =
 	| (ContinuityEntryBaseV0 & {
 			type: "message";
-			role: MessageRoleV0;
+			role: ContinuityMessageRoleV0;
 			stopReason?: string;
 			terminate: boolean;
 	  })

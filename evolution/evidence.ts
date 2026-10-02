@@ -54,6 +54,8 @@ import {
 	validateEndoSelectionDecisionV0,
 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
+import type { EndoRuntimeAdmissionV0 } from "../protocol/runtime.ts";
+import { validateEndoRuntimeAdmissionV0 } from "../protocol/runtime.ts";
 import type {
 	EndoLeaseRecordV0,
 	EndoReceiptRecordV0,
@@ -84,7 +86,8 @@ type EndoLedgerRecordV0 =
 	| EndoWitnessRecordV0
 	| EndoStandingRecordV0
 	| EndoLeaseRecordV0
-	| EndoReceiptRecordV0;
+	| EndoReceiptRecordV0
+	| EndoRuntimeAdmissionV0;
 
 /** The closed map from a record's schemaVersion to its ledger kind. */
 const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvidenceKindV0>> = {
@@ -103,6 +106,7 @@ const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvide
 	"endo.standing.v0": "standing",
 	"endo.lease.v0": "lease",
 	"endo.receipt.v0": "receipt",
+	"endo.runtime-admission.v0": "runtime-admission",
 };
 
 /** The validator of each closed evidence record kind. */
@@ -123,6 +127,7 @@ const ENDO_EVIDENCE_VALIDATORS_V0: Readonly<Record<EndoEvidenceKindV0, (value: u
 		standing: validateEndoStandingRecordV0,
 		lease: validateEndoLeaseRecordV0,
 		receipt: validateEndoReceiptRecordV0,
+		"runtime-admission": validateEndoRuntimeAdmissionV0,
 	};
 
 /** The ledger references a record must already have been appended with, by its schemaVersion. */
@@ -148,6 +153,8 @@ function referencesV0(record: EndoLedgerRecordV0): string[] {
 			return [record.boundTo];
 		case "endo.receipt.v0":
 			return [record.leaseId, ...(record.rollbackOf ?? [])];
+		case "endo.runtime-admission.v0":
+			return record.evidence;
 		default:
 			return [];
 	}

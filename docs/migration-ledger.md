@@ -981,6 +981,60 @@ Design decisions:
   `protocol/evaluation.ts` (strict-JSON door) + four suites (106
   tests); self-check at §10.11.
 
+### 5.20 Phase 9 components (Runtime expansion)
+
+Phase 9 scope (README "## Phase 9 — Runtime expansion", lines
+1286–1294): the Prime research adapter, the Codex conformance
+study, and additional runtimes — "Runtime admission remains
+evidence-based." Phase 9 is seams, not implementations: no Rust,
+no network, no filesystem, no provider process in the tree — each
+runtime stays external behind its seam, and an admission record
+names evidence; it does not start a runtime. Donor re-check
+(read-only, case-insensitive, over the whole donor): the
+meaningful `prime`/`codex` matches are all roadmap and
+conformance prose — `endophasia-source/README.md:185` (Pi is the
+reference runtime, Codex a future candidate, Prime's admission
+dormant after the sealed 0.9.7 audit), `README.md:305–321` (the
+sealed Prime 0.9.7 study at
+`08ff1b2e2794ea9e8f4a08d12bc95408a66e1074`: 12 RPC + 15 ACP
+scenarios, probe `0.14.7`, "admits no exact capability," the
+recorded blockers — durable operation/outcome identity, complete
+lifecycle semantics, committed Usage allocation/paging, matching
+continuity/context semantics — plus "a version bump alone is
+insufficient," "transport ingress does not imply an admitted
+runtime," and the Codex app-server surfaces: threads, turns,
+items, steering, interruption, forks, compaction, usage, review,
+approvals, and runtime settings, in the planned order "transport
+first, evidence second, admission last"), `README.md:445` ("Codex
+remains a candidate until its own pinned study exists"), and
+`docs/conformance-lab-v0.md:76` ("A genuinely different second
+subject should inform any later abstraction; sharing transport
+shape is insufficient"); the `packages/` matches are the OpenAI
+"codex" model-API strings in `packages/ai/scripts/generate-models.ts`
+(model-catalog noise); no runtime-admission record, mapper, or
+check code in `packages/`: no Phase 9 analogue, BUILD (seams
+only).
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Prime research adapter | `adapters/prime/{shapes,mapping}.ts`: a mirror of the documented probe-outcome shape + a pure mapper to `endo.conformance-study.v0` — subject pinned `"prime"`, classification closed five-way (`ENDO_CONFORMANCE_CLASSIFICATIONS_V0`), evidence entries hex64 or `endo.evidence.*`, field-grammar doors at the protocol's 256/4096 caps, absent arrays defaulting to `[]`, extra keys ignored; exits through `validateEndoConformanceStudyV0`. The probe transport (`adapters/prime/transport/`: jsonl, limits, process-group, rpc-connection, runtime-identity) is Phase 0 and byte-verified; the mapper reads recorded outcomes only |
+| Codex conformance study | `adapters/codex/{shapes,mapping}.ts`: a deliberately independent second mapper — per `docs/conformance-lab-v0.md:76` a genuinely different second subject, sharing no abstraction with the Prime mapper — with the subject pinned `"codex"`, the identical doors, and the documented app-server surface vocabulary `CODEX_APP_SERVER_SURFACES_V0` (threads, turns, items, steering, interruption, forks, compaction, usage, review, approvals, runtime-settings) recorded as a documented vocabulary, not a mapper door. No transport: the donor's planned order is transport first, evidence second, admission last — Phase 9 lands the evidence shapes only |
+| Additional runtimes | `protocol/runtime.ts` + `runtime/admission.ts`: the runtime admission record `endo.runtime-admission.v0` (status closed four-way candidate/dormant/reference/admitted with per-status doors — `reference` pinned to subject `"pi"` with zero blockers; `dormant` requires recorded evidence and recorded blockers; `admitted` requires recorded evidence; `candidate` the floor) and the derived check report `endo.runtime-admission-check.v0` (`holds` ↔ empty violations) that decides whether a position holds against the presented conformance suites: every presented suite must name the record's exact subject and version, and `admitted` requires at least one EXACT study across the presented suites — a sealed audit that admits no exact capability cannot admit |
+
+Design decisions:
+
+- **A 16th evidence kind, ledgerable**: `runtime-admission` joins `ENDO_EVIDENCE_KINDS_V0` (15 → 16) and the `evolution/evidence.ts` kind/validator/references maps; an admission cites its conformance suites by record id and the ledger enforces the causal order — a suite must be appended before the admission that cites it. The admission carries its own id (not content-addressed), so its ledger identity is `record.id`.
+- **The check is a derived view, not ledgerable**: `endo.runtime-admission-check.v0` carries a validator for serialization and round-trip (including the holds/violations agreement door), but sits outside the ledger's kind union — computed from named records, never recorded as an event.
+- **The reference runtime is a checkable record, not prose**: `reference` is a closed status whose door pins the subject to `"pi"` with zero blockers — the donor's "Pi is the reference runtime" becomes a record that can be appended to the evidence ledger.
+- **Seams, not implementations**: `protocol/runtime.ts` imports only `protocol/identity.ts` (zero-dependency, no `node:crypto`); `runtime/admission.ts` imports only `protocol/`; `adapters/{prime,codex}/` import only `protocol/`. No Rust, no HTTP, no process spawn, no provider internals — the Prime probe transport stays behind the Phase 0 `adapters/prime/transport/` boundary.
+- **Two independent mappers, one neutral record**: the Prime and Codex mappers deliberately duplicate their shape and door code rather than share a second-subject abstraction (`docs/conformance-lab-v0.md:76`); both exit to the same neutral `endo.conformance-study.v0`, so the evidence ledger never knows which runtime recorded a study.
+
+- **Status (2026-10-02, done):** `protocol/runtime.ts` +
+  `runtime/admission.ts` + four `adapters/{prime,codex}/` modules +
+  `protocol/evolution.ts` (ledger kind union 15 → 16) +
+  `evolution/evidence.ts` (ledger wiring) + four suites (67
+  tests); self-check at §10.12.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1092,7 +1146,7 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Runtime expansion (Phase 9).
+- Model/runtime orchestration (Phase 10).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1479,6 +1533,65 @@ Milestone (c):
   52 protocol + 10 ledger + 33 adapters + 11 core).
 - Donor untouched (read-only): Phase 8 adds no donor files.
 
+### 10.12 Phase 9 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the thirteen scope directories: 218 files,
+  no fixes applied (after `--write` formatted the new/changed
+  modules and the four suites); `npx biome check runtime/admission.ts`
+  (outside the thirteen): 1 file, no fixes applied.
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/ trust/ adapters/`:
+  0 matches outside `adapters/pi/`; the ten pre-existing
+  `adapters/pi/` matches (the only production modules allowed to
+  import Pi, §5.4) are untouched; the Phase 9 files
+  (`protocol/runtime.ts`, `runtime/admission.ts`,
+  `adapters/prime/{shapes,mapping}.ts`,
+  `adapters/codex/{shapes,mapping}.ts`) carry no Pi imports.
+  Import direction: `runtime/admission.ts` imports only `protocol/`;
+  `adapters/{prime,codex}/` import only `protocol/`; `protocol/`
+  remains zero-dependency, no `node:crypto`.
+- New suites: `tests/endo-runtime-protocol.test.ts` (32 tests) —
+  the four-way status matrix with the per-status doors in both
+  directions (reference pinned to subject `"pi"` with zero blockers;
+  dormant requires recorded evidence and recorded blockers;
+  admitted requires recorded evidence), the 128-character subject
+  grammar bound, the 256-character version cap, the 512-character
+  blocker cap, the 4096-character provenance cap, the
+  `endo.evidence.*`-only evidence namespace (hex64 rejected — an
+  admission cites evidence, it does not hash it), unknown keys,
+  non-object inputs, the holds/violations agreement door, the
+  violation-entry grammar, and the canonical-JSON round-trip of
+  both shapes; `tests/endo-runtime-ledger.test.ts` (6 tests) — the
+  closed 16-way kind union, kind derivation and record identity,
+  a no-reference candidate append, the forward-reference refusal,
+  the duplicate-id refusal, and the 7-entry runtime chain replay
+  (three conformance suites + four admissions, including the
+  dormant Prime 0.9.7 record carrying the four recorded donor
+  blockers and an admitted record), content-identical after
+  `replayEndoEvidenceLedgerV0`; `tests/endo-runtime-adapters.test.ts`
+  (17 tests) — per-mapper accept/negative pairs: the Prime probe
+  outcome mapped to `endo.conformance-study.v0` with the subject
+  pinned `"prime"`, all five closed classifications, the
+  non-object and closed-classification doors, the field-grammar
+  doors, the evidence-entry door (hex64 or `endo.evidence.*`), the
+  limitations cap, absent arrays defaulting to `[]`, extra keys
+  ignored; the same set for the independent Codex mapper (subject
+  pinned `"codex"`), plus `CODEX_APP_SERVER_SURFACES_V0` deep-equal
+  to the eleven documented surfaces, each a well-formed kind;
+  `tests/endo-runtime-core.test.ts` (12 tests) —
+  `runtimeAdmissionCheckV0`: the full report for a candidate
+  studied by no suite, reference/dormant/admitted holds, EXACT
+  counting, the admitted-without-EXACT violation, the
+  wrong-subject and wrong-version violations, accumulation across
+  suites, both `TypeError` doors, the exit through the report
+  validator, and the spine integration (a real ledger, the replay,
+  a check that holds, and the copy promoted to `admitted` against
+  the zero-EXACT suite → `holds: false`).
+- Full `npx vitest --run`: **79/79 files, 2283 passed, 3 skipped,
+  0 failed** (2216 pre-existing at Phase 8 per §10.11 + 67 new:
+  32 protocol + 6 ledger + 17 adapters + 12 core).
+- Donor untouched (read-only): Phase 9 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1498,5 +1611,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 9 (Runtime expansion — README "## Phase 9"). Phase 8 (Trust integrations) is recorded in §5.19 and verified in §10.11.
+Next: Phase 10 (Model/runtime orchestration — README "## Phase 10"). Phase 9 (Runtime expansion) is recorded in §5.20 and verified in §10.12.
 

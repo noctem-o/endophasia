@@ -182,7 +182,8 @@ export type EndoEvidenceKindV0 =
 	| "witness"
 	| "standing"
 	| "lease"
-	| "receipt";
+	| "receipt"
+	| "runtime-admission";
 
 /** The closed evidence ledger kinds. */
 export const ENDO_EVIDENCE_KINDS_V0 = [
@@ -201,6 +202,7 @@ export const ENDO_EVIDENCE_KINDS_V0 = [
 	"standing",
 	"lease",
 	"receipt",
+	"runtime-admission",
 ] as const satisfies readonly EndoEvidenceKindV0[];
 
 /**

@@ -667,6 +667,62 @@ Design decisions (recorded per the handoff constraints):
 - **Status (2026-10-02, done):** all four modules + four suites green
   (40 tests); self-check at §10.4.
 
+### 5.13 Phase 2 components (event and evidence substrate)
+
+Phase 2 (README "Phase 2 — Event and evidence substrate") is the
+"foundation of everything else": the persisted, append-oriented event
+record and its replay. The donor's nearest relative is the quarantined
+conformance-lab record/replay (research, not production); these are new
+target modules in the house service style of `runtime/contracts/usage.ts`,
+with strict doors: the service validates `unknown` at the boundary and
+throws TypeError rather than coercing.
+
+| README Phase 2 item | Disposition | Where |
+| :--- | :--- | :--- |
+| Structured event ingestion | **BUILD** | `runtime/contracts/event-store.ts`: `ingest` is the strict door — the value must pass `validateEndoEventV0` AND `assertPlainJsonValueV0` (structural validity ≠ canonicalizability: a Date payload passes the validator, fails canonicalization); duplicate `id` rejected; the returned event is what the store holds |
+| Append-oriented event storage | **BUILD** | `createEndoEventStoreV0`: in-memory, append-only; the storage sequence is the 1-based append order, independent of the producer numbering in `event.sequence`; `page` is the demonstrated usage-ledger cursor pagination (strict `afterSequence`, 1-based, default 1000, max 10000) |
+| Replay | **BUILD** | `runtime/contracts/event-replay.ts`: `replayEndoEventRecordV0` re-validates the record, re-canonicalizes the stream, recomputes the digest and the built-in summary, and classifies each layer `exact` / `reconstructed` / `unreproducible` (the README's own three-way); a layer is never omitted from the report |
+| Reducers | **BUILD** | the built-in `reduceEndoEventSummaryV0` (count, maxSequence, the closed 6-source tally with zeros for unobserved classes) + the generic `reduceEndoEventsV0` left-to-right fold |
+| Provenance | **BUILD** (v0 scope) | per-event: the Phase 1 envelope fields (`id`, `coordinates`, `producer`, `derivedFrom`, `source`); record-level: `id` in the `endo.evidence.*` namespace, `coordinates`, and the canonical digest; the "optional integrity/witness attachments" land as the digests — the witness is deferred |
+| Resource accounting | **BUILD** | `EndoResourceUsageV0` on the record (`tokens` / `cost` / `durationMs`, all optional — an absent field is an honest absence, not a zero); reported values, never recomputed from components |
+| Result bundles | **BUILD** | `buildEndoResultBundleV0`: the record + an optional replay report + the bundle's own SHA-256 over the two in canonical form; strict doors; a report about a different record is a TypeError |
+
+The substrate schemas (record, page, replay report, stream summary,
+resource usage, bundle) live in `protocol/event-record.ts` —
+zero-dependency, strict validators that never throw;
+`runtime/contracts/canonical-json.ts` is the production copy of the
+quarantined research canonicalization discipline
+(`research/conformance/json.ts`): sorted object keys, preserved array
+order, tab indent, one trailing LF — "a local format, not RFC 8785" — and
+the record digest is `sha256HexV0(canonicalEndoJsonV0(events))`.
+
+Design decisions (recorded per the handoff constraints):
+
+- Record, bundle, and replay-report identity uses the `endo.evidence.*`
+  namespace — a persisted record is evidence material; the artifact
+  namespace stays a v1 addition.
+- Digest discipline is split: protocol validators check the
+  64-lowercase-hex GRAMMAR only (language-neutral, no `node:crypto` in
+  `protocol/`); the services check CORRECTNESS (recompute, compare) —
+  which is what makes the three-way replay vocabulary honest.
+- The replay events layer is `unreproducible` when an event fails
+  re-validation or the stream cannot be canonicalized; the derived layer
+  is `unreproducible` when the record carries no summary to compare
+  against. The layers are independent: a non-canonicalizable stream is
+  still classified by the derived layer's own summary comparison.
+- Strict doors: `ingest`, `replayEndoEventRecordV0`, and
+  `buildEndoResultBundleV0` validate `unknown` at the boundary and throw
+  TypeError (the house `parseUsageLedgerQuery` style).
+- The store does not copy events at ingest (JSDoc: the producer treats the
+  returned event as the stored one); `record()` materializes a snapshot,
+  so a persisted record never moves under later ingestion.
+- No Chord service handle/facet yet (it lands with the first consumer,
+  Phase 3+) and no Pi adapter yet (the mapping evidence is Phase 5
+  conformance).
+
+- **Status (2026-10-02, done):** four new source modules + the barrel
+  exports + three suites (51 tests); self-check at §10.5.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -776,8 +832,8 @@ with path updates only.
   (Edge with the Phase 3 cognition graph; Evaluation/Evidence result
   types with Phases 5/6). The schema/IR/code-generation approach (README
   line 714) lands only after the protocol stabilises.
-- Events/evidence, graph, replay, evaluation/conformance (lab), evolution
-  substrate (RRSI/GEPA), RRSI/REEF, trust providers.
+- Graph, evaluation/conformance (lab), evolution substrate (RRSI/GEPA),
+  RRSI/REEF, trust providers.
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; visualization layer
@@ -927,6 +983,30 @@ Milestone (c):
   failed** (1580 pre-existing + 40 new).
 - Donor untouched (read-only): Phase 1 adds no donor files.
 
+### 10.5 Phase 2 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the nine scope directories: 155 files, no fixes
+  needed (after `--write` normalized the four new modules + three suites).
+- `grep -rn '@earendil-works/pi-' protocol/`: 0 matches. Import
+  direction: `protocol/event-record.ts` imports only `./event.ts` and
+  `./identity.ts` (intra-protocol; `protocol/` remains zero-dependency);
+  the new `runtime/contracts/` modules import only `protocol/` +
+  intra-contracts (`node:crypto` / `node:util` in `canonical-json.ts`).
+- New suites: `tests/{endo-event-record,endo-event-store,endo-event-replay}.test.ts`
+  — 3 files, 51 passed: validator accept/reject per field; the strict
+  ingestion door (including the structural-pass / canonicalization-fail
+  Date-payload seam); 1-based cursor pagination at the demonstrated
+  boundaries; digest determinism across independently built stores; the
+  three-way replay classification (tampered digest → reconstructed events,
+  tampered summary → reconstructed derived, deleted summary →
+  unreproducible derived, non-canonicalizable stream → unreproducible
+  events with the `computedDigest` key absent); bundle strict doors and
+  canonical digest stability.
+- Full `npx vitest --run`: **50/50 files, 1671 passed, 3 skipped, 0
+  failed** (1620 pre-existing + 51 new).
+- Donor untouched (read-only): Phase 2 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -946,5 +1026,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 2 (event and evidence substrate) — the README roadmap. Phase 1 (protocol + identity) is recorded in §5.12 and verified in §10.4.
+Next: Phase 3 (cognition graph — typed nodes/edges, normalized object store, incremental traversal; README "# Roadmap"). Phase 2 (event and evidence substrate) is recorded in §5.13 and verified in §10.5.
 

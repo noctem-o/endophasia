@@ -47,8 +47,21 @@ export type {
 	UsageFeedListenerV0,
 	UsageFeedSubscriptionV0,
 } from "../observation/ports.ts";
+export { assertPlainJsonValueV0, canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 export { EndophasiaContinuityV0 } from "./continuity.ts";
 export { createEndophasiaContinuityFacetV0 } from "./continuity-facet.ts";
+export {
+	buildEndoResultBundleV0,
+	reduceEndoEventSummaryV0,
+	reduceEndoEventsV0,
+	replayEndoEventRecordV0,
+} from "./event-replay.ts";
+export type { EndoEventStoreV0 } from "./event-store.ts";
+export {
+	createEndoEventStoreV0,
+	ENDO_EVENT_RECORD_PAGE_DEFAULT_LIMIT_V0,
+	ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0,
+} from "./event-store.ts";
 export { createEndophasiaInspectorFacetV0, EndophasiaInspectorV0 } from "./inspector.ts";
 export { createEndophasiaMissionTraceFacetV0, EndophasiaMissionTraceV0 } from "./mission-trace.ts";
 export type { EndophasiaRuntimeFactsSourcesV0 } from "./runtime-facts.ts";

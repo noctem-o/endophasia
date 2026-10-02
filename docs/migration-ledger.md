@@ -52,9 +52,9 @@ observable behaviour.
 
 ## 3. Pi integration decision
 
-**Decision: a git submodule at `pi/` pinned to upstream commit
-`cb7969d212836b8939001dce159fbd2ed6ad395f`
-(`https://github.com/earendil-works/pi.git`), plus npm workspaces
+**Decision: a git submodule at `pi/` pinned to the donor fork's HEAD
+`ab4caf5a0d3a245ccc29a97a13283b93f9174f78`
+(`https://github.com/noctem-o/endophasia.git`), plus npm workspaces
 spanning `pi/packages/*` and `pi/packages/session-backends/*`.**
 
 Evidence:
@@ -81,21 +81,41 @@ Evidence:
    therefore resolves every `@earendil-works/*` import from the submodule's
    source with zero standalone-side resolver machinery. The standalone only
    needs its own aliases for its own tests and type-checks.
-4. **Pin choice.** The donor fork tracks upstream `earendil-works:main`; the
-   last upstream merge into the donor is `6355e6ea7`, whose upstream parent
-   is `cb7969d21` (`feat(durable): add durable task runtime`). After that
-   merge the donor added only two Pi-side commits — `d88ae28be`
-   (coding-agent: default Together to generated moonshotai/Kimi-K3) and
-   `95f9be445` (ai: Together catalog test selection) — plus endophasia-only
-   commits. The Endophasia suites use faux providers
-   (`createModels` + `fauxProvider` from `@earendil-works/pi-ai`) and do not
-   exercise Together, so the pin is behaviour-neutral; the scaffold
-   self-check re-runs the full suite against the pin to prove it.
+4. **Pin choice — the fork extends Pi, so the fork HEAD is the pin.** The
+   donor fork is not merely "upstream + `packages/endophasia`": it carries
+   deliberate Pi-side extensions that the demonstrated worker composition
+   depends on, and which do NOT exist at pure upstream. Verified by diffing
+   donor `packages/` against the last upstream merge tip
+   `cb7969d212836b8939001dce159fbd2ed6ad395f` (parent of merge
+   `6355e6ea7`):
+   - `packages/coding-agent/src/experimental/session-worker.ts`
+     (`createHostFacets` hook, `CodingAgentSessionWorkerHostRuntime`,
+     `runCodingAgentSessionWorker(args, { createHostFacets })` — the hook
+     `runtime/session-worker.ts` uses);
+   - `packages/coding-agent/src/experimental/server.ts` +
+     `services/worker.ts` + `session-worker-manager.ts` (trusted host
+     listeners and worker plumbing);
+   - `packages/agent/src/harness/session/{session,types,memory}.ts` (narrow
+     `scanUsage` reader exposed to trusted host facets — the usage-ledger
+     source);
+   - `packages/agent/src/harness/session/testing/conformance/session-repo.ts`
+     (+ tests, model-resolver Kimi-K3 default, coding-agent tests).
+   `grep -c createHostFacets` on the pure-upstream pin returns 0; on the
+   donor it returns 6. Pinning pure upstream would therefore break the
+   demonstrated worker contract, so `pi/` = the donor fork at
+   `ab4caf5a0d3a245ccc29a97a13283b93f9174f78` — exactly the Pi state the
+   §2 baseline (43/43, 1522 passed) ran against. `cb7969d21` is recorded as
+   the last upstream merge tip for future deliberate synchronization per
+   item 5. The donor fork's own `pi/packages/endophasia`
+   (`@endophasia/core`, deps: chord + pi-agent-core only, dist-only exports)
+   remains a workspace member but is inert: nothing in the standalone
+   imports it, and it is not built — the standalone's own `protocol/
+   runtime/ adapters/` tree is the canonical home of the migrated code.
 5. **Upstream methodology.** `docs/pi-upstream.md` (donor) requires the
    explicit upstream remote and pinned revisions; Pi remains the reference
    runtime, not authority. The standalone keeps this: `pi/` is a pinned
-   upstream checkout, and `pi-upstream.md` is migrated with the boundary
-   docs.
+   checkout (donor fork HEAD, which tracks upstream), and `pi-upstream.md`
+   is migrated with the boundary docs.
 6. **Workspaces.** The donor root workspaces are `packages/*`,
    `packages/session-backends/*`, and five example extension workspaces.
    The standalone declares only the first two (retargeted under `pi/`),

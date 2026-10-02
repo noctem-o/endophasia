@@ -57,6 +57,7 @@
 			"@earendil-works/pi-tui/*": ["./pi/packages/tui/src/*"]
 		}
 	},
+	"files": ["pi/packages/coding-agent/src/utils/highlight-js.d.ts"],
 	"include": [
 		"protocol/**/*",
 		"runtime/**/*",

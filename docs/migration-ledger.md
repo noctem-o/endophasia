@@ -267,12 +267,12 @@ over the strict-JSON wire.
 | `src/inspector-service.ts` (service + facet) | `runtime/contracts/inspector.ts` | **ADAPT** | type-only `AgentHarness` handle |
 | `src/index.ts` | `runtime/contracts/index.ts` | **ADAPT** | public contract surface, re-targeted |
 
-- **Status (milestone b, done):** the nine contract modules above (minus the
-  barrel) are migrated; the non-schema halves of `mission-trace`,
+- **Status (milestone c, done):** all ten modules are migrated, including
+  the barrel `runtime/contracts/index.ts` (donor `src/index.ts` name set,
+  re-targeted per module). The non-schema halves of `mission-trace`,
   `runtime-facts`, `usage-facet`, `continuity-facet`, and
-  `runtime-profile-facet` are verbatim against the donor, retargeted only for
-  imports. The barrel `runtime/contracts/index.ts` lands with the adapter
-  modules it re-exports (milestone c).
+  `runtime-profile-facet` are verbatim against the donor, retargeted only
+  for imports.
 
 - Service identities unchanged: `endophasia.mission-trace.v0`,
   `endophasia.runtime-facts.v0`, `endophasia.usage.v0`,
@@ -319,11 +319,10 @@ All nine Pi projection modules plus the aggregate seam move to
 | `src/steering.ts` | `adapters/pi/steering.ts` | **ADAPT** | `steerV0` (durable steer queue), `queueFollowUpV0` (follow-up boundary), `stopV0` (cancels ONLY the run observed by `inspectExecution`; never retargets), `captureSteeringStateV0`. **The only VALUE Pi import in production src: `HarnessClosed`** — re-homed here with its rejection semantics |
 | `src/control-deck.ts` | `adapters/pi/control-deck.ts` | **ADAPT** | `captureControlStateV0`, `configureModelV0`, `configureThinkingLevelV0`, `configureActiveToolsV0` (setter commits but failed readback rejects although config changed; nothing retried) |
 
-- **Status (milestone b, done):** `adapters/pi/continuity.ts` (capture half of
-  donor `src/continuity.ts`) and `adapters/pi/session-overview.ts` (capture
-  half of donor `src/session-overview.ts`) are migrated — the two capture
-  modules the contract facets import. The remaining eight adapter modules land
-  in milestone c with the test suites.
+- **Status (milestone c, done):** all ten modules are migrated with their
+  test suites. `continuity.ts` and `session-overview.ts` (the two capture
+  modules the contract facets import) landed in milestone b; the remaining
+  eight in milestone c.
 
 - **No neutral port yet** (steering, control-deck, session-overview capture,
   continuity capture): per the donor boundary doc, those need their own
@@ -351,6 +350,12 @@ All nine Pi projection modules plus the aggregate seam move to
 | `runtime/cockpit-host.ts` | `runtime/cockpit-host.ts` | **KEEP** | 127.0.0.1-only; exactly 4 routes under `/c/<32-byte base64url token>/`; `timingSafeEqual`; constant-time prefix; exact-Host loopback authority check (403, DNS-rebinding guard); GET/HEAD only; no-cache; CSP `cockpitContentSecurityPolicy(websocketOrigin)`; 503 bootstrap until `setBootstrap` |
 | `runtime/cockpit-main.ts` | `runtime/cockpit-main.ts` | **KEEP** | foreground CLI; strict parseArgs (provider/model/directory/port); prints page URL; SIGINT/SIGTERM stop |
 
+- **Status (milestone c, done):** `runtime/session-worker.ts` is migrated
+  (pulled forward from milestone d because
+  `runtime-profile-service.test.ts` imports
+  `PI_STANDARD_RUNTIME_PROFILE_V0` from it, as in the donor). The five
+  remaining host entries land in milestone d.
+
 - `cockpit-host.ts`, `cockpit-main.ts` and the prime transport have **zero**
   `@earendil-works` imports (verified) — KEEP means literal copy apart from
   relative-path fixes.
@@ -368,6 +373,9 @@ All nine Pi projection modules plus the aggregate seam move to
 | `runtime/prime/process-group.ts` | `adapters/prime/transport/process-group.ts` | **ADAPT** |
 | `runtime/prime/rpc-connection.ts` | `adapters/prime/transport/rpc-connection.ts` | **ADAPT** |
 | `runtime/prime/runtime-identity.ts` | `adapters/prime/transport/runtime-identity.ts` | **ADAPT** |
+
+- **Status (milestone c, done):** all five files are migrated; each
+  verified byte-identical to the donor via `cmp`.
 
 - Pure Node; **zero** `@earendil-works` imports; zero external importers in
   the donor (grep-verified) — the transport layer of a Prime RPC ingress.
@@ -627,7 +635,7 @@ with path updates only.
 | Disposition | Components |
 | :--- | :--- |
 | KEEP | `runtime/observation/ports.ts`, `runtime/cockpit-host.ts`, `runtime/cockpit-main.ts`, `runtime/prime/limits.ts`, all of `presentation/`, all of `cockpit/`, all of `research/` + fixtures, test helpers + worker fixtures, `biome.json`/`LICENSE.md`, boundary docs |
-| ADAPT | `protocol/primitives.ts` (new shared neutral literals), `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (4 of 5), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
+| ADAPT | `protocol/primitives.ts` (new shared neutral literals), `adapters/pi/*` (9 projections + observation-sources), `runtime/{server,browser-server,browser-listener,cockpit,session-worker}.ts`, `adapters/prime/transport/*` (all 5, byte-verified vs donor), `runtime/contracts/{inspector,usage-facet,continuity-facet,runtime-profile-facet,index}.ts`, all 43 test files, `check-cockpit-types.mjs` |
 | REWRITE | the 8 `protocol/*` schema modules (contract/service split, 3 Pi-leak severances §6; the shared `protocol/primitives.ts` is ADAPT, not REWRITE), the 5 `runtime/contracts/*` service modules, `adapters/pi/session-overview.ts` (capture split), `scripts/check-browser-smoke.mjs`, `tsconfig.json`, `vitest.config.ts`, the 3 boundary-guard tests (assertion paths) |
 | RETIRE | nothing in Phase 0 — every demonstrated component has a target home; retirement decisions (e.g. Pi-internal portions of the donor browser-smoke script, donor `packages/endophasia` package metadata) apply to the donor copy, which stays read-only |
 | DEFER | §8 |
@@ -647,3 +655,32 @@ After each milestone commit:
 5. Accidental-Pi-coupling check: grep `protocol/` for
    `@earendil-works/pi-` (must be empty); the three guard tests green.
 6. Ledger status updated; target README updated.
+
+### 10.1 Milestone (c) self-check record
+
+Milestones (a) and (b) were verified with the same checks at their commits
+(tsc + biome clean; no vitest surface yet).
+
+Milestone (c):
+
+- `npx tsc --noEmit` (root): 0 errors. Two program-shape fixes were needed
+  once the tests pulled Pi package source into the program: (a)
+  `pi/packages/ai/src/providers/data/*.json` generated by
+  `npm run hydrate:model-data` (43 TS2307s before); (b) tsconfig `files`
+  now includes `pi/packages/coding-agent/src/utils/highlight-js.d.ts` —
+  the donor's own ambient declaration for the untyped `highlight.js`
+  subpath imports in `syntax-highlight.ts` (22 TS7016s before; the donor
+  root include glob picks the file up, the target's `exclude: pi/**`
+  needed the explicit `files` entry).
+- `npx biome check protocol/ runtime/ adapters/ tests/`: clean (14
+  import-organization/format fixes applied to the retargeted files).
+- `grep -rn '@earendil-works/pi-' protocol/`: 0 matches.
+- `npx vitest --run tests/`: 16 files, 224 tests, all pass.
+  `runtime-observation-boundary.test.ts` re-asserts its on-disk graph
+  checks against the target tree (neutral set:
+  `runtime/observation/ports.ts` +
+  `runtime/contracts/{mission-trace,runtime-facts,usage-facet,usage}.ts`;
+  Pi-specific set:
+  `adapters/pi/{observation-sources,mission-trace,runtime-metrics,
+  durable-outcomes,usage-feed,usage-ledger}.ts`; schema versions read from
+  `protocol/{mission-trace,runtime-facts,usage}.ts`).

@@ -48,33 +48,37 @@ Endophasia exists to make those distinctions explicit and inspectable.
 
 Endophasia should be a **substrate**, not the owner of every subsystem.
 
-                         ┌───────────────────────────┐
-                         │        ENDOPHASIA         │
-                         │                           │
-                         │  Protocol / identity      │
-                         │  Events / evidence        │
-                         │  Cognition graph          │
-                         │  Experiments / evaluation │
-                         │  Visualisation            │
-                         │  Steering / control       │
-                         └─────────────┬─────────────┘
-                                       │
-       ┌───────────────────────────────┼───────────────────────────────┐
-       │                               │                               │
-       ▼                               ▼                               ▼
-   RUNTIME LAYER                 EVOLVE LAYER                    TRUST LAYER
-       │                               │                               │
-   ┌───┼────┐                  ┌───────┼────────┐               ┌──────┼──────┐
-   │   │    │                  │       │        │               │      │      │
-  Pi  Prime Codex             Reef    RRSI     GEPA          Cogitator Magpie Deadbolt
-                                                              
-       │                               │                               │
-       └───────────────────────────────┼───────────────────────────────┘
-                                       │
-                                       ▼
-                             COLLABORATION LAYER
-                                       │
-                                      Buzz
+```mermaid
+flowchart TB
+    E["ENDOPHASIA<br/>Protocol / identity<br/>Events / evidence<br/>Cognition graph<br/>Experiments / evaluation<br/>Visualisation<br/>Steering / control"]
+
+    subgraph R["RUNTIME LAYER"]
+        Pi["Pi"]
+        Prime["Prime"]
+        Codex["Codex"]
+    end
+
+    subgraph V["EVOLVE LAYER"]
+        Reef["REEF"]
+        RRSI["RRSI"]
+        GEPA["GEPA"]
+    end
+
+    subgraph T["TRUST LAYER"]
+        Cog["Cogitator"]
+        Mag["Magpie"]
+        Dead["Deadbolt"]
+    end
+
+    Buzz["COLLABORATION LAYER<br/>Buzz"]
+
+    E --> R
+    E --> V
+    E --> T
+    R --> Buzz
+    V --> Buzz
+    T --> Buzz
+```
 
 The projects remain independent.
 

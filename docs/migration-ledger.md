@@ -904,6 +904,45 @@ Design decisions:
   `evolution/` modules + four suites (191 tests); self-check at
   §10.9.
 
+### 5.18 Phase 7 components (RRSI + REEF provider seams)
+
+Phase 7 scope (README "## Phase 7 — RRSI + REEF providers"): the
+policy seam through which any adaptation policy — RRSI first, GEPA or
+another harness-evolution method later — reads an Endophasia
+experiment and records a selection decision under the same
+experiment and evidence semantics (README lines 376–407), plus the
+REEF adapter that maps REEF's scenario, receipt, feedback, candidate,
+artifact, and release records into the common experiment/evidence
+model (README lines 340–372). Phase 7 is seams, not implementations:
+no RRSI LLM proposer/critic, no REEF HTTP client, no GEPA internals,
+no network — all of that stays provider-side behind the seam. Donor
+re-check (read-only, word-boundary, `research/prime-conformance/`):
+every `provider` match is ACP LLM-API conformance plumbing
+(`fake-provider.ts`, base URLs, request/usage/failure records) and
+the single `policy` match is the publication-gate comment in
+`publication.ts` — no selection policy, no candidate comparison, no
+harness-evolution loop: no Phase 7 analogue, BUILD.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| RRSI policy provider | `evolution/policies/ports.ts`: `EndoEvolutionPolicyContextV0` — exactly the records the substrate keeps (experiment, candidate/mutation histories, results, held-out, the ledger's causal chain) — + `EndoEvolutionPolicyV0` `{ policy: endo.selection-policy.v0, decide(context, id) }`: pure and deterministic over the context, the caller supplies the decision id, the returned record is valid by the Phase 6 selector. A provider implements only the capability it can provide truthfully; a method that needs live traffic, an LLM judge, or a served state stays provider-side, not a selection policy |
+| GEPA or other harness-evolution provider | the same seam: the `EndoSelectionPolicyV0` identity (name + revision) is what the substrate stamps on every decision, so RRSI versus GEPA versus a custom rule set compare under identical experiment and evidence semantics — one interface, no per-method shapes |
+| REEF adaptation provider | `adapters/reef/{shapes,mapping}.ts`: seven REEF mirror shapes + seven pure mappers (scenario→experiment, report→evaluation result, mutation→mutation, candidate→candidate, artifact→artifact, release→promotion request, release→promotion decision); every input crosses a strict door, every output exits through the Phase 6 validators — the REEF service itself stays external |
+| Candidate-evidence mapping | report receipts become one trial each (`endo.run.reef-<receipt>`, 0-based index, candidate-stamped coordinates), `score` → `derived.score` (finite-number door), `feedback` → `trial.raw` (strict-JSON door); the baseline policy's `selected` outcome carries exactly the best candidate's scored evolve-set result ids as `evidence` and its scored held-out ids as `heldOutEvidence` |
+| Release-version integration | release → promotion request (target defaults to `reef release <releaseId>`, artifact optional) → `granted` promotion decision (`authority` defaults to `reef-<releaseId>` — a recorded identity, never a grant); rollback is a NEW request+decision pair pointing the same component back at the prior content: append-only, decision-not-effect |
+
+Design decisions:
+
+- **Seams, not implementations**: `evolution/policies/` holds only the context/capability types and one algorithm-neutral baseline; no RRSI/GEPA internals, no HTTP, no model serving, no Python in the tree. `evolution/` still imports only `protocol/` + `runtime/contracts/` + intra-evolution; `adapters/reef/` only `protocol/` + `runtime/contracts/` + `evolution/`. The Phase 6-reserved `policies/` directory lands now, per §5.17.
+- **RRSI → substrate mapping (documented, not built)**: one edit → one `endo.mutation.v0`; the L_t edit history → mutations + evaluation results + selection decisions in ledger order; the noise band δ, cost rule, and guards → `endo.selection-condition.v0` entries `{name, parameters, observed, met}`; the evolve/held-out/ood splits → `ENDO_EVALUATION_PARTITIONS_V0`; the annealed budget, tried set, stall handling, exploration, critic, and novelty/prune bookkeeping stay provider-internal state behind the seam.
+- **The baseline policy is the seam's executable spec**: `ENDO_HIGHEST_SCORE_POLICY_V0` (identity `highest-score`/`v1`) — a trial's score is a finite `derived.score` only (absent or non-finite contributes nothing); evidence is the union of `results` ∪ `heldOut` deduped by record id; the three conditions are always recorded — `evidence-present`, `strictly-best` (exactly one candidate holds the unique max evolve-set mean; a tie records nulls), `held-out-present` (the best has ≥1 scored held-out trial); all met → `selected`, otherwise `inconclusive` naming the first unmet condition; never `rejected`. A policy that cannot truthfully select says so in the record.
+- **Honest absence through the mapper**: a report without score/feedback maps to a trial without `derived`/`raw` (never invented); a report without receipts, a non-finite score, a non-strict feedback, a receipt outside the run-identifier grammar, an entry path the kind grammar rejects, or an evidence id outside `endo.evidence.*` is a `TypeError` at the door — the adapter records REEF data, it does not launder it.
+- **Candidate ≠ artifact ≠ evaluation ≠ selection ≠ promotion ≠ authority holds end-to-end**: the adapter integration drives a REEF scenario through the full Phase 6 spine — scenario→experiment, mutation, candidate, two reports, the seven-step lifecycle, the baseline `selected`, the released artifact, request/decision, and a rollback pair — then replays the 18-entry ledger and the lifecycle; the replayed state is `promoted` with the same transitions and a content-identical ledger.
+
+- **Status (2026-10-02, done):** two `evolution/policies/` modules +
+  two `adapters/reef/` modules + `evolution/index.ts` (+2 re-exports)
+  + two suites (41 tests); self-check at §10.10.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1015,7 +1054,7 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- RRSI + REEF provider seams (Phase 7), trust providers (Phase 8).
+- Trust providers (Phase 8).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1316,6 +1355,42 @@ Milestone (c):
   `evolution` boundary-guard root — + 191 new).
 - Donor untouched (read-only): Phase 6 adds no donor files.
 
+### 10.10 Phase 7 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the twelve scope directories: 198 files, no
+  fixes applied (after `--write` formatted the five new/changed
+  modules and the two suites and an unused import was dropped).
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/ adapters/reef/`:
+  0 matches; the ten pre-existing `adapters/pi/` matches (the only
+  production modules allowed to import Pi, §5.4) are untouched.
+  Import direction: `evolution/policies/` imports only `protocol/` +
+  intra-evolution; `adapters/reef/` imports only `protocol/` +
+  `runtime/contracts/` + `evolution/`; `protocol/` remains
+  zero-dependency, no `node:crypto`.
+- New suites: `tests/endo-evolution-policies.test.ts` (18 tests) —
+  the baseline policy's selected path (evidence + held-out evidence
+  ids), mean aggregation across results, unscored and non-numeric
+  trials contributing nothing, the no-evidence case, the tie
+  (`strictly-best` records nulls), strict-best-without-held-out,
+  held-out-only never selecting, a held-out record carried in
+  `results`, a record in both arrays counted once, unknown-candidate
+  results ignored, determinism over shuffled input order, caller
+  identity, the `endo.evidence.*` door, lying shapes, and a
+  cross-layer integration from mutation to promotion replayed end to
+  end (17 ledger entries); `tests/endo-reef-adapter.test.ts` (23
+  tests) — per-mapper accept/negative pairs (id + provenance
+  mapping, grammar and prefix-overflow doors, receipts→trials,
+  score/feedback doors, the operation map, entry-path→kind, the
+  candidate's ordered mutation ids, the content-addressed artifact
+  deep-equal against `buildEndoArtifactV0`, release request/decision
+  defaults and doors) plus the full REEF→substrate spine integration
+  (18 ledger entries, the rollback pair, both replays).
+- Full `npx vitest --run`: **71/71 files, 2110 passed, 3 skipped, 0
+  failed** (2069 pre-existing at Phase 6 per §10.9 + 41 new: 18
+  policy + 23 adapter).
+- Donor untouched (read-only): Phase 7 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1335,5 +1410,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 7 (RRSI + REEF providers — README "## Phase 7"). Phase 6 (evolution substrate) is recorded in §5.17 and verified in §10.9.
+Next: Phase 8 (Trust integrations — README "## Phase 8"). Phase 7 (RRSI + REEF provider seams) is recorded in §5.18 and verified in §10.10.
 

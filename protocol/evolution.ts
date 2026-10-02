@@ -11,7 +11,8 @@
  * Every shape is a record, never an event: the same discipline as the Phase 5 evaluation shapes.
  * Records that are evidence (artifacts, mutations, transitions, selection decisions, promotion
  * requests and decisions) use the endo.evidence.* namespace; candidates use endo.candidate.*;
- * experiments use endo.experiment.*. The identifier grammar (README "# Identity") is unchanged.
+ * model profiles and pools use endo.model.*; experiments use endo.experiment.*. The identifier
+ * grammar (README "# Identity") is unchanged.
  */
 
 import type { EndoEnvironmentProfileV0 } from "./evaluation.ts";
@@ -163,9 +164,9 @@ export const ENDO_PROMOTION_OUTCOMES_V0 = ["granted", "denied"] as const satisfi
 
 /**
  * The evidence ledger kinds: the closed set of record kinds the ledger can hold. Every kind maps
- * one-to-one to a schemaVersion (the ledger derives the kind from the record, never from a caller-
- * supplied field). The "candidate" kind is the one kind whose record lives outside the evidence
- * namespace (endo.candidate.*).
+ * one-to-one to a schemaVersion (the ledger derives the kind from the record, never from a
+ * caller-supplied field). The "candidate", "model-profile", and "model-pool" kinds are the
+ * kinds whose records live outside the evidence namespace (endo.candidate.*, endo.model.*).
  */
 export type EndoEvidenceKindV0 =
 	| "evaluation-result"
@@ -183,7 +184,10 @@ export type EndoEvidenceKindV0 =
 	| "standing"
 	| "lease"
 	| "receipt"
-	| "runtime-admission";
+	| "runtime-admission"
+	| "model-profile"
+	| "model-pool"
+	| "model-telemetry";
 
 /** The closed evidence ledger kinds. */
 export const ENDO_EVIDENCE_KINDS_V0 = [
@@ -203,6 +207,9 @@ export const ENDO_EVIDENCE_KINDS_V0 = [
 	"lease",
 	"receipt",
 	"runtime-admission",
+	"model-profile",
+	"model-pool",
+	"model-telemetry",
 ] as const satisfies readonly EndoEvidenceKindV0[];
 
 /**
@@ -866,7 +873,7 @@ export interface EndoEvidenceLedgerEntryV0 {
 	sequence: number;
 	/** The kind of record the entry names. */
 	kind: EndoEvidenceKindV0;
-	/** The identifier of the named record: endo.candidate.* for the "candidate" kind, endo.evidence.* otherwise. */
+	/** The identifier of the named record: endo.candidate.* for the "candidate" kind, endo.model.* for the "model-profile" and "model-pool" kinds, endo.evidence.* otherwise. */
 	recordId: string;
 }
 
@@ -875,7 +882,7 @@ const ENDO_EVIDENCE_LEDGER_ENTRY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "se
 /**
  * Validates an evidence ledger entry. Rejects unknown fields, a sequence below one or non-integer,
  * a kind outside the closed set, and a record identifier in the wrong namespace for the kind
- * (candidate records use the candidate namespace; every other kind uses the evidence namespace).
+ * (candidate records use the candidate namespace; model-profile and model-pool records use the model namespace; every other kind uses the evidence namespace).
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoEvidenceLedgerEntryV0(value: unknown): EndoEvidenceLedgerEntryV0 | null {
@@ -887,6 +894,8 @@ export function validateEndoEvidenceLedgerEntryV0(value: unknown): EndoEvidenceL
 	if (!(ENDO_EVIDENCE_KINDS_V0 as readonly string[]).includes(v.kind as string)) return null;
 	if (v.kind === "candidate") {
 		if (!isEndoIdentifier(v.recordId, "candidate")) return null;
+	} else if (v.kind === "model-profile" || v.kind === "model-pool") {
+		if (!isEndoIdentifier(v.recordId, "model")) return null;
 	} else if (!isEndoIdentifier(v.recordId, "evidence")) {
 		return null;
 	}

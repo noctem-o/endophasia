@@ -54,6 +54,12 @@ import {
 	validateEndoSelectionDecisionV0,
 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
+import type { EndoModelPoolV0, EndoModelProfileV0, EndoModelTelemetryV0 } from "../protocol/models.ts";
+import {
+	validateEndoModelPoolV0,
+	validateEndoModelProfileV0,
+	validateEndoModelTelemetryV0,
+} from "../protocol/models.ts";
 import type { EndoRuntimeAdmissionV0 } from "../protocol/runtime.ts";
 import { validateEndoRuntimeAdmissionV0 } from "../protocol/runtime.ts";
 import type {
@@ -87,7 +93,10 @@ type EndoLedgerRecordV0 =
 	| EndoStandingRecordV0
 	| EndoLeaseRecordV0
 	| EndoReceiptRecordV0
-	| EndoRuntimeAdmissionV0;
+	| EndoRuntimeAdmissionV0
+	| EndoModelProfileV0
+	| EndoModelPoolV0
+	| EndoModelTelemetryV0;
 
 /** The closed map from a record's schemaVersion to its ledger kind. */
 const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvidenceKindV0>> = {
@@ -107,6 +116,9 @@ const ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0: Readonly<Record<string, EndoEvide
 	"endo.lease.v0": "lease",
 	"endo.receipt.v0": "receipt",
 	"endo.runtime-admission.v0": "runtime-admission",
+	"endo.model-profile.v0": "model-profile",
+	"endo.model-pool.v0": "model-pool",
+	"endo.model-telemetry.v0": "model-telemetry",
 };
 
 /** The validator of each closed evidence record kind. */
@@ -128,6 +140,9 @@ const ENDO_EVIDENCE_VALIDATORS_V0: Readonly<Record<EndoEvidenceKindV0, (value: u
 		lease: validateEndoLeaseRecordV0,
 		receipt: validateEndoReceiptRecordV0,
 		"runtime-admission": validateEndoRuntimeAdmissionV0,
+		"model-profile": validateEndoModelProfileV0,
+		"model-pool": validateEndoModelPoolV0,
+		"model-telemetry": validateEndoModelTelemetryV0,
 	};
 
 /** The ledger references a record must already have been appended with, by its schemaVersion. */
@@ -155,6 +170,12 @@ function referencesV0(record: EndoLedgerRecordV0): string[] {
 			return [record.leaseId, ...(record.rollbackOf ?? [])];
 		case "endo.runtime-admission.v0":
 			return record.evidence;
+		case "endo.model-profile.v0":
+			return [];
+		case "endo.model-pool.v0":
+			return record.members.map((member) => member.modelId);
+		case "endo.model-telemetry.v0":
+			return [record.modelId];
 		default:
 			return [];
 	}

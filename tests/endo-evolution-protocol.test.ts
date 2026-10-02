@@ -661,16 +661,23 @@ describe("validateEndoEvidenceLedgerEntryV0", () => {
 		).toBeNull();
 	});
 
-	it("rejects a kind outside the closed sixteen-way", () => {
+	it("rejects a kind outside the closed nineteen-way", () => {
 		expect(
 			validateEndoEvidenceLedgerEntryV0(validEntry(1, "proposal" as EndoEvidenceKindV0, "endo.evidence.x")),
 		).toBeNull();
 	});
 
-	it("requires the candidate namespace only for candidate entries", () => {
+	it("requires the namespace of the kind for each entry", () => {
 		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "candidate", "endo.candidate.c-1"))).not.toBeNull();
 		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "candidate", "endo.evidence.c-1"))).toBeNull();
 		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "mutation", "endo.candidate.mut-1"))).toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-profile", "endo.model.gpt-x"))).not.toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-pool", "endo.model.pool-1"))).not.toBeNull();
+		expect(
+			validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-telemetry", "endo.evidence.tele-1")),
+		).not.toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-profile", "endo.evidence.gpt-x"))).toBeNull();
+		expect(validateEndoEvidenceLedgerEntryV0(validEntry(1, "model-pool", "endo.evidence.pool-1"))).toBeNull();
 	});
 
 	it("rejects a record id in any other namespace", () => {

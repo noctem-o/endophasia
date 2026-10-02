@@ -1035,6 +1035,79 @@ Design decisions:
   `evolution/evidence.ts` (ledger wiring) + four suites (67
   tests); self-check at §10.12.
 
+### 5.21 Phase 10 components (Model/runtime orchestration)
+
+Phase 10 scope (README "## Phase 10 — Model/runtime
+orchestration", lines 1298–1309): ModelPool,
+capability-aware routing, adaptive concurrency, queueing,
+retries, health, performance/resource telemetry, local-model
+integrations. Non-goal (README:1334): "a model-serving engine" —
+nothing here serves, calls, or contacts a model. Phase 10 is
+seams, not implementations: the model stays external behind its
+profile record, the scheduler steps recorded state and events,
+and telemetry is a record of observations, not a collector.
+Donor re-check (read-only, case-insensitive, over the whole
+donor): zero meaningful `ModelPool`/`model pool` matches in
+`*.md`/`*.ts` (excluding node_modules); the
+routing/concurrency/queue/retry/telemetry matches are all
+Prime-conformance prose
+(`docs/prime-runtime-conformance-0.9.7.md`,
+`prime-runtime-conformance-v0.md:92,174,176,316,323,324`,
+`prime-runtime-ingress-v0.md:46,73,140,273`,
+`runtime-observation-boundary-v0.md:89`) and the README
+STEER/QUEUE/STOP prose (README.md:39,88,155–156); the local-model
+prose is README:257 ("never fabricated for API-only models"),
+270 (Model profile definition), 278, 354, 424; no `models/`
+directory pre-existed (deferred in §8): no Phase 10 analogue,
+BUILD (seams only).
+
+| README requirement | Disposition |
+| :--- | :--- |
+| ModelPool | `protocol/models.ts`: `endo.model-pool.v0` — a named pool of at least one member, each citing a profile by its `endo.model.*` id and declaring a `maxConcurrency` bound (integer ≥ 1), members unique. The pool is a record, not a process: it names capacities, it consumes none |
+| Capability-aware routing | `models/orchestration.ts`: `routeModelV0` — given a pool, the presented profiles of its members, and requested capabilities (unique, each 1–512), computes the eligible members (pool order, capabilities ⊇ all requested) and selects the lexicographic first; the result is the derived report `endo.model-routing-decision.v0` (`reason` closed two-way capability-match / no-eligible-model, with the `(selected !== null) === (reason === "capability-match")` and selected-∈-eligible doors). Doors throw `TypeError` for an invalid pool or profile, a double presentation, a missing member profile, and a profile that is not a member |
+| Adaptive concurrency, queueing, retries | `models/orchestration.ts`: `stepPoolSchedulerV0` — a pure step over the scheduler state `endo.pool-scheduler-state.v0` (per-member `inFlight` counts, FIFO `queue` of model ids) driven by `endo.pool-scheduler-event.v0` (enqueue / complete / retry; `attempt` present exactly on retry). Admits the queue head while its member is under its `maxConcurrency` bound (FIFO, head-of-line blocking, no overtaking); a retry re-enqueues at the tail — a recorded event, not a state field |
+| Health, performance/resource telemetry | `protocol/models.ts`: `endo.model-telemetry.v0` — a ledgerable observation record per model: `health` closed three-way healthy/degraded/unhealthy plus non-negative counters `calls`/`tokensIn`/`tokensOut`/`failures`/`durationMs`. A record of what was observed, not a collector; the all-zero window is a valid record |
+| Local-model integrations | `endo.model-profile.v0`: `deployment` closed two-way hosted/local and `observation` closed two-way none/j-space, with the door `hosted ∧ j-space → null` — the donor's "never fabricated for API-only models" (README:257) becomes a validator door. **No local-model adapter**: the donor documents no local-model wire shape at all (unlike Cogitator, Prime, Magpie, and Deadbolt, which have documented bundles); inventing one would violate honest absence. The integration seam is the profile record itself |
+
+Design decisions:
+
+- **Three ledgerable kinds, two derived reports**:
+  `model-profile`, `model-pool`, and `model-telemetry` join
+  `ENDO_EVIDENCE_KINDS_V0` (16 → 19) and the
+  `evolution/evidence.ts` kind/validator/references maps; the
+  pool cites its members' model ids and telemetry cites a model
+  id, so the ledger enforces causal order — a profile must be
+  appended before the pool or telemetry row that cites it.
+  `endo.model-routing-decision.v0` and
+  `endo.pool-scheduler-state.v0` / `-event.v0` sit outside the
+  kind union: computed or presented, never recorded as events.
+- **Profiles and pools live in `endo.model.*`**: the entry
+  namespace rule of `validateEndoEvidenceLedgerEntryV0` is
+  three-way now (candidate → `endo.candidate.*`;
+  model-profile/model-pool → `endo.model.*`; every other kind →
+  `endo.evidence.*`); the evolution-protocol suite pins all three
+  directions.
+- **All three ledgerable records carry ids**: the
+  `ledgerIdentityV0` default (`record.id`) covers them — no
+  content addressing.
+- **The scheduler is a pure step, not a loop**: one event in,
+  one state out; the state is a snapshot (per-member in-flight
+  counts, zero rows when idle, the queue), not an event log; the
+  pump stops at the first head-of-line item whose member is at
+  its bound.
+- **Seams, not implementations**: `protocol/models.ts` imports
+  only `protocol/identity.ts` (zero-dependency, no
+  `node:crypto`); `models/orchestration.ts` imports only
+  `protocol/models.ts`. No network, no filesystem, no Rust, no
+  model calls — a routing decision and a scheduler step are
+  computations over records, not contact with a model.
+
+- **Status (2026-10-02, done):** `protocol/models.ts` (six
+  shapes) + `models/orchestration.ts` (routing + scheduler) +
+  `protocol/evolution.ts` (ledger kind union 16 → 19, entry
+  namespace rule) + `evolution/evidence.ts` (ledger wiring) +
+  three suites (67 tests); self-check at §10.13.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1146,7 +1219,7 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Model/runtime orchestration (Phase 10).
+- Collaboration / Buzz integration (Phase 11).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1592,6 +1665,75 @@ Milestone (c):
   32 protocol + 6 ledger + 17 adapters + 12 core).
 - Donor untouched (read-only): Phase 9 adds no donor files.
 
+### 10.13 Phase 10 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the thirteen scope directories plus
+  `models/orchestration.ts` (outside the thirteen): 222 files, no
+  fixes applied (after `--write` formatted the new/changed modules
+  and the three suites).
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/ trust/ adapters/`:
+  0 matches outside `adapters/pi/`; the ten pre-existing
+  `adapters/pi/` matches (the only production modules allowed to
+  import Pi, §5.4) are untouched; the Phase 10 files
+  (`protocol/models.ts`, `models/orchestration.ts`) carry no Pi
+  imports. Import direction: `models/orchestration.ts` imports
+  only `protocol/models.ts`; `protocol/models.ts` imports only
+  `protocol/identity.ts`; `protocol/` remains zero-dependency, no
+  `node:crypto`.
+- New suites: `tests/endo-models-protocol.test.ts` (45 tests) —
+  the six shapes: profile (hosted/none, local/j-space, and
+  local/none accepted; hosted ∧ j-space rejected — the "never
+  fabricated for API-only models" door; the closed two-way
+  deployment and observation sets; the `endo.model.*` id
+  namespace; the 1–256 name; the provider dotted-kind grammar
+  including the 129-character reject; capability uniqueness, the
+  512-character cap, and non-string entries; unknown fields and
+  non-object inputs; canonical-JSON round-trip), pool (two
+  members, the bound-1 member, the empty member list, the
+  duplicate member, the 0 and 1.5 bounds, the wrong-namespace
+  member id, the unknown field, round-trip), telemetry (a valid
+  row, the all-zero window, the health three-way rejects, the
+  negative and fractional counters, the namespaces, round-trip),
+  routing decision (capability-match, no-eligible with null
+  selection, the reason↔selected door in both directions,
+  selected-∉-eligible, duplicate requested capabilities, the
+  namespaces, round-trip), scheduler state (a valid state, the
+  idle state, negative and fractional counts, the duplicate row,
+  the namespaces, round-trip), scheduler event (enqueue,
+  complete, retry with its attempt, retry without/0/1.5 attempt,
+  enqueue with an attempt, the closed kinds, round-trip);
+  `tests/endo-models-ledger.test.ts` (6 tests) — the closed
+  nineteen-way kind union, kind derivation and record identity
+  for the three model kinds, the causal-order refusals (a pool
+  citing a not-yet-appended model; a telemetry row citing one),
+  and the 5-entry model chain replay (two profiles + pool + two
+  telemetry rows), content-identical after
+  `replayEndoEvidenceLedgerV0`; `tests/endo-models-core.test.ts`
+  (16 tests) — `routeModelV0`: pool-order eligibility,
+  lexicographic selection, the no-eligible null, the
+  missing-member-profile, not-a-member, and double-presentation
+  `TypeError` doors, the capability-grammar doors (duplicate and
+  513-character), and the exit through the routing-decision
+  validator; `stepPoolSchedulerV0`: admission under the bound,
+  queuing over the bound with admission on completion, the retry
+  re-enqueue at the tail, the different-pool, non-member-event,
+  and complete-without-in-flight `TypeError` doors, and the exit
+  through the scheduler-state validator; and the spine
+  integration (routing + scheduling against a materialized,
+  replayed ledger).
+- Updated suites: `tests/endo-runtime-ledger.test.ts` (the closed
+  kind list, sixteen → nineteen) and
+  `tests/endo-evolution-protocol.test.ts` (the closed
+  nineteen-way kind reject; the entry-namespace test is
+  three-way now and pins model-profile/model-pool to
+  `endo.model.*`, model-telemetry to `endo.evidence.*`, and both
+  cross-namespace rejects).
+- Full `npx vitest --run`: **82/82 files, 2350 passed, 3 skipped,
+  0 failed** (2283 pre-existing at Phase 9 per §10.12 + 67 new:
+  45 protocol + 6 ledger + 16 core).
+- Donor untouched (read-only): Phase 10 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1611,5 +1753,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 10 (Model/runtime orchestration — README "## Phase 10"). Phase 9 (Runtime expansion) is recorded in §5.20 and verified in §10.12.
+Next: Phase 11 (Collaboration — README "## Phase 11"). Phase 10 (Model/runtime orchestration) is recorded in §5.21 and verified in §10.13.
 

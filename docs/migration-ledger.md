@@ -861,6 +861,49 @@ Design decisions:
 
 - **Status (2026-10-02, done):** `protocol/evaluation.ts` + four lab modules + five suites (70 tests); self-check at §10.8.
 
+### 5.17 Phase 6 components (evolution substrate)
+
+Phase 6 scope (README "## Phase 6 — Evolution substrate"): the
+candidate model, mutation records, experiment lifecycle, evidence
+ledger, selection contracts, promotion gates, and artifact/version
+semantics — the algorithm-neutral substrate behind the README's
+evolution layer (README lines 299–336), whose recorded-field list
+(candidate identity, parent, source revision, hypothesis, proposed
+diff, expected/observed effect, cost delta, trial-level and held-out
+results, selection decision, promotion state, provenance) is the
+field inventory here. Donor re-check (read-only, word-boundary): no
+Phase 6 analogue in production — "promotion" has zero matches,
+"candidate" matches only in `research/prime-conformance/` plus
+incidental loop/path variables, and "mutation"/"selection" only
+incidentally. Phase 6 is BUILD, as were Phases 1–5: new capability
+on the Phase 1–5 substrates (evaluation results, trial coordinates,
+event records), reusing the demonstrated discipline — canonical
+JSON, SHA-256 digests, strict doors, honest absence.
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Candidate model | `protocol/evolution.ts`: `endo.candidate.v0` — `endo.candidate.*` identity, parentCandidateId?, sourceRevision?, artifactId?, model?, runtime?, environment? (`endo.environment-profile.v0`), hypothesis?, `mutations: string[]` REQUIRED (empty = base candidate), provenance?, closed `active`/`superseded`/`retired` state?, revision? |
+| Mutation records | `endo.mutation.v0` — component (well-formed dotted kind), closed four-way operation (add/replace/remove/reconfigure), sourceRevision?/targetRevision?, artifactId?, hypothesis?, expectedEffect?, observedEffect?, costDelta? (strict JSON), description? |
+| Experiment lifecycle | `endo.experiment.v0` record + `endo.experiment-transition.v0` + `evolution/experiment.ts`: an 11-state closed machine (`ENDO_EXPERIMENT_STATES_V0`) with an explicit transition table (`ENDO_EXPERIMENT_STATE_TRANSITIONS_V0`) the validator itself enforces; `createEndoExperimentLifecycleV0` (strict doors, starts `created`, state is a closure variable, never a record field) + `replayEndoExperimentLifecycleV0` (experimentId match, sequence exactly 1..n, from === previous to, duplicate ids) |
+| Evidence ledger | `endo.evidence-ledger.v0` — closed eleven-way kind entries `{sequence, kind, recordId}`, sequences exactly 1..n, no duplicate recordId — + `evolution/evidence.ts`: `createEndoEvidenceLedgerV0` (append-time referential integrity: every reference must already be in the ledger; id-less records get content-addressed identities) + `replayEndoEvidenceLedgerV0` |
+| Selection contracts | `endo.selection-policy.v0` (name + revision — the Phase 7 policy seam), `endo.selection-condition.v0`, `endo.selection-decision.v0` — closed three-way outcome, conditions always non-empty, evidence non-empty iff `selected`, `selected` ⇔ candidateId present, heldOutEvidence? |
+| Promotion gates | `endo.promotion-request.v0` + `endo.promotion-decision.v0` — closed two-way outcome, authority = the decision recorder's identity (1–256, not a grant), evidence non-empty iff `granted`; a recorded decision at the decision/evidence boundary, conferring no authority and triggering no effect |
+| Artifact/version semantics | `endo.artifact.v0` — kind, digest = SHA-256 over content only, strict-JSON content? or digest, sourceRevision? — + `evolution/artifacts.ts`: `buildEndoArtifactV0` (content present → computed digest must match; absent → digest required) + `ENDO_ARTIFACT_KINDS_V0` (10 kinds) |
+
+Design decisions:
+
+- **`protocol/` holds the contracts, `evolution/` the substrate services**: a flat `evolution/{core,artifacts,experiment,evidence,index}.ts` — deliberately no `policies/` directory; it is reserved for the Phase 7 RRSI/GEPA policy seams (the README's `policies/` tree lands with them). `evolution/` imports only `protocol/` + `runtime/contracts/` + intra-evolution, and the prime-research-boundary guard now covers it (new `evolution` root in `tests/prime-research-boundary.test.ts`).
+- **The closed identifier union stays at 10**: candidates → `endo.candidate.*`, experiments → `endo.experiment.*`, everything else (artifacts, mutations, ledgers/entries, selection decisions, promotion requests/decisions, transitions) → `endo.evidence.*`. The ledger's kind union is closed eleven-way including `"candidate"`; only a `kind === "candidate"` entry may carry an `endo.candidate.*` recordId.
+- **Candidate ≠ artifact ≠ evaluation ≠ selection decision ≠ promotion ≠ authority grant**: each is a distinct record with its own validator. A passing benchmark is not truth (evaluation results are evidence), and a `granted` promotion is a recorded decision — Phase 8's receipts and trust providers close that loop.
+- **Content-addressed ledger identity**: `EndoConformanceSuiteV0` and `EndoReplayComparisonV0` have no `id`; the ledger identifies them as `endo.evidence.<kind>.<sha256(canonical JSON)>`, so identical content collides and different content does not. All other records use their own `id`.
+- **The core does not cross-check mutation→artifact**: `evolution/core.ts` cross-checks candidate→parent+mutations, selection→candidate, promotionRequest→candidate+selected-selection, promotionDecision→request; a mutation's `artifactId` reference is enforced only by the evidence ledger's append-time integrity. The core registries store; the ledger is the causal chain.
+- **State is not data**: the experiment state lives in the lifecycle closure (read-only) and is reconstructed by replay; `EndoExperimentRecordV0` carries no state field, and the transition table is the single source of legality — an illegal from→to is an invalid protocol value, not a service error.
+- **Proposal ≠ executed effect**: a mutation is a proposal (operation + component + optional artifact/hypothesis/effects); nothing in Phase 6 applies a mutation, deploys an artifact, or calls an evaluator — Phase 7 policies and Phase 8 providers do the doing.
+
+- **Status (2026-10-02, done):** `protocol/evolution.ts` + four
+  `evolution/` modules + four suites (191 tests); self-check at
+  §10.9.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -972,7 +1015,7 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Evolution substrate (RRSI/GEPA), RRSI/REEF, trust providers.
+- RRSI + REEF provider seams (Phase 7), trust providers (Phase 8).
 - Neutral ports for steering, control-deck, session-overview capture,
   continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
@@ -1239,6 +1282,40 @@ Milestone (c):
   failed** (1807 pre-existing + 70 new).
 - Donor untouched (read-only): Phase 5 adds no donor files.
 
+### 10.9 Phase 6 self-check record (2026-10-02)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the eleven scope directories: 192 files, no
+  fixes applied (after `--write` formatted the ten new modules and
+  suites and an unused import was dropped).
+- `grep -rn '@earendil-works/pi-' protocol/ evolution/`: 0 matches. Import
+  direction: `protocol/evolution.ts` imports only intra-protocol
+  (`./identity.ts`, `./evaluation.ts`, `./primitives.ts`; `protocol/`
+  remains zero-dependency, no `node:crypto`); `evolution/` imports only
+  `protocol/` + `runtime/contracts/` + intra-evolution.
+- New suites: `tests/{endo-evolution-protocol,endo-evolution-core,endo-evolution-experiment,endo-evolution-evidence}.test.ts`
+  — 4 files, 191 passed: per-field validator accept/reject for the
+  twelve new protocol shapes plus canonical-JSON round-trips over the
+  twelve record shapes; the core (digest = SHA-256 of canonical
+  content, determinism, mismatch throws, absent-content-needs-digest,
+  namespace/kind strictness, duplicate ids across the six registries,
+  parent/self-parent, mutation/candidate/selection/promotion
+  referential checks, id-sorted listings); the experiment lifecycle
+  (the seven-step spine with per-step state and sequence, alternative
+  terminals at `compared`, terminal-state attempts, every
+  table-illegal from→to pair generated from the 11-state × transition
+  table, replay with sequence gaps, from≠previous-to, wrong
+  experimentId, duplicate ids, invalid nested transitions); the
+  evidence ledger (kind derivation for all eleven schema versions,
+  content-addressed identities, duplicate content/ids, unknown schema
+  versions, every forward-reference rejection, a full fifteen-record
+  causal chain, snapshot immutability; replay tamper detection; a
+  cross-layer integration from artifact to promotion).
+- Full `npx vitest --run`: **69/69 files, 2069 passed, 3 skipped, 0
+  failed** (1878 pre-existing — 1877 at Phase 5 plus the one new
+  `evolution` boundary-guard root — + 191 new).
+- Donor untouched (read-only): Phase 6 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1258,5 +1335,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: Phase 6 (Evolution substrate — README "# Roadmap"). Phase 5 (evaluation and conformance lab) is recorded in §5.16 and verified in §10.8.
+Next: Phase 7 (RRSI + REEF providers — README "## Phase 7"). Phase 6 (evolution substrate) is recorded in §5.17 and verified in §10.9.
 

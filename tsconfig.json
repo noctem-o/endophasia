@@ -63,6 +63,7 @@
 		"graph/**/*",
 		"visualization/**/*",
 		"lab/**/*",
+		"evolution/**/*",
 		"runtime/**/*",
 		"adapters/**/*",
 		"presentation/**/*",

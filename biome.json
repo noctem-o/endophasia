@@ -29,6 +29,7 @@
 			"graph/**/*.ts",
 			"visualization/**/*.ts",
 			"lab/**/*.ts",
+			"evolution/**/*.ts",
 			"runtime/**/*.ts",
 			"adapters/**/*.ts",
 			"presentation/**/*.ts",

@@ -52,6 +52,7 @@ describe("Prime research stays outside production", () => {
 		"graph",
 		"visualization",
 		"lab",
+		"evolution",
 	])("%s imports no research, directly or through another relative module", (dir) => {
 		expect(
 			researchReachable(

@@ -870,3 +870,24 @@ Milestone (c):
   checks hash against.
 - Donor worktree verified clean at HEAD `ab4caf5a0` before and after
   the re-measurement runs.
+
+## 11. Phase 0 closure — standalone boundary
+
+Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
+fork into endophasia-standalone. **DONE — 2026-10-02, commit
+`dcd13e978`.**
+
+| Phase 0 goal | Status | Evidence |
+| :--- | :--- | :--- |
+| Preserve the useful current behaviour | done | 43/43 donor suites migrated; full target suite 1580 passed / 3 skipped; per-file parity with the re-measured donor except the intentional +2 guard expansion (§2, §10.3) |
+| Keep Pi upstream-aware | done | `pi/` submodule pinned at donor fork HEAD `ab4caf5a0…`; `docs/pi-upstream.md` migrated; the upstream tip `cb7969d21` recorded for future synchronization (§3, §7 item 5) |
+| Establish a clean project boundary | done | `protocol → runtime/contracts → adapters → presentation/cockpit` import direction verified (§10.3 import-direction check); 4 boundary-guard suites green |
+| Stop treating Pi's internal architecture as Endophasia's architecture | done | 22 donor `src/` modules mapped to the target split (§9: 0 RETIRE); 3 contract-leak severances (§6); `protocol/` is zero-dependency (no non-intra-protocol import) |
+
+Milestones (a)–(e) of this phase: `91d40e145` (protocol + ports),
+`5f38f17b2` (contracts + 2 adapters), `f1b62d23b` (8 adapters, prime
+transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
+host suites), `dcd13e978` (presentation, cockpit, research, scripts,
+remaining 23 suites + fixtures).
+
+Next: Phase 1 (protocol + identity) — §5.12.

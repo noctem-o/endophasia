@@ -12,7 +12,10 @@
 // cross into an event. From pi-rpc-mapping.3, a tool call's arguments are recorded only as a keyed digest
 // (`argsDigest`: HMAC-SHA256 of their canonical JSON under the comparison-domain key, with the key's id;
 // runtime/contracts/keyed-digest.ts), so two calls can be compared without their arguments entering evidence, and a
-// digest of short, guessable arguments cannot be confirmed by hashing guesses without the key. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
+// digest of short, guessable arguments cannot be confirmed by hashing guesses without the key. From pi-rpc-mapping.4,
+// `tool.finished` records `resultDigest` the same way: the keyed digest of the documented `result.content` of
+// tool_execution_end (json.md), the content the model is given. `result.details` is tool-specific and not sent to the
+// model (message-types.md), so it is not digested. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
 // "error", a final retry's `finalError`, a failed compaction's `errorMessage`) is recorded by reference only: its
 // source, sha256 and UTF-8 length, and a classification from a closed vocabulary (protocol/session-lifecycle.ts). The
 // text itself is returned beside the event (`runtimeTexts`) for the caller to keep outside canonical evidence; it never
@@ -315,6 +318,22 @@ function reportedCause(
 		: undefined;
 }
 
+/**
+ * The keyed digest of a tool result's documented `content` (tool_execution_end `result.content`); undefined without a
+ * key, without a result whose `content` is an array, or for non-plain JSON.
+ */
+export function piToolResultDigestV0(
+	key: EndoDigestKeyV0 | null | undefined,
+	result: unknown,
+): EndoKeyedDigestV0 | undefined {
+	if (key === null || key === undefined || !isRecord(result) || !Array.isArray(result.content)) return undefined;
+	try {
+		return key.digest(result.content);
+	} catch {
+		return undefined;
+	}
+}
+
 /** The keyed digest of a tool call's arguments; undefined without a key, without arguments, or for non-plain JSON. */
 export function piToolArgsDigestV0(
 	key: EndoDigestKeyV0 | null | undefined,
@@ -365,6 +384,7 @@ function livePayload(
 				toolCallId: short(record.toolCallId, 256),
 				toolName: short(record.toolName),
 				isError: typeof record.isError === "boolean" ? record.isError : undefined,
+				resultDigest: piToolResultDigestV0(key, record.result) as JsonValueV0 | undefined,
 			});
 		case "queue_update":
 			return compact({

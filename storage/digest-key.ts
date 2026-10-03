@@ -22,6 +22,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type EndoDigestKeyV0, endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
 export const ENDO_DIGEST_KEY_FILE_SCHEMA_V0 = "endo.digest-key.v0";
@@ -125,6 +126,12 @@ export function loadOrCreateEndoDigestKeyV0(path: string, warn: Warn = stderrWar
 /** The installation key the environment selects, generated on first use. */
 export function endoDigestKeyFromEnvironmentV0(env: Env = process.env, warn: Warn = stderrWarn): EndoDigestKeyV0 {
 	return loadOrCreateEndoDigestKeyV0(endoDigestKeyPathV0(env), warn);
+}
+
+/** Where the committed public fixture key `name` lives in this repository (research/fixture-keys/<name>.json). */
+export function endoFixtureDigestKeyPathV0(name = "fixture-public"): string {
+	if (!(name in ENDO_FIXTURE_DIGEST_KEYS_V0)) throw new TypeError(`${name} is not a committed public fixture key`);
+	return fileURLToPath(new URL(`../research/fixture-keys/${name}.json`, import.meta.url));
 }
 
 /**

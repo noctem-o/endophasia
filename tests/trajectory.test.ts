@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
-import { piToolArgsDigestV0 } from "../adapters/pi/mapping.ts";
+import { piToolArgsDigestV0, piToolResultDigestV0 } from "../adapters/pi/mapping.ts";
 import { projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
 import { digestKeyCommand } from "../cli/digest-key.ts";
 import { trajectoryDiffCommand, trajectoryFromStoreV0, trajectoryShowCommand } from "../cli/trajectory.ts";
@@ -29,7 +29,11 @@ import {
 } from "../protocol/trajectory.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
-import { compareEndoTrajectoriesV0, endoRecordDigestV0 } from "../runtime/contracts/trajectory.ts";
+import {
+	compareEndoTrajectoriesV0,
+	endoRecordDigestV0,
+	sealEndoTrajectoryV0,
+} from "../runtime/contracts/trajectory.ts";
 import { PI_LIFECYCLE_FIXTURE_DIGEST_KEY } from "../scripts/record-lifecycle-fixture.ts";
 import {
 	ENDO_FIXTURE_DIGEST_KEYS_V0,
@@ -293,7 +297,7 @@ describe("REAL Pi 1.0.1 recordings (qwen3.8-27b via llama.cpp)", () => {
 			runs: [{ run: 1, present: { a: true, b: true }, wallMs: -2743 }],
 			totals: { wallMs: -2743 },
 		});
-		expect(result.digest).toBe("85df2d55f91312e54ad67d3ca5699545a393c26cab015d208432936a6b9d9f33");
+		expect(result.digest).toBe("3cb21bda8904037f632160941fe196c968219aedb3d43b784cd413f3ffae8ad5");
 	});
 
 	it("killed-and-resumed: the interruption and the resume are in the lifecycle; two runs, interrupted then completed", () => {
@@ -406,6 +410,10 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 					name: { status: "reported", value: "read" },
 					argsDigest: { status: "reported", value: piToolArgsDigestV0(KEY_A, { path: "a.txt" }) },
 					result: { status: "reported", value: "ok" },
+					resultDigest: {
+						status: "reported",
+						value: piToolResultDigestV0(KEY_A, { content: [{ type: "text", text: "fake tool result" }] }),
+					},
 				},
 				{
 					run: 1,
@@ -413,10 +421,14 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 					name: { status: "reported", value: "bash" },
 					argsDigest: { status: "reported", value: piToolArgsDigestV0(KEY_A, { command: "ls" }) },
 					result: { status: "reported", value: "ok" },
+					resultDigest: {
+						status: "reported",
+						value: piToolResultDigestV0(KEY_A, { content: [{ type: "text", text: "fake tool result" }] }),
+					},
 				},
 			],
 		});
-		expect(t.environment.attachments[0]!.mapping).toEqual({ status: "reported", value: "pi-rpc-mapping.3" });
+		expect(t.environment.attachments[0]!.mapping).toEqual({ status: "reported", value: "pi-rpc-mapping.4" });
 		expect(t.environment.attachments[0]!.digestKey).toEqual({
 			status: "reported",
 			value: { keyId: "fixture-public", domain: "fixture-public" },
@@ -429,7 +441,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		expect(result.a.eventsSha256).not.toBe(result.b.eventsSha256);
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
 		expect(result.flags).toEqual([]);
-		expect(result.digest).toBe("7d55bddb98e8675e344030934be9b52a16f0d8884cd839192b8265d6d71fa6cb");
+		expect(result.digest).toBe("937a7a72f4ccd9608eed5be47646a82c58f6acafba270f6e41f49243fb321e61");
 	});
 
 	it("reordered tool calls diverge at the first call; lifecycle and outcome stay EXACT", () => {
@@ -443,7 +455,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		});
 		expect(result.layers.lifecycle.status).toBe("EXACT");
 		expect(result.layers.outcome.status).toBe("EXACT");
-		expect(result.digest).toBe("deb78fa5e9e10b1434a4da06d19df534cfde7e3cb3ba593fdd282702002b19cc");
+		expect(result.digest).toBe("422d3ba1e516b8fca2a4305d17192934c08323774cecbecfe783fb2d6826308b");
 	});
 
 	it("the same tool with different arguments diverges by argument digest", () => {
@@ -454,7 +466,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			a: { name: { value: "read" }, argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "a.txt" }) } },
 			b: { name: { value: "read" }, argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "b.txt" }) } },
 		});
-		expect(result.digest).toBe("fbea43c734e4be267b309e9dbadd81104544b20eecb249ba960e7547ee4bf806");
+		expect(result.digest).toBe("5217f7f48f6f1ca8c85e73186f089710c854d0d9d20da45edfb2da9125565c96");
 	});
 
 	it("a tool result status difference diverges at that call", () => {
@@ -466,7 +478,57 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			a: { result: { value: "ok" } },
 			b: { result: { value: "error" } },
 		});
-		expect(result.digest).toBe("7f97c5cbe02ea2940d6c50fdd1b44782173378b614af9a396ccf53208851cc28");
+		expect(result.digest).toBe("008cd7e92c77865486c823ec9771e2eefcbac9112224df896aa2bd8a0beb3248");
+	});
+
+	it("the same call returning other content diverges by result digest (mapping.4), with the same status", () => {
+		const result = compare(baseline(), trajectory(FAKE, "tool-result-differs"));
+		expect(result.layers.tools).toMatchObject({
+			status: "DIVERGED",
+			index: 0,
+			commonPrefix: 0,
+			a: { result: { value: "ok" }, argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "a.txt" }) } },
+			b: {
+				result: { value: "ok" },
+				argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "a.txt" }) },
+				resultDigest: {
+					value: piToolResultDigestV0(KEY_A, { content: [{ type: "text", text: "other content" }] }),
+				},
+			},
+		});
+		for (const layer of ["lifecycle", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
+	});
+
+	it("a recording without result digests (before mapping.4) leaves a tool entry unverifiable, never EXACT", () => {
+		const a = baseline();
+		const stripped = (t: EndoTrajectoryV0): EndoTrajectoryV0 =>
+			sealEndoTrajectoryV0({
+				...t,
+				layers: {
+					...t.layers,
+					tools:
+						t.layers.tools.status === "reported"
+							? {
+									status: "reported",
+									entries: t.layers.tools.entries.map((entry) => ({
+										...entry,
+										resultDigest: {
+											status: "UNAVAILABLE" as const,
+											reason: "recorded before pi-rpc-mapping.4",
+										},
+									})),
+								}
+							: t.layers.tools,
+				},
+			});
+		const result = compare(a, stripped(trajectory(FAKE, "baseline-again")));
+		expect(result.layers.tools).toMatchObject({
+			status: "UNAVAILABLE",
+			unverified: [
+				{ index: 0, reason: "no result digest was recorded on one side" },
+				{ index: 1, reason: "no result digest was recorded on one side" },
+			],
+		});
 	});
 
 	it("one side missing usage: usage is UNAVAILABLE for that side, the judged layers are unaffected", () => {
@@ -477,7 +539,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			b: "Pi reported no usage on any assistant message of this session",
 		});
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("f6d6053856473b3bdf83f66763e8623e59add512f133722b0b34c776839e3c85");
+		expect(result.digest).toBe("dd5881de40b7dd92d34b41624761686250c9bebe00362d3f598b95f283caae50");
 	});
 
 	it("an unknown runtime lifecycle record is a lifecycle divergence where it appeared", () => {
@@ -489,7 +551,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			b: { kind: "lifecycle.unrecognized-runtime-event", facts: { runtimeEvent: "agent_paused" } },
 		});
 		expect(result.layers.tools.status).toBe("EXACT");
-		expect(result.digest).toBe("6bb1ef51db4f5eccf6f035fc15b1aa889b1d57afda31796f1c88d31beb0c76d7");
+		expect(result.digest).toBe("3ac709fdf006991db1fb0c38fe965016145d93465abe7da98155765e20dd184d");
 	});
 
 	it("an undefined lifecycle.* kind is kept, unrecognized, by payload digest, and diverges", () => {
@@ -527,7 +589,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		expect(result.flags.map((flag) => flag.kind)).toEqual(["runtime-fingerprint-differs", "runtime-version-differs"]);
 		expect(result.flags[1]).toEqual({ kind: "runtime-version-differs", a: ["1.0.0"], b: ["1.0.1"] });
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("93254b8adce0175c4563a6ce8c409ded2e5297246e979b2cf807e8a1890989b0");
+		expect(result.digest).toBe("27cd54e7b6c47ba644c79e96ebe2909cefa4f1305c9a10265d5b6e593e275644");
 	});
 
 	it("real vs fake: model, mapping and fingerprint differences are all flagged, never mixed silently", () => {
@@ -586,7 +648,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		});
 		expect(result.flags).toEqual([{ kind: "digest-domain-differs", a: [KEY_A.keyId], b: [keyB.keyId] }]);
 		for (const layer of ["lifecycle", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("c1d1cfeb61c952e08946b82a51f8ede1dca68ceea3337953b64e674e1297618e");
+		expect(result.digest).toBe("f054c0e79a0393e6a9ce66e36f609306adb67c89bd72917bf0de2dc64c552476");
 	});
 
 	it("a name or result difference still diverges across digest domains: only the digest is unverifiable", () => {
@@ -820,42 +882,92 @@ describe("endo trajectory show / diff", () => {
 	});
 });
 
-describe("REAL Pi 1.0.1 completes-repeat (a preliminary observation, not a variance result)", () => {
-	const REPEAT = "research/pi-conformance/1.0.1/completes-repeat";
+describe("REAL Pi 1.0.1 cassette recordings (research/pi-conformance/1.0.1/cassettes/)", () => {
+	const CASSETTES = "research/pi-conformance/1.0.1/cassettes";
+	const SESSIONS = ["completes", "stop-mid-turn", "killed-and-resumed", "tool-use"];
+	const provenance = () => JSON.parse(readFileSync(join(REPO, CASSETTES, "provenance.json"), "utf8"));
+	const cassette = (name: string) => trajectory(`${CASSETTES}/${name}`, "session");
 
-	it("the committed files are the ones each provenance names, recorded under pi-rpc-mapping.3", () => {
-		for (const run of ["run-1", "run-2"]) {
-			const provenance = JSON.parse(readFileSync(join(REPO, REPEAT, run, "provenance.json"), "utf8"));
-			expect(provenance).toMatchObject({ kind: "real", endophasia: { mapping: "pi-rpc-mapping.3" } });
-			expect(provenance.sessions.map((session: { name: string }) => session.name)).toEqual(["completes"]);
-			const bytes = readFileSync(join(REPO, REPEAT, run, "completes.events.jsonl"));
-			expect(createHash("sha256").update(bytes).digest("hex")).toBe(provenance.sessions[0].eventsSha256);
-		}
-	});
-
-	it("run-1 vs run-2: EXACT on every judged layer, no flags, usage reported as deltas only", () => {
-		const result = compare(trajectory(`${REPEAT}/run-1`, "completes"), trajectory(`${REPEAT}/run-2`, "completes"));
-		expect(result.flags).toEqual([]);
-		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.layers.usage).toMatchObject({
-			status: "DELTAS",
-			totals: { tokens: { input: 0, output: 6, cacheRead: 0 } },
+	it("the committed files are the ones the provenance names, recorded under pi-rpc-mapping.4 in the fixture domain", () => {
+		const recorded = provenance();
+		expect(recorded).toMatchObject({
+			kind: "real",
+			endophasia: { mapping: "pi-rpc-mapping.4" },
+			digestDomain: { keyId: "fixture-public", public: true },
+			pi: { version: "1.0.1" },
 		});
-		expect(result.layers.timing).toMatchObject({ status: "DELTAS", clock: "observer", totals: { wallMs: 5 } });
-		expect(result.digest).toBe("674191e7e1d5b41c734a2225df079592cc119cdd2c15fe124edd6ebaaa2243ff");
+		expect(recorded.sessions.map((session: { name: string }) => session.name)).toEqual(SESSIONS);
+		for (const session of recorded.sessions as { name: string; files: Record<string, string> }[])
+			for (const [file, sha256] of Object.entries(session.files))
+				expect(
+					createHash("sha256")
+						.update(readFileSync(join(REPO, CASSETTES, session.name, file)))
+						.digest("hex"),
+					file,
+				).toBe(sha256);
 	});
 
-	it.each(["run-1", "run-2"])(
-		"the committed lifecycle completes vs %s: EXACT, mapping and digest domain flagged",
-		(run) => {
-			const result = compare(trajectory(REAL, "completes"), trajectory(`${REPEAT}/${run}`, "completes"));
-			expect(result.flags).toEqual([
-				{ kind: "mapping-differs", a: [null], b: ["pi-rpc-mapping.3"] },
-				{ kind: "digest-domain-differs", a: [null], b: ["endo.digest-key.02afbe04de932c3972f4e457effbdab8"] },
-			]);
-			for (const layer of ["lifecycle", "tools", "outcome"] as const)
-				expect(result.layers[layer].status).toBe("EXACT");
-			expect(result.layers.usage).toMatchObject({ status: "DELTAS", totals: { tokens: { cacheRead: 1476 } } });
+	it.each(SESSIONS)("%s: compares EXACT with itself; mapping.4 and the fixture-public domain are recorded", (name) => {
+		const t = cassette(name);
+		expect(t.environment.attachments[0]!.mapping).toEqual({ status: "reported", value: "pi-rpc-mapping.4" });
+		expect(t.environment.attachments[0]!.digestKey).toEqual({
+			status: "reported",
+			value: { keyId: "fixture-public", domain: "fixture-public" },
+		});
+		expectSelfExact(t);
+	});
+
+	it("tool-use: read, edit, bash, each with keyed argument and result digests; tools EXACT is not vacuous here", () => {
+		const tools = cassette("tool-use").layers.tools;
+		if (tools.status !== "reported") throw new Error("tools not reported");
+		expect(tools.entries.map((entry) => entry.name)).toEqual([
+			{ status: "reported", value: "read" },
+			{ status: "reported", value: "edit" },
+			{ status: "reported", value: "bash" },
+		]);
+		expect(tools.entries.map((entry) => entry.result)).toEqual(Array(3).fill({ status: "reported", value: "ok" }));
+		expect(tools.entries[0]!.argsDigest).toEqual({
+			status: "reported",
+			value: piToolArgsDigestV0(KEY_A, { path: "notes.txt" }),
+		});
+		expect(tools.entries[2]!.argsDigest).toEqual({
+			status: "reported",
+			value: piToolArgsDigestV0(KEY_A, { command: "wc -l notes.txt" }),
+		});
+		expect(tools.entries[2]!.resultDigest).toEqual({
+			status: "reported",
+			value: piToolResultDigestV0(KEY_A, { content: [{ type: "text", text: "3 notes.txt\n" }] }),
+		});
+		for (const entry of tools.entries) expect(entry.resultDigest.status).toBe("reported");
+	});
+
+	it("the mapping.2 lifecycle completes vs the cassette completes: judged layers EXACT, mapping and domain flagged", () => {
+		const result = compare(trajectory(REAL, "completes"), cassette("completes"));
+		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
+		expect(result.flags.map((flag) => flag.kind)).toEqual(
+			expect.arrayContaining(["mapping-differs", "digest-domain-differs"]),
+		);
+	});
+
+	it.each(SESSIONS)(
+		"%s: the capture log loads as a cassette in the fixture domain, and holds no Authorization value",
+		(name) => {
+			const events = lines(join(CASSETTES, name, "capture.events.jsonl"));
+			const requests = events.filter(
+				(event) => event.kind === "capture.request" && event.producer === "capture:record",
+			);
+			expect(requests.length).toBeGreaterThan(0);
+			for (const request of requests) {
+				const payload = request.payload as {
+					requestDigest: { keyId: string };
+					headers: { name: string; redacted?: boolean }[];
+				};
+				expect(payload.requestDigest.keyId).toBe("fixture-public");
+				expect(payload.headers.filter((header) => header.name.toLowerCase() === "authorization")).toEqual([
+					{ name: "authorization", redacted: true },
+				]);
+			}
+			expect(readFileSync(join(REPO, CASSETTES, name, "capture.events.jsonl"), "utf8")).not.toMatch(/Bearer/);
 		},
 	);
 });

@@ -1,0 +1,239 @@
+// Cassette sessions end to end (cli/cassette-session.ts), self-contained: the real attachment drives the
+// deterministic suite's fake Pi in its `model-endpoint` mode (it streams each turn from the models.json baseUrl and
+// reads files from its working directory), through the recording proxy to the fake OpenAI-compatible endpoint. Then
+// each session is replayed against its cassette with a fresh fake Pi and compared with the recording.
+//
+// It proves the driver's mechanics (snapshot and restore at the recorded path, the recorded port, STOP and kill at the
+// recorded chunk, the recorded session id, evidence carried over, the comparison), not anything about a real Pi.
+
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { type EndoRecordingProxyV0, startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
+import { exportPiCassetteFixtureV0, materializePiCassetteFixtureV0 } from "../cli/cassette-fixture.ts";
+import {
+	createPiCassetteScratchV0,
+	type PiCassetteScenarioV0,
+	piCassetteAttachmentV0,
+	recordPiCassetteSessionV0,
+	replayPiCassetteSessionV0,
+} from "../cli/cassette-session.ts";
+import { endoDigestKeyFromEnvironmentV0 } from "../storage/digest-key.ts";
+import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
+import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
+
+const SCENARIOS: Record<string, PiCassetteScenarioV0> = {
+	completes: {
+		name: "completes",
+		purpose: "short",
+		workspace: {},
+		steps: [{ op: "prompt", text: "Reply with ready" }],
+	},
+	stop: {
+		name: "stop",
+		purpose: "STOP mid-stream",
+		workspace: {},
+		steps: [{ op: "prompt-stop", text: "Count to forty", afterChunks: 5 }],
+	},
+	kill: {
+		name: "kill",
+		purpose: "kill mid-stream, reopen, prompt",
+		workspace: {},
+		steps: [
+			{ op: "prompt-kill", text: "Count to forty", afterChunks: 5 },
+			{ op: "prompt", text: "Reply with resumed" },
+		],
+	},
+	tool: {
+		name: "tool",
+		purpose: "the model asks to read a workspace file",
+		workspace: { "endophasia-study.txt": "a synthetic workspace file\n" },
+		steps: [{ op: "prompt", text: "Use the read tool, then answer" }],
+	},
+};
+
+let base: string;
+let install: FakePiInstall;
+let upstream: FakeOpenAiServer;
+let proxy: EndoRecordingProxyV0;
+const recorded: Record<string, string> = {};
+
+beforeAll(async () => {
+	base = mkdtempSync(join(tmpdir(), "endo-cassette-e2e-"));
+	install = installFakePi("1.0.0");
+	install.setScenario("model-endpoint");
+	upstream = await startFakeOpenAiServer({ chunkMs: 2, slowChunkMs: 25 });
+	proxy = await startEndoRecordingProxyV0({ upstream: new URL(upstream.baseUrl).origin, log: null });
+	// Capability evidence (steering.stop) through the same port and an identical models.json.
+	const checks = join(base, "root-checks");
+	const checksLog = new EndoCaptureLogV0(checks, endoDigestKeyFromEnvironmentV0(), "record");
+	proxy.log = checksLog;
+	const scratch = createPiCassetteScratchV0(join(base, "checks"), {
+		baseUrl: `${proxy.origin}/v1`,
+		provider: "fake",
+		model: "fake-1",
+		files: {},
+	});
+	const pi = piCassetteAttachmentV0({
+		root: checks,
+		scratchRoot: scratch.root,
+		pi: install.bin,
+		provider: "fake",
+		model: "fake-1",
+		keySource: { kind: "installation" },
+		requestTimeoutMs: 20_000,
+	});
+	await pi.identify();
+	await pi.checkLocal();
+	await pi.studyLive({ authorized: true, stepTimeoutMs: 20_000 });
+	proxy.log = null;
+	checksLog.close();
+	for (const [name, scenario] of Object.entries(SCENARIOS)) {
+		const store = join(base, `root-${name}`);
+		await recordPiCassetteSessionV0({
+			scenario,
+			pi: install.bin,
+			provider: "fake",
+			model: "fake-1",
+			proxy,
+			store,
+			scratchRoot: join(base, `scratch-${name}`),
+			keySource: { kind: "installation" },
+			evidenceFrom: checks,
+			timeoutMs: 20_000,
+		});
+		recorded[name] = store;
+	}
+	// A replay binds the port the proxy listened on: it must be free.
+	await proxy.close();
+}, 120_000);
+
+afterAll(async () => {
+	await proxy?.close();
+	await upstream?.close();
+	install?.remove();
+	rmSync(base, { recursive: true, force: true });
+});
+
+const exchanges = (store: string) =>
+	readEndoCaptureEventsV0(store)
+		.filter((event) => event.kind === "capture.exchange-ended")
+		.map((event) => event.payload as { outcome: string; chunks: unknown[] });
+
+async function replay(name: string, timing: "immediate" | "as-recorded" = "immediate", pi: string = install.bin) {
+	const out = join(base, `replay-${name}-${timing}-${Math.random().toString(16).slice(2)}`);
+	const report = await replayPiCassetteSessionV0({
+		store: recorded[name]!,
+		out,
+		pi,
+		timing,
+		keySource: { kind: "installation" },
+		timeoutMs: 20_000,
+		holdMs: 5_000,
+	});
+	return { report, out };
+}
+
+describe("cassette sessions: record through the proxy, replay against the cassette (fake Pi, fake upstream)", () => {
+	it("records each scenario's exchanges, the snapshot and the driver's steps; the scratch root is gone afterwards", () => {
+		expect(exchanges(recorded.completes!).map((entry) => entry.outcome)).toEqual(["complete"]);
+		expect(exchanges(recorded.stop!).map((entry) => entry.outcome)).toEqual(["client-disconnected"]);
+		expect(exchanges(recorded.kill!).map((entry) => entry.outcome)).toEqual(["client-disconnected", "complete"]);
+		expect(exchanges(recorded.tool!).map((entry) => entry.outcome)).toEqual(["complete", "complete"]);
+		const ops = readEndoCaptureEventsV0(recorded.kill!)
+			.filter((event) => event.kind === "capture.driver-step")
+			.map((event) => (event.payload as { op: string }).op);
+		expect(ops).toEqual(["prompt", "open-child", "kill", "reopen", "prompt", "settled", "close"]);
+		expect(existsSync(join(base, "scratch-tool"))).toBe(false);
+	});
+
+	it.each(["completes", "stop", "kill", "tool"])(
+		"a replay of %s reproduces lifecycle, tools and outcome exactly",
+		async (name) => {
+			const { report, out } = await replay(name);
+			expect(report.misses).toBe(0);
+			expect(report.unserved).toBe(0);
+			expect(report.served).toBe(exchanges(recorded[name]!).length);
+			for (const layer of ["lifecycle", "tools", "outcome"] as const)
+				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
+			expect(report.comparison.flags).toEqual([]);
+			expect(
+				report.notes.filter((note) => !note.startsWith("the Endophasia child") && !note.startsWith("Pi ended")),
+			).toEqual([]);
+			// The replay recorded what it served, and its own driver steps.
+			const served = readEndoCaptureEventsV0(out).filter((event) => event.kind === "capture.served");
+			expect(served.length).toBe(report.served);
+		},
+	);
+
+	it("the tool scenario's read sees the restored workspace: its result digest matches the recording", async () => {
+		const { report } = await replay("tool");
+		const tools = report.comparison.layers.tools;
+		expect(tools).toMatchObject({ status: "EXACT", length: 1 });
+	});
+
+	it("STOP lands after the recorded chunk in as-recorded timing too", async () => {
+		const { report } = await replay("stop", "as-recorded");
+		expect(report.comparison.layers.outcome.status).toBe("EXACT");
+		expect(report.misses).toBe(0);
+	});
+
+	it("a fixture exported to files and materialized again replays the same way", async () => {
+		const dir = join(base, "fixture-tool");
+		exportPiCassetteFixtureV0(recorded.tool!, dir);
+		const store = materializePiCassetteFixtureV0(dir, join(base, "materialized-tool"));
+		const report = await replayPiCassetteSessionV0({
+			store,
+			out: join(base, "replay-materialized-tool"),
+			pi: install.bin,
+			timing: "immediate",
+			keySource: { kind: "installation" },
+			timeoutMs: 20_000,
+		});
+		for (const layer of ["lifecycle", "tools", "outcome"] as const)
+			expect(report.comparison.layers[layer].status).toBe("EXACT");
+	});
+
+	it("negative control: a Pi whose control flow differs under the same model outputs diverges where it differs", async () => {
+		const other = installFakePi("1.0.0");
+		other.setScenario("model-endpoint,unknown-lifecycle");
+		try {
+			const { report } = await replay("completes", "immediate", other.bin);
+			expect(report.misses).toBe(0);
+			expect(report.comparison.layers.lifecycle).toMatchObject({ status: "DIVERGED" });
+			expect(report.comparison.layers.outcome.status).toBe("EXACT");
+		} finally {
+			other.remove();
+		}
+	});
+
+	it("negative control: a Pi whose request differs is an explicit cassette miss, and the run fails visibly", async () => {
+		const other = installFakePi("1.0.0");
+		other.setScenario("model-endpoint,system-variant");
+		try {
+			const { report, out } = await replay("completes", "immediate", other.bin);
+			expect(report.misses).toBeGreaterThan(0);
+			expect(report.served).toBe(0);
+			const misses = readEndoCaptureEventsV0(out).filter((event) => event.kind === "capture.cassette-miss");
+			expect(misses[0]!.payload).toMatchObject({ reason: "unexpected-request", exchange: 1 });
+			expect(report.comparison.layers.outcome).toMatchObject({ status: "DIVERGED", index: 0 });
+		} finally {
+			other.remove();
+		}
+	});
+
+	it("refuses to replay while the recorded scratch root exists (it restores at the same path, never elsewhere)", async () => {
+		const events = readEndoCaptureEventsV0(recorded.completes!);
+		const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")!.payload as {
+			scratchRoot: string;
+		};
+		mkdirSync(snapshot.scratchRoot, { recursive: true });
+		try {
+			await expect(replay("completes")).rejects.toThrow(/exists; a replay restores it at the same path/);
+		} finally {
+			rmSync(snapshot.scratchRoot, { recursive: true, force: true });
+		}
+	});
+});

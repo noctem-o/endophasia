@@ -16,12 +16,19 @@
 //                       retry-fail (a retry loop that ends with auto_retry_end success:false and a finalError),
 //                       compact-after-run (a threshold compaction, with its entry, before agent_settled),
 //                       unknown-lifecycle (an undocumented agent_paused record inside each run),
-//                       abort-ack-only (abort answers success at once and does not stop the run)
+//                       abort-ack-only (abort answers success at once and does not stop the run),
+//                       model-endpoint (each turn streams a chat completion from the provider's baseUrl in
+//                       $PI_CODING_AGENT_DIR/models.json; the conversation, with the working directory in the system
+//                       message, is the request; a `read` tool call reads the file from the working directory, and its
+//                       content goes into the next request; abort drops the HTTP request),
+//                       system-variant (model-endpoint with a different system message: every request differs)
 //   FAKE_PI_STEP_MS     delay between streamed run steps (default 20)
-//   FAKE_PI_TOOL_CALLS  a JSON array of { toolName, args, isError } the first turn of each prompted run calls, in
-//                       order, before a second turn ends the run (any tool name; nothing is executed)
+//   FAKE_PI_TOOL_CALLS  a JSON array of { toolName, args, isError, resultText? } the first turn of each prompted run
+//                       calls, in order, before a second turn ends the run (any tool name; nothing is executed;
+//                       resultText replaces the fixed result text)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,6 +84,18 @@ const sessionId = requestedId ?? `fake-${Math.random().toString(16).slice(2, 10)
 const sessionFile = !ephemeral && sessionDir !== undefined ? join(sessionDir, `${sessionId}.json`) : undefined;
 const provider = flag("--provider") ?? "fake";
 const modelId = flag("--model") ?? "fake-1";
+
+// model-endpoint: the provider's baseUrl from the agent directory's models.json, as a real Pi would read it.
+let modelBaseUrl = null;
+if (has("model-endpoint") && process.env.PI_CODING_AGENT_DIR) {
+	try {
+		const config = JSON.parse(readFileSync(join(process.env.PI_CODING_AGENT_DIR, "models.json"), "utf8"));
+		const baseUrl = config.providers?.[provider]?.baseUrl;
+		if (typeof baseUrl === "string" && /^http:\/\//.test(baseUrl)) modelBaseUrl = baseUrl.replace(/\/$/, "");
+	} catch {
+		modelBaseUrl = null;
+	}
+}
 
 let thinkingLevel = "off";
 let model = { provider, id: modelId };
@@ -149,6 +168,137 @@ const usage = (input, output) => ({
 function queueUpdate() {
 	emit({ type: "queue_update", steering: [...steering], followUp: [...followUps] });
 }
+const textOf = (message) => (message.content ?? []).map((part) => part.text ?? "").join("");
+/** The conversation as an OpenAI chat request: the working directory in the system message, then the entries. */
+function modelMessages() {
+	const out = [{ role: "system", content: `fake pi${has("system-variant") ? " (variant)" : ""}\n<cwd>\n${process.cwd()}\n</cwd>` }];
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const message = entry.message;
+		if (message.role === "user") out.push({ role: "user", content: textOf(message) });
+		else if (message.role === "assistant")
+			out.push({ role: "assistant", content: textOf(message), ...(message.toolCalls ? { tool_calls: message.toolCalls } : {}) });
+		else if (message.role === "toolResult") out.push({ role: "tool", tool_call_id: message.toolCallId, content: textOf(message) });
+	}
+	return out;
+}
+/** One streamed chat completion; resolves with the text, the tool calls, or the error. Abort drops the request. */
+function modelCall(run) {
+	const body = JSON.stringify({
+		model: modelId,
+		stream: true,
+		messages: modelMessages(),
+		...(tools.includes("read") ? { tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }] } : {}),
+	});
+	const url = new URL(`${modelBaseUrl}/chat/completions`);
+	return new Promise((resolve) => {
+		let settled = false;
+		const done = (value) => {
+			if (settled) return;
+			settled = true;
+			clearInterval(watch);
+			resolve(value);
+		};
+		let text = "";
+		const calls = [];
+		const request = httpRequest(
+			{
+				hostname: url.hostname,
+				port: url.port,
+				path: url.pathname,
+				method: "POST",
+				headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), authorization: "Bearer local" },
+			},
+			(response) => {
+				let buffer = "";
+				if ((response.statusCode ?? 0) >= 400) {
+					response.on("data", (data) => (buffer += data));
+					response.on("end", () => done({ error: `${response.statusCode} ${buffer}` }));
+					return;
+				}
+				response.on("data", (data) => {
+					buffer += data;
+					for (let index = buffer.indexOf("\n\n"); index !== -1; index = buffer.indexOf("\n\n")) {
+						const line = buffer.slice(0, index).replace(/^data: /, "");
+						buffer = buffer.slice(index + 2);
+						if (line === "[DONE]") continue;
+						try {
+							const delta = JSON.parse(line).choices?.[0]?.delta ?? {};
+							if (typeof delta.content === "string") {
+								text += delta.content;
+								emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: delta.content } });
+							}
+							for (const call of delta.tool_calls ?? []) {
+								calls[call.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } };
+								if (call.id) calls[call.index].id = call.id;
+								if (call.function?.name) calls[call.index].function.name = call.function.name;
+								calls[call.index].function.arguments += call.function?.arguments ?? "";
+							}
+						} catch {
+							// A line that is not JSON is skipped, as a lenient client would.
+						}
+					}
+				});
+				response.on("end", () => done({ text, calls: calls.filter(Boolean) }));
+				response.on("close", () => done({ text, calls: calls.filter(Boolean), cut: true }));
+			},
+		);
+		const watch = setInterval(() => {
+			if (run.aborted) {
+				request.destroy();
+				done({ text, calls: [], aborted: true });
+			}
+		}, 5);
+		request.on("error", (error) => done({ error: error.message }));
+		request.end(body);
+	});
+}
+async function modelTurn(run) {
+	emit({ type: "message_start", message: { role: "assistant", content: [], stopReason: "pending" } });
+	const reply = await modelCall(run);
+	const failed = reply.error !== undefined && !run.aborted;
+	const calls = run.aborted || failed ? [] : reply.calls;
+	const assistant = {
+		role: "assistant",
+		content: [{ type: "text", text: reply.text ?? "" }],
+		...(calls.length > 0 ? { toolCalls: calls } : {}),
+		provider: model.provider,
+		model: model.id,
+		usage: usage(11, (reply.text ?? "").length),
+		stopReason: run.aborted ? "aborted" : failed ? "error" : calls.length > 0 ? "toolUse" : "stop",
+		...(failed ? { errorMessage: `fake provider: ${reply.error}` } : {}),
+		timestamp: Date.now(),
+	};
+	emit({ type: "message_end", message: assistant });
+	append({ type: "message", message: assistant });
+	const toolResults = [];
+	for (const call of calls) {
+		let args = {};
+		try {
+			args = JSON.parse(call.function.arguments || "{}");
+		} catch {
+			args = {};
+		}
+		emit({ type: "tool_execution_start", toolCallId: call.id, toolName: call.function.name, args });
+		let text = "unsupported tool";
+		let isError = true;
+		if (call.function.name === "read") {
+			try {
+				text = readFileSync(join(process.cwd(), String(args.path)), "utf8");
+				isError = false;
+			} catch {
+				text = `cannot read ${String(args.path)}`;
+			}
+		}
+		const content = [{ type: "text", text }];
+		emit({ type: "tool_execution_end", toolCallId: call.id, toolName: call.function.name, result: { content }, isError });
+		const result = { role: "toolResult", toolCallId: call.id, toolName: call.function.name, content, isError, timestamp: Date.now() };
+		append({ type: "message", message: result });
+		toolResults.push(result);
+	}
+	emit({ type: "turn_end", message: assistant, toolResults });
+	return calls.length > 0;
+}
 async function turn(run, userText) {
 	emit({ type: "turn_start" });
 	if (userText !== undefined) {
@@ -157,6 +307,7 @@ async function turn(run, userText) {
 		emit({ type: "message_end", message: user });
 		append({ type: "message", message: user });
 	}
+	if (modelBaseUrl !== null) return modelTurn(run);
 	const long = /forty/.test(userText ?? "");
 	const steps = long ? 40 : 2;
 	const scripted = userText !== undefined && scriptedToolCalls.length > 0;
@@ -186,7 +337,7 @@ async function turn(run, userText) {
 			const toolCallId = `call_${newId()}`;
 			emit({ type: "tool_execution_start", toolCallId, toolName: call.toolName, args: call.args });
 			await sleep(stepMs);
-			const content = [{ type: "text", text: call.isError ? "fake tool error" : "fake tool result" }];
+			const content = [{ type: "text", text: call.resultText ?? (call.isError ? "fake tool error" : "fake tool result") }];
 			emit({ type: "tool_execution_end", toolCallId, toolName: call.toolName, result: { content }, isError: call.isError === true });
 			const result = { role: "toolResult", toolCallId, toolName: call.toolName, content, isError: call.isError === true, timestamp: Date.now() };
 			append({ type: "message", message: result });

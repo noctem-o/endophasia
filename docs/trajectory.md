@@ -26,13 +26,14 @@ read-only and print one canonical-JSON document.
 | Layer | Entries | Never contains |
 | :--- | :--- | :--- |
 | lifecycle | the `lifecycle.*` stream, each event reduced to `kind` and the facts that describe the run | ids, process instances, timestamps, paths, store recovery reports |
-| tools | tool calls in start order: `name`, `argsDigest` (keyed digest of the arguments' canonical JSON, with its key id), `result` (`ok` / `error`), and the run and turn they fell in | argument or result text, tool call ids |
+| tools | tool calls in start order: `name`, `argsDigest` (keyed digest of the arguments' canonical JSON, with its key id), `result` (`ok` / `error`), `resultDigest` (keyed digest of the result content, from `pi-rpc-mapping.4`), and the run and turn they fell in | argument or result text, tool call ids |
 | outcome | one entry per run: `completed`, `failed`, `aborted`, `interrupted`, `unclassified` or `open`, with turns, stop reason, whether a STOP was requested, and the failure cause by reference (sha256, length, classification) | cause text |
 | usage | per run: Pi-reported tokens summed over its assistant messages | anything Pi did not report |
 | timing | per run: wall time from run start to run end, labelled `clock: "observer"` | anything presented as Pi's: Pi reports no durations |
 
 A layer the recording cannot supply is `UNAVAILABLE` with a reason. So is a field inside an entry: an interrupted run
-has no stop reason or wall time, and a call recorded before `pi-rpc-mapping.3` has no argument digest. The record also
+has no stop reason or wall time, a call recorded before `pi-rpc-mapping.3` has no argument digest, and one recorded
+before `pi-rpc-mapping.4` has no result digest. The record also
 names its source (session, attachment, event count, sha256 of the events read) and the environment of each attachment
 (Pi identity digest and version, mapping version, digest domain, configuration digests, configured model), plus the
 models Pi reported on its assistant messages.
@@ -71,7 +72,11 @@ and the other layers compare as usual. A domain difference is also listed in `fl
 no secrecy. Only the fixture recorders use it. The attachment refuses to record a normal session under it, and
 refuses a fixture under the installation key.
 
-The Pi projector (`adapters/pi/trajectory.ts`, `pi-trajectory.1`) takes tools and usage from Pi's live stream only.
+**Result digests.** From `pi-rpc-mapping.4`, `tool.finished` records `resultDigest` under the same key: the digest of the
+`result.content` Pi documents on `tool_execution_end` (the content the model is given; the tool-specific `details` are
+not digested). See [replay.md](replay.md#tool-result-digests-pi-rpc-mapping4).
+
+The Pi projector (`adapters/pi/trajectory.ts`, `pi-trajectory.2`) takes tools and usage from Pi's live stream only.
 A catch-up after a reconnect re-reads durable entries whose usage the live stream already reported, so counting
 entries would count a message twice. Event ids seen twice are read once (`source.duplicatesIgnored`). The cost: a
 message completed while no observer was attached has no usage in the trajectory. The interruption that caused the gap
@@ -79,7 +84,8 @@ is in the lifecycle layer.
 
 ## Comparison rules
 
-The rules are `ENDO_TRAJECTORY_COMPARISON_RULES_V0` (`trajectory-comparison.1`). Every comparison carries them
+The rules are `ENDO_TRAJECTORY_COMPARISON_RULES_V0` (`trajectory-comparison.2`: version 2 extends the domain rule to
+result digests). Every comparison carries them
 verbatim, so a rule change is a visible version change.
 
 1. **Alignment is by position within each layer, never by timestamp.** The first position where the two sides
@@ -89,8 +95,9 @@ verbatim, so a rule change is a visible version change.
    - `DIVERGED`: the first differing `index`, both entries (`null` past a side's end), both lengths, and
      `commonPrefix` (equal to `index`).
    - `UNAVAILABLE`: a side did not report the layer (each side's reason is given), or no entry differs but some could
-     not be verified (`unverified`: each position with its reason). A tool call whose argument digest one side did not
-     record, or whose digests are in different digest domains, is unverifiable, never equal and never diverged.
+     not be verified (`unverified`: each position with its reason). A tool call whose argument or result digest one
+     side did not record, or whose digests are in different digest domains, is unverifiable, never equal and never
+     diverged.
 3. **usage and timing are never judged.** They report deltas (b − a) per aligned run and in total, with `null` where
    a side does not report a value. Calling two usages or timings "the same" needs a noise band, which the variance
    study has to establish. Timing is always labelled `clock: "observer"`.
@@ -106,17 +113,18 @@ verbatim, so a rule change is a visible version change.
 - The real Pi 1.0.1 `completes` and `stop-mid-turn` recordings share their first three lifecycle entries (session
   started, run started, turn 1 started). They diverge at index 3: `turn-completed` vs `stop-requested`. Outcome
   diverges at index 0: completed vs aborted.
-- `research/pi-conformance/1.0.1/completes-repeat/` holds two further real `completes` runs. It is a preliminary
-  observation, not a variance result: see its README.
-- `tests/fixtures/trajectory/fake-pi/` holds hostile fake-Pi sessions (reordered calls, different arguments, a tool
-  error, missing usage, an unknown runtime record, another Pi version, another digest domain). They are digested
+- `research/pi-conformance/1.0.1/cassettes/` holds four real sessions recorded with their cassettes (completes,
+  stop-mid-turn, killed-and-resumed, tool-use), under `pi-rpc-mapping.4` in the `fixture-public` domain. Their replays
+  are reported in its README ([replay.md](replay.md)).
+- `tests/fixtures/trajectory/fake-pi/` holds hostile fake-Pi sessions (reordered calls, different arguments, different
+  result content, a tool error, missing usage, an unknown runtime record, another Pi version, another digest domain). They are digested
   under the public `fixture-public` key (and `fixture-public-alt` for the domain-difference case).
   `tests/trajectory.test.ts` pins every comparison's digest.
 
 ## Limits
 
 - Whoever holds the installation key can confirm guessed arguments. The key file is the secret.
-- Tool results are compared by status only: no digest of the result content is recorded yet.
+- A result digest covers `result.content` only; a difference confined to a tool's `details` is not seen.
 - `lab/replay-compare.ts` compares graph snapshots. It is a different, unwired library and is unrelated to this one.
 
 ## Advanced

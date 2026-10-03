@@ -3,8 +3,8 @@
 Each `<pi version>/lifecycle/` directory holds three real sessions recorded against that Pi release and a real model.
 `provenance.json` names the mapping each was recorded under. The 1.0.1 recording predates `pi-rpc-mapping.3`, so its
 tool events carry no argument digest and its attachments record no mapping version or digest domain. The recorder
-digests tool arguments under the key `ENDO_DIGEST_KEY_FILE` selects (default: the installation key,
-`storage/digest-key.ts`). Point it at a scratch key unless the recording should compare with your other stores.
+records in fixture mode under the committed public key `fixture-public` (`research/fixture-keys/`), never the
+installation key: its digests offer no secrecy, so a recording must hold only synthetic scratch content.
 `scripts/record-lifecycle-fixture.ts` files a recording under the version the Pi it ran reports. It refuses an
 `--out` that names another version's `lifecycle/`. `tests/pi-lifecycle-fixtures.test.ts` replays every recording it
 finds and checks that the directory matches the recorded version.
@@ -38,8 +38,12 @@ Pi runs with a scratch `HOME` and a scratch `PI_CODING_AGENT_DIR` whose `models.
 Pi installation, configuration, sessions and credentials are never read or changed.
 
 `--sessions completes[,…]` records a subset. A subset is refused for a `<version>/lifecycle/` directory, so it can
-never replace the three-session fixture: give it its own `--out`. `<version>/completes-repeat/` was recorded this way;
-it holds repeated `completes` runs for trajectory comparison (docs/trajectory.md).
+never replace the three-session fixture: give it its own `--out`.
+
+The same three sessions, plus a tool-using one, are also recorded with their cassettes by
+`scripts/record-cassette-fixture.ts` into `<version>/cassettes/`, so they can be replayed (docs/replay.md). The
+earlier `1.0.1/completes-repeat/` recordings, made under a scratch key that was deleted, were retired in favour of
+them.
 
 `--authorize-live-study` is needed because STOP is offered only when the live study admits `steering.stop`. The
 study sends prompts to your model. Without that admission, `stop-mid-turn` is recorded as skipped, with the reason.

@@ -5,6 +5,13 @@ Migration of the demonstrated Endophasia v0 from the Pi-fork monorepo
 repository (the TARGET). This ledger records, per component, where it came
 from, where it goes, what changes, and which demonstrated tests protect it.
 
+> **Superseded in part (2026-10-03).** §3 "Pi integration decision" (vendor the fork as a `pi/` submodule) and the
+> components that existed to host Pi's Session worker, Chord services and browser presentation are superseded by the
+> Pi RPC attachment: Endophasia no longer vendors or depends on Pi; it attaches to a user-installed Pi over its
+> documented `--mode rpc`. The fork pin `ab4caf5` remains available in `noctem-o/endophasia-pi-legacy-deprecated`.
+> Decisions, the capability mapping and every removal's disposition are in
+> [pi-attach-inventory.md](pi-attach-inventory.md). The rest of this ledger stands as the migration history.
+
 ## 1. Precedence and vocabulary
 
 When donor code and target design conflict, priority is:
@@ -2022,4 +2029,26 @@ host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
 Next: none — Phase 12 (Operational substrate & integration) closes the phase series, recorded in §5.23 and verified in §10.15.
+
+## 12. Pi RPC attachment (2026-10-03)
+
+The vendored-fork decision of §3 is reversed. Recorded here for continuity; the full record is
+[pi-attach-inventory.md](pi-attach-inventory.md).
+
+- Removed: `pi/` submodule and `.gitmodules`, npm workspaces, tsconfig `paths`, vitest aliases, the fork-era
+  `adapters/pi/*`, `runtime/{server,session-worker,browser-server,browser-listener,cockpit,cockpit-host,cockpit-main,ports}.ts`,
+  `runtime/observation/ports.ts`, the Chord service contracts in `runtime/contracts/`, `presentation/`, `cockpit/`, the
+  browser smoke and cockpit-type scripts, the donor biome plugin, and their tests.
+- Added: `protocol/harness.ts`, `adapters/rpc-jsonl/` (the Prime transport, extracted), the RPC-based `adapters/pi/`,
+  `storage/harness-registry.ts`, `cli/harness.ts`, `adapters/provider/fetch-transport.ts`, the fake Pi and fake
+  OpenAI-compatible fixtures, and `research/pi-conformance/1.0.0/`.
+- Fixed on the way: `storage/log.ts` no longer appends past a torn tail or a corrupt frame; `endo.event.v0` `at` is
+  validated as ISO-8601 UTC.
+- Baseline before the change (legacy pin restored locally from the legacy repository): typecheck 43 errors, all in the
+  vendored `pi/packages/ai` (model data cannot be hydrated: models.dev answers 403 in the build environment); tests
+  2566 passed, 8 failed, 2 skipped, with 6 files failing at import for the same reason. After: typecheck clean, lint
+  clean, tests 2306 passed, 8 failed, 3 skipped (opt-in suites). The 8 failures are the same 8 tests as before: 6 are in the
+  atomic-publication path built on `mv --exchange` (4 fail on the command itself, 2 in a publication child or the
+  step after an exchange; GNU coreutils here is 9.4, which lacks `--exchange`), and 2 resolve donor commit `45adf6b`,
+  which is not in this repository's history.
 

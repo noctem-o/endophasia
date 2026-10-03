@@ -4,7 +4,7 @@
 // missing capability stays represented as missing, never filled in.
 
 import { type EndoIdentifierKindV0, isEndoIdentifierV0, isWellFormedEventKindV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * What an event is. The six classes are not interchangeable (README): a runtime fact is never silently upgraded to
@@ -74,7 +74,8 @@ function isStrictJsonValue(value: unknown): value is JsonValueV0 {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return true;
 	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) return value.every(isStrictJsonValue);
-	if (typeof value === "object") return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	if (typeof value === "object" && isPlainJsonObjectV0(value))
+		return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
 	return false;
 }
 
@@ -101,7 +102,7 @@ const ENDO_EVENT_ALLOWED_KEYS_V0 = new Set([
  * null.
  */
 export function validateEndoEventV0(value: unknown): EndoEventV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVENT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.event.v0") return null;
@@ -111,7 +112,7 @@ export function validateEndoEventV0(value: unknown): EndoEventV0 | null {
 	if (typeof v.sequence !== "number" || !Number.isInteger(v.sequence) || v.sequence < 0) return null;
 	if (typeof v.at !== "string" || v.at.length === 0) return null;
 	const c = v.coordinates;
-	if (typeof c !== "object" || c === null) return null;
+	if (typeof c !== "object" || c === null || !isPlainJsonObjectV0(c)) return null;
 	const coords = c as Record<string, unknown>;
 	for (const key of Object.keys(coords)) {
 		if (key !== "sessionId" && key !== "runId" && key !== "experimentId") return null;

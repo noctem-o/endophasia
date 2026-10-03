@@ -5,12 +5,13 @@ import {
 	isDirectInternalProcessEntry,
 } from "@earendil-works/pi-coding-agent/experimental/process";
 import { runCodingAgentSessionWorker } from "@earendil-works/pi-coding-agent/experimental/session-worker";
+import { createPiSessionOverviewCaptureV0 } from "../../adapters/pi/ports.ts";
 import { createEndophasiaInspectorFacetV0 } from "../../runtime/contracts/inspector.ts";
 
 if (isDirectInternalProcessEntry(import.meta.url)) {
 	const role = consumeInternalProcessRole();
 	if (role !== "session-worker") throw new Error("Test Session worker requires an internal session-worker invocation");
 	void runCodingAgentSessionWorker(process.argv.slice(2), {
-		createHostFacets: ({ harness }) => [createEndophasiaInspectorFacetV0(harness)],
+		createHostFacets: ({ harness }) => [createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness))],
 	}).catch(() => process.exit(1));
 }

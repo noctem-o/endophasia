@@ -10,7 +10,7 @@ import { type EndoTrialCoordinatesV0, validateTrialCoordinatesV0 } from "./coord
 import type { EndoReplayLayerV0, EndoResourceUsageV0 } from "./event-record.ts";
 import { ENDO_REPLAY_LAYERS_V0, validateEndoResourceUsageV0 } from "./event-record.ts";
 import { type EndoIdentifierKindV0, isEndoIdentifierV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * The data a trial drew from (README "Evaluation": "Distinguish: evolve-set, held-out, out-of-distribution,
@@ -256,9 +256,7 @@ function isNonNegativeIntegerV0(value: unknown): value is number {
 }
 
 function isPlainRecordV0(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-	const proto = Object.getPrototypeOf(value);
-	return proto === null || proto === Object.prototype;
+	return isPlainJsonObjectV0(value);
 }
 
 function isStrictJsonValue(value: unknown): value is JsonValueV0 {
@@ -288,7 +286,7 @@ const ENDO_ENVIRONMENT_ALLOWED_KEYS_V0 = new Set([
  * non-boolean simulated flag. Returns the validated value unchanged, or null.
  */
 export function validateEndoEnvironmentProfileV0(value: unknown): EndoEnvironmentProfileV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_ENVIRONMENT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.environment-profile.v0") return null;
@@ -320,7 +318,7 @@ const ENDO_EVALUATION_PROFILE_ALLOWED_KEYS_V0 = new Set([
  * integers nor non-empty strings, and a trial count below one. Returns the validated value unchanged, or null.
  */
 export function validateEndoEvaluationProfileV0(value: unknown): EndoEvaluationProfileV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVALUATION_PROFILE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evaluation-profile.v0") return null;
@@ -347,7 +345,7 @@ const ENDO_TRIAL_RESULT_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "coordinates
  * vocabulary, and non-strict-JSON raw or derived values. Returns the validated value unchanged, or null.
  */
 export function validateEndoTrialResultV0(value: unknown): EndoTrialResultV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_TRIAL_RESULT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.trial-result.v0") return null;
@@ -380,7 +378,7 @@ const ENDO_EVALUATION_RESULT_ALLOWED_KEYS_V0 = new Set([
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoEvaluationResultV0(value: unknown): EndoEvaluationResultV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVALUATION_RESULT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evaluation-result.v0") return null;
@@ -422,7 +420,7 @@ function isStudyEvidenceV0(value: unknown): value is string {
  * endo.evidence.* identifiers. Returns the validated value unchanged, or null.
  */
 export function validateEndoConformanceStudyV0(value: unknown): EndoConformanceStudyV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_CONFORMANCE_STUDY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.conformance-study.v0") return null;
@@ -447,7 +445,7 @@ const ENDO_CONFORMANCE_SUITE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "subjec
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoConformanceSuiteV0(value: unknown): EndoConformanceSuiteV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_CONFORMANCE_SUITE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.conformance-suite.v0") return null;
@@ -481,7 +479,7 @@ const ENDO_REPLAY_COMPARISON_ALLOWED_KEYS_V0 = new Set([
  * null.
  */
 export function validateEndoReplayComparisonV0(value: unknown): EndoReplayComparisonV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_REPLAY_COMPARISON_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.replay-comparison.v0") return null;
@@ -501,7 +499,7 @@ const ENDO_EXPERIMENT_BUNDLE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "
  * invalid evaluation result, and a malformed digest. Returns the validated value unchanged, or null.
  */
 export function validateEndoExperimentBundleV0(value: unknown): EndoExperimentBundleV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EXPERIMENT_BUNDLE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.experiment-bundle.v0") return null;

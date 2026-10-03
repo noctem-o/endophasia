@@ -1,10 +1,9 @@
-// The host facet that provides EndophasiaContinuityV0 from one Pi lane, by design Pi-backed. The v0 schema is in
-// protocol/continuity.ts; the service handle in runtime/contracts/continuity.ts; the Pi capture in
-// adapters/pi/continuity.ts.
+// The host facet that provides EndophasiaContinuityV0 from one Continuity capture source, by design Pi-backed. The
+// v0 schema is in protocol/continuity.ts; the service handle in runtime/contracts/continuity.ts; the neutral port in
+// runtime/ports.ts; the Pi capture in adapters/pi/ports.ts.
 import { defineFacet, type Facet } from "@earendil-works/chord";
-import type { AgentLane } from "@earendil-works/pi-agent-core";
-import { captureContinuityV0 } from "../../adapters/pi/continuity.ts";
 import { CONTINUITY_REMOTE_BYTE_LIMIT, type ContinuitySnapshotV0 } from "../../protocol/continuity.ts";
+import type { ContinuityCaptureSourceV0 } from "../ports.ts";
 import { EndophasiaContinuityV0 } from "./continuity.ts";
 
 /** Fail a snapshot whose JSON exceeds the remote byte limit. It is never truncated into a complete-looking snapshot. */
@@ -19,22 +18,18 @@ function withinRemoteLimit(snapshot: ContinuitySnapshotV0): ContinuitySnapshotV0
 }
 
 /**
- * Provide EndophasiaContinuityV0 from one Pi lane, by design Pi-backed: each call is a fresh captureContinuityV0 of
- * that lane, which releases its temporary watcher, and nothing is held between calls. The facet receives only the
- * lane's watch and findEntries reads, never mutation authority. A failed capture fails the call; it is never replaced
- * by an empty snapshot.
+ * Provide EndophasiaContinuityV0 from one Continuity capture source: each call is a fresh capture of that source's
+ * lane, which releases its temporary watcher, and nothing is held between calls. The facet receives only the capture
+ * capability, never lane reads or mutation authority. A failed capture fails the call; it is never replaced by an
+ * empty snapshot.
  */
-export function createEndophasiaContinuityFacetV0(lane: Pick<AgentLane, "watch" | "findEntries">): Facet {
-	if (lane === undefined || lane === null) throw new TypeError("A Continuity lane is required");
-	const reads: Pick<AgentLane, "watch" | "findEntries"> = {
-		watch: (context) => lane.watch(context),
-		findEntries: (query, context) => lane.findEntries(query, context),
-	};
+export function createEndophasiaContinuityFacetV0(capture: ContinuityCaptureSourceV0): Facet {
+	if (capture === undefined || capture === null) throw new TypeError("A Continuity capture source is required");
 	return defineFacet({
 		id: "@endophasia/continuity",
 		setup(env) {
 			env.provide(EndophasiaContinuityV0, {
-				snapshot: async (context) => withinRemoteLimit(await captureContinuityV0(reads, context)),
+				snapshot: async (context) => withinRemoteLimit(await capture.capture(context)),
 			});
 		},
 	});

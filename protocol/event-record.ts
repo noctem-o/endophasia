@@ -6,6 +6,7 @@
 import type { EndoEventCoordinatesV0, EndoEventSourceV0, EndoEventV0 } from "./event.ts";
 import { ENDO_EVENT_SOURCES_V0, validateEndoEventV0 } from "./event.ts";
 import { isEndoIdentifierV0 } from "./identity.ts";
+import { isPlainJsonObjectV0 } from "./primitives.ts";
 
 /**
  * What a replay verified about one layer: reproduced exactly, reconstructed, or could not be reproduced (README
@@ -138,7 +139,7 @@ function isNonNegativeIntegerV0(value: unknown): value is number {
 }
 
 function isReportedTotalV0(value: unknown): value is { input: number; output: number; total: number } {
-	if (typeof value !== "object" || value === null) return false;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return false;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (key !== "input" && key !== "output" && key !== "total") return false;
 	return isNonNegativeIntegerV0(v.input) && isNonNegativeIntegerV0(v.output) && isNonNegativeIntegerV0(v.total);
@@ -149,7 +150,7 @@ function isReportedTotalV0(value: unknown): value is { input: number; output: nu
  * its own namespace. Returns the validated value unchanged, or null.
  */
 export function validateEndoEventCoordinatesV0(value: unknown): EndoEventCoordinatesV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (key !== "sessionId" && key !== "runId" && key !== "experimentId") return null;
@@ -170,7 +171,7 @@ export function validateEndoEventCoordinatesV0(value: unknown): EndoEventCoordin
  * not exactly the closed six source classes. Returns the validated value unchanged, or null.
  */
 export function validateEndoEventStreamSummaryV0(value: unknown): EndoEventStreamSummaryV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (key !== "schemaVersion" && key !== "count" && key !== "maxSequence" && key !== "sources") return null;
@@ -178,7 +179,7 @@ export function validateEndoEventStreamSummaryV0(value: unknown): EndoEventStrea
 	if (v.schemaVersion !== "endo.stream-summary.v0") return null;
 	if (!isNonNegativeIntegerV0(v.count)) return null;
 	if (!isNonNegativeIntegerV0(v.maxSequence)) return null;
-	if (typeof v.sources !== "object" || v.sources === null) return null;
+	if (typeof v.sources !== "object" || v.sources === null || !isPlainJsonObjectV0(v.sources)) return null;
 	const sources = v.sources as Record<string, unknown>;
 	for (const source of ENDO_EVENT_SOURCES_V0) if (!isNonNegativeIntegerV0(sources[source])) return null;
 	for (const key of Object.keys(sources)) if (!(ENDO_EVENT_SOURCES_V0 as readonly string[]).includes(key)) return null;
@@ -191,7 +192,7 @@ export function validateEndoEventStreamSummaryV0(value: unknown): EndoEventStrea
  * validated value unchanged, or null.
  */
 export function validateEndoResourceUsageV0(value: unknown): EndoResourceUsageV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (key !== "tokens" && key !== "cost" && key !== "durationMs") return null;
@@ -209,7 +210,7 @@ export function validateEndoResourceUsageV0(value: unknown): EndoResourceUsageV0
  * unchanged, or null.
  */
 export function validateEndoEventRecordV0(value: unknown): EndoEventRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (
@@ -238,7 +239,7 @@ export function validateEndoEventRecordV0(value: unknown): EndoEventRecordV0 | n
  * nested events or cursors. Returns the validated value unchanged, or null.
  */
 export function validateEndoEventRecordPageV0(value: unknown): EndoEventRecordPageV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (key !== "schemaVersion" && key !== "order" && key !== "events" && key !== "nextAfterSequence") return null;
@@ -255,7 +256,7 @@ export function validateEndoEventRecordPageV0(value: unknown): EndoEventRecordPa
  * values outside the closed three-way, and malformed digests. Returns the validated value unchanged, or null.
  */
 export function validateEndoReplayReportV0(value: unknown): EndoReplayReportV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (
@@ -282,7 +283,7 @@ export function validateEndoReplayReportV0(value: unknown): EndoReplayReportV0 |
  * value unchanged, or null.
  */
 export function validateEndoResultBundleV0(value: unknown): EndoResultBundleV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) {
 		if (key !== "schemaVersion" && key !== "id" && key !== "record" && key !== "replay" && key !== "digest")

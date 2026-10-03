@@ -39,10 +39,15 @@ function seededStore(): ReturnType<typeof createEndoEventStoreV0> {
 }
 
 describe("ingest", () => {
-	it("accepts a valid event and returns it unchanged", () => {
+	it("accepts a valid event and stores a deep-frozen copy", () => {
 		const store = createEndoEventStoreV0();
 		const value = event("endo.event.t1", 1);
-		expect(store.ingest(value)).toBe(value);
+		const stored = store.ingest(value);
+		expect(stored).toEqual(value);
+		expect(stored).not.toBe(value);
+		expect(Object.isFrozen(stored)).toBe(true);
+		expect(Object.isFrozen(stored.coordinates)).toBe(true);
+		expect(Object.isFrozen(stored.payload)).toBe(true);
 		expect(store.length).toBe(1);
 	});
 

@@ -10,7 +10,8 @@
  * Scoring convention: a trial's score is the `score` member of its derived metrics when that member
  * is a finite number; a trial with none contributes nothing (an honest absence, never a fabricated
  * zero). A candidate's score is the mean of its scored evolve-set trials; its held-out evidence is
- * its scored held-out trials.
+ * its scored held-out trials. The convention's helpers (trialScoreV0, meanV0, collectEvidenceV0)
+ * are exported and shared by the RRSI and GEPA policy modules.
  *
  * The decision: select the unique strict best on the evolve set, and only when that candidate also
  * carries held-out evidence. Any other situation — no scored evidence at all, a tie for best, a best
@@ -31,8 +32,9 @@ const BASELINE_POLICY_IDENTITY_V0 = {
 	revision: "v1",
 } as const;
 
-/** The per-candidate evidence the decision is built from, in deterministic (id) order. */
-interface CandidateEvidenceV0 {
+/** The per-candidate evidence a decision is built from, in deterministic (id) order. Shared by the
+ * RRSI and GEPA policy modules. */
+export interface CandidateEvidenceV0 {
 	candidateId: string;
 	evolveScores: number[];
 	evolveResultIds: string[];
@@ -40,8 +42,8 @@ interface CandidateEvidenceV0 {
 	heldOutResultIds: string[];
 }
 
-/** The score of one trial under the baseline convention, or null when the trial carries none. */
-function trialScoreV0(trial: EndoTrialResultV0): number | null {
+/** The score of one trial under the scoring convention, or null when the trial carries none. */
+export function trialScoreV0(trial: EndoTrialResultV0): number | null {
 	const derived = trial.derived;
 	if (derived === null || typeof derived !== "object" || Array.isArray(derived)) return null;
 	if (!("score" in derived)) return null;
@@ -50,7 +52,7 @@ function trialScoreV0(trial: EndoTrialResultV0): number | null {
 	return score;
 }
 
-function meanV0(values: readonly number[]): number | null {
+export function meanV0(values: readonly number[]): number | null {
 	if (values.length === 0) return null;
 	let sum = 0;
 	for (const value of values) sum += value;
@@ -63,7 +65,7 @@ function meanV0(values: readonly number[]): number | null {
  * candidate's evidence list exactly when at least one of that candidate's scored trials on the
  * partition came from it. Held-out trials may be recorded in either array, so both are scanned.
  */
-function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): CandidateEvidenceV0[] {
+export function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): CandidateEvidenceV0[] {
 	const byId = new Map<string, CandidateEvidenceV0>();
 	for (const candidate of [...context.candidates].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
 		byId.set(candidate.id, {

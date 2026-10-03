@@ -18,6 +18,7 @@
 
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0 } from "./identity.ts";
+import { isPlainJsonObjectV0 } from "./primitives.ts";
 import type { SteeringActionV0 } from "./steering.ts";
 
 function isEndoIdentifier(value: unknown, kind: EndoIdentifierKindV0): value is string {
@@ -114,7 +115,7 @@ const ENDO_COLLAB_ROOM_ALLOWED_KEYS_V0 = new Set([
  * validated value unchanged, or null.
  */
 export function validateEndoCollabRoomV0(value: unknown): EndoCollabRoomV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_ROOM_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-room.v0") return null;
@@ -173,7 +174,7 @@ const ENDO_COLLAB_DISCUSSION_ALLOWED_KEYS_V0 = new Set([
  * unchanged, or null.
  */
 export function validateEndoCollabDiscussionV0(value: unknown): EndoCollabDiscussionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_DISCUSSION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-discussion.v0") return null;
@@ -224,7 +225,7 @@ const ENDO_COLLAB_APPROVAL_REQUEST_ALLOWED_KEYS_V0 = new Set([
  * identifiers. Returns the validated value unchanged, or null.
  */
 export function validateEndoCollabApprovalRequestV0(value: unknown): EndoCollabApprovalRequestV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_APPROVAL_REQUEST_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-approval-request.v0") return null;
@@ -274,7 +275,7 @@ const ENDO_COLLAB_APPROVAL_DECISION_ALLOWED_KEYS_V0 = new Set([
  * value unchanged, or null.
  */
 export function validateEndoCollabApprovalDecisionV0(value: unknown): EndoCollabApprovalDecisionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_APPROVAL_DECISION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-approval-decision.v0") return null;
@@ -325,7 +326,7 @@ const ENDO_COLLAB_PATCH_ALLOWED_KEYS_V0 = new Set([
  * closed three-way. Returns the validated value unchanged, or null.
  */
 export function validateEndoCollabPatchV0(value: unknown): EndoCollabPatchV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_PATCH_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-patch.v0") return null;
@@ -367,7 +368,7 @@ const ENDO_COLLAB_STEERING_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "ro
  * queue without one. Returns the validated value unchanged, or null.
  */
 export function validateEndoCollabSteeringV0(value: unknown): EndoCollabSteeringV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_STEERING_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-steering.v0") return null;
@@ -448,7 +449,7 @@ const ENDO_COLLAB_ROOM_REPORT_STEERING_KEYS_V0 = new Set(["steer", "queue", "sto
  * non-negative integers. Returns the validated value unchanged, or null.
  */
 export function validateEndoCollabRoomReportV0(value: unknown): EndoCollabRoomReportV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_COLLAB_ROOM_REPORT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.collab-room-report.v0") return null;
@@ -456,7 +457,7 @@ export function validateEndoCollabRoomReportV0(value: unknown): EndoCollabRoomRe
 	if (!Array.isArray(v.discussions)) return null;
 	const seenCandidates = new Set<string>();
 	for (const row of v.discussions) {
-		if (typeof row !== "object" || row === null) return null;
+		if (typeof row !== "object" || row === null || !isPlainJsonObjectV0(row)) return null;
 		const r = row as Record<string, unknown>;
 		for (const key of Object.keys(r)) if (key !== "candidateId" && key !== "count") return null;
 		if (!isEndoIdentifier(r.candidateId, "candidate")) return null;
@@ -468,7 +469,7 @@ export function validateEndoCollabRoomReportV0(value: unknown): EndoCollabRoomRe
 	if (!Array.isArray(v.approvals)) return null;
 	const seenRequests = new Set<string>();
 	for (const row of v.approvals) {
-		if (typeof row !== "object" || row === null) return null;
+		if (typeof row !== "object" || row === null || !isPlainJsonObjectV0(row)) return null;
 		const r = row as Record<string, unknown>;
 		for (const key of Object.keys(r)) if (key !== "requestId" && key !== "outcome") return null;
 		if (!isEndoIdentifier(r.requestId, "evidence")) return null;
@@ -480,7 +481,7 @@ export function validateEndoCollabRoomReportV0(value: unknown): EndoCollabRoomRe
 	if (!Array.isArray(v.patches)) return null;
 	const seenPatches = new Set<string>();
 	for (const row of v.patches) {
-		if (typeof row !== "object" || row === null) return null;
+		if (typeof row !== "object" || row === null || !isPlainJsonObjectV0(row)) return null;
 		const r = row as Record<string, unknown>;
 		for (const key of Object.keys(r)) if (key !== "patchId" && key !== "status") return null;
 		if (!isCollabTextV0(r.patchId, 256)) return null;
@@ -488,7 +489,7 @@ export function validateEndoCollabRoomReportV0(value: unknown): EndoCollabRoomRe
 		if (seenPatches.has(r.patchId)) return null;
 		seenPatches.add(r.patchId);
 	}
-	if (typeof v.steering !== "object" || v.steering === null) return null;
+	if (typeof v.steering !== "object" || v.steering === null || !isPlainJsonObjectV0(v.steering)) return null;
 	const s = v.steering as Record<string, unknown>;
 	for (const key of Object.keys(s)) if (!ENDO_COLLAB_ROOM_REPORT_STEERING_KEYS_V0.has(key)) return null;
 	if (!isNonNegativeIntV0(s.steer) || !isNonNegativeIntV0(s.queue) || !isNonNegativeIntV0(s.stop)) return null;

@@ -11,11 +11,15 @@ describe("createEndoGraphStoreV0", () => {
 		expect(store.log()).toEqual([]);
 	});
 
-	it("records objects through the strict door and returns the stored value", () => {
+	it("records objects through the strict door and stores a deep-frozen copy", () => {
 		const store = createEndoGraphStoreV0();
 		const value = node(SESSION_ID, "session");
-		expect(store.upsertObject(value)).toBe(value);
-		expect(store.getObject(SESSION_ID)).toBe(value);
+		const stored = store.upsertObject(value);
+		expect(stored).toEqual(value);
+		expect(stored).not.toBe(value);
+		expect(store.getObject(SESSION_ID)).toBe(stored);
+		expect(Object.isFrozen(stored)).toBe(true);
+		expect(Object.isFrozen(stored.payload)).toBe(true);
 		expect(store.objectCount).toBe(1);
 		expect(store.sequence).toBe(1);
 	});
@@ -38,16 +42,20 @@ describe("createEndoGraphStoreV0", () => {
 		const store = createEndoGraphStoreV0();
 		const first = node(SESSION_ID, "session");
 		const second = { ...first, payload: { note: "revised" } };
-		store.upsertObject(first);
-		store.upsertObject(second);
-		expect(store.getObject(SESSION_ID)).toBe(second);
+		const firstStored = store.upsertObject(first);
+		const secondStored = store.upsertObject(second);
+		expect(firstStored).not.toBe(first);
+		expect(secondStored).not.toBe(second);
+		expect(store.getObject(SESSION_ID)).toBe(secondStored);
 		expect(store.objectCount).toBe(1);
 		const log = store.log();
 		expect(log).toHaveLength(2);
 		expect(log[0].change.revision).toBe(1);
 		expect(log[1].change.revision).toBe(2);
-		expect(log[0].value).toBe(first);
-		expect(log[1].value).toBe(second);
+		expect(log[0].value).toBe(firstStored);
+		expect(log[1].value).toBe(secondStored);
+		expect(Object.isFrozen(log[0].value)).toBe(true);
+		expect(Object.isFrozen(log[1].change)).toBe(true);
 	});
 
 	it("numbers revisions per identifier and the sequence globally, across kinds", () => {
@@ -81,8 +89,11 @@ describe("createEndoGraphStoreV0", () => {
 			relation: "derived-from",
 			observedIn: "endo.event.session.started",
 		};
-		expect(store.upsertEdge(edgeValue)).toBe(edgeValue);
-		expect(store.getEdge("endo.edge.e1")).toBe(edgeValue);
+		const stored = store.upsertEdge(edgeValue);
+		expect(stored).toEqual(edgeValue);
+		expect(stored).not.toBe(edgeValue);
+		expect(store.getEdge("endo.edge.e1")).toBe(stored);
+		expect(Object.isFrozen(stored)).toBe(true);
 		expect(store.edgeCount).toBe(1);
 		expect(() => store.upsertEdge({ ...edgeValue, relation: "Derived-From" })).toThrow(TypeError);
 		expect(() => store.upsertEdge({ ...edgeValue, id: "endo.node.n1" })).toThrow(TypeError);

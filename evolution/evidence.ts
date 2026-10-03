@@ -91,6 +91,7 @@ import {
 	validateEndoWitnessRecordV0,
 } from "../protocol/trust.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { deepFreezeCopyV0, deepFreezeV0 } from "../runtime/contracts/immutability.ts";
 
 /** The closed set of record kinds the ledger can hold. */
 type EndoLedgerRecordV0 =
@@ -276,10 +277,11 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 	}
 	const validatedRecord = validateEndoExperimentRecordV0(record);
 	if (validatedRecord === null) throw new TypeError("not a valid endo.experiment.v0 record");
+	const storedRecord = deepFreezeCopyV0(validatedRecord);
 	const entries: EndoEvidenceLedgerEntryV0[] = [];
 	const ids = new Set<string>();
 	const ledger: EndoEvidenceLedgerServiceV0 = {
-		record: validatedRecord,
+		record: storedRecord,
 		get length() {
 			return entries.length;
 		},
@@ -287,7 +289,7 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 			return {
 				schemaVersion: "endo.evidence-ledger.v0",
 				id,
-				experimentId: validatedRecord.id,
+				experimentId: storedRecord.id,
 				entries: [...entries],
 			};
 		},
@@ -320,6 +322,7 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 				recordId,
 			};
 			ids.add(recordId);
+			deepFreezeV0(entry);
 			entries.push(entry);
 			return entry;
 		},

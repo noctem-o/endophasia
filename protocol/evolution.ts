@@ -19,7 +19,7 @@ import type { EndoEnvironmentProfileV0 } from "./evaluation.ts";
 import { validateEndoEnvironmentProfileV0 } from "./evaluation.ts";
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * SHA-256 digest: 64 lowercase hex characters.
@@ -52,7 +52,8 @@ function isStrictJsonValue(value: unknown): value is JsonValueV0 {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return true;
 	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) return value.every(isStrictJsonValue);
-	if (typeof value === "object") return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	if (typeof value === "object" && isPlainJsonObjectV0(value))
+		return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
 	return false;
 }
 
@@ -277,7 +278,7 @@ const ENDO_ARTIFACT_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "kind", "d
  * validated value unchanged, or null.
  */
 export function validateEndoArtifactV0(value: unknown): EndoArtifactV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_ARTIFACT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.artifact.v0") return null;
@@ -347,7 +348,7 @@ const ENDO_MUTATION_ALLOWED_KEYS_V0 = new Set([
  * over-long statements. Returns the validated value unchanged, or null.
  */
 export function validateEndoMutationV0(value: unknown): EndoMutationV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_MUTATION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.mutation.v0") return null;
@@ -428,7 +429,7 @@ const ENDO_CANDIDATE_ALLOWED_KEYS_V0 = new Set([
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoCandidateV0(value: unknown): EndoCandidateV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_CANDIDATE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.candidate.v0") return null;
@@ -497,7 +498,7 @@ const ENDO_EXPERIMENT_ALLOWED_KEYS_V0 = new Set([
  * non-strict budget, and over-long identities. Returns the validated value unchanged, or null.
  */
 export function validateEndoExperimentRecordV0(value: unknown): EndoExperimentRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EXPERIMENT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.experiment.v0") return null;
@@ -562,7 +563,7 @@ const ENDO_EXPERIMENT_TRANSITION_ALLOWED_KEYS_V0 = new Set([
  * over-long reasons. Returns the validated value unchanged, or null.
  */
 export function validateEndoExperimentTransitionV0(value: unknown): EndoExperimentTransitionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EXPERIMENT_TRANSITION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.experiment-transition.v0") return null;
@@ -611,7 +612,7 @@ const ENDO_SELECTION_POLICY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "name", 
  * over-long revision. Returns the validated value unchanged, or null.
  */
 export function validateEndoSelectionPolicyV0(value: unknown): EndoSelectionPolicyV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SELECTION_POLICY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.selection-policy.v0") return null;
@@ -647,7 +648,7 @@ const ENDO_SELECTION_CONDITION_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "name
  * unchanged, or null.
  */
 export function validateEndoSelectionConditionV0(value: unknown): EndoSelectionConditionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SELECTION_CONDITION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.selection-condition.v0") return null;
@@ -714,7 +715,7 @@ const ENDO_SELECTION_DECISION_ALLOWED_KEYS_V0 = new Set([
  * outcome with no evidence. Returns the validated value unchanged, or null.
  */
 export function validateEndoSelectionDecisionV0(value: unknown): EndoSelectionDecisionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SELECTION_DECISION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.selection-decision.v0") return null;
@@ -792,7 +793,7 @@ const ENDO_PROMOTION_REQUEST_ALLOWED_KEYS_V0 = new Set([
  * over-long targets and provenance. Returns the validated value unchanged, or null.
  */
 export function validateEndoPromotionRequestV0(value: unknown): EndoPromotionRequestV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_PROMOTION_REQUEST_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.promotion-request.v0") return null;
@@ -854,7 +855,7 @@ const ENDO_PROMOTION_DECISION_ALLOWED_KEYS_V0 = new Set([
  * value unchanged, or null.
  */
 export function validateEndoPromotionDecisionV0(value: unknown): EndoPromotionDecisionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_PROMOTION_DECISION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.promotion-decision.v0") return null;
@@ -898,7 +899,7 @@ const ENDO_EVIDENCE_LEDGER_ENTRY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "se
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoEvidenceLedgerEntryV0(value: unknown): EndoEvidenceLedgerEntryV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVIDENCE_LEDGER_ENTRY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evidence-ledger-entry.v0") return null;
@@ -940,7 +941,7 @@ const ENDO_EVIDENCE_LEDGER_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "ex
  * identifier that appears in more than one entry. Returns the validated value unchanged, or null.
  */
 export function validateEndoEvidenceLedgerV0(value: unknown): EndoEvidenceLedgerV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVIDENCE_LEDGER_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evidence-ledger.v0") return null;

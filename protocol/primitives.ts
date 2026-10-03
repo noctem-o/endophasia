@@ -16,3 +16,14 @@ export interface ModelIdentityV0 {
 
 /** A strict JSON value: the wire shape every protocol payload carries. */
 export type JsonValueV0 = null | boolean | number | string | JsonValueV0[] | { [key: string]: JsonValueV0 };
+
+/**
+ * Whether a value is a plain JSON object: an object that is not an array, not null, and whose prototype is
+ * `Object.prototype` or null (as with `Object.create(null)`). A class instance — even one whose own properties
+ * exactly match a record shape — is not a plain object; no protocol validator accepts one.
+ */
+export function isPlainJsonObjectV0(value: unknown): boolean {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === null || proto === Object.prototype;
+}

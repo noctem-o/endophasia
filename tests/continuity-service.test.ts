@@ -9,6 +9,7 @@ import { withAbortSignal } from "@earendil-works/chord/context";
 import { createModels, fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPiContinuityCaptureV0 } from "../adapters/pi/ports.ts";
 import {
 	AgentHarness,
 	type AgentHarness as AgentHarnessType,
@@ -30,6 +31,7 @@ import {
 	createEndophasiaContinuityFacetV0,
 	EndophasiaContinuityV0,
 } from "../runtime/contracts/index.ts";
+import type { ContinuityCaptureSourceV0 } from "../runtime/ports.ts";
 import {
 	type ContinuityReads,
 	largestSyntheticCountWithinLimit,
@@ -148,7 +150,7 @@ describe("Continuity Remote v0", () => {
 		const { lane } = await fixture();
 		expect(EndophasiaContinuityV0.id).toBe("endophasia.continuity.v0");
 		const without = await worker(lane, []);
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const ids = async (endpoint: SessionWorkerServices) =>
 			parseServiceCatalogue(await endpoint.invoke(createServiceCatalogueCall(), scope, BACKGROUND_CONTEXT)).map(
 				(entry) => entry.serviceId,
@@ -157,13 +159,15 @@ describe("Continuity Remote v0", () => {
 		const withContinuity = await ids(services);
 		expect(plain).not.toContain(EndophasiaContinuityV0.id);
 		expect(withContinuity.filter((id) => !plain.includes(id))).toEqual([EndophasiaContinuityV0.id]);
-		expect(() => createEndophasiaContinuityFacetV0(undefined as unknown as AgentLane)).toThrow(TypeError);
-		expect(() => createEndophasiaContinuityFacetV0(null as unknown as AgentLane)).toThrow(TypeError);
+		expect(() => createEndophasiaContinuityFacetV0(undefined as unknown as ContinuityCaptureSourceV0)).toThrow(
+			TypeError,
+		);
+		expect(() => createEndophasiaContinuityFacetV0(null as unknown as ContinuityCaptureSourceV0)).toThrow(TypeError);
 	});
 
 	it("serves an empty lane exactly as captureContinuityV0 captures it", async () => {
 		const { lane, faux } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const remote = await remoteSnapshot(services);
 		expect(remote).toEqual(await captureContinuityV0(lane, BACKGROUND_CONTEXT));
 		expect(remote).toEqual({
@@ -184,7 +188,7 @@ describe("Continuity Remote v0", () => {
 
 	it("serves ordinary messages and tool use with no prompt, answer, reasoning or tool payload", async () => {
 		const { lane, faux } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		faux.setResponses([
 			fauxAssistantMessage(
 				[
@@ -218,7 +222,7 @@ describe("Continuity Remote v0", () => {
 
 	it("serves real compaction: full ancestry, the compaction boundary and no summary", async () => {
 		const { lane, faux } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const oldId = await lane.appendMessage(
 			{ role: "user", content: "old-history-sentinel", timestamp: 1 },
 			BACKGROUND_CONTEXT,
@@ -241,7 +245,7 @@ describe("Continuity Remote v0", () => {
 
 	it("follows a navigated tip and serves branch summaries structurally", async () => {
 		const { lane, session, faux } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const rootId = await lane.appendMessage({ role: "user", content: "root", timestamp: 1 }, BACKGROUND_CONTEXT);
 		const sourceId = await lane.appendMessage({ role: "user", content: "source", timestamp: 2 }, BACKGROUND_CONTEXT);
 		await session.mutate(
@@ -283,7 +287,7 @@ describe("Continuity Remote v0", () => {
 
 	it("serves the current model, thinking and tool configuration on each fresh capture", async () => {
 		const { lane } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const first = await remoteSnapshot(services);
 		await lane.setModel({ provider: "other", modelId: "selected" }, BACKGROUND_CONTEXT);
 		await lane.setThinkingLevel("high", BACKGROUND_CONTEXT);
@@ -299,7 +303,7 @@ describe("Continuity Remote v0", () => {
 
 	it("serves custom entry membership without its data", async () => {
 		const { lane } = await fixture();
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const withData = await lane.appendCustomEntry("app-note", { secret: "custom-data-sentinel" }, BACKGROUND_CONTEXT);
 		const withoutData = await lane.appendCustomEntry("marker", undefined, BACKGROUND_CONTEXT);
 		const remote = await remoteSnapshot(services);
@@ -314,7 +318,7 @@ describe("Continuity Remote v0", () => {
 	it("captures afresh on every call, reading only watch and findEntries and releasing each watcher", async () => {
 		const { lane } = await fixture();
 		const { reads, calls } = countedReads(lane);
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(reads)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(reads))]);
 		// Installing the facet reads nothing: there is no seed, cache or subscription.
 		expect(calls).toMatchObject({ watch: 0, findEntries: 0 });
 
@@ -336,7 +340,7 @@ describe("Continuity Remote v0", () => {
 	it("is read-only: no Pi mutation, lane creation or configuration change", async () => {
 		const { harness, lane } = await fixture();
 		await lane.appendMessage({ role: "user", content: "message", timestamp: 1 }, BACKGROUND_CONTEXT);
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(lane)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(lane))]);
 		const mutations: HarnessEventType[] = [
 			"lane_created",
 			"entry_added",
@@ -368,7 +372,7 @@ describe("Continuity Remote v0", () => {
 		const { lane } = await fixture();
 		await lane.appendMessage({ role: "user", content: "message", timestamp: 1 }, BACKGROUND_CONTEXT);
 		const { reads, calls } = countedReads(lane);
-		const services = await worker(lane, [createEndophasiaContinuityFacetV0(reads)]);
+		const services = await worker(lane, [createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(reads))]);
 		const context = withAbortSignal(new AbortController().signal, BACKGROUND_CONTEXT);
 		await remoteSnapshot(services, context);
 		expect(calls.contexts).toHaveLength(2);
@@ -380,23 +384,27 @@ describe("Continuity Remote v0", () => {
 		await lane.appendMessage({ role: "user", content: "message", timestamp: 1 }, BACKGROUND_CONTEXT);
 		const unsubscribe = vi.fn();
 		const failingHistory = await worker(lane, [
-			createEndophasiaContinuityFacetV0({
-				watch: async (context) => ({ ...(await lane.watch(context)), unsubscribe }),
-				findEntries: async () => {
-					throw new Error("history unavailable");
-				},
-			}),
+			createEndophasiaContinuityFacetV0(
+				createPiContinuityCaptureV0({
+					watch: async (context) => ({ ...(await lane.watch(context)), unsubscribe }),
+					findEntries: async () => {
+						throw new Error("history unavailable");
+					},
+				}),
+			),
 		]);
 		await expect(remoteSnapshot(failingHistory)).rejects.toThrow("history unavailable");
 		expect(unsubscribe).toHaveBeenCalledOnce();
 
 		const failingWatch = await worker(lane, [
-			createEndophasiaContinuityFacetV0({
-				watch: async () => {
-					throw new Error("lane unavailable");
-				},
-				findEntries: (query, context) => lane.findEntries(query, context),
-			}),
+			createEndophasiaContinuityFacetV0(
+				createPiContinuityCaptureV0({
+					watch: async () => {
+						throw new Error("lane unavailable");
+					},
+					findEntries: (query, context) => lane.findEntries(query, context),
+				}),
+			),
 		]);
 		await expect(remoteSnapshot(failingWatch)).rejects.toThrow("lane unavailable");
 	});
@@ -407,14 +415,16 @@ describe("Continuity Remote v0", () => {
 		expect(bytes).toBeLessThanOrEqual(CONTINUITY_REMOTE_BYTE_LIMIT);
 		expect(bytes).toBeGreaterThan(CONTINUITY_REMOTE_BYTE_LIMIT - 1_200);
 
-		const atLimit = await worker(lane, [createEndophasiaContinuityFacetV0(syntheticContinuityLane(lane, count))]);
+		const atLimit = await worker(lane, [
+			createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(syntheticContinuityLane(lane, count))),
+		]);
 		const whole = await remoteSnapshot(atLimit);
 		expect(new TextEncoder().encode(JSON.stringify(whole)).byteLength).toBe(bytes);
 		expect(whole.activePath).toHaveLength(count);
 		expect(whole.counts.activePathEntries).toBe(count);
 
 		const overLimit = await worker(lane, [
-			createEndophasiaContinuityFacetV0(syntheticContinuityLane(lane, count + 1)),
+			createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(syntheticContinuityLane(lane, count + 1))),
 		]);
 		// Never a shortened activePath that claims to be the tip's whole ancestry.
 		await expect(remoteSnapshot(overLimit)).rejects.toThrow(

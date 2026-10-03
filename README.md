@@ -1323,6 +1323,26 @@ Add Buzz integration:
 
 ---
 
+## Phase 12 — Operational substrate & integration
+
+Build:
+
+- frame log: length-prefixed, digest-sealed frames; torn tails truncate, digest mismatch seals, undecodable frames are refused — never repaired
+- content-addressed artifact store
+- durable event store with recovery classification
+- durable evidence ledger with snapshots and replay
+- thin operator CLI printing one canonical-JSON document per command
+- neutral runtime ports with adapter factories
+- provider contract and an OpenAI-compatible adapter over an injected transport
+- model routing and concurrency policies with explicit bounds
+- RRSI and GEPA policy seams
+- immutability and strict-JSON hardening across the protocol
+- integration harness: golden path, adversarial corruption, persisted end-to-end
+
+The system becomes operable: state is persisted, verified, and re-derived without trusting memory.
+
+---
+
 # Non-goals
 
 Endophasia is not intended to become:

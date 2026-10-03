@@ -2,7 +2,7 @@
 // normalized object store, traversal, and subscriptions are later phases; this is the wire shape and the identity.
 
 import { type EndoIdentifierKindV0, isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * An object observed by Endophasia: a typed node of the cognition graph. The `payload` shape is kind-specific and is
@@ -24,7 +24,8 @@ function isStrictJsonValue(value: unknown): value is JsonValueV0 {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return true;
 	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) return value.every(isStrictJsonValue);
-	if (typeof value === "object") return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	if (typeof value === "object" && isPlainJsonObjectV0(value))
+		return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
 	return false;
 }
 
@@ -39,7 +40,7 @@ const ENDO_OBJECT_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "kind", "pay
  * malformed kinds, and non-strict-JSON payloads. Returns the validated value unchanged, or null.
  */
 export function validateEndoObjectV0(value: unknown): EndoObjectV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_OBJECT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.object.v0") return null;

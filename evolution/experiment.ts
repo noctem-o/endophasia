@@ -23,6 +23,7 @@ import {
 	validateEndoExperimentTransitionV0,
 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
+import { deepFreezeCopyV0, deepFreezeV0 } from "../runtime/contracts/immutability.ts";
 
 /**
  * The lifecycle of one experiment: the declared record, the recorded transition chain, the current
@@ -47,11 +48,12 @@ function buildLifecycleV0(
 	record: EndoExperimentRecordV0,
 	transitions: readonly EndoExperimentTransitionV0[],
 ): EndoExperimentLifecycleV0 {
-	const transitionsList: EndoExperimentTransitionV0[] = [...transitions];
+	const storedRecord = deepFreezeCopyV0(record);
+	const transitionsList: EndoExperimentTransitionV0[] = transitions.map((entry) => deepFreezeCopyV0(entry));
 	let state: EndoExperimentStateV0 =
 		transitionsList.length === 0 ? "created" : transitionsList[transitionsList.length - 1].to;
 	const lifecycle: EndoExperimentLifecycleV0 = {
-		record,
+		record: storedRecord,
 		transitions: transitionsList,
 		get state() {
 			return state;
@@ -72,7 +74,7 @@ function buildLifecycleV0(
 			const candidate: Record<string, unknown> = {
 				schemaVersion: "endo.experiment-transition.v0",
 				id: args.id,
-				experimentId: record.id,
+				experimentId: storedRecord.id,
 				sequence: transitionsList.length + 1,
 				from: state,
 				to: args.to,
@@ -81,6 +83,7 @@ function buildLifecycleV0(
 			if (args.reason !== undefined) candidate.reason = args.reason;
 			const validated = validateEndoExperimentTransitionV0(candidate);
 			if (validated === null) throw new TypeError("not a valid endo.experiment-transition.v0 transition");
+			deepFreezeV0(validated);
 			transitionsList.push(validated);
 			state = validated.to;
 			return validated;

@@ -17,6 +17,7 @@ import {
 import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
 import { assertPlainJsonValueV0, canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 import { reduceEndoEventSummaryV0 } from "./event-replay.ts";
+import { deepFreezeCopyV0 } from "./immutability.ts";
 
 /** The default page size; the demonstrated usage ledger page default. */
 export const ENDO_EVENT_RECORD_PAGE_DEFAULT_LIMIT_V0 = 1000;
@@ -26,15 +27,17 @@ export const ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0 = 10000;
 /**
  * An append-only in-memory store for one event stream. Ingestion is strict: the value must be a valid
  * endo.event.v0 that canonicalizes, and duplicate ids are rejected, so what a stream says is exactly what the
- * store holds. The store never copies or mutates the events it is handed; the producer treats the returned
- * event as the stored one.
+ * store holds. The store never mutates the events it is handed; from Phase 12 it stores a deep-frozen copy,
+ * so the caller's reference and the returned reference are frozen — post-ingestion mutation throws instead
+ * of rewriting the stream the digests and sequences point at.
  */
 export interface EndoEventStoreV0 {
 	/** The number of ingested events. */
 	length: number;
 	/**
-	 * Ingest one event and return it unchanged. Throws TypeError when the value is not a valid, canonicalizable
-	 * event or its id is already in the store.
+	 * Ingest one event and return the stored, deep-frozen copy. Throws TypeError when the value is not a valid,
+	 * canonicalizable event or its id is already in the store. The caller's object is not mutated or frozen;
+	 * the returned event is the stored one, frozen at every level.
 	 */
 	ingest(value: unknown): EndoEventV0;
 	/**
@@ -100,8 +103,9 @@ export function createEndoEventStoreV0(): EndoEventStoreV0 {
 			assertPlainJsonValueV0(event);
 			if (seen.has(event.id)) throw new TypeError(`duplicate event id: ${event.id}`);
 			seen.add(event.id);
-			events.push(event);
-			return event;
+			const stored = deepFreezeCopyV0(event);
+			events.push(stored);
+			return stored;
 		},
 		page(query?: EndoEventRecordPageQueryV0): EndoEventRecordPageV0 {
 			const parsed = parseEndoEventRecordPageQueryV0(query);

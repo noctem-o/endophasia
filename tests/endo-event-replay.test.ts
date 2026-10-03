@@ -134,7 +134,7 @@ describe("replayEndoEventRecordV0", () => {
 		expect(report.derived).toBe("unreproducible");
 	});
 
-	it("classifies a stream that cannot be canonicalized as unreproducible in the events layer", () => {
+	it("rejects a record whose stream cannot be canonicalized at the door, never misclassifying it", () => {
 		const value = event("endo.event.t1", 1);
 		const record: EndoEventRecordV0 = {
 			schemaVersion: "endo.record.v0",
@@ -143,10 +143,7 @@ describe("replayEndoEventRecordV0", () => {
 			summary: reduceEndoEventSummaryV0([value]),
 			digest: DIGEST,
 		};
-		const report = replayEndoEventRecordV0(record);
-		expect(report.events).toBe("unreproducible");
-		expect(report.derived).toBe("exact");
-		expect(report.computedDigest).toBeUndefined();
+		expect(() => replayEndoEventRecordV0(record)).toThrow(TypeError);
 	});
 
 	it("rejects a record that is not a valid endo.record.v0 with a TypeError", () => {

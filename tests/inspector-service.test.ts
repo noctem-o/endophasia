@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/chord";
 import { createModels, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
+import { createPiSessionOverviewCaptureV0 } from "../adapters/pi/ports.ts";
 import { AgentHarness, type AgentHarness as AgentHarnessType } from "../pi/packages/agent/src/harness/agent-harness.ts";
 import { BACKGROUND_CONTEXT } from "../pi/packages/agent/src/harness/context.ts";
 import { MemoryStorage } from "../pi/packages/agent/src/harness/session/memory.ts";
@@ -50,7 +51,9 @@ async function connect(harness: Pick<AgentHarnessType, "lanes">): Promise<{
 	binding: RemoteServiceBinding;
 	connection: ReturnType<typeof connectStrictJson>;
 }> {
-	const host = await createFacetHost({ facets: [createEndophasiaInspectorFacetV0(harness)] });
+	const host = await createFacetHost({
+		facets: [createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness))],
+	});
 	const connection = connectStrictJson(host.services);
 	const errors: Error[] = [];
 	const binding = createRemoteServiceBinding({

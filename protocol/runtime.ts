@@ -23,6 +23,7 @@
 
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
+import { isPlainJsonObjectV0 } from "./primitives.ts";
 
 function isEndoIdentifier(value: unknown, kind: EndoIdentifierKindV0): value is string {
 	return typeof value === "string" && isEndoIdentifierV0(value, kind);
@@ -100,7 +101,7 @@ const ENDO_RUNTIME_ADMISSION_ALLOWED_KEYS_V0 = new Set([
  * null.
  */
 export function validateEndoRuntimeAdmissionV0(value: unknown): EndoRuntimeAdmissionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_RUNTIME_ADMISSION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.runtime-admission.v0") return null;
@@ -172,9 +173,7 @@ function isNonNegativeIntV0(value: unknown): value is number {
  * violations). Returns the validated value unchanged, or null.
  */
 export function validateEndoRuntimeAdmissionCheckV0(value: unknown): EndoRuntimeAdmissionCheckV0 | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-	const proto = Object.getPrototypeOf(value);
-	if (proto !== null && proto !== Object.prototype) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_RUNTIME_ADMISSION_CHECK_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.runtime-admission-check.v0") return null;

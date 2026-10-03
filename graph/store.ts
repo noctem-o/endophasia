@@ -13,6 +13,7 @@ import {
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
 import { type EndoObjectV0, validateEndoObjectV0 } from "../protocol/object.ts";
 import { assertPlainJsonValueV0 } from "../runtime/contracts/canonical-json.ts";
+import { deepFreezeCopyV0, deepFreezeV0 } from "../runtime/contracts/immutability.ts";
 import {
 	createEndoGraphSubscribersV0,
 	type EndoGraphListenerV0,
@@ -27,15 +28,17 @@ export interface EndoGraphStoreV0 {
 	/** The 1-based global revision sequence: the number of upserts recorded so far. */
 	readonly sequence: number;
 	/**
-	 * Records a revision for the object's identifier: validated at the door, stored, and announced to the
-	 * subscribers. A repeated upsert supersedes the previous value for lookups; the superseded value remains in
-	 * the revision log.
+	 * Records a revision for the object's identifier: validated at the door, stored as a deep-frozen copy
+	 * (Phase 12 — the caller may keep mutating its own reference; the returned object is the stored, frozen
+	 * one), and announced to the subscribers. A repeated upsert supersedes the previous value for lookups;
+	 * the superseded value remains in the revision log.
 	 */
 	upsertObject(value: unknown): EndoObjectV0;
 	/**
-	 * Records a revision for the edge's identifier: validated at the door, stored, and announced to the
-	 * subscribers. A repeated upsert supersedes the previous value; the adjacency is rebuilt for the new
-	 * endpoints, so a revised edge may move.
+	 * Records a revision for the edge's identifier: validated at the door, stored as a deep-frozen copy
+	 * (Phase 12 — the caller may keep mutating its own reference; the returned edge is the stored, frozen
+	 * one), and announced to the subscribers. A repeated upsert supersedes the previous value; the adjacency
+	 * is rebuilt for the new endpoints, so a revised edge may move.
 	 */
 	upsertEdge(value: unknown): EndoGraphEdgeV0;
 	/** The latest revision for `id`, or null. */
@@ -89,12 +92,14 @@ export function createEndoGraphStoreV0(): EndoGraphStoreV0 {
 			id,
 			revision,
 		};
-		revisionLog.push({
+		const entry: EndoGraphRevisionV0 = {
 			schemaVersion: "endo.graph-revision.v0",
 			sequence,
 			change,
 			value: value as EndoObjectV0 | EndoGraphEdgeV0,
-		});
+		};
+		deepFreezeV0(entry);
+		revisionLog.push(entry);
 		subscribers.emit(change);
 		return value;
 	}
@@ -113,25 +118,27 @@ export function createEndoGraphStoreV0(): EndoGraphStoreV0 {
 			const object = validateEndoObjectV0(value);
 			if (object === null) throw new TypeError("Expected an EndoObjectV0");
 			assertPlainJsonValueV0(object);
-			const revisions = objectRevisions.get(object.id) ?? [];
-			revisions.push(object);
-			objectRevisions.set(object.id, revisions);
-			return upsert("object", object.id, revisions.length, object);
+			const stored = deepFreezeCopyV0(object);
+			const revisions = objectRevisions.get(stored.id) ?? [];
+			revisions.push(stored);
+			objectRevisions.set(stored.id, revisions);
+			return upsert("object", stored.id, revisions.length, stored);
 		},
 		upsertEdge(value) {
 			const edge = validateEndoGraphEdgeV0(value);
 			if (edge === null) throw new TypeError("Expected an EndoGraphEdgeV0");
-			const revisions = edgeRevisions.get(edge.id) ?? [];
+			const stored = deepFreezeCopyV0(edge);
+			const revisions = edgeRevisions.get(stored.id) ?? [];
 			if (revisions.length > 0) {
 				const previous = latestOf(revisions);
-				endpointsOf(previous.source, edge.id, false);
-				endpointsOf(previous.target, edge.id, false);
+				endpointsOf(previous.source, stored.id, false);
+				endpointsOf(previous.target, stored.id, false);
 			}
-			revisions.push(edge);
-			edgeRevisions.set(edge.id, revisions);
-			endpointsOf(edge.source, edge.id, true);
-			endpointsOf(edge.target, edge.id, true);
-			return upsert("edge", edge.id, revisions.length, edge);
+			revisions.push(stored);
+			edgeRevisions.set(stored.id, revisions);
+			endpointsOf(stored.source, stored.id, true);
+			endpointsOf(stored.target, stored.id, true);
+			return upsert("edge", stored.id, revisions.length, stored);
 		},
 		getObject(id) {
 			if (typeof id !== "string" || !isEndoIdentifierV0(id, "node")) return null;

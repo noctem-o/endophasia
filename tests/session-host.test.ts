@@ -16,6 +16,7 @@ import {
 	createPiRuntimeMetricsSourceV0,
 	createPiUsageSourceV0,
 } from "../adapters/pi/observation-sources.ts";
+import { createPiContinuityCaptureV0, createPiSessionOverviewCaptureV0 } from "../adapters/pi/ports.ts";
 import {
 	AgentHarness,
 	type AgentHarness as AgentHarnessType,
@@ -118,7 +119,7 @@ async function worker(
 				? []
 				: [
 						createEndophasiaRuntimeProfileFacetV0(PI_STANDARD_RUNTIME_PROFILE_V0),
-						createEndophasiaInspectorFacetV0(options.observed ?? harness),
+						createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(options.observed ?? harness)),
 						createEndophasiaMissionTraceFacetV0(createPiMissionTraceSourceV0(harness)),
 						createEndophasiaRuntimeFactsFacetV0({
 							runtimeMetrics: createPiRuntimeMetricsSourceV0(main),
@@ -131,7 +132,7 @@ async function worker(
 								session: { scanUsage: (query, context) => session.scanUsage(query, context) },
 							}),
 						),
-						createEndophasiaContinuityFacetV0(main),
+						createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(main)),
 					],
 		facetLoader: options.plugin === undefined ? undefined : createStaticFacetLoader([defineFacet(options.plugin)]),
 		publish: async () => {},

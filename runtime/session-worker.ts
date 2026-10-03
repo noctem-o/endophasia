@@ -13,6 +13,7 @@ import {
 	runCodingAgentSessionWorker,
 } from "@earendil-works/pi-coding-agent/experimental/session-worker";
 import { createPiRuntimeObservationSourcesV0 } from "../adapters/pi/observation-sources.ts";
+import { createPiContinuityCaptureV0, createPiSessionOverviewCaptureV0 } from "../adapters/pi/ports.ts";
 import { createEndophasiaContinuityFacetV0 } from "./contracts/continuity-facet.ts";
 import { createEndophasiaInspectorFacetV0 } from "./contracts/inspector.ts";
 import { createEndophasiaMissionTraceFacetV0 } from "./contracts/mission-trace.ts";
@@ -50,8 +51,8 @@ export const PI_STANDARD_RUNTIME_PROFILE_V0: RuntimeProfileClaimV0 = Object.free
  * The standard worker's trusted Endophasia host facets: the Runtime Profile, and the read-only Inspector, Mission
  * Trace, Runtime Facts, Usage and Continuity it advertises. This composition root is the one place that knows the
  * worker's runtime is Pi: it builds Pi's runtime observation capabilities, gives each facet only the capability it
- * needs, and states the profile explicitly. Continuity is Pi-backed by design and reads the main lane directly, not
- * through a runtime observation port.
+ * needs, and states the profile explicitly. Continuity and Session Overview are Pi-backed by design, bound to the
+ * lane and harness through the lane ports, outside the runtime observation boundary.
  */
 export async function createEndophasiaSessionWorkerFacetsV0({
 	harness,
@@ -63,15 +64,15 @@ export async function createEndophasiaSessionWorkerFacetsV0({
 	const pi = createPiRuntimeObservationSourcesV0({ harness, lane: main, usageReader });
 	return [
 		createEndophasiaRuntimeProfileFacetV0(PI_STANDARD_RUNTIME_PROFILE_V0),
-		createEndophasiaInspectorFacetV0(harness),
+		createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness)),
 		createEndophasiaMissionTraceFacetV0(pi.missionTrace),
 		createEndophasiaRuntimeFactsFacetV0({
 			runtimeMetrics: pi.runtimeMetrics,
 			operationOutcome: pi.operationOutcome,
 		}),
 		createEndophasiaUsageFacetV0(pi.usage),
-		// Only the main lane's watch and findEntries reads, the capability Continuity v0 capture needs.
-		createEndophasiaContinuityFacetV0(main),
+		// Bind Continuity v0 capture to the main lane's watch and findEntries reads, the capability it needs.
+		createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(main)),
 	];
 }
 

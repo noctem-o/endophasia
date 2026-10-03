@@ -23,7 +23,7 @@
 
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 function isEndoIdentifier(value: unknown, kind: EndoIdentifierKindV0): value is string {
 	return typeof value === "string" && isEndoIdentifierV0(value, kind);
@@ -47,9 +47,7 @@ function isSha256HexV0(value: unknown): value is string {
 }
 
 function isPlainRecordV0(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-	const proto = Object.getPrototypeOf(value);
-	return proto === null || proto === Object.prototype;
+	return isPlainJsonObjectV0(value);
 }
 
 function isStrictJsonValue(value: unknown): value is JsonValueV0 {
@@ -141,7 +139,7 @@ const ENDO_WITNESS_RECORD_ALLOWED_KEYS_V0 = new Set([
  * state that does not compare one. Returns the validated value unchanged, or null.
  */
 export function validateEndoWitnessRecordV0(value: unknown): EndoWitnessRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_WITNESS_RECORD_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.witness.v0") return null;
@@ -253,7 +251,7 @@ const ENDO_STANDING_RECORD_ALLOWED_KEYS_V0 = new Set([
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoStandingRecordV0(value: unknown): EndoStandingRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_STANDING_RECORD_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.standing.v0") return null;
@@ -318,7 +316,7 @@ const ENDO_LEASE_RECORD_ALLOWED_KEYS_V0 = new Set([
  * or null.
  */
 export function validateEndoLeaseRecordV0(value: unknown): EndoLeaseRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_LEASE_RECORD_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.lease.v0") return null;
@@ -385,7 +383,7 @@ const ENDO_RECEIPT_RECORD_ALLOWED_KEYS_V0 = new Set([
  * strict JSON, and an over-long provenance. Returns the validated value unchanged, or null.
  */
 export function validateEndoReceiptRecordV0(value: unknown): EndoReceiptRecordV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_RECEIPT_RECORD_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.receipt.v0") return null;
@@ -434,7 +432,7 @@ const ENDO_WITNESS_COVERAGE_TRIAL_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "t
  * Nulls are valid: an honest absence, not a repair. Returns the validated value unchanged, or null.
  */
 export function validateEndoWitnessCoverageTrialV0(value: unknown): EndoWitnessCoverageTrialV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_WITNESS_COVERAGE_TRIAL_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.witness-coverage-trial.v0") return null;
@@ -452,7 +450,7 @@ const ENDO_WITNESS_COVERAGE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "experim
  * null.
  */
 export function validateEndoWitnessCoverageV0(value: unknown): EndoWitnessCoverageV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_WITNESS_COVERAGE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.witness-coverage.v0") return null;
@@ -510,7 +508,7 @@ const ENDO_PROMOTION_CLOSURE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "decisi
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoPromotionClosureV0(value: unknown): EndoPromotionClosureV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_PROMOTION_CLOSURE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.promotion-closure.v0") return null;

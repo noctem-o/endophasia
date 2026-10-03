@@ -62,8 +62,8 @@ try {
 				throw new Error(`Endophasia browser bundle ${entryPoint} does not include ${expectedInput}`);
 			}
 		}
-		// adapters/pi/session-overview.ts is deliberately not forbidden: it is browser-safe (type-only Pi
-		// imports), as the donor's src/session-overview.ts was in the donor's smoke check.
+		// The Session Overview and Continuity contracts are bundled; their lane ports and Pi-backed
+		// implementations stay on the host and are forbidden below.
 		const forbiddenEndophasiaInputs = Object.keys(endophasiaInputs).filter((input) => {
 			const normalized = normalizePath(input);
 			return (
@@ -92,6 +92,13 @@ try {
 				// The Continuity contract is bundled; the Pi-backed capture and its host facet stay on the host.
 				normalized.endsWith("adapters/pi/continuity.ts") ||
 				normalized.endsWith("runtime/contracts/continuity-facet.ts") ||
+				// The lane ports and their Pi-backed implementations stay on the host: the bundled contracts reach
+				// them only through neutral closures, never by direct import.
+				normalized.endsWith("runtime/ports.ts") ||
+				normalized.endsWith("adapters/pi/ports.ts") ||
+				normalized.endsWith("adapters/pi/steering.ts") ||
+				normalized.endsWith("adapters/pi/control-deck.ts") ||
+				normalized.endsWith("adapters/pi/session-overview.ts") ||
 				// The Runtime Profile contract is bundled; its host publisher and the composition roots that state a
 				// profile (runtime/, including runtime/session-worker.ts) stay on the host.
 				normalized.endsWith("runtime/contracts/runtime-profile-facet.ts") ||

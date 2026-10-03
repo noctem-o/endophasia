@@ -12,7 +12,9 @@
  *
  * The registries are add-only: once registered, a record stays addressable. Supersession is
  * recorded by a descendant candidate and a promotion decision, not by removing or mutating a
- * record.
+ * record. A registered record is stored as a deep-frozen copy (Phase 12): the caller may keep
+ * mutating its own reference after `add` returns — the registry holds the frozen copy, and
+ * mutating the returned record throws.
  */
 
 import type {
@@ -31,6 +33,7 @@ import {
 	validateEndoPromotionRequestV0,
 	validateEndoSelectionDecisionV0,
 } from "../protocol/evolution.ts";
+import { deepFreezeCopyV0 } from "../runtime/contracts/immutability.ts";
 
 /**
  * The add-only mutation registry. Mutations are registered before any candidate that applies them.
@@ -155,8 +158,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 				const validated = validateEndoMutationV0(value);
 				if (validated === null) throw new TypeError("not a valid endo.mutation.v0 record");
 				if (mutations.has(validated.id)) throw new TypeError(`mutation ${validated.id} is already registered`);
-				mutations.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				mutations.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => mutations.get(id) ?? null,
 			has: (id: string) => mutations.has(id),
@@ -167,8 +171,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 				const validated = validateEndoArtifactV0(value);
 				if (validated === null) throw new TypeError("not a valid endo.artifact.v0 record");
 				if (artifacts.has(validated.id)) throw new TypeError(`artifact ${validated.id} is already registered`);
-				artifacts.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				artifacts.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => artifacts.get(id) ?? null,
 			has: (id: string) => artifacts.has(id),
@@ -192,8 +197,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 					seen.add(mutationId);
 					if (!mutations.has(mutationId)) throw new TypeError(`mutation ${mutationId} is not registered`);
 				}
-				candidates.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				candidates.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => candidates.get(id) ?? null,
 			has: (id: string) => candidates.has(id),
@@ -207,8 +213,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 				if (validated.candidateId !== undefined && !candidates.has(validated.candidateId)) {
 					throw new TypeError(`selection ${validated.id} names unregistered candidate ${validated.candidateId}`);
 				}
-				selections.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				selections.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => selections.get(id) ?? null,
 			has: (id: string) => selections.has(id),
@@ -242,8 +249,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 				if (selection.experimentId !== validated.experimentId) {
 					throw new TypeError(`promotion request ${validated.id} names a different experiment than its selection`);
 				}
-				promotionRequests.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				promotionRequests.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => promotionRequests.get(id) ?? null,
 			has: (id: string) => promotionRequests.has(id),
@@ -267,8 +275,9 @@ export function createEndoEvolutionCoreV0(): EndoEvolutionCoreV0 {
 				if (request.candidateId !== validated.candidateId) {
 					throw new TypeError(`promotion decision ${validated.id} names a different candidate than its request`);
 				}
-				promotionDecisions.set(validated.id, validated);
-				return validated;
+				const stored = deepFreezeCopyV0(validated);
+				promotionDecisions.set(validated.id, stored);
+				return stored;
 			},
 			get: (id: string) => promotionDecisions.get(id) ?? null,
 			has: (id: string) => promotionDecisions.has(id),

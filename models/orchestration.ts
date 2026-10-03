@@ -9,17 +9,13 @@
  * exit through the protocol validators of the reports and states they return.
  */
 
-import type {
-	EndoModelProfileV0,
-	EndoModelRoutingDecisionV0,
-	EndoPoolSchedulerStateV0,
-} from "../protocol/models.ts";
+import type { EndoModelProfileV0, EndoModelRoutingDecisionV0, EndoPoolSchedulerStateV0 } from "../protocol/models.ts";
 import {
-	validateEndoModelProfileV0,
 	validateEndoModelPoolV0,
+	validateEndoModelProfileV0,
 	validateEndoModelRoutingDecisionV0,
-	validateEndoPoolSchedulerStateV0,
 	validateEndoPoolSchedulerEventV0,
+	validateEndoPoolSchedulerStateV0,
 } from "../protocol/models.ts";
 
 /** A declared capability: a non-empty string within the bound. */
@@ -41,7 +37,11 @@ function isCapabilityListV0(value: unknown): value is string[] {
  * capability (an empty request admits every member). Selection is deterministic: the
  * lexicographically smallest eligible model id. Throws TypeError when a door fails.
  */
-export function routeModelV0(pool: unknown, profiles: unknown[], requestedCapabilities: unknown[]): EndoModelRoutingDecisionV0 {
+export function routeModelV0(
+	pool: unknown,
+	profiles: unknown[],
+	requestedCapabilities: unknown[],
+): EndoModelRoutingDecisionV0 {
 	const validatedPool = validateEndoModelPoolV0(pool);
 	if (validatedPool === null) throw new TypeError("not a valid endo.model-pool.v0 pool");
 	if (!Array.isArray(profiles)) throw new TypeError("profiles must be an array of endo.model-profile.v0 records");
@@ -70,7 +70,8 @@ export function routeModelV0(pool: unknown, profiles: unknown[], requestedCapabi
 	for (const member of validatedPool.members) {
 		const profile = byId.get(member.modelId);
 		if (profile === undefined) continue;
-		if (requestedCapabilities.every((capability) => profile.capabilities.includes(capability))) eligible.push(member.modelId);
+		if (requestedCapabilities.every((capability) => profile.capabilities.includes(capability)))
+			eligible.push(member.modelId);
 	}
 	const selected = eligible.length === 0 ? null : [...eligible].sort()[0];
 	const decision: EndoModelRoutingDecisionV0 = {
@@ -88,13 +89,15 @@ export function routeModelV0(pool: unknown, profiles: unknown[], requestedCapabi
 
 /**
  * One step of one pool's scheduler: apply a recorded event (enqueue, complete, or retry) to
- * a scheduler state, then pump the FIFO queue against the pool's per-member concurrency
- * bounds. The doors: a valid pool, a valid state naming the same pool, a valid event for a
- * pool member, and — for a completion — in-flight work to complete. A retry re-enqueues the
- * work item at the tail of the queue (the event's retry number is the recorded decision; the
- * state is a snapshot, not an event log). The pump is head-of-line FIFO: it admits the
- * oldest queued item while its model's in-flight count is below the member's bound, and
- * stops at the first item that would break its bound. Throws TypeError when a door fails.
+ * a scheduler state, then pump the FIFO queue against the live per-member concurrency bounds —
+ * a bound recorded in the state when present, else the pool member's own maximum. The doors:
+ * a valid pool, a valid state naming the same pool, a valid event for a pool member, and —
+ * for a completion — in-flight work to complete. A retry re-enqueues the work item at the
+ * tail of the queue (the event's retry number is the recorded decision; the state is a
+ * snapshot, not an event log). The pump is head-of-line FIFO: it admits the oldest queued
+ * item while its model's in-flight count is below the member's bound, and stops at the first
+ * item that would break its bound. The state's bounds, when present, are carried into the
+ * next state unchanged. Throws TypeError when a door fails.
  */
 export function stepPoolSchedulerV0(state: unknown, pool: unknown, event: unknown): EndoPoolSchedulerStateV0 {
 	const validatedPool = validateEndoModelPoolV0(pool);
@@ -109,11 +112,15 @@ export function stepPoolSchedulerV0(state: unknown, pool: unknown, event: unknow
 	const inFlight = new Map<string, number>();
 	for (const entry of validatedPool.members) inFlight.set(entry.modelId, 0);
 	for (const row of validatedState.inFlight) {
-		if (!inFlight.has(row.modelId)) throw new TypeError(`state names model ${row.modelId}, which is not a member of the pool`);
+		if (!inFlight.has(row.modelId))
+			throw new TypeError(`state names model ${row.modelId}, which is not a member of the pool`);
 		inFlight.set(row.modelId, row.count);
 	}
 	const limits = new Map<string, number>();
-	for (const entry of validatedPool.members) limits.set(entry.modelId, entry.maxConcurrency);
+	for (const entry of validatedPool.members) {
+		const bound = validatedState.bounds?.find((row) => row.modelId === entry.modelId);
+		limits.set(entry.modelId, bound === undefined ? entry.maxConcurrency : bound.maxConcurrency);
+	}
 	const queue: string[] = [...validatedState.queue];
 	if (validatedEvent.kind === "enqueue" || validatedEvent.kind === "retry") {
 		queue.push(validatedEvent.modelId);
@@ -138,9 +145,18 @@ export function stepPoolSchedulerV0(state: unknown, pool: unknown, event: unknow
 	const nextState: EndoPoolSchedulerStateV0 = {
 		schemaVersion: "endo.pool-scheduler-state.v0",
 		poolId: validatedPool.id,
-		inFlight: validatedPool.members.map((entry) => ({ modelId: entry.modelId, count: inFlight.get(entry.modelId) ?? 0 })),
+		inFlight: validatedPool.members.map((entry) => ({
+			modelId: entry.modelId,
+			count: inFlight.get(entry.modelId) ?? 0,
+		})),
 		queue,
 	};
+	if (validatedState.bounds !== undefined) {
+		nextState.bounds = validatedState.bounds.map((row) => ({
+			modelId: row.modelId,
+			maxConcurrency: row.maxConcurrency,
+		}));
+	}
 	const validatedNextState = validateEndoPoolSchedulerStateV0(nextState);
 	if (validatedNextState === null) throw new TypeError("the scheduler state failed the protocol door");
 	return validatedNextState;

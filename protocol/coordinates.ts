@@ -3,6 +3,7 @@
 // assert that an outcome is good, bad, or accepted.
 
 import { type EndoIdentifierKindV0, isEndoIdentifierV0 } from "./identity.ts";
+import { isPlainJsonObjectV0 } from "./primitives.ts";
 
 /** The coordinates of one trial: the experiment, the candidate under test, the trial index, and the recorded run. */
 export interface EndoTrialCoordinatesV0 {
@@ -39,7 +40,7 @@ const ENDO_TRIAL_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "experimentId", "ca
  * and non-integer or negative trial indices. Returns the validated value unchanged, or null.
  */
 export function validateTrialCoordinatesV0(value: unknown): EndoTrialCoordinatesV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_TRIAL_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.trial.v0") return null;
@@ -58,7 +59,7 @@ const ENDO_EVIDENCE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "evidenceId", "c
  * null.
  */
 export function validateEvidenceCoordinatesV0(value: unknown): EndoEvidenceCoordinatesV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVIDENCE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evidence.v0") return null;

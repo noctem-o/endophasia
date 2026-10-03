@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent/experimental/process";
 import { runCodingAgentSessionWorker } from "@earendil-works/pi-coding-agent/experimental/session-worker";
 import { createPiRuntimeObservationSourcesV0 } from "../../adapters/pi/observation-sources.ts";
+import { createPiContinuityCaptureV0, createPiSessionOverviewCaptureV0 } from "../../adapters/pi/ports.ts";
 import { createEndophasiaContinuityFacetV0 } from "../../runtime/contracts/continuity-facet.ts";
 import { createEndophasiaInspectorFacetV0 } from "../../runtime/contracts/inspector.ts";
 import { createEndophasiaMissionTraceFacetV0 } from "../../runtime/contracts/mission-trace.ts";
@@ -22,14 +23,14 @@ if (isDirectInternalProcessEntry(import.meta.url)) {
 			const main = await harness.lane("main", BACKGROUND_CONTEXT);
 			const pi = createPiRuntimeObservationSourcesV0({ harness, lane: main, usageReader });
 			return [
-				createEndophasiaInspectorFacetV0(harness),
+				createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness)),
 				createEndophasiaMissionTraceFacetV0(pi.missionTrace),
 				createEndophasiaRuntimeFactsFacetV0({
 					runtimeMetrics: pi.runtimeMetrics,
 					operationOutcome: pi.operationOutcome,
 				}),
 				createEndophasiaUsageFacetV0(pi.usage),
-				createEndophasiaContinuityFacetV0(main),
+				createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(main)),
 			];
 		},
 	}).catch(() => process.exit(1));

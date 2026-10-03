@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent/experimental/process";
 import { runCodingAgentSessionWorker } from "@earendil-works/pi-coding-agent/experimental/session-worker";
 import { createPiRuntimeObservationSourcesV0 } from "../../adapters/pi/observation-sources.ts";
+import { createPiContinuityCaptureV0, createPiSessionOverviewCaptureV0 } from "../../adapters/pi/ports.ts";
 import { createEndophasiaContinuityFacetV0 } from "../../runtime/contracts/continuity-facet.ts";
 import { createEndophasiaInspectorFacetV0 } from "../../runtime/contracts/inspector.ts";
 import { createEndophasiaMissionTraceFacetV0 } from "../../runtime/contracts/mission-trace.ts";
@@ -42,14 +43,16 @@ if (isDirectInternalProcessEntry(import.meta.url)) {
 						"endophasia.continuity.v0",
 					],
 				}),
-				createEndophasiaInspectorFacetV0(harness),
+				createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness)),
 				createEndophasiaMissionTraceFacetV0(pi.missionTrace),
 				createEndophasiaRuntimeFactsFacetV0({
 					runtimeMetrics: pi.runtimeMetrics,
 					operationOutcome: pi.operationOutcome,
 				}),
 				createEndophasiaUsageFacetV0(pi.usage),
-				createEndophasiaContinuityFacetV0(syntheticContinuityLane(main, mode === "at-limit" ? count : count + 1)),
+				createEndophasiaContinuityFacetV0(
+					createPiContinuityCaptureV0(syntheticContinuityLane(main, mode === "at-limit" ? count : count + 1)),
+				),
 			];
 		},
 	}).catch(() => process.exit(1));

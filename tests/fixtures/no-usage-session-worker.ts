@@ -12,6 +12,7 @@ import {
 	createPiOperationOutcomeSourceV0,
 	createPiRuntimeMetricsSourceV0,
 } from "../../adapters/pi/observation-sources.ts";
+import { createPiContinuityCaptureV0, createPiSessionOverviewCaptureV0 } from "../../adapters/pi/ports.ts";
 import { createEndophasiaContinuityFacetV0 } from "../../runtime/contracts/continuity-facet.ts";
 import { createEndophasiaInspectorFacetV0 } from "../../runtime/contracts/inspector.ts";
 import { createEndophasiaMissionTraceFacetV0 } from "../../runtime/contracts/mission-trace.ts";
@@ -38,13 +39,13 @@ if (isDirectInternalProcessEntry(import.meta.url)) {
 						"endophasia.continuity.v0",
 					],
 				}),
-				createEndophasiaInspectorFacetV0(harness),
+				createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness)),
 				createEndophasiaMissionTraceFacetV0(createPiMissionTraceSourceV0(harness)),
 				createEndophasiaRuntimeFactsFacetV0({
 					runtimeMetrics: createPiRuntimeMetricsSourceV0(main),
 					operationOutcome: createPiOperationOutcomeSourceV0(main),
 				}),
-				createEndophasiaContinuityFacetV0(main),
+				createEndophasiaContinuityFacetV0(createPiContinuityCaptureV0(main)),
 			];
 		},
 	}).catch(() => process.exit(1));

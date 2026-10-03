@@ -5,6 +5,7 @@
 
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
 import { type EndoObjectV0, validateEndoObjectV0 } from "./object.ts";
+import { isPlainJsonObjectV0 } from "./primitives.ts";
 
 /**
  * The useful object types of the cognition graph (README "Cognition graph"): the recommended v0 node-kind
@@ -161,7 +162,7 @@ const ENDO_GRAPH_EDGE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id", "source"
  * relations. Returns the validated value unchanged, or null.
  */
 export function validateEndoGraphEdgeV0(value: unknown): EndoGraphEdgeV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_EDGE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.edge.v0") return null;
@@ -180,7 +181,7 @@ const ENDO_GRAPH_BUDGET_ALLOWED_KEYS_V0 = new Set(["maxDepth", "maxNodes", "maxE
  * Returns the validated value unchanged, or null.
  */
 export function validateEndoGraphExpansionBudgetV0(value: unknown): EndoGraphExpansionBudgetV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_BUDGET_ALLOWED_KEYS_V0.has(key)) return null;
 	for (const key of ["maxDepth", "maxNodes", "maxEdges"] as const) {
@@ -205,7 +206,7 @@ const ENDO_GRAPH_SNAPSHOT_ALLOWED_KEYS_V0 = new Set([
  * unchanged, or null.
  */
 export function validateEndoGraphSnapshotV0(value: unknown): EndoGraphSnapshotV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_SNAPSHOT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.graph-snapshot.v0") return null;
@@ -225,7 +226,7 @@ const ENDO_GRAPH_CHANGE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "kind", "id"
  * that is not a positive integer. Returns the validated value unchanged, or null.
  */
 export function validateEndoGraphChangeV0(value: unknown): EndoGraphChangeV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_CHANGE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.graph-change.v0") return null;
@@ -245,7 +246,7 @@ const ENDO_GRAPH_REVISION_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "sequence"
  * validated value unchanged, or null.
  */
 export function validateEndoGraphRevisionV0(value: unknown): EndoGraphRevisionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_REVISION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.graph-revision.v0") return null;
@@ -267,7 +268,7 @@ const ENDO_GRAPH_PROJECTION_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "upToSeq
  * objects/edges that fail their own validators. Returns the validated value unchanged, or null.
  */
 export function validateEndoGraphProjectionV0(value: unknown): EndoGraphProjectionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_GRAPH_PROJECTION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.graph-projection.v0") return null;

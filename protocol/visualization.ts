@@ -5,7 +5,7 @@
 // renderer.
 
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
-import type { JsonValueV0 } from "./primitives.ts";
+import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * The availability of a visual signal (README: "Where the runtime/model does not expose a required signal,
@@ -303,7 +303,8 @@ function isStrictJsonValue(value: unknown): value is JsonValueV0 {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return true;
 	if (typeof value === "number") return Number.isFinite(value);
 	if (Array.isArray(value)) return value.every(isStrictJsonValue);
-	if (typeof value === "object") return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
+	if (typeof value === "object" && isPlainJsonObjectV0(value))
+		return Object.entries(value).every(([, entry]) => isStrictJsonValue(entry));
 	return false;
 }
 
@@ -345,7 +346,7 @@ const ENDO_VISUAL_SIGNAL_ALLOWED_KEYS_V0 = new Set([
  * null.
  */
 export function validateEndoVisualSignalV0(value: unknown): EndoVisualSignalV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_VISUAL_SIGNAL_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.visual-signal.v0") return null;
@@ -374,7 +375,7 @@ const ENDO_SEMANTIC_VISUAL_NODE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id"
  * signal lists that are unsorted or carry a name twice. Returns the validated value unchanged, or null.
  */
 export function validateEndoSemanticVisualNodeV0(value: unknown): EndoSemanticVisualNodeV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SEMANTIC_VISUAL_NODE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.semantic-visual-node.v0") return null;
@@ -402,7 +403,7 @@ const ENDO_SEMANTIC_VISUAL_EDGE_ALLOWED_KEYS_V0 = new Set([
  * malformed relations. Returns the validated value unchanged, or null.
  */
 export function validateEndoSemanticVisualEdgeV0(value: unknown): EndoSemanticVisualEdgeV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SEMANTIC_VISUAL_EDGE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.semantic-visual-edge.v0") return null;
@@ -422,7 +423,7 @@ const ENDO_VISUAL_STATE_SOURCE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "sequ
  * flag. Returns the validated value unchanged, or null.
  */
 export function validateEndoVisualStateSourceV0(value: unknown): EndoVisualStateSourceV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_VISUAL_STATE_SOURCE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.visual-state-source.v0") return null;
@@ -448,7 +449,7 @@ const ENDO_SEMANTIC_VISUAL_STATE_ALLOWED_KEYS_V0 = new Set([
  * validated value unchanged, or null.
  */
 export function validateEndoSemanticVisualStateV0(value: unknown): EndoSemanticVisualStateV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_SEMANTIC_VISUAL_STATE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.semantic-visual-state.v0") return null;
@@ -490,7 +491,7 @@ const ENDO_ENGINEERING_ROW_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "label", 
  * outside the four-value vocabulary. Returns the validated value unchanged, or null.
  */
 export function validateEndoEngineeringRowV0(value: unknown): EndoEngineeringRowV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_ENGINEERING_ROW_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.engineering-row.v0") return null;
@@ -507,7 +508,7 @@ const ENDO_ENGINEERING_SECTION_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "kind
  * without at least one valid row. Returns the validated value unchanged, or null.
  */
 export function validateEndoEngineeringSectionV0(value: unknown): EndoEngineeringSectionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_ENGINEERING_SECTION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.engineering-section.v0") return null;
@@ -529,7 +530,7 @@ const ENDO_ENGINEERING_SCENE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "source
  * validated value unchanged, or null.
  */
 export function validateEndoEngineeringSceneV0(value: unknown): EndoEngineeringSceneV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_ENGINEERING_SCENE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.engineering-scene.v0") return null;
@@ -549,7 +550,7 @@ const ENDO_DREAM_TOPOLOGY_NODE_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "id",
  * validated value unchanged, or null.
  */
 export function validateEndoDreamTopologyNodeV0(value: unknown): EndoDreamTopologyNodeV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_TOPOLOGY_NODE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-topology-node.v0") return null;
@@ -567,7 +568,7 @@ const ENDO_DREAM_TOPOLOGY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "nodes", "
  * value unchanged, or null.
  */
 export function validateEndoDreamTopologyV0(value: unknown): EndoDreamTopologyV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_TOPOLOGY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-topology.v0") return null;
@@ -594,7 +595,7 @@ const ENDO_DREAM_FIELD_ENTRY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "nodeId
  * values that are not finite numbers in 0..1. Returns the validated value unchanged, or null.
  */
 export function validateEndoDreamFieldEntryV0(value: unknown): EndoDreamFieldEntryV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_FIELD_ENTRY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-field-entry.v0") return null;
@@ -610,7 +611,7 @@ const ENDO_DREAM_ACTIVE_REGION_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "node
  * attention values that are not finite numbers in 0..1. Returns the validated value unchanged, or null.
  */
 export function validateEndoDreamActiveRegionV0(value: unknown): EndoDreamActiveRegionV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_ACTIVE_REGION_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-active-region.v0") return null;
@@ -627,7 +628,7 @@ const ENDO_DREAM_BRANCHING_HYPOTHESIS_ALLOWED_KEYS_V0 = new Set(["schemaVersion"
  * value unchanged, or null.
  */
 export function validateEndoDreamBranchingHypothesisV0(value: unknown): EndoDreamBranchingHypothesisV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_BRANCHING_HYPOTHESIS_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-branching-hypothesis.v0") return null;
@@ -649,7 +650,7 @@ const ENDO_DREAM_CLUSTER_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "label", "m
  * unchanged, or null.
  */
 export function validateEndoDreamClusterV0(value: unknown): EndoDreamClusterV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_CLUSTER_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-cluster.v0") return null;
@@ -671,7 +672,7 @@ const ENDO_DREAM_BOUNDARY_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "kind", "n
  * value unchanged, or null.
  */
 export function validateEndoDreamBoundaryV0(value: unknown): EndoDreamBoundaryV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_BOUNDARY_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-boundary.v0") return null;
@@ -704,7 +705,7 @@ const ENDO_DREAM_SCENE_ALLOWED_KEYS_V0 = new Set([
  * and node identifiers that are not topology nodes. Returns the validated value unchanged, or null.
  */
 export function validateEndoDreamSceneV0(value: unknown): EndoDreamSceneV0 | null {
-	if (typeof value !== "object" || value === null) return null;
+	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_DREAM_SCENE_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.dream-scene.v0") return null;

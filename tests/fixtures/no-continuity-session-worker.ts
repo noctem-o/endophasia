@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent/experimental/process";
 import { runCodingAgentSessionWorker } from "@earendil-works/pi-coding-agent/experimental/session-worker";
 import { createPiRuntimeObservationSourcesV0 } from "../../adapters/pi/observation-sources.ts";
+import { createPiSessionOverviewCaptureV0 } from "../../adapters/pi/ports.ts";
 import { createEndophasiaInspectorFacetV0 } from "../../runtime/contracts/inspector.ts";
 import { createEndophasiaMissionTraceFacetV0 } from "../../runtime/contracts/mission-trace.ts";
 import { createEndophasiaRuntimeFactsFacetV0 } from "../../runtime/contracts/runtime-facts.ts";
@@ -36,7 +37,7 @@ if (isDirectInternalProcessEntry(import.meta.url)) {
 						"endophasia.usage.v0",
 					],
 				}),
-				createEndophasiaInspectorFacetV0(harness),
+				createEndophasiaInspectorFacetV0(createPiSessionOverviewCaptureV0(harness)),
 				createEndophasiaMissionTraceFacetV0(pi.missionTrace),
 				createEndophasiaRuntimeFactsFacetV0({
 					runtimeMetrics: pi.runtimeMetrics,

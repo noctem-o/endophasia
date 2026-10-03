@@ -335,10 +335,12 @@ All nine Pi projection modules plus the aggregate seam move to
   modules the contract facets import) landed in milestone b; the remaining
   eight in milestone c.
 
-- **No neutral port yet** (steering, control-deck, session-overview capture,
-  continuity capture): per the donor boundary doc, those need their own
-  evidence before they get a boundary. Flagged for a later phase; Phase 0
-  keeps them Pi-direct behind `adapters/pi/`.
+- **Neutral ports landed in Phase 12** (steering, control-deck,
+  session-overview capture, continuity capture): `runtime/ports.ts`
+  defines the four lane-bound capability interfaces in Endophasia's
+  v0 semantics and `adapters/pi/ports.ts` supplies the Pi-backed
+  closures (§5.23); Phases 0–11 kept them Pi-direct behind
+  `adapters/pi/`.
 - Risks: the adapter must keep importing the Pi types it needs by the same
   structural shape the tests exercise (real `AgentHarness`, real lanes).
 - Protects: `continuity.test.ts`, `control-deck.test.ts`,
@@ -1195,6 +1197,73 @@ Design decisions:
   `evolution/evidence.ts` (ledger wiring) + three suites
   (73 tests); self-check at §10.14.
 
+### 5.23 Phase 12 components (Operational substrate & integration)
+
+Phase 12 scope (README "## Phase 12 — Operational
+substrate & integration"): durable storage, a thin operator CLI,
+neutral runtime ports, the provider contract with an
+OpenAI-compatible adapter, model routing and concurrency policies,
+RRSI and GEPA policy seams, immutability and strict-JSON
+hardening, and the integration harness. Non-goals held: no relay or
+socket, no model-serving engine, no general-purpose database; the
+provider adapter takes an injected transport, and nothing in this
+phase promotes a candidate. Donor re-check (read-only): no donor
+module provides frame-based durable storage, a CLI, a neutral
+lane-port surface, or an injected-transport provider adapter; the
+nearest donor seams stay as recorded in §5.4. No Phase 12 analogue
+in the donor: BUILD (new substrate; the donor carries no RRSI/GEPA
+documentation, so the policy seams are records and named constants,
+not ports to a documented wire shape).
+
+| README requirement | Disposition |
+| :--- | :--- |
+| Frame log | `storage/log.ts`: `<u32be length><payload><sha256(length header plus payload)>` frames over sync `node:fs` I/O; open classifies the tail — torn frame → truncate to the last verified frame (recovery reported), digest mismatch → seal at `corruptAt` (append disabled, the verified prefix stays readable), undecodable frame → TypeError at open; a log is never silently repaired |
+| Artifact store | `storage/artifacts.ts`: content-addressed files at `<root>/artifacts/<sha256hex>`; `put` is idempotent (same bytes and hash → `{created:false}`; an existing file with a different hash → TypeError), `get`/`has` re-verify the stored hash, `list` is sorted |
+| Durable event store | `storage/event-store.ts`: `events.log` + the in-memory store replayed from verified frames; `record` is the digest-pinned event stream; the recovery classification is surfaced on every open |
+| Durable evidence ledger | `storage/ledger.ts`: `ledger.log` + `ledger.meta.json` + `ledger.snapshot.json`; `append` validates through the closed evidence-kind map and writes the meta on first append; `replay()` classifies the layer `empty`/`log`/`snapshot`/`snapshot+log` with per-entry verification; `snapshot()` writes the snapshot, then truncates the log to it |
+| Operator CLI | `cli/commands.ts` + `cli/index.ts` (`COMMANDS_V0` dispatch): `status`, `events`, `ingest`, `ledger`, `artifacts`; each command prints exactly one canonical-JSON document; `status` omits the ledger key when no meta exists (honest absence); `ledger` never calls `snapshot()` |
+| Neutral runtime ports | `runtime/ports.ts`: the four lane-bound capability interfaces (continuity capture, session-overview capture, steering, control deck), each a closure that already knows its own lane or harness; `adapters/pi/ports.ts` supplies the Pi-backed implementations; consumers receive the capability alone, never a lane or harness; re-wired through `runtime/session-worker.ts` |
+| Provider contract + adapter | `models/provider/contract.ts` (the neutral request/response/stream/usage/error/capabilities/health seam) + `adapters/provider/openai.ts` (OpenAI-compatible chat + SSE over an injected `request` transport; digest-derived outcome ids; the retryable/error grammar; usage honest-absent when the wire is malformed; no `fetch`, no new dependency) |
+| Routing and concurrency | `models/routing-policy.ts` (`routeModelByPolicyV0`, capability-aware over a presented roster) + `models/concurrency-policy.ts` (`createModelConcurrencyPlanV0` / `applyConcurrencyPlanV0` — bounded slots and deterministic ordering on the Phase 10 `models/orchestration.ts` scheduler) |
+| RRSI and GEPA seams | on the Phase 7 policy boundary (`evolution/policies/ports.ts`: the context is exactly the records the substrate keeps, the output exactly `EndoSelectionDecisionV0`; `baseline.ts`: the highest-score rule set) this phase adds `rrsi.ts` and `gepa.ts` (named policy constants); a policy result is evidence, never promotion authority; the protocol records which policy decided and never executes one |
+| Immutability + strict-JSON | `runtime/contracts/immutability.ts` (`deepFreezeV0`, `deepFreezeCopyV0` at the service exits); the 13 hardened `protocol/*` modules apply the `isPlainJsonObjectV0` plain-object door and finite-number checks to their fields; `tests/endo-strict-json-audit.test.ts` audits the class parametrically (13 representative validators × 5 cases + the predicate + non-finite numbers) |
+| Integration harness | `tests/endo-integration-harness.test.ts`: golden path (record → compact → close → reopen → replay → verify, content-identity by canonical-JSON `toBe`), adversarial (torn tails, digest mismatch, undecodable frames, tampered artifact — refused, never repaired), persisted e2e (torn tails on both logs, recover, replay, continue, snapshot+log layer) |
+
+Design decisions:
+
+- **Storage and CLI are host infrastructure**: they may use
+  `node:crypto`/`node:fs` (sync only) and may import core services;
+  `tests/endo-host-import-boundary.test.ts` pins that `storage/` and
+  `cli/` import nothing from `pi/`, `adapters/`, or
+  `presentation/` (their import set is `node:crypto`, `node:fs`,
+  `node:path`, and relative `protocol/`/`runtime/`/`evolution/`/
+  `storage/` modules only).
+- **Refuse, never repair**: the only automatic recovery is
+  truncating a torn tail to the last verified frame; every other
+  corruption seals the log (append disabled, prefix readable) or
+  throws at open. The CLI and the replay reports surface the
+  classification verbatim.
+- **The provider seam is transport-injected**:
+  `adapters/provider/openai.ts` takes a `request` function at its
+  door; the wire grammar (SSE in-order deltas, `[DONE]`, usage from
+  the first well-formed chunk, health via `GET <endpoint>/models`)
+  is validated into the protocol shapes and exits through their
+  validators.
+- **Policy result ≠ promotion authority**: the RRSI/GEPA/baseline
+  constants emit selection decisions that enter the ledger as
+  evidence records; no Phase 12 module promotes a candidate or
+  mutates a mutation.
+
+- **Status (2026-10-03, done):** `storage/{log,artifacts,event-store,
+  ledger,index}.ts`, `cli/{commands,index}.ts`, `runtime/ports.ts`,
+  `adapters/pi/ports.ts`, `models/provider/contract.ts`,
+  `adapters/provider/openai.ts`, `models/{routing-policy,
+  concurrency-policy}.ts`, `evolution/policies/{rrsi,gepa}.ts` (on the
+  Phase 7 policy boundary `ports.ts`/`baseline.ts`),
+  `runtime/contracts/immutability.ts`, the 13 hardened
+  `protocol/*` modules, and ten new suites (206 tests); self-check at
+  §10.15.
+
 ## 6. Contract leaks to sever (the REWRITES)
 
 Type-only Pi imports inside contract modules must end in `protocol/`.
@@ -1279,11 +1348,13 @@ with path updates only.
      seven host-bound projection modules
      (`adapters/pi/{observation-sources,mission-trace,runtime-metrics,
      durable-outcomes,usage-feed,usage-ledger,continuity}.ts`);
-     `adapters/pi/session-overview.ts` is allowed (value-imported by
-     `runtime/contracts/inspector.ts`; its Pi imports are type-only) and
-     `adapters/pi/{steering,control-deck}.ts` are allowed (not in the
-     client tree); `adapters/prime/**`,
-     `research/**`.
+     Phase 12 adds five host-bound modules to the forbidden set
+     (`scripts/check-browser-smoke.mjs:95-101`):
+     `runtime/ports.ts`, `adapters/pi/ports.ts`, and
+     `adapters/pi/{steering,control-deck,session-overview}.ts` —
+     the lane ports and their Pi-backed implementations stay on the
+     host; the bundled contracts reach them only through neutral
+     closures; `adapters/prime/**`, `research/**`.
    - First green run 2026-10-02; the smoke entry file
      (`scripts/endophasia-browser-transport-smoke-entry.ts`) was written
      for the target tree.
@@ -1306,11 +1377,8 @@ with path updates only.
   envelope landed in Phase 4 as `endo.semantic-visual-state.v0`. The schema/IR/
   code-generation approach (README line 714) lands only after the protocol
   stabilises.
-- Neutral ports for steering, control-deck, session-overview capture,
-  continuity capture (the §5.4 "no port yet" seams).
 - Prime conformance as a live gate; Codex adapter; the cockpit/
-  presentation wiring for the Phase 4 scenes; `storage/`, `cli/`,
-  `models/`.
+  presentation wiring for the Phase 4 scenes.
 - NOT started this phase: RRSI/REEF/Magpie/Deadbolt/Dream work.
 
 ## 9. Disposition summary
@@ -1888,6 +1956,52 @@ Milestone (c):
   §10.13 + 73 new: 49 protocol + 8 ledger + 16 core).
 - Donor untouched (read-only): Phase 11 adds no donor files.
 
+### 10.15 Phase 12 self-check record (2026-10-03)
+
+- `npx tsc --noEmit` (root): 0 errors.
+- `npx biome check` over the fifteen scope directories
+  (`protocol graph visualization lab evolution runtime adapters
+  presentation cockpit research storage cli tests scripts models`):
+  no fixes applied (after `--write` formatted the new modules and
+  suites).
+- Import boundary: `grep -rn '@earendil-works/pi-' storage/ cli/`: 0
+  matches — `storage/` and `cli/` import only `node:crypto`,
+  `node:fs`, `node:path`, and relative `protocol/`/`runtime/`/
+  `evolution/`/`storage/` modules;
+  `tests/endo-host-import-boundary.test.ts` pins it (4 tests).
+- Import direction: `protocol/` zero-dependency (no inbound import
+  from below it); `models/provider/` imports `protocol/` only;
+  `adapters/provider/` imports `protocol/` + `runtime/contracts/` +
+  `models/provider/`; `adapters/pi/ports.ts` imports `protocol/` +
+  `runtime/ports.ts` + Pi type-only (the carried `HarnessClosed`
+  value import in `adapters/pi/steering.ts` is unchanged).
+- `node scripts/check-browser-smoke.mjs`: exit 0, silent (a
+  violation prints the forbidden inputs and exits 1) — five
+  host-bound
+  modules added to the forbidden set at
+  `scripts/check-browser-smoke.mjs:95-101`
+  (`runtime/ports.ts`, `adapters/pi/ports.ts`,
+  `adapters/pi/{steering,control-deck,session-overview}.ts`).
+- New suites (ten, 206 tests): `tests/endo-storage.test.ts` (32),
+  `tests/endo-cli.test.ts` (10), `tests/endo-lane-ports.test.ts` (9),
+  `tests/endo-host-import-boundary.test.ts` (4),
+  `tests/endo-provider-openai.test.ts` (18),
+  `tests/endo-evolution-rrsi-gepa.test.ts` (23),
+  `tests/endo-models-policies.test.ts` (27),
+  `tests/endo-immutability.test.ts` (7),
+  `tests/endo-strict-json-audit.test.ts` (69),
+  `tests/endo-integration-harness.test.ts` (7).
+- Updated suite: `tests/endo-event-replay.test.ts` (13) — the
+  non-canonicalizable-stream case now pins the strict-JSON door: a
+  record whose event payload is not strict JSON is rejected with a
+  TypeError at the door instead of misclassified (the record
+  validator re-validates every event, so a door-passing stream is
+  always canonicalizable).
+- Full `npx vitest --run`: **95/95 files, 2629 passed, 3 skipped, 0
+  failed** (85 files / 2423 passed at Phase 11 per §10.14 + 10 new
+  files / 206 tests).
+- Donor untouched (read-only): Phase 12 adds no donor files.
+
 ## 11. Phase 0 closure — standalone boundary
 
 Phase 0 (README "# Roadmap") goal: complete the migration from the Pi
@@ -1907,5 +2021,5 @@ transport, session worker, 16 suites), `c65543e97` (6 host entries, 4
 host suites), `dcd13e978` (presentation, cockpit, research, scripts,
 remaining 23 suites + fixtures).
 
-Next: none — Phase 11 (Collaboration) is the final roadmap phase, recorded in §5.22 and verified in §10.14.
+Next: none — Phase 12 (Operational substrate & integration) closes the phase series, recorded in §5.23 and verified in §10.15.
 

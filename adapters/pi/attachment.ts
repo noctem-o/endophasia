@@ -60,6 +60,7 @@ import {
 	piEntryEventIdV0,
 } from "./mapping.ts";
 import { PiRpcClientV0, PiRpcProtocolErrorV0, PiRpcRefusalV0, type PiSessionEntryV0 } from "./rpc.ts";
+import { PI_MAPPING_VERSION } from "./version.ts";
 
 export interface PiAttachmentOptionsV0 {
 	/** The Endophasia store root (event store, artifacts, harness registry). */
@@ -677,6 +678,7 @@ export class PiSessionAttachmentV0 {
 			fingerprintId: this.#fingerprint.id,
 			identityDigest: this.#fingerprint.identity.digest,
 			version: this.#fingerprint.reported.version,
+			mapping: PI_MAPPING_VERSION,
 			// Evidence never covers project configuration (checks run in scratch directories); it is recorded here.
 			userConfigurationDigest: piUserConfigurationDigestV0(this.owner.launchEnv()),
 			projectConfigurationDigest: piProjectConfigurationDigestV0(options.cwd ?? process.cwd()),

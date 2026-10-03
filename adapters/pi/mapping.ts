@@ -9,7 +9,9 @@
 //   recorded explicitly (harness.process-exited, harness.attached), never papered over.
 //
 // Payloads are minimal: no message text, tool arguments or results, queued text, summaries or Pi refusal text ever
-// cross into an event. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
+// cross into an event. A tool call's arguments are recorded only as the sha256 of their canonical JSON (`argsSha256`,
+// from pi-rpc-mapping.3), so two calls can be compared without their arguments entering evidence; a digest of short,
+// guessable arguments is a reference, not a secret. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
 // "error", a final retry's `finalError`, a failed compaction's `errorMessage`) is recorded by reference only: its
 // source, sha256 and UTF-8 length, and a classification from a closed vocabulary (protocol/session-lifecycle.ts). The
 // text itself is returned beside the event (`runtimeTexts`) for the caller to keep outside canonical evidence; it never
@@ -24,7 +26,7 @@ import type {
 	EndoRuntimeTextRefV0,
 	EndoRuntimeTextSourceV0,
 } from "../../protocol/session-lifecycle.ts";
-import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { PiSessionEntryV0 } from "./rpc.ts";
 
 /** What the mapping needs from the attachment: identities, the producer's sequence, and the clock. */
@@ -309,6 +311,17 @@ function reportedCause(
 		: undefined;
 }
 
+/** The sha256 of a tool call's arguments as canonical JSON; undefined when Pi sent none or they are not plain JSON. */
+export function piToolArgsDigestV0(args: unknown): string | undefined {
+	if (args === undefined) return undefined;
+	try {
+		return sha256HexV0(canonicalEndoJsonV0(args));
+	} catch {
+		return undefined;
+	}
+}
+const argsDigest = piToolArgsDigestV0;
+
 function livePayload(
 	type: string,
 	record: Readonly<Record<string, unknown>>,
@@ -335,7 +348,11 @@ function livePayload(
 			});
 		}
 		case "tool_execution_start":
-			return compact({ toolCallId: short(record.toolCallId, 256), toolName: short(record.toolName) });
+			return compact({
+				toolCallId: short(record.toolCallId, 256),
+				toolName: short(record.toolName),
+				argsSha256: argsDigest(record.args),
+			});
 		case "tool_execution_end":
 			return compact({
 				toolCallId: short(record.toolCallId, 256),

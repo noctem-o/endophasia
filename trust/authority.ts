@@ -9,8 +9,8 @@
  * refused receipt still closes the loop — the loop closes with the recorded outcome.
  */
 
-import type { EndoPromotionClosureV0 } from "../protocol/trust.ts";
 import { validateEndoPromotionDecisionV0, validateEndoPromotionRequestV0 } from "../protocol/evolution.ts";
+import type { EndoPromotionClosureV0 } from "../protocol/trust.ts";
 import {
 	ENDO_CLOSURE_DECISION_GRANTED_V0,
 	ENDO_CLOSURE_DECISION_MATCHES_REQUEST_V0,

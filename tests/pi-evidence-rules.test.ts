@@ -29,6 +29,7 @@ import {
 	parseSemverV0,
 	piVersionPolicyV0,
 } from "../adapters/pi/version.ts";
+import type { EndoConformanceClassificationV0 } from "../protocol/evaluation.ts";
 import {
 	type EndoHarnessFingerprintV0,
 	endoHarnessIdentityBasisV0,
@@ -80,7 +81,11 @@ function fingerprint(
 
 const AT = "2026-10-03T10:00:01.000Z";
 
-function evidenceFor(print: EndoHarnessFingerprintV0, capability = "control.model", classification = "EXACT" as const) {
+function evidenceFor(
+	print: EndoHarnessFingerprintV0,
+	capability = "control.model",
+	classification: EndoConformanceClassificationV0 = "EXACT",
+) {
 	return piEvidenceV0({
 		attachment: "pi.default",
 		capability,

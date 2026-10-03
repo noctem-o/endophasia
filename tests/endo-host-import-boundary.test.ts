@@ -1,6 +1,7 @@
-// Host infrastructure import boundary: storage/ and cli/ run directly under node. They may use the synchronous
-// node: APIs and the core services, but they must never reach the vendored Pi tree, the Pi adapter, or the
-// presentation — not even through type-only imports, re-exports, or dynamic imports.
+// Host infrastructure import boundary. storage/ is host infrastructure under every runtime adapter: it reaches no
+// adapter at all. cli/ is the operator's composition root: it may reach the Pi attachment adapter (and through it the
+// shared JSONL transport), but nothing it reaches may import a Pi package or a vendored Pi path. Both rules hold for
+// type-only imports, re-exports and dynamic imports too.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +21,13 @@ function files(dir: string): string[] {
 		entry.isDirectory() ? files(join(dir, entry.name)) : entry.name.endsWith(".ts") ? [join(dir, entry.name)] : [],
 	);
 }
-// Every @earendil-works/* package resolves into the vendored pi/ tree, so any such specifier is a hit on its own.
-function hostReachable(roots: string[], read: (path: string) => string, has: (path: string) => boolean): string[] {
+/** Walk relative imports from the roots; report every reached file or specifier the predicate forbids. */
+function reachable(
+	roots: string[],
+	forbidden: (fileOrSpec: string) => boolean,
+	read: (path: string) => string,
+	has: (path: string) => boolean,
+): { hits: string[]; seen: Set<string> } {
 	const queue = [...roots];
 	const seen = new Set<string>();
 	const hits = new Set<string>();
@@ -29,81 +35,67 @@ function hostReachable(roots: string[], read: (path: string) => string, has: (pa
 		const file = queue.pop()!;
 		if (seen.has(file)) continue;
 		seen.add(file);
-		if (file.includes("/pi/") || file.includes("/adapters/") || file.includes("/presentation/")) {
+		if (forbidden(file)) {
 			hits.add(file);
 			continue;
 		}
 		for (const spec of specs(read(file))) {
-			if (/^@earendil-works\//.test(spec)) hits.add(spec);
-			if (!spec.startsWith(".")) continue;
-			const base = resolve(dirname(file), spec);
-			const target = [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, join(base, "index.ts")].find(has);
-			if (!target) continue;
-			queue.push(target);
-		}
-	}
-	return [...hits];
-}
-function hostVisited(roots: string[], read: (path: string) => string, has: (path: string) => boolean): Set<string> {
-	const queue = [...roots];
-	const seen = new Set<string>();
-	while (queue.length) {
-		const file = queue.pop()!;
-		if (seen.has(file)) continue;
-		seen.add(file);
-		for (const spec of specs(read(file))) {
-			if (!spec.startsWith(".")) continue;
+			if (!spec.startsWith(".")) {
+				if (forbidden(spec)) hits.add(spec);
+				continue;
+			}
 			const base = resolve(dirname(file), spec);
 			const target = [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, join(base, "index.ts")].find(has);
 			if (target) queue.push(target);
 		}
 	}
-	return seen;
+	return { hits: [...hits], seen };
 }
 
+const PI_PACKAGE = (value: string) => /^@earendil-works\//.test(value) || /(^|\/)pi\/packages\//.test(value);
+const STORAGE_FORBIDDEN = (value: string) =>
+	PI_PACKAGE(value) || value.includes("/adapters/") || value.includes("/presentation/");
+const disk = {
+	read: (p: string) => readFileSync(p, "utf8"),
+	has: (p: string) => existsSync(p) && statSync(p).isFile(),
+};
+
 describe("host infrastructure import boundary", () => {
-	it.each(["storage", "cli"])(
-		"%s reaches no Pi tree, adapter, or presentation module, even by type or dynamic import",
-		(dir) => {
-			expect(
-				hostReachable(
-					files(join(packageRoot, dir)),
-					(p) => readFileSync(p, "utf8"),
-					(p) => existsSync(p) && statSync(p).isFile(),
-				),
-			).toEqual([]);
-		},
-	);
+	it("storage reaches no adapter and no Pi package, even by type or dynamic import", () => {
+		expect(reachable(files(join(packageRoot, "storage")), STORAGE_FORBIDDEN, disk.read, disk.has).hits).toEqual([]);
+	});
+
+	it("cli reaches no Pi package or vendored Pi path, even through the attachment adapter", () => {
+		expect(reachable(files(join(packageRoot, "cli")), PI_PACKAGE, disk.read, disk.has).hits).toEqual([]);
+	});
 
 	it("rejects indirect, type-only, and dynamic import edges in a hostile graph", () => {
 		for (const statement of [
-			'import type { ContinuitySnapshotV0 } from "../adapters/pi/continuity.ts";',
+			'import type { Harness } from "@earendil-works/pi-durable";',
 			'export * from "../pi/packages/agent/src/index.ts";',
-			'const client = import("../presentation/client.ts");',
+			'const attach = import("../adapters/pi/attachment.ts");',
 		]) {
 			const graph: Record<string, string> = {
 				"/endophasia/storage/log.ts": 'import "./helper.ts";',
 				"/endophasia/storage/helper.ts": statement,
-				"/endophasia/adapters/pi/continuity.ts": "",
+				"/endophasia/adapters/pi/attachment.ts": "",
 				"/endophasia/pi/packages/agent/src/index.ts": "",
-				"/endophasia/presentation/client.ts": "",
 			};
 			expect(
-				hostReachable(
+				reachable(
 					["/endophasia/storage/log.ts"],
+					STORAGE_FORBIDDEN,
 					(p) => graph[p]!,
 					(p) => p in graph,
-				).length,
+				).hits.length,
 			).toBeGreaterThan(0);
 		}
 	});
 
-	it("proves the walk is non-vacuous: the CLI reaches the durable ledger through relative imports", () => {
-		const visited = hostVisited(
-			[join(packageRoot, "cli", "commands.ts")],
-			(p) => readFileSync(p, "utf8"),
-			(p) => existsSync(p) && statSync(p).isFile(),
-		);
-		expect(visited).toContain(join(packageRoot, "storage", "ledger.ts"));
+	it("proves the walks are non-vacuous: the CLI reaches the ledger and the Pi attachment through relative imports", () => {
+		const { seen } = reachable([join(packageRoot, "cli", "index.ts")], PI_PACKAGE, disk.read, disk.has);
+		expect(seen).toContain(join(packageRoot, "storage", "ledger.ts"));
+		expect(seen).toContain(join(packageRoot, "adapters", "pi", "attachment.ts"));
+		expect(seen).toContain(join(packageRoot, "adapters", "rpc-jsonl", "rpc-connection.ts"));
 	});
 });

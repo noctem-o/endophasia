@@ -30,23 +30,16 @@
 			"visualization/**/*.ts",
 			"lab/**/*.ts",
 			"evolution/**/*.ts",
+			"trust/**/*.ts",
+			"collab/**/*.ts",
 			"runtime/**/*.ts",
 			"adapters/**/*.ts",
-			"presentation/**/*.ts",
-			"cockpit/**/*.ts",
-			"cockpit/**/*.css",
 			"research/**/*.ts",
 			"models/**/*.ts",
 			"storage/**/*.ts",
 			"cli/**/*.ts",
 			"tests/**/*.ts",
-			"scripts/**/*.ts",
-			"!pi/**",
-			"!node_modules/**",
-			"!**/test-sessions.ts",
-			"!**/models.generated.ts",
-			"!**/*.models.ts"
+			"!node_modules"
 		]
-	},
-	"plugins": ["./scripts/biome/model-type-comparison.grit"]
+	}
 }

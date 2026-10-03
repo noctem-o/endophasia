@@ -44,15 +44,17 @@ function researchReachable(roots: string[], read: (path: string) => string, has:
 describe("Prime research stays outside production", () => {
 	it.each([
 		"protocol",
-		"runtime/contracts",
-		"runtime/observation",
+		"runtime",
 		"adapters",
-		"presentation",
-		"cockpit",
+		"storage",
+		"cli",
 		"graph",
 		"visualization",
 		"lab",
 		"evolution",
+		"trust",
+		"collab",
+		"models",
 	])("%s imports no research, directly or through another relative module", (dir) => {
 		expect(
 			researchReachable(
@@ -83,9 +85,14 @@ describe("Prime research stays outside production", () => {
 			).toBeGreaterThan(0);
 		}
 	});
-	it("Runtime Profile cannot inspect a report at runtime", () => {
-		for (const file of ["runtime-profile.ts", "runtime-profile-facet.ts"]) {
-			const source = readFileSync(join(packageRoot, "runtime/contracts", file), "utf8");
+	it("capability state cannot inspect a research report at runtime", () => {
+		for (const file of [
+			"adapters/pi/evidence.ts",
+			"adapters/pi/attachment.ts",
+			"adapters/pi/checks.ts",
+			"protocol/harness.ts",
+		]) {
+			const source = readFileSync(join(packageRoot, file), "utf8");
 			expect(source).not.toMatch(/prime-conformance|research\/|candidateForPR27|readPrimeFixtures|report\.json/);
 		}
 	});

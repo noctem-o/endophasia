@@ -1901,21 +1901,20 @@ describe("Prime runtime ingress import boundaries", () => {
 		}
 	});
 
-	it("the common layer, Presentation, Cockpit and the Pi Session worker never reach adapters/prime", () => {
+	it("the common layer, the shared transport and the Pi attachment never reach adapters/prime", () => {
 		const files = [
 			...tsFiles(join(PACKAGE, "protocol")),
-			...tsFiles(join(PACKAGE, "runtime/contracts")),
-			...tsFiles(join(PACKAGE, "runtime/observation")),
+			...tsFiles(join(PACKAGE, "runtime")),
+			...tsFiles(join(PACKAGE, "adapters/rpc-jsonl")),
 			...tsFiles(join(PACKAGE, "adapters/pi")),
-			...tsFiles(join(PACKAGE, "presentation")),
-			...tsFiles(join(PACKAGE, "cockpit")),
-			join(PACKAGE, "runtime/session-worker.ts"),
+			...tsFiles(join(PACKAGE, "storage")),
+			...tsFiles(join(PACKAGE, "cli")),
 		];
 		for (const file of files) {
 			for (const specifier of specifiers(file)) expect(specifier, file).not.toMatch(/prime/i);
 		}
-		// The runtime-neutral observation contract has no Prime vocabulary at all.
-		expect(readFileSync(join(PACKAGE, "runtime/observation/ports.ts"), "utf8")).not.toMatch(/prime/i);
+		// The harness attachment contract has no Prime vocabulary at all.
+		expect(readFileSync(join(PACKAGE, "protocol/harness.ts"), "utf8")).not.toMatch(/prime/i);
 	});
 });
 

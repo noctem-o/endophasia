@@ -3,33 +3,23 @@
 	"private": true,
 	"version": "0.0.0",
 	"type": "module",
-	"workspaces": [
-		"pi/packages/*",
-		"pi/packages/session-backends/*"
-	],
 	"scripts": {
 		"test": "vitest --run",
-		"cockpit": "node --import ./pi/packages/coding-agent/src/experimental/source-resolver.ts runtime/cockpit-main.ts",
-		"check:browser-smoke": "node scripts/check-browser-smoke.mjs",
-		"check:cockpit-types": "node scripts/check-cockpit-types.mjs",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"lint": "biome check .",
+		"endo": "node cli/index.ts",
 		"check:prime-conformance": "node research/prime-conformance/cli.ts",
 		"check:prime-conformance:097": "node research/prime-conformance/cli-097.ts",
 		"check:prime-conformance:097:offline": "node research/prime-conformance/offline-097.ts",
-		"hydrate:model-data": "npm --prefix pi/packages/ai run hydrate-model-data"
+		"test:pi-real": "vitest --run tests/pi-real-runtime.test.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.5",
 		"@types/node": "22.19.19",
-		"@types/ws": "8.18.1",
-		"esbuild": "0.28.2",
 		"typescript": "7.0.2",
-		"vitest": "4.1.9",
-		"ws": "8.21.0"
+		"vitest": "4.1.9"
 	},
 	"engines": {
 		"node": ">=22.19.0"
-	},
-	"overrides": {
-		"protobufjs": "7.6.6"
 	}
 }

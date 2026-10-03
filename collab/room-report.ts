@@ -96,7 +96,8 @@ export function summarizeCollabRoomV0(room: unknown, records: unknown[]): EndoCo
 				break;
 			case "endo.collab-approval-decision.v0": {
 				const existing = decisions.get(record.requestId);
-				if (existing !== undefined) throw new TypeError(`request ${record.requestId} has multiple decisions presented`);
+				if (existing !== undefined)
+					throw new TypeError(`request ${record.requestId} has multiple decisions presented`);
 				decisions.set(record.requestId, record);
 				break;
 			}
@@ -122,11 +123,15 @@ export function summarizeCollabRoomV0(room: unknown, records: unknown[]): EndoCo
 	for (const discussion of discussions) {
 		counts.set(discussion.candidateId, (counts.get(discussion.candidateId) ?? 0) + 1);
 	}
-	const discussionRows: EndoCollabRoomDiscussionRowV0[] = byKeyV0([...counts.entries()], ([candidateId]) => candidateId).map(
-		([candidateId, count]) => ({ candidateId, count }),
-	);
+	const discussionRows: EndoCollabRoomDiscussionRowV0[] = byKeyV0(
+		[...counts.entries()],
+		([candidateId]) => candidateId,
+	).map(([candidateId, count]) => ({ candidateId, count }));
 	const evidenceRefs: string[] = [
-		...new Set([...discussions.flatMap((d) => [...d.evidenceRefs, ...d.receiptRefs]), ...requests.flatMap((r) => r.evidenceRefs)]),
+		...new Set([
+			...discussions.flatMap((d) => [...d.evidenceRefs, ...d.receiptRefs]),
+			...requests.flatMap((r) => r.evidenceRefs),
+		]),
 	].sort();
 	const approvalRows: EndoCollabRoomApprovalRowV0[] = byKeyV0(requests, (request) => request.id).map((request) => ({
 		requestId: request.id,

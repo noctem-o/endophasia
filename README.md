@@ -165,15 +165,65 @@ STOP   request an abort of the observed run
 
 A receipt records that the runtime accepted the request. It does not claim the effect happened.
 
-**EVOLVE** is repeated experiments over candidate prompts, harnesses, policies, tools, or models. It follows a visible sequence:
+**EVOLVE** is the system-level improvement loop. It treats prompts, cognition policies, harness components, tools, memory, models, environments, and execution strategies as explicit candidate changes rather than hidden self-modification.
+
+It follows a visible sequence:
 
 ~~~text
 observe → propose → isolate → evaluate → compare → admit → promote
 ~~~
 
-Promotion is deliberately last. A candidate can win an evaluation and still lack permission to replace anything. Adaptation methods such as [REEF](https://github.com/Human-Agent-Society/reef) or [RRSI](https://github.com/google-research/rrsi) plug in as optional providers behind the same experiment and evidence contracts; they are not bundled.
+Promotion is deliberately last. A candidate can win an evaluation and still lack permission to replace anything.
+
+EVOLVE is intentionally broader than reinforcement learning. RL can be one adaptation mechanism; RSI is a broader research direction covering repeated improvement of the model, harness, cognition policy, tools, memory, scaffolding, or execution strategy. Endophasia provides the substrate around these mechanisms: trajectories become evidence, evidence becomes evaluation input, and promotion remains gated.
+
+The intended loop is:
+
+~~~text
+cognitive state
+      ↓
+what is uncertain?
+      ↓
+what evidence is missing?
+      ↓
+what experiment is useful?
+      ↓
+what should we spend?
+      ↓
+trajectory / experience
+      ↓
+evidence
+      ↓
+evaluation
+      ↓
+adaptation
+      ↓
+new cognition
+      └───────────────────────↺
+~~~
+
+Adaptation methods such as [REEF](https://github.com/Human-Agent-Society/reef) or [RRSI](https://github.com/google-research/rrsi) plug in as optional providers behind the same experiment and evidence contracts; they are not bundled. GEPA-style selection, RL training, self-play, and bounded recursive self-improvement can occupy the same provider surface when their inputs and outputs can be represented honestly.
 
 A stored result identifies everything needed to understand it: candidate revision, runtime and model identity, cognition policy, environment revision, evaluator and grader identity, seeds and trial count, usage, and a digest of the result bundle. A simulated result says it was simulated.
+
+### Evolution evidence
+
+The evolution substrate is designed around explicit records rather than an opaque optimizer:
+
+| Concept | Endophasia role |
+| :--- | :--- |
+| **EnvironmentPack** | Versioned task/environment definition and evaluation conditions |
+| **Episode / Trajectory** | Recorded interaction between a harness, model, tools, and environment |
+| **ExperienceStore** | Durable collection of trajectories and derived evidence |
+| **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
+| **Evaluator / Grader** | Explicit source of outcome evidence |
+| **Selection policy** | Deterministic decision over candidate evidence; RRSI/GEPA can provide reference policies |
+| **Held-out evaluation** | Separation between adaptation evidence and promotion evidence |
+| **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
+
+Resource use is evidence too. Token usage, model calls, tool calls, branches, retrieval, tests, critics, retries, wall-clock time, and cost can be recorded as part of the trajectory. This makes **Compute Appetite** a bridge between DEVELOP and EVOLVE: a cognition policy can decide how much computation to spend, while EVOLVE can test whether that expenditure actually improves outcomes.
+
+The goal is not autonomous rewriting for its own sake. The goal is **bounded, reproducible, evidence-backed improvement**.
 
 ## Work and Dream
 
@@ -239,7 +289,8 @@ model was called. The boundary and the evidence rules were audited adversarially
 spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
 extension for active-tool control,
 live provider integrations beyond the OpenAI-compatible adapter (which buffers whole SSE bodies; no incremental
-streaming), WORK / DREAM policy compilation, and attachments for other harnesses.
+streaming), WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
+integration, and attachments for other harnesses.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
 
@@ -259,14 +310,48 @@ Partly done:
 
 Next:
 
-4. **The Endophasia-native cockpit** ([target and first slice](docs/cockpit.md)): a read-only projection of the
-   harness registry and event store, then evidence-gated controls; graph projection of recorded sessions after it.
-5. **Codex conformance study** on the same attachment and evidence contracts.
-6. **Optional EVOLVE providers**, then Magpie and Deadbolt integrations.
-7. **Upstream Pi requests** for targeted abort and queue receipts (draft in the inventory); run ids and RPC
-   active-tool commands were already declined upstream.
+4. **Real Pi path.** Make the first vertical slice boring: observe a real session, record canonical evidence,
+   steer where the runtime supports it, interrupt, recover, and preserve explicit permission boundaries.
+5. **Replay first-class.** Make deterministic replay and differential replay part of the core research workflow,
+   including explicit divergence between two runs.
+6. **Evaluation laboratory.** Define reproducible experiment bundles containing runtime/model/configuration, task,
+   initial state, evidence, outcome, evaluator identity, seeds, usage, and analysis. Every research claim should
+   point back to evidence.
+7. **Cognition controls.** Bring the runtime-neutral DEVELOP controls into the substrate: Reasoning, Epistemic
+   Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
+   J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
+   not hidden model state.
+8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
+   consequence. A proposal never becomes permission implicitly.
+9. **Cross-runtime conformance.** Study Pi, Codex, Prime, and other adapters against the same evidence contracts,
+   with capability admission based on current evidence rather than names or assumptions.
 
-Later layers wait until earlier contracts have survived a real integration.
+EVOLVE / research loop:
+
+10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
+    candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
+11. **Reference evolution policies.** Exercise the existing RRSI, GEPA, and baseline policies against real experiment
+    bundles, including held-out evaluation, noise/leakage checks, and deterministic selection.
+12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
+    algorithm part of the Endophasia core.
+13. **Resource-aware cognition.** Feed token/model/tool/branch/test/retry/cost evidence into Compute Appetite and test
+    whether different cognition policies trade resources for reliable outcome improvements.
+14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
+    evaluators, or environments can improve alongside the agent, while held-out evidence remains outside the
+    adaptation loop.
+15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
+    explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
+
+Hardening and artifact:
+
+16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
+    events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
+17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
+    comparison → promotion decision trail that another researcher can replay.
+
+The ordering is deliberate: runtime truth comes before replay; replay comes before evaluation; evaluation comes before
+evolution. The project should not grow another large protocol-only migration before these contracts have survived a real
+agent and produced evidence.
 
 ## Try it
 

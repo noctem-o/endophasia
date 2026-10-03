@@ -33,6 +33,14 @@ and keep evidence separate from permission.
 
 ---
 
+Endophasia is a runtime-neutral substrate around coding-agent harnesses.
+
+It records what a harness actually does, evaluates capabilities against
+explicit evidence, and keeps observation, experimentation, and authority
+as separate layers.
+
+It is not an agent runtime, model provider, benchmark, or deployment system.
+
 Coding agents do more than send a prompt to a model. They select context, compact history, call tools, branch, retry, verify work, spend tokens, accept steering, and sometimes propose actions with real effects.
 
 Endophasia gives those parts explicit contracts and one place to inspect them.

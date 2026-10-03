@@ -94,7 +94,7 @@ Pi runtime changed
 
   Previously observed: 1.0.0 / fingerprint 0d1bcf47a86d (strong identity) at …/dist/bundle/cli.js
   Currently detected: 1.0.1 / fingerprint 7c2e91a0b4f3 (strong identity) at …/dist/bundle/cli.js
-  Differences: package, version; version order: higher; version policy: untested
+  Differences: package, version; version order: higher; version standing: unverified-release
   Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.
   Endophasia will not install, update, downgrade or replace Pi. If you want a different version, use your normal installation method.
 ~~~
@@ -113,22 +113,30 @@ transport  →  identity  →  local protocol checks  →  live study (on reques
 - **The live study** sends prompts, runs a read-only tool in a scratch workspace and calls your configured model
   provider, so it may cost money. It runs only when you pass `--authorize-live-study`.
 
+Evidence also depends on your Pi configuration (settings, model endpoints, MCP servers, system prompts, extensions;
+never credentials), the adapter and suite versions, and the definition of the check that produced it. When any of
+these change, the evidence that depended on it stops counting. When several checks speak to one capability, the most
+conservative result decides; a check replaces another only where it is declared to re-test the same property more
+broadly.
+
 Every recorded run carries the fingerprint that produced it, so results from before and after a change are never
 silently treated as comparable.
 
 | Runtime | Role |
 | :--- | :--- |
-| Pi | Reference runtime. Attached over `pi --mode rpc`; tested against Pi 1.0.0 |
+| Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
 
-What Pi 1.0.0 supports through its documented RPC, as recorded against the real runtime
-([details](docs/pi-attach-inventory.md)):
+What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
+endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
+It is evidence for that installation and configuration, not a promise about yours: your Pi starts unverified and is
+checked on its own.
 
 | Capability | Status | Why not exact |
 | :--- | :--- | :--- |
-| Session identity, entry cursor, per-entry usage, tool activity, model control | admitted (exact) | — |
-| Active path / continuity, thinking control | admitted (qualified) | context boundary derived from compaction entries; one thinking level in the test model |
+| Session identity, entry cursor, per-entry usage, tool activity, model control | admitted (exact), within the recording's scope | model control exercised by re-selecting the configured model only |
+| Active path / continuity, thinking control | admitted (qualified) | context boundary derived from compaction entries; only one thinking level was available to exercise |
 | Lifecycle trace, session overview, metrics | admitted (partial) | no run or turn ids; one session, no lanes; total cost only |
 | Steer, follow-up, stop | admitted (partial) | no receipt ids; abort cannot target a specific run |
 | Active-tool control, run identity, operation outcomes | unavailable | not exposed over RPC |
@@ -214,11 +222,14 @@ A valid proposal does not widen the model's permission.
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording is in `research/pi-conformance/1.0.0/`.
 
 **Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
-says nothing about another Pi release. The real-runtime check covered Pi 1.0.0 on Linux with Node 22, with Pi's
-model provider pointed at a local fake endpoint.
+says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
+an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
+model was called. The boundary and the evidence rules were audited adversarially
+([audit](docs/pi-attach-audit.md)), including the limitations accepted for now.
 
-**Not yet built:** a browser cockpit over Endophasia's own store (the fork-era cockpit spoke Pi's private services and
-was removed; the operator view today is `endo harness status`), an optional Pi extension for active-tool control,
+**Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
+spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
+extension for active-tool control,
 live provider integrations beyond the OpenAI-compatible adapter (which buffers whole SSE bodies; no incremental
 streaming), WORK / DREAM policy compilation, and attachments for other harnesses.
 
@@ -230,7 +241,8 @@ Done:
 
 1. **Attach model.** Pi attached over its documented RPC mode; the vendored fork removed
    ([inventory and decisions](docs/pi-attach-inventory.md)).
-2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking.
+2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking, audited
+   adversarially ([audit](docs/pi-attach-audit.md)).
 
 Partly done:
 
@@ -239,7 +251,8 @@ Partly done:
 
 Next:
 
-4. **Cockpit over Endophasia's store**, then graph projection of recorded sessions.
+4. **The Endophasia-native cockpit** ([target and first slice](docs/cockpit.md)): a read-only projection of the
+   harness registry and event store, then evidence-gated controls; graph projection of recorded sessions after it.
 5. **Codex conformance study** on the same attachment and evidence contracts.
 6. **Optional EVOLVE providers**, then Magpie and Deadbolt integrations.
 7. **Upstream Pi requests** for targeted abort and queue receipts (draft in the inventory); run ids and RPC

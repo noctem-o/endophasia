@@ -1,6 +1,7 @@
 # Pi attachment: inventory, mapping and decisions
 
-Status: implemented on branch `pi-rpc-attachment` (stacked on `phase-12-operational-substrate`). This document
+Status: implemented on branch `pi-rpc-attachment` (stacked on `phase-12-operational-substrate`); audited (see
+[pi-attach-audit.md](pi-attach-audit.md)). This document
 supersedes the read-only proposal drafted on 2026-10-03 (local commit `ba1045b`, never pushed).
 
 Endophasia attaches to a Pi **the user installs and manages**, through Pi's documented RPC mode. It never installs,
@@ -105,11 +106,26 @@ An `endo.capability-evidence.v0` record applies to the current attachment only w
    carry evidence across observations);
 4. same `adapterVersion`, `mappingVersion`, `suiteVersion` (`adapters/pi/version.ts`);
 5. same definition digest of the check that produced it (rewording one check invalidates only its evidence);
-6. same configuration digest for the check kind (local checks: none; live study: provider, model, tools);
+6. same configuration digest for the check kind. Every kind depends on Pi's behaviour-relevant user configuration
+   (`adapters/pi/configuration.ts`: `settings.json`, `models.json`, `mcp.json`, system-prompt and instruction files,
+   `extensions/`, `skills/`, `prompts/` in the agent directory, and non-secret `PI_*` switches; never `auth.json`).
+   The live study also depends on provider, model and the tool set it ran with;
 7. same extension dependency (none in this version).
 
-Among applicable records the strongest check kind wins (live study › local protocol › static surface), then the latest.
-With none, the capability is `unverified` — whatever earlier evidence said and even if Pi starts fine. Statuses follow
+**Combining what applies.** No check kind outranks another by default: a live study is narrower in scope (one provider,
+one model, one scratch workspace) as often as it is stronger, so it must not silently replace broader protocol
+evidence. Per capability:
+
+- the latest applicable record of each check is kept (a re-run replaces that check's earlier result);
+- a record is dropped only when another present, applicable check **declares** in its definition that it supersedes
+  that check for that capability. One declaration exists: the live study supersedes the local state check for
+  `session.identity` (it re-tests a stable session id across two processes, a strict superset). The declaration is part
+  of the check's definition digest;
+- the most conservative classification among the rest decides (`MISMATCH` › `UNAVAILABLE` › `PARTIAL` › `QUALIFIED` ›
+  `EXACT`), and the reason names every disagreeing check.
+
+With nothing applicable, the capability is `unverified` — whatever earlier evidence said and even if Pi starts fine.
+Statuses follow
 the canonical `EndoConformanceClassificationV0` vocabulary exactly: `EXACT`/`QUALIFIED` → `admitted`, `PARTIAL` →
 `admitted-partial`, `UNAVAILABLE` → `unavailable`, `MISMATCH` → `mismatch`. A result the observation cannot decide is
 **inconclusive** and records nothing.
@@ -120,11 +136,13 @@ Capability state is derived state, not authority: it creates no runtime-admissio
 
 | Kind | When | What it does |
 | :--- | :--- | :--- |
-| static surface | automatic, **tested versions only** | records documented absences (no run ids, no operation outcome) |
+| documented-surface review | automatic, for a **reviewed release** (1.0.0) | records absences documented for that release (no run ids, no operation outcome). Evidence about that release's documentation, so it cannot apply to another release |
 | local protocol | automatic, skipped when current evidence covers it | one ephemeral `--no-session --offline --no-tools` Pi; state, cursor, tree, stats and configuration commands; **no prompt, no provider call, nothing persisted** |
-| live study | only with explicit authorization (`--authorize-live-study`; `studyLive({ authorized: true })`) | scratch workspace and scratch session; prompts, a read-only tool on a fixture file, steer/follow-up/abort mid-run, a second process on the same session id. Runs agent work and calls the configured provider (may cost money) |
+| live study | only with explicit authorization (`--authorize-live-study`; `studyLive({ authorized: true })`) | scratch workspace and scratch session; prompts, Pi's `read` tool on a fixture file, steer/follow-up/abort mid-run, a second process on the same session id; also observes, on any release, whether lifecycle events or prompt responses carry run or operation identifiers. Runs agent work and calls the configured provider (may cost money) |
 
-Transcripts of every check are stored content-addressed; each evidence record cites its transcript digest.
+Transcripts of every check are stored content-addressed (JSON Lines); each evidence record cites its transcript
+digest. After every check the runtime is fingerprinted again; if it changed while the check ran, nothing is recorded
+and the change is recorded instead.
 
 ### Session recording and cursors
 
@@ -155,14 +173,16 @@ The attachment chooses a session id once (`<root>/harness/<attachment>/pi-sessio
 
 ## 3. Capability mapping: fork adapter → Pi 1.0 RPC
 
-Classification column: the result recorded **against real Pi 1.0.0** (`research/pi-conformance/1.0.0/`).
+Classification column: the result recorded against one real Pi 1.0.0 installation, with Pi's provider pointed at a local
+fake endpoint (`research/pi-conformance/1.0.0/`, whose README lists what that recording does **not** establish). It is
+evidence for that fingerprint and configuration only; another release or configuration starts unverified.
 
 | Fork-era capability | Pi 1.0 surface | New capability | Real 1.0.0 result | Disposition |
 | :--- | :--- | :--- | :--- | :--- |
 | Mission Trace v0 (`harness.events`) | `agent_start/end/settled`, `turn_start/end`, `message_end`, `tool_execution_*` | `lifecycle.trace` | PARTIAL | available; no run/turn ids, no resume/suspend |
-| — run/turn ids | none on any lifecycle event | `run.identity` | UNAVAILABLE | needs upstream change (declined: #3682) |
+| — run/turn ids | none on any lifecycle event | `run.identity` | UNAVAILABLE (review and observation agree) | needs upstream change (declined: #3682) |
 | Runtime Metrics v0 (`watch().stats`) | `get_session_stats` | `runtime.metrics` | PARTIAL | available; cost total only, no reasoning/1h-cache in stats |
-| Operation Outcome v0 (`getResult`) | none | `operation.outcome` | UNAVAILABLE | needs upstream change; not inferred |
+| Operation Outcome v0 (`getResult`) | none | `operation.outcome` | UNAVAILABLE (review and observation agree) | needs upstream change; not inferred |
 | Usage v0 ledger (`scanUsage`, integer seq) | per-entry `usage` via `get_entries`, opaque cursor | `usage.entries` | EXACT | available; integer ledger replaced by opaque entry cursor (`endo.source-entry-ref.v0`) |
 | Session Overview v0 (`lanes()`) | `get_state` | `session.overview` | PARTIAL | one session, no lanes, no operation id |
 | Continuity v0 (`watch`, `findEntries`) | `get_tree`, `get_entries`, compaction `firstKeptEntryId` | `continuity.active-path` | QUALIFIED | context boundary derived from compaction entries |
@@ -172,27 +192,31 @@ Classification column: the result recorded **against real Pi 1.0.0** (`research/
 | Steering STEER | `steer` → `{disposition}` | `steering.steer` | PARTIAL | consumption observed; no receipt id |
 | Steering QUEUE | `follow_up` → `{disposition}` | `steering.follow-up` | PARTIAL | as above |
 | Steering STOP (`requestAbort(id)`) | `abort` (untargeted) | `steering.stop` | PARTIAL | cannot be confined to the observed run |
-| Session identity | `get_state.sessionId`, `--session-id` | `session.identity` | EXACT (live) / QUALIFIED (local) | available after first message |
+| Session identity | `get_state.sessionId`, `--session-id` | `session.identity` | EXACT (live study, declared to supersede the local QUALIFIED) | available after first message |
 | Entry cursor | `get_entries {since}` | `session.entries-cursor` | EXACT | available |
 | Tool activity | `tool_execution_start/end` by `toolCallId` | `tool.activity` | EXACT | available |
 | Prime transport | — | `adapters/rpc-jsonl` | — | **reused**: extracted unchanged in behaviour, Prime keeps its names |
 | Session-worker host facets, Chord services, lane ports | fork-only `createHostFacets` | — | — | **dropped**: no upstream equivalent with harness access |
 | Browser listener, presentation client, browser cockpit | fork-only listener; unpublished experimental services | — | — | **dropped** (see §5); the operator view is `endo harness status/attach` |
 
-## 4. Version policy
+## 4. Version baseline
 
-`adapters/pi/version.ts`: `PI_TESTED_VERSIONS = ["1.0.0"]`, the only version the deterministic suite's fake was
-modelled on and the real acceptance run executed against.
+Pi 1.0.0 is the **currently verified baseline**: the release whose documented RPC surface was reviewed, whose records
+the deterministic suite's fake Pi models, and against which the attachment was run end to end. It is not a support
+whitelist. Compatibility stays evidence-driven:
 
-- `tested` (exactly 1.0.0): static-surface classifications apply; everything else still needs current evidence.
-- `untested` (any other release, newer or older, same major or not): local checks run automatically; static and live
-  capabilities stay unverified until checked. A downgrade is a change like any other, not an error.
-- `prerelease`: treated as untested.
-- `unknown` (no or unparseable version, e.g. a local build): identity is `reduced` unless the entrypoint digest exists;
-  reduced evidence is never reused across observations.
+- `adapters/pi/version.ts` reports a version **standing** for the operator — `verified-baseline`,
+  `unverified-release`, `unverified-prerelease` or `unknown` — and nothing reads it to admit, refuse or skip anything.
+- Every release, the baseline included, is admitted capability by capability on current evidence for its own
+  fingerprint and configuration. A later, earlier or locally built release runs the same automatic local checks and,
+  when the operator authorizes it, the same live study, and earns the same admissions if it behaves the same.
+- The one record tied to the baseline is the documented-surface review, because it is evidence about that release's
+  documentation. On another release the live study observes the same absences directly.
+- A downgrade is a change like any other. An unparseable version reduces identity confidence unless the entrypoint
+  digest exists; reduced evidence is never reused across observations.
 
-The claim is narrow on purpose: one release, one platform (Linux, Node 22.22), one provider path (Pi's
-`openai-completions` API against a local fake endpoint).
+What the baseline claim covers is narrow on purpose: one release, one platform (Linux, Node 22.22), one provider path
+(Pi's `openai-completions` API against a local fake endpoint), no extensions, no project configuration.
 
 ## 5. Migration dispositions
 
@@ -266,5 +290,8 @@ ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in: a Pi you in
 - `tests/endo-provider-fake-endpoint.test.ts` — the OpenAI-compatible adapter over real HTTP: request construction,
   SSE split across writes, usage, malformed bodies, HTTP/transport errors and retry classification, digests. The
   adapter buffers complete SSE bodies: no incremental streaming is claimed.
+- `tests/pi-audit.test.ts` — the adversarial audit (pi-attach-audit.md): evidence combination, runtime and
+  configuration changes during and between checks, reconnect after replacement, concurrent writers, blocking dialogs,
+  undocumented identifiers, non-baseline releases.
 - `tests/endo-pi-boundary.test.ts`, `tests/endo-host-import-boundary.test.ts` — architecture guards.
 - `tests/pi-real-runtime.test.ts` — opt-in real Pi.

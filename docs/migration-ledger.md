@@ -2052,3 +2052,11 @@ The vendored-fork decision of §3 is reversed. Recorded here for continuity; the
   step after an exchange; GNU coreutils here is 9.4, which lacks `--exchange`), and 2 resolve donor commit `45adf6b`,
   which is not in this repository's history.
 
+
+## 13. Audit of the Pi boundary and evidence invalidation (2026-10-03)
+
+Findings, fixes and accepted limitations are in [pi-attach-audit.md](pi-attach-audit.md). Pi 1.0.0 is recorded as the
+verified baseline rather than a support whitelist; evidence combines conservatively with explicit supersession only;
+evidence depends on Pi's user configuration. Adapter and suite versions were bumped and the baseline re-recorded.
+Verification after the audit: typecheck clean, lint clean, tests 2322 passed, 8 failed (the same 8 environmental
+failures as §12), 3 skipped (opt-in suites); the real Pi 1.0.0 acceptance suite passed.

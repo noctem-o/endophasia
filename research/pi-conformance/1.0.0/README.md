@@ -18,8 +18,8 @@ The transcripts the evidence cites lived in the recording's scratch artifact sto
 
 Each capability in `capability-state.json` was classified by the checks named in its reason, against this one
 installation, under this one configuration. Nothing in the recording was left inconclusive, which means every check
-reached a decision; it does not mean every capability is supported (three are recorded as UNAVAILABLE and seven as
-PARTIAL or QUALIFIED, each with its stated limits).
+reached a decision; it does not mean every capability is supported (three are recorded as UNAVAILABLE, six as PARTIAL and
+two as QUALIFIED, each with its stated limits).
 
 ## What it does not establish
 

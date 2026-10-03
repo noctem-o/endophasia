@@ -14,6 +14,12 @@
  * digest does not verify (`corruptAt`, 1-based index). The valid prefix is the only part
  * ever trusted: `truncateTo(count)` rewrites the file with the first `count` frames via an
  * atomic tmp+rename+directory-fsync — the crash-tail recovery path, and nothing else.
+ *
+ * A torn tail cannot be told apart from a damaged length prefix: a flipped bit that makes a
+ * complete frame's length exceed the rest of the file reads exactly like a torn append, and
+ * everything after it looks like torn bytes. So truncateTo never destroys what it cuts: the
+ * bytes after the kept prefix are first written, fsynced, to `<path>.discarded-<sha256 prefix>`
+ * and that path is returned, so an operator can inspect and recover them.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -64,9 +70,11 @@ export interface EndoFrameLogV0 {
 	read(): EndoFrameLogReadV0;
 	/**
 	 * Rewrite the log with exactly its first `count` frames (tmp+rename+directory fsync).
-	 * Only for crash-tail recovery: `count` must be within the current valid prefix.
+	 * Only for crash-tail recovery: `count` must be within the current valid prefix. The cut
+	 * bytes are preserved first; returns the path they were written to, or null when nothing was
+	 * cut.
 	 */
-	truncateTo(count: number): void;
+	truncateTo(count: number): string | null;
 	/** The number of frames known from the last read or append. */
 	length: number;
 }
@@ -150,7 +158,7 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 			return count;
 		},
 		read,
-		truncateTo(cut: number): void {
+		truncateTo(cut: number): string | null {
 			if (!Number.isInteger(cut) || cut < 0) throw new TypeError("truncateTo count must be a non-negative integer");
 			const { frames, corruptAt } = read();
 			const valid = frames.length;
@@ -158,6 +166,26 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 				throw new TypeError("the log has a corrupt frame; it cannot be truncated until it is sealed");
 			if (cut > valid) throw new TypeError(`cannot truncate to ${cut}; the log has ${valid} valid frame(s)`);
 			const out = Buffer.concat(frames.slice(0, cut).map(frameOf));
+			// The kept frames verified, and framing is deterministic, so `out` is byte-for-byte the file's prefix and
+			// everything after it is what this call removes. Preserve it before the file is replaced.
+			let original: Buffer;
+			try {
+				original = readFileSync(path);
+			} catch {
+				original = Buffer.alloc(0);
+			}
+			const cutBytes = original.subarray(out.length);
+			let discardedPath: string | null = null;
+			if (cutBytes.length > 0) {
+				discardedPath = `${path}.discarded-${digestOf(cutBytes).toString("hex").slice(0, 16)}`;
+				const keepFd = openSync(discardedPath, "w");
+				try {
+					writeSync(keepFd, cutBytes);
+					fsyncSync(keepFd);
+				} finally {
+					closeSync(keepFd);
+				}
+			}
 			const tmp = `${path}.tmp`;
 			const fd = openSync(tmp, "w");
 			try {
@@ -177,6 +205,7 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 			damaged = false;
 			knownBytes = out.length;
 			count = cut;
+			return discardedPath;
 		},
 		get length(): number {
 			if (!loaded) read();

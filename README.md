@@ -217,7 +217,7 @@ The evolution substrate is designed around explicit records rather than an opaqu
 | **ExperienceStore** | Durable collection of trajectories and derived evidence |
 | **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
 | **Evaluator / Grader** | Explicit source of outcome evidence |
-| **Selection policy** | Deterministic decision over candidate evidence; RRSI/GEPA can provide reference policies |
+| **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
 | **Held-out evaluation** | Separation between adaptation evidence and promotion evidence |
 | **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
 
@@ -269,15 +269,20 @@ A valid proposal does not widen the model's permission.
 
 **Implemented and tested here:**
 
-- The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay, a
-  typed cognition graph, evaluation and conformance records, evolution and promotion records, trust-record mappings for
-  Cogitator, Magpie and Deadbolt, model orchestration and collaboration records, durable storage and the `endo` CLI.
+- The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay,
+  durable storage, and the `endo` CLI (store commands and `endo harness …`).
 - **The Pi attachment** (`adapters/pi`, `endo harness …`): executable resolution, fingerprints and change records,
   neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
   and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
   recovery and replay. Controls are offered only for admitted capabilities.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording is in `research/pi-conformance/1.0.0/`.
+
+**Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
+typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and
+GEPA-inspired rule sets (not ports of RRSI or GEPA; see `evolution/policies/rrsi-inspired.ts`); trust-record mappings
+for Cogitator, Magpie and Deadbolt; model orchestration, routing and collaboration records; record mappings for Codex,
+Prime and REEF; and an OpenAI-compatible provider adapter (whole SSE bodies are buffered, no incremental streaming).
 
 **Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
 says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
@@ -288,8 +293,7 @@ model was called. The boundary and the evidence rules were audited adversarially
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
 spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
 extension for active-tool control,
-live provider integrations beyond the OpenAI-compatible adapter (which buffers whole SSE bodies; no incremental
-streaming), WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
+any live provider integration wired into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
 integration, and attachments for other harnesses.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
@@ -330,8 +334,10 @@ EVOLVE / research loop:
 
 10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
-11. **Reference evolution policies.** Exercise the existing RRSI, GEPA, and baseline policies against real experiment
-    bundles, including held-out evaluation, noise/leakage checks, and deterministic selection.
+11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
+    experiment bundles, including held-out evaluation, noise/leakage checks, and deterministic selection. A faithful
+    RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy
+    context does not carry yet.
 12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
     algorithm part of the Endophasia core.
 13. **Resource-aware cognition.** Feed token/model/tool/branch/test/retry/cost evidence into Compute Appetite and test
@@ -361,12 +367,17 @@ node cli/index.ts harness check  ./endo-root               # identify your `pi` 
 node cli/index.ts harness status ./endo-root               # identity, last change, capability state (starts nothing)
 node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
 node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
-npm test                                                   # deterministic suite (no Pi, no network)
+npm test                                                   # deterministic suite (no Pi, no network; see below)
 ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in check against your installed Pi
 ~~~
 
 Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
 separately.
+
+Known `npm test` failures outside the Pi path: on Linux, six Conformance Lab and Prime 0.9.7 publication tests need GNU coreutils 9.5 or
+later (`mv --exchange`), and two Prime specimen tests need git history this repository does not carry (commit
+`45adf6b`). With older coreutils and a fresh clone, 8 tests fail; see
+[the post-merge audit](docs/audits/pr14-post-merge.md).
 
 ## License
 

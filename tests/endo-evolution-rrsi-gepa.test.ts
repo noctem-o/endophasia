@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ENDO_GEPA_POLICY_V0 } from "../evolution/policies/gepa.ts";
 import type { EndoEvolutionPolicyContextV0 } from "../evolution/policies/ports.ts";
-import { ENDO_RRSI_POLICY_V0 } from "../evolution/policies/rrsi.ts";
+import { ENDO_RRSI_INSPIRED_POLICY_V0 } from "../evolution/policies/rrsi-inspired.ts";
 import type {
 	EndoEvaluationPartitionV0,
 	EndoEvaluationProfileV0,
@@ -109,17 +109,17 @@ function observedOf(decision: EndoSelectionDecisionV0, name: string): Record<str
 	return observed;
 }
 
-describe("ENDO_RRSI_POLICY_V0", () => {
+describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 	it("records its identity and exits through the protocol validator", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75])],
 			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-id");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-id");
 		expect(decision.policy).toEqual({
 			schemaVersion: "endo.selection-policy.v0",
-			name: "rrsi",
+			name: "rrsi-inspired",
 			revision: "v0",
 		});
 		expect(validateEndoSelectionDecisionV0(decision)).not.toBeNull();
@@ -131,7 +131,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.5, 0.75])],
 			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-sel");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-sel");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_A);
 		expect(decision.evidence).toEqual(["endo.evidence.res-a"]);
@@ -174,7 +174,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 			],
 			[heldOutResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-prune");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-prune");
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.candidateId).toBeUndefined();
 		expect(decision.evidence).toEqual([]);
@@ -208,7 +208,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 			],
 			[heldOutResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-at-bound");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-at-bound");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_DEEP);
 		expect(findCondition(decision, "edit-budget-annealed").met).toBe(true);
@@ -232,7 +232,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
 			],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-noise");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-noise");
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.reason).toBe("noise-pruner not met");
 		const noise = findCondition(decision, "noise-pruner");
@@ -257,7 +257,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
 			],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-above-band");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-above-band");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_MID);
 		expect(findCondition(decision, "noise-pruner").met).toBe(true);
@@ -277,7 +277,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.5]),
 			],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-critic");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-critic");
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.reason).toBe("held-out-critic not met");
 		const critic = findCondition(decision, "held-out-critic");
@@ -297,7 +297,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.7]),
 			],
 		);
-		const decision = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-tie");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-tie");
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.reason).toBe("strictly-best-evolve not met");
 		expect(decision.candidateId).toBeUndefined();
@@ -310,16 +310,19 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 	});
 
 	it("records a context without scored evidence as inconclusive", () => {
-		const decision = ENDO_RRSI_POLICY_V0.decide(context([candidate(CANDIDATE_A)]), "endo.evidence.dec-rrsi-empty");
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(
+			context([candidate(CANDIDATE_A)]),
+			"endo.evidence.dec-rrsi-empty",
+		);
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.reason).toBe("evidence-present not met");
 		expect(observedOf(decision, "evidence-present")).toEqual({ candidatesScored: 0 });
 	});
 
 	it("throws when the decision id is outside the evidence namespace", () => {
-		expect(() => ENDO_RRSI_POLICY_V0.decide(context([candidate(CANDIDATE_A)]), "endo.candidate.p12-a")).toThrow(
-			TypeError,
-		);
+		expect(() =>
+			ENDO_RRSI_INSPIRED_POLICY_V0.decide(context([candidate(CANDIDATE_A)]), "endo.candidate.p12-a"),
+		).toThrow(TypeError);
 	});
 
 	it("throws when the context members are not arrays", () => {
@@ -331,7 +334,7 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 			heldOut: [],
 			history: [],
 		} as unknown as EndoEvolutionPolicyContextV0;
-		expect(() => ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-door")).toThrow(TypeError);
+		expect(() => ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-door")).toThrow(TypeError);
 	});
 
 	it("is pure and deterministic over the context", () => {
@@ -341,8 +344,8 @@ describe("ENDO_RRSI_POLICY_V0", () => {
 			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const snapshot = JSON.parse(JSON.stringify(ctx));
-		const first = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-pure");
-		const second = ENDO_RRSI_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-pure");
+		const first = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-pure");
+		const second = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-pure");
 		expect(ctx).toEqual(snapshot);
 		expect(second).toEqual(first);
 	});

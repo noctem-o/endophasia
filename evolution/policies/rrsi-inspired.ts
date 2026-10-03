@@ -1,38 +1,41 @@
 /**
- * Phase 12 — the RRSI selection policy: the substrate record of RRSI's annealing and pruning over
- * the recorded experiment evidence (README "## Phase 7 — RRSI + REEF providers": the policy seam
- * RRSI plugs into; the provider mechanism itself is provider-side, and this module decides over
- * the context the seam exposes and records an ordinary EndoSelectionDecisionV0 named by the
- * policy's identity).
+ * An RRSI-inspired selection policy over the recorded experiment evidence. It is NOT an implementation of RRSI
+ * (Regularized Recursive Self-Improvement, github.com/google-research/rrsi); it borrows two of RRSI's ideas (bound
+ * how many edits a candidate may bundle, and do not accept a gain that evaluation noise could explain) and implements
+ * each with its own invented rule. A decision recorded under this policy's identity is evidence about these rules
+ * only, never a claim about what RRSI would have selected.
  *
- * RRSI (github.com/google-research/rrsi) anneals the search: the deeper a candidate sits in the
- * candidate tree, the fewer edits it may carry, and an improvement that the noise band cannot
- * distinguish from chance is not a result. Under the v0 policy seam the mechanisms are recorded
- * as conditions, in policy order:
+ * How it differs from upstream RRSI (checked against google-research/rrsi at be50316, 2026-09-23):
+ *
+ * | Mechanism | Upstream RRSI | This policy |
+ * | :--- | :--- | :--- |
+ * | Edit budget | cosine annealing over rounds, b_t = ceil(b_min + (b_max - b_min) / 2 * (1 + cos(pi t / T))), enforced on the proposer | max(1, ceil(4 * 0.5^depth)) over the candidate's recorded parent depth, checked after the fact; base and decay are invented |
+ * | Noise band | delta per instance, fixed in config or calibrated as z * sd of the null score difference of repeated base evaluations (or a trial bootstrap); a run refuses to start without one | the mean (max - min) trial spread over the candidates in the context; when it cannot be computed the condition is treated as met |
+ * | Acceptance floor | S' >= S* - delta against the best score so far | gain over the recorded parent must exceed the band |
+ * | Cost rule | gaining candidates must satisfy relative token cost change <= beta0 + beta1 * gain; inside the band a shaped score/cost/novelty rule | none: the policy context carries no cost |
+ * | Critic | a leakage screen (domain denylist plus LLM review) before evaluation | evolve gain with held-out loss against the parent |
+ * | Pruning | components whose recent yield is not positive are offered to the proposer for removal | not modelled |
+ *
+ * Conditions, in policy order:
  *
  * 1. `evidence-present`: at least one candidate carries scored evolve-set evidence;
  * 2. `edit-budget-annealed`: the unique strict best on the evolve set may carry at most
- *    max(1, ceil(4 * 0.5^depth)) mutations, where depth is its recorded parent chain (a root
- *    candidate — no parent, or a parent absent from the context — is at depth 0); a deeper
- *    candidate with more recorded edits than the budget is pruned;
- * 3. `noise-pruner`: the band is the mean, over every candidate with at least two scored
- *    evolve-set trials, of that candidate's (max - min) evolve-set trial score; the best
- *    candidate is pruned when its evolve-set gain over its scored parent is within the band.
- *    When the band cannot be calibrated, or the parent is not scored, the condition is honestly
- *    met, never a fabricated band;
- * 4. `held-out-critic`: the best candidate is screened when it improves on the evolve set while
- *    degrading on the held-out set — the leakage direction; absent parent evidence is an honest
- *    absence, not a screen;
- * 5. `strictly-best-evolve`: exactly one candidate is the strict best on the evolve set — a tie
- *    is not a best;
+ *    max(1, ceil(4 * 0.5^depth)) mutations, where depth is its recorded parent chain (a root candidate, with no
+ *    parent or a parent absent from the context, is at depth 0);
+ * 3. `noise-pruner`: the band is the mean, over every candidate with at least two scored evolve-set trials, of that
+ *    candidate's (max - min) evolve-set trial score; the best candidate is pruned when its evolve-set gain over its
+ *    scored parent is within the band. When the band cannot be computed, or the parent is not scored, the condition
+ *    is recorded as met with `bandSource: "unavailable"` (see docs/audits/pr14-post-merge.md: whether that should
+ *    instead make the decision inconclusive is an open decision);
+ * 4. `held-out-critic`: the best candidate is screened when it improves on the evolve set while degrading on the
+ *    held-out set; absent parent evidence is an absence, not a screen;
+ * 5. `strictly-best-evolve`: exactly one candidate is the strict best on the evolve set (a tie is not a best);
  * 6. `held-out-present`: the best candidate carries scored held-out evidence.
  *
- * The outcome is "selected" only when every condition is met; otherwise "inconclusive", with the
- * first unmet condition named. Conditions 2-4 apply to the unique strict best when one exists;
- * without one they are recorded as not applicable (honestly met), so the tie or the missing
- * evidence is the named reason. A pruned best is never selected and an unranked candidate is
- * never guessed at. The policy is pure and deterministic over the context, reads nothing beyond
- * it, and exits through the protocol validator of the decision it records.
+ * The outcome is "selected" only when every condition is met; otherwise "inconclusive", with the first unmet
+ * condition named. Conditions 2-4 apply to the unique strict best when one exists; without one they are recorded as
+ * not applicable, so the tie or the missing evidence is the named reason. The policy is pure and deterministic over
+ * the context, reads nothing beyond it, and exits through the protocol validator of the decision it records.
  */
 
 import type { EndoCandidateV0, EndoSelectionConditionV0, EndoSelectionDecisionV0 } from "../../protocol/evolution.ts";
@@ -41,14 +44,14 @@ import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
 import { type CandidateEvidenceV0, collectEvidenceV0, meanV0 } from "./baseline.ts";
 import type { EndoEvolutionPolicyContextV0, EndoEvolutionPolicyV0 } from "./ports.ts";
 
-/** The recorded identity of the RRSI policy. */
-const RRSI_POLICY_IDENTITY_V0 = {
+/** The recorded identity of the RRSI-inspired policy. */
+const RRSI_INSPIRED_POLICY_IDENTITY_V0 = {
 	schemaVersion: "endo.selection-policy.v0",
-	name: "rrsi",
+	name: "rrsi-inspired",
 	revision: "v0",
 } as const;
 
-/** The RRSI annealed edit budget at the given depth of the candidate tree. */
+/** The invented depth-decayed edit budget (not RRSI's round-based cosine schedule). */
 function editBudgetV0(depth: number): number {
 	return Math.max(1, Math.ceil(4 * 0.5 ** depth));
 }
@@ -74,7 +77,7 @@ function candidateDepthV0(candidates: readonly EndoCandidateV0[], candidateId: s
 }
 
 /**
- * The RRSI noise band: the mean, over every candidate with at least two scored evolve-set trials,
+ * The noise band: the mean, over every candidate with at least two scored evolve-set trials,
  * of that candidate's (max - min) evolve-set trial score. Null when the band cannot be calibrated
  * from the context (an honest absence, never a fabricated zero).
  */
@@ -94,11 +97,11 @@ function noiseBandV0(evidence: readonly CandidateEvidenceV0[]): number | null {
 }
 
 /**
- * The RRSI policy: annealed edit budget, noise-band pruning, held-out critic screen, and the
- * baseline's own gate — a unique strict best on the evolve set carrying held-out evidence.
+ * The RRSI-inspired policy: depth-decayed edit budget, trial-spread noise band, held-out critic screen, and the
+ * baseline's own gate (a unique strict best on the evolve set carrying held-out evidence).
  */
-export const ENDO_RRSI_POLICY_V0: EndoEvolutionPolicyV0 = {
-	policy: { ...RRSI_POLICY_IDENTITY_V0 },
+export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
+	policy: { ...RRSI_INSPIRED_POLICY_IDENTITY_V0 },
 	decide(context: EndoEvolutionPolicyContextV0, id: string): EndoSelectionDecisionV0 {
 		if (typeof id !== "string" || !isEndoIdentifierV0(id, "evidence")) {
 			throw new TypeError("decision id must be an endo.evidence.* identifier");
@@ -254,7 +257,7 @@ export const ENDO_RRSI_POLICY_V0: EndoEvolutionPolicyV0 = {
 			schemaVersion: "endo.selection-decision.v0",
 			id,
 			experimentId: context.experiment.id,
-			policy: { ...RRSI_POLICY_IDENTITY_V0 },
+			policy: { ...RRSI_INSPIRED_POLICY_IDENTITY_V0 },
 			outcome: "inconclusive",
 			conditions,
 			evidence: [],
@@ -270,7 +273,7 @@ export const ENDO_RRSI_POLICY_V0: EndoEvolutionPolicyV0 = {
 		}
 
 		const validated = validateEndoSelectionDecisionV0(decision);
-		if (validated === null) throw new TypeError("RRSI selection decision failed validation");
+		if (validated === null) throw new TypeError("RRSI-inspired selection decision failed validation");
 		return validated;
 	},
 };

@@ -156,6 +156,28 @@ describe("storage/log.ts — the durable frame log", () => {
 		expect(log.length).toBe(3);
 	});
 
+	it("truncateTo preserves the bytes it cuts, so a damaged length prefix read as a torn tail loses nothing", () => {
+		const dir = tempDir("endo-log-lenflip-");
+		const file = join(dir, "a.log");
+		const log = createEndoFrameLogV0(file);
+		for (const word of ["zero", "one1", "two2", "thr3", "fou4"]) log.append(Buffer.from(word));
+		const intact = readFileSync(file);
+		const frameBytes = 4 + 4 + 32;
+		const damaged = Buffer.from(intact);
+		damaged[frameBytes] = (damaged[frameBytes] ?? 0) ^ 0x01; // high byte of frame 2's length prefix
+		writeFileSync(file, damaged);
+		const reopened = createEndoFrameLogV0(file);
+		const classified = reopened.read();
+		// The damage is indistinguishable from a torn append: four complete frames read as torn bytes.
+		expect(classified).toMatchObject({ truncated: true, corruptAt: null });
+		expect(classified.frames).toHaveLength(1);
+		const kept = reopened.truncateTo(1);
+		expect(kept).not.toBeNull();
+		expect(readFileSync(kept!)).toEqual(damaged.subarray(frameBytes));
+		expect(Buffer.concat([readFileSync(file), readFileSync(kept!)])).toEqual(damaged);
+		expect(reopened.truncateTo(1)).toBeNull();
+	});
+
 	it("reports the first corrupted frame by 1-based index and serves the valid prefix", () => {
 		const file = join(tempDir("endo-log-corrupt-"), "a.log");
 		const log = createEndoFrameLogV0(file);

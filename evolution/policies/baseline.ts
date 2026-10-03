@@ -11,7 +11,7 @@
  * is a finite number; a trial with none contributes nothing (an honest absence, never a fabricated
  * zero). A candidate's score is the mean of its scored evolve-set trials; its held-out evidence is
  * its scored held-out trials. The convention's helpers (trialScoreV0, meanV0, collectEvidenceV0)
- * are exported and shared by the RRSI and GEPA policy modules.
+ * are exported and shared by the RRSI-inspired and GEPA policy modules.
  *
  * The decision: select the unique strict best on the evolve set, and only when that candidate also
  * carries held-out evidence. Any other situation — no scored evidence at all, a tie for best, a best
@@ -33,7 +33,7 @@ const BASELINE_POLICY_IDENTITY_V0 = {
 } as const;
 
 /** The per-candidate evidence a decision is built from, in deterministic (id) order. Shared by the
- * RRSI and GEPA policy modules. */
+ * RRSI-inspired and GEPA policy modules. */
 export interface CandidateEvidenceV0 {
 	candidateId: string;
 	evolveScores: number[];

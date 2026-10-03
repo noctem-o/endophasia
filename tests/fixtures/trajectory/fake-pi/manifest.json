@@ -5,55 +5,55 @@
 		{
 			"name": "baseline",
 			"differs": "nothing",
-			"eventsSha256": "2bdd2732ca0665a600ff8e96b1a96748b6e23607d32c4a235536dbc7818d3aed",
+			"eventsSha256": "3043dbc25587613f0b809eba594de474e005777d67ffed487aacccae05c7ce3c",
 			"eventCount": 39
 		},
 		{
 			"name": "baseline-again",
 			"differs": "nothing: a second recording of baseline (new process, ids and timestamps)",
-			"eventsSha256": "859cb9bec2fe23ab7ce094547f4e01b817cbfda3a0c63e680c07f67ffe00f317",
+			"eventsSha256": "3688749ff38def7d81538758a6256886b8cc36a0b45ace8d534a07cc7aaa0154",
 			"eventCount": 39
 		},
 		{
 			"name": "tools-reordered",
 			"differs": "the two tool calls in reverse order",
-			"eventsSha256": "1a3891f67629d0295e050a8cb1eb4377f263700a0338f2b094858549b7bc4a09",
+			"eventsSha256": "0dfea6c220363076e510c46db3ccdbac8cae4fd2972b5dd3f2efa1bda3ea2a17",
 			"eventCount": 39
 		},
 		{
 			"name": "tool-args-differ",
 			"differs": "the first tool call reads another path",
-			"eventsSha256": "846359bb9acbbb463470cdc41f9937748d3d890e48f4040b84d9c2090648bb1b",
+			"eventsSha256": "97445c3e2515db333bf8eba47cb814c06bf7b19ea2409005531e765709c23945",
 			"eventCount": 39
 		},
 		{
 			"name": "tool-errors",
 			"differs": "the second tool call reports isError",
-			"eventsSha256": "ae93578c1d57946be5e05df6fc70a758c8f4879c872b03d1af508fe679fe6a1b",
+			"eventsSha256": "0ff38eddde07f0567b1b7c94065d03ea6a04bf3b06a0ed4fb4589f6f12e04717",
 			"eventCount": 39
 		},
 		{
 			"name": "no-usage",
 			"differs": "Pi reports no usage on its assistant messages",
-			"eventsSha256": "2e2e76f049d1daefb88d71df47d6dc56f35a84f88d42aae0dfd85fe4c6d18c72",
+			"eventsSha256": "6008213dff4b0764ffa044a4b87f37bb87954d7576f8a19ea96fe854ebb55f62",
 			"eventCount": 39
 		},
 		{
 			"name": "unknown-lifecycle",
 			"differs": "an undocumented agent_paused record inside the run",
-			"eventsSha256": "9ae2300008392aed1af4612e5f8128fd3dac8c957c4bd41eb4679ffc42d492ef",
+			"eventsSha256": "797f769be9f09c517b98bf848243b83fdd3dbbd8db9a1f14035bc6d3d96b1653",
 			"eventCount": 41
 		},
 		{
 			"name": "other-fingerprint",
 			"differs": "the fake Pi reports version 1.0.1",
-			"eventsSha256": "1bf2ed155a9e0f810c29806844d5358fa04565c4effbe30c2f05b4d30ae69c34",
+			"eventsSha256": "d10d9534287809b15d4bb607e1e1a597835f695a6667e0b1081e6d4324dcefb5",
 			"eventCount": 39
 		},
 		{
 			"name": "other-digest-domain",
 			"differs": "the same calls, with argument digests made under another digest key",
-			"eventsSha256": "b8bedac53e68166e638a0563a010dd63eb063681b6c0b91604747440848227cd",
+			"eventsSha256": "d52c68ccae7851f3b112e6728d724b251909dc795e15f3b6f1371c33618081de",
 			"eventCount": 39
 		}
 	]

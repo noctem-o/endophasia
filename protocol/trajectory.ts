@@ -261,7 +261,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
-const KEY_ID = /^endo\.digest-key\.[0-9a-f]{32}$/;
+const KEY_ID = /^(?:endo\.digest-key\.[0-9a-f]{32}|[a-z][a-z0-9-]{0,62})$/;
 
 function keys(value: Record<string, unknown>, allowed: readonly string[], required = allowed): boolean {
 	return (

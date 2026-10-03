@@ -309,10 +309,14 @@ A valid proposal does not widen the model's permission.
     DIVERGED (first index, both entries, common prefix) or UNAVAILABLE, aligned by position. Usage and timing report
     deltas only and are never judged. Fingerprint, mapping, digest-domain, configuration and model differences are
     flagged, never mixed silently. A record's digest covers content identities, not store paths.
-  - Since `pi-rpc-mapping.3`, `tool.started` records the arguments as an HMAC-SHA256 under a comparison-domain key
-    held outside the store (by default one per installation, `~/.config/endophasia/digest-key`), with the key's id.
-    `harness.attached` records the mapping version and the digest domain. Digests from different domains are never
-    compared. Earlier recordings have none of these.
+  - Since `pi-rpc-mapping.3`, `tool.started` records the arguments as an HMAC-SHA256 with the key's id.
+    `harness.attached` records the mapping version and the digest domain.
+    - **Key:** an installation key generated automatically, with owner-only permissions, in Endophasia's data
+      directory; no setup.
+    - **Comparison:** digests from different domains are never compared.
+    - **Fixtures:** they use a committed public key (`fixture-public`) whose digests offer no secrecy.
+
+    Earlier recordings have none of these.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.

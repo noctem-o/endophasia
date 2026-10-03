@@ -89,6 +89,12 @@ export interface PiAttachmentOptionsV0 {
 	 * this process's environment selects (storage/digest-key.ts), created on first use; never Pi's environment.
 	 */
 	readonly digestKey?: EndoDigestKeyV0;
+	/**
+	 * "private" (default): a normal session under the installation key; a public fixture key is refused. "fixture": the
+	 * fixture recorder, recording a synthetic scenario; `digestKey` must be the committed public fixture key
+	 * (storage/digest-key.ts), and the installation key is refused. Keeps the two digest domains from mixing.
+	 */
+	readonly digestDomain?: "private" | "fixture";
 }
 
 export interface PiIdentificationV0 {
@@ -381,10 +387,23 @@ export class PiAttachmentV0 {
 
 	#digestKey: EndoDigestKeyV0 | null = null;
 
-	/** @internal The comparison-domain key, resolved once per attachment. */
+	/** @internal The comparison-domain key, resolved once per attachment and checked against the digest domain. */
 	digestKey(): EndoDigestKeyV0 {
-		this.#digestKey ??= this.options.digestKey ?? endoDigestKeyFromEnvironmentV0();
-		return this.#digestKey;
+		if (this.#digestKey !== null) return this.#digestKey;
+		const fixture = this.options.digestDomain === "fixture";
+		if (fixture && this.options.digestKey === undefined)
+			throw new TypeError("a fixture recording needs a committed public fixture key (digestKey); none was given");
+		const key = this.options.digestKey ?? endoDigestKeyFromEnvironmentV0();
+		if (!fixture && key.public)
+			throw new TypeError(
+				`refusing to record a normal session under the public fixture key ${key.keyId}: its digests offer no secrecy`,
+			);
+		if (fixture && !key.public)
+			throw new TypeError(
+				`refusing to record a fixture under the installation key ${key.keyId}: fixtures are committed, so they use the public fixture key`,
+			);
+		this.#digestKey = key;
+		return key;
 	}
 
 	/** @internal Re-identify for a reconnect: the recorded identification and the capability state it supports. */

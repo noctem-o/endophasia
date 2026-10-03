@@ -14,8 +14,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { piToolArgsDigestV0 } from "../adapters/pi/mapping.ts";
 import { projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
+import { digestKeyCommand } from "../cli/digest-key.ts";
 import { trajectoryDiffCommand, trajectoryFromStoreV0, trajectoryShowCommand } from "../cli/trajectory.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import {
@@ -28,7 +30,15 @@ import {
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0, endoRecordDigestV0 } from "../runtime/contracts/trajectory.ts";
-import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
+import { PI_LIFECYCLE_FIXTURE_DIGEST_KEY } from "../scripts/record-lifecycle-fixture.ts";
+import {
+	ENDO_FIXTURE_DIGEST_KEYS_V0,
+	endoDigestKeyFromEnvironmentV0,
+	endoDigestKeyPathV0,
+	loadEndoFixtureDigestKeyV0,
+	loadOrCreateEndoDigestKeyV0,
+	readEndoDigestKeyV0,
+} from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { FAKE_TRAJECTORY_DIGEST_KEYS } from "./fixtures/trajectory/record-fake.ts";
 
@@ -55,6 +65,7 @@ function piSession(events: readonly EndoEventV0[]): string {
 }
 
 const KEY_A = FAKE_TRAJECTORY_DIGEST_KEYS.a;
+const FIXTURE_KEY_FILE = join(REPO, "research", "fixture-keys", "fixture-public.json");
 
 /** Load a committed recording into a scratch durable store and project it through the CLI's read-only path. */
 function trajectory(directory: string, name: string, label?: string): EndoTrajectoryV0 {
@@ -408,7 +419,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		expect(t.environment.attachments[0]!.mapping).toEqual({ status: "reported", value: "pi-rpc-mapping.3" });
 		expect(t.environment.attachments[0]!.digestKey).toEqual({
 			status: "reported",
-			value: { keyId: KEY_A.keyId, domain: "test-a" },
+			value: { keyId: "fixture-public", domain: "fixture-public" },
 		});
 		expectSelfExact(t);
 	});
@@ -418,7 +429,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		expect(result.a.eventsSha256).not.toBe(result.b.eventsSha256);
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
 		expect(result.flags).toEqual([]);
-		expect(result.digest).toBe("47490a3c49453a71e5c6b700a006a97b4aee9e8537bbbaa532d82cdaf28cfc20");
+		expect(result.digest).toBe("7d55bddb98e8675e344030934be9b52a16f0d8884cd839192b8265d6d71fa6cb");
 	});
 
 	it("reordered tool calls diverge at the first call; lifecycle and outcome stay EXACT", () => {
@@ -432,7 +443,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		});
 		expect(result.layers.lifecycle.status).toBe("EXACT");
 		expect(result.layers.outcome.status).toBe("EXACT");
-		expect(result.digest).toBe("240eb4b9af41f31e71b1c4b39aaf14f0849c6d438a83dd98b6b4948751feb783");
+		expect(result.digest).toBe("deb78fa5e9e10b1434a4da06d19df534cfde7e3cb3ba593fdd282702002b19cc");
 	});
 
 	it("the same tool with different arguments diverges by argument digest", () => {
@@ -443,7 +454,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			a: { name: { value: "read" }, argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "a.txt" }) } },
 			b: { name: { value: "read" }, argsDigest: { value: piToolArgsDigestV0(KEY_A, { path: "b.txt" }) } },
 		});
-		expect(result.digest).toBe("6a77455b47938da2b7289af167f5afff6e281cbba65ee494b9b2fcd28a84d049");
+		expect(result.digest).toBe("fbea43c734e4be267b309e9dbadd81104544b20eecb249ba960e7547ee4bf806");
 	});
 
 	it("a tool result status difference diverges at that call", () => {
@@ -455,7 +466,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			a: { result: { value: "ok" } },
 			b: { result: { value: "error" } },
 		});
-		expect(result.digest).toBe("f33b1ca622ab31d19144044be23d1275863664bd270b2c15dad3d94040fc5cea");
+		expect(result.digest).toBe("7f97c5cbe02ea2940d6c50fdd1b44782173378b614af9a396ccf53208851cc28");
 	});
 
 	it("one side missing usage: usage is UNAVAILABLE for that side, the judged layers are unaffected", () => {
@@ -466,7 +477,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			b: "Pi reported no usage on any assistant message of this session",
 		});
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("7a8d3bfe1119ab8da71211de589a3a05aa2579c4a0056462e87d322f21d4e13b");
+		expect(result.digest).toBe("f6d6053856473b3bdf83f66763e8623e59add512f133722b0b34c776839e3c85");
 	});
 
 	it("an unknown runtime lifecycle record is a lifecycle divergence where it appeared", () => {
@@ -478,7 +489,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 			b: { kind: "lifecycle.unrecognized-runtime-event", facts: { runtimeEvent: "agent_paused" } },
 		});
 		expect(result.layers.tools.status).toBe("EXACT");
-		expect(result.digest).toBe("cd6ff03db445bd132e464398129c78107f385690269141e16027e19420d95338");
+		expect(result.digest).toBe("6bb1ef51db4f5eccf6f035fc15b1aa889b1d57afda31796f1c88d31beb0c76d7");
 	});
 
 	it("an undefined lifecycle.* kind is kept, unrecognized, by payload digest, and diverges", () => {
@@ -516,7 +527,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		expect(result.flags.map((flag) => flag.kind)).toEqual(["runtime-fingerprint-differs", "runtime-version-differs"]);
 		expect(result.flags[1]).toEqual({ kind: "runtime-version-differs", a: ["1.0.0"], b: ["1.0.1"] });
 		for (const layer of ["lifecycle", "tools", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("af44ffe82126d3a9b90d0e366e8f1c3eaebd876930c29f09fb1ad603645d9b25");
+		expect(result.digest).toBe("93254b8adce0175c4563a6ce8c409ded2e5297246e979b2cf807e8a1890989b0");
 	});
 
 	it("real vs fake: model, mapping and fingerprint differences are all flagged, never mixed silently", () => {
@@ -561,7 +572,8 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		const other = trajectory(FAKE, "other-digest-domain");
 		const keyB = FAKE_TRAJECTORY_DIGEST_KEYS.b;
 		const result = compare(baseline(), other);
-		const reason = `different digest domains (${[KEY_A.keyId, keyB.keyId].sort().join(" and ")})`;
+		const reason = `different digest domains (fixture-public and fixture-public-alt); to compare across machines, share one key: docs/trajectory.md#comparing-across-machines`;
+		expect([KEY_A.keyId, keyB.keyId]).toEqual(["fixture-public", "fixture-public-alt"]);
 		expect(result.layers.tools).toEqual({
 			status: "UNAVAILABLE",
 			a: null,
@@ -574,7 +586,7 @@ describe("FAKE hostile recordings (fake Pi: proves the comparison sees each diff
 		});
 		expect(result.flags).toEqual([{ kind: "digest-domain-differs", a: [KEY_A.keyId], b: [keyB.keyId] }]);
 		for (const layer of ["lifecycle", "outcome"] as const) expect(result.layers[layer].status).toBe("EXACT");
-		expect(result.digest).toBe("6121e4f2fc275dd8a61be04fdb3fad39fc7d2a984adf7c2e5812d1e60e6d235f");
+		expect(result.digest).toBe("c1d1cfeb61c952e08946b82a51f8ede1dca68ceea3337953b64e674e1297618e");
 	});
 
 	it("a name or result difference still diverges across digest domains: only the digest is unverifiable", () => {
@@ -625,42 +637,137 @@ describe("keyed argument digests (the guessing risk they address)", () => {
 	});
 });
 
-describe("the comparison-domain key file (storage/digest-key.ts)", () => {
+describe("the installation key file (storage/digest-key.ts): zero-config", () => {
 	const scratch = () => {
 		const dir = mkdtempSync(join(tmpdir(), "endo-digest-key-"));
 		dirs.push(dir);
 		return dir;
 	};
+	const warnings = () => {
+		const seen: string[] = [];
+		return { seen, warn: (message: string) => seen.push(message) };
+	};
 
-	it("resolves ENDO_DIGEST_KEY_FILE, then XDG_CONFIG_HOME, then HOME; never inside a store", () => {
-		expect(endoDigestKeyPathV0({ ENDO_DIGEST_KEY_FILE: "/k", XDG_CONFIG_HOME: "/x", HOME: "/h" })).toBe("/k");
-		expect(endoDigestKeyPathV0({ XDG_CONFIG_HOME: "/x", HOME: "/h" })).toBe("/x/endophasia/digest-key");
-		expect(endoDigestKeyPathV0({ HOME: "/h" })).toBe("/h/.config/endophasia/digest-key");
+	it("lives in Endophasia's data directory: ENDO_DIGEST_KEY_FILE, then XDG_DATA_HOME, then HOME; never in a store", () => {
+		expect(endoDigestKeyPathV0({ ENDO_DIGEST_KEY_FILE: "/k", XDG_DATA_HOME: "/x", HOME: "/h" })).toBe("/k");
+		expect(endoDigestKeyPathV0({ XDG_DATA_HOME: "/x", HOME: "/h" })).toBe("/x/endophasia/digest-key");
+		expect(endoDigestKeyPathV0({ HOME: "/h" })).toBe("/h/.local/share/endophasia/digest-key");
 		expect(() => endoDigestKeyPathV0({})).toThrow(/no digest key location/);
 		// The test run itself never touches the operator's installation key (vitest.config.ts).
 		expect(process.env.ENDO_DIGEST_KEY_FILE).toMatch(/endo-vitest-digest-key-/);
 	});
 
-	it("is created once, 0600 in a 0700 directory, and reloads to the same key", () => {
-		const path = join(scratch(), "nested", "digest-key");
-		const created = loadOrCreateEndoDigestKeyV0(path);
+	it("is generated on first use, owner-only, without a prompt or warning, and reloads to the same key", () => {
+		const path = join(scratch(), "data", "endophasia", "digest-key");
+		const { seen, warn } = warnings();
+		const created = endoDigestKeyFromEnvironmentV0({ XDG_DATA_HOME: join(path, "..", "..") }, warn);
 		expect(statSync(path).mode & 0o777).toBe(0o600);
 		expect(statSync(join(path, "..")).mode & 0o777).toBe(0o700);
-		expect(created.domain).toBe("installation");
-		const again = loadOrCreateEndoDigestKeyV0(path);
+		expect(created).toMatchObject({ domain: "installation", public: false });
+		expect(created.keyId).toMatch(/^endo\.digest-key\.[0-9a-f]{32}$/);
+		const again = loadOrCreateEndoDigestKeyV0(path, warn);
 		expect(again.keyId).toBe(created.keyId);
 		expect(again.digest({ a: 1 })).toEqual(created.digest({ a: 1 }));
-		expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ schemaVersion: "endo.digest-key.v0" });
+		expect(seen).toEqual([]);
 	});
 
-	it("refuses a key file group or others can read, and a malformed one", () => {
+	it("wider than owner-only permissions: warns clearly and continues, and never chmods the file", () => {
 		const path = join(scratch(), "digest-key");
-		loadOrCreateEndoDigestKeyV0(path);
+		const created = loadOrCreateEndoDigestKeyV0(path);
 		chmodSync(path, 0o644);
-		expect(() => loadOrCreateEndoDigestKeyV0(path)).toThrow(/readable by group or others/);
+		const { seen, warn } = warnings();
+		expect(loadOrCreateEndoDigestKeyV0(path, warn).keyId).toBe(created.keyId);
+		expect(seen).toEqual([expect.stringMatching(/has mode 0644, wider than owner-only.*chmod 600/)]);
+		expect(statSync(path).mode & 0o777).toBe(0o644);
+		// Owner-only read is owner-only: no warning.
+		chmodSync(path, 0o400);
+		const quiet = warnings();
+		readEndoDigestKeyV0(path, quiet.warn);
+		expect(quiet.seen).toEqual([]);
+	});
+
+	it("refuses a malformed file, and a public fixture key as the installation key", () => {
 		const bad = join(scratch(), "digest-key");
 		writeFileSync(bad, '{"schemaVersion":"endo.digest-key.v0","domain":"x","key":"abcd"}', { mode: 0o600 });
-		expect(() => loadOrCreateEndoDigestKeyV0(bad)).toThrow(/not an endo.digest-key.v0 file/);
+		expect(() => readEndoDigestKeyV0(bad)).toThrow(/not an endo.digest-key.v0 file/);
+		const copy = join(scratch(), "digest-key");
+		writeFileSync(copy, readFileSync(FIXTURE_KEY_FILE), { mode: 0o600 });
+		expect(() => readEndoDigestKeyV0(copy)).toThrow(
+			/public fixture key \(fixture-public\).*never used as the installation key/,
+		);
+	});
+
+	it("`endo digest-key id` prints the id, domain and path, and never creates a key", () => {
+		const dir = scratch();
+		const path = join(dir, "digest-key");
+		expect(() => digestKeyCommand(["id"], { ENDO_DIGEST_KEY_FILE: path })).toThrow(/no digest key at/);
+		expect(() => statSync(path)).toThrow();
+		const key = loadOrCreateEndoDigestKeyV0(path);
+		let out = "";
+		const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			out += String(chunk);
+			return true;
+		});
+		try {
+			digestKeyCommand(["id"], { ENDO_DIGEST_KEY_FILE: path });
+		} finally {
+			spy.mockRestore();
+		}
+		expect(JSON.parse(out)).toEqual({ keyId: key.keyId, domain: "installation", path });
+		expect(out).not.toContain(JSON.parse(readFileSync(path, "utf8")).key);
+		expect(() => digestKeyCommand([], { ENDO_DIGEST_KEY_FILE: path })).toThrow(/usage/);
+	});
+});
+
+describe("the public fixture key (research/fixture-keys/)", () => {
+	it("is named fixture-public, marked public, and pinned to its bytes", () => {
+		const key = loadEndoFixtureDigestKeyV0(FIXTURE_KEY_FILE);
+		expect(key).toMatchObject({ keyId: "fixture-public", domain: "fixture-public", public: true });
+		expect(key.fingerprint).toBe(ENDO_FIXTURE_DIGEST_KEYS_V0["fixture-public"]);
+		const file = JSON.parse(readFileSync(FIXTURE_KEY_FILE, "utf8"));
+		const forged = join(mkdtempSync(join(tmpdir(), "endo-digest-key-")), "fixture-public.json");
+		dirs.push(join(forged, ".."));
+		writeFileSync(forged, JSON.stringify({ ...file, key: "ab".repeat(32) }));
+		expect(() => loadEndoFixtureDigestKeyV0(forged)).toThrow(/does not hold the pinned fixture-public key/);
+		writeFileSync(forged, JSON.stringify({ ...file, public: false }));
+		expect(() => loadEndoFixtureDigestKeyV0(forged)).toThrow(/not a committed public fixture key/);
+		expect(readFileSync(join(FIXTURE_KEY_FILE, "..", "README.md"), "utf8")).toMatch(/offer no secrecy/);
+	});
+
+	it("recording a normal session under fixture-public is refused", () => {
+		const pi = new PiAttachmentV0({
+			root: mkdtempSync(join(tmpdir(), "endo-digest-key-")),
+			digestKey: loadEndoFixtureDigestKeyV0(FIXTURE_KEY_FILE),
+		});
+		expect(() => pi.digestKey()).toThrow(
+			/refusing to record a normal session under the public fixture key fixture-public/,
+		);
+	});
+
+	it("recording a fixture under an installation key is refused, and so is a fixture with no key", () => {
+		const root = mkdtempSync(join(tmpdir(), "endo-digest-key-"));
+		dirs.push(root);
+		const installation = loadOrCreateEndoDigestKeyV0(join(root, "digest-key"));
+		const pi = new PiAttachmentV0({ root, digestKey: installation, digestDomain: "fixture" });
+		expect(() => pi.digestKey()).toThrow(
+			/refusing to record a fixture under the installation key endo\.digest-key\./,
+		);
+		expect(() => new PiAttachmentV0({ root, digestDomain: "fixture" }).digestKey()).toThrow(
+			/a fixture recording needs a committed public fixture key/,
+		);
+		// The two allowed pairings.
+		expect(new PiAttachmentV0({ root, digestKey: installation }).digestKey().keyId).toBe(installation.keyId);
+		expect(
+			new PiAttachmentV0({
+				root,
+				digestKey: loadEndoFixtureDigestKeyV0(FIXTURE_KEY_FILE),
+				digestDomain: "fixture",
+			}).digestKey().keyId,
+		).toBe("fixture-public");
+	});
+
+	it("the fixture recorder records under fixture-public, never the installation key", () => {
+		expect(PI_LIFECYCLE_FIXTURE_DIGEST_KEY).toBe(FIXTURE_KEY_FILE);
 	});
 });
 

@@ -51,20 +51,25 @@ JSON under a **comparison-domain key**, together with the key's id (`runtime/con
 key, a guess cannot be checked. The key id is derived from the key by HMAC, so it identifies the key without revealing
 it. `harness.attached` records the attachment's digest domain (key id and label), never the key.
 
-**The key.** It is held outside every store (`storage/digest-key.ts`). It comes from `ENDO_DIGEST_KEY_FILE`, else
-`$XDG_CONFIG_HOME/endophasia/digest-key`, else `~/.config/endophasia/digest-key`. By default there is one key per
-installation, so every local store compares with every other. It is created on first use with 32 random bytes, mode
-0600, in a 0700 directory, and is never overwritten. A key file that group or others can read is refused. To compare
-stores across machines, share the key file between them. Anyone holding the key can confirm guesses, so treat it as a
-secret.
+**The key needs no setup.** The installation key is generated automatically on first use, in Endophasia's own data
+directory (`$XDG_DATA_HOME/endophasia/digest-key`, default `~/.local/share/endophasia/digest-key`;
+`ENDO_DIGEST_KEY_FILE` overrides it), with 32 random bytes, mode 0600 in a 0700 directory. It is never overwritten and
+never chmodded. Every store recorded on the machine shares it, so comparing runs on one machine just works. If the
+file's permissions are wider than owner-only, Endophasia warns and continues. Anyone who can read the key can confirm
+guesses against the digests made with it.
 
 **Why not a per-store salt.** It would make every cross-store comparison impossible, and cross-store comparison is
 the point (run-to-run, recording vs replay).
 
 **Comparing.** Digests are compared only within one digest domain (the same key id). Digests made under different
 key ids are `UNAVAILABLE` ("different digest domains"), never `DIVERGED`: two HMACs under different keys say nothing
-about whether the arguments were equal. A difference in the call's name or result still diverges. A domain
-difference is also listed in `flags` (`digest-domain-differs`).
+about whether the arguments were equal. The reason carries a one-line hint pointing to
+[Comparing across machines](#comparing-across-machines) (advanced). A difference in the call's name or result still diverges,
+and the other layers compare as usual. A domain difference is also listed in `flags` (`digest-domain-differs`).
+
+**Fixtures** are recorded under a committed public key, `fixture-public` (`research/fixture-keys/`), whose digests offer
+no secrecy. Only the fixture recorders use it. The attachment refuses to record a normal session under it, and
+refuses a fixture under the installation key.
 
 The Pi projector (`adapters/pi/trajectory.ts`, `pi-trajectory.1`) takes tools and usage from Pi's live stream only.
 A catch-up after a reconnect re-reads durable entries whose usage the live stream already reported, so counting
@@ -105,11 +110,27 @@ verbatim, so a rule change is a visible version change.
   observation, not a variance result: see its README.
 - `tests/fixtures/trajectory/fake-pi/` holds hostile fake-Pi sessions (reordered calls, different arguments, a tool
   error, missing usage, an unknown runtime record, another Pi version, another digest domain). They are digested
-  under two TEST-ONLY keys derived from public strings, which protect nothing. `tests/trajectory.test.ts` pins every
-  comparison's digest.
+  under the public `fixture-public` key (and `fixture-public-alt` for the domain-difference case).
+  `tests/trajectory.test.ts` pins every comparison's digest.
 
 ## Limits
 
-- Whoever holds the domain key can confirm guessed arguments. The key file is the secret.
+- Whoever holds the installation key can confirm guessed arguments. The key file is the secret.
 - Tool results are compared by status only: no digest of the result content is recorded yet.
 - `lab/replay-compare.ts` compares graph snapshots. It is a different, unwired library and is unrelated to this one.
+
+## Advanced
+
+### Comparing across machines
+
+Each installation generates its own key, so digests from two machines are in different digest domains. Their tool
+layers compare as `UNAVAILABLE` ("different digest domains"); every other layer still compares. To compare tool
+calls across machines, give them the same key:
+
+1. Copy `~/.local/share/endophasia/digest-key` (or wherever `ENDO_DIGEST_KEY_FILE` points) from one machine to the
+   same place on the other, keeping it owner-only (`chmod 600`). Do this before recording on the second machine:
+   recordings already made keep the key id they were made under.
+2. Run `endo digest-key id` on both machines. The two ids must be identical.
+
+Treat the copy like any other secret: anyone who can read the key can confirm guesses against your digests. There is
+no export or import command.

@@ -13,24 +13,19 @@ import { fileURLToPath } from "node:url";
 import { PiAttachmentV0 } from "../../../adapters/pi/attachment.ts";
 import type { EndoEventV0 } from "../../../protocol/event.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
-import { type EndoDigestKeyV0, endoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
-import { normalizeScratchRootV0 } from "../../../scripts/record-lifecycle-fixture.ts";
+import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
+import { normalizeScratchRootV0, PI_LIFECYCLE_FIXTURE_DIGEST_KEY } from "../../../scripts/record-lifecycle-fixture.ts";
+import { loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../../../storage/event-store.ts";
 import { type FakePiInstall, fakePiEnv, installFakePi } from "../fake-pi/install.ts";
 
 /**
- * TEST-ONLY digest keys, derived from public strings so that regenerating the fixtures gives the same digests. They
- * protect nothing: anyone can recompute them. Real recordings use the installation key (storage/digest-key.ts).
+ * The committed PUBLIC fixture keys (research/fixture-keys/): `a` is the fixture domain every case uses, `b` the second
+ * public domain, used only by the other-digest-domain case. Their digests offer no secrecy.
  */
 export const FAKE_TRAJECTORY_DIGEST_KEYS: Readonly<Record<"a" | "b", EndoDigestKeyV0>> = Object.freeze({
-	a: endoDigestKeyV0(
-		Buffer.from(sha256HexV0("endophasia fake trajectory fixtures: digest domain a"), "hex"),
-		"test-a",
-	),
-	b: endoDigestKeyV0(
-		Buffer.from(sha256HexV0("endophasia fake trajectory fixtures: digest domain b"), "hex"),
-		"test-b",
-	),
+	a: loadEndoFixtureDigestKeyV0(PI_LIFECYCLE_FIXTURE_DIGEST_KEY),
+	b: loadEndoFixtureDigestKeyV0(join(PI_LIFECYCLE_FIXTURE_DIGEST_KEY, "..", "fixture-public-alt.json")),
 });
 
 export const FAKE_TRAJECTORY_FIXTURES = join(fileURLToPath(new URL(".", import.meta.url)), "fake-pi");
@@ -148,7 +143,14 @@ async function recordCase(
 			const cwd = join(scratch, "cwd");
 			mkdirSync(cwd, { recursive: true });
 			const digestKey = FAKE_TRAJECTORY_DIGEST_KEYS["domain" in entry ? entry.domain : "a"];
-			const base = { root, cwd, executable: install.bin, requestTimeoutMs: 10_000, digestKey };
+			const base = {
+				root,
+				cwd,
+				executable: install.bin,
+				requestTimeoutMs: 10_000,
+				digestKey,
+				digestDomain: "fixture" as const,
+			};
 			await new PiAttachmentV0({ ...base, env: fakePiEnv({ FAKE_PI_STEP_MS: "5" }) }).checkLocal();
 			install.setScenario(entry.scenario);
 			const pi = new PiAttachmentV0({

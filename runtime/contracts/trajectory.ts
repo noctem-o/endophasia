@@ -57,6 +57,9 @@ function same(a: unknown, b: unknown): boolean {
 	return canonicalEndoJsonV0(a) === canonicalEndoJsonV0(b);
 }
 
+/** Where the docs explain sharing one digest key between machines (storage/digest-key.ts). */
+const CROSS_MACHINE_DOC = "docs/trajectory.md#comparing-across-machines";
+
 const canonicalAgreement = (a: unknown, b: unknown): Agreement => (same(a, b) ? "equal" : "differ");
 
 /**
@@ -75,7 +78,7 @@ function toolAgreement(a: EndoTrajectoryToolEntryV0, b: EndoTrajectoryToolEntryV
 	}
 	if (argsA.value.keyId !== argsB.value.keyId)
 		return {
-			unverified: `different digest domains (${[argsA.value.keyId, argsB.value.keyId].sort().join(" and ")})`,
+			unverified: `different digest domains (${[argsA.value.keyId, argsB.value.keyId].sort().join(" and ")}); to compare across machines, share one key: ${CROSS_MACHINE_DOC}`,
 		};
 	return argsA.value.value === argsB.value.value ? "equal" : "differ";
 }

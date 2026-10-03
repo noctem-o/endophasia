@@ -18,6 +18,10 @@
 // credentials are neither read nor written. The API key, when --api-key-env names one, is passed to Pi through
 // models.json in the scratch directory and to the endpoint's /models query; it is never written to the output.
 //
+// Digest domain: a recording is a fixture, so it records in fixture mode under the committed public key
+// research/fixture-keys/fixture-public.json, never your private installation key; its tool-argument digests offer no
+// secrecy. The attachment refuses to mix the two (adapters/pi/attachment.ts, digestDomain).
+//
 // --authorize-live-study is required: STOP is offered only when the live study admits steering.stop, and the live
 // study sends prompts to your model. Without that admission the stop-mid-turn session is recorded as skipped, with the
 // reason, never simulated.
@@ -40,6 +44,7 @@ import type { EndoEventV0 } from "../protocol/event.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
+import { loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 
 export const PI_LIFECYCLE_RECORDER_VERSION = "pi-lifecycle-recorder.2";
@@ -220,6 +225,8 @@ function attachmentFor(
 		provider: options.providerName,
 		model: options.model,
 		requestTimeoutMs: Math.max(60_000, options.timeoutMs),
+		digestKey: loadEndoFixtureDigestKeyV0(PI_LIFECYCLE_FIXTURE_DIGEST_KEY),
+		digestDomain: "fixture",
 	});
 }
 
@@ -391,6 +398,15 @@ async function recordSession(
 	};
 }
 
+/** The committed public fixture key every fixture recording digests tool arguments under. */
+export const PI_LIFECYCLE_FIXTURE_DIGEST_KEY = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"research",
+	"fixture-keys",
+	"fixture-public.json",
+);
+
 /** The repository's conformance research directory. */
 export const PI_CONFORMANCE_DIRECTORY = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -512,6 +528,11 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 				apiKey: options.apiKeyEnv === null ? "none configured" : `read from $${options.apiKeyEnv}; not recorded`,
 			},
 			liveStudyAuthorized: options.authorizeLiveStudy,
+			digestDomain: {
+				keyId: loadEndoFixtureDigestKeyV0(PI_LIFECYCLE_FIXTURE_DIGEST_KEY).keyId,
+				public: true,
+				note: "tool-argument digests in this recording are made under a committed public key and offer no secrecy",
+			},
 			normalization: {
 				scratchRoot: {
 					placeholder: PI_LIFECYCLE_SCRATCH_PLACEHOLDER,

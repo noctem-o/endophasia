@@ -40,6 +40,7 @@ import type {
 	EndoTrajectoryV0,
 } from "../../protocol/trajectory.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../../runtime/contracts/keyed-digest.ts";
 import { sealEndoTrajectoryV0 } from "../../runtime/contracts/trajectory.ts";
 import { PI_LIFECYCLE_PRODUCER_PREFIX_V0, PI_RECORDING_PRODUCER_PREFIX_V0 } from "./lifecycle.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
@@ -154,7 +155,7 @@ function keyedDigest(value: unknown): EndoTrajectoryKeyedDigestV0 | null {
 	const { algorithm, keyId, value: digest } = value;
 	return algorithm === "hmac-sha256" &&
 		typeof keyId === "string" &&
-		/^endo\.digest-key\.[0-9a-f]{32}$/.test(keyId) &&
+		ENDO_DIGEST_KEY_ID_PATTERN_V0.test(keyId) &&
 		typeof digest === "string" &&
 		/^[0-9a-f]{64}$/.test(digest)
 		? { algorithm, keyId, value: digest }
@@ -166,7 +167,7 @@ function digestKeyOf(value: unknown): EndoReportedV0<{ keyId: string; domain: st
 	if (
 		isRecord(value) &&
 		typeof value.keyId === "string" &&
-		/^endo\.digest-key\.[0-9a-f]{32}$/.test(value.keyId) &&
+		ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value.keyId) &&
 		typeof value.domain === "string"
 	)
 		return endoReportedV0({ keyId: value.keyId, domain: value.domain });

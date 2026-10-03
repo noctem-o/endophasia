@@ -1,0 +1,67 @@
+{
+	"anomalies": [],
+	"attachments": {
+		"count": 1,
+		"lastInstance": "b100c459e5015dc3",
+		"resumes": 0
+	},
+	"consistency": "replayed",
+	"counts": {
+		"aborted": 0,
+		"compactions": 0,
+		"completed": 1,
+		"failed": 0,
+		"interrupted": 0,
+		"runs": 1,
+		"stopsAccepted": 0,
+		"stopsRefused": 0,
+		"stopsRequested": 0,
+		"turns": 1,
+		"unclassified": 0
+	},
+	"duplicatesIgnored": 0,
+	"lastEventId": "endo.event.pi-lifecycle.b676961a8e57750a245306580d58b0a603354f8a38adcc20",
+	"lastRun": {
+		"cause": null,
+		"outcome": "completed",
+		"stopReason": {
+			"status": "reported",
+			"value": "stop"
+		},
+		"stopRequested": false,
+		"turns": 1
+	},
+	"run": null,
+	"schemaVersion": "endo.session-overview.v0",
+	"session": {
+		"status": "reported",
+		"value": {
+			"runtime": "pi",
+			"runtimeSessionId": "endo-pi-default-1dc1ba1f06a6"
+		}
+	},
+	"state": "detached",
+	"unavailable": [
+		{
+			"field": "run.id",
+			"reason": "Pi 1.0.0 lifecycle events carry no run identifier (earendil-works/pi#3682, closed not planned)"
+		},
+		{
+			"field": "turn.id",
+			"reason": "Pi reports no turn identifier; turns are counted by the observer within a run"
+		},
+		{
+			"field": "operation.outcome",
+			"reason": "Pi 1.0.0 has no durable operation outcome; a run's outcome is its last assistant stop reason, read at agent_settled"
+		},
+		{
+			"field": "stop.target",
+			"reason": "Pi's abort is untargeted: a STOP cannot be confined to the observed run"
+		},
+		{
+			"field": "lanes",
+			"reason": "Pi 1.0 RPC exposes one session and no lanes"
+		}
+	],
+	"unrecognized": []
+}

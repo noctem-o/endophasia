@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
+      # up-front refusal, and the exchange job below checks the exchange itself.
+      - run: npm test
+
+  exchange:
+    name: Reference exchange (coreutils with mv --exchange)
+    runs-on: ubuntu-24.04
+    container: fedora:42
+    timeout-minutes: 20
+    steps:
+      - run: dnf install -y --setopt=install_weak_deps=False git-core tar xz gzip
+      - name: Require mv --exchange
+        run: |
+          mv --version | head -n 1
+          mv --help | grep -q -- '--exchange'
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx vitest --run tests/conformance-lab.test.ts tests/prime-097-conformance.test.ts tests/prime-097-review5.test.ts

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { AtomicExchangeUnavailableError, atomicExchangeAvailable } from "../research/conformance/exchange.ts";
 import { acpPrivacyShapeProblems } from "../research/prime-conformance/acp-validation.ts";
 import { AUDITED_INSTRUMENT_097 } from "../research/prime-conformance/audited.ts";
 import { assessPrime097, buildPrime097Report, publishPrime097 } from "../research/prime-conformance/comparison.ts";
@@ -218,7 +219,22 @@ function stagePair(dir: string) {
 	}
 	return { staging, target };
 }
-describe("PR #26 atomic reference exchange", () => {
+// Replacing a reference needs mv --exchange (GNU coreutils 9.5+); without it the refusal is checked instead.
+const EXCHANGE = atomicExchangeAvailable();
+describe.runIf(process.platform === "linux" && !EXCHANGE)("reference replacement without mv --exchange", () => {
+	it("is refused before staging is synced or the target is touched", () => {
+		const dir = mkdtempSync(join(tmpdir(), "prime-swap-refused-"));
+		try {
+			const { staging, target } = stagePair(dir);
+			const before = readdirSync(target).map((name) => readFileSync(join(target, name), "utf8"));
+			expect(() => installReferenceDirectory(staging, target)).toThrow(AtomicExchangeUnavailableError);
+			expect(readdirSync(target).map((name) => readFileSync(join(target, name), "utf8"))).toEqual(before);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+describe.runIf(EXCHANGE)("PR #26 atomic reference exchange", () => {
 	it.each(["before", "after"])("SIGKILL %s exchange leaves a complete visible reference", async (mode) => {
 		const dir = mkdtempSync(join(tmpdir(), "prime-swap-crash-"));
 		const { staging, target } = stagePair(dir);

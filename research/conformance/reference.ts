@@ -15,6 +15,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { AtomicExchangeUnavailableError, atomicExchangeAvailable, EXCHANGE_MV } from "./exchange.ts";
 import { assertMemberPath, assertPlainPath } from "./files.ts";
 import { assertDigest, assertPlainJson, canonicalJson, sha256 } from "./json.ts";
 
@@ -100,7 +101,8 @@ function syncTree(path: string): void {
 }
 
 /** Same single-exchange mechanism as the audited writer, independently retained for future studies.
- * Linux + atomic exchange capable filesystem/GNU mv required. No copy/delete fallback. One publisher owns parent;
+ * Linux + atomic exchange capable filesystem/GNU mv required to replace an existing reference (exchange.ts); without
+ * it a replacement is refused before anything is staged. No copy/delete fallback. One publisher owns parent;
  * readers must avoid concurrent publication or hold a directory snapshot for multi-file reads. If interrupted or a
  * post-exchange sync fails, the visible target is complete old/new; a thrown error alone cannot say which is current.
  */
@@ -132,7 +134,10 @@ export function publishReference(parent: string, name: string, expected: unknown
 	parent = assertPlainPath(parent, "directory");
 	const target = join(parent, name);
 	// lstat also detects dangling target links; existsSync alone would treat them as an absent reference.
-	if (readdirSync(parent).includes(name)) assertPlainPath(target, "directory");
+	if (readdirSync(parent).includes(name)) {
+		assertPlainPath(target, "directory");
+		if (!atomicExchangeAvailable()) throw new AtomicExchangeUnavailableError(target);
+	}
 	const staging = mkdtempSync(join(parent, ".conformance-"));
 	try {
 		for (const member of bytes) {
@@ -143,7 +148,7 @@ export function publishReference(parent: string, name: string, expected: unknown
 		verifyReference(staging, members);
 		syncTree(staging);
 		if (existsSync(target))
-			execFileSync("/usr/bin/mv", ["--exchange", "--no-copy", "--no-target-directory", "--", staging, target], {
+			execFileSync(EXCHANGE_MV, ["--exchange", "--no-copy", "--no-target-directory", "--", staging, target], {
 				timeout: 30_000,
 				stdio: "pipe",
 			});

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import { AtomicExchangeUnavailableError, atomicExchangeAvailable } from "../research/conformance/exchange.ts";
 import { assertDigest, canonicalJson, sha256 } from "../research/conformance/json.ts";
 import { orderScenarios } from "../research/conformance/order.ts";
 import { publishReference, verifyReference } from "../research/conformance/reference.ts";
@@ -28,6 +29,9 @@ const input = [
 const manifest = input.map((m) => ({ path: m.path, sha256: sha256(m.bytes) }));
 // publishReference installs only on Linux (atomic rename exchange); elsewhere it must refuse.
 const LINUX = process.platform === "linux";
+// Replacing an installed reference needs mv --exchange (GNU coreutils 9.5+). Where it is missing, the replacement tests
+// cannot run and the refusal test runs instead, so each host checks one of the two paths.
+const EXCHANGE = atomicExchangeAvailable();
 // Windows exposes no POSIX executable bits to toggle.
 const POSIX = process.platform !== "win32";
 
@@ -142,7 +146,23 @@ describe("Conformance Lab byte references and publication", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
-	it.runIf(LINUX)("publishes complete bytes and verifies independently of manifest/capture order", () => {
+	it.runIf(LINUX && !EXCHANGE)(
+		"refuses a replacement up front when mv cannot exchange, keeping the installed bundle",
+		() => {
+			const dir = mkdtempSync(join(tmpdir(), "lab-no-exchange-"));
+			try {
+				publishReference(dir, "reference", manifest, input);
+				const changed = input.map((m) => ({ ...m, bytes: '"changed"\n' }));
+				const pins = changed.map((m) => ({ path: m.path, sha256: sha256(m.bytes) }));
+				expect(() => publishReference(dir, "reference", pins, changed)).toThrow(AtomicExchangeUnavailableError);
+				expect(verifyReference(join(dir, "reference"), manifest).members).toBe(2);
+				expect(readdirSync(dir)).toEqual(["reference"]);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
+	it.runIf(EXCHANGE)("publishes complete bytes and verifies independently of manifest/capture order", () => {
 		const dir = mkdtempSync(join(tmpdir(), "lab-reference-"));
 		try {
 			publishReference(dir, "reference", manifest, [...input].reverse());
@@ -559,7 +579,7 @@ describe("Conformance Lab repository identity", () => {
 });
 
 const childPath = fileURLToPath(new URL("./fixtures/conformance/publication-child.mjs", import.meta.url));
-describe.runIf(LINUX)("Conformance Lab publication interruption", () => {
+describe.runIf(EXCHANGE)("Conformance Lab publication interruption", () => {
 	it.each(["before", "after", "failed-before", "failed-after"])(
 		"%s exchange retains a complete visible target",
 		async (mode) => {

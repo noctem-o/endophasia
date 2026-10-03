@@ -79,7 +79,8 @@ fact is listed in `gaps` with its reason; the validator rejects a gap list that 
 - **Confidence**: `strong` when both the entrypoint digest and a parsed version exist; otherwise `reduced`.
 - **Scope, plainly**: the entrypoint digest covers one file (`dist/bundle/cli.js` for npm installs of 1.0.0). It does
   not cover what that file loads: node_modules, the Node binary, user configuration or extensions. The package
-  manifest is a local claim, not verified provenance.
+  manifest is a local claim, not verified provenance. Pi is launched by its resolved path after fingerprinting; a
+  reinstall between the two would go unnoticed until the next attachment fingerprints again.
 
 Each observation is its own record. `piChangeV0` compares it with the previous one for the same attachment:
 

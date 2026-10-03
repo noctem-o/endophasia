@@ -112,7 +112,13 @@ describe("event time", () => {
 		for (const at of ["2026-10-02T11:00:00Z", "2026-10-02T11:00:00.123Z"]) {
 			expect(validateEndoEventV0({ ...validEvent(), at })).not.toBeNull();
 		}
-		for (const at of ["yesterday", "2026-10-02", "2026-10-02T11:00:00+02:00", "2026-02-30T11:00:00Z", "1791019529388"]) {
+		for (const at of [
+			"yesterday",
+			"2026-10-02",
+			"2026-10-02T11:00:00+02:00",
+			"2026-02-30T11:00:00Z",
+			"1791019529388",
+		]) {
 			expect(validateEndoEventV0({ ...validEvent(), at })).toBeNull();
 		}
 	});

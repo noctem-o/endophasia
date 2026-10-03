@@ -4,7 +4,7 @@
 // missing capability stays represented as missing, never filled in.
 
 import { type EndoIdentifierKindV0, isEndoIdentifierV0, isWellFormedEventKindV0 } from "./identity.ts";
-import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
+import { isIso8601UtcV0, isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
  * What an event is. The six classes are not interchangeable (README): a runtime fact is never silently upgraded to
@@ -110,7 +110,7 @@ export function validateEndoEventV0(value: unknown): EndoEventV0 | null {
 	if (typeof v.kind !== "string" || !isWellFormedEventKindV0(v.kind)) return null;
 	if (typeof v.source !== "string" || !(ENDO_EVENT_SOURCES_V0 as readonly string[]).includes(v.source)) return null;
 	if (typeof v.sequence !== "number" || !Number.isInteger(v.sequence) || v.sequence < 0) return null;
-	if (typeof v.at !== "string" || v.at.length === 0) return null;
+	if (typeof v.at !== "string" || !isIso8601UtcV0(v.at)) return null;
 	const c = v.coordinates;
 	if (typeof c !== "object" || c === null || !isPlainJsonObjectV0(c)) return null;
 	const coords = c as Record<string, unknown>;

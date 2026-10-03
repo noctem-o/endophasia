@@ -14,8 +14,6 @@
 //   an interruption the observer recorded (`lifecycle.interrupted`: the runtime process exited, or the observer itself
 //   ended without recording an exit). An interrupted run has no runtime-reported outcome.
 
-import type { JsonValueV0 } from "./primitives.ts";
-
 /** A value the runtime reported, or the reason it is not available. Never a default standing in for a gap. */
 export type EndoReportedV0<T> = { status: "reported"; value: T } | { status: "UNAVAILABLE"; reason: string };
 
@@ -84,11 +82,50 @@ export interface EndoUnavailableFieldV0 {
 /** The previous observation's end, as recorded, on a resume. */
 export type EndoPreviousEndV0 = "runtime-exited-expected" | "runtime-exited-unexpected" | "interrupted";
 
+/** Where a runtime-written failure text came from (the Pi record and field). */
+export type EndoRuntimeTextSourceV0 =
+	| "assistant-message.errorMessage"
+	| "auto_retry_end.finalError"
+	| "compaction_end.errorMessage";
+
+/**
+ * Endophasia's pattern classification of a failure text: a closed vocabulary, never free text. It classifies what the
+ * runtime wrote; the runtime itself reported no category.
+ */
+export const ENDO_FAILURE_CLASSES_V0 = [
+	"rate-limited",
+	"overloaded",
+	"timeout",
+	"authentication",
+	"context-length",
+	"network",
+	"server-error",
+	"client-error",
+	"unclassified",
+] as const;
+
+export type EndoFailureClassV0 = (typeof ENDO_FAILURE_CLASSES_V0)[number];
+
+/**
+ * A runtime-written failure text, by reference. Canonical evidence carries only this; the text itself is kept outside
+ * it (adapters/pi: the store root's `runtime-text/` side store) and is never part of a recording's committed fixture.
+ */
+export interface EndoRuntimeTextRefV0 {
+	source: EndoRuntimeTextSourceV0;
+	/** sha256 of the kept text (UTF-8). */
+	sha256: string;
+	/** The kept text's UTF-8 length. */
+	bytes: number;
+	/** True when the runtime's text was longer than the adapter keeps, and was cut before digesting. */
+	truncated: boolean;
+	classification: EndoFailureClassV0;
+}
+
 /** A failure cause as the runtime reported it. */
 export interface EndoReportedCauseV0 {
 	/** Where the cause came from: the run's last assistant message, or the retry loop's final error. */
 	source: "assistant-message" | "retry-exhausted";
 	stopReason: EndoReportedV0<string>;
-	message: EndoReportedV0<string>;
-	[key: string]: JsonValueV0;
+	/** The runtime's cause text, by reference, or UNAVAILABLE when it wrote none. */
+	message: EndoReportedV0<EndoRuntimeTextRefV0>;
 }

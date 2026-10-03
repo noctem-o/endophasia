@@ -21,7 +21,11 @@ import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoSessionOverviewV0 } from "../protocol/session-overview.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
-import { PI_LIFECYCLE_SESSIONS } from "../scripts/record-lifecycle-fixture.ts";
+import {
+	normalizeScratchRootV0,
+	PI_LIFECYCLE_SCRATCH_PLACEHOLDER,
+	PI_LIFECYCLE_SESSIONS,
+} from "../scripts/record-lifecycle-fixture.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/pi-lifecycle/fake-pi-1.0.0/", import.meta.url));
@@ -34,7 +38,22 @@ interface ProvenanceV0 {
 	kind: string;
 	pi: { entrypointSha256: string | null; isDeterministicSuiteFake: boolean; version: string | null };
 	model: { modelId: string; reportedByPi: string[] };
-	sessions: { name: string; status: string; reason: string | null; eventsSha256: string | null }[];
+	sessions: {
+		name: string;
+		status: string;
+		reason: string | null;
+		eventsSha256: string | null;
+		scratchRootReplacements: number;
+	}[];
+	normalization: { scratchRoot: { placeholder: string; rule: string } };
+}
+
+/** Every string in a JSON value. */
+function strings(value: unknown): string[] {
+	if (typeof value === "string") return [value];
+	if (Array.isArray(value)) return value.flatMap(strings);
+	if (value !== null && typeof value === "object") return Object.values(value).flatMap(strings);
+	return [];
 }
 
 const dirs: string[] = [];
@@ -57,6 +76,13 @@ function replays(directory: string, name: string, provenance: ProvenanceV0): End
 	const { text, events, overview } = load(directory, name);
 	const session = provenance.sessions.find((entry) => entry.name === name)!;
 	expect(createHash("sha256").update(text).digest("hex")).toBe(session.eventsSha256);
+	// D3: the recorder's scratch root is normalized, the count matches, and no scratch path survives.
+	expect(provenance.normalization.scratchRoot.placeholder).toBe(PI_LIFECYCLE_SCRATCH_PLACEHOLDER);
+	const all = strings(events);
+	expect(all.filter((value) => value.includes(PI_LIFECYCLE_SCRATCH_PLACEHOLDER))).toHaveLength(
+		session.scratchRootReplacements,
+	);
+	expect(all.some((value) => /[\\/]endo-lifecycle-[A-Za-z0-9]{6}/.test(value))).toBe(false);
 
 	const stored = events.filter((event) => event.kind.startsWith("lifecycle."));
 	const facts = events.filter((event) => !event.kind.startsWith("lifecycle."));
@@ -135,3 +161,32 @@ describe.skipIf(!realRecorded)(
 		});
 	},
 );
+
+describe("scratch-root normalization (D3)", () => {
+	it("replaces only the recorder's own scratch root, as created and as its real path; every other path is kept", () => {
+		const event = {
+			schemaVersion: "endo.event.v0",
+			id: "endo.event.x.1",
+			kind: "harness.attached",
+			payload: {
+				args: ["--session-dir", "/tmp/endo-lifecycle-abc123/root-completes/pi-sessions", "--model", "m"],
+				realPath: "/private/tmp/endo-lifecycle-abc123/home",
+				pi: "/home/operator/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+				sibling: "/tmp/endo-lifecycle-abc1234/other",
+			},
+		} as unknown as EndoEventV0;
+		const { events, replacements } = normalizeScratchRootV0(
+			[event],
+			["/tmp/endo-lifecycle-abc123", "/private/tmp/endo-lifecycle-abc123"],
+		);
+		expect(replacements).toBe(2);
+		expect(events[0]!.payload).toEqual({
+			args: ["--session-dir", "<recorder-scratch>/root-completes/pi-sessions", "--model", "m"],
+			realPath: "<recorder-scratch>/home",
+			pi: "/home/operator/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+			// A different directory that merely shares the prefix is a different directory: replaced only up to the
+			// shared prefix would be wrong, so it must stay whole.
+			sibling: "/tmp/endo-lifecycle-abc1234/other",
+		});
+	});
+});

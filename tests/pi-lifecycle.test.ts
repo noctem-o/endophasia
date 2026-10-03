@@ -9,9 +9,15 @@ import {
 	piLifecycleInitialStateV0,
 	piLifecycleStepV0,
 } from "../adapters/pi/lifecycle.ts";
+import {
+	mapPiLiveEventV0,
+	PI_RUNTIME_TEXT_LIMIT_V0,
+	type PiMappingContextV0,
+	piFailureClassV0,
+} from "../adapters/pi/mapping.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
-import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 
 /** A recorded attachment stream, built one Pi record at a time. */
@@ -67,6 +73,11 @@ function recording() {
 	return api;
 }
 
+/** A failure-text reference as the mapping records it. */
+function ref(source: string, text: string, classification: string): Record<string, JsonValueV0> {
+	return { source, sha256: sha256HexV0(text), bytes: Buffer.byteLength(text), truncated: false, classification };
+}
+
 function lifecycleOf(events: EndoEventV0[]) {
 	const { events: derived } = piLifecycleFoldV0(events, "pi.default");
 	return { derived, kinds: derived.map((event) => event.kind), overview: reduceEndoSessionOverviewV0(derived) };
@@ -98,15 +109,23 @@ describe("lifecycle fold: the documented paths", () => {
 		expect(overview.anomalies).toEqual([]);
 	});
 
-	it("a failed run carries Pi's own cause, never an inferred one", () => {
-		const failed = lifecycleOf(recording().attach("i1").run("error", { errorMessage: "529 overloaded" }).events)
-			.overview.lastRun;
+	it("a failed run carries Pi's own cause by reference (digest, length, classification), never as text", () => {
+		const overloaded = ref("assistant-message.errorMessage", "529 overloaded", "overloaded");
+		const failed = lifecycleOf(recording().attach("i1").run("error", { errorMessage: overloaded }).events).overview
+			.lastRun;
 		expect(failed?.outcome).toBe("failed");
 		expect(failed?.cause).toEqual({
 			source: "assistant-message",
 			stopReason: { status: "reported", value: "error" },
-			message: { status: "reported", value: "529 overloaded" },
+			message: { status: "reported", value: overloaded },
 		});
+		// A malformed reference is not a cause: UNAVAILABLE, never a guess.
+		const malformed = lifecycleOf(
+			recording()
+				.attach("i1")
+				.run("error", { errorMessage: { ...overloaded, classification: "made-up" } }).events,
+		).overview.lastRun;
+		expect(malformed?.cause).toMatchObject({ message: { status: "UNAVAILABLE" } });
 		// No errorMessage reported: the cause's message is UNAVAILABLE, not a placeholder.
 		const silent = lifecycleOf(recording().attach("i1").run("error").events).overview.lastRun;
 		expect(silent?.cause).toMatchObject({ message: { status: "UNAVAILABLE" } });
@@ -114,11 +133,17 @@ describe("lifecycle fold: the documented paths", () => {
 		const retried = recording().attach("i1");
 		retried
 			.add("agent.run-started")
-			.add("retry.finished", { success: false, finalError: "retries exhausted" })
+			.add("retry.finished", {
+				success: false,
+				finalError: ref("auto_retry_end.finalError", "retries exhausted", "unclassified"),
+			})
 			.add("agent.settled");
 		expect(lifecycleOf(retried.events).overview.lastRun?.cause).toMatchObject({
 			source: "retry-exhausted",
-			message: { status: "reported", value: "retries exhausted" },
+			message: {
+				status: "reported",
+				value: { source: "auto_retry_end.finalError", classification: "unclassified" },
+			},
 		});
 	});
 
@@ -207,7 +232,11 @@ describe("lifecycle fold: the documented paths", () => {
 		const stream = recording().attach("i1");
 		stream
 			.add("compaction.finished", { succeeded: true, reason: "threshold", firstKeptEntryId: "e9", tokensBefore: 10 })
-			.add("compaction.finished", { succeeded: false, reason: "overflow", errorMessage: "summary failed" });
+			.add("compaction.finished", {
+				succeeded: false,
+				reason: "overflow",
+				errorMessage: ref("compaction_end.errorMessage", "summary failed", "unclassified"),
+			});
 		const { derived, overview } = lifecycleOf(stream.events);
 		expect(derived.filter((event) => event.kind === "lifecycle.compacted").map((event) => event.payload)).toEqual([
 			{ reason: "threshold", firstKeptEntryId: "e9", tokensBefore: 10 },
@@ -352,12 +381,82 @@ describe("lifecycle: determinism", () => {
 		const build = () => {
 			const stream = recording().attach("i1").run("stop");
 			stream.add("agent.run-started").add("agent.turn-started");
-			stream.attach("i2").run("error", { errorMessage: "boom" }).exit(true);
+			stream
+				.attach("i2")
+				.run("error", { errorMessage: ref("assistant-message.errorMessage", "boom", "unclassified") })
+				.exit(true);
 			return stream.events;
 		};
 		const first = lifecycleOf(build());
 		const second = lifecycleOf(JSON.parse(JSON.stringify(build())));
 		expect(canonicalEndoJsonV0(second.derived)).toBe(canonicalEndoJsonV0(first.derived));
 		expect(canonicalEndoJsonV0(second.overview)).toBe(canonicalEndoJsonV0(first.overview));
+	});
+});
+
+describe("failure text in the mapping (D1: digest, length and classification only)", () => {
+	const context = (): PiMappingContextV0 => {
+		let n = 0;
+		return {
+			attachment: "pi.default",
+			piSessionId: "s1",
+			instance: "i1",
+			producer: "pi-rpc-adapter:pi.default",
+			nextSequence: () => ++n,
+			nextLive: () => n,
+			now: () => "2026-10-03T12:00:00Z",
+		};
+	};
+
+	it("turn_end with an error: the event carries a reference, the text travels beside it", () => {
+		const text = "HTTP 429: rate limit reached for prompt 'my secret plan'";
+		const mapped = mapPiLiveEventV0(context(), "turn_end", {
+			message: { role: "assistant", stopReason: "error", errorMessage: text },
+			toolResults: [],
+		});
+		if (mapped.kind !== "event") throw new Error("expected an event");
+		expect(mapped.event.payload).toMatchObject({
+			errorMessage: {
+				source: "assistant-message.errorMessage",
+				sha256: sha256HexV0(text),
+				bytes: Buffer.byteLength(text),
+				truncated: false,
+				classification: "rate-limited",
+			},
+		});
+		expect(JSON.stringify(mapped.event)).not.toContain("secret");
+		expect(mapped.runtimeTexts).toEqual([{ sha256: sha256HexV0(text), text }]);
+	});
+
+	it("a stop reason other than error carries no cause, and keeps no text", () => {
+		const mapped = mapPiLiveEventV0(context(), "message_end", {
+			message: { role: "assistant", stopReason: "stop", errorMessage: "ignored" },
+		});
+		if (mapped.kind !== "event") throw new Error("expected an event");
+		expect(mapped.event.payload).not.toHaveProperty("errorMessage");
+		expect(mapped.runtimeTexts).toEqual([]);
+	});
+
+	it("over-long text is cut before digesting, and the cut is flagged", () => {
+		const mapped = mapPiLiveEventV0(context(), "auto_retry_end", {
+			success: false,
+			attempt: 3,
+			finalError: "x".repeat(PI_RUNTIME_TEXT_LIMIT_V0 + 10),
+		});
+		if (mapped.kind !== "event") throw new Error("expected an event");
+		expect(mapped.event.payload).toMatchObject({
+			finalError: { truncated: true, bytes: PI_RUNTIME_TEXT_LIMIT_V0, classification: "unclassified" },
+		});
+	});
+
+	it("classification is a closed vocabulary, first matching rule wins", () => {
+		expect(piFailureClassV0("529 overloaded")).toBe("overloaded");
+		expect(piFailureClassV0("Request timed out")).toBe("timeout");
+		expect(piFailureClassV0("401 Unauthorized")).toBe("authentication");
+		expect(piFailureClassV0("maximum context length exceeded")).toBe("context-length");
+		expect(piFailureClassV0("fetch failed: ECONNREFUSED")).toBe("network");
+		expect(piFailureClassV0("HTTP 500")).toBe("server-error");
+		expect(piFailureClassV0("HTTP 418")).toBe("client-error");
+		expect(piFailureClassV0("something odd")).toBe("unclassified");
 	});
 });

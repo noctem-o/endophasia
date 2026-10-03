@@ -6,11 +6,11 @@ import { closeSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PiAttachmentV0, PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
+import { PI_RUNTIME_TEXT_DIRECTORY_V0, PiAttachmentV0, PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { harnessOverviewCommand } from "../cli/harness.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoSessionOverviewV0 } from "../protocol/session-overview.ts";
-import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 import {
 	killPiSessionChildV0,
@@ -82,19 +82,35 @@ async function runPrompt(session: PiSessionAttachmentV0, text: string): Promise<
 }
 
 describe("runtime-reported outcomes", () => {
-	it("a failed run records Pi's errorMessage as the cause", async () => {
+	it("a failed run records Pi's errorMessage as the cause by digest; the text stays outside canonical evidence", async () => {
 		const { root, pi } = await ready("fail-run");
 		const session = await pi.openSession();
 		await runPrompt(session, "hello");
 		await session.close();
+		const text = "fake provider: 529 overloaded";
+		const digest = sha256HexV0(text);
 		expect(overviewOf(root).lastRun).toMatchObject({
 			outcome: "failed",
 			cause: {
 				source: "assistant-message",
 				stopReason: { status: "reported", value: "error" },
-				message: { status: "reported", value: "fake provider: 529 overloaded" },
+				message: {
+					status: "reported",
+					value: {
+						source: "assistant-message.errorMessage",
+						sha256: digest,
+						bytes: text.length,
+						truncated: false,
+						classification: "overloaded",
+					},
+				},
 			},
 		});
+		// The event log, and every record digest built from it, holds no byte of the text.
+		expect(readFileSync(join(root, "events", "events.log")).includes(Buffer.from("529 overloaded"))).toBe(false);
+		// The text is kept beside the store, content-addressed by the digest the event carries.
+		expect(readFileSync(join(root, PI_RUNTIME_TEXT_DIRECTORY_V0, "artifacts", digest), "utf8")).toBe(text);
+		expect(session.counters.runtimeTextsNotKept).toBe(0);
 	});
 
 	it("a retry loop that gives up records auto_retry_end's finalError as the cause", async () => {
@@ -104,8 +120,12 @@ describe("runtime-reported outcomes", () => {
 		await session.close();
 		expect(overviewOf(root).lastRun?.cause).toMatchObject({
 			source: "retry-exhausted",
-			message: { status: "reported", value: "fake provider: retries exhausted" },
+			message: {
+				status: "reported",
+				value: { source: "auto_retry_end.finalError", sha256: sha256HexV0("fake provider: retries exhausted") },
+			},
 		});
+		expect(readFileSync(join(root, "events", "events.log")).includes(Buffer.from("retries exhausted"))).toBe(false);
 	});
 
 	it("a compaction is recorded as compacted, with Pi's first kept entry", async () => {

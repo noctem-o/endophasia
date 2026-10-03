@@ -16,7 +16,8 @@
 // |                                                  | continuation: retry, overflow recovery, follow-up)          |
 // | agent.turn-started / agent.turn-finished         | turn-started / turn-completed with the reported stopReason   |
 // | agent.settled (agent_settled)                    | run-completed, run-failed (cause: the assistant message's    |
-// |                                                  | errorMessage or auto_retry_end's finalError), run-aborted    |
+// |                                                  | errorMessage or auto_retry_end's finalError, by digest),     |
+// |                                                  | run-aborted                                                 |
 // |                                                  | (stopReason "aborted"), or run-unclassified                  |
 // | control.requested / accepted / refused (abort)   | stop-requested / stop-accepted / stop-refused                |
 // | harness.process-exited                           | interrupted (cause runtime-exited) with a run open, else     |
@@ -35,8 +36,10 @@ import type { EndoEventV0 } from "../../protocol/event.ts";
 import { validateEndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import {
+	ENDO_FAILURE_CLASSES_V0,
 	type EndoLifecycleKindV0,
 	type EndoPreviousEndV0,
+	type EndoRuntimeTextRefV0,
 	type EndoUnavailableFieldV0,
 	endoReportedV0,
 	endoUnavailableV0,
@@ -70,8 +73,10 @@ export interface PiLifecycleRunV0 {
 	/** agent_start records after the first, before agent_settled (retries, overflow recovery, follow-ups). */
 	readonly continuations: number;
 	readonly lastStopReason: string | null;
-	readonly lastErrorMessage: string | null;
-	readonly retryFinalError: string | null;
+	/** The last failed assistant message's cause, by reference (never its text). */
+	readonly lastErrorMessage: EndoRuntimeTextRefV0 | null;
+	/** Set when the retry loop gave up: its finalError by reference, or "missing" when it carried none. */
+	readonly retryFinalError: EndoRuntimeTextRefV0 | "missing" | null;
 	readonly stopRequested: boolean;
 }
 
@@ -100,6 +105,29 @@ export function piLifecycleInitialStateV0(attachment: string): PiLifecycleStateV
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A recorded failure-text reference (mapping.ts), or null when the payload carries none or a malformed one. */
+function textRef(value: unknown): EndoRuntimeTextRefV0 | null {
+	if (!isRecord(value)) return null;
+	const { source, sha256, bytes, truncated, classification } = value;
+	if (
+		typeof source !== "string" ||
+		typeof sha256 !== "string" ||
+		!/^[0-9a-f]{64}$/.test(sha256) ||
+		typeof bytes !== "number" ||
+		typeof truncated !== "boolean" ||
+		typeof classification !== "string" ||
+		!(ENDO_FAILURE_CLASSES_V0 as readonly string[]).includes(classification)
+	)
+		return null;
+	return {
+		source: source as EndoRuntimeTextRefV0["source"],
+		sha256,
+		bytes,
+		truncated,
+		classification: classification as EndoRuntimeTextRefV0["classification"],
+	};
 }
 
 function text(value: unknown): string | null {
@@ -274,7 +302,7 @@ export function piLifecycleStepV0(
 				turnOpen: false,
 				...(stopReason === null
 					? {}
-					: { lastStopReason: stopReason, lastErrorMessage: text(payload.errorMessage) }),
+					: { lastStopReason: stopReason, lastErrorMessage: textRef(payload.errorMessage) }),
 			});
 			emit("lifecycle.turn-completed", {
 				turn: run.turns,
@@ -289,7 +317,7 @@ export function piLifecycleStepV0(
 			const run = next.run;
 			const stopReason = text(payload.stopReason);
 			if (run !== null && payload.role === "assistant" && stopReason !== null) {
-				setRun({ ...run, lastStopReason: stopReason, lastErrorMessage: text(payload.errorMessage) });
+				setRun({ ...run, lastStopReason: stopReason, lastErrorMessage: textRef(payload.errorMessage) });
 			}
 			break;
 		}
@@ -297,7 +325,7 @@ export function piLifecycleStepV0(
 			if (next.run !== null && payload.success === false) {
 				setRun({
 					...next.run,
-					retryFinalError: text(payload.finalError) ?? "",
+					retryFinalError: textRef(payload.finalError) ?? "missing",
 				});
 			}
 			break;
@@ -323,9 +351,9 @@ export function piLifecycleStepV0(
 								? endoUnavailableV0("no assistant stop reason was observed in this run")
 								: endoReportedV0(run.lastStopReason),
 						message:
-							run.retryFinalError === ""
+							run.retryFinalError === "missing"
 								? endoUnavailableV0("Pi's auto_retry_end carried no finalError")
-								: endoReportedV0(run.retryFinalError),
+								: endoReportedV0({ ...run.retryFinalError }),
 					},
 				});
 			} else if (run.lastStopReason === "error") {
@@ -338,7 +366,7 @@ export function piLifecycleStepV0(
 						message:
 							run.lastErrorMessage === null
 								? endoUnavailableV0("Pi's assistant message carried no errorMessage")
-								: endoReportedV0(run.lastErrorMessage),
+								: endoReportedV0({ ...run.lastErrorMessage }),
 					},
 				});
 			} else if (run.lastStopReason === "aborted") {

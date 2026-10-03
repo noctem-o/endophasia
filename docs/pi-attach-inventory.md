@@ -202,8 +202,18 @@ How the outcome at `agent_settled` is decided:
 - `run-completed` otherwise.
 
 Pi answers `abort` only once the session is idle (`rpc-commands.md#abort`), so a STOP's acceptance normally arrives
-after `run-aborted`. Neither is inferred from the other. The causes are the one runtime-written text the recording
-keeps, bounded to 512 characters; this is mapping `pi-rpc-mapping.2`.
+after `run-aborted`. Neither is inferred from the other.
+
+A cause enters canonical evidence only by reference (mapping `pi-rpc-mapping.2`):
+- its source (the Pi record and field);
+- the sha256 and UTF-8 length of the text;
+- whether the text was cut at 65,536 characters;
+- a classification from a closed vocabulary (`rate-limited`, `overloaded`, `timeout`, `authentication`,
+  `context-length`, `network`, `server-error`, `client-error`, `unclassified`), by fixed patterns over the text.
+  Pi reports no category; this is Endophasia's.
+
+The text itself goes to `<root>/runtime-text/artifacts/<sha256>`, outside the event log, its record digests and any
+committed fixture.
 
 `reduceEndoSessionOverviewV0` (`runtime/contracts/session-overview.ts`) reduces the lifecycle events to an
 `endo.session-overview.v0`. `endo harness overview <root>` prints it, read-only. Run and turn ids, the operation

@@ -27,7 +27,7 @@
 // endpoint identity without secrets, the versions, and each session's status).
 
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -39,7 +39,39 @@ import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 
-export const PI_LIFECYCLE_RECORDER_VERSION = "pi-lifecycle-recorder.1";
+export const PI_LIFECYCLE_RECORDER_VERSION = "pi-lifecycle-recorder.2";
+
+/** What the recorder's own scratch directory becomes in a committed fixture. */
+export const PI_LIFECYCLE_SCRATCH_PLACEHOLDER = "<recorder-scratch>";
+
+/**
+ * Replace every occurrence of the recorder-owned scratch root (as created, and as its real path), as a whole path
+ * component, in the events' strings with the placeholder. Nothing else is touched: every other path stays as recorded. Returns the normalized
+ * events and how many strings changed.
+ */
+export function normalizeScratchRootV0(
+	events: readonly EndoEventV0[],
+	scratchRoots: readonly string[],
+): { events: EndoEventV0[]; replacements: number } {
+	const roots = [...new Set(scratchRoots.filter((root) => root.length > 1))].sort((a, b) => b.length - a.length);
+	// A root matches only as a whole path: followed by a separator or the end, never as the prefix of a sibling name.
+	const patterns = roots.map((root) => new RegExp(`${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\\\/]|$)`, "g"));
+	let replacements = 0;
+	const walk = (value: unknown): unknown => {
+		if (typeof value === "string") {
+			let next = value;
+			for (const pattern of patterns) next = next.replace(pattern, PI_LIFECYCLE_SCRATCH_PLACEHOLDER);
+			if (next !== value) replacements += 1;
+			return next;
+		}
+		if (Array.isArray(value)) return value.map(walk);
+		if (value !== null && typeof value === "object") {
+			return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, walk(entry)]));
+		}
+		return value;
+	};
+	return { events: events.map((event) => walk(event) as EndoEventV0), replacements };
+}
 export const PI_LIFECYCLE_SESSIONS = ["completes", "stop-mid-turn", "killed-and-resumed"] as const;
 export type PiLifecycleSessionNameV0 = (typeof PI_LIFECYCLE_SESSIONS)[number];
 
@@ -78,6 +110,8 @@ export interface PiLifecycleSessionReportV0 {
 	eventCount: number;
 	/** sha256 of the events file's bytes. */
 	eventsSha256: string | null;
+	/** Strings in which the recorder's scratch root was replaced by the placeholder (D3). */
+	scratchRootReplacements: number;
 	notes: string[];
 }
 
@@ -295,7 +329,15 @@ async function recordSession(
 	rmSync(join(root, "harness", "pi.default", "pi-session.json"), { force: true });
 	const notes: string[] = [];
 	const skipped = (reason: string) => ({
-		report: { name, status: "skipped" as const, reason, eventCount: 0, eventsSha256: null, notes },
+		report: {
+			name,
+			status: "skipped" as const,
+			reason,
+			eventCount: 0,
+			eventsSha256: null,
+			scratchRootReplacements: 0,
+			notes,
+		},
 		events: [],
 	});
 	if (name === "completes") {
@@ -325,10 +367,18 @@ async function recordSession(
 		if (!(await session.waitForSettled(options.timeoutMs))) notes.push("agent_settled was not observed after resume");
 		await session.close();
 	}
-	const events = readEvents(root);
+	const normalized = normalizeScratchRootV0(readEvents(root), [scratch.directory, realpathSync(scratch.directory)]);
 	return {
-		report: { name, status: "recorded", reason: null, eventCount: events.length, eventsSha256: null, notes },
-		events,
+		report: {
+			name,
+			status: "recorded",
+			reason: null,
+			eventCount: normalized.events.length,
+			eventsSha256: null,
+			scratchRootReplacements: normalized.replacements,
+			notes,
+		},
+		events: normalized.events,
 	};
 }
 
@@ -409,6 +459,14 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 				apiKey: options.apiKeyEnv === null ? "none configured" : `read from $${options.apiKeyEnv}; not recorded`,
 			},
 			liveStudyAuthorized: options.authorizeLiveStudy,
+			normalization: {
+				scratchRoot: {
+					placeholder: PI_LIFECYCLE_SCRATCH_PLACEHOLDER,
+					rule: "every occurrence of the recorder-owned scratch directory (as created and as its real path) in an event string is replaced by the placeholder; no other path is changed",
+					appliesTo:
+						"<session>.events.jsonl and <session>.overview.json; eventsSha256 is over the normalized file",
+				},
+			},
 			prompts: { ...PI_LIFECYCLE_PROMPTS },
 			sessions: reports.map((report) => ({ ...report, notes: [...report.notes] })),
 		};

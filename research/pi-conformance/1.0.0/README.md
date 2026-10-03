@@ -34,11 +34,3 @@ two as QUALIFIED, each with its stated limits).
 - **Other platforms, configurations or projects.** One OS, one Node version, an empty agent directory apart from
   `models.json`, scratch working directories with no project `.pi/` configuration, and no Pi extensions.
 - **Long or concurrent sessions, compaction under load, provider retries.** Not exercised.
-
-## Since this recording
-
-- **Mapping version.** The mapping is now `pi-rpc-mapping.2`, which records a failure's reported cause. By evidence
-  rule 4, the evidence above no longer applies to a current attachment. It stays here as the record of what was
-  observed, and a current attachment re-earns its evidence through the same checks.
-- **Lifecycle recording.** `lifecycle/` is where the real-model session-lifecycle fixture goes. It is empty until a
-  maintainer runs `scripts/record-lifecycle-fixture.ts` (see `lifecycle/README.md`).

@@ -138,6 +138,8 @@ silently treated as comparable.
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
 endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
+That recording was made under mapping `pi-rpc-mapping.1` and is kept unchanged as a historical specimen. The current
+mapping is `pi-rpc-mapping.2`, so its evidence no longer applies to a current attachment, which re-earns its own.
 It is evidence for that installation and configuration, not a promise about yours: your Pi starts unverified and is
 checked on its own.
 
@@ -281,7 +283,8 @@ A valid proposal does not widen the model's permission.
 - **Session lifecycle on the Pi path** (`adapters/pi/lifecycle.ts`, `protocol/session-lifecycle.ts`): the recorded
   Pi records are folded into canonical `lifecycle.*` events as they are stored.
   - The events cover session started and resumed, run and turn started and completed, failed (with Pi's own
-    `errorMessage` or `finalError` as the cause), a STOP's request and acceptance (kept apart from Pi's observed
+    `errorMessage` or `finalError` as the cause, recorded by sha256, length and a pattern classification; the text
+    itself is kept outside canonical evidence in the store's `runtime-text/`), a STOP's request and acceptance (kept apart from Pi's observed
     `aborted` termination), interrupted, detached and compacted.
   - Interrupted means the Pi process exited, or Endophasia ended without recording an exit. The next attachment
     records the interruption together with its store recovery report.
@@ -292,7 +295,8 @@ A valid proposal does not widen the model's permission.
     store; what Pi does not report (run and turn ids, operation outcome, STOP targeting, lanes) is UNAVAILABLE with a
     reason.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
-  acceptance suite against a real installed Pi. The real Pi 1.0.0 recording is in `research/pi-conformance/1.0.0/`.
+  acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
+  `research/pi-conformance/1.0.0/`.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and

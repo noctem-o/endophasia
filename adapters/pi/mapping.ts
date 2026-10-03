@@ -9,14 +9,21 @@
 //   recorded explicitly (harness.process-exited, harness.attached), never papered over.
 //
 // Payloads are minimal: no message text, tool arguments or results, queued text, summaries or Pi refusal text ever
-// cross into an event. The one runtime-written text kept is a failure's reported cause (an assistant message's
-// `errorMessage` when its stopReason is "error", a final retry's `finalError`, a failed compaction's `errorMessage`),
-// bounded to 512 characters, because a failure recorded without Pi's own cause would leave the cause to be inferred. Pi supplies no run, turn or operation identity: none is invented. The only coordinate set is
-// the session, a namespaced copy of the session id Pi reported.
+// cross into an event. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
+// "error", a final retry's `finalError`, a failed compaction's `errorMessage`) is recorded by reference only: its
+// source, sha256 and UTF-8 length, and a classification from a closed vocabulary (protocol/session-lifecycle.ts). The
+// text itself is returned beside the event (`runtimeTexts`) for the caller to keep outside canonical evidence; it never
+// enters an event. Pi supplies no run, turn or operation identity: none is invented. The only coordinate set is the
+// session, a namespaced copy of the session id Pi reported.
 
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import { validateEndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
+import type {
+	EndoFailureClassV0,
+	EndoRuntimeTextRefV0,
+	EndoRuntimeTextSourceV0,
+} from "../../protocol/session-lifecycle.ts";
 import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { PiSessionEntryV0 } from "./rpc.ts";
 
@@ -214,7 +221,12 @@ export function mapAttachmentEventV0(
 
 /** The result of mapping one live event: an event, a counted delta, or an entry to route through mapPiEntryV0. */
 export type PiLiveMappingV0 =
-	| { readonly kind: "event"; readonly event: EndoEventV0 }
+	| {
+			readonly kind: "event";
+			readonly event: EndoEventV0;
+			/** Runtime-written failure texts the event references by digest; never part of the event. */
+			readonly runtimeTexts: readonly PiRuntimeTextV0[];
+	  }
 	| { readonly kind: "delta"; readonly type: string }
 	| { readonly kind: "entry"; readonly entry: PiSessionEntryV0 };
 
@@ -237,12 +249,71 @@ const LIVE_KINDS: Readonly<Record<string, string>> = {
 	extension_ui_request: "extension.ui-requested",
 };
 
-/** An assistant message's reported failure cause: its errorMessage, only when its stopReason is "error". */
-function reportedCause(message: Record<string, unknown>): string | undefined {
-	return message.stopReason === "error" ? short(message.errorMessage, 512) : undefined;
+/** A runtime-written failure text, kept by the caller outside canonical evidence and referenced by its sha256. */
+export interface PiRuntimeTextV0 {
+	readonly sha256: string;
+	readonly text: string;
 }
 
-function livePayload(type: string, record: Readonly<Record<string, unknown>>): Record<string, JsonValueV0> {
+/** The most raw text kept per failure, in UTF-16 code units; longer text is cut before it is digested and kept. */
+export const PI_RUNTIME_TEXT_LIMIT_V0 = 65_536;
+
+/**
+ * Pattern rules over a failure text, first match wins. The result is Endophasia's classification of Pi's text, not a
+ * category Pi reported; `unclassified` when no rule matches.
+ */
+const FAILURE_CLASSES: readonly (readonly [EndoFailureClassV0, RegExp])[] = [
+	["rate-limited", /\b429\b|rate[ -_]?limit/i],
+	["overloaded", /\b529\b|\b503\b|overload/i],
+	["timeout", /timed?[ -_]?out|ETIMEDOUT/i],
+	["authentication", /\b401\b|\b403\b|unauthori[sz]ed|forbidden|api[ -_]?key/i],
+	["context-length", /context[ -_]?(length|window)|maximum context|too many tokens/i],
+	["network", /ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|fetch failed|socket hang up/i],
+	["server-error", /\b5\d\d\b/],
+	["client-error", /\b4\d\d\b/],
+];
+
+/** The classification of a failure text: the first matching pattern, or `unclassified`. */
+export function piFailureClassV0(text: string): EndoFailureClassV0 {
+	for (const [name, pattern] of FAILURE_CLASSES) if (pattern.test(text)) return name;
+	return "unclassified";
+}
+
+/** A reference to a failure text, collecting the text itself into `texts`; undefined when there is no text. */
+function textRef(
+	source: EndoRuntimeTextSourceV0,
+	value: unknown,
+	texts: PiRuntimeTextV0[],
+): Record<string, JsonValueV0> | undefined {
+	if (typeof value !== "string" || value.length === 0) return undefined;
+	const text = value.slice(0, PI_RUNTIME_TEXT_LIMIT_V0);
+	const sha256 = sha256HexV0(text);
+	texts.push({ sha256, text });
+	const ref: EndoRuntimeTextRefV0 = {
+		source,
+		sha256,
+		bytes: Buffer.byteLength(text, "utf8"),
+		truncated: text.length < value.length,
+		classification: piFailureClassV0(text),
+	};
+	return { ...ref };
+}
+
+/** An assistant message's reported failure cause, by reference: only when its stopReason is "error". */
+function reportedCause(
+	message: Record<string, unknown>,
+	texts: PiRuntimeTextV0[],
+): Record<string, JsonValueV0> | undefined {
+	return message.stopReason === "error"
+		? textRef("assistant-message.errorMessage", message.errorMessage, texts)
+		: undefined;
+}
+
+function livePayload(
+	type: string,
+	record: Readonly<Record<string, unknown>>,
+	texts: PiRuntimeTextV0[],
+): Record<string, JsonValueV0> {
 	switch (type) {
 		case "agent_end":
 			return compact({ willRetry: typeof record.willRetry === "boolean" ? record.willRetry : undefined });
@@ -250,7 +321,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			const message = isRecord(record.message) ? record.message : {};
 			return compact({
 				stopReason: short(message.stopReason, 32),
-				errorMessage: reportedCause(message),
+				errorMessage: reportedCause(message, texts),
 				toolResultCount: Array.isArray(record.toolResults) ? record.toolResults.length : undefined,
 			});
 		}
@@ -259,7 +330,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			return compact({
 				role: short(message.role, 32),
 				stopReason: short(message.stopReason, 32),
-				errorMessage: reportedCause(message),
+				errorMessage: reportedCause(message, texts),
 				usage: piUsageV0(message.usage),
 			});
 		}
@@ -287,7 +358,10 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 				succeeded: result !== undefined,
 				firstKeptEntryId: result === undefined ? undefined : short(result.firstKeptEntryId, 256),
 				tokensBefore: result === undefined ? undefined : finite(result.tokensBefore),
-				errorMessage: result === undefined && record.aborted !== true ? short(record.errorMessage, 512) : undefined,
+				errorMessage:
+					result === undefined && record.aborted !== true
+						? textRef("compaction_end.errorMessage", record.errorMessage, texts)
+						: undefined,
 			});
 		}
 		case "auto_retry_start":
@@ -296,7 +370,8 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			return compact({
 				attempt: finite(record.attempt),
 				success: typeof record.success === "boolean" ? record.success : undefined,
-				finalError: record.success === false ? short(record.finalError, 512) : undefined,
+				finalError:
+					record.success === false ? textRef("auto_retry_end.finalError", record.finalError, texts) : undefined,
 			});
 		case "thinking_level_changed":
 			return compact({ level: short(record.level, 32) });
@@ -342,6 +417,7 @@ export function mapPiLiveEventV0(
 		return {
 			kind: "event",
 			event: mapAttachmentEventV0(context, "runtime.malformed-event", { runtimeEvent: type }),
+			runtimeTexts: [],
 		};
 	}
 	const kind = LIVE_KINDS[type];
@@ -350,10 +426,14 @@ export function mapPiLiveEventV0(
 		return {
 			kind: "event",
 			event: mapAttachmentEventV0(context, "runtime.unrecognized-event", { runtimeEvent: name }),
+			runtimeTexts: [],
 		};
 	}
+	const runtimeTexts: PiRuntimeTextV0[] = [];
+	const payload = livePayload(type, record, runtimeTexts);
 	return {
 		kind: "event",
-		event: mapAttachmentEventV0(context, kind, { runtimeEvent: type, ...livePayload(type, record) }),
+		event: mapAttachmentEventV0(context, kind, { runtimeEvent: type, ...payload }),
+		runtimeTexts,
 	};
 }

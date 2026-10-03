@@ -2,7 +2,7 @@
 	"anomalies": [],
 	"attachments": {
 		"count": 1,
-		"lastInstance": "135642b9297257da",
+		"lastInstance": "9234b54af3c5e77a",
 		"resumes": 0
 	},
 	"consistency": "replayed",
@@ -20,7 +20,7 @@
 		"unclassified": 0
 	},
 	"duplicatesIgnored": 0,
-	"lastEventId": "endo.event.pi-lifecycle.a542a616698a774f5888f3cb14a9d1d864aba1da09be285f",
+	"lastEventId": "endo.event.pi-lifecycle.4e9d8ee03bdd349af82b0a14f6fee8f8ae169205f39fe88f",
 	"lastRun": {
 		"cause": null,
 		"outcome": "completed",
@@ -37,7 +37,7 @@
 		"status": "reported",
 		"value": {
 			"runtime": "pi",
-			"runtimeSessionId": "endo-pi-default-6b93db9df225"
+			"runtimeSessionId": "endo-pi-default-a33c9b2338da"
 		}
 	},
 	"state": "detached",

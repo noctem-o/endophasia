@@ -56,6 +56,7 @@ import {
 	mapPiEntryV0,
 	mapPiLiveEventV0,
 	type PiMappingContextV0,
+	type PiRuntimeTextV0,
 	piEntryEventIdV0,
 } from "./mapping.ts";
 import { PiRpcClientV0, PiRpcProtocolErrorV0, PiRpcRefusalV0, type PiSessionEntryV0 } from "./rpc.ts";
@@ -388,7 +389,12 @@ export interface PiSessionCountersV0 {
 	lifecycleDerived: number;
 	/** Lifecycle events re-derived on open because a crash kept them from being stored. */
 	lifecycleRepaired: number;
+	/** Runtime failure texts that could not be written to the side store (their digests are still recorded). */
+	runtimeTextsNotKept: number;
 }
+
+/** The directory under the store root that keeps runtime-written failure texts, outside canonical evidence. */
+export const PI_RUNTIME_TEXT_DIRECTORY_V0 = "runtime-text";
 
 /** Thrown when another live session attachment already writes the same store root. */
 export class PiStoreLockedErrorV0 extends Error {
@@ -458,6 +464,7 @@ export class PiSessionAttachmentV0 {
 		reconnects: 0,
 		lifecycleDerived: 0,
 		lifecycleRepaired: 0,
+		runtimeTextsNotKept: 0,
 	};
 	readonly #producer: string;
 	#lifecycle: PiLifecycleStateV0;
@@ -759,10 +766,28 @@ export class PiSessionAttachmentV0 {
 			if (this.#piSessionId !== null) this.#ingestEntries([mapped.entry]);
 			return;
 		}
+		// A failure's own text is kept beside the store, outside canonical evidence: the event carries only its digest.
+		for (const runtimeText of mapped.runtimeTexts) this.#keepRuntimeText(runtimeText);
 		this.#ingest(mapped.event);
 		// Durable entries are written by Pi as a run proceeds; they are read back at run and compaction boundaries.
 		if (event.type === "agent_settled" || event.type === "turn_end" || event.type === "compaction_end") {
 			void this.catchUp().catch(() => {});
+		}
+	}
+
+	/**
+	 * Keep a runtime-written failure text at `<root>/runtime-text/artifacts/<sha256>` (content-addressed, verified on
+	 * read). It is not part of the event log, its record digests or any fixture; a failure to keep it is counted, and
+	 * the event still records the digest.
+	 */
+	#keepRuntimeText(runtimeText: PiRuntimeTextV0): void {
+		try {
+			createEndoArtifactStoreV0(join(this.owner.options.root, PI_RUNTIME_TEXT_DIRECTORY_V0)).put(
+				runtimeText.sha256,
+				Buffer.from(runtimeText.text, "utf8"),
+			);
+		} catch {
+			this.counters.runtimeTextsNotKept += 1;
 		}
 	}
 

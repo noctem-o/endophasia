@@ -1,5 +1,10 @@
 # Pi 1.0.0: session-lifecycle acceptance fixture (not yet recorded)
 
+The files in the parent directory are a separate, immutable specimen: the `pi-rpc-mapping.1` attachment recording.
+`tests/pi-conformance-specimen.test.ts` pins every one of them by digest. Under `pi-rpc-mapping.2` its evidence no
+longer applies to a current attachment (evidence rule 4). It is never rewritten; this directory is a new recording
+beside it.
+
 This directory holds three real sessions recorded against a real Pi and a real model:
 
 | Session | What happens |
@@ -40,4 +45,12 @@ study sends prompts to your model. Without that admission, `stop-mid-turn` is re
   - the Endophasia versions;
   - each session's status and notes.
 
-The API key is never written.
+The API key is never written. Failure causes appear only as references (sha256, length, classification); their text
+stays in the recording's scratch store and is deleted with it.
+
+## Normalization
+
+Before writing, the recorder replaces its own scratch directory with `<recorder-scratch>`. It matches that directory
+as created and as its real path, as a whole path component only. Every other path is kept as recorded.
+`provenance.json` records the rule (`normalization.scratchRoot`) and, per session, the number of strings changed
+(`scratchRootReplacements`). `eventsSha256` is computed over the normalized file.

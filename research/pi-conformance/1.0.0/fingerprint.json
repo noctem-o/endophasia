@@ -1,0 +1,38 @@
+{
+	"attachment": "pi.default",
+	"gaps": [],
+	"id": "endo.evidence.pi-fingerprint.8bcf5f42d54b18c99d5717d26b16eb4890117e3aa7c9589056809d0c1f789b87",
+	"identity": {
+		"confidence": "strong",
+		"digest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb"
+	},
+	"local": {
+		"entrypoint": {
+			"bytes": 160,
+			"sha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774"
+		},
+		"package": {
+			"name": "@earendil-works/pi-coding-agent",
+			"root": "/tmp/claude-0/-home-user-endophasia/c0abb4b2-d1f1-5144-a1a7-ba1644d5aa3f/scratchpad/user-pi/lib/node_modules/@earendil-works/pi-coding-agent",
+			"version": "1.0.0"
+		},
+		"realPath": "/tmp/claude-0/-home-user-endophasia/c0abb4b2-d1f1-5144-a1a7-ba1644d5aa3f/scratchpad/user-pi/lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+		"requested": "/tmp/claude-0/-home-user-endophasia/c0abb4b2-d1f1-5144-a1a7-ba1644d5aa3f/scratchpad/user-pi/bin/pi",
+		"resolvedPath": "/tmp/claude-0/-home-user-endophasia/c0abb4b2-d1f1-5144-a1a7-ba1644d5aa3f/scratchpad/user-pi/bin/pi"
+	},
+	"methods": [
+		"explicit-path",
+		"realpath",
+		"entrypoint-sha256",
+		"package-manifest",
+		"version-command"
+	],
+	"observedAt": "2026-10-03T10:34:38.010Z",
+	"reported": {
+		"version": "1.0.0",
+		"versionText": "1.0.0"
+	},
+	"runtime": "pi",
+	"schemaVersion": "endo.harness-fingerprint.v0"
+}
+

@@ -1,0 +1,138 @@
+{
+	"at": "2026-10-03T10:34:51.992Z",
+	"attachment": "pi.default",
+	"capabilities": [
+		{
+			"capability": "session.identity",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.pi-capability.e8cf6f4465e75427e10c5c64156c28f3e164022bcba102ca61f57786c9394be9",
+			"reason": "live-study check pi.live.study; supersedes pi.local.state; limits: Continuity holds once the session was persisted, which Pi does at its first message",
+			"requires": "local-protocol",
+			"status": "admitted"
+		},
+		{
+			"capability": "session.entries-cursor",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.pi-capability.ba62ead3d697921f13dad6479880a790e72d908e522d9e6b594a1bfd1c27c3f0",
+			"reason": "local-protocol check pi.local.entries-cursor; limits: Entry ids are opaque: order comes only from Pi's append order, never from the ids Abandoned branches are included in get_entries; the leaf id identifies the active branch",
+			"requires": "local-protocol",
+			"status": "admitted"
+		},
+		{
+			"capability": "continuity.active-path",
+			"classification": "QUALIFIED",
+			"evidenceId": "endo.evidence.pi-capability.aa16bbf2d2f794259095122ac6c0ecaa64673124eb30af5025321e00375e9fb2",
+			"reason": "local-protocol check pi.local.tree; limits: The context-window boundary is derived from compaction entries (firstKeptEntryId), not reported directly The active tool names of Continuity v0 are not available over RPC",
+			"requires": "local-protocol",
+			"status": "admitted"
+		},
+		{
+			"capability": "session.overview",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.e00cca55b72c0e8335b831f09e0055c08327a0d15562968a39bfade9e8fed7ee",
+			"reason": "local-protocol check pi.local.state; limits: One session per process and no lanes No operation id, kind or start time for the active run",
+			"requires": "local-protocol",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "runtime.metrics",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.fb6512afa0a58e05bd023a4cb0eed5b03ccc1052beb588dc42acb6c570b211a3",
+			"reason": "local-protocol check pi.local.stats; limits: Cost is a total only: no input/output/cache cost breakdown No reasoning-token or one-hour cache-write counts in the stats (they appear per entry when the provider reports them)",
+			"requires": "local-protocol",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "control.model",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.pi-capability.a441ada4b2d3c1487a646f4dc8449a4f6173adb70072ebcc94f14d96259d58bc",
+			"reason": "local-protocol check pi.local.controls; limits: Exercised by re-selecting the configured model; switching to another model is not exercised (it may need other credentials)",
+			"requires": "local-protocol",
+			"status": "admitted"
+		},
+		{
+			"capability": "control.thinking",
+			"classification": "QUALIFIED",
+			"evidenceId": "endo.evidence.pi-capability.1aa225dca2024375b0c7fbc5d86a0ea0bcaebad6801efaa4ca49532d7ea2062b",
+			"reason": "local-protocol check pi.local.controls; limits: Only one thinking level is available for the configured model, so no change was exercised",
+			"requires": "local-protocol",
+			"status": "admitted"
+		},
+		{
+			"capability": "control.active-tools",
+			"classification": "UNAVAILABLE",
+			"evidenceId": "endo.evidence.pi-capability.e9ba56256c8bdf16bb26ac83fd492213c294262e9d0d8af5887d0cdf410db9d7",
+			"reason": "local-protocol check pi.local.controls; limits: Pi's extension API (pi.getActiveTools/pi.setActiveTools) could provide this through an optional extension; none is installed by Endophasia",
+			"requires": "local-protocol",
+			"status": "unavailable"
+		},
+		{
+			"capability": "lifecycle.trace",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.45cee3ef99d22157a31f958a42b82459cb2f0b17e1963801c168232edfc4be85",
+			"reason": "live-study check pi.live.study; limits: No run or turn identifiers: events are ordered by arrival only No resume or suspend events (Mission Trace v0 mission.resumed/suspended are unavailable) Live events are not replayed by Pi: after a reconnect only durable entries can be caught up",
+			"requires": "live-study",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "usage.entries",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.pi-capability.03f5c52a68cb22f98ecce70354407c8bae95069eb6abc26c0621406a4b2aa520",
+			"reason": "live-study check pi.live.study; limits: Usage is what the provider reported; a provider that reports none yields zeros, not an estimate Rows are keyed by opaque entry ids, not by an integer ledger sequence",
+			"requires": "live-study",
+			"status": "admitted"
+		},
+		{
+			"capability": "tool.activity",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.pi-capability.487c89e2b5302c27ffcdf24a9288e5df8e1d5159f0ba14bcae004c7816a850a2",
+			"reason": "live-study check pi.live.study; limits: Whether a model calls a tool is the model's choice: an absent call is inconclusive, not a failure",
+			"requires": "live-study",
+			"status": "admitted"
+		},
+		{
+			"capability": "steering.steer",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.aeba73424ef2b58ff95a7d14c0e37752a8b49021c7e77febbff0e30c93fd467e",
+			"reason": "live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities",
+			"requires": "live-study",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "steering.follow-up",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.1ba93aff637888e1f683c7efeaf5db51e5ae110d61fd65bf9a19f609f6584d1f",
+			"reason": "live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities",
+			"requires": "live-study",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "steering.stop",
+			"classification": "PARTIAL",
+			"evidenceId": "endo.evidence.pi-capability.990b5b783193f053dbf6e297642d9c3d42645f0f95fda561ca7a304693798f8f",
+			"reason": "live-study check pi.live.study; limits: Pi's abort takes no target: it aborts whatever is current and cannot be confined to the run the operator observed The acknowledgement is not the outcome; the ended run is observed separately",
+			"requires": "live-study",
+			"status": "admitted-partial"
+		},
+		{
+			"capability": "run.identity",
+			"classification": "UNAVAILABLE",
+			"evidenceId": "endo.evidence.pi-capability.724b414b64f74dca6811da5722c437bd3657a5dddb160d37b2b8d4d042db07c8",
+			"reason": "live-study check pi.live.study; agrees with pi.baseline.surface-review=UNAVAILABLE; limits: Endophasia does not invent run ids: mapped events carry no run coordinate",
+			"requires": "static-surface",
+			"status": "unavailable"
+		},
+		{
+			"capability": "operation.outcome",
+			"classification": "UNAVAILABLE",
+			"evidenceId": "endo.evidence.pi-capability.470486453aaf6e0292eb8bb5464704bc174227b5ee78cd0fd11bce858fb8c08e",
+			"reason": "live-study check pi.live.study; agrees with pi.baseline.surface-review=UNAVAILABLE; limits: Acceptance (the response) and effects (later events and entries) stay separate records; no outcome is inferred",
+			"requires": "static-surface",
+			"status": "unavailable"
+		}
+	],
+	"fingerprintId": "endo.evidence.pi-fingerprint.8bcf5f42d54b18c99d5717d26b16eb4890117e3aa7c9589056809d0c1f789b87",
+	"runtime": "pi",
+	"schemaVersion": "endo.capability-state.v0"
+}
+

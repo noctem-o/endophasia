@@ -1,0 +1,25 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext"
+	},
+	"include": [
+		"protocol/**/*",
+		"graph/**/*",
+		"visualization/**/*",
+		"lab/**/*",
+		"evolution/**/*",
+		"trust/**/*",
+		"collab/**/*",
+		"runtime/**/*",
+		"adapters/**/*",
+		"research/**/*",
+		"models/**/*",
+		"storage/**/*",
+		"cli/**/*",
+		"tests/**/*"
+	],
+	"exclude": ["**/dist/**", "node_modules"]
+}

@@ -40,7 +40,7 @@ Endophasia gives those parts explicit contracts and one place to inspect them.
 It does not expose private chain of thought. It does not treat every runtime feature as equivalent. It does not turn a benchmark score into truth, or a model's proposal into permission.
 
 > [!IMPORTANT]
-> Endophasia is experimental. This repository is the standalone home of the project; the earlier Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated). See [Current state](#current-state) for exactly what runs today.
+> Endophasia is experimental. This repository is the standalone home of the project; the earlier Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated). See [Current state](#current-state) for exactly what runs today, and [Try it](#try-it) to attach to your own Pi.
 
 ## Why Endophasia
 
@@ -77,30 +77,69 @@ Endophasia is a substrate, not a runtime. It attaches to agent harnesses you alr
 flowchart TB
     R["Harness you install<br/>Pi · Codex · Prime"] --> A["Endophasia adapter"]
     A --> S["Endophasia services<br/>events · evidence · graph"]
-    S --> C["Cockpit"]
+    S --> C["Operator CLI · cockpit"]
 ~~~
 
-Harnesses are installed and updated the usual way, outside Endophasia. Endophasia records each harness's version on attach. When the installed version changes, it marks that adapter's capabilities unverified and re-runs its conformance checks before trusting them again:
+**You install and update harnesses with your normal method. Endophasia never installs, updates, downgrades, patches or
+rebuilds one.** It finds the executable you selected (`--pi /path`, or `pi` on `PATH`), records its identity, launches
+it in its documented RPC mode when you ask, and records what it does.
+
+Each attachment records a fingerprint: facts from your installation (resolved and real path, a SHA-256 of the
+entrypoint file, the package manifest) kept apart from what the runtime reports (`pi --version`), with every missing
+fact listed rather than guessed. When the fingerprint differs from the last one for that attachment, Endophasia
+records the change, marks the evidence that depended on it unverified, and tells you, for example:
 
 ~~~text
-Pi updated 0.9.7 → 0.9.8
-  41 EXACT · 2 PARTIAL · 1 MISMATCH (steering)
-  steering disabled until reviewed
+Pi runtime changed
+
+  Previously observed: 1.0.0 / fingerprint 0d1bcf47a86d (strong identity) at …/dist/bundle/cli.js
+  Currently detected: 1.0.1 / fingerprint 7c2e91a0b4f3 (strong identity) at …/dist/bundle/cli.js
+  Differences: package, version; version order: higher; version standing: unverified-release
+  Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.
+  Endophasia will not install, update, downgrade or replace Pi. If you want a different version, use your normal installation method.
 ~~~
 
-Every recorded run carries the harness version that produced it, so results from before and after an update are never silently treated as comparable.
+A changed fingerprint says the runtime differs. It does not say an update is available, and it does not say the new
+runtime is incompatible. A capability can be unverified even when the runtime starts and answers.
 
-Runtime admission is evidence-based, and always in this order:
+Capabilities are admitted only on current evidence, in this order:
 
 ~~~text
-transport  →  conformance study  →  recorded evidence  →  capability admission
+transport  →  identity  →  local protocol checks  →  live study (on request)  →  capability admission
 ~~~
+
+- **Local protocol checks** run automatically: an ephemeral, offline Pi with no tools answering state, cursor and
+  configuration commands. No prompt, no provider call, nothing persisted.
+- **The live study** sends prompts, runs a read-only tool in a scratch workspace and calls your configured model
+  provider, so it may cost money. It runs only when you pass `--authorize-live-study`.
+
+Evidence also depends on your Pi configuration (settings, model endpoints, MCP servers, system prompts, extensions;
+never credentials), the adapter and suite versions, and the definition of the check that produced it. When any of
+these change, the evidence that depended on it stops counting. When several checks speak to one capability, the most
+conservative result decides; a check replaces another only where it is declared to re-test the same property more
+broadly.
+
+Every recorded run carries the fingerprint that produced it, so results from before and after a change are never
+silently treated as comparable.
 
 | Runtime | Role |
 | :--- | :--- |
-| Pi | Reference runtime |
+| Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
+
+What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
+endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
+It is evidence for that installation and configuration, not a promise about yours: your Pi starts unverified and is
+checked on its own.
+
+| Capability | Status | Why not exact |
+| :--- | :--- | :--- |
+| Session identity, entry cursor, per-entry usage, tool activity, model control | admitted (exact), within the recording's scope | model control exercised by re-selecting the configured model only |
+| Active path / continuity, thinking control | admitted (qualified) | context boundary derived from compaction entries; only one thinking level was available to exercise |
+| Lifecycle trace, session overview, metrics | admitted (partial) | no run or turn ids; one session, no lanes; total cost only |
+| Steer, follow-up, stop | admitted (partial) | no receipt ids; abort cannot target a specific run |
+| Active-tool control, run identity, operation outcomes | unavailable | not exposed over RPC |
 
 "Nothing matched exactly" is a valid research result.
 
@@ -170,25 +209,71 @@ A valid proposal does not widen the model's permission.
 
 ## Current state
 
-**Demonstrated in the legacy Pi fork:** a browser cockpit, Mission Trace, Continuity Inspector, steering controls, usage and runtime accounting, operation outcomes, runtime-neutral observation contracts, Runtime Profile v0, Prime RPC ingress, and the Conformance Lab with the sealed Prime 0.9.7 study.
+**Implemented and tested here:**
 
-**In review here:** the migration of that work into this repository, and a runtime-neutral protocol layer — versioned `endo.*` events and identities, an evidence store with replay, a typed cognition graph, evaluation and conformance records, evolution and promotion records, and trust-record mappings for Cogitator, Magpie, and Deadbolt.
+- The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay, a
+  typed cognition graph, evaluation and conformance records, evolution and promotion records, trust-record mappings for
+  Cogitator, Magpie and Deadbolt, model orchestration and collaboration records, durable storage and the `endo` CLI.
+- **The Pi attachment** (`adapters/pi`, `endo harness …`): executable resolution, fingerprints and change records,
+  neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
+  and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
+  recovery and replay. Controls are offered only for admitted capabilities.
+- Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
+  acceptance suite against a real installed Pi. The real Pi 1.0.0 recording is in `research/pi-conformance/1.0.0/`.
 
-**Not yet built:** attaching to an independently installed harness, harness version tracking, an end-to-end run through the new protocol layer into the cockpit, live provider integrations, and WORK / DREAM policy compilation.
+**Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
+says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
+an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
+model was called. The boundary and the evidence rules were audited adversarially
+([audit](docs/pi-attach-audit.md)), including the limitations accepted for now.
+
+**Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
+spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
+extension for active-tool control,
+live provider integrations beyond the OpenAI-compatible adapter (which buffers whole SSE bodies; no incremental
+streaming), WORK / DREAM policy compilation, and attachments for other harnesses.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
 
 ## Roadmap
 
-1. **Attach model.** Map every Pi internal the current runtime depends on into: available over Pi's protocol, needs a plugin hook, or needs an upstream change. Replace the vendored fork with an adapter to a user-installed Pi.
-2. **First end-to-end slice.** A real Pi session emits `endo.*` events into the durable store, builds the cognition graph, and appears in the cockpit.
-3. **Harness version tracking.** Record harness fingerprints, detect changes, and re-run conformance automatically.
-4. **Codex conformance study.**
-5. **Optional EVOLVE providers**, then Magpie and Deadbolt integrations.
+Done:
+
+1. **Attach model.** Pi attached over its documented RPC mode; the vendored fork removed
+   ([inventory and decisions](docs/pi-attach-inventory.md)).
+2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking, audited
+   adversarially ([audit](docs/pi-attach-audit.md)).
+
+Partly done:
+
+3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed; the cognition graph
+   and a cockpit over that store are not wired yet.
+
+Next:
+
+4. **The Endophasia-native cockpit** ([target and first slice](docs/cockpit.md)): a read-only projection of the
+   harness registry and event store, then evidence-gated controls; graph projection of recorded sessions after it.
+5. **Codex conformance study** on the same attachment and evidence contracts.
+6. **Optional EVOLVE providers**, then Magpie and Deadbolt integrations.
+7. **Upstream Pi requests** for targeted abort and queue receipts (draft in the inventory); run ids and RPC
+   active-tool commands were already declined upstream.
 
 Later layers wait until earlier contracts have survived a real integration.
 
-> Do not report more certainty, compatibility, evidence, or authority than the recorded inputs support.
+## Try it
+
+~~~sh
+npm ci
+node cli/index.ts harness check  ./endo-root               # identify your `pi` and run the automatic local checks
+node cli/index.ts harness status ./endo-root               # identity, last change, capability state (starts nothing)
+node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
+node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
+npm test                                                   # deterministic suite (no Pi, no network)
+ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in check against your installed Pi
+~~~
+
+Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
+separately.
 
 ## License
 

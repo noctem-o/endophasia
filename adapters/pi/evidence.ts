@@ -11,14 +11,22 @@
 //   4. adapterVersion, mappingVersion and suiteVersion equal the current adapter's;
 //   5. its check's definition digest equals the current definition of that check (one changed check invalidates only
 //      its own evidence);
-//   6. its configuration digest equals the current configuration digest for that check kind (local checks are
-//      configuration-independent; a live study depends on provider, model and tool selection);
+//   6. its configuration digest equals the current configuration digest for that check kind. Every kind depends on
+//      the digest of Pi's user configuration that changes behaviour (configuration.ts: settings, models, MCP servers,
+//      system-prompt files, extensions); a live study also depends on provider, model and tool selection;
 //   7. its extension dependency equals the current one (none in this adapter version).
-// Among the records that apply, the strongest check kind decides (live-study over local-protocol over static-surface:
-// a live study observes what a local exchange cannot, e.g. a session resumed across processes), and within a kind the
-// latest record (append order). When none applies the capability is UNVERIFIED, whatever older evidence said and
-// whether or not Pi starts. A version string is never enough: it is one
-// input to the identity digest, not a substitute for it.
+//
+// Combining the records that apply (derivePiCapabilityStateV0). No check kind outranks another by default: a live
+// study is narrower in scope (one provider, one model, one scratch workspace) as often as it is stronger, so it must
+// not silently replace broader protocol evidence. Per capability:
+//   a. take the latest applicable record of each check (a re-run replaces that check's earlier result);
+//   b. drop a record only when another remaining record's check explicitly declares, in its definition, that it
+//      supersedes that check for this capability (`supersedes`; the declaration is part of the definition digest, so
+//      changing it invalidates the declaring check's evidence);
+//   c. the most conservative classification among what remains decides: MISMATCH, then UNAVAILABLE, PARTIAL,
+//      QUALIFIED, EXACT; ties go to the latest record. Disagreeing results are named in the reason.
+// When no record applies the capability is UNVERIFIED, whatever older evidence said and whether or not Pi starts. A
+// version string is never enough: it is one input to the identity digest, not a substitute for it.
 
 import type { EndoConformanceClassificationV0 } from "../../protocol/evaluation.ts";
 import {
@@ -47,7 +55,7 @@ import {
 	PI_MAPPING_VERSION,
 	PI_SUITE_VERSION,
 	parseSemverV0,
-	piVersionPolicyV0,
+	piVersionStandingV0,
 } from "./version.ts";
 
 function contentId(prefix: string, body: unknown): string {
@@ -185,21 +193,21 @@ export function piNotificationV0(change: EndoHarnessChangeV0): EndoHarnessNotifi
 	} else if (change.kind === "first-observation") {
 		kind = "runtime-first-observed";
 		title = "Pi runtime observed for the first time";
-		const policy = piVersionPolicyV0(change.current?.version ?? null);
+		const standing = piVersionStandingV0(change.current?.version ?? null);
 		lines = [
 			`Detected: ${describe(change.current)}`,
-			`Version policy: ${policy}${policy === "tested" ? "" : " (no capability is assumed from the version)"}`,
+			`Version standing: ${standing} (informational; no capability is admitted or refused because of the version)`,
 			"No conformance evidence exists yet. Capabilities are unverified until checks record evidence.",
 			PI_NOT_MANAGED_LINE,
 		];
 	} else {
 		kind = "runtime-changed";
 		title = "Pi runtime changed";
-		const policy = piVersionPolicyV0(change.current?.version ?? null);
+		const standing = piVersionStandingV0(change.current?.version ?? null);
 		lines = [
 			`Previously observed: ${describe(change.previous)}`,
 			`Currently detected: ${describe(change.current)}`,
-			`Differences: ${change.differences.join(", ")}; version order: ${change.versionOrder}; version policy: ${policy}`,
+			`Differences: ${change.differences.join(", ")}; version order: ${change.versionOrder}; version standing: ${standing}`,
 			"Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.",
 			PI_NOT_MANAGED_LINE,
 		];
@@ -227,21 +235,39 @@ export interface PiCheckDefinitionV0 {
 	readonly capabilities: readonly string[];
 	/** What the check sends and asserts, in words; part of the digest, so rewording a check is a new definition. */
 	readonly procedure: string;
+	/**
+	 * Per capability, the checks whose results this check supersedes because it re-tests the same property in a
+	 * strictly broader way. Only listed pairs are superseded; everything else is combined conservatively.
+	 */
+	readonly supersedes?: Readonly<Record<string, readonly string[]>>;
 }
 
 export function piCheckDefinitionDigestV0(definition: PiCheckDefinitionV0): string {
-	return sha256HexV0(canonicalEndoJsonV0({ ...definition, capabilities: [...definition.capabilities] }));
+	const supersedes: Record<string, string[]> = {};
+	for (const [capability, checks] of Object.entries(definition.supersedes ?? {})) supersedes[capability] = [...checks];
+	return sha256HexV0(canonicalEndoJsonV0({ ...definition, capabilities: [...definition.capabilities], supersedes }));
 }
 
-/** The configuration subset a check kind depends on. Local and static checks depend on none. */
+/**
+ * The configuration a check kind depends on. Every kind depends on the digest of Pi's behaviour-relevant user
+ * configuration (configuration.ts); a live study also on provider, model and tool selection.
+ */
 export function piConfigurationDigestV0(
 	kind: EndoCapabilityCheckKindV0,
-	configuration: { provider?: string; model?: string; tools?: readonly string[] | "default" | "none" },
+	configuration: {
+		provider?: string;
+		model?: string;
+		tools?: readonly string[] | "default" | "none";
+		/** piUserConfigurationDigestV0() of the environment Pi runs with; null when it could not be read. */
+		piConfiguration?: string | null;
+	},
 ): string {
-	if (kind !== "live-study") return sha256HexV0(canonicalEndoJsonV0({ kind }));
+	const piConfiguration = configuration.piConfiguration ?? null;
+	if (kind !== "live-study") return sha256HexV0(canonicalEndoJsonV0({ kind, piConfiguration }));
 	return sha256HexV0(
 		canonicalEndoJsonV0({
 			kind,
+			piConfiguration,
 			provider: configuration.provider ?? null,
 			model: configuration.model ?? null,
 			tools: Array.isArray(configuration.tools) ? [...configuration.tools] : (configuration.tools ?? "default"),
@@ -340,9 +366,17 @@ export function piEvidenceValidityV0(
 	return { valid: true };
 }
 
+const CONSERVATIVE_ORDER: Record<EndoConformanceClassificationV0, number> = {
+	MISMATCH: 0,
+	UNAVAILABLE: 1,
+	PARTIAL: 2,
+	QUALIFIED: 3,
+	EXACT: 4,
+};
+
 /**
- * Derive the capability state from the evidence history: per capability, the latest record that applies. A pending
- * live study, a runtime change or an unidentified runtime all leave capabilities UNVERIFIED.
+ * Derive the capability state from the evidence history (steps a-c in the module header). A pending live study, a
+ * runtime or configuration change, or an unidentified runtime all leave capabilities UNVERIFIED.
  */
 export function derivePiCapabilityStateV0(args: {
 	attachment: string;
@@ -352,38 +386,54 @@ export function derivePiCapabilityStateV0(args: {
 	definitions: ReadonlyMap<string, PiCheckDefinitionV0>;
 	configurationDigest: (kind: EndoCapabilityCheckKindV0) => string;
 }): EndoCapabilityStateV0 {
-	const rank: Record<EndoCapabilityCheckKindV0, number> = {
-		"live-study": 3,
-		"local-protocol": 2,
-		"static-surface": 1,
-	};
 	const capabilities: EndoCapabilityStateEntryV0[] = PI_CAPABILITIES_V0.map((capability) => {
 		let lastInvalid: string | null = null;
-		let chosen: EndoCapabilityEvidenceV0 | null = null;
+		// a. the latest applicable record of each check, remembering its position for tie-breaking.
+		const latest = new Map<string, { record: EndoCapabilityEvidenceV0; index: number }>();
 		for (let index = args.evidence.length - 1; index >= 0; index -= 1) {
 			const record = args.evidence[index]!;
-			if (record.capability !== capability.id) continue;
+			if (record.capability !== capability.id || latest.has(record.check.name)) continue;
 			const validity = piEvidenceValidityV0(record, args);
 			if (!validity.valid) {
 				lastInvalid ??= validity.reason;
 				continue;
 			}
-			if (chosen === null || rank[record.check.kind] > rank[chosen.check.kind]) chosen = record;
+			latest.set(record.check.name, { record, index });
 		}
-		if (chosen !== null) {
-			const record = chosen;
+		// b. explicit supersession only, declared by a check that is itself present.
+		const superseded = new Set<string>();
+		for (const name of latest.keys()) {
+			for (const target of args.definitions.get(name)?.supersedes?.[capability.id] ?? []) {
+				if (target !== name) superseded.add(target);
+			}
+		}
+		const remaining = [...latest.values()].filter(({ record }) => !superseded.has(record.check.name));
+		if (remaining.length > 0) {
+			// c. the most conservative classification decides; ties go to the latest record.
+			remaining.sort(
+				(a, b) =>
+					CONSERVATIVE_ORDER[a.record.classification] - CONSERVATIVE_ORDER[b.record.classification] ||
+					b.index - a.index,
+			);
+			const { record } = remaining[0]!;
+			const others = remaining.slice(1).map(({ record: other }) => `${other.check.name}=${other.classification}`);
+			const reason = [
+				`${record.check.kind} check ${record.check.name}`,
+				others.length === 0
+					? null
+					: `${others.some((other) => !other.endsWith(`=${record.classification}`)) ? "most conservative of" : "agrees with"} ${others.join(", ")}`,
+				superseded.size === 0 ? null : `supersedes ${[...superseded].join(", ")}`,
+				record.limitations.length === 0 ? null : `limits: ${record.limitations.join(" ")}`,
+			]
+				.filter((part) => part !== null)
+				.join("; ")
+				.slice(0, 2048);
 			return {
 				capability: capability.id,
 				status: endoCapabilityStatusForV0(record.classification),
 				classification: record.classification,
 				evidenceId: record.id,
-				reason:
-					record.limitations.length === 0
-						? `${record.check.kind} check ${record.check.name}`
-						: `${record.check.kind} check ${record.check.name}; limits: ${record.limitations.join(" ")}`.slice(
-								0,
-								2048,
-							),
+				reason,
 				requires: capability.requires,
 			};
 		}
@@ -392,7 +442,7 @@ export function derivePiCapabilityStateV0(args: {
 				? "needs a live study (explicit operator request: it may cost provider usage and runs agent work)"
 				: capability.requires === "local-protocol"
 					? "needs the automatic local protocol checks"
-					: "needs the static surface classification";
+					: "needs the documented-surface review of this release, or the live study";
 		return {
 			capability: capability.id,
 			status: "unverified",

@@ -3,8 +3,9 @@
 // - Local protocol checks run automatically. They start Pi in RPC mode with an in-memory session (`--no-session`),
 //   `--offline` and no tools, send only state, cursor and configuration commands, and never send a prompt: no agent
 //   run starts, no provider is called, no session is persisted.
-// - Static-surface classifications record absences in Pi's documented RPC surface for a TESTED version only (an
-//   untested version's surface was not reviewed, so its static capabilities stay unverified).
+// - The documented-surface review records absences in Pi's documented RPC surface. It is evidence about the
+//   documentation of the release that was reviewed (PI_SURFACE_REVIEWED_VERSIONS), so it applies to that release
+//   only. On any other release the live study observes the same absences in Pi's actual records.
 // - The live study sends prompts. It runs agent work, executes a read-only tool in a scratch workspace Endophasia
 //   creates, calls the configured model provider (which may cost money) and persists a scratch session. It runs only
 //   when the caller passes an explicit authorization; nothing calls it automatically.
@@ -93,18 +94,30 @@ export const PI_LOCAL_CONTROLS_CHECK: PiCheckDefinitionV0 = {
 		"re-select the current model with set_model when it is among get_available_models and compare get_state; set each available thinking level with set_thinking_level and compare get_state, restoring the original; send get_active_tools, which the documented surface does not define, and expect a refusal",
 };
 
+/** Releases whose documented RPC surface was reviewed for the documented-surface check. */
+export const PI_SURFACE_REVIEWED_VERSIONS: readonly string[] = Object.freeze(["1.0.0"]);
+
 export const PI_STATIC_SURFACE_CHECK: PiCheckDefinitionV0 = {
-	name: "pi.static.surface",
+	name: "pi.baseline.surface-review",
 	version: "1",
 	kind: "static-surface",
 	capabilities: ["run.identity", "operation.outcome"],
 	procedure:
-		"classified from Pi 1.0.0 packages/coding-agent/src/modes/rpc/rpc-types.ts and docs/json.md: agent_start, turn_start, turn_end, agent_end and agent_settled carry no identifiers; prompt, steer and follow_up responses carry a disposition only; no command reads an operation outcome",
+		"documented-surface review of Pi 1.0.0 packages/coding-agent/src/modes/rpc/rpc-types.ts and docs/json.md: agent_start, turn_start, turn_end, agent_end and agent_settled carry no identifiers; prompt, steer and follow_up responses carry a disposition only; no command reads an operation outcome. Applies only to the reviewed release",
+};
+
+/** The keys Pi 1.0.0 documents on each lifecycle event (docs/json.md). Anything else is a surface difference. */
+const DOCUMENTED_LIFECYCLE_KEYS: Readonly<Record<string, readonly string[]>> = {
+	agent_start: ["type"],
+	turn_start: ["type"],
+	turn_end: ["type", "message", "toolResults"],
+	agent_end: ["type", "messages", "willRetry"],
+	agent_settled: ["type"],
 };
 
 export const PI_LIVE_STUDY_CHECK: PiCheckDefinitionV0 = {
 	name: "pi.live.study",
-	version: "1",
+	version: "2",
 	kind: "live-study",
 	capabilities: [
 		"lifecycle.trace",
@@ -114,9 +127,14 @@ export const PI_LIVE_STUDY_CHECK: PiCheckDefinitionV0 = {
 		"steering.follow-up",
 		"steering.stop",
 		"session.identity",
+		"run.identity",
+		"operation.outcome",
 	],
 	procedure:
-		"in a scratch workspace and persistent scratch session: (1) a short prompt, observing the lifecycle event order and the assistant entry's usage; (2) a prompt asking for the read tool on a fixture file, observing tool_execution_start/end correlation; (3) a long prompt with a steer sent after agent_start, checking the marker is consumed by that run; (4) the same with follow_up, checking a later run consumes it; (5) a long prompt aborted after agent_start, checking the run ends; (6) a second process on the same session id, checking the session id and earlier entry ids persist",
+		"in a scratch workspace and persistent scratch session: (1) a short prompt, observing the lifecycle event order, the keys each lifecycle event carries, the keys of the prompt response, and the assistant entry's usage; (2) a prompt asking for the read tool on a fixture file, observing tool_execution_start/end correlation; (3) a long prompt with a steer sent after agent_start, checking the marker is consumed by that run; (4) the same with follow_up, checking a later run consumes it; (5) a long prompt aborted after agent_start, checking the run ends; (6) a second process on the same session id, checking the session id and earlier entry ids persist",
+	// Step 6 re-tests what the local state check tests (a non-empty, stable session id) across two processes, which is
+	// strictly broader. Nothing else is superseded: every other overlap is combined conservatively.
+	supersedes: { "session.identity": ["pi.local.state"] },
 };
 
 export const PI_CHECK_DEFINITIONS_V0: ReadonlyMap<string, PiCheckDefinitionV0> = new Map(
@@ -147,6 +165,16 @@ class Recorder {
 		this.client.subscribe((event) => {
 			this.events.push(event);
 			this.transcript.push({ direction: "event", type: event.type, record: event.record });
+			// An extension dialog blocks Pi until answered; a check has no operator to ask, so it cancels and notes it.
+			if (event.type === "extension_ui_request") {
+				const { id, method } = event.record;
+				if (typeof id === "string" && ["select", "confirm", "input", "editor"].includes(String(method))) {
+					void this.client.connection.answerExtensionUi(id, { cancelled: true }).then(
+						() => this.note(`cancelled extension ${String(method)} dialog`),
+						() => {},
+					);
+				}
+			}
 			for (const waiter of [...this.#waiters]) {
 				if (waiter.test(event)) {
 					this.#waiters.delete(waiter);
@@ -662,10 +690,54 @@ export async function runPiLiveStudyV0(options: PiLiveStudyOptionsV0): Promise<P
 		{
 			const from = recorder.events.length;
 			recorder.note("step 1: short prompt");
-			const disposition = await recorder.call("prompt", { message: "short acknowledgement" }, () =>
-				client.prompt("Endophasia live conformance study. Reply with one short sentence."),
+			// Sent raw, so the response's own keys can be checked: an operation id there would change operation.outcome.
+			const response = await recorder.call("prompt", { message: "short acknowledgement" }, () =>
+				client.raw("prompt", { message: "Endophasia live conformance study. Reply with one short sentence." }),
 			);
+			const data = response.data;
+			const responseKeys =
+				typeof data === "object" && data !== null && !Array.isArray(data) ? Object.keys(data).sort() : [];
+			const disposition =
+				response.success && typeof (data as { disposition?: unknown })?.disposition === "string"
+					? String((data as { disposition: string }).disposition)
+					: "refused";
 			const settled = disposition === "started" ? await settle(from) : null;
+			const lifecycle = recorder.events.slice(from).filter((event) => event.type in DOCUMENTED_LIFECYCLE_KEYS);
+			const extraKeys = [
+				...new Set(
+					lifecycle.flatMap((event) =>
+						Object.keys(event.record)
+							.filter((key) => !DOCUMENTED_LIFECYCLE_KEYS[event.type]!.includes(key))
+							.map((key) => `${event.type}.${key}`),
+					),
+				),
+			].sort();
+			results.push({
+				capability: "run.identity",
+				classification: settled === null ? "inconclusive" : extraKeys.length === 0 ? "UNAVAILABLE" : "MISMATCH",
+				expected: "runtime-supplied run or turn identifiers on lifecycle events",
+				observed:
+					extraKeys.length === 0
+						? `${lifecycle.length} lifecycle events carried only their documented keys: no run or turn identifier`
+						: `lifecycle events carried undocumented keys (${extraKeys.join(", ")}); the adapter does not map them and needs review`,
+				limitations: ["Endophasia does not invent run ids: mapped events carry no run coordinate"],
+			});
+			results.push({
+				capability: "operation.outcome",
+				classification: !response.success
+					? "inconclusive"
+					: responseKeys.join(",") === "disposition"
+						? "UNAVAILABLE"
+						: "MISMATCH",
+				expected: "an operation identifier in the prompt response, readable later as a durable outcome",
+				observed:
+					responseKeys.join(",") === "disposition"
+						? "the prompt response carried only a disposition: nothing identifies the operation for a later outcome read"
+						: `the prompt response carried ${responseKeys.join(", ") || "no data"}; the adapter needs review`,
+				limitations: [
+					"Acceptance (the response) and effects (later events and entries) stay separate records; no outcome is inferred",
+				],
+			});
 			const order = ["agent_start", "turn_start", "message_end", "turn_end", "agent_end", "agent_settled"];
 			const seen = recorder.events.slice(from).map((event) => event.type);
 			let cursor = 0;

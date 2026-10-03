@@ -15,7 +15,7 @@
  */
 
 import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attachment.ts";
-import { piVersionPolicyV0 } from "../adapters/pi/version.ts";
+import { piVersionStandingV0 } from "../adapters/pi/version.ts";
 import type { EndoHarnessNotificationV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
@@ -98,7 +98,7 @@ export async function harnessStatusCommand(argv: readonly string[]): Promise<voi
 		attachment: registry.attachment,
 		recovery: registry.recovery(),
 		current,
-		versionPolicy: current === null ? null : piVersionPolicyV0(current.reported.version),
+		versionStanding: current === null ? null : piVersionStandingV0(current.reported.version),
 		previousDifferent: previous,
 		lastChange: registry.last("change"),
 		lastNotification: registry.last("notification"),

@@ -27,7 +27,7 @@ import {
 	PI_ADAPTER_VERSION,
 	parsePiVersionOutputV0,
 	parseSemverV0,
-	piVersionPolicyV0,
+	piVersionStandingV0,
 } from "../adapters/pi/version.ts";
 import type { EndoConformanceClassificationV0 } from "../protocol/evaluation.ts";
 import {
@@ -401,13 +401,13 @@ describe("version policy", () => {
 		expect(compareSemverV0(parseSemverV0("1.0.0-beta.11")!, parseSemverV0("1.0.0-beta.2")!)).toBeGreaterThan(0);
 	});
 
-	it("only exactly tested releases are 'tested'; the major version alone proves nothing", () => {
-		expect(piVersionPolicyV0("1.0.0")).toBe("tested");
-		expect(piVersionPolicyV0("1.0.1")).toBe("untested");
-		expect(piVersionPolicyV0("0.99.2")).toBe("untested");
-		expect(piVersionPolicyV0("1.1.0-rc.1")).toBe("prerelease");
-		expect(piVersionPolicyV0(null)).toBe("unknown");
-		expect(piVersionPolicyV0("main")).toBe("unknown");
+	it("the version standing is informational: only the verified baseline is named, and nothing else is implied", () => {
+		expect(piVersionStandingV0("1.0.0")).toBe("verified-baseline");
+		expect(piVersionStandingV0("1.0.1")).toBe("unverified-release");
+		expect(piVersionStandingV0("0.99.2")).toBe("unverified-release");
+		expect(piVersionStandingV0("1.1.0-rc.1")).toBe("unverified-prerelease");
+		expect(piVersionStandingV0(null)).toBe("unknown");
+		expect(piVersionStandingV0("main")).toBe("unknown");
 	});
 });
 

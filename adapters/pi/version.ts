@@ -5,25 +5,29 @@
 // MAPPING when the RPC-to-endo.* mapping changes, SUITE when the set or meaning of conformance checks changes (a single
 // check's definition change is caught by its own definition digest instead).
 //
-// Version policy. Pi is installed and updated by the user, never by Endophasia. The policy only says how much
-// evidence exists for a reported version; it never admits a capability on its own:
-// - "tested": the adapter's local checks and live study were run against this exact version (see
-//   docs/pi-attach-inventory.md, "Version policy"). Capabilities still need current evidence for the observed
-//   fingerprint; a tested version is not a substitute for it.
-// - "untested": a parseable release outside the tested list, newer or older, same major or not. Local checks run; live
-//   capabilities stay unverified until the operator runs the live study.
-// - "prerelease": a parseable prerelease (e.g. 1.1.0-beta.1). Treated as untested.
-// - "unknown": no version was reported, or it does not parse. Treated as untested, and the identity is reduced unless
-//   the entrypoint digest is present.
+// The verified baseline. Pi is installed and updated by the user, never by Endophasia. Pi 1.0.0 is the release this
+// adapter was built against and run against end to end: its documented RPC surface was reviewed, and the deterministic
+// suite's fake Pi models its records. That makes it a baseline, not a whitelist: the version standing below is
+// information for the operator and never admits, refuses or skips anything. Capabilities are admitted only on current
+// evidence for the observed fingerprint, whatever the version; a non-baseline release earns admission through the same
+// local checks and live study as the baseline. The one record tied to the baseline is the documented-surface review
+// (checks.ts), which is evidence about the reviewed release's documentation and therefore applies only to that release;
+// the live study observes the same absences on any release.
+//
+// - "verified-baseline": the reported version is a release whose surface was reviewed and recorded end to end.
+// - "unverified-release": any other parseable release, newer or older. Nothing is assumed in either direction.
+// - "unverified-prerelease": a parseable prerelease.
+// - "unknown": no version was reported, or it does not parse (e.g. a local build). The identity is reduced unless the
+//   entrypoint digest is present.
 
-export const PI_ADAPTER_VERSION = "pi-rpc-adapter.1";
+export const PI_ADAPTER_VERSION = "pi-rpc-adapter.2";
 export const PI_MAPPING_VERSION = "pi-rpc-mapping.1";
-export const PI_SUITE_VERSION = "pi-rpc-suite.1";
+export const PI_SUITE_VERSION = "pi-rpc-suite.2";
 
-/** Exact Pi releases the deterministic suite and the real-runtime acceptance run were executed against. */
-export const PI_TESTED_VERSIONS: readonly string[] = Object.freeze(["1.0.0"]);
+/** Releases whose documented RPC surface was reviewed and whose behaviour was recorded end to end. Not a whitelist. */
+export const PI_VERIFIED_BASELINE_VERSIONS: readonly string[] = Object.freeze(["1.0.0"]);
 
-export type PiVersionPolicyV0 = "tested" | "untested" | "prerelease" | "unknown";
+export type PiVersionStandingV0 = "verified-baseline" | "unverified-release" | "unverified-prerelease" | "unknown";
 
 export interface SemverV0 {
 	major: number;
@@ -79,11 +83,11 @@ export function parsePiVersionOutputV0(output: string): string | null {
 	return parseSemverV0(candidate) === null ? null : candidate;
 }
 
-/** The policy for one reported version (see the module header). */
-export function piVersionPolicyV0(version: string | null): PiVersionPolicyV0 {
+/** The informational standing of one reported version (see the module header). It gates nothing. */
+export function piVersionStandingV0(version: string | null): PiVersionStandingV0 {
 	if (version === null) return "unknown";
 	const parsed = parseSemverV0(version);
 	if (parsed === null) return "unknown";
-	if (parsed.prerelease.length > 0) return "prerelease";
-	return PI_TESTED_VERSIONS.includes(version) ? "tested" : "untested";
+	if (PI_VERIFIED_BASELINE_VERSIONS.includes(version)) return "verified-baseline";
+	return parsed.prerelease.length > 0 ? "unverified-prerelease" : "unverified-release";
 }

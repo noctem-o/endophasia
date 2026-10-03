@@ -8,7 +8,10 @@
 // steered by environment variables:
 //   FAKE_PI_SCENARIO    comma-separated faults: fragment, batch, garbage, reorder, exit-on:<command>,
 //                       hang-on:<command>, exit-immediately, version-fail, version-garbage, active-tools,
-//                       entries-lie, no-usage, no-tool-call, lose-session, ignore-eof, dup-entries
+//                       entries-lie, no-usage, no-tool-call, lose-session, ignore-eof, dup-entries,
+//                       mutate-on:<command> (rewrites its own package version: an external update mid-check),
+//                       dialog-on-start (blocks every response until an extension dialog is answered),
+//                       run-ids (adds an undocumented runId to lifecycle events)
 //   FAKE_PI_STEP_MS     delay between streamed run steps (default 20)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -180,9 +183,9 @@ async function turn(run, userText) {
 	return wantsTool && !run.aborted;
 }
 async function startRun(text) {
-	const run = { aborted: false };
+	const run = { aborted: false, id: `run-${newId()}` };
 	running = run;
-	emit({ type: "agent_start" });
+	emit({ type: "agent_start", ...(has("run-ids") ? { runId: run.id } : {}) });
 	let next = text;
 	for (;;) {
 		const again = await turn(run, next);
@@ -199,7 +202,7 @@ async function startRun(text) {
 		}
 		break;
 	}
-	emit({ type: "agent_end", messages: [], willRetry: false });
+	emit({ type: "agent_end", messages: [], willRetry: false, ...(has("run-ids") ? { runId: run.id } : {}) });
 	running = null;
 	if (!run.aborted && followUps.length > 0) {
 		const follow = followUps.shift();
@@ -230,10 +233,27 @@ function state() {
 		pendingMessageCount: steering.length + followUps.length,
 	};
 }
+let dialogOpen = has("dialog-on-start");
+const blocked = [];
 async function handle(command) {
 	const { id, type } = command;
+	if (type === "extension_ui_response") {
+		if (command.id === "dialog-1") {
+			dialogOpen = false;
+			for (const release of blocked.splice(0)) void handle(release);
+		}
+		return;
+	}
+	if (dialogOpen) {
+		blocked.push(command);
+		return;
+	}
 	log(type);
 	if (option("exit-on:") === type) process.exit(9);
+	if (option("mutate-on:") === type && packageDirectory !== undefined) {
+		const manifest = join(packageDirectory, "package.json");
+		writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version: "9.9.9" }));
+	}
 	if (option("hang-on:") === type) return;
 	switch (type) {
 		case "get_state":
@@ -336,6 +356,10 @@ async function handle(command) {
 		default:
 			return refuse(id, type, `Unknown command: ${type}`);
 	}
+}
+
+if (has("dialog-on-start")) {
+	emit({ type: "extension_ui_request", id: "dialog-1", method: "select", title: "Pick one", options: ["a", "b"] });
 }
 
 if (has("garbage")) {

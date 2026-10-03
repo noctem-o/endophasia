@@ -14,7 +14,7 @@
 // It never installs, updates, downgrades, patches or rebuilds Pi, and never edits Pi's configuration.
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type {
@@ -33,11 +33,13 @@ import type { RpcDiagnosticV0, RpcEventV0, RpcExitV0 } from "../rpc-jsonl/rpc-co
 import { piCapabilityV0 } from "./capabilities.ts";
 import {
 	PI_CHECK_DEFINITIONS_V0,
+	PI_SURFACE_REVIEWED_VERSIONS,
 	type PiCheckRunV0,
 	piStaticSurfaceV0,
 	runPiLiveStudyV0,
 	runPiLocalChecksV0,
 } from "./checks.ts";
+import { piProjectConfigurationDigestV0, piUserConfigurationDigestV0 } from "./configuration.ts";
 import {
 	derivePiCapabilityStateV0,
 	piChangeV0,
@@ -55,7 +57,6 @@ import {
 	piEntryEventIdV0,
 } from "./mapping.ts";
 import { PiRpcClientV0, PiRpcProtocolErrorV0, PiRpcRefusalV0, type PiSessionEntryV0 } from "./rpc.ts";
-import { piVersionPolicyV0 } from "./version.ts";
 
 export interface PiAttachmentOptionsV0 {
 	/** The Endophasia store root (event store, artifacts, harness registry). */
@@ -128,21 +129,26 @@ export class PiAttachmentV0 {
 		return this.#fingerprint;
 	}
 
+	/** Take one fingerprint of the selected Pi without recording it. Throws when nothing identifies the runtime. */
+	#takeFingerprint(): Promise<EndoHarnessFingerprintV0> {
+		return fingerprintPiRuntimeV0({
+			attachment: this.attachment,
+			...(this.options.executable === undefined ? {} : { executable: this.options.executable }),
+			...(this.options.command === undefined ? {} : { command: this.options.command }),
+			...(this.options.path === undefined ? {} : { path: this.options.path }),
+			...(this.options.cwd === undefined ? {} : { cwd: this.options.cwd }),
+			env: { ...piIdentityEnvironmentV0(), PATH: this.#env().PATH ?? process.env.PATH ?? "" },
+			...(this.options.now === undefined ? {} : { now: this.options.now }),
+		});
+	}
+
 	/** Fingerprint the selected Pi, compare with the last observation, and record the result. Never throws on failure. */
 	async identify(): Promise<PiIdentificationV0> {
 		const previous = this.registry.last("fingerprint");
 		let current: EndoHarnessFingerprintV0 | null = null;
 		let failure: string | undefined;
 		try {
-			current = await fingerprintPiRuntimeV0({
-				attachment: this.attachment,
-				...(this.options.executable === undefined ? {} : { executable: this.options.executable }),
-				...(this.options.command === undefined ? {} : { command: this.options.command }),
-				...(this.options.path === undefined ? {} : { path: this.options.path }),
-				...(this.options.cwd === undefined ? {} : { cwd: this.options.cwd }),
-				env: { ...piIdentityEnvironmentV0(), PATH: this.#env().PATH ?? process.env.PATH ?? "" },
-				...(this.options.now === undefined ? {} : { now: this.options.now }),
-			});
+			current = await this.#takeFingerprint();
 		} catch (error) {
 			failure =
 				error instanceof PiFingerprintErrorV0 ? error.message : `fingerprint collection failed: ${String(error)}`;
@@ -166,12 +172,48 @@ export class PiAttachmentV0 {
 		return { fingerprint: current, change, notification };
 	}
 
+	/**
+	 * The current configuration digest per check kind. Every kind includes Pi's behaviour-relevant user configuration
+	 * under the environment Pi runs with; the live study adds provider and model and the fixed tool set it uses.
+	 */
 	#configurationDigest = (kind: "static-surface" | "local-protocol" | "live-study"): string =>
 		piConfigurationDigestV0(kind, {
+			piConfiguration: piUserConfigurationDigestV0(this.#env()),
 			...(this.options.provider === undefined ? {} : { provider: this.options.provider }),
 			...(this.options.model === undefined ? {} : { model: this.options.model }),
-			...(this.options.tools === undefined ? {} : { tools: this.options.tools }),
+			tools: ["read"],
 		});
+
+	/** The path Pi is launched by: the real path the fingerprint hashed when it is executable, else the resolved path. */
+	launchPath(fingerprint: EndoHarnessFingerprintV0): string {
+		const real = fingerprint.local.realPath;
+		if (real !== null) {
+			try {
+				accessSync(real, constants.X_OK);
+				return real;
+			} catch {
+				// A non-executable real path (e.g. a script run through its symlinked launcher) falls back below.
+			}
+		}
+		return fingerprint.local.resolvedPath ?? fingerprint.local.requested;
+	}
+
+	/**
+	 * Re-fingerprint after a check and compare with the fingerprint the check ran against. When the runtime changed
+	 * while the check ran, the check's results describe an unknown mix of two runtimes: nothing is recorded, and the
+	 * change itself is identified and recorded instead. Returns whether the runtime is still the one checked.
+	 */
+	async #stillSame(fingerprint: EndoHarnessFingerprintV0): Promise<boolean> {
+		let after: EndoHarnessFingerprintV0 | null = null;
+		try {
+			after = await this.#takeFingerprint();
+		} catch {
+			after = null;
+		}
+		if (after !== null && after.identity.digest === fingerprint.identity.digest) return true;
+		await this.identify();
+		return false;
+	}
 
 	/** The capability state current evidence supports. Recorded in the registry. */
 	state(): EndoCapabilityStateV0 {
@@ -224,38 +266,46 @@ export class PiAttachmentV0 {
 	 */
 	async checkLocal(options: { force?: boolean } = {}): Promise<{
 		ran: boolean;
+		/** False when the runtime changed while the checks ran: their results were discarded. */
+		recorded: boolean;
 		evidence: EndoCapabilityEvidenceV0[];
 		state: EndoCapabilityStateV0;
 	}> {
 		if (!this.#identified) await this.identify();
 		const fingerprint = this.#fingerprint;
-		if (fingerprint === null) return { ran: false, evidence: [], state: this.state() };
+		if (fingerprint === null) return { ran: false, recorded: false, evidence: [], state: this.state() };
 		const before = this.state();
 		const needs = (kind: string) =>
 			before.capabilities.some((entry) => entry.status === "unverified" && entry.requires === kind);
-		const evidence: EndoCapabilityEvidenceV0[] = [];
-		let ran = false;
-		if (
-			(options.force === true || needs("static-surface")) &&
-			piVersionPolicyV0(fingerprint.reported.version) === "tested"
-		) {
-			evidence.push(...this.#record(piStaticSurfaceV0(), fingerprint));
-			ran = true;
-		}
+		const runs: PiCheckRunV0[] = [];
+		// The documented-surface review is evidence about one release's documentation: it applies only to a reviewed
+		// release. Other releases establish the same capabilities from the live study's observations.
+		const reviewed =
+			fingerprint.reported.version !== null && PI_SURFACE_REVIEWED_VERSIONS.includes(fingerprint.reported.version);
+		if ((options.force === true || needs("static-surface")) && reviewed) runs.push(piStaticSurfaceV0());
 		if (options.force === true || needs("local-protocol")) {
-			const runs = await runPiLocalChecksV0({
-				executable: fingerprint.local.resolvedPath ?? fingerprint.local.requested,
-				env: { ...this.#env(), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1" },
-				...(this.options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: this.options.requestTimeoutMs }),
-			});
-			for (const run of runs) evidence.push(...this.#record(run, fingerprint));
-			ran = true;
+			runs.push(
+				...(await runPiLocalChecksV0({
+					executable: this.launchPath(fingerprint),
+					env: { ...this.#env(), PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1" },
+					...(this.options.requestTimeoutMs === undefined
+						? {}
+						: { requestTimeoutMs: this.options.requestTimeoutMs }),
+				})),
+			);
 		}
-		return { ran, evidence, state: this.state() };
+		if (runs.length === 0) return { ran: false, recorded: false, evidence: [], state: this.state() };
+		if (!(await this.#stillSame(fingerprint))) {
+			return { ran: true, recorded: false, evidence: [], state: this.state() };
+		}
+		const evidence = runs.flatMap((run) => this.#record(run, fingerprint));
+		return { ran: true, recorded: true, evidence, state: this.state() };
 	}
 
 	/** Run the live study. `authorized` must be exactly true: it runs agent work and may cost provider usage. */
 	async studyLive(options: { authorized: true; stepTimeoutMs?: number }): Promise<{
+		/** False when the runtime changed while the study ran: its results were discarded. */
+		recorded: boolean;
 		evidence: EndoCapabilityEvidenceV0[];
 		inconclusive: string[];
 		state: EndoCapabilityStateV0;
@@ -266,17 +316,20 @@ export class PiAttachmentV0 {
 		if (fingerprint === null) throw new TypeError("the live study needs an identified Pi runtime");
 		const run = await runPiLiveStudyV0({
 			authorized: true,
-			executable: fingerprint.local.resolvedPath ?? fingerprint.local.requested,
+			executable: this.launchPath(fingerprint),
 			env: this.#env(),
 			...(this.options.provider === undefined ? {} : { provider: this.options.provider }),
 			...(this.options.model === undefined ? {} : { model: this.options.model }),
 			...(options.stepTimeoutMs === undefined ? {} : { stepTimeoutMs: options.stepTimeoutMs }),
 		});
-		const evidence = this.#record(run, fingerprint);
 		const inconclusive = run.results
 			.filter((result) => result.classification === "inconclusive")
 			.map((result) => `${result.capability}: ${result.observed}`);
-		return { evidence, inconclusive, state: this.state() };
+		if (!(await this.#stillSame(fingerprint))) {
+			return { recorded: false, evidence: [], inconclusive, state: this.state() };
+		}
+		const evidence = this.#record(run, fingerprint);
+		return { recorded: true, evidence, inconclusive, state: this.state() };
 	}
 
 	/** Open the operator's persistent Pi session and record it. identify() runs first when it has not. */
@@ -314,6 +367,12 @@ export class PiAttachmentV0 {
 	launchEnv(): Readonly<Record<string, string>> {
 		return this.#env();
 	}
+
+	/** @internal Re-identify for a reconnect: the recorded identification and the capability state it supports. */
+	async reidentify(): Promise<{ fingerprint: EndoHarnessFingerprintV0 | null; state: EndoCapabilityStateV0 }> {
+		const { fingerprint } = await this.identify();
+		return { fingerprint, state: this.state() };
+	}
 }
 
 /** What the session attachment has done so far; for the CLI and tests. */
@@ -325,12 +384,66 @@ export interface PiSessionCountersV0 {
 	reconnects: number;
 }
 
+/** Thrown when another live session attachment already writes the same store root. */
+export class PiStoreLockedErrorV0 extends Error {
+	constructor(path: string, holder: string) {
+		super(`another Endophasia session attachment (${holder}) is writing this store; lock ${path}`);
+		this.name = "PiStoreLockedErrorV0";
+	}
+}
+
+/**
+ * Take the store root's writer lock: one session attachment per root at a time, so two writers cannot each extend the
+ * event log from a different in-memory view. A lock left by a process that no longer exists is replaced.
+ */
+function acquireWriterLock(root: string, attachment: string): () => void {
+	const path = join(root, "events", "session-attachment.lock");
+	mkdirSync(join(root, "events"), { recursive: true });
+	const content = `${JSON.stringify({ pid: process.pid, attachment, at: new Date().toISOString() })}\n`;
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		try {
+			writeFileSync(path, content, { flag: "wx" });
+			let released = false;
+			return () => {
+				if (released) return;
+				released = true;
+				rmSync(path, { force: true });
+			};
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			let holder: { pid?: unknown; attachment?: unknown } = {};
+			try {
+				holder = JSON.parse(readFileSync(path, "utf8")) as typeof holder;
+			} catch {
+				// An unreadable lock is treated as held: never silently stolen.
+				throw new PiStoreLockedErrorV0(path, "unreadable lock");
+			}
+			const pid = typeof holder.pid === "number" ? holder.pid : undefined;
+			let alive = pid === process.pid;
+			if (pid !== undefined && !alive) {
+				try {
+					process.kill(pid, 0);
+					alive = true;
+				} catch (probe) {
+					alive = (probe as NodeJS.ErrnoException).code === "EPERM";
+				}
+			}
+			if (alive || pid === undefined) {
+				throw new PiStoreLockedErrorV0(path, `pid ${String(pid)}, ${String(holder.attachment)}`);
+			}
+			rmSync(path, { force: true });
+		}
+	}
+	throw new PiStoreLockedErrorV0(path, "lock contention");
+}
+
 /** One recorded Pi session: a persistent Pi session id that survives process restarts. */
 export class PiSessionAttachmentV0 {
 	readonly owner: PiAttachmentV0;
-	readonly fingerprint: EndoHarnessFingerprintV0;
-	readonly capabilityState: EndoCapabilityStateV0;
 	readonly store: EndoDurableEventStoreV0;
+	#fingerprint: EndoHarnessFingerprintV0;
+	#capabilityState: EndoCapabilityStateV0;
+	readonly #releaseLock: () => void;
 	readonly counters: PiSessionCountersV0 = {
 		ingested: 0,
 		duplicatesSkipped: 0,
@@ -355,9 +468,15 @@ export class PiSessionAttachmentV0 {
 
 	constructor(owner: PiAttachmentV0, fingerprint: EndoHarnessFingerprintV0, state: EndoCapabilityStateV0) {
 		this.owner = owner;
-		this.fingerprint = fingerprint;
-		this.capabilityState = state;
-		this.store = createEndoDurableEventStoreV0(owner.options.root);
+		this.#fingerprint = fingerprint;
+		this.#capabilityState = state;
+		this.#releaseLock = acquireWriterLock(owner.options.root, owner.attachment);
+		try {
+			this.store = createEndoDurableEventStoreV0(owner.options.root);
+		} catch (error) {
+			this.#releaseLock();
+			throw error;
+		}
 		this.#producer = `pi-rpc-adapter:${owner.attachment}`;
 		// Rebuild the dedupe set, the cursors and the producer sequence from what the store already holds.
 		let after = 0;
@@ -388,6 +507,16 @@ export class PiSessionAttachmentV0 {
 
 	get piSessionId(): string | null {
 		return this.#piSessionId;
+	}
+
+	/** The fingerprint of the runtime the current (or last) process was launched from. */
+	get fingerprint(): EndoHarnessFingerprintV0 {
+		return this.#fingerprint;
+	}
+
+	/** The capability state controls are gated on; re-derived whenever the runtime is re-identified. */
+	get capabilityState(): EndoCapabilityStateV0 {
+		return this.#capabilityState;
 	}
 
 	/** The current Pi process id, while one runs. */
@@ -423,8 +552,11 @@ export class PiSessionAttachmentV0 {
 		const { sessionDir, sessionId } = this.owner.sessionConfig();
 		mkdirSync(sessionDir, { recursive: true });
 		const options = this.owner.options;
+		// Events and diagnostics are accepted only from the process this attachment currently owns: a superseded
+		// process may still flush buffered records after a reconnect, and those belong to no current instance.
+		let owned: PiRpcClientV0 | null = null;
 		const client = new PiRpcClientV0({
-			executable: this.fingerprint.local.resolvedPath ?? this.fingerprint.local.requested,
+			executable: this.owner.launchPath(this.#fingerprint),
 			cwd: options.cwd ?? process.cwd(),
 			env: this.owner.launchEnv(),
 			session: { kind: "persistent", sessionDir, sessionId },
@@ -432,8 +564,11 @@ export class PiSessionAttachmentV0 {
 			...(options.model === undefined ? {} : { model: options.model }),
 			...(options.tools === undefined ? {} : { tools: options.tools }),
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
-			onDiagnostic: (diagnostic) => this.#diagnostic(diagnostic),
+			onDiagnostic: (diagnostic) => {
+				if (owned !== null && this.#client === owned) this.#diagnostic(diagnostic);
+			},
 		});
+		owned = client;
 		const instance = randomBytes(8).toString("hex");
 		let live = 0;
 		const self = this;
@@ -456,7 +591,9 @@ export class PiSessionAttachmentV0 {
 		};
 		this.#client = client;
 		this.#context = context;
-		client.subscribe((event) => this.#onEvent(event));
+		client.subscribe((event) => {
+			if (this.#client === client) this.#onEvent(event);
+		});
 		void client.connection.exited.then((exit) => this.#onExit(client, exit));
 		let state: Awaited<ReturnType<PiRpcClientV0["getState"]>>;
 		try {
@@ -468,9 +605,12 @@ export class PiSessionAttachmentV0 {
 		}
 		this.#piSessionId = state.sessionId;
 		this.#attachmentEvent("harness.attached", {
-			fingerprintId: this.fingerprint.id,
-			identityDigest: this.fingerprint.identity.digest,
-			version: this.fingerprint.reported.version,
+			fingerprintId: this.#fingerprint.id,
+			identityDigest: this.#fingerprint.identity.digest,
+			version: this.#fingerprint.reported.version,
+			// Evidence never covers project configuration (checks run in scratch directories); it is recorded here.
+			userConfigurationDigest: piUserConfigurationDigestV0(this.owner.launchEnv()),
+			projectConfigurationDigest: piProjectConfigurationDigestV0(options.cwd ?? process.cwd()),
 			instance,
 			piSessionId: state.sessionId,
 			requestedSessionId: sessionId,
@@ -485,11 +625,31 @@ export class PiSessionAttachmentV0 {
 		await this.catchUp();
 	}
 
-	/** Restart Pi after its process ended, then catch up from the last recorded cursor. */
+	/**
+	 * Restart Pi after its process ended, then catch up from the last recorded cursor. The runtime is identified again
+	 * first: if it changed while disconnected, the change is recorded, the capability state is re-derived (so controls
+	 * admitted for the old runtime are not offered for the new one), and observation continues on the new runtime. An
+	 * unidentifiable runtime is not launched.
+	 */
 	async reconnect(): Promise<void> {
 		if (this.#client !== null && this.#client.connection.state === "running") return;
 		this.counters.reconnects += 1;
 		this.#client = null;
+		const { fingerprint, state } = await this.owner.reidentify();
+		if (fingerprint === null) {
+			this.#capabilityState = state;
+			throw new TypeError("the Pi runtime could not be identified; not reconnecting");
+		}
+		if (fingerprint.identity.digest !== this.#fingerprint.identity.digest) {
+			this.#attachmentEvent("harness.runtime-changed", {
+				previousFingerprintId: this.#fingerprint.id,
+				currentFingerprintId: fingerprint.id,
+				previousVersion: this.#fingerprint.reported.version,
+				currentVersion: fingerprint.reported.version,
+			});
+		}
+		this.#fingerprint = fingerprint;
+		this.#capabilityState = state;
 		await this.connect();
 	}
 
@@ -612,7 +772,7 @@ export class PiSessionAttachmentV0 {
 	}
 
 	#admit(capability: string): void {
-		const entry = this.capabilityState.capabilities.find((candidate) => candidate.capability === capability);
+		const entry = this.#capabilityState.capabilities.find((candidate) => candidate.capability === capability);
 		if (entry === undefined || (entry.status !== "admitted" && entry.status !== "admitted-partial")) {
 			throw new PiCapabilityNotAdmittedErrorV0(capability, entry?.reason ?? "unknown capability");
 		}
@@ -710,5 +870,6 @@ export class PiSessionAttachmentV0 {
 		}
 		this.#storeClosed = true;
 		this.store.close();
+		this.#releaseLock();
 	}
 }

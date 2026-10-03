@@ -312,10 +312,17 @@ says nothing about another Pi release. The real-runtime check covered one Pi 1.0
 an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
 model was called.
 
-The session-lifecycle fixtures are also fake. The committed recordings in `tests/fixtures/pi-lifecycle/` come from the
-fake Pi, and the failure, retry, compaction and unknown-record paths are exercised only against it. The real-model
-lifecycle fixture is recorded by `scripts/record-lifecycle-fixture.ts` into
-`research/pi-conformance/<pi version>/lifecycle/` (see `research/pi-conformance/LIFECYCLE.md`).
+The session lifecycle has one real recording (`research/pi-conformance/1.0.1/lifecycle/`, see
+`research/pi-conformance/LIFECYCLE.md`). It ran Pi 1.0.1 against a real model: qwen3.8-27b on llama.cpp's
+OpenAI-compatible server, with reasoning on, on Linux. Its three sessions came out as follows:
+- **completes:** a run completed with Pi's own `stop`.
+- **stop-mid-turn:** a STOP, after which Pi reported its own `aborted` termination. Pi acknowledged the abort only
+  after `agent_settled`, as its documentation says.
+- **killed-and-resumed:** Endophasia was killed mid-turn, and the next attach recorded the interruption and the
+  resume, with deduplicated catch-up.
+
+That is one Pi release, one model and one machine. The failure, retry, compaction and unknown-record paths have been
+exercised only against the fake Pi (`tests/fixtures/pi-lifecycle/`).
 
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.

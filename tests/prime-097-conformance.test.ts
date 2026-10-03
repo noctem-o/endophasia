@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { atomicExchangeAvailable } from "../research/conformance/exchange.ts";
 import { sourceDigestAtCommit } from "../research/conformance/repository.ts";
 import type { AcpScenarioEvidence } from "../research/prime-conformance/acp-evidence.ts";
 import { ACP_SCENARIOS } from "../research/prime-conformance/acp-probe.ts";
@@ -55,11 +56,16 @@ describe("audited historical/current profiles", () => {
 			environment: "different",
 		});
 	});
-	it("binds the historical instrument to source at its recorded capture commit", () => {
-		expect(rpc[0]!.provenance.researchHash).toBe(
-			sourceDigestAtCommit(fileURLToPath(new URL("../", import.meta.url)), rpc[0]!.provenance.endophasiaCommit!),
-		);
-	});
+	// Opt-in: the capture commit is in the donor repository, not this one (ENDO_HISTORICAL_PROVENANCE=1 in a clone that
+	// has it).
+	it.runIf(process.env.ENDO_HISTORICAL_PROVENANCE === "1")(
+		"binds the historical instrument to source at its recorded capture commit (opt-in)",
+		() => {
+			expect(rpc[0]!.provenance.researchHash).toBe(
+				sourceDigestAtCommit(fileURLToPath(new URL("../", import.meta.url)), rpc[0]!.provenance.endophasiaCommit!),
+			);
+		},
+	);
 	it.each([
 		["same version, wrong commit", { commit: "0".repeat(40) }],
 		["historical commit on new version", { commit: baseline[0]!.provenance.commit }],
@@ -383,7 +389,8 @@ describe("ACP publication adversaries", () => {
 			rmSync(join(dir, ".."), { recursive: true, force: true });
 		}
 	});
-	it("publishes and refreshes only a whole assessed set, preserving 0.9.6", () => {
+	// The refresh replaces the installed set, which needs mv --exchange (GNU coreutils 9.5+).
+	it.runIf(atomicExchangeAvailable())("publishes and refreshes only a whole assessed set, preserving 0.9.6", () => {
 		const dir = mkdtempSync(join(tmpdir(), "prime-joint-"));
 		try {
 			publishPrime097(dir, rpc, acp, baseline);

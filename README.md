@@ -369,17 +369,22 @@ node cli/index.ts harness check  ./endo-root               # identify your `pi` 
 node cli/index.ts harness status ./endo-root               # identity, last change, capability state (starts nothing)
 node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
 node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
-npm test                                                   # deterministic suite (no Pi, no network; see below)
+npm test                                                   # deterministic suite (no Pi, no network, no history)
 ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in check against your installed Pi
 ~~~
 
 Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
 separately.
 
-Known `npm test` failures outside the Pi path: on Linux, six Conformance Lab and Prime 0.9.7 publication tests need GNU coreutils 9.5 or
-later (`mv --exchange`), and two Prime specimen tests need git history this repository does not carry (commit
-`45adf6b`). With older coreutils and a fresh clone, 8 tests fail; see
-[the post-merge audit](docs/audits/pr14-post-merge.md).
+`npm test` needs only Node and git; it reads no network, no API key and no git history. Two kinds of checks depend on
+the host and say so instead of failing:
+
+- Replacing a published conformance reference needs `mv --exchange` (GNU coreutils 9.5 or later on Linux). Where `mv`
+  lacks it, the replacement tests are skipped and a test checks that replacement is refused before anything is
+  touched. CI runs the exchange tests in a container that has it.
+- The Prime 0.9.7 specimen records the donor-repository commit that measured it. Checking the recorded source digest
+  against that commit's tree is opt-in: `ENDO_HISTORICAL_PROVENANCE=1 npm test` in a clone that carries the commit
+  (this repository does not).
 
 ## License
 

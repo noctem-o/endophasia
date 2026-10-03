@@ -20,15 +20,22 @@ const reference = join(fixtures, "0.9.7");
 const manifestBytes = readFileSync(new URL("./fixtures/conformance/prime-097-reference.json", import.meta.url));
 const manifest: unknown = JSON.parse(manifestBytes.toString());
 const reportBytes = readFileSync(join(reference, "report.json"));
+// The specimen was measured by a donor-repository commit this repository does not carry. Checking the recorded source
+// digest against that commit's tree is opt-in: set ENDO_HISTORICAL_PROVENANCE=1 in a clone that has the commit.
+const HISTORICAL_PROVENANCE = process.env.ENDO_HISTORICAL_PROVENANCE === "1";
 
 describe("Prime 0.9.7 as a sealed Conformance Lab specimen", () => {
-	it("pins the complete 28-member bundle and its historical measuring source", () => {
+	it("pins the complete 28-member bundle and the provenance it records", () => {
 		expect(sha256(manifestBytes)).toBe("7e9f090a28e0fa0af3e0106645720b0d4c36eaf12f334ea18af7333fe0ad69ac");
 		expect(verifyReference(reference, manifest)).toEqual({ digest: sha256(manifestBytes), members: 28 });
 		expect(sha256(reportBytes)).toBe("d61a8b298954880068b954872d9ea6c110a49fc60d815856d6da344fb2299a53");
 		const captured = readPrimeFixturesV0(join(reference, "rpc"))[0]!.provenance;
 		expect(captured.probeVersion).toBe("0.14.7");
 		expect(captured.endophasiaCommit).toBe("45adf6b103bf484f40aa69b4774c089ccd170bda");
+		expect(captured.researchHash).toMatch(/^[0-9a-f]{64}$/);
+	});
+	it.runIf(HISTORICAL_PROVENANCE)("binds the recorded source digest to the measuring commit (opt-in)", () => {
+		const captured = readPrimeFixturesV0(join(reference, "rpc"))[0]!.provenance;
 		expect(sourceDigestAtCommit(repo, captured.endophasiaCommit!)).toBe(captured.researchHash);
 	});
 	it("checks complete scenarios while leaving all interpretations to the original classifier", () => {

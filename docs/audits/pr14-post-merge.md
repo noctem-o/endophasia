@@ -257,5 +257,9 @@ Answered by the maintainer after the audit was written. Each entry gives the ans
   this one.
 - **D4: keep the four schemas, marked unwired.** Each header now states that it is an unwired, planned protocol
   surface with no producer. The README lists them separately. Done in this PR.
-- **D5: no donor history in the core repository.** The default tests become self-contained, historical-provenance
-  checks become optional, and CI is added. That is a separate PR (T3, T4, T5).
+- **D5: no donor history in the core repository.** Done in the CI PR stacked on this one:
+  - T3: the reference-replacement tests run only where `mv --exchange` exists, and replacement is refused up front
+    elsewhere, with a test for the refusal.
+  - T4: the two donor-commit checks are opt-in through `ENDO_HISTORICAL_PROVENANCE=1`.
+  - T5: `.github/workflows/ci.yml` runs typecheck, lint and tests on Ubuntu, plus the exchange tests in a Fedora
+    container.

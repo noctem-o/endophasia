@@ -4,7 +4,7 @@
 //   node scripts/record-lifecycle-fixture.ts --pi "$(command -v pi)" \
 //     --base-url http://127.0.0.1:8080/v1 --model <model-id> --authorize-live-study \
 //     [--api-key-env NAME] [--provider-name endolocal] [--out research/pi-conformance/<pi version>/lifecycle] \
-//     [--timeout-ms 300000] [--force]
+//     [--timeout-ms 300000] [--force] [--sessions completes,stop-mid-turn,killed-and-resumed]
 //
 // Sessions, each in its own Endophasia store:
 //   completes            a short prompt, run to agent_settled.
@@ -18,9 +18,16 @@
 // credentials are neither read nor written. The API key, when --api-key-env names one, is passed to Pi through
 // models.json in the scratch directory and to the endpoint's /models query; it is never written to the output.
 //
+// Digest domain: a recording is a fixture, so it records in fixture mode under the committed public key
+// research/fixture-keys/fixture-public.json, never your private installation key; its tool-argument digests offer no
+// secrecy. The attachment refuses to mix the two (adapters/pi/attachment.ts, digestDomain).
+//
 // --authorize-live-study is required: STOP is offered only when the live study admits steering.stop, and the live
 // study sends prompts to your model. Without that admission the stop-mid-turn session is recorded as skipped, with the
 // reason, never simulated.
+//
+// --sessions records a subset (default: all three). A subset is never filed as a version's lifecycle fixture: it needs
+// an --out outside `pi-conformance/<version>/lifecycle/` (e.g. repeated recordings for trajectory comparison).
 //
 // Output (--out): `<session>.events.jsonl` (the recorded event stream, canonical JSON, one event per line),
 // `<session>.overview.json` (the reducer's overview of it) and `provenance.json` (the Pi fingerprint, the model and
@@ -37,6 +44,7 @@ import type { EndoEventV0 } from "../protocol/event.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
+import { loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 
 export const PI_LIFECYCLE_RECORDER_VERSION = "pi-lifecycle-recorder.2";
@@ -103,6 +111,8 @@ export interface PiLifecycleRecorderOptionsV0 {
 	/** Extra environment for Pi (the fake Pi's scenario knobs); not recorded. */
 	readonly extraEnv?: Readonly<Record<string, string>>;
 	readonly force?: boolean;
+	/** The sessions to record, in this order; default all of PI_LIFECYCLE_SESSIONS. */
+	readonly sessions?: readonly PiLifecycleSessionNameV0[];
 	readonly log?: (line: string) => void;
 }
 
@@ -215,6 +225,8 @@ function attachmentFor(
 		provider: options.providerName,
 		model: options.model,
 		requestTimeoutMs: Math.max(60_000, options.timeoutMs),
+		digestKey: loadEndoFixtureDigestKeyV0(PI_LIFECYCLE_FIXTURE_DIGEST_KEY),
+		digestDomain: "fixture",
 	});
 }
 
@@ -386,6 +398,15 @@ async function recordSession(
 	};
 }
 
+/** The committed public fixture key every fixture recording digests tool arguments under. */
+export const PI_LIFECYCLE_FIXTURE_DIGEST_KEY = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"research",
+	"fixture-keys",
+	"fixture-public.json",
+);
+
 /** The repository's conformance research directory. */
 export const PI_CONFORMANCE_DIRECTORY = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -439,6 +460,15 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 		}
 		log(`Pi ${fingerprint.reported.version ?? "(no version)"} at ${fingerprint.local.realPath ?? options.pi}`);
 		const out = piLifecycleOutputDirectoryV0(options.out, fingerprint.reported.version);
+		const sessions = options.sessions ?? PI_LIFECYCLE_SESSIONS;
+		if (
+			PI_LIFECYCLE_SESSIONS.some((name) => !sessions.includes(name)) &&
+			/[\\/]pi-conformance[\\/][^\\/]+[\\/]lifecycle[\\/]?$/.test(out)
+		) {
+			throw new TypeError(
+				`${out} holds a version's full lifecycle fixture; record a subset of sessions elsewhere (--out)`,
+			);
+		}
 		refuseExistingRecording(out, options.force === true);
 		log(`writing to ${out}`);
 		await pi.checkLocal();
@@ -449,7 +479,7 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 		const reports: PiLifecycleSessionReportV0[] = [];
 		mkdirSync(out, { recursive: true });
 		const models = new Set<string>();
-		for (const name of PI_LIFECYCLE_SESSIONS) {
+		for (const name of sessions) {
 			log(`recording ${name}`);
 			const { report, events } = await recordSession(name, options, scratch, checked);
 			if (report.status === "recorded") {
@@ -498,6 +528,11 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 				apiKey: options.apiKeyEnv === null ? "none configured" : `read from $${options.apiKeyEnv}; not recorded`,
 			},
 			liveStudyAuthorized: options.authorizeLiveStudy,
+			digestDomain: {
+				keyId: loadEndoFixtureDigestKeyV0(PI_LIFECYCLE_FIXTURE_DIGEST_KEY).keyId,
+				public: true,
+				note: "tool-argument digests in this recording are made under a committed public key and offer no secrecy",
+			},
 			normalization: {
 				scratchRoot: {
 					placeholder: PI_LIFECYCLE_SCRATCH_PLACEHOLDER,
@@ -534,6 +569,11 @@ function parseArgs(argv: readonly string[]): PiLifecycleRecorderOptionsV0 {
 		if (value === undefined || value === "") throw new TypeError(`${flag} is required`);
 		return value;
 	};
+	const sessions = flags.has("--sessions") ? flags.get("--sessions")!.split(",") : [...PI_LIFECYCLE_SESSIONS];
+	for (const name of sessions) {
+		if (!(PI_LIFECYCLE_SESSIONS as readonly string[]).includes(name))
+			throw new TypeError(`unknown session ${name}; choose from ${PI_LIFECYCLE_SESSIONS.join(", ")}`);
+	}
 	const timeout = Number(flags.get("--timeout-ms") ?? "300000");
 	if (!Number.isInteger(timeout) || timeout <= 0) throw new TypeError("--timeout-ms must be a positive integer");
 	return {
@@ -547,6 +587,7 @@ function parseArgs(argv: readonly string[]): PiLifecycleRecorderOptionsV0 {
 		timeoutMs: timeout,
 		kind: "real",
 		force: switches.has("--force"),
+		sessions: sessions as PiLifecycleSessionNameV0[],
 	};
 }
 

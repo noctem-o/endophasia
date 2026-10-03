@@ -21,7 +21,7 @@
 //   entrypoint digest is present.
 
 export const PI_ADAPTER_VERSION = "pi-rpc-adapter.2";
-export const PI_MAPPING_VERSION = "pi-rpc-mapping.2";
+export const PI_MAPPING_VERSION = "pi-rpc-mapping.3";
 export const PI_SUITE_VERSION = "pi-rpc-suite.2";
 
 /** Releases whose documented RPC surface was reviewed and whose behaviour was recorded end to end. Not a whitelist. */

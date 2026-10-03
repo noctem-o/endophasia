@@ -18,6 +18,8 @@
 //                       unknown-lifecycle (an undocumented agent_paused record inside each run),
 //                       abort-ack-only (abort answers success at once and does not stop the run)
 //   FAKE_PI_STEP_MS     delay between streamed run steps (default 20)
+//   FAKE_PI_TOOL_CALLS  a JSON array of { toolName, args, isError } the first turn of each prompted run calls, in
+//                       order, before a second turn ends the run (any tool name; nothing is executed)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -50,6 +52,7 @@ const scenario = new Set(
 const has = (name) => scenario.has(name);
 const option = (prefix) => [...scenario].find((entry) => entry.startsWith(prefix))?.slice(prefix.length);
 const stepMs = Number(process.env.FAKE_PI_STEP_MS ?? 20);
+const scriptedToolCalls = process.env.FAKE_PI_TOOL_CALLS ? JSON.parse(process.env.FAKE_PI_TOOL_CALLS) : [];
 
 const argv = process.argv.slice(2);
 if (argv.includes("--version")) {
@@ -156,7 +159,8 @@ async function turn(run, userText) {
 	}
 	const long = /forty/.test(userText ?? "");
 	const steps = long ? 40 : 2;
-	const wantsTool = /read tool/.test(userText ?? "") && tools.includes("read") && !has("no-tool-call");
+	const scripted = userText !== undefined && scriptedToolCalls.length > 0;
+	const wantsTool = scripted || (/read tool/.test(userText ?? "") && tools.includes("read") && !has("no-tool-call"));
 	emit({ type: "message_start", message: { role: "assistant", content: [], stopReason: "pending" } });
 	for (let step = 0; step < steps; step += 1) {
 		if (run.aborted) break;
@@ -177,7 +181,18 @@ async function turn(run, userText) {
 	emit({ type: "message_end", message: assistant });
 	append({ type: "message", message: assistant });
 	const toolResults = [];
-	if (wantsTool && !run.aborted) {
+	if (scripted && !run.aborted) {
+		for (const call of scriptedToolCalls) {
+			const toolCallId = `call_${newId()}`;
+			emit({ type: "tool_execution_start", toolCallId, toolName: call.toolName, args: call.args });
+			await sleep(stepMs);
+			const content = [{ type: "text", text: call.isError ? "fake tool error" : "fake tool result" }];
+			emit({ type: "tool_execution_end", toolCallId, toolName: call.toolName, result: { content }, isError: call.isError === true });
+			const result = { role: "toolResult", toolCallId, toolName: call.toolName, content, isError: call.isError === true, timestamp: Date.now() };
+			append({ type: "message", message: result });
+			toolResults.push(result);
+		}
+	} else if (wantsTool && !run.aborted) {
 		const toolCallId = `call_${newId()}`;
 		emit({ type: "tool_execution_start", toolCallId, toolName: "read", args: { path: "endophasia-study.txt" } });
 		await sleep(stepMs);

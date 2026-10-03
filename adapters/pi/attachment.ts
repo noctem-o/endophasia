@@ -27,7 +27,9 @@ import type {
 } from "../../protocol/harness.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
+import { endoDigestKeyFromEnvironmentV0 } from "../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 import { type EndoHarnessRegistryV0, openEndoHarnessRegistryV0 } from "../../storage/harness-registry.ts";
 import type { RpcDiagnosticV0, RpcEventV0, RpcExitV0 } from "../rpc-jsonl/rpc-connection.ts";
@@ -60,6 +62,7 @@ import {
 	piEntryEventIdV0,
 } from "./mapping.ts";
 import { PiRpcClientV0, PiRpcProtocolErrorV0, PiRpcRefusalV0, type PiSessionEntryV0 } from "./rpc.ts";
+import { PI_MAPPING_VERSION } from "./version.ts";
 
 export interface PiAttachmentOptionsV0 {
 	/** The Endophasia store root (event store, artifacts, harness registry). */
@@ -81,6 +84,17 @@ export interface PiAttachmentOptionsV0 {
 	readonly sessionDir?: string;
 	readonly now?: () => Date;
 	readonly requestTimeoutMs?: number;
+	/**
+	 * The comparison-domain key tool arguments are digested under (runtime/contracts/keyed-digest.ts). Default: the key
+	 * this process's environment selects (storage/digest-key.ts), created on first use; never Pi's environment.
+	 */
+	readonly digestKey?: EndoDigestKeyV0;
+	/**
+	 * "private" (default): a normal session under the installation key; a public fixture key is refused. "fixture": the
+	 * fixture recorder, recording a synthetic scenario; `digestKey` must be the committed public fixture key
+	 * (storage/digest-key.ts), and the installation key is refused. Keeps the two digest domains from mixing.
+	 */
+	readonly digestDomain?: "private" | "fixture";
 }
 
 export interface PiIdentificationV0 {
@@ -371,6 +385,27 @@ export class PiAttachmentV0 {
 		return this.#env();
 	}
 
+	#digestKey: EndoDigestKeyV0 | null = null;
+
+	/** @internal The comparison-domain key, resolved once per attachment and checked against the digest domain. */
+	digestKey(): EndoDigestKeyV0 {
+		if (this.#digestKey !== null) return this.#digestKey;
+		const fixture = this.options.digestDomain === "fixture";
+		if (fixture && this.options.digestKey === undefined)
+			throw new TypeError("a fixture recording needs a committed public fixture key (digestKey); none was given");
+		const key = this.options.digestKey ?? endoDigestKeyFromEnvironmentV0();
+		if (!fixture && key.public)
+			throw new TypeError(
+				`refusing to record a normal session under the public fixture key ${key.keyId}: its digests offer no secrecy`,
+			);
+		if (fixture && !key.public)
+			throw new TypeError(
+				`refusing to record a fixture under the installation key ${key.keyId}: fixtures are committed, so they use the public fixture key`,
+			);
+		this.#digestKey = key;
+		return key;
+	}
+
 	/** @internal Re-identify for a reconnect: the recorded identification and the capability state it supports. */
 	async reidentify(): Promise<{ fingerprint: EndoHarnessFingerprintV0 | null; state: EndoCapabilityStateV0 }> {
 		const { fingerprint } = await this.identify();
@@ -639,6 +674,7 @@ export class PiSessionAttachmentV0 {
 				return live;
 			},
 			now: () => (options.now ?? (() => new Date()))().toISOString(),
+			digestKey: this.owner.digestKey(),
 		};
 		this.#client = client;
 		this.#context = context;
@@ -677,6 +713,9 @@ export class PiSessionAttachmentV0 {
 			fingerprintId: this.#fingerprint.id,
 			identityDigest: this.#fingerprint.identity.digest,
 			version: this.#fingerprint.reported.version,
+			mapping: PI_MAPPING_VERSION,
+			// The digest domain tool-argument digests are made in: the key's id and label, never the key.
+			digestKey: { keyId: this.owner.digestKey().keyId, domain: this.owner.digestKey().domain },
 			// Evidence never covers project configuration (checks run in scratch directories); it is recorded here.
 			userConfigurationDigest: piUserConfigurationDigestV0(this.owner.launchEnv()),
 			projectConfigurationDigest: piProjectConfigurationDigestV0(options.cwd ?? process.cwd()),

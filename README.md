@@ -294,6 +294,29 @@ A valid proposal does not widen the model's permission.
   - `endo harness overview` prints the session overview (`protocol/session-overview.ts`), reduced read-only from the
     store; what Pi does not report (run and turn ids, operation outcome, STOP targeting, lanes) is UNAVAILABLE with a
     reason.
+- **Trajectory comparison** (`protocol/trajectory.ts`, `adapters/pi/trajectory.ts`, `runtime/contracts/trajectory.ts`,
+  [rules](docs/trajectory.md)).
+  - `endo trajectory show` projects one recorded session into `endo.trajectory.v0`, opening the store read-only. The
+    layers are:
+    - lifecycle;
+    - tools (name, keyed digest of the canonical arguments, result status);
+    - outcome (cause by reference);
+    - usage (what Pi reported);
+    - timing (the observer's clock).
+
+    What the recording lacks is UNAVAILABLE with a reason.
+  - `endo trajectory diff` compares two sessions with a pure function. Lifecycle, tools and outcome are judged EXACT,
+    DIVERGED (first index, both entries, common prefix) or UNAVAILABLE, aligned by position. Usage and timing report
+    deltas only and are never judged. Fingerprint, mapping, digest-domain, configuration and model differences are
+    flagged, never mixed silently. A record's digest covers content identities, not store paths.
+  - Since `pi-rpc-mapping.3`, `tool.started` records the arguments as an HMAC-SHA256 with the key's id.
+    `harness.attached` records the mapping version and the digest domain.
+    - **Key:** an installation key generated automatically, with owner-only permissions, in Endophasia's data
+      directory; no setup.
+    - **Comparison:** digests from different domains are never compared.
+    - **Fixtures:** they use a committed public key (`fixture-public`) whose digests offer no secrecy.
+
+    Earlier recordings have none of these.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.
@@ -323,6 +346,13 @@ OpenAI-compatible server, with reasoning on, on Linux. Its three sessions came o
 
 That is one Pi release, one model and one machine. The failure, retry, compaction and unknown-record paths have been
 exercised only against the fake Pi (`tests/fixtures/pi-lifecycle/`).
+
+Two further real `completes` runs (`research/pi-conformance/1.0.1/completes-repeat/`) were compared with
+`endo trajectory diff`. Against each other and against the committed run, they were EXACT on lifecycle, tools and
+outcome, and differed in usage and timing. Neither run called a tool, so "tools EXACT" is vacuous there. This is a
+preliminary observation of real run-to-run divergence, not a variance result. The hostile trajectory cases (reordered
+or different tool calls, missing usage, another Pi version, another digest domain) are exercised only against the
+fake Pi (`tests/fixtures/trajectory/`).
 
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.

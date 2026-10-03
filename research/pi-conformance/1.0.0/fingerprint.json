@@ -1,7 +1,7 @@
 {
 	"attachment": "pi.default",
 	"gaps": [],
-	"id": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+	"id": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 	"identity": {
 		"confidence": "strong",
 		"digest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb"
@@ -27,7 +27,7 @@
 		"package-manifest",
 		"version-command"
 	],
-	"observedAt": "2026-10-03T09:55:12.878Z",
+	"observedAt": "2026-10-03T10:13:12.117Z",
 	"reported": {
 		"version": "1.0.0",
 		"versionText": "1.0.0"

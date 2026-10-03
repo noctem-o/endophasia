@@ -1,6 +1,6 @@
 [
 	{
-		"at": "2026-10-03T09:55:13.136Z",
+		"at": "2026-10-03T10:13:12.418Z",
 		"attachment": "pi.default",
 		"capability": "run.identity",
 		"check": {
@@ -15,16 +15,16 @@
 			"confidence": "strong",
 			"configurationDigest": "2a813d57b66e92364dc483bfa18a7ef0f5705a810c5361f979c968773c620a58",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"dd8b26f48cbdf10b9fe688583daa54be7e69253e650cf47f9d15ba7e75565e75"
+			"c30e02d56834d8baf4b123e868fd8819eda353b3166d4cb64455979cb0de6370"
 		],
 		"expected": "runtime-supplied run and turn identifiers on lifecycle events",
-		"id": "endo.evidence.pi-capability.5d652f372f0bad0f998c8bc88c5fa3ea28a38f7823b4207e26c9cd0374e52d37",
+		"id": "endo.evidence.pi-capability.d5dce5582e250d71a29c60cc28ff36d77800b5b10685df65954b7c4e9029d0e5",
 		"inputsDigest": "9245f658f7477adf65adca77f0ae5b89b60252eec9c4d0c7bb342252f9d1e58a",
 		"limitations": [
 			"Endophasia does not invent run ids: mapped events carry no run coordinate"
@@ -34,7 +34,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.137Z",
+		"at": "2026-10-03T10:13:12.419Z",
 		"attachment": "pi.default",
 		"capability": "operation.outcome",
 		"check": {
@@ -49,16 +49,16 @@
 			"confidence": "strong",
 			"configurationDigest": "2a813d57b66e92364dc483bfa18a7ef0f5705a810c5361f979c968773c620a58",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"dd8b26f48cbdf10b9fe688583daa54be7e69253e650cf47f9d15ba7e75565e75"
+			"c30e02d56834d8baf4b123e868fd8819eda353b3166d4cb64455979cb0de6370"
 		],
 		"expected": "a durable, id-keyed terminal outcome for an accepted operation",
-		"id": "endo.evidence.pi-capability.b73df4a66e25002c249f0adb69be26c8c28617467b1e63cea178620b999da347",
+		"id": "endo.evidence.pi-capability.16d0251f54a302cfd836512273878e8c8b746728c44a9f012d68826a22033d6d",
 		"inputsDigest": "9245f658f7477adf65adca77f0ae5b89b60252eec9c4d0c7bb342252f9d1e58a",
 		"limitations": [
 			"Acceptance (the response) and effects (later events and entries) stay separate records; no outcome is inferred"
@@ -68,7 +68,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.486Z",
+		"at": "2026-10-03T10:13:12.886Z",
 		"attachment": "pi.default",
 		"capability": "session.identity",
 		"check": {
@@ -83,16 +83,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"143e0fbe922e1b1d547d2f8dd07b76765063780ed539aa9328d8958df7fbc3d0"
+			"4846c369f1af024c5a84591d0a4d514d41fd97c33c04c42966eee1693ebd96b7"
 		],
 		"expected": "a non-empty session id, stable across reads and processes",
-		"id": "endo.evidence.pi-capability.e0cd6386cf7d80aec7425d3ad2b9c675c50195b92936976eb7a635c48d6f7b6d",
+		"id": "endo.evidence.pi-capability.07333f7908ac79d7f96ed7e35bb5e7d17d815053b578f119250633dd86aae9af",
 		"inputsDigest": "e862c196a3d5dfaa78b54f86aff9f3f99041bece6bb8c2530f3b6031dbc60253",
 		"limitations": [
 			"Pi persists a session only after its first message, so continuity across processes is established by the live study, not by this check"
@@ -102,7 +102,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.487Z",
+		"at": "2026-10-03T10:13:12.888Z",
 		"attachment": "pi.default",
 		"capability": "session.overview",
 		"check": {
@@ -117,16 +117,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"143e0fbe922e1b1d547d2f8dd07b76765063780ed539aa9328d8958df7fbc3d0"
+			"4846c369f1af024c5a84591d0a4d514d41fd97c33c04c42966eee1693ebd96b7"
 		],
 		"expected": "the Session Overview v0 lane inventory with each lane's active operation",
-		"id": "endo.evidence.pi-capability.4f47bad46ae1e31fbbcbf7cab9b9c4fc61d61c16458773ce5bdf938692ea8104",
+		"id": "endo.evidence.pi-capability.9a77c3329366313453f2a006407ce288b7fe4d946d5139e1b6d327bd44fe43f3",
 		"inputsDigest": "e862c196a3d5dfaa78b54f86aff9f3f99041bece6bb8c2530f3b6031dbc60253",
 		"limitations": [
 			"One session per process and no lanes",
@@ -137,7 +137,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.489Z",
+		"at": "2026-10-03T10:13:12.890Z",
 		"attachment": "pi.default",
 		"capability": "session.entries-cursor",
 		"check": {
@@ -152,17 +152,17 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"ca4d3d1c9e14042e21b54c6f6d2ae1d926eb7623bb60c0adb9d7b89007fcad76"
+			"fc5724ec1fed8687c0cca538836677f3f930c49cf7b13790f9598d49f04c2ead"
 		],
 		"expected": "since=<id> returns exactly the entries after <id>; an unknown cursor is refused",
-		"id": "endo.evidence.pi-capability.514c32ed33892623add75c094795b3e56da633d9ee56baf2c14f43fb702da2fd",
-		"inputsDigest": "9a9c34a49c5a147af110d5f2f7cf5c5814094914e6a23300087292097cfb5f40",
+		"id": "endo.evidence.pi-capability.adb2750dadbad43313b6cb34985c496ea9c26cae4b4ea6ced9462e30616f6ea0",
+		"inputsDigest": "7f75604f2e5597a5c48a531df7c43ea020d9e177f4a35a18a790e378c98be564",
 		"limitations": [
 			"Entry ids are opaque: order comes only from Pi's append order, never from the ids",
 			"Abandoned branches are included in get_entries; the leaf id identifies the active branch"
@@ -172,7 +172,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.492Z",
+		"at": "2026-10-03T10:13:12.894Z",
 		"attachment": "pi.default",
 		"capability": "continuity.active-path",
 		"check": {
@@ -187,16 +187,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"8b3578e48666ca96d8241ab8c71586a3d7665930eebfe95584beff9d384510cf"
+			"96c31bfe626a2a8e56313293327281ffd5c77ee28ae71cccf975bf05e5a37b67"
 		],
 		"expected": "the tree holds every entry once and its leaf agrees with get_entries",
-		"id": "endo.evidence.pi-capability.bd0f01712aecc64f9f632f786eccb0e9ae506473c04da4525de0b6ca3bb6660f",
+		"id": "endo.evidence.pi-capability.ebcdb9530833f7891b731cef675d5f7859e4a5ec4362e328fced58b36b3db371",
 		"inputsDigest": "e4d7420c7d7c5db20e90cd097b133bd506011a86aacf85a211bcbc901b4cae08",
 		"limitations": [
 			"The context-window boundary is derived from compaction entries (firstKeptEntryId), not reported directly",
@@ -207,7 +207,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.494Z",
+		"at": "2026-10-03T10:13:12.897Z",
 		"attachment": "pi.default",
 		"capability": "runtime.metrics",
 		"check": {
@@ -222,16 +222,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d7cd2af19330317d5025a70add79ce6fa930638bae3ca9bef7dbd06ebd3c96c4"
+			"e86b0e8c20d2fb0662aa1c4da336c28a23703725bba97a4dab4415a529943e06"
 		],
 		"expected": "cumulative session tokens and cost with Runtime Metrics v0's per-category cost",
-		"id": "endo.evidence.pi-capability.aaf48102d428106e69bd94db8d7e0be181f42db6ddb5aa5227779d8d5881c73d",
+		"id": "endo.evidence.pi-capability.8857bb7fd77a2f4da9e251917020f94c6b80948c5912bf15cf3d06c12f916b4d",
 		"inputsDigest": "9cff883cbeb30bf8aa6cf0cd30ed6b75c3b43a5e11d0cb4015dfb8f43a028f9b",
 		"limitations": [
 			"Cost is a total only: no input/output/cache cost breakdown",
@@ -242,7 +242,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.496Z",
+		"at": "2026-10-03T10:13:12.899Z",
 		"attachment": "pi.default",
 		"capability": "control.model",
 		"check": {
@@ -257,16 +257,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d86a218f52eba3d4c7b6540c9d0a65e567516932a180ee44004dae5eef349607"
+			"d703ab51c7b69255a82845ba7ef5d6adacc4f3e48b9425e190071abd67bd50bb"
 		],
 		"expected": "set_model returns the selected model and get_state then reports it",
-		"id": "endo.evidence.pi-capability.5332c2fcdf29554e3dc9cdc33b50fb929f290c977974da39544c060dd43176fc",
+		"id": "endo.evidence.pi-capability.b74820e58df9245ecfebe217eaad1378f88af0d84e6594deebf3f9e5b5422060",
 		"inputsDigest": "89885b6757060adc611ebfb4ddf868163056284e5ef8e5965deb500d2c2f5845",
 		"limitations": [
 			"Exercised by re-selecting the configured model; switching to another model is not exercised (it may need other credentials)"
@@ -276,7 +276,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.497Z",
+		"at": "2026-10-03T10:13:12.901Z",
 		"attachment": "pi.default",
 		"capability": "control.thinking",
 		"check": {
@@ -291,16 +291,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d86a218f52eba3d4c7b6540c9d0a65e567516932a180ee44004dae5eef349607"
+			"d703ab51c7b69255a82845ba7ef5d6adacc4f3e48b9425e190071abd67bd50bb"
 		],
 		"expected": "each available thinking level can be set and get_state then reports it",
-		"id": "endo.evidence.pi-capability.422a1a00241e9b0ce9d9a20f2fadad483a5c8c1a45f10d5930d7b10188b26de6",
+		"id": "endo.evidence.pi-capability.65e61f66b159f72f98271193859e91aac0b72811dbf0ee8151d52e531e64e4fe",
 		"inputsDigest": "89885b6757060adc611ebfb4ddf868163056284e5ef8e5965deb500d2c2f5845",
 		"limitations": [
 			"Only one thinking level is available for the configured model, so no change was exercised"
@@ -310,7 +310,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:13.497Z",
+		"at": "2026-10-03T10:13:12.902Z",
 		"attachment": "pi.default",
 		"capability": "control.active-tools",
 		"check": {
@@ -325,16 +325,16 @@
 			"confidence": "strong",
 			"configurationDigest": "e69108984f856afa8e1eda72732eb203dfd3fc9f77c143ef64515fec6e41fe7b",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d86a218f52eba3d4c7b6540c9d0a65e567516932a180ee44004dae5eef349607"
+			"d703ab51c7b69255a82845ba7ef5d6adacc4f3e48b9425e190071abd67bd50bb"
 		],
 		"expected": "no RPC command reads or changes the active tool set (documented surface)",
-		"id": "endo.evidence.pi-capability.56e8c8ad5f1567f02ae0d433fe4ba6cc999ddc5c82747e39931efc50d5f9657b",
+		"id": "endo.evidence.pi-capability.f86c85fc20f67bf8c9e7c358a8f9f4630997fd2c2e186062e4e8823b3a2cd8b7",
 		"inputsDigest": "89885b6757060adc611ebfb4ddf868163056284e5ef8e5965deb500d2c2f5845",
 		"limitations": [
 			"Pi's extension API (pi.getActiveTools/pi.setActiveTools) could provide this through an optional extension; none is installed by Endophasia"
@@ -344,7 +344,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.786Z",
+		"at": "2026-10-03T10:13:25.210Z",
 		"attachment": "pi.default",
 		"capability": "lifecycle.trace",
 		"check": {
@@ -359,16 +359,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "agent_start, turn_start, message_end, turn_end, agent_end, agent_settled in order",
-		"id": "endo.evidence.pi-capability.03d015bbdbcad37d2fe812a3dcf0ee2e0444d323d6c272342df3fe968482a5fb",
+		"id": "endo.evidence.pi-capability.fad88f25adc88acc1600ca87e5f27bb4a33a92addf3b8d7b0266e15f295d1d0f",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"No run or turn identifiers: events are ordered by arrival only",
@@ -380,7 +380,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.787Z",
+		"at": "2026-10-03T10:13:25.211Z",
 		"attachment": "pi.default",
 		"capability": "usage.entries",
 		"check": {
@@ -395,16 +395,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "every assistant entry carries its provider-reported usage",
-		"id": "endo.evidence.pi-capability.1ed262c3d9acadc72854e22f3069ec3b887fe205e9bfe9afb20561eb4b2674ff",
+		"id": "endo.evidence.pi-capability.30d69cab31f3cffd8c24bc28c3883fd6a2b8a0e2fc29a06029ce40b0dd6fec20",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Usage is what the provider reported; a provider that reports none yields zeros, not an estimate",
@@ -415,7 +415,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.788Z",
+		"at": "2026-10-03T10:13:25.212Z",
 		"attachment": "pi.default",
 		"capability": "tool.activity",
 		"check": {
@@ -430,16 +430,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "tool_execution_start and tool_execution_end for each tool call, correlated by toolCallId",
-		"id": "endo.evidence.pi-capability.d233aada17950cae40c8b3f647e1bc18235ce4e5a07fb5f707d3385e5742aa3b",
+		"id": "endo.evidence.pi-capability.e093259ee375899603ef800a07fc03f90ff4bf16ceccc51c2128cd922a2181a1",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Whether a model calls a tool is the model's choice: an absent call is inconclusive, not a failure"
@@ -449,7 +449,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.788Z",
+		"at": "2026-10-03T10:13:25.213Z",
 		"attachment": "pi.default",
 		"capability": "steering.steer",
 		"check": {
@@ -464,16 +464,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "steer sent during a run is accepted and the message is consumed by the session",
-		"id": "endo.evidence.pi-capability.a36c00392cb06013f0a6f3a873cb6831d0b62e7d4e922973a60c16fc29fca971",
+		"id": "endo.evidence.pi-capability.38e625d7c977d06170c8c321a16a1908f160cbfd726710a73a51649a3433aeb8",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content",
@@ -484,7 +484,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.789Z",
+		"at": "2026-10-03T10:13:25.214Z",
 		"attachment": "pi.default",
 		"capability": "steering.follow-up",
 		"check": {
@@ -499,16 +499,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "follow_up sent during a run is accepted and the message is consumed by the session",
-		"id": "endo.evidence.pi-capability.2b1ba52622eff780b74c8bc2510c3538a25be0726f8183ef17dacb8a85a656d9",
+		"id": "endo.evidence.pi-capability.58fc0de3a8babd4dd87c3924d23c22ef51c110feeef35833e79a6ee177fb5626",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content",
@@ -519,7 +519,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.789Z",
+		"at": "2026-10-03T10:13:25.215Z",
 		"attachment": "pi.default",
 		"capability": "steering.stop",
 		"check": {
@@ -534,16 +534,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "abort during a run ends that run",
-		"id": "endo.evidence.pi-capability.347b3782cf3e266b749ad24bb491caf344dfafbe8ca3af01931b2d19c7ac5aed",
+		"id": "endo.evidence.pi-capability.4ba95b3cb3f689e55ce65caa12a7d304925aa1990376831c03a28f2d6554e157",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Pi's abort takes no target: it aborts whatever is current and cannot be confined to the run the operator observed",
@@ -554,7 +554,7 @@
 		"schemaVersion": "endo.capability-evidence.v0"
 	},
 	{
-		"at": "2026-10-03T09:55:25.792Z",
+		"at": "2026-10-03T10:13:25.215Z",
 		"attachment": "pi.default",
 		"capability": "session.identity",
 		"check": {
@@ -569,16 +569,16 @@
 			"confidence": "strong",
 			"configurationDigest": "7b2787f77989e84c80e499b10d6eff3362e63526cc631543c2cb9591af1159eb",
 			"extension": null,
-			"fingerprintId": "endo.evidence.pi-fingerprint.ab289e8681196b0de1bd70db040cb0eb46546d264009ab5e61a5887db0be5366",
+			"fingerprintId": "endo.evidence.pi-fingerprint.128957d086b308773fbe2fa8402f64ab22bc13cc6e284b8f7693a4335ab4287b",
 			"identityDigest": "f65497bf2e6ddde3681b0a4e669dc826f8d8279fc35112242d249b1e90dfb6bb",
 			"mappingVersion": "pi-rpc-mapping.1",
 			"suiteVersion": "pi-rpc-suite.1"
 		},
 		"evidence": [
-			"d26d82d2d4148d60ff3192c6531cfcc3544def0e87895aafca48d25aa32059ef"
+			"f1b506c4f1c9ac685abb0223dfdee64764e9065f5842d6990fbe0b87c7bb44e0"
 		],
 		"expected": "a second process on the same --session-id reports the same session id and the earlier entry ids",
-		"id": "endo.evidence.pi-capability.7aab87b8a1e4e747eb3e643eb35ce39e3f66de6608a0cd534dec5297e7c32b9e",
+		"id": "endo.evidence.pi-capability.92ea8b09489364873957fb55eeb6e957d6b80572e3697af6af057165cd8b3cfc",
 		"inputsDigest": "79a6edf7d0f6d23d3744f7de96a8a87e40a6575da4eda8865559c404d1732c5b",
 		"limitations": [
 			"Continuity holds once the session was persisted, which Pi does at its first message"

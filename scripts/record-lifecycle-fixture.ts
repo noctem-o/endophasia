@@ -3,7 +3,7 @@
 //
 //   node scripts/record-lifecycle-fixture.ts --pi "$(command -v pi)" \
 //     --base-url http://127.0.0.1:8080/v1 --model <model-id> --authorize-live-study \
-//     [--api-key-env NAME] [--provider-name endolocal] [--out research/pi-conformance/1.0.0/lifecycle] \
+//     [--api-key-env NAME] [--provider-name endolocal] [--out research/pi-conformance/<pi version>/lifecycle] \
 //     [--timeout-ms 300000] [--force]
 //
 // Sessions, each in its own Endophasia store:
@@ -91,7 +91,11 @@ export interface PiLifecycleRecorderOptionsV0 {
 	readonly providerName: string;
 	/** The name of an environment variable holding the endpoint's API key, if it needs one. */
 	readonly apiKeyEnv: string | null;
-	readonly out: string;
+	/**
+	 * Where to write. Null: `research/pi-conformance/<the Pi version it ran>/lifecycle`. A path of that shape naming a
+	 * different version is refused, so a recording is never filed under a release it was not made against.
+	 */
+	readonly out: string | null;
 	readonly authorizeLiveStudy: boolean;
 	readonly timeoutMs: number;
 	/** "real" for a real Pi and model; "fake-pi" only for the deterministic suite's committed fake fixtures. */
@@ -382,13 +386,45 @@ async function recordSession(
 	};
 }
 
+/** The repository's conformance research directory. */
+export const PI_CONFORMANCE_DIRECTORY = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"research",
+	"pi-conformance",
+);
+
+/**
+ * The directory a recording against Pi `version` goes to: `out` when given, else the version's `lifecycle/`. Refuses
+ * an `out` shaped `pi-conformance/<v>/lifecycle` for another version, and a default when Pi reported no version.
+ */
+export function piLifecycleOutputDirectoryV0(out: string | null, version: string | null): string {
+	if (out === null) {
+		if (version === null || !/^[0-9A-Za-z.+-]{1,64}$/.test(version)) {
+			throw new TypeError("Pi reported no usable version, so the recording has no version directory; pass --out");
+		}
+		return join(PI_CONFORMANCE_DIRECTORY, version, "lifecycle");
+	}
+	const resolved = resolve(out);
+	const named = /[\\/]pi-conformance[\\/]([^\\/]+)[\\/]lifecycle[\\/]?$/.exec(resolved)?.[1];
+	if (named !== undefined && named !== version) {
+		throw new TypeError(
+			`${resolved} is the lifecycle directory of Pi ${named}, but the Pi that ran reports ${version ?? "no version"}`,
+		);
+	}
+	return resolved;
+}
+
+function refuseExistingRecording(out: string, force: boolean): void {
+	if (existsSync(join(out, "provenance.json")) && !force) {
+		throw new TypeError(`${out} already holds a recording; pass --force to replace it`);
+	}
+}
+
 /** Record the three lifecycle sessions and write the fixture. Returns the provenance written. */
 export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOptionsV0): Promise<JsonValueV0> {
 	const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-	const out = resolve(options.out);
-	if (existsSync(join(out, "provenance.json")) && options.force !== true) {
-		throw new TypeError(`${out} already holds a recording; pass --force to replace it`);
-	}
+	if (options.out !== null) refuseExistingRecording(resolve(options.out), options.force === true);
 	const apiKey = options.apiKeyEnv === null ? null : (process.env[options.apiKeyEnv] ?? null);
 	if (options.apiKeyEnv !== null && apiKey === null) throw new TypeError(`${options.apiKeyEnv} is not set`);
 	const scratch = scratchFor(options, apiKey);
@@ -402,6 +438,9 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 			throw new TypeError("that executable is the deterministic suite's fake Pi; a real recording needs a real Pi");
 		}
 		log(`Pi ${fingerprint.reported.version ?? "(no version)"} at ${fingerprint.local.realPath ?? options.pi}`);
+		const out = piLifecycleOutputDirectoryV0(options.out, fingerprint.reported.version);
+		refuseExistingRecording(out, options.force === true);
+		log(`writing to ${out}`);
 		await pi.checkLocal();
 		if (options.authorizeLiveStudy) {
 			log("running the live study (sends prompts to your model)");
@@ -503,9 +542,7 @@ function parseArgs(argv: readonly string[]): PiLifecycleRecorderOptionsV0 {
 		model: required("--model"),
 		providerName: flags.get("--provider-name") ?? "endolocal",
 		apiKeyEnv: flags.get("--api-key-env") ?? null,
-		out:
-			flags.get("--out") ??
-			join(dirname(fileURLToPath(import.meta.url)), "..", "research/pi-conformance/1.0.0/lifecycle"),
+		out: flags.get("--out") ?? null,
 		authorizeLiveStudy: switches.has("--authorize-live-study"),
 		timeoutMs: timeout,
 		kind: "real",
@@ -532,7 +569,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(p
 				);
 			}
 			recordPiLifecycleFixturesV0(options).then(
-				() => process.stderr.write(`wrote ${resolve(options.out)}\n`),
+				() => process.stderr.write("done\n"),
 				(error: unknown) => {
 					process.stderr.write(`${(error as Error).message}\n`);
 					process.exit(1);

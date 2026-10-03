@@ -7,11 +7,11 @@
 // The FAKE fixtures (tests/fixtures/pi-lifecycle/fake-pi-1.0.0/, provenance kind "fake-pi") always run. They come
 // from the deterministic suite's fake Pi and show only that the recorder, the fold and the reducer agree.
 //
-// The REAL fixture (research/pi-conformance/1.0.0/lifecycle/) is recorded by a maintainer with
-// scripts/record-lifecycle-fixture.ts against their own Pi and a model they serve. Until it exists that block is
-// skipped, and it is never stood in for: the block also refuses a recording made with the fake Pi.
+// REAL fixtures (research/pi-conformance/<pi version>/lifecycle/) are recorded by a maintainer with
+// scripts/record-lifecycle-fixture.ts against their own Pi and a model they serve. Each is checked against the version
+// directory it sits in, and a recording made with the fake Pi is refused. Until one exists, a skipped block says so.
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,11 +25,12 @@ import {
 	normalizeScratchRootV0,
 	PI_LIFECYCLE_SCRATCH_PLACEHOLDER,
 	PI_LIFECYCLE_SESSIONS,
+	piLifecycleOutputDirectoryV0,
 } from "../scripts/record-lifecycle-fixture.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 
 const FAKE = fileURLToPath(new URL("./fixtures/pi-lifecycle/fake-pi-1.0.0/", import.meta.url));
-const REAL = fileURLToPath(new URL("../research/pi-conformance/1.0.0/lifecycle/", import.meta.url));
+const CONFORMANCE = fileURLToPath(new URL("../research/pi-conformance/", import.meta.url));
 const FAKE_PI_DIGEST = createHash("sha256")
 	.update(readFileSync(new URL("./fixtures/fake-pi/cli.mjs", import.meta.url)))
 	.digest("hex");
@@ -125,42 +126,48 @@ describe("committed FAKE lifecycle fixtures (fake Pi: proves agreement, not Pi b
 	});
 });
 
-const realRecorded = existsSync(join(REAL, "provenance.json"));
+/** Every real recording: `research/pi-conformance/<version>/lifecycle/` holding a provenance.json. */
+const REAL_RECORDINGS = existsSync(CONFORMANCE)
+	? readdirSync(CONFORMANCE, { withFileTypes: true })
+			.filter(
+				(entry) => entry.isDirectory() && existsSync(join(CONFORMANCE, entry.name, "lifecycle", "provenance.json")),
+			)
+			.map((entry) => ({ version: entry.name, directory: join(CONFORMANCE, entry.name, "lifecycle") }))
+			.sort((a, b) => a.version.localeCompare(b.version))
+	: [];
 
-describe.skipIf(!realRecorded)(
-	"REAL Pi lifecycle fixture (skipped until recorded: run scripts/record-lifecycle-fixture.ts against your Pi and a local model)",
-	() => {
-		const provenance = (
-			realRecorded ? JSON.parse(readFileSync(join(REAL, "provenance.json"), "utf8")) : {}
-		) as ProvenanceV0;
+if (REAL_RECORDINGS.length === 0) {
+	it.skip("REAL Pi lifecycle fixture: not recorded yet (run scripts/record-lifecycle-fixture.ts against your Pi and a local model)", () => {});
+}
 
-		it("is a real recording: a real Pi, never the deterministic suite's fake", () => {
-			expect(provenance.kind).toBe("real");
-			expect(provenance.pi.isDeterministicSuiteFake).toBe(false);
-			expect(provenance.pi.entrypointSha256).not.toBe(FAKE_PI_DIGEST);
-			// The model Pi reported answering is recorded, and it is the one asked for.
-			expect(provenance.model.reportedByPi.some((model) => model.endsWith(`/${provenance.model.modelId}`))).toBe(
-				true,
-			);
-		});
+describe.each(REAL_RECORDINGS)("REAL Pi $version lifecycle fixture", ({ version, directory }) => {
+	const provenance = JSON.parse(readFileSync(join(directory, "provenance.json"), "utf8")) as ProvenanceV0;
 
-		it.each(PI_LIFECYCLE_SESSIONS)("%s replays identically, or is skipped with a stated reason", (name) => {
-			const session = provenance.sessions.find((entry) => entry.name === name)!;
-			if (session.status === "skipped") {
-				expect(session.reason).toMatch(/\S/);
-				expect(existsSync(join(REAL, `${name}.events.jsonl`))).toBe(false);
-				return;
-			}
-			const overview = replays(REAL, name, provenance);
-			if (name === "completes") expect(overview.lastRun?.outcome).toBe("completed");
-			if (name === "stop-mid-turn") expect(overview.counts.stopsRequested).toBe(1);
-			if (name === "killed-and-resumed") {
-				expect(overview.counts.interrupted).toBeGreaterThanOrEqual(1);
-				expect(overview.attachments.resumes).toBe(1);
-			}
-		});
-	},
-);
+	it("is a real recording, filed under the Pi version it was made against", () => {
+		expect(provenance.kind).toBe("real");
+		expect(provenance.pi.isDeterministicSuiteFake).toBe(false);
+		expect(provenance.pi.entrypointSha256).not.toBe(FAKE_PI_DIGEST);
+		expect(provenance.pi.version).toBe(version);
+		// The model Pi reported answering is recorded, and it is the one asked for.
+		expect(provenance.model.reportedByPi.some((model) => model.endsWith(`/${provenance.model.modelId}`))).toBe(true);
+	});
+
+	it.each(PI_LIFECYCLE_SESSIONS)("%s replays identically, or is skipped with a stated reason", (name) => {
+		const session = provenance.sessions.find((entry) => entry.name === name)!;
+		if (session.status === "skipped") {
+			expect(session.reason).toMatch(/\S/);
+			expect(existsSync(join(directory, `${name}.events.jsonl`))).toBe(false);
+			return;
+		}
+		const overview = replays(directory, name, provenance);
+		if (name === "completes") expect(overview.lastRun?.outcome).toBe("completed");
+		if (name === "stop-mid-turn") expect(overview.counts.stopsRequested).toBe(1);
+		if (name === "killed-and-resumed") {
+			expect(overview.counts.interrupted).toBeGreaterThanOrEqual(1);
+			expect(overview.attachments.resumes).toBe(1);
+		}
+	});
+});
 
 describe("scratch-root normalization (D3)", () => {
 	it("replaces only the recorder's own scratch root, as created and as its real path; every other path is kept", () => {
@@ -188,5 +195,18 @@ describe("scratch-root normalization (D3)", () => {
 			// shared prefix would be wrong, so it must stay whole.
 			sibling: "/tmp/endo-lifecycle-abc1234/other",
 		});
+	});
+});
+
+describe("where a real recording is filed", () => {
+	it("defaults to the version Pi reported, and refuses a lifecycle directory of another version", () => {
+		expect(piLifecycleOutputDirectoryV0(null, "1.0.1")).toBe(join(CONFORMANCE, "1.0.1", "lifecycle"));
+		expect(() => piLifecycleOutputDirectoryV0(join(CONFORMANCE, "1.0.0", "lifecycle"), "1.0.1")).toThrow(
+			/lifecycle directory of Pi 1\.0\.0, but the Pi that ran reports 1\.0\.1/,
+		);
+		expect(() => piLifecycleOutputDirectoryV0(null, null)).toThrow(/pass --out/);
+		expect(() => piLifecycleOutputDirectoryV0(null, "../../etc")).toThrow(/pass --out/);
+		// Any other explicit directory is the operator's choice.
+		expect(piLifecycleOutputDirectoryV0("/tmp/elsewhere", "1.0.1")).toBe("/tmp/elsewhere");
 	});
 });

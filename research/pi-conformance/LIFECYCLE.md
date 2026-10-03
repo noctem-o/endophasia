@@ -1,11 +1,15 @@
-# Pi 1.0.0: session-lifecycle acceptance fixture (not yet recorded)
+# Pi session-lifecycle acceptance fixtures
 
-The files in the parent directory are a separate, immutable specimen: the `pi-rpc-mapping.1` attachment recording.
-`tests/pi-conformance-specimen.test.ts` pins every one of them by digest. Under `pi-rpc-mapping.2` its evidence no
-longer applies to a current attachment (evidence rule 4). It is never rewritten; this directory is a new recording
-beside it.
+Each `<pi version>/lifecycle/` directory holds three real sessions recorded against that Pi release and a real model.
+`scripts/record-lifecycle-fixture.ts` files a recording under the version the Pi it ran reports. It refuses an
+`--out` that names another version's `lifecycle/`. `tests/pi-lifecycle-fixtures.test.ts` replays every recording it
+finds and checks that the directory matches the recorded version.
 
-This directory holds three real sessions recorded against a real Pi and a real model:
+The files directly in `1.0.0/` are a separate specimen and are immutable: the `pi-rpc-mapping.1` attachment recording.
+`tests/pi-conformance-specimen.test.ts` pins every one of them by digest. Under `pi-rpc-mapping.2`, their evidence no
+longer applies to a current attachment (evidence rule 4). They are never rewritten.
+
+Each recording holds these sessions:
 
 | Session | What happens |
 | :--- | :--- |
@@ -13,8 +17,8 @@ This directory holds three real sessions recorded against a real Pi and a real m
 | `stop-mid-turn` | A long prompt; once Pi streams, a STOP through `steering.stop`. |
 | `killed-and-resumed` | A long prompt in a child process that is SIGKILLed mid-turn. The same store and Pi session are then reopened: the interruption and the resume are recorded, and a short prompt runs. |
 
-Until `provenance.json` exists, the real-fixture block in `tests/pi-lifecycle-fixtures.test.ts` is skipped. That
-block refuses a recording whose Pi entrypoint is the deterministic suite's fake.
+While no recording exists, the real-fixture check in `tests/pi-lifecycle-fixtures.test.ts` is skipped. It refuses a
+recording whose Pi entrypoint is the deterministic suite's fake.
 
 ## Recording it
 

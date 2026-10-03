@@ -315,8 +315,10 @@ model was called.
 The session-lifecycle fixtures are also fake. The committed recordings in `tests/fixtures/pi-lifecycle/` come from the
 fake Pi, and the failure, retry, compaction and unknown-record paths are exercised only against it. The real-model
 lifecycle fixture is recorded by `scripts/record-lifecycle-fixture.ts` into
-`research/pi-conformance/1.0.0/lifecycle/` and has not been recorded yet; its test is skipped until it is. The boundary and the evidence rules were audited adversarially
-([audit](docs/pi-attach-audit.md)), including the limitations accepted for now.
+`research/pi-conformance/<pi version>/lifecycle/` (see `research/pi-conformance/LIFECYCLE.md`).
+
+The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
+limitations accepted for now.
 
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
 spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi

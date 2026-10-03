@@ -270,7 +270,10 @@ A valid proposal does not widen the model's permission.
 **Implemented and tested here:**
 
 - The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay,
-  durable storage, and the `endo` CLI (store commands and `endo harness …`).
+  durable storage, and the `endo` CLI (store commands and `endo harness …`). A writable open cuts a torn log tail only
+  after every remaining record validated, keeps the cut bytes in a side file, and reports their length and SHA-256.
+  The reporting commands (`status`, `events`, `ledger`, `artifacts`, `harness status`) open stores read-only and change
+  nothing on disk.
 - **The Pi attachment** (`adapters/pi`, `endo harness …`): executable resolution, fingerprints and change records,
   neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
   and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
@@ -366,7 +369,7 @@ agent and produced evidence.
 ~~~sh
 npm ci
 node cli/index.ts harness check  ./endo-root               # identify your `pi` and run the automatic local checks
-node cli/index.ts harness status ./endo-root               # identity, last change, capability state (starts nothing)
+node cli/index.ts harness status ./endo-root               # identity, last change, capability state (read-only; starts nothing)
 node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
 node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
 npm test                                                   # deterministic suite (no Pi, no network, no history)

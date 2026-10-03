@@ -6,12 +6,18 @@
  * `root/events/events.log`. One frame holds the canonical JSON of one validated event, so
  * a frame is an event record on disk.
  *
- * Open behaviour, in order: a torn tail (a crash mid-append) is truncated away and
- * reported as `recovered`; the first frame whose digest fails verification seals the store
- * — the valid prefix stays readable via `page`/`record`, but `ingest` throws forever,
- * because a verified-then-flipped frame means the rest of the file cannot be trusted. A
- * log whose frames decode but violate the event rules (a hand-crafted duplicate id, an
- * invalid event) is unopenable: the TypeError propagates and the store is never repaired.
+ * Open behaviour, in order: every valid frame is decoded and validated first; then a torn
+ * tail (a crash mid-append) is truncated away and reported as `recovered`, with its length,
+ * sha256 and the file its bytes were preserved in (recovery().discarded). The first frame
+ * whose digest fails verification seals the store — the valid prefix stays readable via
+ * `page`/`record`, but `ingest` throws forever, because a verified-then-flipped frame means
+ * the rest of the file cannot be trusted. A log whose frames decode but violate the event
+ * rules (a hand-crafted duplicate id, an invalid event) is unopenable: the TypeError
+ * propagates before anything is truncated, so an unopenable store is left byte-for-byte as
+ * found.
+ *
+ * Opened with `{ readOnly: true }`, the store creates no directory and truncates nothing: a
+ * torn tail is reported (`truncated`, `tail`) and left in place, and `ingest` throws.
  *
  * Every `ingest` is: validate in the in-memory store (namespace, duplicates), then one
  * framed write + fsync. If the write fails the store is dead — all further operations
@@ -28,20 +34,19 @@ import type {
 } from "../protocol/event-record.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoEventStoreV0 } from "../runtime/contracts/event-store.ts";
-import { createEndoFrameLogV0 } from "./log.ts";
+import {
+	createEndoFrameLogV0,
+	type EndoDurableStoreOptionsV0,
+	type EndoFrameLogRecoveryV0,
+	endoFrameLogRecoveryV0,
+} from "./log.ts";
 
 /**
- * How open classified the event log.
+ * How open classified the event log, and what it discarded.
  */
-export interface EndoDurableEventStoreRecoveryV0 {
-	/** True when a torn tail was found and truncated away. */
-	recovered: boolean;
-	/** True when partial (torn) bytes were discarded. */
+export interface EndoDurableEventStoreRecoveryV0 extends EndoFrameLogRecoveryV0 {
+	/** True when partial (torn) bytes were discarded; the same as `recovered`. */
 	discardedPartial: boolean;
-	/** True when a complete frame failed verification and the store is sealed read-only. */
-	sealed: boolean;
-	/** The 1-based index of the first failed frame, or null. */
-	corruptAt: number | null;
 }
 
 /**
@@ -51,7 +56,7 @@ export interface EndoDurableEventStoreRecoveryV0 {
 export interface EndoDurableEventStoreV0 {
 	/** The number of ingested events (the readable prefix when sealed). */
 	readonly length: number;
-	/** Ingest one endo.event.v0 and return the stored frozen copy. Throws when sealed, dead, or closed. */
+	/** Ingest one endo.event.v0 and return the stored frozen copy. Throws when read-only, sealed, dead, or closed. */
 	ingest(value: unknown): EndoEventV0;
 	/** A forward page of the stored events, same semantics as the in-memory store. */
 	page(query?: EndoEventRecordPageQueryV0): EndoEventRecordPageV0;
@@ -68,19 +73,16 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 /**
  * Create (or reopen) the durable event store under `root`.
  */
-export function createEndoDurableEventStoreV0(root: string): EndoDurableEventStoreV0 {
+export function createEndoDurableEventStoreV0(
+	root: string,
+	options: EndoDurableStoreOptionsV0 = {},
+): EndoDurableEventStoreV0 {
+	const readOnly = options.readOnly === true;
 	const eventsDir = `${root}/events`;
-	mkdirSync(eventsDir, { recursive: true });
-	const log = createEndoFrameLogV0(`${eventsDir}/events.log`);
-	const { frames, truncated, corruptAt } = log.read();
-
-	const recovery: EndoDurableEventStoreRecoveryV0 = truncated
-		? { recovered: true, discardedPartial: true, sealed: false, corruptAt: null }
-		: corruptAt !== null
-			? { recovered: false, discardedPartial: false, sealed: true, corruptAt }
-			: { recovered: false, discardedPartial: false, sealed: false, corruptAt: null };
-
-	if (truncated) log.truncateTo(frames.length);
+	if (!readOnly) mkdirSync(eventsDir, { recursive: true });
+	const log = createEndoFrameLogV0(`${eventsDir}/events.log`, { readOnly });
+	const read = log.read();
+	const { frames } = read;
 
 	const inner = createEndoEventStoreV0();
 	for (const frame of frames) {
@@ -93,6 +95,13 @@ export function createEndoDurableEventStoreV0(root: string): EndoDurableEventSto
 		inner.ingest(event);
 	}
 
+	// Only now, with every remaining frame validated, is a torn tail cut.
+	const discarded = read.truncated && !readOnly ? log.truncateTo(frames.length) : null;
+	const recovery: EndoDurableEventStoreRecoveryV0 = {
+		...endoFrameLogRecoveryV0(read, readOnly, discarded),
+		discardedPartial: discarded !== null,
+	};
+
 	let dead = false;
 	let closed = false;
 
@@ -102,6 +111,7 @@ export function createEndoDurableEventStoreV0(root: string): EndoDurableEventSto
 			throw new TypeError(
 				"the durable event store is dead: a log write failed and the in-memory state outruns the log",
 			);
+		if (write && readOnly) throw new TypeError("the durable event store is open read-only");
 		if (write && recovery.sealed) {
 			throw new TypeError(
 				`the durable event store is sealed: frame ${recovery.corruptAt} failed verification on open; the store is read-only`,
@@ -135,7 +145,7 @@ export function createEndoDurableEventStoreV0(root: string): EndoDurableEventSto
 		},
 		recovery(): EndoDurableEventStoreRecoveryV0 {
 			guard(false);
-			return recovery;
+			return JSON.parse(JSON.stringify(recovery));
 		},
 		close(): void {
 			closed = true;

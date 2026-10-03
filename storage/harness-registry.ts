@@ -6,7 +6,10 @@
  * `{ kind, record }` with the record validated by its protocol validator on the way in and again on open. Open
  * behaviour matches the durable event store: a torn tail is truncated away and reported; a frame that fails its
  * digest seals the registry read-only; a frame that decodes but fails validation makes the registry unopenable (it is
- * never repaired). Nothing here interprets a runtime: the registry stores what the attachment service decided.
+ * never repaired, and nothing is truncated before every frame has validated). recovery() reports what a truncation cut
+ * and where its bytes were preserved. Opened with `{ readOnly: true }`, the registry creates no directory, cuts
+ * nothing, and refuses append. Nothing here interprets a runtime: the registry stores what the attachment service
+ * decided.
  *
  * Host infrastructure: node:fs and protocol only. It imports no adapter and no runtime.
  */
@@ -26,7 +29,12 @@ import {
 } from "../protocol/harness.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
-import { createEndoFrameLogV0 } from "./log.ts";
+import {
+	createEndoFrameLogV0,
+	type EndoDurableStoreOptionsV0,
+	type EndoFrameLogRecoveryV0,
+	endoFrameLogRecoveryV0,
+} from "./log.ts";
 
 /** The record kinds the registry holds, each with its protocol validator. */
 const VALIDATORS = {
@@ -47,15 +55,14 @@ export interface EndoHarnessRegistryRecordsV0 {
 	notification: EndoHarnessNotificationV0;
 }
 
-export interface EndoHarnessRegistryRecoveryV0 {
-	recovered: boolean;
-	sealed: boolean;
-	corruptAt: number | null;
-}
+export type EndoHarnessRegistryRecoveryV0 = EndoFrameLogRecoveryV0;
 
 export interface EndoHarnessRegistryV0 {
 	readonly attachment: string;
-	/** Append one validated record. Throws TypeError when invalid, when it names another attachment, or when sealed. */
+	/**
+	 * Append one validated record. Throws TypeError when invalid, when it names another attachment, when sealed, or when
+	 * the registry is open read-only.
+	 */
 	append<K extends EndoHarnessRegistryKindV0>(kind: K, record: EndoHarnessRegistryRecordsV0[K]): void;
 	/** Every record of one kind, in append order. */
 	list<K extends EndoHarnessRegistryKindV0>(kind: K): EndoHarnessRegistryRecordsV0[K][];
@@ -75,17 +82,17 @@ export function endoHarnessRegistryDirectoryV0(root: string, attachment: string)
 }
 
 /** Open (or create) the registry of one attachment under `root`. */
-export function openEndoHarnessRegistryV0(root: string, attachment: string): EndoHarnessRegistryV0 {
+export function openEndoHarnessRegistryV0(
+	root: string,
+	attachment: string,
+	options: EndoDurableStoreOptionsV0 = {},
+): EndoHarnessRegistryV0 {
+	const readOnly = options.readOnly === true;
 	const directory = endoHarnessRegistryDirectoryV0(root, attachment);
-	mkdirSync(directory, { recursive: true });
-	const log = createEndoFrameLogV0(`${directory}/records.log`);
-	const { frames, truncated, corruptAt } = log.read();
-	if (truncated) log.truncateTo(frames.length);
-	const recovery: EndoHarnessRegistryRecoveryV0 = {
-		recovered: truncated,
-		sealed: !truncated && corruptAt !== null,
-		corruptAt: truncated ? null : corruptAt,
-	};
+	if (!readOnly) mkdirSync(directory, { recursive: true });
+	const log = createEndoFrameLogV0(`${directory}/records.log`, { readOnly });
+	const read = log.read();
+	const { frames } = read;
 
 	const records: { kind: EndoHarnessRegistryKindV0; record: { id?: string } }[] = [];
 	const ids = new Set<string>();
@@ -115,9 +122,14 @@ export function openEndoHarnessRegistryV0(root: string, attachment: string): End
 		if (entry.record.id !== undefined) ids.add(entry.record.id);
 	}
 
+	// Only now, with every remaining frame validated, is a torn tail cut.
+	const discarded = read.truncated && !readOnly ? log.truncateTo(frames.length) : null;
+	const recovery = endoFrameLogRecoveryV0(read, readOnly, discarded);
+
 	return {
 		attachment,
 		append(kind, record) {
+			if (readOnly) throw new TypeError("the harness registry is open read-only");
 			if (recovery.sealed) {
 				throw new TypeError(`the harness registry is sealed: frame ${recovery.corruptAt} failed verification`);
 			}
@@ -142,7 +154,7 @@ export function openEndoHarnessRegistryV0(root: string, attachment: string): End
 			return ids.has(id);
 		},
 		recovery() {
-			return { ...recovery };
+			return JSON.parse(JSON.stringify(recovery));
 		},
 	};
 }

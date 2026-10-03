@@ -43,8 +43,9 @@ All 8 failures are environmental. None is in the Pi path.
 - **Fix in this PR:** `truncateTo` now writes the bytes it cuts to `<log>.discarded-<sha256 prefix>` and fsyncs them
   before it replaces the file. It returns that path. Covered by "truncateTo preserves the bytes it cuts…" in
   `tests/endo-storage.test.ts`, which fails without the fix.
-- **Follow-up (ticket T1):** report the discarded path in each store's `recovery()`. Also consider sealing instead of
-  truncating when the torn region is larger than any single append could leave.
+- **Follow-up (ticket T1), done in the store-recovery PR:** each store's `recovery()` reports the torn tail as found
+  (`tail`: length and SHA-256) and what the open cut (`discarded`: length, SHA-256 and the side-file path). Still open:
+  sealing instead of truncating when the torn region is larger than any single append could leave.
 
 **H2. Symlinked Pi configuration was not followed, so evidence stayed valid after the configuration changed. (Fixed.)**
 - **Where:** `adapters/pi/configuration.ts:62-66` (old lines).
@@ -90,8 +91,9 @@ This is not code in this PR, because each option changes what the suite claims.
   writer's frame goes to the replaced inode and is lost.
 - **Not reproduced:** this depends on a reader seeing a partially written append. With H1 fixed, the cut bytes are at
   least kept in the sidecar file.
-- **Ticket T6:** add a read-only open mode for the four stores (no truncation, no mkdir; report `truncated` instead) and
-  use it in every read-only command.
+- **Ticket T6, done in the store-recovery PR:** all four stores take `{ readOnly: true }`. A read-only open creates no
+  directory, cuts nothing, reports `truncated`, `tail` and `corruptAt`, and refuses every write. `status`, `events`,
+  `ledger`, `artifacts` and `harness status` use it. The writer-lock half (M2, M5) is T7 and is still open.
 
 **M2. `harness identify`, `check` and `study` write the registry without the writer lock.**
 - **Where:** `adapters/pi/attachment.ts:116`. Only session attachment takes `events/session-attachment.lock`.
@@ -154,10 +156,10 @@ point at the wrong events. Covered by T6/T7 (lock, or refuse `ingest` while the 
 | :- | :--- | :--- | :--- |
 | L1 | 39 files, e.g. `evolution/policies/ports.ts:1` | Comments cite `README "## Phase N — …"` sections that no longer exist (the README has no Phase sections) | Point them at `docs/migration-ledger.md` sections, or drop the citations |
 | L2 | `adapters/pi/attachment.ts:229` | `state()` appends a capability-state record on every call, and `identify()` appends a fingerprint on every observation. The registry grows without bound | Append a state only when it differs from the last one. Keep fingerprints, since they are needed for reduced identities (evidence rule 3) |
-| L3 | `storage/log.ts:151` | `writeSync`'s byte count is ignored. A short write is reported as success, though the next append detects it | Compare the count with `frame.length` and throw |
+| L3 | `storage/log.ts:151` | `writeSync`'s byte count is ignored. A short write is reported as success, though the next append detects it | **Done** (store-recovery PR): every storage write compares the count and throws on a short write |
 | L4 | `cli/harness.ts:151` | `--wait ""` parses as 0 | Reject an empty value |
-| L5 | `cli/harness.ts:92` | `harness status --attachment typo` creates `harness/typo/` | Use the read-only open from T6 |
-| L6 | `storage/event-store.ts:83` | A torn tail is truncated before the remaining frames are validated, so an unopenable store has still been modified | Validate first, then truncate (or open read-only, per T6) |
+| L5 | `cli/harness.ts:92` | `harness status --attachment typo` creates `harness/typo/` | **Done** (store-recovery PR): `harness status` opens read-only |
+| L6 | `storage/event-store.ts:83` | A torn tail is truncated before the remaining frames are validated, so an unopenable store has still been modified | **Done** (store-recovery PR): the event store, registry and ledger validate every frame (and the ledger its meta and snapshot) before cutting |
 
 ### Checked, nothing found
 

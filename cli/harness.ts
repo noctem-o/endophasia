@@ -3,7 +3,7 @@
  * about it, and run checks. Each command prints one canonical-JSON document to stdout; a runtime-change notification
  * is also printed to stderr as plain text, so an operator sees it without reading JSON.
  *
- *   endo harness status   <root> [--attachment a]                       registry only; starts nothing
+ *   endo harness status   <root> [--attachment a]                       registry only, read-only; starts nothing
  *   endo harness identify <root> [selection]                            fingerprint and compare; starts no session
  *   endo harness check    <root> [selection] [--force]                  identify + automatic local checks
  *   endo harness study    <root> [selection] --authorize-live-study      the live study (agent work, provider cost)
@@ -86,10 +86,15 @@ function print(value: unknown): void {
 	console.log(canonicalEndoJsonV0(JSON.parse(JSON.stringify(value))));
 }
 
-/** `harness status <root> [--attachment a]` — the recorded identity, change, notice and capability state. */
+/**
+ * `harness status <root> [--attachment a]` — the recorded identity, change, notice and capability state. The registry
+ * is opened read-only: status creates no directory (an unknown attachment reports nothing recorded) and cuts nothing.
+ */
 export async function harnessStatusCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(argv, "usage: endo harness status <root> [--attachment a]");
-	const registry = openEndoHarnessRegistryV0(parsed.root, parsed.flags.get("--attachment") ?? "pi.default");
+	const registry = openEndoHarnessRegistryV0(parsed.root, parsed.flags.get("--attachment") ?? "pi.default", {
+		readOnly: true,
+	});
 	const fingerprints = registry.list("fingerprint");
 	const current = fingerprints.at(-1) ?? null;
 	const previous =

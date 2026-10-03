@@ -18,21 +18,32 @@
  *   to `entriesCount` frames (a crash between the two steps is harmless: a full log plus a
  *   valid snapshot still opens).
  *
- * Open never repairs: a torn tail is truncated away (crash recovery); a complete frame
- * whose digest fails seals the ledger (append throws, the verified prefix still
- * materialises); a frame or file that decodes but violates the ledger rules (a corrupt
- * meta or snapshot, a duplicate id, a broken reference, a snapshot/log disagreement) is a
- * TypeError — the ledger is unopenable, not repairable.
+ * Open never repairs: a torn tail is truncated away (crash recovery), but only after every
+ * remaining frame, the meta file and the snapshot have validated, and recovery() reports what
+ * was cut and where its bytes were preserved; a complete frame whose digest fails seals the
+ * ledger (append throws, the verified prefix still materialises); a frame or file that
+ * decodes but violates the ledger rules (a corrupt meta or snapshot, a duplicate id, a broken
+ * reference, a snapshot/log disagreement) is a TypeError — the ledger is unopenable, not
+ * repairable, and is left byte-for-byte as found.
+ *
+ * Opened with `{ readOnly: true }`, the ledger creates no directory, cuts nothing, and
+ * refuses append and snapshot.
  */
 
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync } from "node:fs";
 import { createEndoEvidenceLedgerV0, replayEndoEvidenceLedgerV0 } from "../evolution/evidence.ts";
 import type { EndoEvidenceLedgerEntryV0, EndoEvidenceLedgerV0, EndoExperimentRecordV0 } from "../protocol/evolution.ts";
 import { validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
 import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
-import { createEndoFrameLogV0 } from "./log.ts";
+import {
+	createEndoFrameLogV0,
+	type EndoDurableStoreOptionsV0,
+	type EndoFrameLogRecoveryV0,
+	endoFrameLogRecoveryV0,
+	writeExactSyncV0,
+} from "./log.ts";
 
 /** The replay report of one durable ledger open. */
 export interface EndoDurableLedgerReplayV0 {
@@ -54,8 +65,8 @@ export interface EndoDurableEvidenceLedgerV0 {
 	readonly length: number;
 	/**
 	 * Append one produced record with the full in-memory ledger validation. Throws when the
-	 * ledger is sealed (a frame failed verification on open), dead (a failed write), or
-	 * closed.
+	 * ledger is read-only, sealed (a frame failed verification on open), dead (a failed
+	 * write), or closed.
 	 */
 	append(record: unknown): EndoEvidenceLedgerEntryV0;
 	/** Materialise the ledger (entries copied, append order). */
@@ -67,6 +78,8 @@ export interface EndoDurableEvidenceLedgerV0 {
 	snapshot(): { digest: string; entriesCount: number };
 	/** The open's replay report. */
 	replay(): EndoDurableLedgerReplayV0;
+	/** How open classified the log, and what it discarded. */
+	recovery(): EndoFrameLogRecoveryV0;
 	/** Close the ledger; every later operation throws. */
 	close(): void;
 }
@@ -78,7 +91,7 @@ function writeFileSyncAtomic(file: string, content: string): void {
 	const tmp = `${file}.tmp`;
 	const fd = openSync(tmp, "w");
 	try {
-		writeSync(fd, Buffer.from(content, "utf8"));
+		writeExactSyncV0(fd, Buffer.from(content, "utf8"), tmp);
 		fsyncSync(fd);
 	} finally {
 		closeSync(fd);
@@ -109,7 +122,9 @@ export function createEndoDurableEvidenceLedgerV0(
 	root: string,
 	id: unknown,
 	experiment: unknown,
+	options: EndoDurableStoreOptionsV0 = {},
 ): EndoDurableEvidenceLedgerV0 {
+	const readOnly = options.readOnly === true;
 	if (typeof id !== "string" || !isEndoIdentifierV0(id, "evidence")) {
 		throw new TypeError("ledger id must be an endo.evidence.* identifier");
 	}
@@ -118,9 +133,9 @@ export function createEndoDurableEvidenceLedgerV0(
 
 	const dir = `${root}/ledger`;
 	const metaFile = `${dir}/ledger.meta.json`;
-	mkdirSync(dir, { recursive: true });
+	if (!readOnly) mkdirSync(dir, { recursive: true });
 	const snapshotFile = `${dir}/ledger.snapshot.json`;
-	const log = createEndoFrameLogV0(`${dir}/ledger.log`);
+	const log = createEndoFrameLogV0(`${dir}/ledger.log`, { readOnly });
 
 	const inner = createEndoEvidenceLedgerV0(id, storedExperiment);
 
@@ -152,8 +167,8 @@ export function createEndoDurableEvidenceLedgerV0(
 	}
 
 	// --- open: log ----------------------------------------------------------
-	const { frames, truncated, corruptAt } = log.read();
-	if (truncated) log.truncateTo(frames.length);
+	const read = log.read();
+	const { frames, corruptAt } = read;
 	if (corruptAt !== null) {
 		sealed = true;
 		sealedAt = corruptAt;
@@ -211,10 +226,15 @@ export function createEndoDurableEvidenceLedgerV0(
 		entries: entries.map((entry) => ({ ...entry })),
 	});
 
+	// Only now, with every remaining frame, the meta and the snapshot validated, is a torn tail cut.
+	const discarded = read.truncated && !readOnly ? log.truncateTo(frames.length) : null;
+	const recovery = endoFrameLogRecoveryV0(read, readOnly, discarded);
+
 	const guard = (write: boolean): void => {
 		if (closed) throw new TypeError("the durable ledger is closed");
 		if (dead)
 			throw new TypeError("the durable ledger is dead: a log write failed and the in-memory state outruns the log");
+		if (write && readOnly) throw new TypeError("the durable ledger is open read-only");
 		if (write && sealed) {
 			throw new TypeError(
 				`the durable ledger is sealed: frame ${sealedAt} failed verification on open; append is disabled`,
@@ -254,6 +274,7 @@ export function createEndoDurableEvidenceLedgerV0(
 		},
 		snapshot(): { digest: string; entriesCount: number } {
 			guard(false);
+			if (readOnly) throw new TypeError("the durable ledger is open read-only");
 			const value = inner.ledger();
 			const envelope = {
 				digest: sha256HexV0(canonicalEndoJsonV0(value)),
@@ -272,6 +293,10 @@ export function createEndoDurableEvidenceLedgerV0(
 				fromSnapshot: snapshotSeen,
 				verifiedEntries: [...entries],
 			};
+		},
+		recovery(): EndoFrameLogRecoveryV0 {
+			guard(false);
+			return JSON.parse(JSON.stringify(recovery));
 		},
 		close(): void {
 			closed = true;

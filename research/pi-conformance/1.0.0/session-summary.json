@@ -1,0 +1,28 @@
+{
+	"counters": {
+		"deltasDropped": 13,
+		"duplicatesSkipped": 0,
+		"ingested": 36,
+		"protocolFaults": 0,
+		"reconnects": 1
+	},
+	"entryEvents": 7,
+	"eventCount": 36,
+	"eventKinds": [
+		"agent.run-ended",
+		"agent.run-started",
+		"agent.settled",
+		"agent.turn-finished",
+		"agent.turn-started",
+		"control.accepted",
+		"control.requested",
+		"harness.attached",
+		"harness.catch-up",
+		"harness.process-exited",
+		"message.completed",
+		"session.entry-observed",
+		"session.leaf-observed"
+	],
+	"recordDigest": "d48448dae46af71f5034337785b90ba5c431e49543045dc295cde061c53cdcab"
+}
+

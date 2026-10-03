@@ -76,9 +76,7 @@ async function isExecutableFile(path: string): Promise<boolean> {
  * or null with a reason. PATH entries are searched in order; an empty entry is skipped (never "the current
  * directory").
  */
-export async function resolvePiExecutableV0(
-	selection: PiExecutableSelectionV0,
-): Promise<{
+export async function resolvePiExecutableV0(selection: PiExecutableSelectionV0): Promise<{
 	requested: string;
 	method: "explicit-path" | "path-search";
 	resolvedPath: string | null;

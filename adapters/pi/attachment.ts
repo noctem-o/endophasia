@@ -389,6 +389,11 @@ export class PiSessionAttachmentV0 {
 		return this.#piSessionId;
 	}
 
+	/** The current Pi process id, while one runs. */
+	get pid(): number | undefined {
+		return this.#client?.connection.pid;
+	}
+
 	/** The connection state of the current process, or "disconnected". */
 	get connection(): string {
 		return this.#client === null ? "disconnected" : this.#client.connection.state;

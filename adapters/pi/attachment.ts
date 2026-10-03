@@ -27,7 +27,9 @@ import type {
 } from "../../protocol/harness.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
+import { endoDigestKeyFromEnvironmentV0 } from "../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 import { type EndoHarnessRegistryV0, openEndoHarnessRegistryV0 } from "../../storage/harness-registry.ts";
 import type { RpcDiagnosticV0, RpcEventV0, RpcExitV0 } from "../rpc-jsonl/rpc-connection.ts";
@@ -82,6 +84,11 @@ export interface PiAttachmentOptionsV0 {
 	readonly sessionDir?: string;
 	readonly now?: () => Date;
 	readonly requestTimeoutMs?: number;
+	/**
+	 * The comparison-domain key tool arguments are digested under (runtime/contracts/keyed-digest.ts). Default: the key
+	 * this process's environment selects (storage/digest-key.ts), created on first use; never Pi's environment.
+	 */
+	readonly digestKey?: EndoDigestKeyV0;
 }
 
 export interface PiIdentificationV0 {
@@ -372,6 +379,14 @@ export class PiAttachmentV0 {
 		return this.#env();
 	}
 
+	#digestKey: EndoDigestKeyV0 | null = null;
+
+	/** @internal The comparison-domain key, resolved once per attachment. */
+	digestKey(): EndoDigestKeyV0 {
+		this.#digestKey ??= this.options.digestKey ?? endoDigestKeyFromEnvironmentV0();
+		return this.#digestKey;
+	}
+
 	/** @internal Re-identify for a reconnect: the recorded identification and the capability state it supports. */
 	async reidentify(): Promise<{ fingerprint: EndoHarnessFingerprintV0 | null; state: EndoCapabilityStateV0 }> {
 		const { fingerprint } = await this.identify();
@@ -640,6 +655,7 @@ export class PiSessionAttachmentV0 {
 				return live;
 			},
 			now: () => (options.now ?? (() => new Date()))().toISOString(),
+			digestKey: this.owner.digestKey(),
 		};
 		this.#client = client;
 		this.#context = context;
@@ -679,6 +695,8 @@ export class PiSessionAttachmentV0 {
 			identityDigest: this.#fingerprint.identity.digest,
 			version: this.#fingerprint.reported.version,
 			mapping: PI_MAPPING_VERSION,
+			// The digest domain tool-argument digests are made in: the key's id and label, never the key.
+			digestKey: { keyId: this.owner.digestKey().keyId, domain: this.owner.digestKey().domain },
 			// Evidence never covers project configuration (checks run in scratch directories); it is recorded here.
 			userConfigurationDigest: piUserConfigurationDigestV0(this.owner.launchEnv()),
 			projectConfigurationDigest: piProjectConfigurationDigestV0(options.cwd ?? process.cwd()),

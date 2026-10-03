@@ -2,7 +2,7 @@
 	"schemaVersion": "endo.pi-lifecycle-fixture.v0",
 	"kind": "real",
 	"recorder": "pi-lifecycle-recorder.2",
-	"recordedAt": "2026-10-03T20:10:08.263Z",
+	"recordedAt": "2026-10-03T20:27:49.080Z",
 	"host": {
 		"platform": "linux",
 		"node": "v26.10.0"
@@ -58,7 +58,7 @@
 			"status": "recorded",
 			"reason": null,
 			"eventCount": 28,
-			"eventsSha256": "8c2be210428cd8f8450a73e693c1f4790bc9b661734d2064ff41fd70780acf93",
+			"eventsSha256": "e656160fe84d776ab84203a0b5982d1009a4e913911f1e702e4a51866b2135d1",
 			"scratchRootReplacements": 1,
 			"notes": []
 		}

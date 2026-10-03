@@ -9,9 +9,10 @@
 //   recorded explicitly (harness.process-exited, harness.attached), never papered over.
 //
 // Payloads are minimal: no message text, tool arguments or results, queued text, summaries or Pi refusal text ever
-// cross into an event. A tool call's arguments are recorded only as the sha256 of their canonical JSON (`argsSha256`,
-// from pi-rpc-mapping.3), so two calls can be compared without their arguments entering evidence; a digest of short,
-// guessable arguments is a reference, not a secret. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
+// cross into an event. From pi-rpc-mapping.3, a tool call's arguments are recorded only as a keyed digest
+// (`argsDigest`: HMAC-SHA256 of their canonical JSON under the comparison-domain key, with the key's id;
+// runtime/contracts/keyed-digest.ts), so two calls can be compared without their arguments entering evidence, and a
+// digest of short, guessable arguments cannot be confirmed by hashing guesses without the key. A failure's reported cause (an assistant message's `errorMessage` when its stopReason is
 // "error", a final retry's `finalError`, a failed compaction's `errorMessage`) is recorded by reference only: its
 // source, sha256 and UTF-8 length, and a classification from a closed vocabulary (protocol/session-lifecycle.ts). The
 // text itself is returned beside the event (`runtimeTexts`) for the caller to keep outside canonical evidence; it never
@@ -26,7 +27,8 @@ import type {
 	EndoRuntimeTextRefV0,
 	EndoRuntimeTextSourceV0,
 } from "../../protocol/session-lifecycle.ts";
-import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { PiSessionEntryV0 } from "./rpc.ts";
 
 /** What the mapping needs from the attachment: identities, the producer's sequence, and the clock. */
@@ -44,6 +46,8 @@ export interface PiMappingContextV0 {
 	nextLive(): number;
 	/** The emission time, ISO-8601 UTC. */
 	now(): string;
+	/** The comparison-domain key tool arguments are digested under; without one, no argument digest is recorded. */
+	readonly digestKey?: EndoDigestKeyV0 | null;
 }
 
 /** Live event types that are streaming deltas: counted, never stored. */
@@ -311,21 +315,24 @@ function reportedCause(
 		: undefined;
 }
 
-/** The sha256 of a tool call's arguments as canonical JSON; undefined when Pi sent none or they are not plain JSON. */
-export function piToolArgsDigestV0(args: unknown): string | undefined {
-	if (args === undefined) return undefined;
+/** The keyed digest of a tool call's arguments; undefined without a key, without arguments, or for non-plain JSON. */
+export function piToolArgsDigestV0(
+	key: EndoDigestKeyV0 | null | undefined,
+	args: unknown,
+): EndoKeyedDigestV0 | undefined {
+	if (key === null || key === undefined || args === undefined) return undefined;
 	try {
-		return sha256HexV0(canonicalEndoJsonV0(args));
+		return key.digest(args);
 	} catch {
 		return undefined;
 	}
 }
-const argsDigest = piToolArgsDigestV0;
 
 function livePayload(
 	type: string,
 	record: Readonly<Record<string, unknown>>,
 	texts: PiRuntimeTextV0[],
+	key: EndoDigestKeyV0 | null | undefined,
 ): Record<string, JsonValueV0> {
 	switch (type) {
 		case "agent_end":
@@ -351,7 +358,7 @@ function livePayload(
 			return compact({
 				toolCallId: short(record.toolCallId, 256),
 				toolName: short(record.toolName),
-				argsSha256: argsDigest(record.args),
+				argsDigest: piToolArgsDigestV0(key, record.args) as JsonValueV0 | undefined,
 			});
 		case "tool_execution_end":
 			return compact({
@@ -447,7 +454,7 @@ export function mapPiLiveEventV0(
 		};
 	}
 	const runtimeTexts: PiRuntimeTextV0[] = [];
-	const payload = livePayload(type, record, runtimeTexts);
+	const payload = livePayload(type, record, runtimeTexts, context.digestKey);
 	return {
 		kind: "event",
 		event: mapAttachmentEventV0(context, kind, { runtimeEvent: type, ...payload }),

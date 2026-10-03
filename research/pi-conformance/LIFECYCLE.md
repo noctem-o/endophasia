@@ -2,7 +2,9 @@
 
 Each `<pi version>/lifecycle/` directory holds three real sessions recorded against that Pi release and a real model.
 `provenance.json` names the mapping each was recorded under. The 1.0.1 recording predates `pi-rpc-mapping.3`, so its
-tool events carry no argument digest and its attachments record no mapping version.
+tool events carry no argument digest and its attachments record no mapping version or digest domain. The recorder
+digests tool arguments under the key `ENDO_DIGEST_KEY_FILE` selects (default: the installation key,
+`storage/digest-key.ts`). Point it at a scratch key unless the recording should compare with your other stores.
 `scripts/record-lifecycle-fixture.ts` files a recording under the version the Pi it ran reports. It refuses an
 `--out` that names another version's `lifecycle/`. `tests/pi-lifecycle-fixtures.test.ts` replays every recording it
 finds and checks that the directory matches the recorded version.

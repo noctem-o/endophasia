@@ -6,11 +6,15 @@
 // - Alignment is by position within each layer, never by timestamp.
 // - lifecycle, tools and outcome are judged: EXACT, DIVERGED at the first differing position (with both entries and
 //   the common-prefix length), or UNAVAILABLE.
-// - usage is never judged. It reports deltas (b minus a) per aligned run and in total; deciding whether a delta is
-//   noise needs a noise band, which belongs to the variance study, not here.
-// - A difference in runtime fingerprint, version, mapping, configuration or model never changes a verdict; it is
-//   listed in `flags` so a reader never mistakes a mixed comparison for a like-for-like one.
-// - compare(b, a) is compare(a, b) with the sides swapped and the usage deltas negated.
+// - Tool argument digests compare only within one digest domain. Different key ids make an entry unverifiable
+//   ("different digest domains"), never a divergence: two HMACs under different keys say nothing about equality.
+// - usage (runtime-reported tokens) and timing (the observer's clock) are never judged. They report deltas (b minus a)
+//   per aligned run and in total; deciding whether a delta is noise needs a noise band, which belongs to the variance
+//   study, not here.
+// - A difference in runtime fingerprint, version, mapping, digest domain, configuration or model never changes a
+//   verdict; it is listed in `flags` so a reader never mistakes a mixed comparison for a like-for-like one.
+// - compare(b, a) is compare(a, b) with the sides swapped and the usage and timing deltas negated.
+// - The digest covers content identities and the result, not where the stores sit (`provenance`).
 
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import {
@@ -18,11 +22,12 @@ import {
 	type EndoTrajectoryComparisonV0,
 	type EndoTrajectoryFlagV0,
 	type EndoTrajectoryLayerV0,
+	type EndoTrajectoryTimingComparisonV0,
+	type EndoTrajectoryTimingEntryV0,
 	type EndoTrajectoryTokenDeltaV0,
 	type EndoTrajectoryToolEntryV0,
 	type EndoTrajectoryUsageComparisonV0,
 	type EndoTrajectoryUsageEntryV0,
-	type EndoTrajectoryUsageRunDeltaV0,
 	type EndoTrajectoryV0,
 	type EndoTrajectoryVerdictV0,
 	validateEndoTrajectoryComparisonV0,
@@ -30,9 +35,9 @@ import {
 } from "../../protocol/trajectory.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 
-/** The sha256 of a record's canonical JSON with its `digest` field left out. */
+/** The identity digest of a record: sha256 of its canonical JSON with `digest` and `provenance` left out. */
 export function endoRecordDigestV0(record: Record<string, unknown>): string {
-	const { digest: _digest, ...body } = record;
+	const { digest: _digest, provenance: _provenance, ...body } = record;
 	return sha256HexV0(canonicalEndoJsonV0(body));
 }
 
@@ -45,7 +50,8 @@ export function sealEndoTrajectoryV0(body: Omit<EndoTrajectoryV0, "digest">): En
 	return valid;
 }
 
-type Agreement = "equal" | "differ" | "unknown";
+/** Equal, differing, or not verifiable (with the reason). */
+type Agreement = "equal" | "differ" | { unverified: string };
 
 function same(a: unknown, b: unknown): boolean {
 	return canonicalEndoJsonV0(a) === canonicalEndoJsonV0(b);
@@ -54,16 +60,24 @@ function same(a: unknown, b: unknown): boolean {
 const canonicalAgreement = (a: unknown, b: unknown): Agreement => (same(a, b) ? "equal" : "differ");
 
 /**
- * Tool entries: every field must be equal, except that an argument digest the recording did not capture (UNAVAILABLE
- * on either side) leaves the entry unverifiable rather than equal. A difference in any other field is a divergence.
+ * Tool entries: every field must be equal. Argument digests compare only in one digest domain: a digest one side did
+ * not record, or digests under different key ids, leave the entry unverifiable rather than equal or diverged. A
+ * difference in any other field is a divergence.
  */
 function toolAgreement(a: EndoTrajectoryToolEntryV0, b: EndoTrajectoryToolEntryV0): Agreement {
-	const { argsSha256: argsA, ...restA } = a;
-	const { argsSha256: argsB, ...restB } = b;
+	const { argsDigest: argsA, ...restA } = a;
+	const { argsDigest: argsB, ...restB } = b;
 	if (!same(restA, restB)) return "differ";
-	if (argsA.status === "reported" && argsB.status === "reported")
-		return argsA.value === argsB.value ? "equal" : "differ";
-	return "unknown";
+	// Reasons name no side, so that compare(b, a) is exactly compare(a, b) swapped.
+	if (argsA.status !== "reported" || argsB.status !== "reported") {
+		const both = argsA.status !== "reported" && argsB.status !== "reported";
+		return { unverified: `no argument digest was recorded on ${both ? "either side" : "one side"}` };
+	}
+	if (argsA.value.keyId !== argsB.value.keyId)
+		return {
+			unverified: `different digest domains (${[argsA.value.keyId, argsB.value.keyId].sort().join(" and ")})`,
+		};
+	return argsA.value.value === argsB.value.value ? "equal" : "differ";
 }
 
 function judge<T>(
@@ -82,7 +96,7 @@ function judge<T>(
 	}
 	const lengths = { a: a.entries.length, b: b.entries.length };
 	const shared = Math.min(lengths.a, lengths.b);
-	const unverified: number[] = [];
+	const unverified: { index: number; reason: string }[] = [];
 	const diverged = (index: number): EndoTrajectoryVerdictV0 => ({
 		status: "DIVERGED",
 		index,
@@ -94,7 +108,7 @@ function judge<T>(
 	for (let index = 0; index < shared; index += 1) {
 		const agreement = agree(a.entries[index]!, b.entries[index]!);
 		if (agreement === "differ") return diverged(index);
-		if (agreement === "unknown") unverified.push(index);
+		if (agreement !== "equal") unverified.push({ index, reason: agreement.unverified });
 	}
 	if (lengths.a !== lengths.b) return diverged(shared);
 	if (unverified.length > 0) return { status: "UNAVAILABLE", a: null, b: null, unverified, lengths };
@@ -108,83 +122,111 @@ function delta(a: number, b: number): number {
 
 const TOKEN_FIELDS = ["input", "output", "cacheRead", "cacheWrite", "totalTokens", "reasoning", "costTotal"] as const;
 
-function tokenDelta(a: Record<string, number> | null, b: Record<string, number> | null): EndoTrajectoryTokenDeltaV0 {
+function tokenDelta(a: Record<string, number>, b: Record<string, number>): EndoTrajectoryTokenDeltaV0 {
 	const out: EndoTrajectoryTokenDeltaV0 = {};
 	for (const field of TOKEN_FIELDS) {
-		const x = a?.[field];
-		const y = b?.[field];
+		const x = a[field];
+		const y = b[field];
 		if (x === undefined && y === undefined) continue;
 		out[field] = x === undefined || y === undefined ? null : delta(x, y);
 	}
 	return out;
 }
 
-/** A side's totals over its runs: a field only when every run with reported tokens has it. */
-function totals(entries: readonly EndoTrajectoryUsageEntryV0[]): {
-	tokens: Record<string, number> | null;
-	wallMs: number | null;
-} {
-	const reported = entries.flatMap((entry) =>
-		entry.tokens.status === "reported" ? [entry.tokens.value as unknown as Record<string, number>] : [],
-	);
-	let tokens: Record<string, number> | null = null;
-	if (reported.length > 0) {
-		tokens = {};
-		for (const field of TOKEN_FIELDS)
-			if (reported.every((item) => field in item))
-				tokens[field] = reported.reduce((total, item) => total + item[field]!, 0);
-	}
-	const walls = entries.map((entry) => (entry.wallMs.status === "reported" ? entry.wallMs.value : null));
-	const wallMs = walls.length > 0 && walls.every((wall) => wall !== null) ? walls.reduce((x, y) => x! + y!, 0) : null;
-	return { tokens, wallMs };
+const tokensOf = (entry: EndoTrajectoryUsageEntryV0 | undefined): Record<string, number> | null =>
+	entry?.tokens.status === "reported" ? (entry.tokens.value as unknown as Record<string, number>) : null;
+
+/** A side's token totals over its runs: a field only when every run with reported tokens has it. */
+function tokenTotals(entries: readonly EndoTrajectoryUsageEntryV0[]): Record<string, number> | null {
+	const reported = entries.map(tokensOf).filter((item): item is Record<string, number> => item !== null);
+	if (reported.length === 0) return null;
+	const totals: Record<string, number> = {};
+	for (const field of TOKEN_FIELDS)
+		if (reported.every((item) => field in item))
+			totals[field] = reported.reduce((total, item) => total + item[field]!, 0);
+	return totals;
+}
+
+function bothReported<T>(
+	a: EndoTrajectoryLayerV0<T>,
+	b: EndoTrajectoryLayerV0<T>,
+): { status: "UNAVAILABLE"; a: string | null; b: string | null } | null {
+	if (a.status === "reported" && b.status === "reported") return null;
+	return {
+		status: "UNAVAILABLE",
+		a: a.status === "UNAVAILABLE" ? a.reason : null,
+		b: b.status === "UNAVAILABLE" ? b.reason : null,
+	};
 }
 
 function usageDeltas(
 	a: EndoTrajectoryLayerV0<EndoTrajectoryUsageEntryV0>,
 	b: EndoTrajectoryLayerV0<EndoTrajectoryUsageEntryV0>,
 ): EndoTrajectoryUsageComparisonV0 {
-	if (a.status === "UNAVAILABLE" || b.status === "UNAVAILABLE") {
-		return {
-			status: "UNAVAILABLE",
-			a: a.status === "UNAVAILABLE" ? a.reason : null,
-			b: b.status === "UNAVAILABLE" ? b.reason : null,
-		};
-	}
-	const runs: EndoTrajectoryUsageRunDeltaV0[] = [];
+	const unavailable = bothReported(a, b);
+	if (unavailable !== null || a.status !== "reported" || b.status !== "reported") return unavailable!;
+	const runs = [];
 	for (let index = 0; index < Math.max(a.entries.length, b.entries.length); index += 1) {
-		const x = a.entries[index];
-		const y = b.entries[index];
-		const tokensX = x?.tokens.status === "reported" ? (x.tokens.value as unknown as Record<string, number>) : null;
-		const tokensY = y?.tokens.status === "reported" ? (y.tokens.value as unknown as Record<string, number>) : null;
+		const x = tokensOf(a.entries[index]);
+		const y = tokensOf(b.entries[index]);
 		runs.push({
 			run: index + 1,
-			present: { a: x !== undefined, b: y !== undefined },
-			tokens: tokensX === null || tokensY === null ? null : tokenDelta(tokensX, tokensY),
-			wallMs:
-				x?.wallMs.status === "reported" && y?.wallMs.status === "reported"
-					? delta(x.wallMs.value, y.wallMs.value)
-					: null,
+			present: { a: a.entries[index] !== undefined, b: b.entries[index] !== undefined },
+			tokens: x === null || y === null ? null : tokenDelta(x, y),
 		});
 	}
-	const totalA = totals(a.entries);
-	const totalB = totals(b.entries);
+	const totalA = tokenTotals(a.entries);
+	const totalB = tokenTotals(b.entries);
 	return {
 		status: "DELTAS",
 		runs,
-		totals: {
-			tokens: totalA.tokens === null || totalB.tokens === null ? {} : tokenDelta(totalA.tokens, totalB.tokens),
-			wallMs: totalA.wallMs === null || totalB.wallMs === null ? null : delta(totalA.wallMs, totalB.wallMs),
-		},
+		totals: { tokens: totalA === null || totalB === null ? {} : tokenDelta(totalA, totalB) },
 	};
 }
 
+const wallOf = (entry: EndoTrajectoryTimingEntryV0 | undefined): number | null =>
+	entry?.wallMs.status === "reported" ? entry.wallMs.value : null;
+
+function timingDeltas(
+	a: EndoTrajectoryLayerV0<EndoTrajectoryTimingEntryV0>,
+	b: EndoTrajectoryLayerV0<EndoTrajectoryTimingEntryV0>,
+): EndoTrajectoryTimingComparisonV0 {
+	const unavailable = bothReported(a, b);
+	if (unavailable !== null || a.status !== "reported" || b.status !== "reported") return unavailable!;
+	const runs = [];
+	for (let index = 0; index < Math.max(a.entries.length, b.entries.length); index += 1) {
+		const x = wallOf(a.entries[index]);
+		const y = wallOf(b.entries[index]);
+		runs.push({
+			run: index + 1,
+			present: { a: a.entries[index] !== undefined, b: b.entries[index] !== undefined },
+			wallMs: x === null || y === null ? null : delta(x, y),
+		});
+	}
+	// A total only when every run on both sides has a wall time: a partial sum would compare unlike things.
+	const total = (entries: readonly EndoTrajectoryTimingEntryV0[]): number | null => {
+		const walls = entries.map(wallOf);
+		return walls.length > 0 && walls.every((wall) => wall !== null) ? walls.reduce((x, y) => x! + y!, 0) : null;
+	};
+	const totalA = total(a.entries);
+	const totalB = total(b.entries);
+	return {
+		status: "DELTAS",
+		clock: "observer",
+		runs,
+		totals: { wallMs: totalA === null || totalB === null ? null : delta(totalA, totalB) },
+	};
+}
+
+type AttachmentField = keyof EndoTrajectoryV0["environment"]["attachments"][number];
+
 /** The distinct reported values of one attachment field, in attachment order; UNAVAILABLE ones as `null`. */
-function distinct(trajectory: EndoTrajectoryV0, field: keyof EndoTrajectoryV0["environment"]["attachments"][number]) {
-	const values: (string | null)[] = [];
+function distinct(trajectory: EndoTrajectoryV0, field: AttachmentField, pick = (value: unknown) => value) {
+	const values: JsonValueV0[] = [];
 	for (const attachment of trajectory.environment.attachments) {
 		const item = attachment[field];
-		const value = item.status === "reported" ? item.value : null;
-		if (!values.includes(value)) values.push(value);
+		const value = (item.status === "reported" ? pick(item.value) : null) as JsonValueV0;
+		if (!values.some((seen) => same(seen, value))) values.push(value);
 	}
 	return values;
 }
@@ -194,9 +236,11 @@ function flags(a: EndoTrajectoryV0, b: EndoTrajectoryV0): EndoTrajectoryFlagV0[]
 	const check = (kind: EndoTrajectoryFlagV0["kind"], x: JsonValueV0, y: JsonValueV0): void => {
 		if (!same(x, y)) out.push({ kind, a: x, b: y });
 	};
+	const keyId = (value: unknown) => (value as { keyId: string }).keyId;
 	check("runtime-fingerprint-differs", distinct(a, "identityDigest"), distinct(b, "identityDigest"));
 	check("runtime-version-differs", distinct(a, "version"), distinct(b, "version"));
 	check("mapping-differs", distinct(a, "mapping"), distinct(b, "mapping"));
+	check("digest-domain-differs", distinct(a, "digestKey", keyId), distinct(b, "digestKey", keyId));
 	check(
 		"configuration-differs",
 		{ user: distinct(a, "userConfigurationDigest"), project: distinct(a, "projectConfigurationDigest") },
@@ -220,7 +264,6 @@ export function compareEndoTrajectoriesV0(a: EndoTrajectoryV0, b: EndoTrajectory
 			);
 	}
 	const side = (trajectory: EndoTrajectoryV0) => ({
-		store: trajectory.source.store,
 		session: trajectory.source.session,
 		eventsSha256: trajectory.source.eventsSha256,
 		trajectoryDigest: trajectory.digest,
@@ -236,7 +279,9 @@ export function compareEndoTrajectoriesV0(a: EndoTrajectoryV0, b: EndoTrajectory
 			tools: judge(a.layers.tools, b.layers.tools, toolAgreement),
 			outcome: judge(a.layers.outcome, b.layers.outcome, canonicalAgreement),
 			usage: usageDeltas(a.layers.usage, b.layers.usage),
+			timing: timingDeltas(a.layers.timing, b.layers.timing),
 		},
+		provenance: { a: { ...a.provenance }, b: { ...b.provenance } },
 	};
 	const plain = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
 	const sealed = { ...plain, digest: endoRecordDigestV0(plain) };

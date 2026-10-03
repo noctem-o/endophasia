@@ -8,7 +8,8 @@
 // | lifecycle | the stored `lifecycle.*` stream (adapters/pi/lifecycle.ts), reduced to kind and run facts         |
 // | tools     | live `tool.started` / `tool.finished`, paired by Pi's toolCallId (the id itself is not kept)      |
 // | outcome   | the lifecycle stream's run endings and interruptions                                               |
-// | usage     | live assistant `message.completed` usage, summed per run; wall time from the lifecycle events' at |
+// | usage     | live assistant `message.completed` usage, summed per run (what Pi reported)                       |
+// | timing    | wall time per run from the lifecycle events' `at`: the observer's clock, not Pi's                 |
 //
 // Usage and tools come from Pi's live stream only, never from the durable entries a catch-up re-reads: a catch-up
 // after a reconnect re-observes entries whose usage the live stream already reported, so counting entries would count
@@ -28,9 +29,11 @@ import {
 } from "../../protocol/session-lifecycle.ts";
 import type {
 	EndoTrajectoryAttachmentV0,
+	EndoTrajectoryKeyedDigestV0,
 	EndoTrajectoryLifecycleEntryV0,
 	EndoTrajectoryOutcomeEntryV0,
 	EndoTrajectoryOutcomeKindV0,
+	EndoTrajectoryTimingEntryV0,
 	EndoTrajectoryTokensV0,
 	EndoTrajectoryToolEntryV0,
 	EndoTrajectoryUsageEntryV0,
@@ -143,7 +146,32 @@ interface RunState {
 }
 
 const ARGS_NOT_RECORDED =
-	"this recording's tool.started carries no argument digest (pi-rpc-mapping.2 and earlier record none)";
+	"this recording's tool.started carries no keyed argument digest (pi-rpc-mapping.2 and earlier record none, and an attachment without a digest key records none)";
+
+/** A recorded keyed digest (adapters/pi/mapping.ts piToolArgsDigestV0), or null. */
+function keyedDigest(value: unknown): EndoTrajectoryKeyedDigestV0 | null {
+	if (!isRecord(value) || Object.keys(value).length !== 3) return null;
+	const { algorithm, keyId, value: digest } = value;
+	return algorithm === "hmac-sha256" &&
+		typeof keyId === "string" &&
+		/^endo\.digest-key\.[0-9a-f]{32}$/.test(keyId) &&
+		typeof digest === "string" &&
+		/^[0-9a-f]{64}$/.test(digest)
+		? { algorithm, keyId, value: digest }
+		: null;
+}
+
+/** A recorded digest-domain record ({ keyId, domain }) from harness.attached, or UNAVAILABLE. */
+function digestKeyOf(value: unknown): EndoReportedV0<{ keyId: string; domain: string }> {
+	if (
+		isRecord(value) &&
+		typeof value.keyId === "string" &&
+		/^endo\.digest-key\.[0-9a-f]{32}$/.test(value.keyId) &&
+		typeof value.domain === "string"
+	)
+		return endoReportedV0({ keyId: value.keyId, domain: value.domain });
+	return endoUnavailableV0("the attachment recorded no digest domain (recorded before keyed argument digests)");
+}
 
 /**
  * Project the trajectory of one recorded session. `events` is the store's content in store order (any other session or
@@ -184,6 +212,7 @@ export function projectPiTrajectoryV0(
 	const tools: EndoTrajectoryToolEntryV0[] = [];
 	const outcomes: EndoTrajectoryOutcomeEntryV0[] = [];
 	const usage: EndoTrajectoryUsageEntryV0[] = [];
+	const timing: EndoTrajectoryTimingEntryV0[] = [];
 	const environment: EndoTrajectoryAttachmentV0[] = [];
 	const reportedModels = new Set<string>();
 	const pendingTools = new Map<string, number>();
@@ -225,6 +254,10 @@ export function projectPiTrajectoryV0(
 			assistantMessages: run.assistantMessages,
 			withoutUsage: run.assistantMessages - withUsage,
 			tokens,
+		});
+		timing.push({
+			run: run.index,
+			clock: "observer",
 			wallMs:
 				endedAt === null
 					? endoUnavailableV0(
@@ -389,21 +422,19 @@ export function projectPiTrajectoryV0(
 						payload.projectConfigurationDigest,
 						"the attachment recorded no project configuration digest",
 					),
+					digestKey: digestKeyOf(payload.digestKey),
 					configuredModel: configuredModel(payload.args),
 				});
 				break;
 			}
 			case "tool.started": {
 				const callId = text(payload.toolCallId);
-				const argsSha256 = text(payload.argsSha256);
+				const argsDigest = keyedDigest(payload.argsDigest);
 				tools.push({
 					run: run === null ? null : (run as RunState).index,
 					turn: run === null ? null : currentTurn,
 					name: recordedString(payload.toolName, "Pi's tool_execution_start carried no tool name"),
-					argsSha256:
-						argsSha256 !== null && /^[0-9a-f]{64}$/.test(argsSha256)
-							? endoReportedV0(argsSha256)
-							: endoUnavailableV0(ARGS_NOT_RECORDED),
+					argsDigest: argsDigest === null ? endoUnavailableV0(ARGS_NOT_RECORDED) : endoReportedV0(argsDigest),
 					result: endoUnavailableV0("no tool_execution_end was recorded for this call"),
 				});
 				if (callId !== null) pendingTools.set(callId, tools.length - 1);
@@ -424,7 +455,7 @@ export function projectPiTrajectoryV0(
 						run: run === null ? null : (run as RunState).index,
 						turn: run === null ? null : currentTurn,
 						name: recordedString(payload.toolName, "Pi's tool_execution_end carried no tool name"),
-						argsSha256: endoUnavailableV0("no tool_execution_start was recorded for this call"),
+						argsDigest: endoUnavailableV0("no tool_execution_start was recorded for this call"),
 						result,
 					});
 				}
@@ -461,7 +492,6 @@ export function projectPiTrajectoryV0(
 		schemaVersion: "endo.trajectory.v0",
 		projection: PI_TRAJECTORY_PROJECTION_V0,
 		source: {
-			store: options.store,
 			session,
 			runtime: "pi",
 			runtimeSessionId,
@@ -483,7 +513,9 @@ export function projectPiTrajectoryV0(
 				: usage.length > 0 && !anyUsage
 					? endoLayerUnavailable("Pi reported no usage on any assistant message of this session")
 					: { status: "reported", entries: usage },
+			timing: lifecycleRecorded ? { status: "reported", entries: timing } : endoLayerUnavailable(noLifecycle),
 		},
+		provenance: { store: options.store },
 	});
 }
 

@@ -5,38 +5,44 @@ check that trajectory comparison (`endo trajectory diff`, docs/trajectory.md) be
 run-to-run variance needs a proper design and N, which is later work.
 
 `run-1/` and `run-2/` each hold one `completes` session: the same short prompt as `../lifecycle/completes`
-("Reply with the single word: ready"), recorded on 2026-10-03, about 40 minutes after the committed lifecycle fixture, with:
+("Reply with the single word: ready"), recorded on 2026-10-03, about two hours after the committed lifecycle fixture, with:
 
 ```sh
-node scripts/record-lifecycle-fixture.ts --pi /usr/bin/pi --base-url http://127.0.0.1:8080/v1 \
-  --model qwen3.8-27b --authorize-live-study --sessions completes --out <run-N>
+ENDO_DIGEST_KEY_FILE=<scratch key> node scripts/record-lifecycle-fixture.ts --pi /usr/bin/pi \
+  --base-url http://127.0.0.1:8080/v1 --model qwen3.8-27b --authorize-live-study --sessions completes --out <run-N>
 ```
 
 Same Pi 1.0.1 installation (identity `f91821fd54dd…`), same llama.cpp server and model (`qwen3.8-27b`, Q4_K_M), same
-scratch-configuration recipe. They were recorded under `pi-rpc-mapping.3`. The committed lifecycle fixture was recorded
-under `pi-rpc-mapping.2`, so comparisons against it carry the `mapping-differs` flag.
+scratch-configuration recipe. They were recorded under the final `pi-rpc-mapping.3`. Both share one digest domain: a
+scratch key, deleted afterwards, whose id (`endo.digest-key.02afbe04…`) is recorded on each attachment. Neither session
+called a tool, so no digest was made with it. The committed lifecycle fixture was recorded under `pi-rpc-mapping.2`,
+with no mapping or digest domain recorded, so comparisons against it carry the `mapping-differs` and
+`digest-domain-differs` flags.
+
+(An earlier pair, recorded under a draft of mapping.3 that recorded no digest domain, was replaced by this one. It
+showed the same picture: EXACT on every judged layer, with usage moved by the prompt cache.)
 
 ## What the comparison showed
 
-| Pair | lifecycle | tools | outcome | flags | usage deltas (b − a) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| run-1 vs run-2 | EXACT (6) | EXACT (0) | EXACT (1) | none | input +3, output −5, total −2, wall +36 ms |
-| lifecycle/completes vs run-1 | EXACT (6) | EXACT (0) | EXACT (1) | mapping-differs | cacheRead +1476, input −1479, output −47, wall −2162 ms |
-| lifecycle/completes vs run-2 | EXACT (6) | EXACT (0) | EXACT (1) | mapping-differs | cacheRead +1476, input −1476, output −52, wall −2126 ms |
+| Pair | lifecycle | tools | outcome | flags | usage Δ (b − a) | timing Δ (observer clock) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| run-1 vs run-2 | EXACT (6) | EXACT (0) | EXACT (1) | none | output +6, total +6 | +5 ms |
+| lifecycle/completes vs run-1 | EXACT (6) | EXACT (0) | EXACT (1) | mapping-differs, digest-domain-differs | cacheRead +1476, input −1478, output −43 | −1826 ms |
+| lifecycle/completes vs run-2 | EXACT (6) | EXACT (0) | EXACT (1) | mapping-differs, digest-domain-differs | cacheRead +1476, input −1478, output −37 | −1821 ms |
 
-Absolute usage per run (Pi-reported tokens, observer wall time):
+Absolute values per run (Pi-reported tokens; wall time on the observer's clock):
 
 | Recording | input | cacheRead | output | total | wall ms |
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | lifecycle/completes | 1608 | 0 | 72 | 1680 | 2767 |
-| completes-repeat/run-1 | 129 | 1476 | 25 | 1630 | 605 |
-| completes-repeat/run-2 | 132 | 1476 | 20 | 1628 | 641 |
+| completes-repeat/run-1 | 130 | 1476 | 29 | 1635 | 941 |
+| completes-repeat/run-2 | 130 | 1476 | 35 | 1641 | 946 |
 
 For this short, tool-free prompt, all three runs share the same trajectory on every judged layer. Usage moves, and
 most of the movement has a visible cause rather than being model noise: the two new runs hit llama.cpp's prompt cache
-(`cacheRead` 1476), and the committed run did not. Usage deltas are reported, never judged, for exactly this reason.
-The output-token spread (72 / 25 / 20) is consistent with sampling differences in the reply. It is not evidence of a
-rate.
+(`cacheRead` 1476), and the committed run did not. Usage and timing deltas are reported, never judged, for exactly
+this reason. The output-token spread (72 / 29 / 35) is consistent with sampling differences in the reply. It is not
+evidence of a rate. Because no tool was called, "tools EXACT" is vacuous here.
 
 `tests/trajectory.test.ts` pins these comparisons, so a change to the projection or the comparison that alters them
 is visible.

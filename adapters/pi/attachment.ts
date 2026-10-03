@@ -191,7 +191,8 @@ export class PiAttachmentV0 {
 	#record(run: PiCheckRunV0, fingerprint: EndoHarnessFingerprintV0): EndoCapabilityEvidenceV0[] {
 		const artifacts = createEndoArtifactStoreV0(this.options.root);
 		const bytes = new TextEncoder().encode(
-			`${run.transcript.map((record) => canonicalEndoJsonV0(JSON.parse(JSON.stringify(record)))).join("\n")}\n`,
+			// One compact record per line (JSON Lines); keys in canonical order, so equal transcripts hash equally.
+			`${run.transcript.map((record) => JSON.stringify(JSON.parse(canonicalEndoJsonV0(JSON.parse(JSON.stringify(record)))))).join("\n")}\n`,
 		);
 		const digest = sha256HexV0(bytes);
 		artifacts.put(digest, bytes);

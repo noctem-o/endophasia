@@ -1,6 +1,8 @@
 # Pi session-lifecycle acceptance fixtures
 
 Each `<pi version>/lifecycle/` directory holds three real sessions recorded against that Pi release and a real model.
+`provenance.json` names the mapping each was recorded under. The 1.0.1 recording predates `pi-rpc-mapping.3`, so its
+tool events carry no argument digest and its attachments record no mapping version.
 `scripts/record-lifecycle-fixture.ts` files a recording under the version the Pi it ran reports. It refuses an
 `--out` that names another version's `lifecycle/`. `tests/pi-lifecycle-fixtures.test.ts` replays every recording it
 finds and checks that the directory matches the recorded version.
@@ -32,6 +34,10 @@ node scripts/record-lifecycle-fixture.ts --pi "$(command -v pi)" \
 
 Pi runs with a scratch `HOME` and a scratch `PI_CODING_AGENT_DIR` whose `models.json` names only your endpoint. Your
 Pi installation, configuration, sessions and credentials are never read or changed.
+
+`--sessions completes[,…]` records a subset. A subset is refused for a `<version>/lifecycle/` directory, so it can
+never replace the three-session fixture: give it its own `--out`. `<version>/completes-repeat/` was recorded this way;
+it holds repeated `completes` runs for trajectory comparison (docs/trajectory.md).
 
 `--authorize-live-study` is needed because STOP is offered only when the live study admits `steering.stop`. The
 study sends prompts to your model. Without that admission, `stop-mid-turn` is recorded as skipped, with the reason.

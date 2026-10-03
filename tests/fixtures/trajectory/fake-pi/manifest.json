@@ -1,0 +1,54 @@
+{
+	"schemaVersion": "endo.trajectory-fixture.v0",
+	"kind": "fake-pi",
+	"cases": [
+		{
+			"name": "baseline",
+			"differs": "nothing",
+			"eventsSha256": "024585eeba9629fa261f4f05c565ca89eeb15849e60034f61ae513bf9f7c7d04",
+			"eventCount": 39
+		},
+		{
+			"name": "baseline-again",
+			"differs": "nothing: a second recording of baseline (new process, ids and timestamps)",
+			"eventsSha256": "c299bcad6d9585949fe882b4c797e91d3a1d2536b87f107010d9d6c5079ca86d",
+			"eventCount": 39
+		},
+		{
+			"name": "tools-reordered",
+			"differs": "the two tool calls in reverse order",
+			"eventsSha256": "aaa514ce98eb36a59c1a7729bfb77f73436587a1b29a2a77649ebd1edfcf61be",
+			"eventCount": 39
+		},
+		{
+			"name": "tool-args-differ",
+			"differs": "the first tool call reads another path",
+			"eventsSha256": "9054eaab56905b1952994dc0a4ccd131d3a0371175bee703b72a2d804f5263cb",
+			"eventCount": 39
+		},
+		{
+			"name": "tool-errors",
+			"differs": "the second tool call reports isError",
+			"eventsSha256": "f11e405e12cf1b70709edf3c6278612727cdfe8a9f059cba7bc01e4c1ab436f4",
+			"eventCount": 39
+		},
+		{
+			"name": "no-usage",
+			"differs": "Pi reports no usage on its assistant messages",
+			"eventsSha256": "ad804d2b8a05f844e6b08be8a5180e023c9c9f8fcd11b9b132ff41e632978544",
+			"eventCount": 39
+		},
+		{
+			"name": "unknown-lifecycle",
+			"differs": "an undocumented agent_paused record inside the run",
+			"eventsSha256": "513c5e2fc2f3e6b359baafaa2e59560b00532923ed353f71f5ca08538572188a",
+			"eventCount": 41
+		},
+		{
+			"name": "other-fingerprint",
+			"differs": "the fake Pi reports version 1.0.1",
+			"eventsSha256": "c91d65f315da98672bc7b1a4ba3e4ce912265f9e12415cd707690a0afb256f64",
+			"eventCount": 39
+		}
+	]
+}

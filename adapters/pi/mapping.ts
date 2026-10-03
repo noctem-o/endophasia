@@ -9,7 +9,9 @@
 //   recorded explicitly (harness.process-exited, harness.attached), never papered over.
 //
 // Payloads are minimal: no message text, tool arguments or results, queued text, summaries or Pi refusal text ever
-// cross into an event. Pi supplies no run, turn or operation identity: none is invented. The only coordinate set is
+// cross into an event. The one runtime-written text kept is a failure's reported cause (an assistant message's
+// `errorMessage` when its stopReason is "error", a final retry's `finalError`, a failed compaction's `errorMessage`),
+// bounded to 512 characters, because a failure recorded without Pi's own cause would leave the cause to be inferred. Pi supplies no run, turn or operation identity: none is invented. The only coordinate set is
 // the session, a namespaced copy of the session id Pi reported.
 
 import type { EndoEventV0 } from "../../protocol/event.ts";
@@ -235,6 +237,11 @@ const LIVE_KINDS: Readonly<Record<string, string>> = {
 	extension_ui_request: "extension.ui-requested",
 };
 
+/** An assistant message's reported failure cause: its errorMessage, only when its stopReason is "error". */
+function reportedCause(message: Record<string, unknown>): string | undefined {
+	return message.stopReason === "error" ? short(message.errorMessage, 512) : undefined;
+}
+
 function livePayload(type: string, record: Readonly<Record<string, unknown>>): Record<string, JsonValueV0> {
 	switch (type) {
 		case "agent_end":
@@ -243,6 +250,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			const message = isRecord(record.message) ? record.message : {};
 			return compact({
 				stopReason: short(message.stopReason, 32),
+				errorMessage: reportedCause(message),
 				toolResultCount: Array.isArray(record.toolResults) ? record.toolResults.length : undefined,
 			});
 		}
@@ -251,6 +259,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			return compact({
 				role: short(message.role, 32),
 				stopReason: short(message.stopReason, 32),
+				errorMessage: reportedCause(message),
 				usage: piUsageV0(message.usage),
 			});
 		}
@@ -278,6 +287,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 				succeeded: result !== undefined,
 				firstKeptEntryId: result === undefined ? undefined : short(result.firstKeptEntryId, 256),
 				tokensBefore: result === undefined ? undefined : finite(result.tokensBefore),
+				errorMessage: result === undefined && record.aborted !== true ? short(record.errorMessage, 512) : undefined,
 			});
 		}
 		case "auto_retry_start":
@@ -286,6 +296,7 @@ function livePayload(type: string, record: Readonly<Record<string, unknown>>): R
 			return compact({
 				attempt: finite(record.attempt),
 				success: typeof record.success === "boolean" ? record.success : undefined,
+				finalError: record.success === false ? short(record.finalError, 512) : undefined,
 			});
 		case "thinking_level_changed":
 			return compact({ level: short(record.level, 32) });

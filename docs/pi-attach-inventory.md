@@ -171,6 +171,44 @@ The attachment chooses a session id once (`<root>/harness/<attachment>/pi-sessio
   `admitted-partial` capabilities. Each records `control.requested` then `control.accepted` (or `control.refused`):
   acceptance only; effects are whatever Pi's later events and entries show.
 
+### Session lifecycle
+
+Every recorded event of the attachment's stream is also folded into canonical `lifecycle.*` events
+(`adapters/pi/lifecycle.ts`; vocabulary in `protocol/session-lifecycle.ts`). The fold is pure:
+- each lifecycle event's id derives from the recorded event it interprets (`derivedFrom`, source `interpretation`);
+- its `at` and coordinates are copied from that recorded event, and its sequence counts the lifecycle stream.
+
+So the same recording always yields byte-identical lifecycle events. On open, the attachment re-derives and stores any
+lifecycle event a crash kept it from storing; deterministic ids mean this never stores one twice.
+
+| Pi record (Pi 1.0.0 docs) | Lifecycle |
+| :--- | :--- |
+| `get_state.sessionId` at attach | `session-started`, or `session-resumed` for a session recorded before (with how the previous observation ended) |
+| `agent_start` while idle; a later `agent_start` before `agent_settled` | `run-started`; the later one is a continuation (retry, overflow recovery, follow-up) |
+| `turn_start` / `turn_end` | `turn-started` / `turn-completed`, with the reported `stopReason` |
+| `agent_settled` | `run-completed`, `run-failed`, `run-aborted` or `run-unclassified`, from the run's last assistant stop reason |
+| `abort` request, response | `stop-requested`, then `stop-accepted` or `stop-refused` |
+| `harness.process-exited` | `interrupted` (cause `runtime-exited`) with a run open, else `detached` |
+| an attach after an instance with no recorded exit | `interrupted` (cause `observer-lost`), carrying the store recovery report recorded as `harness.store-opened` |
+| `compaction_end` with a `result` | `compacted` |
+| an unknown event type | `unrecognized-runtime-event` |
+| a record out of lifecycle order | `anomaly` |
+
+How the outcome at `agent_settled` is decided:
+- `run-failed` when the last assistant stop reason is `error`, or when the retry loop gave up. Its cause is Pi's own
+  `errorMessage` or `finalError`.
+- `run-aborted` when the last stop reason is `aborted`.
+- `run-unclassified` when no stop reason was observed.
+- `run-completed` otherwise.
+
+Pi answers `abort` only once the session is idle (`rpc-commands.md#abort`), so a STOP's acceptance normally arrives
+after `run-aborted`. Neither is inferred from the other. The causes are the one runtime-written text the recording
+keeps, bounded to 512 characters; this is mapping `pi-rpc-mapping.2`.
+
+`reduceEndoSessionOverviewV0` (`runtime/contracts/session-overview.ts`) reduces the lifecycle events to an
+`endo.session-overview.v0`. `endo harness overview <root>` prints it, read-only. Run and turn ids, the operation
+outcome, STOP targeting and lanes are UNAVAILABLE, each with its reason.
+
 ## 3. Capability mapping: fork adapter → Pi 1.0 RPC
 
 Classification column: the result recorded against one real Pi 1.0.0 installation, with Pi's provider pointed at a local

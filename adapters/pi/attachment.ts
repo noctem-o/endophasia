@@ -9,7 +9,8 @@
 //   openSession()  run Pi in RPC mode on a persistent session and record what it does into the event store:
 //                  durable entries by catch-up from the last recorded opaque cursor (deduplicated by entry id), live
 //                  events as observations of one process, process exits and reconnects explicitly. Controls are
-//                  offered only for capabilities the current evidence admits.
+//                  offered only for capabilities the current evidence admits. Every recorded event is folded into
+//                  the canonical session lifecycle (lifecycle.ts), and the lifecycle events are stored beside it.
 //
 // It never installs, updates, downgrades, patches or rebuilds Pi, and never edits Pi's configuration.
 
@@ -49,6 +50,7 @@ import {
 	piNotificationV0,
 } from "./evidence.ts";
 import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, piIdentityEnvironmentV0 } from "./identity.ts";
+import { type PiLifecycleStateV0, piLifecycleInitialStateV0, piLifecycleStepV0 } from "./lifecycle.ts";
 import {
 	mapAttachmentEventV0,
 	mapPiEntryV0,
@@ -382,6 +384,10 @@ export interface PiSessionCountersV0 {
 	deltasDropped: number;
 	protocolFaults: number;
 	reconnects: number;
+	/** Lifecycle events derived from recorded events (lifecycle.ts). */
+	lifecycleDerived: number;
+	/** Lifecycle events re-derived on open because a crash kept them from being stored. */
+	lifecycleRepaired: number;
 }
 
 /** Thrown when another live session attachment already writes the same store root. */
@@ -450,8 +456,12 @@ export class PiSessionAttachmentV0 {
 		deltasDropped: 0,
 		protocolFaults: 0,
 		reconnects: 0,
+		lifecycleDerived: 0,
+		lifecycleRepaired: 0,
 	};
 	readonly #producer: string;
+	#lifecycle: PiLifecycleStateV0;
+	#storeOpenRecorded = false;
 	readonly #seen = new Set<string>();
 	/** Per Pi session id: the last recorded entry id (the catch-up cursor) and the last recorded leaf id. */
 	readonly #cursor = new Map<string, string>();
@@ -478,13 +488,36 @@ export class PiSessionAttachmentV0 {
 			throw error;
 		}
 		this.#producer = `pi-rpc-adapter:${owner.attachment}`;
-		// Rebuild the dedupe set, the cursors and the producer sequence from what the store already holds.
+		this.#lifecycle = piLifecycleInitialStateV0(owner.attachment);
+		// Rebuild the dedupe set, the cursors, the producer sequence and the lifecycle state from what the store already
+		// holds. A lifecycle event the fold implies but the store lacks (the process died between storing a recorded
+		// event and storing what it implies) is stored now: its id is deterministic, so this never duplicates one.
+		const missing: EndoEventV0[] = [];
 		let after = 0;
 		for (;;) {
 			const page = this.store.page({ afterSequence: after, limit: 10_000 });
 			for (const event of page.events) this.#index(event);
+			for (const event of page.events) {
+				const step = piLifecycleStepV0(this.#lifecycle, event);
+				this.#lifecycle = step.state;
+				missing.push(...step.events);
+			}
 			if (page.events.length === 0) break;
 			after = page.nextAfterSequence;
+		}
+		// A sealed store refuses every write; the attachment's first write reports that, as before.
+		if (!this.store.recovery().sealed) {
+			try {
+				for (const event of missing) {
+					if (this.#seen.has(event.id)) continue;
+					this.#store(event);
+					this.counters.lifecycleRepaired += 1;
+				}
+			} catch (error) {
+				this.store.close();
+				this.#releaseLock();
+				throw error;
+			}
 		}
 	}
 
@@ -529,15 +562,26 @@ export class PiSessionAttachmentV0 {
 		return this.#client === null ? "disconnected" : this.#client.connection.state;
 	}
 
+	#store(event: EndoEventV0): void {
+		const stored = this.store.ingest(event);
+		this.#index(stored);
+		this.counters.ingested += 1;
+	}
+
 	#ingest(event: EndoEventV0): void {
 		if (this.#storeClosed) return;
 		if (this.#seen.has(event.id)) {
 			this.counters.duplicatesSkipped += 1;
 			return;
 		}
-		const stored = this.store.ingest(event);
-		this.#index(stored);
-		this.counters.ingested += 1;
+		this.#store(event);
+		const step = piLifecycleStepV0(this.#lifecycle, event);
+		this.#lifecycle = step.state;
+		for (const derived of step.events) {
+			if (this.#seen.has(derived.id)) continue;
+			this.#store(derived);
+			this.counters.lifecycleDerived += 1;
+		}
 	}
 
 	#attachmentEvent(kind: string, payload: Record<string, JsonValueV0>): void {
@@ -604,6 +648,24 @@ export class PiSessionAttachmentV0 {
 			throw error;
 		}
 		this.#piSessionId = state.sessionId;
+		if (!this.#storeOpenRecorded) {
+			// How this attachment's open found the store (storage/log.ts): what a torn tail lost is evidence for the
+			// interruption the lifecycle records when the previous observation ended without recording an exit.
+			this.#storeOpenRecorded = true;
+			const recovery = this.store.recovery();
+			this.#attachmentEvent("harness.store-opened", {
+				recovery: {
+					truncated: recovery.truncated,
+					recovered: recovery.recovered,
+					discarded:
+						recovery.discarded === null
+							? null
+							: { bytes: recovery.discarded.bytes, sha256: recovery.discarded.sha256 },
+					sealed: recovery.sealed,
+				},
+				lifecycleRepaired: this.counters.lifecycleRepaired,
+			});
+		}
 		this.#attachmentEvent("harness.attached", {
 			fingerprintId: this.#fingerprint.id,
 			identityDigest: this.#fingerprint.identity.digest,

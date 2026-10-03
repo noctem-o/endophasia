@@ -278,6 +278,19 @@ A valid proposal does not widen the model's permission.
   neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
   and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
   recovery and replay. Controls are offered only for admitted capabilities.
+- **Session lifecycle on the Pi path** (`adapters/pi/lifecycle.ts`, `protocol/session-lifecycle.ts`): the recorded
+  Pi records are folded into canonical `lifecycle.*` events as they are stored.
+  - The events cover session started and resumed, run and turn started and completed, failed (with Pi's own
+    `errorMessage` or `finalError` as the cause), a STOP's request and acceptance (kept apart from Pi's observed
+    `aborted` termination), interrupted, detached and compacted.
+  - Interrupted means the Pi process exited, or Endophasia ended without recording an exit. The next attachment
+    records the interruption together with its store recovery report.
+  - Out-of-order and unknown records are surfaced as anomalies and unrecognized events.
+  - Lifecycle events are rebuilt from the recorded facts on open, so a crash between writes is repaired, never
+    duplicated.
+  - `endo harness overview` prints the session overview (`protocol/session-overview.ts`), reduced read-only from the
+    store; what Pi does not report (run and turn ids, operation outcome, STOP targeting, lanes) is UNAVAILABLE with a
+    reason.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording is in `research/pi-conformance/1.0.0/`.
 
@@ -286,13 +299,19 @@ typed cognition graph; evaluation, evolution and promotion records with a baseli
 GEPA-inspired rule sets (not ports of RRSI or GEPA; see `evolution/policies/rrsi-inspired.ts`); trust-record mappings
 for Cogitator, Magpie and Deadbolt; model orchestration, routing and collaboration records; record mappings for Codex,
 Prime and REEF; and an OpenAI-compatible provider adapter (whole SSE bodies are buffered, no incremental streaming).
-Four protocol schemas (`protocol/{continuity,control,runtime-profile,session-overview}.ts`) are planned surfaces with no
-producer at all: their fork-era producers were removed, and they are kept for the lifecycle, steering and replay work.
+Three protocol schemas (`protocol/{continuity,control,runtime-profile}.ts`) and the fork-era lane overview in
+`protocol/session-overview.ts` are planned surfaces with no producer at all. Their fork-era producers were removed;
+they are kept for the steering and replay work and the sealed Prime study.
 
 **Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
 says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
 an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
-model was called. The boundary and the evidence rules were audited adversarially
+model was called.
+
+The session-lifecycle fixtures are also fake. The committed recordings in `tests/fixtures/pi-lifecycle/` come from the
+fake Pi, and the failure, retry, compaction and unknown-record paths are exercised only against it. The real-model
+lifecycle fixture is recorded by `scripts/record-lifecycle-fixture.ts` into
+`research/pi-conformance/1.0.0/lifecycle/` and has not been recorded yet; its test is skipped until it is. The boundary and the evidence rules were audited adversarially
 ([audit](docs/pi-attach-audit.md)), including the limitations accepted for now.
 
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
@@ -370,6 +389,7 @@ agent and produced evidence.
 npm ci
 node cli/index.ts harness check  ./endo-root               # identify your `pi` and run the automatic local checks
 node cli/index.ts harness status ./endo-root               # identity, last change, capability state (read-only; starts nothing)
+node cli/index.ts harness overview ./endo-root             # the recorded session's lifecycle overview (read-only)
 node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
 node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
 npm test                                                   # deterministic suite (no Pi, no network, no history)

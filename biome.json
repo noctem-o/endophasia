@@ -38,6 +38,7 @@
 			"models/**/*.ts",
 			"storage/**/*.ts",
 			"cli/**/*.ts",
+			"scripts/**/*.ts",
 			"tests/**/*.ts",
 			"!node_modules"
 		]

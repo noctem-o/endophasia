@@ -1884,9 +1884,18 @@ describe("Prime runtime ingress import boundaries", () => {
 					: [],
 		);
 
-	it("adapters/prime/transport imports only node: builtins and its own modules, never research", () => {
+	it("adapters/prime/transport imports only node: builtins, its own modules and the shared JSONL RPC transport", () => {
 		const files = tsFiles(join(PACKAGE, "adapters/prime/transport"));
 		expect(files.length).toBe(5);
+		for (const file of files) {
+			for (const specifier of specifiers(file))
+				expect(specifier).toMatch(/^(node:[a-z_/]+|\.\/[a-z-]+\.ts|\.\.\/\.\.\/rpc-jsonl\/[a-z-]+\.ts)$/);
+		}
+	});
+
+	it("the shared JSONL RPC transport imports only node: builtins and its own modules, and names no runtime", () => {
+		const files = tsFiles(join(PACKAGE, "adapters/rpc-jsonl"));
+		expect(files.length).toBe(4);
 		for (const file of files) {
 			for (const specifier of specifiers(file)) expect(specifier).toMatch(/^(node:[a-z_/]+|\.\/[a-z-]+\.ts)$/);
 		}

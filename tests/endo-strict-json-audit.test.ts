@@ -49,7 +49,7 @@ const ENTRIES_V0: AuditEntry[] = [
 		sample: {
 			schemaVersion: "endo.trial-result.v0",
 			coordinates: TRIAL_COORDINATES_V0,
-			partition: "held-out",
+			partition: "validation",
 			raw: { ok: true },
 			derived: { score: 1 },
 		},

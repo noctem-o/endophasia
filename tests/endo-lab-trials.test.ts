@@ -19,7 +19,7 @@ function profile(overrides: Partial<EndoEvaluationProfileV0> = {}): EndoEvaluati
 
 describe("validateEndoTrialOutcomeV0", () => {
 	it("accepts a recorded raw outcome, derived metrics, run, and partition", () => {
-		const outcome = { raw: { ok: true }, derived: { score: 1 }, runId: "endo.run.r1", partition: "held-out" };
+		const outcome = { raw: { ok: true }, derived: { score: 1 }, runId: "endo.run.r1", partition: "validation" };
 		expect(validateEndoTrialOutcomeV0(outcome)).toBe(outcome);
 	});
 
@@ -115,11 +115,11 @@ describe("runEndoTrialsV0", () => {
 			id: "endo.evidence.res-1",
 			profile: profile({ trialCount: 2 }),
 			runTrial: (index) =>
-				index === 0 ? { raw: { ok: true }, derived: { score: 0.5 }, partition: "held-out" } : {},
+				index === 0 ? { raw: { ok: true }, derived: { score: 0.5 }, partition: "validation" } : {},
 		});
 		expect(result.trials[0].raw).toEqual({ ok: true });
 		expect(result.trials[0].derived).toEqual({ score: 0.5 });
-		expect(result.trials[0].partition).toBe("held-out");
+		expect(result.trials[0].partition).toBe("validation");
 		expect(result.trials[1].raw).toBeUndefined();
 		expect(result.trials[1].derived).toBeUndefined();
 		expect(result.trials[1].partition).toBeUndefined();

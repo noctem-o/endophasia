@@ -84,7 +84,7 @@ function evaluationResult(): EndoEvaluationResultV0 {
 			trial: i,
 			runId: `endo.run.r${i}`,
 		},
-		partition: "held-out",
+		partition: "validation",
 		raw: { ok: true },
 		derived: { score: 0.5 },
 	});
@@ -231,6 +231,25 @@ describe("createEndoEvidenceLedgerV0", () => {
 		const ledger = createEndoEvidenceLedgerV0("endo.evidence.ledger-1", experimentRecord());
 		expect(ledger.length).toBe(0);
 		expect(ledger.record).toEqual(experimentRecord());
+	});
+
+	it("refuses a selection decision that cites a result containing promotion-holdout trials", () => {
+		const ledger = createEndoEvidenceLedgerV0("endo.evidence.ledger-1", experimentRecord());
+		ledger.append(artifact());
+		ledger.append(mutation());
+		ledger.append(baseCandidate());
+		ledger.append(candidate());
+		const holdout = evaluationResult();
+		holdout.trials[1] = { ...holdout.trials[1]!, partition: "promotion-holdout" };
+		ledger.append(holdout);
+		expect(() => ledger.append(selection())).toThrow(/promotion-holdout/);
+		const viaValidation = {
+			...selection("rejected"),
+			id: "endo.evidence.sel-2",
+			validationEvidence: ["endo.evidence.res-1"],
+		};
+		expect(() => ledger.append(viaValidation)).toThrow(/promotion-holdout/);
+		expect(ledger.length).toBe(5);
 	});
 
 	it("derives the ledger kind for every closed schema version", () => {

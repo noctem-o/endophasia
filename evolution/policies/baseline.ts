@@ -9,13 +9,13 @@
  *
  * Scoring convention: a trial's score is the `score` member of its derived metrics when that member
  * is a finite number; a trial with none contributes nothing (an honest absence, never a fabricated
- * zero). A candidate's score is the mean of its scored evolve-set trials; its held-out evidence is
- * its scored held-out trials. The convention's helpers (trialScoreV0, meanV0, collectEvidenceV0)
+ * zero). A candidate's score is the mean of its scored evolve-set trials; its validation evidence is
+ * its scored validation trials. The convention's helpers (trialScoreV0, meanV0, collectEvidenceV0)
  * are exported and shared by the RRSI-inspired and GEPA policy modules.
  *
  * The decision: select the unique strict best on the evolve set, and only when that candidate also
- * carries held-out evidence. Any other situation — no scored evidence at all, a tie for best, a best
- * without held-out — is "inconclusive", never a guess. The baseline records no "rejected" outcome:
+ * carries validation evidence. Any other situation — no scored evidence at all, a tie for best, a best
+ * without validation — is "inconclusive", never a guess. The baseline records no "rejected" outcome:
  * it has no explicit rejection criteria; a policy that has them (e.g. a leakage screen) records
  * "rejected" under its own identity.
  */
@@ -38,8 +38,8 @@ export interface CandidateEvidenceV0 {
 	candidateId: string;
 	evolveScores: number[];
 	evolveResultIds: string[];
-	heldOutScores: number[];
-	heldOutResultIds: string[];
+	validationScores: number[];
+	validationResultIds: string[];
 }
 
 /** The score of one trial under the scoring convention, or null when the trial carries none. */
@@ -60,10 +60,25 @@ export function meanV0(values: readonly number[]): number | null {
 }
 
 /**
- * Gather each candidate's scored evolve-set and held-out evidence from the context, in deterministic
+ * Refuse a context that carries promotion-holdout evidence. A selection policy may read evolve-set and
+ * validation trials; the promotion holdout must stay untouched by selection, so finding any of it in a
+ * context is a caller error, not something to filter out quietly.
+ */
+export function assertNoPromotionHoldoutV0(context: EndoEvolutionPolicyContextV0): void {
+	for (const result of [...context.results, ...context.validation]) {
+		if (result.trials.some((trial) => trial.partition === "promotion-holdout")) {
+			throw new TypeError(
+				`policy context carries promotion-holdout evidence (${result.id}); selection must never read the promotion holdout`,
+			);
+		}
+	}
+}
+
+/**
+ * Gather each candidate's scored evolve-set and validation evidence from the context, in deterministic
  * order (candidates by id, results by id, trials in recorded order). A result counts toward a
  * candidate's evidence list exactly when at least one of that candidate's scored trials on the
- * partition came from it. Held-out trials may be recorded in either array, so both are scanned.
+ * partition came from it. Validation trials may be recorded in either array, so both are scanned.
  */
 export function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): CandidateEvidenceV0[] {
 	const byId = new Map<string, CandidateEvidenceV0>();
@@ -72,13 +87,13 @@ export function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): Candid
 			candidateId: candidate.id,
 			evolveScores: [],
 			evolveResultIds: [],
-			heldOutScores: [],
-			heldOutResultIds: [],
+			validationScores: [],
+			validationResultIds: [],
 		});
 	}
 	// A record present in both arrays is counted once (union by id).
 	const seen = new Set<string>();
-	for (const result of [...context.results, ...context.heldOut].sort((a, b) =>
+	for (const result of [...context.results, ...context.validation].sort((a, b) =>
 		a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
 	)) {
 		if (seen.has(result.id)) continue;
@@ -87,11 +102,12 @@ export function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): Candid
 		const evidence = candidateId === undefined ? undefined : byId.get(candidateId);
 		if (evidence === undefined) continue;
 		for (const trial of result.trials) {
-			if (trial.partition === "evolve-set" || trial.partition === "held-out") {
+			if (trial.partition === "evolve-set" || trial.partition === "validation") {
 				const score = trialScoreV0(trial);
 				if (score === null) continue;
-				const scores = trial.partition === "evolve-set" ? evidence.evolveScores : evidence.heldOutScores;
-				const resultIds = trial.partition === "evolve-set" ? evidence.evolveResultIds : evidence.heldOutResultIds;
+				const scores = trial.partition === "evolve-set" ? evidence.evolveScores : evidence.validationScores;
+				const resultIds =
+					trial.partition === "evolve-set" ? evidence.evolveResultIds : evidence.validationResultIds;
 				scores.push(score);
 				if (!resultIds.includes(result.id)) resultIds.push(result.id);
 			}
@@ -105,7 +121,7 @@ export function collectEvidenceV0(context: EndoEvolutionPolicyContextV0): Candid
  *
  * Conditions, in policy order: `evidence-present` (at least one candidate carries scored evolve-set
  * evidence), `strictly-best` (exactly one candidate is the best on the evolve set — a tie is not a
- * best), and `held-out-present` (the best candidate carries scored held-out evidence). The outcome
+ * best), and `validation-present` (the best candidate carries scored validation evidence). The outcome
  * is "selected" only when all three are met; otherwise "inconclusive", with the first unmet
  * condition named.
  */
@@ -123,11 +139,12 @@ export const ENDO_HIGHEST_SCORE_POLICY_V0: EndoEvolutionPolicyV0 = {
 		) {
 			throw new TypeError("policy context experiment must be an object");
 		}
-		for (const member of ["candidates", "mutations", "results", "heldOut", "history"] as const) {
+		for (const member of ["candidates", "mutations", "results", "validation", "history"] as const) {
 			if (!Array.isArray(context[member])) {
 				throw new TypeError(`policy context ${member} must be an array`);
 			}
 		}
+		assertNoPromotionHoldoutV0(context);
 
 		const evidence = collectEvidenceV0(context);
 		const scored = evidence.filter((entry) => meanV0(entry.evolveScores) !== null);
@@ -147,7 +164,7 @@ export const ENDO_HIGHEST_SCORE_POLICY_V0: EndoEvolutionPolicyV0 = {
 
 		const bestEntry =
 			strictlyBest === null ? undefined : evidence.find((entry) => entry.candidateId === strictlyBest.id);
-		const heldOutMean = bestEntry === undefined ? null : meanV0(bestEntry.heldOutScores);
+		const validationMean = bestEntry === undefined ? null : meanV0(bestEntry.validationScores);
 
 		const conditions: EndoSelectionConditionV0[] = [
 			{
@@ -165,9 +182,9 @@ export const ENDO_HIGHEST_SCORE_POLICY_V0: EndoEvolutionPolicyV0 = {
 			},
 			{
 				schemaVersion: "endo.selection-condition.v0",
-				name: "held-out-present",
-				observed: { trials: bestEntry?.heldOutScores.length ?? 0, mean: heldOutMean },
-				met: strictlyBest !== null && (bestEntry?.heldOutScores.length ?? 0) > 0,
+				name: "validation-present",
+				observed: { trials: bestEntry?.validationScores.length ?? 0, mean: validationMean },
+				met: strictlyBest !== null && (bestEntry?.validationScores.length ?? 0) > 0,
 			},
 		];
 
@@ -184,7 +201,7 @@ export const ENDO_HIGHEST_SCORE_POLICY_V0: EndoEvolutionPolicyV0 = {
 			decision.outcome = "selected";
 			decision.candidateId = strictlyBest.id;
 			decision.evidence = bestEntry.evolveResultIds;
-			decision.heldOutEvidence = bestEntry.heldOutResultIds;
+			decision.validationEvidence = bestEntry.validationResultIds;
 		} else {
 			const firstUnmet = conditions.find((condition) => !condition.met);
 			decision.reason = firstUnmet === undefined ? "selection did not converge" : `${firstUnmet.name} not met`;

@@ -109,7 +109,8 @@ This is not code in this PR, because each option changes what the suite claims.
   (`rrsi/loop.py`: "no noise band: set cfg.delta or run `calibrate`").
 - **Resolved (D2):** an unknown band or an unscored parent now makes the decision inconclusive.
 
-**M4. The GEPA policy is not GEPA, and it selects on the held-out set.**
+**M4. The GEPA policy is not GEPA, and it selects on the held-out set.** Selecting on validation is allowed by D3, and
+the partition is renamed accordingly. The naming question remains open (ticket T8).
 - **Where:** `evolution/policies/gepa.ts:17,151-157`.
 - **What it does:** picks a Pareto front over (evolve mean, held-out mean), then the best held-out score within it.
 - **Two problems:**
@@ -252,9 +253,14 @@ Answered by the maintainer after the audit was written. Each entry gives the ans
   band cannot be computed. The same applies when the gain cannot be computed because the best candidate has no scored
   parent. Done in this PR. New tests: "is inconclusive when the noise band cannot be measured…" and "…has no scored
   parent…".
-- **D3: selection may read validation evidence; a promotion holdout must stay untouched.** The partition vocabulary is
-  renamed so that validation-for-selection is distinct from the promotion holdout. That is a separate PR, stacked on
-  this one.
+- **D3: selection may read validation evidence; a promotion holdout must stay untouched.** Done in the last stacked
+  PR:
+  - The partition `held-out` is replaced by `validation`, which selection may read, and `promotion-holdout`, which no
+    selection policy may read.
+  - The policy context, the decision field and the condition names follow: `validation`, `validationEvidence`,
+    `validation-present`, `validation-critic`, `strictly-best-validation`.
+  - Every in-tree policy refuses a context that carries promotion-holdout trials.
+  - The evidence ledger refuses a selection decision that cites a result containing them.
 - **D4: keep the four schemas, marked unwired.** Each header now states that it is an unwired, planned protocol
   surface with no producer. The README lists them separately. Done in this PR.
 - **D5: no donor history in the core repository.** Done in the CI PR stacked on this one:

@@ -38,7 +38,7 @@ function evaluationResult(): EndoEvaluationResultV0 {
 			trial: i,
 			runId: `endo.run.r${i}`,
 		},
-		partition: "held-out",
+		partition: "validation",
 		raw: { ok: true },
 		derived: { score: 0.5 + i * 0.1 },
 	});

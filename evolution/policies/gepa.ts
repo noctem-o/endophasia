@@ -6,22 +6,22 @@
  * named by the policy's identity).
  *
  * GEPA optimises candidates against feedback on two objectives — the evolve-set mean and the
- * held-out mean. Under the v0 policy seam the selection is recorded as conditions, in policy
+ * validation mean. Under the v0 policy seam the selection is recorded as conditions, in policy
  * order:
  *
  * 1. `evidence-present`: at least one candidate carries scored evolve-set evidence;
- * 2. `objective-complete`: at least one candidate carries both an evolve-set mean and a held-out
+ * 2. `objective-complete`: at least one candidate carries both an evolve-set mean and a validation
  *    mean — the two-objective optimum is only defined over complete candidates; an experiment
  *    whose objective is incomplete for every candidate is inconclusive
- *    (held-out-objective-absent), never decided on one axis alone;
- * 3. `pareto-front`: the non-dominated candidates over (evolve-set mean, held-out mean) — a
+ *    (validation-objective-absent), never decided on one axis alone;
+ * 3. `pareto-front`: the non-dominated candidates over (evolve-set mean, validation mean) — a
  *    candidate is dominated when another is at least as good on both objectives and strictly
  *    better on one; the front is recorded on the decision, never only the winner;
- * 4. `strictly-best-held-out`: the winner is the best on the held-out objective within the front.
- *    Within the front a held-out tie is an exact duplicate — a candidate strictly better on the
+ * 4. `strictly-best-validation`: the winner is the best on the validation objective within the front.
+ *    Within the front a validation tie is an exact duplicate — a candidate strictly better on the
  *    other objective would dominate it and be off the front — so the tie is broken by candidate
  *    id, and the level that resolved the decision is recorded;
- * 5. `held-out-present`: the winner carries scored held-out evidence (true by construction of
+ * 5. `validation-present`: the winner carries scored validation evidence (true by construction of
  *    objective-complete; recorded so the decision reads completely).
  *
  * Seam limitation, recorded by design: GEPA's tried-set bookkeeping (which hypotheses the
@@ -36,7 +36,7 @@
 import type { EndoSelectionConditionV0, EndoSelectionDecisionV0 } from "../../protocol/evolution.ts";
 import { validateEndoSelectionDecisionV0 } from "../../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
-import { collectEvidenceV0, meanV0 } from "./baseline.ts";
+import { assertNoPromotionHoldoutV0, collectEvidenceV0, meanV0 } from "./baseline.ts";
 import type { EndoEvolutionPolicyContextV0, EndoEvolutionPolicyV0 } from "./ports.ts";
 
 /** The recorded identity of the GEPA policy. */
@@ -50,9 +50,9 @@ const GEPA_POLICY_IDENTITY_V0 = {
 interface CompleteEvidenceV0 {
 	candidateId: string;
 	evolveMean: number;
-	heldOutMean: number;
+	validationMean: number;
 	evolveResultIds: string[];
-	heldOutResultIds: string[];
+	validationResultIds: string[];
 }
 
 /**
@@ -62,14 +62,14 @@ interface CompleteEvidenceV0 {
 function dominatesV0(a: CompleteEvidenceV0, b: CompleteEvidenceV0): boolean {
 	return (
 		a.evolveMean >= b.evolveMean &&
-		a.heldOutMean >= b.heldOutMean &&
-		(a.evolveMean > b.evolveMean || a.heldOutMean > b.heldOutMean)
+		a.validationMean >= b.validationMean &&
+		(a.evolveMean > b.evolveMean || a.validationMean > b.validationMean)
 	);
 }
 
 /**
  * The GEPA policy: the two-objective optimum over the complete candidates, decided on the
- * held-out objective within the Pareto front with an explicit deterministic tie-break.
+ * validation objective within the Pareto front with an explicit deterministic tie-break.
  */
 export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 	policy: { ...GEPA_POLICY_IDENTITY_V0 },
@@ -85,11 +85,12 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 		) {
 			throw new TypeError("policy context experiment must be an object");
 		}
-		for (const member of ["candidates", "mutations", "results", "heldOut", "history"] as const) {
+		for (const member of ["candidates", "mutations", "results", "validation", "history"] as const) {
 			if (!Array.isArray(context[member])) {
 				throw new TypeError(`policy context ${member} must be an array`);
 			}
 		}
+		assertNoPromotionHoldoutV0(context);
 
 		const evidence = collectEvidenceV0(context);
 		const byId = new Map(evidence.map((entry) => [entry.candidateId, entry]));
@@ -98,14 +99,14 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 		const complete: CompleteEvidenceV0[] = [];
 		for (const entry of evidence) {
 			const evolveMean = meanV0(entry.evolveScores);
-			const heldOutMean = meanV0(entry.heldOutScores);
-			if (evolveMean !== null && heldOutMean !== null) {
+			const validationMean = meanV0(entry.validationScores);
+			if (evolveMean !== null && validationMean !== null) {
 				complete.push({
 					candidateId: entry.candidateId,
 					evolveMean,
-					heldOutMean,
+					validationMean,
 					evolveResultIds: entry.evolveResultIds,
-					heldOutResultIds: entry.heldOutResultIds,
+					validationResultIds: entry.validationResultIds,
 				});
 			}
 		}
@@ -118,15 +119,15 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 		let winner: CompleteEvidenceV0 | null = null;
 		let tiebreak: "none" | "id" = "none";
 		if (front.length > 0) {
-			let maxHeldOut = -Infinity;
+			let maxValidation = -Infinity;
 			for (const candidate of front) {
-				if (candidate.heldOutMean > maxHeldOut) maxHeldOut = candidate.heldOutMean;
+				if (candidate.validationMean > maxValidation) maxValidation = candidate.validationMean;
 			}
-			const heldOutBest = front.filter((candidate) => candidate.heldOutMean === maxHeldOut);
-			if (heldOutBest.length === 1) {
-				winner = heldOutBest[0];
+			const validationBest = front.filter((candidate) => candidate.validationMean === maxValidation);
+			if (validationBest.length === 1) {
+				winner = validationBest[0];
 			} else {
-				winner = heldOutBest.reduce((lowest, candidate) =>
+				winner = validationBest.reduce((lowest, candidate) =>
 					candidate.candidateId < lowest.candidateId ? candidate : lowest,
 				);
 				tiebreak = "id";
@@ -154,11 +155,11 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 			},
 			{
 				schemaVersion: "endo.selection-condition.v0",
-				name: "strictly-best-held-out",
-				parameters: { objective: "held-out", tiebreak: "candidateId" },
+				name: "strictly-best-validation",
+				parameters: { objective: "validation", tiebreak: "candidateId" },
 				observed: {
 					candidateId: winner?.candidateId ?? null,
-					heldOut: winner?.heldOutMean ?? null,
+					validation: winner?.validationMean ?? null,
 					evolve: winner?.evolveMean ?? null,
 					tiebreak,
 				},
@@ -166,10 +167,10 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 			},
 			{
 				schemaVersion: "endo.selection-condition.v0",
-				name: "held-out-present",
+				name: "validation-present",
 				observed: {
-					trials: winner === null ? 0 : (byId.get(winner.candidateId)?.heldOutScores.length ?? 0),
-					mean: winner === null ? null : winner.heldOutMean,
+					trials: winner === null ? 0 : (byId.get(winner.candidateId)?.validationScores.length ?? 0),
+					mean: winner === null ? null : winner.validationMean,
 				},
 				met: winner !== null,
 			},
@@ -188,13 +189,13 @@ export const ENDO_GEPA_POLICY_V0: EndoEvolutionPolicyV0 = {
 			decision.outcome = "selected";
 			decision.candidateId = winner.candidateId;
 			decision.evidence = winner.evolveResultIds;
-			decision.heldOutEvidence = winner.heldOutResultIds;
+			decision.validationEvidence = winner.validationResultIds;
 		} else {
 			const firstUnmet = conditions.find((condition) => !condition.met);
 			if (firstUnmet === undefined) {
 				decision.reason = "selection did not converge";
 			} else if (firstUnmet.name === "objective-complete") {
-				decision.reason = "held-out-objective-absent";
+				decision.reason = "validation-objective-absent";
 			} else {
 				decision.reason = `${firstUnmet.name} not met`;
 			}

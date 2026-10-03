@@ -7,7 +7,9 @@ import {
 	replayEndoEvidenceLedgerV0,
 	replayEndoExperimentLifecycleV0,
 } from "../evolution/index.ts";
+import { ENDO_GEPA_POLICY_V0 } from "../evolution/policies/gepa.ts";
 import type { EndoEvolutionPolicyContextV0 } from "../evolution/policies/ports.ts";
+import { ENDO_RRSI_INSPIRED_POLICY_V0 } from "../evolution/policies/rrsi-inspired.ts";
 import type {
 	EndoEvaluationPartitionV0,
 	EndoEvaluationProfileV0,
@@ -74,9 +76,9 @@ function result(id: string, candidateId: string, trials: EndoTrialResultV0[]): E
 function context(
 	candidates: EndoCandidateV0[],
 	results: EndoEvaluationResultV0[] = [],
-	heldOut: EndoEvaluationResultV0[] = [],
+	validation: EndoEvaluationResultV0[] = [],
 ): EndoEvolutionPolicyContextV0 {
-	return { experiment: experimentRecord(), candidates, mutations: [], results, heldOut, history: [] };
+	return { experiment: experimentRecord(), candidates, mutations: [], results, validation, history: [] };
 }
 
 function evolveResult(id: string, candidateId: string, scores: number[]): EndoEvaluationResultV0 {
@@ -87,11 +89,11 @@ function evolveResult(id: string, candidateId: string, scores: number[]): EndoEv
 	);
 }
 
-function heldOutResult(id: string, candidateId: string, scores: number[]): EndoEvaluationResultV0 {
+function validationResult(id: string, candidateId: string, scores: number[]): EndoEvaluationResultV0 {
 	return result(
 		id,
 		candidateId,
-		scores.map((score, index) => trial(id, index, "held-out", { score })),
+		scores.map((score, index) => trial(id, index, "validation", { score })),
 	);
 }
 
@@ -99,8 +101,31 @@ function decide(id: string, ctx: EndoEvolutionPolicyContextV0) {
 	return ENDO_HIGHEST_SCORE_POLICY_V0.decide(ctx, id);
 }
 
+describe("the promotion holdout stays out of selection", () => {
+	const holdout = result("endo.evidence.res-holdout", CANDIDATE_A, [
+		trial("endo.evidence.res-holdout", 0, "promotion-holdout", { score: 1 }),
+	]);
+	it.each([
+		["baseline", ENDO_HIGHEST_SCORE_POLICY_V0],
+		["rrsi-inspired", ENDO_RRSI_INSPIRED_POLICY_V0],
+		["gepa", ENDO_GEPA_POLICY_V0],
+	] as const)("%s refuses a context that carries promotion-holdout evidence, in either array", (_name, policy) => {
+		const base = [evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.5, 0.75])];
+		const validation = [validationResult("endo.evidence.val-a", CANDIDATE_A, [0.75])];
+		expect(() =>
+			policy.decide(context([candidate(CANDIDATE_A)], [...base, holdout], validation), "endo.evidence.dec-h1"),
+		).toThrow(/promotion-holdout/);
+		expect(() =>
+			policy.decide(context([candidate(CANDIDATE_A)], base, [...validation, holdout]), "endo.evidence.dec-h2"),
+		).toThrow(/promotion-holdout/);
+		expect(() =>
+			policy.decide(context([candidate(CANDIDATE_A)], base, validation), "endo.evidence.dec-h3"),
+		).not.toThrow();
+	});
+});
+
 describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
-	it("selects the unique strict best that also carries held-out evidence", () => {
+	it("selects the unique strict best that also carries validation evidence", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[
@@ -108,15 +133,15 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.5]),
 			],
 			[
-				heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]),
-				heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]),
+				validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]),
+				validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]),
 			],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_A);
 		expect(decision.evidence).toEqual(["endo.evidence.res-a"]);
-		expect(decision.heldOutEvidence).toEqual(["endo.evidence.res-a-h"]);
+		expect(decision.validationEvidence).toEqual(["endo.evidence.res-a-h"]);
 		expect(decision.conditions.every((condition) => condition.met)).toBe(true);
 		expect(decision.reason).toBeUndefined();
 		expect(decision.experimentId).toBe(EXPERIMENT_ID);
@@ -126,7 +151,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9])],
-			[heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7])],
+			[validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7])],
 		);
 		const selected = decide("endo.evidence.dec-1", ctx);
 		expect(selected.policy).toEqual({
@@ -148,7 +173,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-a-1", CANDIDATE_A, [1.0]),
 				evolveResult("endo.evidence.res-a-2", CANDIDATE_A, [0.5]),
 			],
-			[heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
+			[validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("selected");
@@ -167,7 +192,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[result("endo.evidence.res-a", CANDIDATE_A, trials)],
-			[heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
+			[validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("selected");
@@ -188,7 +213,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		expect(decision.outcome).toBe("inconclusive");
 		expect(decision.candidateId).toBeUndefined();
 		expect(decision.evidence).toEqual([]);
-		expect(decision.heldOutEvidence).toBeUndefined();
+		expect(decision.validationEvidence).toBeUndefined();
 		expect(decision.reason).toBe("evidence-present not met");
 		expect(decision.conditions.every((condition) => !condition.met)).toBe(true);
 	});
@@ -201,8 +226,8 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.8]),
 			],
 			[
-				heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5]),
-				heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.5]),
+				validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5]),
+				validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.5]),
 			],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
@@ -212,38 +237,38 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		expect(best?.observed).toEqual({ candidateId: null, mean: null });
 	});
 
-	it("records inconclusive when the strict best carries no held-out evidence", () => {
+	it("records inconclusive when the strict best carries no validation evidence", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9]),
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.7]),
 			],
-			[heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4])],
+			[validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("inconclusive");
-		expect(decision.reason).toBe("held-out-present not met");
-		const heldOut = decision.conditions.find((condition) => condition.name === "held-out-present");
-		expect(heldOut?.met).toBe(false);
-		expect(heldOut?.observed).toEqual({ trials: 0, mean: null });
+		expect(decision.reason).toBe("validation-present not met");
+		const validation = decision.conditions.find((condition) => condition.name === "validation-present");
+		expect(validation?.met).toBe(false);
+		expect(validation?.observed).toEqual({ trials: 0, mean: null });
 	});
 
-	it("counts held-out evidence recorded in either array", () => {
-		const heldOutForA = heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.8]);
+	it("counts validation evidence recorded in either array", () => {
+		const validationForA = validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.8]);
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9]),
-				heldOutForA,
+				validationForA,
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.5]),
 			],
-			[heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4])],
+			[validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_A);
-		expect(decision.heldOutEvidence).toEqual(["endo.evidence.res-a-h"]);
+		expect(decision.validationEvidence).toEqual(["endo.evidence.res-a-h"]);
 	});
 
 	it("counts a record present in both arrays once", () => {
@@ -251,20 +276,20 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[both],
-			[both, heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
+			[both, validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		const best = decision.conditions.find((condition) => condition.name === "strictly-best");
 		expect(best?.observed).toEqual({ candidateId: CANDIDATE_A, mean: 0.8 });
 	});
 
-	it("never selects on held-out performance alone", () => {
+	it("never selects on validation performance alone", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.5])],
 			[
-				heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [1.0]),
-				heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4]),
+				validationResult("endo.evidence.res-a-h", CANDIDATE_A, [1.0]),
+				validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.4]),
 			],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
@@ -279,7 +304,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9]),
 				evolveResult("endo.evidence.res-x", "endo.candidate.p7-x", [5.0]),
 			],
-			[heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
+			[validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.5])],
 		);
 		const decision = decide("endo.evidence.dec-1", ctx);
 		expect(decision.outcome).toBe("selected");
@@ -291,8 +316,8 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		const b = [candidate(CANDIDATE_B)];
 		const resA = evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9]);
 		const resB = evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.5]);
-		const hoA = heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]);
-		const hoB = heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]);
+		const hoA = validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]);
+		const hoB = validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]);
 		const first = decide("endo.evidence.dec-1", context([...a, ...b], [resA, resB], [hoA, hoB]));
 		const second = decide("endo.evidence.dec-1", context([...b, ...a], [resB, resA], [hoB, hoA]));
 		expect(first).toEqual(second);
@@ -302,7 +327,7 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9])],
-			[heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7])],
+			[validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7])],
 		);
 		const first = decide("endo.evidence.dec-1", ctx);
 		const second = decide("endo.evidence.dec-2", ctx);
@@ -361,9 +386,9 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 		ledger.append(candB);
 
 		const resA = evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9, 0.8]);
-		const resAh = heldOutResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]);
+		const resAh = validationResult("endo.evidence.res-a-h", CANDIDATE_A, [0.7]);
 		const resB = evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.5]);
-		const resBh = heldOutResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]);
+		const resBh = validationResult("endo.evidence.res-b-h", CANDIDATE_B, [0.6]);
 		for (const res of [resA, resAh, resB, resBh]) ledger.append(res);
 
 		const advance = (id: string, to: string) => {
@@ -378,14 +403,14 @@ describe("ENDO_HIGHEST_SCORE_POLICY_V0", () => {
 			candidates: [candA, candB],
 			mutations: [mutation],
 			results: [resA, resB],
-			heldOut: [resAh, resBh],
+			validation: [resAh, resBh],
 			history: ledger.ledger().entries,
 		};
 		const selectionDecision = decide("endo.evidence.dec-p7", ctx);
 		expect(selectionDecision.outcome).toBe("selected");
 		expect(selectionDecision.candidateId).toBe(CANDIDATE_A);
 		expect(selectionDecision.evidence).toEqual(["endo.evidence.res-a"]);
-		expect(selectionDecision.heldOutEvidence).toEqual(["endo.evidence.res-a-h"]);
+		expect(selectionDecision.validationEvidence).toEqual(["endo.evidence.res-a-h"]);
 		core.selections.add(selectionDecision);
 		ledger.append(selectionDecision);
 		advance("endo.evidence.tr-p7-selected", "selected");

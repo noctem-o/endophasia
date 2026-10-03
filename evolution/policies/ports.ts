@@ -21,8 +21,10 @@ import type {
 
 /**
  * Everything a policy may read when it decides: the experiment's declared inputs, the candidate and
- * mutation histories, the candidate evaluation evidence, the held-out evaluations, and the ledger's
- * causal chain — the full evidence a policy's credit assignment is allowed to see. A method that
+ * mutation histories, the candidate evaluation evidence, the validation evaluations, and the ledger's
+ * causal chain — the full evidence a policy's credit assignment is allowed to see. Promotion-holdout
+ * evidence is never part of a policy context: it exists to check a promotion against data the search
+ * never saw, and the in-tree policies refuse a context that carries any (assertNoPromotionHoldoutV0). A method that
  * needs more than this (live traffic, an LLM judge, a served state) does not fit the seam as a
  * selection policy: that extra machinery stays provider-side, behind the boundary.
  */
@@ -35,8 +37,8 @@ export interface EndoEvolutionPolicyContextV0 {
 	readonly mutations: readonly EndoMutationV0[];
 	/** The candidate evaluation evidence (all recorded partitions). */
 	readonly results: readonly EndoEvaluationResultV0[];
-	/** The held-out evaluations, when the experiment declared some. */
-	readonly heldOut: readonly EndoEvaluationResultV0[];
+	/** The validation evaluations, when the experiment declared some. */
+	readonly validation: readonly EndoEvaluationResultV0[];
 	/** The ledger entries in append order: the causal chain. */
 	readonly history: readonly EndoEvidenceLedgerEntryV0[];
 }

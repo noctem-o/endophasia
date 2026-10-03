@@ -6,11 +6,16 @@
  * existing file verifies to the same digest and a tamper error when it does not — an
  * artifact that does not hash to its name is not that artifact. Reads re-verify on every
  * `get`, so a later tamper is detected, never served. Synchronous node:fs only.
+ *
+ * There is no log to recover: a crash mid-put leaves only `<digest>.tmp`, which is never
+ * listed or served. Opened with `{ readOnly: true }`, the store creates no directory and
+ * `put` throws.
  */
 
 import { createHash } from "node:crypto";
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { type EndoDurableStoreOptionsV0, writeExactSyncV0 } from "./log.ts";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 
@@ -27,7 +32,7 @@ export interface EndoArtifactStoreV0 {
 	 * Store `content` under `digest` (a 64-lowercase-hex sha256). Idempotent: when the file
 	 * already exists and hashes to `digest`, nothing is rewritten and `created` is false.
 	 * When the file exists but hashes differently, throws TypeError — the digest address is
-	 * taken by different bytes. Returns `{ created }`.
+	 * taken by different bytes. Throws when the store is open read-only. Returns `{ created }`.
 	 */
 	put(digest: string, content: Uint8Array): { created: boolean };
 	/** Read the artifact at `digest`, re-verifying its hash. Throws TypeError when missing or tampered. */
@@ -48,7 +53,8 @@ function requireDigest(digest: string): void {
  * Create the artifact store rooted at `root` (the `root/artifacts/` directory is created
  * on first `put`).
  */
-export function createEndoArtifactStoreV0(root: string): EndoArtifactStoreV0 {
+export function createEndoArtifactStoreV0(root: string, options: EndoDurableStoreOptionsV0 = {}): EndoArtifactStoreV0 {
+	const readOnly = options.readOnly === true;
 	const dir = join(root, "artifacts");
 
 	const fileOf = (digest: string) => join(dir, digest);
@@ -63,6 +69,7 @@ export function createEndoArtifactStoreV0(root: string): EndoArtifactStoreV0 {
 	return {
 		put(digest: string, content: Uint8Array): { created: boolean } {
 			requireDigest(digest);
+			if (readOnly) throw new TypeError("the artifact store is open read-only");
 			mkdirSync(dir, { recursive: true });
 			const file = fileOf(digest);
 			try {
@@ -80,7 +87,7 @@ export function createEndoArtifactStoreV0(root: string): EndoArtifactStoreV0 {
 			const tmp = `${file}.tmp`;
 			const fd = openSync(tmp, "w");
 			try {
-				writeSync(fd, content);
+				writeExactSyncV0(fd, content, tmp);
 				fsyncSync(fd);
 			} finally {
 				closeSync(fd);

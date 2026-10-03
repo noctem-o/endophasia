@@ -25,6 +25,29 @@ afterAll(() => {
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+/** The recovery report of a clean, writable open. */
+const CLEAN_RECOVERY = {
+	readOnly: false,
+	truncated: false,
+	tail: null,
+	recovered: false,
+	discarded: null,
+	sealed: false,
+	corruptAt: null,
+};
+
+/** The recovery report of a writable open that cut `tail` from `file`. */
+function cutRecovery(file: string, tail: Uint8Array) {
+	const sha256 = sha256HexOfBytesV0(tail);
+	return {
+		...CLEAN_RECOVERY,
+		truncated: true,
+		tail: { bytes: tail.length, sha256 },
+		recovered: true,
+		discarded: { bytes: tail.length, sha256, preservedAt: `${file}.discarded-${sha256.slice(0, 16)}` },
+	};
+}
+
 /** Append raw bytes to a file, simulating a torn write or a hostile edit. */
 function rawAppend(file: string, bytes: Uint8Array): void {
 	const fd = openSync(file, "a");
@@ -133,7 +156,7 @@ describe("storage/log.ts — the durable frame log", () => {
 	it("reads a missing file as empty, and a missing parent as empty too", () => {
 		const dir = tempDir("endo-log-missing-");
 		const log = createEndoFrameLogV0(join(dir, "nested", "absent.log"));
-		expect(log.read()).toEqual({ frames: [], truncated: false, corruptAt: null });
+		expect(log.read()).toEqual({ frames: [], truncated: false, corruptAt: null, tail: null });
 		expect(log.length).toBe(0);
 	});
 
@@ -171,10 +194,12 @@ describe("storage/log.ts — the durable frame log", () => {
 		// The damage is indistinguishable from a torn append: four complete frames read as torn bytes.
 		expect(classified).toMatchObject({ truncated: true, corruptAt: null });
 		expect(classified.frames).toHaveLength(1);
+		const cut = damaged.subarray(frameBytes);
+		expect(classified.tail).toEqual({ bytes: cut.length, sha256: sha256HexOfBytesV0(cut) });
 		const kept = reopened.truncateTo(1);
-		expect(kept).not.toBeNull();
-		expect(readFileSync(kept!)).toEqual(damaged.subarray(frameBytes));
-		expect(Buffer.concat([readFileSync(file), readFileSync(kept!)])).toEqual(damaged);
+		expect(kept).toEqual({ ...classified.tail, preservedAt: expect.stringContaining(`${file}.discarded-`) });
+		expect(readFileSync(kept!.preservedAt)).toEqual(cut);
+		expect(Buffer.concat([readFileSync(file), readFileSync(kept!.preservedAt)])).toEqual(damaged);
 		expect(reopened.truncateTo(1)).toBeNull();
 	});
 
@@ -313,7 +338,7 @@ describe("storage/event-store.ts — the durable event store", () => {
 	it("reopens with the identical page and record, and rejects duplicates and invalid events", () => {
 		const root = tempDir("endo-events-");
 		const first = createEndoDurableEventStoreV0(root);
-		expect(first.recovery()).toEqual({ recovered: false, discardedPartial: false, sealed: false, corruptAt: null });
+		expect(first.recovery()).toEqual({ ...CLEAN_RECOVERY, discardedPartial: false });
 		for (const [index, id] of EVENT_IDS.entries()) first.ingest(event(id, index + 1));
 		expect(first.length).toBe(3);
 		expect(() => first.ingest(event("endo.event.s1", 4))).toThrow(TypeError);
@@ -322,7 +347,7 @@ describe("storage/event-store.ts — the durable event store", () => {
 		const recordBefore = canonicalEndoJsonV0(first.record(RECORD_ID));
 		first.close();
 		const second = createEndoDurableEventStoreV0(root);
-		expect(second.recovery()).toEqual({ recovered: false, discardedPartial: false, sealed: false, corruptAt: null });
+		expect(second.recovery()).toEqual({ ...CLEAN_RECOVERY, discardedPartial: false });
 		expect(second.length).toBe(3);
 		expect(canonicalEndoJsonV0(second.page())).toBe(pageBefore);
 		expect(canonicalEndoJsonV0(second.record(RECORD_ID))).toBe(recordBefore);
@@ -348,7 +373,10 @@ describe("storage/event-store.ts — the durable event store", () => {
 		first.close();
 		rawAppend(logFile(root), Buffer.from("torn-tail-bytes"));
 		const second = createEndoDurableEventStoreV0(root);
-		expect(second.recovery()).toEqual({ recovered: true, discardedPartial: true, sealed: false, corruptAt: null });
+		expect(second.recovery()).toEqual({
+			...cutRecovery(logFile(root), Buffer.from("torn-tail-bytes")),
+			discardedPartial: true,
+		});
 		expect(second.length).toBe(2);
 		second.ingest(event("endo.event.s3", 3));
 		expect(second.length).toBe(3);
@@ -362,7 +390,7 @@ describe("storage/event-store.ts — the durable event store", () => {
 		first.close();
 		flipByte(logFile(root), frameStart(logFile(root), 1) + 4 + 1);
 		const second = createEndoDurableEventStoreV0(root);
-		expect(second.recovery()).toEqual({ recovered: false, discardedPartial: false, sealed: true, corruptAt: 2 });
+		expect(second.recovery()).toEqual({ ...CLEAN_RECOVERY, discardedPartial: false, sealed: true, corruptAt: 2 });
 		expect(second.length).toBe(1);
 		expect(second.page().events.map((value) => value.id)).toEqual(["endo.event.s1"]);
 		expect(second.record(RECORD_ID).events).toHaveLength(1);
@@ -376,7 +404,7 @@ describe("storage/event-store.ts — the durable event store", () => {
 		first.close();
 		flipByte(logFile(root), 4 + 1);
 		const second = createEndoDurableEventStoreV0(root);
-		expect(second.recovery()).toEqual({ recovered: false, discardedPartial: false, sealed: true, corruptAt: 1 });
+		expect(second.recovery()).toEqual({ ...CLEAN_RECOVERY, discardedPartial: false, sealed: true, corruptAt: 1 });
 		expect(second.length).toBe(0);
 		expect(() => second.ingest(event("endo.event.s2", 2))).toThrow(/sealed/);
 	});

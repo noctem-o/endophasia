@@ -2,7 +2,7 @@
 // command functions directly (no subprocess), captures the single canonical-JSON stdout
 // line, and pins it exactly. Misuse is a TypeError with an operator-readable message;
 // sealed stores, missing files, and invalid records are refused, never repaired.
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -54,7 +54,17 @@ function event(id: string, sequence: number): EndoEventV0 {
 	};
 }
 
-const CLEAN_RECOVERY_V0 = { recovered: false, discardedPartial: false, sealed: false, corruptAt: null };
+/** The recovery report of a clean read-only open (the reporting commands open every store read-only). */
+const CLEAN_LOG_RECOVERY_V0 = {
+	readOnly: true,
+	truncated: false,
+	tail: null,
+	recovered: false,
+	discarded: null,
+	sealed: false,
+	corruptAt: null,
+};
+const CLEAN_RECOVERY_V0 = { ...CLEAN_LOG_RECOVERY_V0, discardedPartial: false };
 
 const EXPERIMENT: EndoExperimentRecordV0 = { schemaVersion: "endo.experiment.v0", id: "endo.experiment.exp-1" };
 const LEDGER_ID = "endo.evidence.ledger-1";
@@ -99,9 +109,11 @@ function seedEvents(root: string, count: number): void {
 }
 
 describe("cli/commands.ts — the thin commands over the durable substrate", () => {
-	it("status reports an empty root with honest absence", () => {
-		const out = run(statusCommand, tempDir("endo-cli-status-empty-"));
+	it("status reports an empty root with honest absence, and creates nothing in it", () => {
+		const root = tempDir("endo-cli-status-empty-");
+		const out = run(statusCommand, root);
 		expect(out).toBe(canonicalEndoJsonV0({ events: { length: 0, recovery: CLEAN_RECOVERY_V0 }, artifacts: [] }));
+		expect(readdirSync(root)).toEqual([]);
 	});
 
 	it("status reports the event log and the ledger layer after seeding", () => {
@@ -128,6 +140,7 @@ describe("cli/commands.ts — the thin commands over the durable substrate", () 
 							recordId: "endo.evidence.art-1",
 						},
 					],
+					recovery: CLEAN_LOG_RECOVERY_V0,
 				},
 				artifacts: [],
 			}),
@@ -212,6 +225,7 @@ describe("cli/commands.ts — the thin commands over the durable substrate", () 
 						},
 					],
 				},
+				recovery: CLEAN_LOG_RECOVERY_V0,
 				ledger: {
 					schemaVersion: "endo.evidence-ledger.v0",
 					id: LEDGER_ID,
@@ -242,17 +256,23 @@ describe("cli/commands.ts — the thin commands over the durable substrate", () 
 		expect(run(artifactsCommand, root)).toBe(canonicalEndoJsonV0(sorted.map((pair) => pair.digest)));
 	});
 
-	it("status reports a torn-tail recovery exactly as the store does", () => {
+	it("status reports a torn tail without cutting it: the log is byte-identical afterwards", () => {
 		const root = tempDir("endo-cli-status-torn-");
 		seedEvents(root, 1);
-		rawAppend(join(root, "events", "events.log"), Buffer.from("torn"));
-		const out = JSON.parse(run(statusCommand, root)) as {
-			events: {
-				length: number;
-				recovery: { recovered: boolean; discardedPartial: boolean; sealed: boolean; corruptAt: number | null };
-			};
-		};
+		const logFile = join(root, "events", "events.log");
+		rawAppend(logFile, Buffer.from("torn"));
+		const before = readFileSync(logFile);
+		const out = JSON.parse(run(statusCommand, root)) as { events: { length: number; recovery: unknown } };
 		expect(out.events.length).toBe(1);
-		expect(out.events.recovery).toEqual({ recovered: true, discardedPartial: true, sealed: false, corruptAt: null });
+		expect(out.events.recovery).toEqual({
+			...CLEAN_RECOVERY_V0,
+			truncated: true,
+			tail: { bytes: 4, sha256: sha256HexOfBytesV0(Buffer.from("torn")) },
+		});
+		expect(readFileSync(logFile)).toEqual(before);
+		expect(readdirSync(join(root, "events"))).toEqual(["events.log"]);
+		// events reads the same prefix and leaves the tail too; only a writer recovers it.
+		expect(JSON.parse(run(eventsCommand, root)).events).toHaveLength(1);
+		expect(readFileSync(logFile)).toEqual(before);
 	});
 });

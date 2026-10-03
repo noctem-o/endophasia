@@ -151,9 +151,10 @@ describe("integration — golden path: record, compact, close, reopen, replay, v
 		const recordAfter = (() => {
 			const store = createEndoDurableEventStoreV0(root);
 			expect(store.length).toBe(3);
-			expect(store.recovery()).toEqual({
+			expect(store.recovery()).toMatchObject({
 				recovered: false,
 				discardedPartial: false,
+				discarded: null,
 				sealed: false,
 				corruptAt: null,
 			});
@@ -228,16 +229,23 @@ describe("integration — adversarial: corruption is refused, never repaired", (
 		rawAppend(logFile, Buffer.from([0, 0, 0, 6, 1, 2, 3, 4, 5, 6]));
 		{
 			const store = createEndoDurableEventStoreV0(root);
-			expect(store.recovery()).toEqual({ recovered: true, discardedPartial: true, sealed: false, corruptAt: null });
+			expect(store.recovery()).toMatchObject({
+				recovered: true,
+				discardedPartial: true,
+				discarded: { bytes: 10, sha256: sha256HexOfBytesV0(Uint8Array.from([0, 0, 0, 6, 1, 2, 3, 4, 5, 6])) },
+				sealed: false,
+				corruptAt: null,
+			});
 			expect(store.length).toBe(2);
 			store.ingest(event("endo.event.t3", 3));
 			store.close();
 		}
 		const after = (() => {
 			const store = createEndoDurableEventStoreV0(root);
-			expect(store.recovery()).toEqual({
+			expect(store.recovery()).toMatchObject({
 				recovered: false,
 				discardedPartial: false,
+				discarded: null,
 				sealed: false,
 				corruptAt: null,
 			});
@@ -261,7 +269,13 @@ describe("integration — adversarial: corruption is refused, never repaired", (
 		}
 		flipByte(logFile, 8);
 		const store = createEndoDurableEventStoreV0(root);
-		expect(store.recovery()).toEqual({ recovered: false, discardedPartial: false, sealed: true, corruptAt: 1 });
+		expect(store.recovery()).toMatchObject({
+			recovered: false,
+			discardedPartial: false,
+			discarded: null,
+			sealed: true,
+			corruptAt: 1,
+		});
 		expect(store.length).toBe(0);
 		expect(() => store.ingest(event("endo.event.s3", 3))).toThrow(TypeError);
 		expect(store.page({ limit: 10 }).events).toEqual([]);
@@ -362,7 +376,13 @@ describe("integration — persisted e2e: crash, recover, replay, continue", () =
 		// -- session 2: recover, verify content identity, continue ------------------
 		const recovered = (() => {
 			const store = createEndoDurableEventStoreV0(root);
-			expect(store.recovery()).toEqual({ recovered: true, discardedPartial: true, sealed: false, corruptAt: null });
+			expect(store.recovery()).toMatchObject({
+				recovered: true,
+				discardedPartial: true,
+				discarded: { bytes: 6, sha256: sha256HexOfBytesV0(Uint8Array.from([0, 0, 1, 0, 2, 0])) },
+				sealed: false,
+				corruptAt: null,
+			});
 			expect(store.length).toBe(4);
 			const record = store.record("endo.evidence.rec-p", { sessionId: "endo.session.s1" });
 			store.close();
@@ -372,6 +392,10 @@ describe("integration — persisted e2e: crash, recover, replay, continue", () =
 
 		const replayed = (() => {
 			const ledger = createEndoDurableEvidenceLedgerV0(root, LEDGER_ID, EXPERIMENT);
+			expect(ledger.recovery()).toMatchObject({
+				recovered: true,
+				discarded: { bytes: 6, sha256: sha256HexOfBytesV0(Uint8Array.from([0, 0, 0, 9, 1, 2])) },
+			});
 			const report = ledger.replay();
 			expect(report.layer).toBe("snapshot");
 			expect(report.entryCount).toBe(3);

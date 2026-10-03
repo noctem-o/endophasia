@@ -13,7 +13,7 @@
  * | Noise band | delta per instance, fixed in config or calibrated as z * sd of the null score difference of repeated base evaluations (or a trial bootstrap); a run refuses to start without one | the mean (max - min) trial spread over the candidates in the context; when it cannot be computed the decision is inconclusive |
  * | Acceptance floor | S' >= S* - delta against the best score so far | gain over the recorded parent must exceed the band |
  * | Cost rule | gaining candidates must satisfy relative token cost change <= beta0 + beta1 * gain; inside the band a shaped score/cost/novelty rule | none: the policy context carries no cost |
- * | Critic | a leakage screen (domain denylist plus LLM review) before evaluation | evolve gain with held-out loss against the parent |
+ * | Critic | a leakage screen (domain denylist plus LLM review) before evaluation | evolve gain with validation loss against the parent |
  * | Pruning | components whose recent yield is not positive are offered to the proposer for removal | not modelled |
  *
  * Conditions, in policy order:
@@ -27,10 +27,10 @@
  *    scored parent is within the band. When the band cannot be computed (`bandSource: "unavailable"`: no candidate
  *    has two scored evolve-set trials) or the gain cannot be (no scored parent: `gain: null`), the condition is NOT
  *    met and the decision is inconclusive. A gap in the noise evidence never lets a candidate through;
- * 4. `held-out-critic`: the best candidate is screened when it improves on the evolve set while degrading on the
- *    held-out set; absent parent evidence is an absence, not a screen;
+ * 4. `validation-critic`: the best candidate is screened when it improves on the evolve set while degrading on the
+ *    validation set; absent parent evidence is an absence, not a screen;
  * 5. `strictly-best-evolve`: exactly one candidate is the strict best on the evolve set (a tie is not a best);
- * 6. `held-out-present`: the best candidate carries scored held-out evidence.
+ * 6. `validation-present`: the best candidate carries scored validation evidence.
  *
  * The outcome is "selected" only when every condition is met; otherwise "inconclusive", with the first unmet
  * condition named. Conditions 2-4 apply to the unique strict best when one exists; without one they are recorded as
@@ -41,7 +41,7 @@
 import type { EndoCandidateV0, EndoSelectionConditionV0, EndoSelectionDecisionV0 } from "../../protocol/evolution.ts";
 import { validateEndoSelectionDecisionV0 } from "../../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
-import { type CandidateEvidenceV0, collectEvidenceV0, meanV0 } from "./baseline.ts";
+import { assertNoPromotionHoldoutV0, type CandidateEvidenceV0, collectEvidenceV0, meanV0 } from "./baseline.ts";
 import type { EndoEvolutionPolicyContextV0, EndoEvolutionPolicyV0 } from "./ports.ts";
 
 /** The recorded identity of the RRSI-inspired policy. */
@@ -97,8 +97,8 @@ function noiseBandV0(evidence: readonly CandidateEvidenceV0[]): number | null {
 }
 
 /**
- * The RRSI-inspired policy: depth-decayed edit budget, trial-spread noise band, held-out critic screen, and the
- * baseline's own gate (a unique strict best on the evolve set carrying held-out evidence).
+ * The RRSI-inspired policy: depth-decayed edit budget, trial-spread noise band, validation critic screen, and the
+ * baseline's own gate (a unique strict best on the evolve set carrying validation evidence).
  */
 export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 	policy: { ...RRSI_INSPIRED_POLICY_IDENTITY_V0 },
@@ -114,11 +114,12 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 		) {
 			throw new TypeError("policy context experiment must be an object");
 		}
-		for (const member of ["candidates", "mutations", "results", "heldOut", "history"] as const) {
+		for (const member of ["candidates", "mutations", "results", "validation", "history"] as const) {
 			if (!Array.isArray(context[member])) {
 				throw new TypeError(`policy context ${member} must be an array`);
 			}
 		}
+		assertNoPromotionHoldoutV0(context);
 
 		const evidence = collectEvidenceV0(context);
 		const byId = new Map(evidence.map((entry) => [entry.candidateId, entry]));
@@ -196,7 +197,7 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 		if (strictlyBest === null || bestEntry === undefined || bestCandidate === undefined) {
 			criticCondition = {
 				schemaVersion: "endo.selection-condition.v0",
-				name: "held-out-critic",
+				name: "validation-critic",
 				observed: { applicable: false },
 				met: true,
 			};
@@ -204,21 +205,23 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 			const parent = bestCandidate.parentCandidateId;
 			const parentEntry = parent === undefined ? undefined : byId.get(parent);
 			const parentEvolveMean = parentEntry === undefined ? null : meanV0(parentEntry.evolveScores);
-			const parentHeldOutMean = parentEntry === undefined ? null : meanV0(parentEntry.heldOutScores);
-			const bestHeldOutMean = meanV0(bestEntry.heldOutScores);
+			const parentValidationMean = parentEntry === undefined ? null : meanV0(parentEntry.validationScores);
+			const bestValidationMean = meanV0(bestEntry.validationScores);
 			const screened =
 				parentEvolveMean !== null &&
-				parentHeldOutMean !== null &&
-				bestHeldOutMean !== null &&
+				parentValidationMean !== null &&
+				bestValidationMean !== null &&
 				strictlyBest.mean > parentEvolveMean &&
-				bestHeldOutMean < parentHeldOutMean;
+				bestValidationMean < parentValidationMean;
 			criticCondition = {
 				schemaVersion: "endo.selection-condition.v0",
-				name: "held-out-critic",
+				name: "validation-critic",
 				observed: {
 					evolveGain: parentEvolveMean === null ? null : strictlyBest.mean - parentEvolveMean,
-					heldOutGain:
-						parentHeldOutMean === null || bestHeldOutMean === null ? null : bestHeldOutMean - parentHeldOutMean,
+					validationGain:
+						parentValidationMean === null || bestValidationMean === null
+							? null
+							: bestValidationMean - parentValidationMean,
 					screened,
 					parentCandidateId: parent ?? null,
 				},
@@ -245,12 +248,12 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 			},
 			{
 				schemaVersion: "endo.selection-condition.v0",
-				name: "held-out-present",
+				name: "validation-present",
 				observed: {
-					trials: bestEntry?.heldOutScores.length ?? 0,
-					mean: bestEntry === undefined ? null : meanV0(bestEntry.heldOutScores),
+					trials: bestEntry?.validationScores.length ?? 0,
+					mean: bestEntry === undefined ? null : meanV0(bestEntry.validationScores),
 				},
-				met: strictlyBest !== null && (bestEntry?.heldOutScores.length ?? 0) > 0,
+				met: strictlyBest !== null && (bestEntry?.validationScores.length ?? 0) > 0,
 			},
 		];
 
@@ -267,7 +270,7 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 			decision.outcome = "selected";
 			decision.candidateId = strictlyBest.id;
 			decision.evidence = bestEntry.evolveResultIds;
-			decision.heldOutEvidence = bestEntry.heldOutResultIds;
+			decision.validationEvidence = bestEntry.validationResultIds;
 		} else {
 			const firstUnmet = conditions.find((condition) => !condition.met);
 			decision.reason = firstUnmet === undefined ? "selection did not converge" : `${firstUnmet.name} not met`;

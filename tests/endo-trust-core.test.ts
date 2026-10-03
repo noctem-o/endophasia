@@ -43,7 +43,7 @@ function experimentRecord(): EndoExperimentRecordV0 {
 
 function result(
 	id: string,
-	partition: "evolve-set" | "held-out",
+	partition: "evolve-set" | "validation",
 	runPrefix: string,
 	score: number,
 	trialCount = 2,
@@ -342,9 +342,9 @@ describe("the promotion spine with the trust providers", () => {
 		ledger.append(candidate);
 
 		const evolve = result("endo.evidence.res-evolve", "evolve-set", "t", 0.9);
-		const heldOut = result("endo.evidence.res-heldout", "held-out", "h", 0.8);
+		const validation = result("endo.evidence.res-heldout", "validation", "h", 0.8);
 		ledger.append(evolve);
-		ledger.append(heldOut);
+		ledger.append(validation);
 
 		// Cogitator: witness roots anchor the replayed runs of the evolve partition.
 		const witT0 = mapCogitatorWitnessV0({
@@ -395,7 +395,7 @@ describe("the promotion spine with the trust providers", () => {
 			candidates: [candidate],
 			mutations: [mutation],
 			results: [evolve],
-			heldOut: [heldOut],
+			validation: [validation],
 			history: ledger.ledger().entries,
 		};
 		const selection = ENDO_HIGHEST_SCORE_POLICY_V0.decide(context, "endo.evidence.sel-1");

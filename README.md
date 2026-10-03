@@ -218,7 +218,7 @@ The evolution substrate is designed around explicit records rather than an opaqu
 | **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
 | **Evaluator / Grader** | Explicit source of outcome evidence |
 | **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
-| **Held-out evaluation** | Separation between adaptation evidence and promotion evidence |
+| **Validation and promotion holdout** | Selection may read validation results; the promotion holdout is never given to a selection policy, so a promotion can be checked against data the search never saw |
 | **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
 
 Resource use is evidence too. Token usage, model calls, tool calls, branches, retrieval, tests, critics, retries, wall-clock time, and cost can be recorded as part of the trajectory. This makes **Compute Appetite** a bridge between DEVELOP and EVOLVE: a cognition policy can decide how much computation to spend, while EVOLVE can test whether that expenditure actually improves outcomes.
@@ -337,7 +337,7 @@ EVOLVE / research loop:
 10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
 11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
-    experiment bundles, including held-out evaluation, noise/leakage checks, and deterministic selection. A faithful
+    experiment bundles, including validation, an untouched promotion holdout, noise/leakage checks, and deterministic selection. A faithful
     RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy
     context does not carry yet.
 12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
@@ -345,7 +345,7 @@ EVOLVE / research loop:
 13. **Resource-aware cognition.** Feed token/model/tool/branch/test/retry/cost evidence into Compute Appetite and test
     whether different cognition policies trade resources for reliable outcome improvements.
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
-    evaluators, or environments can improve alongside the agent, while held-out evidence remains outside the
+    evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
     adaptation loop.
 15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
     explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.

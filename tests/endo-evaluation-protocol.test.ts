@@ -29,7 +29,7 @@ function trial(index: number): EndoTrialResultV0 {
 			trial: index,
 			runId: `endo.run.r${index}`,
 		},
-		partition: "held-out",
+		partition: "validation",
 		raw: { ok: true },
 		derived: { score: 0.5 },
 	};
@@ -189,7 +189,8 @@ describe("validateEndoEvaluationProfileV0", () => {
 	it("publishes the closed vocabularies", () => {
 		expect(ENDO_EVALUATION_PARTITIONS_V0).toEqual([
 			"evolve-set",
-			"held-out",
+			"validation",
+			"promotion-holdout",
 			"out-of-distribution",
 			"live-traffic",
 			"simulated",

@@ -83,16 +83,16 @@ function evolveResult(id: string, candidateId: string, scores: number[]): EndoEv
 	return result(id, candidateId, "evolve-set", scores);
 }
 
-function heldOutResult(id: string, candidateId: string, scores: number[]): EndoEvaluationResultV0 {
-	return result(id, candidateId, "held-out", scores);
+function validationResult(id: string, candidateId: string, scores: number[]): EndoEvaluationResultV0 {
+	return result(id, candidateId, "validation", scores);
 }
 
 function context(
 	candidates: EndoCandidateV0[],
 	results: EndoEvaluationResultV0[] = [],
-	heldOut: EndoEvaluationResultV0[] = [],
+	validation: EndoEvaluationResultV0[] = [],
 ): EndoEvolutionPolicyContextV0 {
-	return { experiment: experimentRecord(), candidates, mutations: [], results, heldOut, history: [] };
+	return { experiment: experimentRecord(), candidates, mutations: [], results, validation, history: [] };
 }
 
 function findCondition(decision: EndoSelectionDecisionV0, name: string): EndoSelectionConditionV0 {
@@ -114,7 +114,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75])],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-id");
 		expect(decision.policy).toEqual({
@@ -125,7 +125,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		expect(validateEndoSelectionDecisionV0(decision)).not.toBeNull();
 	});
 
-	it("selects the unique strict best that carries held-out evidence", () => {
+	it("selects the unique strict best that carries validation evidence", () => {
 		const ctx = context(
 			[
 				candidate(CANDIDATE_ROOT),
@@ -135,13 +135,13 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.25, 0.5]),
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75, 1]),
 			],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-sel");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_A);
 		expect(decision.evidence).toEqual(["endo.evidence.res-a"]);
-		expect(decision.heldOutEvidence).toEqual(["endo.evidence.hold-a"]);
+		expect(decision.validationEvidence).toEqual(["endo.evidence.hold-a"]);
 		expect(decision.reason).toBeUndefined();
 		expect(decision.conditions.map((entry) => entry.met)).toEqual([true, true, true, true, true, true]);
 		expect(findCondition(decision, "edit-budget-annealed").parameters).toEqual({ budgetBase: 4, decay: 0.5 });
@@ -157,9 +157,9 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 			gain: 0.5,
 			parentCandidateId: CANDIDATE_ROOT,
 		});
-		expect(observedOf(decision, "held-out-critic")).toEqual({
+		expect(observedOf(decision, "validation-critic")).toEqual({
 			evolveGain: 0.5,
-			heldOutGain: null,
+			validationGain: null,
 			screened: false,
 			parentCandidateId: CANDIDATE_ROOT,
 		});
@@ -178,7 +178,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.6]),
 				evolveResult("endo.evidence.res-deep", CANDIDATE_DEEP, [0.9]),
 			],
-			[heldOutResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
+			[validationResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-prune");
 		expect(decision.outcome).toBe("inconclusive");
@@ -212,7 +212,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.6, 0.6]),
 				evolveResult("endo.evidence.res-deep", CANDIDATE_DEEP, [0.9, 0.9]),
 			],
-			[heldOutResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
+			[validationResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-at-bound");
 		expect(decision.outcome).toBe("selected");
@@ -234,8 +234,8 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.7, 0.7]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.75]),
-				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
+				validationResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.75]),
+				validationResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
 			],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-noise");
@@ -259,8 +259,8 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.95, 0.95]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.75]),
-				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
+				validationResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.75]),
+				validationResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.75]),
 			],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-above-band");
@@ -278,7 +278,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.1]),
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.9]),
 			],
-			[heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.9])],
+			[validationResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.9])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-no-band");
 		expect(decision.outcome).toBe("inconclusive");
@@ -296,7 +296,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.5, 0.75]),
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.25, 0.5]),
 			],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-no-parent");
 		expect(decision.outcome).toBe("inconclusive");
@@ -309,7 +309,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		});
 	});
 
-	it("screens a best that improves on the evolve set while degrading on the held-out set", () => {
+	it("screens a best that improves on the evolve set while degrading on the validation set", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_ROOT), candidate(CANDIDATE_MID, CANDIDATE_ROOT, ["endo.evidence.mut-m1"])],
 			[
@@ -317,20 +317,20 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.9, 0.9]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.9]),
-				heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.5]),
+				validationResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.9]),
+				validationResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.5]),
 			],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-critic");
 		expect(decision.outcome).toBe("inconclusive");
-		expect(decision.reason).toBe("held-out-critic not met");
-		const critic = findCondition(decision, "held-out-critic");
+		expect(decision.reason).toBe("validation-critic not met");
+		const critic = findCondition(decision, "validation-critic");
 		expect(critic.met).toBe(false);
-		const observed = observedOf(decision, "held-out-critic");
+		const observed = observedOf(decision, "validation-critic");
 		expect(observed.screened).toBe(true);
 		expect(observed.parentCandidateId).toBe(CANDIDATE_ROOT);
 		expect(observed.evolveGain).toBeCloseTo(0.4);
-		expect(observed.heldOutGain).toBeCloseTo(-0.4);
+		expect(observed.validationGain).toBeCloseTo(-0.4);
 	});
 
 	it("records a tie for best as inconclusive with the dependent conditions not applicable", () => {
@@ -347,10 +347,10 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		expect(decision.candidateId).toBeUndefined();
 		expect(observedOf(decision, "edit-budget-annealed")).toEqual({ applicable: false });
 		expect(observedOf(decision, "noise-pruner")).toEqual({ applicable: false });
-		expect(observedOf(decision, "held-out-critic")).toEqual({ applicable: false });
+		expect(observedOf(decision, "validation-critic")).toEqual({ applicable: false });
 		expect(findCondition(decision, "strictly-best-evolve").met).toBe(false);
 		expect(observedOf(decision, "strictly-best-evolve")).toEqual({ candidateId: null, mean: null });
-		expect(findCondition(decision, "held-out-present").met).toBe(false);
+		expect(findCondition(decision, "validation-present").met).toBe(false);
 	});
 
 	it("records a context without scored evidence as inconclusive", () => {
@@ -375,7 +375,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 			candidates: [candidate(CANDIDATE_A)],
 			mutations: [],
 			results: "nope",
-			heldOut: [],
+			validation: [],
 			history: [],
 		} as unknown as EndoEvolutionPolicyContextV0;
 		expect(() => ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-door")).toThrow(TypeError);
@@ -385,7 +385,7 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A, undefined, ["endo.evidence.mut-a1"])],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75])],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const snapshot = JSON.parse(JSON.stringify(ctx));
 		const first = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-pure");
@@ -400,7 +400,7 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75])],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-id");
 		expect(decision.policy).toEqual({
@@ -411,7 +411,7 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 		expect(validateEndoSelectionDecisionV0(decision)).not.toBeNull();
 	});
 
-	it("selects the best on the held-out objective within the Pareto front", () => {
+	it("selects the best on the validation objective within the Pareto front", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[
@@ -419,24 +419,24 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.6]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
-				heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.8]),
+				validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
+				validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.8]),
 			],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-front");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_B);
 		expect(decision.evidence).toEqual(["endo.evidence.res-b"]);
-		expect(decision.heldOutEvidence).toEqual(["endo.evidence.hold-b"]);
+		expect(decision.validationEvidence).toEqual(["endo.evidence.hold-b"]);
 		expect(observedOf(decision, "pareto-front")).toEqual({ front: [CANDIDATE_A, CANDIDATE_B], size: 2 });
-		expect(observedOf(decision, "strictly-best-held-out")).toEqual({
+		expect(observedOf(decision, "strictly-best-validation")).toEqual({
 			candidateId: CANDIDATE_B,
-			heldOut: 0.8,
+			validation: 0.8,
 			evolve: 0.6,
 			tiebreak: "none",
 		});
-		expect(findCondition(decision, "strictly-best-held-out").parameters).toEqual({
-			objective: "held-out",
+		expect(findCondition(decision, "strictly-best-validation").parameters).toEqual({
+			objective: "validation",
 			tiebreak: "candidateId",
 		});
 		expect(validateEndoSelectionDecisionV0(decision)).not.toBeNull();
@@ -450,8 +450,8 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.6]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.8]),
-				heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.5]),
+				validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.8]),
+				validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.5]),
 			],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-dom");
@@ -469,16 +469,16 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-c", CANDIDATE_C, [0.7]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.8]),
-				heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.7]),
-				heldOutResult("endo.evidence.hold-c", CANDIDATE_C, [0.9]),
+				validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.8]),
+				validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.7]),
+				validationResult("endo.evidence.hold-c", CANDIDATE_C, [0.9]),
 			],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-comp");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_C);
 		expect(observedOf(decision, "pareto-front")).toEqual({ front: [CANDIDATE_A, CANDIDATE_C], size: 2 });
-		expect(observedOf(decision, "strictly-best-held-out").tiebreak).toBe("none");
+		expect(observedOf(decision, "strictly-best-validation").tiebreak).toBe("none");
 	});
 
 	it("breaks an exact front tie by candidate id", () => {
@@ -489,26 +489,26 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.7]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
-				heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.6]),
+				validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
+				validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.6]),
 			],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-tie");
 		expect(decision.outcome).toBe("selected");
 		expect(decision.candidateId).toBe(CANDIDATE_A);
 		expect(observedOf(decision, "pareto-front").front).toEqual([CANDIDATE_A, CANDIDATE_B]);
-		expect(observedOf(decision, "strictly-best-held-out").tiebreak).toBe("id");
+		expect(observedOf(decision, "strictly-best-validation").tiebreak).toBe("id");
 	});
 
 	it("records a candidate with an incomplete objective as inconclusive", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
 			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9])],
-			[heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.8])],
+			[validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.8])],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-incomplete");
 		expect(decision.outcome).toBe("inconclusive");
-		expect(decision.reason).toBe("held-out-objective-absent");
+		expect(decision.reason).toBe("validation-objective-absent");
 		expect(findCondition(decision, "objective-complete").met).toBe(false);
 		expect(observedOf(decision, "objective-complete")).toEqual({ complete: 0, candidates: [] });
 		expect(observedOf(decision, "pareto-front")).toEqual({ front: [], size: 0 });
@@ -521,7 +521,7 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.9]),
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.95]),
 			],
-			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.6])],
+			[validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.6])],
 		);
 		const decision = ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-partial");
 		expect(decision.outcome).toBe("selected");
@@ -548,7 +548,7 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 			candidates: [candidate(CANDIDATE_A)],
 			mutations: [],
 			results: [],
-			heldOut: "nope",
+			validation: "nope",
 			history: [],
 		} as unknown as EndoEvolutionPolicyContextV0;
 		expect(() => ENDO_GEPA_POLICY_V0.decide(ctx, "endo.evidence.dec-gepa-door")).toThrow(TypeError);
@@ -562,8 +562,8 @@ describe("ENDO_GEPA_POLICY_V0", () => {
 				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.6]),
 			],
 			[
-				heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
-				heldOutResult("endo.evidence.hold-b", CANDIDATE_B, [0.8]),
+				validationResult("endo.evidence.hold-a", CANDIDATE_A, [0.6]),
+				validationResult("endo.evidence.hold-b", CANDIDATE_B, [0.8]),
 			],
 		);
 		const snapshot = JSON.parse(JSON.stringify(ctx));

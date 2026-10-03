@@ -13,13 +13,20 @@ import { type EndoIdentifierKindV0, isEndoIdentifierV0 } from "./identity.ts";
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 /**
- * The data a trial drew from (README "Evaluation": "Distinguish: evolve-set, held-out, out-of-distribution,
- * live traffic, simulated environment, replay"). A partition is a statement about the trial's data, never about
- * its quality.
+ * The data a trial drew from. A partition is a statement about the trial's data, never about its quality.
+ *
+ * Two partitions are kept apart on purpose:
+ *
+ * - "validation": data outside the evolve set that selection may read, to choose among candidates (for example a
+ *   leakage screen or a second objective). Once a policy has selected on it, it is no longer untouched.
+ * - "promotion-holdout": data no selection policy ever reads. It exists only so a promotion decision can be checked
+ *   against evidence the search never saw. The in-tree policies refuse a context that contains it, and the
+ *   evidence ledger refuses a selection decision that cites a result containing it.
  */
 export type EndoEvaluationPartitionV0 =
 	| "evolve-set"
-	| "held-out"
+	| "validation"
+	| "promotion-holdout"
 	| "out-of-distribution"
 	| "live-traffic"
 	| "simulated"
@@ -28,7 +35,8 @@ export type EndoEvaluationPartitionV0 =
 /** The closed partition vocabulary, machine-checkable. */
 export const ENDO_EVALUATION_PARTITIONS_V0 = [
 	"evolve-set",
-	"held-out",
+	"validation",
+	"promotion-holdout",
 	"out-of-distribution",
 	"live-traffic",
 	"simulated",

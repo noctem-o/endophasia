@@ -186,7 +186,7 @@ function referencesV0(record: EndoLedgerRecordV0): string[] {
 		case "endo.candidate.v0":
 			return record.mutations;
 		case "endo.selection-decision.v0":
-			return [...record.evidence, ...(record.heldOutEvidence ?? [])];
+			return [...record.evidence, ...(record.validationEvidence ?? [])];
 		case "endo.promotion-request.v0":
 			return [record.selectionId];
 		case "endo.promotion-decision.v0":
@@ -280,6 +280,8 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 	const storedRecord = deepFreezeCopyV0(validatedRecord);
 	const entries: EndoEvidenceLedgerEntryV0[] = [];
 	const ids = new Set<string>();
+	/** Evaluation results that contain promotion-holdout trials: a selection decision may never cite them. */
+	const promotionHoldoutResults = new Set<string>();
 	const ledger: EndoEvidenceLedgerServiceV0 = {
 		record: storedRecord,
 		get length() {
@@ -314,6 +316,21 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 				if (!ids.has(reference)) {
 					throw new TypeError(`record ${recordId} references ${reference}, which is not in the ledger`);
 				}
+			}
+			if (validated.schemaVersion === "endo.selection-decision.v0") {
+				for (const reference of [...validated.evidence, ...(validated.validationEvidence ?? [])]) {
+					if (promotionHoldoutResults.has(reference)) {
+						throw new TypeError(
+							`selection decision ${recordId} cites ${reference}, which contains promotion-holdout trials; selection must never read the promotion holdout`,
+						);
+					}
+				}
+			}
+			if (
+				validated.schemaVersion === "endo.evaluation-result.v0" &&
+				validated.trials.some((trial) => trial.partition === "promotion-holdout")
+			) {
+				promotionHoldoutResults.add(recordId);
 			}
 			const entry: EndoEvidenceLedgerEntryV0 = {
 				schemaVersion: "endo.evidence-ledger-entry.v0",

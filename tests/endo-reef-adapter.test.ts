@@ -51,7 +51,7 @@ function environment() {
 	return { schemaVersion: "endo.environment-profile.v0", environmentId: "env-ci", simulated: false } as const;
 }
 
-function mapReport(id: string, report: ReefReportV0, partition?: "evolve-set" | "held-out") {
+function mapReport(id: string, report: ReefReportV0, partition?: "evolve-set" | "validation") {
 	return mapReefReportToEvaluationResultV0({
 		id,
 		experimentId: EXPERIMENT_ID,
@@ -351,13 +351,13 @@ describe("the REEF spine through the substrate", () => {
 		ledger.append(candidate);
 
 		const evolve = mapReport("endo.evidence.reef-res-evolve", report(["rec-evolve-1"], { score: 0.9 }), "evolve-set");
-		const heldOut = mapReport(
+		const validation = mapReport(
 			"endo.evidence.reef-res-heldout",
 			report(["rec-heldout-1"], { score: 0.8 }),
-			"held-out",
+			"validation",
 		);
 		ledger.append(evolve);
-		ledger.append(heldOut);
+		ledger.append(validation);
 
 		const advance = (id: string, to: string) => {
 			lifecycle.transition({ id, to });
@@ -371,7 +371,7 @@ describe("the REEF spine through the substrate", () => {
 			candidates: [candidate],
 			mutations: [mutation],
 			results: [evolve],
-			heldOut: [heldOut],
+			validation: [validation],
 			history: ledger.ledger().entries,
 		};
 		const selection = ENDO_HIGHEST_SCORE_POLICY_V0.decide(context, "endo.evidence.reef-sel-1");

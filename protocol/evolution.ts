@@ -625,12 +625,12 @@ export function validateEndoSelectionPolicyV0(value: unknown): EndoSelectionPoli
  * One evaluated condition of a selection policy: what was checked (name), with which parameters,
  * what was observed, and whether it was met. A selection decision records its conditions, so a
  * decision is never an unexplained choice — multiple non-equivalent conditions (evaluation results,
- * noise floors, cost deltas, leakage, held-out performance, budgets, policy constraints) are all
+ * noise floors, cost deltas, leakage, validation performance, budgets, policy constraints) are all
  * representable without hard-coding any provider's acceptance equation.
  */
 export interface EndoSelectionConditionV0 {
 	schemaVersion: "endo.selection-condition.v0";
-	/** The condition name, e.g. "mean-score-above-floor" or "no-held-out-degradation". */
+	/** The condition name, e.g. "mean-score-above-floor" or "no-validation-degradation". */
 	name: string;
 	/** The parameters the condition was evaluated with (strict JSON). */
 	parameters?: JsonValueV0;
@@ -662,7 +662,7 @@ export function validateEndoSelectionConditionV0(value: unknown): EndoSelectionC
 /**
  * A selection decision: the recorded result of a selection policy applied to an experiment. It names
  * the policy, the outcome, the candidate (when the outcome is "selected"), the evaluated conditions,
- * and the evidence read (evaluation results; held-out evidence separately).
+ * and the evidence read (evaluation results; validation evidence separately).
  *
  * Invariants the validator enforces: the conditions list is never empty; the outcome "selected" if
  * and only if a candidate is named; and a "selected" outcome must point to at least one evidence
@@ -689,8 +689,8 @@ export interface EndoSelectionDecisionV0 {
 	conditions: EndoSelectionConditionV0[];
 	/** The evidence the decision read (evaluation result ids). Non-empty when the outcome is "selected". */
 	evidence: string[];
-	/** The held-out evidence, when the policy evaluated held-out data. */
-	heldOutEvidence?: string[];
+	/** The validation evidence, when the policy evaluated validation data. */
+	validationEvidence?: string[];
 	/** The reason for the outcome, when recorded. */
 	reason?: string;
 }
@@ -704,7 +704,7 @@ const ENDO_SELECTION_DECISION_ALLOWED_KEYS_V0 = new Set([
 	"candidateId",
 	"conditions",
 	"evidence",
-	"heldOutEvidence",
+	"validationEvidence",
 	"reason",
 ]);
 
@@ -733,8 +733,9 @@ export function validateEndoSelectionDecisionV0(value: unknown): EndoSelectionDe
 	}
 	if (!Array.isArray(v.evidence) || !v.evidence.every((entry) => isEndoIdentifier(entry, "evidence"))) return null;
 	if (
-		v.heldOutEvidence !== undefined &&
-		(!Array.isArray(v.heldOutEvidence) || !v.heldOutEvidence.every((entry) => isEndoIdentifier(entry, "evidence")))
+		v.validationEvidence !== undefined &&
+		(!Array.isArray(v.validationEvidence) ||
+			!v.validationEvidence.every((entry) => isEndoIdentifier(entry, "evidence")))
 	) {
 		return null;
 	}

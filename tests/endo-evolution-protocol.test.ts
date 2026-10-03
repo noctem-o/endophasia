@@ -139,7 +139,7 @@ function validDecision(): EndoSelectionDecisionV0 {
 		candidateId: "endo.candidate.c-1",
 		conditions: [validCondition()],
 		evidence: ["endo.evidence.res-1"],
-		heldOutEvidence: ["endo.evidence.hold-1"],
+		validationEvidence: ["endo.evidence.hold-1"],
 		reason: "best score within budget",
 	};
 }
@@ -542,8 +542,8 @@ describe("validateEndoSelectionDecisionV0", () => {
 		expect(validateEndoSelectionDecisionV0({ ...validDecision(), evidence: ["endo.model.res-1"] })).toBeNull();
 	});
 
-	it("rejects a non-array held-out evidence", () => {
-		expect(validateEndoSelectionDecisionV0({ ...validDecision(), heldOutEvidence: "hold" })).toBeNull();
+	it("rejects a non-array validation evidence", () => {
+		expect(validateEndoSelectionDecisionV0({ ...validDecision(), validationEvidence: "hold" })).toBeNull();
 	});
 
 	it("rejects an over-long reason", () => {

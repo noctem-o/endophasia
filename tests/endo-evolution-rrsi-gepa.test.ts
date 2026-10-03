@@ -127,8 +127,14 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 
 	it("selects the unique strict best that carries held-out evidence", () => {
 		const ctx = context(
-			[candidate(CANDIDATE_A, undefined, ["endo.evidence.mut-a1", "endo.evidence.mut-a2"])],
-			[evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.5, 0.75])],
+			[
+				candidate(CANDIDATE_ROOT),
+				candidate(CANDIDATE_A, CANDIDATE_ROOT, ["endo.evidence.mut-a1", "endo.evidence.mut-a2"]),
+			],
+			[
+				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.25, 0.5]),
+				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.75, 1]),
+			],
 			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
 		);
 		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-sel");
@@ -141,21 +147,21 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		expect(findCondition(decision, "edit-budget-annealed").parameters).toEqual({ budgetBase: 4, decay: 0.5 });
 		expect(observedOf(decision, "edit-budget-annealed")).toEqual({
 			candidateId: CANDIDATE_A,
-			depth: 0,
-			budget: 4,
+			depth: 1,
+			budget: 2,
 			mutations: 2,
 		});
 		expect(observedOf(decision, "noise-pruner")).toEqual({
 			band: 0.25,
 			bandSource: "measured",
-			gain: null,
-			parentCandidateId: null,
+			gain: 0.5,
+			parentCandidateId: CANDIDATE_ROOT,
 		});
 		expect(observedOf(decision, "held-out-critic")).toEqual({
-			evolveGain: null,
+			evolveGain: 0.5,
 			heldOutGain: null,
 			screened: false,
-			parentCandidateId: null,
+			parentCandidateId: CANDIDATE_ROOT,
 		});
 		expect(validateEndoSelectionDecisionV0(decision)).not.toBeNull();
 	});
@@ -202,9 +208,9 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 				candidate(CANDIDATE_DEEP, CANDIDATE_MID, ["endo.evidence.mut-d1"]),
 			],
 			[
-				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.5]),
-				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.6]),
-				evolveResult("endo.evidence.res-deep", CANDIDATE_DEEP, [0.9]),
+				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.5, 0.5]),
+				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.6, 0.6]),
+				evolveResult("endo.evidence.res-deep", CANDIDATE_DEEP, [0.9, 0.9]),
 			],
 			[heldOutResult("endo.evidence.hold-deep", CANDIDATE_DEEP, [0.75])],
 		);
@@ -265,12 +271,50 @@ describe("ENDO_RRSI_INSPIRED_POLICY_V0", () => {
 		expect(observedOf(decision, "noise-pruner").gain).toBeCloseTo(0.325);
 	});
 
+	it("is inconclusive when the noise band cannot be measured, however large the gain", () => {
+		const ctx = context(
+			[candidate(CANDIDATE_ROOT), candidate(CANDIDATE_MID, CANDIDATE_ROOT, ["endo.evidence.mut-m1"])],
+			[
+				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.1]),
+				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.9]),
+			],
+			[heldOutResult("endo.evidence.hold-mid", CANDIDATE_MID, [0.9])],
+		);
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-no-band");
+		expect(decision.outcome).toBe("inconclusive");
+		expect(decision.candidateId).toBeUndefined();
+		expect(decision.reason).toBe("noise-pruner not met");
+		expect(findCondition(decision, "noise-pruner").met).toBe(false);
+		expect(observedOf(decision, "noise-pruner")).toMatchObject({ band: null, bandSource: "unavailable" });
+		expect(observedOf(decision, "noise-pruner").gain).toBeCloseTo(0.8);
+	});
+
+	it("is inconclusive when the best has no scored parent to measure a gain against", () => {
+		const ctx = context(
+			[candidate(CANDIDATE_A), candidate(CANDIDATE_B)],
+			[
+				evolveResult("endo.evidence.res-a", CANDIDATE_A, [0.5, 0.75]),
+				evolveResult("endo.evidence.res-b", CANDIDATE_B, [0.25, 0.5]),
+			],
+			[heldOutResult("endo.evidence.hold-a", CANDIDATE_A, [0.75])],
+		);
+		const decision = ENDO_RRSI_INSPIRED_POLICY_V0.decide(ctx, "endo.evidence.dec-rrsi-no-parent");
+		expect(decision.outcome).toBe("inconclusive");
+		expect(decision.reason).toBe("noise-pruner not met");
+		expect(observedOf(decision, "noise-pruner")).toEqual({
+			band: 0.25,
+			bandSource: "measured",
+			gain: null,
+			parentCandidateId: null,
+		});
+	});
+
 	it("screens a best that improves on the evolve set while degrading on the held-out set", () => {
 		const ctx = context(
 			[candidate(CANDIDATE_ROOT), candidate(CANDIDATE_MID, CANDIDATE_ROOT, ["endo.evidence.mut-m1"])],
 			[
-				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.5]),
-				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.9]),
+				evolveResult("endo.evidence.res-root", CANDIDATE_ROOT, [0.5, 0.5]),
+				evolveResult("endo.evidence.res-mid", CANDIDATE_MID, [0.9, 0.9]),
 			],
 			[
 				heldOutResult("endo.evidence.hold-root", CANDIDATE_ROOT, [0.9]),

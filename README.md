@@ -283,6 +283,8 @@ typed cognition graph; evaluation, evolution and promotion records with a baseli
 GEPA-inspired rule sets (not ports of RRSI or GEPA; see `evolution/policies/rrsi-inspired.ts`); trust-record mappings
 for Cogitator, Magpie and Deadbolt; model orchestration, routing and collaboration records; record mappings for Codex,
 Prime and REEF; and an OpenAI-compatible provider adapter (whole SSE bodies are buffered, no incremental streaming).
+Four protocol schemas (`protocol/{continuity,control,runtime-profile,session-overview}.ts`) are planned surfaces with no
+producer at all: their fork-era producers were removed, and they are kept for the lifecycle, steering and replay work.
 
 **Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
 says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,

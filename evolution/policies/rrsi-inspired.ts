@@ -10,7 +10,7 @@
  * | Mechanism | Upstream RRSI | This policy |
  * | :--- | :--- | :--- |
  * | Edit budget | cosine annealing over rounds, b_t = ceil(b_min + (b_max - b_min) / 2 * (1 + cos(pi t / T))), enforced on the proposer | max(1, ceil(4 * 0.5^depth)) over the candidate's recorded parent depth, checked after the fact; base and decay are invented |
- * | Noise band | delta per instance, fixed in config or calibrated as z * sd of the null score difference of repeated base evaluations (or a trial bootstrap); a run refuses to start without one | the mean (max - min) trial spread over the candidates in the context; when it cannot be computed the condition is treated as met |
+ * | Noise band | delta per instance, fixed in config or calibrated as z * sd of the null score difference of repeated base evaluations (or a trial bootstrap); a run refuses to start without one | the mean (max - min) trial spread over the candidates in the context; when it cannot be computed the decision is inconclusive |
  * | Acceptance floor | S' >= S* - delta against the best score so far | gain over the recorded parent must exceed the band |
  * | Cost rule | gaining candidates must satisfy relative token cost change <= beta0 + beta1 * gain; inside the band a shaped score/cost/novelty rule | none: the policy context carries no cost |
  * | Critic | a leakage screen (domain denylist plus LLM review) before evaluation | evolve gain with held-out loss against the parent |
@@ -24,9 +24,9 @@
  *    parent or a parent absent from the context, is at depth 0);
  * 3. `noise-pruner`: the band is the mean, over every candidate with at least two scored evolve-set trials, of that
  *    candidate's (max - min) evolve-set trial score; the best candidate is pruned when its evolve-set gain over its
- *    scored parent is within the band. When the band cannot be computed, or the parent is not scored, the condition
- *    is recorded as met with `bandSource: "unavailable"` (see docs/audits/pr14-post-merge.md: whether that should
- *    instead make the decision inconclusive is an open decision);
+ *    scored parent is within the band. When the band cannot be computed (`bandSource: "unavailable"`: no candidate
+ *    has two scored evolve-set trials) or the gain cannot be (no scored parent: `gain: null`), the condition is NOT
+ *    met and the decision is inconclusive. A gap in the noise evidence never lets a candidate through;
  * 4. `held-out-critic`: the best candidate is screened when it improves on the evolve set while degrading on the
  *    held-out set; absent parent evidence is an absence, not a screen;
  * 5. `strictly-best-evolve`: exactly one candidate is the strict best on the evolve set (a tie is not a best);
@@ -177,7 +177,8 @@ export const ENDO_RRSI_INSPIRED_POLICY_V0: EndoEvolutionPolicyV0 = {
 			const parentMean = parentEntry === undefined ? null : meanV0(parentEntry.evolveScores);
 			const band = noiseBandV0(evidence);
 			const gain = parentMean === null ? null : strictlyBest.mean - parentMean;
-			const met = parentMean === null || band === null || (gain !== null && gain > band);
+			// A missing band or a missing parent is a gap in the evidence, never a pass.
+			const met = band !== null && gain !== null && gain > band;
 			noiseCondition = {
 				schemaVersion: "endo.selection-condition.v0",
 				name: "noise-pruner",

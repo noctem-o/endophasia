@@ -107,7 +107,7 @@ This is not code in this PR, because each option changes what the suite claims.
   `noise-pruner` is set to met.
 - **Why it matters:** this fills a gap instead of reporting it. Upstream RRSI will not run without a band
   (`rrsi/loop.py`: "no noise band: set cfg.delta or run `calibrate`").
-- **Decision D2:** should an unknown band make the decision `inconclusive`?
+- **Resolved (D2):** an unknown band or an unscored parent now makes the decision inconclusive.
 
 **M4. The GEPA policy is not GEPA, and it selects on the held-out set.**
 - **Where:** `evolution/policies/gepa.ts:17,151-157`.
@@ -242,11 +242,20 @@ What #13 lost is the continuity, inspector, session-overview and usage services 
 worker. They cannot run against an installed Pi. Their protocol schemas remain on `main` with no consumer (M6). Nothing
 else was lost.
 
-## Decisions needed
+## Decisions
 
-- **D1:** confirm the RRSI rename (in this PR). The alternative is to revert the rename and do T2 first.
-- **D2:** should an unknown noise band make the rrsi-inspired decision inconclusive (M3)?
-- **D3:** may in-tree selection policies read held-out results (M4)? This also decides the fate of the GEPA policy.
-- **D4:** delete the four orphaned fork-era protocol schemas now, or keep them for #16–#18 (M6/T9)?
-- **D5:** for the donor-commit tests, import the donor history or make the assertion opt-in (T4)? And may a CI
-  workflow be added (T5)?
+Answered by the maintainer after the audit was written. Each entry gives the answer, then where it is carried out.
+
+- **D1: rename accepted.** The policy stays `rrsi-inspired`. Faithful RRSI (T2) waits until the experiment substrate
+  exposes the calibration, cost and history the method needs. Done in this PR.
+- **D2: missing noise evidence is never a pass.** `noise-pruner` is now unmet, and the decision inconclusive, when the
+  band cannot be computed. The same applies when the gain cannot be computed because the best candidate has no scored
+  parent. Done in this PR. New tests: "is inconclusive when the noise band cannot be measured…" and "…has no scored
+  parent…".
+- **D3: selection may read validation evidence; a promotion holdout must stay untouched.** The partition vocabulary is
+  renamed so that validation-for-selection is distinct from the promotion holdout. That is a separate PR, stacked on
+  this one.
+- **D4: keep the four schemas, marked unwired.** Each header now states that it is an unwired, planned protocol
+  surface with no producer. The README lists them separately. Done in this PR.
+- **D5: no donor history in the core repository.** The default tests become self-contained, historical-provenance
+  checks become optional, and CI is added. That is a separate PR (T3, T4, T5).

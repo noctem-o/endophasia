@@ -1,6 +1,9 @@
-// The Control Deck v0 schema: the lane's configured controls from one atomic snapshot, and the readback receipts. The
-// Pi-backed capture and setters are in adapters/pi/control-deck.ts. No Endophasia service exposes Control yet: it is a
-// direct runtime operation, not behind an observation port.
+// The Control Deck v0 schema: a lane's configured controls from one atomic snapshot, and the readback receipts.
+//
+// Status: UNWIRED, planned protocol surface. Nothing in the tree produces or consumes it. Its Pi-backed capture and
+// setters were fork-only and were removed with the vendored fork (docs/pi-attach-inventory.md §5). It is kept as the
+// intended shape for the steering work, where controls go only through the attachment and only for admitted
+// capabilities, and will be revised when a producer exists. Until then it describes no capability Endophasia has.
 import type { ModelIdentityV0, OperationStatusV0, ThinkingLevelV0 } from "./primitives.ts";
 
 /**

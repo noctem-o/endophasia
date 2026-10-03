@@ -1,6 +1,9 @@
-// The Continuity v0 schema: a payload-minimal, read-only projection of the attached Session's main lane at one
-// durable tip. The service handle is in runtime/contracts/continuity.ts; the capture in adapters/pi/continuity.ts;
-// the host facet in runtime/contracts/continuity-facet.ts.
+// The Continuity v0 schema: a payload-minimal, read-only projection of a session's main lane at one durable tip.
+//
+// Status: UNWIRED, planned protocol surface. Nothing in the tree produces or consumes it. Its producer (a capture
+// inside Pi's fork-only Session worker) was removed with the vendored fork (docs/pi-attach-inventory.md §5). It is kept
+// as the intended shape for the session lifecycle and replay work, and will be revised when a producer exists. Until
+// then it describes no capability Endophasia has.
 import type { ModelIdentityV0, ThinkingLevelV0 } from "./primitives.ts";
 
 /**

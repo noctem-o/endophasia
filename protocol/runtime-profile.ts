@@ -1,5 +1,10 @@
-// The Runtime Profile v0 schema and the closed v0 capability catalogue. The service handle is in
-// runtime/contracts/runtime-profile.ts; the generic host publisher in runtime/contracts/runtime-profile-facet.ts.
+// The Runtime Profile v0 schema and the closed v0 capability catalogue.
+//
+// Status: UNWIRED, planned protocol surface. Nothing in the tree produces or consumes it. Its publisher was a host facet
+// for Pi's fork-only Session worker and was removed with the vendored fork (docs/pi-attach-inventory.md §5). Today the
+// attachment's capability state (protocol/harness.ts, endo.capability-state.v0) is what says what a runtime can do. This
+// schema is kept for the session lifecycle work and will be reconciled with the capability state, or removed, when that
+// work lands. Until then it describes no capability Endophasia has.
 
 /**
  * The closed v0 catalogue of Endophasia semantic capabilities, in canonical order. These are Endophasia semantics, not

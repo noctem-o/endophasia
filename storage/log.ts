@@ -17,7 +17,7 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, openSync, readFileSync, renameSync, statSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 
 const DIGEST_LENGTH = 32;
@@ -53,7 +53,12 @@ export interface EndoFrameLogReadV0 {
  * opened, written, and closed per operation (no handle is held between calls).
  */
 export interface EndoFrameLogV0 {
-	/** Append one payload as a single framed write and fsync it. Returns the 1-based index of the new frame. */
+	/**
+	 * Append one payload as a single framed write and fsync it. Returns the 1-based index of the new frame. Throws
+	 * TypeError, writing nothing, when the file has a torn tail or a corrupt frame: a frame written after either would
+	 * be unreachable by read(), so the append would report success for bytes no reader can see. Recover a torn tail
+	 * with truncateTo first; a corrupt log is never appended to.
+	 */
 	append(payload: Uint8Array): number;
 	/** Read and classify the whole file: the valid prefix, a torn tail, or a digest mismatch. */
 	read(): EndoFrameLogReadV0;
@@ -70,6 +75,18 @@ export interface EndoFrameLogV0 {
 export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 	let loaded = false;
 	let count = 0;
+	/** Set by a read that found a torn tail or a corrupt frame; cleared by truncateTo. */
+	let damaged = false;
+	/** The file size the last read, append or truncate left; a different size means someone else wrote. */
+	let knownBytes = 0;
+
+	const currentBytes = (): number => {
+		try {
+			return statSync(path).size;
+		} catch {
+			return 0;
+		}
+	};
 
 	const read = (): EndoFrameLogReadV0 => {
 		const frames: Uint8Array[] = [];
@@ -107,12 +124,19 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 		}
 		count = frames.length;
 		loaded = true;
+		damaged = truncated || corruptAt !== null;
+		knownBytes = buffer.length;
 		return { frames, truncated, corruptAt };
 	};
 
 	return {
 		append(payload: Uint8Array): number {
-			if (!loaded) read();
+			if (!loaded || currentBytes() !== knownBytes) read();
+			if (damaged) {
+				throw new TypeError(
+					"the log has a torn tail or a corrupt frame; recover it with truncateTo before appending",
+				);
+			}
 			const frame = frameOf(payload);
 			const fd = openSync(path, "a");
 			try {
@@ -122,6 +146,7 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 				closeSync(fd);
 			}
 			count += 1;
+			knownBytes += frame.length;
 			return count;
 		},
 		read,
@@ -149,6 +174,8 @@ export function createEndoFrameLogV0(path: string): EndoFrameLogV0 {
 				closeSync(dirFd);
 			}
 			loaded = true;
+			damaged = false;
+			knownBytes = out.length;
 			count = cut;
 		},
 		get length(): number {

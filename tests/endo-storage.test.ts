@@ -640,3 +640,31 @@ describe("storage/ledger.ts — the durable evidence ledger", () => {
 		expect(() => ledger.replay()).toThrow(TypeError);
 	});
 });
+
+describe("frame log: no append past damage", () => {
+	it("refuses to append after a torn tail written since the last read, and appends again after recovery", () => {
+		const file = join(tempDir("endo-log-torn-append-"), "a.log");
+		const log = createEndoFrameLogV0(file);
+		log.append(Buffer.from("one"));
+		rawAppend(file, Buffer.from("torn"));
+		expect(() => log.append(Buffer.from("two"))).toThrow(TypeError);
+		const read = log.read();
+		expect(read.frames).toHaveLength(1);
+		expect(read.truncated).toBe(true);
+		log.truncateTo(1);
+		expect(log.append(Buffer.from("two"))).toBe(2);
+		expect(log.read().frames.map((frame) => Buffer.from(frame).toString())).toEqual(["one", "two"]);
+	});
+
+	it("never appends to a log with a corrupt frame", () => {
+		const file = join(tempDir("endo-log-corrupt-append-"), "a.log");
+		const log = createEndoFrameLogV0(file);
+		log.append(Buffer.from("one"));
+		const bytes = readFileSync(file);
+		bytes[5] = bytes[5]! ^ 0xff;
+		writeFileSync(file, bytes);
+		const reopened = createEndoFrameLogV0(file);
+		expect(() => reopened.append(Buffer.from("two"))).toThrow(TypeError);
+		expect(readFileSync(file).equals(bytes)).toBe(true);
+	});
+});

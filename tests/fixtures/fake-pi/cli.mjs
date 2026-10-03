@@ -11,7 +11,12 @@
 //                       entries-lie, no-usage, no-tool-call, lose-session, ignore-eof, dup-entries,
 //                       mutate-on:<command> (rewrites its own package version: an external update mid-check),
 //                       dialog-on-start (blocks every response until an extension dialog is answered),
-//                       run-ids (adds an undocumented runId to lifecycle events)
+//                       run-ids (adds an undocumented runId to lifecycle events),
+//                       fail-run (the assistant message ends with stopReason "error" and an errorMessage),
+//                       retry-fail (a retry loop that ends with auto_retry_end success:false and a finalError),
+//                       compact-after-run (a threshold compaction, with its entry, before agent_settled),
+//                       unknown-lifecycle (an undocumented agent_paused record inside each run),
+//                       abort-ack-only (abort answers success at once and does not stop the run)
 //   FAKE_PI_STEP_MS     delay between streamed run steps (default 20)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -158,13 +163,15 @@ async function turn(run, userText) {
 		await sleep(stepMs);
 		emit({ type: "message_update", usage: usage(0, step), assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: `${step} ` } });
 	}
+	const failed = has("fail-run") && !run.aborted;
 	const assistant = {
 		role: "assistant",
-		content: [{ type: "text", text: run.aborted ? "" : "fake reply" }],
+		content: [{ type: "text", text: run.aborted || failed ? "" : "fake reply" }],
 		provider: model.provider,
 		model: model.id,
 		...(has("no-usage") ? {} : { usage: usage(11, steps) }),
-		stopReason: run.aborted ? "aborted" : wantsTool ? "toolUse" : "stop",
+		stopReason: run.aborted ? "aborted" : failed ? "error" : wantsTool ? "toolUse" : "stop",
+		...(failed ? { errorMessage: "fake provider: 529 overloaded" } : {}),
 		timestamp: Date.now(),
 	};
 	emit({ type: "message_end", message: assistant });
@@ -186,6 +193,12 @@ async function startRun(text) {
 	const run = { aborted: false, id: `run-${newId()}` };
 	running = run;
 	emit({ type: "agent_start", ...(has("run-ids") ? { runId: run.id } : {}) });
+	if (has("unknown-lifecycle")) emit({ type: "agent_paused", reason: "undocumented" });
+	if (has("retry-fail")) {
+		emit({ type: "auto_retry_start", attempt: 1, maxAttempts: 1, delayMs: 1, errorMessage: "529 overloaded" });
+		await sleep(stepMs);
+		emit({ type: "auto_retry_end", success: false, attempt: 1, finalError: "fake provider: retries exhausted" });
+	}
 	let next = text;
 	for (;;) {
 		const again = await turn(run, next);
@@ -203,6 +216,19 @@ async function startRun(text) {
 		break;
 	}
 	emit({ type: "agent_end", messages: [], willRetry: false, ...(has("run-ids") ? { runId: run.id } : {}) });
+	if (has("compact-after-run") && !run.aborted) {
+		emit({ type: "compaction_start", reason: "threshold" });
+		await sleep(stepMs);
+		const firstKeptEntryId = entries.at(-1)?.id ?? null;
+		append({ type: "compaction", summary: "fake summary", firstKeptEntryId, tokensBefore: 1234 });
+		emit({
+			type: "compaction_end",
+			reason: "threshold",
+			result: { summary: "fake summary", firstKeptEntryId, tokensBefore: 1234, estimatedTokensAfter: 100, details: {} },
+			aborted: false,
+			willRetry: false,
+		});
+	}
 	running = null;
 	if (!run.aborted && followUps.length > 0) {
 		const follow = followUps.shift();
@@ -345,6 +371,7 @@ async function handle(command) {
 			queueUpdate();
 			return respond(id, type, { disposition: "queued" });
 		case "abort":
+			if (has("abort-ack-only")) return respond(id, type);
 			if (running !== null) running.aborted = true;
 			while (running !== null) await sleep(5);
 			return respond(id, type);

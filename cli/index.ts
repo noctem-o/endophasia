@@ -2,7 +2,7 @@
  * The `endo` command. Runs directly on Node ≥ 22.19 (native TypeScript):
  *
  *   node cli/index.ts <status|events|ingest|ledger|artifacts> <root> ...
- *   node cli/index.ts harness <status|identify|check|study|attach> <root> ...
+ *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *
  * The command functions print one canonical-JSON document on success; any throw becomes a one-line error on stderr
  * and exit code 1. The store commands (cli/commands.ts) touch only the host storage layer; the harness commands
@@ -23,7 +23,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		const [sub, ...rest] = argv;
 		const dispatch = typeof sub === "string" ? HARNESS_COMMANDS_V0[sub] : undefined;
 		if (dispatch === undefined)
-			throw new TypeError("usage: endo harness <status|identify|check|study|attach> <root> ...");
+			throw new TypeError("usage: endo harness <status|overview|identify|check|study|attach> <root> ...");
 		return dispatch(rest);
 	},
 };

@@ -445,7 +445,15 @@ describe("session attachment", () => {
 		await session.close();
 		const kinds = new Set(pi.registry.list("evidence").map((record) => record.schemaVersion));
 		expect([...kinds]).toEqual(["endo.capability-evidence.v0"]);
-		expect(allEvents(root).some((event) => event.source !== "runtime-fact")).toBe(false);
+		// Runtime facts, plus lifecycle interpretations each derived from exactly one recorded fact; nothing else.
+		const events = allEvents(root);
+		const facts = new Set(events.filter((event) => event.source === "runtime-fact").map((event) => event.id));
+		for (const event of events.filter((candidate) => candidate.source !== "runtime-fact")) {
+			expect(event.source).toBe("interpretation");
+			expect(event.kind.startsWith("lifecycle.")).toBe(true);
+			expect(event.derivedFrom).toHaveLength(1);
+			expect(facts.has(event.derivedFrom[0]!)).toBe(true);
+		}
 		expect(readdirSync(root).sort()).toEqual(["artifacts", "events", "harness", "pi-sessions"]);
 	});
 });

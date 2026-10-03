@@ -4,6 +4,7 @@
  * is also printed to stderr as plain text, so an operator sees it without reading JSON.
  *
  *   endo harness status   <root> [--attachment a]                       registry only, read-only; starts nothing
+ *   endo harness overview <root> [--attachment a]                       the session overview, replayed read-only
  *   endo harness identify <root> [selection]                            fingerprint and compare; starts no session
  *   endo harness check    <root> [selection] [--force]                  identify + automatic local checks
  *   endo harness study    <root> [selection] --authorize-live-study      the live study (agent work, provider cost)
@@ -18,6 +19,8 @@ import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attac
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
 import type { EndoHarnessNotificationV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 
 interface ParsedV0 {
@@ -112,6 +115,27 @@ export async function harnessStatusCommand(argv: readonly string[]): Promise<voi
 	});
 }
 
+/**
+ * `harness overview <root> [--attachment a]` — the session overview (protocol/session-overview.ts), reduced from one
+ * attachment's recorded lifecycle events. The event store is opened read-only; nothing is started or written.
+ */
+export async function harnessOverviewCommand(argv: readonly string[]): Promise<void> {
+	const parsed = parse(argv, "usage: endo harness overview <root> [--attachment a]");
+	const producer = `pi-lifecycle:${parsed.flags.get("--attachment") ?? "pi.default"}`;
+	const store = createEndoDurableEventStoreV0(parsed.root, { readOnly: true });
+	const events = [];
+	let after = 0;
+	for (;;) {
+		const page = store.page({ afterSequence: after, limit: 10_000 });
+		if (page.events.length === 0) break;
+		events.push(...page.events.filter((event) => event.producer === producer));
+		after = page.nextAfterSequence;
+	}
+	const recovery = store.recovery();
+	store.close();
+	print({ overview: reduceEndoSessionOverviewV0(events), recovery });
+}
+
 /** `harness identify <root> [selection]` — fingerprint the selected Pi and compare. */
 export async function harnessIdentifyCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(argv, "usage: endo harness identify <root> [--pi path] [--attachment a]");
@@ -182,6 +206,7 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 
 export const HARNESS_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {
 	status: harnessStatusCommand,
+	overview: harnessOverviewCommand,
 	identify: harnessIdentifyCommand,
 	check: harnessCheckCommand,
 	study: harnessStudyCommand,

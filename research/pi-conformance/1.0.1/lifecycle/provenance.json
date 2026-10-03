@@ -1,0 +1,87 @@
+{
+	"schemaVersion": "endo.pi-lifecycle-fixture.v0",
+	"kind": "real",
+	"recorder": "pi-lifecycle-recorder.2",
+	"recordedAt": "2026-10-03T19:28:43.488Z",
+	"host": {
+		"platform": "linux",
+		"node": "v26.10.0"
+	},
+	"endophasia": {
+		"adapter": "pi-rpc-adapter.2",
+		"mapping": "pi-rpc-mapping.2",
+		"suite": "pi-rpc-suite.2"
+	},
+	"pi": {
+		"version": "1.0.1",
+		"package": {
+			"name": "@earendil-works/pi-coding-agent",
+			"version": "1.0.1",
+			"root": null
+		},
+		"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+		"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a",
+		"isDeterministicSuiteFake": false
+	},
+	"model": {
+		"provider": "endolocal",
+		"modelId": "qwen3.8-27b",
+		"api": "openai-completions",
+		"endpoint": "http://127.0.0.1:8080/v1",
+		"endpointReportedModels": {
+			"status": "reported",
+			"value": [
+				"qwen3.8-27b"
+			]
+		},
+		"reportedByPi": [
+			"endolocal/qwen3.8-27b"
+		],
+		"apiKey": "none configured"
+	},
+	"liveStudyAuthorized": true,
+	"normalization": {
+		"scratchRoot": {
+			"placeholder": "<recorder-scratch>",
+			"rule": "every occurrence of the recorder-owned scratch directory (as created and as its real path) in an event string is replaced by the placeholder; no other path is changed",
+			"appliesTo": "<session>.events.jsonl and <session>.overview.json; eventsSha256 is over the normalized file"
+		}
+	},
+	"prompts": {
+		"short": "Reply with the single word: ready",
+		"long": "Count slowly from one to forty thousand, one number per line, with no other text.",
+		"afterResume": "Reply with the single word: resumed"
+	},
+	"sessions": [
+		{
+			"name": "completes",
+			"status": "recorded",
+			"reason": null,
+			"eventCount": 28,
+			"eventsSha256": "83e1b53d562a85d8be4f4051f5656e9d2025be4c04853270b3701a0dbea1aa7a",
+			"scratchRootReplacements": 1,
+			"notes": []
+		},
+		{
+			"name": "stop-mid-turn",
+			"status": "recorded",
+			"reason": null,
+			"eventCount": 32,
+			"eventsSha256": "5700d9213e97579d6d6aaa85e3fd261de1dcddf6850e56f94f79dc192d1c2e64",
+			"scratchRootReplacements": 1,
+			"notes": []
+		},
+		{
+			"name": "killed-and-resumed",
+			"status": "recorded",
+			"reason": null,
+			"eventCount": 42,
+			"eventsSha256": "d3d7c951f7cd0de0fa838492d35d1506f89a89c97dee828b7fb3b64ed74356da",
+			"scratchRootReplacements": 2,
+			"notes": [
+				"the Endophasia child process was SIGKILLed while Pi was streaming a turn",
+				"Pi ended with its process group when the child died"
+			]
+		}
+	]
+}

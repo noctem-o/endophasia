@@ -6,6 +6,10 @@
 // ~/.pi/agent), plus PI_* environment switches. A change there can change what a capability does, so evidence recorded
 // under one configuration does not apply under another (evidence.ts, rule 6).
 //
+// Symbolic links are followed (bounded, each real path visited once): dotfile managers commonly link settings.json or an
+// extension directory into the agent directory, and editing the linked target changes what Pi loads. The link text is
+// digested too, so retargeting a link to identical content is still a change.
+//
 // Excluded on purpose: auth.json (credentials, which rotate without changing behaviour, and must never be read into a
 // record), keybindings.json and themes/ (presentation only), sessions, and environment variables that hold keys or
 // tokens. The digest is read-only: nothing here writes to Pi's configuration.
@@ -15,7 +19,7 @@
 // project's own extensions or settings.
 
 import { createHash } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 const AGENT_FILES = [
@@ -44,6 +48,8 @@ interface Walk {
 	entries: number;
 	bytes: number;
 	bounded: boolean;
+	/** Real paths of followed links already digested: a link cycle or a shared target is digested once. */
+	followed: Set<string>;
 }
 
 function add(walk: Walk, label: string, path: string): void {
@@ -60,8 +66,22 @@ function add(walk: Walk, label: string, path: string): void {
 		return;
 	}
 	if (info.isSymbolicLink()) {
-		// The link target is recorded, never followed: a link cannot make the walk loop or escape its bounds.
+		// The link text is recorded and the target followed, within the same entry and byte bounds; a real path already
+		// followed is recorded by name only, so a cycle cannot make the walk loop.
 		walk.hash.update(`${label}\0link\0${readlinkSync(path)}\n`);
+		let target: string;
+		try {
+			target = realpathSync(path);
+		} catch {
+			walk.hash.update(`${label}\0dangling\n`);
+			return;
+		}
+		if (walk.followed.has(target)) {
+			walk.hash.update(`${label}\0seen\0${target}\n`);
+			return;
+		}
+		walk.followed.add(target);
+		add(walk, `${label}@`, target);
 		return;
 	}
 	if (info.isDirectory()) {
@@ -107,7 +127,7 @@ export function piAgentDirectoryV0(env: Readonly<Record<string, string | undefin
  * never equals an unbounded one.
  */
 export function piUserConfigurationDigestV0(env: Readonly<Record<string, string | undefined>>): string {
-	const walk: Walk = { hash: createHash("sha256"), entries: 0, bytes: 0, bounded: false };
+	const walk: Walk = { hash: createHash("sha256"), entries: 0, bytes: 0, bounded: false, followed: new Set() };
 	walk.hash.update("pi-user-configuration.v1\n");
 	const directory = piAgentDirectoryV0(env);
 	if (directory === null) walk.hash.update("agent-dir\0unknown\n");
@@ -126,7 +146,7 @@ export function piUserConfigurationDigestV0(env: Readonly<Record<string, string 
 
 /** SHA-256 over the project configuration Pi would load from `<cwd>/.pi` (recorded per session, not in evidence). */
 export function piProjectConfigurationDigestV0(cwd: string): string {
-	const walk: Walk = { hash: createHash("sha256"), entries: 0, bytes: 0, bounded: false };
+	const walk: Walk = { hash: createHash("sha256"), entries: 0, bytes: 0, bounded: false, followed: new Set() };
 	walk.hash.update("pi-project-configuration.v1\n");
 	for (const file of PROJECT_FILES) add(walk, file, join(cwd, ".pi", file));
 	for (const name of PROJECT_DIRECTORIES) add(walk, name, join(cwd, ".pi", name));

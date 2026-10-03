@@ -2,7 +2,7 @@
  * Adversarial tests of the Pi boundary and evidence invalidation (docs/pi-attach-audit.md). Each test states an attack
  * or failure mode and checks that Endophasia does not admit, keep or record anything it cannot stand behind.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -185,6 +185,29 @@ describe("Pi boundary: the runtime and its configuration", () => {
 		const withExtension = piUserConfigurationDigestV0(env);
 		expect(withExtension).not.toBe(base);
 		expect(piUserConfigurationDigestV0({ ...env, PI_CACHE_RETENTION: "long" })).not.toBe(withExtension);
+	});
+
+	it("the configuration digest follows symlinked configuration, as dotfile managers install it", () => {
+		const home = mkdtempSync(join(tmpdir(), "endo-pi-config-link-"));
+		cleanup.push(() => rmSync(home, { recursive: true, force: true }));
+		const dotfiles = join(home, "dotfiles");
+		const agent = join(home, "agent");
+		mkdirSync(join(dotfiles, "ext"), { recursive: true });
+		mkdirSync(agent);
+		writeFileSync(join(dotfiles, "settings.json"), '{"defaultModel":"a"}');
+		writeFileSync(join(dotfiles, "ext", "index.ts"), "export default () => {}");
+		symlinkSync(join(dotfiles, "settings.json"), join(agent, "settings.json"));
+		mkdirSync(join(agent, "extensions"));
+		symlinkSync(join(dotfiles, "ext"), join(agent, "extensions", "mine"));
+		symlinkSync(agent, join(agent, "extensions", "loop"));
+		const env = { PI_CODING_AGENT_DIR: agent };
+		const base = piUserConfigurationDigestV0(env);
+		expect(piUserConfigurationDigestV0(env)).toBe(base);
+		writeFileSync(join(dotfiles, "settings.json"), '{"defaultModel":"b"}');
+		const settingsEdited = piUserConfigurationDigestV0(env);
+		expect(settingsEdited).not.toBe(base);
+		writeFileSync(join(dotfiles, "ext", "index.ts"), "export default () => { throw new Error() }");
+		expect(piUserConfigurationDigestV0(env)).not.toBe(settingsEdited);
 	});
 
 	it("launches the file it hashed, not the symlink that pointed at it", async () => {

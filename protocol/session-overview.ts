@@ -1,5 +1,9 @@
-// The Session Overview v0 schema: a payload-minimal, read-only inventory of the harness's lanes. The service handle is
-// in runtime/contracts/inspector.ts; the Pi-backed capture in adapters/pi/session-overview.ts.
+// The Session Overview v0 schema: a payload-minimal, read-only inventory of a harness's lanes.
+//
+// Status: UNWIRED, planned protocol surface. Nothing in the tree produces or consumes it. Its Pi-backed capture and
+// inspector service were fork-only and were removed with the vendored fork (docs/pi-attach-inventory.md §5). It is kept
+// as the intended shape for the session lifecycle work and will be revised when a producer exists. Until then it
+// describes no capability Endophasia has.
 import type { ModelIdentityV0, OperationStatusV0 } from "./primitives.ts";
 
 export interface SessionLaneOverviewV0 {

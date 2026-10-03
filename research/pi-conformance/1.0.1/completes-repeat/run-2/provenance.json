@@ -1,0 +1,66 @@
+{
+	"schemaVersion": "endo.pi-lifecycle-fixture.v0",
+	"kind": "real",
+	"recorder": "pi-lifecycle-recorder.2",
+	"recordedAt": "2026-10-03T20:10:08.263Z",
+	"host": {
+		"platform": "linux",
+		"node": "v26.10.0"
+	},
+	"endophasia": {
+		"adapter": "pi-rpc-adapter.2",
+		"mapping": "pi-rpc-mapping.3",
+		"suite": "pi-rpc-suite.2"
+	},
+	"pi": {
+		"version": "1.0.1",
+		"package": {
+			"name": "@earendil-works/pi-coding-agent",
+			"version": "1.0.1",
+			"root": null
+		},
+		"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+		"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a",
+		"isDeterministicSuiteFake": false
+	},
+	"model": {
+		"provider": "endolocal",
+		"modelId": "qwen3.8-27b",
+		"api": "openai-completions",
+		"endpoint": "http://127.0.0.1:8080/v1",
+		"endpointReportedModels": {
+			"status": "reported",
+			"value": [
+				"qwen3.8-27b"
+			]
+		},
+		"reportedByPi": [
+			"endolocal/qwen3.8-27b"
+		],
+		"apiKey": "none configured"
+	},
+	"liveStudyAuthorized": true,
+	"normalization": {
+		"scratchRoot": {
+			"placeholder": "<recorder-scratch>",
+			"rule": "every occurrence of the recorder-owned scratch directory (as created and as its real path) in an event string is replaced by the placeholder; no other path is changed",
+			"appliesTo": "<session>.events.jsonl and <session>.overview.json; eventsSha256 is over the normalized file"
+		}
+	},
+	"prompts": {
+		"short": "Reply with the single word: ready",
+		"long": "Count slowly from one to forty thousand, one number per line, with no other text.",
+		"afterResume": "Reply with the single word: resumed"
+	},
+	"sessions": [
+		{
+			"name": "completes",
+			"status": "recorded",
+			"reason": null,
+			"eventCount": 28,
+			"eventsSha256": "8c2be210428cd8f8450a73e693c1f4790bc9b661734d2064ff41fd70780acf93",
+			"scratchRootReplacements": 1,
+			"notes": []
+		}
+	]
+}

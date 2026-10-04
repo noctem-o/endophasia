@@ -1,0 +1,14 @@
+Implement `render(text)` in src/markup-lite.js, as a named export. The stub in that file shows the shape, and test/markup-lite.test.js shows two examples. Run the tests with: node --test. Do not change any file under test/.
+
+`render` turns a small markup language into an HTML string.
+
+Rules:
+R1. `render` throws a `TypeError` if `text` is not a string. In the output, `&`, `<` and `>` become `&amp;`, `&lt;` and `&gt;` everywhere, including inside code. Every other character (quotes, newlines, anything else) is copied unchanged.
+R2. `*x*` becomes `<b>x</b>`, `_x_` becomes `<i>x</i>`, and `` `x` `` becomes `<code>x</code>`.
+R3. A `*` or `_` opens a span only if the character right after it exists and is not whitespace. Its closer is the first later marker of the same kind whose previous character is not whitespace, and which is not the character immediately after the opener (the content must not be empty). A marker with no closer is plain text, and so is an opener that is not allowed to open.
+R4. `_` has an extra condition: it opens only if the character before it is the start of the text or is not a letter or digit (`A`-`Z`, `a`-`z`, `0`-`9`), and it closes only if the character after it is the end of the text or is not a letter or digit. So `snake_case_name` is plain text. `*` has no such condition.
+R5. A backtick opens a code span that ends at the next backtick. Inside it only R1's escaping applies: no markup, and no backslash handling. A backtick with no later backtick is plain text. Two backticks next to each other with nothing between are plain text, as two backticks. Code spans take priority: when looking for the closer of a `*` or `_` span, a complete code span is skipped over, so a marker inside it can never be the closer.
+R6. The content of a `*` or `_` span is rendered by the same rules (for example `*a _b_ c*` becomes `<b>a <i>b</i> c</b>`). A span ends at its first valid closer, so spans never overlap: in `*a _b* c_` the bold span holds `a _b`, where the `_` has no closer inside the span and so is plain text.
+R7. A backslash followed by `*`, `_`, a backtick or another backslash outputs that second character as plain text (the backslash is dropped), and that character is not a marker and is never a closer. A backslash anywhere else, and any backslash inside a code span, is plain text.
+
+When all the rules hold, reply with the single word: done

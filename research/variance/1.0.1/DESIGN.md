@@ -195,7 +195,26 @@ commit. That section is reserved for this; it is not a change to the design.
 
 ### N, chosen after the pilot
 
-(Not yet written: filled in from the pilot before the main run.)
+Written on 2026-10-04 from the pilot, before the main run started. The pilot ran 36 trials (3 tasks × A, B, B+C,
+`none` × 3), with ordering seed 2892665600; all completed.
+
+**Manipulation checks:** all passed. M1 186/186 requests, M2a 36/36 trials, M2b 186/186 requests, M3 9/9 trials, M4
+18/18 trials. Every arm is valid.
+
+**Mean wall time per trial** (start to end, including Pi's start-up):
+
+| task | A | B | B+C |
+| :--- | ---: | ---: | ---: |
+| tool-use | 5.3 s | 4.0 s | 8.4 s |
+| fix-failing-test | 6.4 s | 9.9 s | 19.9 s |
+| implement-function | 7.5 s | 6.6 s | 15.5 s |
+
+One round of the three main arms takes 83.6 s. With 10% overhead, T(10) = 0.26 h, T(12) = 0.31 h, T(15) = 0.38 h
+and T(20) = 0.51 h.
+
+**N = 20**: the largest value in {10, 12, 15, 20} with T(N) ≤ 10 h. With 20 identical trials out of 20, the 95%
+Wilson lower bound is 0.839, so §7's threshold of 0.70 is reachable with room to spare. The main run is 180 trials
+(3 tasks × 3 arms × 20).
 
 ## 10. Checks after the run
 
@@ -222,4 +241,10 @@ commit. That section is reserved for this; it is not a change to the design.
 
 ## 12. Deviations
 
-(None yet.)
+1. **An exploratory analysis was added after the pilot, before the main run.** The pilot showed that on the coding
+   tasks, tool output differs between runs: `ls -la` prints modification times and the owner, and `node --test` prints
+   durations. That output enters the next request, so trials can diverge for a reason that is neither Pi nor the
+   model. RESULTS.md therefore adds an analysis this design did not plan: for each pair of trials whose requests
+   diverge, the first differing request message, classified as a tool result (environment) or an assistant message
+   (model and serving). It is labelled exploratory. The pre-registered metrics (§6), criteria (§7) and checks (§5) are
+   unchanged and reported as designed.

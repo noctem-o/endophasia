@@ -9,6 +9,9 @@
  *   endo harness check    <root> [selection] [--force]                  identify + automatic local checks
  *   endo harness study    <root> [selection] --authorize-live-study      the live study (agent work, provider cost)
  *   endo harness attach   <root> [selection] [--prompt text] [--wait ms] identify + local checks + record a session
+ *                         [--control]                                    …and serve the intervention desk on the local
+ *                                                                        control endpoint (cli/control.ts) until an
+ *                                                                        `endo steer close` or a signal
  *
  * selection: [--attachment a] [--pi /path/to/pi] [--provider p --model m] [--tools a,b|none] [--cwd dir]
  *
@@ -16,12 +19,15 @@
  */
 
 import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attachment.ts";
+import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
 import type { EndoHarnessNotificationV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
+import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
+import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -39,7 +45,7 @@ const VALUE_FLAGS = new Set([
 	"--prompt",
 	"--wait",
 ]);
-const SWITCHES = new Set(["--force", "--authorize-live-study"]);
+const SWITCHES = new Set(["--force", "--authorize-live-study", "--control"]);
 
 function parse(argv: readonly string[], usage: string): ParsedV0 {
 	const args = [...argv];
@@ -176,7 +182,7 @@ export async function harnessStudyCommand(argv: readonly string[]): Promise<void
 
 /** `harness attach <root> [selection] [--prompt text] [--wait ms]` — record a session; optionally send one prompt. */
 export async function harnessAttachCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness attach <root> [--pi path] [--prompt text] [--wait ms]");
+	const parsed = parse(argv, "usage: endo harness attach <root> [--pi path] [--prompt text] [--wait ms] [--control]");
 	const wait = parsed.flags.has("--wait") ? Number(parsed.flags.get("--wait")) : 120_000;
 	if (!Number.isSafeInteger(wait) || wait < 0) throw new TypeError("--wait must be a non-negative integer");
 	const pi = new PiAttachmentV0(options(parsed));
@@ -184,6 +190,7 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 	printNotificationV0(identified.notification);
 	const checked = await pi.checkLocal();
 	const session = await pi.openSession();
+	if (parsed.switches.has("--control")) return attachWithControl(parsed, identified.change, checked.state, session);
 	let disposition: string | null = null;
 	let settled: boolean | null = null;
 	try {
@@ -201,6 +208,46 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 		prompt: disposition === null ? null : { disposition, settled },
 		counters: session.counters,
 		state: checked.state,
+	});
+}
+
+/**
+ * `attach --control`: the session stays open and the intervention desk is served on the control endpoint. A prompt, if
+ * given, is sent without waiting, so a run can be steered. Ends on a `close` control message, SIGINT or SIGTERM: the
+ * desk records consumption and consequences, then the session closes.
+ */
+async function attachWithControl(
+	parsed: ParsedV0,
+	change: unknown,
+	state: unknown,
+	session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>,
+): Promise<void> {
+	const key = session.owner.digestKey();
+	const desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(parsed.root, key));
+	let server: EndoControlServerV0 | null = null;
+	let disposition: string | null = null;
+	try {
+		server = await startEndoControlServerV0(parsed.root, desk);
+		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
+		const prompt = parsed.flags.get("--prompt");
+		if (prompt !== undefined) disposition = await session.prompt(prompt);
+		const signalled = new Promise<void>((done) => {
+			process.once("SIGINT", () => done());
+			process.once("SIGTERM", () => done());
+		});
+		await Promise.race([server.closeRequested, signalled]);
+		desk.finish();
+	} finally {
+		await server?.close();
+		await session.close();
+	}
+	print({
+		change,
+		piSessionId: session.piSessionId,
+		prompt: disposition,
+		interventions: desk.status(),
+		counters: session.counters,
+		state,
 	});
 }
 

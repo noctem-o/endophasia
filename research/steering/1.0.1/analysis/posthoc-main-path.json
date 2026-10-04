@@ -1,0 +1,50 @@
+{
+	"postHoc": "not pre-registered",
+	"original": {
+		"dir": "the original run of the same spec",
+		"scratchRoot": "/tmp/endo-experiment-372c52355fe7/scratch",
+		"seed": 3004904282
+	},
+	"replicate": {
+		"scratchRoot": "/tmp/endo-experiment-372c52355fe7/scratch",
+		"seed": 2181544731
+	},
+	"cells": {
+		"tool-use/base": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 0,
+			"originalComplied": 0
+		},
+		"tool-use/steer": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 1,
+			"originalComplied": 1
+		},
+		"implement-function/base": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 0,
+			"originalComplied": 0
+		},
+		"implement-function/queue": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 1,
+			"originalComplied": 1
+		},
+		"implement-function/steer": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 0,
+			"originalComplied": 0
+		},
+		"tool-use/queue": {
+			"trials": 1,
+			"requestsEqualToOriginal": 1,
+			"complied": 1,
+			"originalComplied": 1
+		}
+	}
+}

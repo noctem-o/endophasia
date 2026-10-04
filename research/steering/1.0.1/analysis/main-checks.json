@@ -1,0 +1,2394 @@
+{
+	"study": "HOLDS (P1 to P4 hold in every trial)",
+	"violations": 0,
+	"tasks": {
+		"tool-use": {
+			"P1": {
+				"status": "PASS",
+				"trials": 20,
+				"requestsEqual": true,
+				"layersEqual": true,
+				"n": 4
+			},
+			"base": {
+				"trials": 20,
+				"P5": {
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": [
+						"completed"
+					]
+				}
+			},
+			"steer": {
+				"trials": 20,
+				"P2": {
+					"passed": 20,
+					"of": 20
+				},
+				"P3": {
+					"passed": 20,
+					"of": 20
+				},
+				"P4": {
+					"passed": 20,
+					"of": 20
+				},
+				"P5": {
+					"compliance": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": {
+						"completed": 20
+					},
+					"layersExactAgainstBase": {
+						"lifecycle": 18,
+						"toolCalls": 0,
+						"toolResults": 0,
+						"outcome": 18
+					},
+					"withinArmModalAgreement": {
+						"lifecycle": {
+							"successes": 18,
+							"n": 20,
+							"rate": 0.9,
+							"wilson95": {
+								"low": 0.698966,
+								"high": 0.972134
+							}
+						},
+						"toolCalls": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolResults": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"outcome": {
+							"successes": 18,
+							"n": 20,
+							"rate": 0.9,
+							"wilson95": {
+								"low": 0.698966,
+								"high": 0.972134
+							}
+						}
+					}
+				},
+				"perTrial": [
+					{
+						"trial": "tool-use/steer/#0",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#1",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#2",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#3",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#4",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "tool-use/steer/#5",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#6",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#7",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#8",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#9",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#10",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#11",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "tool-use/steer/#12",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#13",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#14",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#15",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#16",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#17",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#18",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					},
+					{
+						"trial": "tool-use/steer/#19",
+						"requests": 4,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 3
+						}
+					}
+				]
+			},
+			"queue": {
+				"trials": 20,
+				"P2": {
+					"passed": 20,
+					"of": 20
+				},
+				"P3": {
+					"passed": 20,
+					"of": 20
+				},
+				"P4": {
+					"passed": 20,
+					"of": 20
+				},
+				"P5": {
+					"compliance": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": {
+						"completed": 20
+					},
+					"layersExactAgainstBase": {
+						"lifecycle": 0,
+						"toolCalls": 0,
+						"toolResults": 0,
+						"outcome": 0
+					},
+					"withinArmModalAgreement": {
+						"lifecycle": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolCalls": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolResults": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"outcome": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						}
+					}
+				},
+				"perTrial": [
+					{
+						"trial": "tool-use/queue/#0",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#1",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#2",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#3",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#4",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#5",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#6",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#7",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#8",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#9",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#10",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#11",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#12",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#13",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#14",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#15",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#16",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#17",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#18",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					},
+					{
+						"trial": "tool-use/queue/#19",
+						"requests": 6,
+						"firstDivergence": 5,
+						"expectedFirstDivergence": 5,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 5,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 5
+						}
+					}
+				]
+			}
+		},
+		"implement-function": {
+			"P1": {
+				"status": "PASS",
+				"trials": 20,
+				"requestsEqual": true,
+				"layersEqual": true,
+				"n": 5
+			},
+			"base": {
+				"trials": 20,
+				"P5": {
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": [
+						"completed"
+					]
+				}
+			},
+			"steer": {
+				"trials": 20,
+				"P2": {
+					"passed": 20,
+					"of": 20
+				},
+				"P3": {
+					"passed": 20,
+					"of": 20
+				},
+				"P4": {
+					"passed": 20,
+					"of": 20
+				},
+				"P5": {
+					"compliance": {
+						"successes": 0,
+						"n": 20,
+						"rate": 0,
+						"wilson95": {
+							"low": 0,
+							"high": 0.161125
+						}
+					},
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": {
+						"completed": 20
+					},
+					"layersExactAgainstBase": {
+						"lifecycle": 20,
+						"toolCalls": 0,
+						"toolResults": 20,
+						"outcome": 20
+					},
+					"withinArmModalAgreement": {
+						"lifecycle": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolCalls": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolResults": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"outcome": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						}
+					}
+				},
+				"perTrial": [
+					{
+						"trial": "implement-function/steer/#0",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#1",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#2",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#3",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#4",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#5",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#6",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#7",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#8",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#9",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#10",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#11",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#12",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#13",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#14",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#15",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#16",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#17",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#18",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					},
+					{
+						"trial": "implement-function/steer/#19",
+						"requests": 5,
+						"firstDivergence": 3,
+						"expectedFirstDivergence": 3,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 3,
+						"complied": false,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "EXACT",
+							"toolCalls": "DIVERGED",
+							"toolResults": "EXACT",
+							"outcome": "EXACT"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 3,
+							"turnsAfter": 4
+						}
+					}
+				]
+			},
+			"queue": {
+				"trials": 20,
+				"P2": {
+					"passed": 20,
+					"of": 20
+				},
+				"P3": {
+					"passed": 20,
+					"of": 20
+				},
+				"P4": {
+					"passed": 20,
+					"of": 20
+				},
+				"P5": {
+					"compliance": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"success": {
+						"successes": 20,
+						"n": 20,
+						"rate": 1,
+						"wilson95": {
+							"low": 0.838875,
+							"high": 1
+						}
+					},
+					"outcomes": {
+						"completed": 20
+					},
+					"layersExactAgainstBase": {
+						"lifecycle": 0,
+						"toolCalls": 0,
+						"toolResults": 0,
+						"outcome": 0
+					},
+					"withinArmModalAgreement": {
+						"lifecycle": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolCalls": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"toolResults": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						},
+						"outcome": {
+							"successes": 20,
+							"n": 20,
+							"rate": 1,
+							"wilson95": {
+								"low": 0.838875,
+								"high": 1
+							}
+						}
+					}
+				},
+				"perTrial": [
+					{
+						"trial": "implement-function/queue/#0",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#1",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#2",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#3",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#4",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#5",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#6",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#7",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#8",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#9",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#10",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#11",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#12",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#13",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#14",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#15",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#16",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#17",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#18",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					},
+					{
+						"trial": "implement-function/queue/#19",
+						"requests": 7,
+						"firstDivergence": 6,
+						"expectedFirstDivergence": 6,
+						"P2": "PASS",
+						"P3": "PASS",
+						"P4": "PASS",
+						"consumedExchange": 6,
+						"complied": true,
+						"success": true,
+						"outcome": "completed",
+						"layersAgainstBase": {
+							"lifecycle": "DIVERGED",
+							"toolCalls": "DIVERGED",
+							"toolResults": "DIVERGED",
+							"outcome": "DIVERGED"
+						},
+						"effect": {
+							"lastRunEnding": "completed",
+							"runsEndedAfter": 1,
+							"toolCallsAfter": 4,
+							"turnsAfter": 6
+						}
+					}
+				]
+			}
+		}
+	}
+}

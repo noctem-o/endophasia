@@ -20,6 +20,7 @@ import { digestKeyCommand } from "./digest-key.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
+import { STEER_COMMANDS_V0 } from "./steer.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
 
 /** The closed command table: name to command function. */
@@ -44,6 +45,13 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		return dispatch(rest);
 	},
 	replay: replayCommand,
+	steer: (argv) => {
+		const [sub, ...rest] = argv;
+		const dispatch = typeof sub === "string" ? STEER_COMMANDS_V0[sub] : undefined;
+		if (dispatch === undefined)
+			throw new TypeError("usage: endo steer <propose|authorize|apply|status|close> <root> ...");
+		return dispatch(rest);
+	},
 	experiment: (argv) => {
 		const [sub, ...rest] = argv;
 		const dispatch = typeof sub === "string" ? EXPERIMENT_COMMANDS_V0[sub] : undefined;
@@ -62,7 +70,7 @@ const [, , command, ...argv] = process.argv;
 const dispatch = typeof command === "string" ? COMMANDS_V0[command] : undefined;
 if (dispatch === undefined) {
 	console.error(
-		"usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment> ...",
+		"usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment|steer> ...",
 	);
 	process.exit(1);
 }

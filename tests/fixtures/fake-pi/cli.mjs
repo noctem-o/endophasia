@@ -21,7 +21,8 @@
 //                       $PI_CODING_AGENT_DIR/models.json; the conversation, with the working directory in the system
 //                       message, is the request; a `read` tool call reads the file from the working directory, and its
 //                       content goes into the next request; abort drops the HTTP request),
-//                       system-variant (model-endpoint with a different system message: every request differs)
+//                       system-variant (model-endpoint with a different system message: every request differs),
+//                       drop-queue (steer and follow_up are acknowledged as queued and never delivered)
 //   FAKE_PI_STEP_MS     delay between streamed run steps (default 20)
 //   FAKE_PI_TOOL_CALLS  a JSON array of { toolName, args, isError, resultText? } the first turn of each prompted run
 //                       calls, in order, before a second turn ends the run (any tool name; nothing is executed;
@@ -538,11 +539,11 @@ async function handle(command) {
 			void startRun(command.message);
 			return;
 		case "steer":
-			steering.push(command.message);
+			if (!has("drop-queue")) steering.push(command.message);
 			queueUpdate();
 			return respond(id, type, { disposition: "queued" });
 		case "follow_up":
-			followUps.push(command.message);
+			if (!has("drop-queue")) followUps.push(command.message);
 			queueUpdate();
 			return respond(id, type, { disposition: "queued" });
 		case "abort":

@@ -20,10 +20,13 @@ import {
 	piCassetteAttachmentV0,
 	recordPiCassetteSessionV0,
 	replayPiCassetteSessionV0,
+	settlesWithin,
 } from "../cli/cassette-session.ts";
+import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoDigestKeyFromEnvironmentV0 } from "../storage/digest-key.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { parseEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
@@ -49,6 +52,40 @@ const SCENARIOS: Record<string, PiCassetteScenarioV0> = {
 			{ op: "prompt-kill", text: "Count to forty", afterChunks: 5 },
 			{ op: "prompt", text: "Reply with resumed" },
 		],
+	},
+	steer: {
+		name: "steer",
+		purpose: "a STEER during the first response, applied through the intervention desk",
+		workspace: {},
+		steps: [
+			{
+				op: "prompt-intervene",
+				text: "Count to forty",
+				operation: "steer",
+				message: "Endophasia steer: also say hello",
+				after: { exchange: 1, chunks: 5 },
+			},
+		],
+	},
+	queue: {
+		name: "queue",
+		purpose: "a QUEUE (follow-up) during the first response, applied through the intervention desk",
+		workspace: {},
+		steps: [
+			{
+				op: "prompt-intervene",
+				text: "Count to forty",
+				operation: "queue",
+				message: "Endophasia queued: then say done",
+				after: { exchange: 1, chunks: 5 },
+			},
+		],
+	},
+	"intervene-stop": {
+		name: "intervene-stop",
+		purpose: "a STOP mid-response, applied through the intervention desk",
+		workspace: {},
+		steps: [{ op: "prompt-intervene", text: "Count to forty", operation: "stop", after: { exchange: 1, chunks: 5 } }],
 	},
 	tool: {
 		name: "tool",
@@ -121,6 +158,20 @@ afterAll(async () => {
 	install?.remove();
 	rmSync(base, { recursive: true, force: true });
 });
+
+/** Every event in a session store (its own event log, not the capture log). */
+function sessionEvents(root: string): EndoEventV0[] {
+	const store = createEndoDurableEventStoreV0(root, { readOnly: true });
+	const all: EndoEventV0[] = [];
+	for (let after = 0; ; ) {
+		const page = store.page({ afterSequence: after, limit: 10_000 });
+		if (page.events.length === 0) break;
+		all.push(...page.events);
+		after = page.nextAfterSequence;
+	}
+	store.close();
+	return all;
+}
 
 const exchanges = (store: string) =>
 	readEndoCaptureEventsV0(store)
@@ -273,6 +324,149 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		});
 		expect(seen).toBeLessThan(Date.now() - 1000);
 		expect(report.misses).toBe(0);
+	});
+
+	it("a wait leaves no timer behind: a long timeout must not keep the process alive after the event arrives", async () => {
+		const timers = () => process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
+		const before = timers();
+		expect(await settlesWithin(Promise.resolve(), 600_000)).toBe(true);
+		expect(timers()).toBe(before);
+		expect(await settlesWithin(new Promise(() => {}), 20)).toBe(false);
+		expect(timers()).toBe(before);
+	});
+
+	describe("steered sessions (STEER, QUEUE and STOP through the intervention desk)", () => {
+		const chain = (name: string) =>
+			sessionEvents(recorded[name]!).filter((event) => event.kind.startsWith("intervention."));
+
+		it.each([
+			["steer", "steer", "Endophasia steer: also say hello", 2],
+			["queue", "queue", "Endophasia queued: then say done", 2],
+		])(
+			"%s: the full chain is recorded, and consumption is observed in the proxy capture, not assumed",
+			(name, operation, message, exchange) => {
+				const records = chain(name);
+				expect(records.map((event) => event.kind)).toEqual([
+					"intervention.proposal",
+					"intervention.authorization",
+					"intervention.request",
+					"intervention.accepted",
+					"intervention.consumed",
+					"intervention.consequence",
+				]);
+				expect(records[0]!.payload).toMatchObject({ operation, origin: "operator-scenario" });
+				expect(records[1]!.payload).toMatchObject({
+					decision: "allow",
+					authority: { kind: "local-operator", confirmation: "scenario" },
+				});
+				// Applied at the recorded delivery point, and consumed in the next exchange's request.
+				expect(records[2]!.payload).toMatchObject({ at: { exchange: 1 } });
+				expect(records[4]!.payload).toMatchObject({ exchange });
+				expect(records[5]!.payload).toMatchObject({
+					acceptance: { status: "accepted", disposition: "queued" },
+					consumption: { status: "observed", exchange },
+				});
+				// The message is outside canonical evidence: the records carry only its keyed digest.
+				expect(JSON.stringify(records)).not.toContain(message);
+				// The proxy capture holds the message (exchange 2's request body), which is what consumption points at.
+				const driverStep = readEndoCaptureEventsV0(recorded[name]!)
+					.filter((event) => event.kind === "capture.driver-step")
+					.map((event) => event.payload as { op: string; driver: string; at?: unknown });
+				expect(new Set(driverStep.map((entry) => entry.driver))).toEqual(new Set(["pi-cassette-driver.2"]));
+				expect(driverStep.map((entry) => entry.op)).toEqual(["open", "prompt", "intervene", "settled", "close"]);
+			},
+		);
+
+		it("stop: requested through the desk, nothing to consume, and the run ended aborted as Pi reported it", () => {
+			const records = chain("intervene-stop");
+			expect(records.map((event) => event.kind)).toEqual([
+				"intervention.proposal",
+				"intervention.authorization",
+				"intervention.request",
+				"intervention.accepted",
+				"intervention.consequence",
+			]);
+			expect(records[4]!.payload).toMatchObject({
+				consumption: { status: "not-applicable", reason: "stop carries no message to consume" },
+				effect: { lastRunEnding: "aborted" },
+			});
+		});
+
+		it.each(["steer", "queue", "intervene-stop"])(
+			"%s: intervention records do not disturb the lifecycle (no anomaly, no unrecognized event)",
+			(name) => {
+				const kinds = sessionEvents(recorded[name]!).map((event) => event.kind);
+				expect(
+					kinds.filter((kind) => kind === "lifecycle.anomaly" || kind === "lifecycle.unrecognized-runtime-event"),
+				).toEqual([]);
+			},
+		);
+
+		it.each([
+			["steer", "immediate"],
+			["steer", "immediate"],
+			["steer", "immediate"],
+			["steer", "as-recorded"],
+			["steer", "as-recorded"],
+			["queue", "immediate"],
+			["queue", "immediate"],
+			["queue", "immediate"],
+			["queue", "as-recorded"],
+			["queue", "as-recorded"],
+			["intervene-stop", "immediate"],
+			["intervene-stop", "immediate"],
+			["intervene-stop", "immediate"],
+			["intervene-stop", "as-recorded"],
+			["intervene-stop", "as-recorded"],
+		] as const)(
+			"a replay of %s (%s) re-issues the intervention at the recorded point and is EXACT",
+			async (name, timing) => {
+				const { report, out } = await replay(name, timing);
+				expect(report.misses).toBe(0);
+				expect(report.unserved).toBe(0);
+				for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
+					expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
+				expect(report.interventions).toEqual([
+					{
+						operation: name === "intervene-stop" ? "stop" : name,
+						recordedAt: { exchange: 1, chunks: 5 },
+						reissuedAt: { exchange: 1, chunks: 5 },
+						proposalDigestMatches: true,
+						result: "accepted",
+					},
+				]);
+				// The replay's own store records the re-issued chain, and no lifecycle anomaly.
+				const kinds = sessionEvents(out).map((event) => event.kind);
+				expect(kinds.filter((kind) => kind.startsWith("intervention."))).toEqual([
+					"intervention.proposal",
+					"intervention.authorization",
+					"intervention.request",
+					"intervention.accepted",
+				]);
+				expect(kinds).not.toContain("lifecycle.anomaly");
+			},
+		);
+
+		it("a replayer meeting a driver step it does not know refuses, instead of skipping it", async () => {
+			const dir = join(base, "fixture-steer-unknown");
+			exportPiCassetteFixtureV0(recorded.steer!, dir);
+			const file = join(dir, "capture.events.jsonl");
+			const text = readFileSync(file, "utf8");
+			expect(text).toContain('"op":"settled"');
+			writeFileSync(file, text.replaceAll('"op":"settled"', '"op":"settled-v3"'));
+			const store = materializePiCassetteFixtureV0(dir, join(base, "materialized-steer-unknown"));
+			await expect(
+				replayPiCassetteSessionV0({
+					store,
+					out: join(base, "replay-steer-unknown"),
+					pi: install.bin,
+					timing: "immediate",
+					keySource: { kind: "installation" },
+					timeoutMs: 20_000,
+					holdMs: 5_000,
+				}),
+			).rejects.toThrow(/does not know: settled-v3/);
+		});
 	});
 
 	it("a pinned environment reaches Pi on record and on replay; it is recorded, and the snapshot holds its files and times", async () => {

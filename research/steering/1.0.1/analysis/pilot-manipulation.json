@@ -1,0 +1,72 @@
+{
+	"M5": {
+		"status": "PASS",
+		"byCondition": {
+			"steer": {
+				"trials": 6,
+				"failures": []
+			},
+			"queue": {
+				"trials": 6,
+				"failures": []
+			},
+			"base": {
+				"trials": 6,
+				"failures": []
+			}
+		}
+	},
+	"M6": {
+		"status": "PASS",
+		"byCondition": {
+			"steer": {
+				"trials": 6,
+				"requests": 27,
+				"instances": [],
+				"status": "PASS"
+			},
+			"queue": {
+				"trials": 6,
+				"requests": 39,
+				"instances": [],
+				"status": "PASS"
+			},
+			"base": {
+				"trials": 6,
+				"requests": 27,
+				"instances": [],
+				"status": "PASS"
+			}
+		}
+	},
+	"I1": {
+		"status": "PASS",
+		"byCondition": {
+			"steer": {
+				"trials": 6,
+				"failures": []
+			},
+			"queue": {
+				"trials": 6,
+				"failures": []
+			},
+			"base": {
+				"trials": 6,
+				"failures": []
+			}
+		}
+	},
+	"I2": {
+		"status": "PASS",
+		"bySession": [
+			{
+				"session": 1,
+				"admitted": [
+					"steering.steer: admitted-partial",
+					"steering.follow-up: admitted-partial"
+				],
+				"failures": []
+			}
+		]
+	}
+}

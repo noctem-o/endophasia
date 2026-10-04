@@ -78,6 +78,18 @@ does not, are in [research/README.md](../research/README.md).
     evaluation records.
   - It has run for real in the variance study below (360 trials), the pilot and a smoke test, and in the
     pinned-environment study (276 trials, pilot included).
+- **Steering** ([how it works](steering.md)): STEER, QUEUE and STOP as explicit, authorized, verified interventions
+  through Pi's documented RPC (`protocol/intervention.ts`, `runtime/contracts/intervention.ts`,
+  `adapters/pi/intervention.ts`, `cli/control.ts`, `cli/steer.ts`).
+  - The records are a proposal, an authorization bound to its exact digest, session and attachment, a request, Pi's
+    acceptance or a refusal, a consumption, and a consequence. Each is its own event with its own source class, linked
+    by `derivedFrom`. Acceptance (Pi's reply), consumption (the message's keyed digest in a request the recording proxy
+    captured) and effect (the trajectory after) are kept apart.
+  - The gate denies by default and records every refusal with its reason. An operation is offered only for a capability
+    that conformance evidence admits.
+  - v0 proposals come only from the operator. An external authority provider is a documented seam and is not wired.
+  - `endo harness attach --control` serves the desk on an owner-only Unix socket, and `endo steer` talks to it.
+  - A recorded session with an intervention replays: the replay re-issues it at the recorded point.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   [`research/pi-conformance/1.0.0/`](../research/pi-conformance/1.0.0/).

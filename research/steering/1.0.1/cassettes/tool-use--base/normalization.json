@@ -1,0 +1,7 @@
+{
+	"storeRoot": {
+		"placeholder": "<store>",
+		"appliesTo": "session.events.jsonl",
+		"stringsReplaced": 1
+	}
+}

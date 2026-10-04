@@ -1,0 +1,582 @@
+{
+	"implement-function--base": {
+		"replays": 1,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [],
+				"flags": []
+			}
+		]
+	},
+	"implement-function--queue": {
+		"replays": 5,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 7,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 7,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 7,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 7,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 7,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			}
+		]
+	},
+	"implement-function--steer": {
+		"replays": 5,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 5,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			}
+		]
+	},
+	"tool-use--base": {
+		"replays": 1,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [],
+				"flags": []
+			}
+		]
+	},
+	"tool-use--queue": {
+		"replays": 5,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 6,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 6,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 6,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 6,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 6,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "queue",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			}
+		]
+	},
+	"tool-use--steer": {
+		"replays": 5,
+		"allExact": true,
+		"runs": [
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "immediate",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			},
+			{
+				"timing": "as-recorded",
+				"lifecycle": "EXACT",
+				"toolCalls": "EXACT",
+				"toolResults": "EXACT",
+				"outcome": "EXACT",
+				"served": 4,
+				"misses": 0,
+				"unserved": 0,
+				"interventions": [
+					{
+						"operation": "steer",
+						"recordedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"reissuedAt": {
+							"chunks": 1,
+							"exchange": 2
+						},
+						"proposalDigestMatches": true,
+						"result": "accepted"
+					}
+				],
+				"flags": []
+			}
+		]
+	}
+}

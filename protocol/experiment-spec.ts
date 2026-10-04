@@ -51,6 +51,48 @@ export interface EndoExperimentConditionV0 {
 	extensions?: { [file: string]: string };
 	/** A pinned environment for Pi and its tools (time zone, locale, test reporter, file times). */
 	environment?: EndoExperimentEnvironmentV0;
+	/**
+	 * Per task id: one operator intervention applied during the task's first prompt (protocol/intervention.ts). A
+	 * condition with interventions needs Pi's steering capability evidence: the runner runs one live study per run
+	 * session for it, before the trials, and refuses to run a trial for a capability that study does not admit.
+	 */
+	interventions?: { [taskId: string]: EndoExperimentInterventionV0 };
+}
+
+/**
+ * An intervention a scenario applies through the intervention desk: STEER or QUEUE with a message, or STOP without
+ * one, once the recording proxy has relayed `after.chunks` chunks of exchange `after.exchange` (counted from 1 within
+ * the trial). The proposal and its authorization are the scenario's, recorded before the prompt.
+ */
+export interface EndoExperimentInterventionV0 {
+	operation: "steer" | "queue" | "stop";
+	message?: string;
+	after: { exchange: number; chunks: number };
+}
+
+/** Why `intervention` is not a valid intervention, or null. */
+export function endoExperimentInterventionProblemV0(intervention: unknown): string | null {
+	if (!plain(intervention)) return "an intervention must be an object";
+	const i = intervention as Record<string, unknown>;
+	for (const key of Object.keys(i))
+		if (!["operation", "message", "after"].includes(key)) return `unknown field ${key}`;
+	if (i.operation !== "steer" && i.operation !== "queue" && i.operation !== "stop")
+		return "operation must be steer, queue or stop";
+	if (i.operation === "stop") {
+		if (i.message !== undefined) return "a stop carries no message";
+	} else if (typeof i.message !== "string" || i.message.length === 0 || Buffer.byteLength(i.message) > 16_384)
+		return `${i.operation} needs a message of 1 to 16384 bytes`;
+	const after = i.after;
+	if (
+		!plain(after) ||
+		Object.keys(after).sort().join() !== "chunks,exchange" ||
+		!Number.isInteger((after as Record<string, unknown>).exchange) ||
+		!Number.isInteger((after as Record<string, unknown>).chunks) ||
+		((after as Record<string, number>).exchange ?? 0) < 1 ||
+		((after as Record<string, number>).chunks ?? 0) < 1
+	)
+		return "after must be { exchange, chunks }, both integers from 1";
+	return null;
 }
 
 /** The variables a pinned environment may add to Pi's environment (which every tool inherits). */
@@ -237,7 +279,9 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (!plain(condition)) return "a condition is not an object";
 		const c = condition as Record<string, unknown>;
 		for (const key of Object.keys(c))
-			if (!["id", "description", "modelEntry", "settings", "extensions", "environment"].includes(key))
+			if (
+				!["id", "description", "modelEntry", "settings", "extensions", "environment", "interventions"].includes(key)
+			)
 				return `unknown condition field ${key}`;
 		if (typeof c.id !== "string" || !SLUG.test(c.id)) return "a condition id must be a slug ([a-z0-9-], at most 64)";
 		if (conditionIds.has(c.id)) return `duplicate condition ${c.id}`;
@@ -250,6 +294,15 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (c.environment !== undefined) {
 			const problem = endoExperimentEnvironmentProblemV0(c.environment);
 			if (problem !== null) return `condition ${c.id}: ${problem}`;
+		}
+		if (c.interventions !== undefined) {
+			if (!plain(c.interventions))
+				return `condition ${c.id}: interventions must be an object of task id to intervention`;
+			for (const [taskId, intervention] of Object.entries(c.interventions)) {
+				if (!taskIds.has(taskId)) return `condition ${c.id}: interventions names an unknown task ${taskId}`;
+				const problem = endoExperimentInterventionProblemV0(intervention);
+				if (problem !== null) return `condition ${c.id}: interventions.${taskId}: ${problem}`;
+			}
 		}
 		if (c.extensions !== undefined) {
 			if (!plain(c.extensions)) return `condition ${c.id}: extensions must be an object of file name to source`;

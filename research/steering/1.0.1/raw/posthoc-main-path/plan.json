@@ -1,0 +1,726 @@
+{
+	"order": [
+		{
+			"condition": "base",
+			"position": 0,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "steer",
+			"position": 1,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "base",
+			"position": 2,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "queue",
+			"position": 3,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "steer",
+			"position": 4,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "queue",
+			"position": 5,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "queue",
+			"position": 6,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "steer",
+			"position": 7,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "base",
+			"position": 8,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "base",
+			"position": 9,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "steer",
+			"position": 10,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "queue",
+			"position": 11,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "base",
+			"position": 12,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "steer",
+			"position": 13,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "base",
+			"position": 14,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "queue",
+			"position": 15,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "steer",
+			"position": 16,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "queue",
+			"position": 17,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "steer",
+			"position": 18,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "base",
+			"position": 19,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "steer",
+			"position": 20,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "queue",
+			"position": 21,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "queue",
+			"position": 22,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "base",
+			"position": 23,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "base",
+			"position": 24,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "queue",
+			"position": 25,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "steer",
+			"position": 26,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "base",
+			"position": 27,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "queue",
+			"position": 28,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "steer",
+			"position": 29,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "steer",
+			"position": 30,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "steer",
+			"position": 31,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "base",
+			"position": 32,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "queue",
+			"position": 33,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "queue",
+			"position": 34,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "base",
+			"position": 35,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "steer",
+			"position": 36,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "queue",
+			"position": 37,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "base",
+			"position": 38,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "steer",
+			"position": 39,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "queue",
+			"position": 40,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "base",
+			"position": 41,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "base",
+			"position": 42,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "steer",
+			"position": 43,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "base",
+			"position": 44,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "queue",
+			"position": 45,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "queue",
+			"position": 46,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "steer",
+			"position": 47,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "queue",
+			"position": 48,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "steer",
+			"position": 49,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "base",
+			"position": 50,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "steer",
+			"position": 51,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "base",
+			"position": 52,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "queue",
+			"position": 53,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "steer",
+			"position": 54,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "queue",
+			"position": 55,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "steer",
+			"position": 56,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "base",
+			"position": 57,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "queue",
+			"position": 58,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "base",
+			"position": 59,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "steer",
+			"position": 60,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "base",
+			"position": 61,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "queue",
+			"position": 62,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "queue",
+			"position": 63,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "steer",
+			"position": 64,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "base",
+			"position": 65,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "steer",
+			"position": 66,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "queue",
+			"position": 67,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "queue",
+			"position": 68,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "steer",
+			"position": 69,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "base",
+			"position": 70,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "base",
+			"position": 71,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "steer",
+			"position": 72,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "queue",
+			"position": 73,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "steer",
+			"position": 74,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "queue",
+			"position": 75,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "base",
+			"position": 76,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "base",
+			"position": 77,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "queue",
+			"position": 78,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "base",
+			"position": 79,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "base",
+			"position": 80,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "queue",
+			"position": 81,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "steer",
+			"position": 82,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "steer",
+			"position": 83,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "queue",
+			"position": 84,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "base",
+			"position": 85,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "steer",
+			"position": 86,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "base",
+			"position": 87,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "queue",
+			"position": 88,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "steer",
+			"position": 89,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "queue",
+			"position": 90,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "steer",
+			"position": 91,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "queue",
+			"position": 92,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "base",
+			"position": 93,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "base",
+			"position": 94,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "steer",
+			"position": 95,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "steer",
+			"position": 96,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "base",
+			"position": 97,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "steer",
+			"position": 98,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "queue",
+			"position": 99,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "base",
+			"position": 100,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "queue",
+			"position": 101,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "steer",
+			"position": 102,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "base",
+			"position": 103,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "base",
+			"position": 104,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "queue",
+			"position": 105,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "queue",
+			"position": 106,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "steer",
+			"position": 107,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "queue",
+			"position": 108,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "base",
+			"position": 109,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "steer",
+			"position": 110,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "steer",
+			"position": 111,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "base",
+			"position": 112,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "queue",
+			"position": 113,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "steer",
+			"position": 114,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "queue",
+			"position": 115,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "steer",
+			"position": 116,
+			"task": "implement-function",
+			"trial": 19
+		},
+		{
+			"condition": "base",
+			"position": 117,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "base",
+			"position": 118,
+			"task": "implement-function",
+			"trial": 19
+		},
+		{
+			"condition": "queue",
+			"position": 119,
+			"task": "implement-function",
+			"trial": 19
+		}
+	],
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"seed": 2181544731
+}

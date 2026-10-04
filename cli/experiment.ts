@@ -43,7 +43,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { buildEndoExperimentBundleV0 } from "../lab/experiment-bundle.ts";
@@ -51,6 +51,7 @@ import { runEndoTrialsV0 } from "../lab/trials.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
 import {
+	type EndoExperimentConditionV0,
 	type EndoExperimentSpecV0,
 	type EndoExperimentTaskV0,
 	validateEndoExperimentSpecV0,
@@ -70,7 +71,9 @@ import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0 } from "../storage/digest-key.ts";
 import { archiveEndoWorkspaceV0 } from "../storage/workspace-snapshot.ts";
 import {
+	createPiCassetteScratchV0,
 	type PiCassetteKeySourceV0,
+	piCassetteAttachmentV0,
 	piCassetteEnvV0,
 	piCassetteKeyV0,
 	recordPiCassetteSessionV0,
@@ -78,7 +81,7 @@ import {
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
-export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.2";
+export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.3";
 export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v1";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
@@ -396,6 +399,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 			`${JSON.stringify(environment, null, "\t")}\n`,
 		);
 		journal(dir, { event: "run-session-started", session: sessionNumber, proxyPort: proxy.port });
+		const evidence = await gatherControlEvidence(spec, dir, sessionNumber, parent, proxy, keySource, log);
 		for (const entry of plan) {
 			const trialDir = trialDirectory(dir, entry);
 			const resultPath = join(trialDir, "result.json");
@@ -415,7 +419,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 			mkdirSync(trialDir, { recursive: true });
 			journal(dir, { event: "trial-started", ...entry, session: sessionNumber });
 			log(`trial ${entry.position + 1}/${plan.length}: ${entry.task} / ${entry.condition} / #${entry.trial}`);
-			const result = await runTrial(spec, run, entry, trialDir, dir, proxy, keySource, key.keyId);
+			const result = await runTrial(spec, run, entry, trialDir, dir, proxy, keySource, key.keyId, evidence);
 			writeAtomically(resultPath, `${JSON.stringify(result, null, "\t")}\n`);
 			journal(dir, { event: "trial-finished", ...entry, status: result.status });
 			summary.ranThisSession += 1;
@@ -423,6 +427,8 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	} finally {
 		await proxy.close();
 		rmSync(run.scratchRoot, { recursive: true, force: true });
+		// A run that stopped before its first trial (a refused capability study) leaves nothing behind.
+		if (!existsSync(join(dir, "trials"))) rmSync(parent, { recursive: true, force: true });
 	}
 	for (const entry of plan) {
 		const resultPath = join(trialDirectory(dir, entry), "result.json");
@@ -435,6 +441,118 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	return summary;
 }
 
+/** The runtime capability each intervention operation needs (adapters/pi/capabilities.ts). */
+const INTERVENTION_CAPABILITIES: Readonly<Record<string, string>> = {
+	steer: "steering.steer",
+	queue: "steering.follow-up",
+	stop: "steering.stop",
+};
+
+/**
+ * Capability evidence for the conditions that carry interventions. Controls are offered only for admitted
+ * capabilities, so a trial that steers needs live-study evidence for its configuration. Evidence is keyed on Pi's
+ * configuration (models.json with the proxy port, settings, extensions, PI_* variables), so conditions sharing one
+ * configuration share one study. One study runs per run session (the port may differ between sessions), through the
+ * same proxy but unrecorded, before any trial. Returns the evidence directory per condition id. It refuses to go on
+ * when a required capability is not admitted: a trial would only be refused at the gate.
+ */
+async function gatherControlEvidence(
+	spec: EndoExperimentSpecV0,
+	dir: string,
+	sessionNumber: number,
+	scratchParent: string,
+	proxy: Awaited<ReturnType<typeof startEndoRecordingProxyV0>>,
+	keySource: PiCassetteKeySourceV0,
+	log: (line: string) => void,
+): Promise<Map<string, string>> {
+	const needing = spec.conditions.filter((condition) => Object.keys(condition.interventions ?? {}).length > 0);
+	const out = new Map<string, string>();
+	const groups = new Map<string, EndoExperimentConditionV0[]>();
+	for (const condition of needing) {
+		const configuration = canonicalEndoJsonV0({
+			modelEntry: condition.modelEntry ?? null,
+			settings: condition.settings ?? null,
+			extensions: condition.extensions ?? null,
+		});
+		groups.set(configuration, [...(groups.get(configuration) ?? []), condition]);
+	}
+	let index = 0;
+	for (const members of groups.values()) {
+		index += 1;
+		const evidenceRoot = join(dir, "evidence", `session-${sessionNumber}`, String(index));
+		const scratchRoot = join(scratchParent, `evidence-${index}`);
+		rmSync(scratchRoot, { recursive: true, force: true });
+		rmSync(evidenceRoot, { recursive: true, force: true });
+		mkdirSync(evidenceRoot, { recursive: true });
+		const first = members[0]!;
+		log(`capability study for ${members.map((member) => member.id).join(", ")} (proxy port ${proxy.port})`);
+		const scratch = createPiCassetteScratchV0(scratchRoot, {
+			baseUrl: `${proxy.origin}/v1`,
+			provider: spec.provider,
+			model: spec.model,
+			files: {},
+			...(first.modelEntry === undefined ? {} : { modelEntry: first.modelEntry }),
+			...(first.settings === undefined ? {} : { settings: first.settings }),
+			...(first.extensions === undefined ? {} : { extensions: first.extensions }),
+		});
+		// A proxy with no log refuses connections, so the study records its own model traffic into the run's evidence
+		// directory, apart from every trial's capture.
+		const studyLog = new EndoCaptureLogV0(
+			join(dir, "evidence", `session-${sessionNumber}`, `capture-${index}`),
+			piCassetteKeyV0(keySource),
+			"record",
+			{ async: true },
+		);
+		proxy.log = studyLog;
+		try {
+			const pi = piCassetteAttachmentV0({
+				root: evidenceRoot,
+				scratchRoot: scratch.root,
+				pi: spec.pi,
+				provider: spec.provider,
+				model: spec.model,
+				keySource,
+				requestTimeoutMs: Math.max(60_000, spec.timeoutMs),
+			});
+			await pi.identify();
+			await pi.checkLocal();
+			const studied = await pi.studyLive({ authorized: true, stepTimeoutMs: Math.min(spec.timeoutMs, 120_000) });
+			const states = studied.state.capabilities as { capability: string; status: string; reason?: string }[];
+			const needed = new Set(
+				members.flatMap((member) =>
+					Object.values(member.interventions ?? {}).map((entry) => INTERVENTION_CAPABILITIES[entry.operation]!),
+				),
+			);
+			const summary = [...needed].map((capability) => {
+				const state = states.find((candidate) => candidate.capability === capability);
+				return { capability, status: state?.status ?? "unknown", reason: state?.reason ?? null };
+			});
+			writeAtomically(
+				join(evidenceRoot, "capability-summary.json"),
+				`${JSON.stringify({ conditions: members.map((member) => member.id), proxyPort: proxy.port, summary }, null, "\t")}\n`,
+			);
+			journal(dir, {
+				event: "capability-study",
+				session: sessionNumber,
+				conditions: members.map((m) => m.id),
+				summary,
+			});
+			const refused = summary.filter((entry) => entry.status !== "admitted" && entry.status !== "admitted-partial");
+			if (refused.length > 0)
+				throw new TypeError(
+					`the live study did not admit ${refused.map((entry) => `${entry.capability} (${entry.status}${entry.reason === null ? "" : `: ${entry.reason}`})`).join(", ")}; no trial would be allowed to use it`,
+				);
+		} finally {
+			await proxy.flush();
+			proxy.log = null;
+			studyLog.close();
+			rmSync(scratchRoot, { recursive: true, force: true });
+		}
+		for (const member of members) out.set(member.id, evidenceRoot);
+	}
+	return out;
+}
+
 async function runTrial(
 	spec: EndoExperimentSpecV0,
 	run: EndoExperimentRunRecordV0,
@@ -444,6 +562,7 @@ async function runTrial(
 	proxy: Awaited<ReturnType<typeof startEndoRecordingProxyV0>>,
 	keySource: PiCassetteKeySourceV0,
 	keyId: string,
+	evidence: ReadonlyMap<string, string>,
 ): Promise<EndoExperimentTrialResultV0> {
 	const task = spec.tasks.find((candidate) => candidate.id === entry.task)!;
 	const condition = spec.conditions.find((candidate) => candidate.id === entry.condition)!;
@@ -466,7 +585,19 @@ async function runTrial(
 				name: task.id,
 				purpose: `experiment ${spec.id}: task ${task.id}, condition ${condition.id}, trial ${entry.trial}`,
 				workspace: task.workspace,
-				steps: task.prompts.map((text) => ({ op: "prompt" as const, text })),
+				steps: task.prompts.map((text, index) => {
+					// The condition's intervention for this task is applied during the first prompt.
+					const intervention = index === 0 ? condition.interventions?.[task.id] : undefined;
+					return intervention === undefined
+						? { op: "prompt" as const, text }
+						: {
+								op: "prompt-intervene" as const,
+								text,
+								operation: intervention.operation,
+								...(intervention.message === undefined ? {} : { message: intervention.message }),
+								after: { ...intervention.after },
+							};
+				}),
 			},
 			pi: spec.pi,
 			provider: spec.provider,
@@ -475,7 +606,7 @@ async function runTrial(
 			store,
 			scratchRoot: run.scratchRoot,
 			keySource,
-			evidenceFrom: null,
+			evidenceFrom: evidence.get(condition.id) ?? null,
 			timeoutMs: spec.timeoutMs,
 			...(condition.modelEntry === undefined ? {} : { modelEntry: condition.modelEntry }),
 			...(condition.settings === undefined ? {} : { settings: condition.settings }),
@@ -804,6 +935,9 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 							{ sha256: sha256HexV0(source), bytes: Buffer.byteLength(source), source },
 						]),
 					),
+					...(condition.interventions === undefined
+						? {}
+						: { intervention: condition.interventions[task.id] ?? null }),
 					...(condition.environment === undefined
 						? {}
 						: {

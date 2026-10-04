@@ -13,6 +13,7 @@ OpenAI-compatible server) and one machine.
 | [Cassette replays](#cassette-replays) | [`pi-conformance/1.0.1/cassettes/`](pi-conformance/1.0.1/cassettes/README.md) | 4 sessions, 40 replays, all EXACT; a real negative control |
 | [Variance study (E2)](#variance-study-e2) | [design](variance/1.0.1/DESIGN.md), [results](variance/1.0.1/RESULTS.md) | "unstable" under every arm: sampling, then the environment |
 | [Pinned-environment study (E3)](#pinned-environment-study-e3) | [design](pinned-environment/1.0.1/DESIGN.md), [results](pinned-environment/1.0.1/RESULTS.md) | "stable" with the environment pinned, deterministic sampling and the cache off |
+| [Steering study](#steering-study) | [design](steering/1.0.1/DESIGN.md), [results](steering/1.0.1/RESULTS.md) | a STEER and a QUEUE at a fixed point against a baseline, all in the deterministic condition |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle
@@ -92,6 +93,27 @@ With the cache on and the environment pinned, the result was stable too. The stu
 single pilot event, the first request after a server restart, suggests a cold cache can change a reply. Pinned
 coding-task cassettes replay EXACT. One metric (distinct final workspaces) is not interpreted, because the workspace
 digest now includes file times.
+
+## Steering study
+
+A third study ([design](steering/1.0.1/DESIGN.md), [results](steering/1.0.1/RESULTS.md)) used E3's fully pinned
+deterministic condition and two of E2's tasks, with three arms of 20 live trials per task: a baseline, an operator's
+STEER and an operator's QUEUE, applied once the first chunk of the second model response was relayed. Pre-registered
+checks held in all 120 trials: the baseline trials are identical to each other, no steered trial differs before the
+point, the first difference is the request that carries the message (request 3 for a steer, one past the baseline's
+last for a queue), and the recording proxy shows the message consumed in exactly that request.
+
+What the agent did with the message was measured apart from the success check, and the success check passed in every
+trial:
+- **QUEUE** was followed in 40 of 40 trials.
+- **STEER** was followed in 20 of 20 trials on `tool-use` (after ten times the output) and in 0 of 20 on
+  `implement-function`.
+
+The pilot, whose requests differ from the main run's only in a hash in the working-directory path, followed the steer on
+`tool-use` in 0 of 3 trials. A post-hoc replication reproduced each run's requests exactly at its own path, so the
+response to a steer is a reproducible function of the whole prompt, and on this task it differed between two paths that
+differ only in that hash. Only two paths were tried, and this study measured one. Each steered cassette replays EXACT five times against the real Pi. Two transport errors in 622
+requests were a keep-alive race. This is one Pi release, one model, two tasks, one message each and one point.
 
 ## Fake-only paths
 

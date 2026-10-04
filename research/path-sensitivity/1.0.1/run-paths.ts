@@ -119,34 +119,25 @@ export async function runPathsV0(options: RunPathsOptionsV0): Promise<PathsRecor
 	return record;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-	const [kind, ...rest] = process.argv.slice(2);
+/** The command line: `pilot <out>` or `main <paths> <out> [--seed n]`. */
+export function parseRunPathsArgs(argv: readonly string[]): RunPathsOptionsV0 {
+	const [kind, ...rest] = argv;
 	const seedIndex = rest.indexOf("--seed");
 	const seed = seedIndex === -1 ? undefined : Number(rest[seedIndex + 1]);
-	const positional = rest.filter((entry, index) => entry !== "--seed" && index !== seedIndex + 1);
-	const run = async () => {
-		if (kind === "pilot" && positional.length === 1)
-			return runPathsV0({
-				out: positional[0]!,
-				kind: "pilot",
-				labels: [...PILOT_LABELS],
-				...(seed === undefined ? {} : { seed }),
-			});
-		if (
-			kind === "main" &&
-			positional.length === 2 &&
-			Number.isInteger(Number(positional[0])) &&
-			Number(positional[0]) > 0
-		)
-			return runPathsV0({
-				out: positional[1]!,
-				kind: "main",
-				labels: sampleLabels(Number(positional[0])),
-				...(seed === undefined ? {} : { seed }),
-			});
-		throw new TypeError("usage: run-paths.ts pilot <out> | main <paths> <out> [--seed n]");
-	};
-	run().then(
+	if (seed !== undefined && (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff))
+		throw new TypeError("--seed must be an unsigned 32-bit integer");
+	const positional = rest.filter((_, index) => seedIndex === -1 || (index !== seedIndex && index !== seedIndex + 1));
+	const seeded = seed === undefined ? {} : { seed };
+	if (kind === "pilot" && positional.length === 1)
+		return { out: positional[0]!, kind: "pilot", labels: [...PILOT_LABELS], ...seeded };
+	const count = Number(positional[0]);
+	if (kind === "main" && positional.length === 2 && Number.isInteger(count) && count > 0)
+		return { out: positional[1]!, kind: "main", labels: sampleLabels(count), ...seeded };
+	throw new TypeError("usage: run-paths.ts pilot <out> | main <paths> <out> [--seed n]");
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	runPathsV0(parseRunPathsArgs(process.argv.slice(2))).then(
 		(record) =>
 			process.stdout.write(
 				`${JSON.stringify({ order: record.order, missing: record.missing, seed: record.seed }, null, "\t")}\n`,

@@ -17,7 +17,7 @@ import {
 	toolCallSignature,
 } from "../research/path-sensitivity/1.0.1/analyze.ts";
 import { EXCLUDED_PATHS, pathSpec, sampleLabels, scratchHashOf } from "../research/path-sensitivity/1.0.1/make-spec.ts";
-import { pathsRecordV0, runPathsV0 } from "../research/path-sensitivity/1.0.1/run-paths.ts";
+import { parseRunPathsArgs, pathsRecordV0, runPathsV0 } from "../research/path-sensitivity/1.0.1/run-paths.ts";
 import { MESSAGES, steeringSpec } from "../research/steering/1.0.1/make-spec.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
@@ -129,6 +129,33 @@ describe("the pre-registered pure rules (DESIGN §6, §7)", () => {
 		expect(pattern(bash("wc -l notes.txt", "cat notes.txt"))).toBe("both-commands-in-one-turn");
 		expect(pattern(bash("wc -l notes.txt"), bash("cat notes.txt"))).toBe("commands-in-separate-turns");
 		expect(pattern(bash("cat notes.txt"))).toBe("only-the-asked-for-command");
+	});
+});
+
+describe("the driver's command line", () => {
+	it("parses pilot and main, with and without a seed, and refuses anything else", () => {
+		expect(parseRunPathsArgs(["pilot", "out"])).toEqual({
+			out: "out",
+			kind: "pilot",
+			labels: ["pilot-1", "pilot-2"],
+		});
+		expect(parseRunPathsArgs(["main", "3", "out", "--seed", "9"])).toEqual({
+			out: "out",
+			kind: "main",
+			labels: ["p01", "p02", "p03"],
+			seed: 9,
+		});
+		expect(parseRunPathsArgs(["main", "2", "out"])).toMatchObject({ out: "out", labels: ["p01", "p02"] });
+		expect(parseRunPathsArgs(["main", "--seed", "9", "2", "out"])).toMatchObject({ seed: 9, labels: ["p01", "p02"] });
+		for (const bad of [
+			[],
+			["main"],
+			["main", "0", "out"],
+			["main", "x", "out"],
+			["pilot"],
+			["main", "2", "out", "--seed", "-1"],
+		])
+			expect(() => parseRunPathsArgs(bad), JSON.stringify(bad)).toThrow(/usage|seed/);
 	});
 });
 

@@ -451,6 +451,67 @@ EVOLVE / research loop:
 15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
     explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
 
+
+### Experimental research tracks (deferred; not commitments)
+
+These are candidates for a separate EVOLVE experiment mode, not features to build before the core
+runtime → replay → evaluation loop is reliable. Each track should use the same candidate, trajectory,
+evaluation, resource-accounting, and promotion contracts. Start with small, falsifiable experiments;
+do not import a framework merely because its paper reports a benchmark gain.
+
+18. **Experience-derived skill evolution.** Compare a versioned skill bank against no skills, static
+    skills, and simple trajectory retrieval. Extract, merge, retire, and select procedural skills from
+    successful *and failed* episodes. Record provenance, applicability conditions, counterexamples,
+    and the tasks used to validate each skill. Useful starting points: [CODESKILL](https://arxiv.org/abs/2605.25430),
+    [Socratic-SWE](https://arxiv.org/abs/2606.07412), and [MUSE-Autoskill](https://arxiv.org/abs/2605.27366).
+
+19. **Episodic + semantic memory.** Test retrieval of similar past cases alongside compact, reusable
+    lessons, with ablations for each channel and no-memory baselines. Measure retrieval precision,
+    stale advice, context cost, and transfer to unseen repositories. Candidate references:
+    [ExpeRepair](https://github.com/ExpeRepair/ExpeRepair) and
+    [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred
+    lessons, and make every memory item traceable to its source episodes.
+
+20. **Search-time planning and branching.** Compare one main trajectory with bounded alternatives,
+    tree search, or iterative refinement. Test whether extra branches improve verified outcomes enough
+    to justify their tool calls, tokens, latency, and failure surface. Start with
+    [SWE-Search](https://arxiv.org/abs/2410.20285); keep branch budgets and stopping rules explicit.
+
+21. **Agent architecture and workflow search.** Explore candidate combinations of planner, memory,
+    tool-use, verification, and orchestration components. Maintain an archive of variants and their
+    evidence rather than retaining only the latest winner. References: [AgentSquare](https://arxiv.org/abs/2410.03992),
+    [A Self-Improving Coding Agent (SICA)](https://arxiv.org/abs/2504.15228), and the
+    [Darwin Gödel Machine](https://arxiv.org/abs/2505.22954). Run candidate edits in disposable,
+    isolated worktrees; never let an unvalidated candidate rewrite the active installation.
+
+22. **Evaluator and task-set co-evolution.** Investigate agents that propose new tasks, edge cases,
+    tests, or adversarial environments as well as changes to the agent itself. Treat generated tests as
+    hypotheses, not trusted ground truth: independently validate them, test for evaluator gaming, and
+    keep a sealed promotion holdout outside both candidate search and evaluator tuning.
+
+23. **Writable procedural memory.** Test whether versioned scripts, repository maps, and executable
+    skills outperform prose-only memory. Begin with small, reviewable artifacts and explicit execution
+    permissions; do not reproduce a complex writable-memory architecture until simpler approaches show
+    a measurable limitation. A research lead is [Spotlight: Memory](https://www.percepta.ai/blog/spotlight-memory).
+
+24. **Model adaptation / training providers.** Once runtime experiments have enough clean data, compare
+    prompt and policy changes, memory/skill changes, and optional training methods on the same tasks.
+    [Finetuning with Sampling](https://arxiv.org/abs/2610.02140) is one candidate for a separate
+    training provider, not a dependency of the runtime core. Track data provenance, training cost,
+    held-out transfer, and regressions on previously solved tasks.
+
+**Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate
+exploration/validation data from an untouched promotion holdout; include repeated fresh trials and
+uncertainty; test transfer across tasks and repositories (and, where practical, models or runtimes);
+report regressions, tool/token/cost budgets, and safety-check results; preserve failed candidates and
+their evidence. Cassette replay tests reproducibility under recorded responses; claims of improvement
+must also survive fresh model executions. A benchmark score alone never grants promotion.
+
+**Research index:** [survey of self-evolving coding agents](https://arxiv.org/html/2608.03392v1) for
+additional methods and comparisons. Treat reported gains as hypotheses to reproduce, not guarantees
+that a method will transfer to Endophasia's runtime-neutral setting.
+
+
 Hardening and artifact:
 
 16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order

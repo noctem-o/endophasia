@@ -204,9 +204,52 @@ new cognition
       └───────────────────────↺
 ~~~
 
-Adaptation methods such as [REEF](https://github.com/Human-Agent-Society/reef) or [RRSI](https://github.com/google-research/rrsi) plug in as optional providers behind the same experiment and evidence contracts; they are not bundled. GEPA-style selection, RL training, self-play, and bounded recursive self-improvement can occupy the same provider surface when their inputs and outputs can be represented honestly.
+### Evolve providers
 
-A stored result identifies everything needed to understand it: candidate revision, runtime and model identity, cognition policy, environment revision, evaluator and grader identity, seeds and trial count, usage, and a digest of the result bundle. A simulated result says it was simulated.
+EVOLVE must not require one benchmark runner, adaptation framework, sandbox, or trainer. Provider contracts should let users install only the parts they need; the runtime-neutral core defines the seams and experiment records, not a preferred stack.
+
+~~~mermaid
+flowchart TB
+    E["Endophasia EVOLVE"] --> R["Runtime"]
+    E --> N["Environment"]
+    E --> V["Evaluation"]
+    E --> A["Adaptation"]
+    E --> T["Training, optional"]
+    N --> S["Sandbox"]
+    V --> O["Experiment record"]
+    A --> O
+    T --> O
+~~~
+
+These projects are reference points for future adapters, not dependencies or bundled components. Names indicate candidate roles, not a commitment to support every project.
+
+| Job | Candidate provider |
+| :--- | :--- |
+| Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor) |
+| Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
+| Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
+| Run isolated environments | Local Docker, CubeSandbox, or another sandbox provider |
+| Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
+| Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
+| Train model weights | [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
+
+Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
+
+A stored experiment should identify the exact inputs needed to interpret and reproduce its result:
+
+- candidate revision;
+- runtime and model identity;
+- cognition policy;
+- environment pack and revision;
+- sandbox image or template identity;
+- evaluator and grader identity;
+- seeds and run count;
+- usage and wall-clock time;
+- result-bundle digest.
+
+A simulated environment must be labelled as simulated. A world-model result must never be presented as a real execution result. The record should preserve which provider produced each observation and which evaluator judged it; neither a successful simulation nor an evaluator score is, by itself, proof of real-world performance or permission to promote a candidate.
+
+Adaptation methods, including GEPA-style selection, RL training, self-play, and bounded recursive self-improvement, can share these provider seams when their inputs and outputs can be represented honestly. They remain optional and must be evaluated against the same explicit experiment and evidence contracts.
 
 ### Evolution evidence
 
@@ -474,12 +517,93 @@ EVOLVE / research loop:
 15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
     explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
 
+
+
 Hardening and artifact:
 
 16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
     events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
 17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
     comparison → promotion decision trail that another researcher can replay.
+
+### Experimental research tracks (deferred; not commitments)
+
+These are candidates for a separate EVOLVE experiment mode, not features to build before the core
+runtime → replay → evaluation loop is reliable. Each track should use the same candidate, trajectory,
+evaluation, resource-accounting, and promotion contracts. Start with small, falsifiable experiments;
+do not import a framework merely because its paper reports a benchmark gain.
+
+18. **Experience-derived skill evolution.** Compare a versioned skill bank against no skills, static
+    skills, and simple trajectory retrieval. Extract, merge, retire, and select procedural skills from
+    successful *and failed* episodes. Record provenance, applicability conditions, counterexamples,
+    and the tasks used to validate each skill. Useful starting points: [CODESKILL](https://arxiv.org/abs/2605.25430),
+    [Socratic-SWE](https://arxiv.org/abs/2606.07412), and [MUSE-Autoskill](https://arxiv.org/abs/2605.27366).
+
+19. **Episodic + semantic memory.** Test retrieval of similar past cases alongside compact, reusable
+    lessons, with ablations for each channel and no-memory baselines. Measure retrieval precision,
+    stale advice, context cost, and transfer to unseen repositories. Candidate references:
+    [ExpeRepair](https://github.com/ExpeRepair/ExpeRepair) and
+    [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred
+    lessons, and make every memory item traceable to its source episodes.
+
+20. **Search-time planning and branching.** Compare one main trajectory with bounded alternatives,
+    tree search, or iterative refinement. Test whether extra branches improve verified outcomes enough
+    to justify their tool calls, tokens, latency, and failure surface. Start with
+    [SWE-Search](https://arxiv.org/abs/2410.20285); keep branch budgets and stopping rules explicit.
+
+21. **Agent architecture and workflow search.** Explore candidate combinations of planner, memory,
+    tool-use, verification, and orchestration components. Maintain an archive of variants and their
+    evidence rather than retaining only the latest winner. References: [AgentSquare](https://arxiv.org/abs/2410.03992),
+    [A Self-Improving Coding Agent (SICA)](https://arxiv.org/abs/2504.15228), and the
+    [Darwin Gödel Machine](https://arxiv.org/abs/2505.22954). Run candidate edits in disposable,
+    isolated worktrees; never let an unvalidated candidate rewrite the active installation.
+
+22. **Evaluator and task-set co-evolution.** Investigate agents that propose new tasks, edge cases,
+    tests, or adversarial environments as well as changes to the agent itself. Treat generated tests as
+    hypotheses, not trusted ground truth: independently validate them, test for evaluator gaming, and
+    keep a sealed promotion holdout outside both candidate search and evaluator tuning.
+
+23. **Writable procedural memory.** Test whether versioned scripts, repository maps, and executable
+    skills outperform prose-only memory. Begin with small, reviewable artifacts and explicit execution
+    permissions; do not reproduce a complex writable-memory architecture until simpler approaches show
+    a measurable limitation. A research lead is [Spotlight: Memory](https://www.percepta.ai/blog/spotlight-memory).
+
+24. **Model adaptation / training providers.** Once runtime experiments have enough clean data, compare
+    prompt and policy changes, memory/skill changes, and optional training methods on the same tasks.
+    [Finetuning with Sampling](https://arxiv.org/abs/2610.02140) is one candidate for a separate
+    training provider, not a dependency of the runtime core. Track data provenance, training cost,
+    held-out transfer, and regressions on previously solved tasks.
+
+25. **Evidence lineage and epistemic lifecycle (Magpie integration).** Test whether experiment
+    records can support inspectable claims without collapsing measured outcomes, evidence standing,
+    and permission into one verdict. Bind claims to exact run manifests, artifacts, evaluator versions,
+    and source episodes; track dependencies so changed or invalidated evidence cannot silently support
+    downstream conclusions. Compare a minimal evidence ledger with richer lineage and policy-governed
+    standing, measuring auditability, invalidation correctness, and unsupported-promotion rate. Keep
+    Magpie optional and its current capabilities honest: this track begins with a read-only vertical
+    slice, not an assumed complete claim-writing or epistemic-gate implementation. A valid policy
+    result establishes only the predicate it actually checks, not general truth or authority.
+
+26. **Metamorphic robustness and causal sensitivity.** Test agents on paired repository variants where
+    semantics-preserving changes should not materially alter outcomes, causal evidence changes should
+    change the repair, and irrelevant distractors should not redirect it. Validate transformations
+    independently; report paired outcome differences, regressions, tool use, latency, and cost, not just
+    pass rate. Keep transformation generation separate from trusted checking and adjudication, and
+    test transfer across repositories, model families, and harnesses. Research leads include
+    [A Jagged Frontier](https://arxiv.org/abs/2608.18389) and the
+    [MetaProbe project](https://github.com/huyuelin/MetaProbe); treat submitted or unreviewed work as
+    research leads, not established guarantees.
+
+**Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate
+exploration/validation data from an untouched promotion holdout; include repeated fresh trials and
+uncertainty; test transfer across tasks and repositories (and, where practical, models or runtimes);
+report regressions, tool/token/cost budgets, and safety-check results; preserve failed candidates and
+their evidence. Cassette replay tests reproducibility under recorded responses; claims of improvement
+must also survive fresh model executions. A benchmark score alone never grants promotion.
+
+**Research index:** [survey of self-evolving coding agents](https://arxiv.org/html/2608.03392v1) for
+additional methods and comparisons. Treat reported gains as hypotheses to reproduce, not guarantees
+that a method will transfer to Endophasia's runtime-neutral setting.
 
 The ordering is deliberate: runtime truth comes before replay; replay comes before evaluation; evaluation comes before
 evolution. The project should not grow another large protocol-only migration before these contracts have survived a real

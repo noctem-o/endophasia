@@ -233,3 +233,4 @@ process: [cassettes/](cassettes/README.md). 2.6 MB in 103 files.
 | `main/` | the main run: `bundle.json`, `summary.md`, `experiment.json`, `plan.json`, `journal.jsonl`, `environment/`, `trials/**/result.json` |
 | `analysis/` | the pilot estimate, manipulation checks and P checks (pilot and main), the spot checks, the cassette replays, and the post-hoc path replication |
 | `cassettes/` | one cassette per task per arm, with the consent note and the secret-scan result |
+| `raw/` | the complete run directories (pilot, main and the two post-hoc runs): every trial's store, evidence and logs, with the operator's documented path exception to the secret scan ([README](raw/README.md)) |

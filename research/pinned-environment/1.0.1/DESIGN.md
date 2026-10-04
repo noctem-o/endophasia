@@ -249,7 +249,41 @@ commit. That section is reserved for this; it is not a change to the design.
 
 ### N, chosen after the pilot
 
-(Reserved.)
+Written on 2026-10-04 from the pilot, before the main run started. The pilot ran 36 trials (3 tasks × A-p, B-p, B+C-p,
+B+C-u × 3) from 11:09 to 11:15 UTC, with ordering seed 2532091956. All 36 completed; none errored.
+
+**Manipulation checks:** all passed, so every arm is valid.
+
+| Check | Result |
+| :--- | :--- |
+| M1 | 187/187 requests |
+| M2a | 36/36 trials |
+| M2b | 187/187 requests |
+| M3 | 18/18 trials |
+| M5 | 36/36 trials |
+| M6 | 0 durations in 139 requests of the pinned arms |
+
+The pilot's report, plan and run record are in `pilot/`; the M5/M6 output and this estimate are in `analysis/`.
+
+**Mean wall time per trial** (start to end, including Pi's start-up):
+
+| task | A-p | B-p | B+C-p | B+C-u |
+| :--- | ---: | ---: | ---: | ---: |
+| tool-use | 4.0 s | 4.0 s | 7.5 s | 7.6 s |
+| fix-failing-test | 8.8 s | 7.2 s | 19.2 s | 18.4 s |
+| implement-function | 6.7 s | 6.9 s | 11.3 s | 12.3 s |
+
+One round of the 12 cells takes 113.8 s. With 10% overhead:
+
+| N | T(N) |
+| ---: | ---: |
+| 10 | 0.35 h |
+| 12 | 0.42 h |
+| 15 | 0.52 h |
+| 20 | 0.70 h |
+
+**N = 20**: the largest value in {10, 12, 15, 20} with T(N) ≤ 10 h. The main run is 240 trials (3 tasks × 4 arms ×
+20). With 20 identical trials out of 20, the 95% Wilson lower bound is 0.839.
 
 ## 10. Checks after the run
 

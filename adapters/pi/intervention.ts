@@ -67,6 +67,9 @@ interface RequestStateV0 {
 	/** When the request was recorded (ISO-8601), to place it among captured requests when no proxy point is known. */
 	recordedAt: string;
 	outcome: { status: "accepted"; disposition: string | null } | { status: "refused"; reason: string } | null;
+	/** The ids of the acceptance and consumption records, so the consequence can derive from them. */
+	acceptedEventId: string | null;
+	consumedEventId: string | null;
 	consumedEvent: string | null;
 	consumedExchange: number | null;
 	consequence: boolean;
@@ -122,6 +125,8 @@ export class PiInterventionDeskV0 {
 					sequence: event.sequence,
 					recordedAt: event.at,
 					outcome: null,
+					acceptedEventId: null,
+					consumedEventId: null,
 					consumedEvent: null,
 					consumedExchange: null,
 					consequence: false,
@@ -132,9 +137,11 @@ export class PiInterventionDeskV0 {
 			case "intervention.consequence": {
 				const state = [...this.#requests.values()].find((entry) => entry.request.requestId === p.requestId);
 				if (state === undefined) break;
-				if (event.kind === "intervention.accepted")
+				if (event.kind === "intervention.accepted") {
 					state.outcome = { status: "accepted", disposition: (p.disposition as string | null) ?? null };
-				else if (event.kind === "intervention.consumed") {
+					state.acceptedEventId = event.id;
+				} else if (event.kind === "intervention.consumed") {
+					state.consumedEventId = event.id;
 					state.consumedEvent = p.captureEvent as string;
 					state.consumedExchange = p.exchange as number;
 				} else state.consequence = true;
@@ -467,7 +474,12 @@ export class PiInterventionDeskV0 {
 				consumption,
 				effect: this.#effect(state),
 			};
-			this.#record("intervention.consequence", consequence, [state.eventId]);
+			// The consequence weighs acceptance against consumption, so it derives from the request and from both.
+			this.#record(
+				"intervention.consequence",
+				consequence,
+				[state.eventId, state.acceptedEventId, state.consumedEventId].filter((id): id is string => id !== null),
+			);
 		}
 	}
 

@@ -186,7 +186,7 @@ export function manipulation(dir: string) {
  * comparing, each id (`tool_calls[].id`, `tool_call_id`) is replaced by its ordinal of first appearance in the trial.
  * Nothing else is normalized. (As in E2's exploratory analysis.)
  */
-function normalizeToolCallIds(requests: Record<string, unknown>[]): Record<string, unknown>[] {
+export function normalizeToolCallIds(requests: Record<string, unknown>[]): Record<string, unknown>[] {
 	const ids = new Map<string, string>();
 	const ordinal = (id: unknown) => {
 		if (typeof id !== "string") return id;

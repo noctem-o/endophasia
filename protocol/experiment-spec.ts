@@ -3,8 +3,14 @@
 // (model ids, sampling parameters as Pi sent them, the Pi fingerprint, the digest domain) is observed at run time and
 // written beside the results, never declared here.
 //
-// A condition changes only Pi's documented configuration (docs/models.md, docs/settings.md): fields merged into the
-// models.json model entry, and a settings.json. Requests are never altered in flight: the proxy is pass-through.
+// A condition changes only Pi's documented configuration and extension points (docs/models.md, docs/settings.md,
+// docs/extensions.md): fields merged into the models.json model entry, a settings.json, and extensions (TypeScript
+// modules Pi loads from its agent directory's extensions/, e.g. a before_provider_request handler). Pi changes its own
+// requests; they are never altered in flight: the proxy is pass-through.
+//
+// Manipulation checks (`manipulation`) declare what each condition is supposed to change in Pi's requests, so the
+// report can verify it from the recorded bodies and usage: the injected fields, that nothing else changed against a
+// baseline condition, zero cache reads, and that a no-op extension is a no-op.
 //
 // A task is one or more prompts in a fresh scratch workspace built from a template, with an optional deterministic
 // success check: a command (argv, no shell) run in the workspace after the session; exit code 0 passes.
@@ -39,6 +45,18 @@ export interface EndoExperimentConditionV0 {
 	modelEntry?: { [key: string]: JsonValueV0 };
 	/** Pi's settings.json for this condition (documented settings only). */
 	settings?: { [key: string]: JsonValueV0 };
+	/** Extensions installed in the scratch agent directory's extensions/: file name (`[a-z0-9-]+.ts`) to source. */
+	extensions?: { [file: string]: string };
+}
+
+/** What the report verifies about each condition's requests (DESIGN-declared manipulation checks). */
+export interface EndoExperimentManipulationV0 {
+	/** The condition the others are compared with (M2). */
+	baseline: string;
+	/** Per condition: the top-level request fields it injects, with their values (M1), and whether it must read no cache (M3). */
+	conditions: { [condition: string]: { injected: { [field: string]: JsonValueV0 }; zeroCacheReads?: boolean } };
+	/** Pairs of conditions whose requests must be identical (M4: a no-op extension against no extension). */
+	identical?: [string, string][];
 }
 
 export interface EndoExperimentSpecV0 {
@@ -62,6 +80,7 @@ export interface EndoExperimentSpecV0 {
 	timeoutMs: number;
 	tasks: EndoExperimentTaskV0[];
 	conditions: EndoExperimentConditionV0[];
+	manipulation?: EndoExperimentManipulationV0;
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -79,6 +98,7 @@ const SPEC_KEYS = new Set([
 	"timeoutMs",
 	"tasks",
 	"conditions",
+	"manipulation",
 ]);
 
 function text(value: unknown, max = 4096): value is string {
@@ -163,7 +183,8 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (!plain(condition)) return "a condition is not an object";
 		const c = condition as Record<string, unknown>;
 		for (const key of Object.keys(c))
-			if (!["id", "description", "modelEntry", "settings"].includes(key)) return `unknown condition field ${key}`;
+			if (!["id", "description", "modelEntry", "settings", "extensions"].includes(key))
+				return `unknown condition field ${key}`;
 		if (typeof c.id !== "string" || !SLUG.test(c.id)) return "a condition id must be a slug ([a-z0-9-], at most 64)";
 		if (conditionIds.has(c.id)) return `duplicate condition ${c.id}`;
 		conditionIds.add(c.id);
@@ -172,6 +193,39 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (c.modelEntry !== undefined && "id" in (c.modelEntry as object))
 			return `condition ${c.id}: modelEntry may not change the model id`;
 		if (c.settings !== undefined && !plain(c.settings)) return `condition ${c.id}: settings must be an object`;
+		if (c.extensions !== undefined) {
+			if (!plain(c.extensions)) return `condition ${c.id}: extensions must be an object of file name to source`;
+			for (const [file, source] of Object.entries(c.extensions))
+				if (!/^[a-z0-9][a-z0-9-]{0,63}\.ts$/.test(file) || typeof source !== "string" || source.length === 0)
+					return `condition ${c.id}: bad extension ${file}`;
+		}
+	}
+	if (v.manipulation !== undefined) {
+		if (!plain(v.manipulation)) return "manipulation must be an object";
+		const m = v.manipulation as Record<string, unknown>;
+		for (const key of Object.keys(m))
+			if (!["baseline", "conditions", "identical"].includes(key)) return `unknown manipulation field ${key}`;
+		if (typeof m.baseline !== "string" || !conditionIds.has(m.baseline))
+			return "manipulation.baseline must name a condition";
+		if (!plain(m.conditions)) return "manipulation.conditions must be an object";
+		for (const [id, entry] of Object.entries(m.conditions as object)) {
+			if (!conditionIds.has(id)) return `manipulation.conditions names an unknown condition ${id}`;
+			if (!plain(entry) || !plain((entry as Record<string, unknown>).injected))
+				return `manipulation.conditions.${id}.injected must be an object`;
+			const zero = (entry as Record<string, unknown>).zeroCacheReads;
+			if (zero !== undefined && typeof zero !== "boolean")
+				return `manipulation.conditions.${id}.zeroCacheReads must be a boolean`;
+		}
+		if (m.identical !== undefined) {
+			if (!Array.isArray(m.identical)) return "manipulation.identical must be a list of condition pairs";
+			for (const pair of m.identical)
+				if (
+					!Array.isArray(pair) ||
+					pair.length !== 2 ||
+					!pair.every((id) => typeof id === "string" && conditionIds.has(id))
+				)
+					return "manipulation.identical: each entry is a pair of condition ids";
+		}
 	}
 	return null;
 }

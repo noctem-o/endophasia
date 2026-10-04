@@ -1,0 +1,222 @@
+{
+	"order": [
+		{
+			"condition": "a",
+			"position": 0,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 1,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "none",
+			"position": 2,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "none",
+			"position": 3,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 4,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "none",
+			"position": 5,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 6,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 7,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 8,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 9,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 10,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 11,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 12,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "none",
+			"position": 13,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 14,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "b-c",
+			"position": 15,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 16,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "b-c",
+			"position": 17,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "none",
+			"position": 18,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "b-c",
+			"position": 19,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "none",
+			"position": 20,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 21,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 22,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 23,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 24,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "none",
+			"position": 25,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 26,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "a",
+			"position": 27,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "a",
+			"position": 28,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 29,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 30,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "none",
+			"position": 31,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 32,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 33,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "none",
+			"position": 34,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 35,
+			"task": "tool-use",
+			"trial": 2
+		}
+	],
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"seed": 2892665600
+}

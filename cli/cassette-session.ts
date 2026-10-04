@@ -112,6 +112,8 @@ export function createPiCassetteScratchV0(
 		files: Readonly<Record<string, string>>;
 		/** Fields merged into the models.json model entry (Pi's documented model configuration); never `id`. */
 		modelEntry?: Readonly<Record<string, JsonValueV0>>;
+		/** Extensions for Pi's agent directory (extensions/<file>), when the session needs any. */
+		extensions?: Readonly<Record<string, string>>;
 		/** Pi's settings.json (documented settings), when the session needs one. */
 		settings?: Readonly<Record<string, JsonValueV0>>;
 	},
@@ -133,6 +135,11 @@ export function createPiCassetteScratchV0(
 	);
 	if (options.settings !== undefined)
 		writeFileSync(join(root, "agent", "settings.json"), JSON.stringify(options.settings));
+	if (options.extensions !== undefined) {
+		mkdirSync(join(root, "agent", "extensions"), { recursive: true });
+		for (const [file, source] of Object.entries(options.extensions))
+			writeFileSync(join(root, "agent", "extensions", file), source);
+	}
 	for (const [path, content] of Object.entries(options.files)) {
 		mkdirSync(dirname(join(root, "work", path)), { recursive: true });
 		writeFileSync(join(root, "work", path), content);
@@ -270,6 +277,7 @@ export interface PiCassetteRecordOptionsV0 {
 	/** Passed to createPiCassetteScratchV0 (an experiment condition's documented Pi configuration). */
 	readonly modelEntry?: Readonly<Record<string, JsonValueV0>>;
 	readonly settings?: Readonly<Record<string, JsonValueV0>>;
+	readonly extensions?: Readonly<Record<string, string>>;
 	/** Runs after the session closed and before the scratch root is removed (an experiment's success check). */
 	readonly afterSession?: (scratchRoot: string) => Promise<void> | void;
 }
@@ -291,8 +299,9 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		files: options.scenario.workspace,
 		...(options.modelEntry === undefined ? {} : { modelEntry: options.modelEntry }),
 		...(options.settings === undefined ? {} : { settings: options.settings }),
+		...(options.extensions === undefined ? {} : { extensions: options.extensions }),
 	});
-	const log = new EndoCaptureLogV0(options.store, key, "record");
+	const log = new EndoCaptureLogV0(options.store, key, "record", { async: true });
 	const notes: string[] = [];
 	let step = 0;
 	const driver = (op: string, payload: Record<string, JsonValueV0> = {}) => {
@@ -377,6 +386,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		await options.afterSession?.(scratch.root);
 	} finally {
 		if (session !== null) await (session as PiSessionAttachmentV0).close().catch(() => {});
+		await options.proxy.flush();
 		options.proxy.log = null;
 		log.close();
 		rmSync(scratch.root, { recursive: true, force: true });

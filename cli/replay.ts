@@ -84,7 +84,9 @@ export async function proxyRecordCommand(argv: readonly string[]): Promise<void>
 	const store = flags.get("--store");
 	if (positional.length > 0 || upstream === undefined || store === undefined)
 		throw new TypeError("usage: endo proxy record --upstream <origin> --store <root> [--port n] [--fixture]");
-	const log = new EndoCaptureLogV0(store, piCassetteKeyV0(keySource(on.has("--fixture"))), "record");
+	const log = new EndoCaptureLogV0(store, piCassetteKeyV0(keySource(on.has("--fixture"))), "record", {
+		async: true,
+	});
 	const proxy = await startEndoRecordingProxyV0({ upstream, log, port: integer(flags.get("--port"), "--port", 0) });
 	process.stderr.write(
 		`recording ${proxy.origin} -> ${upstream} into ${store}/capture (point baseUrl at ${proxy.origin}/v1)\n`,

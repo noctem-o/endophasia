@@ -1,0 +1,88 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 16,
+	"task": "implement-function",
+	"condition": "b",
+	"trial": 1,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T06:57:41.900Z",
+	"endedAt": "2026-10-04T06:57:48.554Z",
+	"store": "trials/implement-function/b/1/store",
+	"session": "endo.session.pi.endo-pi-default-8481dc90980f",
+	"exchanges": 5,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "a3463836b4d289e8a88c16a45bb1766353f3da9aff964bfc7f679bfff66315c8",
+			"bytes": 233
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+		"bytes": 2121
+	},
+	"notes": []
+}

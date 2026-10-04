@@ -161,6 +161,42 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		expect(existsSync(join(dir, "experiment.json"))).toBe(false);
 	});
 
+	it("a condition's extension is installed and recorded; a declared injection the requests lack fails M1 and invalidates the arm", async () => {
+		const dir = join(base, "extensions");
+		const extension =
+			'export default function (pi: any) {\n\tpi.on("before_provider_request", (event: any) => ({ ...event.payload, temperature: 0 }));\n}\n';
+		const s = spec({
+			id: "endo.experiment.test-extensions",
+			trials: 1,
+			conditions: [
+				{ id: "a", description: "no-op", extensions: { "noop.ts": "export default function () {}\n" } },
+				{ id: "b", description: "temperature 0", extensions: { "sampling.ts": extension } },
+			],
+			manipulation: { baseline: "a", conditions: { a: { injected: {} }, b: { injected: { temperature: 0 } } } },
+		});
+		await runEndoExperimentV0({ spec: s, dir, log: () => {}, scratchParent: base });
+		const { report } = reportEndoExperimentV0(dir);
+		const r = report as {
+			manipulation: {
+				M1: { status: string; failures: string[] };
+				M2a: { status: string };
+				validity: Record<string, string>;
+			};
+			cells: {
+				condition: string;
+				servingInputs: { extensions: Record<string, { sha256: string; source: string }> };
+			}[];
+		};
+		// The fake Pi does not run extensions: the declared injection never reaches a request, and the check says so.
+		expect(r.manipulation.M1.status).toBe("FAIL");
+		expect(r.manipulation.M1.failures[0]).toMatch(/read\/b\/#0 request 1: temperature is null, expected 0/);
+		expect(r.manipulation.M2a.status).toBe("PASS");
+		expect(r.manipulation.validity).toEqual({ a: "valid", b: "invalid" });
+		const b = r.cells.find((cell) => cell.condition === "b")!;
+		expect(b.servingInputs.extensions["sampling.ts"]!.source).toBe(extension);
+		expect(b.servingInputs.extensions["sampling.ts"]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+	}, 120_000);
+
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {
 		const dir = join(base, "partial");
 		const first = await runEndoExperimentV0({ spec: spec(), dir, maxTrials: 3, log: () => {}, scratchParent: base });

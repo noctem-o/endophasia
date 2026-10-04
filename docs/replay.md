@@ -140,6 +140,9 @@ exactly the recorded requests, in order.
   machine state can make a result digest and the next request differ. That shows up as a tools divergence or a
   cassette miss, and it is reported, not hidden. The committed tool-use scenario runs `wc -l`, which is deterministic
   on the restored file.
+  Observed in the variance study (`research/variance/1.0.1/RESULTS.md`): replays of coding-task trials ended with a
+  cassette miss at the second request. Pi's `ls -la` printed the restore time, and `node --test` printed new
+  durations. The snapshot keeps no timestamps, by design.
 - **Behaviour on another machine, Pi release or configuration.** A replay binds the recorded path and port and needs
   the same digest domain. Differences in Pi's fingerprint or configuration are flagged by the comparison.
 - **Usage and timing.** They are reported as deltas and never judged ([trajectory.md](trajectory.md)). Under a

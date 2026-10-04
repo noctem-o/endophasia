@@ -36,6 +36,16 @@
  * condition named. Conditions 2-4 apply to the unique strict best when one exists; without one they are recorded as
  * not applicable, so the tie or the missing evidence is the named reason. The policy is pure and deterministic over
  * the context, reads nothing beyond it, and exits through the protocol validator of the decision it records.
+ *
+ * A measured run-to-run band now exists, and this policy does not read it. `research/variance/1.0.1/RESULTS.md`
+ * measured how often repeated live runs of the same task agree, for Pi 1.0.1 with qwen3.8-27b on llama.cpp: three
+ * synthetic tasks, N = 20 per arm, under Pi's default sampling and under temperature 0 and a fixed seed. Per judged
+ * trajectory layer it reports modal agreement (95% Wilson) and pairwise agreement (trial bootstrap). It also reports
+ * success-check pass rates, which were 20/20 in every cell.
+ *
+ * That band is over trajectory agreement and check pass rates, for one runtime, model and machine. It is not over this
+ * policy's evolve-set scores, so it is not a calibration of `noise-pruner`. Selection is unchanged. Wiring a measured
+ * band in (RRSI calibrates delta from repeated base evaluations, see the table above) is later work.
  */
 
 import type { EndoCandidateV0, EndoSelectionConditionV0, EndoSelectionDecisionV0 } from "../../protocol/evolution.ts";

@@ -57,6 +57,11 @@ function tailOf(bytes: Uint8Array): EndoFrameLogTailV0 {
 }
 
 /** Serialize one frame: the 4-byte big-endian length, the payload, the 32-byte digest. */
+/** The frame bytes for `payload`, exactly as append writes them (for writers that append asynchronously). */
+export function endoFrameBytesV0(payload: Uint8Array): Buffer {
+	return frameOf(payload);
+}
+
 function frameOf(payload: Uint8Array): Buffer {
 	const frame = Buffer.alloc(4 + payload.length + DIGEST_LENGTH);
 	frame.writeUInt32BE(payload.length, 0);

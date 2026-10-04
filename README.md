@@ -382,7 +382,7 @@ A valid proposal does not widen the model's permission.
     pairwise exact-match rate (95% Wilson) and the trial-level modal agreement. It also gives the first divergences,
     outcomes, the check pass rate, and usage and timing as median and IQR, never judged. The bundle uses the existing
     evaluation records.
-  - So far it has run for real only as a smoke test (N=2, one task). The variance study is separate work.
+  - It has run for real in the variance study below (360 trials), the pilot and a smoke test.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.
@@ -428,6 +428,29 @@ for these scenarios on one machine.
 - tool effects outside the scratch root;
 - the behaviour of nondeterministic tools;
 - behaviour on another machine, Pi release or configuration.
+
+A first variance study ([design](research/variance/1.0.1/DESIGN.md), [results](research/variance/1.0.1/RESULTS.md))
+ran Pi 1.0.1 with qwen3.8-27b on three small synthetic tasks: 20 live trials per task under each of three arms. The
+arms were Pi's defaults, temperature 0 with a fixed seed, and that plus llama.cpp's prompt cache off; documented Pi
+extensions changed the requests, and manipulation checks passed.
+
+**Under Pi's defaults**, every pair of runs first differed at a model reply: sampling.
+
+**With temperature 0 and a fixed seed**, no identical request got a different reply (1,140 pairs). Lifecycle and
+outcome were identical in 20 of 20 trials on every task. What still varied on the coding tasks was tool output (test
+durations, file timestamps). It fed back into the next request, and with the prompt cache on it sometimes changed
+which tool calls followed.
+
+The pre-registered verdict is "unstable" under every arm, because the tools layer of the coding tasks varies. Every
+trial passed its success check.
+
+Two findings came out of the study:
+- **A proxy bug.** The recording proxy had delayed relaying the server's connection close, which caused Pi
+  `Connection error.` turns. It was fixed, and the affected run was discarded and repeated.
+- **A replay limit.** Replay cannot reproduce sessions whose tools print wall-clock values. All three spot-check
+  replays of coding-task trials ended in an explicit cassette miss.
+
+This is one Pi release, one model and quantization, one machine and N = 20.
 
 The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases
 (reordered or different tool calls, different result content, missing usage, another Pi version, another digest

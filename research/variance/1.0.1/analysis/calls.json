@@ -1,0 +1,122 @@
+{
+	"exploratory": "DESIGN §12 deviation 1: not a pre-registered metric",
+	"cells": {
+		"fix-failing-test/a": {
+			"trials": 20,
+			"distinctCallSequences": 20,
+			"modalAgreement": {
+				"successes": 1,
+				"n": 20,
+				"rate": 0.05,
+				"wilson95": {
+					"low": 0.008881,
+					"high": 0.236131
+				}
+			}
+		},
+		"fix-failing-test/b": {
+			"trials": 20,
+			"distinctCallSequences": 2,
+			"modalAgreement": {
+				"successes": 15,
+				"n": 20,
+				"rate": 0.75,
+				"wilson95": {
+					"low": 0.531299,
+					"high": 0.888138
+				}
+			}
+		},
+		"fix-failing-test/b-c": {
+			"trials": 20,
+			"distinctCallSequences": 1,
+			"modalAgreement": {
+				"successes": 20,
+				"n": 20,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.838875,
+					"high": 1
+				}
+			}
+		},
+		"implement-function/a": {
+			"trials": 20,
+			"distinctCallSequences": 20,
+			"modalAgreement": {
+				"successes": 1,
+				"n": 20,
+				"rate": 0.05,
+				"wilson95": {
+					"low": 0.008881,
+					"high": 0.236131
+				}
+			}
+		},
+		"implement-function/b": {
+			"trials": 20,
+			"distinctCallSequences": 4,
+			"modalAgreement": {
+				"successes": 10,
+				"n": 20,
+				"rate": 0.5,
+				"wilson95": {
+					"low": 0.299298,
+					"high": 0.700702
+				}
+			}
+		},
+		"implement-function/b-c": {
+			"trials": 20,
+			"distinctCallSequences": 1,
+			"modalAgreement": {
+				"successes": 20,
+				"n": 20,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.838875,
+					"high": 1
+				}
+			}
+		},
+		"tool-use/a": {
+			"trials": 20,
+			"distinctCallSequences": 2,
+			"modalAgreement": {
+				"successes": 12,
+				"n": 20,
+				"rate": 0.6,
+				"wilson95": {
+					"low": 0.386582,
+					"high": 0.781193
+				}
+			}
+		},
+		"tool-use/b": {
+			"trials": 20,
+			"distinctCallSequences": 1,
+			"modalAgreement": {
+				"successes": 20,
+				"n": 20,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.838875,
+					"high": 1
+				}
+			}
+		},
+		"tool-use/b-c": {
+			"trials": 20,
+			"distinctCallSequences": 1,
+			"modalAgreement": {
+				"successes": 20,
+				"n": 20,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.838875,
+					"high": 1
+				}
+			}
+		}
+	}
+}

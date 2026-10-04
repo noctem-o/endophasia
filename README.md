@@ -351,6 +351,9 @@ llama.cpp, and one machine:
   consumed where Pi documents (80 of 80 steered trials). What the agent did with them differed by task and arm, and
   on one task between two runs whose requests differ only in the working-directory path (a post-hoc replication
   reproduced each exactly).
+- [Path-sensitivity study](research/README.md#path-sensitivity-study): the steering results over 30 working-directory
+  paths. A QUEUE was followed at every path, a STEER on one task at 27 of 30 and on the other at 6 of 30, and the
+  baseline itself varied with the path on that second task.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and

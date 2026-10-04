@@ -1,0 +1,4 @@
+{"at":"2026-10-04T18:27:48.099Z","event":"path-started","label":"pilot-1","hash":"db865aedb21e"}
+{"at":"2026-10-04T18:31:07.968Z","event":"path-finished","label":"pilot-1","planned":12,"completed":12,"errored":0,"ranThisSession":12,"movedToInterrupted":0,"remaining":0}
+{"at":"2026-10-04T18:31:07.968Z","event":"path-started","label":"pilot-2","hash":"0a275d344317"}
+{"at":"2026-10-04T18:34:13.737Z","event":"path-finished","label":"pilot-2","planned":12,"completed":12,"errored":0,"ranThisSession":12,"movedToInterrupted":0,"remaining":0}

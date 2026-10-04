@@ -1,0 +1,11 @@
+{"direction":"command","fields":{"name":"endophasia-local-check"},"type":"set_session_name"}
+{"direction":"event","record":{"name":"endophasia-local-check","type":"session_info_changed"},"type":"session_info_changed"}
+{"direction":"response","ok":true,"type":"set_session_name"}
+{"direction":"command","fields":{},"type":"get_entries"}
+{"data":{"entries":[{"id":"82bc81d0","parentId":null,"raw":{"id":"82bc81d0","modelId":"qwen3.8-27b","parentId":null,"provider":"endolocal","timestamp":"2026-10-04T19:23:32.613Z","type":"model_change"},"timestamp":"2026-10-04T19:23:32.613Z","type":"model_change"},{"id":"4313039e","parentId":"82bc81d0","raw":{"id":"4313039e","parentId":"82bc81d0","thinkingLevel":"off","timestamp":"2026-10-04T19:23:32.613Z","type":"thinking_level_change"},"timestamp":"2026-10-04T19:23:32.613Z","type":"thinking_level_change"},{"id":"fc2e7d7f","parentId":"4313039e","raw":{"id":"fc2e7d7f","name":"endophasia-local-check","parentId":"4313039e","timestamp":"2026-10-04T19:23:32.620Z","type":"session_info"},"timestamp":"2026-10-04T19:23:32.620Z","type":"session_info"}],"leafId":"fc2e7d7f"},"direction":"response","ok":true,"type":"get_entries"}
+{"direction":"command","fields":{"since":"82bc81d0"},"type":"get_entries"}
+{"data":{"entries":[{"id":"4313039e","parentId":"82bc81d0","raw":{"id":"4313039e","parentId":"82bc81d0","thinkingLevel":"off","timestamp":"2026-10-04T19:23:32.613Z","type":"thinking_level_change"},"timestamp":"2026-10-04T19:23:32.613Z","type":"thinking_level_change"},{"id":"fc2e7d7f","parentId":"4313039e","raw":{"id":"fc2e7d7f","name":"endophasia-local-check","parentId":"4313039e","timestamp":"2026-10-04T19:23:32.620Z","type":"session_info"},"timestamp":"2026-10-04T19:23:32.620Z","type":"session_info"}],"leafId":"fc2e7d7f"},"direction":"response","ok":true,"type":"get_entries"}
+{"direction":"command","fields":{"since":"fc2e7d7f"},"type":"get_entries"}
+{"data":{"entries":[],"leafId":"fc2e7d7f"},"direction":"response","ok":true,"type":"get_entries"}
+{"direction":"command","fields":{"since":"endo-unknown-8b27d71eef9c967e"},"type":"get_entries"}
+{"data":{"refusal":"Entry not found: endo-unknown-8b27d71eef9c967e"},"direction":"response","ok":false,"type":"get_entries"}

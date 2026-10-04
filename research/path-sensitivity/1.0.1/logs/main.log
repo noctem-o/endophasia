@@ -1,0 +1,420 @@
+path 1/30: p23 (scratch 8c67c1c9902e)
+  capability study for steer, queue (proxy port 42143)
+  trial 1/12: implement-function / queue / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: tool-use / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: tool-use / base / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: implement-function / steer / #1
+  trial 9/12: tool-use / queue / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: tool-use / base / #1
+  trial 12/12: implement-function / queue / #1
+path 2/30: p27 (scratch db0a0f56b64a)
+  capability study for steer, queue (proxy port 42453)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: implement-function / base / #0
+  trial 4/12: tool-use / steer / #0
+  trial 5/12: tool-use / queue / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: tool-use / base / #1
+  trial 9/12: implement-function / queue / #1
+  trial 10/12: implement-function / steer / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: tool-use / queue / #1
+path 3/30: p12 (scratch 21fc340029dd)
+  capability study for steer, queue (proxy port 42139)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: implement-function / queue / #0
+  trial 3/12: tool-use / queue / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: implement-function / base / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: tool-use / steer / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: implement-function / queue / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: tool-use / base / #1
+path 4/30: p24 (scratch 647c39f9cff9)
+  capability study for steer, queue (proxy port 42907)
+  trial 1/12: tool-use / steer / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: tool-use / base / #1
+  trial 10/12: tool-use / queue / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: implement-function / steer / #1
+path 5/30: p06 (scratch 14c0541d9b2c)
+  capability study for steer, queue (proxy port 39067)
+  trial 1/12: implement-function / queue / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: tool-use / base / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: tool-use / queue / #0
+  trial 7/12: tool-use / base / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: tool-use / queue / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: tool-use / steer / #1
+path 6/30: p26 (scratch 0e1e354557a6)
+  capability study for steer, queue (proxy port 35863)
+  trial 1/12: tool-use / steer / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: tool-use / queue / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: tool-use / queue / #1
+  trial 12/12: tool-use / steer / #1
+path 7/30: p17 (scratch 05618d242692)
+  capability study for steer, queue (proxy port 34005)
+  trial 1/12: implement-function / base / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: implement-function / steer / #0
+  trial 4/12: implement-function / queue / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: tool-use / queue / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: implement-function / steer / #1
+  trial 9/12: tool-use / queue / #1
+  trial 10/12: implement-function / queue / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: tool-use / base / #1
+path 8/30: p04 (scratch ac8aa4cd4a82)
+  capability study for steer, queue (proxy port 35671)
+  trial 1/12: implement-function / queue / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: implement-function / base / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: tool-use / steer / #1
+path 9/30: p18 (scratch 87463ca11ea9)
+  capability study for steer, queue (proxy port 46565)
+  trial 1/12: implement-function / queue / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: implement-function / steer / #0
+  trial 4/12: tool-use / base / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: tool-use / steer / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: implement-function / queue / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: tool-use / base / #1
+path 10/30: p14 (scratch afda0bba29f8)
+  capability study for steer, queue (proxy port 44677)
+  trial 1/12: tool-use / queue / #0
+  trial 2/12: implement-function / queue / #0
+  trial 3/12: implement-function / steer / #0
+  trial 4/12: tool-use / steer / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: tool-use / base / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: tool-use / steer / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: implement-function / base / #1
+path 11/30: p13 (scratch 8ef79083e08a)
+  capability study for steer, queue (proxy port 40401)
+  trial 1/12: implement-function / base / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: implement-function / steer / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: tool-use / base / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: implement-function / steer / #1
+  trial 8/12: tool-use / base / #1
+  trial 9/12: tool-use / queue / #1
+  trial 10/12: implement-function / queue / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: tool-use / steer / #1
+path 12/30: p30 (scratch 837c9b36e4f1)
+  capability study for steer, queue (proxy port 36655)
+  trial 1/12: implement-function / base / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: implement-function / steer / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: implement-function / steer / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: implement-function / base / #1
+  trial 10/12: tool-use / queue / #1
+  trial 11/12: tool-use / base / #1
+  trial 12/12: tool-use / steer / #1
+path 13/30: p05 (scratch 1b428220d4d1)
+  capability study for steer, queue (proxy port 39883)
+  trial 1/12: implement-function / steer / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: implement-function / base / #0
+  trial 4/12: tool-use / steer / #0
+  trial 5/12: tool-use / queue / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: implement-function / base / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: tool-use / steer / #1
+path 14/30: p11 (scratch c33d545f9436)
+  capability study for steer, queue (proxy port 33177)
+  trial 1/12: implement-function / steer / #0
+  trial 2/12: implement-function / queue / #0
+  trial 3/12: tool-use / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: tool-use / base / #1
+  trial 10/12: implement-function / steer / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: tool-use / queue / #1
+path 15/30: p22 (scratch 5a00c8f2cc2c)
+  capability study for steer, queue (proxy port 35197)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: implement-function / queue / #0
+  trial 6/12: implement-function / base / #0
+  trial 7/12: implement-function / base / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: tool-use / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: implement-function / steer / #1
+path 16/30: p02 (scratch 532fb8a0a142)
+  capability study for steer, queue (proxy port 37185)
+  trial 1/12: tool-use / queue / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: tool-use / steer / #1
+  trial 9/12: tool-use / base / #1
+  trial 10/12: implement-function / steer / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: implement-function / base / #1
+path 17/30: p01 (scratch d078678ac6f1)
+  capability study for steer, queue (proxy port 41937)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: implement-function / queue / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: implement-function / base / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: implement-function / steer / #1
+path 18/30: p10 (scratch 827fd30124fc)
+  capability study for steer, queue (proxy port 40775)
+  trial 1/12: implement-function / queue / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: implement-function / base / #0
+  trial 4/12: tool-use / steer / #0
+  trial 5/12: tool-use / queue / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: implement-function / steer / #1
+  trial 8/12: tool-use / steer / #1
+  trial 9/12: tool-use / queue / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: tool-use / base / #1
+path 19/30: p21 (scratch 505e3eadaaa2)
+  capability study for steer, queue (proxy port 37405)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: implement-function / queue / #0
+  trial 3/12: implement-function / steer / #0
+  trial 4/12: tool-use / steer / #0
+  trial 5/12: tool-use / queue / #0
+  trial 6/12: implement-function / base / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: tool-use / steer / #1
+  trial 9/12: tool-use / base / #1
+  trial 10/12: tool-use / queue / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: implement-function / base / #1
+path 20/30: p28 (scratch 5233da85a388)
+  capability study for steer, queue (proxy port 36719)
+  trial 1/12: tool-use / queue / #0
+  trial 2/12: implement-function / base / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: tool-use / base / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: implement-function / base / #1
+  trial 10/12: implement-function / steer / #1
+  trial 11/12: tool-use / queue / #1
+  trial 12/12: tool-use / base / #1
+path 21/30: p20 (scratch a4a21f4b0e70)
+  capability study for steer, queue (proxy port 44481)
+  trial 1/12: tool-use / steer / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: tool-use / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: tool-use / base / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: implement-function / base / #1
+  trial 8/12: implement-function / steer / #1
+  trial 9/12: tool-use / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: tool-use / queue / #1
+path 22/30: p08 (scratch 022ab63bdde7)
+  capability study for steer, queue (proxy port 40435)
+  trial 1/12: implement-function / steer / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: tool-use / base / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / base / #1
+  trial 9/12: implement-function / queue / #1
+  trial 10/12: tool-use / steer / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: tool-use / base / #1
+path 23/30: p03 (scratch acd35ef41a50)
+  capability study for steer, queue (proxy port 46307)
+  trial 1/12: tool-use / steer / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: tool-use / base / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: implement-function / queue / #0
+  trial 6/12: implement-function / base / #0
+  trial 7/12: tool-use / base / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: implement-function / queue / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: implement-function / steer / #1
+path 24/30: p29 (scratch c8f6886e77f2)
+  capability study for steer, queue (proxy port 39653)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: tool-use / steer / #0
+  trial 7/12: implement-function / steer / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: implement-function / queue / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: tool-use / steer / #1
+  trial 12/12: implement-function / base / #1
+path 25/30: p09 (scratch dbcf0c3259b6)
+  capability study for steer, queue (proxy port 42245)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: implement-function / base / #0
+  trial 4/12: implement-function / queue / #0
+  trial 5/12: implement-function / steer / #0
+  trial 6/12: tool-use / queue / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: tool-use / steer / #1
+  trial 9/12: tool-use / base / #1
+  trial 10/12: implement-function / queue / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: implement-function / base / #1
+path 26/30: p25 (scratch 17dce4b60295)
+  capability study for steer, queue (proxy port 40775)
+  trial 1/12: implement-function / base / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: tool-use / base / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: tool-use / base / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: tool-use / queue / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: tool-use / steer / #1
+path 27/30: p19 (scratch 057a0d3d1ff6)
+  capability study for steer, queue (proxy port 42711)
+  trial 1/12: implement-function / base / #0
+  trial 2/12: implement-function / steer / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: tool-use / queue / #0
+  trial 5/12: tool-use / base / #0
+  trial 6/12: tool-use / steer / #0
+  trial 7/12: tool-use / base / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: tool-use / steer / #1
+  trial 10/12: tool-use / queue / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: implement-function / steer / #1
+path 28/30: p07 (scratch 6b10085a89a9)
+  capability study for steer, queue (proxy port 37583)
+  trial 1/12: tool-use / queue / #0
+  trial 2/12: implement-function / base / #0
+  trial 3/12: tool-use / base / #0
+  trial 4/12: implement-function / steer / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: implement-function / queue / #0
+  trial 7/12: implement-function / queue / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: tool-use / steer / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: tool-use / base / #1
+path 29/30: p16 (scratch 147c79f67067)
+  capability study for steer, queue (proxy port 46471)
+  trial 1/12: implement-function / steer / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: implement-function / queue / #0
+  trial 5/12: tool-use / base / #0
+  trial 6/12: implement-function / base / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / steer / #1
+  trial 9/12: implement-function / base / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / queue / #1
+  trial 12/12: tool-use / steer / #1
+path 30/30: p15 (scratch 2190334c08d9)
+  capability study for steer, queue (proxy port 36993)
+  trial 1/12: tool-use / queue / #0
+  trial 2/12: tool-use / base / #0
+  trial 3/12: tool-use / steer / #0
+  trial 4/12: implement-function / queue / #0
+  trial 5/12: implement-function / base / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: tool-use / queue / #1
+  trial 8/12: implement-function / queue / #1
+  trial 9/12: tool-use / steer / #1
+  trial 10/12: tool-use / base / #1
+  trial 11/12: implement-function / base / #1
+  trial 12/12: implement-function / steer / #1

@@ -1,0 +1,65 @@
+{
+	"seed": 3826429729,
+	"selection": "mulberry32(paths seed), Fisher-Yates over completed trials in path order then plan order, first three",
+	"replays": [
+		{
+			"path": "p17",
+			"trial": "implement-function/base/#1",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 5,
+			"misses": 0,
+			"unserved": 0,
+			"interventions": [],
+			"interventionAsRequired": true,
+			"flags": [],
+			"notes": []
+		},
+		{
+			"path": "p20",
+			"trial": "implement-function/queue/#0",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 7,
+			"misses": 0,
+			"unserved": 0,
+			"interventions": [
+				{
+					"operation": "queue",
+					"recordedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"reissuedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"proposalDigestMatches": true,
+					"result": "accepted"
+				}
+			],
+			"interventionAsRequired": true,
+			"flags": [],
+			"notes": []
+		},
+		{
+			"path": "p13",
+			"trial": "implement-function/base/#1",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 5,
+			"misses": 0,
+			"unserved": 0,
+			"interventions": [],
+			"interventionAsRequired": true,
+			"flags": [],
+			"notes": []
+		}
+	]
+}

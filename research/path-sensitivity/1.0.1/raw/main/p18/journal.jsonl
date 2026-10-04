@@ -1,0 +1,27 @@
+{"at":"2026-10-04T19:02:03.084Z","event":"run-session-started","session":1,"proxyPort":46565}
+{"at":"2026-10-04T19:02:21.739Z","event":"capability-study","session":1,"conditions":["steer","queue"],"summary":[{"capability":"steering.steer","status":"admitted-partial","reason":"live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities"},{"capability":"steering.follow-up","status":"admitted-partial","reason":"live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities"}]}
+{"at":"2026-10-04T19:02:21.739Z","event":"trial-started","condition":"queue","position":0,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T19:02:39.308Z","event":"trial-finished","condition":"queue","position":0,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:02:39.309Z","event":"trial-started","condition":"queue","position":1,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T19:02:51.318Z","event":"trial-finished","condition":"queue","position":1,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:02:51.318Z","event":"trial-started","condition":"steer","position":2,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T19:03:05.918Z","event":"trial-finished","condition":"steer","position":2,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:03:05.918Z","event":"trial-started","condition":"base","position":3,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T19:03:13.434Z","event":"trial-finished","condition":"base","position":3,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:03:13.434Z","event":"trial-started","condition":"base","position":4,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T19:03:25.169Z","event":"trial-finished","condition":"base","position":4,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:03:25.169Z","event":"trial-started","condition":"steer","position":5,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T19:03:47.110Z","event":"trial-finished","condition":"steer","position":5,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T19:03:47.110Z","event":"trial-started","condition":"queue","position":6,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T19:03:58.425Z","event":"trial-finished","condition":"queue","position":6,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:03:58.425Z","event":"trial-started","condition":"base","position":7,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T19:04:10.154Z","event":"trial-finished","condition":"base","position":7,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:04:10.154Z","event":"trial-started","condition":"steer","position":8,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T19:04:24.092Z","event":"trial-finished","condition":"steer","position":8,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:04:24.092Z","event":"trial-started","condition":"queue","position":9,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T19:04:40.762Z","event":"trial-finished","condition":"queue","position":9,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:04:40.762Z","event":"trial-started","condition":"steer","position":10,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T19:05:02.764Z","event":"trial-finished","condition":"steer","position":10,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:05:02.764Z","event":"trial-started","condition":"base","position":11,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T19:05:10.289Z","event":"trial-finished","condition":"base","position":11,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T19:05:10.289Z","event":"run-session-ended","session":1,"planned":12,"completed":12,"errored":0,"ranThisSession":12,"movedToInterrupted":0,"remaining":0}

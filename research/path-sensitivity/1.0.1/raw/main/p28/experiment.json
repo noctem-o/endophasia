@@ -1,0 +1,198 @@
+{
+	"schemaVersion": "endo.experiment-run.v0",
+	"runner": "endo-experiment-runner.3",
+	"spec": {
+		"schemaVersion": "endo.experiment-spec.v0",
+		"id": "endo.experiment.path-sensitivity-1.0.1-p28",
+		"description": "Path-sensitivity study, path p28 (research/path-sensitivity/1.0.1/DESIGN.md)",
+		"trials": 2,
+		"seed": null,
+		"pi": "/usr/bin/pi",
+		"upstream": "http://127.0.0.1:8080",
+		"provider": "endolocal",
+		"model": "qwen3.8-27b",
+		"digestDomain": "fixture",
+		"timeoutMs": 600000,
+		"tasks": [
+			{
+				"id": "tool-use",
+				"prompts": [
+					"Work only in the current working directory. Do these three steps in order, one tool call each: 1. Use the read tool to read notes.txt. 2. Use the edit tool to replace the word draft with the word final in notes.txt. 3. Use the bash tool to run exactly this command: wc -l notes.txt. Then reply with the single word: done"
+				],
+				"workspace": {
+					"notes.txt": "status: draft\nowner: endophasia fixture\nnote: this file is part of a synthetic test workspace\n"
+				},
+				"check": {
+					"argv": [
+						"grep",
+						"-q",
+						"status: final",
+						"notes.txt"
+					]
+				}
+			},
+			{
+				"id": "implement-function",
+				"prompts": [
+					"Implement the function toRoman in src/roman.js so that the tests pass. Run the tests with: node --test. Do not change any file under test/. When all tests pass, reply with the single word: done"
+				],
+				"workspace": {
+					"package.json": "{\"name\":\"roman-task\",\"private\":true,\"type\":\"module\"}\n",
+					"src/roman.js": "// Convert a whole number from 1 to 3999 to a Roman numeral.\nexport function toRoman(n) {\n\tthrow new Error(\"not implemented\");\n}\n",
+					"test/roman.test.js": "import assert from \"node:assert/strict\";\nimport { test } from \"node:test\";\nimport { toRoman } from \"../src/roman.js\";\n\ntest(\"converts numbers to Roman numerals\", () => {\n\tconst cases = [\n\t\t[1, \"I\"],\n\t\t[4, \"IV\"],\n\t\t[9, \"IX\"],\n\t\t[14, \"XIV\"],\n\t\t[40, \"XL\"],\n\t\t[90, \"XC\"],\n\t\t[400, \"CD\"],\n\t\t[1994, \"MCMXCIV\"],\n\t\t[3999, \"MMMCMXCIX\"],\n\t];\n\tfor (const [n, roman] of cases) assert.equal(toRoman(n), roman);\n});\n\ntest(\"rejects numbers outside 1 to 3999 with a RangeError\", () => {\n\tassert.throws(() => toRoman(0), RangeError);\n\tassert.throws(() => toRoman(4000), RangeError);\n});\n"
+				},
+				"check": {
+					"argv": [
+						"node",
+						"-e",
+						"const { createHash } = require(\"node:crypto\");\nconst { readFileSync } = require(\"node:fs\");\nconst { spawnSync } = require(\"node:child_process\");\nconst digest = createHash(\"sha256\").update(readFileSync(\"test/roman.test.js\")).digest(\"hex\");\nif (digest !== \"cacb2a3e75b0a047119c91a410da80a898edb2bb62fb50802b7173b2f9d469a7\") { console.log(\"the test file was changed\"); process.exit(2); }\nconst run = spawnSync(process.execPath, [\"--test\"], { stdio: \"inherit\" });\nprocess.exit(run.status ?? 1);"
+					],
+					"timeoutMs": 60000
+				}
+			}
+		],
+		"conditions": [
+			{
+				"id": "base",
+				"description": "baseline: no intervention",
+				"extensions": {
+					"endo-arm.ts": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+				},
+				"environment": {
+					"variables": {
+						"TZ": "UTC",
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs"
+					},
+					"files": {
+						"test-reporter.mjs": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n"
+					},
+					"fileTime": "2026-01-01T00:00:00Z"
+				}
+			},
+			{
+				"id": "steer",
+				"description": "STEER at the fixed point",
+				"extensions": {
+					"endo-arm.ts": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+				},
+				"environment": {
+					"variables": {
+						"TZ": "UTC",
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs"
+					},
+					"files": {
+						"test-reporter.mjs": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n"
+					},
+					"fileTime": "2026-01-01T00:00:00Z"
+				},
+				"interventions": {
+					"tool-use": {
+						"operation": "steer",
+						"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat notes.txt",
+						"after": {
+							"exchange": 2,
+							"chunks": 1
+						}
+					},
+					"implement-function": {
+						"operation": "steer",
+						"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat src/roman.js",
+						"after": {
+							"exchange": 2,
+							"chunks": 1
+						}
+					}
+				}
+			},
+			{
+				"id": "queue",
+				"description": "QUEUE (follow-up) at the fixed point",
+				"extensions": {
+					"endo-arm.ts": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+				},
+				"environment": {
+					"variables": {
+						"TZ": "UTC",
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs"
+					},
+					"files": {
+						"test-reporter.mjs": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n"
+					},
+					"fileTime": "2026-01-01T00:00:00Z"
+				},
+				"interventions": {
+					"tool-use": {
+						"operation": "queue",
+						"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat notes.txt",
+						"after": {
+							"exchange": 2,
+							"chunks": 1
+						}
+					},
+					"implement-function": {
+						"operation": "queue",
+						"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat src/roman.js",
+						"after": {
+							"exchange": 2,
+							"chunks": 1
+						}
+					}
+				}
+			}
+		],
+		"manipulation": {
+			"baseline": "base",
+			"conditions": {
+				"base": {
+					"injected": {
+						"temperature": 0,
+						"seed": 1234,
+						"cache_prompt": false
+					},
+					"zeroCacheReads": true
+				},
+				"steer": {
+					"injected": {
+						"temperature": 0,
+						"seed": 1234,
+						"cache_prompt": false
+					},
+					"zeroCacheReads": true
+				},
+				"queue": {
+					"injected": {
+						"temperature": 0,
+						"seed": 1234,
+						"cache_prompt": false
+					},
+					"zeroCacheReads": true
+				}
+			}
+		}
+	},
+	"specSha256": "5233da85a388f4ebb097a1593733f4baf6c47a7af88cdab7772da203113cae00",
+	"seed": 3109003513,
+	"seedSource": "drawn",
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"experiment": {
+		"schemaVersion": "endo.experiment.v0",
+		"id": "endo.experiment.path-sensitivity-1.0.1-p28",
+		"environment": {
+			"schemaVersion": "endo.environment-profile.v0",
+			"environmentId": "endophasia-scratch-workspace",
+			"simulated": false
+		},
+		"model": "endolocal/qwen3.8-27b",
+		"budget": {
+			"trialsPerCell": 2,
+			"cells": 6
+		},
+		"provenance": "endo-experiment-runner.3; spec sha256 5233da85a388f4ebb097a1593733f4baf6c47a7af88cdab7772da203113cae00"
+	},
+	"scratchRoot": "/tmp/endo-experiment-5233da85a388/scratch",
+	"proxyPort": 36719,
+	"createdAt": "2026-10-04T19:35:58.813Z"
+}

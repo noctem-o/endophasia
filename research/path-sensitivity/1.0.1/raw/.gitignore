@@ -1,0 +1,2 @@
+# The stores' event logs are named *.log, which the repository ignores everywhere else: keep them here.
+!*.log

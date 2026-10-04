@@ -204,9 +204,52 @@ new cognition
       └───────────────────────↺
 ~~~
 
-Adaptation methods such as [REEF](https://github.com/Human-Agent-Society/reef) or [RRSI](https://github.com/google-research/rrsi) plug in as optional providers behind the same experiment and evidence contracts; they are not bundled. GEPA-style selection, RL training, self-play, and bounded recursive self-improvement can occupy the same provider surface when their inputs and outputs can be represented honestly.
+### Evolve providers
 
-A stored result identifies everything needed to understand it: candidate revision, runtime and model identity, cognition policy, environment revision, evaluator and grader identity, seeds and trial count, usage, and a digest of the result bundle. A simulated result says it was simulated.
+EVOLVE must not require one benchmark runner, adaptation framework, sandbox, or trainer. Provider contracts should let users install only the parts they need; the runtime-neutral core defines the seams and experiment records, not a preferred stack.
+
+~~~mermaid
+flowchart TB
+    E["Endophasia EVOLVE"] --> R["Runtime"]
+    E --> N["Environment"]
+    E --> V["Evaluation"]
+    E --> A["Adaptation"]
+    E --> T["Training, optional"]
+    N --> S["Sandbox"]
+    V --> O["Experiment record"]
+    A --> O
+    T --> O
+~~~
+
+These projects are reference points for future adapters, not dependencies or bundled components. Names indicate candidate roles, not a commitment to support every project.
+
+| Job | Candidate provider |
+| :--- | :--- |
+| Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor) |
+| Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
+| Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
+| Run isolated environments | Local Docker, CubeSandbox, or another sandbox provider |
+| Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
+| Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
+| Train model weights | [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
+
+Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
+
+A stored experiment should identify the exact inputs needed to interpret and reproduce its result:
+
+- candidate revision;
+- runtime and model identity;
+- cognition policy;
+- environment pack and revision;
+- sandbox image or template identity;
+- evaluator and grader identity;
+- seeds and run count;
+- usage and wall-clock time;
+- result-bundle digest.
+
+A simulated environment must be labelled as simulated. A world-model result must never be presented as a real execution result. The record should preserve which provider produced each observation and which evaluator judged it; neither a successful simulation nor an evaluator score is, by itself, proof of real-world performance or permission to promote a candidate.
+
+Adaptation methods, including GEPA-style selection, RL training, self-play, and bounded recursive self-improvement, can share these provider seams when their inputs and outputs can be represented honestly. They remain optional and must be evaluated against the same explicit experiment and evidence contracts.
 
 ### Evolution evidence
 

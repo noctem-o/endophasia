@@ -62,12 +62,16 @@ for (const label of Object.keys(outcome).sort()) {
 	});
 }
 
-const count = (key: (row: Row) => string) =>
-	rows.reduce<Record<string, number>>((counts, row) => ({ ...counts, [key(row)]: (counts[key(row)] ?? 0) + 1 }), {});
+const count = (key: (row: Row) => string) => {
+	const counts: Record<string, number> = {};
+	for (const row of rows) counts[key(row)] = (counts[key(row)] ?? 0) + 1;
+	return counts;
+};
 const cross = (key: (row: Row) => string) => {
 	const table: Record<string, Record<string, number>> = {};
 	for (const row of rows) {
-		const entry = (table[key(row)] ??= {});
+		table[key(row)] ??= {};
+		const entry = table[key(row)]!;
 		entry[row.steer] = (entry[row.steer] ?? 0) + 1;
 	}
 	return table;

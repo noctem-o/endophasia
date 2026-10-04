@@ -1,0 +1,76 @@
+{
+	"entries": [
+		{
+			"mtimeMs": 1791108806473,
+			"path": "agent",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791108806473,
+			"path": "agent/extensions",
+			"type": "directory"
+		},
+		{
+			"base64": "Ly8gRW5kb3BoYXNpYSB2YXJpYW5jZSBzdHVkeSBhcm0gKERFU0lHTi5tZCDCpzQpLiBBIGRvY3VtZW50ZWQgYmVmb3JlX3Byb3ZpZGVyX3JlcXVlc3QgaGFuZGxlci4KZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gKHBpOiBhbnkpIHsKCXBpLm9uKCJiZWZvcmVfcHJvdmlkZXJfcmVxdWVzdCIsIChldmVudDogYW55KSA9PiB1bmRlZmluZWQpOwp9Cg==",
+			"bytes": 196,
+			"executable": false,
+			"mtimeMs": 1791108806473,
+			"path": "agent/extensions/endo-arm.ts",
+			"type": "file"
+		},
+		{
+			"base64": "eyJwcm92aWRlcnMiOnsiZW5kb2xvY2FsIjp7ImJhc2VVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjQ1NTg3L3YxIiwiYXBpIjoib3BlbmFpLWNvbXBsZXRpb25zIiwiYXBpS2V5IjoibG9jYWwiLCJtb2RlbHMiOlt7ImlkIjoicXdlbjMuOC0yN2IifV19fX0=",
+			"bytes": 143,
+			"executable": false,
+			"mtimeMs": 1791108806473,
+			"path": "agent/models.json",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791108806473,
+			"path": "home",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791108806473,
+			"path": "work",
+			"type": "directory"
+		},
+		{
+			"base64": "eyJuYW1lIjoic2x1Zy10YXNrIiwicHJpdmF0ZSI6dHJ1ZSwidHlwZSI6Im1vZHVsZSJ9Cg==",
+			"bytes": 52,
+			"executable": false,
+			"mtimeMs": 1791108806473,
+			"path": "work/package.json",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791108806473,
+			"path": "work/src",
+			"type": "directory"
+		},
+		{
+			"base64": "Ly8gVHVybiBhIHRpdGxlIGludG8gYSBVUkwgc2x1Zy4KZXhwb3J0IGZ1bmN0aW9uIHNsdWdpZnkodGl0bGUpIHsKCXJldHVybiB0aXRsZS50b0xvd2VyQ2FzZSgpLnJlcGxhY2UoL1teYS16MC05XS9nLCAiLSIpOwp9Cg==",
+			"bytes": 124,
+			"executable": false,
+			"mtimeMs": 1791108806473,
+			"path": "work/src/slug.js",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791108806473,
+			"path": "work/test",
+			"type": "directory"
+		},
+		{
+			"base64": "aW1wb3J0IGFzc2VydCBmcm9tICJub2RlOmFzc2VydC9zdHJpY3QiOwppbXBvcnQgeyB0ZXN0IH0gZnJvbSAibm9kZTp0ZXN0IjsKaW1wb3J0IHsgc2x1Z2lmeSB9IGZyb20gIi4uL3NyYy9zbHVnLmpzIjsKCnRlc3QoImxvd2VyY2FzZXMgd29yZHMgYW5kIGpvaW5zIHRoZW0gd2l0aCBhIGRhc2giLCAoKSA9PiB7Cglhc3NlcnQuZXF1YWwoc2x1Z2lmeSgiSGVsbG8gV29ybGQiKSwgImhlbGxvLXdvcmxkIik7Cn0pOwoKdGVzdCgiY29sbGFwc2VzIGEgcnVuIG9mIG90aGVyIGNoYXJhY3RlcnMgaW50byBvbmUgZGFzaCIsICgpID0+IHsKCWFzc2VydC5lcXVhbChzbHVnaWZ5KCJSb2NrICYgUm9sbCEhIEZvcmV2ZXIiKSwgInJvY2stcm9sbC1mb3JldmVyIik7Cn0pOwoKdGVzdCgidHJpbXMgZGFzaGVzIGF0IGJvdGggZW5kcyIsICgpID0+IHsKCWFzc2VydC5lcXVhbChzbHVnaWZ5KCIgIC0tRHJhZnQgbm90ZXMtLSAgIiksICJkcmFmdC1ub3RlcyIpOwp9KTsK",
+			"bytes": 486,
+			"executable": false,
+			"mtimeMs": 1791108806473,
+			"path": "work/test/slug.test.js",
+			"type": "file"
+		}
+	],
+	"rootMtimeMs": 1791108806473,
+	"schemaVersion": "endo.workspace-archive.v1"
+}

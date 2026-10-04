@@ -1,0 +1,50 @@
+{
+	"entries": [
+		{
+			"mtimeMs": 1791108816568,
+			"path": "agent",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791108816568,
+			"path": "agent/extensions",
+			"type": "directory"
+		},
+		{
+			"base64": "Ly8gRW5kb3BoYXNpYSB2YXJpYW5jZSBzdHVkeSBhcm0gKERFU0lHTi5tZCDCpzQpLiBBIGRvY3VtZW50ZWQgYmVmb3JlX3Byb3ZpZGVyX3JlcXVlc3QgaGFuZGxlci4KZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gKHBpOiBhbnkpIHsKCXBpLm9uKCJiZWZvcmVfcHJvdmlkZXJfcmVxdWVzdCIsIChldmVudDogYW55KSA9PiAoeyAuLi5ldmVudC5wYXlsb2FkLCB0ZW1wZXJhdHVyZTogMCwgc2VlZDogMTIzNCB9KSk7Cn0K",
+			"bytes": 237,
+			"executable": false,
+			"mtimeMs": 1791108816568,
+			"path": "agent/extensions/endo-arm.ts",
+			"type": "file"
+		},
+		{
+			"base64": "eyJwcm92aWRlcnMiOnsiZW5kb2xvY2FsIjp7ImJhc2VVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjQ1NTg3L3YxIiwiYXBpIjoib3BlbmFpLWNvbXBsZXRpb25zIiwiYXBpS2V5IjoibG9jYWwiLCJtb2RlbHMiOlt7ImlkIjoicXdlbjMuOC0yN2IifV19fX0=",
+			"bytes": 143,
+			"executable": false,
+			"mtimeMs": 1791108816568,
+			"path": "agent/models.json",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791108816568,
+			"path": "home",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791108816570,
+			"path": "work",
+			"type": "directory"
+		},
+		{
+			"base64": "c3RhdHVzOiBkcmFmdApvd25lcjogZW5kb3BoYXNpYSBmaXh0dXJlCm5vdGU6IHRoaXMgZmlsZSBpcyBwYXJ0IG9mIGEgc3ludGhldGljIHRlc3Qgd29ya3NwYWNlCg==",
+			"bytes": 94,
+			"executable": false,
+			"mtimeMs": 1791108816570,
+			"path": "work/notes.txt",
+			"type": "file"
+		}
+	],
+	"rootMtimeMs": 1791108816568,
+	"schemaVersion": "endo.workspace-archive.v1"
+}

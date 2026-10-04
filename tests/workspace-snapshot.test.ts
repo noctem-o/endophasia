@@ -4,6 +4,7 @@
 import {
 	existsSync,
 	lstatSync,
+	lutimesSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -41,6 +42,7 @@ function tree(): string {
 	writeFileSync(join(root, "src", "deep", "run.sh"), "#!/bin/sh\necho hi\n", { mode: 0o755 });
 	symlinkSync("notes.txt", join(root, "link"));
 	const at = (date: string) => new Date(date);
+	lutimesSync(join(root, "link"), at("2026-01-02T03:04:05.383Z"), at("2026-01-02T03:04:05.383Z"));
 	utimesSync(join(root, "notes.txt"), at("2026-01-02T03:04:05.678Z"), at("2026-01-02T03:04:05.678Z"));
 	utimesSync(join(root, "src", "deep", "run.sh"), at("2026-02-03T04:05:06Z"), at("2026-02-03T04:05:06Z"));
 	utimesSync(join(root, "src", "deep"), at("2026-03-04T05:06:07Z"), at("2026-03-04T05:06:07Z"));
@@ -66,6 +68,32 @@ describe("workspace archives", () => {
 		expect(mtime(join(target, "link"), true)).toBe(mtime(join(source, "link"), true));
 		expect(mtime(target)).toBe(mtime(source));
 		expect(mtime(join(target, "notes.txt"))).toBe(Date.parse("2026-01-02T03:04:05.678Z"));
+	});
+
+	it("every millisecond value survives a restore exactly (no float rounding drops a millisecond)", () => {
+		// Regression (CI, Node 22): restoring t ms as t / 1000 seconds lands a hair below the millisecond, and a libuv that
+		// truncates to whole microseconds stores …382999 µs for …383 ms, about half of all values. Newer libuv keeps
+		// nanoseconds and never showed it. Every value of one second is checked, on a file, a link, a directory and the root.
+		const base = Date.parse("2026-10-04T09:00:00Z");
+		const source = join(scratch(), "sweep");
+		mkdirSync(join(source, "d"), { recursive: true });
+		writeFileSync(join(source, "f"), "x");
+		symlinkSync("f", join(source, "l"));
+		const restoredAt: number[] = [];
+		for (let ms = 0; ms < 1000; ms += 1) {
+			const at = new Date(base + ms);
+			utimesSync(join(source, "f"), at, at);
+			lutimesSync(join(source, "l"), at, at);
+			utimesSync(join(source, "d"), at, at);
+			utimesSync(source, at, at);
+			const target = join(scratch(), `sweep-${ms}`);
+			restoreEndoWorkspaceV0(archiveEndoWorkspaceV0(source).bytes, target);
+			for (const path of [join(target, "f"), join(target, "d"), target])
+				if (mtime(path) !== mtime(source)) restoredAt.push(ms);
+			if (mtime(join(target, "l"), true) !== mtime(join(source, "l"), true)) restoredAt.push(ms);
+			rmSync(target, { recursive: true, force: true });
+		}
+		expect(restoredAt).toEqual([]);
 	});
 
 	it("the same tree with the same times always gives the same bytes", () => {

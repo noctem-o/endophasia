@@ -187,7 +187,10 @@ export function restoreEndoWorkspaceV0(bytes: Uint8Array, directory: string): En
 		}
 	}
 	if (archive.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1) {
-		const at = (ms: number) => ms / 1000;
+		// Seconds, at the middle of the recorded millisecond: utimes takes a double, and some libuv releases (Node 22's)
+		// truncate it to whole microseconds, so t / 1000 lands just under t for about half of all t (…383 reads back as
+		// …382). The middle survives that truncation and floors back to exactly t, so a re-archive gives the same bytes.
+		const at = (ms: number) => (ms + 0.5) / 1000;
 		for (const entry of archive.entries) {
 			const target = join(directory, entry.path);
 			if (entry.type === "file") utimesSync(target, at(entry.mtimeMs!), at(entry.mtimeMs!));

@@ -20,7 +20,7 @@ endo experiment report <dir>
 | `digestDomain` | `installation` (normal use) or `fixture` (the committed public key; synthetic experiments only, and only in explicit fixture-experiment mode: `--fixture-experiment`. A fixture spec without the flag is refused, and so is the flag with an installation spec, as for the fixture recorder.) |
 | `timeoutMs` | the per-step timeout |
 | `tasks[]` | `id`, `prompts[]` (sent in order, each run to `agent_settled`), `workspace` (relative path to content), optional `check` |
-| `conditions[]` | `id`, `description`, optional `modelEntry` (fields merged into the `models.json` model entry), `settings` (Pi's `settings.json`), `extensions` (modules for Pi's agent directory's `extensions/`) and `environment` (a pinned environment, below) |
+| `conditions[]` | `id`, `description`, optional `modelEntry` (fields merged into the `models.json` model entry), `settings` (Pi's `settings.json`), `extensions` (modules for Pi's agent directory's `extensions/`), `environment` (a pinned environment, below) and `interventions` (an operator intervention per task, below) |
 
 **A condition changes only Pi's documented configuration.** The proxy is pass-through. A condition the configuration
 cannot express is reported as such; requests are never altered in flight.
@@ -37,6 +37,17 @@ Pi's identity probe (`pi --version`) keeps its own minimal environment, so the f
 pinning. The success check runs in the runner's environment, unpinned. Each trial's capture records the environment
 (`capture.environment`, see [replay.md](replay.md)), and the report lists it per cell under `servingInputs.environment`.
 The clock is never faked: files written during the session get the time they were written.
+
+**An intervention** (`interventions`, per task id) applies one operator STEER, QUEUE or STOP during the task's first
+prompt ([steering.md](steering.md)): `{ operation, message?, after: { exchange, chunks } }`, applied once the recording
+proxy has relayed `chunks` chunks of exchange `exchange` (counted from 1 within the trial).
+- The proposal and its authorization are the scenario's, recorded before the prompt.
+- Controls are offered only for admitted capabilities, so the runner runs **one live capability study per run session
+  per distinct Pi configuration** before any trial. The study's model traffic goes through the same proxy into its own
+  capture log in the run's `evidence/` directory, apart from every trial's. Each trial copies the evidence.
+- The runner refuses to go on when a required capability is not admitted, and removes its scratch if it stops
+  before a trial.
+- A resumed run starts a new session, and a new study.
 
 **A success check** is a command (`argv`, run without a shell) executed in the workspace after the session; exit code
 0 passes. Its output is kept beside the trial (`check.txt`) and only digested in the result.

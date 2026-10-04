@@ -326,10 +326,15 @@ each real recording and study establishes, and what it does not, is in [research
 - **Trajectory comparison** ([rules](docs/trajectory.md)). `endo trajectory show|diff` judges lifecycle, tool calls,
   tool results and outcome by keyed digests, never comparing across digest domains.
 - **Capture and cassette replay** ([how it works](docs/replay.md)). `endo proxy record|replay` and `endo replay`
-  replay a recorded session against its cassette, including STOP and kill, and classify any miss as environment or
+  replay a recorded session against its cassette, including STOP, kill and steering interventions, and classify any miss as environment or
   control flow.
 - **Experiments** ([how they run](docs/experiments.md)). `endo experiment run|report` runs pre-registered specs with
   blocked randomization, manipulation checks and pinned environments. Every trial is also a cassette.
+- **Steering** ([how it works](docs/steering.md)). STEER, QUEUE and STOP as explicit, authorized, verified
+  interventions through Pi's documented RPC: a proposal, an authorization bound to its exact digest, the request,
+  Pi's acceptance, the consumption the recording proxy shows, and the consequence, each its own record.
+  `endo harness attach --control` and `endo steer propose|authorize|apply|status` operate it. v0 proposals come only
+  from the operator, and an external authority provider is a documented seam, not wired.
 - **Tests:** a deterministic suite with a fake Pi and a fake OpenAI-compatible endpoint, plus an opt-in acceptance
   suite against a real installed Pi.
 
@@ -342,6 +347,9 @@ llama.cpp, and one machine:
   from tool output that carried wall-clock values.
 - [Pinned-environment study (E3)](research/README.md#pinned-environment-study-e3): "stable" with the environment
   pinned, deterministic sampling and the cache off.
+- [Steering study](research/README.md#steering-study): in that deterministic condition, a STEER and a QUEUE were
+  consumed where Pi documents (80 of 80 steered trials). What the agent did with them differed by task and arm, and
+  once by an irrelevant path.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and
@@ -364,7 +372,7 @@ limitations accepted for now.
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
 spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
 extension for active-tool control,
-any live provider integration wired into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
+model-originated steering proposals and an external authority provider, any live provider integration wired into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
 integration, and attachments for other harnesses.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
@@ -389,13 +397,21 @@ Partly done:
    and a cockpit over that store are not wired yet.
 4. **Real Pi path.** Make the first vertical slice boring: observe a real session, record canonical evidence,
    steer where the runtime supports it, interrupt, recover, and preserve explicit permission boundaries.
-   - *Status:* observe, record, interrupt and recover are real on Pi 1.0.1 (#19), and so is STOP. STEER and QUEUE
-     are the steering protocol (8).
+   - *Status:* observe, record, interrupt and recover are real on Pi 1.0.1 (#19). STEER, QUEUE and STOP are
+     authorized interventions (8).
 6. **Evaluation laboratory.** Define reproducible experiment bundles containing runtime/model/configuration, task,
    initial state, evidence, outcome, evaluator identity, seeds, usage, and analysis. Every research claim should
    point back to evidence.
    - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and two
      pre-registered studies (#24, #26, #27). Not yet: experiment bundles feeding the evolution policies (11).
+8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
+   consequence. A proposal never becomes permission implicitly.
+   - *Status:* STEER, QUEUE and STOP are explicit, authorized, verified interventions through Pi's documented RPC
+     ([steering](docs/steering.md)): the proposal, an authorization bound to its digest, the request, acceptance,
+     consumption (shown by the recording proxy) and the consequence are separate records; steered sessions replay
+     EXACT; and a [pre-registered study](research/steering/1.0.1/RESULTS.md) measured the effect. Not yet: proposals
+     that do not come from the operator, an external authority provider, and observation and interpretation records
+     created by a command.
 
 Next:
 
@@ -403,8 +419,6 @@ Next:
    Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
    J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
    not hidden model state.
-8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
-   consequence. A proposal never becomes permission implicitly.
 9. **Cross-runtime conformance.** Study Pi, Codex, Prime, and other adapters against the same evidence contracts,
    with capability admission based on current evidence rather than names or assumptions.
 

@@ -127,6 +127,16 @@ before the snapshot: its files under `<root>/env/`, then its fixed time on every
 reapplies the recorded variables to Pi's session environment. The files and times come back with the snapshot. A
 recording without `capture.environment` replays with none.
 
+**Interventions** (`prompt-intervene`, [steering.md](steering.md)) are replayed like STOP. A recording with an
+intervention is driver version `pi-cassette-driver.2` (every other stays `.1`, so existing cassettes are unchanged), and
+the replayer accepts both. The replay arms the pause at the recorded delivery point before the prompt. It then
+re-issues the intervention through an intervention desk on the replay's store, with the same session and nonce, so the
+same proposal digest, and only then resumes the cassette. A `steer` or `follow_up` is acknowledged by Pi at once, so
+it is awaited before the cassette resumes; Pi answers an `abort` only once idle, so a STOP is sent, the cassette
+resumed, and the answer awaited. The report lists each intervention re-issued: its operation, recorded and re-issued
+points, whether its digest matches the recording's, and what the desk answered. **A replayer meeting a driver step it
+does not know refuses**, rather than skipping it and showing a confusing cassette miss.
+
 **A replay keeps the recording's environment:**
 
 - **Same path.** The scratch root is restored at the same absolute path, which must not exist. Pi's requests carry the

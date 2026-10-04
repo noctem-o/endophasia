@@ -1,0 +1,1 @@
+The tests in this directory fail. Run them with: node --test. Then fix the bug in src/slug.js so that every test passes. Do not change any file under test/. When all tests pass, reply with the single word: done

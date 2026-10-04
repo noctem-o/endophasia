@@ -1,0 +1,76 @@
+{
+	"entries": [
+		{
+			"mtimeMs": 1791112551863,
+			"path": "agent",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791112551863,
+			"path": "agent/extensions",
+			"type": "directory"
+		},
+		{
+			"base64": "Ly8gRW5kb3BoYXNpYSB2YXJpYW5jZSBzdHVkeSBhcm0gKERFU0lHTi5tZCDCpzQpLiBBIGRvY3VtZW50ZWQgYmVmb3JlX3Byb3ZpZGVyX3JlcXVlc3QgaGFuZGxlci4KZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gKHBpOiBhbnkpIHsKCXBpLm9uKCJiZWZvcmVfcHJvdmlkZXJfcmVxdWVzdCIsIChldmVudDogYW55KSA9PiAoeyAuLi5ldmVudC5wYXlsb2FkLCB0ZW1wZXJhdHVyZTogMCwgc2VlZDogMTIzNCwgY2FjaGVfcHJvbXB0OiBmYWxzZSB9KSk7Cn0K",
+			"bytes": 258,
+			"executable": false,
+			"mtimeMs": 1791112551863,
+			"path": "agent/extensions/endo-arm.ts",
+			"type": "file"
+		},
+		{
+			"base64": "eyJwcm92aWRlcnMiOnsiZW5kb2xvY2FsIjp7ImJhc2VVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjMyNzcxL3YxIiwiYXBpIjoib3BlbmFpLWNvbXBsZXRpb25zIiwiYXBpS2V5IjoibG9jYWwiLCJtb2RlbHMiOlt7ImlkIjoicXdlbjMuOC0yN2IifV19fX0=",
+			"bytes": 143,
+			"executable": false,
+			"mtimeMs": 1791112551863,
+			"path": "agent/models.json",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791112551863,
+			"path": "home",
+			"type": "directory"
+		},
+		{
+			"mtimeMs": 1791112551864,
+			"path": "work",
+			"type": "directory"
+		},
+		{
+			"base64": "eyJuYW1lIjoicm9tYW4tdGFzayIsInByaXZhdGUiOnRydWUsInR5cGUiOiJtb2R1bGUifQo=",
+			"bytes": 53,
+			"executable": false,
+			"mtimeMs": 1791112551864,
+			"path": "work/package.json",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791112551864,
+			"path": "work/src",
+			"type": "directory"
+		},
+		{
+			"base64": "Ly8gQ29udmVydCBhIHdob2xlIG51bWJlciBmcm9tIDEgdG8gMzk5OSB0byBhIFJvbWFuIG51bWVyYWwuCmV4cG9ydCBmdW5jdGlvbiB0b1JvbWFuKG4pIHsKCXRocm93IG5ldyBFcnJvcigibm90IGltcGxlbWVudGVkIik7Cn0K",
+			"bytes": 129,
+			"executable": false,
+			"mtimeMs": 1791112551864,
+			"path": "work/src/roman.js",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1791112551864,
+			"path": "work/test",
+			"type": "directory"
+		},
+		{
+			"base64": "aW1wb3J0IGFzc2VydCBmcm9tICJub2RlOmFzc2VydC9zdHJpY3QiOwppbXBvcnQgeyB0ZXN0IH0gZnJvbSAibm9kZTp0ZXN0IjsKaW1wb3J0IHsgdG9Sb21hbiB9IGZyb20gIi4uL3NyYy9yb21hbi5qcyI7Cgp0ZXN0KCJjb252ZXJ0cyBudW1iZXJzIHRvIFJvbWFuIG51bWVyYWxzIiwgKCkgPT4gewoJY29uc3QgY2FzZXMgPSBbCgkJWzEsICJJIl0sCgkJWzQsICJJViJdLAoJCVs5LCAiSVgiXSwKCQlbMTQsICJYSVYiXSwKCQlbNDAsICJYTCJdLAoJCVs5MCwgIlhDIl0sCgkJWzQwMCwgIkNEIl0sCgkJWzE5OTQsICJNQ01YQ0lWIl0sCgkJWzM5OTksICJNTU1DTVhDSVgiXSwKCV07Cglmb3IgKGNvbnN0IFtuLCByb21hbl0gb2YgY2FzZXMpIGFzc2VydC5lcXVhbCh0b1JvbWFuKG4pLCByb21hbik7Cn0pOwoKdGVzdCgicmVqZWN0cyBudW1iZXJzIG91dHNpZGUgMSB0byAzOTk5IHdpdGggYSBSYW5nZUVycm9yIiwgKCkgPT4gewoJYXNzZXJ0LnRocm93cygoKSA9PiB0b1JvbWFuKDApLCBSYW5nZUVycm9yKTsKCWFzc2VydC50aHJvd3MoKCkgPT4gdG9Sb21hbig0MDAwKSwgUmFuZ2VFcnJvcik7Cn0pOwo=",
+			"bytes": 569,
+			"executable": false,
+			"mtimeMs": 1791112551864,
+			"path": "work/test/roman.test.js",
+			"type": "file"
+		}
+	],
+	"rootMtimeMs": 1791112551863,
+	"schemaVersion": "endo.workspace-archive.v1"
+}

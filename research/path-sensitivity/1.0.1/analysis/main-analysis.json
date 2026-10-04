@@ -1,0 +1,951 @@
+{
+	"paths": {
+		"analysed": 30,
+		"missing": [],
+		"order": [
+			"p23",
+			"p27",
+			"p12",
+			"p24",
+			"p06",
+			"p26",
+			"p17",
+			"p04",
+			"p18",
+			"p14",
+			"p13",
+			"p30",
+			"p05",
+			"p11",
+			"p22",
+			"p02",
+			"p01",
+			"p10",
+			"p21",
+			"p28",
+			"p20",
+			"p08",
+			"p03",
+			"p29",
+			"p09",
+			"p25",
+			"p19",
+			"p07",
+			"p16",
+			"p15"
+		],
+		"seed": 3826429729
+	},
+	"primary": {
+		"implement-function/steer": {
+			"paths": 30,
+			"followed": 6,
+			"ignored": 24,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 6,
+				"n": 30,
+				"rate": 0.2,
+				"wilson95": {
+					"low": 0.095051,
+					"high": 0.373057
+				}
+			},
+			"reading": "path-dependent at this N",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 6,
+					"n": 30,
+					"rate": 0.2,
+					"wilson95": {
+						"low": 0.095051,
+						"high": 0.373057
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 6,
+					"n": 30,
+					"rate": 0.2,
+					"wilson95": {
+						"low": 0.095051,
+						"high": 0.373057
+					}
+				}
+			},
+			"patterns": {
+				"commands-in-separate-turns": 12,
+				"ignored": 48
+			}
+		},
+		"implement-function/queue": {
+			"paths": 30,
+			"followed": 30,
+			"ignored": 0,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 30,
+				"n": 30,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.886487,
+					"high": 1
+				}
+			},
+			"reading": "robustly followed",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 30,
+					"n": 30,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.886487,
+						"high": 1
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 30,
+					"n": 30,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.886487,
+						"high": 1
+					}
+				}
+			},
+			"patterns": {
+				"only-the-asked-for-command": 60
+			}
+		},
+		"tool-use/steer": {
+			"paths": 30,
+			"followed": 27,
+			"ignored": 3,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 27,
+				"n": 30,
+				"rate": 0.9,
+				"wilson95": {
+					"low": 0.743789,
+					"high": 0.9654
+				}
+			},
+			"reading": "robustly followed",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 27,
+					"n": 30,
+					"rate": 0.9,
+					"wilson95": {
+						"low": 0.743789,
+						"high": 0.9654
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 27,
+					"n": 30,
+					"rate": 0.9,
+					"wilson95": {
+						"low": 0.743789,
+						"high": 0.9654
+					}
+				}
+			},
+			"patterns": {
+				"both-commands-in-one-turn": 8,
+				"commands-in-separate-turns": 46,
+				"ignored": 6
+			}
+		},
+		"tool-use/queue": {
+			"paths": 30,
+			"followed": 30,
+			"ignored": 0,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 30,
+				"n": 30,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.886487,
+					"high": 1
+				}
+			},
+			"reading": "robustly followed",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 30,
+					"n": 30,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.886487,
+						"high": 1
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 30,
+					"n": 30,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.886487,
+						"high": 1
+					}
+				}
+			},
+			"patterns": {
+				"only-the-asked-for-command": 60
+			}
+		}
+	},
+	"secondary": {
+		"baselinePathInvariance": {
+			"implement-function": {
+				"distinctSignatures": 20,
+				"groups": [
+					[
+						"p23"
+					],
+					[
+						"p27"
+					],
+					[
+						"p12"
+					],
+					[
+						"p24"
+					],
+					[
+						"p06",
+						"p30",
+						"p16"
+					],
+					[
+						"p26"
+					],
+					[
+						"p17",
+						"p02"
+					],
+					[
+						"p04",
+						"p05",
+						"p21"
+					],
+					[
+						"p18",
+						"p09",
+						"p25",
+						"p19"
+					],
+					[
+						"p14",
+						"p01"
+					],
+					[
+						"p13"
+					],
+					[
+						"p11"
+					],
+					[
+						"p22",
+						"p20"
+					],
+					[
+						"p10"
+					],
+					[
+						"p28"
+					],
+					[
+						"p08"
+					],
+					[
+						"p03"
+					],
+					[
+						"p29"
+					],
+					[
+						"p07"
+					],
+					[
+						"p15"
+					]
+				]
+			},
+			"tool-use": {
+				"distinctSignatures": 1,
+				"groups": [
+					[
+						"p23",
+						"p27",
+						"p12",
+						"p24",
+						"p06",
+						"p26",
+						"p17",
+						"p04",
+						"p18",
+						"p14",
+						"p13",
+						"p30",
+						"p05",
+						"p11",
+						"p22",
+						"p02",
+						"p01",
+						"p10",
+						"p21",
+						"p28",
+						"p20",
+						"p08",
+						"p03",
+						"p29",
+						"p09",
+						"p25",
+						"p19",
+						"p07",
+						"p16",
+						"p15"
+					]
+				]
+			}
+		},
+		"steeredSignatureDistinctness": {
+			"tool-use/steer": {
+				"distinctSignatures": 2
+			},
+			"tool-use/queue": {
+				"distinctSignatures": 1
+			},
+			"implement-function/steer": {
+				"distinctSignatures": 22
+			},
+			"implement-function/queue": {
+				"distinctSignatures": 20
+			}
+		},
+		"withinPathDeterminism": {
+			"cellsNotIdentical": []
+		},
+		"delivery": {
+			"pathsWithViolations": [],
+			"violations": 0
+		},
+		"success": {
+			"successes": 360,
+			"n": 360,
+			"rate": 1,
+			"wilson95": {
+				"low": 0.989442,
+				"high": 1
+			}
+		}
+	},
+	"manipulation": {
+		"MPath": {
+			"status": "PASS",
+			"distinctFirstRequestsByTask": {
+				"implement-function": 1,
+				"tool-use": 1
+			}
+		},
+		"perPathFailures": [],
+		"status": "PASS"
+	},
+	"transportErrors": 0,
+	"known": {
+		"note": "not part of the sample (DESIGN §4); the steering study's data",
+		"e5bacd997570": {
+			"source": "the steering pilot",
+			"compliance": {
+				"tool-use/steer": "0/3",
+				"tool-use/queue": "3/3",
+				"implement-function/steer": "0/3",
+				"implement-function/queue": "3/3"
+			}
+		},
+		"372c52355fe7": {
+			"source": "the steering main run",
+			"compliance": {
+				"tool-use/steer": "20/20",
+				"tool-use/queue": "20/20",
+				"implement-function/steer": "0/20",
+				"implement-function/queue": "20/20"
+			}
+		}
+	},
+	"perPath": [
+		{
+			"label": "p23",
+			"hash": "8c67c1c9902e",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 287,
+				"tool-use/steer": 1522,
+				"tool-use/queue": 413,
+				"implement-function/base": 514,
+				"implement-function/steer": 740,
+				"implement-function/queue": 666
+			},
+			"wallMs": 193909
+		},
+		{
+			"label": "p27",
+			"hash": "db0a0f56b64a",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 326,
+				"tool-use/steer": 1428,
+				"tool-use/queue": 468,
+				"implement-function/base": 606,
+				"implement-function/steer": 1048,
+				"implement-function/queue": 739
+			},
+			"wallMs": 195467
+		},
+		{
+			"label": "p12",
+			"hash": "21fc340029dd",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 287,
+				"tool-use/steer": 1071,
+				"tool-use/queue": 413,
+				"implement-function/base": 733,
+				"implement-function/steer": 986,
+				"implement-function/queue": 862
+			},
+			"wallMs": 195344
+		},
+		{
+			"label": "p24",
+			"hash": "647c39f9cff9",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 327,
+				"tool-use/steer": 782,
+				"tool-use/queue": 451,
+				"implement-function/base": 580,
+				"implement-function/steer": 1852,
+				"implement-function/queue": 729
+			},
+			"wallMs": 206786
+		},
+		{
+			"label": "p06",
+			"hash": "14c0541d9b2c",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 343,
+				"tool-use/steer": 1329,
+				"tool-use/queue": 539,
+				"implement-function/base": 517,
+				"implement-function/steer": 1170,
+				"implement-function/queue": 684
+			},
+			"wallMs": 194581
+		},
+		{
+			"label": "p26",
+			"hash": "0e1e354557a6",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 302,
+				"tool-use/steer": 1695,
+				"tool-use/queue": 428,
+				"implement-function/base": 504,
+				"implement-function/steer": 742,
+				"implement-function/queue": 594
+			},
+			"wallMs": 191838
+		},
+		{
+			"label": "p17",
+			"hash": "05618d242692",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 287,
+				"tool-use/steer": 1322,
+				"tool-use/queue": 413,
+				"implement-function/base": 608,
+				"implement-function/steer": 845,
+				"implement-function/queue": 791
+			},
+			"wallMs": 196339
+		},
+		{
+			"label": "p04",
+			"hash": "ac8aa4cd4a82",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 3459,
+				"tool-use/queue": 416,
+				"implement-function/base": 621,
+				"implement-function/steer": 1189,
+				"implement-function/queue": 707
+			},
+			"wallMs": 239125
+		},
+		{
+			"label": "p18",
+			"hash": "87463ca11ea9",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 289,
+				"tool-use/steer": 1542,
+				"tool-use/queue": 415,
+				"implement-function/base": 565,
+				"implement-function/steer": 712,
+				"implement-function/queue": 692
+			},
+			"wallMs": 187205
+		},
+		{
+			"label": "p14",
+			"hash": "afda0bba29f8",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 910,
+				"tool-use/queue": 416,
+				"implement-function/base": 549,
+				"implement-function/steer": 697,
+				"implement-function/queue": 677
+			},
+			"wallMs": 164438
+		},
+		{
+			"label": "p13",
+			"hash": "8ef79083e08a",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 327,
+				"tool-use/steer": 1429,
+				"tool-use/queue": 451,
+				"implement-function/base": 522,
+				"implement-function/steer": 731,
+				"implement-function/queue": 615
+			},
+			"wallMs": 184806
+		},
+		{
+			"label": "p30",
+			"hash": "837c9b36e4f1",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 293,
+				"tool-use/steer": 1570,
+				"tool-use/queue": 419,
+				"implement-function/base": 517,
+				"implement-function/steer": 1017,
+				"implement-function/queue": 670
+			},
+			"wallMs": 189525
+		},
+		{
+			"label": "p05",
+			"hash": "1b428220d4d1",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 291,
+				"tool-use/steer": 1192,
+				"tool-use/queue": 442,
+				"implement-function/base": 645,
+				"implement-function/steer": 961,
+				"implement-function/queue": 807
+			},
+			"wallMs": 185986
+		},
+		{
+			"label": "p11",
+			"hash": "c33d545f9436",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 289,
+				"tool-use/steer": 793,
+				"tool-use/queue": 415,
+				"implement-function/base": 517,
+				"implement-function/steer": 1056,
+				"implement-function/queue": 610
+			},
+			"wallMs": 172166
+		},
+		{
+			"label": "p22",
+			"hash": "5a00c8f2cc2c",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 326,
+				"tool-use/steer": 1184,
+				"tool-use/queue": 450,
+				"implement-function/base": 711,
+				"implement-function/steer": 1826,
+				"implement-function/queue": 838
+			},
+			"wallMs": 203555
+		},
+		{
+			"label": "p02",
+			"hash": "532fb8a0a142",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 317,
+				"tool-use/steer": 1039,
+				"tool-use/queue": 443,
+				"implement-function/base": 608,
+				"implement-function/steer": 1766,
+				"implement-function/queue": 759
+			},
+			"wallMs": 194071
+		},
+		{
+			"label": "p01",
+			"hash": "d078678ac6f1",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 289,
+				"tool-use/steer": 1219,
+				"tool-use/queue": 415,
+				"implement-function/base": 529,
+				"implement-function/steer": 834,
+				"implement-function/queue": 710
+			},
+			"wallMs": 178474
+		},
+		{
+			"label": "p10",
+			"hash": "827fd30124fc",
+			"outcomes": {
+				"tool-use/steer": "ignored",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 672,
+				"tool-use/queue": 416,
+				"implement-function/base": 798,
+				"implement-function/steer": 915,
+				"implement-function/queue": 925
+			},
+			"wallMs": 176237
+		},
+		{
+			"label": "p21",
+			"hash": "505e3eadaaa2",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 1835,
+				"tool-use/queue": 416,
+				"implement-function/base": 609,
+				"implement-function/steer": 1157,
+				"implement-function/queue": 727
+			},
+			"wallMs": 197393
+		},
+		{
+			"label": "p28",
+			"hash": "5233da85a388",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 286,
+				"tool-use/steer": 798,
+				"tool-use/queue": 412,
+				"implement-function/base": 576,
+				"implement-function/steer": 757,
+				"implement-function/queue": 706
+			},
+			"wallMs": 169388
+		},
+		{
+			"label": "p20",
+			"hash": "a4a21f4b0e70",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 1116,
+				"tool-use/queue": 416,
+				"implement-function/base": 710,
+				"implement-function/steer": 866,
+				"implement-function/queue": 849
+			},
+			"wallMs": 179926
+		},
+		{
+			"label": "p08",
+			"hash": "022ab63bdde7",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 1434,
+				"tool-use/queue": 416,
+				"implement-function/base": 544,
+				"implement-function/steer": 689,
+				"implement-function/queue": 695
+			},
+			"wallMs": 180707
+		},
+		{
+			"label": "p03",
+			"hash": "acd35ef41a50",
+			"outcomes": {
+				"tool-use/steer": "ignored",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 813,
+				"tool-use/queue": 416,
+				"implement-function/base": 563,
+				"implement-function/steer": 3886,
+				"implement-function/queue": 693
+			},
+			"wallMs": 244965
+		},
+		{
+			"label": "p29",
+			"hash": "c8f6886e77f2",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 291,
+				"tool-use/steer": 1428,
+				"tool-use/queue": 417,
+				"implement-function/base": 612,
+				"implement-function/steer": 1136,
+				"implement-function/queue": 745
+			},
+			"wallMs": 197852
+		},
+		{
+			"label": "p09",
+			"hash": "dbcf0c3259b6",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 328,
+				"tool-use/steer": 968,
+				"tool-use/queue": 474,
+				"implement-function/base": 520,
+				"implement-function/steer": 731,
+				"implement-function/queue": 635
+			},
+			"wallMs": 171415
+		},
+		{
+			"label": "p25",
+			"hash": "17dce4b60295",
+			"outcomes": {
+				"tool-use/steer": "ignored",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 598,
+				"tool-use/queue": 416,
+				"implement-function/base": 619,
+				"implement-function/steer": 1019,
+				"implement-function/queue": 776
+			},
+			"wallMs": 172430
+		},
+		{
+			"label": "p19",
+			"hash": "057a0d3d1ff6",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 289,
+				"tool-use/steer": 1003,
+				"tool-use/queue": 415,
+				"implement-function/base": 520,
+				"implement-function/steer": 757,
+				"implement-function/queue": 647
+			},
+			"wallMs": 176708
+		},
+		{
+			"label": "p07",
+			"hash": "6b10085a89a9",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "followed",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 291,
+				"tool-use/steer": 1383,
+				"tool-use/queue": 417,
+				"implement-function/base": 746,
+				"implement-function/steer": 1349,
+				"implement-function/queue": 879
+			},
+			"wallMs": 200947
+		},
+		{
+			"label": "p16",
+			"hash": "147c79f67067",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 287,
+				"tool-use/steer": 902,
+				"tool-use/queue": 413,
+				"implement-function/base": 588,
+				"implement-function/steer": 718,
+				"implement-function/queue": 764
+			},
+			"wallMs": 171061
+		},
+		{
+			"label": "p15",
+			"hash": "2190334c08d9",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 290,
+				"tool-use/steer": 1012,
+				"tool-use/queue": 416,
+				"implement-function/base": 607,
+				"implement-function/steer": 1010,
+				"implement-function/queue": 786
+			},
+			"wallMs": 183000
+		}
+	]
+}

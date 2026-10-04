@@ -109,6 +109,12 @@ run, a single pre-design feasibility trial at yet another path (DESIGN §5, not 
 What this does not show: two paths were tried, and nothing was varied except as the spec's hash varied it, so the
 mechanism, and how many paths would follow the steer, are unknown.
 
+**Followed up.** The [path-sensitivity study](../../path-sensitivity/1.0.1/RESULTS.md) varied the path over 30 new
+values. A STEER on `tool-use` was followed at 27 of 30 (robustly followed), so this pilot's 0/3 was one of the rare
+paths; a STEER on `implement-function` was followed at 6 of 30 (path-dependent at that N), so the main run's 0/20 was the
+common case; a QUEUE was followed at all 30. It also found that the `implement-function` baseline itself is not
+path-invariant. The numbers in this document are unchanged.
+
 ## Validity
 
 ### Manipulation checks (§6)

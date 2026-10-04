@@ -1,0 +1,27 @@
+{"at":"2026-10-04T18:48:20.447Z","event":"run-session-started","session":1,"proxyPort":39067}
+{"at":"2026-10-04T18:48:38.415Z","event":"capability-study","session":1,"conditions":["steer","queue"],"summary":[{"capability":"steering.steer","status":"admitted-partial","reason":"live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities"},{"capability":"steering.follow-up","status":"admitted-partial","reason":"live-study check pi.live.study; limits: Pi's acceptance carries no identity for the queued message: a receipt cannot be correlated with its consumption except by content queue_update reports the queued texts, not identities"}]}
+{"at":"2026-10-04T18:48:38.416Z","event":"trial-started","condition":"queue","position":0,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T18:48:55.926Z","event":"trial-finished","condition":"queue","position":0,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:48:55.926Z","event":"trial-started","condition":"steer","position":1,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T18:49:14.237Z","event":"trial-finished","condition":"steer","position":1,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:49:14.237Z","event":"trial-started","condition":"steer","position":2,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T18:49:34.515Z","event":"trial-finished","condition":"steer","position":2,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:49:34.515Z","event":"trial-started","condition":"base","position":3,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T18:49:42.653Z","event":"trial-finished","condition":"base","position":3,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:49:42.653Z","event":"trial-started","condition":"base","position":4,"task":"implement-function","trial":0,"session":1}
+{"at":"2026-10-04T18:49:54.359Z","event":"trial-finished","condition":"base","position":4,"task":"implement-function","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:49:54.359Z","event":"trial-started","condition":"queue","position":5,"task":"tool-use","trial":0,"session":1}
+{"at":"2026-10-04T18:50:07.229Z","event":"trial-finished","condition":"queue","position":5,"task":"tool-use","trial":0,"status":"completed"}
+{"at":"2026-10-04T18:50:07.229Z","event":"trial-started","condition":"base","position":6,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T18:50:15.314Z","event":"trial-finished","condition":"base","position":6,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:50:15.315Z","event":"trial-started","condition":"queue","position":7,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T18:50:32.431Z","event":"trial-finished","condition":"queue","position":7,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:50:32.431Z","event":"trial-started","condition":"queue","position":8,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T18:50:45.271Z","event":"trial-finished","condition":"queue","position":8,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:50:45.271Z","event":"trial-started","condition":"base","position":9,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T18:50:56.847Z","event":"trial-finished","condition":"base","position":9,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:50:56.848Z","event":"trial-started","condition":"steer","position":10,"task":"implement-function","trial":1,"session":1}
+{"at":"2026-10-04T18:51:15.120Z","event":"trial-finished","condition":"steer","position":10,"task":"implement-function","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:51:15.120Z","event":"trial-started","condition":"steer","position":11,"task":"tool-use","trial":1,"session":1}
+{"at":"2026-10-04T18:51:35.028Z","event":"trial-finished","condition":"steer","position":11,"task":"tool-use","trial":1,"status":"completed"}
+{"at":"2026-10-04T18:51:35.028Z","event":"run-session-ended","session":1,"planned":12,"completed":12,"errored":0,"ranThisSession":12,"movedToInterrupted":0,"remaining":0}

@@ -14,6 +14,7 @@ OpenAI-compatible server) and one machine.
 | [Variance study (E2)](#variance-study-e2) | [design](variance/1.0.1/DESIGN.md), [results](variance/1.0.1/RESULTS.md) | "unstable" under every arm: sampling, then the environment |
 | [Pinned-environment study (E3)](#pinned-environment-study-e3) | [design](pinned-environment/1.0.1/DESIGN.md), [results](pinned-environment/1.0.1/RESULTS.md) | "stable" with the environment pinned, deterministic sampling and the cache off |
 | [Steering study](#steering-study) | [design](steering/1.0.1/DESIGN.md), [results](steering/1.0.1/RESULTS.md) | a STEER and a QUEUE at a fixed point against a baseline, all in the deterministic condition |
+| [Path-sensitivity study](#path-sensitivity-study) | [design](path-sensitivity/1.0.1/DESIGN.md), [results](path-sensitivity/1.0.1/RESULTS.md) | the steering results across 30 working-directory paths: QUEUE followed at every path, STEER at most paths on one task and few on the other |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle
@@ -114,6 +115,26 @@ The pilot, whose requests differ from the main run's only in a hash in the worki
 response to a steer is a reproducible function of the whole prompt, and on this task it differed between two paths that
 differ only in that hash. Only two paths were tried, and this study measured one. Each steered cassette replays EXACT five times against the real Pi. Two transport errors in 622
 requests were a keep-alive race. This is one Pi release, one model, two tasks, one message each and one point.
+
+## Path-sensitivity study
+
+A fourth study ([design](path-sensitivity/1.0.1/DESIGN.md), [results](path-sensitivity/1.0.1/RESULTS.md)) checked how far
+the steering study's results generalize across one irrelevant factor: the working-directory path, which Pi puts in its
+system prompt. It reran the steering main spec at 30 paths that differ only in a hash (one run per path, 2 trials per cell,
+360 trials), after a pilot of 2 more. The manipulation check showed the first request is byte-identical across paths once
+that hash is replaced, so the path is the only factor varied. At every path the trials of every cell were identical to each
+other, Pi delivered each message exactly where it documents, and every success check passed.
+
+Over the 30 paths:
+- **QUEUE** was followed at 30 of 30, on both tasks.
+- **STEER on `tool-use`** was followed at 27 of 30 [74.4, 96.5] (robustly followed by the pre-registered thresholds). The
+  steering pilot's 0/3 was one of the rare paths.
+- **STEER on `implement-function`** was followed at 6 of 30 [9.5, 37.3] (path-dependent at this N).
+- **The baseline is not path-invariant on `implement-function`:** 20 distinct tool-call signatures across the 30 paths,
+  against 1 on `tool-use`. The path changes what the agent does with no intervention.
+
+Only the path hash varied, and the study counts paths, not mechanisms. One Pi release, one model, two tasks, one message
+each and one point.
 
 ## Fake-only paths
 

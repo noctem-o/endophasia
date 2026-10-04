@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
 	EndoCassetteDomainErrorV0,
+	endoRequestDivergenceV0,
 	loadEndoCassetteV0,
 	startEndoCassetteServerV0,
 } from "../adapters/openai-proxy/cassette.ts";
@@ -628,6 +629,58 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		await expect(startEndoRecordingProxyV0({ upstream: "http://u:p@127.0.0.1:8080", log })).rejects.toThrow(
 			/credentials/,
 		);
+	});
+});
+
+describe("where a replayed request first differs (endoRequestDivergenceV0)", () => {
+	const request = (messages: unknown[], extra: Record<string, unknown> = {}) =>
+		Buffer.from(JSON.stringify({ model: "m", messages, ...extra }));
+	const system = { role: "system", content: "s" };
+	const user = { role: "user", content: "u" };
+	const call = {
+		role: "assistant",
+		content: null,
+		tool_calls: [{ id: "c1", function: { name: "bash", arguments: "{}" } }],
+	};
+	it("a differing tool result is the environment", () => {
+		expect(
+			endoRequestDivergenceV0(
+				request([system, user, call, { role: "tool", content: "07:06" }]),
+				request([system, user, call, { role: "tool", content: "07:07" }]),
+			),
+		).toEqual({ kind: "environment", message: 4, role: "tool" });
+	});
+	it("a differing assistant, user or system message, or other fields, is control flow", () => {
+		expect(
+			endoRequestDivergenceV0(request([system, user]), request([{ role: "system", content: "other" }, user])),
+		).toEqual({
+			kind: "control-flow",
+			message: 1,
+			role: "system",
+		});
+		expect(
+			endoRequestDivergenceV0(request([system, user, call]), request([system, user, { ...call, content: "x" }])),
+		).toMatchObject({
+			kind: "control-flow",
+			role: "assistant",
+		});
+		expect(endoRequestDivergenceV0(request([system]), request([system], { temperature: 0 }))).toEqual({
+			kind: "control-flow",
+			message: null,
+			role: null,
+		});
+	});
+	it("key order is not a difference", () => {
+		expect(
+			endoRequestDivergenceV0(
+				Buffer.from('{"messages":[{"role":"user","content":"u"}],"model":"m"}'),
+				Buffer.from('{"model":"m","messages":[{"content":"u","role":"user"}],"x":1}'),
+			),
+		).toEqual({
+			kind: "control-flow",
+			message: null,
+			role: null,
+		});
 	});
 });
 

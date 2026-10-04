@@ -29,6 +29,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
+import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import { isEndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
 import {
@@ -223,6 +224,33 @@ export function loadEndoCassetteV0(storeRoot: string, key: EndoDigestKeyV0): End
 	return { keyId, listen, exchanges, events };
 }
 
+/**
+ * Where a replayed request first differs from the recorded one, and what kind of difference it is:
+ *   environment    the first differing message is a tool result: the world a tool observed changed (its output); the
+ *                  model's replies and Pi's control flow were identical up to it
+ *   control-flow   the first difference is anything else: an assistant, user or system message, or another field
+ * `message` is the 1-based index of the first differing message (null when only other fields differ).
+ */
+export interface EndoRequestDivergenceV0 {
+	kind: "environment" | "control-flow";
+	message: number | null;
+	role: string | null;
+}
+
+/** Compare a recorded and a replayed request body (JSON chat requests). Throws when either is not JSON. */
+export function endoRequestDivergenceV0(recorded: Uint8Array, replayed: Uint8Array): EndoRequestDivergenceV0 {
+	const a = JSON.parse(Buffer.from(recorded).toString("utf8")) as { messages?: unknown[] } & Record<string, unknown>;
+	const b = JSON.parse(Buffer.from(replayed).toString("utf8")) as { messages?: unknown[] } & Record<string, unknown>;
+	const ma = Array.isArray(a.messages) ? a.messages : [];
+	const mb = Array.isArray(b.messages) ? b.messages : [];
+	for (let index = 0; index < Math.max(ma.length, mb.length); index += 1) {
+		if (canonicalEndoJsonV0(ma[index] ?? null) === canonicalEndoJsonV0(mb[index] ?? null)) continue;
+		const role = String((ma[index] as { role?: unknown } | undefined)?.role ?? (mb[index] as { role?: unknown } | undefined)?.role ?? "none");
+		return { kind: role === "tool" ? "environment" : "control-flow", message: index + 1, role };
+	}
+	return { kind: "control-flow", message: null, role: null };
+}
+
 /** Where the replay pauses: after `chunks` chunks of exchange `exchange` (1-based, in replay order) were written. */
 export interface EndoCassettePauseV0 {
 	exchange: number;
@@ -293,6 +321,7 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 		requestDigest: EndoKeyedDigestV0,
 		expected: EndoKeyedDigestV0 | null,
 		detail: string,
+		divergence: EndoRequestDivergenceV0 | null = null,
 	) => {
 		misses += 1;
 		log.record("capture.cassette-miss", {
@@ -301,6 +330,7 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 			requestDigest: { ...requestDigest },
 			expected: expected === null ? null : { ...expected },
 			detail,
+			...(divergence === null ? {} : { divergence: { ...divergence } }),
 		});
 	};
 
@@ -329,8 +359,13 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 				requestDigest: { ...requestDigest },
 				body: { ...log.keep(body) } as unknown as JsonValueV0,
 			});
-			const fail = async (reason: string, expected: EndoKeyedDigestV0 | null, detail: string) => {
-				missed(exchange, reason, requestDigest, expected, detail);
+			const fail = async (
+				reason: string,
+				expected: EndoKeyedDigestV0 | null,
+				detail: string,
+				divergence: EndoRequestDivergenceV0 | null = null,
+			) => {
+				missed(exchange, reason, requestDigest, expected, detail, divergence);
 				const json = JSON.stringify({
 					error: { type: "endophasia_cassette_miss", reason, message: `cassette miss: ${detail}` },
 				});
@@ -345,12 +380,26 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 			const next = exchanges[position];
 			if (next === undefined)
 				return fail("cassette-exhausted", null, `all ${exchanges.length} recorded exchange(s) were served`);
-			if (next.requestDigest.value !== requestDigest.value)
+			if (next.requestDigest.value !== requestDigest.value) {
+				let divergence: EndoRequestDivergenceV0 | null = null;
+				try {
+					divergence = endoRequestDivergenceV0(Buffer.from(blobs.get(next.requestBody.digest)), body);
+				} catch {
+					divergence = null;
+				}
+				const where =
+					divergence === null
+						? ""
+						: divergence.kind === "environment"
+							? `: environment diverged at exchange ${exchange} (message ${divergence.message}, a tool result differs from the recording)`
+							: `: control flow diverged at exchange ${exchange} (${divergence.message === null ? "request fields" : `message ${divergence.message}, ${divergence.role}`})`;
 				return fail(
 					"unexpected-request",
 					next.requestDigest,
-					`request ${exchange} (${method} ${path}) is not recorded exchange ${next.exchange} (${next.method} ${next.path})`,
+					`request ${exchange} (${method} ${path}) is not recorded exchange ${next.exchange} (${next.method} ${next.path})${where}`,
+					divergence,
 				);
+			}
 			if (next.response === null)
 				return fail(
 					"truncated-exchange",

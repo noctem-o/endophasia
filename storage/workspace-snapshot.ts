@@ -1,11 +1,16 @@
-// Deterministic workspace archives (`endo.workspace-archive.v0`): what a recorded session's scratch workspace held before
-// the session ran, so a replay can start from the same files.
+// Workspace archives: what a recorded session's scratch workspace held before the session ran, so a replay can start
+// from the same files.
 //
-// The archive is the canonical JSON of `{ schemaVersion, entries }`. Entries are sorted by path (UTF-16 code-unit order
-// of the POSIX relative path) and hold only what a tool can observe through the file's content and kind: a directory, a
-// file (its bytes, base64, and whether it is executable), or a symbolic link (its target text, never followed). Owner,
-// group, timestamps and the remaining permission bits are not kept, so the same tree always gives the same bytes. Any
-// other file kind (socket, FIFO, device) is refused rather than silently dropped.
+// The archive is the canonical JSON of `{ schemaVersion, rootMtimeMs, entries }`. Entries are sorted by path (UTF-16
+// code-unit order of the POSIX relative path) and hold what a tool can observe: a directory, a file (its bytes, base64,
+// and whether it is executable), or a symbolic link (its target text, never followed), each with its modification time
+// in whole milliseconds (`mtimeMs`), and the root directory's too. Times are state, not time: a tool such as `ls -la`
+// prints them, so a replay that restored the files with new times would show the tool a different workspace. Owner,
+// group and the remaining permission bits are not kept. Any other file kind (socket, FIFO, device) is refused rather
+// than silently dropped.
+//
+// Versions: `endo.workspace-archive.v1` (with times; written now) and `endo.workspace-archive.v0` (without; still read
+// and restored, with fresh times).
 //
 // Restoring writes into a directory that does not exist yet, or is empty. Every entry path is checked: no absolute
 // path, no `..`, no empty or `.` segment, and nothing under a path the archive itself makes a symbolic link, so an
@@ -14,28 +19,35 @@
 import {
 	chmodSync,
 	lstatSync,
+	lutimesSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	readlinkSync,
+	statSync,
 	symlinkSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 
 export const ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0 = "endo.workspace-archive.v0";
+export const ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1 = "endo.workspace-archive.v1";
 
 /** The most file bytes an archive holds; a larger workspace is refused (a snapshot is for scratch workspaces). */
 export const ENDO_WORKSPACE_ARCHIVE_MAX_BYTES_V0 = 64 * 1024 * 1024;
 
+/** An entry; `mtimeMs` is present in v1 archives only. */
 export type EndoWorkspaceArchiveEntryV0 =
-	| { path: string; type: "directory" }
-	| { path: string; type: "file"; executable: boolean; bytes: number; base64: string }
-	| { path: string; type: "symlink"; target: string };
+	| { path: string; type: "directory"; mtimeMs?: number }
+	| { path: string; type: "file"; executable: boolean; bytes: number; base64: string; mtimeMs?: number }
+	| { path: string; type: "symlink"; target: string; mtimeMs?: number };
 
 export interface EndoWorkspaceArchiveV0 {
-	schemaVersion: typeof ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0;
+	schemaVersion: typeof ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0 | typeof ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1;
+	/** v1 only: the root directory's modification time. */
+	rootMtimeMs?: number;
 	entries: EndoWorkspaceArchiveEntryV0[];
 }
 
@@ -61,9 +73,10 @@ export function archiveEndoWorkspaceV0(directory: string): {
 			const path = relative === "" ? name : `${relative}/${name}`;
 			const full = join(directory, path);
 			const info = lstatSync(full);
-			if (info.isSymbolicLink()) entries.push({ path, type: "symlink", target: readlinkSync(full) });
+			const mtimeMs = Math.floor(info.mtimeMs);
+			if (info.isSymbolicLink()) entries.push({ path, type: "symlink", target: readlinkSync(full), mtimeMs });
 			else if (info.isDirectory()) {
-				entries.push({ path, type: "directory" });
+				entries.push({ path, type: "directory", mtimeMs });
 				walk(path);
 			} else if (info.isFile()) {
 				const content = readFileSync(full);
@@ -78,13 +91,18 @@ export function archiveEndoWorkspaceV0(directory: string): {
 					executable: (info.mode & 0o111) !== 0,
 					bytes: content.length,
 					base64: content.toString("base64"),
+					mtimeMs,
 				});
 			} else throw new TypeError(`the workspace entry ${path} is neither a file, a directory nor a symbolic link`);
 		}
 	};
 	walk("");
 	entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-	const archive: EndoWorkspaceArchiveV0 = { schemaVersion: ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0, entries };
+	const archive: EndoWorkspaceArchiveV0 = {
+		schemaVersion: ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1,
+		rootMtimeMs: Math.floor(statSync(directory).mtimeMs),
+		entries,
+	};
 	return {
 		bytes: new TextEncoder().encode(canonicalEndoJsonV0(archive)),
 		summary: {
@@ -112,17 +130,23 @@ function safePath(path: unknown): string {
 	return path;
 }
 
-/** Parse and check archive bytes. Throws on anything that is not a well-formed, safe `endo.workspace-archive.v0`. */
+const isTime = (value: unknown): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/** Parse and check archive bytes (v0 or v1). Throws on anything that is not a well-formed, safe workspace archive. */
 export function parseEndoWorkspaceArchiveV0(bytes: Uint8Array): EndoWorkspaceArchiveV0 {
 	const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 	const parsed = JSON.parse(text) as EndoWorkspaceArchiveV0;
-	if (parsed?.schemaVersion !== ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0 || !Array.isArray(parsed.entries))
-		throw new TypeError(`not an ${ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0}`);
+	const v1 = parsed?.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1;
+	if ((!v1 && parsed?.schemaVersion !== ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0) || !Array.isArray(parsed.entries))
+		throw new TypeError(`not an ${ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1} or ${ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0}`);
+	if (v1 ? !isTime(parsed.rootMtimeMs) : parsed.rootMtimeMs !== undefined) throw new TypeError("bad root time");
 	if (canonicalEndoJsonV0(parsed) !== text) throw new TypeError("the archive is not in canonical form");
 	const links = new Set<string>();
 	let previous = "";
 	for (const entry of parsed.entries) {
 		const path = safePath(entry.path);
+		if (v1 ? !isTime(entry.mtimeMs) : entry.mtimeMs !== undefined) throw new TypeError(`bad time at ${path}`);
 		if (previous !== "" && !(previous < path)) throw new TypeError(`archive entries are not sorted at ${path}`);
 		previous = path;
 		const parts = path.split("/");
@@ -143,7 +167,11 @@ export function parseEndoWorkspaceArchiveV0(bytes: Uint8Array): EndoWorkspaceArc
 	return parsed;
 }
 
-/** Restore archive bytes into `directory`, which must not exist or must be empty. Returns the parsed archive. */
+/**
+ * Restore archive bytes into `directory`, which must not exist or must be empty. Returns the parsed archive. A v1
+ * archive's times are applied after every entry is written (writing into a directory changes its time): files and
+ * links first, then directories deepest first, then the root.
+ */
 export function restoreEndoWorkspaceV0(bytes: Uint8Array, directory: string): EndoWorkspaceArchiveV0 {
 	const archive = parseEndoWorkspaceArchiveV0(bytes);
 	mkdirSync(directory, { recursive: true, mode: 0o755 });
@@ -157,6 +185,18 @@ export function restoreEndoWorkspaceV0(bytes: Uint8Array, directory: string): En
 			writeFileSync(target, Buffer.from(entry.base64, "base64"), { flag: "wx", mode: 0o644 });
 			if (entry.executable) chmodSync(target, 0o755);
 		}
+	}
+	if (archive.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1) {
+		const at = (ms: number) => ms / 1000;
+		for (const entry of archive.entries) {
+			const target = join(directory, entry.path);
+			if (entry.type === "file") utimesSync(target, at(entry.mtimeMs!), at(entry.mtimeMs!));
+			else if (entry.type === "symlink") lutimesSync(target, at(entry.mtimeMs!), at(entry.mtimeMs!));
+		}
+		const directories = archive.entries.filter((entry) => entry.type === "directory");
+		directories.sort((a, b) => b.path.split("/").length - a.path.split("/").length);
+		for (const entry of directories) utimesSync(join(directory, entry.path), at(entry.mtimeMs!), at(entry.mtimeMs!));
+		utimesSync(directory, at(archive.rootMtimeMs!), at(archive.rootMtimeMs!));
 	}
 	return archive;
 }

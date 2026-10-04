@@ -444,6 +444,13 @@ export interface PiCassetteReplayReportV0 {
 	misses: number;
 	/** Recorded exchanges the replay never requested. */
 	unserved: number;
+	/**
+	 * Every cassette miss, in order. An `unexpected-request` miss carries where the replayed request first differed:
+	 * `environment` (a tool result: what a tool observed changed) or `control-flow` (anything else).
+	 */
+	missDetails: { exchange: number; reason: string; divergence: JsonValueV0 | null }[];
+	/** The first environment divergence ("environment diverged at <exchange>"), when the first miss is one. */
+	environmentDivergedAt: number | null;
 	notes: string[];
 	comparison: EndoTrajectoryComparisonV0;
 }
@@ -624,6 +631,15 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		log.close();
 		rmSync(scratchCreated, { recursive: true, force: true });
 	}
+	const missDetails = readEndoCaptureEventsV0(options.out)
+		.filter((event) => event.kind === "capture.cassette-miss")
+		.map((event) => {
+			const payload = event.payload as { exchange: number; reason: string; divergence?: JsonValueV0 };
+			return { exchange: payload.exchange, reason: payload.reason, divergence: payload.divergence ?? null };
+		});
+	const first = missDetails[0];
+	const environmentDivergedAt =
+		first !== undefined && (first.divergence as { kind?: unknown } | null)?.kind === "environment" ? first.exchange : null;
 	const coordinate = `endo.session.pi.${piSessionId}`;
 	const comparison = compareEndoTrajectoriesV0(
 		storeTrajectory(options.store, coordinate),
@@ -635,6 +651,8 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		served: server.served,
 		misses: server.misses,
 		unserved: server.remaining,
+		missDetails,
+		environmentDivergedAt,
 		notes,
 		comparison,
 	};

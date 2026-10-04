@@ -131,6 +131,7 @@ export type EndoInterventionRefusalReasonV0 =
 	| "authorization-for-another-proposal"
 	| "authorization-for-another-session"
 	| "authorization-for-another-attachment"
+	| "authorization-expired"
 	| "proposal-tampered"
 	| "proposal-for-another-session"
 	| "capability-unavailable"
@@ -145,6 +146,7 @@ export const ENDO_INTERVENTION_REFUSAL_REASONS_V0: readonly EndoInterventionRefu
 	"authorization-for-another-proposal",
 	"authorization-for-another-session",
 	"authorization-for-another-attachment",
+	"authorization-expired",
 	"proposal-tampered",
 	"proposal-for-another-session",
 	"capability-unavailable",
@@ -182,7 +184,14 @@ export type EndoInterventionConsumptionV0 =
 export interface EndoInterventionConsequenceV0 {
 	schemaVersion: typeof ENDO_INTERVENTION_SCHEMA_V0;
 	requestId: string;
-	acceptance: { status: "accepted"; disposition: string | null } | { status: "refused"; reason: string };
+	/**
+	 * `pending`: Pi had not replied when the consequence was recorded (an abort is answered only once the run is idle). The
+	 * acceptance record, if it comes, follows the consequence.
+	 */
+	acceptance:
+		| { status: "accepted"; disposition: string | null }
+		| { status: "refused"; reason: string }
+		| { status: "pending"; reason: string };
 	consumption: EndoInterventionConsumptionV0;
 	/**
 	 * What the trajectory did after the request, as observed in the store: the runs that ended after it and how they

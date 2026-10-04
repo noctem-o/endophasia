@@ -33,6 +33,7 @@ import {
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
+	ENDO_INTERVENTION_AUTHORIZATION_MAX_AGE_MS_V0,
 	type EndoInterventionAuthorityProviderV0,
 	type EndoInterventionCaptureSourceV0,
 	endoFindConsumptionV0,
@@ -81,21 +82,33 @@ export class PiInterventionDeskV0 {
 	readonly #root: string;
 	readonly #messages: EndoBlobStoreV0;
 	readonly #proposals = new Map<string, { proposal: EndoInterventionProposalV0; eventId: string }>();
-	readonly #authorizations = new Map<string, { authorization: EndoInterventionAuthorizationV0; eventId: string }>();
+	readonly #authorizations = new Map<
+		string,
+		{ authorization: EndoInterventionAuthorizationV0; eventId: string; recordedAt: string }
+	>();
 	readonly #requests = new Map<string, RequestStateV0>();
 	/** Applies in flight, by proposal: a concurrent duplicate waits for the first instead of sending twice. */
 	readonly #inFlight = new Map<string, Promise<PiInterventionApplyResultV0>>();
 
 	readonly #capture: EndoInterventionCaptureSourceV0 | null;
+	readonly #now: () => number;
+	readonly #authorizationMaxAgeMs: number;
 
-	/** `capture`: where the recording proxy's captured requests are read from; without it consumption is never observed. */
+	/**
+	 * `capture`: where the recording proxy's captured requests are read from; without it consumption is never observed.
+	 * `options.authorizationMaxAgeMs`: the oldest authorization (by its recording time) the desk will act on, 15 minutes
+	 * by default; `options.now` is the clock it ages them by (injectable for tests).
+	 */
 	constructor(
 		session: PiSessionAttachmentV0,
 		key: EndoDigestKeyV0,
 		capture: EndoInterventionCaptureSourceV0 | null = null,
+		options: { authorizationMaxAgeMs?: number; now?: () => number } = {},
 	) {
 		this.session = session;
 		this.#capture = capture;
+		this.#now = options.now ?? Date.now;
+		this.#authorizationMaxAgeMs = options.authorizationMaxAgeMs ?? ENDO_INTERVENTION_AUTHORIZATION_MAX_AGE_MS_V0;
 		this.key = key;
 		this.#root = session.owner.options.root;
 		this.#messages = createEndoBlobStoreV0(join(this.#root, "interventions"), key);
@@ -122,6 +135,7 @@ export class PiInterventionDeskV0 {
 				this.#authorizations.set(p.authorizationId as string, {
 					authorization: p as unknown as EndoInterventionAuthorizationV0,
 					eventId: event.id,
+					recordedAt: event.at,
 				});
 				break;
 			case "intervention.request":
@@ -306,6 +320,12 @@ export class PiInterventionDeskV0 {
 		const gate = endoInterventionGateV0({
 			proposal,
 			authorization: authorization?.authorization ?? null,
+			...(authorization === null
+				? {}
+				: {
+						authorizationAgeMs: this.#now() - Date.parse(authorization.recordedAt),
+						authorizationMaxAgeMs: this.#authorizationMaxAgeMs,
+					}),
 			messageVerified: message.verified,
 			currentSession,
 			currentAttachment: this.session.owner.attachment,
@@ -429,10 +449,33 @@ export class PiInterventionDeskV0 {
 	}
 
 	/**
-	 * For every request: consumption (recorded only when the capture shows it), then the consequence, once. Call when
-	 * the session's work has settled and the recording proxy has flushed, before the session closes.
+	 * Wait for the applies still waiting for Pi (an abort is answered only once the run is idle), for at most `waitMs`
+	 * (default 30 s). A late reply is still recorded when it comes, after the consequence, which then says `pending`.
 	 */
-	finish(): void {
+	async settled(waitMs = 30_000): Promise<void> {
+		const flying = [...this.#inFlight.values()].map((apply) => apply.catch(() => {}));
+		if (flying.length === 0) return;
+		let timer: NodeJS.Timeout | undefined;
+		try {
+			await Promise.race([
+				Promise.all(flying),
+				new Promise<void>((done) => {
+					timer = setTimeout(done, waitMs);
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	/**
+	 * For every request: consumption (recorded only when the capture shows it), then the consequence, once. Waits first
+	 * for applies still waiting for Pi (`settled`), so a reply that is on its way is recorded before the consequence and
+	 * the consequence does not claim "no reply" for it. Call when the session's work has settled and the recording proxy
+	 * has flushed, before the session closes.
+	 */
+	async finish(options: { waitMs?: number } = {}): Promise<void> {
+		await this.settled(options.waitMs);
 		for (const state of this.#requests.values()) {
 			if (state.consequence) continue;
 			const consumption = this.#consumption(state);
@@ -442,10 +485,9 @@ export class PiInterventionDeskV0 {
 				acceptance:
 					state.outcome?.status === "accepted"
 						? { status: "accepted", disposition: state.outcome.disposition }
-						: {
-								status: "refused",
-								reason: state.outcome?.status === "refused" ? state.outcome.reason : "no reply recorded",
-							},
+						: state.outcome?.status === "refused"
+							? { status: "refused", reason: state.outcome.reason }
+							: { status: "pending", reason: "Pi had not replied when the consequence was recorded" },
 				consumption,
 				effect: this.#effect(state),
 			};

@@ -28,7 +28,12 @@ import {
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoFixtureDigestKeyPathV0 } from "../storage/digest-key.ts";
-import { type PiCassetteKeySourceV0, piCassetteKeyV0, replayPiCassetteSessionV0 } from "./cassette-session.ts";
+import {
+	type PiCassetteKeySourceV0,
+	piCassetteKeyV0,
+	piCassetteSessionV0,
+	replayPiCassetteSessionV0,
+} from "./cassette-session.ts";
 
 function parse(argv: readonly string[], valued: readonly string[], switches: readonly string[]) {
 	const flags = new Map<string, string>();
@@ -140,6 +145,11 @@ export async function replayCommand(argv: readonly string[]): Promise<void> {
 		);
 	const [store, session] = positional as [string, string];
 	const timing = timingOf(flags.get("--timing"));
+	// Checked before anything starts: a replay of the wrong session would be wasted work.
+	const wanted = session.startsWith("endo.session.pi.") ? session : `endo.session.pi.${session}`;
+	const recorded = piCassetteSessionV0(store);
+	if (recorded !== wanted)
+		throw new TypeError(`the cassette in ${store} recorded ${recorded}, not ${wanted}; nothing was replayed`);
 	const out = flags.get("--out") ?? mkdtempSync(join(tmpdir(), "endo-replay-"));
 	const report = await replayPiCassetteSessionV0({
 		store,
@@ -150,9 +160,6 @@ export async function replayCommand(argv: readonly string[]): Promise<void> {
 		timeoutMs: integer(flags.get("--timeout-ms"), "--timeout-ms", 300_000),
 		holdMs: integer(flags.get("--hold-ms"), "--hold-ms", 30_000),
 	});
-	const wanted = session.startsWith("endo.session.pi.") ? session : `endo.session.pi.${session}`;
-	if (report.session !== wanted)
-		throw new TypeError(`the cassette in ${store} recorded ${report.session}, not ${wanted}; nothing to compare`);
 	const layers = report.comparison.layers;
 	process.stdout.write(
 		canonicalEndoJsonV0({

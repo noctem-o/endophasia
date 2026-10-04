@@ -6,6 +6,7 @@
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
  *   node cli/index.ts digest-key id
  *   node cli/index.ts proxy <record|replay> ...
+ *   node cli/index.ts experiment <run|report> ...
  *   node cli/index.ts replay <store> <session> --pi <path> --timing <as-recorded|immediate> ...
  *
  * The command functions print one canonical-JSON document on success; any throw becomes a one-line error on stderr
@@ -16,6 +17,7 @@
 
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { digestKeyCommand } from "./digest-key.ts";
+import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
@@ -42,6 +44,12 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		return dispatch(rest);
 	},
 	replay: replayCommand,
+	experiment: (argv) => {
+		const [sub, ...rest] = argv;
+		const dispatch = typeof sub === "string" ? EXPERIMENT_COMMANDS_V0[sub] : undefined;
+		if (dispatch === undefined) throw new TypeError("usage: endo experiment <run|report> ...");
+		return dispatch(rest);
+	},
 	trajectory: (argv) => {
 		const [sub, ...rest] = argv;
 		const dispatch = typeof sub === "string" ? TRAJECTORY_COMMANDS_V0[sub] : undefined;
@@ -53,7 +61,9 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 const [, , command, ...argv] = process.argv;
 const dispatch = typeof command === "string" ? COMMANDS_V0[command] : undefined;
 if (dispatch === undefined) {
-	console.error("usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay> ...");
+	console.error(
+		"usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment> ...",
+	);
 	process.exit(1);
 }
 try {

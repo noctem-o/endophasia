@@ -330,6 +330,16 @@ A valid proposal does not widen the model's permission.
     the recorded port. It drives a fresh Pi through the recorded prompts, STOP and kill (at the recorded chunk), then
     compares the result with the recording, layer by layer.
   - The proxy and the cassette server depend only on the OpenAI-compatible boundary, not on Pi.
+- **Experiments** ([how they run](docs/experiments.md)).
+  - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
+    conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi
+    session recorded through the capture proxy, so each one is also a cassette.
+  - The order is blocked-randomized with a recorded seed. A run resumes after interruption without duplicating trials.
+  - `endo experiment report` aggregates the trials with the trajectory comparison. Per judged layer it gives the
+    pairwise exact-match rate (95% Wilson) and the trial-level modal agreement. It also gives the first divergences,
+    outcomes, the check pass rate, and usage and timing as median and IQR, never judged. The bundle uses the existing
+    evaluation records.
+  - So far it has run for real only as a smoke test (N=2, one task). The variance study is separate work.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.

@@ -20,6 +20,7 @@ import {
 	piCassetteAttachmentV0,
 	recordPiCassetteSessionV0,
 	replayPiCassetteSessionV0,
+	settlesWithin,
 } from "../cli/cassette-session.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
@@ -323,6 +324,15 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		});
 		expect(seen).toBeLessThan(Date.now() - 1000);
 		expect(report.misses).toBe(0);
+	});
+
+	it("a wait leaves no timer behind: a long timeout must not keep the process alive after the event arrives", async () => {
+		const timers = () => process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
+		const before = timers();
+		expect(await settlesWithin(Promise.resolve(), 600_000)).toBe(true);
+		expect(timers()).toBe(before);
+		expect(await settlesWithin(new Promise(() => {}), 20)).toBe(false);
+		expect(timers()).toBe(before);
 	});
 
 	describe("steered sessions (STEER, QUEUE and STOP through the intervention desk)", () => {

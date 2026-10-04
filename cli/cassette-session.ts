@@ -237,6 +237,21 @@ export function piCassetteAttachmentV0(config: PiCassetteAttachmentConfigV0): Pi
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
+/** True when `promise` settles within `ms`, false when the time runs out first. The timer never outlives the wait. */
+export async function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		return await Promise.race([
+			promise.then(() => true),
+			new Promise<boolean>((done) => {
+				timer = setTimeout(() => done(false), Math.max(0, ms));
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 function pidAlive(pid: number): boolean {
 	try {
 		process.kill(pid, 0);
@@ -310,10 +325,7 @@ async function untilRelayed(
 		if (Date.now() > deadline) return false;
 		await sleep(5);
 	}
-	return Promise.race([
-		proxy.untilDelivered(exchange, chunks).then(() => true),
-		sleep(Math.max(0, deadline - Date.now())).then(() => false),
-	]);
+	return settlesWithin(proxy.untilDelivered(exchange, chunks), deadline - Date.now());
 }
 
 function copyEvidence(from: string, to: string): void {
@@ -722,12 +734,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		let armed: Promise<boolean> | null = null;
 		const arm = (point: { exchange: number; chunks: number } | null) => {
 			armed =
-				point === null
-					? Promise.resolve(true)
-					: Promise.race([
-							cassetteServer.pauseAt(point).then(() => true),
-							sleep(options.timeoutMs).then(() => false),
-						]);
+				point === null ? Promise.resolve(true) : settlesWithin(cassetteServer.pauseAt(point), options.timeoutMs);
 		};
 		let pendingPrompt: { text: string; mode: string } | null = null;
 		let child: { kill: () => Promise<string[]> } | null = null;

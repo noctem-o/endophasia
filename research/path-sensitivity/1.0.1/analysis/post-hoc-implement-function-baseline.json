@@ -37,17 +37,17 @@
 				"ignored": 13,
 				"followed": 2
 			},
-			"{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}": {
+			"{\"command\":\"ls -R <scratch>/scratch/work\"}": {
 				"ignored": 4,
 				"followed": 1
 			},
-			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && find /t": {
+			"{\"command\":\"ls -la <scratch>/scratch/work && find <scratch>/scratch/wo": {
 				"followed": 1
 			},
-			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && ls -la ": {
+			"{\"command\":\"ls -la <scratch>/scratch/work && ls -la <scratch>/scratch/": {
 				"ignored": 1
 			},
-			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && cat /tm": {
+			"{\"command\":\"ls -la <scratch>/scratch/work && cat <scratch>/scratch/wor": {
 				"followed": 1
 			},
 			"{\"path\":\"src/roman.js\"}": {
@@ -96,7 +96,7 @@
 			"label": "p04",
 			"names": "bash>read>read>write>bash",
 			"first": "3cdc213d",
-			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"firstText": "{\"command\":\"ls -R <scratch>/scratch/work\"}",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "ignored",
@@ -107,7 +107,7 @@
 			"label": "p05",
 			"names": "bash>read>read>write>bash",
 			"first": "3cdc213d",
-			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"firstText": "{\"command\":\"ls -R <scratch>/scratch/work\"}",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "followed",
@@ -129,7 +129,7 @@
 			"label": "p07",
 			"names": "bash>read>read>read>write>bash",
 			"first": "76ecd222",
-			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && find /t",
+			"firstText": "{\"command\":\"ls -la <scratch>/scratch/work && find <scratch>/scratch/wo",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "followed",
@@ -162,7 +162,7 @@
 			"label": "p10",
 			"names": "bash>read>read>read>write>bash",
 			"first": "178a57a4",
-			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && ls -la ",
+			"firstText": "{\"command\":\"ls -la <scratch>/scratch/work && ls -la <scratch>/scratch/",
 			"codeDigest": "a95f1a44",
 			"codeLines": 32,
 			"steer": "ignored",
@@ -184,7 +184,7 @@
 			"label": "p12",
 			"names": "bash>read>read>write>bash",
 			"first": "0e3599fb",
-			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && cat /tm",
+			"firstText": "{\"command\":\"ls -la <scratch>/scratch/work && cat <scratch>/scratch/wor",
 			"codeDigest": "df5faaa9",
 			"codeLines": 32,
 			"steer": "followed",
@@ -272,7 +272,7 @@
 			"label": "p20",
 			"names": "bash>read>read>read>write>bash",
 			"first": "3cdc213d",
-			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"firstText": "{\"command\":\"ls -R <scratch>/scratch/work\"}",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "ignored",
@@ -283,7 +283,7 @@
 			"label": "p21",
 			"names": "bash>read>read>write>bash",
 			"first": "3cdc213d",
-			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"firstText": "{\"command\":\"ls -R <scratch>/scratch/work\"}",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "ignored",
@@ -294,7 +294,7 @@
 			"label": "p22",
 			"names": "bash>read>read>read>write>bash",
 			"first": "3cdc213d",
-			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"firstText": "{\"command\":\"ls -R <scratch>/scratch/work\"}",
 			"codeDigest": "615deb6e",
 			"codeLines": 32,
 			"steer": "ignored",

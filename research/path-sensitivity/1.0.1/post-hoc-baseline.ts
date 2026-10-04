@@ -53,7 +53,8 @@ for (const label of Object.keys(outcome).sort()) {
 		label,
 		names: calls.map((call) => call[0]).join(">"),
 		first: sha256HexV0(canonicalEndoJsonV0(calls[0])).slice(0, 8),
-		firstText: calls[0]![1].slice(0, 70),
+		// The path placeholder is written as <scratch>, so the committed file holds no path-shaped string.
+		firstText: calls[0]![1].replaceAll("/tmp/endo-experiment-<path>", "<scratch>").slice(0, 70),
 		codeDigest: sha256HexV0(code).slice(0, 8),
 		codeLines: code.split("\n").length,
 		steer: outcome[label]!["implement-function/steer"]!,

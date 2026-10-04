@@ -28,7 +28,7 @@ import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EndoCaptureLogV0, endoCaptureRootV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { EndoCaptureLogV0, endoCaptureRootV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
 	type EndoCassetteTimingV0,
 	loadEndoCassetteV0,
@@ -105,7 +105,16 @@ export function piCassetteEnvV0(root: string): Record<string, string> {
  */
 export function createPiCassetteScratchV0(
 	root: string,
-	options: { baseUrl: string; provider: string; model: string; files: Readonly<Record<string, string>> },
+	options: {
+		baseUrl: string;
+		provider: string;
+		model: string;
+		files: Readonly<Record<string, string>>;
+		/** Fields merged into the models.json model entry (Pi's documented model configuration); never `id`. */
+		modelEntry?: Readonly<Record<string, JsonValueV0>>;
+		/** Pi's settings.json (documented settings), when the session needs one. */
+		settings?: Readonly<Record<string, JsonValueV0>>;
+	},
 ): PiCassetteScratchV0 {
 	if (existsSync(root)) throw new TypeError(`${root} exists; a cassette scratch root is created fresh`);
 	for (const part of ["home", "agent", "work"]) mkdirSync(join(root, part), { recursive: true });
@@ -117,11 +126,13 @@ export function createPiCassetteScratchV0(
 					baseUrl: options.baseUrl,
 					api: "openai-completions",
 					apiKey: "local",
-					models: [{ id: options.model }],
+					models: [{ ...(options.modelEntry ?? {}), id: options.model }],
 				},
 			},
 		}),
 	);
+	if (options.settings !== undefined)
+		writeFileSync(join(root, "agent", "settings.json"), JSON.stringify(options.settings));
 	for (const [path, content] of Object.entries(options.files)) {
 		mkdirSync(dirname(join(root, "work", path)), { recursive: true });
 		writeFileSync(join(root, "work", path), content);
@@ -256,6 +267,11 @@ export interface PiCassetteRecordOptionsV0 {
 	/** A store whose harness registry and artifacts (capability evidence) the session starts from. */
 	readonly evidenceFrom: string | null;
 	readonly timeoutMs: number;
+	/** Passed to createPiCassetteScratchV0 (an experiment condition's documented Pi configuration). */
+	readonly modelEntry?: Readonly<Record<string, JsonValueV0>>;
+	readonly settings?: Readonly<Record<string, JsonValueV0>>;
+	/** Runs after the session closed and before the scratch root is removed (an experiment's success check). */
+	readonly afterSession?: (scratchRoot: string) => Promise<void> | void;
 }
 
 export interface PiCassetteRecordReportV0 {
@@ -273,6 +289,8 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		provider: options.provider,
 		model: options.model,
 		files: options.scenario.workspace,
+		...(options.modelEntry === undefined ? {} : { modelEntry: options.modelEntry }),
+		...(options.settings === undefined ? {} : { settings: options.settings }),
 	});
 	const log = new EndoCaptureLogV0(options.store, key, "record");
 	const notes: string[] = [];
@@ -354,7 +372,9 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 			}
 		}
 		if (session !== null) await (session as PiSessionAttachmentV0).close();
+		session = null;
 		driver("close");
+		await options.afterSession?.(scratch.root);
 	} finally {
 		if (session !== null) await (session as PiSessionAttachmentV0).close().catch(() => {});
 		options.proxy.log = null;
@@ -440,6 +460,11 @@ function restoreScratch(
 	);
 	restoreEndoWorkspaceV0(bytes, root);
 	return { root, created };
+}
+
+/** The endo session coordinate a cassette session store recorded, read from its capture log (nothing is started). */
+export function piCassetteSessionV0(store: string): string {
+	return `endo.session.pi.${recordedSessionId(piCassetteScriptV0(readEndoCaptureEventsV0(store)))}`;
 }
 
 /** The Pi session id the recording opened (from its first open step). */

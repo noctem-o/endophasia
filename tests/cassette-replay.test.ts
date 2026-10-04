@@ -224,6 +224,15 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		}
 	});
 
+	it("a replay leaves nothing at the recorded path: the restored root and any parent it had to create are removed", async () => {
+		const events = readEndoCaptureEventsV0(recorded.completes!);
+		const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")!.payload as {
+			scratchRoot: string;
+		};
+		await replay("completes");
+		expect(existsSync(snapshot.scratchRoot)).toBe(false);
+	});
+
 	it("refuses to replay while the recorded scratch root exists (it restores at the same path, never elsewhere)", async () => {
 		const events = readEndoCaptureEventsV0(recorded.completes!);
 		const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")!.payload as {

@@ -797,8 +797,10 @@ describe("the public fixture key (research/fixture-keys/)", () => {
 	});
 
 	it("recording a normal session under fixture-public is refused", () => {
+		const root = mkdtempSync(join(tmpdir(), "endo-digest-key-"));
+		dirs.push(root);
 		const pi = new PiAttachmentV0({
-			root: mkdtempSync(join(tmpdir(), "endo-digest-key-")),
+			root,
 			digestKey: loadEndoFixtureDigestKeyV0(FIXTURE_KEY_FILE),
 		});
 		expect(() => pi.digestKey()).toThrow(

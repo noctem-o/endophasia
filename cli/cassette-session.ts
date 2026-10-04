@@ -419,17 +419,27 @@ export interface PiCassetteReplayReportV0 {
 }
 
 /** Restore the scratch root a cassette recorded, at its recorded path. */
-function restoreScratch(store: string, key: EndoDigestKeyV0, script: PiCassetteScriptV0): string {
+/**
+ * Restore the recorded scratch root at its recorded path. Returns it, and the topmost directory the restore created
+ * (the root itself, or a missing ancestor such as the recorder's temp base): removing that one leaves nothing behind.
+ */
+function restoreScratch(
+	store: string,
+	key: EndoDigestKeyV0,
+	script: PiCassetteScriptV0,
+): { root: string; created: string } {
 	const root = script.snapshot.scratchRoot;
 	if (existsSync(root))
 		throw new TypeError(
 			`the recorded scratch root ${root} exists; a replay restores it at the same path (Pi's requests carry it), so it must be free`,
 		);
+	let created = root;
+	while (!existsSync(dirname(created)) && dirname(created) !== created) created = dirname(created);
 	const bytes = createEndoBlobStoreV0(endoCaptureRootV0(store), key, { readOnly: true }).get(
 		script.snapshot.archive.digest,
 	);
 	restoreEndoWorkspaceV0(bytes, root);
-	return root;
+	return { root, created };
 }
 
 /** The Pi session id the recording opened (from its first open step). */
@@ -458,7 +468,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		join(registry, "pi-session.json"),
 		`${JSON.stringify({ sessionDir: join(options.out, "pi-sessions", "pi.default"), sessionId: piSessionId }, null, 2)}\n`,
 	);
-	const scratchRoot = restoreScratch(options.store, key, script);
+	const { root: scratchRoot, created: scratchCreated } = restoreScratch(options.store, key, script);
 	const log = new EndoCaptureLogV0(options.out, key, "replay");
 	if (options.alterScratch !== undefined) {
 		options.alterScratch.apply(scratchRoot);
@@ -577,7 +587,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		if (session !== null) await (session as PiSessionAttachmentV0).close().catch(() => {});
 		await server?.close();
 		log.close();
-		rmSync(scratchRoot, { recursive: true, force: true });
+		rmSync(scratchCreated, { recursive: true, force: true });
 	}
 	const coordinate = `endo.session.pi.${piSessionId}`;
 	const comparison = compareEndoTrajectoriesV0(

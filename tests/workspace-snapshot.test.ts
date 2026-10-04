@@ -41,7 +41,8 @@ function tree(): string {
 	writeFileSync(join(root, "notes.txt"), "status: draft\n");
 	writeFileSync(join(root, "src", "deep", "run.sh"), "#!/bin/sh\necho hi\n", { mode: 0o755 });
 	symlinkSync("notes.txt", join(root, "link"));
-	const at = (date: string) => new Date(date);
+	// Seconds at the middle of the millisecond, so a libuv that truncates to microseconds (Node 22's) still stores it.
+	const at = (date: string) => (Date.parse(date) + 0.5) / 1000;
 	lutimesSync(join(root, "link"), at("2026-01-02T03:04:05.383Z"), at("2026-01-02T03:04:05.383Z"));
 	utimesSync(join(root, "notes.txt"), at("2026-01-02T03:04:05.678Z"), at("2026-01-02T03:04:05.678Z"));
 	utimesSync(join(root, "src", "deep", "run.sh"), at("2026-02-03T04:05:06Z"), at("2026-02-03T04:05:06Z"));
@@ -81,11 +82,13 @@ describe("workspace archives", () => {
 		symlinkSync("f", join(source, "l"));
 		const restoredAt: number[] = [];
 		for (let ms = 0; ms < 1000; ms += 1) {
-			const at = new Date(base + ms);
+			const at = (base + ms + 0.5) / 1000;
 			utimesSync(join(source, "f"), at, at);
 			lutimesSync(join(source, "l"), at, at);
 			utimesSync(join(source, "d"), at, at);
 			utimesSync(source, at, at);
+			for (const path of [join(source, "f"), join(source, "d"), source]) expect(mtime(path)).toBe(base + ms);
+			expect(mtime(join(source, "l"), true)).toBe(base + ms);
 			const target = join(scratch(), `sweep-${ms}`);
 			restoreEndoWorkspaceV0(archiveEndoWorkspaceV0(source).bytes, target);
 			for (const path of [join(target, "f"), join(target, "d"), target])

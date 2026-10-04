@@ -19,6 +19,8 @@ import {
 } from "../research/steering/1.0.1/analyze.ts";
 import { MESSAGES, STEER_POINT, steeringSpec } from "../research/steering/1.0.1/make-spec.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
+import { endoDigestKeyFromEnvironmentV0 } from "../storage/digest-key.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
 
@@ -142,7 +144,7 @@ describe("the analysis on a fake-Pi experiment", () => {
 	}, 240_000);
 
 	it("I1 and I2 pass, and P1 to P4 hold: the steer diverges at the request that carries it, the queue after the baseline", () => {
-		const m = interventionManipulation(dir);
+		const m = interventionManipulation(dir, endoDigestKeyFromEnvironmentV0());
 		expect(m.I1.byCondition, JSON.stringify(m.I1.byCondition)).toBeDefined();
 		expect(m.I1.status, JSON.stringify(m.I1.byCondition)).toBe("PASS");
 		expect(m.I1.byCondition).toMatchObject({ base: { trials: 2 }, steer: { trials: 2 }, queue: { trials: 2 } });
@@ -186,6 +188,16 @@ describe("the analysis on a fake-Pi experiment", () => {
 		);
 	};
 
+	it("I1 compares the message's keyed digest, as DESIGN §6 says: another key fails it", () => {
+		const other = endoDigestKeyV0(Buffer.alloc(32, 1), "not-the-recording-key");
+		const result = interventionManipulation(dir, other);
+		expect(result.I1.status).toBe("FAIL");
+		expect(result.I1.byCondition.steer!.failures[0]).toMatch(
+			/message digest is not the keyed digest of the spec's message/,
+		);
+		expect(result.I1.byCondition.base!.failures).toEqual([]);
+	});
+
 	it("a steered trial among the baseline breaks the noise floor (P1) and the study no longer holds", () => {
 		const broken = join(base, "run-p1");
 		cpSync(dir, broken, { recursive: true });
@@ -193,7 +205,7 @@ describe("the analysis on a fake-Pi experiment", () => {
 		const result = checks(broken, { kind: "installation" });
 		expect((result.tasks["tool-use"] as any).P1).toMatchObject({ status: "FAIL", requestsEqual: false });
 		expect(result.study).toMatch(/^DOES NOT HOLD/);
-		expect(interventionManipulation(broken).I1.status).toBe("FAIL");
+		expect(interventionManipulation(broken, endoDigestKeyFromEnvironmentV0()).I1.status).toBe("FAIL");
 	});
 
 	it("a baseline trial in the steer arm (the message never consumed) is a reported manipulation failure, not an effect", () => {
@@ -207,7 +219,7 @@ describe("the analysis on a fake-Pi experiment", () => {
 		expect(steer.P4).toEqual({ passed: 1, of: 2 });
 		expect(steer.perTrial[1]).toMatchObject({ firstDivergence: null, P4: "FAIL (manipulation failure)" });
 		expect(result.study).toMatch(/^DOES NOT HOLD: 1 violation/);
-		expect(interventionManipulation(broken).I1.status).toBe("FAIL");
+		expect(interventionManipulation(broken, endoDigestKeyFromEnvironmentV0()).I1.status).toBe("FAIL");
 	});
 });
 

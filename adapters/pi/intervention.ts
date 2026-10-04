@@ -460,8 +460,25 @@ export class PiInterventionDeskV0 {
 
 	/** Every chain as recorded: proposals, their authorizations, requests and outcomes. */
 	status(): JsonValueV0 {
+		// What is offered: an operation only if Pi's capability for it is admitted by conformance evidence; otherwise it is
+		// UNAVAILABLE, with the reason. The gate refuses it again at apply, whatever a client does.
+		const operations = Object.fromEntries(
+			(Object.keys(PI_INTERVENTION_CAPABILITIES_V0) as EndoInterventionOperationV0[]).map((operation) => {
+				const capability = PI_INTERVENTION_CAPABILITIES_V0[operation];
+				const admission = this.session.admission(capability);
+				return [
+					operation,
+					admission.admitted
+						? { capability, status: "admitted" }
+						: { capability, status: "UNAVAILABLE", reason: admission.reason },
+				];
+			}),
+		);
 		return record({
 			session: this.session.piSessionId === null ? null : this.currentSession,
+			live: this.session.live,
+			runActive: this.session.runActive,
+			operations,
 			proposals: [...this.#proposals.values()].map(({ proposal }) => {
 				const state = this.#requests.get(proposal.proposalId);
 				return {

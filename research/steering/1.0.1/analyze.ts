@@ -6,6 +6,7 @@
 //   node research/steering/1.0.1/analyze.ts checks <run dir>                    P1 to P5, per task and arm, per trial
 //   node research/steering/1.0.1/analyze.ts spotcheck <run dir> --pi <p> [--trials t/c/#n,...]
 //   node research/steering/1.0.1/analyze.ts replays <cassette dir> --pi <p>     each steered cassette 5 times
+//   node research/steering/1.0.1/analyze.ts replication <original run dir> --against <replication run dir>   (post-hoc)
 //   node research/steering/1.0.1/analyze.ts sensitivity <run dir>
 //
 // Each prints one JSON document on stdout. M5, M6, the estimate, the spot check and the sensitivity scan are E3's,
@@ -26,18 +27,18 @@ import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
 import type { EndoEventV0 } from "../../../protocol/event.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
-import { wilson95V0 } from "../../../runtime/contracts/statistics.ts";
-import { endoFixtureDigestKeyPathV0 } from "../../../storage/digest-key.ts";
+import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
+import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
+import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
 import {
 	manipulation as environmentManipulation,
 	estimate,
 	normalizeToolCallIds,
-	spotcheck,
 } from "../../pinned-environment/1.0.1/analyze.ts";
 import { sensitivity } from "../../variance/1.0.1/analyze.ts";
 import { MESSAGES, STEER_POINT } from "./make-spec.ts";
 
-export { estimate, sensitivity, spotcheck };
+export { estimate, sensitivity };
 
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
@@ -81,7 +82,10 @@ const CAPABILITY: Record<string, string> = { steer: "steering.steer", queue: "st
  * authority and delivery point; each baseline trial records no intervention record.
  * I2: each run session's capability study admitted the capabilities before the session's first trial.
  */
-export function interventionManipulation(dir: string) {
+export function interventionManipulation(
+	dir: string,
+	key: EndoDigestKeyV0 = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0()),
+) {
 	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
 	const i1: Record<string, { trials: number; failures: string[] }> = {};
 	for (const trial of trials(dir).filter((entry) => entry.status === "completed")) {
@@ -116,8 +120,11 @@ export function interventionManipulation(dir: string) {
 				if (proposal!.origin !== "operator-scenario") failures.push(`origin ${String(proposal!.origin)}`);
 				if (proposal!.operation !== intervention.operation)
 					failures.push(`operation ${String(proposal!.operation)}`);
-				if ((proposal!.message as { bytes: number }).bytes !== Buffer.byteLength(intervention.message ?? ""))
-					failures.push("the proposal's message length is not the spec's");
+				// DESIGN §6: the proposal's message digest equals the keyed digest of the task's message.
+				const messageDigest = (proposal!.message as { digest: { keyId: string; value: string } }).digest;
+				const expectedDigest = key.digestBytes(Buffer.from(intervention.message ?? "", "utf8"));
+				if (messageDigest.keyId !== expectedDigest.keyId || messageDigest.value !== expectedDigest.value)
+					failures.push("the proposal's message digest is not the keyed digest of the spec's message");
 				const auth = authorization as {
 					decision: string;
 					authority: { kind: string; confirmation: string };
@@ -197,6 +204,77 @@ export function interventionManipulation(dir: string) {
 /** M5 and M6 (E3's) and I1 and I2. */
 export function manipulation(dir: string) {
 	return { ...environmentManipulation(dir), ...interventionManipulation(dir) };
+}
+
+/**
+ * §10, the seeded spot check: three trials chosen by the run's ordering seed (mulberry32 and Fisher-Yates over the
+ * completed trials in plan order), or the named ones, replayed from their cassettes. E3's spot check, plus what a steered
+ * trial must show: each intervention re-issued at its recorded point, with the same proposal digest, and accepted.
+ */
+export async function steeredSpotcheck(dir: string, pi: string, named: string[] = []) {
+	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const completed = trials(dir).filter((trial) => trial.status === "completed" && trial.session !== null);
+	const chosen =
+		named.length > 0
+			? named.map((name) => {
+					const found = completed.find((trial) => label(trial) === name);
+					if (found === undefined) throw new TypeError(`no completed trial ${name}`);
+					return found;
+				})
+			: shuffleV0(completed, mulberry32V0(run.seed)).slice(0, 3);
+	const out = [];
+	for (const trial of chosen) {
+		const scratch = mkdtempSync(join(tmpdir(), "endo-spotcheck-"));
+		try {
+			const report = await replayPiCassetteSessionV0({
+				store: join(dir, trial.store),
+				out: join(scratch, "replay"),
+				pi,
+				timing: "immediate",
+				keySource: FIXTURE,
+				timeoutMs: 600_000,
+			});
+			const layers = report.comparison.layers;
+			const intervention = run.spec.conditions.find((entry) => entry.id === trial.condition)?.interventions?.[
+				trial.task
+			];
+			const reissued = report.interventions;
+			out.push({
+				trial: label(trial),
+				lifecycle: layers.lifecycle.status,
+				toolCalls: layers.toolCalls.status,
+				toolResults: layers.toolResults.status,
+				outcome: layers.outcome.status,
+				served: report.served,
+				misses: report.misses,
+				unserved: report.unserved,
+				interventions: reissued,
+				// A steered trial must report exactly one intervention, re-issued at its recorded point (the spec's), with the
+				// recorded proposal digest, and accepted; a baseline trial must report none.
+				interventionAsRequired:
+					intervention === undefined
+						? reissued.length === 0
+						: reissued.length === 1 &&
+							reissued[0]!.operation === intervention.operation &&
+							canonical(reissued[0]!.recordedAt) === canonical(intervention.after) &&
+							canonical(reissued[0]!.reissuedAt) === canonical(intervention.after) &&
+							reissued[0]!.proposalDigestMatches &&
+							reissued[0]!.result === "accepted",
+				flags: report.comparison.flags.map((flag) => flag.kind),
+				notes: report.notes,
+			});
+		} finally {
+			rmSync(scratch, { recursive: true, force: true });
+		}
+	}
+	return {
+		seed: run.seed,
+		selection:
+			named.length > 0
+				? "named trials"
+				: "mulberry32(ordering seed), Fisher-Yates over completed trials in plan order, first three",
+		replays: out,
+	};
 }
 
 interface Loaded {
@@ -418,6 +496,47 @@ export function checks(dir: string, keySource: PiCassetteKeySourceV0 = FIXTURE) 
 	};
 }
 
+/**
+ * POST-HOC (not pre-registered; RESULTS.md, "the path"): a replication run is compared with an original run of the same
+ * spec, trial by trial: whether each trial's requests (tool-call ids normalized) are equal to the original's, and
+ * whether the steered trials complied. A replication of the same spec runs at the same scratch-root path, so equal
+ * requests show that the trajectory is a reproducible function of the whole prompt, the path included.
+ */
+export function replication(original: string, replicate: string, keySource: PiCassetteKeySourceV0 = FIXTURE) {
+	const run = readJson<EndoExperimentRunRecordV0>(join(replicate, "experiment.json"));
+	const originalRun = readJson<EndoExperimentRunRecordV0>(join(original, "experiment.json"));
+	const cells: Record<string, unknown> = {};
+	for (const trial of trials(replicate).filter((entry) => entry.status === "completed" && entry.session !== null)) {
+		const originalTrial = trials(original).find(
+			(entry) =>
+				entry.task === trial.task &&
+				entry.condition === trial.condition &&
+				entry.trial === trial.trial &&
+				entry.status === "completed",
+		);
+		const mine = load(replicate, trial, keySource);
+		const theirs = originalTrial === undefined ? null : load(original, originalTrial, keySource);
+		const key = `${trial.task}/${trial.condition}`;
+		cells[key] ??= { trials: 0, requestsEqualToOriginal: 0, complied: 0, originalComplied: 0 };
+		const cell = cells[key] as Record<string, number>;
+		cell.trials! += 1;
+		if (theirs !== null && canonical(mine.requests) === canonical(theirs.requests))
+			cell.requestsEqualToOriginal! += 1;
+		if (complied(mine.requests, trial.task)) cell.complied! += 1;
+		if (theirs !== null && complied(theirs.requests, trial.task)) cell.originalComplied! += 1;
+	}
+	return {
+		postHoc: "not pre-registered",
+		original: {
+			dir: "the original run of the same spec",
+			scratchRoot: originalRun.scratchRoot,
+			seed: originalRun.seed,
+		},
+		replicate: { scratchRoot: run.scratchRoot, seed: run.seed },
+		cells,
+	};
+}
+
 /** §10: each steered cassette replayed `times` times (3 immediate, the rest as-recorded), each baseline once. */
 export async function replays(cassettes: string, pi: string, steeredTimes = 5) {
 	const out: Record<string, unknown> = {};
@@ -485,8 +604,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		if (command === "estimate") return estimate(dir!);
 		if (command === "manipulation") return manipulation(dir!);
 		if (command === "checks") return checks(dir!);
-		if (command === "spotcheck") return spotcheck(dir!, option("--pi")!, option("--trials")?.split(",") ?? []);
+		if (command === "spotcheck") return steeredSpotcheck(dir!, option("--pi")!, option("--trials")?.split(",") ?? []);
 		if (command === "replays") return replays(dir!, option("--pi")!);
+		if (command === "replication") return replication(dir!, option("--against")!);
 		if (command === "sensitivity") return sensitivity(dir!);
 		throw new TypeError(
 			"usage: analyze.ts estimate|manipulation|checks|spotcheck|replays|sensitivity <dir> [--pi path]",

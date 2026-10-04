@@ -371,6 +371,29 @@ describe("the desk (fake Pi)", () => {
 		await close();
 	});
 
+	it("the desk offers an operation only if its capability is admitted; otherwise UNAVAILABLE with the reason", async () => {
+		const admitted = await ready();
+		const offered = admitted.desk.status() as {
+			operations: Record<string, unknown>;
+			live: boolean;
+			runActive: boolean;
+		};
+		expect(offered.operations).toEqual({
+			steer: { capability: "steering.steer", status: "admitted" },
+			queue: { capability: "steering.follow-up", status: "admitted" },
+			stop: { capability: "steering.stop", status: "admitted" },
+		});
+		expect(offered).toMatchObject({ live: true, runActive: false });
+		await admitted.close();
+		const none = await ready({ admitted: false });
+		const unavailable = none.desk.status() as { operations: Record<string, { status: string; reason?: string }> };
+		for (const operation of ["steer", "queue", "stop"]) {
+			expect(unavailable.operations[operation]!.status).toBe("UNAVAILABLE");
+			expect(unavailable.operations[operation]!.reason).toMatch(/is not admitted/);
+		}
+		await none.close();
+	});
+
 	it("a duplicate apply is idempotent: one request, recorded once, however it is repeated", async () => {
 		const { root, session, desk, sinceNow, close } = await ready();
 		const settled = session.waitForSettled(10_000);

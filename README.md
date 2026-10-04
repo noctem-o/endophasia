@@ -349,7 +349,8 @@ llama.cpp, and one machine:
   pinned, deterministic sampling and the cache off.
 - [Steering study](research/README.md#steering-study): in that deterministic condition, a STEER and a QUEUE were
   consumed where Pi documents (80 of 80 steered trials). What the agent did with them differed by task and arm, and
-  once by an irrelevant path.
+  on one task between two runs whose requests differ only in the working-directory path (a post-hoc replication
+  reproduced each exactly).
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and

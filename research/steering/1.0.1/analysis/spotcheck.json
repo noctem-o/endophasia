@@ -11,7 +11,22 @@
 			"served": 6,
 			"misses": 0,
 			"unserved": 0,
-			"missDetails": [],
+			"interventions": [
+				{
+					"operation": "queue",
+					"recordedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"reissuedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"proposalDigestMatches": true,
+					"result": "accepted"
+				}
+			],
+			"interventionAsRequired": true,
 			"flags": [],
 			"notes": []
 		},
@@ -24,7 +39,22 @@
 			"served": 7,
 			"misses": 0,
 			"unserved": 0,
-			"missDetails": [],
+			"interventions": [
+				{
+					"operation": "queue",
+					"recordedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"reissuedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"proposalDigestMatches": true,
+					"result": "accepted"
+				}
+			],
+			"interventionAsRequired": true,
 			"flags": [],
 			"notes": []
 		},
@@ -37,7 +67,22 @@
 			"served": 5,
 			"misses": 0,
 			"unserved": 0,
-			"missDetails": [],
+			"interventions": [
+				{
+					"operation": "steer",
+					"recordedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"reissuedAt": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"proposalDigestMatches": true,
+					"result": "accepted"
+				}
+			],
+			"interventionAsRequired": true,
 			"flags": [],
 			"notes": []
 		}

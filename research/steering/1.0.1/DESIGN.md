@@ -291,4 +291,19 @@ fixture; §10 holds it to the real Pi.
 
 ## 13. Deviations
 
-(None.)
+These were found after the data was collected and are recorded here. None changes a pre-registered result.
+
+1. **The cassettes were committed before the operator was told their size (§10).** The instruction for this task was
+   to commit them under the standing consent and secret-scan rules, and they were committed on that basis, after the
+   scan passed. Their size (2.6 MB, 104 files) is stated in the PR, and the commit can be dropped on request.
+2. **Two analysis-code corrections, made after the data was collected, to match this design's text.**
+   - **I1** first compared the length of the proposal's message, and not, as §6 says, its keyed digest. It now compares
+     the digest. Re-run on the pilot and the main run: the same result.
+   - **The spot check** (§10) first reused E3's, which does not report interventions. It now reports each
+     re-issued intervention, its recorded point and its digest match. Re-run: the same three seeded trials, all as
+     required.
+3. **Post-hoc additions, not pre-registered and reported apart from the pre-registered results.** After the main run
+   showed that the pilot and the main run disagreed on STEER compliance on `tool-use`, and found that their requests
+   differ only in a hash in the working-directory path, two further runs were made to test it: the pilot spec again (18
+   trials, at the pilot's path) and one block of the main spec (6 trials, at the main run's path). They are in
+   `analysis/posthoc-*.json` and described in RESULTS.md, "the path". They are not part of any P check.

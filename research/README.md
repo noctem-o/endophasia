@@ -109,9 +109,10 @@ trial:
 - **STEER** was followed in 20 of 20 trials on `tool-use` (after ten times the output) and in 0 of 20 on
   `implement-function`.
 
-The pilot, which differed from the main run only in a hash in the working-directory path, followed the steer on
-`tool-use` in 0 of 3 trials. So one irrelevant string changed whether the agent acted on a steer, and this study
-measured one path. Each steered cassette replays EXACT five times against the real Pi. Two transport errors in 622
+The pilot, whose requests differ from the main run's only in a hash in the working-directory path, followed the steer on
+`tool-use` in 0 of 3 trials. A post-hoc replication reproduced each run's requests exactly at its own path, so the
+response to a steer is a reproducible function of the whole prompt, and on this task it differed between two paths that
+differ only in that hash. Only two paths were tried, and this study measured one. Each steered cassette replays EXACT five times against the real Pi. Two transport errors in 622
 requests were a keep-alive race. This is one Pi release, one model, two tasks, one message each and one point.
 
 ## Fake-only paths

@@ -1,0 +1,393 @@
+{
+	"postHoc": "not pre-registered; computed from the committed raw data (raw/main/*/trials/implement-function/base/0), after the pre-registered analysis",
+	"note": "per path: the baseline trial 0's tool-name order, first tool call (path-normalized), a digest of the file it writes, and the steer outcomes",
+	"summary": {
+		"toolNameOrders": {
+			"bash>read>read>write>bash": 19,
+			"bash>read>read>read>write>bash": 10,
+			"read>bash>read>write>bash": 1
+		},
+		"distinctFirstCalls": 9,
+		"distinctWrittenFiles": 8,
+		"requests": {
+			"5": 30
+		},
+		"steerOutcomeByToolNameOrder": {
+			"bash>read>read>write>bash": {
+				"ignored": 17,
+				"followed": 2
+			},
+			"bash>read>read>read>write>bash": {
+				"followed": 4,
+				"ignored": 6
+			},
+			"read>bash>read>write>bash": {
+				"ignored": 1
+			}
+		},
+		"steerOutcomeByFirstCall": {
+			"{\"command\":\"ls -la && cat src/roman.js 2>/dev/null; ls test/\"}": {
+				"ignored": 3
+			},
+			"{\"command\":\"ls -la && find . -type f -name \\\"*.js\\\" -not -path \\\"./nod": {
+				"followed": 1,
+				"ignored": 1
+			},
+			"{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}": {
+				"ignored": 13,
+				"followed": 2
+			},
+			"{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}": {
+				"ignored": 4,
+				"followed": 1
+			},
+			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && find /t": {
+				"followed": 1
+			},
+			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && ls -la ": {
+				"ignored": 1
+			},
+			"{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && cat /tm": {
+				"followed": 1
+			},
+			"{\"path\":\"src/roman.js\"}": {
+				"ignored": 1
+			},
+			"{\"command\":\"ls -la && find . -type f -not -path './node_modules/*' | h": {
+				"ignored": 1
+			}
+		}
+	},
+	"rows": [
+		{
+			"label": "p01",
+			"names": "bash>read>read>write>bash",
+			"first": "41d168fc",
+			"firstText": "{\"command\":\"ls -la && cat src/roman.js 2>/dev/null; ls test/\"}",
+			"codeDigest": "a95f1a44",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p02",
+			"names": "bash>read>read>read>write>bash",
+			"first": "fffaede5",
+			"firstText": "{\"command\":\"ls -la && find . -type f -name \\\"*.js\\\" -not -path \\\"./nod",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p03",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "df5faaa9",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "ignored",
+			"requests": 5
+		},
+		{
+			"label": "p04",
+			"names": "bash>read>read>write>bash",
+			"first": "3cdc213d",
+			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p05",
+			"names": "bash>read>read>write>bash",
+			"first": "3cdc213d",
+			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p06",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "f0f1ef0b",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p07",
+			"names": "bash>read>read>read>write>bash",
+			"first": "76ecd222",
+			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && find /t",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p08",
+			"names": "bash>read>read>write>bash",
+			"first": "41d168fc",
+			"firstText": "{\"command\":\"ls -la && cat src/roman.js 2>/dev/null; ls test/\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p09",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p10",
+			"names": "bash>read>read>read>write>bash",
+			"first": "178a57a4",
+			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && ls -la ",
+			"codeDigest": "a95f1a44",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "ignored",
+			"requests": 5
+		},
+		{
+			"label": "p11",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "82a34ef9",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p12",
+			"names": "bash>read>read>write>bash",
+			"first": "0e3599fb",
+			"firstText": "{\"command\":\"ls -la /tmp/endo-experiment-<path>/scratch/work && cat /tm",
+			"codeDigest": "df5faaa9",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p13",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "a95f1a44",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p14",
+			"names": "bash>read>read>write>bash",
+			"first": "41d168fc",
+			"firstText": "{\"command\":\"ls -la && cat src/roman.js 2>/dev/null; ls test/\"}",
+			"codeDigest": "a95f1a44",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p15",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "3c6afad7",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p16",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "f0f1ef0b",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p17",
+			"names": "bash>read>read>read>write>bash",
+			"first": "fffaede5",
+			"firstText": "{\"command\":\"ls -la && find . -type f -name \\\"*.js\\\" -not -path \\\"./nod",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p18",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p19",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p20",
+			"names": "bash>read>read>read>write>bash",
+			"first": "3cdc213d",
+			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p21",
+			"names": "bash>read>read>write>bash",
+			"first": "3cdc213d",
+			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p22",
+			"names": "bash>read>read>read>write>bash",
+			"first": "3cdc213d",
+			"firstText": "{\"command\":\"ls -R /tmp/endo-experiment-<path>/scratch/work\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p23",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "4395f689",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p24",
+			"names": "bash>read>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "a95f1a44",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p25",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "ignored",
+			"requests": 5
+		},
+		{
+			"label": "p26",
+			"names": "read>bash>read>write>bash",
+			"first": "734e9781",
+			"firstText": "{\"path\":\"src/roman.js\"}",
+			"codeDigest": "9952620a",
+			"codeLines": 33,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p27",
+			"names": "bash>read>read>read>write>bash",
+			"first": "485d5f80",
+			"firstText": "{\"command\":\"ls -la && find . -type f -not -path './node_modules/*' | h",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p28",
+			"names": "bash>read>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "df5faaa9",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p29",
+			"names": "bash>read>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "615deb6e",
+			"codeLines": 32,
+			"steer": "followed",
+			"toolSteer": "followed",
+			"requests": 5
+		},
+		{
+			"label": "p30",
+			"names": "bash>read>read>write>bash",
+			"first": "0bfdca68",
+			"firstText": "{\"command\":\"ls -la && ls -la src test 2>/dev/null\"}",
+			"codeDigest": "f0f1ef0b",
+			"codeLines": 32,
+			"steer": "ignored",
+			"toolSteer": "followed",
+			"requests": 5
+		}
+	]
+}

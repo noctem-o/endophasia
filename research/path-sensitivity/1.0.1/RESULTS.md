@@ -1,7 +1,7 @@
 # Path-sensitivity study results: does the working-directory path decide how Pi 1.0.1 with qwen3.8-27b answers a steer?
 
 Design: [DESIGN.md](DESIGN.md), committed before any data. §9a records N, chosen from the pilot before the main run.
-§13 (deviations) is empty. Everything here is from the main run (30 paths, 360 trials) unless marked "pilot".
+§13 records no deviation, and one post-hoc addition (the baseline description below). Everything here is from the main run (30 paths, 360 trials) unless marked "pilot".
 
 ## The answer
 
@@ -78,6 +78,26 @@ run.
 and 580 (implement-function baseline), 961 (steer) and 710 (queue). Under `tool-use` STEER, the paths that followed used a
 median of 1,219 output tokens and the paths that ignored it 672.
 
+## A post-hoc look at the baseline variation (not pre-registered)
+
+Computed from the committed raw data after the analysis above (`post-hoc-baseline.ts`,
+`analysis/post-hoc-implement-function-baseline.json`). It describes how the `implement-function` baseline, with no
+intervention, varies across the 30 paths. It tests nothing.
+
+- **Every path's baseline makes the same number of requests (5).** What varies is what the agent does within them:
+  19 paths use the tool order `bash, read, read, write, bash`, 10 add a third `read`, and 1 starts with a `read`.
+- **9 distinct first tool calls** (for example `ls -la && ls -la src test`, `ls -R <path>`, or a `find`), and **8
+  distinct versions of the function the agent writes.**
+- **A STEER was followed at 2 of the 19 paths with the common order, at 4 of the 10 with the extra `read`, and at 0 of
+  the 1 that starts with a `read`.** The counts are too small to say whether the baseline variant and the following of a
+  steer are related, and this study did not set out to ask.
+- **The 3 paths that ignored the `tool-use` STEER** also ignored the `implement-function` STEER, and none of the 6 paths
+  that followed the `implement-function` STEER is among them.
+
+So the path changes how the agent works on this task even before anything is steered, in ways that did not change
+whether the task was done (360 of 360). Whether that variation matters for any later study is an open question; the
+direct way to ask it would be a design that targets `implement-function` alone, with many more paths.
+
 ## Validity
 
 | Check | Result |
@@ -137,6 +157,7 @@ its recorded point (exchange 2, chunk 1) with the recorded proposal digest.
 | :--- | :--- |
 | `DESIGN.md` | the design, N (§9a) and the deviations (§13, none) |
 | `make-spec.ts`, `run-paths.ts`, `analyze.ts` | the spec generator, the driver and the analysis |
+| `post-hoc-baseline.ts` | a post-hoc description of the `implement-function` baseline across paths (not pre-registered), writing `analysis/post-hoc-implement-function-baseline.json` |
 | `pilot/` | the pilot's paths, reports, plans, run records and per-trial results |
 | `main/` | the main run: `paths.json`, the paths' journal, and for each path its report, plan, run record, journal and per-trial results |
 | `analysis/` | the pilot's analysis and estimate, the main run's analysis (`main-analysis.json`) and the spot checks |

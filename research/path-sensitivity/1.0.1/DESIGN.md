@@ -243,4 +243,6 @@ already-published result in that loop generalizes across one irrelevant factor, 
 
 ## 13. Deviations
 
-(None.)
+None. One addition after the data, recorded here: **a post-hoc description of the `implement-function` baseline's
+variation across paths** (RESULTS.md, "A post-hoc look at the baseline variation"), computed from the committed raw data
+after the pre-registered analysis, labelled as post-hoc, and not part of any measure or verdict.

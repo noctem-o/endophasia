@@ -58,6 +58,11 @@ export interface EndoRecordingProxyV0 {
 	untilDelivered(exchange: number, chunks: number): Promise<void>;
 	/** Exchanges not yet ended. */
 	readonly open: number;
+	/** Resolves once everything observed so far is recorded and written to disk (recording runs off the byte path). */
+	flush(): Promise<void>;
+	/** Recording jobs that threw (the relay itself is never interrupted by a recording failure). */
+	readonly recordingFailures: number;
+	/** Flushes, then stops listening and drops every connection. */
 	close(): Promise<void>;
 }
 
@@ -120,6 +125,54 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	let open = 0;
 	const sockets = new Set<Socket>();
 	let origin = "";
+	// Recording (blob and event writes, each fsync'd) never runs on the byte path: it is queued in event order and
+	// drained after the relay has done its work. Recording before relaying delayed the upstream's close by the fsyncs,
+	// and a keep-alive client that reused the connection in that window sent its next request into a closing connection.
+	const queue: (() => void)[] = [];
+	let draining = false;
+	let recordingFailures = 0;
+	const flushWaiters: (() => void)[] = [];
+	const drain = () => {
+		while (queue.length > 0) {
+			const job = queue.shift()!;
+			try {
+				job();
+			} catch {
+				recordingFailures += 1;
+			}
+		}
+		draining = false;
+		for (const waiter of flushWaiters.splice(0)) waiter();
+		scheduleIdleFlush();
+	};
+	// A buffered capture log is written to disk only while no exchange is open, so its fsyncs never land in the middle
+	// of a relay. (Once idle for 100 ms; and always on flush() and on the log's close().)
+	let idleTimer: NodeJS.Timeout | null = null;
+	const scheduleIdleFlush = () => {
+		if (idleTimer !== null) return;
+		idleTimer = setTimeout(() => {
+			idleTimer = null;
+			if (open === 0 && queue.length === 0) {
+				try {
+					log?.flushToDisk();
+				} catch {
+					recordingFailures += 1;
+				}
+			} else scheduleIdleFlush();
+		}, 100);
+		idleTimer.unref();
+	};
+	const flush = async (): Promise<void> => {
+		if (queue.length > 0 || draining) await new Promise<void>((resolve) => flushWaiters.push(resolve));
+		log?.flushToDisk();
+	};
+	const later = (job: () => void) => {
+		queue.push(job);
+		if (!draining) {
+			draining = true;
+			setImmediate(drain);
+		}
+	};
 
 	const progress = (entry: Exchange) => {
 		for (const waiter of [...entry.waiters]) {
@@ -151,6 +204,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		let lastCompleted: number | null = null;
 		let parsing = true;
 		let closed = false;
+		/** The upstream ended or closed this connection: nothing more can be forwarded on it. */
+		let upstreamGone = false;
 
 		const finish = (
 			entry: Exchange,
@@ -176,7 +231,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					outcome,
 					status: entry.responseHead?.status ?? null,
 					chunks: entry.segments.map((segment) => ({ offsetMs: segment.offsetMs, bytes: segment.bytes.length })),
-					wire: { ...target.keep(kept.bytes) } as unknown as JsonValueV0,
+					wire: null,
 					wireBytes: wire.length,
 					headBytes: entry.responseHead?.raw.length ?? null,
 					headScrubbed: kept.scrubbed,
@@ -184,7 +239,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				};
 				if (outcome === "client-disconnected") payload.afterChunks = entry.relayed;
 				if (error !== null) payload.error = error;
-				target.record("capture.exchange-ended", payload);
+				later(() => {
+					payload.wire = { ...target.keep(kept.bytes) } as unknown as JsonValueV0;
+					target.record("capture.exchange-ended", payload);
+				});
 			}
 			progress(entry);
 		};
@@ -224,18 +282,27 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				if (entry === null || target === null) return;
 				entry.requested = true;
 				const body = Buffer.concat(entry.bodyParts);
-				const requestDigest = endoRequestDigestV0(target.key, entry.method, entry.path, body);
-				const attempt = (attempts.get(requestDigest.value) ?? 0) + 1;
-				attempts.set(requestDigest.value, attempt);
-				target.record("capture.request", {
-					exchange: entry.exchange,
-					attempt,
-					method: entry.method,
-					path: entry.path,
-					requestDigest: { ...requestDigest },
-					body: { ...target.keep(body) } as unknown as JsonValueV0,
-					headers: entry.headers as unknown as JsonValueV0,
+				const offsetMs = offsetMsV0(entry.start);
+				later(() => {
+					const requestDigest = endoRequestDigestV0(target.key, entry.method, entry.path, body);
+					const attempt = (attempts.get(requestDigest.value) ?? 0) + 1;
+					attempts.set(requestDigest.value, attempt);
+					target.record("capture.request", {
+						exchange: entry.exchange,
+						attempt,
+						method: entry.method,
+						path: entry.path,
+						requestDigest: { ...requestDigest },
+						body: { ...target.keep(body) } as unknown as JsonValueV0,
+						headers: entry.headers as unknown as JsonValueV0,
+						offsetMs,
+					});
 				});
+				if (upstreamGone) {
+					// The upstream had already closed this connection: the request was never forwarded. Recorded, not lost.
+					pending.splice(pending.indexOf(entry), 1);
+					finish(entry, "upstream-error", "the upstream had closed the connection before this request arrived");
+				}
 			},
 		});
 
@@ -251,12 +318,14 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				}
 				entry.interim = false;
 				entry.responseHead = head;
-				current()?.record("capture.response", {
+				const target = current();
+				const response = {
 					exchange: entry.exchange,
 					status: head.status ?? null,
 					headers: capturedHeadersV0(head) as unknown as JsonValueV0,
 					offsetMs: offsetMsV0(entry.start),
-				});
+				};
+				if (target !== null) later(() => target.record("capture.response", response));
 			},
 			body() {},
 			end(_bytes, offset) {
@@ -272,11 +341,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		const unparsed = (error: unknown) => {
 			if (!parsing) return;
 			parsing = false;
-			current()?.record("capture.unparsed", { detail: String((error as Error).message ?? error).slice(0, 200) });
+			const target = current();
+			const detail = String((error as Error).message ?? error).slice(0, 200);
+			if (target !== null) later(() => target.record("capture.unparsed", { detail }));
 		};
 
 		client.on("data", (data: Buffer) => {
-			upstreamSocket.write(data);
+			if (!upstreamGone && !upstreamSocket.destroyed) upstreamSocket.write(data);
 			if (!parsing) return;
 			try {
 				requestParser.push(data);
@@ -313,7 +384,11 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (entry !== undefined) segment(entry, position, data.length);
 		});
 
-		const teardown = (by: "client" | "upstream", error: string | null) => {
+		// An orderly upstream end is relayed as an orderly end: client.end() flushes every byte already written before the
+		// FIN. The client socket is never destroyed on an orderly upstream end: destroying it dropped bytes still queued
+		// for a slow reader, so the client saw a cut response while the capture log recorded a complete one. A client
+		// that goes away (FIN or reset, e.g. Pi aborting a request) still drops the upstream request at once.
+		const settle = (by: "client" | "upstream", error: string | null) => {
 			if (closed) return;
 			closed = true;
 			if (by === "upstream" && parsing) {
@@ -333,19 +408,36 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					by === "client" ? "client-disconnected" : "upstream-error",
 					by === "client" ? null : (error ?? "upstream closed the connection"),
 				);
-			current()?.record("capture.connection-closed", { by, afterExchange: lastCompleted });
-			client.destroy();
-			upstreamSocket.destroy();
+			const target = current();
+			const closedAfter = lastCompleted;
+			if (target !== null)
+				later(() => target.record("capture.connection-closed", { by, afterExchange: closedAfter }));
 		};
-		client.on("error", () => teardown("client", null));
-		client.on("close", () => teardown("client", null));
-		upstreamSocket.on("error", (error: NodeJS.ErrnoException) => teardown("upstream", error.code ?? error.name));
-		upstreamSocket.on("end", () => {
-			// The upstream ended its side: whatever it sent is relayed; the client's side is ended the same way.
-			client.end();
-			teardown("upstream", null);
+		client.on("error", () => {
+			settle("client", null);
+			upstreamSocket.destroy();
 		});
-		upstreamSocket.on("close", () => teardown("upstream", null));
+		client.on("close", () => {
+			settle("client", null);
+			upstreamSocket.destroy();
+		});
+		upstreamSocket.on("end", () => {
+			// The upstream ended its side: the client's side is ended the same way at once (end() flushes what was
+			// written), and only then is anything recorded.
+			upstreamGone = true;
+			client.end();
+			settle("upstream", null);
+		});
+		upstreamSocket.on("error", (error: NodeJS.ErrnoException) => {
+			upstreamGone = true;
+			client.destroy();
+			settle("upstream", error.code ?? error.name);
+		});
+		upstreamSocket.on("close", () => {
+			upstreamGone = true;
+			if (!client.writableEnded) client.end();
+			settle("upstream", null);
+		});
 	};
 
 	const server: Server = createServer(handleConnection);
@@ -387,7 +479,12 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		get open() {
 			return open;
 		},
-		close() {
+		get recordingFailures() {
+			return recordingFailures;
+		},
+		flush,
+		async close() {
+			await flush();
 			return new Promise<void>((resolve) => {
 				server.close(() => resolve());
 				for (const socket of sockets) socket.destroy();

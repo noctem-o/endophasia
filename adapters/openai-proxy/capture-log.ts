@@ -54,21 +54,49 @@ export class EndoCaptureLogV0 {
 	#sequence: number;
 	#next = 0;
 	#closed = false;
+	readonly #buffered: boolean;
+	readonly #pendingEvents: EndoEventV0[] = [];
+	readonly #pendingBlobs = new Map<string, Uint8Array>();
 
-	/** Open (or create) the capture log of `storeRoot`. */
-	constructor(storeRoot: string, key: EndoDigestKeyV0, role: string) {
+	/**
+	 * Open (or create) the capture log of `storeRoot`. With `buffered`, events and blobs are kept in memory (digests,
+	 * sequence numbers and timestamps assigned at once) and written durably only by `flushToDisk()` or `close()`: the
+	 * recording proxy uses it so that no fsync'd write ever runs while bytes are being relayed. A crash loses what was
+	 * not flushed; the experiment runner counts a trial only once its result is written, so such a trial is rerun.
+	 */
+	constructor(storeRoot: string, key: EndoDigestKeyV0, role: string, options: { buffered?: boolean } = {}) {
 		this.root = endoCaptureRootV0(storeRoot);
 		this.key = key;
 		this.producer = `capture:${role}`;
 		this.events = createEndoDurableEventStoreV0(this.root);
 		this.blobs = createEndoBlobStoreV0(this.root, key);
 		this.#sequence = this.events.length;
+		this.#buffered = options.buffered === true;
 	}
 
-	/** Store bytes in the blob store; returns the reference an event carries. */
+	/** Store bytes in the blob store (or the buffer); returns the reference an event carries. */
 	keep(bytes: Uint8Array): EndoCapturedBytesRefV0 {
+		if (this.#buffered) {
+			const digest = this.key.digestBytes(bytes);
+			this.#pendingBlobs.set(digest.value, Buffer.from(bytes));
+			return { digest, bytes: bytes.length };
+		}
 		const stored = this.blobs.put(bytes);
 		return { digest: stored.digest, bytes: stored.bytes };
+	}
+
+	/** Events and blobs not yet written to disk (buffered mode). */
+	get pending(): number {
+		return this.#pendingEvents.length + this.#pendingBlobs.size;
+	}
+
+	/** Write everything buffered: blobs first, then events in order. A no-op when nothing is buffered. */
+	flushToDisk(): void {
+		for (const [value, bytes] of this.#pendingBlobs) {
+			this.blobs.put(bytes);
+			this.#pendingBlobs.delete(value);
+		}
+		while (this.#pendingEvents.length > 0) this.events.ingest(this.#pendingEvents.shift()!);
 	}
 
 	/**
@@ -93,11 +121,16 @@ export class EndoCaptureLogV0 {
 			payload: JSON.parse(JSON.stringify(payload)),
 		});
 		if (event === null) throw new TypeError(`the ${kind} capture event failed endo.event.v0 validation`);
+		if (this.#buffered) {
+			this.#pendingEvents.push(event);
+			return event;
+		}
 		return this.events.ingest(event);
 	}
 
 	close(): void {
 		if (this.#closed) return;
+		this.flushToDisk();
 		this.#closed = true;
 		this.events.close();
 	}

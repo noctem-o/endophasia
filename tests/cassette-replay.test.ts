@@ -68,7 +68,7 @@ beforeAll(async () => {
 	proxy = await startEndoRecordingProxyV0({ upstream: new URL(upstream.baseUrl).origin, log: null });
 	// Capability evidence (steering.stop) through the same port and an identical models.json.
 	const checks = join(base, "root-checks");
-	const checksLog = new EndoCaptureLogV0(checks, endoDigestKeyFromEnvironmentV0(), "record");
+	const checksLog = new EndoCaptureLogV0(checks, endoDigestKeyFromEnvironmentV0(), "record", { buffered: true });
 	proxy.log = checksLog;
 	const scratch = createPiCassetteScratchV0(join(base, "checks"), {
 		baseUrl: `${proxy.origin}/v1`,
@@ -88,6 +88,7 @@ beforeAll(async () => {
 	await pi.identify();
 	await pi.checkLocal();
 	await pi.studyLive({ authorized: true, stepTimeoutMs: 20_000 });
+	await proxy.flush();
 	proxy.log = null;
 	checksLog.close();
 	for (const [name, scenario] of Object.entries(SCENARIOS)) {

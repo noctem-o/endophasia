@@ -301,7 +301,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		...(options.settings === undefined ? {} : { settings: options.settings }),
 		...(options.extensions === undefined ? {} : { extensions: options.extensions }),
 	});
-	const log = new EndoCaptureLogV0(options.store, key, "record");
+	const log = new EndoCaptureLogV0(options.store, key, "record", { buffered: true });
 	const notes: string[] = [];
 	let step = 0;
 	const driver = (op: string, payload: Record<string, JsonValueV0> = {}) => {
@@ -386,6 +386,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		await options.afterSession?.(scratch.root);
 	} finally {
 		if (session !== null) await (session as PiSessionAttachmentV0).close().catch(() => {});
+		await options.proxy.flush();
 		options.proxy.log = null;
 		log.close();
 		rmSync(scratch.root, { recursive: true, force: true });

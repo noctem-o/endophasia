@@ -129,7 +129,7 @@ export async function recordPiCassetteFixturesV0(options: PiCassetteRecorderOpti
 			model: options.model,
 			files: {},
 		});
-		const checksLog = new EndoCaptureLogV0(checks, key, "record");
+		const checksLog = new EndoCaptureLogV0(checks, key, "record", { buffered: true });
 		proxy.log = checksLog;
 		const pi = piCassetteAttachmentV0({
 			root: checks,
@@ -152,6 +152,7 @@ export async function recordPiCassetteFixturesV0(options: PiCassetteRecorderOpti
 			log("running the live study (sends prompts to your model, through the proxy)");
 			await pi.studyLive({ authorized: true, stepTimeoutMs: options.timeoutMs });
 		}
+		await proxy.flush();
 		proxy.log = null;
 		checksLog.close();
 		const reports: JsonValueV0[] = [];

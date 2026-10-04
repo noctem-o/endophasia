@@ -75,6 +75,7 @@ import {
 	piCassetteKeyV0,
 	recordPiCassetteSessionV0,
 } from "./cassette-session.ts";
+import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
 export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.1";
@@ -478,6 +479,7 @@ async function runTrial(
 			timeoutMs: spec.timeoutMs,
 			...(condition.modelEntry === undefined ? {} : { modelEntry: condition.modelEntry }),
 			...(condition.settings === undefined ? {} : { settings: condition.settings }),
+			...(condition.extensions === undefined ? {} : { extensions: condition.extensions }),
 			afterSession,
 		});
 		notes = report.notes;
@@ -786,6 +788,12 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 							: samplingSent,
 					modelEntry: condition.modelEntry ?? null,
 					settings: condition.settings ?? null,
+					extensions: Object.fromEntries(
+						Object.entries(condition.extensions ?? {}).map(([file, source]) => [
+							file,
+							{ sha256: sha256HexV0(source), bytes: Buffer.byteLength(source), source },
+						]),
+					),
 				},
 				bundle: bundle as unknown as JsonValueV0,
 			};
@@ -813,6 +821,16 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			);
 		}
 	}
+	// The declared manipulation checks, over every completed trial (DESIGN: an arm that fails one is invalid).
+	const manipulation =
+		run.spec.manipulation === undefined
+			? { status: "UNAVAILABLE", reason: "the spec declares no manipulation checks" }
+			: endoManipulationChecksV0(
+					run.spec.manipulation,
+					results
+						.filter((result) => result.status === "completed")
+						.map((result) => loadEndoTrialRequestsV0(join(dir, result.store), result, keySourceOf(run.spec))),
+				);
 	const body = {
 		schemaVersion: ENDO_EXPERIMENT_REPORT_SCHEMA_V0,
 		experiment: run.experiment,
@@ -829,6 +847,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		},
 		environment: environments as unknown as JsonValueV0,
 		statistics: STATISTICS_NOTE,
+		manipulation: manipulation as unknown as JsonValueV0,
 		cells,
 	};
 	const report = { ...JSON.parse(JSON.stringify(body)), digest: sha256HexV0(canonicalEndoJsonV0(body)) };
@@ -845,6 +864,23 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | ---: |",
 		...lines,
 		"",
+		...("validity" in manipulation
+			? [
+					"Manipulation checks:",
+					"",
+					"| check | status | checked | failures |",
+					"| :--- | :--- | ---: | ---: |",
+					...(["M1", "M2a", "M2b", "M3", "M4"] as const).map(
+						(check) =>
+							`| ${check} | ${manipulation[check].status} | ${manipulation[check].checked} | ${manipulation[check].failureCount} |`,
+					),
+					"",
+					`Validity: ${Object.entries(manipulation.validity)
+						.map(([condition, status]) => `${condition} ${status}`)
+						.join(", ")}.`,
+					"",
+				]
+			: []),
 		`Report digest ${report.digest}. Details: bundle.json.`,
 		"",
 	].join("\n");

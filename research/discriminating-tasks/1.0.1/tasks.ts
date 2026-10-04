@@ -91,18 +91,21 @@ export function loadTaskV0(id: string, root: string = join(HERE, "tasks")): Disc
 export const loadPoolV0 = (root?: string): DiscriminatingTaskV0[] => TASK_IDS.map((id) => loadTaskV0(id, root));
 
 /**
- * The success check's argv: write the hidden check to a temporary directory (with `__WORK__` replaced by the working
- * directory's file URL), run it with `node --test`, and exit with its status. Nothing is written into the workspace.
+ * The success check's argv: write the hidden check to a directory beside the working directory (with `__WORK__`
+ * replaced by the working directory's file URL), run it with `node --test`, and exit with its status. The directory is
+ * beside the workspace, so inside the scratch root when the runner runs it (no random path in the recorded output, and
+ * nothing outside the scratch root), and nothing is written into the workspace.
  */
 export function hiddenCheckArgv(hidden: string): string[] {
 	const script = [
-		'const { mkdtempSync, writeFileSync, rmSync } = require("node:fs");',
-		'const { tmpdir } = require("node:os");',
-		'const { join } = require("node:path");',
+		'const { mkdirSync, writeFileSync, rmSync } = require("node:fs");',
+		'const { basename, dirname, join } = require("node:path");',
 		'const { pathToFileURL } = require("node:url");',
 		'const { spawnSync } = require("node:child_process");',
 		`const hidden = ${JSON.stringify(hidden)};`,
-		'const dir = mkdtempSync(join(tmpdir(), "endo-hidden-"));',
+		'const dir = join(dirname(process.cwd()), "hidden-check-" + basename(process.cwd()));',
+		"rmSync(dir, { recursive: true, force: true });",
+		"mkdirSync(dir, { recursive: true });",
 		'const file = join(dir, "hidden.test.mjs");',
 		'writeFileSync(file, hidden.replaceAll("__WORK__", pathToFileURL(process.cwd() + "/").href));',
 		'const run = spawnSync(process.execPath, ["--test", file], { stdio: "inherit", timeout: 50000 });',

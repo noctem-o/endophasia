@@ -25,18 +25,34 @@ afterAll(() => {
 	for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
-/** Run a task's success check in a fresh directory holding the workspace with `overlay` applied. */
-function runCheck(task: DiscriminatingTaskV0, overlay: Record<string, string>, env: Record<string, string> = {}) {
+/** A fresh directory holding the task's workspace with `overlay` applied. */
+function materialize(task: DiscriminatingTaskV0, overlay: Record<string, string>): string {
 	const dir = mkdtempSync(join(tmpdir(), "endo-task-validate-"));
 	dirs.push(dir);
 	for (const [path, content] of Object.entries({ ...task.workspace, ...overlay })) {
 		mkdirSync(dirname(join(dir, path)), { recursive: true });
 		writeFileSync(join(dir, path), content);
 	}
+	return dir;
+}
+
+/** Run a task's success check in a fresh directory holding the workspace with `overlay` applied. */
+function runCheck(task: DiscriminatingTaskV0, overlay: Record<string, string>, env: Record<string, string> = {}) {
+	const dir = materialize(task, overlay);
 	const [, ...args] = hiddenCheckArgv(task.hidden);
 	return spawnSync(process.execPath, args, {
 		cwd: dir,
 		env: { ...process.env, ...env },
+		encoding: "utf8",
+		timeout: 120_000,
+	});
+}
+
+/** Run the visible tests (`node --test`) in a fresh directory holding the workspace with `overlay` applied. */
+function runVisibleTests(task: DiscriminatingTaskV0, overlay: Record<string, string>) {
+	return spawnSync(process.execPath, ["--test"], {
+		cwd: materialize(task, overlay),
+		env: process.env,
 		encoding: "utf8",
 		timeout: 120_000,
 	});
@@ -120,6 +136,22 @@ describe.each(TASK_IDS)("task %s", (id) => {
 			const reference = runCheck(task, task.reference);
 			expect(reference.status, `the reference:\n${reference.stdout}\n${reference.stderr}`).toBe(0);
 			expect(runCheck(task, task.naive).status, "the wrong solution").not.toBe(0);
+		},
+	);
+
+	it.skipIf(task === undefined)(
+		"has visible tests that agree with the reference (the agent cannot edit test/, so they must not contradict the check)",
+		() => {
+			const reference = runVisibleTests(task, task.reference);
+			expect(reference.status, `the visible tests on the reference:\n${reference.stdout}\n${reference.stderr}`).toBe(
+				0,
+			);
+			if (TASK_KINDS[id] !== "implement") {
+				const start = runVisibleTests(task, {});
+				expect(start.status, `the visible tests on the starting workspace:\n${start.stdout}\n${start.stderr}`).toBe(
+					0,
+				);
+			}
 		},
 	);
 

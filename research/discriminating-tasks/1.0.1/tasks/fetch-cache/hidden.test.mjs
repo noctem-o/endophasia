@@ -15,6 +15,7 @@ function setup(options = {}, responder = () => ({ status: 200, body: { n: 1 } })
 	const client = createClient({ fetchImpl, now: () => time, ...options });
 	return { client, calls, advance: (ms) => (time += ms) };
 }
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 const deferred = () => {
 	let resolve;
 	let reject;
@@ -117,6 +118,7 @@ test("R4: calls in flight share one fetch", async () => {
 		const a = client.get("http://x/a");
 		const b = client.get("http://x/a#frag");
 		const c = client.get("http://x/other");
+		await tick();
 		assert.equal(calls.length, 2);
 		gate.resolve({ status: 200, body: "shared" });
 		assert.deepEqual(await a, { status: 200, body: "shared" });
@@ -151,6 +153,7 @@ test("R5: fresh bypasses the cache and replaces the entry", async () => {
 	const slow = createClient({ ttlMs: 1000, now: () => 0, fetchImpl: () => (++n === 1 ? gate.promise : Promise.resolve({ status: 200, body: "fresh" })) });
 	const first = slow.get("http://x/a");
 	const second = slow.get("http://x/a", { fresh: true });
+	await tick();
 	assert.equal(n, 2);
 	assert.equal((await second).body, "fresh");
 	gate.resolve({ status: 200, body: "slow" });
@@ -192,6 +195,7 @@ test("R6: clear and stats", async () => {
 	const p1 = joined.get("http://x/a");
 	const p2 = joined.get("http://x/a");
 	joined.clear();
+	await tick();
 	assert.deepEqual(joined.stats(), { hits: 0, misses: 2, fetches: 1 });
 	gate.resolve({ status: 200, body: "z" });
 	await Promise.all([p1, p2]);

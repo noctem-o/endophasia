@@ -94,8 +94,8 @@ for comparing candidates.
 ## 5. Success
 
 A task's **success check** runs after the session, in the runner's own (unpinned) environment, against the workspace the
-agent left: the task's hidden check (§4) must exit 0. The hidden check is written to a temporary directory only when the check
-runs, and never into the workspace. Success is that exit code, and nothing else.
+agent left: the task's hidden check (§4) must exit 0. The hidden check is written, only when the check
+runs, to a directory beside the workspace (inside the scratch root, §13), and never into the workspace. Success is that exit code, and nothing else.
 
 **Failure rules, fixed now:**
 - **A session that does not finish** (the step timeout of 600 s, with no `agent_settled`) is a **failure**, unless the check
@@ -130,11 +130,18 @@ overstate the rates).
 Computed from the recorded requests, tool calls and snapshots, on both stages.
 
 - **Leakage, the main risk.** There is no sandbox: Pi has `bash`, and the hidden checks, the reference solutions and the
-  specs sit on disk outside the scratch root. A trial is **invalid** if:
-  - any tool call's arguments name an absolute path under `/home`, `/root`, `/etc`, `/var`, `/opt`, `/srv`, `/mnt` or
-    `/media`, or under `/tmp` but outside its own scratch root (the check's temporary directories are `/tmp/endo-hidden-…`);
-  - or any tool result contains a marker string planted in the hidden checks (each hidden check carries
-    `ENDO-HIDDEN-MARKER` followed by its task id).
+  specs sit on disk outside the scratch root. A trial is **invalid** only if the agent could have found, or did find, what
+  it must not have (amended before any data, §13):
+  - the marker planted in every hidden check (`ENDO-HIDDEN-MARKER` followed by its task id) appears in any tool result,
+    or in any tool call's arguments;
+  - or any tool call's arguments name a path under a **protected root**: the repository checkout (which holds the hidden
+    checks and references) or the operator's real home directory;
+  - or any tool call's arguments name one of the study's own directories (`endo-experiment-…`, `endo-hidden-…`) outside
+    the trial's own scratch root, such as the run directory above it.
+
+  Every other absolute path outside the scratch root in a tool call (a throwaway script in `/tmp`, a path the task is itself
+  about, such as `/etc/app/main.json` in a configuration task) is **counted and reported per task, and does not invalidate
+  the trial.** `leakage.ts` is the rule, with its tests.
 - **M1, the condition.** No request carries a sampling field the agent did not get from the server's defaults:
   `temperature`, `seed`, `cache_prompt`, `top_p`, `top_k`, `min_p` or a penalty, as in the earlier studies' arm A. The
   request fields Pi did send are recorded.
@@ -224,4 +231,22 @@ that input, and it does not run the policies.
 
 ## 13. Deviations
 
-(None.)
+All three were made after the pool was committed and **before any trial ran** (no model call has been made for this study).
+They came from an advisor review of the committed pool.
+
+1. **The leakage rule is narrower (§7).** As first written, any absolute path under `/etc`, `/opt`, `/home`, `/tmp` (and others)
+   outside the scratch root invalidated a trial. Several tasks invite exactly such paths without any peeking (a configuration
+   task is about absolute paths, and a careful agent writes a throwaway script to `/tmp`), so the rule would have excluded the
+   more careful trials, biased the rate down and could have pushed a task over the 10% exclusion line. The rule now
+   invalidates only on the marker, a protected root and the study's own directories, and counts the rest.
+2. **The hidden check's directory (§5).** It was a random directory under the system temporary directory. It is now
+   `hidden-check-<name of the working directory>` beside the working directory, so inside the scratch root when the runner
+   runs it: no random path and no path outside the scratch root in the recorded check output, and no collision between
+   concurrent checks. I ran the check under the runner's environment shape against a reference workspace (not a model
+   trial): the directory is removed afterwards, and the output names only paths inside the scratch root.
+3. **Three prompt sentences were tightened** where a reasonable reader could have gone the other way and the check
+   asserted one reading: `fetch-cache` R1 (`ttlMs: null` is a `RangeError`) and R7 (the copy is deep), and
+   `config-extends` R1 (`extends: null` is a `TypeError`) and R7 (the result's prototype, and `__proto__` merging). The
+   timing of two assertions in `fetch-cache` was also relaxed (the counts are read after the callers have settled, not
+   synchronously). Added to the validation: the visible tests must pass on the reference (and on the starting workspace for
+   the debug and edit tasks), so that a visible test can never contradict the hidden check.

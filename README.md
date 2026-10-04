@@ -411,8 +411,9 @@ Partly done:
      ([steering](docs/steering.md)): the proposal, an authorization bound to its digest, the request, acceptance,
      consumption (shown by the recording proxy) and the consequence are separate records; steered sessions replay
      EXACT; and a [pre-registered study](research/steering/1.0.1/RESULTS.md) measured the effect. Not yet: proposals
-     that do not come from the operator, an external authority provider, and observation and interpretation records
-     created by a command.
+     that do not come from the operator, an external authority provider (a [contract proposal](docs/deadbolt-intervention-contract.md)
+     for Deadbolt exists; Deadbolt has no matching lease template), and observation and interpretation records created by a
+     command.
 
 Next:
 

@@ -20,6 +20,7 @@ import {
 import { validateEndoExperimentBundleV0 } from "../protocol/evaluation.ts";
 import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
 import { pairwiseRateWithTrialBootstrapV0, spreadV0, wilson95V0 } from "../runtime/contracts/statistics.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
 
@@ -110,6 +111,20 @@ describe("the experiment spec and the trial order", () => {
 		expect(pinned({ fileTime: "2026-01-01 00:00" })).toMatch(/fileTime must be an ISO-8601 UTC time/);
 		expect(pinned({ fileTime: "2026-01-01T00:00:00+01:00" })).toMatch(/fileTime must be an ISO-8601 UTC time/);
 		expect(pinned({ clock: "frozen" })).toMatch(/environment: unknown field clock/);
+		const intervene = (interventions: unknown) =>
+			endoExperimentSpecProblemV0({ ...spec(), conditions: [{ id: "a", description: "x", interventions }] });
+		const after = { exchange: 1, chunks: 3 };
+		expect(intervene({ read: { operation: "steer", message: "go on", after } })).toBeNull();
+		expect(intervene({ read: { operation: "stop", after } })).toBeNull();
+		expect(intervene({ nope: { operation: "steer", message: "x", after } })).toMatch(/unknown task nope/);
+		expect(intervene({ read: { operation: "steer", after } })).toMatch(/steer needs a message/);
+		expect(intervene({ read: { operation: "stop", message: "x", after } })).toMatch(/a stop carries no message/);
+		expect(intervene({ read: { operation: "reboot", message: "x", after } })).toMatch(
+			/operation must be steer, queue or stop/,
+		);
+		expect(intervene({ read: { operation: "steer", message: "x", after: { exchange: 0, chunks: 1 } } })).toMatch(
+			/both integers from 1/,
+		);
 	});
 
 	it("a seeded plan reproduces exactly; another seed differs; every block runs every cell once", () => {
@@ -256,6 +271,91 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 			},
 		});
 	}, 120_000);
+
+	it("a condition's intervention: one capability study per session, steered trials carry the full chain, baseline none", async () => {
+		const dir = join(base, "interventions");
+		const message = "Endophasia steer: also say hello";
+		const s = spec({
+			id: "endo.experiment.test-interventions",
+			trials: 2,
+			tasks: [
+				{ id: "count", prompts: ["Count to forty"], workspace: { "endophasia-study.txt": "a synthetic file\n" } },
+			],
+			conditions: [
+				{ id: "base", description: "no intervention" },
+				{
+					id: "steer",
+					description: "a STEER during the first response",
+					interventions: { count: { operation: "steer", message, after: { exchange: 1, chunks: 5 } } },
+				},
+			],
+		});
+		await runEndoExperimentV0({ spec: s, dir, log: () => {}, scratchParent: base });
+		const journal = readFileSync(join(dir, "journal.jsonl"), "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		const studies = journal.filter((entry) => entry.event === "capability-study");
+		expect(studies).toHaveLength(1);
+		expect(studies[0]).toMatchObject({ conditions: ["steer"], summary: [{ capability: "steering.steer" }] });
+		expect(existsSync(join(dir, "evidence", "session-1", "1", "capability-summary.json"))).toBe(true);
+		const byCondition = (condition: string) => results(dir).filter((result) => result.condition === condition);
+		expect(byCondition("steer").map((result) => result.status)).toEqual(["completed", "completed"]);
+		const kinds = (result: EndoExperimentTrialResultV0) => {
+			const store = createEndoDurableEventStoreV0(join(dir, result.store), { readOnly: true });
+			const out = store.page({ limit: 10_000 }).events.map((event) => event.kind);
+			store.close();
+			return out.filter((kind) => kind.startsWith("intervention."));
+		};
+		for (const result of byCondition("steer"))
+			expect(kinds(result)).toEqual([
+				"intervention.proposal",
+				"intervention.authorization",
+				"intervention.request",
+				"intervention.accepted",
+				"intervention.consumed",
+				"intervention.consequence",
+			]);
+		for (const result of byCondition("base")) expect(kinds(result)).toEqual([]);
+		const { report } = reportEndoExperimentV0(dir);
+		const cells = (report as { cells: { condition: string; servingInputs: Record<string, unknown> }[] }).cells;
+		expect(cells.find((cell) => cell.condition === "base")!.servingInputs).not.toHaveProperty("intervention");
+		expect(cells.find((cell) => cell.condition === "steer")!.servingInputs.intervention).toEqual({
+			operation: "steer",
+			message,
+			after: { exchange: 1, chunks: 5 },
+		});
+	}, 180_000);
+
+	it("a condition whose capability the study does not admit stops the run before any trial", async () => {
+		const other = installFakePi("1.0.0");
+		other.setScenario("model-endpoint,drop-queue");
+		try {
+			const dir = join(base, "interventions-refused");
+			const scratchBefore = readdirSync(base).filter((name) => name.startsWith("endo-experiment-"));
+			const s = spec({
+				id: "endo.experiment.test-interventions-refused",
+				trials: 1,
+				pi: other.bin,
+				tasks: [{ id: "count", prompts: ["Count to forty"], workspace: {} }],
+				conditions: [
+					{
+						id: "steer",
+						description: "a STEER",
+						interventions: { count: { operation: "steer", message: "x", after: { exchange: 1, chunks: 5 } } },
+					},
+				],
+			});
+			// This Pi acknowledges a steer and never delivers it: the study classifies that a mismatch, and the run stops.
+			await expect(runEndoExperimentV0({ spec: s, dir, log: () => {}, scratchParent: base })).rejects.toThrow(
+				/the live study did not admit steering\.steer \(mismatch/,
+			);
+			expect(existsSync(join(dir, "trials"))).toBe(false);
+			expect(readdirSync(base).filter((name) => name.startsWith("endo-experiment-"))).toEqual(scratchBefore);
+		} finally {
+			other.remove();
+		}
+	}, 180_000);
 
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {
 		const dir = join(base, "partial");

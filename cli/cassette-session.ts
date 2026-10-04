@@ -37,11 +37,13 @@ import {
 } from "../adapters/openai-proxy/cassette.ts";
 import type { EndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { PiAttachmentV0, type PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
+import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { piTrajectoryAttachmentsV0, projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { type EndoExperimentEnvironmentV0, endoExperimentEnvironmentProblemV0 } from "../protocol/experiment-spec.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import type { EndoTrajectoryComparisonV0 } from "../protocol/trajectory.ts";
+import { localOperatorAuthorityV0 } from "../runtime/contracts/intervention.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
@@ -54,6 +56,12 @@ import {
 } from "../storage/workspace-snapshot.ts";
 
 export const PI_CASSETTE_DRIVER_VERSION_V0 = "pi-cassette-driver.1";
+/** The driver version of a session with an intervention step (`prompt-intervene`); every other session stays .1. */
+export const PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0 = "pi-cassette-driver.2";
+const PI_CASSETTE_DRIVER_VERSIONS_V0: readonly string[] = [
+	PI_CASSETTE_DRIVER_VERSION_V0,
+	PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0,
+];
 
 /** The producer the driver's steps are recorded under, in the session's capture log. */
 export const PI_CASSETTE_DRIVER_PRODUCER_V0 = "capture:driver";
@@ -68,7 +76,21 @@ export type PiCassetteStepV0 =
 	 * Prompt from a child process; once the proxy has relayed `afterChunks` chunks, SIGKILL the child (Pi ends with its
 	 * process group); then reopen the same store and Pi session in this process.
 	 */
-	| { op: "prompt-kill"; text: string; afterChunks: number };
+	| { op: "prompt-kill"; text: string; afterChunks: number }
+	/**
+	 * Prompt; once the proxy has relayed `after.chunks` chunks of exchange `after.exchange`, apply one intervention
+	 * through the intervention desk (protocol/intervention.ts); wait for agent_settled. The proposal and its
+	 * authorization are recorded before the prompt, as the operator's scenario (`origin: "operator-scenario"`,
+	 * `confirmation: "scenario"`); only the apply happens at the delivery point. A steer or queue carries a message; a
+	 * stop does not. A replay re-issues it at the recorded point.
+	 */
+	| {
+			op: "prompt-intervene";
+			text: string;
+			operation: "steer" | "queue" | "stop";
+			message?: string;
+			after: { exchange: number; chunks: number };
+	  };
 
 export interface PiCassetteScenarioV0 {
 	readonly name: string;
@@ -348,14 +370,18 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 	const log = new EndoCaptureLogV0(options.store, key, "record", { async: true });
 	const notes: string[] = [];
 	let step = 0;
+	const driverVersion = options.scenario.steps.some((entry) => entry.op === "prompt-intervene")
+		? PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0
+		: PI_CASSETTE_DRIVER_VERSION_V0;
 	const driver = (op: string, payload: Record<string, JsonValueV0> = {}) => {
 		step += 1;
 		log.record(
 			"capture.driver-step",
-			{ driver: PI_CASSETTE_DRIVER_VERSION_V0, step, op, ...payload },
+			{ driver: driverVersion, step, op, ...payload },
 			PI_CASSETTE_DRIVER_PRODUCER_V0,
 		);
 	};
+	let desk: PiInterventionDeskV0 | null = null;
 	const variables = piCassetteVariablesV0(options.environment, scratch.root);
 	if (options.environment !== undefined)
 		log.record(
@@ -402,6 +428,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 	const open = async (op: "open" | "reopen") => {
 		const attachment = piCassetteAttachmentV0(config);
 		session = await attachment.openSession();
+		desk = new PiInterventionDeskV0(session, key);
 		piSessionId = attachment.sessionConfig().sessionId;
 		driver(op, { attachment: attachment.attachment, provider: options.provider, model: options.model, piSessionId });
 	};
@@ -417,6 +444,43 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 				const settled = await session!.waitForSettled(options.timeoutMs);
 				driver("settled", { observed: settled });
 				if (!settled) notes.push(`agent_settled was not observed after step ${step}`);
+			} else if (entry.op === "prompt-intervene") {
+				if (session === null) await open("open");
+				prompted(entry.text, "intervene");
+				// The proposal and its authorization are the scenario's, recorded before the prompt: only the apply is
+				// timed by the proxy's delivery point.
+				const proposal = desk!.propose({
+					operation: entry.operation,
+					...(entry.message === undefined ? {} : { message: entry.message }),
+					origin: "operator-scenario",
+					nonce: `scenario-step-${step}`,
+				});
+				const authorization = desk!.authorize(
+					proposal.proposalId,
+					localOperatorAuthorityV0(proposal.proposalDigest, "scenario"),
+				);
+				await session!.prompt(entry.text);
+				if (!(await untilRelayed(options.proxy, entry.after.exchange, entry.after.chunks, options.timeoutMs)))
+					notes.push(
+						`the proxy did not relay ${entry.after.chunks} chunks of exchange ${entry.after.exchange} before the ${entry.operation}`,
+					);
+				const at = options.proxy.delivery();
+				const result = await desk!.apply(proposal.proposalId, authorization.authorizationId, at);
+				driver("intervene", {
+					operation: entry.operation,
+					at: at as unknown as JsonValueV0,
+					message:
+						entry.message === undefined
+							? null
+							: ({ ...log.keep(Buffer.from(entry.message, "utf8")) } as unknown as JsonValueV0),
+					proposalDigest: proposal.proposalDigest,
+					result: result.status,
+				});
+				if (result.status === "refused")
+					notes.push(`the ${entry.operation} was refused: ${result.reason} (${result.detail})`);
+				const settled = await session!.waitForSettled(options.timeoutMs);
+				driver("settled", { observed: settled });
+				if (!settled) notes.push(`agent_settled was not observed after the ${entry.operation}`);
 			} else if (entry.op === "prompt-stop") {
 				if (session === null) await open("open");
 				prompted(entry.text, "stop");
@@ -444,6 +508,12 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 				await open("reopen");
 			}
 		}
+		// Consumption is read from the proxy's capture, so it must be flushed before the desk records the consequences,
+		// and the session store must still be open.
+		if (desk !== null && session !== null) {
+			await options.proxy.flush();
+			(desk as PiInterventionDeskV0).finish();
+		}
 		if (session !== null) await (session as PiSessionAttachmentV0).close();
 		session = null;
 		driver("close");
@@ -461,6 +531,8 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 /** The driver's recorded steps and the snapshot, from a cassette. */
 export interface PiCassetteScriptV0 {
 	snapshot: { scratchRoot: string; archive: { digest: EndoKeyedDigestV0; bytes: number } };
+	/** The driver version every step was recorded under. */
+	driverVersion: string;
 	steps: Record<string, unknown>[];
 	/** The pinned environment the recording ran with (`capture.environment`), or null for none. */
 	environment: { variables: Record<string, string>; fileTime: string | null; files: Record<string, unknown> } | null;
@@ -478,14 +550,17 @@ export function piCassetteScriptV0(events: readonly EndoEventV0[]): PiCassetteSc
 	if (steps.length === 0)
 		throw new TypeError("the cassette holds no driver steps: it was not recorded by the session driver");
 	const driverVersions = new Set(steps.map((entry) => entry.driver));
-	if (driverVersions.size !== 1 || !driverVersions.has(PI_CASSETTE_DRIVER_VERSION_V0))
+	const [driverVersion] = [...driverVersions];
+	if (driverVersions.size !== 1 || !PI_CASSETTE_DRIVER_VERSIONS_V0.includes(String(driverVersion)))
 		throw new TypeError(
-			`the cassette's driver steps are ${[...driverVersions].join(", ")}, not ${PI_CASSETTE_DRIVER_VERSION_V0}`,
+			`the cassette's driver steps are ${[...driverVersions].join(", ")}, not one of ${PI_CASSETTE_DRIVER_VERSIONS_V0.join(", ")}`,
 		);
+	if (driverVersion === PI_CASSETTE_DRIVER_VERSION_V0 && steps.some((entry) => entry.op === "intervene"))
+		throw new TypeError("an intervention step needs driver version pi-cassette-driver.2");
 	const environment = driver.find((event) => event.kind === "capture.environment")?.payload as
 		| PiCassetteScriptV0["environment"]
 		| undefined;
-	return { snapshot, steps, environment: environment ?? null };
+	return { snapshot, driverVersion: String(driverVersion), steps, environment: environment ?? null };
 }
 
 export interface PiCassetteReplayOptionsV0 {
@@ -518,6 +593,17 @@ export interface PiCassetteReplayReportV0 {
 	 * `environment` (a tool result: what a tool observed changed) or `control-flow` (anything else).
 	 */
 	missDetails: { exchange: number; reason: string; divergence: JsonValueV0 | null }[];
+	/**
+	 * Interventions (steer, queue, stop) the replay re-issued at their recorded points, with whether the proposal's
+	 * digest equals the recorded one and what the desk answered. Empty for a session with none.
+	 */
+	interventions: {
+		operation: string;
+		recordedAt: { exchange: number; chunks: number } | null;
+		reissuedAt: { exchange: number; chunks: number } | null;
+		proposalDigestMatches: boolean;
+		result: string;
+	}[];
 	/** The first environment divergence ("environment diverged at <exchange>"), when the first miss is one. */
 	environmentDivergedAt: number | null;
 	notes: string[];
@@ -586,6 +672,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		log.record("capture.control", { alteredScratch: options.alterScratch.describe }, PI_CASSETTE_DRIVER_PRODUCER_V0);
 	}
 	const notes: string[] = [];
+	let interventionsOut: PiCassetteReplayReportV0["interventions"] = [];
 	let server: Awaited<ReturnType<typeof startEndoCassetteServerV0>> | null = null;
 	let session: PiSessionAttachmentV0 | null = null;
 	try {
@@ -615,11 +702,13 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			replayStep += 1;
 			log.record(
 				"capture.driver-step",
-				{ driver: PI_CASSETTE_DRIVER_VERSION_V0, step: replayStep, op, ...payload },
+				{ driver: script.driverVersion, step: replayStep, op, ...payload },
 				PI_CASSETTE_DRIVER_PRODUCER_V0,
 			);
 		};
 		const cassetteServer = server;
+		const interventions: PiCassetteReplayReportV0["interventions"] = [];
+		interventionsOut = interventions;
 		// A STOP or kill point must be armed before the prompt goes out: with immediate timing the cassette can be past
 		// the point before the driver would otherwise get to it.
 		const pointAfter = (index: number): { exchange: number; chunks: number } | null => {
@@ -642,10 +731,12 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		};
 		let pendingPrompt: { text: string; mode: string } | null = null;
 		let child: { kill: () => Promise<string[]> } | null = null;
+		let desk: PiInterventionDeskV0 | null = null;
 		for (const [index, entry] of script.steps.entries()) {
 			const op = String(entry.op);
 			if (op === "open" || op === "reopen") {
 				session = await piCassetteAttachmentV0(config).openSession();
+				desk = new PiInterventionDeskV0(session, key);
 				driver(op, { replayOf: entry.step as number });
 			} else if (op === "prompt") {
 				const ref = entry.text as { digest: EndoKeyedDigestV0 };
@@ -653,7 +744,55 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 				pendingPrompt = { text, mode: String(entry.mode) };
 				driver("prompt", { replayOf: entry.step as number, mode: pendingPrompt.mode });
 				if (pendingPrompt.mode === "stop") arm(pointAfter(index));
-				if (pendingPrompt.mode !== "kill") await session!.prompt(text);
+				if (pendingPrompt.mode === "intervene") {
+					// Re-issue the recorded intervention at the recorded delivery point, as STOP is: the pause is armed
+					// before the prompt, the proposal and its authorization are the scenario's (same nonce, same session,
+					// so the same digest), and only the apply waits for the point.
+					const recorded = script.steps.slice(index + 1).find((later) => later.op === "intervene");
+					if (recorded === undefined)
+						throw new TypeError("the cassette records an intervening prompt with no intervention step");
+					const at = (recorded.at as { exchange: number; chunks: number } | null) ?? null;
+					arm(at);
+					const operation = recorded.operation as "steer" | "queue" | "stop";
+					const messageRef = recorded.message as { digest: EndoKeyedDigestV0 } | null;
+					const message =
+						messageRef === null ? undefined : Buffer.from(blobs.get(messageRef.digest)).toString("utf8");
+					const proposal = desk!.propose({
+						operation,
+						...(message === undefined ? {} : { message }),
+						origin: "operator-scenario",
+						nonce: `scenario-step-${entry.step}`,
+					});
+					const authorization = desk!.authorize(
+						proposal.proposalId,
+						localOperatorAuthorityV0(proposal.proposalDigest, "scenario"),
+					);
+					await session!.prompt(text);
+					if (!(await (armed ?? Promise.resolve(true))))
+						notes.push(
+							`the ${operation} point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`,
+						);
+					armed = null;
+					// Pi answers `steer` and `follow_up` at once, so those are awaited before the cassette resumes (the message
+					// is queued before the response can end). It answers `abort` only once the run is idle, which cannot
+					// happen while the cassette is paused: a STOP is sent, the cassette resumed, and the answer awaited.
+					const applying = desk!.apply(proposal.proposalId, authorization.authorizationId, at);
+					if (operation !== "stop") await applying;
+					cassetteServer.resume();
+					const result = await applying;
+					driver("intervene", { replayOf: recorded.step as number, operation, result: result.status });
+					interventions.push({
+						operation,
+						recordedAt: at,
+						reissuedAt: at,
+						proposalDigestMatches: proposal.proposalDigest === recorded.proposalDigest,
+						result: result.status === "refused" ? `refused: ${result.reason}` : result.status,
+					});
+					const settled = await session!.waitForSettled(options.timeoutMs);
+					driver("settled", { replayOf: entry.step as number, observed: settled });
+					if (!settled) notes.push(`agent_settled was not observed after recorded step ${entry.step}`);
+				}
+				if (pendingPrompt.mode !== "kill" && pendingPrompt.mode !== "intervene") await session!.prompt(text);
 				if (pendingPrompt.mode === "settle") {
 					const settled = await session!.waitForSettled(options.timeoutMs);
 					driver("settled", { replayOf: entry.step as number, observed: settled });
@@ -693,6 +832,10 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 				if (session !== null) await session.close();
 				session = null;
 				driver("close", { replayOf: entry.step as number });
+			} else if (op !== "settled" && op !== "intervene") {
+				// Recorded outcomes ("settled", "intervene") are replayed with their prompt; any other op is one this
+				// replayer does not know, and silently skipping it would show up as a confusing cassette miss.
+				throw new TypeError(`the cassette records a driver step this replayer does not know: ${op}`);
 			}
 		}
 	} finally {
@@ -724,6 +867,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		misses: server.misses,
 		unserved: server.remaining,
 		missDetails,
+		interventions: interventionsOut,
 		environmentDivergedAt,
 		notes,
 		comparison,

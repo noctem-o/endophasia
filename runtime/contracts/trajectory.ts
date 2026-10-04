@@ -1,10 +1,10 @@
-// Trajectory comparison: two `endo.trajectory.v0` records in, one `endo.trajectory-comparison.v0` out
+// Trajectory comparison: two `endo.trajectory.v1` records in, one `endo.trajectory-comparison.v1` out
 // (protocol/trajectory.ts). Pure and deterministic: no store, runtime or network is read, and the same two records
 // always give the same comparison, byte for byte, with the same digest.
 //
 // The rules are ENDO_TRAJECTORY_COMPARISON_RULES_V0, carried verbatim in every result:
 // - Alignment is by position within each layer, never by timestamp.
-// - lifecycle, tools and outcome are judged: EXACT, DIVERGED at the first differing position (with both entries and
+// - lifecycle, toolCalls, toolResults and outcome are judged: EXACT, DIVERGED at the first differing position (with both entries and
 //   the common-prefix length), or UNAVAILABLE.
 // - Tool argument and result digests compare only within one digest domain. Different key ids make an entry unverifiable
 //   ("different digest domains"), never a divergence: two HMACs under different keys say nothing about equality.
@@ -25,7 +25,9 @@ import {
 	type EndoTrajectoryTimingComparisonV0,
 	type EndoTrajectoryTimingEntryV0,
 	type EndoTrajectoryTokenDeltaV0,
-	type EndoTrajectoryToolEntryV0,
+	type EndoTrajectoryToolCallEntryV0,
+	type EndoTrajectoryToolCallsAgainstInputsV0,
+	type EndoTrajectoryToolResultEntryV0,
 	type EndoTrajectoryUsageComparisonV0,
 	type EndoTrajectoryUsageEntryV0,
 	type EndoTrajectoryV0,
@@ -46,7 +48,7 @@ export function sealEndoTrajectoryV0(body: Omit<EndoTrajectoryV0, "digest">): En
 	const plain = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
 	const sealed = { ...plain, digest: endoRecordDigestV0(plain) };
 	const valid = validateEndoTrajectoryV0(sealed, endoRecordDigestV0);
-	if (valid === null) throw new TypeError("the projected trajectory failed endo.trajectory.v0 validation");
+	if (valid === null) throw new TypeError("the projected trajectory failed endo.trajectory.v1 validation");
 	return valid;
 }
 
@@ -65,8 +67,8 @@ const canonicalAgreement = (a: unknown, b: unknown): Agreement => (same(a, b) ? 
 /** Two keyed digests of one field: equal, differing, or unverifiable (not recorded, or different digest domains). */
 function digestAgreement(
 	what: string,
-	a: EndoTrajectoryToolEntryV0["argsDigest"],
-	b: EndoTrajectoryToolEntryV0["argsDigest"],
+	a: EndoTrajectoryToolCallEntryV0["argsDigest"],
+	b: EndoTrajectoryToolCallEntryV0["argsDigest"],
 ): Agreement {
 	// Reasons name no side, so that compare(b, a) is exactly compare(a, b) swapped.
 	if (a.status !== "reported" || b.status !== "reported") {
@@ -80,20 +82,118 @@ function digestAgreement(
 	return a.value.value === b.value.value ? "equal" : "differ";
 }
 
-/**
- * Tool entries: every field must be equal. Argument and result digests compare only in one digest domain: a digest one
- * side did not record, or digests under different key ids, leave the entry unverifiable rather than equal or diverged.
- * A difference in any other field, or a verifiable digest difference, is a divergence.
- */
-function toolAgreement(a: EndoTrajectoryToolEntryV0, b: EndoTrajectoryToolEntryV0): Agreement {
-	const { argsDigest: argsA, resultDigest: resultA, ...restA } = a;
-	const { argsDigest: argsB, resultDigest: resultB, ...restB } = b;
-	if (!same(restA, restB)) return "differ";
-	const args = digestAgreement("argument", argsA, argsB);
-	const result = digestAgreement("result", resultA, resultB);
-	if (args === "differ" || result === "differ") return "differ";
-	const reasons = [args, result].flatMap((agreement) => (agreement === "equal" ? [] : [agreement.unverified]));
+/** The agreement of several digest agreements: differ if any differs, else unverifiable with every reason, else equal. */
+function combine(agreements: Agreement[]): Agreement {
+	if (agreements.includes("differ")) return "differ";
+	const reasons = agreements.flatMap((agreement) => (typeof agreement === "object" ? [agreement.unverified] : []));
 	return reasons.length === 0 ? "equal" : { unverified: [...new Set(reasons)].join("; ") };
+}
+
+/**
+ * Tool calls: name and position facts must be equal; the argument digest compares only in one digest domain (a digest
+ * one side did not record, or under another key id, leaves the entry unverifiable, never equal or diverged).
+ */
+function toolCallAgreement(a: EndoTrajectoryToolCallEntryV0, b: EndoTrajectoryToolCallEntryV0): Agreement {
+	const { argsDigest: argsA, ...restA } = a;
+	const { argsDigest: argsB, ...restB } = b;
+	if (!same(restA, restB)) return "differ";
+	return combine([digestAgreement("argument", argsA, argsB)]);
+}
+
+/** Tool results: name, status and position facts must be equal; the result digest under the same domain rule. */
+function toolResultAgreement(a: EndoTrajectoryToolResultEntryV0, b: EndoTrajectoryToolResultEntryV0): Agreement {
+	const { resultDigest: resultA, ...restA } = a;
+	const { resultDigest: resultB, ...restB } = b;
+	if (!same(restA, restB)) return "differ";
+	return combine([digestAgreement("result", resultA, resultB)]);
+}
+
+type Position = { run: number | null; turn: number | null };
+
+/** The earlier of two (run, turn) positions; a side past its end (undefined) is ignored. Symmetric in its arguments. */
+function earlier(a: Position | undefined, b: Position | undefined): Position | null {
+	const known = [a, b].filter((position): position is Position => position !== undefined);
+	if (known.length === 0) return null;
+	return known.reduce((x, y) => {
+		if (x.run === null || x.turn === null || y.run === null || y.turn === null) return { run: null, turn: null };
+		return x.run < y.run || (x.run === y.run && x.turn <= y.turn) ? x : y;
+	});
+}
+
+/**
+ * Did the tool calls stay identical until an input (a tool result) diverged? From the two judged layers: the first
+ * diverged result and call, located at the earlier (run, turn) of the two sides (so the field is symmetric).
+ */
+function toolCallsAgainstInputs(
+	a: EndoTrajectoryV0,
+	b: EndoTrajectoryV0,
+	calls: EndoTrajectoryVerdictV0,
+	results: EndoTrajectoryVerdictV0,
+): EndoTrajectoryToolCallsAgainstInputsV0 {
+	const at = (layer: "toolCalls" | "toolResults", index: number) => {
+		const entry = (side: EndoTrajectoryV0) => {
+			const l = side.layers[layer];
+			return l.status === "reported" ? (l.entries[index] as Position | undefined) : undefined;
+		};
+		const position = earlier(entry(a), entry(b));
+		return { index, run: position?.run ?? null, turn: position?.turn ?? null };
+	};
+	const firstDivergentResult = results.status === "DIVERGED" ? at("toolResults", results.index) : null;
+	const firstDivergentCall = calls.status === "DIVERGED" ? at("toolCalls", calls.index) : null;
+	const base = { firstDivergentResult, firstDivergentCall };
+	if (calls.status === "UNAVAILABLE" && calls.unverified.length === 0)
+		return {
+			...base,
+			callsIdenticalUpToFirstDivergentInput: null,
+			reason: "the tool calls are unavailable on a side",
+		};
+	if (calls.status === "EXACT")
+		return {
+			...base,
+			callsIdenticalUpToFirstDivergentInput: true,
+			reason: "the tool calls are identical throughout",
+		};
+	if (calls.status === "UNAVAILABLE")
+		return { ...base, callsIdenticalUpToFirstDivergentInput: null, reason: "some tool calls could not be verified" };
+	if (firstDivergentResult === null)
+		return results.status === "UNAVAILABLE"
+			? {
+					...base,
+					callsIdenticalUpToFirstDivergentInput: null,
+					reason: "the tool results are unavailable or unverifiable, so no divergent input can be located",
+				}
+			: {
+					...base,
+					callsIdenticalUpToFirstDivergentInput: false,
+					reason: "the tool calls diverged while every tool result was identical",
+				};
+	const call = firstDivergentCall!;
+	if (
+		call.run === null ||
+		call.turn === null ||
+		firstDivergentResult.run === null ||
+		firstDivergentResult.turn === null
+	)
+		return {
+			...base,
+			callsIdenticalUpToFirstDivergentInput: null,
+			reason: "a run or turn is unknown, so the order cannot be told",
+		};
+	const after =
+		call.run > firstDivergentResult.run ||
+		(call.run === firstDivergentResult.run && call.turn > firstDivergentResult.turn);
+	return after
+		? {
+				...base,
+				callsIdenticalUpToFirstDivergentInput: true,
+				reason: "the first diverged call was made in a later turn than the first diverged result",
+			}
+		: {
+				...base,
+				callsIdenticalUpToFirstDivergentInput: false,
+				reason:
+					"a call diverged no later than the first diverged result's turn, before that input could have been seen",
+			};
 }
 
 function judge<T>(
@@ -276,7 +376,7 @@ export function compareEndoTrajectoriesV0(a: EndoTrajectoryV0, b: EndoTrajectory
 	] as const) {
 		if (validateEndoTrajectoryV0(JSON.parse(JSON.stringify(trajectory)), endoRecordDigestV0) === null)
 			throw new TypeError(
-				`trajectory ${side} is not a valid endo.trajectory.v0 record (or its digest does not match)`,
+				`trajectory ${side} is not a valid endo.trajectory.v1 record (or its digest does not match)`,
 			);
 	}
 	const side = (trajectory: EndoTrajectoryV0) => ({
@@ -284,15 +384,19 @@ export function compareEndoTrajectoriesV0(a: EndoTrajectoryV0, b: EndoTrajectory
 		eventsSha256: trajectory.source.eventsSha256,
 		trajectoryDigest: trajectory.digest,
 	});
+	const toolCalls = judge(a.layers.toolCalls, b.layers.toolCalls, toolCallAgreement);
+	const toolResults = judge(a.layers.toolResults, b.layers.toolResults, toolResultAgreement);
 	const body = {
-		schemaVersion: "endo.trajectory-comparison.v0" as const,
+		schemaVersion: "endo.trajectory-comparison.v1" as const,
 		rules: { ...ENDO_TRAJECTORY_COMPARISON_RULES_V0 },
 		a: side(a),
 		b: side(b),
 		flags: flags(a, b),
+		toolCallsAgainstInputs: toolCallsAgainstInputs(a, b, toolCalls, toolResults),
 		layers: {
 			lifecycle: judge(a.layers.lifecycle, b.layers.lifecycle, canonicalAgreement),
-			tools: judge(a.layers.tools, b.layers.tools, toolAgreement),
+			toolCalls,
+			toolResults,
 			outcome: judge(a.layers.outcome, b.layers.outcome, canonicalAgreement),
 			usage: usageDeltas(a.layers.usage, b.layers.usage),
 			timing: timingDeltas(a.layers.timing, b.layers.timing),
@@ -302,6 +406,6 @@ export function compareEndoTrajectoriesV0(a: EndoTrajectoryV0, b: EndoTrajectory
 	const plain = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
 	const sealed = { ...plain, digest: endoRecordDigestV0(plain) };
 	const valid = validateEndoTrajectoryComparisonV0(sealed, endoRecordDigestV0);
-	if (valid === null) throw new TypeError("the comparison failed endo.trajectory-comparison.v0 validation");
+	if (valid === null) throw new TypeError("the comparison failed endo.trajectory-comparison.v1 validation");
 	return valid;
 }

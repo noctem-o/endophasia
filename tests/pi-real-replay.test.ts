@@ -56,7 +56,7 @@ describe.runIf(executable !== undefined && executable.length > 0)("real Pi casse
 				const { report } = await replayFixture(name, timing);
 				expect(report.misses).toBe(0);
 				expect(report.unserved).toBe(0);
-				for (const layer of ["lifecycle", "tools", "outcome"] as const)
+				for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 					expect(report.comparison.layers[layer], layer).toMatchObject({ status: "EXACT" });
 				expect(report.comparison.flags).toEqual([]);
 			}, 600_000);
@@ -71,8 +71,12 @@ describe.runIf(executable !== undefined && executable.length > 0)("real Pi casse
 			},
 			holdMs: 5_000,
 		});
-		// The model's first response (the read call) is served; Pi's read returns other content.
-		expect(report.comparison.layers.tools).toMatchObject({ status: "DIVERGED", index: 0 });
+		// The model's first response (the read call) is served; Pi's read returns other content: the first result
+		// diverges, the read call itself does not, and the calls stay identical up to that input.
+		expect(report.comparison.layers.toolResults).toMatchObject({ status: "DIVERGED", index: 0 });
+		expect(report.comparison.layers.toolCalls).toMatchObject({ status: "DIVERGED", index: 1 });
+		expect(report.comparison.toolCallsAgainstInputs.callsIdenticalUpToFirstDivergentInput).toBe(true);
+		expect(report.environmentDivergedAt).toBe(2);
 		// The next request carries that content, so it is not the recorded one: an explicit miss, never improvised.
 		const misses = readEndoCaptureEventsV0(out).filter((event) => event.kind === "capture.cassette-miss");
 		expect(misses[0]!.payload).toMatchObject({ reason: "unexpected-request", exchange: 2 });

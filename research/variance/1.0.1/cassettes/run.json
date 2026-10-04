@@ -1,0 +1,80 @@
+{
+	"schemaVersion": "endo.variance-cassettes.v0",
+	"experiment": {
+		"schemaVersion": "endo.experiment.v0",
+		"id": "endo.experiment.variance-1.0.1-cassettes",
+		"environment": {
+			"schemaVersion": "endo.environment-profile.v0",
+			"environmentId": "endophasia-scratch-workspace",
+			"simulated": false
+		},
+		"model": "endolocal/qwen3.8-27b",
+		"budget": {
+			"trialsPerCell": 1,
+			"cells": 9
+		},
+		"provenance": "endo-experiment-runner.1; spec sha256 d270240da4d62d71380f292458c6bed5e8bbb57408baf738a4be34e23783bb86"
+	},
+	"specSha256": "d270240da4d62d71380f292458c6bed5e8bbb57408baf738a4be34e23783bb86",
+	"seed": 722226825,
+	"seedSource": "drawn",
+	"scratchRoot": "/tmp/endo-experiment-d270240da4d6/scratch",
+	"proxyPort": 45587,
+	"recordedAt": "2026-10-04T10:12:20.135Z",
+	"order": [
+		{
+			"condition": "b-c",
+			"position": 0,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 1,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 2,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 3,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 4,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 5,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 6,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 7,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 8,
+			"task": "implement-function",
+			"trial": 0
+		}
+	]
+}

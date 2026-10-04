@@ -77,6 +77,15 @@ then the connection closes. A response is never improvised. The miss reasons are
 | `truncated-exchange` | The recording never completed this exchange: no end, a missing or tampered blob, or chunks that do not add up. |
 | `response-exhausted` | The recorded client disconnected mid-response. This client had not disconnected when the recorded chunks ran out: the connection is cut, nothing is added. |
 
+**Classified misses.** An `unexpected-request` miss also records where the replayed request first differs from the
+recorded one (`divergence`):
+- **`environment`:** the first differing message is a tool result. What a tool observed changed: its output. The
+  model's replies and Pi's control flow were identical up to that point.
+- **`control-flow`:** anything else differs first: an assistant, user or system message, or another request field.
+
+`endo replay` reports the first miss as "environment diverged at <exchange>" or "control flow diverged at
+<exchange>", and lists every miss with its classification.
+
 **Endings follow the recording.** Recorded 429 and 500 responses are served as recorded. A recorded upstream drop is
 replayed as a drop at the same chunk.
 
@@ -103,8 +112,14 @@ never matched and then silently missed.
 delivery count at that instant: `{exchange, chunks}`.
 
 **The scratch root.** Pi runs with a scratch root holding `home/`, `agent/` (`models.json` naming only the proxy) and
-`work/` (the workspace). The whole root is snapshotted before Pi starts (`storage/workspace-snapshot.ts`, a
-deterministic `endo.workspace-archive.v0`). The snapshot is recorded as `capture.workspace-snapshot`.
+`work/` (the workspace). The whole root is snapshotted before Pi starts (`storage/workspace-snapshot.ts`,
+`endo.workspace-archive.v1`): every file's content, every entry's kind, and every entry's modification time, including
+the root's. The snapshot is recorded as `capture.workspace-snapshot`.
+
+**File times are restored, as state.** A tool such as `ls -la` prints modification times. A replay that restored the
+files with fresh times would show the tool a different workspace, so a v1 snapshot restores the recorded times:
+files and links first, then directories deepest first, then the root. Older `v0` snapshots carry no times and restore
+with fresh ones.
 
 **A replay keeps the recording's environment:**
 
@@ -124,7 +139,7 @@ endpoint that needs a key would capture the key. The scratch `models.json` uses 
 
 ## What a replay establishes, and what it does not
 
-**What EXACT shows.** EXACT on lifecycle, tools and outcome means this: with the model's responses byte-identical and
+**What EXACT shows.** EXACT on lifecycle, tool calls, tool results and outcome means this: with the model's responses byte-identical and
 the steps, the snapshot and the STOP or kill points the same, Pi produced the same lifecycle, the same tool calls
 (names, keyed argument digests, statuses, keyed result digests) and the same outcomes. Zero misses means Pi sent
 exactly the recorded requests, in order.
@@ -140,14 +155,30 @@ exactly the recorded requests, in order.
   machine state can make a result digest and the next request differ. That shows up as a tools divergence or a
   cassette miss, and it is reported, not hidden. The committed tool-use scenario runs `wc -l`, which is deterministic
   on the restored file.
-  Observed in the variance study (`research/variance/1.0.1/RESULTS.md`): replays of coding-task trials ended with a
-  cassette miss at the second request. Pi's `ls -la` printed the restore time, and `node --test` printed new
-  durations. The snapshot keeps no timestamps, by design.
+  See [the wall-clock limit](#the-wall-clock-limit).
 - **Behaviour on another machine, Pi release or configuration.** A replay binds the recorded path and port and needs
   the same digest domain. Differences in Pi's fingerprint or configuration are flagged by the comparison.
 - **Usage and timing.** They are reported as deltas and never judged ([trajectory.md](trajectory.md)). Under a
   cassette, Pi's reported usage is the recorded usage, because it comes from the replayed response. Timing reflects
   the chosen timing mode.
+
+## The wall-clock limit
+
+**A replay never fakes time.** The clock, durations and anything else a tool measures while it runs belong to the
+replay's own run, not the recording's.
+
+**What is restored:** the workspace's state, file times included. **What is not:** time itself. A tool that prints a
+time it reads while running (`node --test` durations, `date`, a log timestamp), or a time Pi or the tool writes
+during the session, gives different output on replay. That output enters the next request, and the cassette
+correctly refuses a request it does not hold: an explicit `unexpected-request` miss, classified `environment`.
+
+Observed in the variance study (`research/variance/1.0.1/RESULTS.md`): replays of coding-task trials missed at the
+second request. `ls -la` printed the restore time (the snapshot then kept no times), and `node --test` printed new
+durations. File times are now restored; durations cannot be.
+
+A session whose tools print wall-clock values can be replayed only up to the first such output. Holding those values
+fixed is the experiment's job: a pinned environment, such as a test reporter without durations, as a declared
+condition.
 
 ## Tool-result digests (pi-rpc-mapping.4)
 
@@ -155,6 +186,6 @@ Pi documents `tool_execution_end` with `result` (`docs/json.md`), so result dige
 UNAVAILABLE. `tool.finished` records `resultDigest`: the keyed digest of `result.content`, the content the model is
 given. `result.details` is tool-specific and not sent to the model (`docs/message-types.md`), so it is not digested.
 
-The trajectory's tool entries carry `resultDigest` (`pi-trajectory.2`). Result digests compare by the same domain rule
-as argument digests (`trajectory-comparison.2`). A recording made before mapping.4 has none, which makes its tool
+The trajectory's tool results carry `resultDigest` (its own `toolResults` layer since `pi-trajectory.3`). Result digests
+compare by the same domain rule as argument digests (`trajectory-comparison.3`). A recording made before mapping.4 has none, which makes its tool
 entries UNAVAILABLE, never EXACT.

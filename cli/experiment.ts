@@ -79,7 +79,7 @@ import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
 export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.1";
-export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v0";
+export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v1";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
 
@@ -540,7 +540,7 @@ function runCheck(
 
 // --- report -----------------------------------------------------------------------------------------------------
 
-const JUDGED = ["lifecycle", "tools", "outcome"] as const;
+const JUDGED = ["lifecycle", "toolCalls", "toolResults", "outcome"] as const;
 type Judged = (typeof JUDGED)[number];
 
 const STATISTICS_NOTE =
@@ -647,6 +647,14 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				firstDivergence[layer] = Object.fromEntries(
 					Object.entries(indices).sort(([a], [b]) => Number(a) - Number(b)),
 				);
+			}
+			// Per pair: did the tool calls stay identical up to the first divergent input (trajectory-comparison.3)?
+			const callsAgainstInputs = { identical: 0, notIdentical: 0, undecidable: 0 };
+			for (const { comparison } of comparisons) {
+				const verdict = comparison.toolCallsAgainstInputs.callsIdenticalUpToFirstDivergentInput;
+				if (verdict === true) callsAgainstInputs.identical += 1;
+				else if (verdict === false) callsAgainstInputs.notIdentical += 1;
+				else callsAgainstInputs.undecidable += 1;
 			}
 			const divergedSets: Record<string, number> = {};
 			for (const { comparison } of comparisons) {
@@ -760,6 +768,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				},
 				layers,
 				firstDivergence: { indexByLayer: firstDivergence, divergedLayersByPair: divergedSets },
+				toolCallsUpToFirstDivergentInput: callsAgainstInputs,
 				outcomes: outcomeKinds,
 				check:
 					task.check === undefined
@@ -817,7 +826,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			};
 			const checkText = task.check === undefined ? "no check" : `${passed}/${checked.length} pass`;
 			lines.push(
-				`| ${task.id} | ${condition.id} | ${completed.length}/${run.spec.trials} | ${rate("lifecycle")} | ${rate("tools")} | ${rate("outcome")} | ${checkText} | ${walls.length ? `${spreadV0(walls)!.median} ms` : "n/a"} |`,
+				`| ${task.id} | ${condition.id} | ${completed.length}/${run.spec.trials} | ${rate("lifecycle")} | ${rate("toolCalls")} | ${rate("toolResults")} | ${rate("outcome")} | ${checkText} | ${walls.length ? `${spreadV0(walls)!.median} ms` : "n/a"} |`,
 			);
 		}
 	}
@@ -860,8 +869,8 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		"",
 		"Per judged layer: trials agreeing with the modal trajectory (95% Wilson, over trials); distinct trajectories; pairwise exact-match rate (95% percentile bootstrap resampling trials):",
 		"",
-		"| task | condition | trials | lifecycle | tools | outcome | check | median wall |",
-		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | ---: |",
+		"| task | condition | trials | lifecycle | tool calls | tool results | outcome | check | median wall |",
+		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | :--- | ---: |",
 		...lines,
 		"",
 		...("validity" in manipulation

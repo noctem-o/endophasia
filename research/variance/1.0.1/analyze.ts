@@ -90,7 +90,8 @@ export async function spotcheck(dir: string, pi: string) {
 			out.push({
 				trial: `${trial.task}/${trial.condition}/#${trial.trial}`,
 				lifecycle: report.comparison.layers.lifecycle.status,
-				tools: report.comparison.layers.tools.status,
+				toolCalls: report.comparison.layers.toolCalls.status,
+				toolResults: report.comparison.layers.toolResults.status,
 				outcome: report.comparison.layers.outcome.status,
 				served: report.served,
 				misses: report.misses,
@@ -288,7 +289,7 @@ export function calls(dir: string) {
 	const byCell = new Map<string, string[]>();
 	for (const trial of completed) {
 		const trajectory = trajectoryFromStoreV0(join(dir, trial.store), trial.session!, { label: trial.store });
-		const tools = trajectory.layers.tools;
+		const tools = trajectory.layers.toolCalls;
 		const sequence =
 			tools.status === "reported"
 				? canonicalEndoJsonV0(tools.entries.map((entry) => ({ name: entry.name, args: entry.argsDigest })))

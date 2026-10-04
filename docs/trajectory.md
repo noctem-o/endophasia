@@ -3,8 +3,8 @@
 This page decides what "the same run" means for Endophasia. Cassette replay and the run-to-run variance study are
 both built on this definition.
 
-A **trajectory** (`endo.trajectory.v0`, `protocol/trajectory.ts`) is a read-only projection of one recorded session.
-A **comparison** (`endo.trajectory-comparison.v0`) is a pure function of two trajectories. Neither needs Pi, a model
+A **trajectory** (`endo.trajectory.v1`, `protocol/trajectory.ts`) is a read-only projection of one recorded session.
+A **comparison** (`endo.trajectory-comparison.v1`) is a pure function of two trajectories. Neither needs Pi, a model
 or the network. The same inputs always give the same bytes.
 
 **Identity is location-free.** Each record carries `digest`: the sha256 of its canonical JSON with `digest` and
@@ -26,7 +26,8 @@ read-only and print one canonical-JSON document.
 | Layer | Entries | Never contains |
 | :--- | :--- | :--- |
 | lifecycle | the `lifecycle.*` stream, each event reduced to `kind` and the facts that describe the run | ids, process instances, timestamps, paths, store recovery reports |
-| tools | tool calls in start order: `name`, `argsDigest` (keyed digest of the arguments' canonical JSON, with its key id), `result` (`ok` / `error`), `resultDigest` (keyed digest of the result content, from `pi-rpc-mapping.4`), and the run and turn they fell in | argument or result text, tool call ids |
+| toolCalls | what the agent chose: tool calls in start order, `name` and `argsDigest` (keyed digest of the arguments' canonical JSON, with its key id), and the run and turn they fell in | argument text, tool call ids |
+| toolResults | what the world answered, at the same positions (result *i* belongs to call *i*): `name`, `status` (`ok` / `error`), `resultDigest` (keyed digest of the result content, from `pi-rpc-mapping.4`), run and turn | result text, tool call ids |
 | outcome | one entry per run: `completed`, `failed`, `aborted`, `interrupted`, `unclassified` or `open`, with turns, stop reason, whether a STOP was requested, and the failure cause by reference (sha256, length, classification) | cause text |
 | usage | per run: Pi-reported tokens summed over its assistant messages | anything Pi did not report |
 | timing | per run: wall time from run start to run end, labelled `clock: "observer"` | anything presented as Pi's: Pi reports no durations |
@@ -76,7 +77,7 @@ refuses a fixture under the installation key.
 `result.content` Pi documents on `tool_execution_end` (the content the model is given; the tool-specific `details` are
 not digested). See [replay.md](replay.md#tool-result-digests-pi-rpc-mapping4).
 
-The Pi projector (`adapters/pi/trajectory.ts`, `pi-trajectory.2`) takes tools and usage from Pi's live stream only.
+The Pi projector (`adapters/pi/trajectory.ts`, `pi-trajectory.3`) takes tools and usage from Pi's live stream only.
 A catch-up after a reconnect re-reads durable entries whose usage the live stream already reported, so counting
 entries would count a message twice. Event ids seen twice are read once (`source.duplicatesIgnored`). The cost: a
 message completed while no observer was attached has no usage in the trajectory. The interruption that caused the gap
@@ -84,13 +85,15 @@ is in the lifecycle layer.
 
 ## Comparison rules
 
-The rules are `ENDO_TRAJECTORY_COMPARISON_RULES_V0` (`trajectory-comparison.2`: version 2 extends the domain rule to
-result digests). Every comparison carries them
+The rules are `ENDO_TRAJECTORY_COMPARISON_RULES_V0` (`trajectory-comparison.3`: version 3 judges tool calls and tool
+results as separate layers and adds `toolCallsAgainstInputs`; version 2 extended the domain rule to result digests). Every comparison carries them
 verbatim, so a rule change is a visible version change.
 
 1. **Alignment is by position within each layer, never by timestamp.** The first position where the two sides
    differ is the divergence. Timestamps differ on every run and say nothing about whether the run was the same.
-2. **lifecycle, tools and outcome are judged.**
+2. **lifecycle, toolCalls, toolResults and outcome are judged.** The tool layers are split (`endo.trajectory.v1`;
+   v0 had one `tools` layer) so that a difference in what a tool observed (its result) is never mistaken for a
+   difference in what the agent chose (its call).
    - `EXACT`: both sides reported the layer, same length, and every entry equal (canonical JSON).
    - `DIVERGED`: the first differing `index`, both entries (`null` past a side's end), both lengths, and
      `commonPrefix` (equal to `index`).
@@ -98,6 +101,13 @@ verbatim, so a rule change is a visible version change.
      not be verified (`unverified`: each position with its reason). A tool call whose argument or result digest one
      side did not record, or whose digests are in different digest domains, is unverifiable, never equal and never
      diverged.
+   **Calls against inputs.** `toolCallsAgainstInputs` gives the first diverged tool result and the first diverged
+   tool call, each with its index and the (run, turn) it fell in (the earlier of the two sides, so the field is
+   symmetric). `callsIdenticalUpToFirstDivergentInput` is `true` when no call diverged, or when the first diverged
+   call was made in a later turn than the first diverged result: the call that differs came after a different input
+   was seen. It is `false` when a call diverged no later than that (or while every result agreed), and `null` when a
+   layer is unavailable or a turn is unknown. Calls in the same turn are chosen together, before any of their results
+   return.
 3. **usage and timing are never judged.** They report deltas (b − a) per aligned run and in total, with `null` where
    a side does not report a value. Calling two usages or timings "the same" needs a noise band, which the variance
    study has to establish. Timing is always labelled `clock: "observer"`.

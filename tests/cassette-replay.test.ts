@@ -6,7 +6,7 @@
 // It proves the driver's mechanics (snapshot and restore at the recorded path, the recorded port, STOP and kill at the
 // recorded chunk, the recorded session id, evidence carried over, the comparison), not anything about a real Pi.
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -123,6 +123,21 @@ const exchanges = (store: string) =>
 		.filter((event) => event.kind === "capture.exchange-ended")
 		.map((event) => event.payload as { outcome: string; chunks: unknown[] });
 
+async function replayWith(name: string, apply: (root: string) => void) {
+	const out = join(base, `replay-${name}-altered-${Math.random().toString(16).slice(2)}`);
+	const report = await replayPiCassetteSessionV0({
+		store: recorded[name]!,
+		out,
+		pi: install.bin,
+		timing: "immediate",
+		keySource: { kind: "installation" },
+		timeoutMs: 20_000,
+		holdMs: 5_000,
+		alterScratch: { describe: "test alteration", apply },
+	});
+	return { report, out };
+}
+
 async function replay(name: string, timing: "immediate" | "as-recorded" = "immediate", pi: string = install.bin) {
 	const out = join(base, `replay-${name}-${timing}-${Math.random().toString(16).slice(2)}`);
 	const report = await replayPiCassetteSessionV0({
@@ -157,7 +172,7 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			expect(report.misses).toBe(0);
 			expect(report.unserved).toBe(0);
 			expect(report.served).toBe(exchanges(recorded[name]!).length);
-			for (const layer of ["lifecycle", "tools", "outcome"] as const)
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
 			expect(report.comparison.flags).toEqual([]);
 			expect(
@@ -171,8 +186,8 @@ describe("cassette sessions: record through the proxy, replay against the casset
 
 	it("the tool scenario's read sees the restored workspace: its result digest matches the recording", async () => {
 		const { report } = await replay("tool");
-		const tools = report.comparison.layers.tools;
-		expect(tools).toMatchObject({ status: "EXACT", length: 1 });
+		expect(report.comparison.layers.toolCalls).toMatchObject({ status: "EXACT", length: 1 });
+		expect(report.comparison.layers.toolResults).toMatchObject({ status: "EXACT", length: 1 });
 	});
 
 	it("STOP lands after the recorded chunk in as-recorded timing too", async () => {
@@ -193,7 +208,7 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			keySource: { kind: "installation" },
 			timeoutMs: 20_000,
 		});
-		for (const layer of ["lifecycle", "tools", "outcome"] as const)
+		for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 			expect(report.comparison.layers[layer].status).toBe("EXACT");
 	});
 
@@ -218,11 +233,42 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			expect(report.misses).toBeGreaterThan(0);
 			expect(report.served).toBe(0);
 			const misses = readEndoCaptureEventsV0(out).filter((event) => event.kind === "capture.cassette-miss");
-			expect(misses[0]!.payload).toMatchObject({ reason: "unexpected-request", exchange: 1 });
+			expect(misses[0]!.payload).toMatchObject({
+				reason: "unexpected-request",
+				exchange: 1,
+				divergence: { kind: "control-flow", message: 1, role: "system" },
+			});
+			expect(report.environmentDivergedAt).toBeNull();
 			expect(report.comparison.layers.outcome).toMatchObject({ status: "DIVERGED", index: 0 });
 		} finally {
 			other.remove();
 		}
+	});
+
+	it("a tool that observes a changed workspace: the miss says environment diverged at that exchange, not control flow", async () => {
+		const { report } = await replayWith("tool", (root) =>
+			writeFileSync(join(root, "work", "endophasia-study.txt"), "different content\n"),
+		);
+		expect(report.environmentDivergedAt).toBe(2);
+		expect(report.missDetails[0]).toMatchObject({
+			exchange: 2,
+			reason: "unexpected-request",
+			divergence: { kind: "environment", role: "tool" },
+		});
+	});
+
+	it("restored file times are the recorded ones (state, not time): an untouched workspace replays EXACT", async () => {
+		const events = readEndoCaptureEventsV0(recorded.tool!);
+		const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")!.payload as {
+			archive: unknown;
+		};
+		expect(snapshot.archive).toBeDefined();
+		let seen = 0;
+		const { report } = await replayWith("tool", (root) => {
+			seen = Math.floor(statSync(join(root, "work", "endophasia-study.txt")).mtimeMs);
+		});
+		expect(seen).toBeLessThan(Date.now() - 1000);
+		expect(report.misses).toBe(0);
 	});
 
 	it("a replay leaves nothing at the recorded path: the restored root and any parent it had to create are removed", async () => {

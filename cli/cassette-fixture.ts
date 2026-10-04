@@ -8,8 +8,8 @@
 //
 // Nothing is normalized: the capture log and the blobs hold the scratch paths Pi saw, and a replay needs them exactly.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { endoCaptureRootV0 } from "../adapters/openai-proxy/capture-log.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
@@ -55,6 +55,7 @@ export function exportPiCassetteFixtureV0(
 	store: string,
 	dir: string,
 	attachment = "pi.default",
+	options: { storeRootPlaceholder?: string } = {},
 ): Record<string, string> {
 	mkdirSync(dir, { recursive: true });
 	const files: Record<string, string> = {};
@@ -62,7 +63,36 @@ export function exportPiCassetteFixtureV0(
 		writeFileSync(join(dir, name), content);
 		files[name] = sha256HexV0(content);
 	};
-	write("session.events.jsonl", jsonLinesV0(readAll(store)));
+	// The session events name the store's own location (Pi's --session-dir). It is not captured content and is not
+	// needed to replay (replay uses the capture log, the driver's steps and the snapshot); with a placeholder, every
+	// occurrence of the store root (as given and as its real path, as a whole path) is replaced and counted.
+	let sessionEvents = readAll(store) as unknown[];
+	if (options.storeRootPlaceholder !== undefined) {
+		const placeholder = options.storeRootPlaceholder;
+		const roots = [...new Set([resolve(store), realpathSync(store)])].sort((a, b) => b.length - a.length);
+		const patterns = roots.map(
+			(root) => new RegExp(`${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\/]|$)`, "g"),
+		);
+		let replaced = 0;
+		const walk = (value: unknown): unknown => {
+			if (typeof value === "string") {
+				let next = value;
+				for (const pattern of patterns) next = next.replace(pattern, placeholder);
+				if (next !== value) replaced += 1;
+				return next;
+			}
+			if (Array.isArray(value)) return value.map(walk);
+			if (value !== null && typeof value === "object")
+				return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, walk(entry)]));
+			return value;
+		};
+		sessionEvents = sessionEvents.map(walk);
+		write(
+			"normalization.json",
+			`${JSON.stringify({ storeRoot: { placeholder, appliesTo: "session.events.jsonl", stringsReplaced: replaced } }, null, "\t")}\n`,
+		);
+	}
+	write("session.events.jsonl", jsonLinesV0(sessionEvents));
 	write("capture.events.jsonl", jsonLinesV0(readAll(endoCaptureRootV0(store))));
 	write(
 		"evidence.jsonl",

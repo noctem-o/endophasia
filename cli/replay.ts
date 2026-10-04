@@ -170,14 +170,24 @@ export async function replayCommand(argv: readonly string[]): Promise<void> {
 			timing,
 			out,
 			cassette: { served: report.served, misses: report.misses, unserved: report.unserved },
+			// A replay that diverged because a tool's output differed is the environment, not Pi's control flow.
+			divergence:
+				report.missDetails.length === 0
+					? null
+					: report.environmentDivergedAt !== null
+						? `environment diverged at ${report.environmentDivergedAt}`
+						: `control flow diverged at ${report.missDetails[0]!.exchange}`,
+			misses: report.missDetails,
 			layers: {
 				lifecycle: layers.lifecycle.status,
-				tools: layers.tools.status,
+				toolCalls: layers.toolCalls.status,
+				toolResults: layers.toolResults.status,
 				outcome: layers.outcome.status,
 				usage: layers.usage.status,
 				timing: layers.timing.status,
 			},
 			flags: report.comparison.flags.map((flag) => flag.kind),
+			toolCallsAgainstInputs: report.comparison.toolCallsAgainstInputs,
 			notes: report.notes,
 			comparison: report.comparison,
 		}),

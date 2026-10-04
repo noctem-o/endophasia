@@ -1,12 +1,15 @@
 // Trajectories: what one recorded session did, reduced to layers that can be compared across sessions.
 //
-// `endo.trajectory.v0` is a projection of one recorded session (an adapter produces it read-only from its store;
-// adapters/pi/trajectory.ts for Pi). It keeps five layers apart, by what they say and who said it:
+// `endo.trajectory.v1` is a projection of one recorded session (an adapter produces it read-only from its store;
+// adapters/pi/trajectory.ts for Pi). It keeps six layers apart, by what they say and who said it:
 //
 // - lifecycle: the canonical `lifecycle.*` stream (protocol/session-lifecycle.ts), each event reduced to its kind and
 //   the facts that describe the run rather than the recording (no ids, instances, timestamps or paths).
-// - tools: the tool calls in the order they started, as (name, keyed digest of the canonical JSON of the arguments,
-//   result status). Never argument or result text.
+// - toolCalls: the tool calls in the order they started, as (name, keyed digest of the canonical JSON of the
+//   arguments). What the agent chose to do.
+// - toolResults: at the same positions, what each call returned: (name, status, keyed digest of the result content).
+//   What the world answered. Never argument or result text in either. (v0 had one `tools` layer holding both, so a
+//   difference in what a tool observed was indistinguishable from a difference in what the agent chose.)
 // - outcome: one entry per run: completed / failed / aborted / interrupted / unclassified / open, with a failure cause
 //   by reference (sha256, length, classification), never its text.
 // - usage: tokens per run, as the runtime reported them.
@@ -18,8 +21,9 @@
 // runtime environment it ran in (fingerprint, mapping, digest domain, configuration, model), so a comparison can flag
 // mixed sources.
 //
-// `endo.trajectory-comparison.v0` is the result of comparing two trajectories (runtime/contracts/trajectory.ts). Its
-// rules are ENDO_TRAJECTORY_COMPARISON_RULES_V0 below, and are part of the record.
+// `endo.trajectory-comparison.v1` is the result of comparing two trajectories (runtime/contracts/trajectory.ts). Its
+// rules are ENDO_TRAJECTORY_COMPARISON_RULES_V0 below, and are part of the record. Besides the per-layer verdicts it
+// says whether the tool calls stayed identical up to the first divergent input (`toolCallsAgainstInputs`).
 //
 // Identity: both records carry `digest`, the sha256 of the record's canonical JSON with `digest` and `provenance` left
 // out. `provenance` says where the inputs were read (store paths). It is not part of the identity, so the same
@@ -28,8 +32,8 @@
 import type { JsonValueV0 } from "./primitives.ts";
 import type { EndoReportedV0 } from "./session-lifecycle.ts";
 
-export const ENDO_TRAJECTORY_SCHEMA_V0 = "endo.trajectory.v0";
-export const ENDO_TRAJECTORY_COMPARISON_SCHEMA_V0 = "endo.trajectory-comparison.v0";
+export const ENDO_TRAJECTORY_SCHEMA_V0 = "endo.trajectory.v1";
+export const ENDO_TRAJECTORY_COMPARISON_SCHEMA_V0 = "endo.trajectory-comparison.v1";
 
 /** A layer the recording carries, or the reason it does not. */
 export type EndoTrajectoryLayerV0<T> = { status: "reported"; entries: T[] } | { status: "UNAVAILABLE"; reason: string };
@@ -49,15 +53,23 @@ export interface EndoTrajectoryKeyedDigestV0 {
 	value: string;
 }
 
-/** One tool call, in start order. `run` and `turn` are the observer's 1-based counts, null outside a run or turn. */
-export interface EndoTrajectoryToolEntryV0 {
+/** One tool call, in start order: what the agent chose. `run` and `turn` are the observer's 1-based counts, null
+ * outside a run or turn. */
+export interface EndoTrajectoryToolCallEntryV0 {
 	run: number | null;
 	turn: number | null;
 	name: EndoReportedV0<string>;
 	/** HMAC-SHA256 of the canonical JSON of the call's arguments, under the recording's digest domain. */
 	argsDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0>;
+}
+
+/** What the call at the same position returned: what the world answered. */
+export interface EndoTrajectoryToolResultEntryV0 {
+	run: number | null;
+	turn: number | null;
+	name: EndoReportedV0<string>;
 	/** "ok" or "error" as the runtime reported it; UNAVAILABLE when no end was recorded. */
-	result: EndoReportedV0<"ok" | "error">;
+	status: EndoReportedV0<"ok" | "error">;
 	/** HMAC-SHA256 of the canonical JSON of the result content the runtime reported, under the same digest domain. */
 	resultDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0>;
 }
@@ -116,7 +128,7 @@ export interface EndoTrajectoryAttachmentV0 {
 }
 
 export interface EndoTrajectoryV0 {
-	schemaVersion: "endo.trajectory.v0";
+	schemaVersion: "endo.trajectory.v1";
 	/** The projector and its version, e.g. `pi-trajectory.1`. */
 	projection: string;
 	/** The content the trajectory was projected from. Location-free: see `provenance`. */
@@ -139,7 +151,8 @@ export interface EndoTrajectoryV0 {
 	};
 	layers: {
 		lifecycle: EndoTrajectoryLayerV0<EndoTrajectoryLifecycleEntryV0>;
-		tools: EndoTrajectoryLayerV0<EndoTrajectoryToolEntryV0>;
+		toolCalls: EndoTrajectoryLayerV0<EndoTrajectoryToolCallEntryV0>;
+		toolResults: EndoTrajectoryLayerV0<EndoTrajectoryToolResultEntryV0>;
 		outcome: EndoTrajectoryLayerV0<EndoTrajectoryOutcomeEntryV0>;
 		usage: EndoTrajectoryLayerV0<EndoTrajectoryUsageEntryV0>;
 		timing: EndoTrajectoryLayerV0<EndoTrajectoryTimingEntryV0>;
@@ -151,11 +164,15 @@ export interface EndoTrajectoryV0 {
 
 /** The rules a comparison applies. Part of every comparison record, so a rule change is a visible version change. */
 export const ENDO_TRAJECTORY_COMPARISON_RULES_V0 = Object.freeze({
-	version: "trajectory-comparison.2",
+	version: "trajectory-comparison.3",
 	alignment:
 		"entries are aligned by their position within each layer, never by timestamp; the first position where the two sides differ is the divergence",
+	layers:
+		"lifecycle, toolCalls, toolResults and outcome are judged; toolCalls holds what the agent chose (name and argument digest) and toolResults what each call returned (name, status and result digest) at the same position, judged separately",
 	equality:
 		"two entries are equal when their canonical JSON is equal; tool argument and result digests are compared only within one digest domain (the same key id): a digest made under another key id, or one the recording did not capture, makes the entry unverifiable, never equal and never diverged",
+	callsAgainstInputs:
+		"toolCallsAgainstInputs gives the first diverged result and the first diverged call (index, run, turn); the calls are identical up to the first divergent input when they never diverge, or first diverge in a later turn than the first diverged result (the call that differs was made after a different input was seen); null when a layer is unavailable or a turn is unknown",
 	verdicts:
 		"EXACT: both sides reported the layer, same length, every entry equal. DIVERGED: the first differing position, both entries (null past a side's end) and the common-prefix length. UNAVAILABLE: a side did not report the layer, or no entry differs but some could not be verified (each with its reason)",
 	usage: "usage is never judged EXACT or DIVERGED: it reports per-run and total token deltas (b minus a) only; judging equality needs a noise band, which this version does not define",
@@ -238,15 +255,34 @@ export interface EndoTrajectoryComparisonSideV0 {
 	trajectoryDigest: string;
 }
 
+/** Where a tool call or result first diverged: its position and the run and turn it fell in (side a's, else b's). */
+export interface EndoTrajectoryToolPositionV0 {
+	index: number;
+	run: number | null;
+	turn: number | null;
+}
+
+/** Whether the calls stayed identical until an input (a tool result) diverged. */
+export interface EndoTrajectoryToolCallsAgainstInputsV0 {
+	firstDivergentResult: EndoTrajectoryToolPositionV0 | null;
+	firstDivergentCall: EndoTrajectoryToolPositionV0 | null;
+	/** True: no call diverged, or the first did so in a later turn than the first diverged result. Null: undecidable. */
+	callsIdenticalUpToFirstDivergentInput: boolean | null;
+	/** Why it is null, or what it rests on. */
+	reason: string;
+}
+
 export interface EndoTrajectoryComparisonV0 {
-	schemaVersion: "endo.trajectory-comparison.v0";
+	schemaVersion: "endo.trajectory-comparison.v1";
 	rules: EndoTrajectoryComparisonRulesV0;
 	a: EndoTrajectoryComparisonSideV0;
 	b: EndoTrajectoryComparisonSideV0;
 	flags: EndoTrajectoryFlagV0[];
+	toolCallsAgainstInputs: EndoTrajectoryToolCallsAgainstInputsV0;
 	layers: {
 		lifecycle: EndoTrajectoryVerdictV0;
-		tools: EndoTrajectoryVerdictV0;
+		toolCalls: EndoTrajectoryVerdictV0;
+		toolResults: EndoTrajectoryVerdictV0;
 		outcome: EndoTrajectoryVerdictV0;
 		usage: EndoTrajectoryUsageComparisonV0;
 		timing: EndoTrajectoryTimingComparisonV0;
@@ -320,16 +356,49 @@ function isLifecycleEntry(value: unknown): boolean {
 	);
 }
 
-function isToolEntry(value: unknown): boolean {
+function isToolCallEntry(value: unknown): boolean {
 	return (
 		isRecord(value) &&
-		keys(value, ["run", "turn", "name", "argsDigest", "result", "resultDigest"]) &&
+		keys(value, ["run", "turn", "name", "argsDigest"]) &&
 		isPositionOrNull(value.run) &&
 		isPositionOrNull(value.turn) &&
 		isReported(value.name, isString) &&
-		isReported(value.argsDigest, isKeyedDigest) &&
-		isReported(value.result, (item) => item === "ok" || item === "error") &&
+		isReported(value.argsDigest, isKeyedDigest)
+	);
+}
+
+function isToolResultEntry(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		keys(value, ["run", "turn", "name", "status", "resultDigest"]) &&
+		isPositionOrNull(value.run) &&
+		isPositionOrNull(value.turn) &&
+		isReported(value.name, isString) &&
+		isReported(value.status, (item) => item === "ok" || item === "error") &&
 		isReported(value.resultDigest, isKeyedDigest)
+	);
+}
+
+function isToolPosition(value: unknown): boolean {
+	return (
+		value === null ||
+		(isRecord(value) &&
+			keys(value, ["index", "run", "turn"]) &&
+			isCount(value.index) &&
+			isPositionOrNull(value.run) &&
+			isPositionOrNull(value.turn))
+	);
+}
+
+function isCallsAgainstInputs(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		keys(value, ["firstDivergentResult", "firstDivergentCall", "callsIdenticalUpToFirstDivergentInput", "reason"]) &&
+		isToolPosition(value.firstDivergentResult) &&
+		isToolPosition(value.firstDivergentCall) &&
+		(value.callsIdenticalUpToFirstDivergentInput === null ||
+			typeof value.callsIdenticalUpToFirstDivergentInput === "boolean") &&
+		typeof value.reason === "string"
 	);
 }
 
@@ -445,9 +514,10 @@ export function validateEndoTrajectoryV0(value: unknown, digestOf: EndoRecordDig
 	const layers = value.layers;
 	if (
 		!isRecord(layers) ||
-		!keys(layers, ["lifecycle", "tools", "outcome", "usage", "timing"]) ||
+		!keys(layers, ["lifecycle", "toolCalls", "toolResults", "outcome", "usage", "timing"]) ||
 		!isLayer(layers.lifecycle, isLifecycleEntry) ||
-		!isLayer(layers.tools, isToolEntry) ||
+		!isLayer(layers.toolCalls, isToolCallEntry) ||
+		!isLayer(layers.toolResults, isToolResultEntry) ||
 		!isLayer(layers.outcome, isOutcomeEntry) ||
 		!isLayer(layers.usage, isUsageEntry) ||
 		!isLayer(layers.timing, isTimingEntry)
@@ -574,7 +644,21 @@ export function validateEndoTrajectoryComparisonV0(
 	digestOf: EndoRecordDigestV0,
 ): EndoTrajectoryComparisonV0 | null {
 	if (!isRecord(value)) return null;
-	if (!keys(value, ["schemaVersion", "rules", "a", "b", "flags", "layers", "provenance", "digest"])) return null;
+	if (
+		!keys(value, [
+			"schemaVersion",
+			"rules",
+			"a",
+			"b",
+			"flags",
+			"toolCallsAgainstInputs",
+			"layers",
+			"provenance",
+			"digest",
+		])
+	)
+		return null;
+	if (!isCallsAgainstInputs(value.toolCallsAgainstInputs)) return null;
 	if (value.schemaVersion !== ENDO_TRAJECTORY_COMPARISON_SCHEMA_V0) return null;
 	const rules = value.rules;
 	if (
@@ -598,9 +682,10 @@ export function validateEndoTrajectoryComparisonV0(
 	const layers = value.layers;
 	if (
 		!isRecord(layers) ||
-		!keys(layers, ["lifecycle", "tools", "outcome", "usage", "timing"]) ||
+		!keys(layers, ["lifecycle", "toolCalls", "toolResults", "outcome", "usage", "timing"]) ||
 		!isVerdict(layers.lifecycle) ||
-		!isVerdict(layers.tools) ||
+		!isVerdict(layers.toolCalls) ||
+		!isVerdict(layers.toolResults) ||
 		!isVerdict(layers.outcome) ||
 		!isUsageComparison(layers.usage) ||
 		!isTimingComparison(layers.timing)

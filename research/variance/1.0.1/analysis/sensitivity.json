@@ -1,0 +1,35 @@
+{
+	"requests": 914,
+	"responses": 914,
+	"distinctSystemPrompts": 1,
+	"hits": {
+		"kernel or OS string": {
+			"count": 1828,
+			"examples": "withheld: they quote the matched text"
+		},
+		"username": {
+			"count": 4314,
+			"examples": "withheld: they quote the matched text"
+		},
+		"ls-style date": {
+			"count": 2157,
+			"examples": "withheld: they quote the matched text"
+		}
+	},
+	"absolutePaths": [
+		"/tmp/endo-experiment-5c853d82a217/…",
+		"/usr/lib/node_modules/@earendil-works/pi-coding-agent/…"
+	],
+	"checkedFor": [
+		"username",
+		"hostname",
+		"home directory",
+		"root home",
+		"bearer or key",
+		"email",
+		"LAN address",
+		"ISO date",
+		"ls-style date",
+		"kernel or OS string"
+	]
+}

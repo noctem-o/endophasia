@@ -1,0 +1,4496 @@
+{
+	"cells": [
+		{
+			"bundle": {
+				"digest": "76a358915343ed7c8cf82a7f26704eeec4404ee3e485b39770c1ea1a5c5128e5",
+				"id": "endo.evidence.experiment.bd20f95d68d43dd05135ccf94744ca85.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.bd20f95d68d43dd05135ccf94744ca85",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/a",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "c9923ccaf102b9328d6bbc77bf83f19c0d37c4973c68c750ed88a98d0a01ed72"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 0,
+								"session": "endo.session.pi.endo-pi-default-0dd93ca04266",
+								"store": "trials/tool-use/a/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "575145840d2d96518d992050feaff09ea6dbe4072327fa0575aee773d7760c75"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 14,
+								"session": "endo.session.pi.endo-pi-default-0ac0b38804c1",
+								"store": "trials/tool-use/a/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "0f81d2b24f4e75ab2b9627d2dfeed457bc9ed68b114c5ec85ff770e7d7cee84d"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 28,
+								"session": "endo.session.pi.endo-pi-default-beef945a4f04",
+								"store": "trials/tool-use/a/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "a",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools+outcome": 2,
+					"tools": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"9": 2
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"1": 2,
+						"2": 1
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2107094023,
+							"skipped": 1143
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 1300871473,
+							"skipped": 1116
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 1824243765,
+							"skipped": 1082
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 196,
+						"sha256": "8222f4481cc2e7725b4a0e97cc407ef9ce252862b0f3b4574bd90a892e07c7c8",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => undefined);\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 2051,
+					"max": 7463,
+					"median": 3630,
+					"min": 3361,
+					"n": 3,
+					"q1": 3495.5,
+					"q3": 5546.5
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 1164,
+					"max": 9566,
+					"median": 7329,
+					"min": 7238,
+					"n": 3,
+					"q1": 7283.5,
+					"q3": 8447.5
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 37.5,
+					"max": 246,
+					"median": 209,
+					"min": 171,
+					"n": 3,
+					"q1": 190,
+					"q3": 227.5
+				},
+				"output": {
+					"iqr": 64.5,
+					"max": 410,
+					"median": 299,
+					"min": 281,
+					"n": 3,
+					"q1": 290,
+					"q3": 354.5
+				},
+				"totalTokens": {
+					"iqr": 1210,
+					"max": 10185,
+					"median": 7799,
+					"min": 7765,
+					"n": 3,
+					"q1": 7782,
+					"q3": 8992
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "b4f13487a81a67ab85c3d7b178a516938f2843570c358e7f2054132483e9dcca",
+				"id": "endo.evidence.experiment.a9bbf4a08fec12851aadd3122aa3298b.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.a9bbf4a08fec12851aadd3122aa3298b",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/b",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "73d6728a593bf90eecfb91d066ffba952e983c4612048e8fa6ba8521294e28c1"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 7,
+								"session": "endo.session.pi.endo-pi-default-90f5092c22de",
+								"store": "trials/tool-use/b/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "d0dd39ff7834becad3254218fa42d7ef5dcb12560c7d9c193729e046eece6d8c"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 12,
+								"session": "endo.session.pi.endo-pi-default-0ec6f31fdccd",
+								"store": "trials/tool-use/b/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "8960c638256e160ecc5edf68b7cb5601f33e9917abd8ff6f4e84ae102bb30555"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 35,
+								"session": "endo.session.pi.endo-pi-default-2ebc03dc43df",
+								"store": "trials/tool-use/b/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"tools": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1266863065,
+							"skipped": 1113
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2162219451,
+							"skipped": 1104
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2879215595,
+							"skipped": 1105
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 237,
+						"sha256": "466f0de53bad7adfb8f49138162730611e170209b25a763d7def214d279a1250",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234 }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 215.5,
+					"max": 3696,
+					"median": 3600,
+					"min": 3265,
+					"n": 3,
+					"q1": 3432.5,
+					"q3": 3648
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 7356,
+					"median": 7356,
+					"min": 7356,
+					"n": 3,
+					"q1": 7356,
+					"q3": 7356
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 171,
+					"median": 171,
+					"min": 171,
+					"n": 3,
+					"q1": 171,
+					"q3": 171
+				},
+				"output": {
+					"iqr": 0,
+					"max": 318,
+					"median": 318,
+					"min": 318,
+					"n": 3,
+					"q1": 318,
+					"q3": 318
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 7845,
+					"median": 7845,
+					"min": 7845,
+					"n": 3,
+					"q1": 7845,
+					"q3": 7845
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "81ee4bf284af1cff2e2f049eceae25b4d0aeed6cdf24b60d1c54d0ba2e2f3b35",
+				"id": "endo.evidence.experiment.b65b0425719d9d70f1ecdfac7c43daca.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.b65b0425719d9d70f1ecdfac7c43daca",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/b-c",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "ce303636ac870209dfea6b1090d318ee8acd3968b96273e05b38524729b718e2"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 6,
+								"session": "endo.session.pi.endo-pi-default-f4c841091425",
+								"store": "trials/tool-use/b-c/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "9bcd5fd498689702a654c9756af2eaf2d6258daeff565e7cdea8e74f990f5663"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 17,
+								"session": "endo.session.pi.endo-pi-default-bd5878c1ff32",
+								"store": "trials/tool-use/b-c/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "fe56ecd5b39af834678cd5c6cd00d9601f714808ec1b99f88613475ba0a8a63e"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 32,
+								"session": "endo.session.pi.endo-pi-default-53d32944ccfd",
+								"store": "trials/tool-use/b-c/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b-c",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"tools": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2654240855,
+							"skipped": 1183
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2235780833,
+							"skipped": 1070
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 522635273,
+							"skipped": 1098
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 61,
+					"max": 7934,
+					"median": 7872,
+					"min": 7812,
+					"n": 3,
+					"q1": 7842,
+					"q3": 7903
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 7524,
+					"median": 7524,
+					"min": 7524,
+					"n": 3,
+					"q1": 7524,
+					"q3": 7524
+				},
+				"output": {
+					"iqr": 0,
+					"max": 316,
+					"median": 316,
+					"min": 316,
+					"n": 3,
+					"q1": 316,
+					"q3": 316
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 7840,
+					"median": 7840,
+					"min": 7840,
+					"n": 3,
+					"q1": 7840,
+					"q3": 7840
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "679a92f4a69a858298112772db7164caf4038282c01d16a2fe66f6d67c2bc35f",
+				"id": "endo.evidence.experiment.5544067d8187d9fa11849298c53d971a.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.5544067d8187d9fa11849298c53d971a",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/none",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "a3c590ca53ea44db9fdfd6fb8202f53f9f3a6f8d2c23d94bc7a957d704402c41"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 3,
+								"session": "endo.session.pi.endo-pi-default-ff4fd2698b57",
+								"store": "trials/tool-use/none/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "37ba88a414340a739e9a789d8c3eb909fca58132ae1b558df450c6e994af27ec"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 13,
+								"session": "endo.session.pi.endo-pi-default-58ced52f8169",
+								"store": "trials/tool-use/none/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "97b46ff576ee8dc677df05e27af2cfef5d540ba93c27cb141d2a5a85b4847e54",
+								"trajectoryDigest": "59bff21024aac26d1c95b248f97a54b1210db9addb18c66ec5121b3e6c556682"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 25,
+								"session": "endo.session.pi.endo-pi-default-24697d3a911f",
+								"store": "trials/tool-use/none/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "none",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools+outcome": 2,
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"9": 2
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"1": 2
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 4249773226,
+							"skipped": 1138
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 565342,
+							"skipped": 1118
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 4113931540,
+							"skipped": 1127
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 3610.5,
+					"max": 9952,
+					"median": 3338,
+					"min": 2731,
+					"n": 3,
+					"q1": 3034.5,
+					"q3": 6645
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 1448.5,
+					"max": 10070,
+					"median": 7249,
+					"min": 7173,
+					"n": 3,
+					"q1": 7211,
+					"q3": 8659.5
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 61,
+					"max": 293,
+					"median": 213,
+					"min": 171,
+					"n": 3,
+					"q1": 192,
+					"q3": 253
+				},
+				"output": {
+					"iqr": 215,
+					"max": 659,
+					"median": 276,
+					"min": 229,
+					"n": 3,
+					"q1": 252.5,
+					"q3": 467.5
+				},
+				"totalTokens": {
+					"iqr": 1646.5,
+					"max": 10942,
+					"median": 7742,
+					"min": 7649,
+					"n": 3,
+					"q1": 7695.5,
+					"q3": 9342
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "224da2f1abefce4b25b17eec42d947a63585d89f74200397bb42b88607adc877",
+				"id": "endo.evidence.experiment.e92ecbe2ed8242da7800ddf24c6f6b59.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.e92ecbe2ed8242da7800ddf24c6f6b59",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/fix-failing-test/a",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 aa3aedc824fbba8d4eea59af9f18c8e1d891724a3c9cc6e413217ab8dc171444 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3ad3e4dc10b9276f9a5c441df91ebcd3dfbbb7a0e21c3f57ef68358590d666bb",
+								"trajectoryDigest": "d12eb7a481ea92e606f8469b5fdf046c641c9f2e03e7c2ec4194c14379a66d74"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 4,
+								"session": "endo.session.pi.endo-pi-default-fb0831871a9e",
+								"store": "trials/fix-failing-test/a/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3ad3e4dc10b9276f9a5c441df91ebcd3dfbbb7a0e21c3f57ef68358590d666bb",
+								"trajectoryDigest": "d96fddce087eeb4ea6c8778c6709f3886eb86a829394c4724445be75a1e04fcb"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 23,
+								"session": "endo.session.pi.endo-pi-default-9571011554cb",
+								"store": "trials/fix-failing-test/a/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3ad3e4dc10b9276f9a5c441df91ebcd3dfbbb7a0e21c3f57ef68358590d666bb",
+								"trajectoryDigest": "bc1c766dd0e76ae2b23bc51e98bf856afc9db34057feb66680b52eb60022dbc1"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 27,
+								"session": "endo.session.pi.endo-pi-default-971783d8c2c2",
+								"store": "trials/fix-failing-test/a/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "a",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools+outcome": 2,
+					"tools": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"11": 2
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2117150320,
+							"skipped": 1121
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2098830578,
+							"skipped": 1142
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 3621379336,
+							"skipped": 1101
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 196,
+						"sha256": "8222f4481cc2e7725b4a0e97cc407ef9ce252862b0f3b4574bd90a892e07c7c8",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => undefined);\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "fix-failing-test",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 156,
+					"max": 5902,
+					"median": 5843,
+					"min": 5590,
+					"n": 3,
+					"q1": 5716.5,
+					"q3": 5872.5
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 1342.5,
+					"max": 14340,
+					"median": 11779,
+					"min": 11655,
+					"n": 3,
+					"q1": 11717,
+					"q3": 13059.5
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 91,
+					"max": 1312,
+					"median": 1167,
+					"min": 1130,
+					"n": 3,
+					"q1": 1148.5,
+					"q3": 1239.5
+				},
+				"output": {
+					"iqr": 17.5,
+					"max": 395,
+					"median": 395,
+					"min": 360,
+					"n": 3,
+					"q1": 377.5,
+					"q3": 395
+				},
+				"totalTokens": {
+					"iqr": 1279.5,
+					"max": 15865,
+					"median": 13362,
+					"min": 13306,
+					"n": 3,
+					"q1": 13334,
+					"q3": 14613.5
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "268584dcdf85c8c6c5526613948c868272bb37725bba72055b89da84ad4b43d1",
+				"id": "endo.evidence.experiment.b4f0d93fa97d4b6a9a3d867d6a1b200b.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.b4f0d93fa97d4b6a9a3d867d6a1b200b",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/fix-failing-test/b",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 aa3aedc824fbba8d4eea59af9f18c8e1d891724a3c9cc6e413217ab8dc171444 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "e1cd930f3998751462a5c168d36fd32945155aaaff049f80c4af7cc2f88135ae"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 11,
+								"session": "endo.session.pi.endo-pi-default-94609e70854d",
+								"store": "trials/fix-failing-test/b/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "6a95c68648da131f37a45784b42ee40bb8edcce43135a8fd088ba657f1ce8b50"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 22,
+								"session": "endo.session.pi.endo-pi-default-bd6b1f99992c",
+								"store": "trials/fix-failing-test/b/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "6f673cc3e20c357adbd42edb1aeb3dbbdc8bfc6d0ac2d2b8e0490f318a06fbd6"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 33,
+								"session": "endo.session.pi.endo-pi-default-3caafffcf4b7",
+								"store": "trials/fix-failing-test/b/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"tools": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 44682264,
+							"skipped": 1084
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2244823009,
+							"skipped": 1106
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2361963220,
+							"skipped": 1190
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 237,
+						"sha256": "466f0de53bad7adfb8f49138162730611e170209b25a763d7def214d279a1250",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234 }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "fix-failing-test",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 436,
+					"max": 9757,
+					"median": 8988,
+					"min": 8885,
+					"n": 3,
+					"q1": 8936.5,
+					"q3": 9372.5
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 101,
+					"max": 17696,
+					"median": 17597,
+					"min": 17494,
+					"n": 3,
+					"q1": 17545.5,
+					"q3": 17646.5
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0.5,
+					"max": 1126,
+					"median": 1125,
+					"min": 1125,
+					"n": 3,
+					"q1": 1125,
+					"q3": 1125.5
+				},
+				"output": {
+					"iqr": 38.5,
+					"max": 863,
+					"median": 802,
+					"min": 786,
+					"n": 3,
+					"q1": 794,
+					"q3": 832.5
+				},
+				"totalTokens": {
+					"iqr": 131,
+					"max": 19684,
+					"median": 19508,
+					"min": 19422,
+					"n": 3,
+					"q1": 19465,
+					"q3": 19596
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "2c34b671f5cc50b93d56a17a4968df51d508bee762aaa575aa90f782543797f3",
+				"id": "endo.evidence.experiment.195bcf72756bb22fce6a3f432ec07c45.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.195bcf72756bb22fce6a3f432ec07c45",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/fix-failing-test/b-c",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 aa3aedc824fbba8d4eea59af9f18c8e1d891724a3c9cc6e413217ab8dc171444 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "0aabcf1f5cb9c432deceb93aea25c60899d8c9dba5b6800c210a1e21c4bd63b8"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 8,
+								"session": "endo.session.pi.endo-pi-default-52da8ee0d7ff",
+								"store": "trials/fix-failing-test/b-c/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "758682bc5af38e793658c2b440a429a1dba16003762813a8b86d2b147d6710d5"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 19,
+								"session": "endo.session.pi.endo-pi-default-74058df89c01",
+								"store": "trials/fix-failing-test/b-c/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3ad3e4dc10b9276f9a5c441df91ebcd3dfbbb7a0e21c3f57ef68358590d666bb",
+								"trajectoryDigest": "532e3411ddeb2c1ed13893429ee08c84c82b120b55562be3d7c64bc4fafe9a18"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 30,
+								"session": "endo.session.pi.endo-pi-default-96ef5c12ee5e",
+								"store": "trials/fix-failing-test/b-c/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b-c",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"tools": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 848995081,
+							"skipped": 1081
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1644999020,
+							"skipped": 1086
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 3900629534,
+							"skipped": 1124
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "fix-failing-test",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 1065,
+					"max": 20526,
+					"median": 18921,
+					"min": 18396,
+					"n": 3,
+					"q1": 18658.5,
+					"q3": 19723.5
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 393,
+					"max": 18788,
+					"median": 18449,
+					"min": 18002,
+					"n": 3,
+					"q1": 18225.5,
+					"q3": 18618.5
+				},
+				"output": {
+					"iqr": 107,
+					"max": 883,
+					"median": 711,
+					"min": 669,
+					"n": 3,
+					"q1": 690,
+					"q3": 797
+				},
+				"totalTokens": {
+					"iqr": 500,
+					"max": 19671,
+					"median": 19160,
+					"min": 18671,
+					"n": 3,
+					"q1": 18915.5,
+					"q3": 19415.5
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "958aaaf743b0e3cd59902a56dd5301573019f718e1f10ebb294f6c5ef1a8760c",
+				"id": "endo.evidence.experiment.fe375725bdc471a3e7050ac476ea399a.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.fe375725bdc471a3e7050ac476ea399a",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/fix-failing-test/none",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 aa3aedc824fbba8d4eea59af9f18c8e1d891724a3c9cc6e413217ab8dc171444 (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "6573ff12e56103273b987170e7857aa28c58c92ca85b9ac334139167d2534c75"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 2,
+								"session": "endo.session.pi.endo-pi-default-e70a6189a4b5",
+								"store": "trials/fix-failing-test/none/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f9e45f98b026518530da1ea22eea33c3259f1458b70204e8817d2c6a2b4d48c2",
+								"trajectoryDigest": "e3972769b6cda4948ed09ea5dc7ee8c4a856a352313bb2aa8064ea714b40e1cd"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 18,
+								"session": "endo.session.pi.endo-pi-default-9922215c2ae3",
+								"store": "trials/fix-failing-test/none/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3ad3e4dc10b9276f9a5c441df91ebcd3dfbbb7a0e21c3f57ef68358590d666bb",
+								"trajectoryDigest": "b8f1a50aee833f5d0dcada362131b3acfc1fdd6ee1de64ff2c979ffc21f25adf"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 8,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 10
+										}
+									],
+									"status": "reported"
+								},
+								"position": 34,
+								"session": "endo.session.pi.endo-pi-default-1537066388ba",
+								"store": "trials/fix-failing-test/none/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "none",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools+outcome": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"9": 2,
+						"11": 1
+					},
+					"outcome": {
+						"0": 3
+					},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 1842891010,
+							"skipped": 1114
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 3965914771,
+							"skipped": 1123
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 1010909384,
+							"skipped": 1150
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "fix-failing-test",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 5849.5,
+					"max": 17215,
+					"median": 5879,
+					"min": 5516,
+					"n": 3,
+					"q1": 5697.5,
+					"q3": 11547
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 4017,
+					"max": 19278,
+					"median": 14724,
+					"min": 11244,
+					"n": 3,
+					"q1": 12984,
+					"q3": 17001
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 319.5,
+					"max": 1384,
+					"median": 988,
+					"min": 745,
+					"n": 3,
+					"q1": 866.5,
+					"q3": 1186
+				},
+				"output": {
+					"iqr": 283,
+					"max": 952,
+					"median": 393,
+					"min": 386,
+					"n": 3,
+					"q1": 389.5,
+					"q3": 672.5
+				},
+				"totalTokens": {
+					"iqr": 4178.5,
+					"max": 20975,
+					"median": 16501,
+					"min": 12618,
+					"n": 3,
+					"q1": 14559.5,
+					"q3": 18738
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "93abea00898aa5b363dac985dd83447f987fa74aaa9c536e108926be6207de36",
+				"id": "endo.evidence.experiment.1f7635ab3cf244915e623897249eaaea.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.1f7635ab3cf244915e623897249eaaea",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/a",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "5a53882c66df569119d54836cde2fac1a9054fd685fd4304c8896b91f11cfab0",
+								"trajectoryDigest": "749c7e1b4b4bfe209b7d70ba930135b39c896c5b6d1a29cb9905b65a3da74a74"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 10,
+								"session": "endo.session.pi.endo-pi-default-b86594a45f4a",
+								"store": "trials/implement-function/a/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "5b0c01d7f83548186309788d2758813f251c7b11719d9c1d1ded98ba95adea72",
+								"trajectoryDigest": "b90c652eab8bd9a98c148c6b65d99501b0e23e1cdcf9e6f42b078efdd252fec5"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 21,
+								"session": "endo.session.pi.endo-pi-default-9a5133730af0",
+								"store": "trials/implement-function/a/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "33712b9e9e41a6ef8cd0fcc67cbc4b9cd50f4fbad8bc99a21e4fc2de568dd84c",
+								"trajectoryDigest": "350313a001d909f4132141a5127dc3911730c78da3012f9e33219f159830ad34"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 24,
+								"session": "endo.session.pi.endo-pi-default-188baaf726a5",
+								"store": "trials/implement-function/a/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "a",
+			"finalWorkspaces": {
+				"distinct": 3,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools": 1,
+					"lifecycle+tools+outcome": 2
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"7": 2,
+						"9": 1
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2223393175,
+							"skipped": 1135
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2590315657,
+							"skipped": 1181
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2621161962,
+							"skipped": 1097
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 196,
+						"sha256": "8222f4481cc2e7725b4a0e97cc407ef9ce252862b0f3b4574bd90a892e07c7c8",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => undefined);\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 932,
+					"max": 7920,
+					"median": 6688,
+					"min": 6056,
+					"n": 3,
+					"q1": 6372,
+					"q3": 7304
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 1229,
+					"max": 10646,
+					"median": 10095,
+					"min": 8188,
+					"n": 3,
+					"q1": 9141.5,
+					"q3": 10370.5
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 169,
+					"max": 845,
+					"median": 518,
+					"min": 507,
+					"n": 3,
+					"q1": 512.5,
+					"q3": 681.5
+				},
+				"output": {
+					"iqr": 87,
+					"max": 657,
+					"median": 568,
+					"min": 483,
+					"n": 3,
+					"q1": 525.5,
+					"q3": 612.5
+				},
+				"totalTokens": {
+					"iqr": 1485,
+					"max": 12148,
+					"median": 11181,
+					"min": 9178,
+					"n": 3,
+					"q1": 10179.5,
+					"q3": 11664.5
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "fd160389af4f6a2f036bcc4c93daed9c871a267d2e68b5615d11031253fe5d7d",
+				"id": "endo.evidence.experiment.45d1508733cd0715dd4cbaea289c950d.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.45d1508733cd0715dd4cbaea289c950d",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/b",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "b5fd1a864c1d4a2bbcaa65e18b887cbcff5f0beb0786c9a99186d0aebd3d6c98",
+								"trajectoryDigest": "b08d39b32d3f1034c85f9886fddc36a29e8a2805d79dad505393219ab8376eb7"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 1,
+								"session": "endo.session.pi.endo-pi-default-7f73c8680dd5",
+								"store": "trials/implement-function/b/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+								"trajectoryDigest": "ac11fb388d9fafed7dbcf9ff582b2b414acb8d27cad74b4a15f57ea80d784327"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 16,
+								"session": "endo.session.pi.endo-pi-default-66c486161d52",
+								"store": "trials/implement-function/b/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+								"trajectoryDigest": "dcdcc34ecf5dd37d237af93c29b84f276559661e35d119165986b3f2d58a8d5c"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 26,
+								"session": "endo.session.pi.endo-pi-default-3b8f61d8116c",
+								"store": "trials/implement-function/b/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools+outcome": 2,
+					"tools": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"9": 2
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"0": 2,
+						"4": 1
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 4162280640,
+							"skipped": 1091
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 4032429623,
+							"skipped": 1136
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 3634375718,
+							"skipped": 1102
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 237,
+						"sha256": "466f0de53bad7adfb8f49138162730611e170209b25a763d7def214d279a1250",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234 }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 1407.5,
+					"max": 7740,
+					"median": 5016,
+					"min": 4925,
+					"n": 3,
+					"q1": 4970.5,
+					"q3": 6378
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 175,
+					"max": 10462,
+					"median": 10112,
+					"min": 10112,
+					"n": 3,
+					"q1": 10112,
+					"q3": 10287
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 131.5,
+					"max": 784,
+					"median": 522,
+					"min": 521,
+					"n": 3,
+					"q1": 521.5,
+					"q3": 653
+				},
+				"output": {
+					"iqr": 25.5,
+					"max": 574,
+					"median": 523,
+					"min": 523,
+					"n": 3,
+					"q1": 523,
+					"q3": 548.5
+				},
+				"totalTokens": {
+					"iqr": 332,
+					"max": 11820,
+					"median": 11157,
+					"min": 11156,
+					"n": 3,
+					"q1": 11156.5,
+					"q3": 11488.5
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "6fcbe4c7fb916ca5193ed7e4e2bb4b13a95896536b6e6fb5f09282aeb811453c",
+				"id": "endo.evidence.experiment.aad089c3324821167834614e03d986c2.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.aad089c3324821167834614e03d986c2",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/b-c",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+								"trajectoryDigest": "ba7d6e253d4b2252d2e9e3daa472cfa3a1ae6be439803f75c1e4d982bed6883e"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 9,
+								"session": "endo.session.pi.endo-pi-default-6b4fafe5af1e",
+								"store": "trials/implement-function/b-c/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+								"trajectoryDigest": "64f2171b05267524473aa0bd932717496ab4dff227347c3368c32425458f06b7"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 15,
+								"session": "endo.session.pi.endo-pi-default-72305ab616c5",
+								"store": "trials/implement-function/b-c/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "44677aab67ba6763f6f5580572052c3a131fded2780cb1eae899e6c293bc757c",
+								"trajectoryDigest": "85ecbe6733c188c1b1a26bdf8e23991094488c4114e01a9c82e9c66c77cfc28a"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 29,
+								"session": "endo.session.pi.endo-pi-default-29608aef8b8b",
+								"store": "trials/implement-function/b-c/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "b-c",
+			"finalWorkspaces": {
+				"distinct": 1,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"tools": 3
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"tools": {
+						"5": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 400324801,
+							"skipped": 1108
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 3,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 1,
+						"successes": 3,
+						"wilson95": {
+							"high": 1,
+							"low": 0.438503
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 3615445072,
+							"skipped": 1096
+						},
+						"exactPairs": 3,
+						"judgedPairs": 3,
+						"rate": 1
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 73618774,
+							"skipped": 1150
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 200.5,
+					"max": 15114,
+					"median": 14804,
+					"min": 14713,
+					"n": 3,
+					"q1": 14758.5,
+					"q3": 14959
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0.5,
+					"max": 11411,
+					"median": 11411,
+					"min": 11410,
+					"n": 3,
+					"q1": 11410.5,
+					"q3": 11411
+				},
+				"output": {
+					"iqr": 0,
+					"max": 705,
+					"median": 705,
+					"min": 705,
+					"n": 3,
+					"q1": 705,
+					"q3": 705
+				},
+				"totalTokens": {
+					"iqr": 0.5,
+					"max": 12116,
+					"median": 12116,
+					"min": 12115,
+					"n": 3,
+					"q1": 12115.5,
+					"q3": 12116
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "9a7fe89da9c29fc9943151b5a08323187b82b62fa32498d2387193031acc3624",
+				"id": "endo.evidence.experiment.a17ade239e90bdeb0555cd7dfe078462.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.a17ade239e90bdeb0555cd7dfe078462",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/none",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.1; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.variance-1.0.1-pilot",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 3
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "32d36c505f5f354fcbe9da7dda290b563de0c220616193f4dd4efd43affbcbd7",
+								"trajectoryDigest": "78a7ad4a3f1078fb3901208e5debe0d623cbb2c15a68c9320bc41e3efe69c745"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 5,
+								"session": "endo.session.pi.endo-pi-default-5398ca8d19e0",
+								"store": "trials/implement-function/none/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "7fbb1e8253dc83d101452c3063cadb745b160702483112a49cb6e9a91dc55924",
+								"trajectoryDigest": "8cbb34019313be29a508934f1a5669cf1d5198c8e9a5c9142e055b15ff7ac0f4"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 20,
+								"session": "endo.session.pi.endo-pi-default-4494181e9d55",
+								"store": "trials/implement-function/none/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.variance-1.0.1-pilot",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 2
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "e48e02ee265a0a81c1d74937210daf5b901e6287c37f1f038edac816a1462cec",
+								"trajectoryDigest": "d0ff1fb2139d7a40a97a0cd9366e032124e3045dd06bbaf6d40f014c22f322f2"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 31,
+								"session": "endo.session.pi.endo-pi-default-80eec28590fb",
+								"store": "trials/implement-function/none/2/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 3,
+				"rate": 1,
+				"successes": 3,
+				"wilson95": {
+					"high": 1,
+					"low": 0.438503
+				}
+			},
+			"condition": "none",
+			"finalWorkspaces": {
+				"distinct": 3,
+				"of": 3
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"lifecycle+tools": 1,
+					"lifecycle+tools+outcome": 2
+				},
+				"indexByLayer": {
+					"lifecycle": {
+						"7": 2,
+						"9": 1
+					},
+					"outcome": {
+						"0": 2
+					},
+					"tools": {
+						"0": 3
+					}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 2192013423,
+							"skipped": 1152
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 2,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 2,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.666667,
+						"successes": 2,
+						"wilson95": {
+							"high": 0.938508,
+							"low": 0.20766
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 1564400119,
+							"skipped": 1105
+						},
+						"exactPairs": 1,
+						"judgedPairs": 3,
+						"rate": 0.333333
+					}
+				},
+				"tools": {
+					"counts": {
+						"DIVERGED": 3,
+						"EXACT": 0,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 3,
+					"modalAgreement": {
+						"n": 3,
+						"rate": 0.333333,
+						"successes": 1,
+						"wilson95": {
+							"high": 0.79234,
+							"low": 0.061492
+						}
+					},
+					"pairs": 3,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 0,
+							"low": 0,
+							"resamples": 10000,
+							"seed": 973851940,
+							"skipped": 1136
+						},
+						"exactPairs": 0,
+						"judgedPairs": 3,
+						"rate": 0
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 3
+			},
+			"servingInputs": {
+				"extensions": {},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						}
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [],
+				"samplingParametersSent": {
+					"meaning": "the server's defaults applied; their values are UNAVAILABLE (see environment.serverDefaults)",
+					"status": "none sent"
+				},
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 534.5,
+					"max": 7549,
+					"median": 7432,
+					"min": 6480,
+					"n": 3,
+					"q1": 6956,
+					"q3": 7490.5
+				}
+			},
+			"trials": {
+				"completed": 3,
+				"errored": 0,
+				"missing": 0,
+				"planned": 3
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 3080,
+					"max": 14184,
+					"median": 10268,
+					"min": 8024,
+					"n": 3,
+					"q1": 9146,
+					"q3": 12226
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 3,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 331,
+					"max": 1156,
+					"median": 535,
+					"min": 494,
+					"n": 3,
+					"q1": 514.5,
+					"q3": 845.5
+				},
+				"output": {
+					"iqr": 134,
+					"max": 701,
+					"median": 545,
+					"min": 433,
+					"n": 3,
+					"q1": 489,
+					"q3": 623
+				},
+				"totalTokens": {
+					"iqr": 3545,
+					"max": 16041,
+					"median": 11348,
+					"min": 8951,
+					"n": 3,
+					"q1": 10149.5,
+					"q3": 13694.5
+				}
+			}
+		}
+	],
+	"digest": "c1eefdcdf2435dfe785a5bc36cba73066c3dc44bc58c87da27d60ef7cb021ce1",
+	"environment": [
+		{
+			"digestKeyId": "fixture-public",
+			"endpoint": "http://127.0.0.1:8080",
+			"models": {
+				"status": "reported",
+				"value": [
+					{
+						"id": "qwen3.8-27b",
+						"meta": {
+							"ftype": "Q4_K - Medium",
+							"n_ctx": 98304,
+							"n_ctx_train": 262144,
+							"n_embd": 5120,
+							"n_params": 27320697856,
+							"n_vocab": 248320,
+							"size": 17548181504,
+							"vocab_type": true
+						},
+						"owned_by": "llamacpp"
+					}
+				]
+			},
+			"observedAt": "2026-10-04T05:58:24.819Z",
+			"pi": {
+				"status": "reported",
+				"value": {
+					"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+					"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a",
+					"version": "1.0.1"
+				}
+			},
+			"serverDefaults": {
+				"reason": "the server's default sampling settings are not read: that needs a server-settings endpoint, which the runner does not call",
+				"status": "UNAVAILABLE"
+			}
+		}
+	],
+	"experiment": {
+		"budget": {
+			"cells": 12,
+			"trialsPerCell": 3
+		},
+		"environment": {
+			"environmentId": "endophasia-scratch-workspace",
+			"schemaVersion": "endo.environment-profile.v0",
+			"simulated": false
+		},
+		"id": "endo.experiment.variance-1.0.1-pilot",
+		"model": "endolocal/qwen3.8-27b",
+		"provenance": "endo-experiment-runner.1; spec sha256 1754d20cbb1bf325acd0f398de815eb498869e60cc5726d5416fa450a546fa2b",
+		"schemaVersion": "endo.experiment.v0"
+	},
+	"manipulation": {
+		"M1": {
+			"checked": 186,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M2a": {
+			"checked": 36,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M2b": {
+			"checked": 186,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M3": {
+			"checked": 9,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M4": {
+			"checked": 18,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"validity": {
+			"a": "valid",
+			"b": "valid",
+			"b-c": "valid",
+			"none": "valid"
+		}
+	},
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"schemaVersion": "endo.experiment-report.v0",
+	"seed": 2892665600,
+	"seedSource": "drawn",
+	"specSha256": "1754d20cbb1bf325acd0f398de815eb498869e60cc5726d5416fa450a546fa2b",
+	"statistics": "headline: modal agreement, the share of completed trials whose layer equals the most common one, with a 95% Wilson interval (trials are independent). Also: the number of distinct trajectories, and the pairwise exact-match rate over all unordered pairs of completed trials (EXACT / (EXACT + DIVERGED); UNAVAILABLE pairs are counted separately) with a 95% percentile bootstrap interval that resamples trials, not pairs: pairs share trials, so a Wilson interval over pairs would be optimistic (10000 resamples, seeded from the spec sha256, cell and layer; two draws of the same trial are not a pair). Usage and timing are reported as median and interquartile range (type 7 quartiles), never judged.",
+	"trials": {
+		"completed": 36,
+		"errored": 0,
+		"interruptedAndRerun": 0,
+		"missing": 0,
+		"planned": 36
+	}
+}

@@ -1,0 +1,158 @@
+{
+	"exploratory": "DESIGN §12 deviation 1: not a pre-registered metric",
+	"normalization": "tool-call ids (server-generated random tokens) replaced by their ordinal of first appearance in each trial; nothing else",
+	"cells": {
+		"fix-failing-test/a": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 190,
+				"environment": 0,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			]
+		},
+		"fix-failing-test/b": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 190,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 187,
+				"7": 3
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#0 vs #3: request 2, message 4 (tool)"
+			]
+		},
+		"fix-failing-test/b-c": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 190,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#0 vs #3: request 2, message 4 (tool)"
+			]
+		},
+		"implement-function/a": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 190,
+				"environment": 0,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			]
+		},
+		"implement-function/b": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 190,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 187,
+				"5": 3
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#0 vs #3: request 2, message 4 (tool)"
+			]
+		},
+		"implement-function/b-c": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 190,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"5": 190
+			},
+			"examples": [
+				"#0 vs #1: request 5, message 11 (tool)",
+				"#0 vs #2: request 5, message 11 (tool)",
+				"#0 vs #3: request 5, message 11 (tool)"
+			]
+		},
+		"tool-use/a": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 190,
+				"environment": 0,
+				"other": 0,
+				"identical requests": 0
+			},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			]
+		},
+		"tool-use/b": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 0,
+				"other": 0,
+				"identical requests": 190
+			},
+			"firstDifferingRequest": {},
+			"examples": []
+		},
+		"tool-use/b-c": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifferingMessage": {
+				"model": 0,
+				"environment": 0,
+				"other": 0,
+				"identical requests": 190
+			},
+			"firstDifferingRequest": {},
+			"examples": []
+		}
+	}
+}

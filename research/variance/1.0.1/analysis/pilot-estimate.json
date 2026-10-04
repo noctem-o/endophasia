@@ -1,0 +1,36 @@
+{
+	"meansMs": {
+		"fix-failing-test/a": 6444,
+		"fix-failing-test/b": 9877,
+		"fix-failing-test/b-c": 19900,
+		"fix-failing-test/none": 10112,
+		"implement-function/a": 7525,
+		"implement-function/b": 6566,
+		"implement-function/b-c": 15518,
+		"implement-function/none": 7723,
+		"tool-use/a": 5344,
+		"tool-use/b": 4016,
+		"tool-use/b-c": 8387,
+		"tool-use/none": 5793
+	},
+	"msPerRoundOfMainArms": 83577,
+	"estimateHours": [
+		{
+			"n": 10,
+			"hours": 0.26
+		},
+		{
+			"n": 12,
+			"hours": 0.31
+		},
+		{
+			"n": 15,
+			"hours": 0.38
+		},
+		{
+			"n": 20,
+			"hours": 0.51
+		}
+	],
+	"chosen": 20
+}

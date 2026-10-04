@@ -1,0 +1,39 @@
+{
+	"seed": 581305836,
+	"selection": "mulberry32(ordering seed), Fisher-Yates over completed trials in plan order, first three",
+	"replays": [
+		{
+			"trial": "fix-failing-test/b-c/#13",
+			"lifecycle": "DIVERGED",
+			"tools": "DIVERGED",
+			"outcome": "DIVERGED",
+			"served": 1,
+			"misses": 1,
+			"unserved": 5,
+			"flags": [],
+			"notes": []
+		},
+		{
+			"trial": "implement-function/b/#1",
+			"lifecycle": "DIVERGED",
+			"tools": "DIVERGED",
+			"outcome": "DIVERGED",
+			"served": 1,
+			"misses": 1,
+			"unserved": 4,
+			"flags": [],
+			"notes": []
+		},
+		{
+			"trial": "implement-function/b/#19",
+			"lifecycle": "DIVERGED",
+			"tools": "DIVERGED",
+			"outcome": "DIVERGED",
+			"served": 1,
+			"misses": 1,
+			"unserved": 4,
+			"flags": [],
+			"notes": []
+		}
+	]
+}

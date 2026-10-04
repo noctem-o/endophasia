@@ -1,0 +1,1086 @@
+{
+	"order": [
+		{
+			"condition": "b-c",
+			"position": 0,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 1,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 2,
+			"task": "fix-failing-test",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 3,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 4,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b",
+			"position": 5,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 6,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 7,
+			"task": "tool-use",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 8,
+			"task": "implement-function",
+			"trial": 0
+		},
+		{
+			"condition": "b-c",
+			"position": 9,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 10,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 11,
+			"task": "tool-use",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 12,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 13,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "b-c",
+			"position": 14,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 15,
+			"task": "fix-failing-test",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 16,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "b-c",
+			"position": 17,
+			"task": "implement-function",
+			"trial": 1
+		},
+		{
+			"condition": "a",
+			"position": 18,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 19,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 20,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 21,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "a",
+			"position": 22,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 23,
+			"task": "tool-use",
+			"trial": 2
+		},
+		{
+			"condition": "b-c",
+			"position": 24,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "b",
+			"position": 25,
+			"task": "implement-function",
+			"trial": 2
+		},
+		{
+			"condition": "a",
+			"position": 26,
+			"task": "fix-failing-test",
+			"trial": 2
+		},
+		{
+			"condition": "a",
+			"position": 27,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "b-c",
+			"position": 28,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "a",
+			"position": 29,
+			"task": "fix-failing-test",
+			"trial": 3
+		},
+		{
+			"condition": "a",
+			"position": 30,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "b-c",
+			"position": 31,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "b",
+			"position": 32,
+			"task": "tool-use",
+			"trial": 3
+		},
+		{
+			"condition": "b-c",
+			"position": 33,
+			"task": "fix-failing-test",
+			"trial": 3
+		},
+		{
+			"condition": "b",
+			"position": 34,
+			"task": "implement-function",
+			"trial": 3
+		},
+		{
+			"condition": "b",
+			"position": 35,
+			"task": "fix-failing-test",
+			"trial": 3
+		},
+		{
+			"condition": "a",
+			"position": 36,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "b",
+			"position": 37,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "b",
+			"position": 38,
+			"task": "fix-failing-test",
+			"trial": 4
+		},
+		{
+			"condition": "a",
+			"position": 39,
+			"task": "fix-failing-test",
+			"trial": 4
+		},
+		{
+			"condition": "b",
+			"position": 40,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "b-c",
+			"position": 41,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "a",
+			"position": 42,
+			"task": "implement-function",
+			"trial": 4
+		},
+		{
+			"condition": "b-c",
+			"position": 43,
+			"task": "tool-use",
+			"trial": 4
+		},
+		{
+			"condition": "b-c",
+			"position": 44,
+			"task": "fix-failing-test",
+			"trial": 4
+		},
+		{
+			"condition": "b-c",
+			"position": 45,
+			"task": "fix-failing-test",
+			"trial": 5
+		},
+		{
+			"condition": "b-c",
+			"position": 46,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "a",
+			"position": 47,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "b",
+			"position": 48,
+			"task": "fix-failing-test",
+			"trial": 5
+		},
+		{
+			"condition": "a",
+			"position": 49,
+			"task": "fix-failing-test",
+			"trial": 5
+		},
+		{
+			"condition": "a",
+			"position": 50,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "b",
+			"position": 51,
+			"task": "implement-function",
+			"trial": 5
+		},
+		{
+			"condition": "b",
+			"position": 52,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "b-c",
+			"position": 53,
+			"task": "tool-use",
+			"trial": 5
+		},
+		{
+			"condition": "a",
+			"position": 54,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "a",
+			"position": 55,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "b-c",
+			"position": 56,
+			"task": "fix-failing-test",
+			"trial": 6
+		},
+		{
+			"condition": "b-c",
+			"position": 57,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "b",
+			"position": 58,
+			"task": "fix-failing-test",
+			"trial": 6
+		},
+		{
+			"condition": "b",
+			"position": 59,
+			"task": "implement-function",
+			"trial": 6
+		},
+		{
+			"condition": "b",
+			"position": 60,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "b-c",
+			"position": 61,
+			"task": "tool-use",
+			"trial": 6
+		},
+		{
+			"condition": "a",
+			"position": 62,
+			"task": "fix-failing-test",
+			"trial": 6
+		},
+		{
+			"condition": "b-c",
+			"position": 63,
+			"task": "fix-failing-test",
+			"trial": 7
+		},
+		{
+			"condition": "b",
+			"position": 64,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "b",
+			"position": 65,
+			"task": "fix-failing-test",
+			"trial": 7
+		},
+		{
+			"condition": "a",
+			"position": 66,
+			"task": "fix-failing-test",
+			"trial": 7
+		},
+		{
+			"condition": "b-c",
+			"position": 67,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "a",
+			"position": 68,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "a",
+			"position": 69,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "b-c",
+			"position": 70,
+			"task": "tool-use",
+			"trial": 7
+		},
+		{
+			"condition": "b",
+			"position": 71,
+			"task": "implement-function",
+			"trial": 7
+		},
+		{
+			"condition": "a",
+			"position": 72,
+			"task": "fix-failing-test",
+			"trial": 8
+		},
+		{
+			"condition": "b",
+			"position": 73,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "b-c",
+			"position": 74,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "a",
+			"position": 75,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "a",
+			"position": 76,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "b",
+			"position": 77,
+			"task": "tool-use",
+			"trial": 8
+		},
+		{
+			"condition": "b-c",
+			"position": 78,
+			"task": "implement-function",
+			"trial": 8
+		},
+		{
+			"condition": "b-c",
+			"position": 79,
+			"task": "fix-failing-test",
+			"trial": 8
+		},
+		{
+			"condition": "b",
+			"position": 80,
+			"task": "fix-failing-test",
+			"trial": 8
+		},
+		{
+			"condition": "b-c",
+			"position": 81,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "b",
+			"position": 82,
+			"task": "fix-failing-test",
+			"trial": 9
+		},
+		{
+			"condition": "a",
+			"position": 83,
+			"task": "fix-failing-test",
+			"trial": 9
+		},
+		{
+			"condition": "a",
+			"position": 84,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "a",
+			"position": 85,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "b",
+			"position": 86,
+			"task": "tool-use",
+			"trial": 9
+		},
+		{
+			"condition": "b-c",
+			"position": 87,
+			"task": "fix-failing-test",
+			"trial": 9
+		},
+		{
+			"condition": "b",
+			"position": 88,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "b-c",
+			"position": 89,
+			"task": "implement-function",
+			"trial": 9
+		},
+		{
+			"condition": "a",
+			"position": 90,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "b",
+			"position": 91,
+			"task": "fix-failing-test",
+			"trial": 10
+		},
+		{
+			"condition": "b-c",
+			"position": 92,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "b",
+			"position": 93,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "b-c",
+			"position": 94,
+			"task": "fix-failing-test",
+			"trial": 10
+		},
+		{
+			"condition": "a",
+			"position": 95,
+			"task": "fix-failing-test",
+			"trial": 10
+		},
+		{
+			"condition": "b",
+			"position": 96,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "b-c",
+			"position": 97,
+			"task": "tool-use",
+			"trial": 10
+		},
+		{
+			"condition": "a",
+			"position": 98,
+			"task": "implement-function",
+			"trial": 10
+		},
+		{
+			"condition": "a",
+			"position": 99,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "a",
+			"position": 100,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "b",
+			"position": 101,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "b",
+			"position": 102,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "b-c",
+			"position": 103,
+			"task": "tool-use",
+			"trial": 11
+		},
+		{
+			"condition": "a",
+			"position": 104,
+			"task": "fix-failing-test",
+			"trial": 11
+		},
+		{
+			"condition": "b-c",
+			"position": 105,
+			"task": "fix-failing-test",
+			"trial": 11
+		},
+		{
+			"condition": "b-c",
+			"position": 106,
+			"task": "implement-function",
+			"trial": 11
+		},
+		{
+			"condition": "b",
+			"position": 107,
+			"task": "fix-failing-test",
+			"trial": 11
+		},
+		{
+			"condition": "b-c",
+			"position": 108,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "b-c",
+			"position": 109,
+			"task": "fix-failing-test",
+			"trial": 12
+		},
+		{
+			"condition": "a",
+			"position": 110,
+			"task": "fix-failing-test",
+			"trial": 12
+		},
+		{
+			"condition": "a",
+			"position": 111,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "b",
+			"position": 112,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "a",
+			"position": 113,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "b-c",
+			"position": 114,
+			"task": "implement-function",
+			"trial": 12
+		},
+		{
+			"condition": "b",
+			"position": 115,
+			"task": "tool-use",
+			"trial": 12
+		},
+		{
+			"condition": "b",
+			"position": 116,
+			"task": "fix-failing-test",
+			"trial": 12
+		},
+		{
+			"condition": "a",
+			"position": 117,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "b",
+			"position": 118,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "a",
+			"position": 119,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "b",
+			"position": 120,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "b-c",
+			"position": 121,
+			"task": "tool-use",
+			"trial": 13
+		},
+		{
+			"condition": "b-c",
+			"position": 122,
+			"task": "fix-failing-test",
+			"trial": 13
+		},
+		{
+			"condition": "a",
+			"position": 123,
+			"task": "fix-failing-test",
+			"trial": 13
+		},
+		{
+			"condition": "b-c",
+			"position": 124,
+			"task": "implement-function",
+			"trial": 13
+		},
+		{
+			"condition": "b",
+			"position": 125,
+			"task": "fix-failing-test",
+			"trial": 13
+		},
+		{
+			"condition": "b",
+			"position": 126,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "b",
+			"position": 127,
+			"task": "fix-failing-test",
+			"trial": 14
+		},
+		{
+			"condition": "a",
+			"position": 128,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "b-c",
+			"position": 129,
+			"task": "fix-failing-test",
+			"trial": 14
+		},
+		{
+			"condition": "b-c",
+			"position": 130,
+			"task": "implement-function",
+			"trial": 14
+		},
+		{
+			"condition": "b-c",
+			"position": 131,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "a",
+			"position": 132,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "b",
+			"position": 133,
+			"task": "tool-use",
+			"trial": 14
+		},
+		{
+			"condition": "a",
+			"position": 134,
+			"task": "fix-failing-test",
+			"trial": 14
+		},
+		{
+			"condition": "b",
+			"position": 135,
+			"task": "fix-failing-test",
+			"trial": 15
+		},
+		{
+			"condition": "b-c",
+			"position": 136,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "a",
+			"position": 137,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "b-c",
+			"position": 138,
+			"task": "fix-failing-test",
+			"trial": 15
+		},
+		{
+			"condition": "b",
+			"position": 139,
+			"task": "tool-use",
+			"trial": 15
+		},
+		{
+			"condition": "b-c",
+			"position": 140,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "a",
+			"position": 141,
+			"task": "fix-failing-test",
+			"trial": 15
+		},
+		{
+			"condition": "b",
+			"position": 142,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "a",
+			"position": 143,
+			"task": "implement-function",
+			"trial": 15
+		},
+		{
+			"condition": "a",
+			"position": 144,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "a",
+			"position": 145,
+			"task": "fix-failing-test",
+			"trial": 16
+		},
+		{
+			"condition": "b-c",
+			"position": 146,
+			"task": "fix-failing-test",
+			"trial": 16
+		},
+		{
+			"condition": "a",
+			"position": 147,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "b-c",
+			"position": 148,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "b-c",
+			"position": 149,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "b",
+			"position": 150,
+			"task": "implement-function",
+			"trial": 16
+		},
+		{
+			"condition": "b",
+			"position": 151,
+			"task": "fix-failing-test",
+			"trial": 16
+		},
+		{
+			"condition": "b",
+			"position": 152,
+			"task": "tool-use",
+			"trial": 16
+		},
+		{
+			"condition": "a",
+			"position": 153,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "b",
+			"position": 154,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "b-c",
+			"position": 155,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "b",
+			"position": 156,
+			"task": "tool-use",
+			"trial": 17
+		},
+		{
+			"condition": "b",
+			"position": 157,
+			"task": "fix-failing-test",
+			"trial": 17
+		},
+		{
+			"condition": "a",
+			"position": 158,
+			"task": "fix-failing-test",
+			"trial": 17
+		},
+		{
+			"condition": "b-c",
+			"position": 159,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "a",
+			"position": 160,
+			"task": "implement-function",
+			"trial": 17
+		},
+		{
+			"condition": "b-c",
+			"position": 161,
+			"task": "fix-failing-test",
+			"trial": 17
+		},
+		{
+			"condition": "b",
+			"position": 162,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "b-c",
+			"position": 163,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "b-c",
+			"position": 164,
+			"task": "fix-failing-test",
+			"trial": 18
+		},
+		{
+			"condition": "b",
+			"position": 165,
+			"task": "fix-failing-test",
+			"trial": 18
+		},
+		{
+			"condition": "b-c",
+			"position": 166,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "a",
+			"position": 167,
+			"task": "tool-use",
+			"trial": 18
+		},
+		{
+			"condition": "a",
+			"position": 168,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "a",
+			"position": 169,
+			"task": "fix-failing-test",
+			"trial": 18
+		},
+		{
+			"condition": "b",
+			"position": 170,
+			"task": "implement-function",
+			"trial": 18
+		},
+		{
+			"condition": "a",
+			"position": 171,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "a",
+			"position": 172,
+			"task": "implement-function",
+			"trial": 19
+		},
+		{
+			"condition": "a",
+			"position": 173,
+			"task": "fix-failing-test",
+			"trial": 19
+		},
+		{
+			"condition": "b",
+			"position": 174,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "b-c",
+			"position": 175,
+			"task": "tool-use",
+			"trial": 19
+		},
+		{
+			"condition": "b-c",
+			"position": 176,
+			"task": "implement-function",
+			"trial": 19
+		},
+		{
+			"condition": "b",
+			"position": 177,
+			"task": "fix-failing-test",
+			"trial": 19
+		},
+		{
+			"condition": "b-c",
+			"position": 178,
+			"task": "fix-failing-test",
+			"trial": 19
+		},
+		{
+			"condition": "b",
+			"position": 179,
+			"task": "implement-function",
+			"trial": 19
+		}
+	],
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"seed": 581305836
+}

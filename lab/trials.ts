@@ -8,7 +8,7 @@ import {
 	type EndoEvaluationPartitionV0,
 	type EndoEvaluationResultV0,
 	type EndoTrialResultV0,
-	validateEndoEvaluationProfileV0,
+	validateEndoEvaluationProfileAnyV0,
 } from "../protocol/evaluation.ts";
 import { type EndoResourceUsageV0, validateEndoResourceUsageV0 } from "../protocol/event-record.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
@@ -63,7 +63,7 @@ export function validateEndoTrialOutcomeV0(value: unknown): EndoTrialOutcomeV0 |
 
 /**
  * Run the declared trials under the evaluation profile. The profile is the strict door: it must be a valid
- * endo.evaluation-profile.v0. Exactly `profile.trialCount` trials run, in order; trial i draws seed
+ * endo.evaluation-profile.v0 or .v1. Exactly `profile.trialCount` trials run, in order; trial i draws seed
  * `profile.seeds[i % profile.seeds.length]` when seeds are recorded, and no seed when they are not. Each
  * outcome is validated at the door (TypeError when malformed). The returned result carries the trials'
  * coordinates — experiment, candidate, index, and the recorded run — and nothing else the lab invented.
@@ -79,8 +79,8 @@ export function runEndoTrialsV0(args: {
 	if (typeof args.id !== "string" || !isEndoIdentifierV0(args.id, "evidence")) {
 		throw new TypeError("result id must be an endo.evidence.* identifier");
 	}
-	const profile = validateEndoEvaluationProfileV0(args.profile);
-	if (profile === null) throw new TypeError("not a valid endo.evaluation-profile.v0 profile");
+	const profile = validateEndoEvaluationProfileAnyV0(args.profile);
+	if (profile === null) throw new TypeError("not a valid endo.evaluation-profile.v0 or .v1 profile");
 	let usage: EndoResourceUsageV0 | undefined;
 	if (args.usage !== undefined) {
 		const validatedUsage = validateEndoResourceUsageV0(args.usage);

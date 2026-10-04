@@ -5,7 +5,7 @@ recorded through the capture proxy, so every trial is also a replayable cassette
 `endo experiment report` aggregates the trials with the trajectory comparison ([trajectory.md](trajectory.md)).
 
 ```sh
-endo experiment run <spec.json> --out <dir> [--max-trials n]
+endo experiment run <spec.json> --out <dir> [--max-trials n] [--fixture-experiment]
 endo experiment report <dir>
 ```
 
@@ -17,7 +17,7 @@ endo experiment report <dir>
 | `trials` | N, the number of trials per (task, condition) |
 | `seed` | the ordering seed (unsigned 32-bit), or `null` to draw one at the first run. Either way it is recorded. |
 | `pi`, `upstream`, `provider`, `model` | the Pi executable, the OpenAI-compatible upstream origin, and the provider and model named in Pi's `models.json` |
-| `digestDomain` | `installation` (normal use) or `fixture` (the committed public key; synthetic experiments only) |
+| `digestDomain` | `installation` (normal use) or `fixture` (the committed public key; synthetic experiments only, and only in explicit fixture-experiment mode: `--fixture-experiment`. A fixture spec without the flag is refused, and so is the flag with an installation spec, as for the fixture recorder.) |
 | `timeoutMs` | the per-step timeout |
 | `tasks[]` | `id`, `prompts[]` (sent in order, each run to `agent_settled`), `workspace` (relative path to content), optional `check` |
 | `conditions[]` | `id`, `description`, optional `modelEntry` (fields merged into the `models.json` model entry) and `settings` (Pi's `settings.json`) |
@@ -66,22 +66,32 @@ runner does not call.
 
 For each task and condition, over the completed trials:
 
-- **Per judged layer** (lifecycle, tools, outcome):
-  - the EXACT, DIVERGED and UNAVAILABLE counts over all unordered pairs;
-  - the pairwise exact-match rate (EXACT / (EXACT + DIVERGED)) with a 95% Wilson interval;
-  - the number of distinct trajectories;
-  - the **modal agreement**: the share of trials whose layer equals the most common one, with a Wilson interval.
-
-  Pairs share trials, so they are not independent, and the pairwise interval is optimistic. Modal agreement is over
-  independent trials.
+- **Per judged layer** (lifecycle, tools, outcome), three numbers:
+  - **The headline: modal agreement.** The share of completed trials whose layer equals the most common one, with a
+    95% Wilson interval. Trials are independent, so the interval means what it says.
+  - **Distinct trajectories:** how many different layers the trials produced.
+  - **The pairwise exact-match rate:** EXACT / (EXACT + DIVERGED) over all unordered pairs, with UNAVAILABLE pairs
+    counted separately. Its 95% interval is a **percentile bootstrap that resamples trials, not pairs**. The
+    n(n−1)/2 pairs of one sample share trials, so treating them as independent (a Wilson interval over pairs) would
+    claim far more precision than n trials hold. Resampling trials keeps that dependence. Details: 10 000 resamples,
+    seeded from the spec sha256, the cell and the layer, so the report is deterministic. Two draws of the same trial
+    are not a pair, because a self-pair is trivially exact.
 - **First divergence:** per layer, how often each index was the first differing position; and per pair, which set of
   layers diverged.
 - **Outcomes:** the outcome kinds, and the success-check pass rate (Wilson) when the task has a check.
 - **Final workspaces:** how many distinct ones the trials left.
 - **Usage** (Pi-reported tokens) **and timing** (observer clock): median and interquartile range (type 7 quartiles).
   Never judged.
-- **Serving inputs:** the distinct request parameters seen, the sampling parameters Pi sent (`none sent` means the
-  server's defaults applied, and their values are UNAVAILABLE), and the condition's configuration.
+- **Serving inputs:**
+  - the distinct request parameters seen;
+  - which sampling fields were checked for and which Pi actually sent (`samplingFieldsSent`). `none sent` means the
+    server's defaults applied, and their values are UNAVAILABLE;
+  - the condition's configuration.
+
+  For Pi 1.0.1, see the conformance finding
+  [`research/pi-conformance/1.0.1/sampling-control/`](../research/pi-conformance/1.0.1/sampling-control/README.md).
+  Pi sends no sampling field. No documented configuration field sets one. A documented `before_provider_request`
+  extension can.
 - **Bundle:** an `endo.experiment-bundle.v0` built with the lab's trial discipline (`lab/trials.ts`,
   `lab/experiment-bundle.ts`): the `endo.evaluation-profile.v0`, one `endo.trial-result.v0` per trial (raw: session,
   store, outcome; derived: check, final workspace, trajectory digest; partition `live-traffic`), and the bundle digest.
@@ -96,7 +106,7 @@ The report is deterministic over the run directory (it carries its own digest). 
 | :--- | :--- |
 | `endo.experiment.v0` | in `experiment.json`: the environment profile, the model, a budget, the provenance |
 | `endo.environment-profile.v0` | `simulated: false` |
-| `endo.evaluation-profile.v0` | per cell. `cognitionPolicy` is `work`: the trials are task work. |
+| `endo.evaluation-profile.v1` | per cell, with `cognitionPolicy: "none"`. No Endophasia cognition policy is applied to these trials: Pi runs with its default behaviour. v1 adds `none` to v0's `work` and `dream`; v0 records stay valid. |
 | `endo.trial.v0` coordinates and `endo.trial-result.v0` | per trial |
 | `endo.evaluation-result.v0` and `endo.experiment-bundle.v0` | per cell |
 

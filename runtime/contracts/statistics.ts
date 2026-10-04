@@ -90,3 +90,74 @@ export function shuffleV0<T>(items: readonly T[], random: () => number): T[] {
 	}
 	return out;
 }
+
+/**
+ * The pairwise exact-match rate over the pairs of `n` trials, with a percentile bootstrap interval that resamples
+ * TRIALS, not pairs. `agreement(i, j)` (i < j) is true for an exact pair, false for a diverged pair, and null for a
+ * pair that could not be judged (left out of the rate). The pairs of one sample share trials, so treating the
+ * n(n-1)/2 pairs as independent observations (a Wilson interval over pairs) overstates the precision; resampling
+ * trials keeps that dependence. In a resample, two draws of the same original trial are not a pair (a trial compared
+ * with itself is trivially exact and would bias the rate up); a resample with no judged pair is skipped and counted.
+ */
+export interface EndoPairwiseRateV0 {
+	exactPairs: number;
+	judgedPairs: number;
+	rate: number | null;
+	bootstrap95: { low: number; high: number; resamples: number; skipped: number; seed: number } | null;
+}
+
+export function pairwiseRateWithTrialBootstrapV0(
+	n: number,
+	agreement: (i: number, j: number) => boolean | null,
+	options: { resamples?: number; seed: number },
+): EndoPairwiseRateV0 {
+	const matrix: (boolean | null)[][] = Array.from({ length: n }, () => Array<boolean | null>(n).fill(null));
+	let exactPairs = 0;
+	let judgedPairs = 0;
+	for (let i = 0; i < n; i += 1)
+		for (let j = i + 1; j < n; j += 1) {
+			const value = agreement(i, j);
+			matrix[i]![j] = value;
+			matrix[j]![i] = value;
+			if (value !== null) {
+				judgedPairs += 1;
+				if (value) exactPairs += 1;
+			}
+		}
+	if (judgedPairs === 0) return { exactPairs, judgedPairs, rate: null, bootstrap95: null };
+	const resamples = options.resamples ?? 10_000;
+	const random = mulberry32V0(options.seed);
+	const rates: number[] = [];
+	let skipped = 0;
+	for (let b = 0; b < resamples; b += 1) {
+		const draw = Array.from({ length: n }, () => Math.floor(random() * n));
+		let exact = 0;
+		let judged = 0;
+		for (let x = 0; x < n; x += 1)
+			for (let y = x + 1; y < n; y += 1) {
+				if (draw[x] === draw[y]) continue;
+				const value = matrix[draw[x]!]![draw[y]!];
+				if (value === null || value === undefined) continue;
+				judged += 1;
+				if (value) exact += 1;
+			}
+		if (judged === 0) skipped += 1;
+		else rates.push(exact / judged);
+	}
+	rates.sort((a, b) => a - b);
+	return {
+		exactPairs,
+		judgedPairs,
+		rate: round6V0(exactPairs / judgedPairs),
+		bootstrap95:
+			rates.length === 0
+				? null
+				: {
+						low: round6V0(quantileV0(rates, 0.025)),
+						high: round6V0(quantileV0(rates, 0.975)),
+						resamples,
+						skipped,
+						seed: options.seed,
+					},
+	};
+}

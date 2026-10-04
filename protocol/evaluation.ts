@@ -53,6 +53,16 @@ export type EndoCognitionPolicyV0 = "work" | "dream";
 export const ENDO_COGNITION_POLICIES_V0 = ["work", "dream"] as const satisfies readonly EndoCognitionPolicyV0[];
 
 /**
+ * The v1 cognitive policies (endo.evaluation-profile.v1): v0's pair plus `none`, meaning no Endophasia cognition policy
+ * was applied and the runtime ran with its default behaviour (e.g. a measurement of the runtime itself). Recording such
+ * a trial as `work` would claim a policy that was never applied.
+ */
+export type EndoCognitionPolicyV1 = EndoCognitionPolicyV0 | "none";
+
+/** The closed v1 cognitive policies, machine-checkable. */
+export const ENDO_COGNITION_POLICIES_V1 = ["work", "dream", "none"] as const satisfies readonly EndoCognitionPolicyV1[];
+
+/**
  * How one conformance outcome stands against its expected semantic meaning (README "Conformance lab"). A
  * classification is a statement about fit, never about the subject's quality. "Nothing matched exactly" (i.e.
  * UNAVAILABLE) is a useful scientific result, not an error.
@@ -119,6 +129,18 @@ export interface EndoEvaluationProfileV0 {
 }
 
 /**
+ * The v1 evaluation profile: v0 with `cognitionPolicy` widened to EndoCognitionPolicyV1 (adds `none`). v0 records stay
+ * valid as they are; a result may carry either version.
+ */
+export interface EndoEvaluationProfileV1 extends Omit<EndoEvaluationProfileV0, "schemaVersion" | "cognitionPolicy"> {
+	schemaVersion: "endo.evaluation-profile.v1";
+	cognitionPolicy: EndoCognitionPolicyV1;
+}
+
+/** Either evaluation profile version. */
+export type EndoEvaluationProfileAnyV0 = EndoEvaluationProfileV0 | EndoEvaluationProfileV1;
+
+/**
  * One trial's result. The raw outcome (what was recorded) and the derived metrics (what was computed from it)
  * are different records in different fields: a derived value is never silently promoted to an observed one.
  */
@@ -143,8 +165,8 @@ export interface EndoEvaluationResultV0 {
 	schemaVersion: "endo.evaluation-result.v0";
 	/** The result's identity, in the evidence namespace. */
 	id: string;
-	/** The inputs the result was produced under. */
-	profile: EndoEvaluationProfileV0;
+	/** The inputs the result was produced under (endo.evaluation-profile.v0 or .v1). */
+	profile: EndoEvaluationProfileAnyV0;
 	/** The recorded trials, exactly `profile.trialCount` of them, in trial order. */
 	trials: EndoTrialResultV0[];
 	/** The resources the evaluation consumed, as reported. */
@@ -326,16 +348,42 @@ const ENDO_EVALUATION_PROFILE_ALLOWED_KEYS_V0 = new Set([
  * integers nor non-empty strings, and a trial count below one. Returns the validated value unchanged, or null.
  */
 export function validateEndoEvaluationProfileV0(value: unknown): EndoEvaluationProfileV0 | null {
+	return validateProfile(
+		value,
+		"endo.evaluation-profile.v0",
+		ENDO_COGNITION_POLICIES_V0,
+	) as EndoEvaluationProfileV0 | null;
+}
+
+/** Validates a v1 evaluation profile: the v0 rules, with `none` added to the cognition policies. */
+export function validateEndoEvaluationProfileV1(value: unknown): EndoEvaluationProfileV1 | null {
+	return validateProfile(
+		value,
+		"endo.evaluation-profile.v1",
+		ENDO_COGNITION_POLICIES_V1,
+	) as EndoEvaluationProfileV1 | null;
+}
+
+/** Validates an evaluation profile of either version, each under its own rules. */
+export function validateEndoEvaluationProfileAnyV0(value: unknown): EndoEvaluationProfileAnyV0 | null {
+	return validateEndoEvaluationProfileV0(value) ?? validateEndoEvaluationProfileV1(value);
+}
+
+function validateProfile(
+	value: unknown,
+	schemaVersion: string,
+	policies: readonly string[],
+): EndoEvaluationProfileAnyV0 | null {
 	if (typeof value !== "object" || value === null || !isPlainJsonObjectV0(value)) return null;
 	const v = value as Record<string, unknown>;
 	for (const key of Object.keys(v)) if (!ENDO_EVALUATION_PROFILE_ALLOWED_KEYS_V0.has(key)) return null;
-	if (v.schemaVersion !== "endo.evaluation-profile.v0") return null;
+	if (v.schemaVersion !== schemaVersion) return null;
 	if (!isEndoIdentifier(v.experimentId, "experiment")) return null;
 	if (v.candidateId !== undefined && !isEndoIdentifier(v.candidateId, "candidate")) return null;
 	if (v.candidateRevision !== undefined && !isProfileTextV0(v.candidateRevision, 256)) return null;
 	if (!isProfileTextV0(v.runtime, 256)) return null;
 	if (!isProfileTextV0(v.model, 256)) return null;
-	if (!(ENDO_COGNITION_POLICIES_V0 as readonly string[]).includes(v.cognitionPolicy as string)) return null;
+	if (!policies.includes(v.cognitionPolicy as string)) return null;
 	if (validateEndoEnvironmentProfileV0(v.environment) === null) return null;
 	if (v.evaluator !== undefined && !isProfileTextV0(v.evaluator, 256)) return null;
 	if (v.grader !== undefined && !isProfileTextV0(v.grader, 256)) return null;
@@ -343,7 +391,7 @@ export function validateEndoEvaluationProfileV0(value: unknown): EndoEvaluationP
 		if (!Array.isArray(v.seeds) || v.seeds.length === 0 || !v.seeds.every(isSeedV0)) return null;
 	}
 	if (typeof v.trialCount !== "number" || !Number.isInteger(v.trialCount) || v.trialCount < 1) return null;
-	return value as EndoEvaluationProfileV0;
+	return value as EndoEvaluationProfileAnyV0;
 }
 
 const ENDO_TRIAL_RESULT_ALLOWED_KEYS_V0 = new Set(["schemaVersion", "coordinates", "partition", "raw", "derived"]);
@@ -391,7 +439,7 @@ export function validateEndoEvaluationResultV0(value: unknown): EndoEvaluationRe
 	for (const key of Object.keys(v)) if (!ENDO_EVALUATION_RESULT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evaluation-result.v0") return null;
 	if (!isEndoIdentifier(v.id, "evidence")) return null;
-	const profile = validateEndoEvaluationProfileV0(v.profile);
+	const profile = validateEndoEvaluationProfileAnyV0(v.profile);
 	if (profile === null) return null;
 	if (!Array.isArray(v.trials) || v.trials.length !== profile.trialCount) return null;
 	for (const trial of v.trials) if (validateEndoTrialResultV0(trial) === null) return null;

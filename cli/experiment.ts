@@ -3,7 +3,7 @@
  * the capture proxy (so it is also a replayable cassette), and report run-to-run agreement with the trajectory
  * comparison (docs/experiments.md).
  *
- *   endo experiment run <spec.json> --out <dir> [--max-trials n]
+ *   endo experiment run <spec.json> --out <dir> [--max-trials n] [--fixture-experiment]
  *   endo experiment report <dir>
  *
  * The run directory:
@@ -58,7 +58,13 @@ import {
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import type { EndoTrajectoryComparisonV0, EndoTrajectoryV0 } from "../protocol/trajectory.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
-import { mulberry32V0, shuffleV0, spreadV0, wilson95V0 } from "../runtime/contracts/statistics.ts";
+import {
+	mulberry32V0,
+	pairwiseRateWithTrialBootstrapV0,
+	shuffleV0,
+	spreadV0,
+	wilson95V0,
+} from "../runtime/contracts/statistics.ts";
 import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0 } from "../storage/digest-key.ts";
@@ -270,6 +276,12 @@ export interface EndoExperimentRunOptionsV0 {
 	readonly dir: string;
 	/** Stop after this many trials in this run session (the rest stay for a later session). */
 	readonly maxTrials?: number;
+	/**
+	 * Fixture-experiment mode: required for, and only allowed with, a spec in the `fixture` digest domain (the committed
+	 * public key, whose digests offer no secrecy: synthetic tasks only). The same rule as the fixture recorder: a normal
+	 * experiment is refused under the public key, and a fixture experiment is refused without this explicit mode.
+	 */
+	readonly fixtureExperiment?: boolean;
 	readonly log?: (line: string) => void;
 	/** For tests: where the scratch root's parent goes (default: the system temp directory). */
 	readonly scratchParent?: string;
@@ -288,6 +300,15 @@ export interface EndoExperimentRunSummaryV0 {
 export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): Promise<EndoExperimentRunSummaryV0> {
 	const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
 	const spec = validateEndoExperimentSpecV0(options.spec);
+	const fixtureMode = options.fixtureExperiment === true;
+	if (spec.digestDomain === "fixture" && !fixtureMode)
+		throw new TypeError(
+			"refusing to run a fixture-domain experiment outside fixture-experiment mode: its digests are made under the committed public key and offer no secrecy (pass --fixture-experiment for a synthetic experiment)",
+		);
+	if (fixtureMode && spec.digestDomain !== "fixture")
+		throw new TypeError(
+			"refusing fixture-experiment mode for a spec in the installation domain: fixture mode is for synthetic experiments recorded under the committed public key",
+		);
 	const dir = resolve(options.dir);
 	const specSha256 = sha256HexV0(canonicalEndoJsonV0(spec));
 	const recordPath = join(dir, "experiment.json");
@@ -521,7 +542,7 @@ const JUDGED = ["lifecycle", "tools", "outcome"] as const;
 type Judged = (typeof JUDGED)[number];
 
 const STATISTICS_NOTE =
-	"pairwise rates are over all unordered pairs of completed trials in a cell; pairs share trials, so they are not independent and their Wilson intervals are optimistic. The trial-level 'modal agreement' (share of trials whose layer equals the most common one) is over independent trials. Exact-match rates exclude UNAVAILABLE pairs, which are counted separately. Usage and timing are reported as median and interquartile range (type 7 quartiles), never judged.";
+	"headline: modal agreement, the share of completed trials whose layer equals the most common one, with a 95% Wilson interval (trials are independent). Also: the number of distinct trajectories, and the pairwise exact-match rate over all unordered pairs of completed trials (EXACT / (EXACT + DIVERGED); UNAVAILABLE pairs are counted separately) with a 95% percentile bootstrap interval that resamples trials, not pairs: pairs share trials, so a Wilson interval over pairs would be optimistic (10000 resamples, seeded from the spec sha256, cell and layer; two draws of the same trial are not a pair). Usage and timing are reported as median and interquartile range (type 7 quartiles), never judged.";
 
 function layerKey(t: EndoTrajectoryV0, layer: Judged): string {
 	return canonicalEndoJsonV0(t.layers[layer]);
@@ -596,12 +617,30 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				const groups = new Map<string, number>();
 				for (const t of trajectories) groups.set(layerKey(t, layer), (groups.get(layerKey(t, layer)) ?? 0) + 1);
 				const modal = Math.max(0, ...groups.values());
+				const verdictOf = new Map(
+					comparisons.map(({ i, j, comparison }) => [`${i}:${j}`, comparison.layers[layer].status]),
+				);
+				const bootstrapSeed = Number.parseInt(
+					sha256HexV0(`${run.specSha256}\u0000${task.id}\u0000${condition.id}\u0000${layer}`).slice(0, 8),
+					16,
+				);
 				layers[layer] = {
+					// The headline: share of (independent) trials whose layer equals the modal one, Wilson 95%.
+					modalAgreement: { ...wilson95V0(modal, trajectories.length) } as unknown as JsonValueV0,
+					distinctTrajectories: groups.size,
 					pairs: comparisons.length,
 					counts,
-					pairwiseExact: { ...wilson95V0(counts.EXACT, counts.EXACT + counts.DIVERGED) } as unknown as JsonValueV0,
-					distinctTrajectories: groups.size,
-					modalAgreement: { ...wilson95V0(modal, trajectories.length) } as unknown as JsonValueV0,
+					// Pairwise exact-match rate; the interval resamples trials, not pairs (pairs share trials).
+					pairwiseExact: {
+						...pairwiseRateWithTrialBootstrapV0(
+							trajectories.length,
+							(i, j) => {
+								const status = verdictOf.get(`${i}:${j}`);
+								return status === "EXACT" ? true : status === "DIVERGED" ? false : null;
+							},
+							{ seed: bootstrapSeed },
+						),
+					} as unknown as JsonValueV0,
 				};
 				firstDivergence[layer] = Object.fromEntries(
 					Object.entries(indices).sort(([a], [b]) => Number(a) - Number(b)),
@@ -640,6 +679,13 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			const walls = trajectories.map(wallTotal).flatMap((value) => (value === null ? [] : [value]));
 			const workspaces = completed.map((result) => result.finalWorkspace?.value ?? "none");
 			const parameters = distinct(completed.flatMap((result) => result.requestParameters));
+			const samplingFieldsSent = [
+				...new Set(
+					parameters.flatMap((entry) =>
+						Object.keys(entry as object).filter((field) => SAMPLING_KEYS.includes(field)),
+					),
+				),
+			].sort();
 			const samplingSent = distinct(
 				parameters.map((entry) =>
 					Object.fromEntries(
@@ -651,7 +697,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			);
 			// The profile and bundle records (protocol/evaluation.ts) through the lab's trial discipline (lab/trials.ts).
 			const profile = {
-				schemaVersion: "endo.evaluation-profile.v0",
+				schemaVersion: "endo.evaluation-profile.v1",
 				experimentId: run.spec.id,
 				runtime:
 					distinct(
@@ -661,7 +707,8 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 						),
 					).join(" | ") || "pi (no completed trial)",
 				model: `${run.spec.provider}/${run.spec.model}`,
-				cognitionPolicy: "work",
+				// No Endophasia cognition policy is applied to these trials: Pi runs with its default behaviour.
+				cognitionPolicy: "none",
 				environment: {
 					schemaVersion: "endo.environment-profile.v0",
 					environmentId: `endophasia-scratch-workspace/${task.id}/${condition.id}`,
@@ -671,29 +718,35 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				trialCount: completed.length,
 			};
 			const idLocal = `experiment.${sha256HexV0(`${run.specSha256}\u0000${task.id}\u0000${condition.id}`).slice(0, 32)}`;
-			const evaluation = runEndoTrialsV0({
-				id: `endo.evidence.${idLocal}`,
-				profile,
-				runTrial: (index) => {
-					const result = completed[index]!;
-					return {
-						raw: {
-							session: result.session,
-							store: result.store,
-							position: result.position,
-							exchanges: result.exchanges,
-							outcome: trajectories[index]!.layers.outcome as unknown as JsonValueV0,
-						},
-						derived: {
-							checkPassed: result.check.ran ? result.check.passed : null,
-							finalWorkspace: result.finalWorkspace?.value ?? null,
-							trajectoryDigest: trajectories[index]!.digest,
-						},
-						partition: "live-traffic",
-					};
-				},
-			});
-			const bundle = buildEndoExperimentBundleV0(`endo.evidence.${idLocal}.bundle`, evaluation);
+			const evaluation =
+				completed.length === 0
+					? null
+					: runEndoTrialsV0({
+							id: `endo.evidence.${idLocal}`,
+							profile,
+							runTrial: (index) => {
+								const result = completed[index]!;
+								return {
+									raw: {
+										session: result.session,
+										store: result.store,
+										position: result.position,
+										exchanges: result.exchanges,
+										outcome: trajectories[index]!.layers.outcome as unknown as JsonValueV0,
+									},
+									derived: {
+										checkPassed: result.check.ran ? result.check.passed : null,
+										finalWorkspace: result.finalWorkspace?.value ?? null,
+										trajectoryDigest: trajectories[index]!.digest,
+									},
+									partition: "live-traffic",
+								};
+							},
+						});
+			const bundle =
+				evaluation === null
+					? { status: "UNAVAILABLE", reason: "no trial of this cell completed" }
+					: buildEndoExperimentBundleV0(`endo.evidence.${idLocal}.bundle`, evaluation);
 			const cell = {
 				task: task.id,
 				condition: condition.id,
@@ -721,6 +774,8 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 							},
 				servingInputs: {
 					requestParametersSeen: parameters,
+					samplingFieldsChecked: [...SAMPLING_KEYS],
+					samplingFieldsSent,
 					samplingParametersSent:
 						samplingSent.length === 1 && Object.keys(samplingSent[0] as object).length === 0
 							? {
@@ -737,12 +792,20 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			cells.push(JSON.parse(JSON.stringify(cell)));
 			const rate = (layer: Judged) => {
 				const l = layers[layer] as {
-					pairwiseExact: { rate: number | null; wilson95: { low: number; high: number } | null };
-					modalAgreement: { successes: number; n: number };
+					pairwiseExact: { rate: number | null; bootstrap95: { low: number; high: number } | null };
+					modalAgreement: { successes: number; n: number; wilson95: { low: number; high: number } | null };
+					distinctTrajectories: number;
 				};
-				return l.pairwiseExact.rate === null
-					? "n/a"
-					: `${(l.pairwiseExact.rate * 100).toFixed(0)}% [${(l.pairwiseExact.wilson95!.low * 100).toFixed(0)}-${(l.pairwiseExact.wilson95!.high * 100).toFixed(0)}] (modal ${l.modalAgreement.successes}/${l.modalAgreement.n})`;
+				const pct = (value: number) => (value * 100).toFixed(0);
+				const modal =
+					l.modalAgreement.wilson95 === null
+						? "n/a"
+						: `${l.modalAgreement.successes}/${l.modalAgreement.n} [${pct(l.modalAgreement.wilson95.low)}-${pct(l.modalAgreement.wilson95.high)}%]`;
+				const pairwise =
+					l.pairwiseExact.rate === null
+						? "pairs n/a"
+						: `pairs ${pct(l.pairwiseExact.rate)}%${l.pairwiseExact.bootstrap95 === null ? "" : ` [${pct(l.pairwiseExact.bootstrap95.low)}-${pct(l.pairwiseExact.bootstrap95.high)}%]`}`;
+				return `${modal}; ${l.distinctTrajectories} distinct; ${pairwise}`;
 			};
 			const checkText = task.check === undefined ? "no check" : `${passed}/${checked.length} pass`;
 			lines.push(
@@ -776,7 +839,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		"",
 		`Trials: ${body.trials.completed} completed, ${body.trials.errored} errored, ${body.trials.missing} missing of ${plan.length} planned (${interrupted} interrupted and rerun). Seed ${run.seed} (${run.seedSource}).`,
 		"",
-		"Pairwise exact-match rate per judged layer, 95% Wilson interval over pairs (optimistic: pairs share trials), and modal agreement over trials:",
+		"Per judged layer: trials agreeing with the modal trajectory (95% Wilson, over trials); distinct trajectories; pairwise exact-match rate (95% percentile bootstrap resampling trials):",
 		"",
 		"| task | condition | trials | lifecycle | tools | outcome | check | median wall |",
 		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | ---: |",
@@ -801,14 +864,17 @@ export async function experimentRunCommand(argv: readonly string[]): Promise<voi
 		args.splice(index, 2);
 		return value;
 	};
+	const fixtureExperiment = args.includes("--fixture-experiment");
+	if (fixtureExperiment) args.splice(args.indexOf("--fixture-experiment"), 1);
 	const out = take("--out");
 	const max = take("--max-trials");
 	if (args.length !== 1 || out === undefined || args[0]!.startsWith("--"))
-		throw new TypeError("usage: endo experiment run <spec.json> --out <dir> [--max-trials n]");
+		throw new TypeError("usage: endo experiment run <spec.json> --out <dir> [--max-trials n] [--fixture-experiment]");
 	const spec = validateEndoExperimentSpecV0(JSON.parse(readFileSync(args[0]!, "utf8")));
 	const summary = await runEndoExperimentV0({
 		spec,
 		dir: out,
+		fixtureExperiment,
 		...(max === undefined ? {} : { maxTrials: Number(max) }),
 	});
 	process.stdout.write(canonicalEndoJsonV0({ dir: resolve(out), ...summary }));

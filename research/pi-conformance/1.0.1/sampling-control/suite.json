@@ -1,0 +1,70 @@
+{
+	"schemaVersion": "endo.conformance-suite.v0",
+	"subject": "pi",
+	"version": "1.0.1",
+	"studies": [
+		{
+			"schemaVersion": "endo.conformance-study.v0",
+			"subject": "pi",
+			"version": "1.0.1",
+			"scenario": "sampling-fields-sent-by-default",
+			"decoder": "endophasia capture proxy (endo-capture.1): top-level request fields other than messages and tools",
+			"predicate": "which of temperature, top_p, top_k, min_p, typical_p, seed, presence_penalty, frequency_penalty, repeat_penalty Pi sends to an openai-completions endpoint with no sampling configuration",
+			"expected": "Pi sends sampling parameters only when something configures them",
+			"observed": "no sampling field in any recorded request: every request carried exactly model, stream, stream_options {include_usage: true}, store: false and max_completion_tokens: 16384 (the 8 requests of the committed cassette fixtures, the E1 smoke run, and a print-mode probe)",
+			"classification": "EXACT",
+			"evidence": [
+				"011e7cff994e0c78f03c290db44b6f2fa96bc6b7cbf1e49ad8bd99a181ecedb0",
+				"236f13d4119c699c96b6356cb350942736c5b5715b716df703f468e3f191df49"
+			],
+			"limitations": [
+				"one Pi release (1.0.1), one provider API (openai-completions), one endpoint (llama.cpp); other APIs or providers may send defaults",
+				"the server applies its own defaults when no sampling field is sent; those values are not observed here"
+			]
+		},
+		{
+			"schemaVersion": "endo.conformance-study.v0",
+			"subject": "pi",
+			"version": "1.0.1",
+			"scenario": "sampling-control-by-configuration",
+			"decoder": "review of the documented configuration surfaces: docs/models.md (models.json model entries, compat), docs/settings.md, docs/custom-provider.md; plus a search of every installed doc for temperature, top_p, top_k, min_p, seed, sampling, penalty",
+			"predicate": "Pi 1.0.1 documents a configuration field (models.json or settings.json) that sets temperature, top_p, top_k, min_p or seed for chat-model requests",
+			"expected": "a documented field sets chat sampling",
+			"observed": "no such field is documented. The only documented temperature is the per-request option of llama.cpp classifier models (docs/llama-cpp.md, Classification), which applies to classification, not chat. No seed field is documented.",
+			"classification": "UNAVAILABLE",
+			"evidence": [
+				"236f13d4119c699c96b6356cb350942736c5b5715b716df703f468e3f191df49",
+				"dae0b70c2f852ff57b4a34947d5059f7bac18038ca7e1fae4c4ba97bcbd574c3",
+				"5345ac346429a3862b46533ee810944b2c756079dcf5d3aad272ab579c58c129",
+				"636e994b9714c8f9264d25e14f4335e72b31f9b8d72c33c0c88f4e609f5813df"
+			],
+			"limitations": [
+				"a documentation review: an undocumented field may exist, and is out of scope by rule (documented surfaces only)",
+				"docs as installed with Pi 1.0.1 (digests above)"
+			]
+		},
+		{
+			"schemaVersion": "endo.conformance-study.v0",
+			"subject": "pi",
+			"version": "1.0.1",
+			"scenario": "sampling-control-by-extension",
+			"decoder": "a five-line extension in the scratch agent directory (extensions/), handling before_provider_request as Pi documents it in examples/extensions/provider-payload.ts (the custom-provider.md onPayload contract), observed through the pass-through capture proxy",
+			"predicate": "a documented Pi extension event can set temperature and seed on chat-model requests",
+			"expected": "the request Pi sends carries the extension’s temperature and seed",
+			"observed": "with the extension returning { ...event.payload, temperature: 0, seed: 42 }, Pi sent model, stream, stream_options, store, max_completion_tokens, temperature: 0 and seed: 42; without it, none of the sampling fields. The proxy changed nothing.",
+			"classification": "QUALIFIED",
+			"evidence": [
+				"f39795611ed1392f7d59a51cb3146caec5ce5607557cdd32342eb7ef9aa0beae",
+				"011e7cff994e0c78f03c290db44b6f2fa96bc6b7cbf1e49ad8bd99a181ecedb0",
+				"e0016077798098f528b1129954c30a28809a1513924d9c2e0efda9328d503a49",
+				"5345ac346429a3862b46533ee810944b2c756079dcf5d3aad272ab579c58c129",
+				"da717a338c68708cb3e45b44c491287fde44059184dec2351d8d1dd430f73f76"
+			],
+			"limitations": [
+				"the event name before_provider_request appears in a shipped, documented example rather than in the extensions.md prose",
+				"an extension is code that Pi loads from its agent directory, not a configuration field",
+				"observed once, in print mode, on one Pi release and one endpoint; whether the server honours temperature and seed is a property of the server, not of Pi"
+			]
+		}
+	]
+}

@@ -18,7 +18,7 @@ import {
 } from "../cli/experiment.ts";
 import { validateEndoExperimentBundleV0 } from "../protocol/evaluation.ts";
 import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
-import { spreadV0, wilson95V0 } from "../runtime/contracts/statistics.ts";
+import { pairwiseRateWithTrialBootstrapV0, spreadV0, wilson95V0 } from "../runtime/contracts/statistics.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
 
@@ -130,9 +130,37 @@ describe("the experiment spec and the trial order", () => {
 		expect(spreadV0([1, 2, 3, 4])).toEqual({ n: 4, median: 2.5, q1: 1.75, q3: 3.25, iqr: 1.5, min: 1, max: 4 });
 		expect(spreadV0([])).toBeNull();
 	});
+
+	it("the pairwise rate's bootstrap resamples trials: deterministic per seed, wider than a Wilson interval over pairs", () => {
+		// 8 trials: 4 identical, 4 all different -> 6 exact pairs of 28.
+		const same = (i: number, j: number) => i < 4 && j < 4;
+		const a = pairwiseRateWithTrialBootstrapV0(8, same, { seed: 1, resamples: 2000 });
+		expect(a).toMatchObject({ exactPairs: 6, judgedPairs: 28, rate: 0.214286 });
+		expect(pairwiseRateWithTrialBootstrapV0(8, same, { seed: 1, resamples: 2000 })).toEqual(a);
+		const overPairs = wilson95V0(6, 28).wilson95!;
+		expect(a.bootstrap95!.high - a.bootstrap95!.low).toBeGreaterThan(overPairs.high - overPairs.low);
+		// An unjudgeable pair is left out; no judged pair gives no rate.
+		expect(pairwiseRateWithTrialBootstrapV0(3, () => null, { seed: 1 })).toEqual({
+			exactPairs: 0,
+			judgedPairs: 0,
+			rate: null,
+			bootstrap95: null,
+		});
+	});
 });
 
 describe("endo experiment run / report (fake Pi, fake upstream)", () => {
+	it("fixture-experiment mode is explicit both ways: a fixture spec needs it, a normal spec refuses it", async () => {
+		const dir = join(base, "modes");
+		await expect(
+			runEndoExperimentV0({ spec: spec({ digestDomain: "fixture" }), dir, log: () => {}, scratchParent: base }),
+		).rejects.toThrow(/outside fixture-experiment mode/);
+		await expect(
+			runEndoExperimentV0({ spec: spec(), dir, fixtureExperiment: true, log: () => {}, scratchParent: base }),
+		).rejects.toThrow(/refusing fixture-experiment mode for a spec in the installation domain/);
+		expect(existsSync(join(dir, "experiment.json"))).toBe(false);
+	});
+
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {
 		const dir = join(base, "partial");
 		const first = await runEndoExperimentV0({ spec: spec(), dir, maxTrials: 3, log: () => {}, scratchParent: base });
@@ -229,8 +257,9 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 					{
 						pairs: number;
 						counts: Record<string, number>;
-						pairwiseExact: { rate: number };
-						modalAgreement: { n: number };
+						pairwiseExact: { rate: number; bootstrap95: { resamples: number } };
+						modalAgreement: { n: number; successes: number };
+						distinctTrajectories: number;
 					}
 				>;
 				check: { successes: number; n: number };
@@ -248,7 +277,15 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 			expect(cell.layers.tools!.pairs).toBe(1);
 			expect(cell.layers.tools!.counts.EXACT).toBe(1);
 			expect(cell.layers.lifecycle!.pairwiseExact.rate).toBe(1);
-			expect(cell.layers.outcome!.modalAgreement.n).toBe(2);
+			expect(cell.layers.outcome!.modalAgreement).toMatchObject({ n: 2, successes: 2 });
+			expect(cell.layers.tools!.distinctTrajectories).toBe(1);
+			expect(cell.layers.tools!.pairwiseExact.bootstrap95.resamples).toBe(10_000);
+			expect(
+				(cell.bundle as { result: { profile: { schemaVersion: string; cognitionPolicy: string } } }).result.profile,
+			).toMatchObject({
+				schemaVersion: "endo.evaluation-profile.v1",
+				cognitionPolicy: "none",
+			});
 			expect(cell.check).toMatchObject({ successes: 2, n: 2 });
 			expect(cell.timing).toMatchObject({ clock: "observer", wallMs: { n: 2 } });
 			expect(cell.servingInputs.requestParametersSeen.length).toBeGreaterThan(0);

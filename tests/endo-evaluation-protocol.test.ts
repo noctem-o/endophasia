@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { validateTrialCoordinatesV0 } from "../protocol/coordinates.ts";
 import {
 	ENDO_COGNITION_POLICIES_V0,
+	ENDO_COGNITION_POLICIES_V1,
 	ENDO_CONFORMANCE_CLASSIFICATIONS_V0,
 	ENDO_EVALUATION_PARTITIONS_V0,
 	type EndoConformanceStudyV0,
@@ -10,7 +11,9 @@ import {
 	validateEndoConformanceStudyV0,
 	validateEndoConformanceSuiteV0,
 	validateEndoEnvironmentProfileV0,
+	validateEndoEvaluationProfileAnyV0,
 	validateEndoEvaluationProfileV0,
+	validateEndoEvaluationProfileV1,
 	validateEndoEvaluationResultV0,
 	validateEndoExperimentBundleV0,
 	validateEndoReplayComparisonV0,
@@ -151,6 +154,16 @@ describe("validateEndoEvaluationProfileV0", () => {
 		expect(validateEndoEvaluationProfileV0({ ...validProfile(), cognitionPolicy: "dream" })).toBeTypeOf("object");
 		expect(validateEndoEvaluationProfileV0({ ...validProfile(), cognitionPolicy: "sleep" })).toBeNull();
 		expect(validateEndoEvaluationProfileV0({ ...validProfile(), cognitionPolicy: "WORK" })).toBeNull();
+		// `none` (no Endophasia cognition policy applied) exists only from profile v1; v0 records keep their pair.
+		expect(validateEndoEvaluationProfileV0({ ...validProfile(), cognitionPolicy: "none" })).toBeNull();
+		const v1 = { ...validProfile(), schemaVersion: "endo.evaluation-profile.v1", cognitionPolicy: "none" };
+		expect(validateEndoEvaluationProfileV1(v1)).toBeTypeOf("object");
+		expect(validateEndoEvaluationProfileV1({ ...v1, cognitionPolicy: "work" })).toBeTypeOf("object");
+		expect(validateEndoEvaluationProfileV1({ ...v1, cognitionPolicy: "sleep" })).toBeNull();
+		expect(validateEndoEvaluationProfileV1(validProfile())).toBeNull();
+		expect(validateEndoEvaluationProfileAnyV0(v1)).toBeTypeOf("object");
+		expect(validateEndoEvaluationProfileAnyV0(validProfile())).toBeTypeOf("object");
+		expect(ENDO_COGNITION_POLICIES_V1).toEqual(["work", "dream", "none"]);
 	});
 
 	it("validates the inline environment profile", () => {

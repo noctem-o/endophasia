@@ -716,7 +716,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 					environmentId: `endophasia-scratch-workspace/${task.id}/${condition.id}`,
 					simulated: false,
 				},
-				evaluator: `${ENDO_EXPERIMENT_RUNNER_VERSION_V0}; ${task.check === undefined ? "no success check" : `success check: ${task.check.argv.join(" ")}`}`,
+				evaluator: `${ENDO_EXPERIMENT_RUNNER_VERSION_V0}; ${task.check === undefined ? "no success check" : `success check sha256 ${sha256HexV0(canonicalEndoJsonV0(task.check))} (the command is in the spec)`}`,
 				trialCount: completed.length,
 			};
 			const idLocal = `experiment.${sha256HexV0(`${run.specSha256}\u0000${task.id}\u0000${condition.id}`).slice(0, 32)}`;

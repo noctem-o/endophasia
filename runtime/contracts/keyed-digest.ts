@@ -41,7 +41,15 @@ export interface EndoDigestKeyV0 {
 	readonly fingerprint: string;
 	/** The keyed digest of a plain JSON value's canonical JSON. Throws on a non-plain value. */
 	digest(value: unknown): EndoKeyedDigestV0;
+	/**
+	 * The keyed digest of raw bytes (a captured HTTP body, a workspace archive). Domain-separated from `digest`: the
+	 * HMAC covers `endo.bytes.v0`, a NUL and the bytes, so raw bytes never collide with a JSON value's digest.
+	 */
+	digestBytes(bytes: Uint8Array): EndoKeyedDigestV0;
 }
+
+/** The prefix `digestBytes` puts before the bytes it digests. */
+export const ENDO_KEYED_BYTES_PREFIX_V0 = "endo.bytes.v0\u0000";
 
 /**
  * A digest key from raw key bytes (at least 32). With `public: true` the key is marked public and its id is the domain
@@ -65,6 +73,13 @@ export function endoDigestKeyV0(key: Uint8Array, domain: string, options: { publ
 				algorithm: ENDO_KEYED_DIGEST_ALGORITHM_V0,
 				keyId,
 				value: createHmac("sha256", secret).update(canonicalEndoJsonV0(value)).digest("hex"),
+			};
+		},
+		digestBytes(bytes: Uint8Array): EndoKeyedDigestV0 {
+			return {
+				algorithm: ENDO_KEYED_DIGEST_ALGORITHM_V0,
+				keyId,
+				value: createHmac("sha256", secret).update(ENDO_KEYED_BYTES_PREFIX_V0).update(bytes).digest("hex"),
 			};
 		},
 	});

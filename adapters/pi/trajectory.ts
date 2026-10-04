@@ -46,7 +46,7 @@ import { PI_LIFECYCLE_PRODUCER_PREFIX_V0, PI_RECORDING_PRODUCER_PREFIX_V0 } from
 import { piEndoSessionIdV0 } from "./mapping.ts";
 
 /** The projector's version: bump it when what a layer reads or keeps changes. */
-export const PI_TRAJECTORY_PROJECTION_V0 = "pi-trajectory.1";
+export const PI_TRAJECTORY_PROJECTION_V0 = "pi-trajectory.2";
 
 export interface PiTrajectoryOptionsV0 {
 	/** The store as the caller names it (recorded in `source.store`). */
@@ -145,6 +145,9 @@ interface RunState {
 	assistantMessages: number;
 	usages: Record<string, number>[];
 }
+
+const RESULT_NOT_RECORDED =
+	"this recording's tool.finished carries no keyed result digest (pi-rpc-mapping.3 and earlier record none, and an attachment without a digest key records none)";
 
 const ARGS_NOT_RECORDED =
 	"this recording's tool.started carries no keyed argument digest (pi-rpc-mapping.2 and earlier record none, and an attachment without a digest key records none)";
@@ -437,6 +440,7 @@ export function projectPiTrajectoryV0(
 					name: recordedString(payload.toolName, "Pi's tool_execution_start carried no tool name"),
 					argsDigest: argsDigest === null ? endoUnavailableV0(ARGS_NOT_RECORDED) : endoReportedV0(argsDigest),
 					result: endoUnavailableV0("no tool_execution_end was recorded for this call"),
+					resultDigest: endoUnavailableV0("no tool_execution_end was recorded for this call"),
 				});
 				if (callId !== null) pendingTools.set(callId, tools.length - 1);
 				break;
@@ -447,9 +451,12 @@ export function projectPiTrajectoryV0(
 					typeof payload.isError === "boolean"
 						? endoReportedV0(payload.isError ? "error" : "ok")
 						: endoUnavailableV0("Pi's tool_execution_end carried no isError");
+				const recordedDigest = keyedDigest(payload.resultDigest);
+				const resultDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0> =
+					recordedDigest === null ? endoUnavailableV0(RESULT_NOT_RECORDED) : endoReportedV0(recordedDigest);
 				const index = callId === null ? undefined : pendingTools.get(callId);
 				if (index !== undefined) {
-					tools[index] = { ...tools[index]!, result };
+					tools[index] = { ...tools[index]!, result, resultDigest };
 					pendingTools.delete(callId!);
 				} else {
 					tools.push({
@@ -458,6 +465,7 @@ export function projectPiTrajectoryV0(
 						name: recordedString(payload.toolName, "Pi's tool_execution_end carried no tool name"),
 						argsDigest: endoUnavailableV0("no tool_execution_start was recorded for this call"),
 						result,
+						resultDigest,
 					});
 				}
 				break;

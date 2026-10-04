@@ -1,0 +1,216 @@
+{
+	"schemaVersion": "endo.pi-cassette-fixture.v0",
+	"kind": "real",
+	"recorder": "pi-cassette-recorder.1",
+	"driver": "pi-cassette-driver.1",
+	"capture": "endo-capture.1",
+	"recordedAt": "2026-10-03T21:42:39.685Z",
+	"host": {
+		"platform": "linux",
+		"node": "v26.10.0"
+	},
+	"endophasia": {
+		"adapter": "pi-rpc-adapter.2",
+		"mapping": "pi-rpc-mapping.4",
+		"suite": "pi-rpc-suite.2"
+	},
+	"pi": {
+		"version": "1.0.1",
+		"package": {
+			"name": "@earendil-works/pi-coding-agent",
+			"version": "1.0.1",
+			"root": null
+		},
+		"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+		"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a"
+	},
+	"model": {
+		"provider": "endolocal",
+		"modelId": "qwen3.8-27b",
+		"api": "openai-completions",
+		"upstream": "http://127.0.0.1:8080",
+		"endpointReportedModels": {
+			"status": "reported",
+			"value": [
+				"qwen3.8-27b"
+			]
+		},
+		"apiKey": "none (a cassette recording supports only endpoints without a key)"
+	},
+	"proxy": {
+		"listen": "http://127.0.0.1:46619"
+	},
+	"liveStudyAuthorized": true,
+	"digestDomain": {
+		"keyId": "fixture-public",
+		"public": true,
+		"note": "every digest and blob address in these fixtures is made under a committed public key and offers no secrecy"
+	},
+	"scenarios": [
+		{
+			"name": "completes",
+			"workspace": {},
+			"steps": [
+				{
+					"op": "prompt",
+					"text": "Reply with the single word: ready"
+				}
+			]
+		},
+		{
+			"name": "stop-mid-turn",
+			"workspace": {},
+			"steps": [
+				{
+					"op": "prompt-stop",
+					"text": "Count slowly from one to forty thousand, one number per line, with no other text.",
+					"afterChunks": 16
+				}
+			]
+		},
+		{
+			"name": "killed-and-resumed",
+			"workspace": {},
+			"steps": [
+				{
+					"op": "prompt-kill",
+					"text": "Count slowly from one to forty thousand, one number per line, with no other text.",
+					"afterChunks": 16
+				},
+				{
+					"op": "prompt",
+					"text": "Reply with the single word: resumed"
+				}
+			]
+		},
+		{
+			"name": "tool-use",
+			"workspace": {
+				"notes.txt": "status: draft\nowner: endophasia fixture\nnote: this file is part of a synthetic test workspace\n"
+			},
+			"steps": [
+				{
+					"op": "prompt",
+					"text": "Work only in the current working directory. Do these three steps in order, one tool call each: 1. Use the read tool to read notes.txt. 2. Use the edit tool to replace the word draft with the word final in notes.txt. 3. Use the bash tool to run exactly this command: wc -l notes.txt. Then reply with the single word: done"
+				}
+			]
+		}
+	],
+	"sessions": [
+		{
+			"name": "completes",
+			"purpose": "a short prompt runs to agent_settled",
+			"piSessionId": "endo-pi-default-df534dc59ed4",
+			"eventCount": 28,
+			"exchanges": [
+				{
+					"exchange": 1,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 24,
+					"wireBytes": 6827
+				}
+			],
+			"files": {
+				"session.events.jsonl": "7a6de16e33ff94f7cb86f85071aafc48b6008905f3da4bbde96f18f8defce250",
+				"capture.events.jsonl": "478da9c87e2aa2d7ea9c452eaf5e2b895a94c9c8e7043bc5132aac760374405d",
+				"evidence.jsonl": "a62b3f77f6b96e6d78ed0813dddb7af4651f3060085a4615703ebd56124a1d11"
+			},
+			"notes": []
+		},
+		{
+			"name": "stop-mid-turn",
+			"purpose": "a long prompt; a STOP once the proxy has relayed 16 response chunks",
+			"piSessionId": "endo-pi-default-e9ee021950bb",
+			"eventCount": 32,
+			"exchanges": [
+				{
+					"exchange": 1,
+					"outcome": "client-disconnected",
+					"status": 200,
+					"chunks": 17,
+					"wireBytes": 5149
+				}
+			],
+			"files": {
+				"session.events.jsonl": "0891e1ad654bac21b66eaef7bfe730b0bdd5b7ddea6418fd1963f6d0d214d431",
+				"capture.events.jsonl": "6f766432781b6dc04e394c9a63cd7641c936b5e130199c6b48c8d646bd2c3d1a",
+				"evidence.jsonl": "a62b3f77f6b96e6d78ed0813dddb7af4651f3060085a4615703ebd56124a1d11"
+			},
+			"notes": []
+		},
+		{
+			"name": "killed-and-resumed",
+			"purpose": "a long prompt from a child process, SIGKILLed once the proxy has relayed 16 response chunks; the store and session are reopened and a short prompt runs",
+			"piSessionId": "endo-pi-default-4ccfafd44635",
+			"eventCount": 42,
+			"exchanges": [
+				{
+					"exchange": 1,
+					"outcome": "client-disconnected",
+					"status": 200,
+					"chunks": 17,
+					"wireBytes": 5412
+				},
+				{
+					"exchange": 2,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 170,
+					"wireBytes": 49937
+				}
+			],
+			"files": {
+				"session.events.jsonl": "b770823016cb68c7954edd8fa6e58a2600465efb0f6eeb501c37d72a6610c48d",
+				"capture.events.jsonl": "03f5d7668acc1e1c702b0dc1ceee26c13cd690c0559ec5c5f5e52a007d072155",
+				"evidence.jsonl": "a62b3f77f6b96e6d78ed0813dddb7af4651f3060085a4615703ebd56124a1d11"
+			},
+			"notes": [
+				"the Endophasia child process was SIGKILLed",
+				"Pi ended with its process group"
+			]
+		},
+		{
+			"name": "tool-use",
+			"purpose": "the model reads a file, edits it and runs a harmless command, all in the scratch workspace",
+			"piSessionId": "endo-pi-default-582b050dfa44",
+			"eventCount": 64,
+			"exchanges": [
+				{
+					"exchange": 1,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 74,
+					"wireBytes": 21255
+				},
+				{
+					"exchange": 2,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 46,
+					"wireBytes": 14075
+				},
+				{
+					"exchange": 3,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 26,
+					"wireBytes": 7976
+				},
+				{
+					"exchange": 4,
+					"outcome": "complete",
+					"status": 200,
+					"chunks": 24,
+					"wireBytes": 7099
+				}
+			],
+			"files": {
+				"session.events.jsonl": "89938c80bed682a73aee7ab04a79ca4fa5e90f0c1793d2efa3b7cebe0cd0ae6e",
+				"capture.events.jsonl": "ae3259426debebfb4284607b514040683c0f86f6c3f097d8930fe33af4e7d789",
+				"evidence.jsonl": "a62b3f77f6b96e6d78ed0813dddb7af4651f3060085a4615703ebd56124a1d11"
+			},
+			"notes": []
+		}
+	]
+}

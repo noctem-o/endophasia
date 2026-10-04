@@ -299,7 +299,7 @@ A valid proposal does not widen the model's permission.
   - `endo trajectory show` projects one recorded session into `endo.trajectory.v0`, opening the store read-only. The
     layers are:
     - lifecycle;
-    - tools (name, keyed digest of the canonical arguments, result status);
+    - tools (name, keyed digests of the canonical arguments and of the result content, result status);
     - outcome (cause by reference);
     - usage (what Pi reported);
     - timing (the observer's clock).
@@ -316,7 +316,20 @@ A valid proposal does not widen the model's permission.
     - **Comparison:** digests from different domains are never compared.
     - **Fixtures:** they use a committed public key (`fixture-public`) whose digests offer no secrecy.
 
-    Earlier recordings have none of these.
+    Earlier recordings have none of these. Since `pi-rpc-mapping.4`, `tool.finished` also records a keyed digest of
+    the result content Pi documents on `tool_execution_end` (`result.content`; the tool-specific `details` are not
+    digested).
+- **Capture and cassette replay** ([how it works](docs/replay.md)).
+  - `endo proxy record` is a loopback-only, byte-exact relay between Pi and an OpenAI-compatible endpoint. Pi reaches
+    it through its normal `models.json`. It records each exchange (keyed request digest, headers with secret values
+    dropped, every response chunk with its offset, how it ended) into `<store>/capture/`. Bodies go to a keyed blob
+    store outside canonical evidence.
+  - `endo proxy replay` serves a cassette in recorded order with the recorded chunk boundaries, as-recorded or
+    immediate. Any mismatch is an explicit miss and a failed request, never an improvised response.
+  - `endo replay <store> <session>` restores the recorded scratch root at its recorded path and serves the cassette on
+    the recorded port. It drives a fresh Pi through the recorded prompts, STOP and kill (at the recorded chunk), then
+    compares the result with the recording, layer by layer.
+  - The proxy and the cassette server depend only on the OpenAI-compatible boundary, not on Pi.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.
@@ -347,12 +360,25 @@ OpenAI-compatible server, with reasoning on, on Linux. Its three sessions came o
 That is one Pi release, one model and one machine. The failure, retry, compaction and unknown-record paths have been
 exercised only against the fake Pi (`tests/fixtures/pi-lifecycle/`).
 
-Two further real `completes` runs (`research/pi-conformance/1.0.1/completes-repeat/`) were compared with
-`endo trajectory diff`. Against each other and against the committed run, they were EXACT on lifecycle, tools and
-outcome, and differed in usage and timing. Neither run called a tool, so "tools EXACT" is vacuous there. This is a
-preliminary observation of real run-to-run divergence, not a variance result. The hostile trajectory cases (reordered
-or different tool calls, missing usage, another Pi version, another digest domain) are exercised only against the
-fake Pi (`tests/fixtures/trajectory/`).
+Four real sessions were recorded with their cassettes (`research/pi-conformance/1.0.1/cassettes/`): completes,
+stop-mid-turn, killed-and-resumed and tool-use. The tool-use session reads, edits and runs `wc -l` on a file in the
+scratch workspace, so "tools EXACT" is not vacuous there. Each session was replayed 5 times as-recorded and 5 times
+immediate against the same Pi 1.0.1. All 40 replays were EXACT on lifecycle, tools and outcome, with no cassette miss
+and no flag. A real negative control was also run: the workspace file was changed before Pi started. That replay
+diverged at the read's result digest, followed by an explicit cassette miss.
+
+**What these replays establish:** with the model's responses held fixed, this Pi release reproduced its control flow
+for these scenarios on one machine.
+
+**What they do not establish:**
+- anything about the model, whose outputs are held fixed;
+- tool effects outside the scratch root;
+- the behaviour of nondeterministic tools;
+- behaviour on another machine, Pi release or configuration.
+
+The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases
+(reordered or different tool calls, different result content, missing usage, another Pi version, another digest
+domain) are exercised only against the fake Pi (`tests/fixtures/trajectory/`).
 
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.

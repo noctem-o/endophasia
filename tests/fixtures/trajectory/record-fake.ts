@@ -59,6 +59,13 @@ export const FAKE_TRAJECTORY_CASES = [
 		calls: [READ_B, BASH_LS],
 	},
 	{
+		name: "tool-result-differs",
+		differs: "the first tool call returns other content (same arguments, same status)",
+		version: "1.0.0",
+		scenario: "",
+		calls: [{ ...READ_A, resultText: "other content" }, BASH_LS],
+	},
+	{
 		name: "tool-errors",
 		differs: "the second tool call reports isError",
 		version: "1.0.0",

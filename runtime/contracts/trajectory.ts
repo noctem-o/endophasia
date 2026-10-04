@@ -6,7 +6,7 @@
 // - Alignment is by position within each layer, never by timestamp.
 // - lifecycle, tools and outcome are judged: EXACT, DIVERGED at the first differing position (with both entries and
 //   the common-prefix length), or UNAVAILABLE.
-// - Tool argument digests compare only within one digest domain. Different key ids make an entry unverifiable
+// - Tool argument and result digests compare only within one digest domain. Different key ids make an entry unverifiable
 //   ("different digest domains"), never a divergence: two HMACs under different keys say nothing about equality.
 // - usage (runtime-reported tokens) and timing (the observer's clock) are never judged. They report deltas (b minus a)
 //   per aligned run and in total; deciding whether a delta is noise needs a noise band, which belongs to the variance
@@ -62,25 +62,38 @@ const CROSS_MACHINE_DOC = "docs/trajectory.md#comparing-across-machines";
 
 const canonicalAgreement = (a: unknown, b: unknown): Agreement => (same(a, b) ? "equal" : "differ");
 
+/** Two keyed digests of one field: equal, differing, or unverifiable (not recorded, or different digest domains). */
+function digestAgreement(
+	what: string,
+	a: EndoTrajectoryToolEntryV0["argsDigest"],
+	b: EndoTrajectoryToolEntryV0["argsDigest"],
+): Agreement {
+	// Reasons name no side, so that compare(b, a) is exactly compare(a, b) swapped.
+	if (a.status !== "reported" || b.status !== "reported") {
+		const both = a.status !== "reported" && b.status !== "reported";
+		return { unverified: `no ${what} digest was recorded on ${both ? "either side" : "one side"}` };
+	}
+	if (a.value.keyId !== b.value.keyId)
+		return {
+			unverified: `different digest domains (${[a.value.keyId, b.value.keyId].sort().join(" and ")}); to compare across machines, share one key: ${CROSS_MACHINE_DOC}`,
+		};
+	return a.value.value === b.value.value ? "equal" : "differ";
+}
+
 /**
- * Tool entries: every field must be equal. Argument digests compare only in one digest domain: a digest one side did
- * not record, or digests under different key ids, leave the entry unverifiable rather than equal or diverged. A
- * difference in any other field is a divergence.
+ * Tool entries: every field must be equal. Argument and result digests compare only in one digest domain: a digest one
+ * side did not record, or digests under different key ids, leave the entry unverifiable rather than equal or diverged.
+ * A difference in any other field, or a verifiable digest difference, is a divergence.
  */
 function toolAgreement(a: EndoTrajectoryToolEntryV0, b: EndoTrajectoryToolEntryV0): Agreement {
-	const { argsDigest: argsA, ...restA } = a;
-	const { argsDigest: argsB, ...restB } = b;
+	const { argsDigest: argsA, resultDigest: resultA, ...restA } = a;
+	const { argsDigest: argsB, resultDigest: resultB, ...restB } = b;
 	if (!same(restA, restB)) return "differ";
-	// Reasons name no side, so that compare(b, a) is exactly compare(a, b) swapped.
-	if (argsA.status !== "reported" || argsB.status !== "reported") {
-		const both = argsA.status !== "reported" && argsB.status !== "reported";
-		return { unverified: `no argument digest was recorded on ${both ? "either side" : "one side"}` };
-	}
-	if (argsA.value.keyId !== argsB.value.keyId)
-		return {
-			unverified: `different digest domains (${[argsA.value.keyId, argsB.value.keyId].sort().join(" and ")}); to compare across machines, share one key: ${CROSS_MACHINE_DOC}`,
-		};
-	return argsA.value.value === argsB.value.value ? "equal" : "differ";
+	const args = digestAgreement("argument", argsA, argsB);
+	const result = digestAgreement("result", resultA, resultB);
+	if (args === "differ" || result === "differ") return "differ";
+	const reasons = [args, result].flatMap((agreement) => (agreement === "equal" ? [] : [agreement.unverified]));
+	return reasons.length === 0 ? "equal" : { unverified: [...new Set(reasons)].join("; ") };
 }
 
 function judge<T>(

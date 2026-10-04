@@ -5,55 +5,61 @@
 		{
 			"name": "baseline",
 			"differs": "nothing",
-			"eventsSha256": "3043dbc25587613f0b809eba594de474e005777d67ffed487aacccae05c7ce3c",
+			"eventsSha256": "e1a16325e0785d0a8c0864a3c04112d7ca92b4c219828585bf2be6ad6708475c",
 			"eventCount": 39
 		},
 		{
 			"name": "baseline-again",
 			"differs": "nothing: a second recording of baseline (new process, ids and timestamps)",
-			"eventsSha256": "3688749ff38def7d81538758a6256886b8cc36a0b45ace8d534a07cc7aaa0154",
+			"eventsSha256": "913ad6e87cf171ed136c7b0d97a65c88894d0a3f4404b421557eb523a107bd23",
 			"eventCount": 39
 		},
 		{
 			"name": "tools-reordered",
 			"differs": "the two tool calls in reverse order",
-			"eventsSha256": "0dfea6c220363076e510c46db3ccdbac8cae4fd2972b5dd3f2efa1bda3ea2a17",
+			"eventsSha256": "64a91b792834fe5b8962e68a78395c422c2ac8e9b459d783bbfe16fcce4093b0",
 			"eventCount": 39
 		},
 		{
 			"name": "tool-args-differ",
 			"differs": "the first tool call reads another path",
-			"eventsSha256": "97445c3e2515db333bf8eba47cb814c06bf7b19ea2409005531e765709c23945",
+			"eventsSha256": "f93e55631ae6f9b3b8741e56b971a20e5b86e63ba14bf6d57697d1abec7034a1",
+			"eventCount": 39
+		},
+		{
+			"name": "tool-result-differs",
+			"differs": "the first tool call returns other content (same arguments, same status)",
+			"eventsSha256": "b58987188a1103efaa16d2e3f628ab39a9cf8845fbf71995ac799619c47074c7",
 			"eventCount": 39
 		},
 		{
 			"name": "tool-errors",
 			"differs": "the second tool call reports isError",
-			"eventsSha256": "0ff38eddde07f0567b1b7c94065d03ea6a04bf3b06a0ed4fb4589f6f12e04717",
+			"eventsSha256": "479570829ba8451c548b11e7dfeccb6561f7d1af6eef94c63f9bfee47cba92a5",
 			"eventCount": 39
 		},
 		{
 			"name": "no-usage",
 			"differs": "Pi reports no usage on its assistant messages",
-			"eventsSha256": "6008213dff4b0764ffa044a4b87f37bb87954d7576f8a19ea96fe854ebb55f62",
+			"eventsSha256": "c7426d52c40fa35495b3e5cd92fd2e946109a3238f6dd042517ba746a1761961",
 			"eventCount": 39
 		},
 		{
 			"name": "unknown-lifecycle",
 			"differs": "an undocumented agent_paused record inside the run",
-			"eventsSha256": "797f769be9f09c517b98bf848243b83fdd3dbbd8db9a1f14035bc6d3d96b1653",
+			"eventsSha256": "af124ff8ea405fd5ccbffa6bc60c4e062b2bc7cc8b91e7df70cf3c6e8a5d2747",
 			"eventCount": 41
 		},
 		{
 			"name": "other-fingerprint",
 			"differs": "the fake Pi reports version 1.0.1",
-			"eventsSha256": "d10d9534287809b15d4bb607e1e1a597835f695a6667e0b1081e6d4324dcefb5",
+			"eventsSha256": "cfa988a433f524c508020443677acc09a6ecd608b854819ffc46c3230f3266a8",
 			"eventCount": 39
 		},
 		{
 			"name": "other-digest-domain",
 			"differs": "the same calls, with argument digests made under another digest key",
-			"eventsSha256": "d52c68ccae7851f3b112e6728d724b251909dc795e15f3b6f1371c33618081de",
+			"eventsSha256": "b59137f03ff5826a2769f702badbf1ef69e639236269112ce6eb2f415dc9ab88",
 			"eventCount": 39
 		}
 	]

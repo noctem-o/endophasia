@@ -1,0 +1,24 @@
+{
+	"entries": [
+		{
+			"path": "agent",
+			"type": "directory"
+		},
+		{
+			"base64": "eyJwcm92aWRlcnMiOnsiZW5kb2xvY2FsIjp7ImJhc2VVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjQ2NjE5L3YxIiwiYXBpIjoib3BlbmFpLWNvbXBsZXRpb25zIiwiYXBpS2V5IjoibG9jYWwiLCJtb2RlbHMiOlt7ImlkIjoicXdlbjMuOC0yN2IifV19fX0=",
+			"bytes": 143,
+			"executable": false,
+			"path": "agent/models.json",
+			"type": "file"
+		},
+		{
+			"path": "home",
+			"type": "directory"
+		},
+		{
+			"path": "work",
+			"type": "directory"
+		}
+	],
+	"schemaVersion": "endo.workspace-archive.v0"
+}

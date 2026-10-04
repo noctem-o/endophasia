@@ -58,6 +58,8 @@ export interface EndoTrajectoryToolEntryV0 {
 	argsDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0>;
 	/** "ok" or "error" as the runtime reported it; UNAVAILABLE when no end was recorded. */
 	result: EndoReportedV0<"ok" | "error">;
+	/** HMAC-SHA256 of the canonical JSON of the result content the runtime reported, under the same digest domain. */
+	resultDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0>;
 }
 
 export type EndoTrajectoryOutcomeKindV0 = "completed" | "failed" | "aborted" | "interrupted" | "unclassified" | "open";
@@ -149,11 +151,11 @@ export interface EndoTrajectoryV0 {
 
 /** The rules a comparison applies. Part of every comparison record, so a rule change is a visible version change. */
 export const ENDO_TRAJECTORY_COMPARISON_RULES_V0 = Object.freeze({
-	version: "trajectory-comparison.1",
+	version: "trajectory-comparison.2",
 	alignment:
 		"entries are aligned by their position within each layer, never by timestamp; the first position where the two sides differ is the divergence",
 	equality:
-		"two entries are equal when their canonical JSON is equal; tool argument digests are compared only within one digest domain (the same key id): a digest made under another key id, or one the recording did not capture, makes the entry unverifiable, never equal and never diverged",
+		"two entries are equal when their canonical JSON is equal; tool argument and result digests are compared only within one digest domain (the same key id): a digest made under another key id, or one the recording did not capture, makes the entry unverifiable, never equal and never diverged",
 	verdicts:
 		"EXACT: both sides reported the layer, same length, every entry equal. DIVERGED: the first differing position, both entries (null past a side's end) and the common-prefix length. UNAVAILABLE: a side did not report the layer, or no entry differs but some could not be verified (each with its reason)",
 	usage: "usage is never judged EXACT or DIVERGED: it reports per-run and total token deltas (b minus a) only; judging equality needs a noise band, which this version does not define",
@@ -321,12 +323,13 @@ function isLifecycleEntry(value: unknown): boolean {
 function isToolEntry(value: unknown): boolean {
 	return (
 		isRecord(value) &&
-		keys(value, ["run", "turn", "name", "argsDigest", "result"]) &&
+		keys(value, ["run", "turn", "name", "argsDigest", "result", "resultDigest"]) &&
 		isPositionOrNull(value.run) &&
 		isPositionOrNull(value.turn) &&
 		isReported(value.name, isString) &&
 		isReported(value.argsDigest, isKeyedDigest) &&
-		isReported(value.result, (item) => item === "ok" || item === "error")
+		isReported(value.result, (item) => item === "ok" || item === "error") &&
+		isReported(value.resultDigest, isKeyedDigest)
 	);
 }
 

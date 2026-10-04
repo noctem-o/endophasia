@@ -508,6 +508,26 @@ do not import a framework merely because its paper reports a benchmark gain.
     training provider, not a dependency of the runtime core. Track data provenance, training cost,
     held-out transfer, and regressions on previously solved tasks.
 
+25. **Evidence lineage and epistemic lifecycle (Magpie integration).** Test whether experiment
+    records can support inspectable claims without collapsing measured outcomes, evidence standing,
+    and permission into one verdict. Bind claims to exact run manifests, artifacts, evaluator versions,
+    and source episodes; track dependencies so changed or invalidated evidence cannot silently support
+    downstream conclusions. Compare a minimal evidence ledger with richer lineage and policy-governed
+    standing, measuring auditability, invalidation correctness, and unsupported-promotion rate. Keep
+    Magpie optional and its current capabilities honest: this track begins with a read-only vertical
+    slice, not an assumed complete claim-writing or epistemic-gate implementation. A valid policy
+    result establishes only the predicate it actually checks, not general truth or authority.
+
+26. **Metamorphic robustness and causal sensitivity.** Test agents on paired repository variants where
+    semantics-preserving changes should not materially alter outcomes, causal evidence changes should
+    change the repair, and irrelevant distractors should not redirect it. Validate transformations
+    independently; report paired outcome differences, regressions, tool use, latency, and cost, not just
+    pass rate. Keep transformation generation separate from trusted checking and adjudication, and
+    test transfer across repositories, model families, and harnesses. Research leads include
+    [A Jagged Frontier](https://arxiv.org/abs/2608.18389) and the
+    [MetaProbe project](https://github.com/huyuelin/MetaProbe); treat submitted or unreviewed work as
+    research leads, not established guarantees.
+
 **Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate
 exploration/validation data from an untouched promotion holdout; include repeated fresh trials and
 uncertainty; test transfer across tasks and repositories (and, where practical, models or runtimes);

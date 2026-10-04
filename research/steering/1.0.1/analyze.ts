@@ -207,6 +207,59 @@ export function manipulation(dir: string) {
 }
 
 /**
+ * One recorded trial replayed from its cassette, with what a steered trial must show: each intervention re-issued at its
+ * recorded point (the spec's), with the recorded proposal digest, and accepted; a baseline trial reports none.
+ */
+export async function replayOneTrial(
+	run: EndoExperimentRunRecordV0,
+	dir: string,
+	trial: EndoExperimentTrialResultV0,
+	pi: string,
+	keySource: PiCassetteKeySourceV0 = FIXTURE,
+) {
+	const scratch = mkdtempSync(join(tmpdir(), "endo-spotcheck-"));
+	try {
+		const report = await replayPiCassetteSessionV0({
+			store: join(dir, trial.store),
+			out: join(scratch, "replay"),
+			pi,
+			timing: "immediate",
+			keySource,
+			timeoutMs: 600_000,
+		});
+		const layers = report.comparison.layers;
+		const intervention = run.spec.conditions.find((entry) => entry.id === trial.condition)?.interventions?.[
+			trial.task
+		];
+		const reissued = report.interventions;
+		return {
+			trial: label(trial),
+			lifecycle: layers.lifecycle.status,
+			toolCalls: layers.toolCalls.status,
+			toolResults: layers.toolResults.status,
+			outcome: layers.outcome.status,
+			served: report.served,
+			misses: report.misses,
+			unserved: report.unserved,
+			interventions: reissued,
+			interventionAsRequired:
+				intervention === undefined
+					? reissued.length === 0
+					: reissued.length === 1 &&
+						reissued[0]!.operation === intervention.operation &&
+						canonical(reissued[0]!.recordedAt) === canonical(intervention.after) &&
+						canonical(reissued[0]!.reissuedAt) === canonical(intervention.after) &&
+						reissued[0]!.proposalDigestMatches &&
+						reissued[0]!.result === "accepted",
+			flags: report.comparison.flags.map((flag) => flag.kind),
+			notes: report.notes,
+		};
+	} finally {
+		rmSync(scratch, { recursive: true, force: true });
+	}
+}
+
+/**
  * §10, the seeded spot check: three trials chosen by the run's ordering seed (mulberry32 and Fisher-Yates over the
  * completed trials in plan order), or the named ones, replayed from their cassettes. E3's spot check, plus what a steered
  * trial must show: each intervention re-issued at its recorded point, with the same proposal digest, and accepted.
@@ -223,50 +276,7 @@ export async function steeredSpotcheck(dir: string, pi: string, named: string[] 
 				})
 			: shuffleV0(completed, mulberry32V0(run.seed)).slice(0, 3);
 	const out = [];
-	for (const trial of chosen) {
-		const scratch = mkdtempSync(join(tmpdir(), "endo-spotcheck-"));
-		try {
-			const report = await replayPiCassetteSessionV0({
-				store: join(dir, trial.store),
-				out: join(scratch, "replay"),
-				pi,
-				timing: "immediate",
-				keySource: FIXTURE,
-				timeoutMs: 600_000,
-			});
-			const layers = report.comparison.layers;
-			const intervention = run.spec.conditions.find((entry) => entry.id === trial.condition)?.interventions?.[
-				trial.task
-			];
-			const reissued = report.interventions;
-			out.push({
-				trial: label(trial),
-				lifecycle: layers.lifecycle.status,
-				toolCalls: layers.toolCalls.status,
-				toolResults: layers.toolResults.status,
-				outcome: layers.outcome.status,
-				served: report.served,
-				misses: report.misses,
-				unserved: report.unserved,
-				interventions: reissued,
-				// A steered trial must report exactly one intervention, re-issued at its recorded point (the spec's), with the
-				// recorded proposal digest, and accepted; a baseline trial must report none.
-				interventionAsRequired:
-					intervention === undefined
-						? reissued.length === 0
-						: reissued.length === 1 &&
-							reissued[0]!.operation === intervention.operation &&
-							canonical(reissued[0]!.recordedAt) === canonical(intervention.after) &&
-							canonical(reissued[0]!.reissuedAt) === canonical(intervention.after) &&
-							reissued[0]!.proposalDigestMatches &&
-							reissued[0]!.result === "accepted",
-				flags: report.comparison.flags.map((flag) => flag.kind),
-				notes: report.notes,
-			});
-		} finally {
-			rmSync(scratch, { recursive: true, force: true });
-		}
-	}
+	for (const trial of chosen) out.push(await replayOneTrial(run, dir, trial, pi));
 	return {
 		seed: run.seed,
 		selection:

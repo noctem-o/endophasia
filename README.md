@@ -524,6 +524,16 @@ do not import a framework merely because its paper reports a benchmark gain.
     [MetaProbe project](https://github.com/huyuelin/MetaProbe); treat submitted or unreviewed work as
     research leads, not established guarantees.
 
+27. **Contrastive weight-space steering and training-drift monitoring.** Test whether behavioural
+    directions derived from matched positive/negative fine-tunes can support controlled model steering,
+    and whether the same directions provide useful signals for monitoring later weight updates for
+    behavioural drift. Compare against activation steering, ordinary fine-tuning, and simple weight-delta
+    baselines; measure target behaviour, collateral regressions, calibration, transfer across tasks and
+    model families, and false positives/negatives. Treat this as a research hypothesis, not a general
+    alignment detector: the reported evidence is preliminary and does not establish reliable detection
+    of arbitrary misalignment. Keep steering experiments isolated and promotion gated. Starting point:
+    [Steering Language Models with Weight Arithmetic](https://arxiv.org/abs/2511.05408).
+
 **Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate
 exploration/validation data from an untouched promotion holdout; include repeated fresh trials and
 uncertainty; test transfer across tasks and repositories (and, where practical, models or runtimes);

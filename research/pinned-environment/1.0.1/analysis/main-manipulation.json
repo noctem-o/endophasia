@@ -1,0 +1,46 @@
+{
+	"M5": {
+		"status": "PASS",
+		"byCondition": {
+			"b-c-u": {
+				"trials": 60,
+				"failures": []
+			},
+			"b-c-p": {
+				"trials": 60,
+				"failures": []
+			},
+			"a-p": {
+				"trials": 60,
+				"failures": []
+			},
+			"b-p": {
+				"trials": 60,
+				"failures": []
+			}
+		}
+	},
+	"M6": {
+		"status": "PASS",
+		"byCondition": {
+			"b-c-p": {
+				"trials": 60,
+				"requests": 320,
+				"instances": [],
+				"status": "PASS"
+			},
+			"a-p": {
+				"trials": 60,
+				"requests": 302,
+				"instances": [],
+				"status": "PASS"
+			},
+			"b-p": {
+				"trials": 60,
+				"requests": 300,
+				"instances": [],
+				"status": "PASS"
+			}
+		}
+	}
+}

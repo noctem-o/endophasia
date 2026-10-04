@@ -320,4 +320,17 @@ One round of the 12 cells takes 113.8 s. With 10% overhead:
 
 ## 12. Deviations
 
-(None.)
+1. **Metric 7 (final workspaces) does not measure content in this study, and is not interpreted.**
+   - The runner digests the final workspace as a workspace archive. Since PR #25, merged after E2 and before this
+     design, that archive (`endo.workspace-archive.v1`) includes every entry's modification time.
+   - Files the agent writes get the time they were written. That is not pinned (§4), so every trial's final workspace
+     digest differs by construction: 20 distinct in every cell, including cells where all 190 pairs made identical
+     requests throughout.
+   - This was not noticed when the design was written. Only the digest is kept, so a content-only count cannot be
+     recomputed from the recorded data.
+   - What the data does show:
+     - In each cell of B-p and B+C-p, all 20 archives have the same length (363, 1615 or 2289 bytes per task), while
+       A-p's lengths vary.
+     - In those cells, every tool call, with its arguments (including every written file's content), is identical.
+   - RESULTS.md reports the counts with this explanation. A content-only workspace digest is a follow-up for the
+     runner.

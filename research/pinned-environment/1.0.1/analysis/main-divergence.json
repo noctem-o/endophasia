@@ -1,0 +1,273 @@
+{
+	"normalization": "tool-call ids (server-generated random tokens) replaced by their ordinal of first appearance in each trial; nothing else",
+	"cells": {
+		"fix-failing-test/a-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 190,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"fix-failing-test/b-c-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"fix-failing-test/b-c-u": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 190,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 189,
+				"7": 1
+			},
+			"residualEnvironment": {
+				"duration": 1,
+				"clock time": 189,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#0 vs #3: request 2, message 4 (tool)"
+			],
+			"residualExamples": [
+				"#0 vs #1: request 2, clock time: \"Oct  4 12:16\" against \"Oct  4 12:18\"",
+				"#0 vs #2: request 2, clock time: \"Oct  4 12:16\" against \"Oct  4 12:21\"",
+				"#0 vs #3: request 2, clock time: \"Oct  4 12:16\" against \"Oct  4 12:21\""
+			]
+		},
+		"fix-failing-test/b-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"implement-function/a-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 190,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"implement-function/b-c-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"implement-function/b-c-u": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 190,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 189,
+				"5": 1
+			},
+			"residualEnvironment": {
+				"duration": 1,
+				"clock time": 189,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#0 vs #3: request 2, message 4 (tool)"
+			],
+			"residualExamples": [
+				"#0 vs #1: request 2, clock time: \"Oct  4 12:15\" against \"Oct  4 12:18\"",
+				"#0 vs #2: request 2, clock time: \"Oct  4 12:15\" against \"Oct  4 12:20\"",
+				"#0 vs #3: request 2, clock time: \"Oct  4 12:15\" against \"Oct  4 12:23\""
+			]
+		},
+		"implement-function/b-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/a-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 190,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 190
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#0 vs #3: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"tool-use/b-c-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/b-c-u": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/b-p": {
+			"trials": 20,
+			"pairs": 190,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 190,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		}
+	}
+}

@@ -1,0 +1,93 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 202,
+	"task": "implement-function",
+	"condition": "b-c-u",
+	"trial": 16,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:48:22.730Z",
+	"endedAt": "2026-10-04T11:48:35.289Z",
+	"store": "trials/implement-function/b-c-u/16/store",
+	"session": "endo.session.pi.endo-pi-default-de8ea6d200a5",
+	"exchanges": 5,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "e19b26ea1b5298c45596a3c6991ae3d38d9e9b003acf2da800186311830b6c91",
+			"bytes": 234
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "e7a615c0ea870364b30de0ca3523e0c1454e4cd635badbdcad105b937b4998dc",
+		"bytes": 2297
+	},
+	"notes": []
+}

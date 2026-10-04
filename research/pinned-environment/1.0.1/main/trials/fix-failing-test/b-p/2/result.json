@@ -1,0 +1,99 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 32,
+	"task": "fix-failing-test",
+	"condition": "b-p",
+	"trial": 2,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:20:51.154Z",
+	"endedAt": "2026-10-04T11:20:56.985Z",
+	"store": "trials/fix-failing-test/b-p/2/store",
+	"session": "endo.session.pi.endo-pi-default-a10b0fbefbb2",
+	"exchanges": 6,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "363ab0962494e7a8e61aeed1aa8ec73b56e9866125e602c237aa1d277c70f146",
+			"bytes": 285
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "104f585a24a5b18c977cb66b921ff82408bb59061791f2b16d5c876041078bf0",
+		"bytes": 1603
+	},
+	"notes": []
+}

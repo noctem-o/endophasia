@@ -1,0 +1,117 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 39,
+	"task": "fix-failing-test",
+	"condition": "b-c-u",
+	"trial": 3,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:21:58.959Z",
+	"endedAt": "2026-10-04T11:22:18.239Z",
+	"store": "trials/fix-failing-test/b-c-u/3/store",
+	"session": "endo.session.pi.endo-pi-default-3ea730e6caee",
+	"exchanges": 7,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "8f16a874e675e1edaf98458ebee26d7d9485763b7e737aa5d3d84db659cbf348",
+			"bytes": 285
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "2d5f92c7ce0b4c21900e45461ac291993e4b07727e4bf4896381bf128b26ff76",
+		"bytes": 1615
+	},
+	"notes": []
+}

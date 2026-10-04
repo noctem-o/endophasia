@@ -1,0 +1,78 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 144,
+	"task": "fix-failing-test",
+	"condition": "a-p",
+	"trial": 12,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:39:03.676Z",
+	"endedAt": "2026-10-04T11:39:12.296Z",
+	"store": "trials/fix-failing-test/a-p/12/store",
+	"session": "endo.session.pi.endo-pi-default-bebb000ee119",
+	"exchanges": 5,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "f46711a65b7918d61883b817e20380acdfca86ae51acb08912630c3eac08b9b4",
+			"bytes": 285
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "7a2389922963019e1b5cfc1ab0ff730072809ac10e02d8701953d660255b0275",
+		"bytes": 1603
+	},
+	"notes": []
+}

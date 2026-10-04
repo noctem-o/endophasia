@@ -1,0 +1,122 @@
+{
+	"fix-failing-test--a-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 7,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"fix-failing-test--b-c-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 7,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"fix-failing-test--b-c-u": {
+		"lifecycle": "DIVERGED",
+		"toolCalls": "EXACT",
+		"toolResults": "DIVERGED",
+		"outcome": "DIVERGED",
+		"served": 6,
+		"misses": 1,
+		"unserved": 1,
+		"divergence": "environment diverged at 7"
+	},
+	"fix-failing-test--b-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 6,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"implement-function--a-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 5,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"implement-function--b-c-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 5,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"implement-function--b-c-u": {
+		"lifecycle": "DIVERGED",
+		"toolCalls": "EXACT",
+		"toolResults": "DIVERGED",
+		"outcome": "DIVERGED",
+		"served": 4,
+		"misses": 1,
+		"unserved": 1,
+		"divergence": "environment diverged at 5"
+	},
+	"implement-function--b-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 5,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"tool-use--a-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 4,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"tool-use--b-c-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 4,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"tool-use--b-c-u": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 4,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	},
+	"tool-use--b-p": {
+		"lifecycle": "EXACT",
+		"toolCalls": "EXACT",
+		"toolResults": "EXACT",
+		"outcome": "EXACT",
+		"served": 4,
+		"misses": 0,
+		"unserved": 0,
+		"divergence": null
+	}
+}

@@ -78,7 +78,7 @@ import {
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
-export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.1";
+export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.2";
 export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v1";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
@@ -480,6 +480,7 @@ async function runTrial(
 			...(condition.modelEntry === undefined ? {} : { modelEntry: condition.modelEntry }),
 			...(condition.settings === undefined ? {} : { settings: condition.settings }),
 			...(condition.extensions === undefined ? {} : { extensions: condition.extensions }),
+			...(condition.environment === undefined ? {} : { environment: condition.environment }),
 			afterSession,
 		});
 		notes = report.notes;
@@ -803,6 +804,20 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 							{ sha256: sha256HexV0(source), bytes: Buffer.byteLength(source), source },
 						]),
 					),
+					...(condition.environment === undefined
+						? {}
+						: {
+								environment: {
+									variables: condition.environment.variables ?? {},
+									fileTime: condition.environment.fileTime ?? null,
+									files: Object.fromEntries(
+										Object.entries(condition.environment.files ?? {}).map(([path, content]) => [
+											path,
+											{ sha256: sha256HexV0(content), bytes: Buffer.byteLength(content), content },
+										]),
+									),
+								},
+							}),
 				},
 				bundle: bundle as unknown as JsonValueV0,
 			};

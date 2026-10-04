@@ -1,0 +1,99 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 75,
+	"task": "fix-failing-test",
+	"condition": "b-p",
+	"trial": 6,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:28:12.956Z",
+	"endedAt": "2026-10-04T11:28:18.802Z",
+	"store": "trials/fix-failing-test/b-p/6/store",
+	"session": "endo.session.pi.endo-pi-default-50fac55cb759",
+	"exchanges": 6,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "783d7836128ecff3bcf9b83e57df410bb23de02a65617e310577b2213bd4a5e6",
+			"bytes": 284
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "efbf4ebabc0f4d634017b77d96b2ed62129ec92ddd5608bcc79f6e6ded41bc9b",
+		"bytes": 1603
+	},
+	"notes": []
+}

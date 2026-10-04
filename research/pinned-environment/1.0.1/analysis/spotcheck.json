@@ -1,0 +1,45 @@
+{
+	"seed": 3619119635,
+	"selection": "mulberry32(ordering seed), Fisher-Yates over completed trials in plan order, first three",
+	"replays": [
+		{
+			"trial": "tool-use/b-c-p/#17",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 4,
+			"misses": 0,
+			"unserved": 0,
+			"missDetails": [],
+			"flags": [],
+			"notes": []
+		},
+		{
+			"trial": "tool-use/b-p/#10",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 4,
+			"misses": 0,
+			"unserved": 0,
+			"missDetails": [],
+			"flags": [],
+			"notes": []
+		},
+		{
+			"trial": "fix-failing-test/a-p/#17",
+			"lifecycle": "EXACT",
+			"toolCalls": "EXACT",
+			"toolResults": "EXACT",
+			"outcome": "EXACT",
+			"served": 5,
+			"misses": 0,
+			"unserved": 0,
+			"missDetails": [],
+			"flags": [],
+			"notes": []
+		}
+	]
+}

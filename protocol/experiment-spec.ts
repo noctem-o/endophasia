@@ -6,7 +6,9 @@
 // A condition changes only Pi's documented configuration and extension points (docs/models.md, docs/settings.md,
 // docs/extensions.md): fields merged into the models.json model entry, a settings.json, and extensions (TypeScript
 // modules Pi loads from its agent directory's extensions/, e.g. a before_provider_request handler). Pi changes its own
-// requests; they are never altered in flight: the proxy is pass-through.
+// requests; they are never altered in flight: the proxy is pass-through. A condition may also pin the environment Pi
+// and its tools run in (`environment`: allow-listed variables, files outside the workspace, fixed file times), which
+// changes what tools observe, not Pi.
 //
 // Manipulation checks (`manipulation`) declare what each condition is supposed to change in Pi's requests, so the
 // report can verify it from the recorded bodies and usage: the injected fields, that nothing else changed against a
@@ -47,6 +49,58 @@ export interface EndoExperimentConditionV0 {
 	settings?: { [key: string]: JsonValueV0 };
 	/** Extensions installed in the scratch agent directory's extensions/: file name (`[a-z0-9-]+.ts`) to source. */
 	extensions?: { [file: string]: string };
+	/** A pinned environment for Pi and its tools (time zone, locale, test reporter, file times). */
+	environment?: EndoExperimentEnvironmentV0;
+}
+
+/** The variables a pinned environment may add to Pi's environment (which every tool inherits). */
+export const ENDO_EXPERIMENT_ENVIRONMENT_VARIABLES_V0: readonly string[] = ["TZ", "LC_ALL", "LANG", "NODE_OPTIONS"];
+
+/**
+ * A condition's pinned environment. It changes what Pi's tools observe, never Pi's requests directly:
+ *   variables  added to Pi's environment; only ENDO_EXPERIMENT_ENVIRONMENT_VARIABLES_V0. `{root}` in a value stands
+ *              for the scratch root.
+ *   files      written under <root>/env/ (outside the workspace): relative path to content.
+ *   fileTime   an ISO-8601 UTC time given to every entry under the scratch root, and the root, after setup and before
+ *              the snapshot and Pi's start.
+ * The recording records it (`capture.environment`); a replay reapplies the variables, and the snapshot brings back the
+ * files and times.
+ */
+export interface EndoExperimentEnvironmentV0 {
+	variables?: { [name: string]: string };
+	files?: { [path: string]: string };
+	fileTime?: string;
+}
+
+/** Why `environment` is not a valid pinned environment, or null. */
+export function endoExperimentEnvironmentProblemV0(environment: unknown): string | null {
+	if (!plain(environment)) return "environment must be an object";
+	const e = environment as Record<string, unknown>;
+	for (const key of Object.keys(e))
+		if (!["variables", "files", "fileTime"].includes(key)) return `environment: unknown field ${key}`;
+	const strings = (value: unknown) => plain(value) && Object.values(value).every((entry) => typeof entry === "string");
+	if (e.variables !== undefined) {
+		if (!strings(e.variables)) return "environment.variables must map names to strings";
+		for (const name of Object.keys(e.variables as object))
+			if (!ENDO_EXPERIMENT_ENVIRONMENT_VARIABLES_V0.includes(name))
+				return `environment.variables: ${name} is not one of ${ENDO_EXPERIMENT_ENVIRONMENT_VARIABLES_V0.join(", ")}`;
+	}
+	if (e.files !== undefined) {
+		if (!strings(e.files)) return "environment.files must map paths to strings";
+		for (const path of Object.keys(e.files as object))
+			if (!relativePath(path)) return `environment.files: ${JSON.stringify(path)} is not a relative path`;
+	}
+	if (e.fileTime !== undefined) {
+		const ms = typeof e.fileTime === "string" ? Date.parse(e.fileTime) : Number.NaN;
+		if (
+			typeof e.fileTime !== "string" ||
+			!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(e.fileTime) ||
+			!Number.isSafeInteger(ms) ||
+			ms < 0
+		)
+			return "environment.fileTime must be an ISO-8601 UTC time (YYYY-MM-DDTHH:MM:SS[.mmm]Z)";
+	}
+	return null;
 }
 
 /** What the report verifies about each condition's requests (DESIGN-declared manipulation checks). */
@@ -183,7 +237,7 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (!plain(condition)) return "a condition is not an object";
 		const c = condition as Record<string, unknown>;
 		for (const key of Object.keys(c))
-			if (!["id", "description", "modelEntry", "settings", "extensions"].includes(key))
+			if (!["id", "description", "modelEntry", "settings", "extensions", "environment"].includes(key))
 				return `unknown condition field ${key}`;
 		if (typeof c.id !== "string" || !SLUG.test(c.id)) return "a condition id must be a slug ([a-z0-9-], at most 64)";
 		if (conditionIds.has(c.id)) return `duplicate condition ${c.id}`;
@@ -193,6 +247,10 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 		if (c.modelEntry !== undefined && "id" in (c.modelEntry as object))
 			return `condition ${c.id}: modelEntry may not change the model id`;
 		if (c.settings !== undefined && !plain(c.settings)) return `condition ${c.id}: settings must be an object`;
+		if (c.environment !== undefined) {
+			const problem = endoExperimentEnvironmentProblemV0(c.environment);
+			if (problem !== null) return `condition ${c.id}: ${problem}`;
+		}
 		if (c.extensions !== undefined) {
 			if (!plain(c.extensions)) return `condition ${c.id}: extensions must be an object of file name to source`;
 			for (const [file, source] of Object.entries(c.extensions))

@@ -20,10 +20,23 @@ endo experiment report <dir>
 | `digestDomain` | `installation` (normal use) or `fixture` (the committed public key; synthetic experiments only, and only in explicit fixture-experiment mode: `--fixture-experiment`. A fixture spec without the flag is refused, and so is the flag with an installation spec, as for the fixture recorder.) |
 | `timeoutMs` | the per-step timeout |
 | `tasks[]` | `id`, `prompts[]` (sent in order, each run to `agent_settled`), `workspace` (relative path to content), optional `check` |
-| `conditions[]` | `id`, `description`, optional `modelEntry` (fields merged into the `models.json` model entry) and `settings` (Pi's `settings.json`) |
+| `conditions[]` | `id`, `description`, optional `modelEntry` (fields merged into the `models.json` model entry), `settings` (Pi's `settings.json`), `extensions` (modules for Pi's agent directory's `extensions/`) and `environment` (a pinned environment, below) |
 
 **A condition changes only Pi's documented configuration.** The proxy is pass-through. A condition the configuration
 cannot express is reported as such; requests are never altered in flight.
+
+**A pinned environment** (`environment`) changes what Pi's tools observe, not Pi's configuration:
+- `variables`: added to Pi's session environment, which every tool inherits. Only `TZ`, `LC_ALL`, `LANG` and
+  `NODE_OPTIONS` are allowed. `{root}` in a value stands for the scratch root.
+- `files`: written under `<root>/env/`, outside the workspace (for example, a `node:test` reporter that prints no
+  durations, named in `NODE_OPTIONS`).
+- `fileTime`: an ISO-8601 UTC time (`YYYY-MM-DDTHH:MM:SS[.mmm]Z`) given to every entry under the scratch root, and to
+  the root, after setup and before the snapshot and Pi's start. `ls -la` then prints the same times in every trial.
+
+Pi's identity probe (`pi --version`) keeps its own minimal environment, so the fingerprint does not depend on the
+pinning. The success check runs in the runner's environment, unpinned. Each trial's capture records the environment
+(`capture.environment`, see [replay.md](replay.md)), and the report lists it per cell under `servingInputs.environment`.
+The clock is never faked: files written during the session get the time they were written.
 
 **A success check** is a command (`argv`, run without a shell) executed in the workspace after the session; exit code
 0 passes. Its output is kept beside the trial (`check.txt`) and only digested in the result.

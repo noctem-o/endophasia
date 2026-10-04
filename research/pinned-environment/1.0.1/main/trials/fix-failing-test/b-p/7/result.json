@@ -1,0 +1,99 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 92,
+	"task": "fix-failing-test",
+	"condition": "b-p",
+	"trial": 7,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:30:44.061Z",
+	"endedAt": "2026-10-04T11:30:50.019Z",
+	"store": "trials/fix-failing-test/b-p/7/store",
+	"session": "endo.session.pi.endo-pi-default-834a025b3982",
+	"exchanges": 6,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "b2ae350f31bc6fa3fb4ca3f041c3c47e85ee16bf0dc3d2e470f6f09ad1c5ba98",
+			"bytes": 284
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "6448784f96f1483a7f9d46e7761a574501a1946119277173d433758a1bfa67ca",
+		"bytes": 1603
+	},
+	"notes": []
+}

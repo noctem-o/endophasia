@@ -20,6 +20,8 @@ export interface FakePiInstall {
 	rebuild(marker: string): void;
 	/** Set the installation's fault scenario (comma-separated, see cli.mjs); "" clears it. */
 	setScenario(scenario: string): void;
+	/** Make every start append the pinned-environment variables it saw to `path` (one JSON line). */
+	setEnvLog(path: string): void;
 	remove(): void;
 }
 
@@ -53,6 +55,7 @@ export function installFakePi(
 			chmodSync(entrypoint, 0o755);
 		},
 		setScenario: (scenario) => writeFileSync(join(packageRoot, "scenario"), scenario),
+		setEnvLog: (path) => writeFileSync(join(packageRoot, "env-log"), path),
 		remove: () => rmSync(prefix, { recursive: true, force: true }),
 	};
 }

@@ -1,0 +1,281 @@
+{
+	"normalization": "tool-call ids (server-generated random tokens) replaced by their ordinal of first appearance in each trial; nothing else",
+	"cells": {
+		"fix-failing-test/a-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 3,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 3
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#1 vs #2: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"fix-failing-test/b-c-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 3,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"fix-failing-test/b-c-u": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 3,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 3
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 3,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#1 vs #2: request 2, message 4 (tool)"
+			],
+			"residualExamples": [
+				"#0 vs #1: request 2, clock time: \"Oct  4 12:10\" against \"Oct  4 12:12\"",
+				"#0 vs #2: request 2, clock time: \"Oct  4 12:10\" against \"Oct  4 12:13\"",
+				"#1 vs #2: request 2, clock time: \"Oct  4 12:12\" against \"Oct  4 12:13\""
+			]
+		},
+		"fix-failing-test/b-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 2,
+				"environment": 0,
+				"identical": 1,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"3": 2
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #2: request 3, message 5 (assistant)",
+				"#1 vs #2: request 3, message 5 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"implement-function/a-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 3,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 3
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#1 vs #2: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"implement-function/b-c-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 3,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"implement-function/b-c-u": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 3,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 3
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 3,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 4 (tool)",
+				"#0 vs #2: request 2, message 4 (tool)",
+				"#1 vs #2: request 2, message 4 (tool)"
+			],
+			"residualExamples": [
+				"#0 vs #1: request 2, clock time: \"Oct  4 12:10\" against \"Oct  4 12:12\"",
+				"#0 vs #2: request 2, clock time: \"Oct  4 12:10\" against \"Oct  4 12:14\"",
+				"#1 vs #2: request 2, clock time: \"Oct  4 12:12\" against \"Oct  4 12:14\""
+			]
+		},
+		"implement-function/b-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 3,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/a-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 3,
+				"environment": 0,
+				"identical": 0,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 3
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)",
+				"#1 vs #2: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		},
+		"tool-use/b-c-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 3,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/b-c-u": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 0,
+				"environment": 0,
+				"identical": 3,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [],
+			"residualExamples": []
+		},
+		"tool-use/b-p": {
+			"trials": 3,
+			"pairs": 3,
+			"firstDifference": {
+				"model": 2,
+				"environment": 0,
+				"identical": 1,
+				"other": 0
+			},
+			"otherReasons": {},
+			"firstDifferingRequest": {
+				"2": 2
+			},
+			"residualEnvironment": {
+				"duration": 0,
+				"clock time": 0,
+				"other": 0
+			},
+			"examples": [
+				"#0 vs #1: request 2, message 3 (assistant)",
+				"#0 vs #2: request 2, message 3 (assistant)"
+			],
+			"residualExamples": []
+		}
+	}
+}

@@ -56,6 +56,15 @@ const scenario = new Set(
 		.split(",")
 		.filter(Boolean),
 );
+// An `env-log` file beside the package.json (an installation property) names a file that receives one line per start:
+// whether it was `--version`, and the pinned-environment variables this process saw (for assertions that a pinned
+// environment reaches the session process, and not the identity probe).
+const envLogFile = packageDirectory === undefined ? undefined : join(packageDirectory, "env-log");
+if (envLogFile !== undefined && existsSync(envLogFile))
+	appendFileSync(
+		readFileSync(envLogFile, "utf8").trim(),
+		`${JSON.stringify({ version: process.argv.includes("--version"), ...Object.fromEntries(["TZ", "LC_ALL", "LANG", "NODE_OPTIONS"].map((name) => [name, process.env[name] ?? null])) })}\n`,
+	);
 const has = (name) => scenario.has(name);
 const option = (prefix) => [...scenario].find((entry) => entry.startsWith(prefix))?.slice(prefix.length);
 const stepMs = Number(process.env.FAKE_PI_STEP_MS ?? 20);

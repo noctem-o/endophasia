@@ -25,6 +25,7 @@
 //   5. PR C's trajectory comparison is run between the two stores (runtime/contracts/trajectory.ts).
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +39,7 @@ import type { EndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { PiAttachmentV0, type PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { piTrajectoryAttachmentsV0, projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
+import { type EndoExperimentEnvironmentV0, endoExperimentEnvironmentProblemV0 } from "../protocol/experiment-spec.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import type { EndoTrajectoryComparisonV0 } from "../protocol/trajectory.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
@@ -45,7 +47,11 @@ import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoDigestKeyFromEnvironmentV0, loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
-import { archiveEndoWorkspaceV0, restoreEndoWorkspaceV0 } from "../storage/workspace-snapshot.ts";
+import {
+	archiveEndoWorkspaceV0,
+	pinEndoWorkspaceTimesV0,
+	restoreEndoWorkspaceV0,
+} from "../storage/workspace-snapshot.ts";
 
 export const PI_CASSETTE_DRIVER_VERSION_V0 = "pi-cassette-driver.1";
 
@@ -88,7 +94,10 @@ export interface PiCassetteScratchV0 {
 }
 
 /** The environment Pi runs with for a scratch root. PATH is this process's (never recorded). */
-export function piCassetteEnvV0(root: string): Record<string, string> {
+export function piCassetteEnvV0(
+	root: string,
+	variables: Readonly<Record<string, string>> = {},
+): Record<string, string> {
 	return {
 		PATH: process.env.PATH ?? "",
 		HOME: join(root, "home"),
@@ -96,7 +105,21 @@ export function piCassetteEnvV0(root: string): Record<string, string> {
 		PI_OFFLINE: "1",
 		PI_SKIP_VERSION_CHECK: "1",
 		PI_TELEMETRY: "0",
+		...variables,
 	};
+}
+
+/** A pinned environment for a session: an experiment condition's `environment` (protocol/experiment-spec.ts). */
+export type PiCassetteEnvironmentV0 = EndoExperimentEnvironmentV0;
+
+/** The variables as Pi sees them: `{root}` replaced by the scratch root. */
+export function piCassetteVariablesV0(
+	environment: PiCassetteEnvironmentV0 | undefined,
+	root: string,
+): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(environment?.variables ?? {}).map(([name, value]) => [name, value.replaceAll("{root}", root)]),
+	);
 }
 
 /**
@@ -116,8 +139,14 @@ export function createPiCassetteScratchV0(
 		extensions?: Readonly<Record<string, string>>;
 		/** Pi's settings.json (documented settings), when the session needs one. */
 		settings?: Readonly<Record<string, JsonValueV0>>;
+		/** A pinned environment (variables, env/ files, a fixed time for every entry). */
+		environment?: PiCassetteEnvironmentV0;
 	},
 ): PiCassetteScratchV0 {
+	if (options.environment !== undefined) {
+		const problem = endoExperimentEnvironmentProblemV0(options.environment);
+		if (problem !== null) throw new TypeError(problem);
+	}
 	if (existsSync(root)) throw new TypeError(`${root} exists; a cassette scratch root is created fresh`);
 	for (const part of ["home", "agent", "work"]) mkdirSync(join(root, part), { recursive: true });
 	writeFileSync(
@@ -144,7 +173,17 @@ export function createPiCassetteScratchV0(
 		mkdirSync(dirname(join(root, "work", path)), { recursive: true });
 		writeFileSync(join(root, "work", path), content);
 	}
-	return { root, cwd: join(root, "work"), env: piCassetteEnvV0(root) };
+	for (const [path, content] of Object.entries(options.environment?.files ?? {})) {
+		mkdirSync(dirname(join(root, "env", path)), { recursive: true });
+		writeFileSync(join(root, "env", path), content);
+	}
+	if (options.environment?.fileTime !== undefined)
+		pinEndoWorkspaceTimesV0(root, Date.parse(options.environment.fileTime));
+	return {
+		root,
+		cwd: join(root, "work"),
+		env: piCassetteEnvV0(root, piCassetteVariablesV0(options.environment, root)),
+	};
 }
 
 /** What the attachment needs, shared by this process and the kill child. */
@@ -156,6 +195,8 @@ export interface PiCassetteAttachmentConfigV0 {
 	readonly model: string;
 	readonly keySource: PiCassetteKeySourceV0;
 	readonly requestTimeoutMs: number;
+	/** Variables added to Pi's environment (a pinned environment's, `{root}` already replaced). */
+	readonly variables?: Readonly<Record<string, string>>;
 }
 
 export function piCassetteAttachmentV0(config: PiCassetteAttachmentConfigV0): PiAttachmentV0 {
@@ -163,7 +204,7 @@ export function piCassetteAttachmentV0(config: PiCassetteAttachmentConfigV0): Pi
 		root: config.root,
 		cwd: join(config.scratchRoot, "work"),
 		executable: config.pi,
-		env: piCassetteEnvV0(config.scratchRoot),
+		env: piCassetteEnvV0(config.scratchRoot, config.variables),
 		provider: config.provider,
 		model: config.model,
 		requestTimeoutMs: config.requestTimeoutMs,
@@ -278,6 +319,8 @@ export interface PiCassetteRecordOptionsV0 {
 	readonly modelEntry?: Readonly<Record<string, JsonValueV0>>;
 	readonly settings?: Readonly<Record<string, JsonValueV0>>;
 	readonly extensions?: Readonly<Record<string, string>>;
+	/** A pinned environment (an experiment condition's), recorded as `capture.environment`. */
+	readonly environment?: PiCassetteEnvironmentV0;
 	/** Runs after the session closed and before the scratch root is removed (an experiment's success check). */
 	readonly afterSession?: (scratchRoot: string) => Promise<void> | void;
 }
@@ -300,6 +343,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		...(options.modelEntry === undefined ? {} : { modelEntry: options.modelEntry }),
 		...(options.settings === undefined ? {} : { settings: options.settings }),
 		...(options.extensions === undefined ? {} : { extensions: options.extensions }),
+		...(options.environment === undefined ? {} : { environment: options.environment }),
 	});
 	const log = new EndoCaptureLogV0(options.store, key, "record", { async: true });
 	const notes: string[] = [];
@@ -312,6 +356,25 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 			PI_CASSETTE_DRIVER_PRODUCER_V0,
 		);
 	};
+	const variables = piCassetteVariablesV0(options.environment, scratch.root);
+	if (options.environment !== undefined)
+		log.record(
+			"capture.environment",
+			{
+				variables,
+				fileTime: options.environment.fileTime ?? null,
+				files: Object.fromEntries(
+					Object.entries(options.environment.files ?? {}).map(([path, content]) => [
+						path,
+						{
+							sha256: createHash("sha256").update(content).digest("hex"),
+							bytes: Buffer.byteLength(content),
+						},
+					]),
+				),
+			},
+			PI_CASSETTE_DRIVER_PRODUCER_V0,
+		);
 	const archive = archiveEndoWorkspaceV0(scratch.root);
 	log.record(
 		"capture.workspace-snapshot",
@@ -332,6 +395,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		model: options.model,
 		keySource: options.keySource,
 		requestTimeoutMs: Math.max(60_000, options.timeoutMs),
+		variables,
 	};
 	let session: PiSessionAttachmentV0 | null = null;
 	let piSessionId: string | null = null;
@@ -398,6 +462,8 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 export interface PiCassetteScriptV0 {
 	snapshot: { scratchRoot: string; archive: { digest: EndoKeyedDigestV0; bytes: number } };
 	steps: Record<string, unknown>[];
+	/** The pinned environment the recording ran with (`capture.environment`), or null for none. */
+	environment: { variables: Record<string, string>; fileTime: string | null; files: Record<string, unknown> } | null;
 }
 
 export function piCassetteScriptV0(events: readonly EndoEventV0[]): PiCassetteScriptV0 {
@@ -416,7 +482,10 @@ export function piCassetteScriptV0(events: readonly EndoEventV0[]): PiCassetteSc
 		throw new TypeError(
 			`the cassette's driver steps are ${[...driverVersions].join(", ")}, not ${PI_CASSETTE_DRIVER_VERSION_V0}`,
 		);
-	return { snapshot, steps };
+	const environment = driver.find((event) => event.kind === "capture.environment")?.payload as
+		| PiCassetteScriptV0["environment"]
+		| undefined;
+	return { snapshot, steps, environment: environment ?? null };
 }
 
 export interface PiCassetteReplayOptionsV0 {
@@ -538,6 +607,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			model: String(open?.model),
 			keySource: options.keySource,
 			requestTimeoutMs: Math.max(60_000, options.timeoutMs),
+			variables: script.environment?.variables ?? {},
 		};
 		const blobs = createEndoBlobStoreV0(endoCaptureRootV0(options.store), key, { readOnly: true });
 		let replayStep = 0;

@@ -1,0 +1,96 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 4,
+	"task": "fix-failing-test",
+	"condition": "a-p",
+	"trial": 0,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T11:16:27.711Z",
+	"endedAt": "2026-10-04T11:16:36.741Z",
+	"store": "trials/fix-failing-test/a-p/0/store",
+	"session": "endo.session.pi.endo-pi-default-b6586e458aff",
+	"exchanges": 7,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "5bbdddee23fe2e154c7f9e1a590082519a6d815356abcce83509f7706c679d16",
+			"bytes": 285
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "fb8921022820117b2ca512cd981c0a71a318a6a57d22c8a3b5bbf9a9fd1ab306",
+		"bytes": 1603
+	},
+	"notes": []
+}

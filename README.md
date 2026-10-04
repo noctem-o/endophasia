@@ -384,7 +384,8 @@ A valid proposal does not widen the model's permission.
     pairwise exact-match rate (95% Wilson) and the trial-level modal agreement. It also gives the first divergences,
     outcomes, the check pass rate, and usage and timing as median and IQR, never judged. The bundle uses the existing
     evaluation records.
-  - It has run for real in the variance study below (360 trials), the pilot and a smoke test.
+  - It has run for real in the variance study below (360 trials), the pilot and a smoke test, and in the
+    pinned-environment study (276 trials, pilot included).
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   `research/pi-conformance/1.0.0/`.
@@ -453,6 +454,25 @@ Two findings came out of the study:
   replays of coding-task trials ended in an explicit cassette miss.
 
 This is one Pi release, one model and quantization, one machine and N = 20.
+
+A second study pinned the environment the tools observe
+([design](research/pinned-environment/1.0.1/DESIGN.md), [results](research/pinned-environment/1.0.1/RESULTS.md)). It
+used the same tasks and 20 live trials per task per arm. The pinning is an experiment condition's `environment`:
+- `TZ=UTC` and `LC_ALL=C`;
+- fixed file times on everything Pi starts with;
+- a test reporter that prints no durations.
+
+An unpinned control ran interleaved with the pinned arms.
+
+**With temperature 0, a fixed seed, the cache off and the environment pinned**, every judged layer was identical in
+20 of 20 trials on every task. The pre-registered verdict is "stable", and every pair made identical requests
+throughout. The unpinned control stayed unstable (tool results 1/20 on the coding tasks), which confirms that the
+variance study's remaining divergence came from the environment.
+
+With the cache on and the environment pinned, the result was stable too. The study did not vary the cache state; a
+single pilot event, the first request after a server restart, suggests a cold cache can change a reply. Pinned
+coding-task cassettes replay EXACT. One metric (distinct final workspaces) is not interpreted, because the workspace
+digest now includes file times.
 
 The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases
 (reordered or different tool calls, different result content, missing usage, another Pi version, another digest

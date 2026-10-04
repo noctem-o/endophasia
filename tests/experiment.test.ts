@@ -227,7 +227,7 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 			timeoutMs: 20_000,
 		});
 		expect(replay.misses).toBe(0);
-		for (const layer of ["lifecycle", "tools", "outcome"] as const)
+		for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 			expect(replay.comparison.layers[layer].status).toBe("EXACT");
 		// The scratch parent is removed once the plan is complete.
 		expect(readdirSync(base).filter((name) => name.startsWith("endo-experiment-"))).toEqual([]);
@@ -306,16 +306,18 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 			}[];
 			environment: { models: { status: string }; serverDefaults: { status: string } }[];
 		};
-		expect(r.schemaVersion).toBe("endo.experiment-report.v0");
+		expect(r.schemaVersion).toBe("endo.experiment-report.v1");
+		for (const cell of r.cells as unknown as { toolCallsUpToFirstDivergentInput: Record<string, number> }[])
+			expect(cell.toolCallsUpToFirstDivergentInput).toEqual({ identical: 1, notIdentical: 0, undecidable: 0 });
 		expect(r.seed).toBe(7);
 		expect(r.cells.map((cell) => `${cell.task}/${cell.condition}`)).toEqual(["read/a", "read/b"]);
 		for (const cell of r.cells) {
-			expect(cell.layers.tools!.pairs).toBe(1);
-			expect(cell.layers.tools!.counts.EXACT).toBe(1);
+			expect(cell.layers.toolCalls!.pairs).toBe(1);
+			expect(cell.layers.toolCalls!.counts.EXACT).toBe(1);
 			expect(cell.layers.lifecycle!.pairwiseExact.rate).toBe(1);
 			expect(cell.layers.outcome!.modalAgreement).toMatchObject({ n: 2, successes: 2 });
-			expect(cell.layers.tools!.distinctTrajectories).toBe(1);
-			expect(cell.layers.tools!.pairwiseExact.bootstrap95.resamples).toBe(10_000);
+			expect(cell.layers.toolCalls!.distinctTrajectories).toBe(1);
+			expect(cell.layers.toolCalls!.pairwiseExact.bootstrap95.resamples).toBe(10_000);
 			expect(
 				(cell.bundle as { result: { profile: { schemaVersion: string; cognitionPolicy: string } } }).result.profile,
 			).toMatchObject({

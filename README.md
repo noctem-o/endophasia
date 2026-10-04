@@ -339,18 +339,20 @@ A valid proposal does not widen the model's permission.
     reason.
 - **Trajectory comparison** (`protocol/trajectory.ts`, `adapters/pi/trajectory.ts`, `runtime/contracts/trajectory.ts`,
   [rules](docs/trajectory.md)).
-  - `endo trajectory show` projects one recorded session into `endo.trajectory.v0`, opening the store read-only. The
+  - `endo trajectory show` projects one recorded session into `endo.trajectory.v1`, opening the store read-only. The
     layers are:
     - lifecycle;
-    - tools (name, keyed digests of the canonical arguments and of the result content, result status);
+    - tool calls (name, keyed digest of the canonical arguments): what the agent chose;
+    - tool results (name, status, keyed digest of the result content), at the same positions: what the world answered;
     - outcome (cause by reference);
     - usage (what Pi reported);
     - timing (the observer's clock).
 
     What the recording lacks is UNAVAILABLE with a reason.
-  - `endo trajectory diff` compares two sessions with a pure function. Lifecycle, tools and outcome are judged EXACT,
-    DIVERGED (first index, both entries, common prefix) or UNAVAILABLE, aligned by position. Usage and timing report
-    deltas only and are never judged. Fingerprint, mapping, digest-domain, configuration and model differences are
+  - `endo trajectory diff` compares two sessions with a pure function. Lifecycle, tool calls, tool results and outcome
+    are judged EXACT, DIVERGED (first index, both entries, common prefix) or UNAVAILABLE, aligned by position. It also
+    says whether the tool calls stayed identical up to the first divergent input (a tool result). Usage and timing
+    report deltas only and are never judged. Fingerprint, mapping, digest-domain, configuration and model differences are
     flagged, never mixed silently. A record's digest covers content identities, not store paths.
   - Since `pi-rpc-mapping.3`, `tool.started` records the arguments as an HMAC-SHA256 with the key's id.
     `harness.attached` records the mapping version and the digest domain.

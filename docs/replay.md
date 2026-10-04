@@ -139,7 +139,7 @@ endpoint that needs a key would capture the key. The scratch `models.json` uses 
 
 ## What a replay establishes, and what it does not
 
-**What EXACT shows.** EXACT on lifecycle, tools and outcome means this: with the model's responses byte-identical and
+**What EXACT shows.** EXACT on lifecycle, tool calls, tool results and outcome means this: with the model's responses byte-identical and
 the steps, the snapshot and the STOP or kill points the same, Pi produced the same lifecycle, the same tool calls
 (names, keyed argument digests, statuses, keyed result digests) and the same outcomes. Zero misses means Pi sent
 exactly the recorded requests, in order.
@@ -186,6 +186,6 @@ Pi documents `tool_execution_end` with `result` (`docs/json.md`), so result dige
 UNAVAILABLE. `tool.finished` records `resultDigest`: the keyed digest of `result.content`, the content the model is
 given. `result.details` is tool-specific and not sent to the model (`docs/message-types.md`), so it is not digested.
 
-The trajectory's tool entries carry `resultDigest` (`pi-trajectory.2`). Result digests compare by the same domain rule
-as argument digests (`trajectory-comparison.2`). A recording made before mapping.4 has none, which makes its tool
+The trajectory's tool results carry `resultDigest` (its own `toolResults` layer since `pi-trajectory.3`). Result digests
+compare by the same domain rule as argument digests (`trajectory-comparison.3`). A recording made before mapping.4 has none, which makes its tool
 entries UNAVAILABLE, never EXACT.

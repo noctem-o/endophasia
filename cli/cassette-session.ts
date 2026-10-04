@@ -639,7 +639,9 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		});
 	const first = missDetails[0];
 	const environmentDivergedAt =
-		first !== undefined && (first.divergence as { kind?: unknown } | null)?.kind === "environment" ? first.exchange : null;
+		first !== undefined && (first.divergence as { kind?: unknown } | null)?.kind === "environment"
+			? first.exchange
+			: null;
 	const coordinate = `endo.session.pi.${piSessionId}`;
 	const comparison = compareEndoTrajectoriesV0(
 		storeTrajectory(options.store, coordinate),

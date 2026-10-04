@@ -1,4 +1,4 @@
-// The Pi trajectory projection: one recorded Pi session in, one `endo.trajectory.v0` out (protocol/trajectory.ts).
+// The Pi trajectory projection: one recorded Pi session in, one `endo.trajectory.v1` out (protocol/trajectory.ts).
 //
 // A pure, read-only reduction of the events one attachment recorded for one session, in store order. The same events
 // always give the same trajectory, byte for byte. What each layer reads:
@@ -6,7 +6,9 @@
 // | Layer     | Read from                                                                                         |
 // | :---      | :---                                                                                              |
 // | lifecycle | the stored `lifecycle.*` stream (adapters/pi/lifecycle.ts), reduced to kind and run facts         |
-// | tools     | live `tool.started` / `tool.finished`, paired by Pi's toolCallId (the id itself is not kept)      |
+// | toolCalls | live `tool.started`: name and argument digest, in start order                                     |
+// | toolResults | live `tool.finished`, paired with its start by Pi's toolCallId (the id is not kept): status and  |
+// |           | result digest, at the call's position                                                            |
 // | outcome   | the lifecycle stream's run endings and interruptions                                               |
 // | usage     | live assistant `message.completed` usage, summed per run (what Pi reported)                       |
 // | timing    | wall time per run from the lifecycle events' `at`: the observer's clock, not Pi's                 |
@@ -35,7 +37,7 @@ import type {
 	EndoTrajectoryOutcomeKindV0,
 	EndoTrajectoryTimingEntryV0,
 	EndoTrajectoryTokensV0,
-	EndoTrajectoryToolEntryV0,
+	EndoTrajectoryToolCallEntryV0,
 	EndoTrajectoryUsageEntryV0,
 	EndoTrajectoryV0,
 } from "../../protocol/trajectory.ts";
@@ -46,7 +48,7 @@ import { PI_LIFECYCLE_PRODUCER_PREFIX_V0, PI_RECORDING_PRODUCER_PREFIX_V0 } from
 import { piEndoSessionIdV0 } from "./mapping.ts";
 
 /** The projector's version: bump it when what a layer reads or keeps changes. */
-export const PI_TRAJECTORY_PROJECTION_V0 = "pi-trajectory.2";
+export const PI_TRAJECTORY_PROJECTION_V0 = "pi-trajectory.3";
 
 export interface PiTrajectoryOptionsV0 {
 	/** The store as the caller names it (recorded in `source.store`). */
@@ -213,7 +215,11 @@ export function projectPiTrajectoryV0(
 	if (read.length === 0) throw new TypeError(`the attachment ${attachment} recorded nothing for ${session}`);
 
 	const lifecycle: EndoTrajectoryLifecycleEntryV0[] = [];
-	const tools: EndoTrajectoryToolEntryV0[] = [];
+	// One record per call while start and end are paired; split into the two layers at the end.
+	const tools: (EndoTrajectoryToolCallEntryV0 & {
+		result: EndoReportedV0<"ok" | "error">;
+		resultDigest: EndoReportedV0<EndoTrajectoryKeyedDigestV0>;
+	})[] = [];
 	const outcomes: EndoTrajectoryOutcomeEntryV0[] = [];
 	const usage: EndoTrajectoryUsageEntryV0[] = [];
 	const timing: EndoTrajectoryTimingEntryV0[] = [];
@@ -498,7 +504,7 @@ export function projectPiTrajectoryV0(
 		"no lifecycle events were recorded for this session (recorded before the lifecycle fold, or by another attachment)";
 	const anyUsage = usage.some((entry) => entry.tokens.status === "reported");
 	return sealEndoTrajectoryV0({
-		schemaVersion: "endo.trajectory.v0",
+		schemaVersion: "endo.trajectory.v1",
 		projection: PI_TRAJECTORY_PROJECTION_V0,
 		source: {
 			session,
@@ -512,10 +518,26 @@ export function projectPiTrajectoryV0(
 		environment: { attachments: environment, reportedModels: [...reportedModels].sort() },
 		layers: {
 			lifecycle: lifecycleRecorded ? { status: "reported", entries: lifecycle } : endoLayerUnavailable(noLifecycle),
-			tools:
+			toolCalls:
 				environment.length > 0
-					? { status: "reported", entries: tools }
+					? {
+							status: "reported",
+							entries: tools.map(({ run, turn, name, argsDigest }) => ({ run, turn, name, argsDigest })),
+						}
 					: endoLayerUnavailable("no attachment to the session was recorded, so no tool call was observed"),
+			toolResults:
+				environment.length > 0
+					? {
+							status: "reported",
+							entries: tools.map(({ run, turn, name, result, resultDigest }) => ({
+								run,
+								turn,
+								name,
+								status: result,
+								resultDigest,
+							})),
+						}
+					: endoLayerUnavailable("no attachment to the session was recorded, so no tool result was observed"),
 			outcome: lifecycleRecorded ? { status: "reported", entries: outcomes } : endoLayerUnavailable(noLifecycle),
 			usage: !lifecycleRecorded
 				? endoLayerUnavailable(noLifecycle)

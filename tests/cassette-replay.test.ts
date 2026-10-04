@@ -172,7 +172,7 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			expect(report.misses).toBe(0);
 			expect(report.unserved).toBe(0);
 			expect(report.served).toBe(exchanges(recorded[name]!).length);
-			for (const layer of ["lifecycle", "tools", "outcome"] as const)
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
 			expect(report.comparison.flags).toEqual([]);
 			expect(
@@ -186,8 +186,8 @@ describe("cassette sessions: record through the proxy, replay against the casset
 
 	it("the tool scenario's read sees the restored workspace: its result digest matches the recording", async () => {
 		const { report } = await replay("tool");
-		const tools = report.comparison.layers.tools;
-		expect(tools).toMatchObject({ status: "EXACT", length: 1 });
+		expect(report.comparison.layers.toolCalls).toMatchObject({ status: "EXACT", length: 1 });
+		expect(report.comparison.layers.toolResults).toMatchObject({ status: "EXACT", length: 1 });
 	});
 
 	it("STOP lands after the recorded chunk in as-recorded timing too", async () => {
@@ -208,7 +208,7 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			keySource: { kind: "installation" },
 			timeoutMs: 20_000,
 		});
-		for (const layer of ["lifecycle", "tools", "outcome"] as const)
+		for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 			expect(report.comparison.layers[layer].status).toBe("EXACT");
 	});
 

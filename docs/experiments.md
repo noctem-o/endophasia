@@ -66,7 +66,8 @@ runner does not call.
 
 For each task and condition, over the completed trials:
 
-- **Per judged layer** (lifecycle, tools, outcome), three numbers:
+- **Per judged layer** (lifecycle, tool calls, tool results, outcome; the report is `endo.experiment-report.v1`),
+  three numbers:
   - **The headline: modal agreement.** The share of completed trials whose layer equals the most common one, with a
     95% Wilson interval. Trials are independent, so the interval means what it says.
   - **Distinct trajectories:** how many different layers the trials produced.
@@ -76,6 +77,8 @@ For each task and condition, over the completed trials:
     claim far more precision than n trials hold. Resampling trials keeps that dependence. Details: 10 000 resamples,
     seeded from the spec sha256, the cell and the layer, so the report is deterministic. Two draws of the same trial
     are not a pair, because a self-pair is trivially exact.
+- **Calls against inputs:** over the pairs, how many had tool calls identical up to the first divergent input,
+  how many did not, and how many were undecidable.
 - **First divergence:** per layer, how often each index was the first differing position; and per pair, which set of
   layers diverged.
 - **Outcomes:** the outcome kinds, and the success-check pass rate (Wilson) when the task has a check.

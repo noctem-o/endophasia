@@ -25,7 +25,8 @@ export interface PiReplayRowV0 {
 	timing: EndoCassetteTimingV0;
 	run: number;
 	lifecycle: string;
-	tools: string;
+	toolCalls: string;
+	toolResults: string;
 	outcome: string;
 	usage: string;
 	timingLayer: string;
@@ -74,7 +75,7 @@ export async function replayPiCassetteFixturesV0(options: {
 					});
 					const layers = report.comparison.layers;
 					const details: Record<string, unknown> = {};
-					for (const layer of ["lifecycle", "tools", "outcome"] as const)
+					for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 						if (layers[layer].status !== "EXACT") details[layer] = layers[layer];
 					const misses = readEndoCaptureEventsV0(out)
 						.filter((event) => event.kind === "capture.cassette-miss")
@@ -84,7 +85,8 @@ export async function replayPiCassetteFixturesV0(options: {
 						timing,
 						run,
 						lifecycle: layers.lifecycle.status,
-						tools: layers.tools.status,
+						toolCalls: layers.toolCalls.status,
+						toolResults: layers.toolResults.status,
 						outcome: layers.outcome.status,
 						usage: layers.usage.status,
 						timingLayer: layers.timing.status,
@@ -100,7 +102,7 @@ export async function replayPiCassetteFixturesV0(options: {
 					};
 					rows.push(row);
 					log(
-						`${name} ${timing} #${run}: lifecycle ${row.lifecycle}, tools ${row.tools}, outcome ${row.outcome}; served ${row.served}, misses ${row.misses}, unserved ${row.unserved}${row.flags.length ? `; flags ${row.flags.join(",")}` : ""}${row.notes.length ? `; notes: ${row.notes.join("; ")}` : ""}`,
+						`${name} ${timing} #${run}: lifecycle ${row.lifecycle}, tool calls ${row.toolCalls}, tool results ${row.toolResults}, outcome ${row.outcome}; served ${row.served}, misses ${row.misses}, unserved ${row.unserved}${row.flags.length ? `; flags ${row.flags.join(",")}` : ""}${row.notes.length ? `; notes: ${row.notes.join("; ")}` : ""}`,
 					);
 				} finally {
 					rmSync(scratch, { recursive: true, force: true });

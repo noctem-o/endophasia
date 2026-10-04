@@ -28,8 +28,8 @@
 import { createServer, type Server, type Socket } from "node:net";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
-import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { isEndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
 import {
@@ -245,7 +245,11 @@ export function endoRequestDivergenceV0(recorded: Uint8Array, replayed: Uint8Arr
 	const mb = Array.isArray(b.messages) ? b.messages : [];
 	for (let index = 0; index < Math.max(ma.length, mb.length); index += 1) {
 		if (canonicalEndoJsonV0(ma[index] ?? null) === canonicalEndoJsonV0(mb[index] ?? null)) continue;
-		const role = String((ma[index] as { role?: unknown } | undefined)?.role ?? (mb[index] as { role?: unknown } | undefined)?.role ?? "none");
+		const role = String(
+			(ma[index] as { role?: unknown } | undefined)?.role ??
+				(mb[index] as { role?: unknown } | undefined)?.role ??
+				"none",
+		);
 		return { kind: role === "tool" ? "environment" : "control-flow", message: index + 1, role };
 	}
 	return { kind: "control-flow", message: null, role: null };

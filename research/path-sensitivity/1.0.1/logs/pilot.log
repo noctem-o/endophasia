@@ -1,0 +1,28 @@
+path 1/2: pilot-1 (scratch db865aedb21e)
+  capability study for steer, queue (proxy port 37353)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / queue / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: tool-use / steer / #0
+  trial 6/12: implement-function / steer / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: tool-use / base / #1
+  trial 9/12: implement-function / queue / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: implement-function / steer / #1
+  trial 12/12: tool-use / queue / #1
+path 2/2: pilot-2 (scratch 0a275d344317)
+  capability study for steer, queue (proxy port 45903)
+  trial 1/12: tool-use / base / #0
+  trial 2/12: tool-use / steer / #0
+  trial 3/12: implement-function / queue / #0
+  trial 4/12: implement-function / base / #0
+  trial 5/12: implement-function / steer / #0
+  trial 6/12: tool-use / queue / #0
+  trial 7/12: tool-use / steer / #1
+  trial 8/12: tool-use / queue / #1
+  trial 9/12: implement-function / steer / #1
+  trial 10/12: implement-function / base / #1
+  trial 11/12: tool-use / base / #1
+  trial 12/12: implement-function / queue / #1

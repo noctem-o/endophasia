@@ -1,0 +1,2 @@
+# The drivers' output is named *.log, which the repository ignores everywhere else: keep it here.
+!*.log

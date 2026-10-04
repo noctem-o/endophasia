@@ -46,7 +46,9 @@ evidence.
   (`runtime/contracts/intervention.ts`) allows a proposal only when it is given that proposal's digest. Anything else,
   including no confirmation, is a deny. Nothing is allowed by default.
 - **The seam for an external authority** (for example Deadbolt, see the trust records) is
-  `EndoInterventionAuthorityProviderV0`: a provider that decides on a proposal. Nothing wires one yet.
+  `EndoInterventionAuthorityProviderV0`: a provider that decides on a proposal. Nothing wires one yet. For Deadbolt,
+  the lease contract Endophasia would require, and why no provider is built, are in
+  [deadbolt-intervention-contract.md](deadbolt-intervention-contract.md).
 
 ## The gate
 

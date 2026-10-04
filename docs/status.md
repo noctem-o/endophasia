@@ -87,7 +87,7 @@ does not, are in [research/README.md](../research/README.md).
     captured) and effect (the trajectory after) are kept apart.
   - The gate denies by default and records every refusal with its reason. An operation is offered only for a capability
     that conformance evidence admits.
-  - v0 proposals come only from the operator. An external authority provider is a documented seam and is not wired.
+  - v0 proposals come only from the operator. An external authority provider is a documented seam and is not wired ([the Deadbolt contract proposal](deadbolt-intervention-contract.md)).
   - `endo harness attach --control` serves the desk on an owner-only Unix socket, and `endo steer` talks to it.
   - A recorded session with an intervention replays: the replay re-issues it at the recorded point.
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in

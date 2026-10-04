@@ -1,0 +1,53 @@
+{
+	"rule": "for each (task, arm): the first completed trial in plan order",
+	"picks": {
+		"fix-failing-test--a-p": {
+			"trial": 0,
+			"position": 4
+		},
+		"fix-failing-test--b-c-p": {
+			"trial": 0,
+			"position": 10
+		},
+		"fix-failing-test--b-c-u": {
+			"trial": 0,
+			"position": 6
+		},
+		"fix-failing-test--b-p": {
+			"trial": 0,
+			"position": 5
+		},
+		"implement-function--a-p": {
+			"trial": 0,
+			"position": 3
+		},
+		"implement-function--b-c-p": {
+			"trial": 0,
+			"position": 1
+		},
+		"implement-function--b-c-u": {
+			"trial": 0,
+			"position": 0
+		},
+		"implement-function--b-p": {
+			"trial": 0,
+			"position": 11
+		},
+		"tool-use--a-p": {
+			"trial": 0,
+			"position": 2
+		},
+		"tool-use--b-c-p": {
+			"trial": 0,
+			"position": 9
+		},
+		"tool-use--b-c-u": {
+			"trial": 0,
+			"position": 7
+		},
+		"tool-use--b-p": {
+			"trial": 0,
+			"position": 8
+		}
+	}
+}

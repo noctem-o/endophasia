@@ -256,8 +256,8 @@ with 0 misses.
   later tool output, which a replay cannot hold fixed without pinning (`docs/replay.md`, the wall-clock limit). Never
   control flow.
 
-**Cassettes.** The 12 exported cassettes passed the secret scan with 0 findings. They are committed only with the
-operator's approval of their size, per the standing process.
+**Cassettes.** The 12 exported cassettes passed the secret scan with 0 findings. They were committed after the
+operator approved their size (3.2 MB, 199 files), per the standing process: [cassettes/](cassettes/README.md).
 
 ## Against E2 (descriptive; different server sessions)
 
@@ -293,3 +293,4 @@ operator's approval of their size, per the standing process.
 | `pilot/` | the pilot's report, plan and run record |
 | `main/` | the main run: `bundle.json`, `summary.md`, `experiment.json`, `plan.json`, `journal.jsonl`, `environment/`, `trials/**/result.json` |
 | `analysis/` | the pilot estimate, M5/M6 (pilot and main), first difference (pilot and main), spot checks, cassette replays |
+| `cassettes/` | one cassette per task per arm, with the consent note and the secret-scan result |

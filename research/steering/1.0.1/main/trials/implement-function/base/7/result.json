@@ -1,0 +1,93 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 45,
+	"task": "implement-function",
+	"condition": "base",
+	"trial": 7,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T16:02:59.420Z",
+	"endedAt": "2026-10-04T16:03:10.948Z",
+	"store": "trials/implement-function/base/7/store",
+	"session": "endo.session.pi.endo-pi-default-3e9090d7a28d",
+	"exchanges": 5,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384,
+			"temperature": 0,
+			"seed": 1234,
+			"cache_prompt": false
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "c52698412ab2da2f166e52c184f73ce3a6386070ec45961f50a970659bcb5c95",
+			"bytes": 235
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "a71cb6c39d276c19732bc57df88278cd2de7150c5eed99cff4c84b5ebf0cf1bf",
+		"bytes": 2293
+	},
+	"notes": []
+}

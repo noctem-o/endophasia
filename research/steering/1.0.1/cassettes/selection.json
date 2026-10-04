@@ -1,0 +1,29 @@
+{
+	"rule": "for each (task, arm): the first completed trial in plan order",
+	"picks": {
+		"implement-function--base": {
+			"trial": 0,
+			"position": 4
+		},
+		"implement-function--queue": {
+			"trial": 0,
+			"position": 5
+		},
+		"implement-function--steer": {
+			"trial": 0,
+			"position": 3
+		},
+		"tool-use--base": {
+			"trial": 0,
+			"position": 1
+		},
+		"tool-use--queue": {
+			"trial": 0,
+			"position": 0
+		},
+		"tool-use--steer": {
+			"trial": 0,
+			"position": 2
+		}
+	}
+}

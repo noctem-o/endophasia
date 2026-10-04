@@ -1,0 +1,36 @@
+{
+	"observedAt": "2026-10-04T19:26:46.339Z",
+	"endpoint": "http://127.0.0.1:8080",
+	"models": {
+		"status": "reported",
+		"value": [
+			{
+				"id": "qwen3.8-27b",
+				"owned_by": "llamacpp",
+				"meta": {
+					"vocab_type": true,
+					"n_vocab": 248320,
+					"n_ctx": 98304,
+					"n_ctx_train": 262144,
+					"n_embd": 5120,
+					"n_params": 27320697856,
+					"size": 17548181504,
+					"ftype": "Q4_K - Medium"
+				}
+			}
+		]
+	},
+	"pi": {
+		"status": "reported",
+		"value": {
+			"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a",
+			"version": "1.0.1",
+			"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774"
+		}
+	},
+	"digestKeyId": "fixture-public",
+	"serverDefaults": {
+		"status": "UNAVAILABLE",
+		"reason": "the server's default sampling settings are not read: that needs a server-settings endpoint, which the runner does not call"
+	}
+}

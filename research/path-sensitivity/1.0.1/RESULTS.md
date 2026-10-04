@@ -141,6 +141,8 @@ its recorded point (exchange 2, chunk 1) with the recorded proposal digest.
 | `main/` | the main run: `paths.json`, the paths' journal, and for each path its report, plan, run record, journal and per-trial results |
 | `analysis/` | the pilot's analysis and estimate, the main run's analysis (`main-analysis.json`) and the spot checks |
 | `logs/` | the driver's output |
+| `raw/` | the complete run directories (pilot and main): every trial's store, evidence and logs |
 
-The raw run directories (every trial's store, 254 MB on disk) are **not** committed yet: DESIGN §10 says the size is told
-to the operator first.
+The raw run directories (every trial's store: 273 MB on disk, 10,531 files, about 22 MB compressed) are committed in
+`raw/`, after the operator was told the size and approved, with the documented path exception to the secret scan
+(`raw/README.md`).

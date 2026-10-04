@@ -1,0 +1,18 @@
+{"direction":"command","fields":{},"type":"get_state"}
+{"data":{"followUpMode":"one-at-a-time","isCompacting":false,"isStreaming":false,"messageCount":0,"model":{"id":"qwen3.8-27b","provider":"endolocal"},"pendingMessageCount":0,"sessionFile":null,"sessionId":"01a10847-c6ff-72e1-a14f-a0d1cde08cea","steeringMode":"one-at-a-time","thinkingLevel":"off"},"direction":"response","ok":true,"type":"get_state"}
+{"direction":"command","fields":{},"type":"get_available_models"}
+{"data":{"models":[{"api":"openai-completions","baseUrl":"http://127.0.0.1:35671/v1","contextWindow":128000,"cost":{"cacheRead":0,"cacheWrite":0,"input":0,"output":0},"id":"qwen3.8-27b","input":["text"],"maxTokens":16384,"name":"qwen3.8-27b","provider":"endolocal","reasoning":false}]},"direction":"response","ok":true,"type":"get_available_models"}
+{"direction":"command","fields":{"modelId":"qwen3.8-27b","provider":"endolocal"},"type":"set_model"}
+{"data":{"id":"qwen3.8-27b","provider":"endolocal"},"direction":"response","ok":true,"type":"set_model"}
+{"direction":"command","fields":{},"type":"get_state"}
+{"data":{"followUpMode":"one-at-a-time","isCompacting":false,"isStreaming":false,"messageCount":0,"model":{"id":"qwen3.8-27b","provider":"endolocal"},"pendingMessageCount":0,"sessionFile":null,"sessionId":"01a10847-c6ff-72e1-a14f-a0d1cde08cea","steeringMode":"one-at-a-time","thinkingLevel":"off"},"direction":"response","ok":true,"type":"get_state"}
+{"direction":"command","fields":{},"type":"get_available_thinking_levels"}
+{"data":["off"],"direction":"response","ok":true,"type":"get_available_thinking_levels"}
+{"direction":"command","fields":{"level":"off"},"type":"set_thinking_level"}
+{"direction":"response","ok":true,"type":"set_thinking_level"}
+{"direction":"command","fields":{},"type":"get_state"}
+{"data":{"followUpMode":"one-at-a-time","isCompacting":false,"isStreaming":false,"messageCount":0,"model":{"id":"qwen3.8-27b","provider":"endolocal"},"pendingMessageCount":0,"sessionFile":null,"sessionId":"01a10847-c6ff-72e1-a14f-a0d1cde08cea","steeringMode":"one-at-a-time","thinkingLevel":"off"},"direction":"response","ok":true,"type":"get_state"}
+{"direction":"command","fields":{"level":"off"},"type":"set_thinking_level"}
+{"direction":"response","ok":true,"type":"set_thinking_level"}
+{"direction":"command","fields":{},"type":"get_active_tools"}
+{"data":{"refusal":"Unknown command: get_active_tools"},"direction":"response","ok":false,"type":"get_active_tools"}

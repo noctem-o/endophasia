@@ -1,0 +1,2431 @@
+{
+	"cells": [
+		{
+			"bundle": {
+				"digest": "add6e2e46433a1c54f7536093b7454932cb919a8ccf12f4890c0bf0f39484e30",
+				"id": "endo.evidence.experiment.ec6cb33a95fe9daf25bae7317307cdee.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.ec6cb33a95fe9daf25bae7317307cdee",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/base",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "dbbfa0ed1cc01758fb8e63a64a1a57cc00cf13b08028ec43ac821d93c9ea80cc",
+								"trajectoryDigest": "5231eee88e9a65baf67f8c2e5ea550621981f978c975a05f5d13f0e93f80af72"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 1,
+								"session": "endo.session.pi.endo-pi-default-b12008050745",
+								"store": "trials/tool-use/base/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "3717c752eea7b6741881e6a7c01430dadd80c7229f673c54f68c276dc70efa66",
+								"trajectoryDigest": "083f4f53175c925e4eca113c4eb912b51384795f019b3f70059f9c5e1205c345"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 4,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 4
+										}
+									],
+									"status": "reported"
+								},
+								"position": 8,
+								"session": "endo.session.pi.endo-pi-default-fb46d63e1689",
+								"store": "trials/tool-use/base/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "base",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 3352352303,
+							"skipped": 4997
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 96119865,
+							"skipped": 4927
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1995022052,
+							"skipped": 5011
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 4160087607,
+							"skipped": 5112
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 3.5,
+					"max": 7002,
+					"median": 6998.5,
+					"min": 6995,
+					"n": 2,
+					"q1": 6996.75,
+					"q3": 7000.25
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 7524,
+					"median": 7524,
+					"min": 7524,
+					"n": 2,
+					"q1": 7524,
+					"q3": 7524
+				},
+				"output": {
+					"iqr": 0,
+					"max": 317,
+					"median": 317,
+					"min": 317,
+					"n": 2,
+					"q1": 317,
+					"q3": 317
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 7841,
+					"median": 7841,
+					"min": 7841,
+					"n": 2,
+					"q1": 7841,
+					"q3": 7841
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "98e0023707f2cad2a40b56f7e1e7fd9a7ecb4fb62de033efcf51daa16f58ab09",
+				"id": "endo.evidence.experiment.9e9ff0a63ffdfc4b5636be7af18507cc.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.9e9ff0a63ffdfc4b5636be7af18507cc",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/steer",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "5511c39db3f28c46fe2600b063da68e81ee827580f6ff9506b424cb6d3b03f07",
+								"trajectoryDigest": "3b05c114b27be0d6212f995585ff153b88d6a7f8c2e684a9e2da3632469b8c39"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 2,
+								"session": "endo.session.pi.endo-pi-default-bfdbda1e598e",
+								"store": "trials/tool-use/steer/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "55c3c62820b5158771211f3c79a32af18bb3186cb0266938907173098cd67610",
+								"trajectoryDigest": "919fdc3e76835ecc4a41c1cd4243fccc1727d6fb3177e4dba413266a1df742a9"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 7,
+								"session": "endo.session.pi.endo-pi-default-881db4a2eab9",
+								"store": "trials/tool-use/steer/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "steer",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2848803894,
+							"skipped": 5008
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1754182125,
+							"skipped": 4946
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 3926049372,
+							"skipped": 5053
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2281906554,
+							"skipped": 4981
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"intervention": {
+					"after": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat notes.txt",
+					"operation": "steer"
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 27.5,
+					"max": 16529,
+					"median": 16501.5,
+					"min": 16474,
+					"n": 2,
+					"q1": 16487.75,
+					"q3": 16515.25
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 10803,
+					"median": 10803,
+					"min": 10803,
+					"n": 2,
+					"q1": 10803,
+					"q3": 10803
+				},
+				"output": {
+					"iqr": 0,
+					"max": 1039,
+					"median": 1039,
+					"min": 1039,
+					"n": 2,
+					"q1": 1039,
+					"q3": 1039
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 11842,
+					"median": 11842,
+					"min": 11842,
+					"n": 2,
+					"q1": 11842,
+					"q3": 11842
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "0923c83a613136c43e8c837016bcf5544956460bb9b653d28881f986f99cb166",
+				"id": "endo.evidence.experiment.c1c8c53e901144b3edae5aff0ef51433.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.c1c8c53e901144b3edae5aff0ef51433",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/tool-use/queue",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 acfa45228e8aadc11aa824a17e076a085c7c48de726ca3b87468fde021dc6671 (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "51cfde0fd6c345d0bc392ea5543416b81a547f02ff73a3e40fd367bcbe80272d",
+								"trajectoryDigest": "e61dc7892777088081f63b9af879885a8b95c09e7f12585817269b22330e7162"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 0,
+								"session": "endo.session.pi.endo-pi-default-aee288c743c3",
+								"store": "trials/tool-use/queue/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "f01effc94a305b85ebc5dfc9684a7a264e767eb8a7980b0009d213d7fd2e3084",
+								"trajectoryDigest": "a13d88a35f0a19adfc4aef70d6350ec77677c79f8b6ab17857c566f1a1f6e3d0"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 6,
+								"session": "endo.session.pi.endo-pi-default-cca1380ca14d",
+								"store": "trials/tool-use/queue/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "queue",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 413405677,
+							"skipped": 5059
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 4238570470,
+							"skipped": 4948
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1402192601,
+							"skipped": 5026
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2471273462,
+							"skipped": 5021
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"intervention": {
+					"after": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat notes.txt",
+					"operation": "queue"
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "tool-use",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 13.5,
+					"max": 11109,
+					"median": 11095.5,
+					"min": 11082,
+					"n": 2,
+					"q1": 11088.75,
+					"q3": 11102.25
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 11867,
+					"median": 11867,
+					"min": 11867,
+					"n": 2,
+					"q1": 11867,
+					"q3": 11867
+				},
+				"output": {
+					"iqr": 0,
+					"max": 443,
+					"median": 443,
+					"min": 443,
+					"n": 2,
+					"q1": 443,
+					"q3": 443
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 12310,
+					"median": 12310,
+					"min": 12310,
+					"n": 2,
+					"q1": 12310,
+					"q3": 12310
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "16732d1bedf4b6db59d1aaaa034e3013582ffbb9ca218c11c2619734647c2973",
+				"id": "endo.evidence.experiment.33173fb6651a606a0a9de91909bb4cc2.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.33173fb6651a606a0a9de91909bb4cc2",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/base",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "40e8b727b458db7a585a25a3ad41f2086f85e3e237c3f10f9edfefa9ef6b02f2",
+								"trajectoryDigest": "2e3eac0edeaa1169eb9ff6c706ec12be3ea3d25880567e971dcff46e8abe60a2"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 4,
+								"session": "endo.session.pi.endo-pi-default-bde814b27ad2",
+								"store": "trials/implement-function/base/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "db62a0b7ea0d2b0163659b419485a57621fb3f67c1cc0230f3fd190b61e27fcf",
+								"trajectoryDigest": "9010b34cb5876b4a2a9516d0bf04c158923e8c2b2125e224dde7d7d86ac772a8"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 5,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 5
+										}
+									],
+									"status": "reported"
+								},
+								"position": 11,
+								"session": "endo.session.pi.endo-pi-default-f49c09cbf993",
+								"store": "trials/implement-function/base/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "base",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 465274313,
+							"skipped": 4934
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 3393806981,
+							"skipped": 4973
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2860808730,
+							"skipped": 4960
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2515052661,
+							"skipped": 5014
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 113.5,
+					"max": 11111,
+					"median": 10997.5,
+					"min": 10884,
+					"n": 2,
+					"q1": 10940.75,
+					"q3": 11054.25
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 11333,
+					"median": 11333,
+					"min": 11333,
+					"n": 2,
+					"q1": 11333,
+					"q3": 11333
+				},
+				"output": {
+					"iqr": 0,
+					"max": 608,
+					"median": 608,
+					"min": 608,
+					"n": 2,
+					"q1": 608,
+					"q3": 608
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 11941,
+					"median": 11941,
+					"min": 11941,
+					"n": 2,
+					"q1": 11941,
+					"q3": 11941
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "1569978e6e4b3181a93fdd6650a33316e6e9f67cb78c5cc288268855b682bb31",
+				"id": "endo.evidence.experiment.3574d0f7a30171de77f46eefe4d3a515.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.3574d0f7a30171de77f46eefe4d3a515",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/steer",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "5143b541ac15c5442d47d872af51ba710fc5e2fe2294951790f77dc26e651b60",
+								"trajectoryDigest": "4165ef87eb195ca57de965089927b2b3adcf58c2aeac629fee3d021f82e77320"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 3,
+								"session": "endo.session.pi.endo-pi-default-3ea2ec577548",
+								"store": "trials/implement-function/steer/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "b10e15e0baddecfdd68f6c687d13863aad3e9f246807e98630d96d1d42375127",
+								"trajectoryDigest": "29a94dedbba5ba86b838cbb2f1ff9b62ae1d4f90bddbf07f4c22652dc082a885"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 6,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 6
+										}
+									],
+									"status": "reported"
+								},
+								"position": 9,
+								"session": "endo.session.pi.endo-pi-default-a8087bf9e508",
+								"store": "trials/implement-function/steer/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "steer",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 871894102,
+							"skipped": 4962
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 4134622164,
+							"skipped": 5023
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 295030935,
+							"skipped": 5087
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2216302184,
+							"skipped": 5003
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"intervention": {
+					"after": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat src/roman.js",
+					"operation": "steer"
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 11.5,
+					"max": 22941,
+					"median": 22929.5,
+					"min": 22918,
+					"n": 2,
+					"q1": 22923.75,
+					"q3": 22935.25
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 17325,
+					"median": 17325,
+					"min": 17325,
+					"n": 2,
+					"q1": 17325,
+					"q3": 17325
+				},
+				"output": {
+					"iqr": 0,
+					"max": 1766,
+					"median": 1766,
+					"min": 1766,
+					"n": 2,
+					"q1": 1766,
+					"q3": 1766
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 19091,
+					"median": 19091,
+					"min": 19091,
+					"n": 2,
+					"q1": 19091,
+					"q3": 19091
+				}
+			}
+		},
+		{
+			"bundle": {
+				"digest": "6e8862762362b1eea5e728d4d83c1eb7ffe11f67366816fdd03946eb6fcd2b53",
+				"id": "endo.evidence.experiment.57694f11737bf98c644069fa79845fa9.bundle",
+				"result": {
+					"id": "endo.evidence.experiment.57694f11737bf98c644069fa79845fa9",
+					"profile": {
+						"cognitionPolicy": "none",
+						"environment": {
+							"environmentId": "endophasia-scratch-workspace/implement-function/queue",
+							"schemaVersion": "endo.environment-profile.v0",
+							"simulated": false
+						},
+						"evaluator": "endo-experiment-runner.3; success check sha256 40703cb90982b8ffcccc5994102e3ef1536e90ffc3cae8b2b57fd14e7d86e3fe (the command is in the spec)",
+						"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+						"model": "endolocal/qwen3.8-27b",
+						"runtime": "pi 1.0.1",
+						"schemaVersion": "endo.evaluation-profile.v1",
+						"trialCount": 2
+					},
+					"schemaVersion": "endo.evaluation-result.v0",
+					"trials": [
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 0
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "c5ed069ba9ba59379454ecbf491cb847c8bfc140153b49213e9f503b5ccd77e1",
+								"trajectoryDigest": "3a2c457aeb4db49ff086d2d7e68a5174da3bc125f6210703dd75ec597af0c739"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 5,
+								"session": "endo.session.pi.endo-pi-default-2e0331f22532",
+								"store": "trials/implement-function/queue/0/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						},
+						{
+							"coordinates": {
+								"experimentId": "endo.experiment.path-sensitivity-1.0.1-p02",
+								"schemaVersion": "endo.trial.v0",
+								"trial": 1
+							},
+							"derived": {
+								"checkPassed": true,
+								"finalWorkspace": "bc0120d7ea1fc01b8099ca2eb99337a25e27a0d637143ef878c42b30a555ac44",
+								"trajectoryDigest": "fff14fb3db8f61fe81ad781528bb015cf584d32c580aa48a5a9fddde24174d0b"
+							},
+							"partition": "live-traffic",
+							"raw": {
+								"exchanges": 7,
+								"outcome": {
+									"entries": [
+										{
+											"cause": null,
+											"outcome": "completed",
+											"run": 1,
+											"stopReason": {
+												"status": "reported",
+												"value": "stop"
+											},
+											"stopRequested": false,
+											"turns": 7
+										}
+									],
+									"status": "reported"
+								},
+								"position": 10,
+								"session": "endo.session.pi.endo-pi-default-39c735633637",
+								"store": "trials/implement-function/queue/1/store"
+							},
+							"schemaVersion": "endo.trial-result.v0"
+						}
+					]
+				},
+				"schemaVersion": "endo.experiment-bundle.v0"
+			},
+			"check": {
+				"n": 2,
+				"rate": 1,
+				"successes": 2,
+				"wilson95": {
+					"high": 1,
+					"low": 0.34238
+				}
+			},
+			"condition": "queue",
+			"finalWorkspaces": {
+				"distinct": 2,
+				"of": 2
+			},
+			"firstDivergence": {
+				"divergedLayersByPair": {
+					"none": 1
+				},
+				"indexByLayer": {
+					"lifecycle": {},
+					"outcome": {},
+					"toolCalls": {},
+					"toolResults": {}
+				}
+			},
+			"layers": {
+				"lifecycle": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 1615779820,
+							"skipped": 5027
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"outcome": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 3145759732,
+							"skipped": 5024
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolCalls": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 129970534,
+							"skipped": 4920
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				},
+				"toolResults": {
+					"counts": {
+						"DIVERGED": 0,
+						"EXACT": 1,
+						"UNAVAILABLE": 0
+					},
+					"distinctTrajectories": 1,
+					"modalAgreement": {
+						"n": 2,
+						"rate": 1,
+						"successes": 2,
+						"wilson95": {
+							"high": 1,
+							"low": 0.34238
+						}
+					},
+					"pairs": 1,
+					"pairwiseExact": {
+						"bootstrap95": {
+							"high": 1,
+							"low": 1,
+							"resamples": 10000,
+							"seed": 2652889540,
+							"skipped": 4921
+						},
+						"exactPairs": 1,
+						"judgedPairs": 1,
+						"rate": 1
+					}
+				}
+			},
+			"outcomes": {
+				"completed": 2
+			},
+			"servingInputs": {
+				"environment": {
+					"fileTime": "2026-01-01T00:00:00Z",
+					"files": {
+						"test-reporter.mjs": {
+							"bytes": 1432,
+							"content": "// The pinned environment's node:test reporter (DESIGN.md §4): what Node's default reporter prints, except time. One\n// line per test (✔ or ✖), the counts, and for each failing test its location and assertion message; never a duration.\n// It is named in NODE_OPTIONS (--test-reporter=<root>/env/test-reporter.mjs), so a plain `node --test`, and a test\n// file run directly with `node`, both use it.\nexport default async function* reporter(source) {\n\tconst failures = [];\n\tfor await (const event of source) {\n\t\tconst { type, data } = event;\n\t\tconst indent = \"  \".repeat(data?.nesting ?? 0);\n\t\tif (type === \"test:pass\" && data.details?.type !== \"suite\") yield `${indent}✔ ${data.name}\\n`;\n\t\telse if (type === \"test:fail\" && data.details?.type !== \"suite\") {\n\t\t\tyield `${indent}✖ ${data.name}\\n`;\n\t\t\tfailures.push(data);\n\t\t} else if (type === \"test:diagnostic\" && !/^duration_ms\\b/.test(data.message)) yield `ℹ ${data.message}\\n`;\n\t\telse if (type === \"test:stdout\" || type === \"test:stderr\") yield data.message;\n\t}\n\tif (failures.length > 0) yield \"\\n✖ failing tests:\\n\";\n\tfor (const failure of failures) {\n\t\tconst error = failure.details?.error?.cause ?? failure.details?.error;\n\t\tconst where = failure.file ? failure.file.split(\"/\").slice(-2).join(\"/\") : \"?\";\n\t\tyield `\\ntest at ${where}:${failure.line}:${failure.column}\\n✖ ${failure.name}\\n`;\n\t\tyield `${String(error?.message ?? error).replace(/^/gm, \"  \")}\\n`;\n\t}\n}\n",
+							"sha256": "5758fe05a9ff29d87ea4fe35749661e599cdf91cac25732d9796729b892f83de"
+						}
+					},
+					"variables": {
+						"LC_ALL": "C",
+						"NODE_OPTIONS": "--test-reporter={root}/env/test-reporter.mjs",
+						"TZ": "UTC"
+					}
+				},
+				"extensions": {
+					"endo-arm.ts": {
+						"bytes": 258,
+						"sha256": "849b129913b941c3fdf4eaec3ff3140d3712c5325e1ec2df2cf8cfef825ea948",
+						"source": "// Endophasia variance study arm (DESIGN.md §4). A documented before_provider_request handler.\nexport default function (pi: any) {\n\tpi.on(\"before_provider_request\", (event: any) => ({ ...event.payload, temperature: 0, seed: 1234, cache_prompt: false }));\n}\n"
+					}
+				},
+				"intervention": {
+					"after": {
+						"chunks": 1,
+						"exchange": 2
+					},
+					"message": "Endophasia study message: when you have finished, also use the bash tool to run exactly this command: cat src/roman.js",
+					"operation": "queue"
+				},
+				"modelEntry": null,
+				"requestParametersSeen": [
+					{
+						"cache_prompt": false,
+						"max_completion_tokens": 16384,
+						"model": "qwen3.8-27b",
+						"seed": 1234,
+						"store": false,
+						"stream": true,
+						"stream_options": {
+							"include_usage": true
+						},
+						"temperature": 0
+					}
+				],
+				"samplingFieldsChecked": [
+					"temperature",
+					"top_p",
+					"top_k",
+					"min_p",
+					"typical_p",
+					"seed",
+					"presence_penalty",
+					"frequency_penalty",
+					"repeat_penalty"
+				],
+				"samplingFieldsSent": [
+					"seed",
+					"temperature"
+				],
+				"samplingParametersSent": [
+					{
+						"seed": 1234,
+						"temperature": 0
+					}
+				],
+				"settings": null
+			},
+			"task": "implement-function",
+			"timing": {
+				"clock": "observer",
+				"wallMs": {
+					"iqr": 1,
+					"max": 15944,
+					"median": 15943,
+					"min": 15942,
+					"n": 2,
+					"q1": 15942.5,
+					"q3": 15943.5
+				}
+			},
+			"toolCallsUpToFirstDivergentInput": {
+				"identical": 1,
+				"notIdentical": 0,
+				"undecidable": 0
+			},
+			"trials": {
+				"completed": 2,
+				"errored": 0,
+				"missing": 0,
+				"planned": 2
+			},
+			"usage": {
+				"cacheRead": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"cacheWrite": {
+					"iqr": 0,
+					"max": 0,
+					"median": 0,
+					"min": 0,
+					"n": 2,
+					"q1": 0,
+					"q3": 0
+				},
+				"input": {
+					"iqr": 0,
+					"max": 17453,
+					"median": 17453,
+					"min": 17453,
+					"n": 2,
+					"q1": 17453,
+					"q3": 17453
+				},
+				"output": {
+					"iqr": 0,
+					"max": 759,
+					"median": 759,
+					"min": 759,
+					"n": 2,
+					"q1": 759,
+					"q3": 759
+				},
+				"totalTokens": {
+					"iqr": 0,
+					"max": 18212,
+					"median": 18212,
+					"min": 18212,
+					"n": 2,
+					"q1": 18212,
+					"q3": 18212
+				}
+			}
+		}
+	],
+	"digest": "6eef51a2fe4ef4230f0dee5cdc5528ba7206a3b8a2ad92096c44151a6f0db0c9",
+	"environment": [
+		{
+			"digestKeyId": "fixture-public",
+			"endpoint": "http://127.0.0.1:8080",
+			"models": {
+				"status": "reported",
+				"value": [
+					{
+						"id": "qwen3.8-27b",
+						"meta": {
+							"ftype": "Q4_K - Medium",
+							"n_ctx": 98304,
+							"n_ctx_train": 262144,
+							"n_embd": 5120,
+							"n_params": 27320697856,
+							"n_vocab": 248320,
+							"size": 17548181504,
+							"vocab_type": true
+						},
+						"owned_by": "llamacpp"
+					}
+				]
+			},
+			"observedAt": "2026-10-04T19:23:32.081Z",
+			"pi": {
+				"status": "reported",
+				"value": {
+					"entrypointSha256": "e79626f2dd6f94aa45d30f3fa63cd84319a6eefcd150b353cfaf274366926774",
+					"identityDigest": "f91821fd54dd80c4442ac5232d5b39a50a6f5c5a21376853fbe9d114e9c7642a",
+					"version": "1.0.1"
+				}
+			},
+			"serverDefaults": {
+				"reason": "the server's default sampling settings are not read: that needs a server-settings endpoint, which the runner does not call",
+				"status": "UNAVAILABLE"
+			}
+		}
+	],
+	"experiment": {
+		"budget": {
+			"cells": 6,
+			"trialsPerCell": 2
+		},
+		"environment": {
+			"environmentId": "endophasia-scratch-workspace",
+			"schemaVersion": "endo.environment-profile.v0",
+			"simulated": false
+		},
+		"id": "endo.experiment.path-sensitivity-1.0.1-p02",
+		"model": "endolocal/qwen3.8-27b",
+		"provenance": "endo-experiment-runner.3; spec sha256 532fb8a0a142a86816f75115ec25778abcc48840d7e10195e4a8542abf855bb5",
+		"schemaVersion": "endo.experiment.v0"
+	},
+	"manipulation": {
+		"M1": {
+			"checked": 66,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M2a": {
+			"checked": 12,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M2b": {
+			"checked": 66,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M3": {
+			"checked": 12,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "PASS"
+		},
+		"M4": {
+			"checked": 0,
+			"failureCount": 0,
+			"failures": [],
+			"invalidates": [],
+			"status": "NOT-APPLICABLE"
+		},
+		"validity": {
+			"base": "valid",
+			"queue": "valid",
+			"steer": "valid"
+		}
+	},
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"schemaVersion": "endo.experiment-report.v1",
+	"seed": 4247399873,
+	"seedSource": "drawn",
+	"specSha256": "532fb8a0a142a86816f75115ec25778abcc48840d7e10195e4a8542abf855bb5",
+	"statistics": "headline: modal agreement, the share of completed trials whose layer equals the most common one, with a 95% Wilson interval (trials are independent). Also: the number of distinct trajectories, and the pairwise exact-match rate over all unordered pairs of completed trials (EXACT / (EXACT + DIVERGED); UNAVAILABLE pairs are counted separately) with a 95% percentile bootstrap interval that resamples trials, not pairs: pairs share trials, so a Wilson interval over pairs would be optimistic (10000 resamples, seeded from the spec sha256, cell and layer; two draws of the same trial are not a pair). Usage and timing are reported as median and interquartile range (type 7 quartiles), never judged.",
+	"trials": {
+		"completed": 12,
+		"errored": 0,
+		"interruptedAndRerun": 0,
+		"missing": 0,
+		"planned": 12
+	}
+}

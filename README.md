@@ -452,6 +452,14 @@ EVOLVE / research loop:
     explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
 
 
+
+Hardening and artifact:
+
+16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
+    events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
+17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
+    comparison → promotion decision trail that another researcher can replay.
+
 ### Experimental research tracks (deferred; not commitments)
 
 These are candidates for a separate EVOLVE experiment mode, not features to build before the core
@@ -510,14 +518,6 @@ must also survive fresh model executions. A benchmark score alone never grants p
 **Research index:** [survey of self-evolving coding agents](https://arxiv.org/html/2608.03392v1) for
 additional methods and comparisons. Treat reported gains as hypotheses to reproduce, not guarantees
 that a method will transfer to Endophasia's runtime-neutral setting.
-
-
-Hardening and artifact:
-
-16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
-    events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
-17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
-    comparison → promotion decision trail that another researcher can replay.
 
 The ordering is deliberate: runtime truth comes before replay; replay comes before evaluation; evaluation comes before
 evolution. The project should not grow another large protocol-only migration before these contracts have survived a real

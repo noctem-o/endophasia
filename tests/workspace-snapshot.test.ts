@@ -21,6 +21,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	archiveEndoWorkspaceV0,
 	parseEndoWorkspaceArchiveV0,
+	pinEndoWorkspaceTimesV0,
 	restoreEndoWorkspaceV0,
 } from "../storage/workspace-snapshot.ts";
 
@@ -97,6 +98,21 @@ describe("workspace archives", () => {
 			rmSync(target, { recursive: true, force: true });
 		}
 		expect(restoredAt).toEqual([]);
+	});
+
+	it("pinning a tree gives every entry, links and the root included, one time; the archive then carries only it", () => {
+		const source = tree();
+		const pin = Date.parse("2026-01-01T00:00:00Z");
+		pinEndoWorkspaceTimesV0(source, pin);
+		for (const path of ["notes.txt", "src/deep/run.sh", "src/deep", "src"])
+			expect(mtime(join(source, path)), path).toBe(pin);
+		expect(mtime(join(source, "link"), true)).toBe(pin);
+		expect(mtime(source)).toBe(pin);
+		const archive = parseEndoWorkspaceArchiveV0(archiveEndoWorkspaceV0(source).bytes);
+		expect(archive.rootMtimeMs).toBe(pin);
+		expect(new Set(archive.entries.map((entry) => entry.mtimeMs))).toEqual(new Set([pin]));
+		expect(() => pinEndoWorkspaceTimesV0(source, -1)).toThrow(/bad time/);
+		expect(() => pinEndoWorkspaceTimesV0(source, 1.5)).toThrow(/bad time/);
 	});
 
 	it("the same tree with the same times always gives the same bytes", () => {

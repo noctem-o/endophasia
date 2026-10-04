@@ -6,11 +6,12 @@
 // It proves the driver's mechanics (snapshot and restore at the recorded path, the recorded port, STOP and kill at the
 // recorded chunk, the recorded session id, evidence carried over, the comparison), not anything about a real Pi.
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { EndoCaptureLogV0, endoCaptureRootV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { type EndoRecordingProxyV0, startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { exportPiCassetteFixtureV0, materializePiCassetteFixtureV0 } from "../cli/cassette-fixture.ts";
 import {
@@ -20,7 +21,10 @@ import {
 	recordPiCassetteSessionV0,
 	replayPiCassetteSessionV0,
 } from "../cli/cassette-session.ts";
+import type { EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
+import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoDigestKeyFromEnvironmentV0 } from "../storage/digest-key.ts";
+import { parseEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
 
@@ -269,6 +273,107 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		});
 		expect(seen).toBeLessThan(Date.now() - 1000);
 		expect(report.misses).toBe(0);
+	});
+
+	it("a pinned environment reaches Pi on record and on replay; it is recorded, and the snapshot holds its files and times", async () => {
+		const envLog = join(base, "env-log.jsonl");
+		const scratchRoot = join(base, "scratch-pinned");
+		const store = join(base, "root-pinned");
+		const reporter = "export default async function* reporter() {}\n";
+		const fileTime = "2026-01-01T00:00:00Z";
+		const seen = () =>
+			readFileSync(envLog, "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line));
+		const expected = {
+			TZ: "UTC",
+			LC_ALL: "C",
+			LANG: null,
+			NODE_OPTIONS: `--test-reporter=${scratchRoot}/env/reporter.mjs`,
+		};
+		// The session process (which runs every tool) sees the variables; the identity probe (`--version`) runs with its
+		// minimal environment, so Pi's fingerprint does not depend on the pinning.
+		const expectPinned = (lines: { version: boolean }[]) => {
+			const sessions = lines.filter((line) => !line.version);
+			expect(sessions.length).toBeGreaterThan(0);
+			for (const line of sessions) expect(line).toEqual({ version: false, ...expected });
+			for (const line of lines.filter((entry) => entry.version))
+				expect(line).toEqual({ version: true, TZ: null, LC_ALL: null, LANG: null, NODE_OPTIONS: null });
+		};
+		install.setEnvLog(envLog);
+		try {
+			const pinnedProxy = await startEndoRecordingProxyV0({ upstream: new URL(upstream.baseUrl).origin, log: null });
+			try {
+				await recordPiCassetteSessionV0({
+					scenario: SCENARIOS.tool!,
+					pi: install.bin,
+					provider: "fake",
+					model: "fake-1",
+					proxy: pinnedProxy,
+					store,
+					scratchRoot,
+					keySource: { kind: "installation" },
+					evidenceFrom: null,
+					timeoutMs: 20_000,
+					environment: {
+						variables: { TZ: "UTC", LC_ALL: "C", NODE_OPTIONS: "--test-reporter={root}/env/reporter.mjs" },
+						files: { "reporter.mjs": reporter },
+						fileTime,
+					},
+				});
+			} finally {
+				await pinnedProxy.close();
+			}
+			expectPinned(seen());
+
+			const events = readEndoCaptureEventsV0(store);
+			expect(events.find((event) => event.kind === "capture.environment")?.payload).toEqual({
+				variables: { TZ: "UTC", LC_ALL: "C", NODE_OPTIONS: expected.NODE_OPTIONS },
+				fileTime,
+				files: {
+					"reporter.mjs": {
+						sha256: createHash("sha256").update(reporter).digest("hex"),
+						bytes: Buffer.byteLength(reporter),
+					},
+				},
+			});
+			const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")!.payload as unknown as {
+				archive: { digest: EndoKeyedDigestV0 };
+			};
+			const archive = parseEndoWorkspaceArchiveV0(
+				createEndoBlobStoreV0(endoCaptureRootV0(store), endoDigestKeyFromEnvironmentV0(), { readOnly: true }).get(
+					snapshot.archive.digest,
+				),
+			);
+			expect(archive.rootMtimeMs).toBe(Date.parse(fileTime));
+			expect(new Set(archive.entries.map((entry) => entry.mtimeMs))).toEqual(new Set([Date.parse(fileTime)]));
+			expect(archive.entries.map((entry) => entry.path)).toEqual(
+				expect.arrayContaining(["env/reporter.mjs", "work/endophasia-study.txt", "agent/models.json"]),
+			);
+
+			writeFileSync(envLog, "");
+			const out = join(base, "replay-pinned");
+			const report = await replayPiCassetteSessionV0({
+				store,
+				out,
+				pi: install.bin,
+				timing: "immediate",
+				keySource: { kind: "installation" },
+				timeoutMs: 20_000,
+				holdMs: 5_000,
+			});
+			expect(report.misses).toBe(0);
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
+				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
+			expectPinned(seen());
+		} finally {
+			install.setEnvLog("/dev/null");
+		}
+	});
+
+	it("a session without a pinned environment records none, and Pi sees none of its variables", () => {
+		expect(readEndoCaptureEventsV0(recorded.tool!).some((event) => event.kind === "capture.environment")).toBe(false);
 	});
 
 	it("a replay leaves nothing at the recorded path: the restored root and any parent it had to create are removed", async () => {

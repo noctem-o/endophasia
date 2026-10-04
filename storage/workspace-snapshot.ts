@@ -186,20 +186,47 @@ export function restoreEndoWorkspaceV0(bytes: Uint8Array, directory: string): En
 			if (entry.executable) chmodSync(target, 0o755);
 		}
 	}
-	if (archive.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1) {
-		// Seconds, at the middle of the recorded millisecond: utimes takes a double, and some libuv releases (Node 22's)
-		// truncate it to whole microseconds, so t / 1000 lands just under t for about half of all t (…383 reads back as
-		// …382). The middle survives that truncation and floors back to exactly t, so a re-archive gives the same bytes.
-		const at = (ms: number) => (ms + 0.5) / 1000;
-		for (const entry of archive.entries) {
-			const target = join(directory, entry.path);
-			if (entry.type === "file") utimesSync(target, at(entry.mtimeMs!), at(entry.mtimeMs!));
-			else if (entry.type === "symlink") lutimesSync(target, at(entry.mtimeMs!), at(entry.mtimeMs!));
-		}
-		const directories = archive.entries.filter((entry) => entry.type === "directory");
-		directories.sort((a, b) => b.path.split("/").length - a.path.split("/").length);
-		for (const entry of directories) utimesSync(join(directory, entry.path), at(entry.mtimeMs!), at(entry.mtimeMs!));
-		utimesSync(directory, at(archive.rootMtimeMs!), at(archive.rootMtimeMs!));
-	}
+	if (archive.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1)
+		setTimes(directory, archive.entries as TimedEntry[], archive.rootMtimeMs!);
 	return archive;
+}
+
+type TimedEntry = { path: string; type: "file" | "directory" | "symlink"; mtimeMs: number };
+
+/** Set recorded times: files and links first, then directories deepest first, then the root (each write moves its parent's time). */
+function setTimes(directory: string, entries: readonly TimedEntry[], rootMtimeMs: number): void {
+	// Seconds, at the middle of the recorded millisecond: utimes takes a double, and some libuv releases (Node 22's)
+	// truncate it to whole microseconds, so t / 1000 lands just under t for about half of all t (…383 reads back as
+	// …382). The middle survives that truncation and floors back to exactly t, so a re-archive gives the same bytes.
+	const at = (ms: number) => (ms + 0.5) / 1000;
+	for (const entry of entries) {
+		const target = join(directory, entry.path);
+		if (entry.type === "file") utimesSync(target, at(entry.mtimeMs), at(entry.mtimeMs));
+		else if (entry.type === "symlink") lutimesSync(target, at(entry.mtimeMs), at(entry.mtimeMs));
+	}
+	const directories = entries.filter((entry) => entry.type === "directory");
+	directories.sort((a, b) => b.path.split("/").length - a.path.split("/").length);
+	for (const entry of directories) utimesSync(join(directory, entry.path), at(entry.mtimeMs), at(entry.mtimeMs));
+	utimesSync(directory, at(rootMtimeMs), at(rootMtimeMs));
+}
+
+/**
+ * Pin a tree's times: every entry under `directory`, and `directory` itself, gets the modification and access time
+ * `ms` (milliseconds since the epoch). An experiment's pinned environment uses it so that a tool listing the tree
+ * (`ls -la`) prints the same times in every trial.
+ */
+export function pinEndoWorkspaceTimesV0(directory: string, ms: number): void {
+	if (!Number.isSafeInteger(ms) || ms < 0) throw new TypeError(`bad time ${ms}`);
+	const entries: TimedEntry[] = [];
+	const walk = (relative: string) => {
+		for (const dirent of readdirSync(join(directory, relative), { withFileTypes: true })) {
+			const path = relative === "" ? dirent.name : `${relative}/${dirent.name}`;
+			if (dirent.isDirectory()) {
+				entries.push({ path, type: "directory", mtimeMs: ms });
+				walk(path);
+			} else entries.push({ path, type: dirent.isSymbolicLink() ? "symlink" : "file", mtimeMs: ms });
+		}
+	};
+	walk("");
+	setTimes(directory, entries, ms);
 }

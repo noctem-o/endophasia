@@ -121,6 +121,12 @@ files with fresh times would show the tool a different workspace, so a v1 snapsh
 files and links first, then directories deepest first, then the root. Older `v0` snapshots carry no times and restore
 with fresh ones.
 
+**A pinned environment** (an experiment condition's `environment`, [experiments.md](experiments.md)) is applied
+before the snapshot: its files under `<root>/env/`, then its fixed time on every entry. It is recorded as
+`capture.environment`: the variables as Pi saw them, the file time, and each file's sha256 and length. A replay
+reapplies the recorded variables to Pi's session environment. The files and times come back with the snapshot. A
+recording without `capture.environment` replays with none.
+
 **A replay keeps the recording's environment:**
 
 - **Same path.** The scratch root is restored at the same absolute path, which must not exist. Pi's requests carry the

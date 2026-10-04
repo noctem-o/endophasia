@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { replayPiCassetteSessionV0 } from "../cli/cassette-session.ts";
 import {
 	type EndoExperimentTrialResultV0,
@@ -92,6 +93,23 @@ describe("the experiment spec and the trial order", () => {
 		expect(
 			endoExperimentSpecProblemV0(spec({ tasks: [{ id: "t", prompts: ["p"], workspace: { "../escape": "x" } }] })),
 		).toMatch(/bad workspace entry/);
+		const pinned = (environment: unknown) =>
+			endoExperimentSpecProblemV0({ ...spec(), conditions: [{ id: "a", description: "x", environment }] });
+		expect(
+			pinned({
+				variables: { TZ: "UTC", NODE_OPTIONS: "--x={root}/env/r.mjs" },
+				files: { "r.mjs": "" },
+				fileTime: "2026-01-01T00:00:00Z",
+			}),
+		).toBeNull();
+		expect(pinned({ variables: { HOME: "/elsewhere" } })).toMatch(
+			/HOME is not one of TZ, LC_ALL, LANG, NODE_OPTIONS/,
+		);
+		expect(pinned({ variables: { TZ: 0 } })).toMatch(/variables must map names to strings/);
+		expect(pinned({ files: { "../escape": "x" } })).toMatch(/is not a relative path/);
+		expect(pinned({ fileTime: "2026-01-01 00:00" })).toMatch(/fileTime must be an ISO-8601 UTC time/);
+		expect(pinned({ fileTime: "2026-01-01T00:00:00+01:00" })).toMatch(/fileTime must be an ISO-8601 UTC time/);
+		expect(pinned({ clock: "frozen" })).toMatch(/environment: unknown field clock/);
 	});
 
 	it("a seeded plan reproduces exactly; another seed differs; every block runs every cell once", () => {
@@ -195,6 +213,48 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		const b = r.cells.find((cell) => cell.condition === "b")!;
 		expect(b.servingInputs.extensions["sampling.ts"]!.source).toBe(extension);
 		expect(b.servingInputs.extensions["sampling.ts"]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+	}, 120_000);
+
+	it("a condition's pinned environment is applied to its trials only, recorded in each trial's capture, and reported", async () => {
+		const dir = join(base, "environment");
+		const environment = {
+			variables: { TZ: "UTC", LC_ALL: "C", NODE_OPTIONS: "--test-reporter={root}/env/reporter.mjs" },
+			files: { "reporter.mjs": "export default async function* reporter() {}\n" },
+			fileTime: "2026-01-01T00:00:00Z",
+		};
+		const s = spec({
+			id: "endo.experiment.test-environment",
+			trials: 1,
+			conditions: [
+				{ id: "u", description: "unpinned" },
+				{ id: "p", description: "pinned", environment },
+			],
+		});
+		await runEndoExperimentV0({ spec: s, dir, log: () => {}, scratchParent: base });
+		const byCondition = Object.fromEntries(results(dir).map((result) => [result.condition, result]));
+		expect(byCondition.p!.status).toBe("completed");
+		expect(byCondition.p!.check).toMatchObject({ ran: true, passed: true });
+		const recordedEnvironment = (condition: string) =>
+			readEndoCaptureEventsV0(join(dir, byCondition[condition]!.store)).find(
+				(event) => event.kind === "capture.environment",
+			)?.payload as { variables: Record<string, string>; fileTime: string } | undefined;
+		expect(recordedEnvironment("u")).toBeUndefined();
+		const pinnedRecord = recordedEnvironment("p")!;
+		expect(pinnedRecord.fileTime).toBe(environment.fileTime);
+		expect(pinnedRecord.variables.NODE_OPTIONS).toMatch(/^--test-reporter=\/.*\/scratch\/env\/reporter\.mjs$/);
+		const { report } = reportEndoExperimentV0(dir);
+		const cells = (report as { cells: { condition: string; servingInputs: Record<string, unknown> }[] }).cells;
+		expect(cells.find((cell) => cell.condition === "u")!.servingInputs).not.toHaveProperty("environment");
+		expect(cells.find((cell) => cell.condition === "p")!.servingInputs.environment).toMatchObject({
+			variables: environment.variables,
+			fileTime: environment.fileTime,
+			files: {
+				"reporter.mjs": {
+					bytes: environment.files["reporter.mjs"].length,
+					content: environment.files["reporter.mjs"],
+				},
+			},
+		});
 	}, 120_000);
 
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {

@@ -1,0 +1,30 @@
+{
+	"meansMs": {
+		"implement-function/base": 11181,
+		"implement-function/queue": 16284,
+		"implement-function/steer": 13095,
+		"tool-use/base": 7887,
+		"tool-use/queue": 11513,
+		"tool-use/steer": 12022
+	},
+	"msPerRound": 71982,
+	"estimateHours": [
+		{
+			"n": 10,
+			"hours": 0.22
+		},
+		{
+			"n": 12,
+			"hours": 0.26
+		},
+		{
+			"n": 15,
+			"hours": 0.33
+		},
+		{
+			"n": 20,
+			"hours": 0.44
+		}
+	],
+	"chosen": 20
+}

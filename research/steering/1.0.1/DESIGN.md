@@ -209,7 +209,46 @@ starts, in a separate commit.
 
 ### N, chosen after the pilot
 
-(Reserved.)
+Written on 2026-10-04 from the pilot, before the main run started. The pilot ran 18 trials (2 tasks × base, steer,
+queue × 3) from 15:45 to 15:49 UTC, with ordering seed 3312024923. All 18 completed; none errored. The capability
+study that precedes the trials took 18 s and admitted `steering.steer` and `steering.follow-up` (both
+admitted-partial, as in the earlier recordings).
+
+**Manipulation checks:** all passed, so every arm is valid.
+
+| Check | Result |
+| :--- | :--- |
+| M1 | 93/93 requests |
+| M2a | 18/18 trials |
+| M2b | 93/93 requests |
+| M3 | 18/18 trials |
+| M5 | 18/18 trials |
+| M6 | 0 durations in 93 requests |
+| I1 | 18/18 trials: 12 complete chains, 6 baseline trials with none |
+| I2 | PASS |
+
+**A first look at P1 to P4:** all held in all 12 steered trials. The pilot's report, plan and run record are in
+`pilot/`; the checks and this estimate are in `analysis/`. The pilot's P5 (the effect) is not summarised here, because
+the pilot is not part of the analysis; it is reported with the main run's.
+
+**Mean wall time per trial** (start to end, including Pi's start-up):
+
+| task | base | steer | queue |
+| :--- | ---: | ---: | ---: |
+| tool-use | 7.9 s | 12.0 s | 11.5 s |
+| implement-function | 11.2 s | 13.1 s | 16.3 s |
+
+One round of the 6 cells takes 72.0 s. With 10% overhead, plus the capability study once:
+
+| N | T(N) |
+| ---: | ---: |
+| 10 | 0.22 h |
+| 12 | 0.26 h |
+| 15 | 0.33 h |
+| 20 | 0.44 h |
+
+**N = 20**: the largest value in {10, 12, 15, 20} with T(N) ≤ 10 h. The main run is 120 trials (2 tasks × 3 arms ×
+20). With 20 identical trials out of 20, the 95% Wilson lower bound is 0.839.
 
 ## 10. Checks after the run
 

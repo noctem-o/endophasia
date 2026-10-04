@@ -1,0 +1,22 @@
+{
+	"pathWallMs": [
+		199638,
+		185578
+	],
+	"meanPathWallMs": 192608,
+	"estimateHours": [
+		{
+			"n": 12,
+			"hours": 0.71
+		},
+		{
+			"n": 20,
+			"hours": 1.18
+		},
+		{
+			"n": 30,
+			"hours": 1.77
+		}
+	],
+	"chosen": 30
+}

@@ -1,0 +1,296 @@
+{
+	"paths": {
+		"analysed": 2,
+		"missing": [],
+		"order": [
+			"pilot-1",
+			"pilot-2"
+		],
+		"seed": 1291105655
+	},
+	"primary": {
+		"implement-function/steer": {
+			"paths": 2,
+			"followed": 0,
+			"ignored": 2,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 0,
+				"n": 2,
+				"rate": 0,
+				"wilson95": {
+					"low": 0,
+					"high": 0.65762
+				}
+			},
+			"reading": "path-dependent at this N",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 0,
+					"n": 2,
+					"rate": 0,
+					"wilson95": {
+						"low": 0,
+						"high": 0.65762
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 0,
+					"n": 2,
+					"rate": 0,
+					"wilson95": {
+						"low": 0,
+						"high": 0.65762
+					}
+				}
+			},
+			"patterns": {
+				"ignored": 4
+			}
+		},
+		"implement-function/queue": {
+			"paths": 2,
+			"followed": 2,
+			"ignored": 0,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 2,
+				"n": 2,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.34238,
+					"high": 1
+				}
+			},
+			"reading": "path-dependent at this N",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				}
+			},
+			"patterns": {
+				"only-the-asked-for-command": 4
+			}
+		},
+		"tool-use/steer": {
+			"paths": 2,
+			"followed": 2,
+			"ignored": 0,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 2,
+				"n": 2,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.34238,
+					"high": 1
+				}
+			},
+			"reading": "path-dependent at this N",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				}
+			},
+			"patterns": {
+				"commands-in-separate-turns": 4
+			}
+		},
+		"tool-use/queue": {
+			"paths": 2,
+			"followed": 2,
+			"ignored": 0,
+			"mixed": [],
+			"followedOfDeterminate": {
+				"successes": 2,
+				"n": 2,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.34238,
+					"high": 1
+				}
+			},
+			"reading": "path-dependent at this N",
+			"worstCase": {
+				"everyMixedIgnored": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				},
+				"everyMixedFollowed": {
+					"successes": 2,
+					"n": 2,
+					"rate": 1,
+					"wilson95": {
+						"low": 0.34238,
+						"high": 1
+					}
+				}
+			},
+			"patterns": {
+				"only-the-asked-for-command": 4
+			}
+		}
+	},
+	"secondary": {
+		"baselinePathInvariance": {
+			"implement-function": {
+				"distinctSignatures": 2,
+				"groups": [
+					[
+						"pilot-1"
+					],
+					[
+						"pilot-2"
+					]
+				]
+			},
+			"tool-use": {
+				"distinctSignatures": 1,
+				"groups": [
+					[
+						"pilot-1",
+						"pilot-2"
+					]
+				]
+			}
+		},
+		"steeredSignatureDistinctness": {
+			"tool-use/steer": {
+				"distinctSignatures": 1
+			},
+			"tool-use/queue": {
+				"distinctSignatures": 1
+			},
+			"implement-function/steer": {
+				"distinctSignatures": 2
+			},
+			"implement-function/queue": {
+				"distinctSignatures": 2
+			}
+		},
+		"withinPathDeterminism": {
+			"cellsNotIdentical": []
+		},
+		"delivery": {
+			"pathsWithViolations": [],
+			"violations": 0
+		},
+		"success": {
+			"successes": 24,
+			"n": 24,
+			"rate": 1,
+			"wilson95": {
+				"low": 0.862024,
+				"high": 1
+			}
+		}
+	},
+	"manipulation": {
+		"MPath": {
+			"status": "PASS",
+			"distinctFirstRequestsByTask": {
+				"implement-function": 1,
+				"tool-use": 1
+			}
+		},
+		"perPathFailures": [],
+		"status": "PASS"
+	},
+	"transportErrors": 0,
+	"known": {
+		"note": "not part of the sample (DESIGN §4); the steering study's data",
+		"e5bacd997570": {
+			"source": "the steering pilot",
+			"compliance": {
+				"tool-use/steer": "0/3",
+				"tool-use/queue": "3/3",
+				"implement-function/steer": "0/3",
+				"implement-function/queue": "3/3"
+			}
+		},
+		"372c52355fe7": {
+			"source": "the steering main run",
+			"compliance": {
+				"tool-use/steer": "20/20",
+				"tool-use/queue": "20/20",
+				"implement-function/steer": "0/20",
+				"implement-function/queue": "20/20"
+			}
+		}
+	},
+	"perPath": [
+		{
+			"label": "pilot-1",
+			"hash": "db865aedb21e",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 338,
+				"tool-use/steer": 801,
+				"tool-use/queue": 462,
+				"implement-function/base": 608,
+				"implement-function/steer": 1850,
+				"implement-function/queue": 741
+			},
+			"wallMs": 199638
+		},
+		{
+			"label": "pilot-2",
+			"hash": "0a275d344317",
+			"outcomes": {
+				"tool-use/steer": "followed",
+				"tool-use/queue": "followed",
+				"implement-function/steer": "ignored",
+				"implement-function/queue": "followed"
+			},
+			"outputTokens": {
+				"tool-use/base": 287,
+				"tool-use/steer": 1329,
+				"tool-use/queue": 413,
+				"implement-function/base": 518,
+				"implement-function/steer": 731,
+				"implement-function/queue": 611
+			},
+			"wallMs": 185578
+		}
+	]
+}

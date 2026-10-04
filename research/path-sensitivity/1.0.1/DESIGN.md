@@ -183,7 +183,34 @@ run starts, in a separate commit.
 
 ### The number of paths, chosen after the pilot
 
-(Reserved.)
+Written on 2026-10-04 from the pilot, before the main run started. The pilot ran 2 paths outside the sample
+(`pilot-1`, scratch hash `db865aedb21e`, and `pilot-2`, `0a275d344317`), 12 trials each, from 18:27 to 18:34 UTC. All
+24 trials completed; none errored; there were no transport errors.
+
+**Manipulation checks:** all passed.
+
+| Check | Result |
+| :--- | :--- |
+| M-path | PASS: after the path normalization, the first request is byte-identical across the two paths for each task (1 distinct first request per task) |
+| M1 to M3, M5, M6, I1, I2 | PASS at both paths |
+| P1 to P4 | held at both paths (0 violations) |
+
+The pilot's measures are in `analysis/pilot-analysis.json` and are not summarised here, because the pilot is not part of
+the analysis. One thing it showed, which the pre-registered measures cover: after the path normalization the
+`implement-function` baseline's tool-call signature differed between the two paths, so baseline path-invariance (§7)
+may not hold on that task.
+
+**Time:** the capability study took 18 s, and one path took 199.6 s and 185.6 s, a mean of 192.6 s. With 10% overhead:
+
+| N paths | T(N) |
+| ---: | ---: |
+| 12 | 0.71 h |
+| 20 | 1.18 h |
+| 30 | 1.77 h |
+
+**N = 30**: the largest value in {12, 20, 30} with T(N) ≤ 3 h. The main run is 30 paths × 12 trials = 360 trials.
+With 30 paths all followed, the 95% Wilson lower bound is 0.886, so "robustly followed" (L ≥ 0.70) is reachable with
+room to spare, and with 30 all ignored the upper bound is 0.114, so is "robustly ignored" (U ≤ 0.30).
 
 ## 10. Checks after the run
 

@@ -312,83 +312,36 @@ A valid proposal does not widen the model's permission.
 
 ## Current state
 
-**Implemented and tested here:**
+A summary. The detail of what is implemented, with every limitation, is in [docs/status.md](docs/status.md). What
+each real recording and study establishes, and what it does not, is in [research/README.md](research/README.md).
 
-- The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay,
-  durable storage, and the `endo` CLI (store commands and `endo harness …`). A writable open cuts a torn log tail only
-  after every remaining record validated, keeps the cut bytes in a side file, and reports their length and SHA-256.
-  The reporting commands (`status`, `events`, `ledger`, `artifacts`, `harness status`) open stores read-only and change
-  nothing on disk.
-- **The Pi attachment** (`adapters/pi`, `endo harness …`): executable resolution, fingerprints and change records,
-  neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
-  and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
-  recovery and replay. Controls are offered only for admitted capabilities.
-- **Session lifecycle on the Pi path** (`adapters/pi/lifecycle.ts`, `protocol/session-lifecycle.ts`): the recorded
-  Pi records are folded into canonical `lifecycle.*` events as they are stored.
-  - The events cover session started and resumed, run and turn started and completed, failed (with Pi's own
-    `errorMessage` or `finalError` as the cause, recorded by sha256, length and a pattern classification; the text
-    itself is kept outside canonical evidence in the store's `runtime-text/`), a STOP's request and acceptance (kept apart from Pi's observed
-    `aborted` termination), interrupted, detached and compacted.
-  - Interrupted means the Pi process exited, or Endophasia ended without recording an exit. The next attachment
-    records the interruption together with its store recovery report.
-  - Out-of-order and unknown records are surfaced as anomalies and unrecognized events.
-  - Lifecycle events are rebuilt from the recorded facts on open, so a crash between writes is repaired, never
-    duplicated.
-  - `endo harness overview` prints the session overview (`protocol/session-overview.ts`), reduced read-only from the
-    store; what Pi does not report (run and turn ids, operation outcome, STOP targeting, lanes) is UNAVAILABLE with a
-    reason.
-- **Trajectory comparison** (`protocol/trajectory.ts`, `adapters/pi/trajectory.ts`, `runtime/contracts/trajectory.ts`,
-  [rules](docs/trajectory.md)).
-  - `endo trajectory show` projects one recorded session into `endo.trajectory.v1`, opening the store read-only. The
-    layers are:
-    - lifecycle;
-    - tool calls (name, keyed digest of the canonical arguments): what the agent chose;
-    - tool results (name, status, keyed digest of the result content), at the same positions: what the world answered;
-    - outcome (cause by reference);
-    - usage (what Pi reported);
-    - timing (the observer's clock).
+**What runs, implemented and tested here:**
+- **Protocol, store and CLI.** Versioned `endo.*` events and identities, an evidence store with replay, durable storage
+  with validated recovery, and the `endo` CLI. The reporting commands open stores read-only.
+- **The Pi attachment** (`endo harness …`), over Pi's documented RPC mode. It covers fingerprints and change records,
+  evidence-validity rules, local checks, an authorization-gated live study, and session recording with crash
+  recovery. Controls are offered only for admitted capabilities.
+- **Session lifecycle.** Pi's records fold into canonical `lifecycle.*` events, and `endo harness overview` gives a
+  read-only session overview. What Pi does not report is UNAVAILABLE with a reason.
+- **Trajectory comparison** ([rules](docs/trajectory.md)). `endo trajectory show|diff` judges lifecycle, tool calls,
+  tool results and outcome by keyed digests, never comparing across digest domains.
+- **Capture and cassette replay** ([how it works](docs/replay.md)). `endo proxy record|replay` and `endo replay`
+  replay a recorded session against its cassette, including STOP and kill, and classify any miss as environment or
+  control flow.
+- **Experiments** ([how they run](docs/experiments.md)). `endo experiment run|report` runs pre-registered specs with
+  blocked randomization, manipulation checks and pinned environments. Every trial is also a cassette.
+- **Tests:** a deterministic suite with a fake Pi and a fake OpenAI-compatible endpoint, plus an opt-in acceptance
+  suite against a real installed Pi.
 
-    What the recording lacks is UNAVAILABLE with a reason.
-  - `endo trajectory diff` compares two sessions with a pure function. Lifecycle, tool calls, tool results and outcome
-    are judged EXACT, DIVERGED (first index, both entries, common prefix) or UNAVAILABLE, aligned by position. It also
-    says whether the tool calls stayed identical up to the first divergent input (a tool result). Usage and timing
-    report deltas only and are never judged. Fingerprint, mapping, digest-domain, configuration and model differences are
-    flagged, never mixed silently. A record's digest covers content identities, not store paths.
-  - Since `pi-rpc-mapping.3`, `tool.started` records the arguments as an HMAC-SHA256 with the key's id.
-    `harness.attached` records the mapping version and the digest domain.
-    - **Key:** an installation key generated automatically, with owner-only permissions, in Endophasia's data
-      directory; no setup.
-    - **Comparison:** digests from different domains are never compared.
-    - **Fixtures:** they use a committed public key (`fixture-public`) whose digests offer no secrecy.
-
-    Earlier recordings have none of these. Since `pi-rpc-mapping.4`, `tool.finished` also records a keyed digest of
-    the result content Pi documents on `tool_execution_end` (`result.content`; the tool-specific `details` are not
-    digested).
-- **Capture and cassette replay** ([how it works](docs/replay.md)).
-  - `endo proxy record` is a loopback-only, byte-exact relay between Pi and an OpenAI-compatible endpoint. Pi reaches
-    it through its normal `models.json`. It records each exchange (keyed request digest, headers with secret values
-    dropped, every response chunk with its offset, how it ended) into `<store>/capture/`. Bodies go to a keyed blob
-    store outside canonical evidence.
-  - `endo proxy replay` serves a cassette in recorded order with the recorded chunk boundaries, as-recorded or
-    immediate. Any mismatch is an explicit miss and a failed request, never an improvised response.
-  - `endo replay <store> <session>` restores the recorded scratch root at its recorded path and serves the cassette on
-    the recorded port. It drives a fresh Pi through the recorded prompts, STOP and kill (at the recorded chunk), then
-    compares the result with the recording, layer by layer.
-  - The proxy and the cassette server depend only on the OpenAI-compatible boundary, not on Pi.
-- **Experiments** ([how they run](docs/experiments.md)).
-  - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
-    conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi
-    session recorded through the capture proxy, so each one is also a cassette.
-  - The order is blocked-randomized with a recorded seed. A run resumes after interruption without duplicating trials.
-  - `endo experiment report` aggregates the trials with the trajectory comparison. Per judged layer it gives the
-    pairwise exact-match rate (95% Wilson) and the trial-level modal agreement. It also gives the first divergences,
-    outcomes, the check pass rate, and usage and timing as median and IQR, never judged. The bundle uses the existing
-    evaluation records.
-  - It has run for real in the variance study below (360 trials), the pilot and a smoke test, and in the
-    pinned-environment study (276 trials, pilot included).
-- Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
-  acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
-  `research/pi-conformance/1.0.0/`.
+**Real evidence so far** ([research/README.md](research/README.md)). All of it comes from Pi 1.0.1, qwen3.8-27b on
+llama.cpp, and one machine:
+- [Session lifecycle](research/README.md#session-lifecycle): completes, STOP mid-turn, killed and resumed.
+- [Cassette replays](research/README.md#cassette-replays): 40 replays EXACT, and a negative control that diverged as
+  it should.
+- [Variance study (E2)](research/README.md#variance-study-e2): "unstable" under every arm, from sampling and then
+  from tool output that carried wall-clock values.
+- [Pinned-environment study (E3)](research/README.md#pinned-environment-study-e3): "stable" with the environment
+  pinned, deterministic sampling and the cache off.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and
@@ -402,81 +355,8 @@ they are kept for the steering and replay work and the sealed Prime study.
 **Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
 says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
 an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
-model was called.
-
-The session lifecycle has one real recording (`research/pi-conformance/1.0.1/lifecycle/`, see
-`research/pi-conformance/LIFECYCLE.md`). It ran Pi 1.0.1 against a real model: qwen3.8-27b on llama.cpp's
-OpenAI-compatible server, with reasoning on, on Linux. Its three sessions came out as follows:
-- **completes:** a run completed with Pi's own `stop`.
-- **stop-mid-turn:** a STOP, after which Pi reported its own `aborted` termination. Pi acknowledged the abort only
-  after `agent_settled`, as its documentation says.
-- **killed-and-resumed:** Endophasia was killed mid-turn, and the next attach recorded the interruption and the
-  resume, with deduplicated catch-up.
-
-That is one Pi release, one model and one machine. The failure, retry, compaction and unknown-record paths have been
-exercised only against the fake Pi (`tests/fixtures/pi-lifecycle/`).
-
-Four real sessions were recorded with their cassettes (`research/pi-conformance/1.0.1/cassettes/`): completes,
-stop-mid-turn, killed-and-resumed and tool-use. The tool-use session reads, edits and runs `wc -l` on a file in the
-scratch workspace, so "tools EXACT" is not vacuous there. Each session was replayed 5 times as-recorded and 5 times
-immediate against the same Pi 1.0.1. All 40 replays were EXACT on lifecycle, tools and outcome, with no cassette miss
-and no flag. A real negative control was also run: the workspace file was changed before Pi started. That replay
-diverged at the read's result digest, followed by an explicit cassette miss.
-
-**What these replays establish:** with the model's responses held fixed, this Pi release reproduced its control flow
-for these scenarios on one machine.
-
-**What they do not establish:**
-- anything about the model, whose outputs are held fixed;
-- tool effects outside the scratch root;
-- the behaviour of nondeterministic tools;
-- behaviour on another machine, Pi release or configuration.
-
-A first variance study ([design](research/variance/1.0.1/DESIGN.md), [results](research/variance/1.0.1/RESULTS.md))
-ran Pi 1.0.1 with qwen3.8-27b on three small synthetic tasks: 20 live trials per task under each of three arms. The
-arms were Pi's defaults, temperature 0 with a fixed seed, and that plus llama.cpp's prompt cache off; documented Pi
-extensions changed the requests, and manipulation checks passed.
-
-**Under Pi's defaults**, every pair of runs first differed at a model reply: sampling.
-
-**With temperature 0 and a fixed seed**, no identical request got a different reply (1,140 pairs). Lifecycle and
-outcome were identical in 20 of 20 trials on every task. What still varied on the coding tasks was tool output (test
-durations, file timestamps). It fed back into the next request, and with the prompt cache on it sometimes changed
-which tool calls followed.
-
-The pre-registered verdict is "unstable" under every arm, because the tools layer of the coding tasks varies. Every
-trial passed its success check.
-
-Two findings came out of the study:
-- **A proxy bug.** The recording proxy had delayed relaying the server's connection close, which caused Pi
-  `Connection error.` turns. It was fixed, and the affected run was discarded and repeated.
-- **A replay limit.** Replay cannot reproduce sessions whose tools print wall-clock values. All three spot-check
-  replays of coding-task trials ended in an explicit cassette miss.
-
-This is one Pi release, one model and quantization, one machine and N = 20.
-
-A second study pinned the environment the tools observe
-([design](research/pinned-environment/1.0.1/DESIGN.md), [results](research/pinned-environment/1.0.1/RESULTS.md)). It
-used the same tasks and 20 live trials per task per arm. The pinning is an experiment condition's `environment`:
-- `TZ=UTC` and `LC_ALL=C`;
-- fixed file times on everything Pi starts with;
-- a test reporter that prints no durations.
-
-An unpinned control ran interleaved with the pinned arms.
-
-**With temperature 0, a fixed seed, the cache off and the environment pinned**, every judged layer was identical in
-20 of 20 trials on every task. The pre-registered verdict is "stable", and every pair made identical requests
-throughout. The unpinned control stayed unstable (tool results 1/20 on the coding tasks), which confirms that the
-variance study's remaining divergence came from the environment.
-
-With the cache on and the environment pinned, the result was stable too. The study did not vary the cache state; a
-single pilot event, the first request after a server restart, suggests a cold cache can change a reply. Pinned
-coding-task cassettes replay EXACT. One metric (distinct final workspaces) is not interpreted, because the workspace
-digest now includes file times.
-
-The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases
-(reordered or different tool calls, different result content, missing usage, another Pi version, another digest
-domain) are exercised only against the fake Pi (`tests/fixtures/trajectory/`).
+model was called. The hostile trajectory cases, and the lifecycle's failure, retry, compaction and unknown-record
+paths, are exercised only against the fake Pi ([research/README.md](research/README.md#fake-only-paths)).
 
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.
@@ -497,21 +377,28 @@ Done:
    ([inventory and decisions](docs/pi-attach-inventory.md)).
 2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking, audited
    adversarially ([audit](docs/pi-attach-audit.md)).
+5. **Replay first-class.** Make deterministic replay and differential replay part of the core research workflow,
+   including explicit divergence between two runs.
+   - *Status:* cassette replay with STOP and kill at the recorded chunk (#21); differential replay via the trajectory
+     comparison (#20), with tool calls and tool results judged separately (#25); misses classified as environment or
+     control flow (#25). The wall-clock limit is documented ([replay](docs/replay.md)).
 
 Partly done:
 
 3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed; the cognition graph
    and a cockpit over that store are not wired yet.
-
-Next:
-
 4. **Real Pi path.** Make the first vertical slice boring: observe a real session, record canonical evidence,
    steer where the runtime supports it, interrupt, recover, and preserve explicit permission boundaries.
-5. **Replay first-class.** Make deterministic replay and differential replay part of the core research workflow,
-   including explicit divergence between two runs.
+   - *Status:* observe, record, interrupt and recover are real on Pi 1.0.1 (#19), and so is STOP. STEER and QUEUE
+     are the steering protocol (8).
 6. **Evaluation laboratory.** Define reproducible experiment bundles containing runtime/model/configuration, task,
    initial state, evidence, outcome, evaluator identity, seeds, usage, and analysis. Every research claim should
    point back to evidence.
+   - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and two
+     pre-registered studies (#24, #26, #27). Not yet: experiment bundles feeding the evolution policies (11).
+
+Next:
+
 7. **Cognition controls.** Bring the runtime-neutral DEVELOP controls into the substrate: Reasoning, Epistemic
    Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
    J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
@@ -525,6 +412,8 @@ EVOLVE / research loop:
 
 10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
+    - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,
+      #25); the others do not yet.
 11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
     experiment bundles, including validation, an untouched promotion holdout, noise/leakage checks, and deterministic selection. A faithful
     RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy

@@ -24,6 +24,11 @@
 
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import { validateEndoEventV0 } from "../../protocol/event.ts";
+import {
+	ENDO_INTERVENTION_KINDS_V0,
+	type EndoInterventionKindV0,
+	endoInterventionPayloadProblemV0,
+} from "../../protocol/intervention.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import type {
 	EndoFailureClassV0,
@@ -226,6 +231,28 @@ export function mapAttachmentEventV0(
 	payload: Record<string, JsonValueV0>,
 ): EndoEventV0 {
 	return build(context, `endo.event.pi-live.${context.instance}.${context.nextLive()}`, kind, payload);
+}
+
+/**
+ * An intervention record (protocol/intervention.ts) as an event: its own source class, and the ids of the records it
+ * derives from (the previous step of the chain, or the capture event that evidences a consumption).
+ */
+export function mapInterventionEventV0(
+	context: PiMappingContextV0,
+	kind: EndoInterventionKindV0,
+	payload: Record<string, JsonValueV0>,
+	derivedFrom: readonly string[],
+): EndoEventV0 {
+	const problem = endoInterventionPayloadProblemV0(kind, payload);
+	if (problem !== null) throw new TypeError(`the ${kind} record is malformed: ${problem}`);
+	const event = {
+		...build(context, `endo.event.pi-live.${context.instance}.${context.nextLive()}`, kind, payload),
+		source: ENDO_INTERVENTION_KINDS_V0[kind],
+		derivedFrom: [...derivedFrom],
+	};
+	const validated = validateEndoEventV0(event);
+	if (validated === null) throw new TypeError(`the ${kind} event failed endo.event.v0 validation`);
+	return validated;
 }
 
 /** The result of mapping one live event: an event, a counted delta, or an entry to route through mapPiEntryV0. */

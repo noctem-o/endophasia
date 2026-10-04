@@ -25,6 +25,7 @@ import type {
 	EndoHarnessFingerprintV0,
 	EndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
+import type { EndoInterventionKindV0 } from "../../protocol/intervention.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
@@ -55,6 +56,7 @@ import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, piIdentityEnvironmentV0 }
 import { type PiLifecycleStateV0, piLifecycleInitialStateV0, piLifecycleStepV0 } from "./lifecycle.ts";
 import {
 	mapAttachmentEventV0,
+	mapInterventionEventV0,
 	mapPiEntryV0,
 	mapPiLiveEventV0,
 	type PiMappingContextV0,
@@ -592,6 +594,46 @@ export class PiSessionAttachmentV0 {
 	/** The capability state controls are gated on; re-derived whenever the runtime is re-identified. */
 	get capabilityState(): EndoCapabilityStateV0 {
 		return this.#capabilityState;
+	}
+
+	/** Whether a run is open, by the recorded lifecycle (agent_start seen, its end not yet). */
+	get runActive(): boolean {
+		return this.#lifecycle.run !== null;
+	}
+
+	/** Whether this attachment is open and its Pi process is running: something can receive a control. */
+	get live(): boolean {
+		return !this.#closed && this.#client !== null && this.#client.connection.state === "running";
+	}
+
+	/** Whether current evidence admits a control capability, and if not, why (the same rule controls are gated on). */
+	admission(capability: string): { admitted: true } | { admitted: false; reason: string } {
+		try {
+			this.#admit(capability);
+			return { admitted: true };
+		} catch (error) {
+			return { admitted: false, reason: (error as Error).message };
+		}
+	}
+
+	/** Record that a control message was refused before it reached any intervention (unknown type, malformed). */
+	recordControlRefusal(type: string, reason: string): void {
+		this.#attachmentEvent("control.message-refused", { type: type.slice(0, 64), reason: reason.slice(0, 500) });
+	}
+
+	/**
+	 * Record an intervention step (protocol/intervention.ts) in this session's store. Returns the stored event. The
+	 * payload is validated by its kind; the event carries the step's source class and the ids it derives from.
+	 */
+	recordIntervention(
+		kind: EndoInterventionKindV0,
+		payload: Record<string, JsonValueV0>,
+		derivedFrom: readonly string[] = [],
+	): EndoEventV0 {
+		if (this.#context === null || this.#storeClosed) throw new TypeError("the session attachment is not recording");
+		const event = mapInterventionEventV0(this.#context, kind, payload, derivedFrom);
+		this.#ingest(event);
+		return event;
 	}
 
 	/** The current Pi process id, while one runs. */

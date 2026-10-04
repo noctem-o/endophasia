@@ -54,6 +54,7 @@ import {
 	pinEndoWorkspaceTimesV0,
 	restoreEndoWorkspaceV0,
 } from "../storage/workspace-snapshot.ts";
+import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 
 export const PI_CASSETTE_DRIVER_VERSION_V0 = "pi-cassette-driver.1";
 /** The driver version of a session with an intervention step (`prompt-intervene`); every other session stays .1. */
@@ -440,7 +441,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 	const open = async (op: "open" | "reopen") => {
 		const attachment = piCassetteAttachmentV0(config);
 		session = await attachment.openSession();
-		desk = new PiInterventionDeskV0(session, key);
+		desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(options.store, key));
 		piSessionId = attachment.sessionConfig().sessionId;
 		driver(op, { attachment: attachment.attachment, provider: options.provider, model: options.model, piSessionId });
 	};

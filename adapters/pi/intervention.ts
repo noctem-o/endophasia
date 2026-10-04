@@ -17,7 +17,6 @@
  * The desk's state is rebuilt from the store on construction, so a reattached session continues the same chains.
  */
 
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import {
@@ -34,8 +33,8 @@ import {
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
-	type EndoCapturedRequestV0,
 	type EndoInterventionAuthorityProviderV0,
+	type EndoInterventionCaptureSourceV0,
 	endoFindConsumptionV0,
 	endoInterventionAuthorizationV0,
 	endoInterventionGateV0,
@@ -45,7 +44,6 @@ import {
 } from "../../runtime/contracts/intervention.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0, type EndoBlobStoreV0 } from "../../storage/blob-store.ts";
-import { endoCaptureRootV0, readEndoCaptureEventsV0 } from "../openai-proxy/capture-log.ts";
 import type { PiSessionAttachmentV0 } from "./attachment.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
@@ -88,8 +86,16 @@ export class PiInterventionDeskV0 {
 	/** Applies in flight, by proposal: a concurrent duplicate waits for the first instead of sending twice. */
 	readonly #inFlight = new Map<string, Promise<PiInterventionApplyResultV0>>();
 
-	constructor(session: PiSessionAttachmentV0, key: EndoDigestKeyV0) {
+	readonly #capture: EndoInterventionCaptureSourceV0 | null;
+
+	/** `capture`: where the recording proxy's captured requests are read from; without it consumption is never observed. */
+	constructor(
+		session: PiSessionAttachmentV0,
+		key: EndoDigestKeyV0,
+		capture: EndoInterventionCaptureSourceV0 | null = null,
+	) {
 		this.session = session;
+		this.#capture = capture;
 		this.key = key;
 		this.#root = session.owner.options.root;
 		this.#messages = createEndoBlobStoreV0(join(this.#root, "interventions"), key);
@@ -358,29 +364,6 @@ export class PiInterventionDeskV0 {
 		}
 	}
 
-	/** The captured model requests in this session store, in capture order. */
-	#capturedRequests(): EndoCapturedRequestV0[] {
-		if (!existsSync(join(endoCaptureRootV0(this.#root), "events"))) return [];
-		const blobs = createEndoBlobStoreV0(endoCaptureRootV0(this.#root), this.key, { readOnly: true });
-		return readEndoCaptureEventsV0(this.#root)
-			.filter((event) => event.kind === "capture.request" && event.producer === "capture:record")
-			.flatMap((event) => {
-				const p = event.payload as unknown as { exchange: number; body?: { digest: EndoKeyedDigestV0 } };
-				if (p.body === undefined) return [];
-				try {
-					return [
-						{
-							exchange: p.exchange,
-							captureEvent: event.id,
-							body: JSON.parse(Buffer.from(blobs.get(p.body.digest)).toString("utf8")),
-						},
-					];
-				} catch {
-					return [];
-				}
-			});
-	}
-
 	#consumption(state: RequestStateV0): EndoInterventionConsumptionV0 {
 		const proposal = this.#proposals.get(state.request.proposalId)!.proposal;
 		if (proposal.message === null) return { status: "not-applicable", reason: "stop carries no message to consume" };
@@ -388,15 +371,14 @@ export class PiInterventionDeskV0 {
 			return { status: "not-applicable", reason: "the request was not accepted" };
 		if (state.consumedEvent !== null && state.consumedExchange !== null)
 			return { status: "observed", exchange: state.consumedExchange, captureEvent: state.consumedEvent };
-		if (!existsSync(join(endoCaptureRootV0(this.#root), "events")))
-			return { status: "not-observed", reason: "this session store holds no proxy capture" };
-		const requests = this.#capturedRequests();
+		const requests = this.#capture?.requests() ?? null;
+		if (requests === null) return { status: "not-observed", reason: "this session store holds no proxy capture" };
 		// With the proxy's delivery point, the message can first appear in the next exchange; without one, in the first
 		// exchange captured after the request was recorded.
 		const from =
 			state.request.at !== null
 				? state.request.at.exchange + 1
-				: (this.#exchangesCapturedFrom(state.recordedAt) ?? Number.POSITIVE_INFINITY);
+				: (requests.find((request) => request.at >= state.recordedAt)?.exchange ?? Number.POSITIVE_INFINITY);
 		const found = endoFindConsumptionV0(requests, proposal.message, this.key, from);
 		if (found === null)
 			return {
@@ -415,13 +397,6 @@ export class PiInterventionDeskV0 {
 			[state.eventId],
 		);
 		return { status: "observed", exchange: found.exchange, captureEvent: found.captureEvent };
-	}
-
-	#exchangesCapturedFrom(at: string): number | null {
-		const first = readEndoCaptureEventsV0(this.#root).find(
-			(event) => event.kind === "capture.request" && event.producer === "capture:record" && event.at >= at,
-		);
-		return first === undefined ? null : (first.payload as { exchange: number }).exchange;
 	}
 
 	/** What the store shows after a request: runs that ended and how, turns, and tool calls. */

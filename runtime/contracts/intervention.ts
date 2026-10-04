@@ -171,7 +171,18 @@ export interface EndoCapturedRequestV0 {
 	exchange: number;
 	/** The `capture.request` event's id. */
 	captureEvent: string;
+	/** When the proxy recorded the request, ISO-8601 UTC. */
+	at: string;
 	body: unknown;
+}
+
+/**
+ * Where the desk reads the recording proxy's capture from: the captured model requests of the session store, in
+ * capture order, or null when the store holds no proxy capture. Supplied by the caller (cli/intervention-capture.ts),
+ * so the Pi adapter depends on no proxy code.
+ */
+export interface EndoInterventionCaptureSourceV0 {
+	requests(): readonly EndoCapturedRequestV0[] | null;
 }
 
 /** The text of every user message in an OpenAI-compatible chat request body. */

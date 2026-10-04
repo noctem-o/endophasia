@@ -27,6 +27,7 @@ import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overvi
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
+import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -221,7 +222,8 @@ async function attachWithControl(
 	state: unknown,
 	session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>,
 ): Promise<void> {
-	const desk = new PiInterventionDeskV0(session, session.owner.digestKey());
+	const key = session.owner.digestKey();
+	const desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(parsed.root, key));
 	let server: EndoControlServerV0 | null = null;
 	let disposition: string | null = null;
 	try {

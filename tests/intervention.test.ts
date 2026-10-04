@@ -125,9 +125,19 @@ describe("the gate (default deny)", () => {
 		const proposal = proposalFor();
 		const body = (text: string) => ({ messages: [{ role: "user", content: [{ type: "text", text }] }] });
 		const requests = [
-			{ exchange: 1, captureEvent: "endo.event.c1", body: body("look at notes.txt again") },
-			{ exchange: 2, captureEvent: "endo.event.c2", body: body("unrelated") },
-			{ exchange: 3, captureEvent: "endo.event.c3", body: body("look at notes.txt again") },
+			{
+				exchange: 1,
+				captureEvent: "endo.event.c1",
+				at: "2026-10-04T00:00:00.000Z",
+				body: body("look at notes.txt again"),
+			},
+			{ exchange: 2, captureEvent: "endo.event.c2", at: "2026-10-04T00:00:00.000Z", body: body("unrelated") },
+			{
+				exchange: 3,
+				captureEvent: "endo.event.c3",
+				at: "2026-10-04T00:00:00.000Z",
+				body: body("look at notes.txt again"),
+			},
 		];
 		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 1)?.exchange).toBe(1);
 		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 2)?.exchange).toBe(3);

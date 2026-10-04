@@ -207,6 +207,10 @@ export function loadEndoCassetteV0(storeRoot: string, key: EndoDigestKeyV0): End
 				closedAfter: false,
 			};
 			entry.truncated = null;
+		} else if (event.kind === "capture.exchange-interrupted" && exchange !== null) {
+			const entry = byExchange.get(exchange);
+			if (entry !== undefined && entry.response === null && typeof payload.reason === "string")
+				entry.truncated = payload.reason;
 		} else if (event.kind === "capture.connection-closed" && payload.by === "upstream") {
 			const after = typeof payload.afterExchange === "number" ? byExchange.get(payload.afterExchange) : undefined;
 			if (after?.response) after.response.closedAfter = true;

@@ -129,7 +129,7 @@ export async function recordPiCassetteFixturesV0(options: PiCassetteRecorderOpti
 			model: options.model,
 			files: {},
 		});
-		const checksLog = new EndoCaptureLogV0(checks, key, "record", { buffered: true });
+		const checksLog = new EndoCaptureLogV0(checks, key, "record", { async: true });
 		proxy.log = checksLog;
 		const pi = piCassetteAttachmentV0({
 			root: checks,

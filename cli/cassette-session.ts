@@ -301,7 +301,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		...(options.settings === undefined ? {} : { settings: options.settings }),
 		...(options.extensions === undefined ? {} : { extensions: options.extensions }),
 	});
-	const log = new EndoCaptureLogV0(options.store, key, "record", { buffered: true });
+	const log = new EndoCaptureLogV0(options.store, key, "record", { async: true });
 	const notes: string[] = [];
 	let step = 0;
 	const driver = (op: string, payload: Record<string, JsonValueV0> = {}) => {

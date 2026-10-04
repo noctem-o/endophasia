@@ -68,7 +68,7 @@ beforeAll(async () => {
 	proxy = await startEndoRecordingProxyV0({ upstream: new URL(upstream.baseUrl).origin, log: null });
 	// Capability evidence (steering.stop) through the same port and an identical models.json.
 	const checks = join(base, "root-checks");
-	const checksLog = new EndoCaptureLogV0(checks, endoDigestKeyFromEnvironmentV0(), "record", { buffered: true });
+	const checksLog = new EndoCaptureLogV0(checks, endoDigestKeyFromEnvironmentV0(), "record", { async: true });
 	proxy.log = checksLog;
 	const scratch = createPiCassetteScratchV0(join(base, "checks"), {
 		baseUrl: `${proxy.origin}/v1`,

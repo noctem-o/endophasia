@@ -7,12 +7,14 @@
 // Authorization never persisted, non-loopback binds refused, an upstream that drops mid-response, and a cassette from
 // another digest domain.
 
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { connect, createServer as createNetServer, type Server as NetServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
@@ -23,8 +25,36 @@ import {
 import { endoRequestDigestV0, isLoopbackAddressV0 } from "../adapters/openai-proxy/http.ts";
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
+import { EndoAsyncDurableQueueV0 } from "../storage/async-append.ts";
 
 const KEY = endoDigestKeyV0(randomBytes(32), "installation");
+
+/** One request from a client in its own process: its own clock's time to the last byte and to the close. */
+async function timedClient(port: number): Promise<{ lastData: number; end: number }> {
+	const child = spawn(
+		process.execPath,
+		[fileURLToPath(new URL("./fixtures/capture/timed-client.mjs", import.meta.url)), String(port)],
+		{
+			stdio: ["ignore", "pipe", "inherit"],
+		},
+	);
+	const line = await new Promise<string>((resolve) =>
+		child.stdout.once("data", (data: Buffer) => resolve(String(data))),
+	);
+	return JSON.parse(line) as { lastData: number; end: number };
+}
+
+/** An async durable queue whose every operation first waits `ms` (a slow disk, off the event loop). */
+class SlowQueue extends EndoAsyncDurableQueueV0 {
+	readonly #ms: number;
+	constructor(ms: number) {
+		super();
+		this.#ms = ms;
+	}
+	protected override beforeWrite(): Promise<void> {
+		return new Promise((done) => setTimeout(done, this.#ms));
+	}
+}
 const OTHER_KEY = endoDigestKeyV0(randomBytes(32), "installation");
 const SECRET = `sk-endo-test-${randomBytes(12).toString("hex")}`;
 
@@ -67,6 +97,8 @@ async function rawUpstream(scripts: Script[]): Promise<{ port: number; received:
 	const server: NetServer = createNetServer((socket) => {
 		sockets.add(socket);
 		socket.on("close", () => sockets.delete(socket));
+		// A peer that vanishes (a proxy killed mid-exchange) resets the connection: expected, not a test failure.
+		socket.on("error", () => {});
 		let buffer = Buffer.alloc(0);
 		// Requests on one connection are answered one at a time, in order, as an HTTP/1.1 server does.
 		let chain: Promise<void> = Promise.resolve();
@@ -216,7 +248,7 @@ function rawExchange(port: number, bytes: Buffer): Promise<Buffer> {
 async function recording(scripts: Script[]) {
 	const upstream = await rawUpstream(scripts);
 	const store = scratch();
-	const log = new EndoCaptureLogV0(store, KEY, "record", { buffered: true });
+	const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
 	const proxy = await startEndoRecordingProxyV0({ upstream: `http://127.0.0.1:${upstream.port}`, log });
 	cleanup.push(async () => {
 		await proxy.close();
@@ -333,30 +365,119 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		// Regression: the proxy wrote each exchange to disk (fsync'd blob and event writes) before relaying the upstream's
 		// close, so a keep-alive client that reused the connection in that window sent its next request into a closing
 		// connection: Pi reported "Connection error." on 13 of 20 trials of one task. Here every disk write takes 40 ms.
-		const script = fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}');
-		script.closeAfter = true;
-		const { proxy, log } = await recording([script]);
-		const slow = <T extends (...args: never[]) => unknown>(fn: T): T =>
-			((...args: Parameters<T>) => {
-				const until = performance.now() + 40;
-				while (performance.now() < until);
-				return fn(...args);
-			}) as T;
-		log.events.ingest = slow(log.events.ingest.bind(log.events));
-		log.blobs.put = slow(log.blobs.put.bind(log.blobs));
-		const timing = await new Promise<{ lastData: number; end: number }>((resolve, reject) => {
-			let lastData = 0;
-			const socket = connect({ host: "127.0.0.1", port: proxy.port }, () =>
-				socket.write(`POST /v1/x HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{}`),
-			);
-			socket.on("data", () => {
-				lastData = performance.now();
-			});
-			socket.on("end", () => resolve({ lastData, end: performance.now() }));
-			socket.on("error", reject);
+		const upstream = await rawUpstream([
+			{ ...fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'), closeAfter: true },
+		]);
+		const store = scratch();
+		const log = new EndoCaptureLogV0(store, KEY, "record", { queue: new SlowQueue(40) });
+		const proxy = await startEndoRecordingProxyV0({ upstream: `http://127.0.0.1:${upstream.port}`, log });
+		cleanup.push(async () => {
+			await proxy.close();
+			log.close();
 		});
+		// Measured in a separate process: an in-process client would see its own close late whenever this event loop is
+		// busy, even though the close already reached the kernel.
+		const timing = await timedClient(proxy.port);
 		expect(timing.end - timing.lastData).toBeLessThan(20);
 		await proxy.flush();
+		expect(kinds(store, "capture.exchange-ended")[0]).toMatchObject({ exchange: 1, outcome: "complete" });
+	});
+
+	it("recording CPU work never delays the close either: the close is relayed first, then the exchange is recorded", async () => {
+		// Regression: with fsync off the event loop, the recording's own CPU work (hashing, validating, encoding a large
+		// exchange) still ran right after the response completed, when the upstream's close arrives, and delayed relaying
+		// it (9 of 20 live trials). Here every recorded event burns 30 ms of CPU on the event loop.
+		const upstream = await rawUpstream([
+			{ ...fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'), closeAfter: true },
+		]);
+		const store = scratch();
+		const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
+		const original = log.record.bind(log);
+		log.record = (...args: Parameters<typeof log.record>) => {
+			const until = performance.now() + 30;
+			while (performance.now() < until);
+			return original(...args);
+		};
+		const proxy = await startEndoRecordingProxyV0({ upstream: `http://127.0.0.1:${upstream.port}`, log });
+		cleanup.push(async () => {
+			await proxy.close();
+			log.close();
+		});
+		// Measured in a separate process: an in-process client would see its own close late whenever this event loop is
+		// busy, even though the close already reached the kernel.
+		const timing = await timedClient(proxy.port);
+		expect(timing.end - timing.lastData).toBeLessThan(20);
+		await proxy.flush();
+		expect(kinds(store, "capture.exchange-ended")[0]).toMatchObject({ exchange: 1, outcome: "complete" });
+	});
+
+	it("each exchange is on disk as soon as it completes, while other exchanges are still open (no idle wait, no flush)", async () => {
+		const slow = sse(Array.from({ length: 20 }, (_, index) => `{"n":${index}}`));
+		slow.gapMs = 60;
+		const { store, proxy, log } = await recording([
+			fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'),
+			slow,
+		]);
+		// Two connections: the first exchange completes; the second keeps streaming for over a second.
+		await post(proxy.port, "/v1/chat/completions", BODY, {
+			headers: [
+				["Host", "x"],
+				["Content-Length", String(Buffer.byteLength(BODY))],
+				["Connection", "close"],
+			],
+		});
+		const streaming = post(proxy.port, "/v1/chat/completions", BODY.replace("hi", "again"));
+		let onDisk: Record<string, unknown>[] = [];
+		for (let attempt = 0; attempt < 50 && onDisk.length === 0; attempt += 1) {
+			await sleep(20);
+			onDisk = kinds(store, "capture.exchange-ended");
+		}
+		expect(proxy.open).toBe(1);
+		expect(onDisk).toEqual([expect.objectContaining({ exchange: 1, outcome: "complete" })]);
+		await streaming;
+		await proxy.flush();
+		log.close();
+	});
+
+	it("a proxy killed mid-exchange: the request is on disk, and reopening the log marks the exchange interrupted", async () => {
+		const slow = sse(Array.from({ length: 40 }, (_, index) => `{"n":${index}}`));
+		slow.gapMs = 50;
+		const upstream = await rawUpstream([slow]);
+		const store = scratch();
+		const keyHex = randomBytes(32).toString("hex");
+		const child = spawn(
+			process.execPath,
+			[
+				fileURLToPath(new URL("./fixtures/capture/proxy-child.ts", import.meta.url)),
+				store,
+				`http://127.0.0.1:${upstream.port}`,
+				keyHex,
+			],
+			{ stdio: ["ignore", "pipe", "inherit"] },
+		);
+		cleanup.push(() => {
+			child.kill("SIGKILL");
+		});
+		const port = await new Promise<number>((resolve) =>
+			child.stdout.once("data", (data: Buffer) => resolve(Number(String(data).trim()))),
+		);
+		const request = post(port, "/v1/chat/completions", BODY);
+		await sleep(400);
+		child.kill("SIGKILL");
+		await new Promise((done) => child.on("exit", done));
+		const result = await request;
+		expect(result.error).not.toBeNull();
+		const key = endoDigestKeyV0(Buffer.from(keyHex, "hex"), "installation");
+		expect(kinds(store, "capture.request")).toEqual([expect.objectContaining({ exchange: 1 })]);
+		expect(kinds(store, "capture.exchange-ended")).toEqual([]);
+		const reopened = new EndoCaptureLogV0(store, key, "record");
+		reopened.close();
+		expect(kinds(store, "capture.exchange-interrupted")).toEqual([expect.objectContaining({ exchange: 1 })]);
+		// Reopening again adds no second marker; a cassette treats the exchange as truncated.
+		new EndoCaptureLogV0(store, key, "record").close();
+		expect(kinds(store, "capture.exchange-interrupted").length).toBe(1);
+		const cassette = loadEndoCassetteV0(store, key);
+		expect(cassette.exchanges[0]!.truncated).toMatch(/killed or crashed/);
 	});
 
 	it("a request sent after the upstream closed the connection is recorded as a failed exchange, never lost", async () => {

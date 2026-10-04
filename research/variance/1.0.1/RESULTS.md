@@ -7,23 +7,62 @@ Design: [DESIGN.md](DESIGN.md), committed before any data. Two deviations are re
 
 All figures below are from the repeated main run, unless marked otherwise.
 
-## Summary
+## The decomposition
 
-- **Under Pi's defaults (arm A), every run differs.** In all 570 pairs of trials (190 per task), the first difference
-  is a different model reply to an identical request. That is sampling.
-- **Under deterministic-intended sampling (B and B+C), the model was deterministic on identical input.** No identical
-  request produced a different reply in any of the 1,140 pairs. Lifecycle and outcome were identical in 20 of 20
-  trials on all three tasks.
-- **What still varies under B and B+C is the environment.** On the two coding tasks, every trial's tools layer
-  differs. In every such pair, the first difference is a tool's output: `node --test` durations and `ls -la`
-  timestamps, which then enter the next request.
-- **The prompt cache affected which tool calls followed different tool output.** With the cache off (B+C), the
-  sequence of tool calls (names and argument digests) was identical in 20 of 20 trials on every task. With the cache
-  on (B), it was 15 of 20 on `fix-failing-test` and 10 of 20 on `implement-function` (exploratory).
-- **Pre-registered verdict (§7): "unstable" under every arm.** The tools layer is unstable on both coding tasks under
-  all arms. Under B and B+C, the exploratory analysis attributes that instability to tool output, not to the model or
-  to Pi.
-- **Every trial passed its success check** (180 of 180). A trajectory can vary and still be correct.
+Run-to-run divergence splits into three sources, isolated by the nested arms:
+- **sampling:** A against B;
+- **prompt cache:** B against B+C;
+- **environment:** what remains under B+C.
+
+Sources: the main run's bundle, plus the exploratory analyses of DESIGN §12, deviation 1 (marked).
+
+### 1. Sampling (A → B)
+
+Under Pi's defaults the model's sampling is the dominant source. Every pair of trials diverges first at the model's
+reply to an identical request: 570 of 570 pairs, 190 per task (exploratory). Under temperature 0 and a fixed seed,
+that never happens: 0 of 570.
+
+| Task | Layer | A (modal) | B (modal) |
+| :--- | :--- | :--- | :--- |
+| tool-use | tools | 12/20 [38.7, 78.1] | 20/20 [83.9, 100] |
+| fix-failing-test | lifecycle and outcome | 12/20 [38.7, 78.1] | 20/20 [83.9, 100] |
+| implement-function | lifecycle and outcome | 16/20 [58.4, 91.9] | 20/20 [83.9, 100] |
+
+B is more stable than A, under §7's non-overlap rule, on tool-use tools and on fix-failing-test lifecycle and outcome.
+On implement-function the intervals overlap, so no claim.
+
+### 2. Prompt cache (B → B+C)
+
+On the pre-registered layers, B and B+C are identical: lifecycle and outcome 20/20 on every task, tools the same. On
+the sequence of tool calls (names and argument digests, without results; exploratory), the cache matters:
+
+| Task | B (cache on) | B+C (cache off) |
+| :--- | :--- | :--- |
+| tool-use | 20/20 [83.9, 100] | 20/20 [83.9, 100] |
+| fix-failing-test | 15/20 [53.1, 88.8] | 20/20 [83.9, 100] |
+| implement-function | 10/20 [29.9, 70.1], 4 distinct; 4 distinct final workspaces | 20/20 [83.9, 100], 1 distinct; 1 final workspace |
+
+B+C exceeds B on implement-function (B+C's L 0.839 > B's U 0.701). Under B, every pair's first difference is still
+a tool result, so the cache acts on input that already differs. This design cannot say whether the cache alone,
+without differing input, would change a reply. It is consistent with llama.cpp's documented warning that
+`cache_prompt` "can cause nondeterministic results". Turning the cache off costs 1.7–2.2× wall time.
+
+### 3. Environment (what remains under B+C)
+
+Under B+C, with sampling and cache held fixed:
+- every trial made the **same tool calls with the same arguments**, on every task;
+- the tools layer is still 1/20 on both coding tasks;
+- every pair's first difference is a **tool result carrying a timing value**: `node --test` durations or `ls -la`
+  modification times (190 of 190 pairs on each coding task);
+- tool-use, whose tools print no timings, is identical end to end (190 of 190 pairs).
+
+What varies here is the world the tools observe, not Pi or the model.
+
+### The pre-registered verdict (§7), unchanged
+
+**"Unstable" under every arm.** The tools layer of both coding tasks is unstable (1/20) under A, B and B+C. By the
+decomposition above, under B and B+C that comes from tool output, not from the model and not from Pi. Every trial
+passed its success check (180/180).
 
 ## What ran
 

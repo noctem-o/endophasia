@@ -1,0 +1,57 @@
+{
+	"main run 1 (old proxy) implement-function/b-c": {
+		"trials": 20,
+		"trialsWithConnectionError": 13,
+		"errorTurns": 14
+	},
+	"main run 1 (old proxy) tool-use/b-c": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	},
+	"main run 1 (old proxy) fix-failing-test/b-c": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	},
+	"main run 1 (old proxy) implement-function/b": {
+		"trials": 20,
+		"trialsWithConnectionError": 9,
+		"errorTurns": 9
+	},
+	"main run 1 (old proxy) fix-failing-test/b": {
+		"trials": 20,
+		"trialsWithConnectionError": 1,
+		"errorTurns": 1
+	},
+	"main run 1 (old proxy) tool-use/b": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	},
+	"main run 1 (old proxy) tool-use/a": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	},
+	"main run 1 (old proxy) fix-failing-test/a": {
+		"trials": 20,
+		"trialsWithConnectionError": 2,
+		"errorTurns": 2
+	},
+	"main run 1 (old proxy) implement-function/a": {
+		"trials": 20,
+		"trialsWithConnectionError": 13,
+		"errorTurns": 13
+	},
+	"fixed proxy implement-function/a": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	},
+	"direct to llama.cpp (no proxy) implement-function/Pi defaults": {
+		"trials": 20,
+		"trialsWithConnectionError": 0,
+		"errorTurns": 0
+	}
+}

@@ -248,3 +248,19 @@ Wilson lower bound is 0.839, so §7's threshold of 0.70 is reachable with room t
    diverge, the first differing request message, classified as a tool result (environment) or an assistant message
    (model and serving). It is labelled exploratory. The pre-registered metrics (§6), criteria (§7) and checks (§5) are
    unchanged and reported as designed.
+2. **The first main run is invalid, and the main run was repeated.** Main run 1 (seed 363281846) recorded many
+   `Connection error.` turns (13 of 20 `implement-function` trials in arm A). They were caused by the recording proxy:
+   it delayed relaying llama.cpp's connection close by its own disk writes, and Pi reused the connection in that
+   window. Sent straight to llama.cpp, the same task had none in 20 trials. The proxy was fixed (commit 688d9ad18),
+   and the fix was checked live: 0 of 20. The main run is repeated with the same spec (N = 20) and a newly drawn seed.
+   Main run 1 is not interpreted; its report and the artifact evidence are kept in `main-run-1-invalid/`.
+
+   **The pilot is not repeated:**
+   - Its purposes were the manipulation checks M1–M4 and the wall-time estimate.
+   - M1–M4 compare the request bodies that reached the server, which the artifact did not alter.
+   - The artifact added a few error turns. That cannot move T(20) ≈ 0.5 h anywhere near the 10 h limit, so N = 20
+     stands.
+
+   **The manipulation checks could not catch this artifact,** because they check what requests carry, not whether
+   they arrived. RESULTS.md therefore also reports the number of `Connection error.` turns per cell for the repeated
+   run.

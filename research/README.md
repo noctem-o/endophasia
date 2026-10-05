@@ -167,6 +167,11 @@ switched off per request (E).
 - **There is no sandbox, and it showed.** One excluded trial read a hidden check and the reference solution in the repository, through a leftover file of the author's in `/tmp`; another deleted files in
   `/tmp` by glob. Future trials should run with the checkout unreachable.
 
+## Raw run data
+
+The studies' raw run directories are not in this repository (about 1 GB of tracked files was moved out on 2026-10-05, and later studies' data was never added): see
+[DATA.md](DATA.md) for where they live, how to restore them and what the secret scan found. The results, analyses, run summaries and cassettes stay here.
+
 ## Fake-only paths
 
 The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases

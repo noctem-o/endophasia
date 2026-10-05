@@ -98,7 +98,6 @@ cap would probably saturate both tasks. It should be known before these tasks ar
 | `spec-pilot.json` | the screen's spec |
 | `analysis/` | `pilot-screen.json`, `confirmation.json`, `post-hoc-truncation.json` |
 | `validated-tasks.json` | the seeded validation/holdout split |
-| `raw/` | the complete run directories (screen and four paths): every trial's store, evidence and logs |
+| (raw data) | the complete run directories (screen and four paths): every trial's store, evidence and logs, **kept outside the repository** (see below) |
 
-The raw run directories (614 MB on disk, 3,700 files) are committed in `raw/`, after the operator was told the size and approved,
-with the documented path exception to the secret scan (`raw/README.md`).
+The raw run directories (614 MB on disk, 3,701 files) were approved by the operator and committed here at first. Moved out of the repository (it is large and every file was checked on each change): see [`research/DATA.md`](../../DATA.md). It was committed here until 2026-10-05 and is unchanged. The secret scan and its documented path exception are in the data directory's `raw/README.md`.

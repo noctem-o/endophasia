@@ -1,4 +1,4 @@
-// Re-checks every recorded `intervention.consumed` in the committed raw run data (the steering and path-sensitivity
+// Re-checks every recorded `intervention.consumed` in the raw run data (the research-data directory, research/DATA.md) (the steering and path-sensitivity
 // studies) against the CURRENT consumption rule (runtime/contracts/intervention.ts: a request shows the message one more
 // time than the request before it did), and against the OLD rule (the message is present), from each store's own proxy
 // capture. Built for the post-merge audit of #29 and #31 (docs/audits/pr29-post-merge.md): the rule changed, and this shows
@@ -7,15 +7,14 @@
 //   node scripts/verify-consumption.ts            prints one JSON summary; exits 1 if any recorded exchange differs
 
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 import { endoInterventionCaptureSourceV0 } from "../cli/intervention-capture.ts";
 import { readEndoStoreEventsV0 } from "../cli/trajectory.ts";
 import type { EndoInterventionMessageRefV0 } from "../protocol/intervention.ts";
+import { rawDirectory, researchDataRoot } from "../research/data.ts";
 import { endoFindConsumptionV0, endoUserMessageTextsV0 } from "../runtime/contracts/intervention.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
 
-const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
 
 /** Every trial store under a raw run directory: `<run>/trials/<task>/<condition>/<n>/store`. */
@@ -34,13 +33,13 @@ function trialStores(dir: string): string[] {
 }
 
 const roots = [
-	"research/steering/1.0.1/raw/pilot",
-	"research/steering/1.0.1/raw/main",
-	"research/steering/1.0.1/raw/posthoc-pilot-path",
-	"research/steering/1.0.1/raw/posthoc-main-path",
-	"research/path-sensitivity/1.0.1/raw/pilot",
-	"research/path-sensitivity/1.0.1/raw/main",
-].filter((root) => existsSync(join(ROOT, root)) && statSync(join(ROOT, root)).isDirectory());
+	join(rawDirectory("steering"), "pilot"),
+	join(rawDirectory("steering"), "main"),
+	join(rawDirectory("steering"), "posthoc-pilot-path"),
+	join(rawDirectory("steering"), "posthoc-main-path"),
+	join(rawDirectory("path-sensitivity"), "pilot"),
+	join(rawDirectory("path-sensitivity"), "main"),
+].filter((root) => existsSync(root) && statSync(root).isDirectory());
 
 const summary = {
 	stores: 0,
@@ -51,7 +50,7 @@ const summary = {
 	differs: [] as string[],
 };
 for (const root of roots) {
-	for (const store of trialStores(join(ROOT, root))) {
+	for (const store of trialStores(root)) {
 		summary.stores += 1;
 		const events = readEndoStoreEventsV0(store).filter((event) => event.kind.startsWith("intervention."));
 		const proposal = events.find((event) => event.kind === "intervention.proposal")?.payload as
@@ -81,7 +80,7 @@ for (const root of roots) {
 		if ((recorded?.exchange ?? null) === current) summary.sameAsRecordedNew += 1;
 		else
 			summary.differs.push(
-				`${store.slice(ROOT.length)}: recorded ${recorded?.exchange ?? null}, new rule ${current}`,
+				`${relative(researchDataRoot(), store)}: recorded ${recorded?.exchange ?? null}, new rule ${current}`,
 			);
 		if ((recorded?.exchange ?? null) === old) summary.sameAsRecordedOld += 1;
 	}

@@ -156,3 +156,4 @@ were not its own; I cannot tell which, if any, were.
 | `make-spec.ts`, `run.ts`, `analyze.ts`, `stats.ts`, `wire.ts` | the arms and specs, the driver, the analysis, the pure decisions and the response reader; tested by `tests/completion-cap.test.ts` |
 | `spec-pilot.json` | the pilot's spec |
 | `analysis/` | `pilot.json` and `main.json` |
+| (raw data) | the pilot's and the main run's run directories (1.5 GB, 10,170 files) and the drivers' logs: **kept outside the repository** (see [`research/DATA.md`](../../DATA.md)) |

@@ -1,3 +1,0 @@
-The report library in src/ is meant to follow the rules in README.md, but users report wrong numbers and broken output. Find the bugs and fix them in src/. Run the tests with: node --test. Do not change any file under test/ and do not change README.md.
-
-When the code follows every rule in the README, reply with the single word: done

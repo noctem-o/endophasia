@@ -1,1 +1,0 @@
-Work only in the current working directory. Do these three steps in order, one tool call each: 1. Use the read tool to read notes.txt. 2. Use the edit tool to replace the word draft with the word final in notes.txt. 3. Use the bash tool to run exactly this command: wc -l notes.txt. Then reply with the single word: done

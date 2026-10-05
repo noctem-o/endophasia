@@ -439,8 +439,14 @@ EVOLVE / research loop:
     context does not carry yet.
 12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
     algorithm part of the Endophasia core.
-13. **Resource-aware cognition.** Feed token/model/tool/branch/test/retry/cost evidence into Compute Appetite and test
-    whether different cognition policies trade resources for reliable outcome improvements.
+13. **Resource-aware cognition / test-time compute.** Treat Compute Appetite as an explicit inference budget and policy,
+    not a generic "think harder" control. Record ceilings and consumption for tokens, model calls, tool calls,
+    verifier calls, branches, tests, retries, wall-clock time, and cost; compare fixed against adaptive allocation and
+    test whether extra compute buys reliable outcome improvements rather than longer traces alone. Start with simple,
+    falsifiable arms before learned allocation. For local inference, measure wall time and memory/attention pressure as
+    well as token counts rather than assuming tokens are a complete compute proxy. Research leads:
+    [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314) and
+    [Kinetics](https://arxiv.org/abs/2506.05333).
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
     evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
     adaptation loop.
@@ -476,10 +482,29 @@ do not import a framework merely because its paper reports a benchmark gain.
     [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred
     lessons, and make every memory item traceable to its source episodes.
 
-20. **Search-time planning and branching.** Compare one main trajectory with bounded alternatives,
-    tree search, or iterative refinement. Test whether extra branches improve verified outcomes enough
-    to justify their tool calls, tokens, latency, and failure surface. Start with
-    [SWE-Search](https://arxiv.org/abs/2410.20285); keep branch budgets and stopping rules explicit.
+20. **Compute-aware search-time planning and branching.** Compare one main trajectory with retry/refinement,
+    Best-of-N, bounded alternatives, beam/tree search, or provider-defined search such as MCTS. Treat the search
+    algorithm as a replaceable policy, not a core protocol primitive. Every retained or pruned branch should keep its
+    parent/reason, allocated and consumed resource budget, verifier evidence, and termination reason. Keep branch
+    contexts isolated unless an explicit, recorded transfer imports verified state.
+    - **Allocation:** compare uniform budgets with per-task adaptive budgets; test whether cheap difficulty/uncertainty
+      signals predict the marginal value of another sample, branch, or verification step. Start with
+      [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314), then more complex allocators only if the
+      simple arms establish a compute→outcome frontier.
+    - **Verification:** keep deterministic execution checks (tests, compiler, type checker, invariants), learned
+      outcome/process reward models, model judges/critics, simulation, and human review as distinct evidence sources.
+      A PRM or judge score is not executable proof. Record verifier identity, granularity, cost, and the evidence it
+      actually establishes. Research leads: [Let's Verify Step by Step](https://arxiv.org/abs/2305.20050),
+      [VG-Search](https://arxiv.org/abs/2505.11730), and
+      [Pareto Optimal Code Generation](https://arxiv.org/abs/2506.10056).
+    - **Pruning and stopping:** make hard cutoffs, dominance/pruning, budget exhaustion, verified success, and operator
+      stop explicit termination reasons; preserve pruned evidence so search decisions remain auditable. Do not assume
+      "all tests pass" means general correctness unless that is the declared task criterion.
+    - **Reasoning-budget controls:** mechanisms such as budget forcing, native effort levels, continuation prompts, or
+      temperature changes are capability-gated, model/provider-specific interventions. Test them rather than treating
+      them as universal controls; [s1](https://arxiv.org/abs/2501.19393) is a starting point for budget forcing.
+    Start with [SWE-Search](https://arxiv.org/abs/2410.20285) for repository-level branching, but compare MCTS against
+    simpler baselines before adopting it.
 
 21. **Agent architecture and workflow search.** Explore candidate combinations of planner, memory,
     tool-use, verification, and orchestration components. Maintain an archive of variants and their

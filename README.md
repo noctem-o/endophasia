@@ -41,6 +41,15 @@ as separate layers.
 
 It is not an agent runtime, model provider, benchmark, or deployment system.
 
+In practice it has become an experimental instrument: a way to ask defensible questions about agent behaviour.
+It keeps three properties apart, because they are different claims:
+
+~~~text
+exact replay               did the recorded session reproduce under its recorded responses?
+fixed-condition repeat     do repeated live runs under the same declared conditions agree?
+perturbation invariance    does behaviour hold when an input that should not matter changes?
+~~~
+
 Coding agents do more than send a prompt to a model. They select context, compact history, call tools, branch, retry, verify work, spend tokens, accept steering, and sometimes propose actions with real effects.
 
 Endophasia gives those parts explicit contracts and one place to inspect them.
@@ -135,6 +144,7 @@ silently treated as comparable.
 | Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
+| ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is a draft specification, so any result is pinned to one schema revision |
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
 endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
@@ -261,7 +271,7 @@ The evolution substrate is designed around explicit records rather than an opaqu
 | **Episode / Trajectory** | Recorded interaction between a harness, model, tools, and environment |
 | **ExperienceStore** | Durable collection of trajectories and derived evidence |
 | **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
-| **Evaluator / Grader** | Explicit source of outcome evidence |
+| **Evaluator / Grader** | Explicit source of outcome evidence. A learned grader or judge produces evidence; deterministic adjudication (schema checks, target binding, deduplication, promotion rules) decides what it counts for. A judge never becomes an authority |
 | **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
 | **Validation and promotion holdout** | Selection may read validation results; the promotion holdout is never given to a selection policy, so a promotion can be checked against data the search never saw |
 | **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
@@ -346,7 +356,8 @@ llama.cpp, and one machine:
 - [Variance study (E2)](research/README.md#variance-study-e2): "unstable" under every arm, from sampling and then
   from tool output that carried wall-clock values.
 - [Pinned-environment study (E3)](research/README.md#pinned-environment-study-e3): "stable" with the environment
-  pinned, deterministic sampling and the cache off.
+  pinned, deterministic sampling and the cache off. That is no observed variation under that declared condition at
+  N = 20 per task, not a claim that the system's intrinsic noise is zero.
 - [Steering study](research/README.md#steering-study): in that deterministic condition, a STEER and a QUEUE were
   consumed where Pi documents (80 of 80 steered trials). What the agent did with them differed by task and arm, and
   on one task between two runs whose requests differ only in the working-directory path (a post-hoc replication
@@ -355,7 +366,9 @@ llama.cpp, and one machine:
   paths. A QUEUE was followed at every path, a STEER on one task at 27 of 30 and on the other at 6 of 30, and the
   baseline itself varied with the path on that second task.
 - [Discriminating-task study](research/README.md#discriminating-task-study): of 12 small coding tasks, two discriminate
-  for this model (13 of 20 and 7 of 20) and most are saturated; most failures were a response cut off at the completion cap.
+  for this model (13 of 20 and 7 of 20) and most are saturated. 21 of the 25 failures were a response cut off at Pi's
+  default completion cap of 16,384 tokens, so the discrimination is largely truncation; it is not yet a measure of
+  task difficulty.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and
@@ -385,6 +398,41 @@ Endophasia is ready for architecture experiments. It is not a stable multi-runti
 
 ## Roadmap
 
+### Near-term sequence
+
+The numbered items below are the long-term map. The order of work for the next stretch is:
+
+1. **Research data tiers (urgent).** About 1 GB of raw study data is now committed under `research/` (the
+   discriminating-task, path-sensitivity and steering studies). Every clone carries it, and it grows with each study.
+   Separate three tiers and stop committing raw replay material to git:
+   - *canonical evidence:* small, durable, digest- and provenance-focused records, kept in the repository;
+   - *private replay material:* complete enough to reproduce a run, sensitive by default, stored outside git in a
+     content-addressed location, with its digests committed;
+   - *export artifacts:* explicitly scrubbed and audited, with a manifest of what was omitted. A scrubber that cannot
+     safely rewrite something reports what remains instead of declaring the artifact clean.
+2. **Schema compatibility rules.** A known `schemaVersion` is parsed exactly and unknown fields are rejected; a reader
+   rejects a version it does not know loudly, never partially; new readers keep reading every committed version; committed
+   fixtures are permanent conformance fixtures. This lands before another runtime starts producing evidence.
+3. **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
+   server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in the
+   steering study). Classify any remaining transport retries apart from agent behaviour.
+4. **Effective harness surface** (items 2, 6 and 9). Identify what the model actually experiences, not only which
+   executable ran. A surface record holds component digests observed on the wire by the recording proxy: the system
+   instructions, the tool-definition set and the effective request parameters. Next to these sit the invocation mode,
+   the model identity and the wire dialect. Variable contributions such as the working directory are separate observed
+   fields; no prompt "template" is reconstructed by heuristics. Raw prompts are never canonical evidence, and a field a
+   runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
+5. **ACP v2 conformance study** (item 9). A protocol-level adapter study against one pinned draft revision: the prompt
+   lifecycle, reconstruction from `session/resume` with `replayFrom` compared with the live session, and structured
+   permission subjects answered with default deny and operator confirmation. ACP types stay in the adapter.
+6. **Compute-cap study** (item 13, before item 11). A pre-registered study of completion budget × task, everything else
+   pinned, with several fixed seeds as the replication unit. It asks whether more budget improves success, where it
+   saturates, and whether failures merely move. Otherwise the first selection policy would learn that the best candidate
+   is the one that did not hit the cap.
+7. **Forkable checkpoints** (item 10). The substrate primitive beneath search, counterfactual evaluation and training.
+8. **Research note.** The variance, pinned-environment, steering, path-sensitivity and discriminating-task studies,
+   written up with their limits and data.
+
 Done:
 
 1. **Attach model.** Pi attached over its documented RPC mode; the vendored fork removed
@@ -401,6 +449,11 @@ Partly done:
 
 3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed; the cognition graph
    and a cockpit over that store are not wired yet.
+   - *Graph semantics:* the graph will be a derived projection, never a second source of truth. Each edge has a
+     *kind* (causal, provenance, authority) and, separately, an *epistemic status*: observed (established by runtime or
+     wire evidence), reported (the runtime says so), derived (a deterministic transformation of evidence) or inferred
+     (a rule or model concluded it). A derived or inferred edge names its rule, the rule's version and its input
+     evidence, and is never written back as an observation. A visualisation draws only what the graph holds.
 4. **Real Pi path.** Make the first vertical slice boring: observe a real session, record canonical evidence,
    steer where the runtime supports it, interrupt, recover, and preserve explicit permission boundaries.
    - *Status:* observe, record, interrupt and recover are real on Pi 1.0.1 (#19). STEER, QUEUE and STOP are
@@ -408,8 +461,10 @@ Partly done:
 6. **Evaluation laboratory.** Define reproducible experiment bundles containing runtime/model/configuration, task,
    initial state, evidence, outcome, evaluator identity, seeds, usage, and analysis. Every research claim should
    point back to evidence.
-   - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and two
-     pre-registered studies (#24, #26, #27). Not yet: experiment bundles feeding the evolution policies (11).
+   - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and
+     pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
+     discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11), and the effective
+     harness surface in every experiment's provenance (near-term 4).
 8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
    consequence. A proposal never becomes permission implicitly.
    - *Status:* STEER, QUEUE and STOP are explicit, authorized, verified interventions through Pi's documented RPC
@@ -428,6 +483,13 @@ Next:
    not hidden model state.
 9. **Cross-runtime conformance.** Study Pi, Codex, Prime, and other adapters against the same evidence contracts,
    with capability admission based on current evidence rather than names or assumptions.
+   - The recording proxy is the common *model-serving* boundary, not a common runtime boundary: each adapter reports
+     what its own runtime guarantees, hides or only reports.
+   - The strongest design holds one agent and model fixed behind two surfaces (for example Pi RPC and ACP v2), so
+     differences belong to the surface rather than the agent.
+   - Every conversion between record formats states its lossiness: EXACT, QUALIFIED, LOSSY or UNREPRESENTABLE.
+   - Trace export (for example to the OpenTelemetry GenAI conventions, still marked Development) is deferred until it
+     has a consumer. It would be an optional exporter using the same lossiness vocabulary, never the internal protocol.
 
 EVOLVE / research loop:
 
@@ -435,6 +497,12 @@ EVOLVE / research loop:
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
     - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,
       #25); the others do not yet.
+    - **Forkable trajectory state.** Capability-gated checkpoint, restore, fork and branch-lineage records over states
+      that can actually be reconstructed. A checkpoint is derived from evidence, never declared: a prefix that cassette
+      replay reproduces EXACT, together with the restored environment identity. A fork names its parent checkpoint, the
+      variable it changed and its new trajectory, and descendants are ordinary trajectories. The first mechanism is
+      cassette-then-live: replay the recorded prefix, then switch the proxy to a live model (or a different one) at the
+      checkpoint. Search, counterfactual evaluation and training may consume forks; they are not part of the primitive.
 11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
     experiment bundles, including validation, an untouched promotion holdout, noise/leakage checks, and deterministic selection. A faithful
     RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy
@@ -449,6 +517,8 @@ EVOLVE / research loop:
     well as token counts rather than assuming tokens are a complete compute proxy. Research leads:
     [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314) and
     [Kinetics](https://arxiv.org/abs/2506.05333).
+    - *First study:* the completion-cap study (near-term 6), motivated by the discriminating-task study, where most
+      failures were truncation at the completion cap.
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
     evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
     adaptation loop.
@@ -550,6 +620,13 @@ do not import a framework merely because its paper reports a benchmark gain.
     [A Jagged Frontier](https://arxiv.org/abs/2608.18389) and the
     [MetaProbe project](https://github.com/huyuelin/MetaProbe); treat submitted or unreviewed work as
     research leads, not established guarantees.
+    - Each transformation (working-directory identifier, equivalent renaming, an irrelevant file added, file order,
+      whitespace) is a separately registered relation, analysed on its own rather than in one omnibus study.
+    - Once forkable checkpoints exist, extend this from repository variants to trajectory interventions at a checkpoint:
+      an alternative action, an altered tool observation, a different model or policy, a restricted tool surface, or a
+      resample. Because continuations can be stochastic, one fork is not causal evidence; sensitivity is estimated from
+      repeated continuations, with uncertainty. A recent lead is
+      [Counterfactual Rollout Replay](https://arxiv.org/html/2609.33875).
 
 27. **Contrastive weight-space steering and training-drift monitoring.** Test whether behavioural
     directions derived from matched positive/negative fine-tunes can support controlled model steering,
@@ -572,9 +649,14 @@ must also survive fresh model executions. A benchmark score alone never grants p
 additional methods and comparisons. Treat reported gains as hypotheses to reproduce, not guarantees
 that a method will transfer to Endophasia's runtime-neutral setting.
 
-The ordering is deliberate: runtime truth comes before replay; replay comes before evaluation; evaluation comes before
-evolution. The project should not grow another large protocol-only migration before these contracts have survived a real
-agent and produced evidence.
+The ordering is deliberate:
+
+~~~text
+runtime truth → replay → verified checkpoint / fork → evaluation → counterfactual comparison → evolution
+~~~
+
+Runtime truth includes the effective harness surface, not only the executable. The project should not grow another
+large protocol-only migration before these contracts have survived a real agent and produced evidence.
 
 ## Try it
 

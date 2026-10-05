@@ -45,8 +45,9 @@ Reported, none a headline (DESIGN §9). The pre-registered reading applies to B 
 
 - **D (brief reasoning)** is a large gain on `fetch-cache` (11/12 against 5/12) and a loss on `markup-lite` (4/12 against 5/12, with 7 of its 12 trials cut off
   against A's 7: the instruction did not stop the long reasoning there). Its pooled interval includes 0.
-- **E (thinking off)** removes all reasoning output (the reasoning share of the streamed characters is 0, against 94 to 99% elsewhere) and cuts output tokens
-  by about 65 to 85%, but **accuracy is worse where the task needs the reasoning**: `config-extends` 6/10 (A: 10/12) and `markup-lite` 4/12 are wrong results, not
+- **E (thinking off)** removes all reasoning output (the reasoning share of the streamed characters is 0, against 94 to 99% elsewhere) and cuts the median output tokens
+  of a trial by about 20 to 70% (to 5,268 on `markup-lite` from 16,464, though A's trials there were cut off at 16k),
+  but **accuracy is worse where the task needs the reasoning**: `config-extends` 6/10 (A: 10/12) and `markup-lite` 4/12 are wrong results, not
   cut-offs. **The harm check flags `config-extends` under E** (a rate 0.23 below A's; counting the two excluded E trials it is still 0.25).
 - **Arm C (49,152) was dropped** by the §8 rule (§13): whether it adds anything over 32,768 is not answered here. Under B the largest peak prompt was 38k tokens.
 
@@ -66,7 +67,7 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 - **No arm is cheapest everywhere.** D wins on `fetch-cache` and `config-extends`, E on `markup-lite` and `booking-conflicts` (but not on the tasks where it is
   inaccurate), and the cut-off arms are the most expensive. A static policy is a compromise; that is what an adaptive allocator (roadmap item 13) would be tested
   against.
-- **Tokens are not wall time:** E's trials were 4 to 10 times faster than A's per trial on the light tasks. Peak prompt tokens (the attention-pressure proxy) rose under B
+- **Tokens are not wall time:** E's trials were about 3 to 4 times faster than A's per trial on `booking-conflicts` (24 s against 82 s) and `markup-lite` (56 s against 219 s). Peak prompt tokens (the attention-pressure proxy) rose under B
   because the agent worked longer, up to 38k tokens, well inside the 98k context.
 
 ## Validity
@@ -75,7 +76,7 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 | :--- | :--- |
 | M-inj (the cap and E's template field reached every request) | PASS, all arms, all four paths |
 | M-sys, M-tools, M1 (no sampling field), M5, M-ws | PASS |
-| M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.4% of D's responses, 2.4 to 6.1% of A's (per path) |
+| M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.0% of D's responses, 2.1 to 6.1% of A's (per path) |
 | M-time / M-ctx | 0 sessions did not finish, 0 server errors, in every arm. (The pilot had one hung agent test.) |
 | M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also excluded below |
 

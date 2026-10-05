@@ -68,7 +68,7 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
   inaccurate), and the cut-off arms are the most expensive. A static policy is a compromise; that is what an adaptive allocator (roadmap item 13) would be tested
   against.
 - **Tokens are not wall time:** E's trials were about 3 to 4 times faster than A's per trial on `booking-conflicts` (24 s against 82 s) and `markup-lite` (56 s against 219 s). Peak prompt tokens (the attention-pressure proxy) rose under B
-  because the agent worked longer, up to 38k tokens, well inside the 98k context.
+  because the agent worked longer: cell medians up to 38k tokens, the largest single trial 49,547, inside the 98k context.
 
 ## Validity
 
@@ -78,12 +78,38 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 | M-sys, M-tools, M1 (no sampling field), M5, M-ws | PASS |
 | M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.0% of D's responses, 2.1 to 6.1% of A's (per path) |
 | M-time / M-ctx | 0 sessions did not finish, 0 server errors, in every arm. (The pilot had one hung agent test.) |
-| M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also excluded below |
+| M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also among the five excluded below |
 
-**Excluded as invalid by the leakage rule (§7), five trials, four of them in arm E:** each named a path under the repository checkout or the operator's home,
-or one of the study's own directories. In **one of them (arm B, `fetch-cache`, path c3) a tool result contained the hidden check's marker: the agent read a hidden check.**
-Four of the five passed their check and one (E, `config-extends`) failed; **counting all five does not change a reading** (B − A becomes +0.42; E on
-`config-extends` is still flagged). The cause is not known; with thinking off the agent went looking outside its workspace more often, and that is descriptive only.
+**Excluded as invalid by the leakage rule (§7): five trials, four of them in arm E.** What each did, read from its recorded tool calls:
+
+| Trial | What it did outside its workspace | Hidden check read? |
+| :--- | :--- | :--- |
+| B, `fetch-cache`, path c3 | searched the filesystem for `fc.test.*` and found **a copy of the hidden check in the operator-side Claude Code scratchpad under `/tmp`, left there by me** (a file I had made while validating the task); it learned the repository path from it, then **read the task's reference solution and its hidden check in the repository and ran the hidden check against its own solution** | **yes** (marker in a tool result) |
+| E, `fetch-cache`, path c3 | `find / -name client.test.js`, then compared its visible test with the repository's copy of the workspace | no (only the visible test's copy) |
+| E, `config-extends`, path c1 | named its own run directory (`/tmp/endo-experiment-<hash>`, the directory above its scratch root) | no |
+| E, `fetch-cache`, path c2 | the same | no |
+| E, `config-extends`, path c4 | the same, as a relative path | no |
+
+So **one trial had the hidden check and the reference in hand (my leftover file, which I have since deleted), one searched the whole filesystem and found a copy of the visible test,
+and three only named their own run directory (the leakage rule flags that by design; no content outside their workspace was read).** None read Pi's configuration or sessions, and
+the repository has no change beyond the long-standing untracked `.agents/` and `.commandcode/`. Four of the five passed their check and one (E, `config-extends`, c4) failed.
+
+**Sensitivity to the exclusions, recomputed (not just the difference):** counting all five, B − A is **+0.42** with a cluster interval **[+0.07, +0.76]**: the reading is unchanged.
+E on `config-extends` is 7/12 against A's 10/12, still flagged.
+
+**Sensitivity to the paths (leave one path out, all five counted).** The cluster interval has 3 degrees of freedom with four paths and 2 with three, so it widens:
+leaving out c1 gives +0.39 [−0.24, +1.02], c2 +0.44 [−0.19, +1.08], c3 +0.33 [−0.08, +0.75], c4 +0.50 [+0.09, +0.91]. **The difference is positive and at least +0.33 every time, but with only three
+paths the interval includes 0 in three of the four cases:** the pre-registered reading ("the cap is binding") rests on all four paths, and the study cannot say more than that.
+
+**Cross-trial contamination through the shared `/tmp`.** Agents left scripts in `/tmp`, which every trial shares and which was not cleared between trials, so a later trial could in principle read an earlier
+one's leftover. Path-based searches were too noisy to settle it (agents often `cd /tmp` and use relative names), so I checked **content provenance**: for each of the 232 trials I looked for tool
+results that showed a line (60 characters or more) authored by one or two other trials and not by the trial itself or its task files. **Three trials showed any such line, and all three are explained** (the
+B trial that read the hidden check; a trial that saw its own path-run's scratch path; and one coincidental import line). **No trial's results contained another trial's leftover
+content.** The check detects idiosyncratic lines, not short common ones. One E trial (c2, `fetch-cache`) also **ran `rm -f` with broad globs on `/tmp`** (`/tmp/h*.mjs`, `/tmp/r*.mjs`, `/tmp/dbg*.mjs` and others), which could have removed files that
+were not its own; I cannot tell which, if any, were.
+
+**Prompt sizes (corrected).** The largest peak prompt of a trial was **49,547 tokens in arm B** (B's cell medians are 26k to 38k), 44,024 in A and 45,961 in D, and **84,190 in arm E** (an exploratory trial of
+`config-extends`; two other E trials were over 65k). 84,190 plus E's cap of 16,384 is above the 98,304 context, and no server error was recorded. Arm C (49,152) would not have fitted the E-style long trials; it was dropped for time, not for this.
 
 ## What this means for the project
 
@@ -114,7 +140,11 @@ Four of the five passed their check and one (E, `config-extends`) failed; **coun
 - **Four tasks, one model, one server session.** The two controls make the harm check weak, and the per-task Wilson intervals are wide.
 - The arms are crude (a cap, one sentence, one template field). Nothing here says anything about learned or adaptive allocation.
 - **A is not exactly the discriminating-task study's condition** (a one-hour timeout and concurrency), and the two studies' rates are compared as a consistency check only.
-- **Five invalid trials** (four in arm E) and **one confirmed read of a hidden check** (arm B, excluded). The leakage rule is a detector for what the agent typed, not a sandbox.
+- **There is no sandbox, and this study showed what that costs.** Agents roam the host: one read the hidden check and the reference in the repository (found through a leftover file of mine in `/tmp`), one searched the
+  whole filesystem, and one deleted files in `/tmp` by glob. The leakage rule detects what the agent typed; it prevents nothing. The repository itself is an easier target now: it holds committed raw data with past
+  solutions, and `spec-pilot.json` embeds every hidden check in its argv. **A future study should run trials with the checkout unreachable** (a separate user or namespace, with the hidden checks outside any path the agent can read),
+  and `/tmp` private to each trial.
+- **Five invalid trials** (four in arm E) and **one confirmed read of a hidden check** (arm B, excluded; the cause was my own leftover file).
 - The pooled reading is over `fetch-cache` and `markup-lite`, one of which is saturated at the raised cap: the primary difference is the sum of one task that moves a lot and one that moves a little.
 
 ## Files

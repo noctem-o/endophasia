@@ -221,3 +221,7 @@ Both were decided from the pilot, before any main-run trial.
    first version of the analysis counted "session did not finish" only among failures. It now counts every trial the runner noted as not
    settled, as §7's M-time says. Two earlier fixes to the analysis code (reading chunked responses by bytes, and skipping the proxy's empty
    stale-connection retries) were also made on the live pilot, before any analysis of it.
+3. **A figure in §9a was a median, not a maximum (found after the main run).** §9a says "the largest peak prompt was 31,744 tokens"; that is the largest cell *median* in
+   the pilot. The largest single trial's peak prompt in the pilot was 46,044 tokens (B, `markup-lite`). §9a is not edited; the main run's own maxima are in RESULTS (49,547 in B and 84,190 in an E trial).
+4. **A leftover file of the author's was reachable and one trial found it** (RESULTS, Validity). The design assumed the hidden checks sat out of the agent's reach in practice; they do not (there is no sandbox, §11). The
+   trial was excluded by the §7 rule, the file has been deleted, and the study has no other change.

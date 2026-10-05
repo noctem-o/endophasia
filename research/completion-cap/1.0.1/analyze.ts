@@ -35,6 +35,12 @@ import { parseWireV0, type WireSummaryV0 } from "./wire.ts";
 
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
+/** Equal as canonical JSON; a missing value (undefined) equals only another missing value, and never throws. */
+export function sameJsonV0(a: unknown, b: unknown): boolean {
+	if (a === undefined || b === undefined) return a === b;
+	return canonicalEndoJsonV0(a as never) === canonicalEndoJsonV0(b as never);
+}
+
 const sha = (value: unknown) =>
 	createHash("sha256")
 		.update(canonicalEndoJsonV0(value as never))
@@ -254,7 +260,7 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 					`request ${index + 1}: max_completion_tokens is ${JSON.stringify(request.max_completion_tokens ?? null)}, expected ${spec.cap}`,
 				);
 			for (const [field, value] of Object.entries(spec.extra))
-				if (canonicalEndoJsonV0(request[field] as never) !== canonicalEndoJsonV0(value as never))
+				if (!sameJsonV0(request[field], value))
 					injectedProblems.push(`request ${index + 1}: ${field} differs from the arm's`);
 			if (Object.keys(spec.extra).length === 0 && "chat_template_kwargs" in request)
 				injectedProblems.push(`request ${index + 1}: an unexpected chat_template_kwargs`);
@@ -313,10 +319,10 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			toolsDigests: requests.map((request) => (request.tools === undefined ? null : sha(request.tools))),
 			baseDigests: requests.map((request) =>
 				sha({
-					model: request.model,
-					stream: request.stream,
-					stream_options: request.stream_options,
-					store: request.store,
+					model: request.model ?? null,
+					stream: request.stream ?? null,
+					stream_options: request.stream_options ?? null,
+					store: request.store ?? null,
 				}),
 			),
 		});

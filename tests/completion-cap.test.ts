@@ -213,6 +213,7 @@ import {
 	classOf,
 	failureModeOf,
 	mismatchingTrialsV0,
+	sameJsonV0,
 	type TrialV0,
 	toolActivityAcross,
 } from "../research/completion-cap/1.0.1/analyze.ts";
@@ -361,5 +362,15 @@ describe("the per-request checks", () => {
 		expect(mismatchingTrialsV0([["s", null], ["s"]], "s")).toBe(1);
 		expect(mismatchingTrialsV0([["s"], ["s"], [null]], null)).toBe(3);
 		expect(mismatchingTrialsV0([], "s")).toBe(0);
+	});
+});
+
+describe("comparing a request field with the arm's value", () => {
+	it("treats a missing field as a mismatch and does not throw", () => {
+		expect(sameJsonV0({ enable_thinking: false }, { enable_thinking: false })).toBe(true);
+		expect(sameJsonV0({ enable_thinking: true }, { enable_thinking: false })).toBe(false);
+		expect(sameJsonV0(undefined, { enable_thinking: false })).toBe(false);
+		expect(sameJsonV0({ enable_thinking: false }, undefined)).toBe(false);
+		expect(sameJsonV0(undefined, undefined)).toBe(true);
 	});
 });

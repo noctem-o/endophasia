@@ -212,6 +212,7 @@ import {
 	cell,
 	classOf,
 	failureModeOf,
+	mismatchingTrialsV0,
 	type TrialV0,
 	toolActivityAcross,
 } from "../research/completion-cap/1.0.1/analyze.ts";
@@ -281,6 +282,8 @@ describe("the cell of an arm and a task", () => {
 		workspaceProblems: [],
 		systemTexts: [],
 		toolsDigests: [],
+		baseDigests: [],
+		checkPassed: null,
 		...patch,
 	});
 
@@ -340,5 +343,23 @@ describe("secondary contrasts carry no reading", () => {
 		expect(result.difference).toBe(0);
 		expect(result).not.toHaveProperty("reading");
 		expect(primaryContrastV0([0, 1, 2, 3].map(() => pair([5, 10], [5, 10])))).toHaveProperty("reading");
+	});
+});
+
+describe("the per-request checks", () => {
+	it("counts a trial with any request that differs, lacks the value, or has no reference to compare with", () => {
+		expect(
+			mismatchingTrialsV0(
+				[
+					["s", "s"],
+					["s", "s", "s"],
+				],
+				"s",
+			),
+		).toBe(0);
+		expect(mismatchingTrialsV0([["s", "t"], ["s"]], "s")).toBe(1);
+		expect(mismatchingTrialsV0([["s", null], ["s"]], "s")).toBe(1);
+		expect(mismatchingTrialsV0([["s"], ["s"], [null]], null)).toBe(3);
+		expect(mismatchingTrialsV0([], "s")).toBe(0);
 	});
 });

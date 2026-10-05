@@ -16,8 +16,8 @@ the difference stays at +0.33 or more; see Validity).
 | :--- | :--- | ---: | :--- |
 | **A** control | Pi's default cap (16,384) | 10/24 = 0.42 | [24.5, 61.2] |
 | **B** | cap 32,768 | **19/23 = 0.83** | [62.9, 93.0] |
-| **D** | one sentence asking for short reasoning, cap 16,384 | 15/24 = 0.63 | |
-| **E** | thinking off per request, cap 16,384 | 10/22 = 0.45 | |
+| **D** | one sentence asking for short reasoning, cap 16,384 | 15/24 = 0.63 | [42.7, 78.8] |
+| **E** | thinking off per request, cap 16,384 | 10/22 = 0.45 | [26.9, 65.3] |
 
 The prediction made in DESIGN §2 was that removing truncation would saturate **both** tasks. **It was half right.**
 
@@ -76,7 +76,7 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 | Check | Result |
 | :--- | :--- |
 | M-inj (the cap and E's template field reached every request) | PASS, all arms, all four paths |
-| M-sys, M-tools (compared on **every request**: 103 to 581 requests per arm and path), M1 (no sampling field), M5, M-ws | PASS |
+| M-sys, M-tools and the fixed request fields (model, stream, stream options, store), each compared on **every request** (103 to 581 requests per arm and path; a request without the message or the tools would count as a mismatch), M1 (no sampling field), M5, M-ws (each snapshot file equals the task's file) | PASS |
 | M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.0% of D's responses, 2.1 to 6.1% of A's (per path) |
 | M-time / M-ctx | 0 sessions did not finish, 0 server errors, in every arm. (The pilot had one hung agent test.) |
 | M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also among the five excluded below |
@@ -95,7 +95,7 @@ So **one trial had the hidden check and the reference in hand (my leftover file,
 and three only named their own run directory (the leakage rule flags that by design; no content outside their workspace was read).** None read Pi's configuration or sessions, and
 the repository has no change beyond the long-standing untracked `.agents/` and `.commandcode/`. Four of the five passed their check and one (E, `config-extends`, c4) failed.
 
-**Sensitivity to the exclusions, recomputed (not just the difference):** counting all five, B − A is **+0.42** with a cluster interval **[+0.07, +0.76]**: the reading is unchanged.
+**Sensitivity to the exclusions, recomputed (not just the difference; the numbers are in `analysis/main.json`, `sensitivity`):** counting all five, B − A is **+0.42** with a cluster interval **[+0.07, +0.76]**: the reading is unchanged.
 E on `config-extends` is 7/12 against A's 10/12, still flagged.
 
 **Sensitivity to the paths (leave one path out, all five counted).** The cluster interval has 3 degrees of freedom with four paths and 2 with three, so it widens:

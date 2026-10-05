@@ -73,6 +73,10 @@ export interface TrialV0 {
 	/** Per recorded request: the system message's text and a digest of the tools (null when absent). */
 	systemTexts: (string | null)[];
 	toolsDigests: (string | null)[];
+	/** Per recorded request: a digest of the fields no arm may change (model, stream, stream_options, store). */
+	baseDigests: string[];
+	/** What the hidden check said, kept even when the trial is excluded as invalid (for the sensitivity analysis). */
+	checkPassed: boolean | null;
 }
 
 type Message = Record<string, unknown>;
@@ -216,6 +220,8 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			workspaceProblems: [] as string[],
 			systemTexts: [] as (string | null)[],
 			toolsDigests: [] as (string | null)[],
+			baseDigests: [] as string[],
+			checkPassed: result.check.ran ? result.check.passed : null,
 		};
 		if (result.status === "error" || result.exchanges === 0) {
 			out.push({
@@ -270,6 +276,8 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			for (const path of Object.keys(task.workspace)) {
 				const entry = files.get(`work/${path}`) ?? files.get(path);
 				if (entry === undefined || entry.type !== "file") workspaceProblems.push(`the snapshot lacks ${path}`);
+				else if (Buffer.from(entry.base64, "base64").toString("utf8") !== task.workspace[path])
+					workspaceProblems.push(`the snapshot's ${path} differs from the task's file`);
 			}
 			for (const entry of archive.entries) {
 				if (/hidden/i.test(entry.path)) workspaceProblems.push(`the snapshot holds ${entry.path}`);
@@ -303,6 +311,14 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 				return system?.role === "system" ? textOf(system.content) : null;
 			}),
 			toolsDigests: requests.map((request) => (request.tools === undefined ? null : sha(request.tools))),
+			baseDigests: requests.map((request) =>
+				sha({
+					model: request.model,
+					stream: request.stream,
+					stream_options: request.stream_options,
+					store: request.store,
+				}),
+			),
 		});
 	}
 	return out;
@@ -310,6 +326,18 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 
 const counted = (trial: TrialV0) => trial.class.kind === "success" || trial.class.kind === "failure";
 const isSuccess = (trial: TrialV0) => trial.class.kind === "success";
+
+/**
+ * Per trial, its requests' values (system texts, tool digests, ...); how many trials have a request whose value is not the expected
+ * one. A missing value (null) is a mismatch, and with no expected value (no reference could be established) every trial is.
+ */
+export function mismatchingTrialsV0(
+	perTrial: readonly (readonly (string | null)[])[],
+	expected: string | null,
+): number {
+	if (expected === null) return perTrial.length;
+	return perTrial.filter((values) => values.some((value) => value !== expected)).length;
+}
 
 export interface CellV0 {
 	arm: ArmIdV0;
@@ -375,21 +403,28 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 	const environment = environmentChecks(dir);
 	const arms = [...new Set(trials.map((trial) => trial.arm))].sort() as ArmIdV0[];
-	const reference = trials.find((trial) => trial.arm === "a" && trial.systemTexts[0] != null);
+	const reference = trials.find((trial) => trial.arm === "a" && trial.systemTexts.length > 0);
 	const referenceSystem = reference?.systemTexts[0] ?? null;
 	const referenceTools = reference?.toolsDigests[0] ?? null;
+	const referenceBase = reference?.baseDigests[0] ?? null;
 	const byArm = Object.fromEntries(
 		arms.map((arm) => {
 			const mine = trials.filter((trial) => trial.arm === arm);
-			const expected =
+			const expectedSystem =
 				referenceSystem === null ? null : arm === "d" ? `${referenceSystem}\n\n${BRIEF_SENTENCE}` : referenceSystem;
-			// Every request of every trial, not the first only: a request that lost the sentence or changed the tools counts.
-			const sysProblems = mine.filter((trial) =>
-				trial.systemTexts.some((text) => text !== null && expected !== null && text !== expected),
-			).length;
-			const toolProblems = mine.filter((trial) =>
-				trial.toolsDigests.some((digest) => referenceTools !== null && digest !== referenceTools),
-			).length;
+			// Every request of every trial, not the first only; a request without the message or the tools counts as a mismatch.
+			const sysProblems = mismatchingTrialsV0(
+				mine.map((trial) => trial.systemTexts),
+				expectedSystem,
+			);
+			const toolProblems = mismatchingTrialsV0(
+				mine.map((trial) => trial.toolsDigests),
+				referenceTools,
+			);
+			const baseProblems = mismatchingTrialsV0(
+				mine.map((trial) => trial.baseDigests),
+				referenceBase,
+			);
 			return [
 				arm,
 				{
@@ -400,6 +435,7 @@ export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 					"M-sys-trials-differing": sysProblems,
 					"M-sys-requests-checked": mine.reduce((sum, trial) => sum + trial.systemTexts.length, 0),
 					"M-tools-trials-differing": toolProblems,
+					"M-base-fields-trials-differing": baseProblems,
 					"M1-sampling-fields": [...new Set(mine.flatMap((trial) => trial.samplingFields))],
 					"M-ws": mine
 						.flatMap((trial) => trial.workspaceProblems.map((p) => `${trial.task}/#${trial.trial}: ${p}`))
@@ -480,12 +516,27 @@ export function main(dir: string, roots: RootsV0) {
 	const all = runs.flatMap((run) => run.trials);
 	const planned = spec.trials * labels.length;
 	const cells = arms.flatMap((arm) => spec.tasks.map((task) => cell(arm, task.id, all, planned)));
-	const counts = (arm: ArmIdV0, tasks: readonly string[], trials: readonly TrialV0[]) => {
-		const kept = trials.filter((t) => t.arm === arm && tasks.includes(t.task) && counted(t));
-		return { successes: kept.filter(isSuccess).length, counted: kept.length };
-	};
-	const pairs = (arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[]) =>
-		runs.map((run) => ({ control: counts(base, tasks, run.trials), arm: counts(arm, tasks, run.trials) }));
+	// The counts the registered analysis uses (invalid trials excluded) and, for the sensitivity, with each invalid trial counted by
+	// what its hidden check said.
+	const countsWith =
+		(includeInvalid: boolean) => (arm: ArmIdV0, tasks: readonly string[], trials: readonly TrialV0[]) => {
+			const kept = trials.filter(
+				(t) =>
+					t.arm === arm &&
+					tasks.includes(t.task) &&
+					(counted(t) || (includeInvalid && t.class.kind === "invalid")),
+			);
+			const passes = (t: TrialV0) => (t.class.kind === "invalid" ? t.checkPassed === true : isSuccess(t));
+			return { successes: kept.filter(passes).length, counted: kept.length };
+		};
+	const counts = countsWith(false);
+	const countsInvalidToo = countsWith(true);
+	const pairsOf =
+		(count: typeof counts) =>
+		(arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[], subset: typeof runs = runs) =>
+			subset.map((run) => ({ control: count(base, tasks, run.trials), arm: count(arm, tasks, run.trials) }));
+	const pairs = pairsOf(counts);
+	const pairsInvalidToo = pairsOf(countsInvalidToo);
 	// Secondary contrasts: counts and intervals, no reading (the fixed reading is for the primary contrast only).
 	const contrast = (arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[]) => contrastV0(pairs(arm, base, tasks));
 	const primaryTasks = [...PRIMARY_TASKS];
@@ -493,12 +544,17 @@ export function main(dir: string, roots: RootsV0) {
 		...c,
 		...(c.counted === 0 ? {} : { wilson: wilson95V0(c.successes, c.counted).wilson95 }),
 	});
+	const decorate = <
+		T extends { control: { successes: number; counted: number }; arm: { successes: number; counted: number } },
+	>(
+		contrastResult: T,
+	) => ({ ...contrastResult, control: withWilson(contrastResult.control), arm: withWilson(contrastResult.arm) });
 	const secondary = arms
 		.filter((arm) => arm !== "a")
 		.map((arm) => ({
 			arm,
-			vsA: contrast(arm, "a", primaryTasks),
-			vsB: arm === "c" && arms.includes("b") ? contrast("c", "b", primaryTasks) : null,
+			vsA: decorate(contrast(arm, "a", primaryTasks)),
+			vsB: arm === "c" && arms.includes("b") ? decorate(contrast("c", "b", primaryTasks)) : null,
 			perTask: spec.tasks.map((task) => ({
 				task: task.id,
 				arm: withWilson(counts(arm, [task.id], all)),
@@ -525,6 +581,45 @@ export function main(dir: string, roots: RootsV0) {
 			arm: withWilson(primary.arm),
 		},
 		secondary,
+		// DESIGN §7: what the result would be if the leakage-invalid trials were counted (by their check), and what each path contributes.
+		sensitivity: {
+			invalidTrials: runs.flatMap((run) =>
+				run.trials
+					.filter((t) => t.class.kind === "invalid")
+					.map((t) => ({ path: run.label, arm: t.arm, task: t.task, trial: t.trial, checkPassed: t.checkPassed })),
+			),
+			invalidCounted: {
+				primary: arms.includes("b") ? primaryContrastV0(pairsInvalidToo("b", "a", primaryTasks)) : null,
+				cells: arms.flatMap((arm) =>
+					spec.tasks.map((task) => ({ arm, task: task.id, ...withWilson(countsInvalidToo(arm, [task.id], all)) })),
+				),
+				harm: arms
+					.filter((arm) => arm !== "a")
+					.flatMap((arm) =>
+						spec.tasks
+							.filter((task) => !PRIMARY_TASKS.includes(task.id as (typeof PRIMARY_TASKS)[number]))
+							.map((task) => ({
+								arm,
+								task: task.id,
+								flagged: harmFlagV0(
+									countsInvalidToo(arm, [task.id], all),
+									countsInvalidToo("a", [task.id], all),
+								),
+							})),
+					),
+			},
+			leaveOnePathOut: labels.map((left) => ({
+				left,
+				...primaryContrastV0(
+					pairsInvalidToo(
+						"b",
+						"a",
+						primaryTasks,
+						runs.filter((run) => run.label !== left),
+					),
+				),
+			})),
+		},
 		manipulation: Object.fromEntries(
 			runs.map((run) => [run.label, manipulationOf(join(dir, run.label), run.trials)]),
 		),

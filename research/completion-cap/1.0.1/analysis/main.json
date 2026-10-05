@@ -946,11 +946,19 @@
 			"vsA": {
 				"control": {
 					"successes": 10,
-					"counted": 24
+					"counted": 24,
+					"wilson": {
+						"low": 0.244676,
+						"high": 0.611653
+					}
 				},
 				"arm": {
 					"successes": 19,
-					"counted": 23
+					"counted": 23,
+					"wilson": {
+						"low": 0.628624,
+						"high": 0.930213
+					}
 				},
 				"difference": 0.40942,
 				"perPath": [
@@ -1061,11 +1069,19 @@
 			"vsA": {
 				"control": {
 					"successes": 10,
-					"counted": 24
+					"counted": 24,
+					"wilson": {
+						"low": 0.244676,
+						"high": 0.611653
+					}
 				},
 				"arm": {
 					"successes": 15,
-					"counted": 24
+					"counted": 24,
+					"wilson": {
+						"low": 0.4271,
+						"high": 0.788406
+					}
 				},
 				"difference": 0.208333,
 				"perPath": [
@@ -1176,11 +1192,19 @@
 			"vsA": {
 				"control": {
 					"successes": 10,
-					"counted": 24
+					"counted": 24,
+					"wilson": {
+						"low": 0.244676,
+						"high": 0.611653
+					}
 				},
 				"arm": {
 					"successes": 10,
-					"counted": 22
+					"counted": 22,
+					"wilson": {
+						"low": 0.269203,
+						"high": 0.653402
+					}
 				},
 				"difference": 0.037879,
 				"perPath": [
@@ -1287,6 +1311,363 @@
 			]
 		}
 	],
+	"sensitivity": {
+		"invalidTrials": [
+			{
+				"path": "c3",
+				"arm": "e",
+				"task": "fetch-cache",
+				"trial": 0,
+				"checkPassed": true
+			},
+			{
+				"path": "c3",
+				"arm": "b",
+				"task": "fetch-cache",
+				"trial": 1,
+				"checkPassed": true
+			},
+			{
+				"path": "c1",
+				"arm": "e",
+				"task": "config-extends",
+				"trial": 1,
+				"checkPassed": true
+			},
+			{
+				"path": "c2",
+				"arm": "e",
+				"task": "fetch-cache",
+				"trial": 0,
+				"checkPassed": true
+			},
+			{
+				"path": "c4",
+				"arm": "e",
+				"task": "config-extends",
+				"trial": 0,
+				"checkPassed": false
+			}
+		],
+		"invalidCounted": {
+			"primary": {
+				"control": {
+					"successes": 10,
+					"counted": 24
+				},
+				"arm": {
+					"successes": 20,
+					"counted": 24
+				},
+				"difference": 0.416667,
+				"perPath": [
+					0.666667,
+					0.5,
+					0.333333,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.416667,
+					"low": 0.074295,
+					"high": 0.759039,
+					"df": 3
+				},
+				"reading": "cap-binding"
+			},
+			"cells": [
+				{
+					"arm": "a",
+					"task": "booking-conflicts",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "a",
+					"task": "config-extends",
+					"successes": 10,
+					"counted": 12,
+					"wilson": {
+						"low": 0.551969,
+						"high": 0.953035
+					}
+				},
+				{
+					"arm": "a",
+					"task": "fetch-cache",
+					"successes": 5,
+					"counted": 12,
+					"wilson": {
+						"low": 0.19326,
+						"high": 0.680489
+					}
+				},
+				{
+					"arm": "a",
+					"task": "markup-lite",
+					"successes": 5,
+					"counted": 12,
+					"wilson": {
+						"low": 0.19326,
+						"high": 0.680489
+					}
+				},
+				{
+					"arm": "b",
+					"task": "booking-conflicts",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "b",
+					"task": "config-extends",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "b",
+					"task": "fetch-cache",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "b",
+					"task": "markup-lite",
+					"successes": 8,
+					"counted": 12,
+					"wilson": {
+						"low": 0.390622,
+						"high": 0.86188
+					}
+				},
+				{
+					"arm": "d",
+					"task": "booking-conflicts",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "d",
+					"task": "config-extends",
+					"successes": 12,
+					"counted": 12,
+					"wilson": {
+						"low": 0.757506,
+						"high": 1
+					}
+				},
+				{
+					"arm": "d",
+					"task": "fetch-cache",
+					"successes": 11,
+					"counted": 12,
+					"wilson": {
+						"low": 0.64612,
+						"high": 0.985135
+					}
+				},
+				{
+					"arm": "d",
+					"task": "markup-lite",
+					"successes": 4,
+					"counted": 12,
+					"wilson": {
+						"low": 0.13812,
+						"high": 0.609378
+					}
+				},
+				{
+					"arm": "e",
+					"task": "booking-conflicts",
+					"successes": 11,
+					"counted": 12,
+					"wilson": {
+						"low": 0.64612,
+						"high": 0.985135
+					}
+				},
+				{
+					"arm": "e",
+					"task": "config-extends",
+					"successes": 7,
+					"counted": 12,
+					"wilson": {
+						"low": 0.319511,
+						"high": 0.80674
+					}
+				},
+				{
+					"arm": "e",
+					"task": "fetch-cache",
+					"successes": 8,
+					"counted": 12,
+					"wilson": {
+						"low": 0.390622,
+						"high": 0.86188
+					}
+				},
+				{
+					"arm": "e",
+					"task": "markup-lite",
+					"successes": 4,
+					"counted": 12,
+					"wilson": {
+						"low": 0.13812,
+						"high": 0.609378
+					}
+				}
+			],
+			"harm": [
+				{
+					"arm": "b",
+					"task": "booking-conflicts",
+					"flagged": false
+				},
+				{
+					"arm": "b",
+					"task": "config-extends",
+					"flagged": false
+				},
+				{
+					"arm": "d",
+					"task": "booking-conflicts",
+					"flagged": false
+				},
+				{
+					"arm": "d",
+					"task": "config-extends",
+					"flagged": false
+				},
+				{
+					"arm": "e",
+					"task": "booking-conflicts",
+					"flagged": false
+				},
+				{
+					"arm": "e",
+					"task": "config-extends",
+					"flagged": true
+				}
+			]
+		},
+		"leaveOnePathOut": [
+			{
+				"left": "c3",
+				"control": {
+					"successes": 9,
+					"counted": 18
+				},
+				"arm": {
+					"successes": 15,
+					"counted": 18
+				},
+				"difference": 0.333333,
+				"perPath": [
+					0.5,
+					0.333333,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.333333,
+					"low": -0.080694,
+					"high": 0.74736,
+					"df": 2
+				},
+				"reading": "inconclusive"
+			},
+			{
+				"left": "c1",
+				"control": {
+					"successes": 8,
+					"counted": 18
+				},
+				"arm": {
+					"successes": 15,
+					"counted": 18
+				},
+				"difference": 0.388889,
+				"perPath": [
+					0.666667,
+					0.333333,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.388889,
+					"low": -0.243549,
+					"high": 1.021327,
+					"df": 2
+				},
+				"reading": "inconclusive"
+			},
+			{
+				"left": "c2",
+				"control": {
+					"successes": 7,
+					"counted": 18
+				},
+				"arm": {
+					"successes": 15,
+					"counted": 18
+				},
+				"difference": 0.444444,
+				"perPath": [
+					0.666667,
+					0.5,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.444445,
+					"low": -0.187993,
+					"high": 1.076882,
+					"df": 2
+				},
+				"reading": "inconclusive"
+			},
+			{
+				"left": "c4",
+				"control": {
+					"successes": 6,
+					"counted": 18
+				},
+				"arm": {
+					"successes": 15,
+					"counted": 18
+				},
+				"difference": 0.5,
+				"perPath": [
+					0.666667,
+					0.5,
+					0.333333
+				],
+				"cluster": {
+					"mean": 0.5,
+					"low": 0.085972,
+					"high": 0.914028,
+					"df": 2
+				},
+				"reading": "cap-binding"
+			}
+		]
+	},
 	"manipulation": {
 		"c3": {
 			"M5": {
@@ -1346,6 +1727,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 103,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.060606,
@@ -1358,6 +1740,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 217,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1370,6 +1753,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 161,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.019868,
@@ -1382,6 +1766,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 310,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1506,6 +1891,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 143,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.029197,
@@ -1518,6 +1904,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 193,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1530,6 +1917,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 152,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.006897,
@@ -1542,6 +1930,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 369,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1742,6 +2131,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 130,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.02439,
@@ -1754,6 +2144,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 157,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1766,6 +2157,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 160,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.012739,
@@ -1778,6 +2170,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 581,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1844,6 +2237,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 150,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.021127,
@@ -1856,6 +2250,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 199,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,
@@ -1868,6 +2263,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 141,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0.014706,
@@ -1880,6 +2276,7 @@
 					"M-sys-trials-differing": 0,
 					"M-sys-requests-checked": 353,
 					"M-tools-trials-differing": 0,
+					"M-base-fields-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
 					"cutOffResponseRate": 0,

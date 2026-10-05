@@ -416,6 +416,10 @@ llama.cpp, and one machine:
   for this model (13 of 20 and 7 of 20) and most are saturated. 21 of the 25 failures were a response cut off at Pi's
   default completion cap of 16,384 tokens, so the discrimination is largely truncation; it is not yet a measure of
   task difficulty.
+- [Completion-cap study](research/README.md#completion-cap-study): raising the completion cap from 16,384 to 32,768 tokens raised
+  success on the two discriminating tasks from 10 of 24 to 19 of 23 (cluster interval +0.07 to +0.73, a gain at every path); a
+  brief-reasoning sentence and switching thinking off are cheaper but less reliable, and the trials showed that without a sandbox an agent can reach
+  the repository's hidden checks.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and

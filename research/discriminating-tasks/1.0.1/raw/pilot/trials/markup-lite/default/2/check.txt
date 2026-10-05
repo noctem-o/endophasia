@@ -1,0 +1,15 @@
+✔ R1: type check and escaping (1.147364ms)
+✔ R2: the three spans (0.658993ms)
+✔ R3: openers, closers and plain markers (0.149622ms)
+✔ R4: the underscore flanking rule (0.147308ms)
+✔ R5: code spans (0.154672ms)
+✔ R6: nesting and no overlap (0.134404ms)
+✔ R7: backslash escapes (0.159631ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.034875

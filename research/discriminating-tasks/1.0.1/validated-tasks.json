@@ -1,0 +1,27 @@
+{
+	"schemaVersion": "endo.validated-tasks.v0",
+	"seed": 20261004,
+	"rule": "sort ids, Fisher-Yates with mulberry32(seed), first ceil(m/2) validation, the rest holdout",
+	"validation": [
+		"fetch-cache"
+	],
+	"holdout": [
+		"markup-lite"
+	],
+	"marginal": [],
+	"saturated": [
+		"booking-conflicts"
+	],
+	"unmeasured": [],
+	"notInConfirmation": [
+		"slot-pack",
+		"ticket-code",
+		"rolling-median",
+		"tax-brackets",
+		"route-normalize",
+		"retry-schedule",
+		"inventory-bugs",
+		"report-bugs",
+		"config-extends"
+	]
+}

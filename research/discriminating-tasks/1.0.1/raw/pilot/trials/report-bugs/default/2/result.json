@@ -1,0 +1,159 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 28,
+	"task": "report-bugs",
+	"condition": "default",
+	"trial": 2,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T23:29:25.994Z",
+	"endedAt": "2026-10-04T23:32:42.803Z",
+	"store": "trials/report-bugs/default/2/store",
+	"session": "endo.session.pi.endo-pi-default-9ed0f09d2788",
+	"exchanges": 14,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "2a6d5da8cbad71355b8d5b58fb06a46ed73d55027370c0cb8b29caa895e8ed2a",
+			"bytes": 283
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "4f016bca3069e309389190a6f4e40bc593d3f6d5fe9240e8e61145b08f8704aa",
+		"bytes": 10423
+	},
+	"notes": []
+}

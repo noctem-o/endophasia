@@ -1,0 +1,152 @@
+{
+	"confirmation/booking-conflicts": {
+		"trials": 20,
+		"passed": 20,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"confirmation/fetch-cache": {
+		"trials": 20,
+		"passed": 13,
+		"failed": 7,
+		"failedWithLength": 7,
+		"passedWithLength": 1,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"confirmation/markup-lite": {
+		"trials": 20,
+		"passed": 7,
+		"failed": 13,
+		"failedWithLength": 11,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/booking-conflicts": {
+		"trials": 6,
+		"passed": 5,
+		"failed": 1,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/config-extends": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/fetch-cache": {
+		"trials": 6,
+		"passed": 5,
+		"failed": 1,
+		"failedWithLength": 1,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/inventory-bugs": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/markup-lite": {
+		"trials": 6,
+		"passed": 3,
+		"failed": 3,
+		"failedWithLength": 2,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/report-bugs": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/retry-schedule": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/rolling-median": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/route-normalize": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/slot-pack": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/tax-brackets": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	},
+	"screen/ticket-code": {
+		"trials": 6,
+		"passed": 6,
+		"failed": 0,
+		"failedWithLength": 0,
+		"passedWithLength": 0,
+		"maxCompletionTokens": [
+			16384
+		]
+	}
+}

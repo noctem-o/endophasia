@@ -1,0 +1,14 @@
+✔ R1: shape and timestamp validation is a TypeError (1.777225ms)
+✔ R2: end after start, and unique ids (0.708507ms)
+✔ R3: the first problem in array order is the one thrown (0.277514ms)
+✔ R4: same room, half-open ranges, case-sensitive rooms (0.344551ms)
+✔ R5: pairs are ordered and sorted (0.216138ms)
+✔ R6: the input is not changed (0.210778ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52.603388

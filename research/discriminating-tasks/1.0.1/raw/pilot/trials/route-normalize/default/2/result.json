@@ -1,0 +1,114 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 27,
+	"task": "route-normalize",
+	"condition": "default",
+	"trial": 2,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T23:27:32.152Z",
+	"endedAt": "2026-10-04T23:29:25.962Z",
+	"store": "trials/route-normalize/default/2/store",
+	"session": "endo.session.pi.endo-pi-default-0cde9a362272",
+	"exchanges": 9,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "0ece9697a6aeaa8937d1026cd21399bd48fff4dbfc64af60cc2b1b8c258bdf71",
+			"bytes": 460
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "a87bba1f609136b0048d0693099b3b50de366f92b1a8286b63bc67574754903f",
+		"bytes": 4454
+	},
+	"notes": []
+}

@@ -1,0 +1,263 @@
+{
+	"stage": "confirmation",
+	"paths": [
+		"c4",
+		"c3",
+		"c1",
+		"c2"
+	],
+	"missing": [],
+	"hashes": {
+		"c1": "3dca01f2ba6c",
+		"c2": "40f6618468d6",
+		"c3": "5c78d675047f",
+		"c4": "c612fde0820b"
+	},
+	"tasks": [
+		{
+			"task": "booking-conflicts",
+			"planned": 20,
+			"counted": 20,
+			"successes": 20,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 3,
+			"wallMs": {
+				"n": 20,
+				"median": 65121,
+				"q1": 59722.5,
+				"q3": 74319.5,
+				"iqr": 14597,
+				"min": 48015,
+				"max": 160574
+			},
+			"toolCalls": {
+				"n": 20,
+				"median": 6,
+				"q1": 6,
+				"q3": 7,
+				"iqr": 1,
+				"min": 5,
+				"max": 17
+			},
+			"pooled": {
+				"successes": 20,
+				"n": 20,
+				"rate": 1,
+				"wilson95": {
+					"low": 0.838875,
+					"high": 1
+				}
+			},
+			"cluster": {
+				"mean": 1,
+				"low": 1,
+				"high": 1,
+				"df": 3
+			},
+			"perPath": {
+				"c4": "5/5",
+				"c3": "5/5",
+				"c1": "5/5",
+				"c2": "5/5"
+			},
+			"heterogeneous": false,
+			"band": "saturated",
+			"outputTokensMedianOverPaths": {
+				"n": 4,
+				"median": 7220,
+				"q1": 6925.5,
+				"q3": 7509.75,
+				"iqr": 584.25,
+				"min": 6393,
+				"max": 8028
+			}
+		},
+		{
+			"task": "fetch-cache",
+			"planned": 20,
+			"counted": 20,
+			"successes": 13,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {
+				"wrong-result": 7
+			},
+			"unmeasured": false,
+			"outsideMentions": 66,
+			"wallMs": {
+				"n": 20,
+				"median": 256335.5,
+				"q1": 227821,
+				"q3": 322979.25,
+				"iqr": 95158.25,
+				"min": 185998,
+				"max": 600718
+			},
+			"toolCalls": {
+				"n": 20,
+				"median": 16,
+				"q1": 4,
+				"q3": 19.25,
+				"iqr": 15.25,
+				"min": 4,
+				"max": 25
+			},
+			"pooled": {
+				"successes": 13,
+				"n": 20,
+				"rate": 0.65,
+				"wilson95": {
+					"low": 0.432854,
+					"high": 0.818808
+				}
+			},
+			"cluster": {
+				"mean": 0.65,
+				"low": 0.49088,
+				"high": 0.80912,
+				"df": 3
+			},
+			"perPath": {
+				"c4": "4/5",
+				"c3": "3/5",
+				"c1": "3/5",
+				"c2": "3/5"
+			},
+			"heterogeneous": false,
+			"band": "discriminating",
+			"outputTokensMedianOverPaths": {
+				"n": 4,
+				"median": 20635.5,
+				"q1": 19103.75,
+				"q3": 22763,
+				"iqr": 3659.25,
+				"min": 16538,
+				"max": 27116
+			}
+		},
+		{
+			"task": "markup-lite",
+			"planned": 20,
+			"counted": 20,
+			"successes": 7,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {
+				"wrong-result": 13
+			},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 20,
+				"median": 206319.5,
+				"q1": 193765.25,
+				"q3": 216585.25,
+				"iqr": 22820,
+				"min": 132236,
+				"max": 402266
+			},
+			"toolCalls": {
+				"n": 20,
+				"median": 2,
+				"q1": 2,
+				"q3": 7,
+				"iqr": 5,
+				"min": 2,
+				"max": 17
+			},
+			"pooled": {
+				"successes": 7,
+				"n": 20,
+				"rate": 0.35,
+				"wilson95": {
+					"low": 0.181192,
+					"high": 0.567146
+				}
+			},
+			"cluster": {
+				"mean": 0.35,
+				"low": 0,
+				"high": 0.750443,
+				"df": 3
+			},
+			"perPath": {
+				"c4": "0/5",
+				"c3": "2/5",
+				"c1": "3/5",
+				"c2": "2/5"
+			},
+			"heterogeneous": true,
+			"band": "discriminating",
+			"outputTokensMedianOverPaths": {
+				"n": 4,
+				"median": 16461,
+				"q1": 16457.75,
+				"q3": 16737,
+				"iqr": 279.25,
+				"min": 16457,
+				"max": 17556
+			}
+		}
+	],
+	"discriminating": [
+		"fetch-cache",
+		"markup-lite"
+	],
+	"validity": {
+		"c4": {
+			"M1": {
+				"status": "PASS",
+				"trials": 15,
+				"instances": []
+			},
+			"M5": "PASS",
+			"M6": "PASS",
+			"M-ws": {
+				"status": "PASS",
+				"problems": []
+			}
+		},
+		"c3": {
+			"M1": {
+				"status": "PASS",
+				"trials": 15,
+				"instances": []
+			},
+			"M5": "PASS",
+			"M6": "PASS",
+			"M-ws": {
+				"status": "PASS",
+				"problems": []
+			}
+		},
+		"c1": {
+			"M1": {
+				"status": "PASS",
+				"trials": 15,
+				"instances": []
+			},
+			"M5": "PASS",
+			"M6": "PASS",
+			"M-ws": {
+				"status": "PASS",
+				"problems": []
+			}
+		},
+		"c2": {
+			"M1": {
+				"status": "PASS",
+				"trials": 15,
+				"instances": []
+			},
+			"M5": "PASS",
+			"M6": "PASS",
+			"M-ws": {
+				"status": "PASS",
+				"problems": []
+			}
+		}
+	}
+}

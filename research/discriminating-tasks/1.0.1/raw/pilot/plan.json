@@ -1,0 +1,438 @@
+{
+	"order": [
+		{
+			"condition": "default",
+			"position": 0,
+			"task": "booking-conflicts",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 1,
+			"task": "slot-pack",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 2,
+			"task": "markup-lite",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 3,
+			"task": "config-extends",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 4,
+			"task": "tax-brackets",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 5,
+			"task": "report-bugs",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 6,
+			"task": "rolling-median",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 7,
+			"task": "fetch-cache",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 8,
+			"task": "ticket-code",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 9,
+			"task": "route-normalize",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 10,
+			"task": "inventory-bugs",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 11,
+			"task": "retry-schedule",
+			"trial": 0
+		},
+		{
+			"condition": "default",
+			"position": 12,
+			"task": "tax-brackets",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 13,
+			"task": "retry-schedule",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 14,
+			"task": "report-bugs",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 15,
+			"task": "ticket-code",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 16,
+			"task": "route-normalize",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 17,
+			"task": "booking-conflicts",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 18,
+			"task": "config-extends",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 19,
+			"task": "slot-pack",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 20,
+			"task": "markup-lite",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 21,
+			"task": "fetch-cache",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 22,
+			"task": "inventory-bugs",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 23,
+			"task": "rolling-median",
+			"trial": 1
+		},
+		{
+			"condition": "default",
+			"position": 24,
+			"task": "retry-schedule",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 25,
+			"task": "fetch-cache",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 26,
+			"task": "config-extends",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 27,
+			"task": "route-normalize",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 28,
+			"task": "report-bugs",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 29,
+			"task": "rolling-median",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 30,
+			"task": "booking-conflicts",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 31,
+			"task": "slot-pack",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 32,
+			"task": "ticket-code",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 33,
+			"task": "markup-lite",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 34,
+			"task": "tax-brackets",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 35,
+			"task": "inventory-bugs",
+			"trial": 2
+		},
+		{
+			"condition": "default",
+			"position": 36,
+			"task": "rolling-median",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 37,
+			"task": "report-bugs",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 38,
+			"task": "fetch-cache",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 39,
+			"task": "config-extends",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 40,
+			"task": "route-normalize",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 41,
+			"task": "ticket-code",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 42,
+			"task": "markup-lite",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 43,
+			"task": "retry-schedule",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 44,
+			"task": "slot-pack",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 45,
+			"task": "booking-conflicts",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 46,
+			"task": "inventory-bugs",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 47,
+			"task": "tax-brackets",
+			"trial": 3
+		},
+		{
+			"condition": "default",
+			"position": 48,
+			"task": "route-normalize",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 49,
+			"task": "config-extends",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 50,
+			"task": "ticket-code",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 51,
+			"task": "rolling-median",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 52,
+			"task": "report-bugs",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 53,
+			"task": "booking-conflicts",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 54,
+			"task": "slot-pack",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 55,
+			"task": "fetch-cache",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 56,
+			"task": "markup-lite",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 57,
+			"task": "tax-brackets",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 58,
+			"task": "inventory-bugs",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 59,
+			"task": "retry-schedule",
+			"trial": 4
+		},
+		{
+			"condition": "default",
+			"position": 60,
+			"task": "tax-brackets",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 61,
+			"task": "retry-schedule",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 62,
+			"task": "rolling-median",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 63,
+			"task": "markup-lite",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 64,
+			"task": "route-normalize",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 65,
+			"task": "config-extends",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 66,
+			"task": "fetch-cache",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 67,
+			"task": "report-bugs",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 68,
+			"task": "slot-pack",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 69,
+			"task": "inventory-bugs",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 70,
+			"task": "ticket-code",
+			"trial": 5
+		},
+		{
+			"condition": "default",
+			"position": 71,
+			"task": "booking-conflicts",
+			"trial": 5
+		}
+	],
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"seed": 588952818
+}

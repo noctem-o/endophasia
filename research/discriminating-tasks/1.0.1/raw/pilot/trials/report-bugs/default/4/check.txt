@@ -1,0 +1,13 @@
+✔ R1: parseCsvLine (2.0735ms)
+✔ R2: parseCsv (0.620533ms)
+✔ R3: groupTotals (0.615894ms)
+✔ R4: groupTotals order (0.272084ms)
+✔ R5: renderReport (0.419674ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53.7638

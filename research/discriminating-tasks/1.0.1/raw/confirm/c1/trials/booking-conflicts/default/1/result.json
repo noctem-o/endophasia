@@ -1,0 +1,96 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 3,
+	"task": "booking-conflicts",
+	"condition": "default",
+	"trial": 1,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-05T03:02:27.823Z",
+	"endedAt": "2026-10-05T03:03:21.912Z",
+	"store": "trials/booking-conflicts/default/1/store",
+	"session": "endo.session.pi.endo-pi-default-8c2bd766ce1d",
+	"exchanges": 7,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 0,
+		"passed": true,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "24b6b78cd20d41e2f856754aca9605e9a5174d7cc85566b88b11892c46be73a6",
+			"bytes": 473
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "209b206046c75828fcf02af748a7d6ea057fb0fa76ccd7d0a904b93da29da616",
+		"bytes": 5710
+	},
+	"notes": []
+}

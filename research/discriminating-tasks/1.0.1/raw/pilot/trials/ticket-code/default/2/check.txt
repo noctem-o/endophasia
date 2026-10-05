@@ -1,0 +1,15 @@
+✔ R1: out-of-range or non-integer parts make encodeTicket throw a RangeError (1.089263ms)
+✔ R2: the shape of a code (0.240283ms)
+✔ R3: row labels in bijective base 26 (0.85431ms)
+✔ R4: the check letter (0.257736ms)
+✔ R5: decode is the exact inverse of encode (1.869324ms)
+✔ R6: a code of the wrong form is a SyntaxError (0.223161ms)
+✔ R6: a code of the right form with a bad value or check letter is a RangeError (0.207101ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.028719

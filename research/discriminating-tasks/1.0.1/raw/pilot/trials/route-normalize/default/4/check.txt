@@ -1,0 +1,15 @@
+✔ R1: only paths that start with a slash and have no query or fragment (1.116534ms)
+✔ R2: percent escapes are decoded first (4.024603ms)
+✔ R3: repeated slashes (0.162849ms)
+✔ R4: dot segments (0.29605ms)
+✔ R5: the trailing slash (0.207333ms)
+✔ R6: case and other characters are kept (0.141758ms)
+✔ R7: error precedence (0.201602ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 54.388312

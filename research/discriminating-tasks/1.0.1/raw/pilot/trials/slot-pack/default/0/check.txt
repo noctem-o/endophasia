@@ -1,0 +1,15 @@
+✔ R1: an item as large as the slot fits exactly (1.220823ms)
+✔ R2: decreasing size, then ascending id (0.204857ms)
+✔ R3: the first slot with room, in creation order (3.596154ms)
+✔ R4: slots in creation order, ids in placement order (0.235965ms)
+✔ R5: an item larger than a slot throws a RangeError naming the first such item in placement order (0.443287ms)
+✔ R6: the input is not modified (0.165702ms)
+✔ R7: no items, no slots (0.127521ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57.337622

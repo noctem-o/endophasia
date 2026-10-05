@@ -1,0 +1,1495 @@
+{
+	"stage": "main",
+	"paths": [
+		"c3",
+		"c1",
+		"c2",
+		"c4"
+	],
+	"missing": [],
+	"hashes": {
+		"c1": "78459324d677",
+		"c2": "8f81e7b0c78c",
+		"c3": "d342d495a9a7",
+		"c4": "dd590bda8409"
+	},
+	"trialsPerCellPerPath": 3,
+	"arms": [
+		"a",
+		"b",
+		"d",
+		"e"
+	],
+	"cells": [
+		{
+			"arm": "a",
+			"task": "booking-conflicts",
+			"planned": 12,
+			"counted": 12,
+			"successes": 12,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.953544,
+			"outputTokens": {
+				"n": 12,
+				"median": 8399,
+				"q1": 6442.25,
+				"q3": 11495.5,
+				"iqr": 5053.25,
+				"min": 5640,
+				"max": 18501
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 82166,
+				"q1": 60948.75,
+				"q3": 110200,
+				"iqr": 49251.25,
+				"min": 49174,
+				"max": 158954
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 10896,
+				"q1": 8739.75,
+				"q3": 13956.5,
+				"iqr": 5216.75,
+				"min": 8241,
+				"max": 21785
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 6.5,
+				"q1": 5,
+				"q3": 8,
+				"iqr": 3,
+				"min": 5,
+				"max": 9
+			},
+			"outputTokensPerSuccess": 9462,
+			"wallMsPerSuccess": 87568,
+			"outsideMentions": 3
+		},
+		{
+			"arm": "a",
+			"task": "config-extends",
+			"planned": 12,
+			"counted": 12,
+			"successes": 10,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 2
+			},
+			"cutOffTrialShare": 0.166667,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.973383,
+			"outputTokens": {
+				"n": 12,
+				"median": 21531,
+				"q1": 19209.75,
+				"q3": 23538.25,
+				"iqr": 4328.5,
+				"min": 16608,
+				"max": 25050
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 275748.5,
+				"q1": 247795.25,
+				"q3": 305860.5,
+				"iqr": 58065.25,
+				"min": 226699,
+				"max": 336769
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 27003,
+				"q1": 25236.25,
+				"q3": 29551.75,
+				"iqr": 4315.5,
+				"min": 2959,
+				"max": 31281
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 19.5,
+				"q1": 17,
+				"q3": 23.75,
+				"iqr": 6.75,
+				"min": 3,
+				"max": 33
+			},
+			"outputTokensPerSuccess": 25582,
+			"wallMsPerSuccess": 331239,
+			"outsideMentions": 84
+		},
+		{
+			"arm": "a",
+			"task": "fetch-cache",
+			"planned": 12,
+			"counted": 12,
+			"successes": 5,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 7
+			},
+			"cutOffTrialShare": 0.583333,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.987903,
+			"outputTokens": {
+				"n": 12,
+				"median": 16640.5,
+				"q1": 16553.75,
+				"q3": 26823.25,
+				"iqr": 10269.5,
+				"min": 16541,
+				"max": 39755
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 238771,
+				"q1": 227178.25,
+				"q3": 337547.5,
+				"iqr": 110369.25,
+				"min": 222604,
+				"max": 512684
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 3122,
+				"q1": 2958.25,
+				"q3": 32031.75,
+				"iqr": 29073.5,
+				"min": 2831,
+				"max": 44024
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 4,
+				"q1": 4,
+				"q3": 22,
+				"iqr": 18,
+				"min": 3,
+				"max": 37
+			},
+			"outputTokensPerSuccess": 52093,
+			"wallMsPerSuccess": 686835,
+			"outsideMentions": 28
+		},
+		{
+			"arm": "a",
+			"task": "markup-lite",
+			"planned": 12,
+			"counted": 12,
+			"successes": 5,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 7
+			},
+			"cutOffTrialShare": 0.583333,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.983733,
+			"outputTokens": {
+				"n": 12,
+				"median": 16464,
+				"q1": 16457,
+				"q3": 21668,
+				"iqr": 5211,
+				"min": 16455,
+				"max": 27427
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 219188.5,
+				"q1": 211147.5,
+				"q3": 267415,
+				"iqr": 56267.5,
+				"min": 200851,
+				"max": 321410
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 2524,
+				"q1": 2516.75,
+				"q3": 24117.25,
+				"iqr": 21600.5,
+				"min": 2512,
+				"max": 32348
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 2,
+				"q1": 2,
+				"q3": 8.25,
+				"iqr": 6.25,
+				"min": 2,
+				"max": 16
+			},
+			"outputTokensPerSuccess": 45737,
+			"wallMsPerSuccess": 570729,
+			"outsideMentions": 6
+		},
+		{
+			"arm": "b",
+			"task": "booking-conflicts",
+			"planned": 12,
+			"counted": 12,
+			"successes": 12,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.942698,
+			"outputTokens": {
+				"n": 12,
+				"median": 7544,
+				"q1": 6462.5,
+				"q3": 8709.5,
+				"iqr": 2247,
+				"min": 4663,
+				"max": 15748
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 71346,
+				"q1": 60745,
+				"q3": 85733.5,
+				"iqr": 24988.5,
+				"min": 45337,
+				"max": 152285
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 10131.5,
+				"q1": 8882,
+				"q3": 11775.5,
+				"iqr": 2893.5,
+				"min": 7071,
+				"max": 19346
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 6.5,
+				"q1": 5.75,
+				"q3": 8.25,
+				"iqr": 2.5,
+				"min": 5,
+				"max": 20
+			},
+			"outputTokensPerSuccess": 8199,
+			"wallMsPerSuccess": 78441,
+			"outsideMentions": 12
+		},
+		{
+			"arm": "b",
+			"task": "config-extends",
+			"planned": 12,
+			"counted": 12,
+			"successes": 12,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.975707,
+			"outputTokens": {
+				"n": 12,
+				"median": 23237.5,
+				"q1": 19929.25,
+				"q3": 25862,
+				"iqr": 5932.75,
+				"min": 15433,
+				"max": 30520
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 296797,
+				"q1": 254536.25,
+				"q3": 326625,
+				"iqr": 72088.75,
+				"min": 195067,
+				"max": 404548
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 27328,
+				"q1": 24679.5,
+				"q3": 31716,
+				"iqr": 7036.5,
+				"min": 19340,
+				"max": 38977
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 19,
+				"q1": 16.5,
+				"q3": 24.25,
+				"iqr": 7.75,
+				"min": 12,
+				"max": 38
+			},
+			"outputTokensPerSuccess": 23051,
+			"wallMsPerSuccess": 293703,
+			"outsideMentions": 72
+		},
+		{
+			"arm": "b",
+			"task": "fetch-cache",
+			"planned": 12,
+			"counted": 11,
+			"successes": 11,
+			"errors": 0,
+			"invalid": 1,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.978707,
+			"outputTokens": {
+				"n": 12,
+				"median": 32467,
+				"q1": 27092.25,
+				"q3": 35304.75,
+				"iqr": 8212.5,
+				"min": 15289,
+				"max": 36957
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 425894,
+				"q1": 334217.25,
+				"q3": 460167.75,
+				"iqr": 125950.5,
+				"min": 181939,
+				"max": 502654
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 37992.5,
+				"q1": 31761.75,
+				"q3": 39974.5,
+				"iqr": 8212.75,
+				"min": 18274,
+				"max": 49547
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 23,
+				"q1": 20.75,
+				"q3": 28.25,
+				"iqr": 7.5,
+				"min": 13,
+				"max": 33
+			},
+			"outputTokensPerSuccess": 32995,
+			"wallMsPerSuccess": 424598,
+			"outsideMentions": 118
+		},
+		{
+			"arm": "b",
+			"task": "markup-lite",
+			"planned": 12,
+			"counted": 12,
+			"successes": 8,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 4
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.970889,
+			"outputTokens": {
+				"n": 12,
+				"median": 25250.5,
+				"q1": 20464.25,
+				"q3": 31215.75,
+				"iqr": 10751.5,
+				"min": 17211,
+				"max": 42801
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 308946.5,
+				"q1": 249885.5,
+				"q3": 382809.25,
+				"iqr": 132923.75,
+				"min": 214195,
+				"max": 582315
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 27800,
+				"q1": 23410,
+				"q3": 34030.5,
+				"iqr": 10620.5,
+				"min": 19814,
+				"max": 47575
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 9,
+				"q1": 8,
+				"q3": 14.5,
+				"iqr": 6.5,
+				"min": 6,
+				"max": 26
+			},
+			"outputTokensPerSuccess": 39296,
+			"wallMsPerSuccess": 494578,
+			"outsideMentions": 46
+		},
+		{
+			"arm": "d",
+			"task": "booking-conflicts",
+			"planned": 12,
+			"counted": 12,
+			"successes": 12,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.941932,
+			"outputTokens": {
+				"n": 12,
+				"median": 6675.5,
+				"q1": 5690.25,
+				"q3": 7797.75,
+				"iqr": 2107.5,
+				"min": 4255,
+				"max": 16328
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 61284.5,
+				"q1": 52778,
+				"q3": 76281.5,
+				"iqr": 23503.5,
+				"min": 39153,
+				"max": 125084
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 9501.5,
+				"q1": 8660,
+				"q3": 10559.25,
+				"iqr": 1899.25,
+				"min": 6743,
+				"max": 19382
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 6,
+				"q1": 5,
+				"q3": 7,
+				"iqr": 2,
+				"min": 5,
+				"max": 15
+			},
+			"outputTokensPerSuccess": 7384,
+			"wallMsPerSuccess": 66277,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "d",
+			"task": "config-extends",
+			"planned": 12,
+			"counted": 12,
+			"successes": 12,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.969664,
+			"outputTokens": {
+				"n": 12,
+				"median": 16943.5,
+				"q1": 15690.25,
+				"q3": 20982.5,
+				"iqr": 5292.25,
+				"min": 13426,
+				"max": 22891
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 207693.5,
+				"q1": 195888,
+				"q3": 258409.25,
+				"iqr": 62521.25,
+				"min": 164298,
+				"max": 300136
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 21014.5,
+				"q1": 19477.5,
+				"q3": 26841,
+				"iqr": 7363.5,
+				"min": 16529,
+				"max": 30024
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 20.5,
+				"q1": 14.75,
+				"q3": 25,
+				"iqr": 10.25,
+				"min": 9,
+				"max": 27
+			},
+			"outputTokensPerSuccess": 17954,
+			"wallMsPerSuccess": 221194,
+			"outsideMentions": 67
+		},
+		{
+			"arm": "d",
+			"task": "fetch-cache",
+			"planned": 12,
+			"counted": 12,
+			"successes": 11,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 1
+			},
+			"cutOffTrialShare": 0.083333,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.984472,
+			"outputTokens": {
+				"n": 12,
+				"median": 22547,
+				"q1": 21727,
+				"q3": 24006.25,
+				"iqr": 2279.25,
+				"min": 16628,
+				"max": 35154
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 280515,
+				"q1": 271101.5,
+				"q3": 300398.25,
+				"iqr": 29296.75,
+				"min": 226329,
+				"max": 438348
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 26545.5,
+				"q1": 25688.5,
+				"q3": 29594.75,
+				"iqr": 3906.25,
+				"min": 3000,
+				"max": 43606
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 18,
+				"q1": 15.75,
+				"q3": 20.25,
+				"iqr": 4.5,
+				"min": 4,
+				"max": 29
+			},
+			"outputTokensPerSuccess": 25631,
+			"wallMsPerSuccess": 319493,
+			"outsideMentions": 49
+		},
+		{
+			"arm": "d",
+			"task": "markup-lite",
+			"planned": 12,
+			"counted": 12,
+			"successes": 4,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 1,
+				"cut-off": 7
+			},
+			"cutOffTrialShare": 0.583333,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.985215,
+			"outputTokens": {
+				"n": 12,
+				"median": 16478.5,
+				"q1": 16455.75,
+				"q3": 18251.75,
+				"iqr": 1796,
+				"min": 14463,
+				"max": 42158
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 212314,
+				"q1": 209599.5,
+				"q3": 235768.25,
+				"iqr": 26168.75,
+				"min": 174489,
+				"max": 498761
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 10093.5,
+				"q1": 2540.5,
+				"q3": 20766.75,
+				"iqr": 18226.25,
+				"min": 2537,
+				"max": 45961
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 4,
+				"q1": 2,
+				"q3": 8.25,
+				"iqr": 6.25,
+				"min": 2,
+				"max": 25
+			},
+			"outputTokensPerSuccess": 61007,
+			"wallMsPerSuccess": 769547,
+			"outsideMentions": 4
+		},
+		{
+			"arm": "e",
+			"task": "booking-conflicts",
+			"planned": 12,
+			"counted": 12,
+			"successes": 11,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 1
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 12,
+				"median": 2815,
+				"q1": 2373.25,
+				"q3": 3486.25,
+				"iqr": 1113,
+				"min": 855,
+				"max": 11230
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 23927.5,
+				"q1": 20599.75,
+				"q3": 29274.75,
+				"iqr": 8675,
+				"min": 8302,
+				"max": 84711
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 5875,
+				"q1": 5220.75,
+				"q3": 6927.75,
+				"iqr": 1707,
+				"min": 3443,
+				"max": 16703
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 7.5,
+				"q1": 5,
+				"q3": 10.25,
+				"iqr": 5.25,
+				"min": 4,
+				"max": 28
+			},
+			"outputTokensPerSuccess": 3819,
+			"wallMsPerSuccess": 31043,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "e",
+			"task": "config-extends",
+			"planned": 12,
+			"counted": 10,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 2,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 4
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 12,
+				"median": 10757.5,
+				"q1": 7044.75,
+				"q3": 21336.75,
+				"iqr": 14292,
+				"min": 3129,
+				"max": 42682
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 104939.5,
+				"q1": 64091.25,
+				"q3": 211256.75,
+				"iqr": 147165.5,
+				"min": 33125,
+				"max": 500862
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 19703.5,
+				"q1": 12354.25,
+				"q3": 32787,
+				"iqr": 20432.75,
+				"min": 8513,
+				"max": 84190
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 37.5,
+				"q1": 23.75,
+				"q3": 55,
+				"iqr": 31.25,
+				"min": 14,
+				"max": 164
+			},
+			"outputTokensPerSuccess": 32520,
+			"wallMsPerSuccess": 338117,
+			"outsideMentions": 289
+		},
+		{
+			"arm": "e",
+			"task": "fetch-cache",
+			"planned": 12,
+			"counted": 10,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 2,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 4
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 12,
+				"median": 13728,
+				"q1": 5182.25,
+				"q3": 23147,
+				"iqr": 17964.75,
+				"min": 3906,
+				"max": 40238
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 118477,
+				"q1": 50763,
+				"q3": 226527,
+				"iqr": 175764,
+				"min": 39488,
+				"max": 421032
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 20615,
+				"q1": 10315.5,
+				"q3": 34930.75,
+				"iqr": 24615.25,
+				"min": 9022,
+				"max": 71448
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 30.5,
+				"q1": 18.75,
+				"q3": 81.5,
+				"iqr": 62.75,
+				"min": 9,
+				"max": 132
+			},
+			"outputTokensPerSuccess": 33333,
+			"wallMsPerSuccess": 332847,
+			"outsideMentions": 285
+		},
+		{
+			"arm": "e",
+			"task": "markup-lite",
+			"planned": 12,
+			"counted": 12,
+			"successes": 4,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 8
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 12,
+				"median": 5268,
+				"q1": 4115,
+				"q3": 6846.5,
+				"iqr": 2731.5,
+				"min": 2298,
+				"max": 27917
+			},
+			"wallMs": {
+				"n": 12,
+				"median": 56241.5,
+				"q1": 41620.75,
+				"q3": 59907.75,
+				"iqr": 18287,
+				"min": 24798,
+				"max": 314344
+			},
+			"peakPromptTokens": {
+				"n": 12,
+				"median": 10532.5,
+				"q1": 7938.25,
+				"q3": 12611.5,
+				"iqr": 4673.25,
+				"min": 4689,
+				"max": 46984
+			},
+			"toolCalls": {
+				"n": 12,
+				"median": 16,
+				"q1": 10,
+				"q3": 19.5,
+				"iqr": 9.5,
+				"min": 6,
+				"max": 91
+			},
+			"outputTokensPerSuccess": 22426,
+			"wallMsPerSuccess": 233239,
+			"outsideMentions": 59
+		}
+	],
+	"primary": {
+		"contrast": "B - A, pooled over fetch-cache and markup-lite",
+		"control": {
+			"successes": 10,
+			"counted": 24,
+			"wilson": {
+				"low": 0.244676,
+				"high": 0.611653
+			}
+		},
+		"arm": {
+			"successes": 19,
+			"counted": 23,
+			"wilson": {
+				"low": 0.628624,
+				"high": 0.930213
+			}
+		},
+		"difference": 0.40942,
+		"perPath": [
+			0.633333,
+			0.5,
+			0.333333,
+			0.166667
+		],
+		"cluster": {
+			"mean": 0.408333,
+			"low": 0.086067,
+			"high": 0.730599,
+			"df": 3
+		},
+		"reading": "cap-binding"
+	},
+	"secondary": [
+		{
+			"arm": "b",
+			"vsA": {
+				"control": {
+					"successes": 10,
+					"counted": 24
+				},
+				"arm": {
+					"successes": 19,
+					"counted": 23
+				},
+				"difference": 0.40942,
+				"perPath": [
+					0.633333,
+					0.5,
+					0.333333,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.408333,
+					"low": 0.086067,
+					"high": 0.730599,
+					"df": 3
+				},
+				"reading": "cap-binding"
+			},
+			"vsB": null,
+			"perTask": [
+				{
+					"task": "booking-conflicts",
+					"arm": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"control": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "config-extends",
+					"arm": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"control": {
+						"successes": 10,
+						"counted": 12,
+						"wilson": {
+							"low": 0.551969,
+							"high": 0.953035
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "fetch-cache",
+					"arm": {
+						"successes": 11,
+						"counted": 11,
+						"wilson": {
+							"low": 0.741167,
+							"high": 1
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "markup-lite",
+					"arm": {
+						"successes": 8,
+						"counted": 12,
+						"wilson": {
+							"low": 0.390622,
+							"high": 0.86188
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				}
+			],
+			"perPathDifference": [
+				0.633333,
+				0.5,
+				0.333333,
+				0.166667
+			]
+		},
+		{
+			"arm": "d",
+			"vsA": {
+				"control": {
+					"successes": 10,
+					"counted": 24
+				},
+				"arm": {
+					"successes": 15,
+					"counted": 24
+				},
+				"difference": 0.208333,
+				"perPath": [
+					0.166667,
+					0.5,
+					0.166667,
+					0
+				],
+				"cluster": {
+					"mean": 0.208334,
+					"low": -0.125369,
+					"high": 0.542036,
+					"df": 3
+				},
+				"reading": "inconclusive"
+			},
+			"vsB": null,
+			"perTask": [
+				{
+					"task": "booking-conflicts",
+					"arm": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"control": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "config-extends",
+					"arm": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"control": {
+						"successes": 10,
+						"counted": 12,
+						"wilson": {
+							"low": 0.551969,
+							"high": 0.953035
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "fetch-cache",
+					"arm": {
+						"successes": 11,
+						"counted": 12,
+						"wilson": {
+							"low": 0.64612,
+							"high": 0.985135
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "markup-lite",
+					"arm": {
+						"successes": 4,
+						"counted": 12,
+						"wilson": {
+							"low": 0.13812,
+							"high": 0.609378
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				}
+			],
+			"perPathDifference": [
+				0.166667,
+				0.5,
+				0.166667,
+				0
+			]
+		},
+		{
+			"arm": "e",
+			"vsA": {
+				"control": {
+					"successes": 10,
+					"counted": 24
+				},
+				"arm": {
+					"successes": 10,
+					"counted": 22
+				},
+				"difference": 0.037879,
+				"perPath": [
+					-0.166667,
+					0.333333,
+					-0.3,
+					0.166667
+				],
+				"cluster": {
+					"mean": 0.008333,
+					"low": -0.456839,
+					"high": 0.473505,
+					"df": 3
+				},
+				"reading": "cap-not-the-main-limit"
+			},
+			"vsB": null,
+			"perTask": [
+				{
+					"task": "booking-conflicts",
+					"arm": {
+						"successes": 11,
+						"counted": 12,
+						"wilson": {
+							"low": 0.64612,
+							"high": 0.985135
+						}
+					},
+					"control": {
+						"successes": 12,
+						"counted": 12,
+						"wilson": {
+							"low": 0.757506,
+							"high": 1
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "config-extends",
+					"arm": {
+						"successes": 6,
+						"counted": 10,
+						"wilson": {
+							"low": 0.312674,
+							"high": 0.83182
+						}
+					},
+					"control": {
+						"successes": 10,
+						"counted": 12,
+						"wilson": {
+							"low": 0.551969,
+							"high": 0.953035
+						}
+					},
+					"harm": true
+				},
+				{
+					"task": "fetch-cache",
+					"arm": {
+						"successes": 6,
+						"counted": 10,
+						"wilson": {
+							"low": 0.312674,
+							"high": 0.83182
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				},
+				{
+					"task": "markup-lite",
+					"arm": {
+						"successes": 4,
+						"counted": 12,
+						"wilson": {
+							"low": 0.13812,
+							"high": 0.609378
+						}
+					},
+					"control": {
+						"successes": 5,
+						"counted": 12,
+						"wilson": {
+							"low": 0.19326,
+							"high": 0.680489
+						}
+					},
+					"harm": false
+				}
+			],
+			"perPathDifference": [
+				-0.166667,
+				0.333333,
+				-0.3,
+				0.166667
+			]
+		}
+	],
+	"manipulation": {
+		"c3": {
+			"M5": "PASS",
+			"M6": "PASS",
+			"byArm": {
+				"a": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.060606,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"b": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"d": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.019868,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"e": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				}
+			}
+		},
+		"c1": {
+			"M5": "PASS",
+			"M6": "MANIPULATION INCOMPLETE",
+			"byArm": {
+				"a": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.029197,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"b": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"d": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.006897,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"e": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				}
+			}
+		},
+		"c2": {
+			"M5": "PASS",
+			"M6": "MANIPULATION INCOMPLETE",
+			"byArm": {
+				"a": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.02439,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"b": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"d": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.012739,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"e": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				}
+			}
+		},
+		"c4": {
+			"M5": "PASS",
+			"M6": "PASS",
+			"byArm": {
+				"a": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.021127,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"b": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"d": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0.014706,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				},
+				"e": {
+					"trials": 12,
+					"M-inj": [],
+					"M-sys-trials-differing": 0,
+					"M-tools-trials-differing": 0,
+					"M1-sampling-fields": [],
+					"M-ws": [],
+					"cutOffResponseRate": 0,
+					"session-did-not-finish": 0,
+					"server-errors": 0
+				}
+			}
+		}
+	}
+}

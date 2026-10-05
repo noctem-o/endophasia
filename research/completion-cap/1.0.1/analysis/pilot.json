@@ -339,7 +339,7 @@
 			"unmeasured": false,
 			"failureModes": {},
 			"cutOffTrialShare": 0,
-			"timeouts": 0,
+			"timeouts": 1,
 			"httpErrors": 0,
 			"reasoningShare": 0.993075,
 			"outputTokens": {
@@ -1120,7 +1120,7 @@
 				"M1-sampling-fields": [],
 				"M-ws": [],
 				"cutOffResponseRate": 0,
-				"session-did-not-finish": 0,
+				"session-did-not-finish": 1,
 				"server-errors": 0
 			},
 			"c": {

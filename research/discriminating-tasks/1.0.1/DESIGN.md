@@ -190,7 +190,38 @@ run.
 
 ## 9a. Screen result and the confirmation set
 
-(Reserved.)
+The screen ran on 2026-10-04 (22:25 UTC onward): 72 trials, 72 completed, 0 runner errors, run `endo.experiment.discriminating-tasks-1.0.1-pilot`
+(`analysis/pilot-screen.json`). Counted trials are the successes and failures; two trials were excluded as invalid by the
+§7 leakage rule (each tool call named the run directory above its scratch root, with a `find`; both passed their check).
+
+| Task | Successes of counted | Excluded | Advances |
+| :--- | ---: | :--- | :--- |
+| slot-pack | 6/6 | | no (all pass) |
+| ticket-code | 6/6 | | no |
+| rolling-median | 6/6 | | no |
+| booking-conflicts | 5/6 | | **yes** |
+| markup-lite | 3/6 | | **yes** |
+| tax-brackets | 6/6 | | no |
+| route-normalize | 6/6 | | no |
+| retry-schedule | 6/6 | | no |
+| inventory-bugs | 6/6 | | no |
+| report-bugs | 5/5 | 1 invalid | no |
+| fetch-cache | 4/5 | 1 invalid | **yes** |
+| config-extends | 6/6 | | no |
+
+**The confirmation set is `booking-conflicts`, `fetch-cache`, `markup-lite`** (3 of 12; no more than 8, so no ranking was needed).
+Nine tasks were dropped, seven of them at 6 of 6: **most of the pool is saturated for this model**, as the earlier studies were.
+The set is fixed here, before any confirmation trial.
+
+**Sensitivity to the two exclusions (reported, not used):** both excluded trials passed. Counting them, `report-bugs` would be 6/6
+(still does not advance) and `fetch-cache` 5/6 (still advances): the selection is the same either way.
+
+**Validity of the screen:** M1 PASS (no sampling field in any of 761 requests), M5 PASS, M-ws PASS (72/72 trials: the prompt, the
+workspace files, no hidden check). **M6: MANIPULATION INCOMPLETE** in one trial (`report-bugs` #1: 8 requests whose tool results carry
+`duration_ms`, so the agent ran the tests under a reporter of its own); that trial is the one excluded by the leakage rule above.
+The leakage rule's counted mentions (outside paths that did not invalidate) are in the analysis file: they were
+frequent in `config-extends` (50), `tax-brackets` (32), `fetch-cache` (11) and `rolling-median` (9), which is the case the §13
+amendment was made for.
 
 ## 10. The holdout, designed now
 

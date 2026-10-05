@@ -28,18 +28,13 @@ export interface PathPairV0 {
 
 export type ReadingV0 = "cap-binding" | "cap-not-the-main-limit" | "inconclusive";
 
-/**
- * The primary contrast (DESIGN §9): the difference of rates per path, a t interval over the paths' differences, and the
- * pre-registered reading. *Binding*: the interval lies above 0 and the pooled difference is at least +0.25. *Not the main
- * limit*: the pooled difference is below +0.15 and the interval includes 0. Anything else is inconclusive.
- */
-export function primaryContrastV0(paths: readonly PathPairV0[]): {
+/** A contrast of an arm against another: the pooled counts, the pooled difference, the per-path differences and their t interval. */
+export function contrastV0(paths: readonly PathPairV0[]): {
 	control: CountV0;
 	arm: CountV0;
 	difference: number | null;
 	perPath: number[];
 	cluster: ReturnType<typeof tIntervalV0>;
-	reading: ReadingV0;
 } {
 	const sum = (pick: (p: PathPairV0) => CountV0): CountV0 => ({
 		successes: paths.reduce((s, p) => s + pick(p).successes, 0),
@@ -51,17 +46,29 @@ export function primaryContrastV0(paths: readonly PathPairV0[]): {
 	const perPath = usable.map((p) =>
 		round6V0(p.arm.successes / p.arm.counted - p.control.successes / p.control.counted),
 	);
-	const cluster = tIntervalV0(perPath);
 	const difference =
 		control.counted === 0 || arm.counted === 0
 			? null
 			: round6V0(arm.successes / arm.counted - control.successes / control.counted);
+	return { control, arm, difference, perPath, cluster: tIntervalV0(perPath) };
+}
+
+/**
+ * The primary contrast (DESIGN §9), B against A, and only that one: the contrast and the pre-registered reading. *Binding*: the
+ * interval lies above 0 and the pooled difference is at least +0.25. *Not the main limit*: the pooled difference is below +0.15
+ * and the interval includes 0. Anything else is inconclusive. The secondary contrasts use `contrastV0` and carry no reading.
+ */
+export function primaryContrastV0(
+	paths: readonly PathPairV0[],
+): ReturnType<typeof contrastV0> & { reading: ReadingV0 } {
+	const result = contrastV0(paths);
 	let reading: ReadingV0 = "inconclusive";
-	if (difference !== null && cluster !== null) {
-		if (cluster.low > 0 && difference >= 0.25) reading = "cap-binding";
-		else if (difference < 0.15 && cluster.low <= 0 && cluster.high >= 0) reading = "cap-not-the-main-limit";
+	if (result.difference !== null && result.cluster !== null) {
+		if (result.cluster.low > 0 && result.difference >= 0.25) reading = "cap-binding";
+		else if (result.difference < 0.15 && result.cluster.low <= 0 && result.cluster.high >= 0)
+			reading = "cap-not-the-main-limit";
 	}
-	return { control, arm, difference, perPath, cluster, reading };
+	return { ...result, reading };
 }
 
 /** A harm flag (DESIGN §9): an arm's rate on a control task is 0.20 or more below the control arm's. Integer comparison. */

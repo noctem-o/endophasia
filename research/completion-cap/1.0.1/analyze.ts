@@ -1,16 +1,17 @@
 // Analysis for the completion-cap study (DESIGN.md §6-§9), from the run directories:
 //
-//   node research/completion-cap/1.0.1/analyze.ts pilot <pilot run dir> [--repo <dir>] [--home <dir>]
+//   node research/completion-cap/1.0.1/analyze.ts pilot <pilot run dir> --repo <dir> --home <dir>
 //        the pilot's gates (§6), the wall-time estimate and N (§8)
-//   node research/completion-cap/1.0.1/analyze.ts main <main dir> [--repo <dir>] [--home <dir>]
+//   node research/completion-cap/1.0.1/analyze.ts main <main dir> --repo <dir> --home <dir>
 //        the main run: per arm and task the counts, the primary contrast, the secondary contrasts, the harm check, the cost table
 //        and the manipulation checks
 //
-// `--repo` and `--home` are the leakage check's protected roots, used for matching and never written to the output.
+// `--repo` and `--home` are required: the leakage check's protected roots must be the RECORDED machine's repository checkout and home
+// directory (the committed analysis used the operator's own), because the captured tool calls hold those literal paths. They are
+// used for matching and never written to the output.
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
@@ -26,11 +27,10 @@ import { spreadV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
 import { parseEndoWorkspaceArchiveV0 } from "../../../storage/workspace-snapshot.ts";
-import { toolActivityOf } from "../../discriminating-tasks/1.0.1/analyze.ts";
 import { HIDDEN_MARKER_PREFIX_V0, leakageOfTrialV0 } from "../../discriminating-tasks/1.0.1/leakage.ts";
 import { manipulation as environmentChecks } from "../../pinned-environment/1.0.1/analyze.ts";
-import { ARM_IDS, ARMS, type ArmIdV0, BRIEF_SENTENCE, PRIMARY_TASKS } from "./make-spec.ts";
-import { chooseNV0, harmFlagV0, primaryContrastV0, shareV0 } from "./stats.ts";
+import { ARMS, type ArmIdV0, BRIEF_SENTENCE, PRIMARY_TASKS } from "./make-spec.ts";
+import { chooseNV0, contrastV0, harmFlagV0, primaryContrastV0, shareV0 } from "./stats.ts";
 import { parseWireV0, type WireSummaryV0 } from "./wire.ts";
 
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
@@ -70,8 +70,9 @@ export interface TrialV0 {
 	injectedProblems: string[];
 	samplingFields: string[];
 	workspaceProblems: string[];
-	systemText: string | null;
-	toolsDigest: string | null;
+	/** Per recorded request: the system message's text and a digest of the tools (null when absent). */
+	systemTexts: (string | null)[];
+	toolsDigests: (string | null)[];
 }
 
 type Message = Record<string, unknown>;
@@ -121,20 +122,52 @@ function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
 	});
 }
 
-/** Each recorded response of a trial, read from its wire bytes. */
-export function responsesOf(store: string): WireSummaryV0[] {
+const STALE_CONNECTION = /closed the connection before this request arrived/;
+
+/**
+ * Each recorded response of a trial, read from its wire bytes, and the number of exchanges that failed without one. An
+ * exchange with no bytes whose recorded error is the proxy's "the upstream had closed the connection before this request
+ * arrived" is a retry of a stale connection (the retry is the next exchange), so it is neither a response nor a failure;
+ * any other exchange without a response head is a failure.
+ */
+export function responsesOf(store: string): { responses: WireSummaryV0[]; failedExchanges: number } {
 	const blobs = createEndoBlobStoreV0(join(store, "capture"), piCassetteKeyV0(FIXTURE), { readOnly: true });
-	const out: WireSummaryV0[] = [];
+	const responses: WireSummaryV0[] = [];
+	let failedExchanges = 0;
 	for (const event of readEndoCaptureEventsV0(store)) {
-		const payload = event.payload as { wire?: { digest: Parameters<typeof blobs.get>[0] } };
-		if (event.producer === "capture:record" && event.kind === "capture.exchange-ended" && payload.wire) {
-			const summary = parseWireV0(blobs.get(payload.wire.digest));
-			// An exchange with no bytes is the proxy's retry of a connection the server had already closed ("the upstream
-			// had closed the connection before this request arrived"): the retry is the next exchange, so it is not a response.
-			if (summary.httpStatus !== null) out.push(summary);
+		if (event.producer !== "capture:record" || event.kind !== "capture.exchange-ended") continue;
+		const payload = event.payload as { wire?: { digest: Parameters<typeof blobs.get>[0] }; error?: string | null };
+		const summary = payload.wire ? parseWireV0(blobs.get(payload.wire.digest)) : null;
+		if (summary !== null && summary.httpStatus !== null) responses.push(summary);
+		else if (!STALE_CONNECTION.test(payload.error ?? "")) failedExchanges += 1;
+	}
+	return { responses, failedExchanges };
+}
+
+/** Every tool call's arguments and every tool result across all recorded requests, each once (by tool-call id). */
+export function toolActivityAcross(requests: readonly Record<string, unknown>[]): {
+	calls: string[];
+	results: string[];
+} {
+	const calls = new Map<string, string>();
+	const results = new Map<string, string>();
+	for (const request of requests) {
+		for (const [index, message] of messagesOf(request).entries()) {
+			if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
+				for (const call of message.tool_calls as {
+					id?: string;
+					function?: { name?: string; arguments?: unknown };
+				}[])
+					calls.set(
+						call.id ?? `${index}:${calls.size}`,
+						`${call.function?.name ?? ""} ${textOf(call.function?.arguments)}`,
+					);
+			}
+			if (message.role === "tool")
+				results.set(String(message.tool_call_id ?? `${index}:${results.size}`), textOf(message.content));
 		}
 	}
-	return out;
+	return { calls: [...calls.values()], results: [...results.values()] };
 }
 
 export interface RootsV0 {
@@ -181,8 +214,8 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			injectedProblems: [] as string[],
 			samplingFields: [] as string[],
 			workspaceProblems: [] as string[],
-			systemText: null,
-			toolsDigest: null,
+			systemTexts: [] as (string | null)[],
+			toolsDigests: [] as (string | null)[],
 		};
 		if (result.status === "error" || result.exchanges === 0) {
 			out.push({
@@ -193,9 +226,8 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 		}
 		const store = join(dir, result.store);
 		const { requests } = loadEndoTrialRequestsV0(store, result, FIXTURE);
-		const responses = responsesOf(store);
-		const last = requests.reduce((a, b) => (messagesOf(b).length >= messagesOf(a).length ? b : a));
-		const activity = toolActivityOf(last);
+		const { responses, failedExchanges } = responsesOf(store);
+		const activity = toolActivityAcross(requests);
 		const events = readEndoCaptureEventsV0(store);
 		const snapshot = events.find((event) => event.kind === "capture.workspace-snapshot")?.payload as
 			| { scratchRoot: string; archive: { digest: Parameters<ReturnType<typeof createEndoBlobStoreV0>["get"]>[0] } }
@@ -249,10 +281,7 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			}
 		}
 		const cutOffResponses = responses.filter((response) => response.finishReason === "length").length;
-		const httpErrors = responses.filter(
-			(response) => response.httpStatus === null || response.httpStatus >= 400,
-		).length;
-		const system = messagesOf(requests[0]!)[0];
+		const httpErrors = responses.filter((response) => (response.httpStatus ?? 0) >= 400).length + failedExchanges;
 		out.push({
 			...empty,
 			class: classOf(result, leak.reasons, { cutOffResponses, httpErrors }),
@@ -269,8 +298,11 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			injectedProblems,
 			samplingFields: [...samplingFields],
 			workspaceProblems,
-			systemText: system?.role === "system" ? textOf(system.content) : null,
-			toolsDigest: requests[0]!.tools === undefined ? null : sha(requests[0]!.tools),
+			systemTexts: requests.map((request) => {
+				const system = messagesOf(request)[0];
+				return system?.role === "system" ? textOf(system.content) : null;
+			}),
+			toolsDigests: requests.map((request) => (request.tools === undefined ? null : sha(request.tools))),
 		});
 	}
 	return out;
@@ -310,8 +342,9 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 	const modes: Record<string, number> = {};
 	for (const trial of kept)
 		if (trial.class.kind === "failure") modes[trial.class.mode] = (modes[trial.class.mode] ?? 0) + 1;
-	const reasoning = mine.reduce((sum, t) => sum + t.reasoningChars, 0);
-	const content = mine.reduce((sum, t) => sum + t.contentChars, 0);
+	// The descriptive measures use the counted trials only, like the success estimates: an excluded trial is not in them.
+	const reasoning = kept.reduce((sum, t) => sum + t.reasoningChars, 0);
+	const content = kept.reduce((sum, t) => sum + t.contentChars, 0);
 	const round = (value: number | null) => (value === null ? null : Math.round(value));
 	return {
 		arm,
@@ -323,17 +356,17 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 		invalid: mine.filter((trial) => trial.class.kind === "invalid").length,
 		unmeasured: errors > 0.1 * planned,
 		failureModes: modes,
-		cutOffTrialShare: shareV0(mine.filter((trial) => trial.cutOffResponses > 0).length, mine.length),
+		cutOffTrialShare: shareV0(kept.filter((trial) => trial.cutOffResponses > 0).length, kept.length),
 		timeouts: mine.filter((trial) => trial.didNotFinish).length,
 		httpErrors: mine.reduce((sum, trial) => sum + trial.httpErrors, 0),
 		reasoningShare: shareV0(reasoning, reasoning + content),
-		outputTokens: spreadV0(mine.map((trial) => trial.outputTokens)),
-		wallMs: spreadV0(mine.map((trial) => trial.wallMs)),
-		peakPromptTokens: spreadV0(mine.map((trial) => trial.peakPromptTokens)),
-		toolCalls: spreadV0(mine.map((trial) => trial.toolCalls)),
+		outputTokens: spreadV0(kept.map((trial) => trial.outputTokens)),
+		wallMs: spreadV0(kept.map((trial) => trial.wallMs)),
+		peakPromptTokens: spreadV0(kept.map((trial) => trial.peakPromptTokens)),
+		toolCalls: spreadV0(kept.map((trial) => trial.toolCalls)),
 		outputTokensPerSuccess:
-			successes === 0 ? null : round(mine.reduce((sum, t) => sum + t.outputTokens, 0) / successes),
-		wallMsPerSuccess: successes === 0 ? null : round(mine.reduce((sum, t) => sum + t.wallMs, 0) / successes),
+			successes === 0 ? null : round(kept.reduce((sum, t) => sum + t.outputTokens, 0) / successes),
+		wallMsPerSuccess: successes === 0 ? null : round(kept.reduce((sum, t) => sum + t.wallMs, 0) / successes),
 		outsideMentions: mine.reduce((sum, trial) => sum + trial.outsideMentions, 0),
 	};
 }
@@ -342,21 +375,20 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 	const environment = environmentChecks(dir);
 	const arms = [...new Set(trials.map((trial) => trial.arm))].sort() as ArmIdV0[];
-	const reference = trials.find((trial) => trial.arm === "a" && trial.systemText !== null);
+	const reference = trials.find((trial) => trial.arm === "a" && trial.systemTexts[0] != null);
+	const referenceSystem = reference?.systemTexts[0] ?? null;
+	const referenceTools = reference?.toolsDigests[0] ?? null;
 	const byArm = Object.fromEntries(
 		arms.map((arm) => {
 			const mine = trials.filter((trial) => trial.arm === arm);
 			const expected =
-				reference?.systemText == null
-					? null
-					: arm === "d"
-						? `${reference.systemText}\n\n${BRIEF_SENTENCE}`
-						: reference.systemText;
-			const sysProblems = mine.filter(
-				(trial) => trial.systemText !== null && expected !== null && trial.systemText !== expected,
+				referenceSystem === null ? null : arm === "d" ? `${referenceSystem}\n\n${BRIEF_SENTENCE}` : referenceSystem;
+			// Every request of every trial, not the first only: a request that lost the sentence or changed the tools counts.
+			const sysProblems = mine.filter((trial) =>
+				trial.systemTexts.some((text) => text !== null && expected !== null && text !== expected),
 			).length;
-			const toolProblems = mine.filter(
-				(trial) => reference?.toolsDigest != null && trial.toolsDigest !== reference.toolsDigest,
+			const toolProblems = mine.filter((trial) =>
+				trial.toolsDigests.some((digest) => referenceTools !== null && digest !== referenceTools),
 			).length;
 			return [
 				arm,
@@ -366,6 +398,7 @@ export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 						.flatMap((trial) => trial.injectedProblems.map((p) => `${trial.task}/#${trial.trial}: ${p}`))
 						.slice(0, 10),
 					"M-sys-trials-differing": sysProblems,
+					"M-sys-requests-checked": mine.reduce((sum, trial) => sum + trial.systemTexts.length, 0),
 					"M-tools-trials-differing": toolProblems,
 					"M1-sampling-fields": [...new Set(mine.flatMap((trial) => trial.samplingFields))],
 					"M-ws": mine
@@ -381,7 +414,7 @@ export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 			];
 		}),
 	);
-	return { M5: environment.M5.status, M6: environment.M6.status, byArm };
+	return { M5: environment.M5, M6: environment.M6, byArm };
 }
 
 /** The pilot: its gates, the per-cell wall times and N (DESIGN §6, §8). */
@@ -406,14 +439,19 @@ export function pilot(dir: string, roots: RootsV0) {
 		};
 	});
 	const eKept = arms.includes("e") && eReduction.every((entry) => entry.reduction !== null && entry.reduction >= 0.5);
-	// One mean wall time per (arm, task) cell of the arms the main run would keep (E only if it was kept).
+	// One mean wall time per (arm, task) cell of a set of arms; E is in the set only if it was kept (§6.3).
 	const keptArms = arms.filter((arm) => arm !== "e" || eKept);
-	const meansMs = keptArms.flatMap((arm) =>
-		run.spec.tasks.map((task) => {
-			const mine = trials.filter((t) => t.arm === arm && t.task === task.id);
-			return mine.reduce((sum, t) => sum + t.wallMs, 0) / Math.max(1, mine.length);
-		}),
-	);
+	const meansFor = (set: readonly ArmIdV0[]) =>
+		set.flatMap((arm) =>
+			run.spec.tasks.map((task) => {
+				const mine = trials.filter((t) => t.arm === arm && t.task === task.id);
+				return mine.reduce((sum, t) => sum + t.wallMs, 0) / Math.max(1, mine.length);
+			}),
+		);
+	// §8: if even N = 3 exceeds the limit with every kept arm, drop arm C and redo the estimate.
+	const allArms = chooseNV0(meansFor(keptArms));
+	const withoutC = keptArms.includes("c") ? chooseNV0(meansFor(keptArms.filter((arm) => arm !== "c"))) : null;
+	const mainArms = allArms.n === null && withoutC !== null ? keptArms.filter((arm) => arm !== "c") : keptArms;
 	return {
 		stage: "pilot",
 		trials: trials.length,
@@ -422,7 +460,7 @@ export function pilot(dir: string, roots: RootsV0) {
 		eReasoningReductionVsA: eReduction,
 		eKept,
 		keptArms,
-		estimate: chooseNV0(meansMs),
+		estimate: { allArms, withoutArmC: withoutC, mainArms, droppedArmC: mainArms.length < keptArms.length },
 	};
 }
 
@@ -446,10 +484,10 @@ export function main(dir: string, roots: RootsV0) {
 		const kept = trials.filter((t) => t.arm === arm && tasks.includes(t.task) && counted(t));
 		return { successes: kept.filter(isSuccess).length, counted: kept.length };
 	};
-	const contrast = (arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[]) =>
-		primaryContrastV0(
-			runs.map((run) => ({ control: counts(base, tasks, run.trials), arm: counts(arm, tasks, run.trials) })),
-		);
+	const pairs = (arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[]) =>
+		runs.map((run) => ({ control: counts(base, tasks, run.trials), arm: counts(arm, tasks, run.trials) }));
+	// Secondary contrasts: counts and intervals, no reading (the fixed reading is for the primary contrast only).
+	const contrast = (arm: ArmIdV0, base: ArmIdV0, tasks: readonly string[]) => contrastV0(pairs(arm, base, tasks));
 	const primaryTasks = [...PRIMARY_TASKS];
 	const withWilson = (c: { successes: number; counted: number }) => ({
 		...c,
@@ -471,7 +509,7 @@ export function main(dir: string, roots: RootsV0) {
 			})),
 			perPathDifference: contrast(arm, "a", primaryTasks).perPath,
 		}));
-	const primary = arms.includes("b") ? contrast("b", "a", primaryTasks) : null;
+	const primary = arms.includes("b") ? primaryContrastV0(pairs("b", "a", primaryTasks)) : null;
 	return {
 		stage: "main",
 		paths: labels,
@@ -493,21 +531,26 @@ export function main(dir: string, roots: RootsV0) {
 	};
 }
 
-function option(argv: readonly string[], name: string, fallback: string): string {
+/** A required option: the protected roots of the leakage check are the recorded machine's, never a silent default. */
+function required(argv: readonly string[], name: string): string {
 	const index = argv.indexOf(name);
-	return index === -1 ? fallback : resolve(argv[index + 1] ?? fallback);
+	const value = index === -1 ? undefined : argv[index + 1];
+	if (value === undefined || value.startsWith("--"))
+		throw new TypeError(
+			`${name} <dir> is required: the leakage check matches the recorded machine's repository and home`,
+		);
+	return resolve(value);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	const [command, target, ...rest] = process.argv.slice(2);
-	const roots = { repo: option(rest, "--repo", process.cwd()), home: option(rest, "--home", homedir()) };
 	let result: unknown;
-	if (command === "pilot" && target) result = pilot(resolve(target), roots);
-	else if (command === "main" && target) result = main(resolve(target), roots);
-	else {
-		process.stderr.write("usage: analyze.ts pilot|main <dir> [--repo <dir>] [--home <dir>]\n");
+	if ((command === "pilot" || command === "main") && target) {
+		const roots = { repo: required(rest, "--repo"), home: required(rest, "--home") };
+		result = command === "pilot" ? pilot(resolve(target), roots) : main(resolve(target), roots);
+	} else {
+		process.stderr.write("usage: analyze.ts pilot|main <dir> --repo <dir> --home <dir>\n");
 		process.exit(2);
 	}
 	process.stdout.write(`${JSON.stringify(result, null, "\t")}\n`);
-	void ARM_IDS;
 }

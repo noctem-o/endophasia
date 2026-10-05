@@ -18,6 +18,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	const [command, out, trialsText, armsText, ...rest] = process.argv.slice(2);
 	const seedIndex = rest.indexOf("--seed");
 	const seed = seedIndex === -1 ? undefined : Number(rest[seedIndex + 1]);
+	if (seed !== undefined && (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff)) {
+		process.stderr.write("--seed must be an unsigned 32-bit integer\n");
+		process.exit(2);
+	}
 	const done = (value: unknown) => process.stdout.write(`${JSON.stringify(value, null, "\t")}\n`);
 	const fail = (error: unknown) => {
 		process.stderr.write(`${(error as Error).stack ?? String(error)}\n`);

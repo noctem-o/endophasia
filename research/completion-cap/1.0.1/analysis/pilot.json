@@ -1098,13 +1098,72 @@
 		}
 	],
 	"manipulation": {
-		"M5": "PASS",
-		"M6": "PASS",
+		"M5": {
+			"status": "PASS",
+			"byCondition": {
+				"arm-a": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-b": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-d": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-e": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-c": {
+					"trials": 8,
+					"failures": []
+				}
+			}
+		},
+		"M6": {
+			"status": "PASS",
+			"byCondition": {
+				"arm-a": {
+					"trials": 8,
+					"requests": 82,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-b": {
+					"trials": 8,
+					"requests": 114,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-d": {
+					"trials": 8,
+					"requests": 85,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-e": {
+					"trials": 8,
+					"requests": 132,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-c": {
+					"trials": 8,
+					"requests": 113,
+					"instances": [],
+					"status": "PASS"
+				}
+			}
+		},
 		"byArm": {
 			"a": {
 				"trials": 8,
 				"M-inj": [],
 				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 82,
 				"M-tools-trials-differing": 0,
 				"M1-sampling-fields": [],
 				"M-ws": [],
@@ -1116,6 +1175,7 @@
 				"trials": 8,
 				"M-inj": [],
 				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 114,
 				"M-tools-trials-differing": 0,
 				"M1-sampling-fields": [],
 				"M-ws": [],
@@ -1127,6 +1187,7 @@
 				"trials": 8,
 				"M-inj": [],
 				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 113,
 				"M-tools-trials-differing": 0,
 				"M1-sampling-fields": [],
 				"M-ws": [],
@@ -1138,6 +1199,7 @@
 				"trials": 8,
 				"M-inj": [],
 				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 85,
 				"M-tools-trials-differing": 0,
 				"M1-sampling-fields": [],
 				"M-ws": [],
@@ -1149,6 +1211,7 @@
 				"trials": 8,
 				"M-inj": [],
 				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 132,
 				"M-tools-trials-differing": 0,
 				"M1-sampling-fields": [],
 				"M-ws": [],
@@ -1193,11 +1256,28 @@
 		"e"
 	],
 	"estimate": {
-		"n": null,
-		"hours": {
-			"3": 19.874679,
-			"4": 26.499572,
-			"5": 33.124465
-		}
+		"allArms": {
+			"n": null,
+			"hours": {
+				"3": 19.874679,
+				"4": 26.499572,
+				"5": 33.124465
+			}
+		},
+		"withoutArmC": {
+			"n": null,
+			"hours": {
+				"3": 16.465748,
+				"4": 21.95433,
+				"5": 27.442913
+			}
+		},
+		"mainArms": [
+			"a",
+			"b",
+			"d",
+			"e"
+		],
+		"droppedArmC": true
 	}
 }

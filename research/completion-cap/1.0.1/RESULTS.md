@@ -50,23 +50,23 @@ Reported, none a headline (DESIGN §9). The pre-registered reading applies to B 
   of a trial by about 20 to 70% (to 5,268 on `markup-lite` from 16,464, though A's trials there were cut off at 16k),
   but **accuracy is worse where the task needs the reasoning**: `config-extends` 6/10 (A: 10/12) and `markup-lite` 4/12 are wrong results, not
   cut-offs. **The harm check flags `config-extends` under E** (a rate 0.23 below A's; counting the two excluded E trials it is still 0.25).
-- **Arm C (49,152) was dropped** by the §8 rule (§13): whether it adds anything over 32,768 is not answered here. Under B the largest peak prompt was 38k tokens.
+- **Arm C (49,152) was dropped** by the §8 rule (§13): whether it adds anything over 32,768 is not answered here. Under B the largest cell median of the peak prompt was 38k tokens (the largest single trial was 49,547, see Validity).
 
 ## What a trial costs (item 13), per success
 
-Median output tokens, wall time and peak prompt tokens of a trial are in `analysis/main.json`. The cost of an arm per success (the arm's total over its successes):
+Median output tokens, wall time and peak prompt tokens of a trial are in `analysis/main.json`. The cost of an arm per success (the arm's counted trials' total over its successes; excluded trials are not in the totals, medians or spreads):
 
 | Task | A | B | D | E |
 | :--- | :--- | :--- | :--- | :--- |
-| `fetch-cache` | 52,093 tokens, 687 s | 32,995 tokens, 425 s | **25,631 tokens, 319 s** | 33,333 tokens, 333 s |
+| `fetch-cache` | 52,093 tokens, 687 s | 29,685 tokens, 379 s | 25,631 tokens, 319 s | **23,589 tokens, 225 s** |
 | `markup-lite` | 45,737 tokens, 571 s | 39,296 tokens, 495 s | 61,007 tokens, 770 s | **22,426 tokens, 233 s** |
-| `config-extends` | 25,582 tokens, 331 s | **23,051 tokens, 294 s** | **17,954 tokens, 221 s** | 32,520 tokens, 338 s |
+| `config-extends` | 25,582 tokens, 331 s | 23,051 tokens, 294 s | **17,954 tokens, 221 s** | 24,885 tokens, 249 s |
 | `booking-conflicts` | 9,462 tokens, 88 s | 8,199 tokens, 78 s | 7,384 tokens, 66 s | **3,819 tokens, 31 s** |
 
-- **A larger cap is cheaper per success, not dearer, where the cap binds:** a trial that is cut off spends 16k tokens for nothing. A needs about 50k tokens and 12
-  minutes per success on `fetch-cache`; B needs 33k and 7 minutes.
-- **No arm is cheapest everywhere.** D wins on `fetch-cache` and `config-extends`, E on `markup-lite` and `booking-conflicts` (but not on the tasks where it is
-  inaccurate), and the cut-off arms are the most expensive. A static policy is a compromise; that is what an adaptive allocator (roadmap item 13) would be tested
+- **A larger cap is cheaper per success, not dearer, where the cap binds:** a trial that is cut off spends 16k tokens for nothing. A needs about 52k tokens and 11
+  minutes per success on `fetch-cache`; B needs 30k and 6 minutes.
+- **No arm is cheapest everywhere.** D wins on `config-extends`, E on `fetch-cache`, `markup-lite` and `booking-conflicts` (cheap per success, but it is the least reliable arm, so its
+  cost per success rests on fewer successes), and the cut-off arms are the most expensive. A static policy is a compromise; that is what an adaptive allocator (roadmap item 13) would be tested
   against.
 - **Tokens are not wall time:** E's trials were about 3 to 4 times faster than A's per trial on `booking-conflicts` (24 s against 82 s) and `markup-lite` (56 s against 219 s). Peak prompt tokens (the attention-pressure proxy) rose under B
   because the agent worked longer: cell medians up to 38k tokens, the largest single trial 49,547, inside the 98k context.
@@ -76,7 +76,7 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 | Check | Result |
 | :--- | :--- |
 | M-inj (the cap and E's template field reached every request) | PASS, all arms, all four paths |
-| M-sys, M-tools, M1 (no sampling field), M5, M-ws | PASS |
+| M-sys, M-tools (compared on **every request**: 103 to 581 requests per arm and path), M1 (no sampling field), M5, M-ws | PASS |
 | M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.0% of D's responses, 2.1 to 6.1% of A's (per path) |
 | M-time / M-ctx | 0 sessions did not finish, 0 server errors, in every arm. (The pilot had one hung agent test.) |
 | M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also among the five excluded below |

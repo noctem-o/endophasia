@@ -122,6 +122,7 @@ describe("the specs", () => {
 
 import {
 	chooseNV0,
+	contrastV0,
 	harmFlagV0,
 	primaryContrastV0,
 	shareV0,
@@ -207,7 +208,13 @@ describe("the choice of N", () => {
 	});
 });
 
-import { cell, classOf, failureModeOf, type TrialV0 } from "../research/completion-cap/1.0.1/analyze.ts";
+import {
+	cell,
+	classOf,
+	failureModeOf,
+	type TrialV0,
+	toolActivityAcross,
+} from "../research/completion-cap/1.0.1/analyze.ts";
 
 const passed = {
 	ran: true,
@@ -272,8 +279,8 @@ describe("the cell of an arm and a task", () => {
 		injectedProblems: [],
 		samplingFields: [],
 		workspaceProblems: [],
-		systemText: null,
-		toolsDigest: null,
+		systemTexts: [],
+		toolsDigests: [],
 		...patch,
 	});
 
@@ -293,10 +300,45 @@ describe("the cell of an arm and a task", () => {
 			errors: 1,
 			unmeasured: true,
 			failureModes: { "cut-off": 1, "wrong-result": 1 },
-			cutOffTrialShare: 0.25,
+			cutOffTrialShare: 0.333333,
 			reasoningShare: 0.75,
-			outputTokensPerSuccess: 600,
-			wallMsPerSuccess: 4000,
+			outputTokensPerSuccess: 500,
+			wallMsPerSuccess: 3000,
 		});
+	});
+});
+
+describe("the tool activity across all requests", () => {
+	it("unions the calls and results of every request once, so an earlier or interrupted request is not missed", () => {
+		const first = {
+			messages: [
+				{
+					role: "assistant",
+					tool_calls: [{ id: "a", function: { name: "bash", arguments: '{"command":"ls /home/x"}' } }],
+				},
+				{ role: "tool", tool_call_id: "a", content: "listing" },
+			],
+		};
+		const second = {
+			messages: [
+				{ role: "user", content: "rewritten after a compaction" },
+				{ role: "assistant", tool_calls: [{ id: "b", function: { name: "read", arguments: '{"path":"p"}' } }] },
+				{ role: "tool", tool_call_id: "b", content: [{ type: "text", text: "ENDO-HIDDEN-MARKER-x" }] },
+			],
+		};
+		const third = { messages: [...first.messages, ...second.messages.slice(1)] };
+		const activity = toolActivityAcross([first, second, third]);
+		expect(activity.calls).toEqual(['bash {"command":"ls /home/x"}', 'read {"path":"p"}']);
+		expect(activity.results).toEqual(["listing", "ENDO-HIDDEN-MARKER-x"]);
+		expect(toolActivityAcross([])).toEqual({ calls: [], results: [] });
+	});
+});
+
+describe("secondary contrasts carry no reading", () => {
+	it("returns counts, differences and the interval, and not the fixed reading", () => {
+		const result = contrastV0([0, 1, 2, 3].map(() => pair([5, 10], [5, 10])));
+		expect(result.difference).toBe(0);
+		expect(result).not.toHaveProperty("reading");
+		expect(primaryContrastV0([0, 1, 2, 3].map(() => pair([5, 10], [5, 10])))).toHaveProperty("reading");
 	});
 });

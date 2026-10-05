@@ -417,7 +417,7 @@ llama.cpp, and one machine:
   default completion cap of 16,384 tokens, so the discrimination is largely truncation; it is not yet a measure of
   task difficulty.
 - [Completion-cap study](research/README.md#completion-cap-study): raising the completion cap from 16,384 to 32,768 tokens raised
-  success on the two discriminating tasks from 10 of 24 to 19 of 23 (cluster interval +0.07 to +0.73, a gain at every path); a
+  success on the two discriminating tasks from 10 of 24 to 19 of 23 (cluster interval +0.09 to +0.73, a gain at every path); a
   brief-reasoning sentence and switching thinking off are cheaper but less reliable, and the trials showed that without a sandbox an agent can reach
   the repository's hidden checks.
 

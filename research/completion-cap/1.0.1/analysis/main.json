@@ -364,45 +364,45 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.978707,
+			"reasoningShare": 0.978314,
 			"outputTokens": {
-				"n": 12,
-				"median": 32467,
-				"q1": 27092.25,
-				"q3": 35304.75,
-				"iqr": 8212.5,
+				"n": 11,
+				"median": 31800,
+				"q1": 26064.5,
+				"q3": 34346,
+				"iqr": 8281.5,
 				"min": 15289,
 				"max": 36957
 			},
 			"wallMs": {
-				"n": 12,
-				"median": 425894,
-				"q1": 334217.25,
-				"q3": 460167.75,
-				"iqr": 125950.5,
+				"n": 11,
+				"median": 424672,
+				"q1": 321552.5,
+				"q3": 446850,
+				"iqr": 125297.5,
 				"min": 181939,
-				"max": 502654
+				"max": 475191
 			},
 			"peakPromptTokens": {
-				"n": 12,
-				"median": 37992.5,
-				"q1": 31761.75,
-				"q3": 39974.5,
-				"iqr": 8212.75,
+				"n": 11,
+				"median": 37789,
+				"q1": 30343.5,
+				"q3": 39649,
+				"iqr": 9305.5,
 				"min": 18274,
-				"max": 49547
+				"max": 44322
 			},
 			"toolCalls": {
-				"n": 12,
+				"n": 11,
 				"median": 23,
-				"q1": 20.75,
-				"q3": 28.25,
+				"q1": 20.5,
+				"q3": 28,
 				"iqr": 7.5,
 				"min": 13,
 				"max": 33
 			},
-			"outputTokensPerSuccess": 32995,
-			"wallMsPerSuccess": 424598,
+			"outputTokensPerSuccess": 29685,
+			"wallMsPerSuccess": 378902,
 			"outsideMentions": 118
 		},
 		{
@@ -755,43 +755,43 @@
 			"httpErrors": 0,
 			"reasoningShare": 0,
 			"outputTokens": {
-				"n": 12,
+				"n": 10,
 				"median": 10757.5,
-				"q1": 7044.75,
-				"q3": 21336.75,
-				"iqr": 14292,
-				"min": 3129,
-				"max": 42682
+				"q1": 7137.25,
+				"q3": 17089.75,
+				"iqr": 9952.5,
+				"min": 5471,
+				"max": 37406
 			},
 			"wallMs": {
-				"n": 12,
+				"n": 10,
 				"median": 104939.5,
-				"q1": 64091.25,
-				"q3": 211256.75,
-				"iqr": 147165.5,
-				"min": 33125,
-				"max": 500862
+				"q1": 65380.5,
+				"q3": 172483,
+				"iqr": 107102.5,
+				"min": 57329,
+				"max": 410088
 			},
 			"peakPromptTokens": {
-				"n": 12,
+				"n": 10,
 				"median": 19703.5,
-				"q1": 12354.25,
-				"q3": 32787,
-				"iqr": 20432.75,
-				"min": 8513,
-				"max": 84190
+				"q1": 13007.5,
+				"q3": 28981,
+				"iqr": 15973.5,
+				"min": 11615,
+				"max": 65783
 			},
 			"toolCalls": {
-				"n": 12,
+				"n": 10,
 				"median": 37.5,
-				"q1": 23.75,
-				"q3": 55,
-				"iqr": 31.25,
+				"q1": 26.75,
+				"q3": 54,
+				"iqr": 27.25,
 				"min": 14,
-				"max": 164
+				"max": 133
 			},
-			"outputTokensPerSuccess": 32520,
-			"wallMsPerSuccess": 338117,
+			"outputTokensPerSuccess": 24885,
+			"wallMsPerSuccess": 249120,
 			"outsideMentions": 289
 		},
 		{
@@ -811,43 +811,43 @@
 			"httpErrors": 0,
 			"reasoningShare": 0,
 			"outputTokens": {
-				"n": 12,
-				"median": 13728,
-				"q1": 5182.25,
-				"q3": 23147,
-				"iqr": 17964.75,
+				"n": 10,
+				"median": 9955,
+				"q1": 5164.75,
+				"q3": 20512.5,
+				"iqr": 15347.75,
 				"min": 3906,
-				"max": 40238
+				"max": 39549
 			},
 			"wallMs": {
-				"n": 12,
-				"median": 118477,
-				"q1": 50763,
-				"q3": 226527,
-				"iqr": 175764,
+				"n": 10,
+				"median": 85269.5,
+				"q1": 49085,
+				"q3": 199253.5,
+				"iqr": 150168.5,
 				"min": 39488,
 				"max": 421032
 			},
 			"peakPromptTokens": {
-				"n": 12,
-				"median": 20615,
-				"q1": 10315.5,
-				"q3": 34930.75,
-				"iqr": 24615.25,
+				"n": 10,
+				"median": 14875.5,
+				"q1": 10122.5,
+				"q3": 29594.5,
+				"iqr": 19472,
 				"min": 9022,
 				"max": 71448
 			},
 			"toolCalls": {
-				"n": 12,
-				"median": 30.5,
-				"q1": 18.75,
-				"q3": 81.5,
-				"iqr": 62.75,
+				"n": 10,
+				"median": 24.5,
+				"q1": 16.25,
+				"q3": 38.25,
+				"iqr": 22,
 				"min": 9,
-				"max": 132
+				"max": 107
 			},
-			"outputTokensPerSuccess": 33333,
-			"wallMsPerSuccess": 332847,
+			"outputTokensPerSuccess": 23589,
+			"wallMsPerSuccess": 225345,
 			"outsideMentions": 285
 		},
 		{
@@ -964,8 +964,7 @@
 					"low": 0.086067,
 					"high": 0.730599,
 					"df": 3
-				},
-				"reading": "cap-binding"
+				}
 			},
 			"vsB": null,
 			"perTask": [
@@ -1080,8 +1079,7 @@
 					"low": -0.125369,
 					"high": 0.542036,
 					"df": 3
-				},
-				"reading": "inconclusive"
+				}
 			},
 			"vsB": null,
 			"perTask": [
@@ -1196,8 +1194,7 @@
 					"low": -0.456839,
 					"high": 0.473505,
 					"df": 3
-				},
-				"reading": "cap-not-the-main-limit"
+				}
 			},
 			"vsB": null,
 			"perTask": [
@@ -1292,13 +1289,62 @@
 	],
 	"manipulation": {
 		"c3": {
-			"M5": "PASS",
-			"M6": "PASS",
+			"M5": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-a": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-d": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-b": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-e": {
+						"trials": 12,
+						"failures": []
+					}
+				}
+			},
+			"M6": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-a": {
+						"trials": 12,
+						"requests": 103,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-d": {
+						"trials": 12,
+						"requests": 161,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-b": {
+						"trials": 12,
+						"requests": 217,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-e": {
+						"trials": 12,
+						"requests": 310,
+						"instances": [],
+						"status": "PASS"
+					}
+				}
+			},
 			"byArm": {
 				"a": {
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 103,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1310,6 +1356,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 217,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1321,6 +1368,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 161,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1332,6 +1380,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 310,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1342,13 +1391,120 @@
 			}
 		},
 		"c1": {
-			"M5": "PASS",
-			"M6": "MANIPULATION INCOMPLETE",
+			"M5": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-e": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-a": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-b": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-d": {
+						"trials": 12,
+						"failures": []
+					}
+				}
+			},
+			"M6": {
+				"status": "MANIPULATION INCOMPLETE",
+				"byCondition": {
+					"arm-e": {
+						"trials": 12,
+						"requests": 369,
+						"instances": [
+							"config-extends/arm-e/#1 request 108: duration_ms",
+							"config-extends/arm-e/#1 request 109: duration_ms",
+							"config-extends/arm-e/#1 request 110: duration_ms",
+							"config-extends/arm-e/#1 request 111: duration_ms",
+							"config-extends/arm-e/#1 request 112: duration_ms",
+							"config-extends/arm-e/#1 request 113: duration_ms",
+							"config-extends/arm-e/#1 request 114: duration_ms",
+							"config-extends/arm-e/#1 request 115: duration_ms",
+							"config-extends/arm-e/#1 request 116: duration_ms",
+							"config-extends/arm-e/#1 request 117: duration_ms",
+							"config-extends/arm-e/#1 request 118: duration_ms",
+							"config-extends/arm-e/#1 request 119: duration_ms",
+							"config-extends/arm-e/#1 request 120: duration_ms",
+							"config-extends/arm-e/#1 request 121: duration_ms",
+							"config-extends/arm-e/#1 request 122: duration_ms",
+							"config-extends/arm-e/#1 request 123: duration_ms",
+							"config-extends/arm-e/#1 request 124: duration_ms",
+							"config-extends/arm-e/#1 request 125: duration_ms",
+							"config-extends/arm-e/#1 request 126: duration_ms",
+							"config-extends/arm-e/#1 request 127: duration_ms",
+							"config-extends/arm-e/#1 request 128: duration_ms",
+							"config-extends/arm-e/#1 request 129: duration_ms",
+							"config-extends/arm-e/#1 request 130: duration_ms",
+							"config-extends/arm-e/#1 request 131: duration_ms",
+							"config-extends/arm-e/#1 request 132: duration_ms",
+							"config-extends/arm-e/#1 request 133: duration_ms",
+							"config-extends/arm-e/#1 request 134: duration_ms",
+							"config-extends/arm-e/#1 request 135: duration_ms",
+							"config-extends/arm-e/#1 request 136: duration_ms",
+							"config-extends/arm-e/#1 request 137: duration_ms",
+							"config-extends/arm-e/#1 request 138: duration_ms",
+							"config-extends/arm-e/#1 request 139: duration_ms",
+							"config-extends/arm-e/#1 request 140: duration_ms",
+							"config-extends/arm-e/#1 request 141: duration_ms",
+							"config-extends/arm-e/#1 request 142: duration_ms",
+							"config-extends/arm-e/#1 request 143: duration_ms",
+							"config-extends/arm-e/#1 request 144: duration_ms",
+							"config-extends/arm-e/#1 request 145: duration_ms",
+							"config-extends/arm-e/#1 request 146: duration_ms",
+							"config-extends/arm-e/#1 request 147: duration_ms",
+							"config-extends/arm-e/#1 request 148: duration_ms",
+							"config-extends/arm-e/#1 request 149: duration_ms",
+							"config-extends/arm-e/#1 request 150: duration_ms",
+							"config-extends/arm-e/#1 request 151: duration_ms",
+							"config-extends/arm-e/#1 request 152: duration_ms",
+							"config-extends/arm-e/#1 request 153: duration_ms",
+							"config-extends/arm-e/#1 request 154: duration_ms",
+							"config-extends/arm-e/#1 request 155: duration_ms",
+							"config-extends/arm-e/#1 request 156: duration_ms",
+							"config-extends/arm-e/#1 request 157: duration_ms",
+							"config-extends/arm-e/#1 request 158: duration_ms",
+							"config-extends/arm-e/#1 request 159: duration_ms",
+							"config-extends/arm-e/#1 request 160: duration_ms",
+							"config-extends/arm-e/#1 request 161: duration_ms",
+							"config-extends/arm-e/#1 request 162: duration_ms",
+							"config-extends/arm-e/#1 request 163: duration_ms",
+							"config-extends/arm-e/#1 request 164: duration_ms"
+						],
+						"status": "MANIPULATION INCOMPLETE"
+					},
+					"arm-a": {
+						"trials": 12,
+						"requests": 143,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-b": {
+						"trials": 12,
+						"requests": 193,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-d": {
+						"trials": 12,
+						"requests": 152,
+						"instances": [],
+						"status": "PASS"
+					}
+				}
+			},
 			"byArm": {
 				"a": {
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 143,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1360,6 +1516,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 193,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1371,6 +1528,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 152,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1382,6 +1540,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 369,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1392,13 +1551,196 @@
 			}
 		},
 		"c2": {
-			"M5": "PASS",
-			"M6": "MANIPULATION INCOMPLETE",
+			"M5": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-d": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-b": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-e": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-a": {
+						"trials": 12,
+						"failures": []
+					}
+				}
+			},
+			"M6": {
+				"status": "MANIPULATION INCOMPLETE",
+				"byCondition": {
+					"arm-d": {
+						"trials": 12,
+						"requests": 160,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-b": {
+						"trials": 12,
+						"requests": 157,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-e": {
+						"trials": 12,
+						"requests": 581,
+						"instances": [
+							"fetch-cache/arm-e/#0 request 43: duration_ms",
+							"fetch-cache/arm-e/#0 request 44: duration_ms",
+							"fetch-cache/arm-e/#0 request 45: duration_ms",
+							"fetch-cache/arm-e/#0 request 46: duration_ms",
+							"fetch-cache/arm-e/#0 request 47: duration_ms",
+							"fetch-cache/arm-e/#0 request 48: duration_ms",
+							"fetch-cache/arm-e/#0 request 49: duration_ms",
+							"fetch-cache/arm-e/#0 request 50: duration_ms",
+							"fetch-cache/arm-e/#0 request 51: duration_ms",
+							"fetch-cache/arm-e/#0 request 52: duration_ms",
+							"fetch-cache/arm-e/#0 request 53: duration_ms",
+							"fetch-cache/arm-e/#0 request 54: duration_ms",
+							"fetch-cache/arm-e/#0 request 55: duration_ms",
+							"fetch-cache/arm-e/#0 request 56: duration_ms",
+							"fetch-cache/arm-e/#0 request 57: duration_ms",
+							"fetch-cache/arm-e/#0 request 58: duration_ms",
+							"fetch-cache/arm-e/#0 request 59: duration_ms",
+							"fetch-cache/arm-e/#0 request 60: duration_ms",
+							"fetch-cache/arm-e/#0 request 61: duration_ms",
+							"fetch-cache/arm-e/#0 request 62: duration_ms",
+							"fetch-cache/arm-e/#0 request 63: duration_ms",
+							"fetch-cache/arm-e/#0 request 64: duration_ms",
+							"fetch-cache/arm-e/#0 request 65: duration_ms",
+							"fetch-cache/arm-e/#0 request 66: duration_ms",
+							"fetch-cache/arm-e/#0 request 67: duration_ms",
+							"fetch-cache/arm-e/#0 request 68: duration_ms",
+							"fetch-cache/arm-e/#0 request 69: duration_ms",
+							"fetch-cache/arm-e/#0 request 70: duration_ms",
+							"fetch-cache/arm-e/#0 request 71: duration_ms",
+							"fetch-cache/arm-e/#0 request 72: duration_ms",
+							"fetch-cache/arm-e/#0 request 73: duration_ms",
+							"fetch-cache/arm-e/#0 request 74: duration_ms",
+							"fetch-cache/arm-e/#0 request 75: duration_ms",
+							"fetch-cache/arm-e/#0 request 76: duration_ms",
+							"fetch-cache/arm-e/#0 request 77: duration_ms",
+							"fetch-cache/arm-e/#0 request 78: duration_ms",
+							"fetch-cache/arm-e/#0 request 79: duration_ms",
+							"fetch-cache/arm-e/#0 request 80: duration_ms",
+							"fetch-cache/arm-e/#0 request 81: duration_ms",
+							"fetch-cache/arm-e/#0 request 82: duration_ms",
+							"fetch-cache/arm-e/#0 request 83: duration_ms",
+							"fetch-cache/arm-e/#0 request 84: duration_ms",
+							"fetch-cache/arm-e/#0 request 85: duration_ms",
+							"fetch-cache/arm-e/#0 request 86: duration_ms",
+							"fetch-cache/arm-e/#0 request 87: duration_ms",
+							"fetch-cache/arm-e/#0 request 88: duration_ms",
+							"fetch-cache/arm-e/#0 request 89: duration_ms",
+							"fetch-cache/arm-e/#0 request 90: duration_ms",
+							"fetch-cache/arm-e/#0 request 91: duration_ms",
+							"fetch-cache/arm-e/#0 request 92: duration_ms",
+							"fetch-cache/arm-e/#0 request 93: duration_ms",
+							"fetch-cache/arm-e/#0 request 94: duration_ms",
+							"fetch-cache/arm-e/#0 request 95: duration_ms",
+							"fetch-cache/arm-e/#0 request 96: duration_ms",
+							"fetch-cache/arm-e/#0 request 97: duration_ms",
+							"fetch-cache/arm-e/#0 request 98: duration_ms",
+							"fetch-cache/arm-e/#0 request 99: duration_ms",
+							"fetch-cache/arm-e/#0 request 100: duration_ms",
+							"fetch-cache/arm-e/#0 request 101: duration_ms",
+							"fetch-cache/arm-e/#0 request 102: duration_ms",
+							"fetch-cache/arm-e/#0 request 103: duration_ms",
+							"fetch-cache/arm-e/#0 request 104: duration_ms",
+							"fetch-cache/arm-e/#0 request 105: duration_ms",
+							"fetch-cache/arm-e/#0 request 106: duration_ms",
+							"fetch-cache/arm-e/#0 request 107: duration_ms",
+							"fetch-cache/arm-e/#0 request 108: duration_ms",
+							"fetch-cache/arm-e/#0 request 109: duration_ms",
+							"fetch-cache/arm-e/#0 request 110: duration_ms",
+							"fetch-cache/arm-e/#0 request 111: duration_ms",
+							"fetch-cache/arm-e/#0 request 112: duration_ms",
+							"fetch-cache/arm-e/#0 request 113: duration_ms",
+							"fetch-cache/arm-e/#0 request 114: duration_ms",
+							"fetch-cache/arm-e/#0 request 115: duration_ms",
+							"fetch-cache/arm-e/#0 request 116: duration_ms",
+							"fetch-cache/arm-e/#0 request 117: duration_ms",
+							"fetch-cache/arm-e/#0 request 118: duration_ms",
+							"fetch-cache/arm-e/#0 request 119: duration_ms",
+							"fetch-cache/arm-e/#0 request 120: duration_ms",
+							"fetch-cache/arm-e/#0 request 121: duration_ms",
+							"fetch-cache/arm-e/#0 request 122: duration_ms",
+							"fetch-cache/arm-e/#0 request 123: duration_ms",
+							"fetch-cache/arm-e/#0 request 124: duration_ms",
+							"fetch-cache/arm-e/#0 request 125: duration_ms",
+							"fetch-cache/arm-e/#0 request 126: duration_ms",
+							"fetch-cache/arm-e/#0 request 127: duration_ms",
+							"fetch-cache/arm-e/#0 request 128: duration_ms",
+							"fetch-cache/arm-e/#0 request 129: duration_ms",
+							"fetch-cache/arm-e/#0 request 130: duration_ms",
+							"fetch-cache/arm-e/#0 request 131: duration_ms",
+							"fetch-cache/arm-e/#0 request 132: duration_ms",
+							"fetch-cache/arm-e/#1 request 65: duration_ms",
+							"fetch-cache/arm-e/#1 request 66: duration_ms",
+							"fetch-cache/arm-e/#1 request 67: duration_ms",
+							"fetch-cache/arm-e/#1 request 68: duration_ms",
+							"fetch-cache/arm-e/#1 request 69: duration_ms",
+							"fetch-cache/arm-e/#1 request 70: duration_ms",
+							"fetch-cache/arm-e/#1 request 71: duration_ms",
+							"fetch-cache/arm-e/#1 request 72: duration_ms",
+							"fetch-cache/arm-e/#1 request 73: duration_ms",
+							"fetch-cache/arm-e/#1 request 74: duration_ms",
+							"fetch-cache/arm-e/#1 request 75: duration_ms",
+							"fetch-cache/arm-e/#1 request 76: duration_ms",
+							"fetch-cache/arm-e/#1 request 77: duration_ms",
+							"fetch-cache/arm-e/#1 request 78: duration_ms",
+							"fetch-cache/arm-e/#1 request 79: duration_ms",
+							"fetch-cache/arm-e/#1 request 80: duration_ms",
+							"fetch-cache/arm-e/#1 request 81: duration_ms",
+							"fetch-cache/arm-e/#1 request 82: duration_ms",
+							"fetch-cache/arm-e/#1 request 83: duration_ms",
+							"fetch-cache/arm-e/#1 request 84: duration_ms",
+							"fetch-cache/arm-e/#1 request 85: duration_ms",
+							"fetch-cache/arm-e/#1 request 86: duration_ms",
+							"fetch-cache/arm-e/#1 request 87: duration_ms",
+							"fetch-cache/arm-e/#1 request 88: duration_ms",
+							"fetch-cache/arm-e/#1 request 89: duration_ms",
+							"fetch-cache/arm-e/#1 request 90: duration_ms",
+							"fetch-cache/arm-e/#1 request 91: duration_ms",
+							"fetch-cache/arm-e/#1 request 92: duration_ms",
+							"fetch-cache/arm-e/#1 request 93: duration_ms",
+							"fetch-cache/arm-e/#1 request 94: duration_ms",
+							"fetch-cache/arm-e/#1 request 95: duration_ms",
+							"fetch-cache/arm-e/#1 request 96: duration_ms",
+							"fetch-cache/arm-e/#1 request 97: duration_ms",
+							"fetch-cache/arm-e/#1 request 98: duration_ms",
+							"fetch-cache/arm-e/#1 request 99: duration_ms",
+							"fetch-cache/arm-e/#1 request 100: duration_ms",
+							"fetch-cache/arm-e/#1 request 101: duration_ms",
+							"fetch-cache/arm-e/#1 request 102: duration_ms",
+							"fetch-cache/arm-e/#1 request 103: duration_ms",
+							"fetch-cache/arm-e/#1 request 104: duration_ms",
+							"fetch-cache/arm-e/#1 request 105: duration_ms",
+							"fetch-cache/arm-e/#1 request 106: duration_ms",
+							"fetch-cache/arm-e/#1 request 107: duration_ms"
+						],
+						"status": "MANIPULATION INCOMPLETE"
+					},
+					"arm-a": {
+						"trials": 12,
+						"requests": 130,
+						"instances": [],
+						"status": "PASS"
+					}
+				}
+			},
 			"byArm": {
 				"a": {
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 130,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1410,6 +1752,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 157,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1421,6 +1764,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 160,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1432,6 +1776,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 581,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1442,13 +1787,62 @@
 			}
 		},
 		"c4": {
-			"M5": "PASS",
-			"M6": "PASS",
+			"M5": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-a": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-b": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-d": {
+						"trials": 12,
+						"failures": []
+					},
+					"arm-e": {
+						"trials": 12,
+						"failures": []
+					}
+				}
+			},
+			"M6": {
+				"status": "PASS",
+				"byCondition": {
+					"arm-a": {
+						"trials": 12,
+						"requests": 150,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-b": {
+						"trials": 12,
+						"requests": 199,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-d": {
+						"trials": 12,
+						"requests": 141,
+						"instances": [],
+						"status": "PASS"
+					},
+					"arm-e": {
+						"trials": 12,
+						"requests": 353,
+						"instances": [],
+						"status": "PASS"
+					}
+				}
+			},
 			"byArm": {
 				"a": {
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 150,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1460,6 +1854,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 199,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1471,6 +1866,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 141,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],
@@ -1482,6 +1878,7 @@
 					"trials": 12,
 					"M-inj": [],
 					"M-sys-trials-differing": 0,
+					"M-sys-requests-checked": 353,
 					"M-tools-trials-differing": 0,
 					"M1-sampling-fields": [],
 					"M-ws": [],

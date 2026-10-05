@@ -24,8 +24,8 @@ committing the data, on the earlier studies' exception for exactly this kind of 
 
 - the stores' own location under the operator's home directory (`storesLocation`), which Pi's session files record. The event logs are
   checksummed, so the path cannot be rewritten without breaking the stores;
-- 48 throwaway-script paths the agent itself wrote to (`agentWrittenPaths`, mostly `/tmp/verify….mjs`, `/tmp/check.mjs`);
-- 6 example paths that appear in the tasks' own text (`taskExamplePaths`: `/etc/app/main.json` and similar in `config-extends`).
+- 48 throwaway-script paths the agent itself wrote to (`agentWrittenPaths`, mostly short `.mjs` check scripts in the system temp directory);
+- 6 example paths that appear in the tasks' own text (`taskExamplePaths`: the configuration paths of `config-extends`).
 
 `tests/discriminating-tasks-raw-data.test.ts` re-runs the scan with exactly this allow-list, so a new kind of finding, or a path
 outside it, fails the suite.

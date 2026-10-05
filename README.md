@@ -74,6 +74,15 @@ simulation   != real execution
 evaluation   != promotion
 ~~~
 
+For any adaptation loop, the chain is longer and every link is its own record:
+
+~~~text
+grader evidence != reward
+reward          != selection
+selection       != promotion
+promotion       != authority
+~~~
+
 An observed event is shown as an observation. A derived value says how it was derived. A capability stays unavailable when a runtime cannot meet the contract — Endophasia reports `UNAVAILABLE` rather than filling the gap.
 
 Related projects have separate jobs, and none grants another authority:
@@ -236,6 +245,7 @@ These projects are reference points for future adapters, not dependencies or bun
 | Job | Candidate provider |
 | :--- | :--- |
 | Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor) |
+| Turn an unmodified harness into trainable rollouts | [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-style capture, or an equivalent provider |
 | Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
 | Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
 | Run isolated environments | Local Docker, CubeSandbox, or another sandbox provider |
@@ -257,6 +267,18 @@ A stored experiment should identify the exact inputs needed to interpret and rep
 - usage and wall-clock time;
 - result-bundle digest.
 
+An experiment's identity is a set of declared coordinates, each either recorded or explicitly UNAVAILABLE: model and
+checkpoint (for local weights, a digest of the weights file and its quantisation), harness, harness version, effective
+harness surface, invocation mode, tool surface, wire dialect, cognition policy, sampling policy, resource budget,
+environment and task. No runtime is expected to supply all of them. Comparisons check comparability coordinate by
+coordinate and flag every mismatch. A train/evaluation budget mismatch is one such mismatch, never mixed silently.
+
+**The harness is an experimental variable, not plumbing.** In any study or adaptation run that spans harnesses, the
+harness is a blocking factor: trials compared within a group (for example one GRPO group) share a harness, so a
+within-group difference measures the policy rather than the harness. Generalisation is then compared between blocks.
+That the harness can matter as much as the model is a hypothesis Endophasia can test directly (same model, task and
+environment behind different harnesses), not an assumption to build on.
+
 A simulated environment must be labelled as simulated. A world-model result must never be presented as a real execution result. The record should preserve which provider produced each observation and which evaluator judged it; neither a successful simulation nor an evaluator score is, by itself, proof of real-world performance or permission to promote a candidate.
 
 Adaptation methods, including GEPA-style selection, RL training, self-play, and bounded recursive self-improvement, can share these provider seams when their inputs and outputs can be represented honestly. They remain optional and must be evaluated against the same explicit experiment and evidence contracts.
@@ -272,9 +294,34 @@ The evolution substrate is designed around explicit records rather than an opaqu
 | **ExperienceStore** | Durable collection of trajectories and derived evidence |
 | **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
 | **Evaluator / Grader** | Explicit source of outcome evidence. A learned grader or judge produces evidence; deterministic adjudication (schema checks, target binding, deduplication, promotion rules) decides what it counts for. A judge never becomes an authority |
+| **Reward definition** | A versioned record naming the reward source(s), transformation, weights, bounds, missing-evidence policy and provenance. Several grader scores are never combined by an implicit weighting. A verifier that failed to run yields UNAVAILABLE, never a reward of 0: an environment failure is not a wrong answer |
 | **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
 | **Validation and promotion holdout** | Selection may read validation results; the promotion holdout is never given to a selection policy, so a promotion can be checked against data the search never saw |
 | **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
+
+### Capture tiers
+
+Trajectory capture has two tiers, with different contracts:
+
+| Tier | Holds | Used for |
+| :--- | :--- | :--- |
+| **Evidence-grade** | Byte-exact requests and responses, tool calls and results, lifecycle, usage, environment identity | DEVELOP, replay, evaluation, comparison |
+| **Training-grade** | Everything above, plus exact prompt and sampled token IDs, per-token behaviour log-probabilities, loss masks, the sampling policy and the model checkpoint identity | On-policy training providers |
+
+- Training-grade data cannot be reconstructed from text. Harnesses repair, reformat and compact what passes through
+  them, and the chat template is applied by the server, so token IDs come from the inference engine, with its
+  tokenizer and template identity. They are never re-tokenised by the client.
+- Training-grade capture is not passive. Requesting log-probabilities changes the request, so it is a declared
+  condition with its own manipulation check, never a silent add-on to evidence capture.
+- The byte-faithful recording proxy keeps its contract. A token-faithful capture provider is a separate component,
+  even if they later share infrastructure.
+- A provider that cannot supply training-grade data is still valid for everything in the first tier. Asking it for
+  training data fails as UNAVAILABLE, never with a degraded substitute.
+- Every recording made so far is evidence-grade, and stays so.
+
+Trajectories are not assumed to be linear. A derived rollout structure treats retries as siblings, a subagent as a
+new root and a compaction as the start of a new prefix, and it is the substrate for replay, forks and training
+sequences alike.
 
 Resource use is evidence too. Token usage, model calls, tool calls, branches, retrieval, tests, critics, retries, wall-clock time, and cost can be recorded as part of the trajectory. This makes **Compute Appetite** a bridge between DEVELOP and EVOLVE: a cognition policy can decide how much computation to spend, while EVOLVE can test whether that expenditure actually improves outcomes.
 
@@ -422,13 +469,16 @@ The numbered items below are the long-term map. The order of work for the next s
    the model identity and the wire dialect. Variable contributions such as the working directory are separate observed
    fields; no prompt "template" is reconstructed by heuristics. Raw prompts are never canonical evidence, and a field a
    runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
+   The surface joins the other experiment-identity coordinates ([Evolve providers](#evolve-providers)), compared
+   coordinate by coordinate.
 5. **ACP v2 conformance study** (item 9). A protocol-level adapter study against one pinned draft revision: the prompt
    lifecycle, reconstruction from `session/resume` with `replayFrom` compared with the live session, and structured
    permission subjects answered with default deny and operator confirmation. ACP types stay in the adapter.
 6. **Compute-cap study** (item 13, before item 11). A pre-registered study of completion budget × task, everything else
    pinned, with several fixed seeds as the replication unit. It asks whether more budget improves success, where it
    saturates, and whether failures merely move. Otherwise the first selection policy would learn that the best candidate
-   is the one that did not hit the cap.
+   is the one that did not hit the cap. Any later adaptation run must use the same output budget in training and
+   evaluation, checked rather than assumed.
 7. **Forkable checkpoints** (item 10). The substrate primitive beneath search, counterfactual evaluation and training.
 8. **Research note.** The variance, pinned-environment, steering, path-sensitivity and discriminating-task studies,
    written up with their limits and data.

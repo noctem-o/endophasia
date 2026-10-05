@@ -45,6 +45,7 @@ describe("the response reader", () => {
 			promptMs: 215.3,
 			reasoningChars: 8,
 			contentChars: 4,
+			toolCallChars: 0,
 		});
 	});
 
@@ -60,6 +61,35 @@ describe("the response reader", () => {
 			contentChars: 5,
 		});
 		expect(parseWireV0(wire).reasoningChars).toBe("caf\u00e9 \u4f60\u597d \u{1F600}".length);
+	});
+
+	it("counts the characters of streamed tool calls, which are part of what the model streams", () => {
+		const wire = wireOf([
+			{ choices: [{ finish_reason: null, delta: { reasoning_content: "abcd" } }] },
+			{
+				choices: [
+					{
+						finish_reason: null,
+						delta: { tool_calls: [{ index: 0, function: { name: "bash", arguments: "" } }] },
+					},
+				],
+			},
+			{
+				choices: [
+					{
+						finish_reason: null,
+						delta: { tool_calls: [{ index: 0, function: { arguments: '{"command":"ls"}' } }] },
+					},
+				],
+			},
+			{ choices: [{ finish_reason: "tool_calls", delta: {} }] },
+		]);
+		expect(parseWireV0(wire)).toMatchObject({
+			reasoningChars: 4,
+			contentChars: 0,
+			toolCallChars: 4 + 16,
+			finishReason: "tool_calls",
+		});
 	});
 
 	it("reports a tool-call stop, and an error response with no events", () => {
@@ -211,6 +241,7 @@ describe("the choice of N", () => {
 import {
 	cell,
 	classOf,
+	failedChecksOf,
 	failureModeOf,
 	mismatchingTrialsV0,
 	sameJsonV0,
@@ -277,6 +308,7 @@ describe("the cell of an arm and a task", () => {
 		generationMs: 900,
 		reasoningChars: 30,
 		contentChars: 10,
+		toolCallChars: 0,
 		outsideMentions: 0,
 		injectedProblems: [],
 		samplingFields: [],
@@ -372,5 +404,27 @@ describe("comparing a request field with the arm's value", () => {
 		expect(sameJsonV0(undefined, { enable_thinking: false })).toBe(false);
 		expect(sameJsonV0({ enable_thinking: false }, undefined)).toBe(false);
 		expect(sameJsonV0(undefined, undefined)).toBe(true);
+	});
+});
+
+describe("the arm validity of a path", () => {
+	const clean = {
+		"M-inj": [],
+		"M-sys-trials-differing": 0,
+		"M-tools-trials-differing": 0,
+		"M-base-fields-trials-differing": 0,
+		"M1-sampling-fields": [],
+		"M-ws": [],
+	};
+	it("is clean when nothing failed, and names each check that did", () => {
+		expect(failedChecksOf(clean, 0, 0)).toEqual([]);
+		expect(failedChecksOf({ ...clean, "M-inj": ["request 1: wrong cap"] }, 0, 0)).toEqual(["M-inj"]);
+		expect(failedChecksOf({ ...clean, "M-sys-trials-differing": 1, "M-ws": ["x"] }, 2, 3)).toEqual([
+			"M-sys",
+			"M-ws",
+			"M5",
+			"M6",
+		]);
+		expect(failedChecksOf(clean, 0, 1)).toEqual(["M6"]);
 	});
 });

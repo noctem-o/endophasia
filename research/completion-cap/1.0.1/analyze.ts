@@ -71,6 +71,8 @@ export interface TrialV0 {
 	generationMs: number;
 	reasoningChars: number;
 	contentChars: number;
+	/** Characters of streamed tool calls (names and arguments): in the denominator of the reasoning share. */
+	toolCallChars: number;
 	outsideMentions: number;
 	/** Per request: the cap sent, whether a template field was sent, and the structure of the request. */
 	injectedProblems: string[];
@@ -146,10 +148,18 @@ export function responsesOf(store: string): { responses: WireSummaryV0[]; failed
 	let failedExchanges = 0;
 	for (const event of readEndoCaptureEventsV0(store)) {
 		if (event.producer !== "capture:record" || event.kind !== "capture.exchange-ended") continue;
-		const payload = event.payload as { wire?: { digest: Parameters<typeof blobs.get>[0] }; error?: string | null };
+		const payload = event.payload as {
+			wire?: { digest: Parameters<typeof blobs.get>[0] };
+			error?: string | null;
+			outcome?: string;
+		};
 		const summary = payload.wire ? parseWireV0(blobs.get(payload.wire.digest)) : null;
-		if (summary !== null && summary.httpStatus !== null) responses.push(summary);
-		else if (!STALE_CONNECTION.test(payload.error ?? "")) failedExchanges += 1;
+		const hasResponse = summary !== null && summary.httpStatus !== null;
+		if (hasResponse) responses.push(summary);
+		// An upstream that drops after sending a response head is a failure too (a partial response), whatever the status said.
+		if (payload.outcome === "upstream-error" && !(!hasResponse && STALE_CONNECTION.test(payload.error ?? "")))
+			failedExchanges += 1;
+		else if (!hasResponse && !STALE_CONNECTION.test(payload.error ?? "")) failedExchanges += 1;
 	}
 	return { responses, failedExchanges };
 }
@@ -220,6 +230,7 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			generationMs: 0,
 			reasoningChars: 0,
 			contentChars: 0,
+			toolCallChars: 0,
 			outsideMentions: 0,
 			injectedProblems: [] as string[],
 			samplingFields: [] as string[],
@@ -308,6 +319,7 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			generationMs: responses.reduce((sum, r) => sum + (r.predictedMs ?? 0), 0),
 			reasoningChars: responses.reduce((sum, r) => sum + r.reasoningChars, 0),
 			contentChars: responses.reduce((sum, r) => sum + r.contentChars, 0),
+			toolCallChars: responses.reduce((sum, r) => sum + r.toolCallChars, 0),
 			outsideMentions: leak.outsideMentions,
 			injectedProblems,
 			samplingFields: [...samplingFields],
@@ -378,7 +390,7 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 		if (trial.class.kind === "failure") modes[trial.class.mode] = (modes[trial.class.mode] ?? 0) + 1;
 	// The descriptive measures use the counted trials only, like the success estimates: an excluded trial is not in them.
 	const reasoning = kept.reduce((sum, t) => sum + t.reasoningChars, 0);
-	const content = kept.reduce((sum, t) => sum + t.contentChars, 0);
+	const content = kept.reduce((sum, t) => sum + t.contentChars + t.toolCallChars, 0);
 	const round = (value: number | null) => (value === null ? null : Math.round(value));
 	return {
 		arm,
@@ -403,6 +415,31 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 		wallMsPerSuccess: successes === 0 ? null : round(kept.reduce((sum, t) => sum + t.wallMs, 0) / successes),
 		outsideMentions: mine.reduce((sum, trial) => sum + trial.outsideMentions, 0),
 	};
+}
+
+/** What failed for one arm in one path's manipulation checks (DESIGN §7: an arm that fails one is reported invalid). */
+export function failedChecksOf(
+	armChecks: {
+		"M-inj": string[];
+		"M-sys-trials-differing": number;
+		"M-tools-trials-differing": number;
+		"M-base-fields-trials-differing": number;
+		"M1-sampling-fields": string[];
+		"M-ws": string[];
+	},
+	m5Failures: number,
+	m6Instances: number,
+): string[] {
+	const failed: string[] = [];
+	if (armChecks["M-inj"].length > 0) failed.push("M-inj");
+	if (armChecks["M-sys-trials-differing"] > 0) failed.push("M-sys");
+	if (armChecks["M-tools-trials-differing"] > 0) failed.push("M-tools");
+	if (armChecks["M-base-fields-trials-differing"] > 0) failed.push("M-base-fields");
+	if (armChecks["M1-sampling-fields"].length > 0) failed.push("M1");
+	if (armChecks["M-ws"].length > 0) failed.push("M-ws");
+	if (m5Failures > 0) failed.push("M5");
+	if (m6Instances > 0) failed.push("M6");
+	return failed;
 }
 
 /** The manipulation checks of one run directory's trials (DESIGN §7). */
@@ -550,6 +587,42 @@ export function main(dir: string, roots: RootsV0) {
 		...c,
 		...(c.counted === 0 ? {} : { wilson: wilson95V0(c.successes, c.counted).wilson95 }),
 	});
+	const manipulation = Object.fromEntries(
+		runs.map((run) => [run.label, manipulationOf(join(dir, run.label), run.trials)]),
+	);
+	// DESIGN §7: an arm that fails a manipulation check is reported invalid, and nothing is reinterpreted. Collected over the paths.
+	const armValidity = Object.fromEntries(
+		arms.map((arm) => {
+			const failedBy: Record<string, string[]> = {};
+			const m6Trials: string[] = [];
+			for (const [label, m] of Object.entries(manipulation)) {
+				const byCondition = (check: { byCondition: Record<string, unknown> }) =>
+					(check.byCondition[`arm-${arm}`] ?? {}) as { failures?: string[]; instances?: string[] };
+				const m5 = byCondition(m.M5 as never).failures ?? [];
+				const m6 = byCondition(m.M6 as never).instances ?? [];
+				const failed = failedChecksOf(m.byArm[arm]!, m5.length, m6.length);
+				if (failed.length > 0) failedBy[label] = failed;
+				for (const instance of m6) m6Trials.push(`${label} ${instance.split(" request ")[0]}`);
+			}
+			const excluded = new Set(
+				runs.flatMap((run) =>
+					run.trials
+						.filter((t) => t.class.kind === "invalid")
+						.map((t) => `${run.label} ${t.task}/arm-${t.arm}/#${t.trial}`),
+				),
+			);
+			const uniqueM6 = [...new Set(m6Trials)];
+			return [
+				arm,
+				{
+					valid: Object.keys(failedBy).length === 0,
+					failedChecksByPath: failedBy,
+					m6TrialsAreAllExcludedAsInvalid: uniqueM6.length > 0 && uniqueM6.every((t) => excluded.has(t)),
+					m6Trials: uniqueM6,
+				},
+			];
+		}),
+	);
 	const decorate = <
 		T extends { control: { successes: number; counted: number }; arm: { successes: number; counted: number } },
 	>(
@@ -559,6 +632,7 @@ export function main(dir: string, roots: RootsV0) {
 		.filter((arm) => arm !== "a")
 		.map((arm) => ({
 			arm,
+			armValid: armValidity[arm]?.valid ?? false,
 			vsA: decorate(contrast(arm, "a", primaryTasks)),
 			vsB: arm === "c" && arms.includes("b") ? decorate(contrast("c", "b", primaryTasks)) : null,
 			perTask: spec.tasks.map((task) => ({
@@ -571,7 +645,10 @@ export function main(dir: string, roots: RootsV0) {
 			})),
 			perPathDifference: contrast(arm, "a", primaryTasks).perPath,
 		}));
-	const primary = arms.includes("b") ? primaryContrastV0(pairs("b", "a", primaryTasks)) : null;
+	const bValid = armValidity.b?.valid ?? false;
+	const primaryRaw = arms.includes("b") ? primaryContrastV0(pairs("b", "a", primaryTasks)) : null;
+	// The reading of an arm that failed a check is not interpreted.
+	const primary = primaryRaw && { ...primaryRaw, reading: bValid ? primaryRaw.reading : ("arm-invalid" as const) };
 	return {
 		stage: "main",
 		paths: labels,
@@ -626,9 +703,8 @@ export function main(dir: string, roots: RootsV0) {
 				),
 			})),
 		},
-		manipulation: Object.fromEntries(
-			runs.map((run) => [run.label, manipulationOf(join(dir, run.label), run.trials)]),
-		),
+		armValidity,
+		manipulation,
 	};
 }
 

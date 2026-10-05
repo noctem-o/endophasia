@@ -34,7 +34,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.953544,
+			"reasoningShare": 0.540301,
 			"outputTokens": {
 				"n": 12,
 				"median": 8399,
@@ -90,7 +90,7 @@
 			"cutOffTrialShare": 0.166667,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.973383,
+			"reasoningShare": 0.756919,
 			"outputTokens": {
 				"n": 12,
 				"median": 21531,
@@ -146,7 +146,7 @@
 			"cutOffTrialShare": 0.583333,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.987903,
+			"reasoningShare": 0.831821,
 			"outputTokens": {
 				"n": 12,
 				"median": 16640.5,
@@ -202,7 +202,7 @@
 			"cutOffTrialShare": 0.583333,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.983733,
+			"reasoningShare": 0.914853,
 			"outputTokens": {
 				"n": 12,
 				"median": 16464,
@@ -256,7 +256,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.942698,
+			"reasoningShare": 0.532286,
 			"outputTokens": {
 				"n": 12,
 				"median": 7544,
@@ -310,7 +310,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.975707,
+			"reasoningShare": 0.767649,
 			"outputTokens": {
 				"n": 12,
 				"median": 23237.5,
@@ -364,7 +364,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.978314,
+			"reasoningShare": 0.763183,
 			"outputTokens": {
 				"n": 11,
 				"median": 31800,
@@ -420,7 +420,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.970889,
+			"reasoningShare": 0.853012,
 			"outputTokens": {
 				"n": 12,
 				"median": 25250.5,
@@ -474,7 +474,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.941932,
+			"reasoningShare": 0.446102,
 			"outputTokens": {
 				"n": 12,
 				"median": 6675.5,
@@ -528,7 +528,7 @@
 			"cutOffTrialShare": 0,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.969664,
+			"reasoningShare": 0.707304,
 			"outputTokens": {
 				"n": 12,
 				"median": 16943.5,
@@ -584,7 +584,7 @@
 			"cutOffTrialShare": 0.083333,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.984472,
+			"reasoningShare": 0.75801,
 			"outputTokens": {
 				"n": 12,
 				"median": 22547,
@@ -641,7 +641,7 @@
 			"cutOffTrialShare": 0.583333,
 			"timeouts": 0,
 			"httpErrors": 0,
-			"reasoningShare": 0.985215,
+			"reasoningShare": 0.880386,
 			"outputTokens": {
 				"n": 12,
 				"median": 16478.5,
@@ -943,6 +943,7 @@
 	"secondary": [
 		{
 			"arm": "b",
+			"armValid": true,
 			"vsA": {
 				"control": {
 					"successes": 10,
@@ -1066,6 +1067,7 @@
 		},
 		{
 			"arm": "d",
+			"armValid": true,
 			"vsA": {
 				"control": {
 					"successes": 10,
@@ -1189,6 +1191,7 @@
 		},
 		{
 			"arm": "e",
+			"armValid": false,
 			"vsA": {
 				"control": {
 					"successes": 10,
@@ -1667,6 +1670,43 @@
 				"reading": "cap-binding"
 			}
 		]
+	},
+	"armValidity": {
+		"a": {
+			"valid": true,
+			"failedChecksByPath": {},
+			"m6TrialsAreAllExcludedAsInvalid": false,
+			"m6Trials": []
+		},
+		"b": {
+			"valid": true,
+			"failedChecksByPath": {},
+			"m6TrialsAreAllExcludedAsInvalid": false,
+			"m6Trials": []
+		},
+		"d": {
+			"valid": true,
+			"failedChecksByPath": {},
+			"m6TrialsAreAllExcludedAsInvalid": false,
+			"m6Trials": []
+		},
+		"e": {
+			"valid": false,
+			"failedChecksByPath": {
+				"c1": [
+					"M6"
+				],
+				"c2": [
+					"M6"
+				]
+			},
+			"m6TrialsAreAllExcludedAsInvalid": false,
+			"m6Trials": [
+				"c1 config-extends/arm-e/#1",
+				"c2 fetch-cache/arm-e/#0",
+				"c2 fetch-cache/arm-e/#1"
+			]
+		}
 	},
 	"manipulation": {
 		"c3": {

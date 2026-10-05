@@ -11,9 +11,10 @@ export interface WireSummaryV0 {
 	predictedTokens: number | null;
 	predictedMs: number | null;
 	promptMs: number | null;
-	/** Characters streamed as `reasoning_content` and as `content`. */
+	/** Characters streamed as `reasoning_content`, as `content`, and in tool calls (function names and arguments). */
 	reasoningChars: number;
 	contentChars: number;
+	toolCallChars: number;
 }
 
 /** Chunk sizes count bytes, not characters, so the body is decoded after the chunks are cut out of the bytes. */
@@ -48,13 +49,18 @@ export function parseWireV0(input: string | Uint8Array): WireSummaryV0 {
 		promptMs: null,
 		reasoningChars: 0,
 		contentChars: 0,
+		toolCallChars: 0,
 	};
 	for (const line of body.split("\n")) {
 		if (!line.startsWith("data: ") || line.startsWith("data: [DONE]")) continue;
 		let event: {
 			choices?: {
 				finish_reason?: string | null;
-				delta?: { reasoning_content?: string | null; content?: string | null };
+				delta?: {
+					reasoning_content?: string | null;
+					content?: string | null;
+					tool_calls?: { function?: { name?: string | null; arguments?: string | null } }[];
+				};
 			}[];
 			usage?: { prompt_tokens?: number; completion_tokens?: number };
 			timings?: { predicted_n?: number; predicted_ms?: number; prompt_ms?: number };
@@ -68,6 +74,8 @@ export function parseWireV0(input: string | Uint8Array): WireSummaryV0 {
 			if (typeof choice.finish_reason === "string") summary.finishReason = choice.finish_reason;
 			summary.reasoningChars += choice.delta?.reasoning_content?.length ?? 0;
 			summary.contentChars += choice.delta?.content?.length ?? 0;
+			for (const call of choice.delta?.tool_calls ?? [])
+				summary.toolCallChars += (call.function?.name?.length ?? 0) + (call.function?.arguments?.length ?? 0);
 		}
 		if (event.usage) {
 			summary.promptTokens = event.usage.prompt_tokens ?? summary.promptTokens;

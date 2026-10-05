@@ -46,7 +46,7 @@ Reported, none a headline (DESIGN §9). The pre-registered reading applies to B 
 
 - **D (brief reasoning)** is a large gain on `fetch-cache` (11/12 against 5/12) and a loss on `markup-lite` (4/12 against 5/12, with 7 of its 12 trials cut off
   against A's 7: the instruction did not stop the long reasoning there). Its pooled interval includes 0.
-- **E (thinking off)** removes all reasoning output (the reasoning share of the streamed characters is 0, against 94 to 99% elsewhere) and cuts the median output tokens
+- **E (thinking off)** removes all reasoning output (the reasoning share of everything the model streamed, tool-call characters included, is 0, against 45 to 92% in A, B and D, by task: lowest on `booking-conflicts`, highest on `markup-lite`) and cuts the median output tokens
   of a trial by about 20 to 70% (to 5,268 on `markup-lite` from 16,464, though A's trials there were cut off at 16k),
   but **accuracy is worse where the task needs the reasoning**: `config-extends` 6/10 (A: 10/12) and `markup-lite` 4/12 are wrong results, not
   cut-offs. **The harm check flags `config-extends` under E** (a rate 0.23 below A's; counting the two excluded E trials it is still 0.25).
@@ -79,7 +79,8 @@ Median output tokens, wall time and peak prompt tokens of a trial are in `analys
 | M-sys, M-tools and the fixed request fields (model, stream, stream options, store), each compared on **every request** (103 to 581 requests per arm and path; a request without the message or the tools would count as a mismatch), M1 (no sampling field), M5, M-ws (each snapshot file equals the task's file) | PASS |
 | M-trunc (B has fewer cut-off responses than A) | PASS: 0 under B and E, 0.7 to 2.0% of D's responses, 2.1 to 6.1% of A's (per path) |
 | M-time / M-ctx | 0 sessions did not finish, 0 server errors, in every arm. (The pilot had one hung agent test.) |
-| M6 (no reporter duration in a tool result) | **Incomplete in two paths, in arm E only:** the E agent twice ran tests under a reporter of its own; both trials are also among the five excluded below |
+| M6 (no reporter duration in a tool result) | **Incomplete in two paths (c1, c2), in arm E only, in three trials:** the E agent ran tests under a reporter of its own. Two of the three are among the five excluded below; **one is a counted trial** (path c2, `fetch-cache` #1) |
+| **Arm validity (DESIGN §7: an arm that fails a check is reported invalid; nothing is reinterpreted)** | **A, B and D pass every check. Arm E fails M6, so it is reported invalid.** Its contrasts and costs are given above as descriptions of what happened, not as valid estimates of a thinking-off arm. The primary reading is for B, which is valid. `analysis/main.json` carries `armValidity` and marks E's secondary contrast `armValid: false` |
 
 **Excluded as invalid by the leakage rule (§7): five trials, four of them in arm E.** What each did, read from its recorded tool calls:
 

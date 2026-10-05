@@ -163,7 +163,7 @@ switched off per request (E).
 - **Primary:** B against A pooled over the two primary tasks is **19/23 against 10/24, +0.41, cluster interval [+0.09 to +0.73]**, a gain at every
   path: by the pre-registered thresholds the cap is binding. The reading rests on all four paths.
 - `fetch-cache` is 11/11 once the cap is not binding (it measured the cap); `markup-lite` is still 8/12, with four wrong answers and no cut-off (it measures the code).
-- D is cheaper per success on two tasks and worse on `markup-lite`; E is 3 to 4 times faster per trial and less accurate (the harm check flags `config-extends`).
+- D is cheaper per success on two tasks and worse on `markup-lite`; E is 3 to 4 times faster per trial and less accurate (the harm check flags `config-extends`), but it fails the M6 manipulation check in two paths, so by the design's rule it is reported as an invalid arm.
 - **There is no sandbox, and it showed.** One excluded trial read a hidden check and the reference solution in the repository, through a leftover file of the author's in `/tmp`; another deleted files in
   `/tmp` by glob. Future trials should run with the checkout unreachable.
 

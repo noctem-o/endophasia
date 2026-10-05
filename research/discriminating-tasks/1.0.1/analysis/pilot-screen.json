@@ -1,0 +1,425 @@
+{
+	"stage": "screen",
+	"tasks": [
+		{
+			"task": "slot-pack",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 25516,
+				"q1": 22381.25,
+				"q3": 43237.5,
+				"iqr": 20856.25,
+				"min": 18681,
+				"max": 52957
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 6.5,
+				"q1": 5,
+				"q3": 8.75,
+				"iqr": 3.75,
+				"min": 5,
+				"max": 13
+			},
+			"outputTokensMedian": 2284,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "ticket-code",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 41997.5,
+				"q1": 34949,
+				"q3": 47386.25,
+				"iqr": 12437.25,
+				"min": 31136,
+				"max": 77674
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 5.5,
+				"q1": 5,
+				"q3": 6.75,
+				"iqr": 1.75,
+				"min": 4,
+				"max": 7
+			},
+			"outputTokensMedian": 4503.5,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "rolling-median",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 9,
+			"wallMs": {
+				"n": 6,
+				"median": 18335.5,
+				"q1": 15639,
+				"q3": 24901.25,
+				"iqr": 9262.25,
+				"min": 14947,
+				"max": 64291
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 4.5,
+				"q1": 4,
+				"q3": 5.75,
+				"iqr": 1.75,
+				"min": 4,
+				"max": 21
+			},
+			"outputTokensMedian": 1617,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "booking-conflicts",
+			"planned": 6,
+			"counted": 6,
+			"successes": 5,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {
+				"wrong-result": 1
+			},
+			"unmeasured": false,
+			"outsideMentions": 8,
+			"wallMs": {
+				"n": 6,
+				"median": 77235.5,
+				"q1": 65868,
+				"q3": 97286.5,
+				"iqr": 31418.5,
+				"min": 50161,
+				"max": 142253
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 8.5,
+				"q1": 8,
+				"q3": 9.75,
+				"iqr": 1.75,
+				"min": 6,
+				"max": 13
+			},
+			"outputTokensMedian": 8217.5,
+			"advances": true,
+			"advancing": true
+		},
+		{
+			"task": "markup-lite",
+			"planned": 6,
+			"counted": 6,
+			"successes": 3,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {
+				"wrong-result": 3
+			},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 228745.5,
+				"q1": 205937.5,
+				"q3": 242894,
+				"iqr": 36956.5,
+				"min": 199263,
+				"max": 316749
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 7.5,
+				"q1": 3.25,
+				"q3": 9.5,
+				"iqr": 6.25,
+				"min": 2,
+				"max": 11
+			},
+			"outputTokensMedian": 17401.5,
+			"advances": true,
+			"advancing": true
+		},
+		{
+			"task": "tax-brackets",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 32,
+			"wallMs": {
+				"n": 6,
+				"median": 141720,
+				"q1": 129533.5,
+				"q3": 150895.25,
+				"iqr": 21361.75,
+				"min": 83073,
+				"max": 278850
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 11.5,
+				"q1": 8.75,
+				"q3": 15,
+				"iqr": 6.25,
+				"min": 7,
+				"max": 18
+			},
+			"outputTokensMedian": 14120.5,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "route-normalize",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 101798.5,
+				"q1": 94471,
+				"q3": 111565,
+				"iqr": 17094,
+				"min": 77406,
+				"max": 129333
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 8.5,
+				"q1": 7.25,
+				"q3": 9,
+				"iqr": 1.75,
+				"min": 5,
+				"max": 10
+			},
+			"outputTokensMedian": 9574,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "retry-schedule",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 44273,
+				"q1": 34726,
+				"q3": 50967,
+				"iqr": 16241,
+				"min": 31014,
+				"max": 53093
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 7.5,
+				"q1": 5.5,
+				"q3": 8,
+				"iqr": 2.5,
+				"min": 4,
+				"max": 9
+			},
+			"outputTokensMedian": 4858.5,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "inventory-bugs",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 38869.5,
+				"q1": 34685.25,
+				"q3": 51689.25,
+				"iqr": 17004,
+				"min": 27307,
+				"max": 76230
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 9.5,
+				"q1": 9,
+				"q3": 10,
+				"iqr": 1,
+				"min": 7,
+				"max": 14
+			},
+			"outputTokensMedian": 3446.5,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "report-bugs",
+			"planned": 6,
+			"counted": 5,
+			"successes": 5,
+			"errors": 0,
+			"invalid": 1,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 0,
+			"wallMs": {
+				"n": 6,
+				"median": 203923.5,
+				"q1": 186291.75,
+				"q3": 211942.5,
+				"iqr": 25650.75,
+				"min": 147158,
+				"max": 282767
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 18.5,
+				"q1": 18,
+				"q3": 22.75,
+				"iqr": 4.75,
+				"min": 16,
+				"max": 32
+			},
+			"outputTokensMedian": 18788.5,
+			"advances": false,
+			"advancing": false
+		},
+		{
+			"task": "fetch-cache",
+			"planned": 6,
+			"counted": 5,
+			"successes": 4,
+			"errors": 0,
+			"invalid": 1,
+			"failureModes": {
+				"wrong-result": 1
+			},
+			"unmeasured": false,
+			"outsideMentions": 11,
+			"wallMs": {
+				"n": 6,
+				"median": 312168,
+				"q1": 280597.25,
+				"q3": 337739.5,
+				"iqr": 57142.25,
+				"min": 219209,
+				"max": 371103
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 17,
+				"q1": 12,
+				"q3": 22,
+				"iqr": 10,
+				"min": 3,
+				"max": 32
+			},
+			"outputTokensMedian": 24754,
+			"advances": true,
+			"advancing": true
+		},
+		{
+			"task": "config-extends",
+			"planned": 6,
+			"counted": 6,
+			"successes": 6,
+			"errors": 0,
+			"invalid": 0,
+			"failureModes": {},
+			"unmeasured": false,
+			"outsideMentions": 50,
+			"wallMs": {
+				"n": 6,
+				"median": 268988,
+				"q1": 238964.25,
+				"q3": 289846.75,
+				"iqr": 50882.5,
+				"min": 210336,
+				"max": 302062
+			},
+			"toolCalls": {
+				"n": 6,
+				"median": 23,
+				"q1": 20.5,
+				"q3": 24,
+				"iqr": 3.5,
+				"min": 18,
+				"max": 26
+			},
+			"outputTokensMedian": 21403.5,
+			"advances": false,
+			"advancing": false
+		}
+	],
+	"advancing": [
+		"booking-conflicts",
+		"fetch-cache",
+		"markup-lite"
+	],
+	"dropped": [
+		"config-extends",
+		"inventory-bugs",
+		"report-bugs",
+		"retry-schedule",
+		"rolling-median",
+		"route-normalize",
+		"slot-pack",
+		"tax-brackets",
+		"ticket-code"
+	],
+	"unmeasured": [],
+	"validity": {
+		"M1": {
+			"status": "PASS",
+			"trials": 72,
+			"instances": []
+		},
+		"M5": "PASS",
+		"M6": "MANIPULATION INCOMPLETE",
+		"M-ws": {
+			"status": "PASS",
+			"problems": []
+		}
+	}
+}

@@ -1,0 +1,51 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 4,
+	"task": "markup-lite",
+	"condition": "default",
+	"trial": 1,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-05T02:15:34.315Z",
+	"endedAt": "2026-10-05T02:18:59.660Z",
+	"store": "trials/markup-lite/default/1/store",
+	"session": "endo.session.pi.endo-pi-default-04c420ff2b9a",
+	"exchanges": 2,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 1,
+		"passed": false,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "fba759c2a2a0bea35075b52d5ea48f3e01ba1d322edc501eefcdf165a0fcdea6",
+			"bytes": 6901
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "62b1c2e0595032543546f272285effec605b0717f111932142c1d241b18e4c0f",
+		"bytes": 1465
+	},
+	"notes": []
+}

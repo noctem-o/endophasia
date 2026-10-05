@@ -1,0 +1,16 @@
+✔ R1: ttlMs is validated, and 0 means no caching (5.021335ms)
+✔ R2: caching, expiry and fragments (0.91575ms)
+✔ R2: the stamp is read after the fetch resolves (0.261193ms)
+✔ R3: only 2xx responses are stored, and errors are not (0.644307ms)
+✔ R4: calls in flight share one fetch (4.317896ms)
+✔ R5: fresh bypasses the cache and replaces the entry (0.638726ms)
+✔ R6: clear and stats (0.61926ms)
+✔ R7: returned responses are copies, and the URL check stays (0.467293ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57.694354

@@ -1,0 +1,96 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 30,
+	"task": "booking-conflicts",
+	"condition": "default",
+	"trial": 2,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-10-04T23:33:00.266Z",
+	"endedAt": "2026-10-04T23:34:41.587Z",
+	"store": "trials/booking-conflicts/default/2/store",
+	"session": "endo.session.pi.endo-pi-default-92d86a3d120d",
+	"exchanges": 7,
+	"requestParameters": [
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		},
+		{
+			"model": "qwen3.8-27b",
+			"stream": true,
+			"stream_options": {
+				"include_usage": true
+			},
+			"store": false,
+			"max_completion_tokens": 16384
+		}
+	],
+	"check": {
+		"ran": true,
+		"exitCode": 1,
+		"passed": false,
+		"timedOut": false,
+		"output": {
+			"keyId": "fixture-public",
+			"value": "4b86c55538b44c3f4f554ae42d6136e9303e21bf3bc71d94b3dc7ff1b2cdf028",
+			"bytes": 1154
+		}
+	},
+	"finalWorkspace": {
+		"keyId": "fixture-public",
+		"value": "a490a365f789b3dbd47af8f44afba62b59f6c6f667586b49fa5980f340b74ad0",
+		"bytes": 6158
+	},
+	"notes": []
+}

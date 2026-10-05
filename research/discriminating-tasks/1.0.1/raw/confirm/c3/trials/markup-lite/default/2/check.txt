@@ -1,0 +1,41 @@
+✔ R1: type check and escaping (1.209034ms)
+✔ R2: the three spans (0.183366ms)
+✔ R3: openers, closers and plain markers (3.901812ms)
+✔ R4: the underscore flanking rule (0.169951ms)
+✖ R5: code spans (1.087374ms)
+✔ R6: nesting and no overlap (0.144653ms)
+✔ R7: backslash escapes (0.130507ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58.438043
+
+✖ failing tests:
+
+test at ../hidden-check-work/hidden.test.mjs:63:1
+✖ R5: code spans (1.087374ms)
+  AssertionError [ERR_ASSERTION]: "`a\\`"
+  + actual - expected
+  
+  + '`a`'
+  - '<code>a\\</code>'
+  
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:47)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:64:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '`a`',
+    expected: '<code>a\\</code>',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,150 @@
+✖ R1: ttlMs is validated, and 0 means no caching (1.284406ms)
+✖ R2: caching, expiry and fragments (4.629594ms)
+✖ R2: the stamp is read after the fetch resolves (0.356273ms)
+✖ R3: only 2xx responses are stored, and errors are not (0.438939ms)
+✖ R4: calls in flight share one fetch (5.010434ms)
+✖ R5: fresh bypasses the cache and replaces the entry (0.387643ms)
+✖ R6: clear and stats (0.223743ms)
+✖ R7: returned responses are copies, and the URL check stays (0.25404ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 0
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 59.896725
+
+✖ failing tests:
+
+test at ../hidden-check-work/hidden.test.mjs:29:1
+✖ R1: ttlMs is validated, and 0 means no caching (1.284406ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception (RangeError): -1
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:31:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:43:1
+✖ R2: caching, expiry and fragments (4.629594ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'http://x/a#top'
+  -   'http://x/a'
+    ]
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:46:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'http://x/a#top' ],
+    expected: [ 'http://x/a' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:63:1
+✖ R2: the stamp is read after the fetch resolves (0.356273ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:78:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:84:1
+✖ R3: only 2xx responses are stored, and errors are not (0.438939ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:92:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:106:1
+✖ R4: calls in flight share one fetch (5.010434ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  3 !== 2
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:122:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:142:1
+✖ R5: fresh bypasses the cache and replaces the entry (0.387643ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'v2' !== 'v1'
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:147:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'v2',
+    expected: 'v1',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:171:1
+✖ R6: clear and stats (0.223743ms)
+  TypeError [Error]: client.stats is not a function
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:173:26)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../hidden-check-work/hidden.test.mjs:204:1
+✖ R7: returned responses are copies, and the URL check stays (0.25404ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  3 !== 1
+  
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:213:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

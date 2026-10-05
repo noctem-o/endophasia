@@ -354,6 +354,8 @@ llama.cpp, and one machine:
 - [Path-sensitivity study](research/README.md#path-sensitivity-study): the steering results over 30 working-directory
   paths. A QUEUE was followed at every path, a STEER on one task at 27 of 30 and on the other at 6 of 30, and the
   baseline itself varied with the path on that second task.
+- [Discriminating-task study](research/README.md#discriminating-task-study): of 12 small coding tasks, two discriminate
+  for this model (13 of 20 and 7 of 20) and most are saturated; most failures were a response cut off at the completion cap.
 
 **Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
 typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and

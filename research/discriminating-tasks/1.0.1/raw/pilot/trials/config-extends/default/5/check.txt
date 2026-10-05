@@ -1,0 +1,15 @@
+✔ R1: names are resolved against the extending file and normalized (5.77156ms)
+✔ R2: order of merging, and extends is dropped (0.317731ms)
+✔ R3: deep merge for objects, replacement for everything else (0.402772ms)
+✔ R4: cycles are errors, diamonds are not (0.59734ms)
+✔ R5: invalid JSON and non-object JSON name the file (0.600826ms)
+✔ R6: each file is read at most once (0.177395ms)
+✔ R7: __proto__ is plain data (0.186703ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 55.868485

@@ -15,6 +15,7 @@ OpenAI-compatible server) and one machine.
 | [Pinned-environment study (E3)](#pinned-environment-study-e3) | [design](pinned-environment/1.0.1/DESIGN.md), [results](pinned-environment/1.0.1/RESULTS.md) | "stable" with the environment pinned, deterministic sampling and the cache off |
 | [Steering study](#steering-study) | [design](steering/1.0.1/DESIGN.md), [results](steering/1.0.1/RESULTS.md) | a STEER and a QUEUE at a fixed point against a baseline, all in the deterministic condition |
 | [Path-sensitivity study](#path-sensitivity-study) | [design](path-sensitivity/1.0.1/DESIGN.md), [results](path-sensitivity/1.0.1/RESULTS.md) | the steering results across 30 working-directory paths: QUEUE followed at every path, STEER at most paths on one task and few on the other |
+| [Discriminating-task study](#discriminating-task-study) | [design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md) | 12 small coding tasks screened and confirmed: two discriminate (13/20 and 7/20), most are saturated, and most failures are a response cut off at the completion cap |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle
@@ -135,6 +136,20 @@ Over the 30 paths:
 
 Only the path hash varied, and the study counts paths, not mechanisms. One Pi release, one model, two tasks, one message
 each and one point.
+
+## Discriminating-task study
+
+A fifth study ([design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md)) answers the
+question the earlier four raised: every success check in every study passed, so none could separate two candidates. It wrote a pool of
+12 small coding tasks (8 implement-to-spec, 2 bugfix, 2 edit-existing) with hidden checks, mechanically validated before any trial
+(reference passes, starting workspace and a plausible wrong solution fail, every stated rule is tested and every tested rule stated).
+A screen of 6 trials per task, then 20 fresh trials on each advancing task over 4 working-directory paths, in the pinned condition.
+
+- **Two tasks discriminate:** `fetch-cache` 13 of 20 [43, 82] and `markup-lite` 7 of 20 [18, 57] (with path heterogeneity).
+  `booking-conflicts` advanced at 5/6 and was 20/20. The other nine were dropped at the screen, seven at 6 of 6.
+- **Post-hoc, not pre-registered:** 21 of the 25 failures on the three tasks are a response that hit Pi's default
+  `max_completion_tokens` of 16,384 while reasoning, before any code was written. The tasks discriminate mostly on that.
+- The validation/holdout split is fixed (`validated-tasks.json`): one task each, so the holdout is very small.
 
 ## Fake-only paths
 

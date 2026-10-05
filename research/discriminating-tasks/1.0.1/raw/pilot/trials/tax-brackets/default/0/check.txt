@@ -1,0 +1,14 @@
+✔ R1: input validation (1.317155ms)
+✔ R2: schedule validity, and the schedule is checked first (3.714599ms)
+✔ R3: progressive brackets (0.271121ms)
+✔ R4: each bracket rounds half to even before adding (0.733224ms)
+✔ R5: the result shape (0.23345ms)
+✔ R6: no mutation, and exact arithmetic for large incomes (0.26525ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53.650081

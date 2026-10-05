@@ -1,0 +1,123 @@
+✖ R1: type check and escaping (1.248789ms)
+✖ R2: the three spans (0.135496ms)
+✖ R3: openers, closers and plain markers (0.105008ms)
+✖ R4: the underscore flanking rule (3.772435ms)
+✖ R5: code spans (0.14297ms)
+✖ R6: nesting and no overlap (0.146186ms)
+✖ R7: backslash escapes (0.131468ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 0
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 55.688204
+
+✖ failing tests:
+
+test at ../hidden-check-work/hidden.test.mjs:11:1
+✖ R1: type check and escaping (1.248789ms)
+  AssertionError [ERR_ASSERTION]: The error is expected to be an instance of "TypeError". Received "Error"
+  
+  Error message:
+  
+  not implemented
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:12:60)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: not implemented
+        at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+        at file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:12:73
+        at getActual (node:assert:580:5)
+        at strict.throws (node:assert:728:24)
+        at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:12:60)
+        at Test.runInAsyncScope (node:async_hooks:226:14)
+        at Test.run (node:internal/test_runner/test:1402:25)
+        at Test.start (node:internal/test_runner/test:1262:17)
+        at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17),
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at ../hidden-check-work/hidden.test.mjs:23:1
+✖ R2: the three spans (0.135496ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:24:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at ../hidden-check-work/hidden.test.mjs:33:1
+✖ R3: openers, closers and plain markers (0.105008ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:34:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../hidden-check-work/hidden.test.mjs:49:1
+✖ R4: the underscore flanking rule (3.772435ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:50:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../hidden-check-work/hidden.test.mjs:63:1
+✖ R5: code spans (0.14297ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:64:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../hidden-check-work/hidden.test.mjs:79:1
+✖ R6: nesting and no overlap (0.146186ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:80:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../hidden-check-work/hidden.test.mjs:91:1
+✖ R7: backslash escapes (0.131468ms)
+  Error: not implemented
+      at render (file:///tmp/endo-experiment-5c78d675047f/scratch/work/src/markup-lite.js:3:8)
+      at cases (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:8:53)
+      at TestContext.<anonymous> (file:///tmp/endo-experiment-5c78d675047f/scratch/hidden-check-work/hidden.test.mjs:92:2)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

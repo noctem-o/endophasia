@@ -156,7 +156,30 @@ for local inference.
 
 ## 9a. Pilot result and N
 
-(Reserved.)
+The pilot ran on 2026-10-05 (07:03 to 10:04 UTC): 5 arms × 4 tasks × 2 trials = 40 trials, 40 completed, 0 runner errors, one path
+(`endo.experiment.completion-cap-1.0.1-pilot`; `analysis/pilot.json`). It is not part of any estimate. The gates of §6:
+
+1. **M-inj: PASS** in every request of every arm (the cap reached the request: 16,384 for A, D, E, 32,768 for B, 49,152 for C; E's
+   `chat_template_kwargs` was present and no other arm had it). **M-sys PASS** (D's system message is A's plus the one sentence; the
+   others equal A's), **M-tools PASS**, **M1 PASS** (no sampling field), **M5 and M6 PASS**, **M-ws PASS**. Cut-off responses were
+   1.3% of A's, 2.4% of D's, and none in B, C and E: **M-trunc holds** (B has fewer than A).
+2. **Timeouts: one.** `fetch-cache` in arm B (#0) ran to the 3,600 s timeout (the runner noted `agent_settled was not observed`)
+   because the agent's own self-check, `node --test` on a scratch test file, never returned (Pi's bash tool has no timeout of its own).
+   The trial passed its hidden check. It is a hung tool, not the cap and not the context: **no server error and no oversize request in any arm**
+   (the largest peak prompt was 31,744 tokens, plus a cap of 32,768 or 49,152). Hangs of this kind cost up to an hour each; they are
+   counted as "session did not finish" in every arm (§7), whatever the check said.
+3. **E's manipulation works, strongly:** reasoning output fell by 100% on every task (no `reasoning_content` at all), output tokens by
+   about 70 to 90% and wall time to 25 to 88 s. **E is kept.** In the pilot E passed 3 of 8 trials against A's 7 of 8
+   (`fetch-cache` 0/2, `markup-lite` 0/2, `config-extends` 1/2, `booking-conflicts` 2/2): not an estimate, but it shows what the harm
+   check is for.
+4. **D's manipulation: PASS** (above).
+5. **The estimate.** One trial of every cell cost about 4,420 s (all five arms); with the pilot's means (the hung trial included) the
+   estimated total for 4 paths is 19.9 h at N = 3, 26.5 h at N = 4 and 33.1 h at N = 5. **No N fits the 14-hour limit, so by §8 arm C
+   is dropped** (the re-estimate: 16.5 h at N = 3, 22.0 h at N = 4).
+
+**Decision for the main run (see §13):** arms **A, B, D and E**, **N = 3** trials per cell per path (12 per cell, 24 per arm on the two primary
+tasks, 192 trials), estimated at about 16.5 h with the pilot's hung trial counted and about 10.6 h without it. A 14-hour limit
+was a soft budget, the hung trial is the reason it is exceeded, and N = 3 is the smallest N the design allows.
 
 ## 10. What this study does and does not do to the holdout
 
@@ -188,4 +211,13 @@ adaptive budget, or new tasks.
 
 ## 13. Deviations
 
-(None.)
+Both were decided from the pilot, before any main-run trial.
+
+1. **N = 3 with an estimate above the 14-hour limit (§8).** §8 says to drop arm C if even N = 3 exceeds 14 hours and to redo the estimate.
+   C was dropped and the estimate (16.5 h) still exceeds 14 h, mainly because one pilot trial hung for the full hour. The design did not say
+   what to do then. The decision is to run N = 3 anyway: it is the smallest N the design allows, the limit was a soft budget, and the estimate
+   without the hung trial is 10.6 h. **The secondary question 1 (does 49,152 add anything over 32,768) is therefore not answered by this study.**
+2. **The analysis counts a session that did not finish whatever the check said (§7).** The pilot's one timeout passed its check, and the
+   first version of the analysis counted "session did not finish" only among failures. It now counts every trial the runner noted as not
+   settled, as §7's M-time says. Two earlier fixes to the analysis code (reading chunked responses by bytes, and skipping the proxy's empty
+   stale-connection retries) were also made on the live pilot, before any analysis of it.

@@ -259,6 +259,7 @@ describe("the cell of an arm and a task", () => {
 		class: kind,
 		wallMs: 1000,
 		toolCalls: 3,
+		didNotFinish: false,
 		responses: 2,
 		cutOffResponses: 0,
 		httpErrors: 0,

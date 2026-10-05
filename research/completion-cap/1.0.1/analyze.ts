@@ -55,6 +55,8 @@ export interface TrialV0 {
 	class: ClassV0;
 	wallMs: number;
 	toolCalls: number;
+	/** The runner noted that agent_settled was not observed (the session hit the timeout), whatever the check said. */
+	didNotFinish: boolean;
 	responses: number;
 	cutOffResponses: number;
 	httpErrors: number;
@@ -166,6 +168,7 @@ export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
 			trial: result.trial,
 			wallMs,
 			toolCalls: 0,
+			didNotFinish: result.notes.some((note) => /agent_settled was not observed/.test(note)),
 			responses: 0,
 			cutOffResponses: 0,
 			httpErrors: 0,
@@ -321,8 +324,7 @@ export function cell(arm: ArmIdV0, task: string, trials: readonly TrialV0[], pla
 		unmeasured: errors > 0.1 * planned,
 		failureModes: modes,
 		cutOffTrialShare: shareV0(mine.filter((trial) => trial.cutOffResponses > 0).length, mine.length),
-		timeouts: mine.filter((trial) => trial.class.kind === "failure" && trial.class.mode === "session-did-not-finish")
-			.length,
+		timeouts: mine.filter((trial) => trial.didNotFinish).length,
 		httpErrors: mine.reduce((sum, trial) => sum + trial.httpErrors, 0),
 		reasoningShare: shareV0(reasoning, reasoning + content),
 		outputTokens: spreadV0(mine.map((trial) => trial.outputTokens)),
@@ -373,9 +375,7 @@ export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 						mine.reduce((s, t) => s + t.cutOffResponses, 0),
 						mine.reduce((s, t) => s + t.responses, 0),
 					),
-					"session-did-not-finish": mine.filter(
-						(t) => t.class.kind === "failure" && t.class.mode === "session-did-not-finish",
-					).length,
+					"session-did-not-finish": mine.filter((t) => t.didNotFinish).length,
 					"server-errors": mine.reduce((sum, t) => sum + t.httpErrors, 0),
 				},
 			];

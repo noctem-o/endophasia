@@ -9,7 +9,8 @@ pilot and before any main-run trial. Everything here is from the main run (4 pat
 **On `fetch-cache` and `markup-lite`, the cap is binding.** Raising Pi's completion cap from 16,384 to 32,768 tokens (arm B against the control A)
 raised the pooled success rate from **10 of 24 (42%) to 19 of 23 (83%)**: a difference of **+0.41**, with a cluster interval over the four paths of
 **[+0.09, +0.73]** and a gain at every path (+0.63, +0.50, +0.33, +0.17). By the thresholds fixed in DESIGN §9 (the interval above 0 and the
-difference at least +0.25) the pre-registered reading is **"the cap is binding"**.
+difference at least +0.25) the pre-registered reading is **"the cap is binding"**. The reading is fragile in one way: it rests on all four paths (leave any one out and the interval usually includes 0, though
+the difference stays at +0.33 or more; see Validity).
 
 | Arm | What it does | Pooled over the two primary tasks | 95% Wilson |
 | :--- | :--- | ---: | :--- |

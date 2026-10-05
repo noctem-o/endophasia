@@ -16,26 +16,28 @@ export interface WireSummaryV0 {
 	contentChars: number;
 }
 
-function dechunk(body: string): string {
-	let out = "";
+/** Chunk sizes count bytes, not characters, so the body is decoded after the chunks are cut out of the bytes. */
+function dechunk(body: Buffer): string {
+	const parts: Buffer[] = [];
 	let at = 0;
 	for (;;) {
 		const eol = body.indexOf("\r\n", at);
 		if (eol === -1) break;
-		const size = Number.parseInt(body.slice(at, eol), 16);
+		const size = Number.parseInt(body.subarray(at, eol).toString("latin1"), 16);
 		if (!Number.isFinite(size) || size === 0) break;
-		out += body.slice(eol + 2, eol + 2 + size);
+		parts.push(body.subarray(eol + 2, eol + 2 + size));
 		at = eol + 2 + size + 2;
 	}
-	return out;
+	return Buffer.concat(parts).toString("utf8");
 }
 
-export function parseWireV0(wire: string): WireSummaryV0 {
+export function parseWireV0(input: string | Uint8Array): WireSummaryV0 {
+	const wire = Buffer.from(typeof input === "string" ? Buffer.from(input, "utf8") : input);
 	const split = wire.indexOf("\r\n\r\n");
-	const head = split === -1 ? wire : wire.slice(0, split);
-	const raw = split === -1 ? "" : wire.slice(split + 4);
+	const head = (split === -1 ? wire : wire.subarray(0, split)).toString("utf8");
+	const raw = split === -1 ? Buffer.alloc(0) : wire.subarray(split + 4);
 	const status = /^HTTP\/\d(?:\.\d)? (\d{3})/.exec(head);
-	const body = /transfer-encoding:\s*chunked/i.test(head) ? dechunk(raw) : raw;
+	const body = /transfer-encoding:\s*chunked/i.test(head) ? dechunk(raw) : raw.toString("utf8");
 	const summary: WireSummaryV0 = {
 		httpStatus: status ? Number(status[1]) : null,
 		finishReason: null,

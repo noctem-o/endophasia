@@ -125,8 +125,12 @@ export function responsesOf(store: string): WireSummaryV0[] {
 	const out: WireSummaryV0[] = [];
 	for (const event of readEndoCaptureEventsV0(store)) {
 		const payload = event.payload as { wire?: { digest: Parameters<typeof blobs.get>[0] } };
-		if (event.producer === "capture:record" && event.kind === "capture.exchange-ended" && payload.wire)
-			out.push(parseWireV0(Buffer.from(blobs.get(payload.wire.digest)).toString("utf8")));
+		if (event.producer === "capture:record" && event.kind === "capture.exchange-ended" && payload.wire) {
+			const summary = parseWireV0(blobs.get(payload.wire.digest));
+			// An exchange with no bytes is the proxy's retry of a connection the server had already closed ("the upstream
+			// had closed the connection before this request arrived"): the retry is the next exchange, so it is not a response.
+			if (summary.httpStatus !== null) out.push(summary);
+		}
 	}
 	return out;
 }

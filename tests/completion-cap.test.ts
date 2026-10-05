@@ -14,7 +14,7 @@ import { scratchHashOf } from "../research/path-sensitivity/1.0.1/make-spec.ts";
 
 const chunk = (text: string) => {
 	const payload = `data: ${text}\n\n`;
-	return `${payload.length.toString(16)}\r\n${payload}\r\n`;
+	return `${Buffer.byteLength(payload).toString(16)}\r\n${payload}\r\n`;
 };
 const wireOf = (
 	events: object[],
@@ -46,6 +46,20 @@ describe("the response reader", () => {
 			reasoningChars: 8,
 			contentChars: 4,
 		});
+	});
+
+	it("cuts chunks by bytes, so multi-byte characters do not shift the rest of the stream", () => {
+		const wire = wireOf([
+			{ choices: [{ finish_reason: null, delta: { reasoning_content: "caf\u00e9 \u4f60\u597d \u{1F600}" } }] },
+			{ choices: [{ finish_reason: null, delta: { content: "after" } }] },
+			{ choices: [{ finish_reason: "stop", delta: {} }], usage: { prompt_tokens: 5, completion_tokens: 9 } },
+		]);
+		expect(parseWireV0(Buffer.from(wire, "utf8"))).toMatchObject({
+			finishReason: "stop",
+			completionTokens: 9,
+			contentChars: 5,
+		});
+		expect(parseWireV0(wire).reasoningChars).toBe("caf\u00e9 \u4f60\u597d \u{1F600}".length);
 	});
 
 	it("reports a tool-call stop, and an error response with no events", () => {

@@ -94,7 +94,8 @@ export async function startEndoControlServerV0(root: string, desk: PiInterventio
 	const closeRequested = new Promise<void>((done) => {
 		requestClose = done;
 	});
-	// Messages are handled one at a time, in arrival order, across connections: the desk is not re-entrant.
+	// Messages are started one at a time, in arrival order, across connections: the desk's maps are not re-entrant. An
+	// `apply` is started the same way but not waited for (below).
 	let queue: Promise<unknown> = Promise.resolve();
 	const handle = async (message: Message): Promise<JsonValueV0> => {
 		switch (message.type) {
@@ -126,10 +127,10 @@ export async function startEndoControlServerV0(root: string, desk: PiInterventio
 			case "status":
 				return desk.status();
 			case "finish":
-				desk.finish();
+				await desk.finish();
 				return desk.status();
 			case "close":
-				desk.finish();
+				await desk.finish();
 				requestClose();
 				return { closing: true };
 			default: {
@@ -153,13 +154,21 @@ export async function startEndoControlServerV0(root: string, desk: PiInterventio
 			});
 			return;
 		}
-		queue = queue.then(async () => {
-			try {
-				const result = await handle(message);
-				socket.write(`${JSON.stringify({ id: message.id ?? null, ok: true, result })}\n`);
-			} catch (error) {
-				socket.write(`${JSON.stringify({ id: message.id ?? null, ok: false, error: (error as Error).message })}\n`);
-			}
+		queue = queue.then(() => {
+			const work = (async () => {
+				try {
+					const result = await handle(message);
+					socket.write(`${JSON.stringify({ id: message.id ?? null, ok: true, result })}\n`);
+				} catch (error) {
+					socket.write(
+						`${JSON.stringify({ id: message.id ?? null, ok: false, error: (error as Error).message })}\n`,
+					);
+				}
+			})();
+			// An apply can wait a long time for Pi (an abort is answered only once the run is idle). It is started in
+			// arrival order but not waited for, so status, close and further proposals are never held behind it; the
+			// desk makes a duplicate apply wait for the first, and `finish` and `close` wait for the ones in flight.
+			return message.type === "apply" ? undefined : work;
 		});
 	};
 	const server: Server = createServer((socket) => {

@@ -6,6 +6,7 @@
 //   - an authorization for another proposal, or for another digest of this one;
 //   - a proposal whose recorded content, or whose message, no longer matches its digest (tampered);
 //   - a proposal or authorization bound to another session or attachment;
+//   - an authorization older than the oldest accepted, or dated in the future (it is for a decision made now);
 //   - an operation whose runtime capability current evidence does not admit (UNAVAILABLE, with the reason);
 //   - a session that has ended, and a run that is not active.
 //
@@ -109,9 +110,20 @@ export function endoInterventionAuthorizationV0(
 	};
 }
 
+/** How far in the future an authorization's recording time may be (clock skew), in ms. */
+export const ENDO_INTERVENTION_CLOCK_SKEW_MS_V0 = 60_000;
+/** The oldest authorization the desk accepts by default, in ms. */
+export const ENDO_INTERVENTION_AUTHORIZATION_MAX_AGE_MS_V0 = 15 * 60_000;
+
 export interface EndoInterventionGateInputV0 {
 	proposal: EndoInterventionProposalV0;
 	authorization: EndoInterventionAuthorizationV0 | null;
+	/**
+	 * How old the authorization record is (ms, by its recording time) and the oldest the gate accepts. An authorization
+	 * is for a decision made now, not a standing permission: without both, no age is checked.
+	 */
+	authorizationAgeMs?: number;
+	authorizationMaxAgeMs?: number;
 	/** Whether the stored message still digests to the proposal's reference (null for stop). */
 	messageVerified: boolean | null;
 	currentSession: string;
@@ -159,6 +171,15 @@ export function endoInterventionGateV0(input: EndoInterventionGateInputV0): Endo
 		return refuse("proposal-for-another-session", `the proposal is bound to ${proposal.session}`);
 	if (authorization.attachment !== input.currentAttachment || proposal.attachment !== input.currentAttachment)
 		return refuse("authorization-for-another-attachment", `bound to attachment ${authorization.attachment}`);
+	if (input.authorizationAgeMs !== undefined && input.authorizationMaxAgeMs !== undefined) {
+		if (input.authorizationAgeMs > input.authorizationMaxAgeMs)
+			return refuse(
+				"authorization-expired",
+				`the authorization is ${Math.round(input.authorizationAgeMs / 1000)} s old; the oldest accepted is ${Math.round(input.authorizationMaxAgeMs / 1000)} s`,
+			);
+		if (input.authorizationAgeMs < -ENDO_INTERVENTION_CLOCK_SKEW_MS_V0)
+			return refuse("authorization-expired", "the authorization is dated in the future");
+	}
 	if (!input.capability.admitted) return refuse("capability-unavailable", input.capability.reason);
 	if (!input.sessionLive) return refuse("session-ended", "the session has ended; nothing is running to receive it");
 	if (!input.runActive) return refuse("no-active-run", `no run is active: ${proposal.operation} needs one`);
@@ -205,9 +226,23 @@ export function endoUserMessageTextsV0(body: unknown): string[] {
 		);
 }
 
+/** How many user messages in a request carry the message's keyed digest. */
+function endoMessageOccurrencesV0(
+	request: EndoCapturedRequestV0,
+	message: EndoInterventionMessageRefV0,
+	key: EndoDigestKeyV0,
+): number {
+	return endoUserMessageTextsV0(request.body).filter(
+		(text) => key.digestBytes(Buffer.from(text, "utf8")).value === message.digest.value,
+	).length;
+}
+
 /**
- * The first captured request, from exchange `fromExchange` on, that carries a user message whose keyed digest is the
- * proposal's message digest. Null when none does: consumption is then not observed.
+ * The first captured request, from exchange `fromExchange` on, that carries the message **one more time than the last
+ * request before it did**. Every request resends the whole conversation, so a message whose text is already in the
+ * history (an operator steering with the words of the original prompt, or with an earlier steer's) is in every later
+ * request whether or not Pi delivered it: presence is not consumption, an increase is. Null when no request shows an
+ * increase: consumption is then not observed.
  */
 export function endoFindConsumptionV0(
 	requests: readonly EndoCapturedRequestV0[],
@@ -216,10 +251,11 @@ export function endoFindConsumptionV0(
 	fromExchange: number,
 ): EndoCapturedRequestV0 | null {
 	if (message.digest.keyId !== key.keyId) return null;
-	for (const request of requests) {
-		if (request.exchange < fromExchange) continue;
-		for (const text of endoUserMessageTextsV0(request.body))
-			if (key.digestBytes(Buffer.from(text, "utf8")).value === message.digest.value) return request;
-	}
+	const ordered = [...requests].sort((a, b) => a.exchange - b.exchange);
+	const before = ordered.filter((request) => request.exchange < fromExchange).at(-1);
+	const baseline = before === undefined ? 0 : endoMessageOccurrencesV0(before, message, key);
+	for (const request of ordered)
+		if (request.exchange >= fromExchange && endoMessageOccurrencesV0(request, message, key) > baseline)
+			return request;
 	return null;
 }

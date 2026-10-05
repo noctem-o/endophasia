@@ -525,7 +525,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		// and the session store must still be open.
 		if (desk !== null && session !== null) {
 			await options.proxy.flush();
-			(desk as PiInterventionDeskV0).finish();
+			await (desk as PiInterventionDeskV0).finish();
 		}
 		if (session !== null) await (session as PiSessionAttachmentV0).close();
 		session = null;

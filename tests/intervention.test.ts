@@ -121,27 +121,34 @@ describe("the gate (default deny)", () => {
 		expect(reason(gate(proposal, allow(proposal), { runActive: false }))).toBe("no-active-run");
 	});
 
-	it("consumption is found only by the message's keyed digest, from the given exchange on", () => {
+	it("consumption is found only by the message's keyed digest, as one more occurrence, from the given exchange on", () => {
 		const proposal = proposalFor();
-		const body = (text: string) => ({ messages: [{ role: "user", content: [{ type: "text", text }] }] });
+		const at = "2026-10-04T00:00:00.000Z";
+		// Every request resends the conversation: the message appears in request 3 and stays in the later ones.
+		const body = (...texts: string[]) => ({
+			messages: texts.map((text) => ({ role: "user", content: [{ type: "text", text }] })),
+		});
 		const requests = [
-			{
-				exchange: 1,
-				captureEvent: "endo.event.c1",
-				at: "2026-10-04T00:00:00.000Z",
-				body: body("look at notes.txt again"),
-			},
-			{ exchange: 2, captureEvent: "endo.event.c2", at: "2026-10-04T00:00:00.000Z", body: body("unrelated") },
+			{ exchange: 1, captureEvent: "endo.event.c1", at, body: body("the prompt") },
+			{ exchange: 2, captureEvent: "endo.event.c2", at, body: body("the prompt", "unrelated") },
 			{
 				exchange: 3,
 				captureEvent: "endo.event.c3",
-				at: "2026-10-04T00:00:00.000Z",
-				body: body("look at notes.txt again"),
+				at,
+				body: body("the prompt", "unrelated", "look at notes.txt again"),
+			},
+			{
+				exchange: 4,
+				captureEvent: "endo.event.c4",
+				at,
+				body: body("the prompt", "unrelated", "look at notes.txt again"),
 			},
 		];
-		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 1)?.exchange).toBe(1);
+		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 1)?.exchange).toBe(3);
 		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 2)?.exchange).toBe(3);
-		expect(endoFindConsumptionV0(requests.slice(0, 2), proposal.message!, KEY, 2)).toBeNull();
+		// From exchange 4 on, the message was already there at exchange 3: nothing new arrived.
+		expect(endoFindConsumptionV0(requests, proposal.message!, KEY, 4)).toBeNull();
+		expect(endoFindConsumptionV0(requests.slice(0, 2), proposal.message!, KEY, 1)).toBeNull();
 		const otherKey = endoDigestKeyV0(Buffer.alloc(32, 9), "other");
 		expect(endoFindConsumptionV0(requests, proposal.message!, otherKey, 1)).toBeNull();
 	});
@@ -151,7 +158,7 @@ describe("the gate (default deny)", () => {
 // The desk against the fake Pi
 // ---------------------------------------------------------------------------------------------------------------
 
-async function ready(options: { admitted?: boolean; scenario?: string } = {}) {
+async function ready(options: { admitted?: boolean; scenario?: string; stepMs?: number } = {}) {
 	const install = installFakePi("1.0.0");
 	cleanup.push(() => install.remove());
 	const root = temp("endo-iv-");
@@ -161,7 +168,7 @@ async function ready(options: { admitted?: boolean; scenario?: string } = {}) {
 		root,
 		cwd,
 		executable: install.bin,
-		env: fakePiEnv({ FAKE_PI_STEP_MS: "15", FAKE_PI_LOG: log }),
+		env: fakePiEnv({ FAKE_PI_STEP_MS: String(options.stepMs ?? 15), FAKE_PI_LOG: log }),
 		requestTimeoutMs: 10_000,
 		digestKey: KEY,
 	});
@@ -518,5 +525,206 @@ describe("the control endpoint", () => {
 		await expect(startEndoControlServerV0(root, desk)).rejects.toThrow(
 			/refusing to serve control: .* it must be 0700/,
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Post-merge audit of #29 and #31 (docs/audits/pr29-post-merge.md): one reproduction per defect
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("audit: consumption means the message arrived, not that its text is somewhere in the history", () => {
+	const text = "Use the read tool, then answer";
+	const body = (...texts: string[]) => ({ messages: texts.map((content) => ({ role: "user", content })) });
+	const request = (exchange: number, at: string, ...texts: string[]) => ({
+		exchange,
+		captureEvent: `endo.event.c${exchange}`,
+		at,
+		body: body(...texts),
+	});
+	const ref = endoInterventionMessageRefV0(KEY, text);
+
+	it("a steer whose text repeats an earlier message is consumed only when the text appears one more time", () => {
+		const t = "2026-10-04T00:00:00.000Z";
+		// Request 1 already carries the text (it is the prompt). Request 2 carries the same history: nothing was delivered.
+		const history = [request(1, t, text), request(2, t, text), request(3, t, text, text)];
+		expect(endoFindConsumptionV0(history, ref, KEY, 2)?.exchange).toBe(3);
+		expect(endoFindConsumptionV0(history.slice(0, 2), ref, KEY, 2)).toBeNull();
+		// A second proposal repeating the first steer's text: its baseline is the request before it was sent.
+		const twice = [
+			request(1, t, text),
+			request(2, t, text, text),
+			request(3, t, text, text),
+			request(4, t, text, text, text),
+		];
+		expect(endoFindConsumptionV0(twice, ref, KEY, 3)?.exchange).toBe(4);
+		expect(endoFindConsumptionV0(twice.slice(0, 3), ref, KEY, 3)).toBeNull();
+	});
+
+	it("the desk does not report consumption for a repeated text that was never delivered (with and without a delivery point)", async () => {
+		const { session, close } = await ready();
+		const settled = session.waitForSettled(10_000);
+		await session.prompt("hello");
+		expect(await settled).toBe(true);
+		const before = new Date(Date.now() - 60_000).toISOString();
+		const after = new Date(Date.now() + 60_000).toISOString();
+		const captured = [request(1, before, text), request(2, after, text)];
+		const stub = { requests: () => captured };
+		const audited = new PiInterventionDeskV0(session, KEY, stub);
+		const proposal = audited.propose({ operation: "queue", message: text });
+		const authorization = audited.authorize(proposal.proposalId, localOperatorAuthorityV0(proposal.proposalDigest));
+		// Applied with no delivery point (the timestamp path): the request is recorded now, so exchange 2 is the first after it.
+		// The session has no active run, so Pi is not asked; record the request and its acceptance directly.
+		const requestEvent = session.recordIntervention(
+			"intervention.request",
+			{
+				schemaVersion: ENDO_INTERVENTION_SCHEMA_V0,
+				requestId: "endo.evidence.intervention.request.audit-1",
+				proposalId: proposal.proposalId,
+				authorizationId: authorization.authorizationId,
+				operation: "queue",
+				capability: "steering.follow-up",
+				at: null,
+			},
+			[],
+		);
+		session.recordIntervention(
+			"intervention.accepted",
+			{
+				schemaVersion: ENDO_INTERVENTION_SCHEMA_V0,
+				requestId: "endo.evidence.intervention.request.audit-1",
+				disposition: "queued",
+			},
+			[requestEvent.id],
+		);
+		const reindexed = new PiInterventionDeskV0(session, KEY, stub);
+		await reindexed.finish();
+		const consequence = events(session.owner.options.root).find((event) => event.kind === "intervention.consequence")
+			?.payload as { consumption: { status: string } } | undefined;
+		expect(consequence?.consumption.status).toBe("not-observed");
+		await close();
+	});
+});
+
+describe("audit: a pending STOP does not block the control endpoint, and close waits for it", () => {
+	it("status answers while a STOP is pending", async () => {
+		const { root, session, desk, close } = await ready({ stepMs: 400 });
+		const server = await startEndoControlServerV0(root, desk);
+		cleanup.push(() => server.close());
+		const settled = session.waitForSettled(20_000);
+		await session.prompt("count to forty");
+		await untilStreaming(session);
+		const proposed = await endoControlRequestV0(root, { type: "propose", operation: "stop" });
+		const proposal = proposed.result as unknown as EndoInterventionProposalV0;
+		const authorized = await endoControlRequestV0(root, {
+			type: "authorize",
+			proposalId: proposal.proposalId,
+			confirmDigest: proposal.proposalDigest,
+		});
+		const authorization = authorized.result as unknown as EndoInterventionAuthorizationV0;
+		const order: string[] = [];
+		const applying = endoControlRequestV0(root, {
+			type: "apply",
+			proposalId: proposal.proposalId,
+			authorizationId: authorization.authorizationId,
+		}).then(() => order.push("apply"));
+		await new Promise((done) => setTimeout(done, 100));
+		const status = endoControlRequestV0(root, { type: "status" }).then(() => order.push("status"));
+		await Promise.all([applying, status]);
+		expect(order).toEqual(["status", "apply"]);
+		await settled;
+		await close();
+	}, 60_000);
+
+	it("close during a pending STOP records Pi's acceptance before the consequence", async () => {
+		const { root, session, desk, close } = await ready({ stepMs: 400 });
+		const server = await startEndoControlServerV0(root, desk);
+		cleanup.push(() => server.close());
+		const settled = session.waitForSettled(20_000);
+		await session.prompt("count to forty");
+		await untilStreaming(session);
+		const proposed = await endoControlRequestV0(root, { type: "propose", operation: "stop" });
+		const proposal = proposed.result as unknown as EndoInterventionProposalV0;
+		const authorized = await endoControlRequestV0(root, {
+			type: "authorize",
+			proposalId: proposal.proposalId,
+			confirmDigest: proposal.proposalDigest,
+		});
+		const authorization = authorized.result as unknown as EndoInterventionAuthorizationV0;
+		const applying = endoControlRequestV0(root, {
+			type: "apply",
+			proposalId: proposal.proposalId,
+			authorizationId: authorization.authorizationId,
+		});
+		await new Promise((done) => setTimeout(done, 100));
+		const closing = endoControlRequestV0(root, { type: "close" });
+		await Promise.all([applying, closing]);
+		await server.closeRequested;
+		await settled;
+		await close();
+		const kinds = events(root)
+			.map((event) => event.kind)
+			.filter((kind) => kind === "intervention.accepted" || kind === "intervention.consequence");
+		expect(kinds).toEqual(["intervention.accepted", "intervention.consequence"]);
+		const consequence = events(root).find((event) => event.kind === "intervention.consequence")?.payload as {
+			acceptance: { status: string };
+		};
+		expect(consequence.acceptance.status).toBe("accepted");
+	}, 60_000);
+});
+
+describe("audit: finish waits for an apply that is still waiting for Pi", () => {
+	it("a finish called while a STOP is pending (the SIGINT path) records the acceptance first, and the consequence says accepted", async () => {
+		const { root, session, desk, close } = await ready({ stepMs: 400 });
+		const settled = session.waitForSettled(20_000);
+		await session.prompt("count to forty");
+		await untilStreaming(session);
+		const proposal = desk.propose({ operation: "stop" });
+		const authorization = desk.authorize(proposal.proposalId, localOperatorAuthorityV0(proposal.proposalDigest));
+		const applying = desk.apply(proposal.proposalId, authorization.authorizationId);
+		await new Promise((done) => setTimeout(done, 100));
+		await desk.finish();
+		await applying;
+		await settled;
+		await close();
+		const kinds = events(root)
+			.map((event) => event.kind)
+			.filter((kind) => kind === "intervention.accepted" || kind === "intervention.consequence");
+		expect(kinds).toEqual(["intervention.accepted", "intervention.consequence"]);
+		const consequence = events(root).find((event) => event.kind === "intervention.consequence")?.payload as {
+			acceptance: { status: string };
+		};
+		expect(consequence.acceptance.status).toBe("accepted");
+	}, 60_000);
+});
+
+describe("audit: an authorization expires", () => {
+	it("is refused after the desk's maximum age, on an injected clock, and accepted before it", async () => {
+		const { session, desk: _unused, sinceNow, close } = await ready();
+		const settled = session.waitForSettled(10_000);
+		await session.prompt("count to forty");
+		await untilStreaming(session);
+		const MINUTE = 60_000;
+		let clock = Date.now();
+		const aging = new PiInterventionDeskV0(session, KEY, null, {
+			now: () => clock,
+			authorizationMaxAgeMs: 15 * MINUTE,
+		});
+		const stale = aging.propose({ operation: "steer", message: "an old authorization" });
+		const staleAuthorization = aging.authorize(stale.proposalId, localOperatorAuthorityV0(stale.proposalDigest));
+		const fresh = aging.propose({ operation: "steer", message: "a recent authorization" });
+		const freshAuthorization = aging.authorize(fresh.proposalId, localOperatorAuthorityV0(fresh.proposalDigest));
+		const sent = sinceNow();
+		clock += 16 * MINUTE;
+		expect(await aging.apply(stale.proposalId, staleAuthorization.authorizationId)).toMatchObject({
+			status: "refused",
+			reason: "authorization-expired",
+		});
+		expect(sent()).not.toContain("steer");
+		clock = Date.now() + 14 * MINUTE;
+		expect(await aging.apply(fresh.proposalId, freshAuthorization.authorizationId)).toMatchObject({
+			status: "accepted",
+		});
+		await settled;
+		await close();
 	});
 });

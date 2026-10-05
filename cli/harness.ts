@@ -236,7 +236,7 @@ async function attachWithControl(
 			process.once("SIGTERM", () => done());
 		});
 		await Promise.race([server.closeRequested, signalled]);
-		desk.finish();
+		await desk.finish();
 	} finally {
 		await server?.close();
 		await session.close();

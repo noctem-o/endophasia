@@ -1368,7 +1368,9 @@ with path updates only.
 4. **`prime-research-boundary.test.ts`**: transitive guard — src,
    runtime/prime, presentation, cockpit import no `research/` module; no
    `prime-agent`/`agentclientprotocol` dependency in `package.json` /
-   `package-lock.json`. **DONE (e)**: roots retargeted to the target tree
+   `package-lock.json`. (Superseded for `agentclientprotocol` by the ACP v1 slice: the official SDK is now an exact-pinned
+   dependency confined to `adapters/acp` by `tests/acp-boundary.test.ts`; `prime-agent` stays forbidden here.)
+   **DONE (e)**: roots retargeted to the target tree
    (`protocol/`, `research/` guard via `file.includes("/research/")`,
    roots `["protocol", "runtime/contracts", "runtime/observation",
    "adapters", "presentation", "cockpit"]`; repoRoot = package root).

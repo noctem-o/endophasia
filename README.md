@@ -245,14 +245,25 @@ These projects are reference points for future adapters, not dependencies or bun
 
 | Job | Candidate provider |
 | :--- | :--- |
-| Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor) |
+| Run reusable task / solver / scorer evaluations | [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) |
+| Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor), or an Inspect-native evaluation pack where its task contract fits |
+| Run control, sabotage and monitor experiments | [ControlArena](https://github.com/UKGovernmentBEIS/control-arena), built as a thin layer over Inspect AI |
 | Turn an unmodified harness into trainable rollouts | [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-style capture, or an equivalent provider |
 | Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
 | Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
-| Run isolated environments | Local Docker, CubeSandbox, or another sandbox provider |
+| Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
+| Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
+| Observe or intervene on local-model activations | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when vLLM is the model-serving boundary |
 | Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
 | Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
-| Train model weights | [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
+| Train model weights | [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) when Inspect owns rollout and reward while TRL/GRPO owns optimisation; [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
+
+The Inspect projects are especially useful as an **adapter family**, not as one dependency. Inspect defines reusable task,
+solver, scorer, model-provider, sandbox and early-stopping seams; ControlArena layers serialisable policies, monitors
+and control protocols over them; Inspect RL reuses complete Inspect rollouts as training trajectories; optstop plugs
+into the early-stopping interface; vLLM-Lens registers as an Inspect model provider; and the sandbox packages provide
+replaceable execution environments. A future Endophasia integration should admit these capabilities separately and
+record each provider's version and configuration rather than flattening them into a single "Inspect" capability.
 
 Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
 
@@ -312,6 +323,9 @@ Trajectory capture has two tiers, with different contracts:
 - Training-grade data cannot be reconstructed from text. Harnesses repair, reformat and compact what passes through
   them, and the chat template is applied by the server, so token IDs come from the inference engine, with its
   tokenizer and template identity. They are never re-tokenised by the client.
+- [Inspect RL's rollout boundary](https://github.com/UKGovernmentBEIS/inspect_rl/blob/main/docs/03_internals.md) is a
+  useful concrete reference: it returns exact prompt IDs, sampled completion IDs and behaviour log-probabilities from
+  the serving path, and checks multi-turn prefix continuity rather than round-tripping through text and re-tokenising.
 - Training-grade capture is not passive. Requesting log-probabilities changes the request, so it is a declared
   condition with its own manipulation check, never a silent add-on to evidence capture.
 - The byte-faithful recording proxy keeps its contract. A token-faithful capture provider is a separate component,
@@ -536,6 +550,10 @@ Next:
    Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
    J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
    not hidden model state.
+   - [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) is a candidate local provider for per-request residual
+     activation capture and steering when vLLM is already the serving boundary. Raw activations are observations;
+     probes, labels and "what this activation means" remain derived or inferred claims. A steering vector is a recorded
+     experimental intervention, not evidence that a natural internal state existed.
 9. **Cross-runtime conformance.** Study Pi, Codex, Prime, and other adapters against the same evidence contracts,
    with capability admission based on current evidence rather than names or assumptions.
    - The recording proxy is the common *model-serving* boundary, not a common runtime boundary: each adapter reports
@@ -564,6 +582,11 @@ EVOLVE / research loop:
     context does not carry yet.
 12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
     algorithm part of the Endophasia core.
+    - A concrete first study is an [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) evaluation provider
+      paired with [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) as an optional training provider:
+      Inspect owns the multi-turn/tool/sandbox rollout and scoring, while TRL/GRPO owns optimisation. Training tasks
+      stay distinct from held-out evaluation tasks, and the provider must preserve exact sampled token IDs and
+      behaviour log-probabilities rather than reconstructing them later.
 13. **Resource-aware cognition / test-time compute.** Treat Compute Appetite as an explicit inference budget and policy,
     not a generic "think harder" control. Record ceilings and consumption for tokens, model calls, tool calls,
     verifier calls, branches, tests, retries, wall-clock time, and cost; compare fixed against adaptive allocation and
@@ -572,11 +595,19 @@ EVOLVE / research loop:
     well as token counts rather than assuming tokens are a complete compute proxy. Research leads:
     [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314) and
     [Kinetics](https://arxiv.org/abs/2506.05333).
+    - **Evaluation-level stopping:** [optstop](https://github.com/UKGovernmentBEIS/optstop) is a candidate for repeated
+      evaluation cells through Inspect's early-stopping protocol. Treat its rule, thresholds and every stopped sample
+      as experiment provenance, first validate it post-hoc or in shadow mode, and keep it separate from an agent's own
+      trajectory-level STOP decision.
     - *First study:* the completion-cap study (near-term 6), motivated by the discriminating-task study, where most
       failures were truncation at the completion cap.
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
     evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
-    adaptation loop.
+    adaptation loop. [ControlArena](https://github.com/UKGovernmentBEIS/control-arena) is a useful provider reference
+    for explicit honest/attack modes, policies, monitors and main-task/side-task settings.
+    [Async Control](https://github.com/UKGovernmentBEIS/async-control) is a separate research lead for effects that are
+    reviewed after the initiating action: synchronous prevention, asynchronous detection, and later harmful
+    consequences must remain different events and claims.
 15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
     explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
 
@@ -586,6 +617,10 @@ Hardening and artifact:
 
 16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
     events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
+    Use dedicated adversarial environments where they answer a specific boundary question; for example,
+    [sandbox_escape_bench](https://github.com/UKGovernmentBEIS/sandbox_escape_bench) can test sandbox
+    misconfiguration/escape capability inside an outer VM boundary. Such a benchmark is evidence about that declared
+    environment, not proof that an arbitrary deployment sandbox is safe.
 17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
     comparison → promotion decision trail that another researcher can replay.
 
@@ -690,7 +725,9 @@ do not import a framework merely because its paper reports a benchmark gain.
     baselines; measure target behaviour, collateral regressions, calibration, transfer across tasks and
     model families, and false positives/negatives. Treat this as a research hypothesis, not a general
     alignment detector: the reported evidence is preliminary and does not establish reliable detection
-    of arbitrary misalignment. Keep steering experiments isolated and promotion gated. Starting point:
+    of arbitrary misalignment. Keep steering experiments isolated and promotion gated. Use
+    [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) as one possible activation-steering/instrumentation
+    baseline, not as an interpretation oracle. Starting point:
     [Steering Language Models with Weight Arithmetic](https://arxiv.org/abs/2511.05408).
 
 **Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate

@@ -183,6 +183,28 @@ const agent = acp
 				await new Promise(() => {});
 				break;
 			}
+			case "permission-after-exit": {
+				// A descendant outlives the agent holding both pipes: it asks for permission over the dead agent's stdout and
+				// notes whatever answer arrives on the stdin it shares.
+				const request = JSON.stringify({
+					jsonrpc: "2.0",
+					id: 9001,
+					method: "session/request_permission",
+					params: {
+						sessionId,
+						toolCall: { toolCallId: "late_call" },
+						options: [
+							{ kind: "allow_once", name: "Allow", optionId: "allow" },
+							{ kind: "reject_once", name: "Reject", optionId: "reject" },
+						],
+					},
+				});
+				const script = `const fs=require("fs");setTimeout(()=>{process.stdout.write(${JSON.stringify(`${request}\n`)});process.stdin.on("data",d=>fs.appendFileSync(process.env.FAKE_ACP_OUT,JSON.stringify({lateAnswer:String(d).trim()})+"\\n"))},500);setInterval(()=>{},1000)`;
+				spawn(process.execPath, ["-e", script], { stdio: ["inherit", "inherit", "ignore"] });
+				setTimeout(() => process.exit(4), 100);
+				await new Promise(() => {});
+				break;
+			}
 			case "bad-enums":
 				await update({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "succeeded" });
 				await update({ sessionUpdate: "tool_call", toolCallId: "e2", title: "t", kind: "teleport" });

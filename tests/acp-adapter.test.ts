@@ -563,6 +563,29 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(kinds(events).slice(lateAt)).not.toContain("session.update-observed");
 	});
 
+	it("neither records, consults a handler for, nor approves a permission request from a dead agent's descendant", async () => {
+		let consulted = 0;
+		const { client, events } = await attach("permission-after-exit", {
+			promptTimeoutMs: 20_000,
+			permissionHandler: () => {
+				consulted += 1;
+				return { outcome: { outcome: "selected", optionId: "allow" } };
+			},
+		});
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(AcpProcessExitedErrorV0);
+		await until(() => kinds(events).includes("harness.late-message"), 5_000);
+		await until(() => notes().some((note) => "lateAnswer" in note), 5_000);
+		expect(find(events, "harness.late-message")[0]!.payload).toEqual({
+			method: "session/request_permission",
+			after: "exit",
+		});
+		expect(kinds(events).filter((kind) => kind.startsWith("permission."))).toEqual([]);
+		expect(consulted).toBe(0);
+		// What went over the wire to the descendant: a cancellation, never a selection.
+		const answer = JSON.parse((notes().find((note) => "lateAnswer" in note) as { lateAnswer: string }).lateAnswer);
+		expect(answer).toMatchObject({ id: 9001, result: { outcome: { outcome: "cancelled" } } });
+	});
+
 	it("rejects status and kind values outside ACP v1, and keeps an opaque mode id correlatable", async () => {
 		const { client, events } = await attach("bad-enums");
 		const result = await client.prompt("go");

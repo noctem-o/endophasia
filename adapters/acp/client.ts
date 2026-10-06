@@ -557,6 +557,14 @@ export class AcpClientV0 {
 	}
 
 	async #onPermission(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		// After the agent was declared gone (or the stream closed, or close() began) a request, typically from a descendant
+		// that kept stdout open, is not the agent's: no authority event is recorded for it, the handler is not consulted,
+		// and nothing is approved. Same rule as a late session/update.
+		if (this.#exit !== null || this.#unusable || this.#closed) {
+			const after = this.#exit !== null ? "exit" : this.#unusable ? "stream-closed" : "close";
+			this.#recorder.record("harness.late-message", { method: acp.methods.client.session.requestPermission, after });
+			return cancelledResponse();
+		}
 		// What was offered, snapshotted before any user code sees the request: a handler that mutates what it was given
 		// cannot widen what it may select.
 		const offered: ReadonlyArray<{ readonly optionId: string; readonly kind: string }> = (

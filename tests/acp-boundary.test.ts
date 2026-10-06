@@ -64,4 +64,32 @@ describe("ACP adapter boundary", () => {
 		expect(pinned).toMatch(/^\d+\.\d+\.\d+$/);
 		expect(lock.packages["node_modules/@agentclientprotocol/sdk"]?.version).toBe(pinned);
 	});
+
+	it("reaches the SDK only through its public entry and its public schema export, never a private path", () => {
+		const allowed = new Set(["@agentclientprotocol/sdk", "@agentclientprotocol/sdk/schema/schema.json"]);
+		const literal = /["'`](@agentclientprotocol\/sdk[^"'`]*)["'`]/g;
+		for (const path of files.filter((file) => !rel(file).startsWith("tests/"))) {
+			for (const match of readFileSync(path, "utf8").matchAll(literal))
+				expect(allowed.has(match[1] as string), `${rel(path)}: ${match[1]}`).toBe(true);
+		}
+	});
+
+	it("confines the JSON Schema validator to adapters/acp, pinned exactly, importing one entry", () => {
+		const importers = files.filter((path) => imports(path).some((spec) => /^ajv(\/|$)/.test(spec)));
+		expect(importers.map(rel).filter((path) => !path.startsWith("adapters/acp/"))).toEqual([]);
+		expect(importers.length).toBeGreaterThan(0);
+		for (const path of importers)
+			expect(
+				imports(path).filter((spec) => /^ajv(\/|$)/.test(spec)),
+				rel(path),
+			).toEqual(["ajv/dist/2020.js"]);
+		const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+			devDependencies: Record<string, string>;
+		};
+		const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
+			packages: Record<string, { version?: string }>;
+		};
+		expect(manifest.devDependencies.ajv).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(lock.packages["node_modules/ajv"]?.version).toBe(manifest.devDependencies.ajv);
+	});
 });

@@ -242,6 +242,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(find(events, "runtime.unrecognized-event")[0]!.payload).toEqual({
 			runtimeEvent: "future_variant_from_v9",
 			method: "session/update",
+			schemaStatus: "unknown",
 		});
 		expect(find(events, "lifecycle.unrecognized-runtime-event")[0]!.payload).toEqual({
 			runtimeEvent: "future_variant_from_v9",
@@ -343,8 +344,8 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			expect(Object.getOwnPropertyDescriptor(client.updateCounts, name)!.value).toBe(1);
 		}
 		expect(find(events, "runtime.unrecognized-event").map((event) => event.payload)).toEqual([
-			{ runtimeEvent: "__proto__", method: "session/update" },
-			{ runtimeEvent: "constructor", method: "session/update" },
+			{ runtimeEvent: "__proto__", method: "session/update", schemaStatus: "unknown" },
+			{ runtimeEvent: "constructor", method: "session/update", schemaStatus: "unknown" },
 		]);
 	});
 
@@ -391,9 +392,9 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		const { client, events } = await attach("malformed-known");
 		const result = await client.prompt("go");
 		expect(find(events, "runtime.malformed-event").map((event) => event.payload)).toEqual([
-			{ runtimeEvent: "session/update", variant: "agent_message_chunk", problem: "required-field-missing" },
-			{ runtimeEvent: "session/update", variant: "tool_call", problem: "required-field-missing" },
-			{ runtimeEvent: "session/update", variant: "usage_update", problem: "required-field-missing" },
+			{ runtimeEvent: "session/update", variant: "agent_message_chunk", problem: "schema-invalid" },
+			{ runtimeEvent: "session/update", variant: "tool_call", problem: "schema-invalid" },
+			{ runtimeEvent: "session/update", variant: "usage_update", problem: "schema-invalid" },
 		]);
 		// Only valid updates count: the common prefix plus three session_info_update (the malformed three are not).
 		expect(result.updates).toEqual({
@@ -562,6 +563,32 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		const lateAt = kinds(events).indexOf("harness.late-message");
 		expect(kinds(events).slice(lateAt)).not.toContain("session.update-observed");
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"neither records, consults a handler for, nor approves a permission request from a dead agent's descendant",
+		async () => {
+			let consulted = 0;
+			const { client, events } = await attach("permission-after-exit", {
+				promptTimeoutMs: 20_000,
+				permissionHandler: () => {
+					consulted += 1;
+					return { outcome: { outcome: "selected", optionId: "allow" } };
+				},
+			});
+			await expect(client.prompt("go")).rejects.toBeInstanceOf(AcpProcessExitedErrorV0);
+			await until(() => kinds(events).includes("harness.late-message"), 5_000);
+			await until(() => notes().some((note) => "lateAnswer" in note), 5_000);
+			expect(find(events, "harness.late-message")[0]!.payload).toEqual({
+				method: "session/request_permission",
+				after: "exit",
+			});
+			expect(kinds(events).filter((kind) => kind.startsWith("permission."))).toEqual([]);
+			expect(consulted).toBe(0);
+			// What went over the wire to the descendant: a cancellation, never a selection.
+			const answer = JSON.parse((notes().find((note) => "lateAnswer" in note) as { lateAnswer: string }).lateAnswer);
+			expect(answer).toMatchObject({ id: 9001, result: { outcome: { outcome: "cancelled" } } });
+		},
+	);
 
 	it("rejects status and kind values outside ACP v1, and keeps an opaque mode id correlatable", async () => {
 		const { client, events } = await attach("bad-enums");

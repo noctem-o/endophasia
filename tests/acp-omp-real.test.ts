@@ -21,7 +21,14 @@ import { accessSync, constants, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AcpClientV0, AcpRefusedErrorV0, AcpTimeoutErrorV0 } from "../adapters/acp/index.ts";
+import {
+	ACP_LOSS_ACCOUNTING_V0,
+	ACP_MAPPING_VERSION,
+	ACP_SCHEMA_V0,
+	AcpClientV0,
+	AcpRefusedErrorV0,
+	AcpTimeoutErrorV0,
+} from "../adapters/acp/index.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 
 const executable = process.env.ENDO_OMP_EXECUTABLE;
@@ -32,7 +39,9 @@ const executable = process.env.ENDO_OMP_EXECUTABLE;
 const PREFLIGHT_MS = 2 * 30_000;
 const ATTACH_MS = 2 * 60_000;
 const PROMPT_MS = 180_000;
-const TEST_TIMEOUT_MS = PREFLIGHT_MS + ATTACH_MS + PROMPT_MS + 60_000;
+// Optional-method exercise: list, a second attach (resume) and its close, each bounded by ATTACH_MS / 2.
+const OPTIONAL_MS = ATTACH_MS / 2 + ATTACH_MS + 30_000;
+const TEST_TIMEOUT_MS = PREFLIGHT_MS + ATTACH_MS + PROMPT_MS + OPTIONAL_MS + 60_000;
 
 function launchEnv(): Record<string, string> {
 	const env: Record<string, string> = {};
@@ -116,6 +125,83 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 				expect(result.stopReason).toBe("end_turn");
 				expect(events.some((event) => event.kind === "lifecycle.run-completed")).toBe(true);
 				expect(events.some((event) => event.kind === "lifecycle.session-started")).toBe(true);
+				// Strict schema validation of everything OMP sent: nothing it sent was malformed or a protocol fault.
+				expect(events.filter((event) => event.kind === "runtime.malformed-event")).toEqual([]);
+				expect(events.filter((event) => event.kind === "harness.protocol-fault")).toEqual([]);
+
+				// Optional v1 methods, exercised only if OMP advertised them. Not advertised is not a failure.
+				const optional: Record<string, string> = {};
+				if (client.sessionCapabilities.list) {
+					const page = await client.listSessions({ cwd: scratch });
+					optional.list = `ok (${page.sessions.length} session(s) on the first page)`;
+				} else optional.list = "not advertised";
+				if (client.sessionCapabilities.resume) {
+					// A second process instance reattaches to the session the first one ran. OMP may legitimately refuse (for
+					// example if it did not persist the session); that is reported, not failed.
+					const second: EndoEventV0[] = [];
+					try {
+						const resumed = await AcpClientV0.connect(
+							{
+								launch: { command: omp, args: ["acp"], cwd: scratch, env },
+								attachment: "omp.resumed",
+								onEvent: (event) => second.push(event),
+								requestTimeoutMs: ATTACH_MS / 2,
+							},
+							{ cwd: scratch, resume: { sessionId: client.sessionId } },
+						);
+						try {
+							expect(second.find((event) => event.kind === "harness.attached")?.payload).toMatchObject({
+								openedBy: "session/resume",
+								historyReplay: "not-requested",
+							});
+							optional.resume = "ok";
+							if (resumed.sessionCapabilities.close) {
+								// Its own handling: a refused close says nothing about whether resume worked.
+								try {
+									await resumed.closeSession();
+									optional.close = second.some((event) => event.kind === "session.close-accepted")
+										? "ok (acceptance only)"
+										: "no acceptance recorded";
+								} catch (error) {
+									if (!(error instanceof AcpRefusedErrorV0)) throw error;
+									optional.close = `refused by omp (JSON-RPC error ${error.code})`;
+								}
+							} else optional.close = "not advertised";
+						} finally {
+							await resumed.close();
+							expect(resumed.liveProcessMembers()).toBe(false);
+						}
+					} catch (error) {
+						if (!(error instanceof AcpRefusedErrorV0)) throw error;
+						optional.resume = `refused by omp (JSON-RPC error ${error.code})`;
+						optional.close = "not exercised (no resumed session)";
+					}
+				} else {
+					optional.resume = "not advertised";
+					optional.close = client.sessionCapabilities.close
+						? "advertised, not exercised without a resumed session"
+						: "not advertised";
+				}
+				const verdicts = Object.fromEntries(
+					ACP_LOSS_ACCOUNTING_V0.entries
+						.filter((entry) => /^(session\.|usage\.|tool\.|config\.|prompt\.response)/.test(entry.id))
+						.map((entry) => [entry.id, entry.verdict]),
+				);
+				console.info(
+					"[acp-omp-report]",
+					JSON.stringify({
+						omp: version,
+						mapping: ACP_MAPPING_VERSION,
+						schemaSha256: ACP_SCHEMA_V0.sha256,
+						negotiatedProtocolVersion: client.initialize.protocolVersion,
+						agentCapabilities: client.initialize.agentCapabilities,
+						optionalMethodsAdvertised: client.sessionCapabilities,
+						optionalMethodsExercised: optional,
+						updateVariantsObserved: Object.keys(client.updateCounts).sort(),
+						eventKinds: [...new Set(events.map((event) => event.kind))].sort(),
+						verdicts,
+					}),
+				);
 			} finally {
 				if (client !== undefined) {
 					await client.close();

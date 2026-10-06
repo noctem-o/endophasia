@@ -153,7 +153,7 @@ silently treated as comparable.
 | Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
-| ACP v1 agents | First slice only: a protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
+| ACP v1 agents | A protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command: the PR #37 slice, then semantic coverage with schema-validated updates, capability-gated `session/list`/`resume`/`close`, and explicit EXACT / QUALIFIED / LOSSY / UNREPRESENTABLE loss accounting, pinned to one SDK and schema revision. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
 | ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is a draft specification, so any result is pinned to one schema revision |
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
@@ -490,7 +490,9 @@ The numbered items below are the long-term map. The order of work for the next s
    runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
    The surface joins the other experiment-identity coordinates ([Evolve providers](#evolve-providers)), compared
    coordinate by coordinate.
-5. **ACP v2 conformance study** (item 9). A protocol-level adapter study against one pinned draft revision: the prompt
+5. **ACP v2 conformance study** (item 9). The ACP sequence is: ACP v1 slice (done) → ACP v1 semantic coverage and loss
+   accounting (done) → this experimental v2 study → a cross-surface conformance study. v2 is a draft protocol, never
+   stable here. A protocol-level adapter study against one pinned draft revision: the prompt
    lifecycle, reconstruction from `session/resume` with `replayFrom` compared with the live session, and structured
    permission subjects answered with default deny and operator confirmation. ACP types stay in the adapter.
 6. **Compute-cap study** (item 13, before item 11). A pre-registered study of completion budget × task, everything else

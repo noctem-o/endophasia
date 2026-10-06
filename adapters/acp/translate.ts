@@ -26,8 +26,9 @@ import {
 	endoReportedV0,
 } from "../../protocol/session-lifecycle.ts";
 import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { ACP_STABLE_UPDATE_VARIANTS_V0, ACP_UNSTABLE_UPDATE_VARIANTS_V0, validateAcpUpdateV0 } from "./schema.ts";
 
-export const ACP_MAPPING_VERSION = "acp-v1-mapping.1";
+export const ACP_MAPPING_VERSION = "acp-v1-mapping.2";
 
 export const ACP_RECORDING_PRODUCER_PREFIX_V0 = "acp-adapter:";
 export const ACP_LIFECYCLE_PRODUCER_PREFIX_V0 = "acp-lifecycle:";
@@ -50,7 +51,11 @@ export const ACP_LIFECYCLE_UNAVAILABLE_V0: readonly EndoUnavailableFieldV0[] = O
 		reason: "ACP v1 reports a stopReason on the session/prompt response and no durable operation outcome",
 	},
 	{ field: "stop.target", reason: "session/cancel names the session, not one prompt turn" },
-	{ field: "usage", reason: "not read by this adapter version" },
+	{
+		field: "usage",
+		reason:
+			"the stable ACP v1 surface reports session context-window state (usage_update used, size) and an optional cumulative cost, not per-message input/output/cache/reasoning tokens; a per-turn usage field on the session/prompt response exists in the pinned schema but is marked UNSTABLE and is not read; nothing is derived or split",
+	},
 	{ field: "lanes", reason: "ACP v1 exposes one session per session/new and no lanes" },
 ]);
 
@@ -103,109 +108,10 @@ export function opaqueIdRefV0(value: unknown): string | undefined {
 	return shortText(value) ?? `sha256-${sha256HexV0(value).slice(0, 48)}`;
 }
 
-function finite(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
 function compact(fields: Record<string, JsonValueV0 | undefined>): Record<string, JsonValueV0> {
 	const out: Record<string, JsonValueV0> = {};
 	for (const [key, value] of Object.entries(fields)) if (value !== undefined) out[key] = value;
 	return out;
-}
-
-const isText = (value: unknown): value is string => typeof value === "string";
-
-/** An ACP v1 ContentBlock: a closed union by `type`, each with its required fields. */
-function isContentBlock(value: unknown): boolean {
-	if (!isRecord(value)) return false;
-	switch (value.type) {
-		case "text":
-			return isText(value.text);
-		case "image":
-		case "audio":
-			return isText(value.data) && isText(value.mimeType);
-		case "resource_link":
-			return isText(value.name) && isText(value.uri);
-		case "resource":
-			// TextResourceContents or BlobResourceContents.
-			return (
-				isRecord(value.resource) &&
-				isText(value.resource.uri) &&
-				(isText(value.resource.text) || isText(value.resource.blob))
-			);
-		default:
-			return false;
-	}
-}
-
-/** An ACP v1 SessionConfigOption: a select (string current value, options) or a boolean (boolean current value). */
-function isConfigOption(option: unknown): boolean {
-	if (!isRecord(option) || !isText(option.id) || !isText(option.name)) return false;
-	if (option.type === "select") return isText(option.currentValue) && Array.isArray(option.options);
-	if (option.type === "boolean") return typeof option.currentValue === "boolean";
-	return false;
-}
-
-const PLAN_PRIORITIES = ["high", "medium", "low"];
-const PLAN_STATUSES = ["pending", "in_progress", "completed"];
-
-/**
- * Whether a recognized variant carries what ACP v1 requires of it, nested fields included. These updates are taken
- * off the SDK stream before its schema router, so nothing else validates them. Variants this module does not
- * recognize pass: they are recorded by name, not read.
- */
-const TOOL_STATUSES = ["pending", "in_progress", "completed", "failed"];
-const TOOL_KINDS = ["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "switch_mode", "other"];
-/** An optional enum field: absent or null passes, anything else must be one of the allowed values. */
-const optionalOneOf = (value: unknown, allowed: readonly string[]): boolean =>
-	value === undefined || value === null || (typeof value === "string" && allowed.includes(value));
-
-function hasRequiredFields(variant: string, update: Record<string, unknown>): boolean {
-	switch (variant) {
-		case "agent_message_chunk":
-		case "agent_thought_chunk":
-		case "user_message_chunk":
-			return isContentBlock(update.content);
-		case "tool_call":
-			return (
-				isText(update.toolCallId) &&
-				isText(update.title) &&
-				optionalOneOf(update.status, TOOL_STATUSES) &&
-				optionalOneOf(update.kind, TOOL_KINDS)
-			);
-		case "tool_call_update":
-			return (
-				isText(update.toolCallId) &&
-				optionalOneOf(update.status, TOOL_STATUSES) &&
-				optionalOneOf(update.kind, TOOL_KINDS)
-			);
-		case "plan":
-			return (
-				Array.isArray(update.entries) &&
-				update.entries.every(
-					(entry) =>
-						isRecord(entry) &&
-						isText(entry.content) &&
-						PLAN_PRIORITIES.includes(entry.priority as string) &&
-						PLAN_STATUSES.includes(entry.status as string),
-				)
-			);
-		case "available_commands_update":
-			return (
-				Array.isArray(update.availableCommands) &&
-				update.availableCommands.every(
-					(command) => isRecord(command) && isText(command.name) && isText(command.description),
-				)
-			);
-		case "current_mode_update":
-			return isText(update.currentModeId);
-		case "config_option_update":
-			return Array.isArray(update.configOptions) && update.configOptions.every(isConfigOption);
-		case "usage_update":
-			return finite(update.used) !== undefined && finite(update.size) !== undefined;
-		default:
-			return true;
-	}
 }
 
 /** The clock and counters the recorded stream of one launched agent process needs. */
@@ -290,7 +196,7 @@ export class AcpRecorderV0 {
 /** The result of translating one `session/update` notification's params. */
 export type AcpUpdateTranslationV0 =
 	| { readonly kind: "delta"; readonly variant: string }
-	/** Not counted: a recognized variant missing what it requires, or no variant at all. */
+	/** Not counted: a recognized variant the pinned schema rejects, or no variant at all. */
 	| { readonly kind: "malformed"; readonly variant: string; readonly payload: Record<string, JsonValueV0> }
 	| {
 			readonly kind: "event";
@@ -299,10 +205,54 @@ export type AcpUpdateTranslationV0 =
 			readonly payload: Record<string, JsonValueV0>;
 	  };
 
+const MAX_CONFIG_ENTRIES = 32;
+
+/** What an agent reported about its session configuration options: identifiers, kinds and current values, no labels. */
+export function summarizeConfigOptionsV0(options: readonly unknown[]): Record<string, JsonValueV0> {
+	const summarized = options.slice(0, MAX_CONFIG_ENTRIES).map((entry) => {
+		const option = isRecord(entry) ? entry : {};
+		const choices = Array.isArray(option.options) ? option.options : [];
+		return compact({
+			id: opaqueIdRefV0(option.id),
+			type: shortText(option.type, 16),
+			category: opaqueIdRefV0(option.category),
+			// The value the agent reports as current: its claim about itself, not a verified model or setting.
+			current: typeof option.currentValue === "boolean" ? option.currentValue : opaqueIdRefV0(option.currentValue),
+			// Selectable values the agent advertised (a group counts its members).
+			choices:
+				option.type === "select"
+					? choices.reduce(
+							(n: number, c) => n + (isRecord(c) && Array.isArray(c.options) ? c.options.length : 1),
+							0,
+						)
+					: undefined,
+		});
+	});
+	return {
+		optionCount: options.length,
+		options: summarized,
+		...(options.length > MAX_CONFIG_ENTRIES ? { truncated: true } : {}),
+	};
+}
+
+/** The legacy session-mode state of a session/new or session/resume response, reduced to the current id and a count. */
+export function summarizeModesV0(modes: unknown): Record<string, JsonValueV0> | undefined {
+	if (!isRecord(modes)) return undefined;
+	return compact({
+		currentModeId: opaqueIdRefV0(modes.currentModeId),
+		available: Array.isArray(modes.availableModes) ? modes.availableModes.length : undefined,
+	});
+}
+
+// Presence is the property being carried, null included: `rawInput: null` is not the same message as no rawInput.
+const carries = (update: Record<string, unknown>, key: string): boolean => Object.hasOwn(update, key);
+
 /**
  * Translate the `update` of one `session/update` notification. `params` is whatever the agent sent: it is not
- * assumed to match any schema. A variant this version does not translate becomes `runtime.unrecognized-event`, a
- * non-object or variant-less update becomes `runtime.malformed-event`; neither is dropped.
+ * assumed to match any schema. A recognized stable variant is validated against the pinned schema first
+ * (validateAcpUpdateV0) and is `malformed` if it fails. A variant this version does not translate (unknown, or listed
+ * UNSTABLE by the pinned schema) becomes `runtime.unrecognized-event`, a non-object or variant-less update becomes
+ * `runtime.malformed-event`; neither is dropped.
  */
 export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 	if (!isRecord(update) || typeof update.sessionUpdate !== "string") {
@@ -314,11 +264,23 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 	}
 	const raw = update.sessionUpdate;
 	const variant = /^[A-Za-z0-9_.-]{1,128}$/.test(raw) ? raw : "unprintable";
-	if (!hasRequiredFields(variant, update)) {
+	if (!ACP_STABLE_UPDATE_VARIANTS_V0.includes(raw)) {
+		return {
+			kind: "event",
+			variant,
+			eventKind: "runtime.unrecognized-event",
+			payload: {
+				runtimeEvent: variant,
+				method: "session/update",
+				schemaStatus: ACP_UNSTABLE_UPDATE_VARIANTS_V0.includes(raw) ? "unstable" : "unknown",
+			},
+		};
+	}
+	if (!validateAcpUpdateV0(raw, update)) {
 		return {
 			kind: "malformed",
 			variant,
-			payload: { runtimeEvent: "session/update", variant, problem: "required-field-missing" },
+			payload: { runtimeEvent: "session/update", variant, problem: "schema-invalid" },
 		};
 	}
 	if (DELTA_VARIANTS.has(variant)) return { kind: "delta", variant };
@@ -328,39 +290,62 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 		eventKind: "session.update-observed",
 		payload: { update: variant, ...compact(fields) },
 	});
+	// Validated against the pinned schema above: the fields read below have the types it gives them.
+	const u = update;
+	const list = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
 	switch (variant) {
 		case "tool_call":
-			return observed({
-				toolCallId: opaqueIdRefV0(update.toolCallId),
-				toolKind: shortText(update.kind, 32),
-				status: shortText(update.status, 32),
-			});
 		case "tool_call_update":
-			return observed({ toolCallId: opaqueIdRefV0(update.toolCallId), status: shortText(update.status, 32) });
-		case "plan":
-			return observed({ entries: Array.isArray(update.entries) ? update.entries.length : undefined });
+			// Identity, kind and status as the agent reported them, and only whether content, locations and raw
+			// input/output were present. No title, content, argument or result is kept, and nothing is digested: ACP gives
+			// no keyed digest of an argument or a result, and one is not made up here.
+			return observed({
+				toolCallId: opaqueIdRefV0(u.toolCallId),
+				toolName: opaqueIdRefV0(u.name),
+				toolKind: shortText(u.kind, 32),
+				status: shortText(u.status, 32),
+				contentItems: Array.isArray(u.content) ? u.content.length : undefined,
+				locations: Array.isArray(u.locations) ? u.locations.length : undefined,
+				rawInputPresent: carries(u, "rawInput") ? true : undefined,
+				rawOutputPresent: carries(u, "rawOutput") ? true : undefined,
+			});
+		case "plan": {
+			const byStatus: Record<string, JsonValueV0> = { pending: 0, in_progress: 0, completed: 0 };
+			for (const entry of list(u.entries)) {
+				const status = isRecord(entry) ? String(entry.status) : "";
+				byStatus[status] = ((byStatus[status] as number | undefined) ?? 0) + 1;
+			}
+			return observed({ entries: list(u.entries).length, byStatus });
+		}
 		case "available_commands_update":
-			return observed({
-				commands: Array.isArray(update.availableCommands) ? update.availableCommands.length : undefined,
-			});
+			return observed({ commands: list(u.availableCommands).length });
 		case "current_mode_update":
-			return observed({ modeId: opaqueIdRefV0(update.currentModeId) });
+			return observed({ modeId: opaqueIdRefV0(u.currentModeId) });
 		case "config_option_update":
-			return observed({ options: Array.isArray(update.configOptions) ? update.configOptions.length : undefined });
-		case "session_info_update":
-			// Present only when the agent said something about the title: a string is a title, null a cleared one.
-			return observed({
-				titled: typeof update.title === "string" ? true : update.title === null ? false : undefined,
-			});
-		case "usage_update":
-			return observed({ used: finite(update.used), size: finite(update.size) });
-		default:
 			return {
 				kind: "event",
 				variant,
-				eventKind: "runtime.unrecognized-event",
-				payload: { runtimeEvent: variant, method: "session/update" },
+				eventKind: "session.config-observed",
+				payload: { origin: "config_option_update", ...summarizeConfigOptionsV0(list(u.configOptions)) },
 			};
+		case "session_info_update":
+			// Present only when the agent said something about the title: a string is a title, null a cleared one.
+			return observed({ titled: typeof u.title === "string" ? true : u.title === null ? false : undefined });
+		case "usage_update": {
+			// Session context-window state, as ACP defines it: not a per-message token ledger, and not split into
+			// input/output/cache/reasoning categories ACP did not report. An absent cost is absent, not zero; a cost
+			// without a printable currency is not carried (an amount means nothing without its currency).
+			const currency = isRecord(u.cost) ? shortText(u.cost.currency, 16) : undefined;
+			return observed({
+				contextTokensUsed: Number(u.used),
+				contextWindowSize: Number(u.size),
+				cost: isRecord(u.cost) && currency !== undefined ? { amount: Number(u.cost.amount), currency } : undefined,
+				costOmitted: isRecord(u.cost) && currency === undefined ? true : undefined,
+			});
+		}
+		default:
+			// Every stable variant is handled above; reaching this is a table that drifted from ACP_STABLE_UPDATE_VARIANTS_V0.
+			throw new TypeError(`no translation for the stable ACP update variant ${variant}`);
 	}
 }
 

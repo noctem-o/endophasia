@@ -22,6 +22,7 @@ import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import { checkTimeout } from "../rpc-jsonl/limits.ts";
 import { type ProcessExitV0, ProcessGroupV0 } from "../rpc-jsonl/process-group.ts";
+import { validateAcpDefinitionV0 } from "./schema.ts";
 import {
 	ACP_LIFECYCLE_UNAVAILABLE_V0,
 	ACP_MAPPING_VERSION,
@@ -33,6 +34,8 @@ import {
 	lifecycleEndForStopReasonV0,
 	opaqueIdRefV0,
 	shortText,
+	summarizeConfigOptionsV0,
+	summarizeModesV0,
 	translateAcpUpdateV0,
 } from "./translate.ts";
 
@@ -76,6 +79,34 @@ export interface AcpInitializeEvidenceV0 {
 	readonly authMethods: unknown;
 }
 
+/** The optional session methods an agent advertised at initialize (`agentCapabilities.sessionCapabilities`). */
+export interface AcpSessionCapabilitiesV0 {
+	readonly list: boolean;
+	readonly resume: boolean;
+	readonly close: boolean;
+}
+
+/** One session as `session/list` reported it, as reported. Ids are agent-local and opaque. */
+export interface AcpListedSessionV0 {
+	readonly sessionId: string;
+	readonly cwd: string;
+	readonly title: string | null;
+	readonly updatedAt: string | null;
+	/** The complete ordered additional-root list the agent reported; empty when it reported none (the schema equates the two). */
+	readonly additionalDirectories: readonly string[];
+}
+
+export interface AcpSessionListV0 {
+	readonly sessions: readonly AcpListedSessionV0[];
+	readonly nextCursor: string | null;
+}
+
+/** How to open the attachment's session. Default: `session/new`. `resume`: `session/resume` of an agent-local id. */
+export interface AcpSessionOpenV0 {
+	readonly cwd: string;
+	readonly resume?: { readonly sessionId: string };
+}
+
 export interface AcpPromptResultV0 {
 	/** The agent's reported stop reason. */
 	readonly stopReason: AcpStopReasonV0;
@@ -110,6 +141,15 @@ export class AcpClosedErrorV0 extends Error {
 		this.name = "AcpClosedErrorV0";
 	}
 }
+/** An optional ACP method the agent did not advertise at initialize: nothing was sent. Absence is UNAVAILABLE, not "probably". */
+export class AcpUnavailableErrorV0 extends Error {
+	readonly capability: string;
+	constructor(capability: string) {
+		super(`the agent did not advertise sessionCapabilities.${capability}; the method was not called`);
+		this.name = "AcpUnavailableErrorV0";
+		this.capability = capability;
+	}
+}
 /** The agent answered a request with a JSON-RPC error. */
 export class AcpRefusedErrorV0 extends Error {
 	readonly code: number;
@@ -121,7 +161,8 @@ export class AcpRefusedErrorV0 extends Error {
 }
 
 interface OpenRun {
-	readonly started: EndoEventV0;
+	/** session/prompt has been sent: only then can it be cancelled. */
+	sent: boolean;
 	stopRequested: boolean;
 	updates: Record<string, number>;
 }
@@ -194,6 +235,15 @@ function withRawSessionUpdates(stream: acp.Stream, onUpdate: (params: unknown) =
 	};
 }
 
+/** Advertised means a non-null object at `sessionCapabilities.<name>` (`{}` is support). Absent or null is not. */
+function advertisedSessionCapabilities(agentCapabilities: unknown): AcpSessionCapabilitiesV0 {
+	const session =
+		isRecord(agentCapabilities) && isRecord(agentCapabilities.sessionCapabilities)
+			? agentCapabilities.sessionCapabilities
+			: {};
+	return { list: isRecord(session.list), resume: isRecord(session.resume), close: isRecord(session.close) };
+}
+
 export class AcpClientV0 {
 	readonly #options: AcpClientOptionsV0;
 	readonly #group: ProcessGroupV0;
@@ -213,6 +263,11 @@ export class AcpClientV0 {
 	#closed = false;
 	/** The ACP stream ended under a living agent: nothing more can be asked or approved. */
 	#unusable = false;
+	#sessionCapabilities: AcpSessionCapabilitiesV0 = { list: false, resume: false, close: false };
+	/** The agent accepted session/close: the session is over, and later traffic for it is not activity. */
+	#sessionClosed = false;
+	/** session/close was sent and not yet answered: nothing new is started, traffic is still the agent's. */
+	#sessionClosing = false;
 
 	private constructor(options: AcpClientOptionsV0) {
 		this.#options = options;
@@ -254,9 +309,21 @@ export class AcpClientV0 {
 	 * Launch the agent, negotiate ACP v1, and open one session in `cwd` (absolute). Any failure tears the child down
 	 * before it propagates.
 	 */
-	static async connect(options: AcpClientOptionsV0, session: { readonly cwd: string }): Promise<AcpClientV0> {
+	static async connect(options: AcpClientOptionsV0, request: AcpSessionOpenV0): Promise<AcpClientV0> {
+		// A private snapshot: what is validated here is what is sent later, whatever the caller does with its object.
+		const resumeId = request.resume === undefined ? undefined : request.resume.sessionId;
+		const session: AcpSessionOpenV0 = Object.freeze({
+			cwd: request.cwd,
+			...(resumeId === undefined ? {} : { resume: Object.freeze({ sessionId: resumeId }) }),
+		});
 		if (!isAbsolute(options.launch.cwd)) throw new TypeError("launch.cwd must be an absolute path");
-		if (!isAbsolute(session.cwd)) throw new TypeError("session.cwd must be an absolute path");
+		if (typeof session.cwd !== "string" || !isAbsolute(session.cwd))
+			throw new TypeError("session.cwd must be an absolute path");
+		if (
+			session.resume !== undefined &&
+			(typeof session.resume.sessionId !== "string" || session.resume.sessionId === "")
+		)
+			throw new TypeError("resume.sessionId must be a non-empty string");
 		for (const [name, value] of [
 			["requestTimeoutMs", options.requestTimeoutMs ?? 0],
 			["promptTimeoutMs", options.promptTimeoutMs ?? 0],
@@ -266,7 +333,7 @@ export class AcpClientV0 {
 		const client = new AcpClientV0(options);
 		try {
 			await client.#negotiate();
-			await client.#openSession(session.cwd);
+			await client.#openSession(session);
 			// The keeper's exit channel is independent of stdout: an agent that answered and died may have been seen dead
 			// first. Not an attachment.
 			if (client.#exit !== null)
@@ -278,6 +345,11 @@ export class AcpClientV0 {
 			await client.close();
 			throw error;
 		}
+	}
+
+	/** The optional session methods the agent advertised. Fixed at initialize. */
+	get sessionCapabilities(): AcpSessionCapabilitiesV0 {
+		return { ...this.#sessionCapabilities };
 	}
 
 	/** What the agent reported at initialize. */
@@ -321,11 +393,11 @@ export class AcpClientV0 {
 		// What the agent reported, as reported: its own claim, not a verified identity of the executable.
 		const reportedByAgent: Record<string, JsonValueV0> = {
 			protocolVersion: response.protocolVersion,
-			agentInfo: { name: shortText(info.name) ?? null, version: shortText(info.version) ?? null },
+			agentInfo: { name: opaqueIdRefV0(info.name) ?? null, version: opaqueIdRefV0(info.version) ?? null },
 			capabilitiesDigest: sha256HexV0(canonical),
 			capabilities: canonical.length <= 8192 ? capabilities : null,
 			authMethodIds: Array.isArray(response.authMethods)
-				? response.authMethods.map((method) => (isRecord(method) ? (shortText(method.id) ?? null) : null))
+				? response.authMethods.map((method) => (isRecord(method) ? (opaqueIdRefV0(method.id) ?? null) : null))
 				: null,
 		};
 		if (response.protocolVersion !== ACP_SUPPORTED_PROTOCOL_VERSION_V0) {
@@ -338,44 +410,200 @@ export class AcpClientV0 {
 				`the agent negotiated ACP protocol version ${String(response.protocolVersion)}; only ${ACP_SUPPORTED_PROTOCOL_VERSION_V0} is supported`,
 			);
 		}
+		// Version 1 is negotiated: the response must now be a valid v1 InitializeResponse, which the SDK does not check.
+		if (!validateAcpDefinitionV0("InitializeResponse", response)) {
+			this.#recorder.record("harness.protocol-fault", { fault: "initialize-response-schema-invalid" });
+			throw new AcpProtocolErrorV0("the agent's initialize response is not a valid ACP v1 InitializeResponse");
+		}
+		this.#sessionCapabilities = Object.freeze(advertisedSessionCapabilities(response.agentCapabilities));
 		this.#initialize = {
 			protocolVersion: response.protocolVersion,
 			agentInfo: response.agentInfo,
 			agentCapabilities: response.agentCapabilities,
 			authMethods: response.authMethods,
 		};
-		this.#recorder.record("harness.acp-initialized", { mapping: ACP_MAPPING_VERSION, ...reportedByAgent });
+		this.#recorder.record("harness.acp-initialized", {
+			mapping: ACP_MAPPING_VERSION,
+			...reportedByAgent,
+			// Which optional session methods this adapter will call: exactly the ones advertised.
+			sessionMethodsAdvertised: { ...this.#sessionCapabilities },
+		});
 	}
 
-	async #openSession(cwd: string): Promise<void> {
-		const response: unknown = await this.#request(
-			"session/new",
-			this.#connection.agent.request(acp.methods.agent.session.new, { cwd, mcpServers: [] }),
+	async #openSession(open: AcpSessionOpenV0): Promise<void> {
+		const resumeId = open.resume?.sessionId;
+		if (resumeId !== undefined && !this.#sessionCapabilities.resume)
+			throw this.#unavailable("resume", "session.resume");
+		const method = resumeId !== undefined ? "session/resume" : "session/new";
+		// Only session/resume is optional; a refusal of the baseline session/new is an ordinary request failure.
+		const send = resumeId !== undefined ? this.#requestOptional.bind(this) : this.#request.bind(this);
+		const response: unknown = await send(
+			method,
+			resumeId !== undefined
+				? this.#connection.agent.request(acp.methods.agent.session.resume, {
+						sessionId: resumeId,
+						cwd: open.cwd,
+						mcpServers: [],
+					})
+				: this.#connection.agent.request(acp.methods.agent.session.new, { cwd: open.cwd, mcpServers: [] }),
 		);
-		if (!isRecord(response) || typeof response.sessionId !== "string" || response.sessionId.length === 0) {
-			this.#recorder.record("harness.protocol-fault", { fault: "session-new-response-malformed" });
-			throw new AcpProtocolErrorV0("the agent's session/new response carries no sessionId");
+		// session/resume answers without a session id: the session is the one that was asked for, nothing more.
+		const sessionId = resumeId ?? (isRecord(response) ? response.sessionId : undefined);
+		if (
+			!isRecord(response) ||
+			typeof sessionId !== "string" ||
+			sessionId.length === 0 ||
+			!validateAcpDefinitionV0(resumeId !== undefined ? "ResumeSessionResponse" : "NewSessionResponse", response)
+		) {
+			this.#recorder.record("harness.protocol-fault", {
+				fault: resumeId !== undefined ? "session-resume-response-malformed" : "session-new-response-malformed",
+			});
+			throw new AcpProtocolErrorV0(`the agent's ${method} response is not a valid ACP v1 response`);
 		}
 		if (this.#exit !== null) {
-			throw new AcpProcessExitedErrorV0("the agent process ended during session/new", this.#exit);
+			throw new AcpProcessExitedErrorV0(`the agent process ended during ${method}`, this.#exit);
 		}
-		this.#sessionId = response.sessionId;
-		this.#recorder.setSession(response.sessionId);
+		this.#sessionId = sessionId;
+		this.#recorder.setSession(sessionId);
 		const attached = this.#recorder.record("harness.attached", {
 			mapping: ACP_MAPPING_VERSION,
 			instance: this.#recorder.instance,
-			acpSessionId: acpSessionRefV0(response.sessionId),
+			acpSessionId: acpSessionRefV0(sessionId),
+			openedBy: method,
+			// session/resume reattaches without replaying history to the client (that is session/load): none is claimed.
+			...(resumeId !== undefined ? { historyReplay: "not-requested" } : {}),
 		});
 		this.#recorder.derive(
 			"lifecycle.session-started",
 			{
 				runtime: "acp",
-				runtimeSessionId: acpSessionRefV0(response.sessionId),
+				runtimeSessionId: acpSessionRefV0(sessionId),
 				instance: this.#recorder.instance,
+				openedBy: method,
 				unavailable: ACP_LIFECYCLE_UNAVAILABLE_V0.map((field) => ({ ...field })),
 			},
 			attached,
 		);
+		// What the agent advertised at open, as it reported it: configuration is the agent's claim, not verified identity.
+		const configOptions = Array.isArray(response.configOptions) ? response.configOptions : undefined;
+		const modes = summarizeModesV0(response.modes);
+		if (configOptions !== undefined || modes !== undefined) {
+			this.#recorder.record("session.config-observed", {
+				origin: method,
+				...(configOptions !== undefined ? summarizeConfigOptionsV0(configOptions) : {}),
+				...(modes !== undefined ? { modes } : {}),
+			});
+		}
+	}
+
+	/** An optional method's request: a JSON-RPC refusal is recorded (by code) before it propagates. */
+	async #requestOptional<T>(what: string, work: Promise<T>): Promise<T> {
+		try {
+			return await this.#request(what, work);
+		} catch (error) {
+			if (error instanceof AcpRefusedErrorV0) {
+				this.#recorder.record("control.refused", { capability: what.replace("/", "."), code: error.code });
+			}
+			throw error;
+		}
+	}
+
+	/** An optional method the agent did not advertise: said so in the record, nothing sent. */
+	#unavailable(capability: keyof AcpSessionCapabilitiesV0, name: string): AcpUnavailableErrorV0 {
+		this.#recorder.record("control.unavailable", { capability: name, reason: "not-advertised" });
+		return new AcpUnavailableErrorV0(capability);
+	}
+
+	#assertUsable(what: string): void {
+		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed || this.#sessionClosing)
+			throw new TypeError(`the ACP attachment is closed (${what})`);
+	}
+
+	/**
+	 * `session/list`, only if the agent advertised it. Ids, working directories and titles are returned to the caller as
+	 * reported; the record keeps only how many sessions and whether more pages exist.
+	 */
+	async listSessions(params: { readonly cwd?: string; readonly cursor?: string } = {}): Promise<AcpSessionListV0> {
+		this.#assertUsable("session/list");
+		if (!this.#sessionCapabilities.list) throw this.#unavailable("list", "session.list");
+		// Read once: what is validated is what is sent.
+		const { cwd, cursor } = params;
+		if (cwd !== undefined && (typeof cwd !== "string" || !isAbsolute(cwd)))
+			throw new TypeError("cwd must be an absolute path");
+		const response: unknown = await this.#requestOptional(
+			"session/list",
+			this.#connection.agent.request(acp.methods.agent.session.list, {
+				...(cwd !== undefined ? { cwd } : {}),
+				...(cursor !== undefined ? { cursor } : {}),
+			}),
+		);
+		if (!isRecord(response) || !validateAcpDefinitionV0("ListSessionsResponse", response)) {
+			this.#recorder.record("harness.protocol-fault", { fault: "session-list-response-malformed" });
+			throw new AcpProtocolErrorV0("the agent's session/list response is not a valid ACP v1 response");
+		}
+		const sessions = (Array.isArray(response.sessions) ? response.sessions : []) as Array<Record<string, unknown>>;
+		const nextCursor = typeof response.nextCursor === "string" ? response.nextCursor : null;
+		this.#recorder.record("session.listed", { count: sessions.length, hasNextCursor: nextCursor !== null });
+		return {
+			sessions: sessions.map((entry) => ({
+				sessionId: String(entry.sessionId),
+				cwd: String(entry.cwd),
+				title: typeof entry.title === "string" ? entry.title : null,
+				updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null,
+				additionalDirectories: Array.isArray(entry.additionalDirectories)
+					? entry.additionalDirectories.map((directory) => String(directory))
+					: [],
+			})),
+			nextCursor,
+		};
+	}
+
+	/**
+	 * `session/close`, only if the agent advertised it: the agent must cancel the session's work and free its resources.
+	 * A response is the agent's acceptance, not proof that anything was freed. The process is not ended; close() does that.
+	 */
+	async closeSession(): Promise<void> {
+		this.#assertUsable("session/close");
+		if (!this.#sessionCapabilities.close) throw this.#unavailable("close", "session.close");
+		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
+		// recorded normally: only a refusal shows the session stayed open. State first, then evidence: `onEvent` is caller
+		// code and can re-enter this client from inside record().
+		this.#sessionClosing = true;
+		// A turn whose prompt has not been sent yet is aborted by prompt() itself (it sees the closing state).
+		const run = this.#run?.sent ? this.#run : null;
+		const hadStopRequested = run?.stopRequested ?? false;
+		if (run !== null) run.stopRequested = true; // Closing a session cancels its work.
+		try {
+			const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
+			if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
+		} catch (error) {
+			this.#sessionClosing = false;
+			throw error;
+		}
+		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
+		for (const cancel of [...this.#pendingPermissions]) cancel();
+		let response: unknown;
+		try {
+			response = await this.#requestOptional(
+				"session/close",
+				this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
+			);
+		} catch (error) {
+			// Only an explicit refusal shows the session was not closed; a timeout or transport failure is indeterminate, and
+			// an answer that arrives later still means the agent closed it.
+			if (error instanceof AcpRefusedErrorV0) {
+				// Refused: the session and its turn are live, so the turn is not left marked as stopping.
+				this.#sessionClosing = false;
+				if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
+			} else this.#sessionClosed = true;
+			throw error;
+		}
+		this.#sessionClosed = true;
+		if (!isRecord(response) || !validateAcpDefinitionV0("CloseSessionResponse", response)) {
+			this.#recorder.record("harness.protocol-fault", { fault: "session-close-response-malformed" });
+			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v1 response");
+		}
+		this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" });
 	}
 
 	/** One bounded request, with refusals and a vanished agent classified. */
@@ -384,6 +612,8 @@ export class AcpClientV0 {
 		try {
 			return await bounded(Promise.race([work, this.#exitedEarly(what)]), this.#requestTimeoutMs, what);
 		} catch (error) {
+			// close() ended the connection under the request. The agent did nothing wrong: no fault is recorded.
+			if (this.#closed && !(error instanceof acp.RequestError)) throw new AcpClosedErrorV0(what);
 			throw await this.#classify(what, error);
 		}
 	}
@@ -423,17 +653,24 @@ export class AcpClientV0 {
 	 */
 	async prompt(text: string): Promise<AcpPromptResultV0> {
 		const sessionId = this.sessionId;
-		if (this.#closed || this.#unusable || this.#exit !== null) throw new TypeError("the ACP attachment is closed");
+		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed || this.#sessionClosing)
+			throw new TypeError("the ACP attachment is closed");
 		if (this.#run !== null) throw new TypeError("a prompt turn is already open");
-		const requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
-		// The run start is the client's own request, said so: ACP v1 sends no run-start notification.
-		const started = this.#recorder.derive(
-			"lifecycle.run-started",
-			{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
-			requested,
-		);
-		const run: OpenRun = { started, stopRequested: false, updates: Object.create(null) };
+		// State first, then evidence: `onEvent` is caller code and can re-enter this client from inside record().
+		const run: OpenRun = { sent: false, stopRequested: false, updates: Object.create(null) };
 		this.#run = run;
+		let requested: EndoEventV0;
+		try {
+			requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
+		} catch (error) {
+			if (this.#run === run) this.#run = null;
+			throw error;
+		}
+		// onEvent may have closed the attachment or the session while the request was being recorded: nothing is sent then.
+		if (this.#run !== run || this.#closed || this.#unusable || this.#sessionClosing || this.#sessionClosed) {
+			if (this.#run === run) this.#run = null;
+			throw new TypeError("the ACP attachment was closed while the prompt was being recorded");
+		}
 		// The turn settles on its own path, whenever the agent answers. A timeout only stops this caller waiting: the
 		// answer, if it comes later (after a cancel(), say), is still recorded as the agent's report.
 		const settled = this.#settle(
@@ -443,6 +680,19 @@ export class AcpClientV0 {
 				prompt: [{ type: "text", text }],
 			}),
 		);
+		run.sent = true;
+		// The run start is the client's own request, said so: ACP v1 sends no run-start notification. Derived only once the
+		// request was actually sent, so a prompt that was never sent leaves no run behind.
+		try {
+			this.#recorder.derive(
+				"lifecycle.run-started",
+				{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
+				requested,
+			);
+		} catch (error) {
+			settled.catch(() => {});
+			throw error;
+		}
 		settled.catch(() => {});
 		try {
 			return await bounded(settled, this.#promptTimeoutMs, "session/prompt");
@@ -468,7 +718,7 @@ export class AcpClientV0 {
 			throw new AcpProcessExitedErrorV0("the agent process ended during session/prompt", this.#exitReport());
 		}
 		const stopReason = isRecord(response) ? response.stopReason : undefined;
-		if (!isAcpStopReasonV0(stopReason)) {
+		if (!isAcpStopReasonV0(stopReason) || !validateAcpDefinitionV0("PromptResponse", response)) {
 			const fault = this.#recorder.record("harness.protocol-fault", { fault: "stop-reason-malformed" });
 			this.#recorder.derive("lifecycle.run-unclassified", { reason: "stop-reason-malformed" }, fault);
 			this.#run = null;
@@ -515,10 +765,12 @@ export class AcpClientV0 {
 	 */
 	async cancel(): Promise<boolean> {
 		const run = this.#run;
-		if (run === null || this.#closed || this.#unusable) return false;
+		if (run === null || !run.sent || run.stopRequested) return false;
+		if (this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
+		// State first (a re-entrant cancel() from onEvent is then "already requested"), then evidence.
+		run.stopRequested = true;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-		run.stopRequested = true;
 		// A client must answer pending permission requests with `cancelled` once it cancels the turn.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
 		await this.#connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: this.sessionId });
@@ -528,8 +780,9 @@ export class AcpClientV0 {
 	#onUpdate(params: unknown): void {
 		// After the agent was declared gone (or the stream closed, or close() began) a straggler, typically from a
 		// descendant that kept stdout open, is not the agent's activity: recorded as ignored, never counted.
-		if (this.#exit !== null || this.#unusable || this.#closed) {
-			const after = this.#exit !== null ? "exit" : this.#unusable ? "stream-closed" : "close";
+		if (this.#exit !== null || this.#unusable || this.#closed || this.#sessionClosed) {
+			const after =
+				this.#exit !== null ? "exit" : this.#unusable ? "stream-closed" : this.#closed ? "close" : "session-close";
 			this.#recorder.record("harness.late-message", { method: "session/update", after });
 			return;
 		}
@@ -556,7 +809,34 @@ export class AcpClientV0 {
 		}
 	}
 
+	/**
+	 * The one condition under which a permission request may be approved, used before the handler is asked and again after
+	 * it answered: the turn the request belongs to is still the open one, nobody asked to stop it, the attachment is up,
+	 * and the session is neither closing nor closed. A request is still recorded when this is false; it is never approved.
+	 */
+	#canApprove(run: OpenRun | null): boolean {
+		return (
+			run !== null &&
+			this.#run === run &&
+			!run.stopRequested &&
+			!this.#closed &&
+			!this.#unusable &&
+			this.#exit === null &&
+			!this.#sessionClosing &&
+			!this.#sessionClosed
+		);
+	}
+
 	async #onPermission(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		// After the agent was declared gone (or the stream closed, or close() began) a request, typically from a descendant
+		// that kept stdout open, is not the agent's: no authority event is recorded for it, the handler is not consulted,
+		// and nothing is approved. Same rule as a late session/update.
+		if (this.#exit !== null || this.#unusable || this.#closed || this.#sessionClosed) {
+			const after =
+				this.#exit !== null ? "exit" : this.#unusable ? "stream-closed" : this.#closed ? "close" : "session-close";
+			this.#recorder.record("harness.late-message", { method: acp.methods.client.session.requestPermission, after });
+			return cancelledResponse();
+		}
 		// What was offered, snapshotted before any user code sees the request: a handler that mutates what it was given
 		// cannot widen what it may select.
 		const offered: ReadonlyArray<{ readonly optionId: string; readonly kind: string }> = (
@@ -577,14 +857,7 @@ export class AcpClientV0 {
 		// refused, threw, or lost a race to cancel/close did not decide.
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
 		let handlerConsulted = false;
-		if (
-			run === null ||
-			run.stopRequested ||
-			this.#closed ||
-			this.#unusable ||
-			duplicateIds ||
-			request.sessionId !== this.#sessionId
-		) {
+		if (!this.#canApprove(run) || duplicateIds || request.sessionId !== this.#sessionId) {
 			// No open turn, a turn being cancelled, a closing attachment, ambiguous options, or another session's id:
 			// nothing here can be approved, and the handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
@@ -608,17 +881,12 @@ export class AcpClientV0 {
 				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
 				// belongs to is still the open one, not being cancelled, and the attachment is still open (the agent may have
 				// finished the turn without waiting for its own request).
-				const stillOpen =
-					this.#run === run && !run.stopRequested && !this.#closed && !this.#unusable && this.#exit === null;
+				const stillOpen = this.#canApprove(run);
 				if (stillOpen && outcome?.outcome === "cancelled") {
 					// The handler's own explicit cancellation is its decision, and is attributed to it.
 					decidedBy = "handler";
 				} else if (
-					this.#run === run &&
-					!run.stopRequested &&
-					!this.#closed &&
-					!this.#unusable &&
-					this.#exit === null &&
+					stillOpen &&
 					outcome?.outcome === "selected" &&
 					offered.some((option) => option.optionId === outcome.optionId)
 				) {

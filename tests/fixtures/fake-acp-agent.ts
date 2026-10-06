@@ -109,6 +109,13 @@ const agent = acp
 		if (process.env.FAKE_ACP_CLOSE_REFUSE) throw new acp.RequestError(-32004, "no");
 		cancelled?.();
 		if (mode === "close-slow") await sleep(2500);
+		if (mode === "close-noisy") {
+			// Unrelated traffic while the close is pending.
+			await ctx.client.notify(acp.methods.client.session.update, {
+				sessionId,
+				update: { sessionUpdate: "tool_call", toolCallId: "noise", title: "t" },
+			} as never);
+		}
 		if (mode === "permission-during-close") {
 			// Asks while the close is pending, before answering it.
 			const response = await ctx.client.request(acp.methods.client.session.requestPermission, {

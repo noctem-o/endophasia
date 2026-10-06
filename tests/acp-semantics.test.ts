@@ -660,6 +660,24 @@ describe("observation is evidence, not authority", () => {
 		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpObserverErrorV0);
 	});
 
+	it("does not blame a close for an observer failure on unrelated traffic that arrived while it was pending", async () => {
+		const seen: EndoEventV0[] = [];
+		const { client } = await attach(
+			"close-noisy",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				onEvent: (event) => {
+					seen.push(event);
+					if (event.kind === "session.update-observed") throw new Error("sink rejects tool updates");
+				},
+			},
+		);
+		await client.closeSession(); // resolves: every close-related event was observed
+		expect(find(seen, "session.close-accepted")).toHaveLength(1);
+		expect(client.observerErrors).toHaveLength(1); // the unrelated failure is still retained and visible
+	});
+
 	it("restores a refused close once: an operation the observer started meanwhile is not undone", async () => {
 		let probe: Promise<boolean> | undefined;
 		let client: AcpClientV0 | undefined;

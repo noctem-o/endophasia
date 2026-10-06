@@ -167,5 +167,10 @@ describe("ACP v1 loss accounting", () => {
 			expect.arrayContaining(["Implementation.title", "AuthMethodAgent.name"]),
 		);
 		expect(acpUnprojectedFieldsV0({ projects: { Cost: ["amount"] } })).toEqual(["Cost.currency"]);
+		// The inverse: every definition the adapter reads is accounted for by some entry (so a new read cannot go unlisted).
+		const projected = new Set(entries.flatMap((entry) => Object.keys(entry.projects ?? {})));
+		expect(Object.keys(ACP_FIELDS_READ_V0).filter((definition) => !projected.has(definition))).toEqual([]);
+		expect(acpLossEntryV0("capability.advertisement")?.lost).toContain("AuthMethodTerminal.args");
+		expect(acpLossEntryV0("prompt.response")?.lost).toContain("PromptResponse.usage");
 	});
 });

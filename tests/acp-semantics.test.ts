@@ -479,6 +479,103 @@ describe("free-form agent strings are kept by reference, never dropped", () => {
 	});
 });
 
+describe("review regressions, round 5", () => {
+	it("records, but never approves, a permission request that arrives while session/close is pending", async () => {
+		let consulted = 0;
+		const { client, events } = await attach(
+			"permission-during-close",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				permissionHandler: () => {
+					consulted += 1;
+					return { outcome: { outcome: "selected", optionId: "allow" } };
+				},
+			},
+		);
+		await client.closeSession();
+		expect(consulted).toBe(0);
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(find(events, "permission.requested")).toHaveLength(1);
+		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({
+			decision: "cancelled",
+			handlerConsulted: false,
+		});
+		expect(find(events, "harness.late-message")).toEqual([]);
+	});
+
+	it("returns every field of a listed session, additional directories included", async () => {
+		const { client } = await attach("normal", { FAKE_ACP_CAPS: "list" });
+		const page = await client.listSessions();
+		expect(page.sessions.map((entry) => entry.additionalDirectories)).toEqual([[], ["/work/extra"]]);
+	});
+
+	describe("changes state before it emits, so onEvent cannot re-enter", () => {
+		// An onEvent that calls the same operation again from inside the first control.requested.
+		async function reentrant(
+			mode: string,
+			extra: Record<string, string>,
+			action: string,
+			again: (c: AcpClientV0) => Promise<unknown>,
+		) {
+			let client: AcpClientV0 | undefined;
+			const second: unknown[] = [];
+			let fired = false;
+			const events: EndoEventV0[] = [];
+			const options: Partial<AcpClientOptionsV0> = {
+				onEvent: (event) => {
+					events.push(event);
+					if (
+						!fired &&
+						client &&
+						event.kind === "control.requested" &&
+						(event.payload as { action: string }).action === action
+					) {
+						fired = true;
+						second.push(
+							again(client).then(
+								(value) => value,
+								(error: unknown) => error,
+							),
+						);
+					}
+				},
+			};
+			const connected = await attach(mode, extra, {}, options);
+			client = connected.client;
+			return { client, events, second, run: async () => Promise.all(second) };
+		}
+
+		it("prompt()", async () => {
+			const r = await reentrant("normal", {}, "prompt", (c) => c.prompt("again"));
+			await r.client.prompt("first");
+			expect((await r.run())[0]).toBeInstanceOf(TypeError);
+			expect(r.events.filter((e) => e.kind === "control.requested")).toHaveLength(1);
+		});
+
+		it("closeSession()", async () => {
+			const r = await reentrant("normal", { FAKE_ACP_CAPS: "close" }, "close", (c) => c.closeSession());
+			await r.client.closeSession();
+			expect((await r.run())[0]).toBeInstanceOf(TypeError);
+			expect(r.events.filter((e) => (e.payload as { action?: string }).action === "close")).toHaveLength(1);
+			expect(notes().filter((note) => note.called === "session/close")).toHaveLength(1);
+		});
+
+		it("cancel()", async () => {
+			const r = await reentrant("cancellable", {}, "cancel", (c) => c.cancel());
+			const turn = r.client.prompt("go");
+			for (let waited = 0; !find(r.events, "session.update-observed").length && waited < 200; waited++)
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(await r.client.cancel()).toBe(true);
+			await turn;
+			expect((await r.run())[0]).toBe(false);
+			expect(r.events.filter((e) => (e.payload as { action?: string }).action === "cancel")).toHaveLength(1);
+		});
+	});
+});
+
 describe("agent-local session ids", () => {
 	it("keeps two process instances that issue the same session id apart", async () => {
 		const first = await attach("normal");

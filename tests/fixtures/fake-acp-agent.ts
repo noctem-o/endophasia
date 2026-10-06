@@ -94,7 +94,7 @@ const agent = acp
 		return {
 			sessions: [
 				{ sessionId, cwd: "/work/one", title: "SECRET-SESSION-TITLE", updatedAt: "2026-01-01T00:00:00Z" },
-				{ sessionId: "other id with spaces", cwd: "/work/two" },
+				{ sessionId: "other id with spaces", cwd: "/work/two", additionalDirectories: ["/work/extra"] },
 			],
 			...(mode === "list-more" ? { nextCursor: "page-2" } : {}),
 		} as never;
@@ -108,6 +108,15 @@ const agent = acp
 		note({ called: "session/close", sessionId: ctx.params.sessionId });
 		cancelled?.();
 		if (mode === "close-slow") await sleep(2500);
+		if (mode === "permission-during-close") {
+			// Asks while the close is pending, before answering it.
+			const response = await ctx.client.request(acp.methods.client.session.requestPermission, {
+				sessionId,
+				toolCall: { toolCallId: "closing_call" },
+				options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+			});
+			note({ permissionOutcome: response.outcome });
+		}
 		if (mode === "close-refuse") {
 			// Traffic while the close is pending, then a refusal: the session stays open.
 			await ctx.client.notify(acp.methods.client.session.update, {

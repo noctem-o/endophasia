@@ -109,7 +109,7 @@ export const ACP_FIELDS_READ_V0: Readonly<Record<string, readonly string[]>> = O
 	ResumeSessionResponse: ["modes", "configOptions"],
 	ListSessionsRequest: ["cwd", "cursor"],
 	ListSessionsResponse: ["sessions", "nextCursor"],
-	SessionInfo: ["sessionId", "cwd", "title", "updatedAt"],
+	SessionInfo: ["sessionId", "cwd", "additionalDirectories", "title", "updatedAt"],
 	CloseSessionRequest: ["sessionId"],
 	SessionModeState: ["currentModeId", "availableModes"],
 	SessionConfigOption: ["id", "category"],

@@ -75,7 +75,10 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.open.new",
-		projects: { NewSessionResponse: ["sessionId", "modes", "configOptions"] },
+		projects: {
+			NewSessionRequest: ["cwd", "mcpServers"],
+			NewSessionResponse: ["sessionId", "modes", "configOptions"],
+		},
 		source: "session/new",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
@@ -88,7 +91,10 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.open.resume",
-		projects: { ResumeSessionResponse: ["modes", "configOptions"] },
+		projects: {
+			ResumeSessionRequest: ["sessionId", "cwd", "mcpServers"],
+			ResumeSessionResponse: ["modes", "configOptions"],
+		},
 		source: "session/resume",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
@@ -106,8 +112,9 @@ const declared: readonly AcpLossEntryV0[] = [
 	{
 		id: "session.list",
 		projects: {
+			ListSessionsRequest: ["cwd", "cursor"],
 			ListSessionsResponse: ["sessions", "nextCursor"],
-			SessionInfo: ["sessionId", "cwd", "title", "updatedAt"],
+			SessionInfo: ["sessionId", "cwd", "additionalDirectories", "title", "updatedAt"],
 		},
 		source: "session/list",
 		target: "session.listed",
@@ -124,6 +131,7 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.close",
+		projects: { CloseSessionRequest: ["sessionId"] },
 		source: "session/close",
 		target: "control.requested, session.close-accepted",
 		verdict: "QUALIFIED",
@@ -140,6 +148,7 @@ const declared: readonly AcpLossEntryV0[] = [
 			InitializeResponse: ["protocolVersion", "agentInfo", "agentCapabilities", "authMethods"],
 			Implementation: ["name", "version"],
 			AuthMethodAgent: ["id"],
+			AuthMethodTerminal: ["id"],
 		},
 		source: "initialize response (agentInfo, agentCapabilities, authMethods)",
 		target: "harness.acp-initialized",
@@ -158,6 +167,10 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "capability.unavailable",
+		projects: {
+			AgentCapabilities: ["sessionCapabilities"],
+			SessionCapabilities: ["list", "resume", "close"],
+		},
 		source: "an optional method the agent did not advertise",
 		target: "control.unavailable",
 		verdict: "EXACT",
@@ -165,6 +178,8 @@ const declared: readonly AcpLossEntryV0[] = [
 		emits: ["control.unavailable"],
 		preserved: ["the method", "that nothing was sent"],
 		lost: [],
+		qualification:
+			"only sessionCapabilities.list/resume/close are consulted to gate a call; the other AgentCapabilities and SessionCapabilities fields listed as lost here are not used for gating, and capability.advertisement records the capabilities verbatim (within its size bound).",
 	},
 	{
 		id: "prompt.request",
@@ -180,6 +195,7 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "prompt.response",
+		projects: { PromptResponse: ["stopReason"] },
 		source: "session/prompt response (stopReason)",
 		target: "agent.prompt-responded, lifecycle.run-completed | run-aborted | run-unclassified",
 		verdict: "QUALIFIED",
@@ -399,7 +415,7 @@ const declared: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "usage.ledger",
-		source: "usage_update",
+		source: "usage_update (and the per-turn PromptResponse.usage, which the pinned schema marks UNSTABLE)",
 		target: "endophasia.usage.v0 per-message input/output/cache/reasoning ledger",
 		verdict: "UNREPRESENTABLE",
 		availability: initiated,

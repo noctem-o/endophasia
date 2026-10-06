@@ -92,6 +92,8 @@ export interface AcpListedSessionV0 {
 	readonly cwd: string;
 	readonly title: string | null;
 	readonly updatedAt: string | null;
+	/** The complete ordered additional-root list the agent reported; empty when it reported none (the schema equates the two). */
+	readonly additionalDirectories: readonly string[];
 }
 
 export interface AcpSessionListV0 {
@@ -159,7 +161,8 @@ export class AcpRefusedErrorV0 extends Error {
 }
 
 interface OpenRun {
-	readonly started: EndoEventV0;
+	/** session/prompt has been sent: only then can it be cancelled. */
+	sent: boolean;
 	stopRequested: boolean;
 	updates: Record<string, number>;
 }
@@ -547,6 +550,9 @@ export class AcpClientV0 {
 				cwd: String(entry.cwd),
 				title: typeof entry.title === "string" ? entry.title : null,
 				updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : null,
+				additionalDirectories: Array.isArray(entry.additionalDirectories)
+					? entry.additionalDirectories.map((directory) => String(directory))
+					: [],
 			})),
 			nextCursor,
 		};
@@ -559,18 +565,21 @@ export class AcpClientV0 {
 	async closeSession(): Promise<void> {
 		this.#assertUsable("session/close");
 		if (!this.#sessionCapabilities.close) throw this.#unavailable("close", "session.close");
-		const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
+		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
+		// recorded normally: only a refusal shows the session stayed open. State first, then evidence: `onEvent` is caller
+		// code and can re-enter this client from inside record().
+		this.#sessionClosing = true;
 		const run = this.#run;
-		if (run !== null) {
-			// Closing a session cancels its work.
-			this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-			run.stopRequested = true;
+		if (run !== null) run.stopRequested = true; // Closing a session cancels its work.
+		try {
+			const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
+			if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
+		} catch (error) {
+			this.#sessionClosing = false;
+			throw error;
 		}
 		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
-		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
-		// recorded normally: only a refusal shows the session stayed open.
-		this.#sessionClosing = true;
 		let response: unknown;
 		try {
 			response = await this.#requestOptional(
@@ -642,15 +651,29 @@ export class AcpClientV0 {
 		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed || this.#sessionClosing)
 			throw new TypeError("the ACP attachment is closed");
 		if (this.#run !== null) throw new TypeError("a prompt turn is already open");
-		const requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
-		// The run start is the client's own request, said so: ACP v1 sends no run-start notification.
-		const started = this.#recorder.derive(
-			"lifecycle.run-started",
-			{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
-			requested,
-		);
-		const run: OpenRun = { started, stopRequested: false, updates: Object.create(null) };
+		// State first, then evidence: `onEvent` is caller code and can re-enter this client from inside record().
+		const run: OpenRun = { sent: false, stopRequested: false, updates: Object.create(null) };
 		this.#run = run;
+		try {
+			const requested = this.#recorder.record("control.requested", {
+				capability: "session.prompt",
+				action: "prompt",
+			});
+			// The run start is the client's own request, said so: ACP v1 sends no run-start notification.
+			this.#recorder.derive(
+				"lifecycle.run-started",
+				{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
+				requested,
+			);
+		} catch (error) {
+			if (this.#run === run) this.#run = null;
+			throw error;
+		}
+		// onEvent may have closed the attachment or the session while the request was being recorded: nothing is sent then.
+		if (this.#run !== run || this.#closed || this.#unusable || this.#sessionClosing || this.#sessionClosed) {
+			if (this.#run === run) this.#run = null;
+			throw new TypeError("the ACP attachment was closed while the prompt was being recorded");
+		}
 		// The turn settles on its own path, whenever the agent answers. A timeout only stops this caller waiting: the
 		// answer, if it comes later (after a cancel(), say), is still recorded as the agent's report.
 		const settled = this.#settle(
@@ -660,6 +683,7 @@ export class AcpClientV0 {
 				prompt: [{ type: "text", text }],
 			}),
 		);
+		run.sent = true;
 		settled.catch(() => {});
 		try {
 			return await bounded(settled, this.#promptTimeoutMs, "session/prompt");
@@ -732,10 +756,12 @@ export class AcpClientV0 {
 	 */
 	async cancel(): Promise<boolean> {
 		const run = this.#run;
-		if (run === null || this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
+		if (run === null || !run.sent || run.stopRequested) return false;
+		if (this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
+		// State first (a re-entrant cancel() from onEvent is then "already requested"), then evidence.
+		run.stopRequested = true;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-		run.stopRequested = true;
 		// A client must answer pending permission requests with `cancelled` once it cancels the turn.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
 		await this.#connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: this.sessionId });
@@ -774,6 +800,24 @@ export class AcpClientV0 {
 		}
 	}
 
+	/**
+	 * The one condition under which a permission request may be approved, used before the handler is asked and again after
+	 * it answered: the turn the request belongs to is still the open one, nobody asked to stop it, the attachment is up,
+	 * and the session is neither closing nor closed. A request is still recorded when this is false; it is never approved.
+	 */
+	#canApprove(run: OpenRun | null): boolean {
+		return (
+			run !== null &&
+			this.#run === run &&
+			!run.stopRequested &&
+			!this.#closed &&
+			!this.#unusable &&
+			this.#exit === null &&
+			!this.#sessionClosing &&
+			!this.#sessionClosed
+		);
+	}
+
 	async #onPermission(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
 		// After the agent was declared gone (or the stream closed, or close() began) a request, typically from a descendant
 		// that kept stdout open, is not the agent's: no authority event is recorded for it, the handler is not consulted,
@@ -804,14 +848,7 @@ export class AcpClientV0 {
 		// refused, threw, or lost a race to cancel/close did not decide.
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
 		let handlerConsulted = false;
-		if (
-			run === null ||
-			run.stopRequested ||
-			this.#closed ||
-			this.#unusable ||
-			duplicateIds ||
-			request.sessionId !== this.#sessionId
-		) {
+		if (!this.#canApprove(run) || duplicateIds || request.sessionId !== this.#sessionId) {
 			// No open turn, a turn being cancelled, a closing attachment, ambiguous options, or another session's id:
 			// nothing here can be approved, and the handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
@@ -835,17 +872,12 @@ export class AcpClientV0 {
 				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
 				// belongs to is still the open one, not being cancelled, and the attachment is still open (the agent may have
 				// finished the turn without waiting for its own request).
-				const stillOpen =
-					this.#run === run && !run.stopRequested && !this.#closed && !this.#unusable && this.#exit === null;
+				const stillOpen = this.#canApprove(run);
 				if (stillOpen && outcome?.outcome === "cancelled") {
 					// The handler's own explicit cancellation is its decision, and is attributed to it.
 					decidedBy = "handler";
 				} else if (
-					this.#run === run &&
-					!run.stopRequested &&
-					!this.#closed &&
-					!this.#unusable &&
-					this.#exit === null &&
+					stillOpen &&
 					outcome?.outcome === "selected" &&
 					offered.some((option) => option.optionId === outcome.optionId)
 				) {

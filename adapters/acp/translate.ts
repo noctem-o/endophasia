@@ -94,6 +94,15 @@ export function shortText(value: unknown, max = 128): string | undefined {
 	return typeof value === "string" && /^[\x21-\x7e]{1,}$/.test(value) && value.length <= max ? value : undefined;
 }
 
+/**
+ * An opaque identifier the agent chose (ACP types a tool call id as an unconstrained string): itself when short and
+ * printable, else a digest of it, so two events about one call still correlate. Undefined when it is not a string.
+ */
+export function opaqueIdRefV0(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	return shortText(value) ?? `sha256-${sha256HexV0(value).slice(0, 48)}`;
+}
+
 function finite(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -127,6 +136,14 @@ function isContentBlock(value: unknown): boolean {
 		default:
 			return false;
 	}
+}
+
+/** An ACP v1 SessionConfigOption: a select (string current value, options) or a boolean (boolean current value). */
+function isConfigOption(option: unknown): boolean {
+	if (!isRecord(option) || !isText(option.id) || !isText(option.name)) return false;
+	if (option.type === "select") return isText(option.currentValue) && Array.isArray(option.options);
+	if (option.type === "boolean") return typeof option.currentValue === "boolean";
+	return false;
 }
 
 const PLAN_PRIORITIES = ["high", "medium", "low"];
@@ -168,10 +185,7 @@ function hasRequiredFields(variant: string, update: Record<string, unknown>): bo
 		case "current_mode_update":
 			return isText(update.currentModeId);
 		case "config_option_update":
-			return (
-				Array.isArray(update.configOptions) &&
-				update.configOptions.every((option) => isRecord(option) && isText(option.id) && isText(option.name))
-			);
+			return Array.isArray(update.configOptions) && update.configOptions.every(isConfigOption);
 		case "usage_update":
 			return finite(update.used) !== undefined && finite(update.size) !== undefined;
 		default:
@@ -302,12 +316,12 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 	switch (variant) {
 		case "tool_call":
 			return observed({
-				toolCallId: shortText(update.toolCallId),
+				toolCallId: opaqueIdRefV0(update.toolCallId),
 				toolKind: shortText(update.kind, 32),
 				status: shortText(update.status, 32),
 			});
 		case "tool_call_update":
-			return observed({ toolCallId: shortText(update.toolCallId), status: shortText(update.status, 32) });
+			return observed({ toolCallId: opaqueIdRefV0(update.toolCallId), status: shortText(update.status, 32) });
 		case "plan":
 			return observed({ entries: Array.isArray(update.entries) ? update.entries.length : undefined });
 		case "available_commands_update":

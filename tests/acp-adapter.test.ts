@@ -494,6 +494,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			"plan",
 			"available_commands_update",
 			"config_option_update",
+			"config_option_update",
 			"agent_message_chunk",
 		]);
 		// The common prefix has two valid chunks; the valid one at the end is the third.
@@ -507,6 +508,48 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		// Only the common prefix's two chunks; the envelope-less third is not counted.
 		expect(result.updates.agent_message_chunk).toBe(2);
 		expect(result.stopReason).toBe("end_turn");
+	});
+
+	it("attributes a handler's own explicit cancellation to the handler", async () => {
+		const { client, events } = await attach("permission", {
+			permissionHandler: () => ({ outcome: { outcome: "cancelled" } }),
+		});
+		await client.prompt("go");
+		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({
+			decidedBy: "handler",
+			handlerConsulted: true,
+			decision: "cancelled",
+		});
+	});
+
+	it("reports an agent that exited while a descendant holds its stdout, long before the prompt timeout", async () => {
+		const { client, events } = await attach("exit-retaining-pipe", { promptTimeoutMs: 20_000 });
+		const started = Date.now();
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(AcpProcessExitedErrorV0);
+		expect(Date.now() - started).toBeLessThan(5_000);
+		expect(find(events, "harness.prompt-timeout")).toEqual([]);
+		expect(find(events, "lifecycle.interrupted")).toHaveLength(1);
+	});
+
+	it("keeps an opaque tool call id correlatable when it is not short printable ASCII", async () => {
+		const { client, events } = await attach("odd-tool-id");
+		await client.prompt("go");
+		const ids = find(events, "session.update-observed")
+			.map((event) => (event.payload as { toolCallId?: string }).toolCallId)
+			.filter((id) => id !== "call_1");
+		expect(ids).toHaveLength(3);
+		expect(ids[0]).toMatch(/^sha256-[0-9a-f]{48}$/);
+		expect(ids[1]).toBe(ids[0]);
+		expect(ids[2]).toMatch(/^sha256-[0-9a-f]{48}$/);
+		expect(ids[2]).not.toBe(ids[0]);
+	});
+
+	it("refuses work as soon as the ACP stream has closed, before the fault is classified", async () => {
+		const { client, events } = await attach("close-stdout");
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(find(events, "harness.protocol-fault")).toEqual([]);
+		await expect(client.prompt("early")).rejects.toThrow(/closed/);
+		expect(await client.cancel()).toBe(false);
 	});
 
 	it("treats a closed ACP stream under a living agent as a fault and ends the group", async () => {

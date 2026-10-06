@@ -94,6 +94,7 @@ const agent = acp
 				await update({ sessionUpdate: "plan", entries: [{ content: "do it" }] });
 				await update({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "x" }] });
 				await update({ sessionUpdate: "config_option_update", configOptions: [{ name: "x" }] });
+				await update({ sessionUpdate: "config_option_update", configOptions: [{ id: "model", name: "Model" }] });
 				await update({ sessionUpdate: "agent_message_chunk", content: { type: "resource", resource: {} } });
 				await update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } });
 				break;
@@ -153,6 +154,20 @@ const agent = acp
 				);
 				await sleep(50);
 				break;
+			case "exit-retaining-pipe": {
+				// A descendant keeps the agent's stdout open after the agent exits.
+				spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: ["ignore", "inherit", "ignore"] });
+				setTimeout(() => process.exit(4), 100);
+				await new Promise(() => {});
+				break;
+			}
+			case "odd-tool-id": {
+				const id = "has space \u00e9 and more";
+				await update({ sessionUpdate: "tool_call", toolCallId: id, title: "t", status: "pending" });
+				await update({ sessionUpdate: "tool_call_update", toolCallId: id, status: "completed" });
+				await update({ sessionUpdate: "tool_call", toolCallId: "x".repeat(300), title: "t" });
+				break;
+			}
 			case "weird-variants":
 				await update({ sessionUpdate: "__proto__" });
 				await update({ sessionUpdate: "constructor" });

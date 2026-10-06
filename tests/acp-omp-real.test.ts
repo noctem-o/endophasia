@@ -11,7 +11,7 @@
  * value is logged. This suite may therefore use the operator's configured model, which can cost money: that is the
  * reason it is opt-in. Permission requests fail closed (no handler is supplied).
  *
- * What counts as a skip, with the reason stated: `omp` missing or without an `acp` command, an explicit JSON-RPC refusal of session/new, or
+ * What counts as a skip, with the reason stated: `omp` not an executable file or without an `acp` command in --help, an explicit JSON-RPC refusal of session/new, or
  * a prompt that completed with no message, thought or tool-call update (OMP ends a failed model call with end_turn, so a missing
  * model/provider configuration looks exactly like that). A wrong protocol version, a hang, or a child that survives
  * close() fails.
@@ -55,14 +55,10 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 				return ctx.skip(`ENDO_OMP_EXECUTABLE (${omp}) is not an executable file`);
 			}
 			const env = launchEnv();
-			let version: string;
-			try {
-				version = execFileSync(omp, ["--version"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 }).trim();
-				const help = execFileSync(omp, ["--help"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 });
-				if (!/\bacp\b/.test(help)) return ctx.skip(`omp ${version} does not list an \`acp\` command in --help`);
-			} catch (error) {
-				return ctx.skip(`omp could not report its version/help: ${(error as Error).message.split("\n")[0]}`);
-			}
+			// A configured executable that crashes or hangs on --version/--help is a broken installation, not a skip.
+			const version = execFileSync(omp, ["--version"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 }).trim();
+			const help = execFileSync(omp, ["--help"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 });
+			if (!/\bacp\b/.test(help)) return ctx.skip(`omp ${version} does not list an \`acp\` command in --help`);
 
 			const scratch = realpathSync(mkdtempSync(join(tmpdir(), "endo-acp-omp-")));
 			const events: EndoEventV0[] = [];

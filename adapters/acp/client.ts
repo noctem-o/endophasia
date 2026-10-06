@@ -31,6 +31,7 @@ import {
 	isAcpStopReasonV0,
 	isRecord,
 	lifecycleEndForStopReasonV0,
+	opaqueIdRefV0,
 	shortText,
 	translateAcpUpdateV0,
 } from "./translate.ts";
@@ -207,6 +208,8 @@ export class AcpClientV0 {
 	#exit: ProcessExitV0 | null = null;
 	#closing: Promise<ProcessExitV0> | undefined;
 	#closed = false;
+	/** The ACP stream ended under a living agent: nothing more can be asked or approved. */
+	#unusable = false;
 
 	private constructor(options: AcpClientOptionsV0) {
 		this.#options = options;
@@ -372,15 +375,33 @@ export class AcpClientV0 {
 
 	/** One bounded request, with refusals and a vanished agent classified. */
 	async #request<T>(what: string, work: Promise<T>): Promise<T> {
+		work.catch(() => {});
 		try {
-			return await bounded(work, this.#requestTimeoutMs, what);
+			return await bounded(Promise.race([work, this.#exitedEarly(what)]), this.#requestTimeoutMs, what);
 		} catch (error) {
 			throw await this.#classify(what, error);
 		}
 	}
 
+	/**
+	 * Rejects when the agent process exits. A request is raced against it: a descendant can keep the agent's stdout open
+	 * after the agent itself ended, and the ACP stream then never reports the end.
+	 */
+	#exitedEarly(what: string): Promise<never> {
+		const early = this.#group.exited.then((exit): never => {
+			throw new AcpProcessExitedErrorV0(`the agent process ended during ${what}`, exit);
+		});
+		early.catch(() => {});
+		return early;
+	}
+
 	async #classify(what: string, error: unknown): Promise<unknown> {
-		if (error instanceof AcpTimeoutErrorV0 || error instanceof AcpProtocolErrorV0) return error;
+		if (
+			error instanceof AcpTimeoutErrorV0 ||
+			error instanceof AcpProtocolErrorV0 ||
+			error instanceof AcpProcessExitedErrorV0
+		)
+			return error;
 		if (error instanceof acp.RequestError) return new AcpRefusedErrorV0(what, error.code);
 		// The connection ended under the request. Give the keeper's exit report a moment to arrive first.
 		await Promise.race([this.#group.exited, delay(500)]);
@@ -397,7 +418,7 @@ export class AcpClientV0 {
 	 */
 	async prompt(text: string): Promise<AcpPromptResultV0> {
 		const sessionId = this.sessionId;
-		if (this.#closed || this.#exit !== null) throw new TypeError("the ACP attachment is closed");
+		if (this.#closed || this.#unusable || this.#exit !== null) throw new TypeError("the ACP attachment is closed");
 		if (this.#run !== null) throw new TypeError("a prompt turn is already open");
 		const requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
 		// The run start is the client's own request, said so: ACP v1 sends no run-start notification.
@@ -432,7 +453,8 @@ export class AcpClientV0 {
 	async #settle(run: OpenRun, request: Promise<unknown>): Promise<AcpPromptResultV0> {
 		let response: unknown;
 		try {
-			response = await request;
+			request.catch(() => {});
+			response = await Promise.race([request, this.#exitedEarly("session/prompt")]);
 		} catch (error) {
 			throw await this.#promptFailed(run, error);
 		}
@@ -488,7 +510,7 @@ export class AcpClientV0 {
 	 */
 	async cancel(): Promise<boolean> {
 		const run = this.#run;
-		if (run === null || this.#closed) return false;
+		if (run === null || this.#closed || this.#unusable) return false;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
 		run.stopRequested = true;
@@ -531,7 +553,7 @@ export class AcpClientV0 {
 		// Two options sharing an id cannot be told apart by the agent from the answer: nothing is selected.
 		const duplicateIds = new Set(offered.map((option) => option.optionId)).size !== offered.length;
 		const requested = this.#recorder.record("permission.requested", {
-			toolCallId: shortText(request.toolCall?.toolCallId) ?? null,
+			toolCallId: opaqueIdRefV0(request.toolCall?.toolCallId) ?? null,
 			optionKinds: offered.map((option) => shortText(option.kind, 32) ?? null),
 			runOpen: this.#run !== null,
 			sessionMatches: request.sessionId === this.#sessionId,
@@ -543,7 +565,14 @@ export class AcpClientV0 {
 		// refused, threw, or lost a race to cancel/close did not decide.
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
 		let handlerConsulted = false;
-		if (run === null || run.stopRequested || this.#closed || duplicateIds || request.sessionId !== this.#sessionId) {
+		if (
+			run === null ||
+			run.stopRequested ||
+			this.#closed ||
+			this.#unusable ||
+			duplicateIds ||
+			request.sessionId !== this.#sessionId
+		) {
 			// No open turn, a turn being cancelled, a closing attachment, ambiguous options, or another session's id:
 			// nothing here can be approved, and the handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
@@ -567,10 +596,15 @@ export class AcpClientV0 {
 				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
 				// belongs to is still the open one, not being cancelled, and the attachment is still open (the agent may have
 				// finished the turn without waiting for its own request).
-				if (
+				const stillOpen = this.#run === run && !run.stopRequested && !this.#closed && !this.#unusable;
+				if (stillOpen && outcome?.outcome === "cancelled" && answer !== CANCELLED) {
+					// The handler's own explicit cancellation is its decision, and is attributed to it.
+					decidedBy = "handler";
+				} else if (
 					this.#run === run &&
 					!run.stopRequested &&
 					!this.#closed &&
+					!this.#unusable &&
 					outcome?.outcome === "selected" &&
 					offered.some((option) => option.optionId === outcome.optionId)
 				) {
@@ -605,6 +639,9 @@ export class AcpClientV0 {
 	 */
 	async #onConnectionClosed(): Promise<void> {
 		if (this.#closed) return;
+		// Unusable at once, before the diagnostic wait: no prompt, cancel or approval gets through in the meantime.
+		this.#unusable = true;
+		for (const cancel of [...this.#pendingPermissions]) cancel();
 		await Promise.race([this.#group.exited, delay(500)]);
 		if (this.#closed || this.#exit !== null) return;
 		this.#recorder.record("harness.protocol-fault", { fault: "connection-closed" });

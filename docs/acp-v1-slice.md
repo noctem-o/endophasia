@@ -64,6 +64,12 @@ config option, session info and usage updates (as counts, identifiers and status
 
 Known limits:
 
+- Requests are raced against the agent process's exit, because a descendant can keep the agent's stdout open after the
+  agent ended. If the agent answers and exits at nearly the same moment, the exit can be seen first and the turn is
+  recorded as interrupted; that is the conservative reading.
+- A closed ACP stream under a living agent makes the attachment unusable at once (no prompt, cancel or approval), then
+  a fault is recorded and the group ended.
+
 - A line that is not JSON is answered by the SDK with a JSON-RPC parse error and never reaches the adapter, so it is not
   recorded as a fault by itself.
 - `promptTimeoutMs` only stops the caller waiting (`harness.prompt-timeout`). The turn stays open: if the agent answers

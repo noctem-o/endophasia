@@ -552,6 +552,48 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(await client.cancel()).toBe(false);
 	});
 
+	it("does not count an update that a descendant writes after the agent has exited", async () => {
+		const { client, events } = await attach("late-update-after-exit", { promptTimeoutMs: 20_000 });
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(AcpProcessExitedErrorV0);
+		await until(() => kinds(events).includes("harness.late-message"), 5_000);
+		expect(find(events, "harness.late-message")[0]!.payload).toEqual({ method: "session/update", after: "exit" });
+		// The common prefix's two chunks; the late one is not counted, and nothing follows the interruption.
+		expect(client.updateCounts.agent_message_chunk).toBe(2);
+		const lateAt = kinds(events).indexOf("harness.late-message");
+		expect(kinds(events).slice(lateAt)).not.toContain("session.update-observed");
+	});
+
+	it("rejects status and kind values outside ACP v1, and keeps an opaque mode id correlatable", async () => {
+		const { client, events } = await attach("bad-enums");
+		const result = await client.prompt("go");
+		expect(
+			find(events, "runtime.malformed-event").map((event) => (event.payload as { variant: string }).variant),
+		).toEqual(["tool_call_update", "tool_call"]);
+		expect(result.updates.current_mode_update).toBe(1);
+		const mode = find(events, "session.update-observed").find(
+			(event) => (event.payload as { update: string }).update === "current_mode_update",
+		)!;
+		expect((mode.payload as { modeId: string }).modeId).toMatch(/^sha256-[0-9a-f]{48}$/);
+	});
+
+	it("returns a fresh response, so a handler that keeps its object cannot change an approval afterwards", async () => {
+		let kept: { outcome: { outcome: string; optionId?: string } } | undefined;
+		const { client } = await attach("permission", {
+			permissionHandler: () => {
+				kept = { outcome: { outcome: "selected", optionId: "reject" } };
+				// Mutated after the handler returns, as a caller holding the object could.
+				setTimeout(() => {
+					if (kept) kept.outcome.optionId = "allow";
+				}, 0);
+				return kept as never;
+			},
+		});
+		await client.prompt("go");
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "selected", optionId: "reject" },
+		});
+	});
+
 	it("treats a closed ACP stream under a living agent as a fault and ends the group", async () => {
 		const { client, events } = await attach("close-stdout");
 		await until(() => kinds(events).includes("harness.process-exited"), 8_000);

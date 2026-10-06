@@ -154,6 +154,12 @@ const PLAN_STATUSES = ["pending", "in_progress", "completed"];
  * off the SDK stream before its schema router, so nothing else validates them. Variants this module does not
  * recognize pass: they are recorded by name, not read.
  */
+const TOOL_STATUSES = ["pending", "in_progress", "completed", "failed"];
+const TOOL_KINDS = ["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "switch_mode", "other"];
+/** An optional enum field: absent or null passes, anything else must be one of the allowed values. */
+const optionalOneOf = (value: unknown, allowed: readonly string[]): boolean =>
+	value === undefined || value === null || (typeof value === "string" && allowed.includes(value));
+
 function hasRequiredFields(variant: string, update: Record<string, unknown>): boolean {
 	switch (variant) {
 		case "agent_message_chunk":
@@ -161,9 +167,18 @@ function hasRequiredFields(variant: string, update: Record<string, unknown>): bo
 		case "user_message_chunk":
 			return isContentBlock(update.content);
 		case "tool_call":
-			return isText(update.toolCallId) && isText(update.title);
+			return (
+				isText(update.toolCallId) &&
+				isText(update.title) &&
+				optionalOneOf(update.status, TOOL_STATUSES) &&
+				optionalOneOf(update.kind, TOOL_KINDS)
+			);
 		case "tool_call_update":
-			return isText(update.toolCallId);
+			return (
+				isText(update.toolCallId) &&
+				optionalOneOf(update.status, TOOL_STATUSES) &&
+				optionalOneOf(update.kind, TOOL_KINDS)
+			);
 		case "plan":
 			return (
 				Array.isArray(update.entries) &&
@@ -329,7 +344,7 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 				commands: Array.isArray(update.availableCommands) ? update.availableCommands.length : undefined,
 			});
 		case "current_mode_update":
-			return observed({ modeId: shortText(update.currentModeId) });
+			return observed({ modeId: opaqueIdRefV0(update.currentModeId) });
 		case "config_option_update":
 			return observed({ options: Array.isArray(update.configOptions) ? update.configOptions.length : undefined });
 		case "session_info_update":

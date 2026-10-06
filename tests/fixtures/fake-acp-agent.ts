@@ -161,6 +161,33 @@ const agent = acp
 				await new Promise(() => {});
 				break;
 			}
+			case "late-update-after-exit": {
+				// A descendant outlives the agent and writes an update to the stdout it still holds.
+				const line = JSON.stringify({
+					jsonrpc: "2.0",
+					method: "session/update",
+					params: {
+						sessionId,
+						update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "late" } },
+					},
+				});
+				spawn(
+					process.execPath,
+					[
+						"-e",
+						`setTimeout(()=>process.stdout.write(${JSON.stringify(`${line}\n`)}),500);setInterval(()=>{},1000)`,
+					],
+					{ stdio: ["ignore", "inherit", "ignore"] },
+				);
+				setTimeout(() => process.exit(4), 100);
+				await new Promise(() => {});
+				break;
+			}
+			case "bad-enums":
+				await update({ sessionUpdate: "tool_call_update", toolCallId: "e1", status: "succeeded" });
+				await update({ sessionUpdate: "tool_call", toolCallId: "e2", title: "t", kind: "teleport" });
+				await update({ sessionUpdate: "current_mode_update", currentModeId: "mode with spaces \u00e9" });
+				break;
 			case "odd-tool-id": {
 				const id = "has space \u00e9 and more";
 				await update({ sessionUpdate: "tool_call", toolCallId: id, title: "t", status: "pending" });

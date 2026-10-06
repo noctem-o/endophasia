@@ -62,11 +62,22 @@ translate becomes `runtime.unrecognized-event` (by name only) and `lifecycle.unr
 `endo.session.acp.<process instance>.<session id>`: ACP session ids are agent-local, so two launches would otherwise merge. Translated in this slice: tool call, tool call update, plan, available commands, mode,
 config option, session info and usage updates (as counts, identifiers and statuses).
 
+### How deeply updates are validated
+
+The SDK's zod schemas are not part of its public exports, and its own router cannot be used (it drops unknown
+variants), so the adapter does not claim full ACP schema validation. For each recognized variant it checks the
+container shape and the nested fields it records or counts on (content blocks, plan entries, commands, config option
+type and current value, tool-call id, status and kind enums). Elements deeper than that (for example the items inside a
+select option's `options`) are not inspected; complete validation is a later-tranche concern, not something to approximate
+level by level here.
+
 Known limits:
 
 - Requests are raced against the agent process's exit, because a descendant can keep the agent's stdout open after the
   agent ended. If the agent answers and exits at nearly the same moment, the exit can be seen first and the turn is
   recorded as interrupted; that is the conservative reading.
+- A message from a process the adapter has declared gone (a descendant holding stdout), or arriving after the stream
+  closed or `close()` began, is recorded as `harness.late-message` and never counted or approved.
 - A closed ACP stream under a living agent makes the attachment unusable at once (no prompt, cancel or approval), then
   a fault is recorded and the group ended.
 

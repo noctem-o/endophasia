@@ -126,7 +126,10 @@ interface OpenRun {
 	updates: Record<string, number>;
 }
 
-const CANCELLED: acp.RequestPermissionResponse = { outcome: { outcome: "cancelled" } };
+/** Always a fresh object: a response handed to the SDK must not be shared or mutable from elsewhere. */
+const cancelledResponse = (): acp.RequestPermissionResponse => ({ outcome: { outcome: "cancelled" } });
+/** What the cancellation race resolves with when the adapter, not the handler, ended the wait. */
+const ADAPTER_CANCEL = Symbol("adapter-cancel");
 
 function delay(ms: number): Promise<"timeout"> {
 	return new Promise((resolve) => {
@@ -268,6 +271,8 @@ export class AcpClientV0 {
 			// first. Not an attachment.
 			if (client.#exit !== null)
 				throw new AcpProcessExitedErrorV0("the agent process ended during attach", client.#exit);
+			if (client.#unusable || client.#closed)
+				throw new AcpProtocolErrorV0("the ACP connection closed during attach");
 			return client;
 		} catch (error) {
 			await client.close();
@@ -521,6 +526,13 @@ export class AcpClientV0 {
 	}
 
 	#onUpdate(params: unknown): void {
+		// After the agent was declared gone (or the stream closed, or close() began) a straggler, typically from a
+		// descendant that kept stdout open, is not the agent's activity: recorded as ignored, never counted.
+		if (this.#exit !== null || this.#unusable || this.#closed) {
+			const after = this.#exit !== null ? "exit" : this.#unusable ? "stream-closed" : "close";
+			this.#recorder.record("harness.late-message", { method: "session/update", after });
+			return;
+		}
 		const update = isRecord(params) ? params.update : undefined;
 		if (!isRecord(params) || params.sessionId !== this.#sessionId || this.#sessionId === null) {
 			this.#recorder.record("runtime.malformed-event", {
@@ -560,7 +572,7 @@ export class AcpClientV0 {
 			...(duplicateIds ? { duplicateOptionIds: true } : {}),
 		});
 		const run = this.#run;
-		let response: acp.RequestPermissionResponse = CANCELLED;
+		let response: acp.RequestPermissionResponse = cancelledResponse();
 		// "handler" only when the handler's own valid answer is what is returned; a consulted handler whose answer was
 		// refused, threw, or lost a race to cancel/close did not decide.
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
@@ -581,8 +593,8 @@ export class AcpClientV0 {
 		} else {
 			handlerConsulted = true;
 			let cancel!: () => void;
-			const cancelled = new Promise<acp.RequestPermissionResponse>((resolve) => {
-				cancel = () => resolve(CANCELLED);
+			const cancelled = new Promise<typeof ADAPTER_CANCEL>((resolve) => {
+				cancel = () => resolve(ADAPTER_CANCEL);
 			});
 			this.#pendingPermissions.add(cancel);
 			try {
@@ -592,12 +604,13 @@ export class AcpClientV0 {
 					),
 					cancelled,
 				]);
-				const outcome = answer?.outcome;
+				const outcome = answer === ADAPTER_CANCEL ? undefined : answer?.outcome;
 				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
 				// belongs to is still the open one, not being cancelled, and the attachment is still open (the agent may have
 				// finished the turn without waiting for its own request).
-				const stillOpen = this.#run === run && !run.stopRequested && !this.#closed && !this.#unusable;
-				if (stillOpen && outcome?.outcome === "cancelled" && answer !== CANCELLED) {
+				const stillOpen =
+					this.#run === run && !run.stopRequested && !this.#closed && !this.#unusable && this.#exit === null;
+				if (stillOpen && outcome?.outcome === "cancelled") {
 					// The handler's own explicit cancellation is its decision, and is attributed to it.
 					decidedBy = "handler";
 				} else if (
@@ -605,10 +618,12 @@ export class AcpClientV0 {
 					!run.stopRequested &&
 					!this.#closed &&
 					!this.#unusable &&
+					this.#exit === null &&
 					outcome?.outcome === "selected" &&
 					offered.some((option) => option.optionId === outcome.optionId)
 				) {
-					response = answer;
+					// Rebuilt from the validated id: the handler's own object (which it may still hold) is never returned.
+					response = { outcome: { outcome: "selected", optionId: outcome.optionId } };
 					decidedBy = "handler";
 				}
 			} catch {

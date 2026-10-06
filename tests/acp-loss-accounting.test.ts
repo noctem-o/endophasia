@@ -108,7 +108,7 @@ describe("ACP v1 loss accounting", () => {
 
 	it("is documented: every entry id and the schema digest appear in docs/acp-v1-slice.md", () => {
 		const doc = readFileSync(join(import.meta.dirname, "..", "docs", "acp-v1-slice.md"), "utf8");
-		for (const entry of entries) expect(doc, entry.id).toContain(`\`${entry.id}\``);
+		for (const entry of entries) expect(doc, entry.id).toContain(`| \`${entry.id}\` | ${entry.verdict} |`);
 		expect(doc).toContain(ACP_SCHEMA_V0.sha256);
 		expect(doc).toContain(ACP_MAPPING_VERSION);
 	});

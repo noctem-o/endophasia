@@ -304,9 +304,16 @@ export class AcpClientV0 {
 	 * Launch the agent, negotiate ACP v1, and open one session in `cwd` (absolute). Any failure tears the child down
 	 * before it propagates.
 	 */
-	static async connect(options: AcpClientOptionsV0, session: AcpSessionOpenV0): Promise<AcpClientV0> {
+	static async connect(options: AcpClientOptionsV0, request: AcpSessionOpenV0): Promise<AcpClientV0> {
+		// A private snapshot: what is validated here is what is sent later, whatever the caller does with its object.
+		const resumeId = request.resume === undefined ? undefined : request.resume.sessionId;
+		const session: AcpSessionOpenV0 = Object.freeze({
+			cwd: request.cwd,
+			...(resumeId === undefined ? {} : { resume: Object.freeze({ sessionId: resumeId }) }),
+		});
 		if (!isAbsolute(options.launch.cwd)) throw new TypeError("launch.cwd must be an absolute path");
-		if (!isAbsolute(session.cwd)) throw new TypeError("session.cwd must be an absolute path");
+		if (typeof session.cwd !== "string" || !isAbsolute(session.cwd))
+			throw new TypeError("session.cwd must be an absolute path");
 		if (
 			session.resume !== undefined &&
 			(typeof session.resume.sessionId !== "string" || session.resume.sessionId === "")

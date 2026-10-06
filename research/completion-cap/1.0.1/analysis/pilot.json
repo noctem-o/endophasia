@@ -1,0 +1,1288 @@
+{
+	"stage": "pilot",
+	"trials": 40,
+	"cells": [
+		{
+			"arm": "a",
+			"task": "booking-conflicts",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.540569,
+			"outputTokens": {
+				"n": 2,
+				"median": 6915,
+				"q1": 6827.5,
+				"q3": 7002.5,
+				"iqr": 175,
+				"min": 6740,
+				"max": 7090
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 66605,
+				"q1": 64913,
+				"q3": 68297,
+				"iqr": 3384,
+				"min": 63221,
+				"max": 69989
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 9547.5,
+				"q1": 9449.25,
+				"q3": 9645.75,
+				"iqr": 196.5,
+				"min": 9351,
+				"max": 9744
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 6,
+				"q1": 6,
+				"q3": 6,
+				"iqr": 0,
+				"min": 6,
+				"max": 6
+			},
+			"outputTokensPerSuccess": 6915,
+			"wallMsPerSuccess": 66605,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "a",
+			"task": "config-extends",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.712722,
+			"outputTokens": {
+				"n": 2,
+				"median": 18046.5,
+				"q1": 16853.25,
+				"q3": 19239.75,
+				"iqr": 2386.5,
+				"min": 15660,
+				"max": 20433
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 225139.5,
+				"q1": 206852.25,
+				"q3": 243426.75,
+				"iqr": 36574.5,
+				"min": 188565,
+				"max": 261714
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 23033.5,
+				"q1": 21836.75,
+				"q3": 24230.25,
+				"iqr": 2393.5,
+				"min": 20640,
+				"max": 25427
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 16,
+				"q1": 14.5,
+				"q3": 17.5,
+				"iqr": 3,
+				"min": 13,
+				"max": 19
+			},
+			"outputTokensPerSuccess": 18047,
+			"wallMsPerSuccess": 225140,
+			"outsideMentions": 12
+		},
+		{
+			"arm": "a",
+			"task": "fetch-cache",
+			"planned": 2,
+			"counted": 2,
+			"successes": 1,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 1
+			},
+			"cutOffTrialShare": 0.5,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.883766,
+			"outputTokens": {
+				"n": 2,
+				"median": 20856,
+				"q1": 18734,
+				"q3": 22978,
+				"iqr": 4244,
+				"min": 16612,
+				"max": 25100
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 265830.5,
+				"q1": 249447.25,
+				"q3": 282213.75,
+				"iqr": 32766.5,
+				"min": 233064,
+				"max": 298597
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 16132.5,
+				"q1": 9671.75,
+				"q3": 22593.25,
+				"iqr": 12921.5,
+				"min": 3211,
+				"max": 29054
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 10.5,
+				"q1": 7.25,
+				"q3": 13.75,
+				"iqr": 6.5,
+				"min": 4,
+				"max": 17
+			},
+			"outputTokensPerSuccess": 41712,
+			"wallMsPerSuccess": 531661,
+			"outsideMentions": 11
+		},
+		{
+			"arm": "a",
+			"task": "markup-lite",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.80903,
+			"outputTokens": {
+				"n": 2,
+				"median": 14673,
+				"q1": 13386.5,
+				"q3": 15959.5,
+				"iqr": 2573,
+				"min": 12100,
+				"max": 17246
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 177433.5,
+				"q1": 157326.75,
+				"q3": 197540.25,
+				"iqr": 40213.5,
+				"min": 137220,
+				"max": 217647
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 18376,
+				"q1": 16639,
+				"q3": 20113,
+				"iqr": 3474,
+				"min": 14902,
+				"max": 21850
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 9.5,
+				"q1": 8.25,
+				"q3": 10.75,
+				"iqr": 2.5,
+				"min": 7,
+				"max": 12
+			},
+			"outputTokensPerSuccess": 14673,
+			"wallMsPerSuccess": 177434,
+			"outsideMentions": 5
+		},
+		{
+			"arm": "b",
+			"task": "booking-conflicts",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.551504,
+			"outputTokens": {
+				"n": 2,
+				"median": 17937,
+				"q1": 15805.5,
+				"q3": 20068.5,
+				"iqr": 4263,
+				"min": 13674,
+				"max": 22200
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 167344,
+				"q1": 140578,
+				"q3": 194110,
+				"iqr": 53532,
+				"min": 113812,
+				"max": 220876
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 21698.5,
+				"q1": 19513.75,
+				"q3": 23883.25,
+				"iqr": 4369.5,
+				"min": 17329,
+				"max": 26068
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 10,
+				"q1": 10,
+				"q3": 10,
+				"iqr": 0,
+				"min": 10,
+				"max": 10
+			},
+			"outputTokensPerSuccess": 17937,
+			"wallMsPerSuccess": 167344,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "b",
+			"task": "config-extends",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.704967,
+			"outputTokens": {
+				"n": 2,
+				"median": 22146,
+				"q1": 22116.5,
+				"q3": 22175.5,
+				"iqr": 59,
+				"min": 22087,
+				"max": 22205
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 275293.5,
+				"q1": 273038.75,
+				"q3": 277548.25,
+				"iqr": 4509.5,
+				"min": 270784,
+				"max": 279803
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 25921,
+				"q1": 25843.5,
+				"q3": 25998.5,
+				"iqr": 155,
+				"min": 25766,
+				"max": 26076
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 19,
+				"q1": 19,
+				"q3": 19,
+				"iqr": 0,
+				"min": 19,
+				"max": 19
+			},
+			"outputTokensPerSuccess": 22146,
+			"wallMsPerSuccess": 275294,
+			"outsideMentions": 11
+		},
+		{
+			"arm": "b",
+			"task": "fetch-cache",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 1,
+			"httpErrors": 0,
+			"reasoningShare": 0.818495,
+			"outputTokens": {
+				"n": 2,
+				"median": 27520.5,
+				"q1": 25525.75,
+				"q3": 29515.25,
+				"iqr": 3989.5,
+				"min": 23531,
+				"max": 31510
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 2011317,
+				"q1": 1216552,
+				"q3": 2806082,
+				"iqr": 1589530,
+				"min": 421787,
+				"max": 3600847
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 31744,
+				"q1": 29247,
+				"q3": 34241,
+				"iqr": 4994,
+				"min": 26750,
+				"max": 36738
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 14.5,
+				"q1": 11.75,
+				"q3": 17.25,
+				"iqr": 5.5,
+				"min": 9,
+				"max": 20
+			},
+			"outputTokensPerSuccess": 27521,
+			"wallMsPerSuccess": 2011317,
+			"outsideMentions": 4
+		},
+		{
+			"arm": "b",
+			"task": "markup-lite",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.844682,
+			"outputTokens": {
+				"n": 2,
+				"median": 27391.5,
+				"q1": 20898.25,
+				"q3": 33884.75,
+				"iqr": 12986.5,
+				"min": 14405,
+				"max": 40378
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 340991,
+				"q1": 258639,
+				"q3": 423343,
+				"iqr": 164704,
+				"min": 176287,
+				"max": 505695
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 31684.5,
+				"q1": 24504.75,
+				"q3": 38864.25,
+				"iqr": 14359.5,
+				"min": 17325,
+				"max": 46044
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 13.5,
+				"q1": 10.25,
+				"q3": 16.75,
+				"iqr": 6.5,
+				"min": 7,
+				"max": 20
+			},
+			"outputTokensPerSuccess": 27392,
+			"wallMsPerSuccess": 340991,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "c",
+			"task": "booking-conflicts",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.481931,
+			"outputTokens": {
+				"n": 2,
+				"median": 9629.5,
+				"q1": 8453.25,
+				"q3": 10805.75,
+				"iqr": 2352.5,
+				"min": 7277,
+				"max": 11982
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 94218,
+				"q1": 79691,
+				"q3": 108745,
+				"iqr": 29054,
+				"min": 65164,
+				"max": 123272
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 13011,
+				"q1": 11327.5,
+				"q3": 14694.5,
+				"iqr": 3367,
+				"min": 9644,
+				"max": 16378
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 8.5,
+				"q1": 6.75,
+				"q3": 10.25,
+				"iqr": 3.5,
+				"min": 5,
+				"max": 12
+			},
+			"outputTokensPerSuccess": 9630,
+			"wallMsPerSuccess": 94218,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "c",
+			"task": "config-extends",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.668111,
+			"outputTokens": {
+				"n": 2,
+				"median": 16347.5,
+				"q1": 15823.75,
+				"q3": 16871.25,
+				"iqr": 1047.5,
+				"min": 15300,
+				"max": 17395
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 207159.5,
+				"q1": 201424.25,
+				"q3": 212894.75,
+				"iqr": 11470.5,
+				"min": 195689,
+				"max": 218630
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 21537.5,
+				"q1": 20447.75,
+				"q3": 22627.25,
+				"iqr": 2179.5,
+				"min": 19358,
+				"max": 23717
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 18.5,
+				"q1": 16.25,
+				"q3": 20.75,
+				"iqr": 4.5,
+				"min": 14,
+				"max": 23
+			},
+			"outputTokensPerSuccess": 16348,
+			"wallMsPerSuccess": 207160,
+			"outsideMentions": 11
+		},
+		{
+			"arm": "c",
+			"task": "fetch-cache",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.75596,
+			"outputTokens": {
+				"n": 2,
+				"median": 21235,
+				"q1": 20940.5,
+				"q3": 21529.5,
+				"iqr": 589,
+				"min": 20646,
+				"max": 21824
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 266414.5,
+				"q1": 262220.25,
+				"q3": 270608.75,
+				"iqr": 8388.5,
+				"min": 258026,
+				"max": 274803
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 26618.5,
+				"q1": 26236.75,
+				"q3": 27000.25,
+				"iqr": 763.5,
+				"min": 25855,
+				"max": 27382
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 19.5,
+				"q1": 18.75,
+				"q3": 20.25,
+				"iqr": 1.5,
+				"min": 18,
+				"max": 21
+			},
+			"outputTokensPerSuccess": 21235,
+			"wallMsPerSuccess": 266415,
+			"outsideMentions": 11
+		},
+		{
+			"arm": "c",
+			"task": "markup-lite",
+			"planned": 2,
+			"counted": 2,
+			"successes": 1,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 1
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.870083,
+			"outputTokens": {
+				"n": 2,
+				"median": 27202,
+				"q1": 23173.5,
+				"q3": 31230.5,
+				"iqr": 8057,
+				"min": 19145,
+				"max": 35259
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 361916.5,
+				"q1": 305994.25,
+				"q3": 417838.75,
+				"iqr": 111844.5,
+				"min": 250072,
+				"max": 473761
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 31312,
+				"q1": 27150.5,
+				"q3": 35473.5,
+				"iqr": 8323,
+				"min": 22989,
+				"max": 39635
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 10,
+				"q1": 10,
+				"q3": 10,
+				"iqr": 0,
+				"min": 10,
+				"max": 10
+			},
+			"outputTokensPerSuccess": 54404,
+			"wallMsPerSuccess": 723833,
+			"outsideMentions": 4
+		},
+		{
+			"arm": "d",
+			"task": "booking-conflicts",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.445374,
+			"outputTokens": {
+				"n": 2,
+				"median": 6506.5,
+				"q1": 5831.75,
+				"q3": 7181.25,
+				"iqr": 1349.5,
+				"min": 5157,
+				"max": 7856
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 57267,
+				"q1": 51870,
+				"q3": 62664,
+				"iqr": 10794,
+				"min": 46473,
+				"max": 68061
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 9574.5,
+				"q1": 8733.75,
+				"q3": 10415.25,
+				"iqr": 1681.5,
+				"min": 7893,
+				"max": 11256
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 7.5,
+				"q1": 7.25,
+				"q3": 7.75,
+				"iqr": 0.5,
+				"min": 7,
+				"max": 8
+			},
+			"outputTokensPerSuccess": 6507,
+			"wallMsPerSuccess": 57267,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "d",
+			"task": "config-extends",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.719806,
+			"outputTokens": {
+				"n": 2,
+				"median": 13631,
+				"q1": 12106.5,
+				"q3": 15155.5,
+				"iqr": 3049,
+				"min": 10582,
+				"max": 16680
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 165743.5,
+				"q1": 146100.75,
+				"q3": 185386.25,
+				"iqr": 39285.5,
+				"min": 126458,
+				"max": 205029
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 17510.5,
+				"q1": 15468.25,
+				"q3": 19552.75,
+				"iqr": 4084.5,
+				"min": 13426,
+				"max": 21595
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 17.5,
+				"q1": 14.25,
+				"q3": 20.75,
+				"iqr": 6.5,
+				"min": 11,
+				"max": 24
+			},
+			"outputTokensPerSuccess": 13631,
+			"wallMsPerSuccess": 165744,
+			"outsideMentions": 15
+		},
+		{
+			"arm": "d",
+			"task": "fetch-cache",
+			"planned": 2,
+			"counted": 2,
+			"successes": 1,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 1
+			},
+			"cutOffTrialShare": 0.5,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.869365,
+			"outputTokens": {
+				"n": 2,
+				"median": 22684.5,
+				"q1": 19609.75,
+				"q3": 25759.25,
+				"iqr": 6149.5,
+				"min": 16535,
+				"max": 28834
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 308076.5,
+				"q1": 274323.75,
+				"q3": 341829.25,
+				"iqr": 67505.5,
+				"min": 240571,
+				"max": 375582
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 18313.5,
+				"q1": 10586.25,
+				"q3": 26040.75,
+				"iqr": 15454.5,
+				"min": 2859,
+				"max": 33768
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 14,
+				"q1": 9,
+				"q3": 19,
+				"iqr": 10,
+				"min": 4,
+				"max": 24
+			},
+			"outputTokensPerSuccess": 45369,
+			"wallMsPerSuccess": 616153,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "d",
+			"task": "markup-lite",
+			"planned": 2,
+			"counted": 2,
+			"successes": 1,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"cut-off": 1
+			},
+			"cutOffTrialShare": 0.5,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0.918094,
+			"outputTokens": {
+				"n": 2,
+				"median": 17871,
+				"q1": 17168,
+				"q3": 18574,
+				"iqr": 1406,
+				"min": 16465,
+				"max": 19277
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 222549.5,
+				"q1": 216105.75,
+				"q3": 228993.25,
+				"iqr": 12887.5,
+				"min": 209662,
+				"max": 235437
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 12738.5,
+				"q1": 7643.75,
+				"q3": 17833.25,
+				"iqr": 10189.5,
+				"min": 2549,
+				"max": 22928
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 5.5,
+				"q1": 3.75,
+				"q3": 7.25,
+				"iqr": 3.5,
+				"min": 2,
+				"max": 9
+			},
+			"outputTokensPerSuccess": 35742,
+			"wallMsPerSuccess": 445099,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "e",
+			"task": "booking-conflicts",
+			"planned": 2,
+			"counted": 2,
+			"successes": 2,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 2,
+				"median": 2685,
+				"q1": 1822,
+				"q3": 3548,
+				"iqr": 1726,
+				"min": 959,
+				"max": 4411
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 24721.5,
+				"q1": 16971.75,
+				"q3": 32471.25,
+				"iqr": 15499.5,
+				"min": 9222,
+				"max": 40221
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 6314.5,
+				"q1": 4928.25,
+				"q3": 7700.75,
+				"iqr": 2772.5,
+				"min": 3542,
+				"max": 9087
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 14,
+				"q1": 9,
+				"q3": 19,
+				"iqr": 10,
+				"min": 4,
+				"max": 24
+			},
+			"outputTokensPerSuccess": 2685,
+			"wallMsPerSuccess": 24722,
+			"outsideMentions": 0
+		},
+		{
+			"arm": "e",
+			"task": "config-extends",
+			"planned": 2,
+			"counted": 2,
+			"successes": 1,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 1
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 2,
+				"median": 8436,
+				"q1": 7102.5,
+				"q3": 9769.5,
+				"iqr": 2667,
+				"min": 5769,
+				"max": 11103
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 88013.5,
+				"q1": 72410.75,
+				"q3": 103616.25,
+				"iqr": 31205.5,
+				"min": 56808,
+				"max": 119219
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 22004,
+				"q1": 16452,
+				"q3": 27556,
+				"iqr": 11104,
+				"min": 10900,
+				"max": 33108
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 26,
+				"q1": 21,
+				"q3": 31,
+				"iqr": 10,
+				"min": 16,
+				"max": 36
+			},
+			"outputTokensPerSuccess": 16872,
+			"wallMsPerSuccess": 176027,
+			"outsideMentions": 22
+		},
+		{
+			"arm": "e",
+			"task": "fetch-cache",
+			"planned": 2,
+			"counted": 2,
+			"successes": 0,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 2
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 2,
+				"median": 3242,
+				"q1": 2842,
+				"q3": 3642,
+				"iqr": 800,
+				"min": 2442,
+				"max": 4042
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 30299,
+				"q1": 27141,
+				"q3": 33457,
+				"iqr": 6316,
+				"min": 23983,
+				"max": 36615
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 6945.5,
+				"q1": 6766.25,
+				"q3": 7124.75,
+				"iqr": 358.5,
+				"min": 6587,
+				"max": 7304
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 10.5,
+				"q1": 10.25,
+				"q3": 10.75,
+				"iqr": 0.5,
+				"min": 10,
+				"max": 11
+			},
+			"outputTokensPerSuccess": null,
+			"wallMsPerSuccess": null,
+			"outsideMentions": 5
+		},
+		{
+			"arm": "e",
+			"task": "markup-lite",
+			"planned": 2,
+			"counted": 2,
+			"successes": 0,
+			"errors": 0,
+			"invalid": 0,
+			"unmeasured": false,
+			"failureModes": {
+				"wrong-result": 2
+			},
+			"cutOffTrialShare": 0,
+			"timeouts": 0,
+			"httpErrors": 0,
+			"reasoningShare": 0,
+			"outputTokens": {
+				"n": 2,
+				"median": 5916,
+				"q1": 3988,
+				"q3": 7844,
+				"iqr": 3856,
+				"min": 2060,
+				"max": 9772
+			},
+			"wallMs": {
+				"n": 2,
+				"median": 64034,
+				"q1": 43176.5,
+				"q3": 84891.5,
+				"iqr": 41715,
+				"min": 22319,
+				"max": 105749
+			},
+			"peakPromptTokens": {
+				"n": 2,
+				"median": 11028,
+				"q1": 7773.5,
+				"q3": 14282.5,
+				"iqr": 6509,
+				"min": 4519,
+				"max": 17537
+			},
+			"toolCalls": {
+				"n": 2,
+				"median": 15,
+				"q1": 10,
+				"q3": 20,
+				"iqr": 10,
+				"min": 5,
+				"max": 25
+			},
+			"outputTokensPerSuccess": null,
+			"wallMsPerSuccess": null,
+			"outsideMentions": 0
+		}
+	],
+	"manipulation": {
+		"M5": {
+			"status": "PASS",
+			"byCondition": {
+				"arm-a": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-b": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-d": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-e": {
+					"trials": 8,
+					"failures": []
+				},
+				"arm-c": {
+					"trials": 8,
+					"failures": []
+				}
+			}
+		},
+		"M6": {
+			"status": "PASS",
+			"byCondition": {
+				"arm-a": {
+					"trials": 8,
+					"requests": 82,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-b": {
+					"trials": 8,
+					"requests": 114,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-d": {
+					"trials": 8,
+					"requests": 85,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-e": {
+					"trials": 8,
+					"requests": 132,
+					"instances": [],
+					"status": "PASS"
+				},
+				"arm-c": {
+					"trials": 8,
+					"requests": 113,
+					"instances": [],
+					"status": "PASS"
+				}
+			}
+		},
+		"byArm": {
+			"a": {
+				"trials": 8,
+				"M-inj": [],
+				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 82,
+				"M-tools-trials-differing": 0,
+				"M-base-fields-trials-differing": 0,
+				"M1-sampling-fields": [],
+				"M-ws": [],
+				"cutOffResponseRate": 0.012987,
+				"session-did-not-finish": 0,
+				"server-errors": 0
+			},
+			"b": {
+				"trials": 8,
+				"M-inj": [],
+				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 114,
+				"M-tools-trials-differing": 0,
+				"M-base-fields-trials-differing": 0,
+				"M1-sampling-fields": [],
+				"M-ws": [],
+				"cutOffResponseRate": 0,
+				"session-did-not-finish": 1,
+				"server-errors": 0
+			},
+			"c": {
+				"trials": 8,
+				"M-inj": [],
+				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 113,
+				"M-tools-trials-differing": 0,
+				"M-base-fields-trials-differing": 0,
+				"M1-sampling-fields": [],
+				"M-ws": [],
+				"cutOffResponseRate": 0,
+				"session-did-not-finish": 0,
+				"server-errors": 0
+			},
+			"d": {
+				"trials": 8,
+				"M-inj": [],
+				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 85,
+				"M-tools-trials-differing": 0,
+				"M-base-fields-trials-differing": 0,
+				"M1-sampling-fields": [],
+				"M-ws": [],
+				"cutOffResponseRate": 0.024096,
+				"session-did-not-finish": 0,
+				"server-errors": 0
+			},
+			"e": {
+				"trials": 8,
+				"M-inj": [],
+				"M-sys-trials-differing": 0,
+				"M-sys-requests-checked": 132,
+				"M-tools-trials-differing": 0,
+				"M-base-fields-trials-differing": 0,
+				"M1-sampling-fields": [],
+				"M-ws": [],
+				"cutOffResponseRate": 0,
+				"session-did-not-finish": 0,
+				"server-errors": 0
+			}
+		}
+	},
+	"eReasoningReductionVsA": [
+		{
+			"task": "booking-conflicts",
+			"a": 1858.183333,
+			"e": 0,
+			"reduction": 1
+		},
+		{
+			"task": "config-extends",
+			"a": 3200.578431,
+			"e": 0,
+			"reduction": 1
+		},
+		{
+			"task": "fetch-cache",
+			"a": 12566.3125,
+			"e": 0,
+			"reduction": 1
+		},
+		{
+			"task": "markup-lite",
+			"a": 4302.214286,
+			"e": 0,
+			"reduction": 1
+		}
+	],
+	"eKept": true,
+	"keptArms": [
+		"a",
+		"b",
+		"c",
+		"d",
+		"e"
+	],
+	"estimate": {
+		"allArms": {
+			"n": null,
+			"hours": {
+				"3": 19.874679,
+				"4": 26.499572,
+				"5": 33.124465
+			}
+		},
+		"withoutArmC": {
+			"n": null,
+			"hours": {
+				"3": 16.465748,
+				"4": 21.95433,
+				"5": 27.442913
+			}
+		},
+		"mainArms": [
+			"a",
+			"b",
+			"d",
+			"e"
+		],
+		"droppedArmC": true
+	}
+}

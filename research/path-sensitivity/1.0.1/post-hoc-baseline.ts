@@ -1,4 +1,4 @@
-// POST-HOC (not pre-registered), computed from the committed raw data after the pre-registered analysis: how the
+// POST-HOC (not pre-registered), computed from the raw data after the pre-registered analysis: how the
 // `implement-function` baseline varies across the 30 paths, and whether a STEER on that task was followed at the paths
 // where it varied. Prints a summary and writes `analysis/post-hoc-implement-function-baseline.json`.
 //
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { endoFixtureDigestKeyPathV0 } from "../../../storage/digest-key.ts";
+import { rawDirectory } from "../../data.ts";
 import { normalizeToolCallIds } from "../../pinned-environment/1.0.1/analyze.ts";
 import { normalizePathText } from "./analyze.ts";
 
@@ -33,7 +34,7 @@ interface Row {
 
 const rows: Row[] = [];
 for (const label of Object.keys(outcome).sort()) {
-	const base = `${D}raw/main/${label}/trials/implement-function/base/0`;
+	const base = `${rawDirectory("path-sensitivity")}/main/${label}/trials/implement-function/base/0`;
 	const result = JSON.parse(readFileSync(`${base}/result.json`, "utf8"));
 	const requests = normalizeToolCallIds(loadEndoTrialRequestsV0(`${base}/store`, result, key).requests);
 	const messages = (requests.at(-1)!.messages ?? []) as {
@@ -91,7 +92,7 @@ writeFileSync(
 	`${JSON.stringify(
 		{
 			postHoc:
-				"not pre-registered; computed from the committed raw data (raw/main/*/trials/implement-function/base/0), after the pre-registered analysis",
+				"not pre-registered; computed from the raw data (raw/main/*/trials/implement-function/base/0), after the pre-registered analysis",
 			note: "per path: the baseline trial 0's tool-name order, first tool call (path-normalized), a digest of the file it writes, and the steer outcomes",
 			summary,
 			rows,

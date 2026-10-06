@@ -80,7 +80,7 @@ median of 1,219 output tokens and the paths that ignored it 672.
 
 ## A post-hoc look at the baseline variation (not pre-registered)
 
-Computed from the committed raw data after the analysis above (`post-hoc-baseline.ts`,
+Computed from the raw data after the analysis above (`post-hoc-baseline.ts`,
 `analysis/post-hoc-implement-function-baseline.json`). It describes how the `implement-function` baseline, with no
 intervention, varies across the 30 paths. It tests nothing.
 
@@ -162,8 +162,6 @@ its recorded point (exchange 2, chunk 1) with the recorded proposal digest.
 | `main/` | the main run: `paths.json`, the paths' journal, and for each path its report, plan, run record, journal and per-trial results |
 | `analysis/` | the pilot's analysis and estimate, the main run's analysis (`main-analysis.json`) and the spot checks |
 | `logs/` | the driver's output |
-| `raw/` | the complete run directories (pilot and main): every trial's store, evidence and logs |
+| (raw data) | the complete run directories (pilot and main): every trial's store, evidence and logs, **kept outside the repository** (see below) |
 
-The raw run directories (every trial's store: 273 MB on disk, 10,531 files, about 22 MB compressed) are committed in
-`raw/`, after the operator was told the size and approved, with the documented path exception to the secret scan
-(`raw/README.md`).
+The raw run directories (every trial's store: 273 MB on disk, 10,531 files, about 7 MB compressed) were approved by the operator and committed here at first. Moved out of the repository (it is large and every file was checked on each change): see [`research/DATA.md`](../../DATA.md). It was committed here until 2026-10-05 and is unchanged. The secret scan and its documented path exception are in the data directory's `raw/README.md`.

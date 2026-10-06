@@ -11,9 +11,14 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EndoExperimentTrialResultV0 } from "../../../cli/experiment.ts";
+import { rawDirectory } from "../../data.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const RAW = process.argv[2] ?? join(HERE, "raw");
+const RAW = process.argv[2] ?? rawDirectory("discriminating-tasks");
+if (!existsSync(RAW)) {
+	process.stderr.write(`no raw data at ${RAW}: set ENDO_RESEARCH_DATA (research/DATA.md) or pass the raw directory\n`);
+	process.exit(1);
+}
 const NEEDLE = '"finish_reason":"length"';
 
 function filesUnder(dir: string): string[] {
@@ -79,5 +84,9 @@ const out = Object.fromEntries(
 			{ ...cell, maxCompletionTokens: [...cell.maxCompletionTokens].sort((a, b) => a - b) },
 		]),
 );
+if (cells.size === 0) {
+	process.stderr.write(`no trials found under ${RAW}; the committed analysis is left unchanged\n`);
+	process.exit(1);
+}
 writeFileSync(join(HERE, "analysis", "post-hoc-truncation.json"), `${JSON.stringify(out, null, "\t")}\n`);
 process.stdout.write(`${JSON.stringify(out, null, "\t")}\n`);

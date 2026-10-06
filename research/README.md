@@ -16,6 +16,7 @@ OpenAI-compatible server) and one machine.
 | [Steering study](#steering-study) | [design](steering/1.0.1/DESIGN.md), [results](steering/1.0.1/RESULTS.md) | a STEER and a QUEUE at a fixed point against a baseline, all in the deterministic condition |
 | [Path-sensitivity study](#path-sensitivity-study) | [design](path-sensitivity/1.0.1/DESIGN.md), [results](path-sensitivity/1.0.1/RESULTS.md) | the steering results across 30 working-directory paths: QUEUE followed at every path, STEER at most paths on one task and few on the other |
 | [Discriminating-task study](#discriminating-task-study) | [design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md) | 12 small coding tasks screened and confirmed: two discriminate (13/20 and 7/20), most are saturated, and most failures are a response cut off at the completion cap |
+| [Completion-cap study](#completion-cap-study) | [design](completion-cap/1.0.1/DESIGN.md), [results](completion-cap/1.0.1/RESULTS.md) | raising Pi's completion cap from 16,384 to 32,768 raised success on the two discriminating tasks from 10/24 to 19/23; thinking-off and a brief-reasoning sentence are cheaper but less reliable |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle
@@ -150,6 +151,26 @@ A screen of 6 trials per task, then 20 fresh trials on each advancing task over 
 - **Post-hoc, not pre-registered:** 21 of the 25 failures on the three tasks are a response that hit Pi's default
   `max_completion_tokens` of 16,384 while reasoning, before any code was written. The tasks discriminate mostly on that.
 - The validation/holdout split is fixed (`validated-tasks.json`): one task each, so the holdout is very small.
+
+## Completion-cap study
+
+A sixth study ([design](completion-cap/1.0.1/DESIGN.md), [results](completion-cap/1.0.1/RESULTS.md)) tested what the discriminating-task
+study's post-hoc finding implied: that most failures on `fetch-cache` and `markup-lite` were a response cut off at Pi's default
+`max_completion_tokens` of 16,384. Four arms, each one documented `before_provider_request` handler, ran interleaved on four tasks over four
+paths (192 trials, 3 per cell per path): the default cap (A), a 32,768 cap (B), one sentence asking for short reasoning (D), and thinking
+switched off per request (E).
+
+- **Primary:** B against A pooled over the two primary tasks is **19/23 against 10/24, +0.41, cluster interval [+0.09 to +0.73]**, a gain at every
+  path: by the pre-registered thresholds the cap is binding. The reading rests on all four paths.
+- `fetch-cache` is 11/11 once the cap is not binding (it measured the cap); `markup-lite` is still 8/12, with four wrong answers and no cut-off (it measures the code).
+- D is cheaper per success on two tasks and worse on `markup-lite`; E is 3 to 4 times faster per trial and less accurate (the harm check flags `config-extends`), but it fails the M6 manipulation check in two paths, so by the design's rule it is reported as an invalid arm.
+- **There is no sandbox, and it showed.** One excluded trial read a hidden check and the reference solution in the repository, through a leftover file of the author's in `/tmp`; another deleted files in
+  `/tmp` by glob. Future trials should run with the checkout unreachable.
+
+## Raw run data
+
+The studies' raw run directories are not in this repository (about 1 GB of tracked files was moved out on 2026-10-05, and later studies' data was never added): see
+[DATA.md](DATA.md) for where they live, how to restore them and what the secret scan found. The results, analyses, run summaries and cassettes stay here.
 
 ## Fake-only paths
 

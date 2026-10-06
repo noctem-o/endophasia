@@ -1,4 +1,0 @@
-{"direction":"command","fields":{},"type":"get_state"}
-{"data":{"followUpMode":"one-at-a-time","isCompacting":false,"isStreaming":false,"messageCount":0,"model":{"id":"qwen3.8-27b","provider":"endolocal"},"pendingMessageCount":0,"sessionFile":null,"sessionId":"01a1083e-e06a-70b3-9c89-0b1d3fc7d439","steeringMode":"one-at-a-time","thinkingLevel":"off"},"direction":"response","ok":true,"type":"get_state"}
-{"direction":"command","fields":{},"type":"get_state"}
-{"data":{"followUpMode":"one-at-a-time","isCompacting":false,"isStreaming":false,"messageCount":0,"model":{"id":"qwen3.8-27b","provider":"endolocal"},"pendingMessageCount":0,"sessionFile":null,"sessionId":"01a1083e-e06a-70b3-9c89-0b1d3fc7d439","steeringMode":"one-at-a-time","thinkingLevel":"off"},"direction":"response","ok":true,"type":"get_state"}

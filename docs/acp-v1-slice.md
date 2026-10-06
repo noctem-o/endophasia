@@ -20,7 +20,7 @@ specimen. It is not a claim of general ACP compliance.
 
 | | |
 | --- | --- |
-| Mapping version | `acp-v1-mapping.2` (`.1` was the PR #37 slice; the emitted evidence changed, so it was bumped) |
+| Mapping version | `acp-v1-mapping.3` (`.1` PR #37 slice; `.2` semantic coverage; `.3` adds the `integer-not-exact` malformed problem, a new durable payload value) |
 | Loss accounting | `endo.acp-loss-accounting.v0`, tied to the mapping and to the schema below |
 | SDK | `@agentclientprotocol/sdk` 1.7.0 |
 | Schema | the SDK's public `@agentclientprotocol/sdk/schema/schema.json`, sha256 `6449a87a3b3c42aa0abd30033fc9bd3236cd785078ad084ce3675766be09109e` |
@@ -115,7 +115,11 @@ recognized ACP v1 message -> exact pinned v1 schema validation -> translation
   skips a bad array item. Here a bad optional field or item makes the whole update malformed; nothing is "repaired" into
   evidence. That is a deliberate, stated divergence. The validator runs with Ajv strict mode on; the `x-*` annotations
   and `discriminator` are registered by name, so a keyword a later schema revision adds is a compile error. The numeric
-  formats (`uint16/32/64`, `int32/64`, `double`) carry real range checks; `uint64`/`int64` are checked as JS numbers.
+  formats (`uint16/32/64`, `int32/64`, `double`) carry real range checks; `uint64`/`int64` are accepted only as exact JS integers (±(2^53−1)). A schema-valid 64-bit value beyond that is not
+  representable here: JSON parsing has already rounded it, and a rounded integer is never recorded as exact. It is
+  classified apart from a schema violation (`runtime.malformed-event`, `problem: "integer-not-exact"`), not counted, and
+  never replaced by a nearby value. It is chosen only when the rest of the update is valid (the update is re-judged with 64-bit values allowed), and a literal one past the 64-bit maximum parses to the same double as the maximum, so the two are not told apart: the verdict claims only "cannot be represented here". (Responses outside `session/update` treat it as invalid.) A BigInt wire path is
+  deliberately not built for this.
   The schema's only `format: uri` is on an UNSTABLE elicitation field that no stable validation reaches; the resource
   URIs of content blocks are plain strings in the schema and are accepted as such (a test pins this).
 - **UNSTABLE variants.** The pinned schema also lists `plan_update`, `plan_removed`, `notice`, `compaction_update`,
@@ -247,7 +251,7 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `session.identity` | QUALIFIED | baseline | endo.session.acp.<instance>.<id> coordinate | — an ACP session id is unique to nothing but the agent that issued it: the coordinate carries the launched process instance, and two instances (or two agents) can issue the same id. No relation between coordinates is asserted. |
 | `session.open.new` | QUALIFIED | baseline | harness.attached, lifecycle.session-started | lost: working directory; mcp server list; NewSessionRequest.additionalDirectories ACP v1 reports no run id, turn id or turn count; they are declared UNAVAILABLE on lifecycle.session-started, never zero. |
 | `session.open.resume` | QUALIFIED | gated: `sessionCapabilities.resume` | harness.attached, lifecycle.session-started | lost: working directory; the relation to the earlier attachment; ResumeSessionRequest.additionalDirectories resume reattaches without the agent replaying history to the client (that is session/load, not implemented). The new process instance gets a new coordinate and lifecycle.session-started, not lifecycle.session-resumed: Endophasia holds no record of the earlier attachment under this coordinate, so previousInstance/previousEnd would be invented. |
-| `session.list` | LOSSY | gated: `sessionCapabilities.list` | session.listed | lost: session ids; working directories; titles; update times; the cursor the caller receives the full agent-reported page; the record keeps counts only. |
+| `session.list` | LOSSY | gated: `sessionCapabilities.list` | session.listed | lost: session ids; working directories; additional directories; titles; update times; the cursor the adapter receives the full validated page and the caller receives the agent-reported fields in returnedToCaller; the durable record keeps counts only. |
 | `session.close` | QUALIFIED | gated: `sessionCapabilities.close` | control.requested, session.close-accepted | — a JSON-RPC response is the agent's acceptance, not proof that work was cancelled or resources freed. No lifecycle end is derived; the process end is recorded separately. |
 | `capability.advertisement` | QUALIFIED | baseline | harness.acp-initialized | lost: auth method names; capability fields over the size bound; Implementation.title; AuthMethodAgent.name; AuthMethodAgent.description; AuthMethodTerminal.name; AuthMethodTerminal.description; AuthMethodTerminal.args; AuthMethodTerminal.env agentInfo is the agent's own claim, not a verified identity of the executable. |
 | `capability.unavailable` | EXACT | adapter-observed | control.unavailable | lost: AgentCapabilities.loadSession; AgentCapabilities.promptCapabilities; AgentCapabilities.mcpCapabilities; AgentCapabilities.auth; AgentCapabilities.providers; AgentCapabilities.nes; AgentCapabilities.positionEncoding; SessionCapabilities.delete; SessionCapabilities.additionalDirectories; SessionCapabilities.fork only sessionCapabilities.list/resume/close are consulted to gate a call; the other AgentCapabilities and SessionCapabilities fields listed as lost here are not used for gating, and capability.advertisement records the capabilities verbatim (within its size bound). |
@@ -271,7 +275,7 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `update.usage_update` | QUALIFIED | agent-initiated | session.update-observed | — see usage.ledger for what it is not. |
 | `update.unstable` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not translated: the schema says they may be removed or changed at any point. |
 | `update.unknown` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not malformed merely because this adapter predates it. |
-| `update.malformed` | LOSSY | agent-initiated | runtime.malformed-event | lost: every field never counted as update activity. |
+| `update.malformed` | LOSSY | agent-initiated | runtime.malformed-event | lost: every field never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent (and only when nothing else in the update is invalid; at the very edge a literal one past the maximum parses to the same double and is not told apart, so the verdict claims only that the value cannot be represented here). Responses outside session/update treat it as invalid. |
 | `protocol.fault` | LOSSY | adapter-observed | harness.protocol-fault, lifecycle.run-unclassified | lost: the offending message and its fields a rejected initialize, session/new or session/resume response fails the attachment. |
 | `message.late` | LOSSY | adapter-observed | harness.late-message | lost: everything the message carried never counted, never decided: no update count, no permission.requested/decided, no handler call, no approval. |
 | `config.observation` | QUALIFIED | agent-initiated | session.config-observed | lost: option names, descriptions and value labels; the values themselves; options past the 32nd; SessionConfigOption.name; SessionConfigOption.description; SessionConfigSelectGroup.group; SessionConfigSelectGroup.name; SessionMode.id; SessionMode.name; SessionMode.description; SessionConfigSelectOption.value; SessionConfigSelectOption.name; SessionConfigSelectOption.description agent-reported session configuration: what the agent advertised and what it says is current. Not a verified model identity. |
@@ -290,6 +294,15 @@ What is **not implemented** (unsupported, not lossy; nothing is projected or cal
 served), UNSTABLE `session/update` variants beyond their name, and ACP v2.
 
 ## Known limits
+
+- **Observation is evidence, not authority.** `onEvent` is caller code. The recorder isolates it: a throwing observer never
+  aborts the transition being recorded or the cleanup after it (pending permissions are answered, `session/cancel` is
+  sent, a refused close restores the live state *before* `control.refused` is announced). The failures are kept in
+  `client.observerErrors` (first 16); `cancel()` and `closeSession()` report one afterwards as `AcpObserverErrorV0`, once
+  the transition is complete (counted without the retention cap). Other paths only retain them. The adapter delivers events
+  to the sink; it does not know what the sink persisted. If an observer rejects one event and accepts the next, a derived
+  event can reach it whose `derivedFrom` source it rejected: that gap is the sink's to handle (`observerErrors` says
+  that it happened), and the adapter does not suppress derived evidence because of it.
 
 - Requests are raced against the agent process's exit, because a descendant can keep the agent's stdout open after the
   agent ended. If the agent answers and exits at nearly the same moment, the exit can be seen first and the turn is

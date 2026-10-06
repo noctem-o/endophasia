@@ -26,7 +26,7 @@ describe("ACP v1 loss accounting", () => {
 		expect(ACP_LOSS_ACCOUNTING_V0.schemaVersion).toBe(ACP_LOSS_ACCOUNTING_VERSION_V0);
 		expect(ACP_LOSS_ACCOUNTING_V0.mapping).toBe(ACP_MAPPING_VERSION);
 		expect(ACP_LOSS_ACCOUNTING_V0.acpSchema).toEqual(ACP_SCHEMA_V0);
-		expect(ACP_MAPPING_VERSION).toBe("acp-v1-mapping.2");
+		expect(ACP_MAPPING_VERSION).toBe("acp-v1-mapping.3");
 	});
 
 	it("uses exactly the four verdicts, each defined, and no entry outside them", () => {
@@ -172,5 +172,22 @@ describe("ACP v1 loss accounting", () => {
 		expect(Object.keys(ACP_FIELDS_READ_V0).filter((definition) => !projected.has(definition))).toEqual([]);
 		expect(acpLossEntryV0("capability.advertisement")?.lost).toContain("AuthMethodTerminal.args");
 		expect(acpLossEntryV0("prompt.response")?.lost).toContain("PromptResponse.usage");
+	});
+
+	it("declares what session/list hands the caller but the durable record omits", () => {
+		const entry = acpLossEntryV0("session.list")!;
+		expect(entry.lost).toContain("additional directories");
+		expect(entry.returnedToCaller).toContain("SessionInfo.additionalDirectories");
+		// Every field returned to the caller is a field the durable event does not keep.
+		const named = [
+			"session ids",
+			"working directories",
+			"additional directories",
+			"titles",
+			"update times",
+			"the cursor",
+		];
+		for (const item of named) expect(entry.lost).toContain(item);
+		expect(entry.returnedToCaller).toHaveLength(named.length);
 	});
 });

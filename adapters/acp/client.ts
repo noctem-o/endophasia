@@ -150,6 +150,16 @@ export class AcpUnavailableErrorV0 extends Error {
 		this.capability = capability;
 	}
 }
+/**
+ * The caller's `onEvent` threw while a control transition was being recorded. The transition itself completed (the
+ * runtime was told, pending permissions were answered); only the observation failed. `cause` is the observer's error.
+ */
+export class AcpObserverErrorV0 extends Error {
+	constructor(cause: unknown) {
+		super("the event observer threw while a control transition was recorded; the transition completed", { cause });
+		this.name = "AcpObserverErrorV0";
+	}
+}
 /** The agent answered a request with a JSON-RPC error. */
 export class AcpRefusedErrorV0 extends Error {
 	readonly code: number;
@@ -497,15 +507,41 @@ export class AcpClientV0 {
 	}
 
 	/** An optional method's request: a JSON-RPC refusal is recorded (by code) before it propagates. */
-	async #requestOptional<T>(what: string, work: Promise<T>): Promise<T> {
+	async #requestOptional<T>(what: string, work: Promise<T>, onRefused?: () => void): Promise<T> {
 		try {
 			return await this.#request(what, work);
 		} catch (error) {
 			if (error instanceof AcpRefusedErrorV0) {
+				// The refusal shows nothing changed: live state is restored before it is announced, so an observer reacting to
+				// control.refused sees the state the refusal established.
+				onRefused?.();
 				this.#recorder.record("control.refused", { capability: what.replace("/", "."), code: error.code });
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * Notes whether the observer failed on one of a control transition's *own* emissions, by event identity. Only these
+	 * count: traffic the agent sends while an async transition is pending, or an emission an observer causes by re-entering
+	 * the client, is not this transition's failure. (Such failures stay visible in `observerErrors`.)
+	 */
+	#own(own: { failed: boolean; error?: unknown }, event: EndoEventV0): EndoEventV0 {
+		if (!own.failed && this.#recorder.deliveryFailed(event)) {
+			own.failed = true;
+			own.error = this.#recorder.lastObserverError;
+		}
+		return event;
+	}
+
+	/** Reports an observer failure on a control transition's own emissions, once the transition is complete. */
+	#reportObserverFailure(own: { failed: boolean; error?: unknown }): void {
+		if (own.failed) throw new AcpObserverErrorV0(own.error);
+	}
+
+	/** Errors thrown by `onEvent` so far (the first 16). They never stop a transition; see AcpObserverErrorV0. */
+	get observerErrors(): readonly unknown[] {
+		return [...this.#recorder.observerErrors];
 	}
 
 	/** An optional method the agent did not advertise: said so in the record, nothing sent. */
@@ -568,16 +604,31 @@ export class AcpClientV0 {
 		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
 		// recorded normally: only a refusal shows the session stayed open. State first, then evidence: `onEvent` is caller
 		// code and can re-enter this client from inside record().
+		const own = { failed: false } as { failed: boolean; error?: unknown };
 		this.#sessionClosing = true;
 		// A turn whose prompt has not been sent yet is aborted by prompt() itself (it sees the closing state).
 		const run = this.#run?.sent ? this.#run : null;
 		const hadStopRequested = run?.stopRequested ?? false;
 		if (run !== null) run.stopRequested = true; // Closing a session cancels its work.
-		try {
-			const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
-			if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-		} catch (error) {
+		// A refusal (or a recording failure before anything was sent) proves the session stays live: restored once, so a
+		// re-entrant operation started by an observer in between is not undone by a second restore.
+		let restored = false;
+		const restoreLive = (): void => {
+			if (restored) return;
+			restored = true;
 			this.#sessionClosing = false;
+			if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
+		};
+		try {
+			const requested = this.#own(
+				own,
+				this.#recorder.record("control.requested", { capability: "session.close", action: "close" }),
+			);
+			if (run !== null)
+				this.#own(own, this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested));
+		} catch (error) {
+			// Not an observer failure (those are isolated): the clock or event validation failed, nothing was sent.
+			restoreLive();
 			throw error;
 		}
 		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
@@ -587,15 +638,13 @@ export class AcpClientV0 {
 			response = await this.#requestOptional(
 				"session/close",
 				this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
+				restoreLive,
 			);
 		} catch (error) {
 			// Only an explicit refusal shows the session was not closed; a timeout or transport failure is indeterminate, and
 			// an answer that arrives later still means the agent closed it.
-			if (error instanceof AcpRefusedErrorV0) {
-				// Refused: the session and its turn are live, so the turn is not left marked as stopping.
-				this.#sessionClosing = false;
-				if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
-			} else this.#sessionClosed = true;
+			if (error instanceof AcpRefusedErrorV0) restoreLive();
+			else this.#sessionClosed = true;
 			throw error;
 		}
 		this.#sessionClosed = true;
@@ -603,7 +652,8 @@ export class AcpClientV0 {
 			this.#recorder.record("harness.protocol-fault", { fault: "session-close-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v1 response");
 		}
-		this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" });
+		this.#own(own, this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" }));
+		this.#reportObserverFailure(own);
 	}
 
 	/** One bounded request, with refusals and a vanished agent classified. */
@@ -767,13 +817,19 @@ export class AcpClientV0 {
 		const run = this.#run;
 		if (run === null || !run.sent || run.stopRequested) return false;
 		if (this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
-		// State first (a re-entrant cancel() from onEvent is then "already requested"), then evidence.
+		// State first (a re-entrant cancel() from onEvent is then "already requested"), then evidence. The recorder isolates
+		// observer failures, so the cleanup and the notification below always happen; a failure is reported afterwards.
+		const own = { failed: false } as { failed: boolean; error?: unknown };
 		run.stopRequested = true;
-		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
-		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
+		const requested = this.#own(
+			own,
+			this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" }),
+		);
+		this.#own(own, this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested));
 		// A client must answer pending permission requests with `cancelled` once it cancels the turn.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
 		await this.#connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: this.sessionId });
+		this.#reportObserverFailure(own);
 		return true;
 	}
 

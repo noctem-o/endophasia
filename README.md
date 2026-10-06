@@ -33,7 +33,7 @@ and keep evidence separate from permission.
 
 ---
 
-Endophasia is a runtime-neutral substrate around coding-agent harnesses.
+Endophasia is a harness-neutral cognition, observation, control and evolution substrate that can attach to agent runtimes without replacing their native execution loops.
 
 It records what a harness actually does, evaluates capabilities against
 explicit evidence, and keeps observation, experimentation, and authority
@@ -95,6 +95,8 @@ Related projects have separate jobs, and none grants another authority:
 | [Cogitator](https://github.com/noctem-o/cogitator) | Seals run records with verifiable witness roots |
 | [Buzz](https://github.com/noctem-o/buzz-prime) | Shared workspace where humans and agents coordinate around runs |
 
+Independent architectural context for this direction: [*Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents*](https://arxiv.org/abs/2609.00006) (arXiv 2609.00006, a source-code study of eleven systems) separates a harness from a meta-harness, describes the shift from harness-as-tool to harness-as-platform, identifies minimal-core / extension-host designs (Pi among them), and treats memory, verification, extension surfaces and harness evolution as first-class concerns. It also notes ACP increasingly serving as a harness-hosting and interoperability boundary. It does not evaluate Endophasia; it is cited as context for the design, which attaches around a harness's own execution loop instead of replacing it.
+
 ## How it attaches
 
 Endophasia is a substrate, not a runtime. It attaches to agent harnesses you already run, through explicit adapters.
@@ -154,7 +156,7 @@ silently treated as comparable.
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
 | ACP v1 agents | A protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command: the PR #37 slice, then semantic coverage with schema-validated updates, capability-gated `session/list`/`resume`/`close`, and explicit EXACT / QUALIFIED / LOSSY / UNREPRESENTABLE loss accounting, pinned to one SDK and schema revision. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
-| ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is a draft specification, so any result is pinned to one schema revision |
+| ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is still a Draft protocol: a baseline schema is published and draft additions are layered separately, so any study is explicit, feature-gated and pinned to one exact revision |
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
 endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
@@ -468,21 +470,13 @@ Endophasia is ready for architecture experiments. It is not a stable multi-runti
 
 The numbered items below are the long-term map. The order of work for the next stretch is:
 
-1. **Research data tiers (urgent).** About 1 GB of raw study data is now committed under `research/` (the
-   discriminating-task, path-sensitivity and steering studies). Every clone carries it, and it grows with each study.
-   Separate three tiers and stop committing raw replay material to git:
-   - *canonical evidence:* small, durable, digest- and provenance-focused records, kept in the repository;
-   - *private replay material:* complete enough to reproduce a run, sensitive by default, stored outside git in a
-     content-addressed location, with its digests committed;
-   - *export artifacts:* explicitly scrubbed and audited, with a manifest of what was omitted. A scrubber that cannot
-     safely rewrite something reports what remains instead of declaring the artifact clean.
-2. **Schema compatibility rules.** A known `schemaVersion` is parsed exactly and unknown fields are rejected; a reader
+1. **Schema compatibility rules.** A known `schemaVersion` is parsed exactly and unknown fields are rejected; a reader
    rejects a version it does not know loudly, never partially; new readers keep reading every committed version; committed
    fixtures are permanent conformance fixtures. This lands before another runtime starts producing evidence.
-3. **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
+2. **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
    server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in the
    steering study). Classify any remaining transport retries apart from agent behaviour.
-4. **Effective harness surface** (items 2, 6 and 9). Identify what the model actually experiences, not only which
+3. **Effective harness surface** (items 2, 6 and 9). Identify what the model actually experiences, not only which
    executable ran. A surface record holds component digests observed on the wire by the recording proxy: the system
    instructions, the tool-definition set and the effective request parameters. Next to these sit the invocation mode,
    the model identity and the wire dialect. Variable contributions such as the working directory are separate observed
@@ -490,19 +484,23 @@ The numbered items below are the long-term map. The order of work for the next s
    runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
    The surface joins the other experiment-identity coordinates ([Evolve providers](#evolve-providers)), compared
    coordinate by coordinate.
-5. **ACP v2 conformance study** (item 9). The ACP sequence is: ACP v1 slice (done) → ACP v1 semantic coverage and loss
-   accounting (done) → this experimental v2 study → a cross-surface conformance study. v2 is a draft protocol, never
-   stable here. A protocol-level adapter study against one pinned draft revision: the prompt
-   lifecycle, reconstruction from `session/resume` with `replayFrom` compared with the live session, and structured
-   permission subjects answered with default deny and operator confirmation. ACP types stay in the adapter.
-6. **Compute-cap study** (item 13, before item 11). A pre-registered study of completion budget × task, everything else
-   pinned, with several fixed seeds as the replication unit. It asks whether more budget improves success, where it
-   saturates, and whether failures merely move. Otherwise the first selection policy would learn that the best candidate
-   is the one that did not hit the cap. Any later adaptation run must use the same output budget in training and
-   evaluation, checked rather than assumed.
-7. **Forkable checkpoints** (item 10). The substrate primitive beneath search, counterfactual evaluation and training.
-8. **Research note.** The variance, pinned-environment, steering, path-sensitivity and discriminating-task studies,
-   written up with their limits and data.
+4. **ACP v2 conformance study** (item 9). The ACP sequence is: ACP v1 slice (done) → ACP v1 semantic coverage and loss
+   accounting (done) → ACP v1 lifecycle/accounting closure (done) → this experimental v2 study → a cross-surface
+   conformance study. ACP v2 is still a Draft protocol: a baseline v2 schema is published and draft additions are layered
+   separately, so support stays explicit and feature-gated and the study is pinned to one exact revision (never "stable").
+   A protocol-level adapter study: the prompt lifecycle, `session/resume` with `replayFrom` (replacing the v1
+   load/resume split) compared with the live session, and permission requests (now with a required title and optional
+   structured subjects) answered with default deny and operator confirmation. ACP types stay in the adapter. Two ACP v1
+   decisions are deliberately deferred and separate: consuming the *unstable* per-turn `PromptResponse.usage` that real OMP
+   sends (an unstable source field needs an explicit policy and loss-accounting decision), and Windows descendant
+   containment, which belongs in the shared `ProcessGroupV0`, not in any one adapter.
+5. **Compute-frontier follow-up** (item 13). The completion-cap study has been run (see Done), so this is what remains:
+   where success saturates above 32,768 tokens, whether a retry after a cut-off beats a larger cap, and whether failures
+   merely move. Pre-registered, everything else pinned, several fixed seeds as the replication unit. Any later
+   adaptation run must use the same output budget in training and evaluation, checked rather than assumed.
+6. **Forkable checkpoints** (item 10). The substrate primitive beneath search, counterfactual evaluation and training.
+7. **Research note.** The variance, pinned-environment, steering, path-sensitivity, discriminating-task and
+   completion-cap studies, written up with their limits and data.
 
 Done:
 
@@ -515,6 +513,14 @@ Done:
    - *Status:* cassette replay with STOP and kill at the recorded chunk (#21); differential replay via the trajectory
      comparison (#20), with tool calls and tool results judged separately (#25); misses classified as environment or
      control flow (#25). The wall-clock limit is documented ([replay](docs/replay.md)).
+- **Research data out of git** (#35). The studies' raw run directories live outside the repository; canonical evidence
+  (designs, results, analyses, small per-trial files, cassettes) stays. The policy stands: small, durable,
+  digest-and-provenance records may live in git; large or private replay material does not
+  ([where it lives](research/DATA.md)).
+- **Completion-cap study** (#35). Raising the completion cap from 16,384 to 32,768 tokens raised success on the two
+  discriminating tasks from 10 of 24 to 19 of 23 ([results](research/README.md#completion-cap-study)).
+- **ACP v1 adapter** (#37, #39, and the closure tranche). A pinned-SDK, schema-validated v1 adapter with capability-gated
+  session operations and explicit loss accounting, smoke-tested against real OMP ([ACP v1 adapter](docs/acp-v1-slice.md)).
 
 Partly done:
 
@@ -535,7 +541,7 @@ Partly done:
    - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and
      pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
      discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11), and the effective
-     harness surface in every experiment's provenance (near-term 4).
+     harness surface in every experiment's provenance (near-term 3).
 8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
    consequence. A proposal never becomes permission implicitly.
    - *Status:* STEER, QUEUE and STOP are explicit, authorized, verified interventions through Pi's documented RPC
@@ -601,8 +607,8 @@ EVOLVE / research loop:
       evaluation cells through Inspect's early-stopping protocol. Treat its rule, thresholds and every stopped sample
       as experiment provenance, first validate it post-hoc or in shadow mode, and keep it separate from an agent's own
       trajectory-level STOP decision.
-    - *First study:* the completion-cap study (near-term 6), motivated by the discriminating-task study, where most
-      failures were truncation at the completion cap.
+    - *First study:* the completion-cap study (done), motivated by the discriminating-task study, where most failures
+      were truncation at the completion cap. The follow-up is near-term 5.
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
     evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
     adaptation loop. [ControlArena](https://github.com/UKGovernmentBEIS/control-arena) is a useful provider reference

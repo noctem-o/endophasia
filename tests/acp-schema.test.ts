@@ -11,6 +11,7 @@ import {
 	ACP_STABLE_UPDATE_VARIANTS_V0,
 	ACP_STOP_REASONS_V0,
 	ACP_UNSTABLE_UPDATE_VARIANTS_V0,
+	acpUpdateVerdictV0,
 	assertAcpSchemaDigestV0,
 	readAcpSchemaV0,
 	translateAcpUpdateV0,
@@ -251,5 +252,27 @@ describe("ACP v1 stable update validation", () => {
 		expect(usage("USD")).toMatchObject({ cost: { amount: 1, currency: "USD" } });
 		expect(usage("US Dollars")).toMatchObject({ costOmitted: true });
 		expect(usage("US Dollars")).not.toHaveProperty("cost");
+	});
+
+	it("accepts 64-bit integers only when a JS number holds them exactly, and says so otherwise", () => {
+		const usage = (raw: string) => JSON.parse(`{"sessionUpdate":"usage_update","used":${raw},"size":10}`) as object;
+		const problem = (raw: string) => {
+			const result = translateAcpUpdateV0(usage(raw)) as { kind: string; payload: Record<string, unknown> };
+			return result.kind === "malformed" ? result.payload.problem : "accepted";
+		};
+		expect(problem("9007199254740991")).toBe("accepted"); // 2^53 - 1
+		expect(problem("9007199254740992")).toBe("integer-not-exact"); // 2^53: already ambiguous after parsing
+		expect(problem("18446744073709551615")).toBe("integer-not-exact"); // schema-valid uint64 maximum
+		expect(problem("18446744073709551616000")).toBe("schema-invalid"); // beyond uint64 altogether
+		expect(problem("-1")).toBe("schema-invalid");
+		expect(problem("1.5")).toBe("schema-invalid");
+		// An inexact integer does not excuse another violation: the update is simply invalid.
+		const two = JSON.parse('{"sessionUpdate":"usage_update","used":9007199254740992,"size":-1}') as object;
+		expect(acpUpdateVerdictV0("usage_update", two)).toBe("invalid");
+		// At the edge a literal one past the uint64 maximum parses to the same double as the maximum: not told apart, so the
+		// verdict claims only "not representable here".
+		expect(problem("18446744073709551616")).toBe("integer-not-exact");
+		// Never counted, and never recorded rounded.
+		expect(acpUpdateVerdictV0("usage_update", usage("9007199254740993"))).toBe("inexact-integer");
 	});
 });

@@ -8,6 +8,7 @@ import {
 	type AcpClientOptionsV0,
 	AcpClientV0,
 	AcpClosedErrorV0,
+	AcpObserverErrorV0,
 	AcpRefusedErrorV0,
 	AcpTimeoutErrorV0,
 	AcpUnavailableErrorV0,
@@ -611,6 +612,171 @@ describe("review regressions, round 5", () => {
 			expect((await r.run())[0]).toBe(false);
 			expect(r.events.filter((e) => (e.payload as { action?: string }).action === "cancel")).toHaveLength(1);
 		});
+	});
+});
+
+describe("observation is evidence, not authority", () => {
+	it("completes cancellation, and answers pending permissions, when the observer throws", async () => {
+		let throwOnCancel = false;
+		const { client, events } = await attach(
+			"permission-hold",
+			{},
+			{},
+			{
+				permissionHandler: () => new Promise(() => {}),
+				onEvent: (event) => {
+					if (throwOnCancel && event.kind === "control.requested") throw new Error("observer failed");
+				},
+			},
+		);
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(events, "permission.requested").length && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		throwOnCancel = true;
+		await expect(client.cancel()).rejects.toBeInstanceOf(AcpObserverErrorV0);
+		// Despite the observer failing: the agent was told, the held permission was answered, the turn ended cancelled.
+		expect((await turn).stopReason).toBe("cancelled");
+		for (let waited = 0; !notes().some((note) => "permissionOutcome" in note) && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(client.observerErrors).toHaveLength(1);
+	});
+
+	it("still reports an observer failure after the retained error cap is full", async () => {
+		const { client } = await attach(
+			"semantics",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				onEvent: () => {
+					throw new Error("sink is down");
+				},
+			},
+		);
+		await client.prompt("go"); // dozens of events, every one rejected by the sink
+		expect(client.observerErrors).toHaveLength(16);
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpObserverErrorV0);
+	});
+
+	it("does not blame a close for an observer failure on unrelated traffic that arrived while it was pending", async () => {
+		const seen: EndoEventV0[] = [];
+		const { client } = await attach(
+			"close-noisy",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				onEvent: (event) => {
+					seen.push(event);
+					if (event.kind === "session.update-observed") throw new Error("sink rejects tool updates");
+				},
+			},
+		);
+		await client.closeSession(); // resolves: every close-related event was observed
+		expect(find(seen, "session.close-accepted")).toHaveLength(1);
+		expect(client.observerErrors).toHaveLength(1); // the unrelated failure is still retained and visible
+	});
+
+	it("does not blame a control transition for a failure on an emission its observer caused by re-entering", async () => {
+		let client: AcpClientV0 | undefined;
+		let fired = false;
+		const seen: EndoEventV0[] = [];
+		const connected = await attach(
+			"cancellable",
+			{},
+			{},
+			{
+				onEvent: (event) => {
+					seen.push(event);
+					if (event.kind === "control.unavailable") throw new Error("sink rejects this one");
+					if (
+						!fired &&
+						event.kind === "control.requested" &&
+						(event.payload as { action?: string }).action === "cancel"
+					) {
+						fired = true;
+						// Unavailable: emits control.unavailable synchronously, which the sink rejects.
+						void client?.listSessions().catch(() => {});
+					}
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(seen, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(await client.cancel()).toBe(true); // both cancel-related events were delivered
+		expect(find(seen, "control.unavailable")).toHaveLength(1);
+		expect(client.observerErrors).toHaveLength(1); // the nested failure is visible, just not this cancel's
+		await turn;
+	});
+
+	it("restores a refused close once: an operation the observer started meanwhile is not undone", async () => {
+		let probe: Promise<boolean> | undefined;
+		let client: AcpClientV0 | undefined;
+		const connected = await attach(
+			"cancellable",
+			{ FAKE_ACP_CAPS: "close", FAKE_ACP_CLOSE_REFUSE: "1" },
+			{},
+			{
+				onEvent: (event) => {
+					if (event.kind === "control.refused") probe = client?.cancel();
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(connected.events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		expect(await probe).toBe(true);
+		// The cancel the observer started stays in force: it is not "un-requested" by a second restore.
+		expect(await client.cancel()).toBe(false);
+		await turn;
+	});
+
+	it("rolls back a close that could not even be recorded (clock failure), leaving the session live", async () => {
+		let failClock = false;
+		const { client } = await attach(
+			"normal",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				now: () => {
+					if (failClock) throw new Error("clock failed");
+					return "2026-01-01T00:00:00Z";
+				},
+			},
+		);
+		failClock = true;
+		await expect(client.closeSession()).rejects.toThrow("clock failed");
+		failClock = false;
+		expect(notes().filter((note) => note.called === "session/close")).toEqual([]);
+		expect((await client.prompt("go")).stopReason).toBe("end_turn");
+	});
+
+	it("exposes the restored live state to a synchronous observer of control.refused", async () => {
+		let probe: Promise<boolean> | undefined;
+		let client: AcpClientV0 | undefined;
+		const connected = await attach(
+			"cancellable",
+			{ FAKE_ACP_CAPS: "close", FAKE_ACP_CLOSE_REFUSE: "1" },
+			{},
+			{
+				onEvent: (event) => {
+					if (event.kind === "control.refused") probe = client?.cancel();
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(connected.events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		// At the event boundary the turn was already cancellable again.
+		expect(await probe).toBe(true);
+		expect((await turn).stopReason).toBe("cancelled");
 	});
 });
 

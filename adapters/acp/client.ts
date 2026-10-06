@@ -27,6 +27,7 @@ import {
 	ACP_MAPPING_VERSION,
 	AcpRecorderV0,
 	type AcpStopReasonV0,
+	acpSessionRefV0,
 	isAcpStopReasonV0,
 	isRecord,
 	lifecycleEndForStopReasonV0,
@@ -99,6 +100,13 @@ export class AcpTimeoutErrorV0 extends Error {
 	constructor(what: string, ms: number) {
 		super(`${what} did not complete within ${ms} ms`);
 		this.name = "AcpTimeoutErrorV0";
+	}
+}
+/** The attachment was closed while a request was in flight. The agent is not blamed for it. */
+export class AcpClosedErrorV0 extends Error {
+	constructor(what: string) {
+		super(`the ACP attachment was closed during ${what}`);
+		this.name = "AcpClosedErrorV0";
 	}
 }
 /** The agent answered a request with a JSON-RPC error. */
@@ -289,11 +297,24 @@ export class AcpClientV0 {
 			this.#recorder.record("harness.protocol-fault", { fault: "initialize-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's initialize response carries no numeric protocolVersion");
 		}
+		const info = isRecord(response.agentInfo) ? response.agentInfo : {};
+		const capabilities = JSON.parse(JSON.stringify(response.agentCapabilities ?? null)) as JsonValueV0;
+		const canonical = canonicalEndoJsonV0(capabilities);
+		// What the agent reported, as reported: its own claim, not a verified identity of the executable.
+		const reportedByAgent: Record<string, JsonValueV0> = {
+			protocolVersion: response.protocolVersion,
+			agentInfo: { name: shortText(info.name) ?? null, version: shortText(info.version) ?? null },
+			capabilitiesDigest: sha256HexV0(canonical),
+			capabilities: canonical.length <= 8192 ? capabilities : null,
+			authMethodIds: Array.isArray(response.authMethods)
+				? response.authMethods.map((method) => (isRecord(method) ? (shortText(method.id) ?? null) : null))
+				: null,
+		};
 		if (response.protocolVersion !== ACP_SUPPORTED_PROTOCOL_VERSION_V0) {
 			this.#recorder.record("harness.protocol-fault", {
 				fault: "unsupported-protocol-version",
-				reported: response.protocolVersion,
 				supported: ACP_SUPPORTED_PROTOCOL_VERSION_V0,
+				...reportedByAgent,
 			});
 			throw new AcpProtocolErrorV0(
 				`the agent negotiated ACP protocol version ${String(response.protocolVersion)}; only ${ACP_SUPPORTED_PROTOCOL_VERSION_V0} is supported`,
@@ -305,23 +326,7 @@ export class AcpClientV0 {
 			agentCapabilities: response.agentCapabilities,
 			authMethods: response.authMethods,
 		};
-		const info = isRecord(response.agentInfo) ? response.agentInfo : {};
-		const capabilities = JSON.parse(JSON.stringify(response.agentCapabilities ?? null)) as JsonValueV0;
-		const canonical = canonicalEndoJsonV0(capabilities);
-		this.#recorder.record("harness.acp-initialized", {
-			mapping: ACP_MAPPING_VERSION,
-			protocolVersion: response.protocolVersion,
-			// The agent's own claim; not a verified identity of the executable.
-			agentInfo: {
-				name: shortText(info.name) ?? null,
-				version: shortText(info.version) ?? null,
-			},
-			capabilitiesDigest: sha256HexV0(canonical),
-			capabilities: canonical.length <= 8192 ? capabilities : null,
-			authMethodIds: Array.isArray(response.authMethods)
-				? response.authMethods.map((method) => (isRecord(method) ? (shortText(method.id) ?? null) : null))
-				: null,
-		});
+		this.#recorder.record("harness.acp-initialized", { mapping: ACP_MAPPING_VERSION, ...reportedByAgent });
 	}
 
 	async #openSession(cwd: string): Promise<void> {
@@ -338,13 +343,13 @@ export class AcpClientV0 {
 		const attached = this.#recorder.record("harness.attached", {
 			mapping: ACP_MAPPING_VERSION,
 			instance: this.#recorder.instance,
-			acpSessionId: shortText(response.sessionId, 256) ?? null,
+			acpSessionId: acpSessionRefV0(response.sessionId),
 		});
 		this.#recorder.derive(
 			"lifecycle.session-started",
 			{
 				runtime: "acp",
-				runtimeSessionId: response.sessionId,
+				runtimeSessionId: acpSessionRefV0(response.sessionId),
 				instance: this.#recorder.instance,
 				unavailable: ACP_LIFECYCLE_UNAVAILABLE_V0.map((field) => ({ ...field })),
 			},
@@ -390,16 +395,31 @@ export class AcpClientV0 {
 		);
 		const run: OpenRun = { started, stopRequested: false, updates: {} };
 		this.#run = run;
+		// The turn settles on its own path, whenever the agent answers. A timeout only stops this caller waiting: the
+		// answer, if it comes later (after a cancel(), say), is still recorded as the agent's report.
+		const settled = this.#settle(
+			run,
+			this.#connection.agent.request(acp.methods.agent.session.prompt, {
+				sessionId,
+				prompt: [{ type: "text", text }],
+			}),
+		);
+		settled.catch(() => {});
+		try {
+			return await bounded(settled, this.#promptTimeoutMs, "session/prompt");
+		} catch (error) {
+			// Not an observed end: the turn stays open until the agent answers, cancel() or close().
+			if (error instanceof AcpTimeoutErrorV0) {
+				this.#recorder.record("harness.prompt-timeout", { timeoutMs: this.#promptTimeoutMs });
+			}
+			throw error;
+		}
+	}
+
+	async #settle(run: OpenRun, request: Promise<unknown>): Promise<AcpPromptResultV0> {
 		let response: unknown;
 		try {
-			response = await bounded(
-				this.#connection.agent.request(acp.methods.agent.session.prompt, {
-					sessionId,
-					prompt: [{ type: "text", text }],
-				}),
-				this.#promptTimeoutMs,
-				"session/prompt",
-			);
+			response = await request;
 		} catch (error) {
 			throw await this.#promptFailed(run, error);
 		}
@@ -410,14 +430,7 @@ export class AcpClientV0 {
 		const stopReason = isRecord(response) ? response.stopReason : undefined;
 		if (!isAcpStopReasonV0(stopReason)) {
 			const fault = this.#recorder.record("harness.protocol-fault", { fault: "stop-reason-malformed" });
-			this.#recorder.derive(
-				"lifecycle.run-unclassified",
-				{
-					turns: { status: "UNAVAILABLE", reason: "ACP v1 reports no turn count" },
-					reason: "stop-reason-malformed",
-				},
-				fault,
-			);
+			this.#recorder.derive("lifecycle.run-unclassified", { reason: "stop-reason-malformed" }, fault);
 			this.#run = null;
 			throw new AcpProtocolErrorV0("the agent's session/prompt response carries no ACP v1 stopReason");
 		}
@@ -434,34 +447,23 @@ export class AcpClientV0 {
 	}
 
 	async #promptFailed(run: OpenRun, error: unknown): Promise<unknown> {
-		if (error instanceof AcpTimeoutErrorV0) {
-			// Not an observed end: the turn stays open until cancel() or close().
-			this.#recorder.record("harness.prompt-timeout", { timeoutMs: this.#promptTimeoutMs });
-			return error;
-		}
+		// close() ended the connection under the request. The agent did nothing wrong: no fault is recorded, and the
+		// open run is left to the exit handler, which records the interruption when the process actually ends.
+		if (this.#closed && !(error instanceof acp.RequestError)) return new AcpClosedErrorV0("session/prompt");
 		const classified = await this.#classify("session/prompt", error);
 		if (this.#run !== run) return classified; // The exit handler already closed the run as interrupted.
 		if (classified instanceof AcpRefusedErrorV0) {
 			const failed = this.#recorder.record("agent.prompt-failed", { code: classified.code });
+			// Deviation from EndoReportedCauseV0: ACP's cause is a JSON-RPC error code, not an assistant message or a
+			// retry loop. The message text is not kept.
 			this.#recorder.derive(
 				"lifecycle.run-failed",
-				{
-					turns: { status: "UNAVAILABLE", reason: "ACP v1 reports no turn count" },
-					// The agent's JSON-RPC error code; its message text is not kept.
-					cause: { source: "jsonrpc-error", code: classified.code },
-				},
+				{ cause: { source: "jsonrpc-error", code: classified.code } },
 				failed,
 			);
 		} else {
 			const fault = this.#recorder.record("harness.protocol-fault", { fault: "prompt-transport-failed" });
-			this.#recorder.derive(
-				"lifecycle.run-unclassified",
-				{
-					turns: { status: "UNAVAILABLE", reason: "ACP v1 reports no turn count" },
-					reason: "prompt-transport-failed",
-				},
-				fault,
-			);
+			this.#recorder.derive("lifecycle.run-unclassified", { reason: "prompt-transport-failed" }, fault);
 		}
 		this.#run = null;
 		return classified;
@@ -581,8 +583,6 @@ export class AcpClientV0 {
 					cause: "runtime-exited",
 					instance: this.#recorder.instance,
 					runOpen: true,
-					turnOpen: { status: "UNAVAILABLE", reason: "ACP v1 reports no turns" },
-					turns: { status: "UNAVAILABLE", reason: "ACP v1 reports no turn count" },
 					stopRequested: run.stopRequested,
 					exit: { code: exit.code, signal: exit.signal },
 				},

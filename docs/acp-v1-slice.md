@@ -60,9 +60,29 @@ translate becomes `runtime.unrecognized-event` (by name only) and `lifecycle.unr
 becomes `runtime.malformed-event`. Translated in this slice: tool call, tool call update, plan, available commands, mode,
 config option, session info and usage updates (as counts, identifiers and statuses).
 
-Known limit: a line that is not JSON is answered by the SDK with a JSON-RPC parse error and never reaches the adapter, so
-it is not recorded as a fault by itself. A turn that never completes is bounded by `promptTimeoutMs`, and an agent that
-dies is recorded from its exit.
+Known limits:
+
+- A line that is not JSON is answered by the SDK with a JSON-RPC parse error and never reaches the adapter, so it is not
+  recorded as a fault by itself.
+- `promptTimeoutMs` only stops the caller waiting (`harness.prompt-timeout`). The turn stays open: if the agent answers
+  later (for example after `cancel()`), that answer is recorded as the agent's report. An agent that never answers is
+  ended by `close()`, which records `lifecycle.interrupted` once the process is gone; `close()` during an awaited turn
+  does not blame the agent (`AcpClosedErrorV0`, no fault event).
+
+### Deviations from the declared lifecycle shapes
+
+The existing session-overview reducer (`runtime/contracts/session-overview.ts`) reads the ACP events without anomalies,
+but the declared shapes in `protocol/session-lifecycle.ts` are Pi-shaped, and ACP v1 does not fit them everywhere. None
+of this changed a core schema; each is stated here instead:
+
+- `lifecycle.*` payloads omit `turns` and `turnOpen`: ACP v1 reports no turn count. The overview therefore shows 0 turns
+  (the reducer's fallback), which is declared in the session start's `unavailable` list as `turns`, not a count.
+- `lifecycle.run-failed.cause` is `{ source: "jsonrpc-error", code }`, outside `EndoReportedCauseV0`'s two sources
+  (assistant message, retry loop).
+- Extra fields: `basis` on `run-started`; `stopRequested` and `stopReason` on the run ends; `reason` and `stopReason` on
+  `run-unclassified` for `max_tokens`, `max_turn_requests` and `refusal`.
+- `runtime: "acp"` on `lifecycle.session-started` names the protocol surface, not the agent. The agent's own claim is in
+  `harness.acp-initialized.agentInfo`.
 
 ## Not supported here
 

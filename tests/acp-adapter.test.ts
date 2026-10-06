@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	type AcpClientOptionsV0,
 	AcpClientV0,
+	AcpClosedErrorV0,
 	AcpProcessExitedErrorV0,
 	AcpProtocolErrorV0,
 	AcpRefusedErrorV0,
 	AcpTimeoutErrorV0,
 } from "../adapters/acp/index.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
+import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 
 const FAKE = join(import.meta.dirname, "fixtures", "fake-acp-agent.ts");
 
@@ -121,7 +123,6 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(find(events, "lifecycle.run-started")[0]!.payload).toMatchObject({ basis: "client-sent-session-prompt" });
 		expect(find(events, "lifecycle.run-completed")[0]!.payload).toMatchObject({
 			stopReason: { status: "reported", value: "end_turn" },
-			turns: { status: "UNAVAILABLE" },
 		});
 		// No text the agent or the prompt carried reaches evidence.
 		const all = JSON.stringify(events);
@@ -136,10 +137,34 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(new Set(events.map((event) => event.id)).size).toBe(events.length);
 
 		const exit = await client.close();
-		expect(exit.signal === null || exit.code === 0 || exit.signal !== null).toBe(true);
+		expect(exit).toMatchObject({ code: 0, signal: null, spawnFailed: false });
 		expect(client.liveProcessMembers()).toBe(false);
 		expect(find(events, "harness.process-exited")[0]!.payload).toMatchObject({ expected: true });
 		expect(kinds(events).at(-1)).toBe("lifecycle.detached");
+	});
+
+	it("reduces, through the existing session-overview reducer, to what the agent reported and no more", async () => {
+		const { client, events } = await attach("normal");
+		await client.prompt("go");
+		await client.close();
+		// The lifecycle carries the same session reference the recording does.
+		expect(find(events, "lifecycle.session-started")[0]!.payload).toMatchObject({
+			runtimeSessionId: (find(events, "harness.attached")[0]!.payload as { acpSessionId: string }).acpSessionId,
+		});
+		const overview = reduceEndoSessionOverviewV0(events);
+		expect(overview.anomalies).toEqual([]);
+		expect(overview.unrecognized).toEqual([]);
+		expect(overview.state).toBe("detached");
+		expect(overview.counts).toMatchObject({ runs: 1, completed: 1, aborted: 0, failed: 0, interrupted: 0 });
+		expect(overview.session).toEqual({
+			status: "reported",
+			value: { runtime: "acp", runtimeSessionId: "fake-session-1" },
+		});
+		expect(overview.lastRun?.stopReason).toEqual({ status: "reported", value: "end_turn" });
+		// What ACP v1 does not report is declared, including the turn count the overview can only show as 0.
+		expect(overview.unavailable.map((entry) => entry.field)).toEqual(
+			expect.arrayContaining(["run.id", "turns", "operation.outcome"]),
+		);
 	});
 
 	it("gives the agent only the declared environment", async () => {
@@ -156,9 +181,11 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		const { error, events } = await attachFailing("version-2");
 		expect(error).toBeInstanceOf(AcpProtocolErrorV0);
 		expect(String((error as Error).message)).toMatch(/version 2.*only 1/);
+		// What the agent reported is kept even though the version is refused.
 		expect(find(events, "harness.protocol-fault")[0]!.payload).toMatchObject({
 			fault: "unsupported-protocol-version",
-			reported: 2,
+			protocolVersion: 2,
+			agentInfo: { name: "fake-acp-agent", version: "9.9.9" },
 		});
 		expect(find(events, "harness.attached")).toEqual([]);
 		expect(find(events, "harness.process-exited")).toHaveLength(1);
@@ -394,6 +421,34 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			expect(find(events, "harness.process-exited")).toHaveLength(1);
 			await expect(client.prompt("late")).rejects.toThrow(/closed/);
 			expect(await client.cancel()).toBe(false);
+		});
+
+		it("records the agent's answer to a timed-out turn when cancel() makes it arrive late", async () => {
+			const { client, events } = await attach("cancellable", { promptTimeoutMs: 200 });
+			await expect(client.prompt("go")).rejects.toBeInstanceOf(AcpTimeoutErrorV0);
+			expect(find(events, "harness.prompt-timeout")).toHaveLength(1);
+			expect(find(events, "lifecycle.run-aborted")).toEqual([]);
+			expect(await client.cancel()).toBe(true);
+			await until(() => find(events, "lifecycle.run-aborted").length === 1);
+			expect(find(events, "lifecycle.run-aborted")[0]!.payload).toMatchObject({ stopRequested: true });
+			await client.close();
+			expect(find(events, "lifecycle.interrupted")).toEqual([]);
+		});
+
+		it("blames nobody when close() ends the connection under an awaited turn", async () => {
+			const { client, events } = await attach("ignore-sigterm");
+			const turn = client.prompt("go");
+			const outcome = turn.then(
+				() => null,
+				(error: unknown) => error,
+			);
+			await until(() => (client.updateCounts.tool_call_update ?? 0) === 1);
+			await client.close();
+			expect(await outcome).toBeInstanceOf(AcpClosedErrorV0);
+			expect(find(events, "harness.protocol-fault")).toEqual([]);
+			expect(find(events, "lifecycle.interrupted")).toHaveLength(1);
+			expect(kinds(events).filter((kind) => /run-(completed|failed|aborted|unclassified)/.test(kind))).toEqual([]);
+			expect(find(events, "lifecycle.detached")).toEqual([]);
 		});
 
 		it("allows one open turn at a time", async () => {

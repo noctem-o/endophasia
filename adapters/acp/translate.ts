@@ -24,7 +24,6 @@ import {
 	type EndoLifecycleKindV0,
 	type EndoUnavailableFieldV0,
 	endoReportedV0,
-	endoUnavailableV0,
 } from "../../protocol/session-lifecycle.ts";
 import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 
@@ -36,7 +35,12 @@ export const ACP_LIFECYCLE_PRODUCER_PREFIX_V0 = "acp-lifecycle:";
 /** What ACP v1 does not tell a client, declared on every session start. */
 export const ACP_LIFECYCLE_UNAVAILABLE_V0: readonly EndoUnavailableFieldV0[] = Object.freeze([
 	{ field: "run.id", reason: "ACP v1 prompt turns carry no run identifier; session/prompt is the only turn handle" },
-	{ field: "turn.id", reason: "ACP v1 reports no turn identifier or count inside a prompt turn" },
+	{ field: "turn.id", reason: "ACP v1 reports no turn identifier inside a prompt turn" },
+	{
+		field: "turns",
+		reason:
+			"ACP v1 reports no turn count: lifecycle payloads omit `turns` and `turnOpen`, and the session overview's turn count (0 for want of any) is not a count",
+	},
 	{
 		field: "run.start",
 		reason: "ACP v1 has no run-start notification; the run start is the client's own prompt request",
@@ -68,6 +72,14 @@ export function acpEndoSessionIdV0(acpSessionId: string): string {
 	return LOCAL.test(acpSessionId)
 		? `endo.session.acp.${acpSessionId}`
 		: `endo.session.acp.sha256-${sha256HexV0(acpSessionId).slice(0, 48)}`;
+}
+
+/**
+ * The session id as evidence carries it, in both the recorded and the lifecycle event: the id itself when it is short
+ * and printable, else a digest of it. One rule, so the lifecycle can be rebuilt from the recording.
+ */
+export function acpSessionRefV0(acpSessionId: string): string {
+	return /^[\x21-\x7e]{1,256}$/.test(acpSessionId) ? acpSessionId : `sha256-${sha256HexV0(acpSessionId).slice(0, 48)}`;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -239,20 +251,19 @@ export function lifecycleEndForStopReasonV0(
 	stopReason: AcpStopReasonV0,
 	stopRequested: boolean,
 ): { kind: EndoLifecycleKindV0; payload: Record<string, JsonValueV0> } {
-	const turns = endoUnavailableV0("ACP v1 reports no turn count");
 	const reported = endoReportedV0(stopReason);
 	switch (stopReason) {
 		case "end_turn":
-			return { kind: "lifecycle.run-completed", payload: { turns, stopReason: reported, stopRequested } };
+			return { kind: "lifecycle.run-completed", payload: { stopReason: reported, stopRequested } };
 		case "cancelled":
 			// The agent's own report that the turn was cancelled. Whether the operator's request caused it is not inferred.
-			return { kind: "lifecycle.run-aborted", payload: { turns, stopRequested } };
+			return { kind: "lifecycle.run-aborted", payload: { stopRequested } };
 		default:
 			// max_tokens, max_turn_requests, refusal: a reported stop that is neither completion nor abort. Not called a
 			// failure: ACP does not say the turn failed.
 			return {
 				kind: "lifecycle.run-unclassified",
-				payload: { turns, reason: `acp-stop-reason:${stopReason}`, stopReason: reported, stopRequested },
+				payload: { reason: `acp-stop-reason:${stopReason}`, stopReason: reported, stopRequested },
 			};
 	}
 }

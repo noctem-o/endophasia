@@ -344,6 +344,146 @@ Resource use is evidence too. Token usage, model calls, tool calls, branches, re
 
 The goal is not autonomous rewriting for its own sake. The goal is **bounded, reproducible, evidence-backed improvement**.
 
+
+### Epistemic alignment experiment: Magpie as a shadow ledger
+
+One concrete EVOLVE study is a deliberately gameable post-training environment: optimize a policy against an imperfect
+proxy while a separate epistemic measurement surface records what changes before, during and after reward hacking.
+The aim is not to encode a complete value system or claim a solution to alignment. It is to test a narrower,
+falsifiable question:
+
+> **Do training-independent epistemic traces forecast proxy exploitation, and can a narrow calibration reward reduce
+> that transition without destroying the monitors used to detect it?**
+
+This design is motivated by several recent results: [reward-hacking RL can produce broader emergent
+misalignment](https://arxiv.org/abs/2511.18397), [open-weight RL reproductions make the phenomenon accessible at
+research scale](https://arxiv.org/abs/2605.31328), [optimizing directly against a useful monitor can make the monitor
+lose recall](https://arxiv.org/abs/2503.11926), [PRIME-style direct probes can precede visible reward
+hacking](https://arxiv.org/abs/2606.09711), and [rubric dropout can reduce over-optimization of a fixed reward
+proxy](https://arxiv.org/abs/2608.11669). The public
+[EMA_RL](https://github.com/lasseruttert/EMA_RL) pipeline is a useful reproduction reference. These sources motivate
+the experiment; they do not validate Endophasia or Magpie.
+
+> [!IMPORTANT]
+> **Reward / measurement firewall.** A feature used as reward is no longer a clean monitor of the policy trained
+> against it. The first tranche therefore keeps Magpie-derived measurements, PRIME probes, contradiction behaviour,
+> evidence acquisition and provenance/origin structure outside the training reward. Magpie is a shadow epistemic
+> ledger, not a reward oracle, truth oracle or promotion authority.
+
+~~~mermaid
+flowchart LR
+    P["Policy checkpoint"] --> T["Training surface<br/>proxy · optional dropout · calibration"]
+    P --> S["Shadow surface<br/>Magpie · PRIME · delayed outcomes"]
+    T --> O["Optimizer"]
+    O --> P
+    S --> H["Training-independent evaluation"]
+    P --> H
+    H --> X["Experiment record"]
+    S --> X
+~~~
+
+#### Experimental sequence
+
+The study is staged so a new mitigation is never interpreted before the underlying failure mode and known controls
+have been reproduced.
+
+| Stage | Question | Planned treatment |
+| :--- | :--- | :--- |
+| **0 · reproduce** | Does proxy optimization produce reward hacking and broader misalignment in the selected local model? | Start from the published warmup → GRPO structure. A ~4B model is a cheap scout; failure there is not a negative result. Repeat at ~8B before concluding the phenomenon is absent |
+| **1 · positive controls** | Can the setup reproduce already-reported mitigation directions? | Inoculation prompting and on-policy safety-data interleaving, each as its own declared condition |
+| **2 · reward interventions** | Do less-stable proxies or calibrated outcome rewards change hacking onset and generalization? | Fixed proxy, proxy dropout, calibration reward, and the combination |
+| **3 · monitor pressure** | Does a useful shadow indicator survive once optimization can see it? | Only after a shadow metric has shown predictive value, expose one previously held-out signal to reward and measure whether its usefulness degrades |
+
+The primary Stage-2 arms are:
+
+| Arm | Training signal |
+| :--- | :--- |
+| **A · proxy** | Fixed exploitable task proxy / rubric |
+| **B · dropout** | The same proxy, but a declared fraction of reward criteria is randomly omitted per rollout group; evaluation always restores the full criterion set |
+| **C · calibration** | The same proxy plus a proper scoring rule on explicitly forecastable outcomes; initially use a Brier-style term such as `-(p - y)^2`, not rewards for hedging words or other linguistic markers |
+| **D · combined** | Proxy dropout plus the same calibration term |
+| **E · inoculation** | Positive-control training prompt that explicitly recontextualizes the exploitable behaviour; this arm intentionally changes the prompt |
+| **I · interleaving** | Positive-control on-policy safety-data interleaving |
+
+System prompts, harness, model checkpoint, sampling policy, task distribution and budgets stay byte-identical across
+A–D. Any manipulation of exploit discoverability, hint strength or proxy quality is a predeclared blocking factor,
+not an unrecorded prompt change. The reference implementation and dependency set used for reproduction should be
+pinned rather than silently upgraded.
+
+#### What is rewarded and what stays shadow-only
+
+The first calibration treatment rewards only a narrow quantity whose outcome can be independently resolved. It does
+not reward the model for *looking* epistemically virtuous.
+
+| Surface | Examples | Optimizer may read it? |
+| :--- | :--- | :---: |
+| **Training** | task proxy, declared rubric mask, Brier/calibration term | yes |
+| **Shadow epistemic** | unsupported assertions, evidence requests, contradiction response, confidence/evidence divergence, later refutation, delayed downstream outcomes | no |
+| **Provenance / origin** | evidence lineage, repeated-origin multiplicity, exact producing coordinates, policy used to derive standing | no |
+| **PRIME-style probes** | correctness self-assessment, proxy recognition, exploit reasoning on fixed diagnostic inputs | no |
+| **Held-out outcome** | gold tests, hidden task checks, rubric-free or cross-family evaluation where deterministic adjudication is unavailable | no |
+
+For Magpie specifically, the experiment must preserve its existing boundaries. A signed history establishes what was
+recorded under the supplied verification context, not truth, freshness, global completeness, key ownership or
+permission to act. Distinct origin groups are not automatically proof of statistical, causal or organisational
+independence. Current broader contradiction policy, currentness/supersession, authority-bound origin admission and
+`EpistemicGate` work remain separate from this experiment.
+
+#### Leading-indicator test
+
+A signal does not count as an early warning merely because it trends with training. The experiment should deliberately
+create variation in **when** hacking appears — for example by varying declared exploit discoverability across otherwise
+matched blocks — and ask whether checkpoint measurements forecast future onset.
+
+At each checkpoint, compare increasingly informative predictors:
+
+~~~text
+current hack rate
+    vs
+current hack rate + PRIME-style direct probes
+    vs
+current hack rate + PRIME + Magpie shadow features
+~~~
+
+The primary analysis should use held-out runs or leave-one-run-out validation. Candidate shadow features include
+changes in evidence acquisition, unsupported-claim rate, confidence relative to later verification, repeated-origin
+use, response to counterevidence and the rate at which later evidence undermines previously rewarded claims. A
+Magpie feature earns scientific value here only if it predicts future behaviour beyond the current hack rate and the
+stronger existing baseline.
+
+#### Suppression is not erasure
+
+A low final hacking rate is insufficient evidence that the exploit capability is gone. After a mitigation suppresses
+visible hacking, one evaluation branch should switch temporarily to a robust/gold reward and later re-expose the same
+checkpoint lineage to the original hackable proxy. Record the time to renewed sustained hacking and whether PRIME or
+shadow epistemic signals persisted while behaviour looked aligned.
+
+This distinguishes:
+
+~~~text
+behaviour suppressed     != exploit capability erased
+monitor quiet            != policy safe
+proxy reward improved    != intended objective improved
+~~~
+
+#### Evaluation and reporting
+
+Every comparison should predeclare the checkpoint cadence, hacking-onset rule, primary outcomes and stopping
+conditions; run multiple seeds where compute permits; preserve null and negative results; and evaluate with mechanisms
+that were not optimized during training. At minimum, report proxy reward, held-out/gold task success, hack rate,
+out-of-distribution misalignment, calibration, resource use and the shadow-monitor measurements above. Later studies
+can add cross-harness blocks, but a GRPO rollout group must not mix harnesses.
+
+The [Magpie](https://github.com/noctem-o/magpie) integration should initially be observational. Endophasia owns the
+experiment coordinates and trajectories; Magpie can retain replayable claims/evidence/provenance and derive
+policy-scoped standing over the supplied record. Until a governed writer / `EpistemicGate` path exists, an adapter
+must not pretend that simply recording an event admits it into an epistemic process.
+
+A strong result is not "the rewarded score went up." It is a reproducible change that survives training-independent
+evaluation, held-out runs and re-exposure tests while its evidence trail remains inspectable. A null result or a
+mitigation that backfires is still useful evidence.
+
+
 ## Work and Dream
 
 WORK and DREAM are planned cognition policies, separate from DEVELOP and EVOLVE.

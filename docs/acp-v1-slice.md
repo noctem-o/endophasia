@@ -139,7 +139,7 @@ merge.
 | Update | Recorded as | Kept | Never kept |
 | --- | --- | --- | --- |
 | `*_message_chunk`, `agent_thought_chunk` | an update count only | that a chunk occurred | text, content types |
-| `tool_call`, `tool_call_update` | `session.update-observed` | id reference, name, kind, status, content/location counts, `rawInputPresent` / `rawOutputPresent` when carried | title, content, locations, raw input/output, any digest |
+| `tool_call`, `tool_call_update` | `session.update-observed` | id reference, name, kind, status, content/location counts, `rawInputPresent` / `rawOutputPresent` when the property is carried, `null` included | title, content, locations, raw input/output, any digest |
 | `plan` | `session.update-observed` | entry count, counts by status | text, priorities |
 | `available_commands_update` | `session.update-observed` | command count | names, descriptions |
 | `current_mode_update` | `session.update-observed` | mode id reference | |
@@ -261,8 +261,9 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `update.unstable` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not translated: the schema says they may be removed or changed at any point. |
 | `update.unknown` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not malformed merely because this adapter predates it. |
 | `update.malformed` | LOSSY | agent-initiated | runtime.malformed-event | lost: every field never counted as update activity. |
+| `protocol.fault` | LOSSY | adapter-observed | harness.protocol-fault, lifecycle.run-unclassified | lost: the offending message and its fields a rejected initialize, session/new or session/resume response fails the attachment. |
 | `message.late` | LOSSY | adapter-observed | harness.late-message | lost: everything the message carried never counted, never decided: no update count, no permission.requested/decided, no handler call, no approval. |
-| `config.observation` | QUALIFIED | baseline | session.config-observed | lost: option names, descriptions and value labels; the values themselves; options past the 32nd agent-reported session configuration: what the agent advertised and what it says is current. Not a verified model identity. |
+| `config.observation` | QUALIFIED | agent-initiated | session.config-observed | lost: option names, descriptions and value labels; the values themselves; options past the 32nd agent-reported session configuration: what the agent advertised and what it says is current. Not a verified model identity. |
 | `config.model-identity` | UNREPRESENTABLE | agent-initiated | verified model or weights identity | — an agent's claim about a setting does not establish which weights served a request. No request to change an option is implemented (session/set_config_option is out of scope), so no request/effect pair exists either. |
 | `usage.context-window` | QUALIFIED | agent-initiated | session.update-observed (contextTokensUsed, contextWindowSize) | — session/context-window state, not a count of tokens a turn consumed. |
 | `usage.cost` | QUALIFIED | agent-initiated | session.update-observed (cost) | — cumulative cost for the session, not per message; an amount travels only with its currency; absent cost is absent, not zero. |

@@ -184,7 +184,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		target: "agent.prompt-failed, lifecycle.run-failed",
 		verdict: "LOSSY",
 		availability: initiated,
-		emits: ["agent.prompt-failed", "lifecycle.run-failed", "harness.protocol-fault", "lifecycle.run-unclassified"],
+		emits: ["agent.prompt-failed", "lifecycle.run-failed"],
 		preserved: ["the JSON-RPC error code"],
 		lost: ["the error message and data"],
 		qualification: "cause is { source: jsonrpc-error, code }, not the Pi-shaped assistant-message cause.",
@@ -278,6 +278,18 @@ const entries: readonly AcpLossEntryV0[] = [
 		qualification: "never counted as update activity.",
 	},
 	{
+		id: "protocol.fault",
+		source:
+			"a response or transport the agent got wrong (schema-invalid initialize/session-new/resume/list/close/prompt response, unsupported version, malformed stop reason, failed prompt transport)",
+		target: "harness.protocol-fault, lifecycle.run-unclassified",
+		verdict: "LOSSY",
+		availability: observed,
+		emits: ["harness.protocol-fault", "lifecycle.run-unclassified"],
+		preserved: ["which fault", "that an open turn ended unclassified"],
+		lost: ["the offending message and its fields"],
+		qualification: "a rejected initialize, session/new or session/resume response fails the attachment.",
+	},
+	{
 		id: "message.late",
 		source: "session/update or session/request_permission after exit, stream closure, close or session close",
 		target: "harness.late-message",
@@ -294,7 +306,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		source: "configOptions (session/new, session/resume, config_option_update) and modes",
 		target: "session.config-observed",
 		verdict: "QUALIFIED",
-		availability: baseline,
+		availability: initiated,
 		emits: ["session.config-observed"],
 		preserved: [
 			"option ids",
@@ -531,7 +543,16 @@ const unsupported: ReadonlyArray<{ readonly id: string; readonly reason: string 
 	{ id: "ACP v2", reason: "a separately pinned experimental study; this adapter negotiates version 1 only" },
 ];
 
-export const ACP_LOSS_ACCOUNTING_V0 = Object.freeze({
+const deepFreeze = <T>(value: T, seen = new Set<object>()): T => {
+	if (typeof value === "object" && value !== null && !seen.has(value)) {
+		seen.add(value);
+		Object.freeze(value);
+		for (const child of Object.values(value)) deepFreeze(child, seen);
+	}
+	return value;
+};
+
+export const ACP_LOSS_ACCOUNTING_V0 = deepFreeze({
 	schemaVersion: ACP_LOSS_ACCOUNTING_VERSION_V0,
 	mapping: ACP_MAPPING_VERSION,
 	acpSchema: ACP_SCHEMA_V0,

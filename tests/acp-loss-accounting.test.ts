@@ -112,4 +112,19 @@ describe("ACP v1 loss accounting", () => {
 		expect(doc).toContain(ACP_SCHEMA_V0.sha256);
 		expect(doc).toContain(ACP_MAPPING_VERSION);
 	});
+
+	it("is deeply frozen, so a caller cannot change a verdict globally", () => {
+		const entry = acpLossEntryV0("usage.ledger")!;
+		expect(Object.isFrozen(entry)).toBe(true);
+		expect(Object.isFrozen(entry.emits)).toBe(true);
+		expect(Object.isFrozen(entry.availability)).toBe(true);
+		expect(() => {
+			(entry as { verdict: string }).verdict = "EXACT";
+		}).toThrow();
+		expect(acpLossEntryV0("usage.ledger")?.verdict).toBe("UNREPRESENTABLE");
+	});
+
+	it("does not call optional observations baseline", () => {
+		expect(acpLossEntryV0("config.observation")?.availability.kind).toBe("agent-initiated");
+	});
 });

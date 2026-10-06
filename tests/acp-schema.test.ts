@@ -205,4 +205,15 @@ describe("ACP v1 stable update validation", () => {
 		expect(validateAcpDefinitionV0("PromptResponse", { stopReason: "bogus" })).toBe(false);
 		expect(() => validateAcpDefinitionV0("NoSuchDefinition", {})).toThrow();
 	});
+
+	it("tells a raw field carried as null from one not carried", () => {
+		const base = { sessionUpdate: "tool_call_update", toolCallId: "c" };
+		const payload = (update: object) =>
+			(translateAcpUpdateV0(update) as { payload: Record<string, unknown> }).payload;
+		expect(payload({ ...base, rawInput: null, rawOutput: null })).toMatchObject({
+			rawInputPresent: true,
+			rawOutputPresent: true,
+		});
+		expect(payload(base)).not.toHaveProperty("rawInputPresent");
+	});
 });

@@ -244,7 +244,8 @@ export function summarizeModesV0(modes: unknown): Record<string, JsonValueV0> | 
 	});
 }
 
-const present = (value: unknown): boolean => value !== undefined && value !== null;
+// Presence is the property being carried, null included: `rawInput: null` is not the same message as no rawInput.
+const carries = (update: Record<string, unknown>, key: string): boolean => Object.hasOwn(update, key);
 
 /**
  * Translate the `update` of one `session/update` notification. `params` is whatever the agent sent: it is not
@@ -305,8 +306,8 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 				status: shortText(u.status, 32),
 				contentItems: Array.isArray(u.content) ? u.content.length : undefined,
 				locations: Array.isArray(u.locations) ? u.locations.length : undefined,
-				rawInputPresent: present(u.rawInput) ? true : undefined,
-				rawOutputPresent: present(u.rawOutput) ? true : undefined,
+				rawInputPresent: carries(u, "rawInput") ? true : undefined,
+				rawOutputPresent: carries(u, "rawOutput") ? true : undefined,
 			});
 		case "plan": {
 			const byStatus: Record<string, JsonValueV0> = { pending: 0, in_progress: 0, completed: 0 };

@@ -215,7 +215,7 @@ export function summarizeConfigOptionsV0(options: readonly unknown[]): Record<st
 		return compact({
 			id: opaqueIdRefV0(option.id),
 			type: shortText(option.type, 16),
-			category: shortText(option.category, 32),
+			category: opaqueIdRefV0(option.category),
 			// The value the agent reports as current: its claim about itself, not a verified model or setting.
 			current: typeof option.currentValue === "boolean" ? option.currentValue : opaqueIdRefV0(option.currentValue),
 			// Selectable values the agent advertised (a group counts its members).
@@ -301,7 +301,7 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 			// no keyed digest of an argument or a result, and one is not made up here.
 			return observed({
 				toolCallId: opaqueIdRefV0(u.toolCallId),
-				toolName: shortText(u.name, 64),
+				toolName: opaqueIdRefV0(u.name),
 				toolKind: shortText(u.kind, 32),
 				status: shortText(u.status, 32),
 				contentItems: Array.isArray(u.content) ? u.content.length : undefined,

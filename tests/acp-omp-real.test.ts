@@ -156,10 +156,16 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 							});
 							optional.resume = "ok";
 							if (resumed.sessionCapabilities.close) {
-								await resumed.closeSession();
-								optional.close = second.some((event) => event.kind === "session.close-accepted")
-									? "ok (acceptance only)"
-									: "no acceptance recorded";
+								// Its own handling: a refused close says nothing about whether resume worked.
+								try {
+									await resumed.closeSession();
+									optional.close = second.some((event) => event.kind === "session.close-accepted")
+										? "ok (acceptance only)"
+										: "no acceptance recorded";
+								} catch (error) {
+									if (!(error instanceof AcpRefusedErrorV0)) throw error;
+									optional.close = `refused by omp (JSON-RPC error ${error.code})`;
+								}
 							} else optional.close = "not advertised";
 						} finally {
 							await resumed.close();

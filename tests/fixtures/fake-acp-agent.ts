@@ -69,7 +69,7 @@ const agent = acp
 	.onRequest(acp.methods.agent.initialize, () => {
 		return {
 			protocolVersion: (mode === "version-2" ? 2 : 1) as 1,
-			agentInfo: { name: "fake-acp-agent", title: "Fake", version: "9.9.9" },
+			agentInfo: { name: process.env.FAKE_ACP_NAME ?? "fake-acp-agent", title: "Fake", version: "9.9.9" },
 			agentCapabilities: {
 				loadSession: false,
 				promptCapabilities: { image: false },
@@ -80,6 +80,7 @@ const agent = acp
 	})
 	.onRequest(acp.methods.agent.session.new, () => {
 		if (mode === "exit-after-init") process.exit(3);
+		if (mode === "new-refuse") throw new acp.RequestError(-32002, "SECRET-NEW-REFUSAL");
 		// The agent's stdout closes while the process lives on.
 		if (mode === "close-stdout") setTimeout(() => process.stdout.end(), 50);
 		// Answers, then dies at once.
@@ -107,6 +108,14 @@ const agent = acp
 		note({ called: "session/close", sessionId: ctx.params.sessionId });
 		cancelled?.();
 		if (mode === "close-slow") await sleep(2500);
+		if (mode === "close-refuse") {
+			// Traffic while the close is pending, then a refusal: the session stays open.
+			await ctx.client.notify(acp.methods.client.session.update, {
+				sessionId,
+				update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "meanwhile" } },
+			} as never);
+			throw new acp.RequestError(-32003, "no");
+		}
 		if (mode === "late-after-close") {
 			// Traffic about a session the agent just closed, after it answered.
 			setTimeout(() => {

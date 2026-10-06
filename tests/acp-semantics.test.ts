@@ -436,6 +436,49 @@ describe("review regressions, round 3", () => {
 	});
 });
 
+describe("review regressions, round 4", () => {
+	it("does not call a refused session/new an optional refusal", async () => {
+		const events: EndoEventV0[] = [];
+		const error = await AcpClientV0.connect(
+			{
+				launch: env("new-refuse", {}),
+				attachment: "fake.default",
+				onEvent: (e) => events.push(e),
+				closeGraceMs: 300,
+			},
+			{ cwd: scratch },
+		).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(AcpRefusedErrorV0);
+		expect(find(events, "control.refused")).toEqual([]);
+	});
+
+	it("keeps traffic that arrives while session/close is pending, and the session usable if the close is refused", async () => {
+		const { client, events } = await attach("close-refuse", { FAKE_ACP_CAPS: "close" });
+		const closing = client.closeSession();
+		closing.catch(() => {});
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(TypeError);
+		await expect(closing).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		expect(client.updateCounts.agent_message_chunk).toBe(1);
+		expect(find(events, "harness.late-message")).toEqual([]);
+		expect(find(events, "control.refused").map((event) => event.payload)).toEqual([
+			{ capability: "session.close", code: -32003 },
+		]);
+		// Refused, so the session is live again.
+		expect((await client.prompt("go")).stopReason).toBe("end_turn");
+	});
+});
+
+describe("free-form agent strings are kept by reference, never dropped", () => {
+	it("digests an agent name that is not short printable ASCII, and keeps a plain one verbatim", async () => {
+		const odd = await attach("normal", { FAKE_ACP_NAME: "Example Agent \u00e9" });
+		const plain = await attach("normal");
+		const nameOf = (events: EndoEventV0[]) =>
+			(find(events, "harness.acp-initialized")[0]!.payload as { agentInfo: { name: string } }).agentInfo.name;
+		expect(nameOf(odd.events)).toMatch(/^sha256-[0-9a-f]{48}$/);
+		expect(nameOf(plain.events)).toBe("fake-acp-agent");
+	});
+});
+
 describe("agent-local session ids", () => {
 	it("keeps two process instances that issue the same session id apart", async () => {
 		const first = await attach("normal");

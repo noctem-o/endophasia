@@ -17,7 +17,7 @@
 // The table is checked by tests/acp-loss-accounting.test.ts: every stable update variant, every event kind the adapter
 // source can emit, and every optional session method must have an entry, and the table is tied to the pinned schema.
 
-import { ACP_SCHEMA_V0, ACP_STABLE_UPDATE_VARIANTS_V0 } from "./schema.ts";
+import { ACP_SCHEMA_V0, ACP_STABLE_UPDATE_VARIANTS_V0, readAcpSchemaV0 } from "./schema.ts";
 import { ACP_MAPPING_VERSION } from "./translate.ts";
 
 export const ACP_LOSS_VERDICTS_V0 = ["EXACT", "QUALIFIED", "LOSSY", "UNREPRESENTABLE"] as const;
@@ -42,6 +42,12 @@ export interface AcpLossEntryV0 {
 	/** Every event kind this entry's projection can emit (recorded and derived). Empty for an UNREPRESENTABLE entry. */
 	readonly emits: readonly string[];
 	readonly preserved: readonly string[];
+	/**
+	 * The ACP schema properties this projection carries (read into an event or used to decide), by definition. Every other
+	 * property of those definitions is lost, and is listed in `lost` as `Definition.property`: derived from the pinned
+	 * schema, so a field the schema defines cannot be silently unaccounted for. Prose items in `lost` add detail.
+	 */
+	readonly projects?: Readonly<Record<string, readonly string[]>>;
 	readonly lost: readonly string[];
 	/** Required unless EXACT: what a reader must not assume. */
 	readonly qualification?: string;
@@ -54,7 +60,7 @@ const gated = (capability: string): AcpAvailabilityV0 => ({ kind: "capability-ga
 
 const UPDATE_TARGET = "session.update-observed";
 
-const entries: readonly AcpLossEntryV0[] = [
+const declared: readonly AcpLossEntryV0[] = [
 	{
 		id: "session.identity",
 		source: "ACP SessionId (agent-local opaque string)",
@@ -69,6 +75,7 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.open.new",
+		projects: { NewSessionResponse: ["sessionId", "modes", "configOptions"] },
 		source: "session/new",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
@@ -81,6 +88,7 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.open.resume",
+		projects: { ResumeSessionResponse: ["modes", "configOptions"] },
 		source: "session/resume",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
@@ -97,6 +105,10 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "session.list",
+		projects: {
+			ListSessionsResponse: ["sessions", "nextCursor"],
+			SessionInfo: ["sessionId", "cwd", "title", "updatedAt"],
+		},
 		source: "session/list",
 		target: "session.listed",
 		verdict: "LOSSY",
@@ -124,6 +136,11 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "capability.advertisement",
+		projects: {
+			InitializeResponse: ["protocolVersion", "agentInfo", "agentCapabilities", "authMethods"],
+			Implementation: ["name", "version"],
+			AuthMethodAgent: ["id"],
+		},
 		source: "initialize response (agentInfo, agentCapabilities, authMethods)",
 		target: "harness.acp-initialized",
 		verdict: "QUALIFIED",
@@ -131,7 +148,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		emits: ["harness.acp-initialized"],
 		preserved: [
 			"negotiated protocolVersion",
-			"agent-reported name and version",
+			"agent-reported name and version (by reference)",
 			"capabilities (verbatim up to 8 KiB, always a digest)",
 			"auth method ids",
 			"which optional session methods are callable",
@@ -217,6 +234,11 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "permission.request",
+		projects: {
+			RequestPermissionRequest: ["sessionId", "toolCall", "options"],
+			ToolCallUpdate: ["toolCallId"],
+			PermissionOption: ["optionId", "kind"],
+		},
 		source: "session/request_permission",
 		target: "permission.requested",
 		verdict: "LOSSY",
@@ -311,6 +333,16 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "config.observation",
+		projects: {
+			SessionModeState: ["currentModeId", "availableModes"],
+			SessionConfigOption: ["id", "category"],
+			SessionConfigSelect: ["currentValue", "options"],
+			SessionConfigBoolean: ["currentValue"],
+			SessionConfigSelectGroup: ["options"],
+			SessionMode: [],
+			SessionConfigSelectOption: [],
+			ConfigOptionUpdate: ["configOptions"],
+		},
 		source: "configOptions (session/new, session/resume, config_option_update) and modes",
 		target: "session.config-observed",
 		verdict: "QUALIFIED",
@@ -318,6 +350,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		emits: ["session.config-observed"],
 		preserved: [
 			"option ids",
+			"category (by reference)",
 			"type and category",
 			"the current value id (or boolean)",
 			"number of selectable values",
@@ -444,6 +477,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: `update.${variant}`,
+				projects: { ContentChunk: [] },
 				target: "an update count (no event)",
 				verdict: "LOSSY",
 				emits: [],
@@ -456,12 +490,24 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: `update.${variant}`,
+				projects: {
+					[variant === "tool_call" ? "ToolCall" : "ToolCallUpdate"]: [
+						"toolCallId",
+						"name",
+						"kind",
+						"status",
+						"content",
+						"locations",
+						"rawInput",
+						"rawOutput",
+					],
+				},
 				target: UPDATE_TARGET,
 				verdict: "LOSSY",
 				emits: [UPDATE_TARGET],
 				preserved: [
 					"tool call id (reference)",
-					"tool name, kind and status when reported",
+					"tool name (by reference), kind and status when reported",
 					"content and location counts",
 					"whether raw input / output were carried",
 				],
@@ -473,6 +519,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.plan",
+				projects: { Plan: ["entries"], PlanEntry: ["status"] },
 				target: UPDATE_TARGET,
 				verdict: "LOSSY",
 				emits: [UPDATE_TARGET],
@@ -483,6 +530,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.available_commands_update",
+				projects: { AvailableCommandsUpdate: ["availableCommands"], AvailableCommand: [] },
 				target: UPDATE_TARGET,
 				verdict: "LOSSY",
 				emits: [UPDATE_TARGET],
@@ -493,6 +541,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.current_mode_update",
+				projects: { CurrentModeUpdate: ["currentModeId"] },
 				target: UPDATE_TARGET,
 				verdict: "QUALIFIED",
 				emits: [UPDATE_TARGET],
@@ -504,6 +553,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.config_option_update",
+				projects: { ConfigOptionUpdate: ["configOptions"] },
 				target: "session.config-observed",
 				verdict: "QUALIFIED",
 				emits: ["session.config-observed"],
@@ -516,6 +566,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.session_info_update",
+				projects: { SessionInfoUpdate: ["title"] },
 				target: UPDATE_TARGET,
 				verdict: "LOSSY",
 				emits: [UPDATE_TARGET],
@@ -526,6 +577,7 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			return {
 				...base,
 				id: "update.usage_update",
+				projects: { UsageUpdate: ["used", "size", "cost"], Cost: ["amount", "currency"] },
 				target: UPDATE_TARGET,
 				verdict: "QUALIFIED",
 				emits: [UPDATE_TARGET],
@@ -538,6 +590,25 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 			throw new TypeError(`no loss verdict for the stable ACP update variant ${variant}`);
 	}
 }
+
+const schemaDefinitions = readAcpSchemaV0().document.$defs as Record<string, { properties?: Record<string, unknown> }>;
+
+/** The properties of a definition that an entry does not project, as `Definition.property`. */
+export function acpUnprojectedFieldsV0(entry: Pick<AcpLossEntryV0, "projects">): string[] {
+	const out: string[] = [];
+	for (const [definition, carried] of Object.entries(entry.projects ?? {})) {
+		const properties = Object.keys(schemaDefinitions[definition]?.properties ?? {});
+		for (const property of properties) {
+			if (property !== "_meta" && !carried.includes(property)) out.push(`${definition}.${property}`);
+		}
+	}
+	return out;
+}
+
+const entries: readonly AcpLossEntryV0[] = declared.map((entry) => ({
+	...entry,
+	lost: [...entry.lost, ...acpUnprojectedFieldsV0(entry).filter((field) => !entry.lost.includes(field))],
+}));
 
 /** What this adapter does not implement. Unsupported is not lossy: nothing is projected and nothing is called. */
 const unsupported: ReadonlyArray<{ readonly id: string; readonly reason: string }> = [

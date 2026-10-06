@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	ACP_FIELDS_READ_V0,
 	ACP_LOSS_ACCOUNTING_V0,
 	ACP_LOSS_ACCOUNTING_VERSION_V0,
 	ACP_LOSS_VERDICTS_V0,
@@ -12,6 +13,8 @@ import {
 	ACP_STABLE_UPDATE_VARIANTS_V0,
 	ACP_UNSTABLE_UPDATE_VARIANTS_V0,
 	acpLossEntryV0,
+	acpUnprojectedFieldsV0,
+	readAcpSchemaV0,
 } from "../adapters/acp/index.ts";
 
 const adapter = (file: string) => readFileSync(join(import.meta.dirname, "..", "adapters", "acp", file), "utf8");
@@ -126,5 +129,43 @@ describe("ACP v1 loss accounting", () => {
 
 	it("does not call optional observations baseline", () => {
 		expect(acpLossEntryV0("config.observation")?.availability.kind).toBe("agent-initiated");
+	});
+
+	it("accounts for every schema property it does not project, by construction", () => {
+		const defs = readAcpSchemaV0().document.$defs as unknown as Record<
+			string,
+			{ properties?: Record<string, unknown> }
+		>;
+		for (const entry of entries) {
+			for (const [definition, carried] of Object.entries(entry.projects ?? {})) {
+				expect(defs[definition], `${entry.id}: ${definition}`).toBeDefined();
+				// An entry cannot claim to carry a field the adapter does not read.
+				for (const property of carried)
+					expect(ACP_FIELDS_READ_V0[definition] ?? [], `${entry.id}: ${definition}.${property}`).toContain(
+						property,
+					);
+				for (const property of Object.keys(defs[definition]!.properties ?? {})) {
+					if (property === "_meta" || carried.includes(property)) continue;
+					expect(entry.lost, `${entry.id}`).toContain(`${definition}.${property}`);
+				}
+			}
+		}
+		// The cases review found by hand, now structural.
+		expect(acpLossEntryV0("permission.request")?.lost).toEqual(
+			expect.arrayContaining([
+				"ToolCallUpdate.kind",
+				"ToolCallUpdate.status",
+				"ToolCallUpdate.locations",
+				"ToolCallUpdate.rawOutput",
+				"PermissionOption.name",
+			]),
+		);
+		expect(acpLossEntryV0("config.observation")?.lost).toEqual(
+			expect.arrayContaining(["SessionMode.id", "SessionMode.name", "SessionMode.description"]),
+		);
+		expect(acpLossEntryV0("capability.advertisement")?.lost).toEqual(
+			expect.arrayContaining(["Implementation.title", "AuthMethodAgent.name"]),
+		);
+		expect(acpUnprojectedFieldsV0({ projects: { Cost: ["amount"] } })).toEqual(["Cost.currency"]);
 	});
 });

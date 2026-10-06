@@ -263,6 +263,8 @@ export class AcpClientV0 {
 	#sessionCapabilities: AcpSessionCapabilitiesV0 = { list: false, resume: false, close: false };
 	/** The agent accepted session/close: the session is over, and later traffic for it is not activity. */
 	#sessionClosed = false;
+	/** session/close was sent and not yet answered: nothing new is started, traffic is still the agent's. */
+	#sessionClosing = false;
 
 	private constructor(options: AcpClientOptionsV0) {
 		this.#options = options;
@@ -388,11 +390,11 @@ export class AcpClientV0 {
 		// What the agent reported, as reported: its own claim, not a verified identity of the executable.
 		const reportedByAgent: Record<string, JsonValueV0> = {
 			protocolVersion: response.protocolVersion,
-			agentInfo: { name: shortText(info.name) ?? null, version: shortText(info.version) ?? null },
+			agentInfo: { name: opaqueIdRefV0(info.name) ?? null, version: opaqueIdRefV0(info.version) ?? null },
 			capabilitiesDigest: sha256HexV0(canonical),
 			capabilities: canonical.length <= 8192 ? capabilities : null,
 			authMethodIds: Array.isArray(response.authMethods)
-				? response.authMethods.map((method) => (isRecord(method) ? (shortText(method.id) ?? null) : null))
+				? response.authMethods.map((method) => (isRecord(method) ? (opaqueIdRefV0(method.id) ?? null) : null))
 				: null,
 		};
 		if (response.protocolVersion !== ACP_SUPPORTED_PROTOCOL_VERSION_V0) {
@@ -430,7 +432,9 @@ export class AcpClientV0 {
 		if (resumeId !== undefined && !this.#sessionCapabilities.resume)
 			throw this.#unavailable("resume", "session.resume");
 		const method = resumeId !== undefined ? "session/resume" : "session/new";
-		const response: unknown = await this.#requestOptional(
+		// Only session/resume is optional; a refusal of the baseline session/new is an ordinary request failure.
+		const send = resumeId !== undefined ? this.#requestOptional.bind(this) : this.#request.bind(this);
+		const response: unknown = await send(
 			method,
 			resumeId !== undefined
 				? this.#connection.agent.request(acp.methods.agent.session.resume, {
@@ -508,7 +512,7 @@ export class AcpClientV0 {
 	}
 
 	#assertUsable(what: string): void {
-		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed)
+		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed || this.#sessionClosing)
 			throw new TypeError(`the ACP attachment is closed (${what})`);
 	}
 
@@ -564,9 +568,9 @@ export class AcpClientV0 {
 		}
 		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
-		// From the moment it is asked the session is not usable: an answer that arrives after a timeout still means the
-		// agent closed it, so an indeterminate outcome must not leave the session live.
-		this.#sessionClosed = true;
+		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
+		// recorded normally: only a refusal shows the session stayed open.
+		this.#sessionClosing = true;
 		let response: unknown;
 		try {
 			response = await this.#requestOptional(
@@ -574,10 +578,13 @@ export class AcpClientV0 {
 				this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
 			);
 		} catch (error) {
-			// Only an explicit refusal shows the session was not closed.
-			if (error instanceof AcpRefusedErrorV0) this.#sessionClosed = false;
+			// Only an explicit refusal shows the session was not closed; a timeout or transport failure is indeterminate, and
+			// an answer that arrives later still means the agent closed it.
+			if (error instanceof AcpRefusedErrorV0) this.#sessionClosing = false;
+			else this.#sessionClosed = true;
 			throw error;
 		}
+		this.#sessionClosed = true;
 		if (!isRecord(response) || !validateAcpDefinitionV0("CloseSessionResponse", response)) {
 			this.#recorder.record("harness.protocol-fault", { fault: "session-close-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v1 response");
@@ -632,7 +639,7 @@ export class AcpClientV0 {
 	 */
 	async prompt(text: string): Promise<AcpPromptResultV0> {
 		const sessionId = this.sessionId;
-		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed)
+		if (this.#closed || this.#unusable || this.#exit !== null || this.#sessionClosed || this.#sessionClosing)
 			throw new TypeError("the ACP attachment is closed");
 		if (this.#run !== null) throw new TypeError("a prompt turn is already open");
 		const requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
@@ -725,7 +732,7 @@ export class AcpClientV0 {
 	 */
 	async cancel(): Promise<boolean> {
 		const run = this.#run;
-		if (run === null || this.#closed || this.#unusable || this.#sessionClosed) return false;
+		if (run === null || this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
 		run.stopRequested = true;

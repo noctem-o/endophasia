@@ -344,7 +344,7 @@ export class AcpClientV0 {
 
 	/** The optional session methods the agent advertised. Fixed at initialize. */
 	get sessionCapabilities(): AcpSessionCapabilitiesV0 {
-		return this.#sessionCapabilities;
+		return { ...this.#sessionCapabilities };
 	}
 
 	/** What the agent reported at initialize. */
@@ -410,7 +410,7 @@ export class AcpClientV0 {
 			this.#recorder.record("harness.protocol-fault", { fault: "initialize-response-schema-invalid" });
 			throw new AcpProtocolErrorV0("the agent's initialize response is not a valid ACP v1 InitializeResponse");
 		}
-		this.#sessionCapabilities = advertisedSessionCapabilities(response.agentCapabilities);
+		this.#sessionCapabilities = Object.freeze(advertisedSessionCapabilities(response.agentCapabilities));
 		this.#initialize = {
 			protocolVersion: response.protocolVersion,
 			agentInfo: response.agentInfo,
@@ -546,20 +546,30 @@ export class AcpClientV0 {
 		const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
 		const run = this.#run;
 		if (run !== null) {
-			// Closing a session cancels its work: pending permission requests are answered `cancelled`.
+			// Closing a session cancels its work.
 			this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
 			run.stopRequested = true;
-			for (const cancel of [...this.#pendingPermissions]) cancel();
 		}
-		const response: unknown = await this.#request(
-			"session/close",
-			this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
-		);
+		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
+		for (const cancel of [...this.#pendingPermissions]) cancel();
+		// From the moment it is asked the session is not usable: an answer that arrives after a timeout still means the
+		// agent closed it, so an indeterminate outcome must not leave the session live.
+		this.#sessionClosed = true;
+		let response: unknown;
+		try {
+			response = await this.#request(
+				"session/close",
+				this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
+			);
+		} catch (error) {
+			// Only an explicit refusal shows the session was not closed.
+			if (error instanceof AcpRefusedErrorV0) this.#sessionClosed = false;
+			throw error;
+		}
 		if (!isRecord(response) || !validateAcpDefinitionV0("CloseSessionResponse", response)) {
 			this.#recorder.record("harness.protocol-fault", { fault: "session-close-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v1 response");
 		}
-		this.#sessionClosed = true;
 		this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" });
 	}
 

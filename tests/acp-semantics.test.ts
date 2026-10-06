@@ -9,6 +9,7 @@ import {
 	AcpClientV0,
 	AcpClosedErrorV0,
 	AcpRefusedErrorV0,
+	AcpTimeoutErrorV0,
 	AcpUnavailableErrorV0,
 	acpEndoSessionIdV0,
 } from "../adapters/acp/index.ts";
@@ -364,6 +365,39 @@ describe("traffic after the session is over", () => {
 			expect(find(events, "harness.protocol-fault")).toEqual([]);
 		},
 	);
+});
+
+describe("review regressions", () => {
+	it("keeps the session closed when session/close outlasts its timeout", async () => {
+		const { client } = await attach("close-slow", { FAKE_ACP_CAPS: "close" }, {}, { requestTimeoutMs: 1500 });
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpTimeoutErrorV0);
+		// The agent answers later; either way the session is not live again.
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(TypeError);
+	});
+
+	it("does not let a caller widen the advertised capability gate through the getter", async () => {
+		const { client } = await attach("normal");
+		(client.sessionCapabilities as { close: boolean }).close = true;
+		expect(client.sessionCapabilities.close).toBe(false);
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpUnavailableErrorV0);
+		expect(notes().filter((note) => "called" in note)).toEqual([]);
+	});
+
+	it("answers a permission request still pending after its turn settled when the session is closed", async () => {
+		const { client } = await attach(
+			"permission-unawaited",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{ permissionHandler: () => new Promise(() => {}) },
+		);
+		await client.prompt("go");
+		await client.closeSession();
+		for (let waited = 0; !notes().some((note) => "permissionOutcome" in note) && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+	});
 });
 
 describe("agent-local session ids", () => {

@@ -102,9 +102,10 @@ const agent = acp
 		if (ctx.params.sessionId === "unknown-session") throw new acp.RequestError(-32602, "no such session");
 		return (configOptions ? { configOptions } : {}) as never;
 	})
-	.onRequest(acp.methods.agent.session.close, (ctx) => {
+	.onRequest(acp.methods.agent.session.close, async (ctx) => {
 		note({ called: "session/close", sessionId: ctx.params.sessionId });
 		cancelled?.();
+		if (mode === "close-slow") await sleep(2500);
 		if (mode === "late-after-close") {
 			// Traffic about a session the agent just closed, after it answered.
 			setTimeout(() => {

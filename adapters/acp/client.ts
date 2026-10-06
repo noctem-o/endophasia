@@ -503,6 +503,11 @@ export class AcpClientV0 {
 			return;
 		}
 		const translated = translateAcpUpdateV0(update);
+		if (translated.kind === "malformed") {
+			// Recorded, never counted: malformed traffic is not update activity.
+			this.#recorder.record("runtime.malformed-event", translated.payload);
+			return;
+		}
 		this.#updates[translated.variant] = (this.#updates[translated.variant] ?? 0) + 1;
 		if (this.#run !== null) this.#run.updates[translated.variant] = (this.#run.updates[translated.variant] ?? 0) + 1;
 		if (translated.kind === "delta") return;
@@ -520,9 +525,10 @@ export class AcpClientV0 {
 			runOpen: this.#run !== null,
 			sessionMatches: request.sessionId === this.#sessionId,
 		});
+		const run = this.#run;
 		let response: acp.RequestPermissionResponse = CANCELLED;
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
-		if (this.#run === null || this.#run.stopRequested || request.sessionId !== this.#sessionId) {
+		if (run === null || run.stopRequested || request.sessionId !== this.#sessionId) {
 			// No open turn, a turn being cancelled, or another session's id: nothing here can be approved, and the
 			// handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
@@ -541,8 +547,16 @@ export class AcpClientV0 {
 					cancelled,
 				]);
 				const outcome = answer?.outcome;
-				// Fail closed: only an option the agent actually offered can be selected.
-				if (outcome?.outcome === "selected" && options.some((option) => option.optionId === outcome.optionId))
+				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
+				// belongs to is still the open one and not being cancelled (the agent may have finished the turn without
+				// waiting for its own request).
+				if (
+					run !== null &&
+					this.#run === run &&
+					!run.stopRequested &&
+					outcome?.outcome === "selected" &&
+					options.some((option) => option.optionId === outcome.optionId)
+				)
 					response = answer;
 			} catch {
 				// A handler that throws decided nothing: cancelled.

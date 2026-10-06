@@ -49,7 +49,7 @@ OMP.
 `session/request_permission` is answered with the agent's own `reject_once` option when it offered one, else
 `cancelled`. A caller may supply an explicit `permissionHandler`; its answer is honored only if it selects an option the
 agent offered, and anything else (an unknown option, a throw, a malformed answer) becomes `cancelled`. A request with no open turn, during a cancel, or naming a session other than the open one is
-`cancelled` without consulting the handler. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
+`cancelled` without consulting the handler. The handler's answer is also discarded (`cancelled`) if its turn ended or was cancelled while it decided. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
 terminal methods are not advertised and not served.
 
 ### Unknown `session/update` variants are kept
@@ -57,8 +57,9 @@ terminal methods are not advertised and not served.
 The SDK's client app installs a router that parses every `session/update` with a closed union and throws on a variant it
 does not know; the update is logged to the console and dropped before any handler runs. The adapter therefore takes
 `session/update` notifications off the SDK stream as raw values and passes everything else through. An update it does not
-translate becomes `runtime.unrecognized-event` (by name only) and `lifecycle.unrecognized-runtime-event`; a malformed one
-becomes `runtime.malformed-event`. Translated in this slice: tool call, tool call update, plan, available commands, mode,
+translate becomes `runtime.unrecognized-event` (by name only) and `lifecycle.unrecognized-runtime-event`; a recognized variant missing a field ACP v1 requires of it (or an update with no variant) becomes
+`runtime.malformed-event` and is not counted as update activity. The session coordinate is
+`endo.session.acp.<process instance>.<session id>`: ACP session ids are agent-local, so two launches would otherwise merge. Translated in this slice: tool call, tool call update, plan, available commands, mode,
 config option, session info and usage updates (as counts, identifiers and statuses).
 
 Known limits:

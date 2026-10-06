@@ -69,6 +69,9 @@ async function attachFailing(mode: string) {
 	return { error, events };
 }
 
+/** The process instance an attachment's events carry. */
+const instanceOf = (events: readonly EndoEventV0[]) =>
+	(events.find((event) => event.kind === "harness.attached")!.payload as { instance: string }).instance;
 const kinds = (events: readonly EndoEventV0[]) => events.map((event) => event.kind);
 const find = (events: readonly EndoEventV0[], kind: string) => events.filter((event) => event.kind === kind);
 const notes = () =>
@@ -130,7 +133,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(all).not.toContain("hello");
 		// Session coordinate and derivation.
 		expect(new Set(events.slice(2).map((event) => event.coordinates.sessionId))).toEqual(
-			new Set(["endo.session.acp.fake-session-1"]),
+			new Set([`endo.session.acp.${instanceOf(events)}.fake-session-1`]),
 		);
 		const responded = find(events, "agent.prompt-responded")[0]!;
 		expect(find(events, "lifecycle.run-completed")[0]!.derivedFrom).toEqual([responded.id]);
@@ -351,6 +354,66 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		if (order.includes("lifecycle.session-started")) {
 			expect(order.indexOf("lifecycle.session-started")).toBeLessThan(order.indexOf("lifecycle.detached"));
 		}
+	});
+
+	it("does not approve a request whose turn ended while the handler was still deciding", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let consulted = 0;
+		const { client, events } = await attach("permission-unawaited", {
+			permissionHandler: async () => {
+				consulted += 1;
+				await gate;
+				return { outcome: { outcome: "selected", optionId: "allow" } };
+			},
+		});
+		await client.prompt("go");
+		await until(() => consulted === 1);
+		release();
+		await until(() => notes().some((note) => "permissionOutcome" in note));
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({
+			decidedBy: "handler",
+			decision: "cancelled",
+		});
+	});
+
+	it("records a recognized variant missing its required fields as malformed, uncounted", async () => {
+		const { client, events } = await attach("malformed-known");
+		const result = await client.prompt("go");
+		expect(find(events, "runtime.malformed-event").map((event) => event.payload)).toEqual([
+			{ runtimeEvent: "session/update", variant: "agent_message_chunk", problem: "required-field-missing" },
+			{ runtimeEvent: "session/update", variant: "tool_call", problem: "required-field-missing" },
+			{ runtimeEvent: "session/update", variant: "usage_update", problem: "required-field-missing" },
+		]);
+		// Only valid updates count: the common prefix plus three session_info_update (the malformed three are not).
+		expect(result.updates).toEqual({
+			agent_message_chunk: 2,
+			tool_call: 1,
+			tool_call_update: 1,
+			session_info_update: 3,
+		});
+		// `titled` is absent when no title was reported, false for a reported null, true for a string.
+		expect(
+			find(events, "session.update-observed")
+				.filter((event) => (event.payload as { update: string }).update === "session_info_update")
+				.map((event) =>
+					"titled" in (event.payload as object) ? (event.payload as { titled: boolean }).titled : "absent",
+				),
+		).toEqual(["absent", false, true]);
+		expect(JSON.stringify(events)).not.toContain("SECRET");
+	});
+
+	it("namespaces the session coordinate by launch, so two launches of one agent do not merge", async () => {
+		const first = await attach("normal");
+		const second = await attach("normal");
+		const coordinate = (events: readonly EndoEventV0[]) => find(events, "harness.attached")[0]!.coordinates.sessionId;
+		expect(coordinate(first.events)).not.toBe(coordinate(second.events));
+		expect(coordinate(first.events)).toMatch(/^endo\.session\.acp\.[0-9a-f]{12}\.fake-session-1$/);
 	});
 
 	it("serves no file system: an fs request gets an error response, not a hang", async () => {

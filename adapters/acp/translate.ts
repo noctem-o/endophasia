@@ -67,11 +67,14 @@ const DELTA_VARIANTS = new Set(["agent_message_chunk", "agent_thought_chunk", "u
 
 const LOCAL = /^[A-Za-z0-9._-]{1,200}$/;
 
-/** The endo session coordinate for an ACP session id: `endo.session.acp.<id>`, or a digest when the id is not in grammar. */
-export function acpEndoSessionIdV0(acpSessionId: string): string {
-	return LOCAL.test(acpSessionId)
-		? `endo.session.acp.${acpSessionId}`
-		: `endo.session.acp.sha256-${sha256HexV0(acpSessionId).slice(0, 48)}`;
+/**
+ * The endo session coordinate for an ACP session: `endo.session.acp.<instance>.<id>`, the id replaced by a digest when
+ * it is not in grammar. ACP session ids are agent-local and unique to nothing but the agent that issued them (two
+ * launches of one agent, or two agents, can issue the same one), so the coordinate carries the process instance.
+ */
+export function acpEndoSessionIdV0(instance: string, acpSessionId: string): string {
+	const local = LOCAL.test(acpSessionId) ? acpSessionId : `sha256-${sha256HexV0(acpSessionId).slice(0, 48)}`;
+	return `endo.session.acp.${instance}.${local}`;
 }
 
 /**
@@ -101,6 +104,38 @@ function compact(fields: Record<string, JsonValueV0 | undefined>): Record<string
 	return out;
 }
 
+const isText = (value: unknown): value is string => typeof value === "string";
+
+/**
+ * Whether a recognized variant carries what ACP v1 requires of it. These updates are taken off the SDK stream before
+ * its schema router, so nothing else validates them. Variants this module does not recognize pass: they are recorded
+ * by name, not read.
+ */
+function hasRequiredFields(variant: string, update: Record<string, unknown>): boolean {
+	switch (variant) {
+		case "agent_message_chunk":
+		case "agent_thought_chunk":
+		case "user_message_chunk":
+			return isRecord(update.content) && isText(update.content.type);
+		case "tool_call":
+			return isText(update.toolCallId) && isText(update.title);
+		case "tool_call_update":
+			return isText(update.toolCallId);
+		case "plan":
+			return Array.isArray(update.entries);
+		case "available_commands_update":
+			return Array.isArray(update.availableCommands);
+		case "current_mode_update":
+			return isText(update.currentModeId);
+		case "config_option_update":
+			return Array.isArray(update.configOptions);
+		case "usage_update":
+			return finite(update.used) !== undefined && finite(update.size) !== undefined;
+		default:
+			return true;
+	}
+}
+
 /** The clock and counters the recorded stream of one launched agent process needs. */
 export interface AcpRecorderOptionsV0 {
 	readonly attachment: string;
@@ -128,7 +163,7 @@ export class AcpRecorderV0 {
 
 	/** The session coordinate every later event carries. */
 	setSession(acpSessionId: string): void {
-		this.#sessionId = acpEndoSessionIdV0(acpSessionId);
+		this.#sessionId = acpEndoSessionIdV0(this.#options.instance, acpSessionId);
 	}
 
 	#emit(event: Record<string, unknown>): EndoEventV0 {
@@ -183,6 +218,8 @@ export class AcpRecorderV0 {
 /** The result of translating one `session/update` notification's params. */
 export type AcpUpdateTranslationV0 =
 	| { readonly kind: "delta"; readonly variant: string }
+	/** Not counted: a recognized variant missing what it requires, or no variant at all. */
+	| { readonly kind: "malformed"; readonly variant: string; readonly payload: Record<string, JsonValueV0> }
 	| {
 			readonly kind: "event";
 			readonly variant: string;
@@ -198,14 +235,20 @@ export type AcpUpdateTranslationV0 =
 export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 	if (!isRecord(update) || typeof update.sessionUpdate !== "string") {
 		return {
-			kind: "event",
+			kind: "malformed",
 			variant: "unprintable",
-			eventKind: "runtime.malformed-event",
 			payload: { runtimeEvent: "session/update", problem: "no-sessionUpdate-variant" },
 		};
 	}
 	const raw = update.sessionUpdate;
 	const variant = /^[A-Za-z0-9_.-]{1,128}$/.test(raw) ? raw : "unprintable";
+	if (!hasRequiredFields(variant, update)) {
+		return {
+			kind: "malformed",
+			variant,
+			payload: { runtimeEvent: "session/update", variant, problem: "required-field-missing" },
+		};
+	}
 	if (DELTA_VARIANTS.has(variant)) return { kind: "delta", variant };
 	const observed = (fields: Record<string, JsonValueV0 | undefined>): AcpUpdateTranslationV0 => ({
 		kind: "event",
@@ -233,7 +276,10 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 		case "config_option_update":
 			return observed({ options: Array.isArray(update.configOptions) ? update.configOptions.length : undefined });
 		case "session_info_update":
-			return observed({ titled: typeof update.title === "string" });
+			// Present only when the agent said something about the title: a string is a title, null a cleared one.
+			return observed({
+				titled: typeof update.title === "string" ? true : update.title === null ? false : undefined,
+			});
 		case "usage_update":
 			return observed({ used: finite(update.used), size: finite(update.size) });
 		default:

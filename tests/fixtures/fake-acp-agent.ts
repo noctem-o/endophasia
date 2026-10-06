@@ -103,6 +103,25 @@ const agent = acp
 						.then((response) => note({ permissionOutcome: response.outcome }));
 				}, 50);
 				break;
+			case "permission-unawaited":
+				// Asks, then finishes the turn without waiting for the answer.
+				void ctx.client
+					.request(acp.methods.client.session.requestPermission, {
+						sessionId,
+						toolCall: { toolCallId: "call_5" },
+						options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+					})
+					.then((response) => note({ permissionOutcome: response.outcome }));
+				await sleep(50);
+				break;
+			case "malformed-known":
+				await update({ sessionUpdate: "agent_message_chunk" });
+				await update({ sessionUpdate: "tool_call", toolCallId: "call_9" });
+				await update({ sessionUpdate: "usage_update", used: 5 });
+				await update({ sessionUpdate: "session_info_update" });
+				await update({ sessionUpdate: "session_info_update", title: null });
+				await update({ sessionUpdate: "session_info_update", title: "SECRET-TITLE" });
+				break;
 			case "weird-variants":
 				await update({ sessionUpdate: "__proto__" });
 				await update({ sessionUpdate: "constructor" });

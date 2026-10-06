@@ -83,14 +83,20 @@ const integerIn = (min: number, max: number) => (value: number) =>
 // which has rounded them. Such a value is not accepted as an exact integer, and is never recorded as one: the adapter
 // can only represent integers in [-(2^53-1), 2^53-1]. A value that is a schema-valid 64-bit integer but outside that
 // range is *not exactly representable here* (verdict "inexact-integer"), which is a different fact from a schema
-// violation. Nothing is rounded into evidence either way; the update is not counted.
+// violation. Nothing is rounded into evidence either way; the update is not counted. At the very edge a literal one past
+// the maximum parses to the same double as the maximum itself, so the two cannot be told apart: "inexact-integer" claims
+// only that the value cannot be represented here, not that the agent's value was in range.
 const U64_MAX = 2 ** 64; // the uint64 maximum, as the nearest double
 const I64_MIN = -(2 ** 63);
 const I64_MAX = 2 ** 63; // the int64 maximum, as the nearest double
 let inexactSeen = false;
+// While true (second pass only), a 64-bit integer inside the schema's range is accepted whether or not a JS number holds
+// it exactly, so the rest of the update can be judged on its own.
+let fullRange64 = false;
 const exact64 = (min: number, max: number, safeMin: number) => (value: number) => {
 	if (!Number.isInteger(value)) return false;
 	if (value >= safeMin && value <= Number.MAX_SAFE_INTEGER) return true;
+	if (fullRange64) return value >= min && value <= max;
 	// Inside the schema's 64-bit range but beyond what a JS number holds exactly.
 	if (value >= min && value <= max) inexactSeen = true;
 	return false;
@@ -232,7 +238,16 @@ export function acpUpdateVerdictV0(variant: string, update: unknown): "valid" | 
 	}>;
 	const index = branches.findIndex((branch) => branch.properties?.sessionUpdate?.const === variant);
 	if (index < 0) throw new Error(`the pinned ACP schema has no ${variant} update branch`);
+	const check = validator(`$defs/SessionUpdate/oneOf/${index}`);
 	inexactSeen = false;
-	if (validator(`$defs/SessionUpdate/oneOf/${index}`)(update) === true) return "valid";
-	return inexactSeen ? "inexact-integer" : "invalid";
+	if (check(update) === true) return "valid";
+	if (!inexactSeen) return "invalid";
+	// It met an integer a JS number cannot hold exactly. That is the verdict only if nothing else is wrong: judge the whole
+	// update again with those integers allowed (within the schema's 64-bit range).
+	fullRange64 = true;
+	try {
+		return check(update) === true ? "inexact-integer" : "invalid";
+	} finally {
+		fullRange64 = false;
+	}
 }

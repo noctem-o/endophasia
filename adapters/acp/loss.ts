@@ -335,7 +335,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		],
 		lost: ["every field"],
 		qualification:
-			"never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent. Responses outside session/update treat it as invalid.",
+			"never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent (and only when nothing else in the update is invalid; at the very edge a literal one past the maximum parses to the same double and is not told apart, so the verdict claims only that the value cannot be represented here). Responses outside session/update treat it as invalid.",
 	},
 	{
 		id: "protocol.fault",

@@ -118,7 +118,7 @@ recognized ACP v1 message -> exact pinned v1 schema validation -> translation
   formats (`uint16/32/64`, `int32/64`, `double`) carry real range checks; `uint64`/`int64` are accepted only as exact JS integers (±(2^53−1)). A schema-valid 64-bit value beyond that is not
   representable here: JSON parsing has already rounded it, and a rounded integer is never recorded as exact. It is
   classified apart from a schema violation (`runtime.malformed-event`, `problem: "integer-not-exact"`), not counted, and
-  never replaced by a nearby value. (Responses outside `session/update` treat it as invalid.) A BigInt wire path is
+  never replaced by a nearby value. It is chosen only when the rest of the update is valid (the update is re-judged with 64-bit values allowed), and a literal one past the 64-bit maximum parses to the same double as the maximum, so the two are not told apart: the verdict claims only "cannot be represented here". (Responses outside `session/update` treat it as invalid.) A BigInt wire path is
   deliberately not built for this.
   The schema's only `format: uri` is on an UNSTABLE elicitation field that no stable validation reaches; the resource
   URIs of content blocks are plain strings in the schema and are accepted as such (a test pins this).
@@ -275,7 +275,7 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `update.usage_update` | QUALIFIED | agent-initiated | session.update-observed | — see usage.ledger for what it is not. |
 | `update.unstable` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not translated: the schema says they may be removed or changed at any point. |
 | `update.unknown` | LOSSY | agent-initiated | runtime.unrecognized-event, lifecycle.unrecognized-runtime-event | lost: every field not malformed merely because this adapter predates it. |
-| `update.malformed` | LOSSY | agent-initiated | runtime.malformed-event | lost: every field never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent. Responses outside session/update treat it as invalid. |
+| `update.malformed` | LOSSY | agent-initiated | runtime.malformed-event | lost: every field never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent (and only when nothing else in the update is invalid; at the very edge a literal one past the maximum parses to the same double and is not told apart, so the verdict claims only that the value cannot be represented here). Responses outside session/update treat it as invalid. |
 | `protocol.fault` | LOSSY | adapter-observed | harness.protocol-fault, lifecycle.run-unclassified | lost: the offending message and its fields a rejected initialize, session/new or session/resume response fails the attachment. |
 | `message.late` | LOSSY | adapter-observed | harness.late-message | lost: everything the message carried never counted, never decided: no update count, no permission.requested/decided, no handler call, no approval. |
 | `config.observation` | QUALIFIED | agent-initiated | session.config-observed | lost: option names, descriptions and value labels; the values themselves; options past the 32nd; SessionConfigOption.name; SessionConfigOption.description; SessionConfigSelectGroup.group; SessionConfigSelectGroup.name; SessionMode.id; SessionMode.name; SessionMode.description; SessionConfigSelectOption.value; SessionConfigSelectOption.name; SessionConfigSelectOption.description agent-reported session configuration: what the agent advertised and what it says is current. Not a verified model identity. |
@@ -299,7 +299,10 @@ served), UNSTABLE `session/update` variants beyond their name, and ACP v2.
   aborts the transition being recorded or the cleanup after it (pending permissions are answered, `session/cancel` is
   sent, a refused close restores the live state *before* `control.refused` is announced). The failures are kept in
   `client.observerErrors` (first 16); `cancel()` and `closeSession()` report one afterwards as `AcpObserverErrorV0`, once
-  the transition is complete. Other paths only retain them.
+  the transition is complete (counted without the retention cap). Other paths only retain them. The adapter delivers events
+  to the sink; it does not know what the sink persisted. If an observer rejects one event and accepts the next, a derived
+  event can reach it whose `derivedFrom` source it rejected: that gap is the sink's to handle (`observerErrors` says
+  that it happened), and the adapter does not suppress derived evidence because of it.
 
 - Requests are raced against the agent process's exit, because a descendant can keep the agent's stdout open after the
   agent ended. If the agent answers and exits at nearly the same moment, the exit can be seen first and the turn is

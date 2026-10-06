@@ -131,6 +131,8 @@ export class AcpRecorderV0 {
 	#live = 0;
 	#lifecycle = 0;
 	readonly #observerErrors: unknown[] = [];
+	#observerFailures = 0;
+	#lastObserverError: unknown;
 
 	constructor(options: AcpRecorderOptionsV0) {
 		this.#options = options;
@@ -154,6 +156,15 @@ export class AcpRecorderV0 {
 		return this.#observerErrors;
 	}
 
+	/** How many times `onEvent` has thrown, counted without the retention cap, and the latest error. */
+	get observerFailures(): number {
+		return this.#observerFailures;
+	}
+
+	get lastObserverError(): unknown {
+		return this.#lastObserverError;
+	}
+
 	#emit(event: Record<string, unknown>): EndoEventV0 {
 		const validated = validateEndoEventV0(event);
 		if (validated === null)
@@ -161,6 +172,8 @@ export class AcpRecorderV0 {
 		try {
 			this.#options.onEvent(validated);
 		} catch (error) {
+			this.#observerFailures += 1;
+			this.#lastObserverError = error;
 			if (this.#observerErrors.length < 16) this.#observerErrors.push(error);
 		}
 		return validated;

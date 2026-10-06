@@ -266,6 +266,12 @@ describe("ACP v1 stable update validation", () => {
 		expect(problem("18446744073709551616000")).toBe("schema-invalid"); // beyond uint64 altogether
 		expect(problem("-1")).toBe("schema-invalid");
 		expect(problem("1.5")).toBe("schema-invalid");
+		// An inexact integer does not excuse another violation: the update is simply invalid.
+		const two = JSON.parse('{"sessionUpdate":"usage_update","used":9007199254740992,"size":-1}') as object;
+		expect(acpUpdateVerdictV0("usage_update", two)).toBe("invalid");
+		// At the edge a literal one past the uint64 maximum parses to the same double as the maximum: not told apart, so the
+		// verdict claims only "not representable here".
+		expect(problem("18446744073709551616")).toBe("integer-not-exact");
 		// Never counted, and never recorded rounded.
 		expect(acpUpdateVerdictV0("usage_update", usage("9007199254740993"))).toBe("inexact-integer");
 	});

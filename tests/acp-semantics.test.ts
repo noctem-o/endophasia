@@ -644,6 +644,66 @@ describe("observation is evidence, not authority", () => {
 		expect(client.observerErrors).toHaveLength(1);
 	});
 
+	it("still reports an observer failure after the retained error cap is full", async () => {
+		const { client } = await attach(
+			"semantics",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				onEvent: () => {
+					throw new Error("sink is down");
+				},
+			},
+		);
+		await client.prompt("go"); // dozens of events, every one rejected by the sink
+		expect(client.observerErrors).toHaveLength(16);
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpObserverErrorV0);
+	});
+
+	it("restores a refused close once: an operation the observer started meanwhile is not undone", async () => {
+		let probe: Promise<boolean> | undefined;
+		let client: AcpClientV0 | undefined;
+		const connected = await attach(
+			"cancellable",
+			{ FAKE_ACP_CAPS: "close", FAKE_ACP_CLOSE_REFUSE: "1" },
+			{},
+			{
+				onEvent: (event) => {
+					if (event.kind === "control.refused") probe = client?.cancel();
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(connected.events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		expect(await probe).toBe(true);
+		// The cancel the observer started stays in force: it is not "un-requested" by a second restore.
+		expect(await client.cancel()).toBe(false);
+		await turn;
+	});
+
+	it("rolls back a close that could not even be recorded (clock failure), leaving the session live", async () => {
+		let failClock = false;
+		const { client } = await attach(
+			"normal",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				now: () => {
+					if (failClock) throw new Error("clock failed");
+					return "2026-01-01T00:00:00Z";
+				},
+			},
+		);
+		failClock = true;
+		await expect(client.closeSession()).rejects.toThrow("clock failed");
+		failClock = false;
+		expect(notes().filter((note) => note.called === "session/close")).toEqual([]);
+		expect((await client.prompt("go")).stopReason).toBe("end_turn");
+	});
+
 	it("exposes the restored live state to a synchronous observer of control.refused", async () => {
 		let probe: Promise<boolean> | undefined;
 		let client: AcpClientV0 | undefined;

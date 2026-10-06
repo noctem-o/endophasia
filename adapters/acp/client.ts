@@ -523,8 +523,8 @@ export class AcpClientV0 {
 
 	/** Reports an observer failure from a control transition that has already completed. */
 	#reportObserverFailure(mark: number): void {
-		const errors = this.#recorder.observerErrors;
-		if (errors.length > mark) throw new AcpObserverErrorV0(errors[mark]);
+		// Counted without the retention cap, so a sink that has failed many times still reports this transition's failure.
+		if (this.#recorder.observerFailures > mark) throw new AcpObserverErrorV0(this.#recorder.lastObserverError);
 	}
 
 	/** Errors thrown by `onEvent` so far (the first 16). They never stop a transition; see AcpObserverErrorV0. */
@@ -592,21 +592,31 @@ export class AcpClientV0 {
 		// From the moment it is asked nothing new starts. Traffic that arrives meanwhile is still the live agent's and is
 		// recorded normally: only a refusal shows the session stayed open. State first, then evidence: `onEvent` is caller
 		// code and can re-enter this client from inside record().
-		const mark = this.#recorder.observerErrors.length;
+		const mark = this.#recorder.observerFailures;
 		this.#sessionClosing = true;
 		// A turn whose prompt has not been sent yet is aborted by prompt() itself (it sees the closing state).
 		const run = this.#run?.sent ? this.#run : null;
 		const hadStopRequested = run?.stopRequested ?? false;
 		if (run !== null) run.stopRequested = true; // Closing a session cancels its work.
-		const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
-		if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
-		for (const cancel of [...this.#pendingPermissions]) cancel();
-		// A refusal proves the close did not happen: the session and its turn are live again.
+		// A refusal (or a recording failure before anything was sent) proves the session stays live: restored once, so a
+		// re-entrant operation started by an observer in between is not undone by a second restore.
+		let restored = false;
 		const restoreLive = (): void => {
+			if (restored) return;
+			restored = true;
 			this.#sessionClosing = false;
 			if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
 		};
+		try {
+			const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
+			if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
+		} catch (error) {
+			// Not an observer failure (those are isolated): the clock or event validation failed, nothing was sent.
+			restoreLive();
+			throw error;
+		}
+		// Pending permission requests are answered `cancelled` whether or not a turn is still open.
+		for (const cancel of [...this.#pendingPermissions]) cancel();
 		let response: unknown;
 		try {
 			response = await this.#requestOptional(
@@ -793,7 +803,7 @@ export class AcpClientV0 {
 		if (this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
 		// State first (a re-entrant cancel() from onEvent is then "already requested"), then evidence. The recorder isolates
 		// observer failures, so the cleanup and the notification below always happen; a failure is reported afterwards.
-		const mark = this.#recorder.observerErrors.length;
+		const mark = this.#recorder.observerFailures;
 		run.stopRequested = true;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);

@@ -262,6 +262,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			expect(decided.source).toBe("authority-decision");
 			expect(decided.payload).toEqual({
 				decidedBy: "adapter-default",
+				handlerConsulted: false,
 				decision: "selected",
 				optionKind: "reject_once",
 			});
@@ -380,7 +381,8 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			permissionOutcome: { outcome: "cancelled" },
 		});
 		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({
-			decidedBy: "handler",
+			decidedBy: "adapter-default",
+			handlerConsulted: true,
 			decision: "cancelled",
 		});
 	});
@@ -492,10 +494,19 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			"plan",
 			"available_commands_update",
 			"config_option_update",
+			"agent_message_chunk",
 		]);
 		// The common prefix has two valid chunks; the valid one at the end is the third.
 		expect(result.updates.agent_message_chunk).toBe(3);
 		expect(result.updates.plan).toBeUndefined();
+	});
+
+	it("does not take an update without a JSON-RPC 2.0 envelope as activity", async () => {
+		const { client } = await attach("bad-envelope");
+		const result = await client.prompt("go");
+		// Only the common prefix's two chunks; the envelope-less third is not counted.
+		expect(result.updates.agent_message_chunk).toBe(2);
+		expect(result.stopReason).toBe("end_turn");
 	});
 
 	it("treats a closed ACP stream under a living agent as a fault and ends the group", async () => {

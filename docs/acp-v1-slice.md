@@ -49,7 +49,7 @@ OMP.
 `session/request_permission` is answered with the agent's own `reject_once` option when it offered one, else
 `cancelled`. A caller may supply an explicit `permissionHandler`; its answer is honored only if it selects an option the
 agent offered, and anything else (an unknown option, a throw, a malformed answer) becomes `cancelled`. A request with no open turn, during a cancel, or naming a session other than the open one is
-`cancelled` without consulting the handler. Options sharing an id are ambiguous and are `cancelled`; the handler gets a copy of the request and is bounded by a snapshot of what was offered. A closing attachment approves nothing. The handler's answer is also discarded (`cancelled`) if its turn ended or was cancelled while it decided. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
+`cancelled` without consulting the handler. Options sharing an id are ambiguous and are `cancelled`; the handler gets a copy of the request and is bounded by a snapshot of what was offered. A closing attachment approves nothing. The handler's answer is also discarded (`cancelled`) if its turn ended or was cancelled while it decided. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event; `decidedBy: "handler"` only when the handler's own valid answer is the one returned (`handlerConsulted` says whether it was asked at all). Only a well-formed JSON-RPC 2.0 notification is taken as a `session/update`. File system and
 terminal methods are not advertised and not served.
 
 ### Unknown `session/update` variants are kept

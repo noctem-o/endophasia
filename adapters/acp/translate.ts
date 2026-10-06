@@ -118,7 +118,12 @@ function isContentBlock(value: unknown): boolean {
 		case "resource_link":
 			return isText(value.name) && isText(value.uri);
 		case "resource":
-			return isRecord(value.resource);
+			// TextResourceContents or BlobResourceContents.
+			return (
+				isRecord(value.resource) &&
+				isText(value.resource.uri) &&
+				(isText(value.resource.text) || isText(value.resource.blob))
+			);
 		default:
 			return false;
 	}

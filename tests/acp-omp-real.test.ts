@@ -26,6 +26,14 @@ import type { EndoEventV0 } from "../protocol/event.ts";
 
 const executable = process.env.ENDO_OMP_EXECUTABLE;
 
+// Every sequential bound the test sets, so the test's own timeout cannot fire before them and mask what they report:
+// two 30 s preflight commands, two 60 s attach requests (initialize, session/new), the 180 s prompt, and a close that
+// may take two 2 s graces plus the release, with slack.
+const PREFLIGHT_MS = 2 * 30_000;
+const ATTACH_MS = 2 * 60_000;
+const PROMPT_MS = 180_000;
+const TEST_TIMEOUT_MS = PREFLIGHT_MS + ATTACH_MS + PROMPT_MS + 60_000;
+
 function launchEnv(): Record<string, string> {
 	const env: Record<string, string> = {};
 	for (const name of ["PATH", "HOME", ...(process.env.ENDO_OMP_ENV_PASSTHROUGH ?? "").split(",")]) {
@@ -37,85 +45,89 @@ function launchEnv(): Record<string, string> {
 }
 
 describe.runIf(executable !== undefined && executable.length > 0)("real OMP over ACP v1 (opt-in)", () => {
-	it("observes a real session through `omp acp`", async (ctx) => {
-		const omp = executable as string;
-		try {
-			accessSync(omp, constants.X_OK);
-		} catch {
-			return ctx.skip(`ENDO_OMP_EXECUTABLE (${omp}) is not an executable file`);
-		}
-		const env = launchEnv();
-		let version: string;
-		try {
-			version = execFileSync(omp, ["--version"], { env, encoding: "utf8", timeout: 30_000 }).trim();
-			const help = execFileSync(omp, ["--help"], { env, encoding: "utf8", timeout: 30_000 });
-			if (!/\bacp\b/.test(help)) return ctx.skip(`omp ${version} does not list an \`acp\` command in --help`);
-		} catch (error) {
-			return ctx.skip(`omp could not report its version/help: ${(error as Error).message.split("\n")[0]}`);
-		}
-
-		const scratch = realpathSync(mkdtempSync(join(tmpdir(), "endo-acp-omp-")));
-		const events: EndoEventV0[] = [];
-		let client: AcpClientV0 | undefined;
-		try {
+	it(
+		"observes a real session through `omp acp`",
+		async (ctx) => {
+			const omp = executable as string;
 			try {
-				client = await AcpClientV0.connect(
-					{
-						launch: { command: omp, args: ["acp"], cwd: scratch, env },
-						attachment: "omp.default",
-						onEvent: (event) => events.push(event),
-						requestTimeoutMs: 60_000,
-						promptTimeoutMs: 180_000,
-					},
-					{ cwd: scratch },
-				);
+				accessSync(omp, constants.X_OK);
+			} catch {
+				return ctx.skip(`ENDO_OMP_EXECUTABLE (${omp}) is not an executable file`);
+			}
+			const env = launchEnv();
+			let version: string;
+			try {
+				version = execFileSync(omp, ["--version"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 }).trim();
+				const help = execFileSync(omp, ["--help"], { env, encoding: "utf8", timeout: PREFLIGHT_MS / 2 });
+				if (!/\bacp\b/.test(help)) return ctx.skip(`omp ${version} does not list an \`acp\` command in --help`);
 			} catch (error) {
-				if (error instanceof AcpRefusedErrorV0) {
-					return ctx.skip(`omp ${version} did not open an ACP session: ${error.message}`);
+				return ctx.skip(`omp could not report its version/help: ${(error as Error).message.split("\n")[0]}`);
+			}
+
+			const scratch = realpathSync(mkdtempSync(join(tmpdir(), "endo-acp-omp-")));
+			const events: EndoEventV0[] = [];
+			let client: AcpClientV0 | undefined;
+			try {
+				try {
+					client = await AcpClientV0.connect(
+						{
+							launch: { command: omp, args: ["acp"], cwd: scratch, env },
+							attachment: "omp.default",
+							onEvent: (event) => events.push(event),
+							requestTimeoutMs: ATTACH_MS / 2,
+							promptTimeoutMs: PROMPT_MS,
+						},
+						{ cwd: scratch },
+					);
+				} catch (error) {
+					if (error instanceof AcpRefusedErrorV0) {
+						return ctx.skip(`omp ${version} did not open an ACP session: ${error.message}`);
+					}
+					throw error;
 				}
-				throw error;
-			}
 
-			// The handshake, as the agent reported it (its own claim, not a verified binary identity).
-			expect(client.initialize.protocolVersion).toBe(1);
-			console.info(
-				"[acp-omp] omp --version:",
-				version,
-				"| agentInfo:",
-				JSON.stringify(client.initialize.agentInfo),
-				"| agentCapabilities:",
-				JSON.stringify(client.initialize.agentCapabilities),
-			);
-
-			let result: Awaited<ReturnType<AcpClientV0["prompt"]>>;
-			try {
-				result = await client.prompt("Reply with the single word OK. Do not use any tools or modify any files.");
-			} catch (error) {
-				if (error instanceof AcpRefusedErrorV0) return ctx.skip(`omp refused session/prompt: ${error.message}`);
-				if (error instanceof AcpTimeoutErrorV0) throw error;
-				throw error;
-			}
-			console.info("[acp-omp] stopReason:", result.stopReason, "| updates:", JSON.stringify(result.updates));
-			// Only what the prompt itself produces counts: OMP sends bootstrap updates (available commands, session info,
-			// config options) shortly after session/new, whatever the model does.
-			const promptOutput = ["agent_message_chunk", "agent_thought_chunk", "tool_call"].reduce(
-				(sum, variant) => sum + (result.updates[variant] ?? 0),
-				0,
-			);
-			if (promptOutput === 0) {
-				return ctx.skip(
-					`omp ${version} completed the prompt (${result.stopReason}) with no message, thought or tool update: its model/provider is probably not configured`,
+				// The handshake, as the agent reported it (its own claim, not a verified binary identity).
+				expect(client.initialize.protocolVersion).toBe(1);
+				console.info(
+					"[acp-omp] omp --version:",
+					version,
+					"| agentInfo:",
+					JSON.stringify(client.initialize.agentInfo),
+					"| agentCapabilities:",
+					JSON.stringify(client.initialize.agentCapabilities),
 				);
+
+				let result: Awaited<ReturnType<AcpClientV0["prompt"]>>;
+				try {
+					result = await client.prompt("Reply with the single word OK. Do not use any tools or modify any files.");
+				} catch (error) {
+					if (error instanceof AcpRefusedErrorV0) return ctx.skip(`omp refused session/prompt: ${error.message}`);
+					if (error instanceof AcpTimeoutErrorV0) throw error;
+					throw error;
+				}
+				console.info("[acp-omp] stopReason:", result.stopReason, "| updates:", JSON.stringify(result.updates));
+				// Only what the prompt itself produces counts: OMP sends bootstrap updates (available commands, session info,
+				// config options) shortly after session/new, whatever the model does.
+				const promptOutput = ["agent_message_chunk", "agent_thought_chunk", "tool_call"].reduce(
+					(sum, variant) => sum + (result.updates[variant] ?? 0),
+					0,
+				);
+				if (promptOutput === 0) {
+					return ctx.skip(
+						`omp ${version} completed the prompt (${result.stopReason}) with no message, thought or tool update: its model/provider is probably not configured`,
+					);
+				}
+				expect(result.stopReason).toBe("end_turn");
+				expect(events.some((event) => event.kind === "lifecycle.run-completed")).toBe(true);
+				expect(events.some((event) => event.kind === "lifecycle.session-started")).toBe(true);
+			} finally {
+				if (client !== undefined) {
+					await client.close();
+					expect(client.liveProcessMembers()).toBe(false);
+				}
+				rmSync(scratch, { recursive: true, force: true });
 			}
-			expect(result.stopReason).toBe("end_turn");
-			expect(events.some((event) => event.kind === "lifecycle.run-completed")).toBe(true);
-			expect(events.some((event) => event.kind === "lifecycle.session-started")).toBe(true);
-		} finally {
-			if (client !== undefined) {
-				await client.close();
-				expect(client.liveProcessMembers()).toBe(false);
-			}
-			rmSync(scratch, { recursive: true, force: true });
-		}
-	}, 300_000);
+		},
+		TEST_TIMEOUT_MS,
+	);
 });

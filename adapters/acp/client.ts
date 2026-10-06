@@ -156,8 +156,13 @@ async function bounded<T>(work: Promise<T>, ms: number, what: string): Promise<T
  * validation of every other message stay the SDK's).
  */
 function withRawSessionUpdates(stream: acp.Stream, onUpdate: (params: unknown) => void): acp.Stream {
+	// Only a well-formed JSON-RPC 2.0 notification is taken as an update. Anything else naming the method is left to the
+	// SDK, which rejects a malformed envelope; it is never counted as activity.
 	const isUpdate = (message: unknown): boolean =>
-		isRecord(message) && message.method === acp.methods.client.session.update && !("id" in message);
+		isRecord(message) &&
+		message.jsonrpc === "2.0" &&
+		message.method === acp.methods.client.session.update &&
+		!("id" in message);
 	const take = (message: unknown): void => {
 		try {
 			onUpdate((message as { params?: unknown }).params);
@@ -534,7 +539,10 @@ export class AcpClientV0 {
 		});
 		const run = this.#run;
 		let response: acp.RequestPermissionResponse = CANCELLED;
+		// "handler" only when the handler's own valid answer is what is returned; a consulted handler whose answer was
+		// refused, threw, or lost a race to cancel/close did not decide.
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
+		let handlerConsulted = false;
 		if (run === null || run.stopRequested || this.#closed || duplicateIds || request.sessionId !== this.#sessionId) {
 			// No open turn, a turn being cancelled, a closing attachment, ambiguous options, or another session's id:
 			// nothing here can be approved, and the handler is not consulted.
@@ -542,7 +550,7 @@ export class AcpClientV0 {
 			const reject = offered.find((option) => option.kind === "reject_once");
 			if (reject !== undefined) response = { outcome: { outcome: "selected", optionId: reject.optionId } };
 		} else {
-			decidedBy = "handler";
+			handlerConsulted = true;
 			let cancel!: () => void;
 			const cancelled = new Promise<acp.RequestPermissionResponse>((resolve) => {
 				cancel = () => resolve(CANCELLED);
@@ -565,8 +573,10 @@ export class AcpClientV0 {
 					!this.#closed &&
 					outcome?.outcome === "selected" &&
 					offered.some((option) => option.optionId === outcome.optionId)
-				)
+				) {
 					response = answer;
+					decidedBy = "handler";
+				}
 			} catch {
 				// A handler that throws decided nothing: cancelled.
 			} finally {
@@ -579,6 +589,7 @@ export class AcpClientV0 {
 			"permission.decided",
 			{
 				decidedBy,
+				handlerConsulted,
 				decision: selected === undefined ? "cancelled" : "selected",
 				optionKind: selected === undefined ? null : (shortText(selected.kind, 32) ?? null),
 			},

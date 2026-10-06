@@ -94,6 +94,7 @@ const agent = acp
 				await update({ sessionUpdate: "plan", entries: [{ content: "do it" }] });
 				await update({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "x" }] });
 				await update({ sessionUpdate: "config_option_update", configOptions: [{ name: "x" }] });
+				await update({ sessionUpdate: "agent_message_chunk", content: { type: "resource", resource: {} } });
 				await update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } });
 				break;
 			case "permission-only-allow": {
@@ -144,6 +145,13 @@ const agent = acp
 				await update({ sessionUpdate: "session_info_update" });
 				await update({ sessionUpdate: "session_info_update", title: null });
 				await update({ sessionUpdate: "session_info_update", title: "SECRET-TITLE" });
+				break;
+			case "bad-envelope":
+				// A valid-looking update, but not a JSON-RPC 2.0 notification.
+				process.stdout.write(
+					`${JSON.stringify({ method: "session/update", params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "x" } } } })}\n`,
+				);
+				await sleep(50);
 				break;
 			case "weird-variants":
 				await update({ sessionUpdate: "__proto__" });

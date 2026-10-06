@@ -62,8 +62,10 @@ changing which nested versions a parent embeds.
 `protocol/schema-compat.ts` is a metadata-only catalogue: one entry per durable schema version, with its family, its
 status (`current`: a writer emits or may emit it; `legacy`: read-only), the boundary that reads it, any intentionally open
 containers, and its fixtures. Fixtures are tiny
-synthetic canonical records under `tests/fixtures/schema-compat/<schemaVersion>/`. Each is pinned in the catalogue by
-SHA-256, so editing a historical fixture shows up in review.
+synthetic records, in the bytes their writer produces, under `tests/fixtures/schema-compat/<schemaVersion>/`; a family
+with optional objects commits a `full.json` that carries them, so the probe below reaches them. Each is pinned in the
+catalogue by SHA-256, so editing a historical fixture shows up in review. In an `openPaths` entry `*` stands for any one
+segment: an array element or a key of an open map.
 
 `tests/schema-compat.test.ts` derives its checks from that one structure and from each family's own table:
 
@@ -94,7 +96,33 @@ Classified from the tree; a `schemaVersion` string is not by itself a durability
 | `endo.evaluation-profile`                         | v0, v1        | v0 (Reef adapter), v1 (experiment runner) | nested in results |
 | `endo.workspace-archive`                          | v0, v1        | **v1 only** | blob store, cassette replay                 |
 | `endo.digest-key`                                 | v0            | v0          | key file                                    |
+| `endo.experiment-spec`                            | v0            | v0 (operator-authored) | the spec file `endo experiment run` reads |
+| `endo.experiment-run`                             | v0            | v0          | run directory `experiment.json`             |
+| `endo.experiment-plan`                            | v0 (+ the unversioned legacy form, below) | v0 | run directory `plan.json`      |
+| `endo.experiment-trial`                           | v0            | v0          | run directory `trials/**/result.json`       |
 | harness registry: fingerprint, change, capability evidence, capability state, notification | v0 each | v0 | `storage/harness-registry` frames |
+
+The runner's run-directory artifacts (the last four rows) are read by `cli/experiment-artifacts.ts` and the research
+analysis scripts through the readers in `protocol/experiment-artifacts.ts` and `protocol/experiment-spec.ts`; no reader
+casts `JSON.parse` output. A run record embeds a spec and an `endo.experiment.v0` record, and **the run record owns
+which versions it embeds** (`ENDO_EXPERIMENT_RUN_SPEC_VERSIONS_V0`, `ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0`), as a
+result owns its profile versions: a future spec version is not legal inside a v0 run. Closed objects are closed
+throughout; the open data is the spec's maps (workspace files, model entry, settings, extensions, environment variables
+and files, injected fields), the experiment record's `budget`, and a trial's `requestParameters`. Making this
+exhaustive closed one hole in the already-strict v0 spec validator: an entry of `manipulation.conditions` accepted
+unknown fields; it now refuses them (every one of the 98 spec documents in the repository and the research data
+satisfies it).
+
+**The one unversioned form: the legacy plan.** `plan.json` was written without a `schemaVersion` before the plan was
+versioned (every committed run directory has one). Such a record cannot take part in version dispatch, because there is
+nothing to dispatch on, so it has one explicit reader of its own (`readEndoLegacyExperimentPlanV0`): exactly
+`{ seed, ordering, order }`, each entry exactly `{ position, task, condition, trial }`, nothing else, no best effort.
+`readEndoExperimentPlanV0` sends **only** a record that declares no version to it, and reports which form it read
+(`versioned` or `legacy-unversioned`). The ordinary table still rejects a missing version, a record that declares a
+version is never read as the legacy form, and the legacy bytes are never rewritten (not on read, not on resume). Its
+fixture lives apart, in `tests/fixtures/schema-compat-unversioned/`, outside the versioned catalogue, pinned by SHA-256
+in `tests/schema-compat.test.ts`, and every committed run directory under `research/` is read in that test (and, where
+the research data is present, every recorded run directory of the four studies, in `tests/experiment-raw-data.test.ts`).
 
 Evaluation profiles have two active writers by design (v1 only widens the cognition policies with `none`); the archive
 is the family with a single current write version. The ledger meta/snapshot envelopes and the registry frame are
@@ -116,11 +144,14 @@ catalogue.
 
 ### Known limitations
 
-- Not covered: the experiment runner's run-directory files (`cli/experiment.ts`: run record, plan, trial results, the
-  report). They are written and read by the same CLI through unchecked `JSON.parse(...) as T`. The report moved from
-  `endo.experiment-report.v0` to `v1` without a reader for either; that history is not recovered here.
-- Not catalogued: the operator-authored experiment spec file read by `endo experiment run` (`endo.experiment-spec.v0`,
-  `cli/experiment.ts`). Its validator is already strict and it has one version, but it has no table or fixture yet.
+- Deferred, not covered: **the experiment report** (`endo.experiment-report.v0` and `.v1`, `report/bundle.json`).
+  It is derived and large, the two versions genuinely differ (the trajectory tools layer was split into tool calls and
+  tool results), and committed v0 reports exist under `research/variance/1.0.1/`. It has no version reader yet; its
+  compatibility is a separate change that should use those real v0 reports as evidence. The writer emits `v1`.
+- Not covered: the rest of the run directory: `journal.jsonl`, `environment/session-<n>.json`, `evidence/`
+  (capability-study summaries) and the per-trial `check.txt`. The cross-file consistency of a run directory (that the
+  plan names tasks and conditions of the embedded spec, that `specSha256` is the digest of the embedded spec) is not
+  checked by the readers either.
 - Not covered: Pi attachment state files (`adapters/pi/attachment.ts`), the capture-log layout, and research artifacts
   that scripts read (`research/**`); the study data they read is read through the covered readers above.
 - This is a discipline for the covered families, not a claim about every `schemaVersion` string, arbitrary future

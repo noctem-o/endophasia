@@ -16,12 +16,13 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { piCassetteKeyV0 } from "../../../cli/cassette-session.ts";
-import type {
-	EndoExperimentRunRecordV0,
-	EndoExperimentTrialKeyV0,
-	EndoExperimentTrialResultV0,
-} from "../../../cli/experiment.ts";
+import {
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentRunRecordFileV0,
+	readEndoExperimentTrialResultFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
+import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { spreadV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
@@ -127,10 +128,10 @@ export function classOf(
 }
 
 function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readJson<EndoExperimentTrialResultV0>(file)] : [];
+		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
 	});
 }
 
@@ -208,7 +209,7 @@ const BASE_FIELDS = new Set([
 
 /** Every trial of one run directory, with the per-trial measures and per-request manipulation findings. */
 export function analyseRun(dir: string, roots: RootsV0): TrialV0[] {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
 	const out: TrialV0[] = [];
 	for (const result of trialsOf(dir)) {
@@ -498,7 +499,7 @@ export function manipulationOf(dir: string, trials: readonly TrialV0[]) {
 
 /** The pilot: its gates, the per-cell wall times and N (DESIGN §6, §8). */
 export function pilot(dir: string, roots: RootsV0) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const trials = analyseRun(dir, roots);
 	const arms = run.spec.conditions.map((condition) => armOf(condition.id));
 	const cells = arms.flatMap((arm) => run.spec.tasks.map((task) => cell(arm, task.id, trials, run.spec.trials)));
@@ -552,7 +553,7 @@ export function main(dir: string, roots: RootsV0) {
 	const runs = labels.map((label) => ({
 		label,
 		trials: analyseRun(join(dir, label), roots),
-		spec: readJson<EndoExperimentRunRecordV0>(join(dir, label, "experiment.json")).spec,
+		spec: readEndoExperimentRunRecordFileV0(join(dir, label)).spec,
 	}));
 	const spec = runs[0]!.spec;
 	const arms = spec.conditions.map((condition) => armOf(condition.id));

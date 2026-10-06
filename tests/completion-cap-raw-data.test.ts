@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { endoSecretScanDirectoryV0 } from "../cli/secret-scan.ts";
 import { rawDataAvailable, rawDirectory, researchDataRoot } from "../research/data.ts";
 
@@ -19,9 +20,7 @@ const runDirectories = () => [
 describe.skipIf(!rawDataAvailable("completion-cap"))("the raw run data of the completion-cap study", () => {
 	it("passes the secret scan exactly as stored, with only the reviewed path categories", () => {
 		const scratch = runDirectories().map((dir) =>
-			(
-				JSON.parse(readFileSync(join(dir, "experiment.json"), "utf8")) as { scratchRoot: string }
-			).scratchRoot.replace(/\/scratch$/, ""),
+			readEndoExperimentRunRecordFileV0(dir).scratchRoot.replace(/\/scratch$/, ""),
 		);
 		const allowed = JSON.parse(
 			readFileSync(join(researchDataRoot(), "completion-cap", "1.0.1", "allowed-paths.json"), "utf8"),

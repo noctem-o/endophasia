@@ -7,15 +7,21 @@
  *   endo experiment report <dir>
  *
  * The run directory:
- *   experiment.json     the spec as run, its sha256, the ordering seed and how it was chosen, the trial order's
- *                       algorithm, the endo.experiment.v0 record, the scratch path and the proxy port
- *   plan.json           every (task, condition, trial) in run order
+ *   experiment.json     (endo.experiment-run.v0) the spec as run, its sha256, the ordering seed and how it was chosen,
+ *                       the trial order's algorithm, the endo.experiment.v0 record, the scratch path and the proxy port
+ *   plan.json           (endo.experiment-plan.v0) every (task, condition, trial) in run order. Runs recorded before the
+ *                       plan carried a version have one without; it is read as that exact legacy form, never rewritten
  *   journal.jsonl       what happened, appended: run sessions, trials started, finished, interrupted
  *   environment/        per run session: the serving stack as observed (model ids from /v1/models, Pi fingerprint,
  *                       endpoint, digest key id)
  *   trials/<task>/<condition>/<k>/   the trial's store (session events and capture log) and result.json
+ *                       (endo.experiment-trial.v0)
  *   interrupted/        trials a previous run session started and never finished, moved aside, never counted
- *   report/             bundle.json (endo.experiment-report.v0) and summary.md, written by `report`
+ *   report/             bundle.json (endo.experiment-report.v1) and summary.md, written by `report`
+ *
+ * The run's source-of-truth files (the spec, experiment.json, plan.json, result.json) are read back only through their
+ * version-directed readers (cli/experiment-artifacts.ts); a file that does not satisfy its contract is refused. The
+ * journal, environment/ and the report are not governed (docs/schema-compatibility.md).
  *
  * Resumable: a trial counts once its result.json exists (written atomically, last). A rerun skips those, moves an
  * unfinished trial's directory to interrupted/ and runs it again from scratch. The spec must not change between run
@@ -49,15 +55,27 @@ import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { buildEndoExperimentBundleV0 } from "../lab/experiment-bundle.ts";
 import { runEndoTrialsV0 } from "../lab/trials.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
-import { validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
+import { type EndoExperimentRecordV0, validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
+import {
+	ENDO_EXPERIMENT_PLAN_VERSIONS_V0,
+	ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0,
+	ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0,
+	ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0,
+	type EndoExperimentRunRecordV0,
+	type EndoExperimentTrialKeyV0,
+	type EndoExperimentTrialResultV0,
+	readEndoExperimentRunRecordV0,
+	readEndoExperimentTrialResultV0,
+} from "../protocol/experiment-artifacts.ts";
 import {
 	type EndoExperimentConditionV0,
 	type EndoExperimentSpecV0,
 	type EndoExperimentTaskV0,
-	validateEndoExperimentSpecV0,
+	parseEndoExperimentSpecV0,
 } from "../protocol/experiment-spec.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import type { EndoTrajectoryComparisonV0, EndoTrajectoryV0 } from "../protocol/trajectory.ts";
+import { readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	mulberry32V0,
@@ -78,6 +96,12 @@ import {
 	piCassetteKeyV0,
 	recordPiCassetteSessionV0,
 } from "./cassette-session.ts";
+import {
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentRunRecordFileV0,
+	readEndoExperimentSpecFileV0,
+	readEndoExperimentTrialResultFileV0,
+} from "./experiment-artifacts.ts";
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
@@ -85,14 +109,6 @@ export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.3";
 export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v1";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
-
-/** One planned trial. */
-export interface EndoExperimentTrialKeyV0 {
-	position: number;
-	task: string;
-	condition: string;
-	trial: number;
-}
 
 /** The run order for a spec and a seed. Pure: the same spec and seed always give the same plan. */
 export function planEndoExperimentV0(spec: EndoExperimentSpecV0, seed: number): EndoExperimentTrialKeyV0[] {
@@ -115,55 +131,15 @@ function writeAtomically(path: string, content: string): void {
 	renameSync(`${path}.tmp`, path);
 }
 
-function readJson<T>(path: string): T {
+/** An environment/session-N.json file. Not a governed artifact (docs/schema-compatibility.md): read as data, never trusted for a field. */
+function readUngovernedJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-/** The experiment as run (experiment.json). */
-export interface EndoExperimentRunRecordV0 {
-	schemaVersion: "endo.experiment-run.v0";
-	runner: string;
-	spec: EndoExperimentSpecV0;
-	specSha256: string;
-	seed: number;
-	seedSource: "spec" | "drawn";
-	ordering: string;
-	experiment: JsonValueV0;
-	scratchRoot: string;
-	proxyPort: number | null;
-	createdAt: string;
-}
-
-/** What one trial produced (result.json). */
-export interface EndoExperimentTrialResultV0 {
-	schemaVersion: "endo.experiment-trial.v0";
-	position: number;
-	task: string;
-	condition: string;
-	trial: number;
-	status: "completed" | "error";
-	error: string | null;
-	startedAt: string;
-	endedAt: string;
-	/** The trial's store, relative to the run directory. */
-	store: string;
-	/** The endo session coordinate, or null when no session opened. */
-	session: string | null;
-	exchanges: number;
-	/** Every top-level request field except messages and tools, per request, as Pi sent it. */
-	requestParameters: JsonValueV0[];
-	check:
-		| { ran: false; reason: string }
-		| {
-				ran: true;
-				exitCode: number | null;
-				passed: boolean;
-				timedOut: boolean;
-				output: { keyId: string; value: string; bytes: number };
-		  };
-	/** The keyed digest of the workspace's archive after the session (what the agent left behind). */
-	finalWorkspace: { keyId: string; value: string; bytes: number } | null;
-	notes: string[];
+/** What a writer puts in a file it owns must be what the reader will accept: refuse to write anything else. */
+function mustRead<T>(read: { ok: true; value: T } | { ok: false; message: string }, what: string): T {
+	if (!read.ok) throw new TypeError(`the runner built a ${what} it would itself refuse (${read.message})`);
+	return read.value;
 }
 
 function keySourceOf(spec: EndoExperimentSpecV0): PiCassetteKeySourceV0 {
@@ -303,7 +279,7 @@ export interface EndoExperimentRunSummaryV0 {
 /** Run (or resume) an experiment into `dir`. */
 export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): Promise<EndoExperimentRunSummaryV0> {
 	const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-	const spec = validateEndoExperimentSpecV0(options.spec);
+	const spec = parseEndoExperimentSpecV0(options.spec);
 	const fixtureMode = options.fixtureExperiment === true;
 	if (spec.digestDomain === "fixture" && !fixtureMode)
 		throw new TypeError(
@@ -319,7 +295,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	mkdirSync(dir, { recursive: true });
 	let run: EndoExperimentRunRecordV0;
 	if (existsSync(recordPath)) {
-		run = readJson<EndoExperimentRunRecordV0>(recordPath);
+		run = readEndoExperimentRunRecordFileV0(dir);
 		if (run.specSha256 !== specSha256)
 			throw new TypeError(
 				`${dir} was started with another spec (sha256 ${run.specSha256}); a run's spec never changes`,
@@ -327,7 +303,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	} else {
 		const seedSource = spec.seed === null ? "drawn" : "spec";
 		const seed = spec.seed ?? randomBytes(4).readUInt32BE(0);
-		const experiment = {
+		const experiment: EndoExperimentRecordV0 = {
 			schemaVersion: "endo.experiment.v0",
 			id: spec.id,
 			environment: {
@@ -342,25 +318,30 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 		if (validateEndoExperimentRecordV0(experiment) === null)
 			throw new TypeError("the experiment record failed endo.experiment.v0 validation");
 		run = {
-			schemaVersion: "endo.experiment-run.v0",
+			schemaVersion: ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0,
 			runner: ENDO_EXPERIMENT_RUNNER_VERSION_V0,
 			spec,
 			specSha256,
 			seed,
 			seedSource,
 			ordering: ENDO_EXPERIMENT_ORDERING_V0,
-			experiment: experiment as unknown as JsonValueV0,
+			experiment,
 			scratchRoot: join(options.scratchParent ?? tmpdir(), `endo-experiment-${specSha256.slice(0, 12)}`, "scratch"),
 			proxyPort: null,
 			createdAt: new Date().toISOString(),
 		};
-		writeAtomically(
-			join(dir, "plan.json"),
-			canonicalEndoJsonV0({ seed, ordering: ENDO_EXPERIMENT_ORDERING_V0, order: planEndoExperimentV0(spec, seed) }),
-		);
+		mustRead(readEndoExperimentRunRecordV0(run), "run record");
+		const written = {
+			schemaVersion: ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0,
+			seed,
+			ordering: ENDO_EXPERIMENT_ORDERING_V0,
+			order: planEndoExperimentV0(spec, seed),
+		};
+		mustRead(readEndoVersionedV0(ENDO_EXPERIMENT_PLAN_VERSIONS_V0, written), "plan");
+		writeAtomically(join(dir, "plan.json"), canonicalEndoJsonV0(written));
 		writeAtomically(recordPath, `${JSON.stringify(run, null, "\t")}\n`);
 	}
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	const keySource = keySourceOf(spec);
 	const key = piCassetteKeyV0(keySource);
 	// The scratch parent is ours: marked, and a leftover scratch root from an interrupted session is removed.
@@ -380,7 +361,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 		proxy = await startEndoRecordingProxyV0({ upstream: spec.upstream, log: null });
 	}
 	if (run.proxyPort !== proxy.port) {
-		run = { ...run, proxyPort: run.proxyPort ?? proxy.port };
+		run = mustRead(readEndoExperimentRunRecordV0({ ...run, proxyPort: run.proxyPort ?? proxy.port }), "run record");
 		writeAtomically(recordPath, `${JSON.stringify(run, null, "\t")}\n`);
 	}
 	const sessionNumber = existsSync(join(dir, "environment")) ? readdirSync(join(dir, "environment")).length + 1 : 1;
@@ -419,7 +400,12 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 			mkdirSync(trialDir, { recursive: true });
 			journal(dir, { event: "trial-started", ...entry, session: sessionNumber });
 			log(`trial ${entry.position + 1}/${plan.length}: ${entry.task} / ${entry.condition} / #${entry.trial}`);
-			const result = await runTrial(spec, run, entry, trialDir, dir, proxy, keySource, key.keyId, evidence);
+			const result = mustRead(
+				readEndoExperimentTrialResultV0(
+					await runTrial(spec, run, entry, trialDir, dir, proxy, keySource, key.keyId, evidence),
+				),
+				"trial result",
+			);
 			writeAtomically(resultPath, `${JSON.stringify(result, null, "\t")}\n`);
 			journal(dir, { event: "trial-finished", ...entry, status: result.status });
 			summary.ranThisSession += 1;
@@ -433,7 +419,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	for (const entry of plan) {
 		const resultPath = join(trialDirectory(dir, entry), "result.json");
 		if (!existsSync(resultPath)) summary.remaining += 1;
-		else if (readJson<EndoExperimentTrialResultV0>(resultPath).status === "completed") summary.completed += 1;
+		else if (readEndoExperimentTrialResultFileV0(resultPath).status === "completed") summary.completed += 1;
 		else summary.errored += 1;
 	}
 	journal(dir, { event: "run-session-ended", session: sessionNumber, ...summary });
@@ -621,7 +607,7 @@ async function runTrial(
 	const events = existsSync(join(store, "events")) ? readEndoStoreEventsV0(store) : [];
 	const capture = existsSync(join(store, "capture", "events")) ? readEndoCaptureEventsV0(store) : [];
 	return {
-		schemaVersion: "endo.experiment-trial.v0",
+		schemaVersion: ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0,
 		position: entry.position,
 		task: entry.task,
 		condition: entry.condition,
@@ -709,19 +695,19 @@ function distinct(values: readonly JsonValueV0[]): JsonValueV0[] {
 	return [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, value]) => value);
 }
 
-/** Aggregate a run directory into an endo.experiment-report.v0 (pure over what the directory holds). */
+/** Aggregate a run directory into an endo.experiment-report.v1 (pure over what the directory holds). */
 export function reportEndoExperimentV0(directory: string): { report: JsonValueV0; summary: string } {
 	const dir = resolve(directory);
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const run = readEndoExperimentRunRecordFileV0(dir);
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	const results = plan.flatMap((entry) => {
 		const path = join(trialDirectory(dir, entry), "result.json");
-		return existsSync(path) ? [readJson<EndoExperimentTrialResultV0>(path)] : [];
+		return existsSync(path) ? [readEndoExperimentTrialResultFileV0(path)] : [];
 	});
 	const environments = existsSync(join(dir, "environment"))
 		? readdirSync(join(dir, "environment"))
 				.sort()
-				.map((name) => readJson<Record<string, JsonValueV0>>(join(dir, "environment", name)))
+				.map((name) => readUngovernedJson<Record<string, JsonValueV0>>(join(dir, "environment", name)))
 		: [];
 	const interrupted = existsSync(join(dir, "interrupted")) ? readdirSync(join(dir, "interrupted")).length : 0;
 	const cells: JsonValueV0[] = [];
@@ -1064,7 +1050,7 @@ export async function experimentRunCommand(argv: readonly string[]): Promise<voi
 	const max = take("--max-trials");
 	if (args.length !== 1 || out === undefined || args[0]!.startsWith("--"))
 		throw new TypeError("usage: endo experiment run <spec.json> --out <dir> [--max-trials n] [--fixture-experiment]");
-	const spec = validateEndoExperimentSpecV0(JSON.parse(readFileSync(args[0]!, "utf8")));
+	const spec = readEndoExperimentSpecFileV0(args[0]!);
 	const summary = await runEndoExperimentV0({
 		spec,
 		dir: out,

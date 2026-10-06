@@ -1,10 +1,6 @@
-// The raw run data of the steering study (research-data directory, research/DATA.md): the secret scan, the hard gate for
-// committed captures, passes over the directory exactly as stored, with the operator's explicit, documented
-// exception for the stores' own location and the capability study's temporary directories (raw/README.md). Any other
-// absolute path, or any other kind of finding, fails.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readEndoExperimentPlanFileV0, readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { endoSecretScanDirectoryV0 } from "../cli/secret-scan.ts";
 import { readEndoStoreEventsV0 } from "../cli/trajectory.ts";
 import { rawDataAvailable, rawDirectory } from "../research/data.ts";
@@ -12,11 +8,7 @@ import { rawDataAvailable, rawDirectory } from "../research/data.ts";
 const RAW = rawDirectory("steering");
 const RUNS = ["pilot", "main", "posthoc-pilot-path", "posthoc-main-path"];
 const scratchRoots = () =>
-	RUNS.map((run) =>
-		(
-			JSON.parse(readFileSync(join(RAW, run, "experiment.json"), "utf8")) as { scratchRoot: string }
-		).scratchRoot.replace(/\/scratch$/, ""),
-	);
+	RUNS.map((run) => readEndoExperimentRunRecordFileV0(join(RAW, run)).scratchRoot.replace(/\/scratch$/, ""));
 
 describe.skipIf(!rawDataAvailable("steering"))("the raw run data of the steering study", () => {
 	it("passes the secret scan exactly as stored, with only the operator's documented path exception", () => {
@@ -36,8 +28,7 @@ describe.skipIf(!rawDataAvailable("steering"))("the raw run data of the steering
 	}, 180_000);
 
 	it("holds every run's trials, and a trial store opens and projects", () => {
-		const count = (run: string) =>
-			(JSON.parse(readFileSync(join(RAW, run, "plan.json"), "utf8")) as { order: unknown[] }).order.length;
+		const count = (run: string) => readEndoExperimentPlanFileV0(join(RAW, run)).plan.order.length;
 		expect(RUNS.map(count)).toEqual([18, 120, 18, 120]);
 		// The post-hoc block run is a partial run by design (--max-trials 6).
 		const events = readEndoStoreEventsV0(join(RAW, "main", "trials", "tool-use", "steer", "0", "store"));

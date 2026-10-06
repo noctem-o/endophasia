@@ -19,6 +19,14 @@
 
 import { isEndoIdentifierV0 } from "./identity.ts";
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
+import {
+	defineEndoVersionTableV0,
+	EndoInvalidRecordV0,
+	type EndoVersionedReadV0,
+	endoBoundedDetailV0,
+	parseEndoVersionedV0,
+	readEndoVersionedV0,
+} from "./versioned.ts";
 
 export const ENDO_EXPERIMENT_SPEC_SCHEMA_V0 = "endo.experiment-spec.v0";
 
@@ -180,6 +188,16 @@ export interface EndoExperimentSpecV0 {
 }
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/** Whether `value` is a task or condition id: a slug, [a-z0-9-], at most 64 characters, so also one safe path segment. */
+export function isEndoExperimentSlugV0(value: unknown): value is string {
+	return typeof value === "string" && SLUG.test(value);
+}
+
+/** Whether `path` is a relative path of plain segments: no leading slash, backslash, NUL, empty, `.` or `..` segment. */
+export function isEndoExperimentRelativePathV0(path: string): boolean {
+	return relativePath(path);
+}
 const SPEC_KEYS = new Set([
 	"schemaVersion",
 	"id",
@@ -323,6 +341,9 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 			if (!conditionIds.has(id)) return `manipulation.conditions names an unknown condition ${id}`;
 			if (!plain(entry) || !plain((entry as Record<string, unknown>).injected))
 				return `manipulation.conditions.${id}.injected must be an object`;
+			for (const key of Object.keys(entry as object))
+				if (key !== "injected" && key !== "zeroCacheReads")
+					return `manipulation.conditions.${id}: unknown field ${key}`;
 			const zero = (entry as Record<string, unknown>).zeroCacheReads;
 			if (zero !== undefined && typeof zero !== "boolean")
 				return `manipulation.conditions.${id}.zeroCacheReads must be a boolean`;
@@ -341,9 +362,35 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 	return null;
 }
 
-/** The spec, validated; throws TypeError with the reason otherwise. */
+/**
+ * An already-selected v0 spec, validated; throws TypeError with the reason otherwise. This checks one contract: it is
+ * for a caller that holds a typed spec. A spec read from a file or any other persisted or imported source goes through
+ * `readEndoExperimentSpecV0` / `parseEndoExperimentSpecV0`, which select the validator by the declared version.
+ */
 export function validateEndoExperimentSpecV0(value: unknown): EndoExperimentSpecV0 {
 	const problem = endoExperimentSpecProblemV0(value);
 	if (problem !== null) throw new TypeError(`not a valid ${ENDO_EXPERIMENT_SPEC_SCHEMA_V0}: ${problem}`);
 	return value as EndoExperimentSpecV0;
+}
+
+/** The spec versions this reader knows: exactly one. */
+export const ENDO_EXPERIMENT_SPEC_VERSIONS_V0 = defineEndoVersionTableV0<EndoExperimentSpecV0>("endo.experiment-spec", [
+	[
+		ENDO_EXPERIMENT_SPEC_SCHEMA_V0,
+		(value) => {
+			const problem = endoExperimentSpecProblemV0(value);
+			if (problem !== null) throw new EndoInvalidRecordV0(endoBoundedDetailV0(problem));
+			return value as EndoExperimentSpecV0;
+		},
+	],
+]);
+
+/** Read a spec under the version it declares: the value unchanged, or a failure that says which of the five it was. */
+export function readEndoExperimentSpecV0(value: unknown): EndoVersionedReadV0<EndoExperimentSpecV0> {
+	return readEndoVersionedV0(ENDO_EXPERIMENT_SPEC_VERSIONS_V0, value);
+}
+
+/** `readEndoExperimentSpecV0`, throwing `EndoSchemaVersionErrorV0` (a `TypeError`) on failure. */
+export function parseEndoExperimentSpecV0(value: unknown): EndoExperimentSpecV0 {
+	return parseEndoVersionedV0(ENDO_EXPERIMENT_SPEC_VERSIONS_V0, value);
 }

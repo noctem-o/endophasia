@@ -13,18 +13,19 @@
 //
 // Each prints one JSON document on stdout.
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { replayPiCassetteSessionV0 } from "../../../cli/cassette-session.ts";
-import type {
-	EndoExperimentRunRecordV0,
-	EndoExperimentTrialKeyV0,
-	EndoExperimentTrialResultV0,
-} from "../../../cli/experiment.ts";
+import {
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentRunRecordFileV0,
+	readEndoExperimentTrialResultFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
+import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0 } from "../../../runtime/contracts/statistics.ts";
@@ -33,21 +34,14 @@ import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../..
 import { parseEndoWorkspaceArchiveV0 } from "../../../storage/workspace-snapshot.ts";
 import { sensitivity } from "../../variance/1.0.1/analyze.ts";
 
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 
 function trials(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		try {
-			return [
-				readJson<EndoExperimentTrialResultV0>(
-					join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json"),
-				),
-			];
-		} catch {
-			return [];
-		}
+		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
+		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
+		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
 	});
 }
 
@@ -99,7 +93,7 @@ export const NODE_REPORTER_DURATION_V0 = /duration_ms|^[✔✖].*\(\d+(?:\.\d+)?
  * M6: no tool result in any request of a pinned arm carries a duration from Node's reporters.
  */
 export function manipulation(dir: string) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
 	const m5: Record<string, { trials: number; failures: string[] }> = {};
 	const m6: Record<string, { trials: number; requests: number; instances: string[] }> = {};
@@ -341,7 +335,7 @@ export function divergence(dir: string) {
 
 /** §10: three trials chosen by the run's ordering seed (or the named ones), replayed from their cassettes. */
 export async function spotcheck(dir: string, pi: string, named: string[] = []) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const completed = trials(dir).filter((trial) => trial.status === "completed" && trial.session !== null);
 	const chosen =
 		named.length > 0

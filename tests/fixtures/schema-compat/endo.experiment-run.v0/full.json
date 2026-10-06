@@ -1,0 +1,138 @@
+{
+	"schemaVersion": "endo.experiment-run.v0",
+	"runner": "endo-experiment-runner.3",
+	"spec": {
+		"schemaVersion": "endo.experiment-spec.v0",
+		"id": "endo.experiment.fixture-full",
+		"description": "An experiment spec using every optional field.",
+		"trials": 2,
+		"seed": 1234,
+		"pi": "pi",
+		"upstream": "http://127.0.0.1:8080",
+		"provider": "fixture",
+		"model": "fixture-model",
+		"digestDomain": "fixture",
+		"timeoutMs": 120000,
+		"tasks": [
+			{
+				"id": "fix-bug",
+				"prompts": [
+					"Fix the bug.",
+					"Run the tests."
+				],
+				"workspace": {
+					"src/a.js": "export const a = 1;\n",
+					"test.js": "// test\n"
+				},
+				"check": {
+					"argv": [
+						"node",
+						"--test"
+					],
+					"cwd": "src",
+					"timeoutMs": 30000
+				}
+			},
+			{
+				"id": "write-note",
+				"prompts": [
+					"Write a note."
+				],
+				"workspace": {
+					"notes.md": "# Notes\n"
+				}
+			}
+		],
+		"conditions": [
+			{
+				"id": "base",
+				"description": "The baseline."
+			},
+			{
+				"id": "tuned",
+				"description": "A tuned condition.",
+				"modelEntry": {
+					"contextWindow": 8192,
+					"compat": {
+						"supportsDeveloperRole": false
+					}
+				},
+				"settings": {
+					"defaultThinkingLevel": "off"
+				},
+				"extensions": {
+					"noop.ts": "export default function () {}\n"
+				},
+				"environment": {
+					"variables": {
+						"TZ": "UTC",
+						"LC_ALL": "C"
+					},
+					"files": {
+						"reporter.js": "module.exports = {};\n"
+					},
+					"fileTime": "2026-01-01T00:00:00.000Z"
+				},
+				"interventions": {
+					"fix-bug": {
+						"operation": "steer",
+						"message": "Look at src/a.js.",
+						"after": {
+							"exchange": 1,
+							"chunks": 3
+						}
+					},
+					"write-note": {
+						"operation": "stop",
+						"after": {
+							"exchange": 1,
+							"chunks": 1
+						}
+					}
+				}
+			}
+		],
+		"manipulation": {
+			"baseline": "base",
+			"conditions": {
+				"tuned": {
+					"injected": {
+						"temperature": 0.2,
+						"stop": [
+							"END"
+						]
+					},
+					"zeroCacheReads": true
+				}
+			},
+			"identical": [
+				[
+					"base",
+					"tuned"
+				]
+			]
+		}
+	},
+	"specSha256": "1aa0452a3519465d66043f0e6bd3fa081986bc58637166112fc64771549a9095",
+	"seed": 1234,
+	"seedSource": "spec",
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"experiment": {
+		"schemaVersion": "endo.experiment.v0",
+		"id": "endo.experiment.fixture-full",
+		"environment": {
+			"schemaVersion": "endo.environment-profile.v0",
+			"environmentId": "endophasia-scratch-workspace",
+			"simulated": false
+		},
+		"model": "fixture/fixture-model",
+		"budget": {
+			"trialsPerCell": 2,
+			"cells": 4
+		},
+		"provenance": "endo-experiment-runner.3; spec sha256 1aa0452a3519465d66043f0e6bd3fa081986bc58637166112fc64771549a9095"
+	},
+	"scratchRoot": "/tmp/endo-experiment-1aa0452a3519/scratch",
+	"proxyPort": 43121,
+	"createdAt": "2026-01-01T00:00:00.000Z"
+}

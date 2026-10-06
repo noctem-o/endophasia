@@ -1,0 +1,30 @@
+{
+	"schemaVersion": "endo.experiment-spec.v0",
+	"id": "endo.experiment.fixture-minimal",
+	"description": "A minimal experiment spec.",
+	"trials": 1,
+	"seed": null,
+	"pi": "pi",
+	"upstream": "http://127.0.0.1:8080",
+	"provider": "fixture",
+	"model": "fixture-model",
+	"digestDomain": "fixture",
+	"timeoutMs": 60000,
+	"tasks": [
+		{
+			"id": "hello",
+			"prompts": [
+				"Say hello."
+			],
+			"workspace": {
+				"README.md": "hello\n"
+			}
+		}
+	],
+	"conditions": [
+		{
+			"id": "default",
+			"description": "Pi as configured."
+		}
+	]
+}

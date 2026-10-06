@@ -86,11 +86,40 @@ runner does not call.
 - the session coordinate;
 - notes.
 
-## The report (`endo.experiment-report.v0`)
+## The run directory's files and their versions
+
+The runner reads back what it wrote (resume, report) and so do the research analysis scripts. These four are the
+source of truth. Each declares its schema, and each is read **only** through the reader for the version it declares:
+an unknown version, a missing or non-string version, an unknown field in a closed record, or a field of the wrong
+shape is refused, naming the file. Nothing is migrated, defaulted or rewritten on read
+([policy](schema-compatibility.md)).
+
+| File | Schema | Contract |
+| :--- | :--- | :--- |
+| the spec you pass to `endo experiment run` | `endo.experiment-spec.v0` | [`protocol/experiment-spec.ts`](../protocol/experiment-spec.ts) |
+| `experiment.json` | `endo.experiment-run.v0` | [`protocol/experiment-artifacts.ts`](../protocol/experiment-artifacts.ts) |
+| `plan.json` | `endo.experiment-plan.v0` | the same module: `seed`, `ordering` and `order`, every entry exactly `{ position, task, condition, trial }` |
+| `trials/<task>/<condition>/<k>/result.json` | `endo.experiment-trial.v0` | the same module |
+
+- `experiment.json` embeds the spec and the `endo.experiment.v0` record. **The run record names which versions it
+  embeds** (exactly `endo.experiment-spec.v0` and `endo.experiment.v0`): a later spec version is not valid inside a
+  v0 run record merely because the spec family learned it.
+- A task or condition id in `plan.json` or `result.json` is a slug and a trial's `store` is a relative path inside the
+  run directory, because the runner builds paths from them.
+- The spec's maps (workspace files, model entry, settings, extensions, a pinned environment's variables and files,
+  injected fields) and a trial's recorded `requestParameters` are open data, not schema fields.
+- **`plan.json` of an older run has no `schemaVersion`.** It is read, when it declares none, as exactly
+  `{ seed, ordering, order }` with the same entries (the shape runs wrote before the plan was versioned), reported as
+  the legacy form and never rewritten, so those runs still resume and report. Any other root or entry field is
+  refused, and a plan that declares a version is the version table's alone.
+- `journal.jsonl`, `environment/session-<n>.json`, `evidence/` and `report/` are **not** covered
+  ([limits](schema-compatibility.md#known-limitations)).
+
+## The report (`endo.experiment-report.v1`)
 
 For each task and condition, over the completed trials:
 
-- **Per judged layer** (lifecycle, tool calls, tool results, outcome; the report is `endo.experiment-report.v1`),
+- **Per judged layer** (lifecycle, tool calls, tool results, outcome),
   three numbers:
   - **The headline: modal agreement.** The share of completed trials whose layer equals the most common one, with a
     95% Wilson interval. Trials are independent, so the interval means what it says.

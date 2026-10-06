@@ -1,0 +1,21 @@
+{
+	"schemaVersion": "endo.experiment-trial.v0",
+	"position": 0,
+	"task": "hello",
+	"condition": "default",
+	"trial": 0,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-01-01T00:00:00.000Z",
+	"endedAt": "2026-01-01T00:01:00.000Z",
+	"store": "trials/hello/default/0/store",
+	"session": null,
+	"exchanges": 0,
+	"requestParameters": [],
+	"check": {
+		"ran": false,
+		"reason": "the task has no success check"
+	},
+	"finalWorkspace": null,
+	"notes": []
+}

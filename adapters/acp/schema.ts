@@ -77,14 +77,30 @@ const ANNOTATION_KEYWORDS = [
 const integerIn = (min: number, max: number) => (value: number) =>
 	Number.isInteger(value) && value >= min && value <= max;
 
-// The schema's numeric formats, with their ranges. uint64/int64 are checked as JS numbers (JSON.parse has already
-// rounded anything past 2^53; a value that large is not a plausible token count).
+// The schema's numeric formats, with their ranges.
+//
+// 64-bit integers: the schema allows uint64/int64 values past 2^53, but the JSON has already been parsed into a JS number,
+// which has rounded them. Such a value is not accepted as an exact integer, and is never recorded as one: the adapter
+// can only represent integers in [-(2^53-1), 2^53-1]. A value that is a schema-valid 64-bit integer but outside that
+// range is *not exactly representable here* (verdict "inexact-integer"), which is a different fact from a schema
+// violation. Nothing is rounded into evidence either way; the update is not counted.
+const U64_MAX = 18446744073709551615; // 2^64, as the nearest double
+const I64_MIN = -9223372036854775808;
+const I64_MAX = 9223372036854775807; // 2^63, as the nearest double
+let inexactSeen = false;
+const exact64 = (min: number, max: number, safeMin: number) => (value: number) => {
+	if (!Number.isInteger(value)) return false;
+	if (value >= safeMin && value <= Number.MAX_SAFE_INTEGER) return true;
+	// Inside the schema's 64-bit range but beyond what a JS number holds exactly.
+	if (value >= min && value <= max) inexactSeen = true;
+	return false;
+};
 const NUMBER_FORMATS: Record<string, (value: number) => boolean> = {
 	uint16: integerIn(0, 0xffff),
 	uint32: integerIn(0, 0xffff_ffff),
-	uint64: integerIn(0, Number.MAX_SAFE_INTEGER),
+	uint64: exact64(0, U64_MAX, 0),
 	int32: integerIn(-0x8000_0000, 0x7fff_ffff),
-	int64: integerIn(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+	int64: exact64(I64_MIN, I64_MAX, Number.MIN_SAFE_INTEGER),
 	double: Number.isFinite,
 };
 
@@ -201,6 +217,14 @@ export function validateAcpDefinitionV0(name: string, value: unknown): boolean {
  * outside ACP_STABLE_UPDATE_VARIANTS_V0 is a caller error: it is not described here, so it has no verdict.
  */
 export function validateAcpUpdateV0(variant: string, update: unknown): boolean {
+	return acpUpdateVerdictV0(variant, update) === "valid";
+}
+
+/**
+ * `valid`; `invalid` (the schema rejects it); or `inexact-integer` (rejected, and it carries a schema-valid 64-bit integer
+ * that a JS number cannot hold exactly: the adapter cannot represent the value, which is not the agent's schema error).
+ */
+export function acpUpdateVerdictV0(variant: string, update: unknown): "valid" | "invalid" | "inexact-integer" {
 	if (!ACP_STABLE_UPDATE_VARIANTS_V0.includes(variant))
 		throw new TypeError(`${variant} is not a stable ACP v1 update variant`);
 	const branches = load().document.$defs.SessionUpdate?.oneOf as ReadonlyArray<{
@@ -208,5 +232,7 @@ export function validateAcpUpdateV0(variant: string, update: unknown): boolean {
 	}>;
 	const index = branches.findIndex((branch) => branch.properties?.sessionUpdate?.const === variant);
 	if (index < 0) throw new Error(`the pinned ACP schema has no ${variant} update branch`);
-	return validator(`$defs/SessionUpdate/oneOf/${index}`)(update) === true;
+	inexactSeen = false;
+	if (validator(`$defs/SessionUpdate/oneOf/${index}`)(update) === true) return "valid";
+	return inexactSeen ? "inexact-integer" : "invalid";
 }

@@ -412,6 +412,20 @@ const agent = acp
 			case "ignore-sigterm":
 				await new Promise(() => {});
 				break;
+			case "permission-hold": {
+				// Asks for permission, never waits for the answer, and ends only when cancelled.
+				void ctx.client
+					.request(acp.methods.client.session.requestPermission, {
+						sessionId,
+						toolCall: { toolCallId: "held_call" },
+						options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+					})
+					.then((response) => note({ permissionOutcome: response.outcome }));
+				await new Promise<void>((resolve) => {
+					cancelled = resolve;
+				});
+				return { stopReason: "cancelled" as const };
+			}
 			case "cancellable":
 				await new Promise<void>((resolve) => {
 					cancelled = resolve;

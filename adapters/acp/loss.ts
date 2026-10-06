@@ -49,6 +49,8 @@ export interface AcpLossEntryV0 {
 	 */
 	readonly projects?: Readonly<Record<string, readonly string[]>>;
 	readonly lost: readonly string[];
+	/** Fields handed to the API caller that the durable event does not keep (a subset of what `lost` declares). */
+	readonly returnedToCaller?: readonly string[];
 	/** Required unless EXACT: what a reader must not assume. */
 	readonly qualification?: string;
 }
@@ -126,8 +128,19 @@ const declared: readonly AcpLossEntryV0[] = [
 			"whether a next cursor was reported",
 			"a JSON-RPC refusal, by code (control.refused)",
 		],
-		lost: ["session ids", "working directories", "titles", "update times", "the cursor"],
-		qualification: "the caller receives the full agent-reported page; the record keeps counts only.",
+		lost: ["session ids", "working directories", "additional directories", "titles", "update times", "the cursor"],
+		// Three levels: the adapter received the whole validated page; the caller gets every field below; the durable event
+		// keeps only counts, so each of these is in `lost` above.
+		returnedToCaller: [
+			"SessionInfo.sessionId",
+			"SessionInfo.cwd",
+			"SessionInfo.additionalDirectories",
+			"SessionInfo.title",
+			"SessionInfo.updatedAt",
+			"ListSessionsResponse.nextCursor",
+		],
+		qualification:
+			"the adapter receives the full validated page and the caller receives the agent-reported fields in returnedToCaller; the durable record keeps counts only.",
 	},
 	{
 		id: "session.close",
@@ -318,10 +331,11 @@ const declared: readonly AcpLossEntryV0[] = [
 		emits: ["runtime.malformed-event"],
 		preserved: [
 			"the variant name when there is one",
-			"problem: schema-invalid | no-sessionUpdate-variant | session-id-mismatch",
+			"problem: schema-invalid | integer-not-exact | no-sessionUpdate-variant | session-id-mismatch",
 		],
 		lost: ["every field"],
-		qualification: "never counted as update activity.",
+		qualification:
+			"never counted as update activity. integer-not-exact: the schema allows 64-bit integers beyond 2^53, which a JS number holds only inexactly after JSON parsing; such a value is not represented (never recorded rounded as exact), and that is the adapter's limit, not a schema violation by the agent. Responses outside session/update treat it as invalid.",
 	},
 	{
 		id: "protocol.fault",

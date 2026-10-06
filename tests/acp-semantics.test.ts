@@ -8,6 +8,7 @@ import {
 	type AcpClientOptionsV0,
 	AcpClientV0,
 	AcpClosedErrorV0,
+	AcpObserverErrorV0,
 	AcpRefusedErrorV0,
 	AcpTimeoutErrorV0,
 	AcpUnavailableErrorV0,
@@ -611,6 +612,59 @@ describe("review regressions, round 5", () => {
 			expect((await r.run())[0]).toBe(false);
 			expect(r.events.filter((e) => (e.payload as { action?: string }).action === "cancel")).toHaveLength(1);
 		});
+	});
+});
+
+describe("observation is evidence, not authority", () => {
+	it("completes cancellation, and answers pending permissions, when the observer throws", async () => {
+		let throwOnCancel = false;
+		const { client, events } = await attach(
+			"permission-hold",
+			{},
+			{},
+			{
+				permissionHandler: () => new Promise(() => {}),
+				onEvent: (event) => {
+					if (throwOnCancel && event.kind === "control.requested") throw new Error("observer failed");
+				},
+			},
+		);
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(events, "permission.requested").length && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		throwOnCancel = true;
+		await expect(client.cancel()).rejects.toBeInstanceOf(AcpObserverErrorV0);
+		// Despite the observer failing: the agent was told, the held permission was answered, the turn ended cancelled.
+		expect((await turn).stopReason).toBe("cancelled");
+		for (let waited = 0; !notes().some((note) => "permissionOutcome" in note) && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(client.observerErrors).toHaveLength(1);
+	});
+
+	it("exposes the restored live state to a synchronous observer of control.refused", async () => {
+		let probe: Promise<boolean> | undefined;
+		let client: AcpClientV0 | undefined;
+		const connected = await attach(
+			"cancellable",
+			{ FAKE_ACP_CAPS: "close", FAKE_ACP_CLOSE_REFUSE: "1" },
+			{},
+			{
+				onEvent: (event) => {
+					if (event.kind === "control.refused") probe = client?.cancel();
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(connected.events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		// At the event boundary the turn was already cancellable again.
+		expect(await probe).toBe(true);
+		expect((await turn).stopReason).toBe("cancelled");
 	});
 });
 

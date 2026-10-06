@@ -26,9 +26,9 @@ import {
 	endoReportedV0,
 } from "../../protocol/session-lifecycle.ts";
 import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
-import { ACP_STABLE_UPDATE_VARIANTS_V0, ACP_UNSTABLE_UPDATE_VARIANTS_V0, validateAcpUpdateV0 } from "./schema.ts";
+import { ACP_STABLE_UPDATE_VARIANTS_V0, ACP_UNSTABLE_UPDATE_VARIANTS_V0, acpUpdateVerdictV0 } from "./schema.ts";
 
-export const ACP_MAPPING_VERSION = "acp-v1-mapping.2";
+export const ACP_MAPPING_VERSION = "acp-v1-mapping.3";
 
 export const ACP_RECORDING_PRODUCER_PREFIX_V0 = "acp-adapter:";
 export const ACP_LIFECYCLE_PRODUCER_PREFIX_V0 = "acp-lifecycle:";
@@ -130,6 +130,7 @@ export class AcpRecorderV0 {
 	#sequence = 0;
 	#live = 0;
 	#lifecycle = 0;
+	readonly #observerErrors: unknown[] = [];
 
 	constructor(options: AcpRecorderOptionsV0) {
 		this.#options = options;
@@ -144,11 +145,24 @@ export class AcpRecorderV0 {
 		this.#sessionId = acpEndoSessionIdV0(this.#options.instance, acpSessionId);
 	}
 
+	/**
+	 * What `onEvent` threw, in order (the first 16). Observation is evidence, not authority: an observer that throws
+	 * never aborts the transition being recorded or the cleanup that must follow it. The failure is kept here, and the
+	 * control paths that have a caller to tell (cancel, closeSession) report it once their transition is complete.
+	 */
+	get observerErrors(): readonly unknown[] {
+		return this.#observerErrors;
+	}
+
 	#emit(event: Record<string, unknown>): EndoEventV0 {
 		const validated = validateEndoEventV0(event);
 		if (validated === null)
 			throw new TypeError(`the mapped ${String(event.kind)} event failed endo.event.v0 validation`);
-		this.#options.onEvent(validated);
+		try {
+			this.#options.onEvent(validated);
+		} catch (error) {
+			if (this.#observerErrors.length < 16) this.#observerErrors.push(error);
+		}
 		return validated;
 	}
 
@@ -276,11 +290,18 @@ export function translateAcpUpdateV0(update: unknown): AcpUpdateTranslationV0 {
 			},
 		};
 	}
-	if (!validateAcpUpdateV0(raw, update)) {
+	const verdict = acpUpdateVerdictV0(raw, update);
+	if (verdict !== "valid") {
 		return {
 			kind: "malformed",
 			variant,
-			payload: { runtimeEvent: "session/update", variant, problem: "schema-invalid" },
+			// An integer the schema allows but a JS number cannot hold exactly is not the agent's schema error, and it is
+			// never recorded rounded: the update is not counted, and says why.
+			payload: {
+				runtimeEvent: "session/update",
+				variant,
+				problem: verdict === "inexact-integer" ? "integer-not-exact" : "schema-invalid",
+			},
 		};
 	}
 	if (DELTA_VARIANTS.has(variant)) return { kind: "delta", variant };

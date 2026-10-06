@@ -25,6 +25,44 @@ note({ leakProbe: process.env.ENDO_ACP_LEAK_PROBE ?? null });
 let cancelled: (() => void) | undefined;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const sessionId = "fake-session-1";
+// Which optional session methods the agent advertises (FAKE_ACP_CAPS=list,resume,close) and what it reports at open.
+const caps = new Set((process.env.FAKE_ACP_CAPS ?? "").split(",").filter(Boolean));
+const sessionCapabilities: Record<string, unknown> = {};
+for (const name of caps) sessionCapabilities[name === "null-list" ? "list" : name] = name === "null-list" ? null : {};
+const configOptions =
+	(process.env.FAKE_ACP_CONFIG ?? "") === ""
+		? undefined
+		: [
+				{
+					id: "model",
+					name: "SECRET-OPTION-NAME",
+					category: "model",
+					type: "select",
+					currentValue: "m1",
+					options: [
+						{ value: "m1", name: "SECRET-M1" },
+						{ value: "m2", name: "SECRET-M2" },
+					],
+				},
+				{
+					id: "thinking",
+					name: "Thinking",
+					category: "thought_level",
+					type: "select",
+					currentValue: "low",
+					options: [
+						{
+							group: "g",
+							name: "G",
+							options: [
+								{ value: "low", name: "Low" },
+								{ value: "high", name: "High" },
+							],
+						},
+					],
+				},
+				{ id: "verbose", name: "Verbose", type: "boolean", currentValue: false },
+			];
 
 const agent = acp
 	.agent({ name: "fake-acp-agent" })
@@ -32,7 +70,11 @@ const agent = acp
 		return {
 			protocolVersion: (mode === "version-2" ? 2 : 1) as 1,
 			agentInfo: { name: "fake-acp-agent", title: "Fake", version: "9.9.9" },
-			agentCapabilities: { loadSession: false, promptCapabilities: { image: false } },
+			agentCapabilities: {
+				loadSession: false,
+				promptCapabilities: { image: false },
+				...(caps.size > 0 ? { sessionCapabilities } : {}),
+			},
 			authMethods: [{ id: "none", name: "No authentication" }],
 		};
 	})
@@ -42,7 +84,27 @@ const agent = acp
 		if (mode === "close-stdout") setTimeout(() => process.stdout.end(), 50);
 		// Answers, then dies at once.
 		if (mode === "exit-after-session-new") setImmediate(() => process.exit(5));
-		return { sessionId };
+		return { sessionId, ...(configOptions ? { configOptions } : {}) } as never;
+	})
+	.onRequest(acp.methods.agent.session.list, (ctx) => {
+		note({ called: "session/list", params: ctx.params });
+		return {
+			sessions: [
+				{ sessionId, cwd: "/work/one", title: "SECRET-SESSION-TITLE", updatedAt: "2026-01-01T00:00:00Z" },
+				{ sessionId: "other id with spaces", cwd: "/work/two" },
+			],
+			...(mode === "list-more" ? { nextCursor: "page-2" } : {}),
+		} as never;
+	})
+	.onRequest(acp.methods.agent.session.resume, (ctx) => {
+		note({ called: "session/resume", sessionId: ctx.params.sessionId });
+		if (ctx.params.sessionId === "unknown-session") throw new acp.RequestError(-32602, "no such session");
+		return (configOptions ? { configOptions } : {}) as never;
+	})
+	.onRequest(acp.methods.agent.session.close, (ctx) => {
+		note({ called: "session/close", sessionId: ctx.params.sessionId });
+		cancelled?.();
+		return {} as never;
 	})
 	.onNotification(acp.methods.agent.session.cancel, () => cancelled?.())
 	.onRequest(acp.methods.agent.session.prompt, async (ctx) => {
@@ -181,6 +243,82 @@ const agent = acp
 				);
 				setTimeout(() => process.exit(4), 100);
 				await new Promise(() => {});
+				break;
+			}
+			case "semantics":
+				await update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "SECRET-THOUGHT" } });
+				await update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "SECRET-USER" } });
+				await update({
+					sessionUpdate: "tool_call",
+					toolCallId: "call_s",
+					title: "SECRET-TOOL-TITLE",
+					name: "bash",
+					kind: "execute",
+					status: "in_progress",
+					content: [{ type: "content", content: { type: "text", text: "SECRET-TOOL-CONTENT" } }],
+					locations: [{ path: "/secret/path" }],
+					rawInput: { command: "SECRET-ARGS" },
+				});
+				await update({
+					sessionUpdate: "tool_call_update",
+					toolCallId: "call_s",
+					status: "completed",
+					rawOutput: { out: "SECRET-RESULT" },
+				});
+				await update({
+					sessionUpdate: "plan",
+					entries: [
+						{ content: "SECRET-PLAN", priority: "high", status: "pending" },
+						{ content: "two", priority: "low", status: "completed" },
+						{ content: "three", priority: "low", status: "completed" },
+					],
+				});
+				await update({
+					sessionUpdate: "available_commands_update",
+					availableCommands: [{ name: "SECRET-CMD", description: "SECRET-CMD-DESC" }],
+				});
+				await update({ sessionUpdate: "current_mode_update", currentModeId: "plan" });
+				await update({ sessionUpdate: "config_option_update", configOptions: configOptions ?? [] });
+				await update({
+					sessionUpdate: "session_info_update",
+					title: "SECRET-TITLE",
+					updatedAt: "2026-01-01T00:00:00Z",
+				});
+				await update({ sessionUpdate: "usage_update", used: 53000, size: 200000 });
+				await update({
+					sessionUpdate: "usage_update",
+					used: 54000,
+					size: 200000,
+					cost: { amount: 0.25, currency: "USD" },
+				});
+				await update({ sessionUpdate: "usage_update", used: 55000, size: 200000, cost: null });
+				await update({ sessionUpdate: "notice", severity: "info", title: "SECRET-NOTICE" });
+				await update({ sessionUpdate: "plan_update", plan: { planId: "p" } });
+				break;
+			case "hostile-nested": {
+				const select = (options: unknown) => ({
+					sessionUpdate: "config_option_update",
+					configOptions: [{ id: "m", name: "M", type: "select", currentValue: "a", options }],
+				});
+				await update(select([{}]));
+				await update(select([{ group: "g", name: "G" }]));
+				await update(select("not-an-array"));
+				await update({
+					sessionUpdate: "config_option_update",
+					configOptions: [{ id: "b", name: "B", type: "boolean", currentValue: "yes" }],
+				});
+				await update({
+					sessionUpdate: "config_option_update",
+					configOptions: [{ id: "x", name: "X", type: "slider", currentValue: 1 }],
+				});
+				await update({ sessionUpdate: "usage_update", used: -5, size: 10 });
+				await update({ sessionUpdate: "usage_update", used: 5, size: 10, cost: { amount: 1 } });
+				await update({ sessionUpdate: "usage_update", used: 1.5, size: 10 });
+				await update({ sessionUpdate: "plan", entries: [{ content: "x", priority: "urgent", status: "pending" }] });
+				await update({ sessionUpdate: "tool_call", toolCallId: "t", title: "t", content: "not-an-array" });
+				await update({ sessionUpdate: "tool_call_update", toolCallId: "t", locations: [{}] });
+				await update({ sessionUpdate: "session_info_update", title: 5 });
+				await update({ sessionUpdate: "current_mode_update", currentModeId: 7 });
 				break;
 			}
 			case "permission-after-exit": {

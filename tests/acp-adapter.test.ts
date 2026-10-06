@@ -242,6 +242,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(find(events, "runtime.unrecognized-event")[0]!.payload).toEqual({
 			runtimeEvent: "future_variant_from_v9",
 			method: "session/update",
+			schemaStatus: "unknown",
 		});
 		expect(find(events, "lifecycle.unrecognized-runtime-event")[0]!.payload).toEqual({
 			runtimeEvent: "future_variant_from_v9",
@@ -343,8 +344,8 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			expect(Object.getOwnPropertyDescriptor(client.updateCounts, name)!.value).toBe(1);
 		}
 		expect(find(events, "runtime.unrecognized-event").map((event) => event.payload)).toEqual([
-			{ runtimeEvent: "__proto__", method: "session/update" },
-			{ runtimeEvent: "constructor", method: "session/update" },
+			{ runtimeEvent: "__proto__", method: "session/update", schemaStatus: "unknown" },
+			{ runtimeEvent: "constructor", method: "session/update", schemaStatus: "unknown" },
 		]);
 	});
 
@@ -391,9 +392,9 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		const { client, events } = await attach("malformed-known");
 		const result = await client.prompt("go");
 		expect(find(events, "runtime.malformed-event").map((event) => event.payload)).toEqual([
-			{ runtimeEvent: "session/update", variant: "agent_message_chunk", problem: "required-field-missing" },
-			{ runtimeEvent: "session/update", variant: "tool_call", problem: "required-field-missing" },
-			{ runtimeEvent: "session/update", variant: "usage_update", problem: "required-field-missing" },
+			{ runtimeEvent: "session/update", variant: "agent_message_chunk", problem: "schema-invalid" },
+			{ runtimeEvent: "session/update", variant: "tool_call", problem: "schema-invalid" },
+			{ runtimeEvent: "session/update", variant: "usage_update", problem: "schema-invalid" },
 		]);
 		// Only valid updates count: the common prefix plus three session_info_update (the malformed three are not).
 		expect(result.updates).toEqual({

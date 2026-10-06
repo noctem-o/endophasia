@@ -132,6 +132,7 @@ export class AcpRecorderV0 {
 	#lifecycle = 0;
 	readonly #observerErrors: unknown[] = [];
 	#observerFailures = 0;
+	readonly #undelivered = new WeakSet<object>();
 	#lastObserverError: unknown;
 
 	constructor(options: AcpRecorderOptionsV0) {
@@ -161,6 +162,11 @@ export class AcpRecorderV0 {
 		return this.#observerFailures;
 	}
 
+	/** Whether `onEvent` threw on this very event (not on any other emitted meanwhile, nested or concurrent). */
+	deliveryFailed(event: EndoEventV0): boolean {
+		return this.#undelivered.has(event);
+	}
+
 	get lastObserverError(): unknown {
 		return this.#lastObserverError;
 	}
@@ -172,6 +178,7 @@ export class AcpRecorderV0 {
 		try {
 			this.#options.onEvent(validated);
 		} catch (error) {
+			this.#undelivered.add(validated);
 			this.#observerFailures += 1;
 			this.#lastObserverError = error;
 			if (this.#observerErrors.length < 16) this.#observerErrors.push(error);

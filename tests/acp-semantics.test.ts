@@ -678,6 +678,40 @@ describe("observation is evidence, not authority", () => {
 		expect(client.observerErrors).toHaveLength(1); // the unrelated failure is still retained and visible
 	});
 
+	it("does not blame a control transition for a failure on an emission its observer caused by re-entering", async () => {
+		let client: AcpClientV0 | undefined;
+		let fired = false;
+		const seen: EndoEventV0[] = [];
+		const connected = await attach(
+			"cancellable",
+			{},
+			{},
+			{
+				onEvent: (event) => {
+					seen.push(event);
+					if (event.kind === "control.unavailable") throw new Error("sink rejects this one");
+					if (
+						!fired &&
+						event.kind === "control.requested" &&
+						(event.payload as { action?: string }).action === "cancel"
+					) {
+						fired = true;
+						// Unavailable: emits control.unavailable synchronously, which the sink rejects.
+						void client?.listSessions().catch(() => {});
+					}
+				},
+			},
+		);
+		client = connected.client;
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(seen, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(await client.cancel()).toBe(true); // both cancel-related events were delivered
+		expect(find(seen, "control.unavailable")).toHaveLength(1);
+		expect(client.observerErrors).toHaveLength(1); // the nested failure is visible, just not this cancel's
+		await turn;
+	});
+
 	it("restores a refused close once: an operation the observer started meanwhile is not undone", async () => {
 		let probe: Promise<boolean> | undefined;
 		let client: AcpClientV0 | undefined;

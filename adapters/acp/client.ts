@@ -522,20 +522,16 @@ export class AcpClientV0 {
 	}
 
 	/**
-	 * Runs one of a control transition's own emissions and notes whether the observer failed on *it*. Only these emissions
-	 * count: traffic the agent sends while an async transition is pending is recorded too, and a sink failing on that is
-	 * not this transition's failure. Counted without the retention cap, so a sink that has failed many times still reports.
+	 * Notes whether the observer failed on one of a control transition's *own* emissions, by event identity. Only these
+	 * count: traffic the agent sends while an async transition is pending, or an emission an observer causes by re-entering
+	 * the client, is not this transition's failure. (Such failures stay visible in `observerErrors`.)
 	 */
-	#own<T>(own: { failed: boolean; error?: unknown }, emit: () => T): T {
-		const before = this.#recorder.observerFailures;
-		try {
-			return emit();
-		} finally {
-			if (!own.failed && this.#recorder.observerFailures > before) {
-				own.failed = true;
-				own.error = this.#recorder.lastObserverError;
-			}
+	#own(own: { failed: boolean; error?: unknown }, event: EndoEventV0): EndoEventV0 {
+		if (!own.failed && this.#recorder.deliveryFailed(event)) {
+			own.failed = true;
+			own.error = this.#recorder.lastObserverError;
 		}
+		return event;
 	}
 
 	/** Reports an observer failure on a control transition's own emissions, once the transition is complete. */
@@ -624,13 +620,12 @@ export class AcpClientV0 {
 			if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
 		};
 		try {
-			this.#own(own, () => {
-				const requested = this.#recorder.record("control.requested", {
-					capability: "session.close",
-					action: "close",
-				});
-				if (run !== null) this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-			});
+			const requested = this.#own(
+				own,
+				this.#recorder.record("control.requested", { capability: "session.close", action: "close" }),
+			);
+			if (run !== null)
+				this.#own(own, this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested));
 		} catch (error) {
 			// Not an observer failure (those are isolated): the clock or event validation failed, nothing was sent.
 			restoreLive();
@@ -657,7 +652,7 @@ export class AcpClientV0 {
 			this.#recorder.record("harness.protocol-fault", { fault: "session-close-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v1 response");
 		}
-		this.#own(own, () => this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" }));
+		this.#own(own, this.#recorder.record("session.close-accepted", { basis: "jsonrpc-response" }));
 		this.#reportObserverFailure(own);
 	}
 
@@ -826,13 +821,11 @@ export class AcpClientV0 {
 		// observer failures, so the cleanup and the notification below always happen; a failure is reported afterwards.
 		const own = { failed: false } as { failed: boolean; error?: unknown };
 		run.stopRequested = true;
-		this.#own(own, () => {
-			const requested = this.#recorder.record("control.requested", {
-				capability: "session.cancel",
-				action: "cancel",
-			});
-			this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
-		});
+		const requested = this.#own(
+			own,
+			this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" }),
+		);
+		this.#own(own, this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested));
 		// A client must answer pending permission requests with `cancelled` once it cancels the turn.
 		for (const cancel of [...this.#pendingPermissions]) cancel();
 		await this.#connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: this.sessionId });

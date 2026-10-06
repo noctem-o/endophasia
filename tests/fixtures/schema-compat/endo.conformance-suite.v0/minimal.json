@@ -1,0 +1,22 @@
+{
+	"schemaVersion": "endo.conformance-suite.v0",
+	"studies": [
+		{
+			"classification": "EXACT",
+			"decoder": "fx-decoder",
+			"evidence": [
+				"2222222222222222222222222222222222222222222222222222222222222222"
+			],
+			"expected": "expected words",
+			"limitations": [],
+			"observed": "observed words",
+			"predicate": "fx-predicate",
+			"scenario": "fx-scenario",
+			"schemaVersion": "endo.conformance-study.v0",
+			"subject": "fx-subject",
+			"version": "0.0.1"
+		}
+	],
+	"subject": "fx-subject",
+	"version": "0.0.1"
+}

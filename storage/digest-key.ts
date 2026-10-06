@@ -23,6 +23,12 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	defineEndoVersionTableV0,
+	EndoSchemaVersionErrorV0,
+	endoFirstUnknownKeyV0,
+	readEndoVersionedV0,
+} from "../protocol/versioned.ts";
 import { type EndoDigestKeyV0, endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
 export const ENDO_DIGEST_KEY_FILE_SCHEMA_V0 = "endo.digest-key.v0";
@@ -57,6 +63,28 @@ interface KeyFileV0 {
 	key: Buffer;
 }
 
+/** The exact `endo.digest-key.v0` file: these keys and no others. `public` is optional. */
+const KEY_FILE_KEYS_V0 = ["schemaVersion", "domain", "key", "public"] as const;
+
+function validateKeyFileV0(value: unknown): Record<string, unknown> | null {
+	const record = value as Record<string, unknown>;
+	if (
+		endoFirstUnknownKeyV0(record, KEY_FILE_KEYS_V0) !== undefined ||
+		typeof record.domain !== "string" ||
+		typeof record.key !== "string" ||
+		!/^[0-9a-f]{64,}$/.test(record.key) ||
+		record.key.length % 2 !== 0 ||
+		(record.public !== undefined && typeof record.public !== "boolean")
+	)
+		return null;
+	return record;
+}
+
+/** The digest-key file versions this reader knows. */
+export const ENDO_DIGEST_KEY_FILE_VERSIONS_V0 = defineEndoVersionTableV0<Record<string, unknown>>("endo.digest-key", [
+	[ENDO_DIGEST_KEY_FILE_SCHEMA_V0, validateKeyFileV0],
+]);
+
 function parseFile(path: string): KeyFileV0 {
 	let parsed: unknown;
 	try {
@@ -64,18 +92,19 @@ function parseFile(path: string): KeyFileV0 {
 	} catch {
 		throw new TypeError(`the digest key ${path} is not valid JSON`);
 	}
-	const record = parsed as { schemaVersion?: unknown; domain?: unknown; key?: unknown; public?: unknown };
-	if (
-		record.schemaVersion !== ENDO_DIGEST_KEY_FILE_SCHEMA_V0 ||
-		typeof record.domain !== "string" ||
-		typeof record.key !== "string" ||
-		!/^[0-9a-f]{64,}$/.test(record.key) ||
-		record.key.length % 2 !== 0 ||
-		(record.public !== undefined && typeof record.public !== "boolean")
-	) {
-		throw new TypeError(`the digest key ${path} is not an ${ENDO_DIGEST_KEY_FILE_SCHEMA_V0} file`);
+	const read = readEndoVersionedV0(ENDO_DIGEST_KEY_FILE_VERSIONS_V0, parsed);
+	if (!read.ok) {
+		throw new EndoSchemaVersionErrorV0({
+			...read,
+			message: `the digest key ${path} is not an ${ENDO_DIGEST_KEY_FILE_SCHEMA_V0} file (${read.message})`,
+		});
 	}
-	return { domain: record.domain, public: record.public === true, key: Buffer.from(record.key, "hex") };
+	const record = read.value;
+	return {
+		domain: record.domain as string,
+		public: record.public === true,
+		key: Buffer.from(record.key as string, "hex"),
+	};
 }
 
 /**

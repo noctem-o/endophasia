@@ -1,0 +1,18 @@
+{
+	"at": "2026-01-01T00:00:00Z",
+	"coordinates": {
+		"experimentId": "endo.experiment.fx-1",
+		"runId": "endo.run.fx-1",
+		"sessionId": "endo.session.fx-1"
+	},
+	"derivedFrom": [
+		"endo.event.fx.started"
+	],
+	"id": "endo.event.fx.full",
+	"kind": "session.started",
+	"payload": {},
+	"producer": "endo.tool.fx",
+	"schemaVersion": "endo.event.v0",
+	"sequence": 0,
+	"source": "runtime-fact"
+}

@@ -1,0 +1,32 @@
+{
+	"at": "2026-01-01T00:00:02.000Z",
+	"attachment": "fx.attachment",
+	"capability": "control.model",
+	"check": {
+		"definitionDigest": "8888888888888888888888888888888888888888888888888888888888888888",
+		"kind": "local-protocol",
+		"name": "fx-check",
+		"version": "1"
+	},
+	"classification": "EXACT",
+	"dependencies": {
+		"adapterVersion": "1",
+		"confidence": "strong",
+		"configurationDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+		"extension": null,
+		"fingerprintId": "endo.evidence.fx-fingerprint-2142e80091af2f31",
+		"identityDigest": "fcb516e95fdb559845c027233e4c9a8676a61b6148f918d652e4f547a506dc11",
+		"mappingVersion": "1",
+		"suiteVersion": "1"
+	},
+	"evidence": [
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	],
+	"expected": "expected words",
+	"id": "endo.evidence.fx-capability-evidence-1",
+	"inputsDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	"limitations": [],
+	"observed": "observed words",
+	"runtime": "fx.runtime",
+	"schemaVersion": "endo.capability-evidence.v0"
+}

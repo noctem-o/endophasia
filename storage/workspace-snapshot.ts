@@ -30,10 +30,23 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
+import {
+	defineEndoVersionTableV0,
+	EndoInvalidRecordV0,
+	EndoSchemaVersionErrorV0,
+	type EndoVersionedReadV0,
+	endoFirstUnknownKeyV0,
+	endoSafeTextV0,
+	readEndoVersionedV0,
+} from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 
 export const ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0 = "endo.workspace-archive.v0";
 export const ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1 = "endo.workspace-archive.v1";
+
+/** The version `archiveEndoWorkspaceV0` writes. The reader below keeps both. */
+export const ENDO_WORKSPACE_ARCHIVE_WRITE_VERSION_V0 = ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1;
 
 /** The most file bytes an archive holds; a larger workspace is refused (a snapshot is for scratch workspaces). */
 export const ENDO_WORKSPACE_ARCHIVE_MAX_BYTES_V0 = 64 * 1024 * 1024;
@@ -99,7 +112,7 @@ export function archiveEndoWorkspaceV0(directory: string): {
 	walk("");
 	entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 	const archive: EndoWorkspaceArchiveV0 = {
-		schemaVersion: ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1,
+		schemaVersion: ENDO_WORKSPACE_ARCHIVE_WRITE_VERSION_V0,
 		rootMtimeMs: Math.floor(statSync(directory).mtimeMs),
 		entries,
 	};
@@ -115,6 +128,13 @@ export function archiveEndoWorkspaceV0(directory: string): {
 	};
 }
 
+const isTime = (value: unknown): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const reject = (detail: string): never => {
+	throw new EndoInvalidRecordV0(detail);
+};
+
 function safePath(path: unknown): string {
 	if (
 		typeof path !== "string" ||
@@ -123,48 +143,125 @@ function safePath(path: unknown): string {
 		path.includes("\\") ||
 		path.includes("\0")
 	)
-		throw new TypeError(`unsafe archive path ${JSON.stringify(path)}`);
+		return reject(`unsafe archive path ${endoSafeTextV0(path)}`);
 	for (const segment of path.split("/"))
 		if (segment === "" || segment === "." || segment === "..")
-			throw new TypeError(`unsafe archive path ${JSON.stringify(path)}`);
+			return reject(`unsafe archive path ${endoSafeTextV0(path)}`);
 	return path;
 }
 
-const isTime = (value: unknown): value is number =>
-	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+// Each representation is exact: these are the keys it declares, and no others. A key of another version is an unknown
+// key here (v0 has no times; v1 requires them).
+const ROOT_KEYS_V0 = ["schemaVersion", "entries"] as const;
+const ROOT_KEYS_V1 = ["schemaVersion", "rootMtimeMs", "entries"] as const;
+const ENTRY_KEYS_V0 = {
+	directory: ["path", "type"],
+	file: ["path", "type", "executable", "bytes", "base64"],
+	symlink: ["path", "type", "target"],
+} as const;
+const ENTRY_KEYS_V1 = {
+	directory: [...ENTRY_KEYS_V0.directory, "mtimeMs"],
+	file: [...ENTRY_KEYS_V0.file, "mtimeMs"],
+	symlink: [...ENTRY_KEYS_V0.symlink, "mtimeMs"],
+} as const;
 
-/** Parse and check archive bytes (v0 or v1). Throws on anything that is not a well-formed, safe workspace archive. */
-export function parseEndoWorkspaceArchiveV0(bytes: Uint8Array): EndoWorkspaceArchiveV0 {
-	const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-	const parsed = JSON.parse(text) as EndoWorkspaceArchiveV0;
-	const v1 = parsed?.schemaVersion === ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1;
-	if ((!v1 && parsed?.schemaVersion !== ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0) || !Array.isArray(parsed.entries))
-		throw new TypeError(`not an ${ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1} or ${ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0}`);
-	if (v1 ? !isTime(parsed.rootMtimeMs) : parsed.rootMtimeMs !== undefined) throw new TypeError("bad root time");
-	if (canonicalEndoJsonV0(parsed) !== text) throw new TypeError("the archive is not in canonical form");
+/** Check an archive of one exact version (v1 when `timed`): its keys, its entries' keys and types, the paths, the order. */
+function checkArchive(value: unknown, timed: boolean): EndoWorkspaceArchiveV0 {
+	const root = value as Record<string, unknown>;
+	const unknownRoot = endoFirstUnknownKeyV0(root, timed ? ROOT_KEYS_V1 : ROOT_KEYS_V0);
+	if (unknownRoot !== undefined) return reject(`unknown archive field ${endoSafeTextV0(unknownRoot)}`);
+	if (timed && !isTime(root.rootMtimeMs)) return reject("bad root time");
+	if (!Array.isArray(root.entries)) return reject("entries is not an array");
+	const keys = timed ? ENTRY_KEYS_V1 : ENTRY_KEYS_V0;
 	const links = new Set<string>();
 	let previous = "";
-	for (const entry of parsed.entries) {
-		const path = safePath(entry.path);
-		if (v1 ? !isTime(entry.mtimeMs) : entry.mtimeMs !== undefined) throw new TypeError(`bad time at ${path}`);
-		if (previous !== "" && !(previous < path)) throw new TypeError(`archive entries are not sorted at ${path}`);
+	for (const entry of root.entries as unknown[]) {
+		if (!isPlainJsonObjectV0(entry)) return reject("an archive entry is not a plain JSON object");
+		const e = entry as Record<string, unknown>;
+		const path = safePath(e.path);
+		const type = e.type;
+		if (type !== "directory" && type !== "file" && type !== "symlink")
+			return reject(`unknown entry type at ${endoSafeTextV0(path)}`);
+		const unknown = endoFirstUnknownKeyV0(e, keys[type]);
+		if (unknown !== undefined)
+			return reject(`unknown field ${endoSafeTextV0(unknown)} in the entry ${endoSafeTextV0(path)}`);
+		if (timed && !isTime(e.mtimeMs)) return reject(`bad time at ${endoSafeTextV0(path)}`);
+		if (previous !== "" && !(previous < path))
+			return reject(`archive entries are not sorted at ${endoSafeTextV0(path)}`);
 		previous = path;
 		const parts = path.split("/");
 		for (let index = 1; index < parts.length; index += 1)
 			if (links.has(parts.slice(0, index).join("/")))
-				throw new TypeError(
-					`archive entry ${path} lies under the symbolic link ${parts.slice(0, index).join("/")}`,
+				return reject(
+					`archive entry ${endoSafeTextV0(path)} lies under the symbolic link ${endoSafeTextV0(parts.slice(0, index).join("/"))}`,
 				);
-		if (entry.type === "symlink") {
-			if (typeof entry.target !== "string" || entry.target.length === 0) throw new TypeError(`bad link ${path}`);
+		if (type === "symlink") {
+			if (typeof e.target !== "string" || e.target.length === 0) return reject(`bad link ${endoSafeTextV0(path)}`);
 			links.add(path);
-		} else if (entry.type === "file") {
-			if (typeof entry.base64 !== "string" || typeof entry.executable !== "boolean")
-				throw new TypeError(`bad file entry ${path}`);
-			if (Buffer.from(entry.base64, "base64").length !== entry.bytes) throw new TypeError(`bad file length ${path}`);
-		} else if (entry.type !== "directory") throw new TypeError(`unknown entry type at ${path}`);
+		} else if (type === "file") {
+			if (typeof e.base64 !== "string" || typeof e.executable !== "boolean" || !isTime(e.bytes))
+				return reject(`bad file entry ${endoSafeTextV0(path)}`);
+			// Buffer's base64 decoder skips what it does not understand; a round trip proves the text is canonical base64.
+			const content = Buffer.from(e.base64, "base64");
+			if (content.toString("base64") !== e.base64 || content.length !== e.bytes)
+				return reject(`bad file content or length ${endoSafeTextV0(path)}`);
+		}
 	}
-	return parsed;
+	return value as EndoWorkspaceArchiveV0;
+}
+
+/**
+ * The archive versions this reader knows, each read under its own exact rules. Readers keep every committed version;
+ * the writer ({@link ENDO_WORKSPACE_ARCHIVE_WRITE_VERSION_V0}) emits only the current one.
+ */
+export const ENDO_WORKSPACE_ARCHIVE_VERSIONS_V0 = defineEndoVersionTableV0<EndoWorkspaceArchiveV0>(
+	"endo.workspace-archive",
+	[
+		[ENDO_WORKSPACE_ARCHIVE_SCHEMA_V0, (value) => checkArchive(value, false)],
+		[ENDO_WORKSPACE_ARCHIVE_SCHEMA_V1, (value) => checkArchive(value, true)],
+	],
+);
+
+/**
+ * Read archive bytes (v0 or v1) as a result: a missing, unknown and malformed-known version stay distinguishable. The
+ * bytes must also be the canonical JSON of the record. Bytes that are not UTF-8 JSON are a `not-an-object` failure.
+ */
+export function readEndoWorkspaceArchiveV0(bytes: Uint8Array): EndoVersionedReadV0<EndoWorkspaceArchiveV0> {
+	let text: string;
+	let parsed: unknown;
+	try {
+		text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		parsed = JSON.parse(text);
+	} catch {
+		return {
+			ok: false,
+			kind: "not-an-object",
+			message: "endo.workspace-archive: the bytes are not UTF-8 JSON",
+		};
+	}
+	const read = readEndoVersionedV0(ENDO_WORKSPACE_ARCHIVE_VERSIONS_V0, parsed);
+	if (!read.ok) return read;
+	let canonical: string;
+	try {
+		canonical = canonicalEndoJsonV0(read.value);
+	} catch {
+		canonical = "";
+	}
+	if (canonical !== text)
+		return {
+			ok: false,
+			kind: "invalid",
+			schemaVersion: read.schemaVersion,
+			message: `endo.workspace-archive: record declares ${read.schemaVersion} but is not in canonical form`,
+		};
+	return read;
+}
+
+/** Parse and check archive bytes (v0 or v1). Throws `EndoSchemaVersionErrorV0` (a `TypeError`) on anything that is not a well-formed, safe workspace archive. */
+export function parseEndoWorkspaceArchiveV0(bytes: Uint8Array): EndoWorkspaceArchiveV0 {
+	const read = readEndoWorkspaceArchiveV0(bytes);
+	if (!read.ok) throw new EndoSchemaVersionErrorV0(read);
+	return read.value;
 }
 
 /**

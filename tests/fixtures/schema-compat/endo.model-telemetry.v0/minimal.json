@@ -1,0 +1,11 @@
+{
+	"calls": 1,
+	"durationMs": 1,
+	"failures": 0,
+	"health": "healthy",
+	"id": "endo.evidence.fx-telemetry-1",
+	"modelId": "endo.model.fx-model",
+	"schemaVersion": "endo.model-telemetry.v0",
+	"tokensIn": 1,
+	"tokensOut": 1
+}

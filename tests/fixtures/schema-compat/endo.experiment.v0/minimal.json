@@ -1,0 +1,6 @@
+{
+	"evaluator": "fx-eval",
+	"grader": "fx-grade",
+	"id": "endo.experiment.fx-1",
+	"schemaVersion": "endo.experiment.v0"
+}

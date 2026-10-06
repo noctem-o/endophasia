@@ -1,0 +1,9 @@
+{
+	"computedDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+	"derived": "reconstructed",
+	"events": "exact",
+	"graph": "exact",
+	"recordId": "endo.evidence.fx-record-1",
+	"schemaVersion": "endo.replay-comparison.v0",
+	"visualState": "exact"
+}

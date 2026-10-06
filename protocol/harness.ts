@@ -22,6 +22,7 @@
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0, type EndoConformanceClassificationV0 } from "./evaluation.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
+import { defineEndoVersionTableV0 } from "./versioned.ts";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -703,3 +704,23 @@ export function validateEndoSourceEntryRefV0(value: unknown): EndoSourceEntryRef
 	if (!isText(value.sessionId, 256) || !isText(value.entryId, 256)) return null;
 	return value as unknown as EndoSourceEntryRefV0;
 }
+
+/** A harness-registry record of any kind this reader knows. */
+export type EndoHarnessRegistryRecordV0 =
+	| EndoHarnessFingerprintV0
+	| EndoHarnessChangeV0
+	| EndoCapabilityEvidenceV0
+	| EndoCapabilityStateV0
+	| EndoHarnessNotificationV0;
+
+/** The harness-registry record versions this reader knows, each read by its own validator. */
+export const ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0 = defineEndoVersionTableV0<EndoHarnessRegistryRecordV0>(
+	"endo.harness-registry-record",
+	[
+		["endo.harness-fingerprint.v0", validateEndoHarnessFingerprintV0],
+		["endo.harness-change.v0", validateEndoHarnessChangeV0],
+		["endo.capability-evidence.v0", validateEndoCapabilityEvidenceV0],
+		["endo.capability-state.v0", validateEndoCapabilityStateV0],
+		["endo.harness-notification.v0", validateEndoHarnessNotificationV0],
+	],
+);

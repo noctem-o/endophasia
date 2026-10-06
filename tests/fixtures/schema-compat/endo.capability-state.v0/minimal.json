@@ -1,0 +1,17 @@
+{
+	"at": "2026-01-01T00:00:03.000Z",
+	"attachment": "fx.attachment",
+	"capabilities": [
+		{
+			"capability": "control.model",
+			"classification": "EXACT",
+			"evidenceId": "endo.evidence.fx-capability-evidence-1",
+			"reason": "fx reason",
+			"requires": "local-protocol",
+			"status": "admitted"
+		}
+	],
+	"fingerprintId": "endo.evidence.fx-fingerprint-2142e80091af2f31",
+	"runtime": "fx.runtime",
+	"schemaVersion": "endo.capability-state.v0"
+}

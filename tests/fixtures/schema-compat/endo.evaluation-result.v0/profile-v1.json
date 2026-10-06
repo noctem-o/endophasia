@@ -1,0 +1,44 @@
+{
+	"id": "endo.evidence.fx-result-2",
+	"profile": {
+		"candidateId": "endo.candidate.fx-2",
+		"candidateRevision": "fx-rev",
+		"cognitionPolicy": "none",
+		"environment": {
+			"environmentId": "fx-env",
+			"schemaVersion": "endo.environment-profile.v0",
+			"simulated": true
+		},
+		"evaluator": "fx-eval",
+		"experimentId": "endo.experiment.fx-1",
+		"grader": "fx-grade",
+		"model": "fx-model",
+		"runtime": "fx-runtime",
+		"schemaVersion": "endo.evaluation-profile.v1",
+		"seeds": [
+			1
+		],
+		"trialCount": 1
+	},
+	"resultBundleDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+	"schemaVersion": "endo.evaluation-result.v0",
+	"trials": [
+		{
+			"coordinates": {
+				"candidateId": "endo.candidate.fx-2",
+				"experimentId": "endo.experiment.fx-1",
+				"runId": "endo.run.fx-1",
+				"schemaVersion": "endo.trial.v0",
+				"trial": 0
+			},
+			"derived": {
+				"score": 1
+			},
+			"partition": "validation",
+			"raw": {
+				"ok": true
+			},
+			"schemaVersion": "endo.trial-result.v0"
+		}
+	]
+}

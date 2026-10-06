@@ -1,0 +1,28 @@
+{
+	"entries": [
+		{
+			"base64": "aGk=",
+			"bytes": 2,
+			"executable": false,
+			"path": "a.txt",
+			"type": "file"
+		},
+		{
+			"path": "bin",
+			"type": "directory"
+		},
+		{
+			"base64": "IyF4",
+			"bytes": 3,
+			"executable": true,
+			"path": "bin/run.sh",
+			"type": "file"
+		},
+		{
+			"path": "link",
+			"target": "a.txt",
+			"type": "symlink"
+		}
+	],
+	"schemaVersion": "endo.workspace-archive.v0"
+}

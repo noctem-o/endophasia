@@ -11,6 +11,7 @@ import type { EndoReplayLayerV0, EndoResourceUsageV0 } from "./event-record.ts";
 import { ENDO_REPLAY_LAYERS_V0, validateEndoResourceUsageV0 } from "./event-record.ts";
 import { type EndoIdentifierKindV0, isEndoIdentifierV0 } from "./identity.ts";
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
+import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
 /**
  * The data a trial drew from. A partition is a statement about the trial's data, never about its quality.
@@ -364,10 +365,41 @@ export function validateEndoEvaluationProfileV1(value: unknown): EndoEvaluationP
 	) as EndoEvaluationProfileV1 | null;
 }
 
-/** Validates an evaluation profile of either version, each under its own rules. */
-export function validateEndoEvaluationProfileAnyV0(value: unknown): EndoEvaluationProfileAnyV0 | null {
-	return validateEndoEvaluationProfileV0(value) ?? validateEndoEvaluationProfileV1(value);
+/**
+ * The evaluation-profile versions this reader knows. The declared `schemaVersion` selects exactly one validator; a
+ * record is never tried against the others.
+ */
+export const ENDO_EVALUATION_PROFILE_VERSIONS_V0 = defineEndoVersionTableV0<EndoEvaluationProfileAnyV0>(
+	"endo.evaluation-profile",
+	[
+		["endo.evaluation-profile.v0", validateEndoEvaluationProfileV0],
+		["endo.evaluation-profile.v1", validateEndoEvaluationProfileV1],
+	],
+);
+
+/** Read an evaluation profile under the version it declares; the result tells a missing, unknown and malformed version apart. */
+export function readEndoEvaluationProfileV0(value: unknown): EndoVersionedReadV0<EndoEvaluationProfileAnyV0> {
+	return readEndoVersionedV0(ENDO_EVALUATION_PROFILE_VERSIONS_V0, value);
 }
+
+/** Validates an evaluation profile of either version, each under its own rules (dispatched by its declared version). */
+export function validateEndoEvaluationProfileAnyV0(value: unknown): EndoEvaluationProfileAnyV0 | null {
+	const read = readEndoEvaluationProfileV0(value);
+	return read.ok ? read.value : null;
+}
+
+/**
+ * The profile versions an `endo.evaluation-result.v0` may embed, as the result's own table. This is part of the
+ * result's contract and deliberately not the profile family's table: a profile version added there is not legal inside
+ * a v0 result until it is added here, and doing so changes what a v0 result means.
+ */
+export const ENDO_EVALUATION_RESULT_PROFILE_VERSIONS_V0 = defineEndoVersionTableV0<EndoEvaluationProfileAnyV0>(
+	"endo.evaluation-result.profile",
+	[
+		["endo.evaluation-profile.v0", validateEndoEvaluationProfileV0],
+		["endo.evaluation-profile.v1", validateEndoEvaluationProfileV1],
+	],
+);
 
 function validateProfile(
 	value: unknown,
@@ -439,8 +471,9 @@ export function validateEndoEvaluationResultV0(value: unknown): EndoEvaluationRe
 	for (const key of Object.keys(v)) if (!ENDO_EVALUATION_RESULT_ALLOWED_KEYS_V0.has(key)) return null;
 	if (v.schemaVersion !== "endo.evaluation-result.v0") return null;
 	if (!isEndoIdentifier(v.id, "evidence")) return null;
-	const profile = validateEndoEvaluationProfileAnyV0(v.profile);
-	if (profile === null) return null;
+	const embedded = readEndoVersionedV0(ENDO_EVALUATION_RESULT_PROFILE_VERSIONS_V0, v.profile);
+	if (!embedded.ok) return null;
+	const profile = embedded.value;
 	if (!Array.isArray(v.trials) || v.trials.length !== profile.trialCount) return null;
 	for (const trial of v.trials) if (validateEndoTrialResultV0(trial) === null) return null;
 	if (v.usage !== undefined && validateEndoResourceUsageV0(v.usage) === null) return null;

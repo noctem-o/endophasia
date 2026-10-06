@@ -1,0 +1,9 @@
+{
+	"decider": "fx-decider",
+	"deciderKind": "human",
+	"id": "endo.evidence.fx-approval-decision-1",
+	"outcome": "approved",
+	"reason": "fx reason",
+	"requestId": "endo.evidence.fx-approval-request-1",
+	"schemaVersion": "endo.collab-approval-decision.v0"
+}

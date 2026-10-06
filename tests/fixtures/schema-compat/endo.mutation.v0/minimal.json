@@ -1,0 +1,7 @@
+{
+	"artifactId": "endo.evidence.fx-artifact-1",
+	"component": "prompt",
+	"id": "endo.evidence.fx-mutation-1",
+	"operation": "replace",
+	"schemaVersion": "endo.mutation.v0"
+}

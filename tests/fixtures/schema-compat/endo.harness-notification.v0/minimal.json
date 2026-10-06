@@ -1,0 +1,12 @@
+{
+	"at": "2026-01-01T00:00:04.000Z",
+	"attachment": "fx.attachment",
+	"changeId": "endo.evidence.fx-change-1",
+	"id": "endo.evidence.fx-notification-1",
+	"kind": "runtime-first-observed",
+	"lines": [
+		"fx line"
+	],
+	"schemaVersion": "endo.harness-notification.v0",
+	"title": "fx title"
+}

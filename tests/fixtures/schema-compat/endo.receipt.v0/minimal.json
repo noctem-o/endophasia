@@ -1,0 +1,7 @@
+{
+	"id": "endo.evidence.fx-receipt-1",
+	"leaseId": "endo.evidence.fx-lease-1",
+	"outcome": "committed",
+	"route": "promotion.apply",
+	"schemaVersion": "endo.receipt.v0"
+}

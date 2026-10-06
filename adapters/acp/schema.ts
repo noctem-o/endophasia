@@ -84,9 +84,9 @@ const integerIn = (min: number, max: number) => (value: number) =>
 // can only represent integers in [-(2^53-1), 2^53-1]. A value that is a schema-valid 64-bit integer but outside that
 // range is *not exactly representable here* (verdict "inexact-integer"), which is a different fact from a schema
 // violation. Nothing is rounded into evidence either way; the update is not counted.
-const U64_MAX = 18446744073709551615; // 2^64, as the nearest double
-const I64_MIN = -9223372036854775808;
-const I64_MAX = 9223372036854775807; // 2^63, as the nearest double
+const U64_MAX = 2 ** 64; // the uint64 maximum, as the nearest double
+const I64_MIN = -(2 ** 63);
+const I64_MAX = 2 ** 63; // the int64 maximum, as the nearest double
 let inexactSeen = false;
 const exact64 = (min: number, max: number, safeMin: number) => (value: number) => {
 	if (!Number.isInteger(value)) return false;

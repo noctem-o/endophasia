@@ -691,6 +691,28 @@ describe("the run directory's source-of-truth files are read through their versi
 		60_000,
 	);
 
+	it("refuses a saved result it cannot read before it runs any remaining trial", async () => {
+		const partial = join(base, "preflight");
+		cpSync(complete, partial, { recursive: true });
+		const results = readdirSync(join(partial, "trials"), { recursive: true })
+			.map(String)
+			.filter((path) => path.endsWith("result.json"))
+			.sort();
+		const [missing, corrupt] = [join(partial, "trials", results[0]!), join(partial, "trials", results[1]!)];
+		rmSync(missing);
+		writeFileSync(corrupt, JSON.stringify({ ...JSON.parse(readText(corrupt)), futureField: 1 }));
+		const journal = readText(join(partial, "journal.jsonl"));
+		const sessions = readdirSync(join(partial, "environment")).length;
+		expect(
+			await refusal(() => runEndoExperimentV0({ spec: spec(), dir: partial, log: () => {}, scratchParent: base })),
+		).toBe("invalid");
+		// Nothing ran: no trial, no new run session, no journal line.
+		expect(existsSync(missing)).toBe(false);
+		expect(readText(join(partial, "journal.jsonl"))).toBe(journal);
+		expect(readdirSync(join(partial, "environment")).length).toBe(sessions);
+		cleanScratch();
+	}, 60_000);
+
 	it("refuses a spec that declares another version or an unknown field, before it creates anything", async () => {
 		const specFile = join(base, "spec-file.json");
 		const out = join(base, "never-created");

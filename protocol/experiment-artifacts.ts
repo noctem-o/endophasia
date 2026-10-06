@@ -320,12 +320,22 @@ const TRIAL_KEYS = [
 	"notes",
 ] as const;
 
-function isJson(value: unknown, depth = 0): value is JsonValueV0 {
-	if (depth > 64) return false;
-	if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-	if (typeof value === "number") return Number.isFinite(value);
-	if (Array.isArray(value)) return value.every((item) => isJson(item, depth + 1));
-	return isObject(value) && Object.values(value).every((item) => isJson(item, depth + 1));
+/** Whether `value` is strict JSON. Iterative, so a deeply nested request parameter (a JSON Schema) is still JSON; a cycle is not. */
+function isJson(value: unknown): value is JsonValueV0 {
+	const pending: unknown[] = [value];
+	const seen = new Set<object>();
+	while (pending.length > 0) {
+		const next = pending.pop();
+		if (next === null || typeof next === "string" || typeof next === "boolean") continue;
+		if (typeof next === "number") {
+			if (!Number.isFinite(next)) return false;
+			continue;
+		}
+		if (typeof next !== "object" || !(Array.isArray(next) || isObject(next)) || seen.has(next)) return false;
+		seen.add(next);
+		for (const item of Array.isArray(next) ? next : Object.values(next)) pending.push(item);
+	}
+	return true;
 }
 
 function digestProblem(value: unknown, what: string): Problem {
@@ -365,14 +375,16 @@ function trialProblem(value: unknown): Problem {
 	if (!isCount(v.trial)) return "trial must be a non-negative integer";
 	if (v.status !== "completed" && v.status !== "error") return "status must be completed or error";
 	if (v.error !== null && typeof v.error !== "string") return "error must be a string or null";
+	// The runner writes `completed` exactly when it recorded no error; the report classifies by status alone.
+	if ((v.status === "completed") !== (v.error === null)) return "status completed holds exactly when error is null";
 	if (typeof v.startedAt !== "string" || !isIso8601UtcV0(v.startedAt)) return "startedAt must be an ISO-8601 UTC time";
 	if (typeof v.endedAt !== "string" || !isIso8601UtcV0(v.endedAt)) return "endedAt must be an ISO-8601 UTC time";
 	if (!isText(v.store) || !isEndoExperimentRelativePathV0(v.store))
 		return "store must be a relative path inside the run directory";
 	if (v.session !== null && typeof v.session !== "string") return "session must be a string or null";
 	if (!isCount(v.exchanges)) return "exchanges must be a non-negative integer";
-	if (!Array.isArray(v.requestParameters) || !v.requestParameters.every((entry) => isJson(entry)))
-		return "requestParameters must be a list of strict JSON values";
+	if (!Array.isArray(v.requestParameters) || !v.requestParameters.every((entry) => isObject(entry) && isJson(entry)))
+		return "requestParameters must be a list of strict JSON objects";
 	const check = checkProblem(v.check);
 	if (check !== null) return check;
 	if (v.finalWorkspace !== null) {

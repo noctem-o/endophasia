@@ -342,6 +342,12 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 		writeAtomically(recordPath, `${JSON.stringify(run, null, "\t")}\n`);
 	}
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
+	// Every saved result is read before anything costs money: one the reader refuses stops the resume here, not after
+	// the remaining trials have run.
+	for (const entry of plan) {
+		const saved = join(trialDirectory(dir, entry), "result.json");
+		if (existsSync(saved)) readEndoExperimentTrialResultFileV0(saved);
+	}
 	const keySource = keySourceOf(spec);
 	const key = piCassetteKeyV0(keySource);
 	// The scratch parent is ours: marked, and a leftover scratch root from an interrupted session is removed.

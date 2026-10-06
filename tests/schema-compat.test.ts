@@ -597,15 +597,39 @@ describe("the experiment runner's artifacts", () => {
 		}
 	});
 
-	it("keeps a trial's recorded request parameters open JSON, and nothing else", () => {
+	it("keeps a trial's recorded request parameters open JSON objects, and nothing else", () => {
 		const trial = json("endo.experiment-trial.v0", "full.json");
-		const deep = { ...trial, requestParameters: [{ a: { b: [{ c: null, d: 1.5 }] } }, [], "text", 3, null] };
+		const deep = { ...trial, requestParameters: [{ a: { b: [{ c: null, d: 1.5 }] } }, {}] };
 		expect(kind(readEndoExperimentTrialResultV0(deep))).toBe("ok");
-		expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters: [{ f: () => 1 }] }))).toBe("invalid");
-		expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters: [{ n: Number.NaN }] }))).toBe(
-			"invalid",
+		// Valid JSON is valid however deep (a JSON Schema in response_format): there is no depth limit to trip over.
+		let nested: Record<string, unknown> = { leaf: true };
+		for (let depth = 0; depth < 5000; depth += 1) nested = { next: nested };
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters: [nested] }))).toBe("ok");
+		const cycle: Record<string, unknown> = {};
+		cycle.self = cycle;
+		for (const [index, requestParameters] of [
+			[{ f: () => 1 }],
+			[{ n: Number.NaN }],
+			[{ u: undefined }],
+			[cycle],
+			{},
+			[null],
+			[[]],
+			["text"],
+			[3],
+		].entries())
+			expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters })), `case ${index}`).toBe(
+				"invalid",
+			);
+	});
+
+	it("refuses a trial whose status contradicts its error: completed holds exactly when there is no error", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: "the session failed" }))).toBe(
+			"ok",
 		);
-		expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters: {} }))).toBe("invalid");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "completed", error: "failed" }))).toBe("invalid");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: null }))).toBe("invalid");
 	});
 
 	it("refuses a version in a hostile shape without echoing the record", () => {

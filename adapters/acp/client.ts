@@ -194,7 +194,8 @@ export class AcpClientV0 {
 	readonly #promptTimeoutMs: number;
 	readonly #closeGraceMs: number;
 	readonly #pendingPermissions = new Set<() => void>();
-	readonly #updates: Record<string, number> = {};
+	// Null-prototype: a variant named `constructor` or `__proto__` must count as itself, not as an inherited property.
+	readonly #updates: Record<string, number> = Object.create(null);
 	#initialize: AcpInitializeEvidenceV0 | null = null;
 	#sessionId: string | null = null;
 	#run: OpenRun | null = null;
@@ -255,6 +256,10 @@ export class AcpClientV0 {
 		try {
 			await client.#negotiate();
 			await client.#openSession(session.cwd);
+			// The keeper's exit channel is independent of stdout: an agent that answered and died may have been seen dead
+			// first. Not an attachment.
+			if (client.#exit !== null)
+				throw new AcpProcessExitedErrorV0("the agent process ended during attach", client.#exit);
 			return client;
 		} catch (error) {
 			await client.close();
@@ -338,6 +343,9 @@ export class AcpClientV0 {
 			this.#recorder.record("harness.protocol-fault", { fault: "session-new-response-malformed" });
 			throw new AcpProtocolErrorV0("the agent's session/new response carries no sessionId");
 		}
+		if (this.#exit !== null) {
+			throw new AcpProcessExitedErrorV0("the agent process ended during session/new", this.#exit);
+		}
 		this.#sessionId = response.sessionId;
 		this.#recorder.setSession(response.sessionId);
 		const attached = this.#recorder.record("harness.attached", {
@@ -393,7 +401,7 @@ export class AcpClientV0 {
 			{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
 			requested,
 		);
-		const run: OpenRun = { started, stopRequested: false, updates: {} };
+		const run: OpenRun = { started, stopRequested: false, updates: Object.create(null) };
 		this.#run = run;
 		// The turn settles on its own path, whenever the agent answers. A timeout only stops this caller waiting: the
 		// answer, if it comes later (after a cancel(), say), is still recorded as the agent's report.
@@ -509,11 +517,14 @@ export class AcpClientV0 {
 		const requested = this.#recorder.record("permission.requested", {
 			toolCallId: shortText(request.toolCall?.toolCallId) ?? null,
 			optionKinds: options.map((option) => shortText(option.kind, 32) ?? null),
+			runOpen: this.#run !== null,
+			sessionMatches: request.sessionId === this.#sessionId,
 		});
 		let response: acp.RequestPermissionResponse = CANCELLED;
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
-		if (this.#run?.stopRequested === true) {
-			// Already cancelled: the turn is ending.
+		if (this.#run === null || this.#run.stopRequested || request.sessionId !== this.#sessionId) {
+			// No open turn, a turn being cancelled, or another session's id: nothing here can be approved, and the
+			// handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
 			const reject = options.find((option) => option.kind === "reject_once");
 			if (reject !== undefined) response = { outcome: { outcome: "selected", optionId: reject.optionId } };

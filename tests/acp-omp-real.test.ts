@@ -11,7 +11,7 @@
  * value is logged. This suite may therefore use the operator's configured model, which can cost money: that is the
  * reason it is opt-in. Permission requests fail closed (no handler is supplied).
  *
- * What counts as a skip, with the reason stated: `omp` missing or without an `acp` command, a refused session/new, or
+ * What counts as a skip, with the reason stated: `omp` missing or without an `acp` command, an explicit JSON-RPC refusal of session/new, or
  * a prompt that completed without any session/update (OMP ends a failed model call with end_turn, so a missing
  * model/provider configuration looks exactly like that). A wrong protocol version, a hang, or a child that survives
  * close() fails.
@@ -21,7 +21,7 @@ import { accessSync, constants, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { AcpClientV0, AcpProcessExitedErrorV0, AcpRefusedErrorV0, AcpTimeoutErrorV0 } from "../adapters/acp/index.ts";
+import { AcpClientV0, AcpRefusedErrorV0, AcpTimeoutErrorV0 } from "../adapters/acp/index.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 
 const executable = process.env.ENDO_OMP_EXECUTABLE;
@@ -70,7 +70,7 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 					{ cwd: scratch },
 				);
 			} catch (error) {
-				if (error instanceof AcpRefusedErrorV0 || error instanceof AcpProcessExitedErrorV0) {
+				if (error instanceof AcpRefusedErrorV0) {
 					return ctx.skip(`omp ${version} did not open an ACP session: ${error.message}`);
 				}
 				throw error;

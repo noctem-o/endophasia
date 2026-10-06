@@ -307,6 +307,52 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		});
 	});
 
+	it("never consults the handler, or approves, for a stale or foreign-session permission request", async () => {
+		let consulted = 0;
+		const handler = () => {
+			consulted += 1;
+			return { outcome: { outcome: "selected" as const, optionId: "allow" } };
+		};
+		for (const [index, mode] of ["permission-wrong-session", "permission-late"].entries()) {
+			const { client, events } = await attach(mode, { permissionHandler: handler });
+			await client.prompt("go");
+			await until(() => notes().filter((note) => "permissionOutcome" in note).length > index);
+			expect(find(events, "permission.decided").at(-1)!.payload).toMatchObject({ decision: "cancelled" });
+			await client.close();
+		}
+		expect(consulted).toBe(0);
+		expect(notes().filter((note) => "permissionOutcome" in note)).toEqual([
+			{ permissionOutcome: { outcome: "cancelled" } },
+			{ permissionOutcome: { outcome: "cancelled" } },
+		]);
+	});
+
+	it("counts variants named like Object.prototype members as themselves", async () => {
+		const { client, events } = await attach("weird-variants");
+		const result = await client.prompt("go");
+		for (const name of ["__proto__", "constructor"]) {
+			expect(Object.hasOwn(result.updates, name), name).toBe(true);
+			expect(Object.getOwnPropertyDescriptor(result.updates, name)!.value).toBe(1);
+			expect(Object.getOwnPropertyDescriptor(client.updateCounts, name)!.value).toBe(1);
+		}
+		expect(find(events, "runtime.unrecognized-event").map((event) => event.payload)).toEqual([
+			{ runtimeEvent: "__proto__", method: "session/update" },
+			{ runtimeEvent: "constructor", method: "session/update" },
+		]);
+	});
+
+	it("never reports an attachment whose agent died before it was returned", async () => {
+		const { error, events } = await attachFailing("exit-after-session-new");
+		// Either order of the two independent channels: a failed connect, or an attachment that was then detached,
+		// never a detach recorded before the session started.
+		if (error !== null) expect(error).toBeInstanceOf(AcpProcessExitedErrorV0);
+		await until(() => kinds(events).includes("lifecycle.detached"));
+		const order = kinds(events);
+		if (order.includes("lifecycle.session-started")) {
+			expect(order.indexOf("lifecycle.session-started")).toBeLessThan(order.indexOf("lifecycle.detached"));
+		}
+	});
+
 	it("serves no file system: an fs request gets an error response, not a hang", async () => {
 		const { client } = await attach("fs");
 		await client.prompt("go");
@@ -393,7 +439,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 	});
 
 	describe("teardown", () => {
-		it("ends a descendant of the agent", async () => {
+		it.skipIf(process.platform === "win32")("ends a descendant of the agent", async () => {
 			const { client } = await attach("grandchild");
 			const pid = (notes().find((note) => "grandchildPid" in note) as { grandchildPid: number }).grandchildPid;
 			expect(alive(pid)).toBe(true);
@@ -402,16 +448,19 @@ describe("ACP v1 vertical slice, fake agent", () => {
 			expect(client.liveProcessMembers()).toBe(false);
 		});
 
-		it("ends an agent that ignores SIGTERM and its descendant within bounds", async () => {
-			const { client } = await attach("ignore-sigterm");
-			const pid = (notes().find((note) => "grandchildPid" in note) as { grandchildPid: number }).grandchildPid;
-			const started = Date.now();
-			const exit = await client.close();
-			expect(Date.now() - started).toBeLessThan(5_000);
-			expect(exit.signal).toBe("SIGKILL");
-			await until(() => !alive(pid));
-			expect(client.liveProcessMembers()).toBe(false);
-		});
+		it.skipIf(process.platform === "win32")(
+			"ends an agent that ignores SIGTERM and its descendant within bounds",
+			async () => {
+				const { client } = await attach("ignore-sigterm");
+				const pid = (notes().find((note) => "grandchildPid" in note) as { grandchildPid: number }).grandchildPid;
+				const started = Date.now();
+				const exit = await client.close();
+				expect(Date.now() - started).toBeLessThan(5_000);
+				expect(exit.signal).toBe("SIGKILL");
+				await until(() => !alive(pid));
+				expect(client.liveProcessMembers()).toBe(false);
+			},
+		);
 
 		it("is idempotent, and refuses work afterwards", async () => {
 			const { client, events } = await attach("normal");

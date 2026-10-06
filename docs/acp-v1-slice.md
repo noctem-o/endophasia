@@ -24,7 +24,8 @@ OMP.
 - Launches the command in an owned process group (`adapters/rpc-jsonl/process-group.ts`, the runtime-neutral primitive;
   not the JSONL RPC connection). `close()` is idempotent and bounded: stdin closes, a grace period, SIGTERM, a second
   grace, then the whole group is SIGKILLed, so no descendant survives. The child gets exactly the environment it is
-  given; stderr is never read.
+  given; stderr is never read. On Windows there are no process groups: only the command itself is
+  ended, and descendants are not (the descendant tests are skipped there).
 - ACP framing, request correlation and validation are the SDK's (`ndJsonStream`, `client().onRequest().connect()`).
 - `initialize` with the literal protocol version 1; any other negotiated version closes the child and fails with
   `AcpProtocolErrorV0`. The reported `agentInfo`, `agentCapabilities` and auth method ids are recorded as the agent's own
@@ -47,8 +48,8 @@ OMP.
 
 `session/request_permission` is answered with the agent's own `reject_once` option when it offered one, else
 `cancelled`. A caller may supply an explicit `permissionHandler`; its answer is honored only if it selects an option the
-agent offered, and anything else (an unknown option, a throw, a malformed answer) becomes `cancelled`. Pending requests
-are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
+agent offered, and anything else (an unknown option, a throw, a malformed answer) becomes `cancelled`. A request with no open turn, during a cancel, or naming a session other than the open one is
+`cancelled` without consulting the handler. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
 terminal methods are not advertised and not served.
 
 ### Unknown `session/update` variants are kept

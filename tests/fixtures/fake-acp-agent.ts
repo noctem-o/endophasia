@@ -38,6 +38,8 @@ const agent = acp
 	})
 	.onRequest(acp.methods.agent.session.new, () => {
 		if (mode === "exit-after-init") process.exit(3);
+		// Answers, then dies at once.
+		if (mode === "exit-after-session-new") setImmediate(() => process.exit(5));
 		return { sessionId };
 	})
 	.onNotification(acp.methods.agent.session.cancel, () => cancelled?.())
@@ -80,6 +82,31 @@ const agent = acp
 				note({ permissionOutcome: response.outcome });
 				break;
 			}
+			case "permission-wrong-session": {
+				const response = await ctx.client.request(acp.methods.client.session.requestPermission, {
+					sessionId: "some-other-session",
+					toolCall: { toolCallId: "call_3" },
+					options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+				});
+				note({ permissionOutcome: response.outcome });
+				break;
+			}
+			case "permission-late":
+				// After the turn has been answered: no turn is open.
+				setTimeout(() => {
+					void ctx.client
+						.request(acp.methods.client.session.requestPermission, {
+							sessionId,
+							toolCall: { toolCallId: "call_4" },
+							options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+						})
+						.then((response) => note({ permissionOutcome: response.outcome }));
+				}, 50);
+				break;
+			case "weird-variants":
+				await update({ sessionUpdate: "__proto__" });
+				await update({ sessionUpdate: "constructor" });
+				break;
 			case "fs": {
 				const error = await ctx.client
 					.request(acp.methods.client.fs.readTextFile, { sessionId, path: "/etc/hostname" })

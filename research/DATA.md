@@ -15,8 +15,8 @@ the raw data is the evidence behind them.
 
 ## Getting it
 
-The data is kept beside this checkout, in `../endophasia-research/` (laid out as `<study>/1.0.1/raw/`), and is published as one archive per study.
-**Download link: (to be added by the maintainer before this change is merged; until then the archives exist only on the maintainer's machine, and the raw evidence behind the results cannot be inspected by others).** The archives' checksums:
+The data is kept beside this checkout, in `../endophasia-research/` (laid out as `<study>/1.0.1/raw/`), and exists as one archive per study.
+**The archives are not publicly hosted yet.** They currently exist only on the maintainer's machine, so anyone else cannot inspect the raw evidence behind the written results, and those results should not be described as publicly reproducible from raw data until a public location is added here. What *is* verifiable from this repository is every digest below: an archive obtained from the maintainer can be checked against them. The archives' checksums:
 
 ```
     3a5aa1f97b26ce8a4072d3268b85595e0f73e5c7dbd094024689d5e210598d08  completion-cap-1.0.1.tar.zst

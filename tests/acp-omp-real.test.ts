@@ -12,7 +12,7 @@
  * reason it is opt-in. Permission requests fail closed (no handler is supplied).
  *
  * What counts as a skip, with the reason stated: `omp` missing or without an `acp` command, an explicit JSON-RPC refusal of session/new, or
- * a prompt that completed without any session/update (OMP ends a failed model call with end_turn, so a missing
+ * a prompt that completed with no message, thought or tool-call update (OMP ends a failed model call with end_turn, so a missing
  * model/provider configuration looks exactly like that). A wrong protocol version, a hang, or a child that survives
  * close() fails.
  */
@@ -96,10 +96,15 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 				throw error;
 			}
 			console.info("[acp-omp] stopReason:", result.stopReason, "| updates:", JSON.stringify(result.updates));
-			const updateCount = Object.values(result.updates).reduce((sum, count) => sum + count, 0);
-			if (updateCount === 0) {
+			// Only what the prompt itself produces counts: OMP sends bootstrap updates (available commands, session info,
+			// config options) shortly after session/new, whatever the model does.
+			const promptOutput = ["agent_message_chunk", "agent_thought_chunk", "tool_call"].reduce(
+				(sum, variant) => sum + (result.updates[variant] ?? 0),
+				0,
+			);
+			if (promptOutput === 0) {
 				return ctx.skip(
-					`omp ${version} completed the prompt (${result.stopReason}) with no session/update: its model/provider is probably not configured`,
+					`omp ${version} completed the prompt (${result.stopReason}) with no message, thought or tool update: its model/provider is probably not configured`,
 				);
 			}
 			expect(result.stopReason).toBe("end_turn");

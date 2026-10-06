@@ -236,7 +236,7 @@ export class AcpClientV0 {
 			.client({ name: "endophasia-acp" })
 			.onRequest(acp.methods.client.session.requestPermission, (ctx) => this.#onPermission(ctx.params))
 			.connect(stream);
-		void this.#connection.closed.catch(() => {});
+		void this.#connection.closed.catch(() => {}).then(() => this.#onConnectionClosed());
 	}
 
 	/**
@@ -518,21 +518,28 @@ export class AcpClientV0 {
 	}
 
 	async #onPermission(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
-		const options = Array.isArray(request.options) ? request.options : [];
+		// What was offered, snapshotted before any user code sees the request: a handler that mutates what it was given
+		// cannot widen what it may select.
+		const offered: ReadonlyArray<{ readonly optionId: string; readonly kind: string }> = (
+			Array.isArray(request.options) ? request.options : []
+		).map((option) => ({ optionId: String(option?.optionId), kind: String(option?.kind) }));
+		// Two options sharing an id cannot be told apart by the agent from the answer: nothing is selected.
+		const duplicateIds = new Set(offered.map((option) => option.optionId)).size !== offered.length;
 		const requested = this.#recorder.record("permission.requested", {
 			toolCallId: shortText(request.toolCall?.toolCallId) ?? null,
-			optionKinds: options.map((option) => shortText(option.kind, 32) ?? null),
+			optionKinds: offered.map((option) => shortText(option.kind, 32) ?? null),
 			runOpen: this.#run !== null,
 			sessionMatches: request.sessionId === this.#sessionId,
+			...(duplicateIds ? { duplicateOptionIds: true } : {}),
 		});
 		const run = this.#run;
 		let response: acp.RequestPermissionResponse = CANCELLED;
 		let decidedBy: "adapter-default" | "handler" = "adapter-default";
-		if (run === null || run.stopRequested || request.sessionId !== this.#sessionId) {
-			// No open turn, a turn being cancelled, or another session's id: nothing here can be approved, and the
-			// handler is not consulted.
+		if (run === null || run.stopRequested || this.#closed || duplicateIds || request.sessionId !== this.#sessionId) {
+			// No open turn, a turn being cancelled, a closing attachment, ambiguous options, or another session's id:
+			// nothing here can be approved, and the handler is not consulted.
 		} else if (this.#options.permissionHandler === undefined) {
-			const reject = options.find((option) => option.kind === "reject_once");
+			const reject = offered.find((option) => option.kind === "reject_once");
 			if (reject !== undefined) response = { outcome: { outcome: "selected", optionId: reject.optionId } };
 		} else {
 			decidedBy = "handler";
@@ -543,19 +550,21 @@ export class AcpClientV0 {
 			this.#pendingPermissions.add(cancel);
 			try {
 				const answer = await Promise.race([
-					Promise.resolve().then(() => (this.#options.permissionHandler as AcpPermissionHandlerV0)(request)),
+					Promise.resolve().then(() =>
+						(this.#options.permissionHandler as AcpPermissionHandlerV0)(structuredClone(request)),
+					),
 					cancelled,
 				]);
 				const outcome = answer?.outcome;
 				// Fail closed: only an option the agent actually offered can be selected, and only while the turn the request
-				// belongs to is still the open one and not being cancelled (the agent may have finished the turn without
-				// waiting for its own request).
+				// belongs to is still the open one, not being cancelled, and the attachment is still open (the agent may have
+				// finished the turn without waiting for its own request).
 				if (
-					run !== null &&
 					this.#run === run &&
 					!run.stopRequested &&
+					!this.#closed &&
 					outcome?.outcome === "selected" &&
-					options.some((option) => option.optionId === outcome.optionId)
+					offered.some((option) => option.optionId === outcome.optionId)
 				)
 					response = answer;
 			} catch {
@@ -564,10 +573,8 @@ export class AcpClientV0 {
 				this.#pendingPermissions.delete(cancel);
 			}
 		}
-		const selected =
-			response.outcome.outcome === "selected"
-				? options.find((option) => option.optionId === (response.outcome as { optionId: string }).optionId)
-				: undefined;
+		const chosen = response.outcome.outcome === "selected" ? response.outcome.optionId : undefined;
+		const selected = chosen === undefined ? undefined : offered.find((option) => option.optionId === chosen);
 		this.#recorder.record(
 			"permission.decided",
 			{
@@ -581,6 +588,18 @@ export class AcpClientV0 {
 		return response;
 	}
 
+	/**
+	 * The ACP stream ended. If the agent process is ending too, its exit is what gets recorded. If it is not (stdout
+	 * closed, the child lives on), the attachment is unusable: record the fault and end the owned group.
+	 */
+	async #onConnectionClosed(): Promise<void> {
+		if (this.#closed) return;
+		await Promise.race([this.#group.exited, delay(500)]);
+		if (this.#closed || this.#exit !== null) return;
+		this.#recorder.record("harness.protocol-fault", { fault: "connection-closed" });
+		await this.close();
+	}
+
 	#onExit(exit: ProcessExitV0): void {
 		this.#exit = exit;
 		const recorded = this.#recorder.record("harness.process-exited", {
@@ -591,6 +610,9 @@ export class AcpClientV0 {
 		});
 		const run = this.#run;
 		if (run === null) {
+			// A process that ended before any session opened has nothing to detach from: the exit is recorded above, and no
+			// lifecycle event names a session that never started.
+			if (this.#sessionId === null) return;
 			this.#recorder.derive(
 				"lifecycle.detached",
 				{

@@ -49,7 +49,7 @@ OMP.
 `session/request_permission` is answered with the agent's own `reject_once` option when it offered one, else
 `cancelled`. A caller may supply an explicit `permissionHandler`; its answer is honored only if it selects an option the
 agent offered, and anything else (an unknown option, a throw, a malformed answer) becomes `cancelled`. A request with no open turn, during a cancel, or naming a session other than the open one is
-`cancelled` without consulting the handler. The handler's answer is also discarded (`cancelled`) if its turn ended or was cancelled while it decided. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
+`cancelled` without consulting the handler. Options sharing an id are ambiguous and are `cancelled`; the handler gets a copy of the request and is bounded by a snapshot of what was offered. A closing attachment approves nothing. The handler's answer is also discarded (`cancelled`) if its turn ended or was cancelled while it decided. Pending requests are cancelled when `cancel()` is called. Each decision is recorded as an `authority-decision` event. File system and
 terminal methods are not advertised and not served.
 
 ### Unknown `session/update` variants are kept
@@ -101,5 +101,6 @@ to the cockpit.
   `HOME` plus any variable names listed in `ENDO_OMP_ENV_PASSTHROUGH` (comma-separated), so OMP finds the operator's
   existing configuration; values are never printed. It may use the operator's configured model and cost money. It skips,
   with the reason, when `omp` is missing or has no `acp` command, when `session/new` or `session/prompt` is refused, or
-  when the prompt completes with no `session/update` (OMP ends a failed model call with `end_turn`, so an unconfigured
+  when the prompt completes with no message, thought or tool-call update (OMP
+  sends bootstrap updates after `session/new` regardless of the model) (OMP ends a failed model call with `end_turn`, so an unconfigured
   model looks like that). A wrong protocol version, a hang, or a surviving child fails.

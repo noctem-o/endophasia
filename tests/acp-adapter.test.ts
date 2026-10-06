@@ -199,6 +199,8 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(error).toBeInstanceOf(AcpProcessExitedErrorV0);
 		expect(find(events, "harness.attached")).toEqual([]);
 		expect(find(events, "harness.process-exited")[0]!.payload).toMatchObject({ code: 3, expected: false });
+		// No session ever started: no lifecycle event names one.
+		expect(events.filter((event) => event.source === "interpretation")).toEqual([]);
 	});
 
 	it("reports a command that cannot start", async () => {
@@ -218,6 +220,7 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		expect(error).toBeInstanceOf(Error);
 		expect(find(events, "harness.attached")).toEqual([]);
 		expect(find(events, "harness.process-exited")[0]!.payload).toMatchObject({ spawnFailed: true });
+		expect(events.filter((event) => event.source === "interpretation")).toEqual([]);
 	});
 
 	it("refuses relative paths", async () => {
@@ -414,6 +417,94 @@ describe("ACP v1 vertical slice, fake agent", () => {
 		const coordinate = (events: readonly EndoEventV0[]) => find(events, "harness.attached")[0]!.coordinates.sessionId;
 		expect(coordinate(first.events)).not.toBe(coordinate(second.events));
 		expect(coordinate(first.events)).toMatch(/^endo\.session\.acp\.[0-9a-f]{12}\.fake-session-1$/);
+	});
+
+	it("cancels a permission request whose options share an id, without consulting the handler", async () => {
+		let consulted = 0;
+		for (const permissionHandler of [
+			undefined,
+			() => {
+				consulted += 1;
+				return { outcome: { outcome: "selected" as const, optionId: "same" } };
+			},
+		]) {
+			const { client, events } = await attach("permission-duplicate-ids", { permissionHandler });
+			await client.prompt("go");
+			expect(find(events, "permission.requested")[0]!.payload).toMatchObject({ duplicateOptionIds: true });
+			expect(find(events, "permission.decided")[0]!.payload).toMatchObject({
+				decision: "cancelled",
+				optionKind: null,
+			});
+			await client.close();
+		}
+		expect(consulted).toBe(0);
+		expect(notes().filter((note) => "permissionOutcome" in note)).toEqual([
+			{ permissionOutcome: { outcome: "cancelled" } },
+			{ permissionOutcome: { outcome: "cancelled" } },
+		]);
+	});
+
+	it("bounds a handler by what was offered, not by what it did to the request", async () => {
+		const { client, events } = await attach("permission", {
+			permissionHandler: (request) => {
+				request.options.push({ kind: "allow_always", name: "Injected", optionId: "injected" });
+				return { outcome: { outcome: "selected", optionId: "injected" } };
+			},
+		});
+		await client.prompt("go");
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({ decision: "cancelled", optionKind: null });
+	});
+
+	it("approves nothing once close() has begun, even if the handler answers at that moment", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let consulted = 0;
+		const { client, events } = await attach("permission", {
+			permissionHandler: async () => {
+				consulted += 1;
+				await gate;
+				return { outcome: { outcome: "selected", optionId: "allow" } };
+			},
+		});
+		const turn = client.prompt("go").catch(() => null);
+		await until(() => consulted === 1);
+		const closing = client.close();
+		release();
+		await closing;
+		await turn;
+		expect(find(events, "permission.decided")[0]!.payload).toMatchObject({ decision: "cancelled" });
+	});
+
+	it("rejects nested-malformed content of a recognized update and counts only the valid one", async () => {
+		const { client, events } = await attach("malformed-nested");
+		const result = await client.prompt("go");
+		expect(
+			find(events, "runtime.malformed-event").map((event) => (event.payload as { variant: string }).variant),
+		).toEqual([
+			"agent_message_chunk",
+			"agent_message_chunk",
+			"agent_message_chunk",
+			"plan",
+			"available_commands_update",
+			"config_option_update",
+		]);
+		// The common prefix has two valid chunks; the valid one at the end is the third.
+		expect(result.updates.agent_message_chunk).toBe(3);
+		expect(result.updates.plan).toBeUndefined();
+	});
+
+	it("treats a closed ACP stream under a living agent as a fault and ends the group", async () => {
+		const { client, events } = await attach("close-stdout");
+		await until(() => kinds(events).includes("harness.process-exited"), 8_000);
+		expect(find(events, "harness.protocol-fault")[0]!.payload).toEqual({ fault: "connection-closed" });
+		expect(find(events, "harness.process-exited")[0]!.payload).toMatchObject({ expected: true });
+		expect(client.liveProcessMembers()).toBe(false);
+		await expect(client.prompt("late")).rejects.toThrow(/closed/);
 	});
 
 	it("serves no file system: an fs request gets an error response, not a hang", async () => {

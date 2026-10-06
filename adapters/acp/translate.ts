@@ -106,29 +106,67 @@ function compact(fields: Record<string, JsonValueV0 | undefined>): Record<string
 
 const isText = (value: unknown): value is string => typeof value === "string";
 
+/** An ACP v1 ContentBlock: a closed union by `type`, each with its required fields. */
+function isContentBlock(value: unknown): boolean {
+	if (!isRecord(value)) return false;
+	switch (value.type) {
+		case "text":
+			return isText(value.text);
+		case "image":
+		case "audio":
+			return isText(value.data) && isText(value.mimeType);
+		case "resource_link":
+			return isText(value.name) && isText(value.uri);
+		case "resource":
+			return isRecord(value.resource);
+		default:
+			return false;
+	}
+}
+
+const PLAN_PRIORITIES = ["high", "medium", "low"];
+const PLAN_STATUSES = ["pending", "in_progress", "completed"];
+
 /**
- * Whether a recognized variant carries what ACP v1 requires of it. These updates are taken off the SDK stream before
- * its schema router, so nothing else validates them. Variants this module does not recognize pass: they are recorded
- * by name, not read.
+ * Whether a recognized variant carries what ACP v1 requires of it, nested fields included. These updates are taken
+ * off the SDK stream before its schema router, so nothing else validates them. Variants this module does not
+ * recognize pass: they are recorded by name, not read.
  */
 function hasRequiredFields(variant: string, update: Record<string, unknown>): boolean {
 	switch (variant) {
 		case "agent_message_chunk":
 		case "agent_thought_chunk":
 		case "user_message_chunk":
-			return isRecord(update.content) && isText(update.content.type);
+			return isContentBlock(update.content);
 		case "tool_call":
 			return isText(update.toolCallId) && isText(update.title);
 		case "tool_call_update":
 			return isText(update.toolCallId);
 		case "plan":
-			return Array.isArray(update.entries);
+			return (
+				Array.isArray(update.entries) &&
+				update.entries.every(
+					(entry) =>
+						isRecord(entry) &&
+						isText(entry.content) &&
+						PLAN_PRIORITIES.includes(entry.priority as string) &&
+						PLAN_STATUSES.includes(entry.status as string),
+				)
+			);
 		case "available_commands_update":
-			return Array.isArray(update.availableCommands);
+			return (
+				Array.isArray(update.availableCommands) &&
+				update.availableCommands.every(
+					(command) => isRecord(command) && isText(command.name) && isText(command.description),
+				)
+			);
 		case "current_mode_update":
 			return isText(update.currentModeId);
 		case "config_option_update":
-			return Array.isArray(update.configOptions);
+			return (
+				Array.isArray(update.configOptions) &&
+				update.configOptions.every((option) => isRecord(option) && isText(option.id) && isText(option.name))
+			);
 		case "usage_update":
 			return finite(update.used) !== undefined && finite(update.size) !== undefined;
 		default:

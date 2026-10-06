@@ -38,6 +38,8 @@ const agent = acp
 	})
 	.onRequest(acp.methods.agent.session.new, () => {
 		if (mode === "exit-after-init") process.exit(3);
+		// The agent's stdout closes while the process lives on.
+		if (mode === "close-stdout") setTimeout(() => process.stdout.end(), 50);
 		// Answers, then dies at once.
 		if (mode === "exit-after-session-new") setImmediate(() => process.exit(5));
 		return { sessionId };
@@ -73,6 +75,27 @@ const agent = acp
 				note({ permissionOutcome: response.outcome });
 				break;
 			}
+			case "permission-duplicate-ids": {
+				const response = await ctx.client.request(acp.methods.client.session.requestPermission, {
+					sessionId,
+					toolCall: { toolCallId: "call_6" },
+					options: [
+						{ kind: "allow_once", name: "Allow", optionId: "same" },
+						{ kind: "reject_once", name: "Reject", optionId: "same" },
+					],
+				});
+				note({ permissionOutcome: response.outcome });
+				break;
+			}
+			case "malformed-nested":
+				await update({ sessionUpdate: "agent_message_chunk", content: { type: "text" } });
+				await update({ sessionUpdate: "agent_message_chunk", content: { type: "image", data: "x" } });
+				await update({ sessionUpdate: "agent_message_chunk", content: { type: "future-block" } });
+				await update({ sessionUpdate: "plan", entries: [{ content: "do it" }] });
+				await update({ sessionUpdate: "available_commands_update", availableCommands: [{ name: "x" }] });
+				await update({ sessionUpdate: "config_option_update", configOptions: [{ name: "x" }] });
+				await update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ok" } });
+				break;
 			case "permission-only-allow": {
 				const response = await ctx.client.request(acp.methods.client.session.requestPermission, {
 					sessionId,
@@ -179,4 +202,4 @@ const agent = acp
 
 await agent.closed;
 // A stubborn agent outlives its stdin: only the group kill ends it.
-if (mode === "ignore-sigterm") setInterval(() => {}, 1000);
+if (mode === "ignore-sigterm" || mode === "close-stdout") setInterval(() => {}, 1000);

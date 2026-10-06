@@ -33,7 +33,7 @@
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync } from "node:fs";
 import { createEndoEvidenceLedgerV0, replayEndoEvidenceLedgerV0 } from "../evolution/evidence.ts";
 import type { EndoEvidenceLedgerEntryV0, EndoEvidenceLedgerV0, EndoExperimentRecordV0 } from "../protocol/evolution.ts";
-import { validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
+import { parseEndoExperimentRecordV0 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
 import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
 import { endoFirstUnknownKeyV0 } from "../protocol/versioned.ts";
@@ -129,8 +129,7 @@ export function createEndoDurableEvidenceLedgerV0(
 	if (typeof id !== "string" || !isEndoIdentifierV0(id, "evidence")) {
 		throw new TypeError("ledger id must be an endo.evidence.* identifier");
 	}
-	const storedExperiment = validateEndoExperimentRecordV0(experiment);
-	if (storedExperiment === null) throw new TypeError("not a valid endo.experiment.v0 record");
+	const storedExperiment = parseEndoExperimentRecordV0(experiment);
 
 	const dir = `${root}/ledger`;
 	const metaFile = `${dir}/ledger.meta.json`;

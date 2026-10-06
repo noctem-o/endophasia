@@ -143,7 +143,7 @@ function safePath(path: unknown): string {
 		path.includes("\\") ||
 		path.includes("\0")
 	)
-		return reject(`unsafe archive path ${endoSafeTextV0(String(path))}`);
+		return reject(`unsafe archive path ${endoSafeTextV0(path)}`);
 	for (const segment of path.split("/"))
 		if (segment === "" || segment === "." || segment === "..")
 			return reject(`unsafe archive path ${endoSafeTextV0(path)}`);

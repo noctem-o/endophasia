@@ -4,6 +4,7 @@ import {
 	EndoInvalidRecordV0,
 	EndoSchemaVersionErrorV0,
 	endoFirstUnknownKeyV0,
+	endoSafeTextV0,
 	endoSafeVersionLabelV0,
 	parseEndoVersionedV0,
 	readEndoVersionedV0,
@@ -170,5 +171,26 @@ describe("version dispatch", () => {
 			]),
 		).toThrow(/duplicate/);
 		expect(() => defineEndoVersionTableV0("x", [["", () => null]])).toThrow(TypeError);
+	});
+
+	it("exposes no mutable view of a table: a version cannot be added or removed after the fact", () => {
+		const table = defineEndoVersionTableV0<Foo>("endo.baz", [["endo.baz.v0", foo("endo.baz.v0", [])]]);
+		expect((table as unknown as Record<string, unknown>).validators).toBeUndefined();
+		expect(() => {
+			(table.versions as string[]).push("endo.baz.v1");
+		}).toThrow(TypeError);
+		expect(table.validatorFor("endo.baz.v1")).toBeUndefined();
+		expect(table.validatorFor("constructor")).toBeUndefined();
+	});
+
+	it("escapes U+2028 and U+2029 and never coerces a non-string value in a message", () => {
+		expect(endoSafeVersionLabelV0("a\u2028b\u2029c")).toBe('"a\\u2028b\\u2029c"');
+		expect(endoSafeVersionLabelV0("a\u2028b")).not.toMatch(/\u2028/);
+		const hostile = { toString: 1, valueOf: 2 };
+		expect(endoSafeTextV0(hostile)).toBe("<object>");
+		expect(endoSafeTextV0(null)).toBe("<null>");
+		expect(endoSafeTextV0(Symbol("k"))).toBe('"k"');
+		const read = readEndoVersionedV0(TABLE, { schemaVersion: "endo.foo.v\u2028" });
+		expect(read.ok || read.message).not.toMatch(/\u2028/);
 	});
 });

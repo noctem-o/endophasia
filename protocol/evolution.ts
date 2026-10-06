@@ -20,7 +20,7 @@ import { validateEndoEnvironmentProfileV0 } from "./evaluation.ts";
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
-import { defineEndoVersionTableV0 } from "./versioned.ts";
+import { defineEndoVersionTableV0, EndoSchemaVersionErrorV0, readEndoVersionedV0 } from "./versioned.ts";
 
 /**
  * SHA-256 digest: 64 lowercase hex characters.
@@ -970,3 +970,14 @@ export const ENDO_EXPERIMENT_RECORD_VERSIONS_V0 = defineEndoVersionTableV0<EndoE
 export const ENDO_EVIDENCE_LEDGER_VERSIONS_V0 = defineEndoVersionTableV0<EndoEvidenceLedgerV0>("endo.evidence-ledger", [
 	["endo.evidence-ledger.v0", validateEndoEvidenceLedgerV0],
 ]);
+
+/** Read an experiment record through its version table; throws a `TypeError` that says which of the four failures it was. */
+export function parseEndoExperimentRecordV0(value: unknown): EndoExperimentRecordV0 {
+	const read = readEndoVersionedV0(ENDO_EXPERIMENT_RECORD_VERSIONS_V0, value);
+	if (!read.ok)
+		throw new EndoSchemaVersionErrorV0({
+			...read,
+			message: `not a valid endo.experiment.v0 record (${read.message})`,
+		});
+	return read.value;
+}

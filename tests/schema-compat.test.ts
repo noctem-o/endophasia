@@ -53,7 +53,7 @@ const TABLES: readonly EndoVersionTableV0<unknown>[] = [
 ];
 
 const tableOf = (version: string): EndoVersionTableV0<unknown> => {
-	const tables = TABLES.filter((table) => table.validators.has(version));
+	const tables = TABLES.filter((table) => table.validatorFor(version) !== undefined);
 	expect(tables.length, `${version} must be in exactly one version table`).toBe(1);
 	return tables[0]!;
 };
@@ -357,6 +357,8 @@ describe("storage boundaries reject what they do not know", () => {
 		expect(bad("bytes", 2.5)).toBe("invalid");
 		expect(bad("executable", "no")).toBe("invalid");
 		expect(bad("type", "socket")).toBe("invalid");
+		expect(bad("path", { toString: 1, valueOf: 2 })).toBe("invalid"); // a value that cannot be coerced to text
+		expect(bad("path", ["a"])).toBe("invalid");
 		const withNull = structuredClone(v1);
 		withNull.entries.push(null);
 		expect(kindOf(encode(withNull))).toBe("invalid"); // a null entry is a refusal, not a crash
@@ -430,5 +432,25 @@ describe("storage boundaries reject what they do not know", () => {
 		expect(framed({ kind: "fingerprint", record: { ...(fingerprint as object), futureField: 1 } })).toThrow(
 			/not a valid fingerprint record/,
 		);
+	});
+
+	it("reads the experiment record through its version table at the ledger boundaries", () => {
+		const root = scratch();
+		const kinds = (value: unknown) => {
+			try {
+				createEndoEvidenceLedgerV0(LEDGER, value);
+				return "ok";
+			} catch (error) {
+				return (error as { kind?: string }).kind ?? "untyped";
+			}
+		};
+		expect(kinds(experiment)).toBe("ok");
+		expect(kinds({ ...experiment, schemaVersion: "endo.experiment.v9" })).toBe("unsupported-version");
+		const { schemaVersion: _omitted, ...unversioned } = experiment;
+		expect(kinds(unversioned)).toBe("missing-version");
+		expect(kinds({ ...experiment, futureField: 1 })).toBe("invalid");
+		expect(() =>
+			createEndoDurableEvidenceLedgerV0(root, LEDGER, { ...experiment, schemaVersion: "endo.experiment.v9" }),
+		).toThrow(/unsupported schemaVersion/);
 	});
 });

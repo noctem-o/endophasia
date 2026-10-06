@@ -60,9 +60,9 @@ import type {
 } from "../protocol/evolution.ts";
 import {
 	ENDO_EVIDENCE_LEDGER_VERSIONS_V0,
+	parseEndoExperimentRecordV0,
 	validateEndoArtifactV0,
 	validateEndoCandidateV0,
-	validateEndoExperimentRecordV0,
 	validateEndoExperimentTransitionV0,
 	validateEndoMutationV0,
 	validateEndoPromotionDecisionV0,
@@ -287,8 +287,7 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 	if (typeof id !== "string" || !isEndoIdentifierV0(id, "evidence")) {
 		throw new TypeError("ledger id must be an endo.evidence.* identifier");
 	}
-	const validatedRecord = validateEndoExperimentRecordV0(record);
-	if (validatedRecord === null) throw new TypeError("not a valid endo.experiment.v0 record");
+	const validatedRecord = parseEndoExperimentRecordV0(record);
 	const storedRecord = deepFreezeCopyV0(validatedRecord);
 	const entries: EndoEvidenceLedgerEntryV0[] = [];
 	const ids = new Set<string>();

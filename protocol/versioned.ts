@@ -18,12 +18,13 @@ import { isPlainJsonObjectV0 } from "./primitives.ts";
 /** A validator for one exact schema version: the value unchanged, or null. It may throw `EndoInvalidRecordV0` to say why. */
 export type EndoVersionValidatorV0<T> = (value: unknown) => T | null;
 
-/** The versions a family reads, each with its own validator. Frozen; look versions up with `has`, never by property. */
+/** The versions a family reads, each with its own validator. Frozen and closed; versions are looked up with `validatorFor`, never by property. */
 export interface EndoVersionTableV0<T> {
 	readonly family: string;
 	/** The versions this reader knows, in declaration order. */
 	readonly versions: readonly string[];
-	readonly validators: ReadonlyMap<string, EndoVersionValidatorV0<T>>;
+	/** The validator registered for exactly this version, or undefined. The underlying map is not exposed. */
+	validatorFor(version: string): EndoVersionValidatorV0<T> | undefined;
 }
 
 export type EndoVersionFailureKindV0 =
@@ -70,7 +71,10 @@ const endoBoundedVersionV0 = (value: string): string =>
 
 /** A declared version string made safe to print: bounded, quoted, with control characters escaped. */
 export function endoSafeVersionLabelV0(value: string): string {
-	return JSON.stringify(endoBoundedVersionV0(value));
+	// JSON.stringify escapes control characters but leaves U+2028/U+2029 literal; both are line breaks to some consumers.
+	return JSON.stringify(endoBoundedVersionV0(value)).replace(/[\u2028\u2029]/g, (c) =>
+		c === "\u2028" ? "\\u2028" : "\\u2029",
+	);
 }
 
 /**
@@ -87,7 +91,12 @@ export function defineEndoVersionTableV0<T>(
 		if (validators.has(version)) throw new TypeError(`${family}: duplicate version ${version}`);
 		validators.set(version, validator);
 	}
-	return Object.freeze({ family, versions: Object.freeze([...validators.keys()]), validators });
+	// The map lives in this closure: a caller holds only a lookup, so a table cannot be extended or shrunk after the fact.
+	return Object.freeze({
+		family,
+		versions: Object.freeze([...validators.keys()]),
+		validatorFor: (version: string) => validators.get(version),
+	});
 }
 
 /** The declared `schemaVersion`, read once as an own data property (never through a getter or the prototype). */
@@ -111,7 +120,7 @@ export function readEndoVersionedV0<T>(table: EndoVersionTableV0<T>, value: unkn
 	if (typeof declared.version !== "string")
 		return { ok: false, kind: "version-not-string", message: `${table.family}: schemaVersion is not a string` };
 	const version = declared.version;
-	const validator = table.validators.get(version);
+	const validator = table.validatorFor(version);
 	if (validator === undefined)
 		return {
 			ok: false,
@@ -154,7 +163,10 @@ export function endoFirstUnknownKeyV0(value: object, allowed: readonly string[])
 	return undefined;
 }
 
-/** `endoSafeVersionLabelV0` for a key or other attacker-controlled text in a message. */
-export function endoSafeTextV0(value: string | symbol): string {
-	return endoSafeVersionLabelV0(typeof value === "symbol" ? value.toString() : value);
+/** A key, path or any other attacker-controlled value made safe for a message, without coercing it. */
+export function endoSafeTextV0(value: unknown): string {
+	// Never coerce an attacker-controlled value: String() on an object can throw.
+	if (typeof value === "string") return endoSafeVersionLabelV0(value);
+	if (typeof value === "symbol") return endoSafeVersionLabelV0(value.description ?? "symbol");
+	return `<${value === null ? "null" : Array.isArray(value) ? "array" : typeof value}>`;
 }

@@ -845,22 +845,31 @@ describe("the cassette server: recorded order, recorded bytes, explicit misses",
 	});
 
 	it("as-recorded timing keeps the recorded pacing; immediate does not wait", async () => {
+		// Timed on the server's own clock (capture.served offsetMs), not by comparing two client round trips: a loaded
+		// runner adds stalls to every request, and the old comparison of two ~250 ms round trips failed on one.
 		const slow = sse(['{"a":1}', '{"b":2}', '{"c":3}', "[DONE]"]);
-		slow.gapMs = 80;
+		slow.gapMs = 250;
 		const { store, proxy, log } = await recording([slow]);
 		await post(proxy.port, "/v1/chat/completions", BODY);
 		await proxy.flush();
 		log.close();
-		const paced = await replaying(store, { timing: "as-recorded" });
-		let start = performance.now();
-		await post(paced.server.port, "/v1/chat/completions", BODY);
-		const pacedMs = performance.now() - start;
-		const fast = await replaying(store, { timing: "immediate" });
-		start = performance.now();
-		await post(fast.server.port, "/v1/chat/completions", BODY);
-		const fastMs = performance.now() - start;
-		expect(pacedMs).toBeGreaterThan(250);
-		expect(fastMs).toBeLessThan(pacedMs / 2);
+		const recorded = kinds(store, "capture.exchange-ended")[0]!.chunks as { offsetMs: number }[];
+		const pacing = recorded.at(-1)!.offsetMs;
+		expect(pacing).toBeGreaterThanOrEqual(1000);
+		const servedAfter = async (timing: "as-recorded" | "immediate"): Promise<number> => {
+			const { server, log: replayLog, replayStore } = await replaying(store, { timing });
+			await post(server.port, "/v1/chat/completions", BODY);
+			replayLog.close();
+			const served = kinds(replayStore, "capture.served")[0]!;
+			expect(served).toMatchObject({ outcome: "complete", chunksDelivered: recorded.length });
+			return served.offsetMs as number;
+		};
+		// As recorded: the server waits until each chunk's recorded offset, so it finishes no earlier than the last
+		// one. Load can only lengthen this, so the bound holds on any runner.
+		expect(await servedAfter("as-recorded")).toBeGreaterThanOrEqual(pacing - 1);
+		// Immediate: no waits at all. Allowing half the recorded pacing (about 600 ms) leaves room for runner stalls
+		// while still failing if the recorded gaps were honoured.
+		expect(await servedAfter("immediate")).toBeLessThan(pacing / 2);
 	});
 
 	it("pauses after a chosen chunk until resumed (the replay driver's STOP and kill points)", async () => {

@@ -153,6 +153,7 @@ silently treated as comparable.
 | Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
+| ACP v1 agents | First slice only: a protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
 | ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is a draft specification, so any result is pinned to one schema revision |
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake

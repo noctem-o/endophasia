@@ -31,7 +31,7 @@ function researchReachable(roots: string[], read: (path: string) => string, has:
 			continue;
 		}
 		for (const spec of specs(read(file))) {
-			if (spec.includes("prime-conformance") || /(?:prime-agent|agentclientprotocol)/.test(spec)) hits.add(spec);
+			if (spec.includes("prime-conformance") || /prime-agent/.test(spec)) hits.add(spec);
 			if (!spec.startsWith(".")) continue;
 			const base = resolve(dirname(file), spec);
 			const target = [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, join(base, "index.ts")].find(has);
@@ -96,19 +96,21 @@ describe("Prime research stays outside production", () => {
 			expect(source).not.toMatch(/prime-conformance|research\/|candidateForPR27|readPrimeFixtures|report\.json/);
 		}
 	});
-	it("does not add upstream Prime or ACP SDK as any Endophasia dependency", () => {
+	it("does not add upstream Prime as any Endophasia dependency", () => {
+		// The official ACP SDK is a dependency since the ACP v1 adapter (adapters/acp); tests/acp-boundary.test.ts pins it
+		// and confines its imports. Upstream Prime stays out.
 		const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
 			dependencies?: Record<string, string>;
 			devDependencies?: Record<string, string>;
 		};
 		expect(
 			Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).some((name) =>
-				/prime-agent|agentclientprotocol/.test(name),
+				/prime-agent/.test(name),
 			),
 		).toBe(false);
 		const lock = JSON.parse(readFileSync(join(repoRoot, "package-lock.json"), "utf8")) as {
 			packages: Record<string, unknown>;
 		};
-		expect(Object.keys(lock.packages).some((name) => /agentclientprotocol|prime-agent/.test(name))).toBe(false);
+		expect(Object.keys(lock.packages).some((name) => /prime-agent/.test(name))).toBe(false);
 	});
 });

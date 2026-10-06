@@ -89,6 +89,7 @@ const agent = acp
 	.onRequest(acp.methods.agent.session.list, async (ctx) => {
 		note({ called: "session/list", params: ctx.params });
 		if (mode === "list-hang") await new Promise(() => {});
+		if (mode === "list-refuse") throw new acp.RequestError(-32001, "SECRET-REFUSAL");
 		return {
 			sessions: [
 				{ sessionId, cwd: "/work/one", title: "SECRET-SESSION-TITLE", updatedAt: "2026-01-01T00:00:00Z" },

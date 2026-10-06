@@ -216,4 +216,21 @@ describe("ACP v1 stable update validation", () => {
 		});
 		expect(payload(base)).not.toHaveProperty("rawInputPresent");
 	});
+
+	it("says so when a schema-valid cost cannot be carried, instead of dropping it silently", () => {
+		const usage = (currency: string) =>
+			(
+				translateAcpUpdateV0({
+					sessionUpdate: "usage_update",
+					used: 1,
+					size: 2,
+					cost: { amount: 1, currency },
+				}) as {
+					payload: Record<string, unknown>;
+				}
+			).payload;
+		expect(usage("USD")).toMatchObject({ cost: { amount: 1, currency: "USD" } });
+		expect(usage("US Dollars")).toMatchObject({ costOmitted: true });
+		expect(usage("US Dollars")).not.toHaveProperty("cost");
+	});
 });

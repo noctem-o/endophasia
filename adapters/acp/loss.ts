@@ -85,7 +85,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
 		availability: gated("agentCapabilities.sessionCapabilities.resume"),
-		emits: ["harness.attached", "lifecycle.session-started", "session.config-observed"],
+		emits: ["harness.attached", "lifecycle.session-started", "session.config-observed", "control.refused"],
 		preserved: [
 			"requested session id reference",
 			"that the session was opened by session/resume",
@@ -101,8 +101,12 @@ const entries: readonly AcpLossEntryV0[] = [
 		target: "session.listed",
 		verdict: "LOSSY",
 		availability: gated("agentCapabilities.sessionCapabilities.list"),
-		emits: ["session.listed"],
-		preserved: ["number of sessions in the page", "whether a next cursor was reported"],
+		emits: ["session.listed", "control.refused"],
+		preserved: [
+			"number of sessions in the page",
+			"whether a next cursor was reported",
+			"a JSON-RPC refusal, by code (control.refused)",
+		],
 		lost: ["session ids", "working directories", "titles", "update times", "the cursor"],
 		qualification: "the caller receives the full agent-reported page; the record keeps counts only.",
 	},
@@ -112,7 +116,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		target: "control.requested, session.close-accepted",
 		verdict: "QUALIFIED",
 		availability: gated("agentCapabilities.sessionCapabilities.close"),
-		emits: ["control.requested", "lifecycle.stop-requested", "session.close-accepted"],
+		emits: ["control.requested", "lifecycle.stop-requested", "session.close-accepted", "control.refused"],
 		preserved: ["that the client asked", "that the agent answered without error"],
 		lost: [],
 		qualification:
@@ -268,12 +272,16 @@ const entries: readonly AcpLossEntryV0[] = [
 	},
 	{
 		id: "update.malformed",
-		source: "a stable session/update variant that fails the pinned schema",
+		source:
+			"a session/update that fails the pinned schema (stable variant), has no sessionUpdate discriminator, or names a session other than the open one",
 		target: "runtime.malformed-event",
 		verdict: "LOSSY",
 		availability: initiated,
 		emits: ["runtime.malformed-event"],
-		preserved: ["the variant name", "problem: schema-invalid"],
+		preserved: [
+			"the variant name when there is one",
+			"problem: schema-invalid | no-sessionUpdate-variant | session-id-mismatch",
+		],
 		lost: ["every field"],
 		qualification: "never counted as update activity.",
 	},
@@ -350,7 +358,9 @@ const entries: readonly AcpLossEntryV0[] = [
 		availability: initiated,
 		emits: [UPDATE_TARGET],
 		preserved: ["amount", "currency"],
-		lost: [],
+		lost: [
+			"a cost whose currency is not short printable ASCII: neither amount nor currency is carried (costOmitted: true)",
+		],
 		qualification:
 			"cumulative cost for the session, not per message; an amount travels only with its currency; absent cost is absent, not zero.",
 	},

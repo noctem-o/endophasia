@@ -400,6 +400,42 @@ describe("review regressions", () => {
 	});
 });
 
+describe("review regressions, round 3", () => {
+	it("sends no session/cancel once session/close was requested", async () => {
+		const { client, events } = await attach("cancellable", { FAKE_ACP_CAPS: "close" });
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await client.closeSession();
+		await turn;
+		const before = find(events, "control.requested").length;
+		expect(await client.cancel()).toBe(false);
+		expect(find(events, "control.requested")).toHaveLength(before);
+	});
+
+	it("records a refused optional request by code, and never its text", async () => {
+		const listed = await attach("list-refuse", { FAKE_ACP_CAPS: "list" });
+		await expect(listed.client.listSessions()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		expect(find(listed.events, "control.refused").map((event) => event.payload)).toEqual([
+			{ capability: "session.list", code: -32001 },
+		]);
+		expect(JSON.stringify(listed.events)).not.toContain("SECRET");
+		const events: EndoEventV0[] = [];
+		await AcpClientV0.connect(
+			{
+				launch: env("normal", { FAKE_ACP_CAPS: "resume" }),
+				attachment: "fake.default",
+				onEvent: (e) => events.push(e),
+				closeGraceMs: 300,
+			},
+			{ cwd: scratch, resume: { sessionId: "unknown-session" } },
+		).catch(() => {});
+		expect(find(events, "control.refused").map((event) => event.payload)).toEqual([
+			{ capability: "session.resume", code: -32602 },
+		]);
+	});
+});
+
 describe("agent-local session ids", () => {
 	it("keeps two process instances that issue the same session id apart", async () => {
 		const first = await attach("normal");

@@ -430,7 +430,7 @@ export class AcpClientV0 {
 		if (resumeId !== undefined && !this.#sessionCapabilities.resume)
 			throw this.#unavailable("resume", "session.resume");
 		const method = resumeId !== undefined ? "session/resume" : "session/new";
-		const response: unknown = await this.#request(
+		const response: unknown = await this.#requestOptional(
 			method,
 			resumeId !== undefined
 				? this.#connection.agent.request(acp.methods.agent.session.resume, {
@@ -489,6 +489,18 @@ export class AcpClientV0 {
 		}
 	}
 
+	/** An optional method's request: a JSON-RPC refusal is recorded (by code) before it propagates. */
+	async #requestOptional<T>(what: string, work: Promise<T>): Promise<T> {
+		try {
+			return await this.#request(what, work);
+		} catch (error) {
+			if (error instanceof AcpRefusedErrorV0) {
+				this.#recorder.record("control.refused", { capability: what.replace("/", "."), code: error.code });
+			}
+			throw error;
+		}
+	}
+
 	/** An optional method the agent did not advertise: said so in the record, nothing sent. */
 	#unavailable(capability: keyof AcpSessionCapabilitiesV0, name: string): AcpUnavailableErrorV0 {
 		this.#recorder.record("control.unavailable", { capability: name, reason: "not-advertised" });
@@ -511,7 +523,7 @@ export class AcpClientV0 {
 		const { cwd, cursor } = params;
 		if (cwd !== undefined && (typeof cwd !== "string" || !isAbsolute(cwd)))
 			throw new TypeError("cwd must be an absolute path");
-		const response: unknown = await this.#request(
+		const response: unknown = await this.#requestOptional(
 			"session/list",
 			this.#connection.agent.request(acp.methods.agent.session.list, {
 				...(cwd !== undefined ? { cwd } : {}),
@@ -557,7 +569,7 @@ export class AcpClientV0 {
 		this.#sessionClosed = true;
 		let response: unknown;
 		try {
-			response = await this.#request(
+			response = await this.#requestOptional(
 				"session/close",
 				this.#connection.agent.request(acp.methods.agent.session.close, { sessionId: this.sessionId }),
 			);
@@ -713,7 +725,7 @@ export class AcpClientV0 {
 	 */
 	async cancel(): Promise<boolean> {
 		const run = this.#run;
-		if (run === null || this.#closed || this.#unusable) return false;
+		if (run === null || this.#closed || this.#unusable || this.#sessionClosed) return false;
 		const requested = this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" });
 		this.#recorder.derive("lifecycle.stop-requested", { runOpen: true }, requested);
 		run.stopRequested = true;

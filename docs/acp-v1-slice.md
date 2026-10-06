@@ -78,9 +78,10 @@ creates no `permission.requested` or `permission.decided`, does not consult the 
 is recorded only as `harness.late-message` (`after`: `exit`, `stream-closed`, `close` or `session-close`) — the same
 rule as a late `session/update`. The exit case is exercised with a descendant that holds the agent's stdout and stdin
 open (`permission-after-exit` in the fake agent): the test asserts no `permission.*` event, no handler call, and the
-`cancelled` answer that went over the wire. The stream-closed and `close()` branches are defense in depth: the SDK
-connection is already closed when they hold, so no message can be delivered to exercise them; they share the one guard
-that the exit test removes-and-fails.
+`cancelled` answer that went over the wire. The session-close case is exercised too (`late-after-close`: the agent
+answers `session/close`, then sends an update and a permission request). The stream-closed and `close()` branches are
+defense in depth: the SDK connection is already closed when they hold, so no message can be delivered to exercise them;
+they share the one guard that the other tests remove-and-fail.
 
 ## ACP v1 semantic coverage
 
@@ -160,7 +161,12 @@ false (so `rawInputPresent` is only ever `true`).
 ACP's `usage_update` reports session context-window state — `used` tokens in context, `size` of the window — and an
 optional *cumulative* session `cost`. That is not Endophasia's per-message input/output/cache/reasoning ledger, and it
 is not converted into one: no category is split or synthesized and no `endophasia.usage.v0` event is produced
-(`usage.ledger` is UNREPRESENTABLE; `lifecycle.session-started` declares `usage` UNAVAILABLE with that reason). A cost
+(`usage.ledger` is UNREPRESENTABLE; `lifecycle.session-started` declares `usage` UNAVAILABLE with that reason).
+The pinned schema does define a per-turn `usage` object on the `session/prompt` response (input, output, thought, cached
+read/write and total tokens), but marks it **UNSTABLE**. It is validated as part of `PromptResponse` and **not read**; a
+test lists the schema properties the adapter reads and requires none to be UNSTABLE. Real OMP 18.6.1 does send it
+(`{inputTokens, outputTokens, totalTokens}` on a `end_turn` response), so taking it is an open decision about reading
+unstable fields, not something this tranche does. A cost
 travels only with its currency (without a printable currency it is dropped and `costOmitted` says so); `cost: null` or
 no cost is no cost field, never `0`.
 
@@ -189,7 +195,7 @@ advertising is a capability fact, kept apart from conversion loss in the account
 - `AcpClientV0.connect(options, { cwd, resume: { sessionId } })` opens the attachment's session with `session/resume`
   instead of `session/new`. It reattaches **without** a claim that history was replayed to the client (that is
   `session/load`, not implemented): `harness.attached` carries `openedBy: "session/resume"` and
-  `historyReplayed: false`. The new process instance has a new coordinate and `lifecycle.session-started`, not
+  `historyReplay: "not-requested"` (nothing is claimed about what the agent did). The new process instance has a new coordinate and `lifecycle.session-started`, not
   `lifecycle.session-resumed`: Endophasia has no record of an earlier attachment under that coordinate, so
   `previousInstance`/`previousEnd` would be invented. The same agent-local id on two instances stays two coordinates.
 - `closeSession()` sends `session/close`. ACP requires the agent to cancel the session's work first, so an open turn is
@@ -260,7 +266,7 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `config.model-identity` | UNREPRESENTABLE | agent-initiated | verified model or weights identity | — an agent's claim about a setting does not establish which weights served a request. No request to change an option is implemented (session/set_config_option is out of scope), so no request/effect pair exists either. |
 | `usage.context-window` | QUALIFIED | agent-initiated | session.update-observed (contextTokensUsed, contextWindowSize) | — session/context-window state, not a count of tokens a turn consumed. |
 | `usage.cost` | QUALIFIED | agent-initiated | session.update-observed (cost) | — cumulative cost for the session, not per message; an amount travels only with its currency; absent cost is absent, not zero. |
-| `usage.ledger` | UNREPRESENTABLE | agent-initiated | endophasia.usage.v0 per-message input/output/cache/reasoning ledger | — ACP v1 reports no per-message token categories. Nothing is split, summed or synthesized; lifecycle.session-started declares usage UNAVAILABLE. |
+| `usage.ledger` | UNREPRESENTABLE | agent-initiated | endophasia.usage.v0 per-message input/output/cache/reasoning ledger | — the stable ACP v1 surface reports no per-message token categories. The pinned schema also defines a per-turn `usage` object on the session/prompt response (input, output, thought, cached read/write, total tokens) but marks it UNSTABLE: it is validated as part of PromptResponse and not read, so nothing is split, summed or synthesized from it. lifecycle.session-started declares usage UNAVAILABLE. Taking that field would be a separate decision about unstable fields. |
 | `tool.contract` | UNREPRESENTABLE | agent-initiated | Pi tool.started / tool.finished (keyed argument and result digests) | — ACP exposes an agent-chosen id, optional name, kind, status, and optional raw input/output values, with no start/finish boundary guarantee (a tool_call may arrive already completed) and no keyed digest. Digests are not fabricated from values ACP did not provide in that form; what is observed is kept at the session.update-observed level above. |
 | `reasoning.content` | UNREPRESENTABLE | agent-initiated | reasoning evidence or reasoning-token accounting | — thought chunks are agent-selected display content, not a reasoning-token ledger and not a verified chain of thought. Only their occurrence is counted. |
 | `transport.closed` | QUALIFIED | adapter-observed | harness.protocol-fault (connection-closed), teardown | lost: why it ended the attachment is unusable from that moment, before the diagnostic wait. |

@@ -12,7 +12,7 @@ const note = (value: Record<string, unknown>): void => {
 	if (out !== undefined) appendFileSync(out, `${JSON.stringify(value)}\n`);
 };
 
-if (mode === "ignore-sigterm") process.on("SIGTERM", () => {});
+if (mode === "ignore-sigterm" || mode === "list-hang") process.on("SIGTERM", () => {});
 if (mode === "grandchild" || mode === "ignore-sigterm") {
 	// A descendant in the agent's process group, outliving the agent unless the group is ended.
 	const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
@@ -86,8 +86,9 @@ const agent = acp
 		if (mode === "exit-after-session-new") setImmediate(() => process.exit(5));
 		return { sessionId, ...(configOptions ? { configOptions } : {}) } as never;
 	})
-	.onRequest(acp.methods.agent.session.list, (ctx) => {
+	.onRequest(acp.methods.agent.session.list, async (ctx) => {
 		note({ called: "session/list", params: ctx.params });
+		if (mode === "list-hang") await new Promise(() => {});
 		return {
 			sessions: [
 				{ sessionId, cwd: "/work/one", title: "SECRET-SESSION-TITLE", updatedAt: "2026-01-01T00:00:00Z" },
@@ -104,6 +105,22 @@ const agent = acp
 	.onRequest(acp.methods.agent.session.close, (ctx) => {
 		note({ called: "session/close", sessionId: ctx.params.sessionId });
 		cancelled?.();
+		if (mode === "late-after-close") {
+			// Traffic about a session the agent just closed, after it answered.
+			setTimeout(() => {
+				void ctx.client.notify(acp.methods.client.session.update, {
+					sessionId,
+					update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "late" } },
+				} as never);
+				void ctx.client
+					.request(acp.methods.client.session.requestPermission, {
+						sessionId,
+						toolCall: { toolCallId: "late_call" },
+						options: [{ kind: "allow_once", name: "Allow", optionId: "allow" }],
+					})
+					.then((response) => note({ permissionOutcome: response.outcome }));
+			}, 50);
+		}
 		return {} as never;
 	})
 	.onNotification(acp.methods.agent.session.cancel, () => cancelled?.())
@@ -412,4 +429,4 @@ const agent = acp
 
 await agent.closed;
 // A stubborn agent outlives its stdin: only the group kill ends it.
-if (mode === "ignore-sigterm" || mode === "close-stdout") setInterval(() => {}, 1000);
+if (mode === "ignore-sigterm" || mode === "close-stdout" || mode === "list-hang") setInterval(() => {}, 1000);

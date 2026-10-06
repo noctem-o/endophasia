@@ -152,7 +152,7 @@ describe.runIf(executable !== undefined && executable.length > 0)("real OMP over
 						try {
 							expect(second.find((event) => event.kind === "harness.attached")?.payload).toMatchObject({
 								openedBy: "session/resume",
-								historyReplayed: false,
+								historyReplay: "not-requested",
 							});
 							optional.resume = "ok";
 							if (resumed.sessionCapabilities.close) {

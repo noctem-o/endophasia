@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	type AcpClientOptionsV0,
 	AcpClientV0,
+	AcpClosedErrorV0,
 	AcpRefusedErrorV0,
 	AcpUnavailableErrorV0,
 	acpEndoSessionIdV0,
@@ -253,7 +254,7 @@ describe("ACP v1 optional session methods are capability gated", () => {
 		const attached = find(events, "harness.attached")[0]!.payload;
 		expect(attached).toMatchObject({
 			openedBy: "session/resume",
-			historyReplayed: false,
+			historyReplay: "not-requested",
 			acpSessionId: "fake-session-1",
 		});
 		const started = find(events, "lifecycle.session-started")[0]!;
@@ -313,6 +314,56 @@ describe("ACP v1 optional session methods are capability gated", () => {
 		expect(find(events, "lifecycle.stop-requested")).toHaveLength(1);
 		expect(find(events, "lifecycle.run-aborted")[0]!.payload).toMatchObject({ stopRequested: true });
 	});
+});
+
+describe("traffic after the session is over", () => {
+	it("is not counted, decided or approved once the agent accepted session/close", async () => {
+		let consulted = 0;
+		const { client, events } = await attach(
+			"late-after-close",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				permissionHandler: () => {
+					consulted += 1;
+					return { outcome: { outcome: "selected", optionId: "allow" } };
+				},
+			},
+		);
+		await client.closeSession();
+		for (let waited = 0; !notes().some((note) => "permissionOutcome" in note) && waited < 300; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(find(events, "harness.late-message").map((event) => event.payload)).toEqual([
+			{ method: "session/update", after: "session-close" },
+			{ method: "session/request_permission", after: "session-close" },
+		]);
+		expect(kinds(events).filter((kind) => kind.startsWith("permission."))).toEqual([]);
+		expect(consulted).toBe(0);
+		expect(notes().find((note) => "permissionOutcome" in note)).toEqual({
+			permissionOutcome: { outcome: "cancelled" },
+		});
+		expect(client.updateCounts.agent_message_chunk).toBeUndefined();
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"does not blame the agent when close() ends the attachment during an optional request",
+		async () => {
+			const { client, events } = await attach(
+				"list-hang",
+				{ FAKE_ACP_CAPS: "list" },
+				{},
+				{ requestTimeoutMs: 20_000 },
+			);
+			const pending = client.listSessions();
+			pending.catch(() => {});
+			for (let waited = 0; !notes().some((note) => note.called === "session/list") && waited < 300; waited++)
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			// The agent ignores SIGTERM and lingers after its stdin ends: the exit is seen well after the connection closed.
+			await client.close();
+			await expect(pending).rejects.toBeInstanceOf(AcpClosedErrorV0);
+			expect(find(events, "harness.protocol-fault")).toEqual([]);
+		},
+	);
 });
 
 describe("agent-local session ids", () => {

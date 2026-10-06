@@ -88,6 +88,43 @@ const NUMBER_FORMATS: Record<string, (value: number) => boolean> = {
 	double: Number.isFinite,
 };
 
+/**
+ * The schema properties the adapter reads (`definition: [property, ...]`). None may be marked UNSTABLE in the pinned
+ * schema (tests/acp-schema.test.ts), so a revision that destabilizes a field this adapter depends on cannot pass
+ * unnoticed. `PromptResponse.usage` is UNSTABLE and deliberately absent: validated as part of the response, not read.
+ */
+export const ACP_FIELDS_READ_V0: Readonly<Record<string, readonly string[]>> = Object.freeze({
+	InitializeResponse: ["protocolVersion", "agentInfo", "agentCapabilities", "authMethods"],
+	Implementation: ["name", "version"],
+	AuthMethodAgent: ["id"],
+	AuthMethodTerminal: ["id"],
+	AgentCapabilities: ["sessionCapabilities"],
+	SessionCapabilities: ["list", "resume", "close"],
+	NewSessionRequest: ["cwd", "mcpServers"],
+	NewSessionResponse: ["sessionId", "modes", "configOptions"],
+	ResumeSessionRequest: ["sessionId", "cwd", "mcpServers"],
+	ResumeSessionResponse: ["modes", "configOptions"],
+	ListSessionsRequest: ["cwd", "cursor"],
+	ListSessionsResponse: ["sessions", "nextCursor"],
+	SessionInfo: ["sessionId", "cwd", "title", "updatedAt"],
+	CloseSessionRequest: ["sessionId"],
+	SessionModeState: ["currentModeId", "availableModes"],
+	SessionConfigOption: ["id", "category"],
+	SessionConfigSelect: ["currentValue", "options"],
+	SessionConfigBoolean: ["currentValue"],
+	PromptResponse: ["stopReason"],
+	ToolCall: ["toolCallId", "name", "kind", "status", "content", "locations", "rawInput", "rawOutput"],
+	ToolCallUpdate: ["toolCallId", "name", "kind", "status", "content", "locations", "rawInput", "rawOutput"],
+	Plan: ["entries"],
+	PlanEntry: ["status"],
+	AvailableCommandsUpdate: ["availableCommands"],
+	CurrentModeUpdate: ["currentModeId"],
+	ConfigOptionUpdate: ["configOptions"],
+	SessionInfoUpdate: ["title"],
+	UsageUpdate: ["used", "size", "cost"],
+	Cost: ["amount", "currency"],
+});
+
 const SCHEMA_KEY = "acp-v1";
 
 export interface AcpSchemaDocumentV0 {

@@ -89,7 +89,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		preserved: [
 			"requested session id reference",
 			"that the session was opened by session/resume",
-			"historyReplayed: false",
+			"historyReplay: not-requested",
 		],
 		lost: ["working directory", "the relation to the earlier attachment"],
 		qualification:
@@ -352,7 +352,7 @@ const entries: readonly AcpLossEntryV0[] = [
 		preserved: [],
 		lost: [],
 		qualification:
-			"ACP v1 reports no per-message token categories. Nothing is split, summed or synthesized; lifecycle.session-started declares usage UNAVAILABLE.",
+			"the stable ACP v1 surface reports no per-message token categories. The pinned schema also defines a per-turn `usage` object on the session/prompt response (input, output, thought, cached read/write, total tokens) but marks it UNSTABLE: it is validated as part of PromptResponse and not read, so nothing is split, summed or synthesized from it. lifecycle.session-started declares usage UNAVAILABLE. Taking that field would be a separate decision about unstable fields.",
 	},
 	{
 		id: "tool.contract",

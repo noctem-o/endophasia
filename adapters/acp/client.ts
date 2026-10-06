@@ -464,7 +464,7 @@ export class AcpClientV0 {
 			acpSessionId: acpSessionRefV0(sessionId),
 			openedBy: method,
 			// session/resume reattaches without replaying history to the client (that is session/load): none is claimed.
-			...(resumeId !== undefined ? { historyReplayed: false } : {}),
+			...(resumeId !== undefined ? { historyReplay: "not-requested" } : {}),
 		});
 		this.#recorder.derive(
 			"lifecycle.session-started",
@@ -507,12 +507,15 @@ export class AcpClientV0 {
 	async listSessions(params: { readonly cwd?: string; readonly cursor?: string } = {}): Promise<AcpSessionListV0> {
 		this.#assertUsable("session/list");
 		if (!this.#sessionCapabilities.list) throw this.#unavailable("list", "session.list");
-		if (params.cwd !== undefined && !isAbsolute(params.cwd)) throw new TypeError("cwd must be an absolute path");
+		// Read once: what is validated is what is sent.
+		const { cwd, cursor } = params;
+		if (cwd !== undefined && (typeof cwd !== "string" || !isAbsolute(cwd)))
+			throw new TypeError("cwd must be an absolute path");
 		const response: unknown = await this.#request(
 			"session/list",
 			this.#connection.agent.request(acp.methods.agent.session.list, {
-				...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
-				...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+				...(cwd !== undefined ? { cwd } : {}),
+				...(cursor !== undefined ? { cursor } : {}),
 			}),
 		);
 		if (!isRecord(response) || !validateAcpDefinitionV0("ListSessionsResponse", response)) {
@@ -566,6 +569,8 @@ export class AcpClientV0 {
 		try {
 			return await bounded(Promise.race([work, this.#exitedEarly(what)]), this.#requestTimeoutMs, what);
 		} catch (error) {
+			// close() ended the connection under the request. The agent did nothing wrong: no fault is recorded.
+			if (this.#closed && !(error instanceof acp.RequestError)) throw new AcpClosedErrorV0(what);
 			throw await this.#classify(what, error);
 		}
 	}

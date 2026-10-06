@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	ACP_FIELDS_READ_V0,
 	ACP_SCHEMA_V0,
 	ACP_STABLE_UPDATE_VARIANTS_V0,
 	ACP_STOP_REASONS_V0,
@@ -61,6 +62,24 @@ describe("ACP schema binding", () => {
 		};
 		for (const variant of ACP_STABLE_UPDATE_VARIANTS_V0) expect(marked(variant), variant).toBe(false);
 		for (const variant of ACP_UNSTABLE_UPDATE_VARIANTS_V0) expect(marked(variant), variant).toBe(true);
+	});
+
+	it("reads no field the pinned schema marks UNSTABLE", () => {
+		const defs = readAcpSchemaV0().document.$defs as unknown as Record<
+			string,
+			{ properties?: Record<string, { description?: string }> }
+		>;
+		for (const [definition, fields] of Object.entries(ACP_FIELDS_READ_V0)) {
+			expect(defs[definition], definition).toBeDefined();
+			for (const field of fields) {
+				const property = defs[definition]!.properties?.[field];
+				expect(property, `${definition}.${field}`).toBeDefined();
+				expect(property!.description ?? "", `${definition}.${field}`).not.toMatch(/^\*\*UNSTABLE\*\*/);
+			}
+		}
+		// The per-turn usage of the prompt response is the known unstable field next to what is read; it is not read.
+		expect(defs.PromptResponse!.properties!.usage!.description).toMatch(/^\*\*UNSTABLE\*\*/);
+		expect(ACP_FIELDS_READ_V0.PromptResponse).not.toContain("usage");
 	});
 
 	it("takes the stop reasons from the schema's closed set", () => {

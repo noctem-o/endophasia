@@ -54,7 +54,7 @@ export const ACP_LIFECYCLE_UNAVAILABLE_V0: readonly EndoUnavailableFieldV0[] = O
 	{
 		field: "usage",
 		reason:
-			"ACP v1 usage_update reports session context-window state (used, size) and an optional cumulative cost, not per-message input/output/cache/reasoning tokens; none is derived or split",
+			"the stable ACP v1 surface reports session context-window state (usage_update used, size) and an optional cumulative cost, not per-message input/output/cache/reasoning tokens; a per-turn usage field on the session/prompt response exists in the pinned schema but is marked UNSTABLE and is not read; nothing is derived or split",
 	},
 	{ field: "lanes", reason: "ACP v1 exposes one session per session/new and no lanes" },
 ]);

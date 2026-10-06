@@ -569,7 +569,9 @@ export class AcpClientV0 {
 		// recorded normally: only a refusal shows the session stayed open. State first, then evidence: `onEvent` is caller
 		// code and can re-enter this client from inside record().
 		this.#sessionClosing = true;
-		const run = this.#run;
+		// A turn whose prompt has not been sent yet is aborted by prompt() itself (it sees the closing state).
+		const run = this.#run?.sent ? this.#run : null;
+		const hadStopRequested = run?.stopRequested ?? false;
 		if (run !== null) run.stopRequested = true; // Closing a session cancels its work.
 		try {
 			const requested = this.#recorder.record("control.requested", { capability: "session.close", action: "close" });
@@ -589,8 +591,11 @@ export class AcpClientV0 {
 		} catch (error) {
 			// Only an explicit refusal shows the session was not closed; a timeout or transport failure is indeterminate, and
 			// an answer that arrives later still means the agent closed it.
-			if (error instanceof AcpRefusedErrorV0) this.#sessionClosing = false;
-			else this.#sessionClosed = true;
+			if (error instanceof AcpRefusedErrorV0) {
+				// Refused: the session and its turn are live, so the turn is not left marked as stopping.
+				this.#sessionClosing = false;
+				if (run !== null && this.#run === run) run.stopRequested = hadStopRequested;
+			} else this.#sessionClosed = true;
 			throw error;
 		}
 		this.#sessionClosed = true;
@@ -654,17 +659,9 @@ export class AcpClientV0 {
 		// State first, then evidence: `onEvent` is caller code and can re-enter this client from inside record().
 		const run: OpenRun = { sent: false, stopRequested: false, updates: Object.create(null) };
 		this.#run = run;
+		let requested: EndoEventV0;
 		try {
-			const requested = this.#recorder.record("control.requested", {
-				capability: "session.prompt",
-				action: "prompt",
-			});
-			// The run start is the client's own request, said so: ACP v1 sends no run-start notification.
-			this.#recorder.derive(
-				"lifecycle.run-started",
-				{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
-				requested,
-			);
+			requested = this.#recorder.record("control.requested", { capability: "session.prompt", action: "prompt" });
 		} catch (error) {
 			if (this.#run === run) this.#run = null;
 			throw error;
@@ -684,6 +681,18 @@ export class AcpClientV0 {
 			}),
 		);
 		run.sent = true;
+		// The run start is the client's own request, said so: ACP v1 sends no run-start notification. Derived only once the
+		// request was actually sent, so a prompt that was never sent leaves no run behind.
+		try {
+			this.#recorder.derive(
+				"lifecycle.run-started",
+				{ instance: this.#recorder.instance, basis: "client-sent-session-prompt" },
+				requested,
+			);
+		} catch (error) {
+			settled.catch(() => {});
+			throw error;
+		}
 		settled.catch(() => {});
 		try {
 			return await bounded(settled, this.#promptTimeoutMs, "session/prompt");

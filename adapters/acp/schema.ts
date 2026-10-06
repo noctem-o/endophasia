@@ -128,6 +128,16 @@ export const ACP_FIELDS_READ_V0: Readonly<Record<string, readonly string[]>> = O
 	Cost: ["amount", "currency"],
 });
 
+function isAbsoluteUri(value: string): boolean {
+	if (!/^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) || /[\u0000-\u0020\u007f-\u009f]/.test(value)) return false;
+	try {
+		new URL(value);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 const SCHEMA_KEY = "acp-v1";
 
 export interface AcpSchemaDocumentV0 {
@@ -162,8 +172,11 @@ function load(): { document: AcpSchemaDocumentV0; ajv: Ajv2020 } {
 	const ajv = new Ajv2020({ strict: true, allowUnionTypes: true, allErrors: false });
 	for (const keyword of ANNOTATION_KEYWORDS) ajv.addKeyword(keyword);
 	for (const [name, validate] of Object.entries(NUMBER_FORMATS)) ajv.addFormat(name, { type: "number", validate });
-	// A scheme-qualified reference; the schema uses `uri` once, for a resource's address.
-	ajv.addFormat("uri", { type: "string", validate: (value: string) => /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) });
+	// The schema's only `format: uri` is ElicitationUrlMode.url, an UNSTABLE definition no stable validation reaches; the
+	// resource URIs of content blocks are plain strings in the schema and are accepted as such. Checked as an absolute URI
+	// the WHATWG parser accepts (a scheme is required; spaces, control characters and unparseable hosts are not), not as a
+	// full RFC 3986 grammar.
+	ajv.addFormat("uri", { type: "string", validate: isAbsoluteUri });
 	ajv.addSchema(document, SCHEMA_KEY);
 	loaded = { document, ajv };
 	return loaded;

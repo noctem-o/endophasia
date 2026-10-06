@@ -116,7 +116,8 @@ recognized ACP v1 message -> exact pinned v1 schema validation -> translation
   evidence. That is a deliberate, stated divergence. The validator runs with Ajv strict mode on; the `x-*` annotations
   and `discriminator` are registered by name, so a keyword a later schema revision adds is a compile error. The numeric
   formats (`uint16/32/64`, `int32/64`, `double`) carry real range checks; `uint64`/`int64` are checked as JS numbers.
-  `format: uri` is checked for a scheme prefix only.
+  The schema's only `format: uri` is on an UNSTABLE elicitation field that no stable validation reaches; the resource
+  URIs of content blocks are plain strings in the schema and are accepted as such (a test pins this).
 - **UNSTABLE variants.** The pinned schema also lists `plan_update`, `plan_removed`, `notice`, `compaction_update`,
   `compaction_summary_chunk`, `subagent_update`, `session_message` and `session_message_chunk`, each described as
   "UNSTABLE: not part of the spec yet". They are not translated: they are observed as `runtime.unrecognized-event`
@@ -282,7 +283,7 @@ commands and permission requests (LOSSY: content omitted by design), and Windows
 | `reasoning.content` | UNREPRESENTABLE | agent-initiated | reasoning evidence or reasoning-token accounting | — thought chunks are agent-selected display content, not a reasoning-token ledger and not a verified chain of thought. Only their occurrence is counted. |
 | `transport.closed` | QUALIFIED | adapter-observed | harness.protocol-fault (connection-closed), teardown | lost: why it ended the attachment is unusable from that moment, before the diagnostic wait. |
 | `process.exit` | EXACT | adapter-observed | harness.process-exited, lifecycle.detached \| lifecycle.interrupted | — |
-| `process.containment` | QUALIFIED | adapter-observed | owned process-group teardown at close() | — on Windows the shared ProcessGroupV0 has no job-object containment: only the launched command is ended and descendants are not. This tranche does not change that. |
+| `process.containment` | QUALIFIED | adapter-observed | owned process-group teardown at close() | — on Windows the shared ProcessGroupV0 has no job-object containment: only the launched command is ended and descendants are not. On POSIX a descendant that deliberately leaves the group (setsid(2), or a child spawned detached) is also outside what a process group can contain and can survive close(). This tranche does not change either limit. |
 
 What is **not implemented** (unsupported, not lossy; nothing is projected or called): `session/load`, `fork`, `delete`,
 `session/set_config_option`, `session/set_mode`, `authenticate` / `logout`, `fs/*` and `terminal/*` (not advertised, not

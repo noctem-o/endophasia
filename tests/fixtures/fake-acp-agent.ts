@@ -106,6 +106,7 @@ const agent = acp
 	})
 	.onRequest(acp.methods.agent.session.close, async (ctx) => {
 		note({ called: "session/close", sessionId: ctx.params.sessionId });
+		if (process.env.FAKE_ACP_CLOSE_REFUSE) throw new acp.RequestError(-32004, "no");
 		cancelled?.();
 		if (mode === "close-slow") await sleep(2500);
 		if (mode === "permission-during-close") {

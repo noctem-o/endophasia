@@ -217,6 +217,25 @@ describe("ACP v1 stable update validation", () => {
 		expect(payload(base)).not.toHaveProperty("rawInputPresent");
 	});
 
+	it("does not constrain resource URIs beyond what the schema says (they are plain strings there)", () => {
+		const link = (uri: string) => ({
+			sessionUpdate: "agent_message_chunk",
+			content: { type: "resource_link", name: "n", uri },
+		});
+		// The schema's only `format: uri` is on an unstable elicitation field, which no stable validation reaches.
+		const defs = readAcpSchemaV0().document.$defs as unknown as Record<
+			string,
+			{ properties?: Record<string, { format?: string }> }
+		>;
+		const uriFields = Object.entries(defs).flatMap(([name, def]) =>
+			Object.entries(def.properties ?? {})
+				.filter(([, p]) => p.format === "uri")
+				.map(([field]) => `${name}.${field}`),
+		);
+		expect(uriFields).toEqual(["ElicitationUrlMode.url"]);
+		expect(validateAcpUpdateV0("agent_message_chunk", link("not a uri at all"))).toBe(true);
+	});
+
 	it("says so when a schema-valid cost cannot be carried, instead of dropping it silently", () => {
 		const usage = (currency: string) =>
 			(

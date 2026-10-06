@@ -512,6 +512,44 @@ describe("review regressions, round 5", () => {
 		expect(page.sessions.map((entry) => entry.additionalDirectories)).toEqual([[], ["/work/extra"]]);
 	});
 
+	it("leaves the turn cancellable when session/close is refused", async () => {
+		const { client, events } = await attach("cancellable", { FAKE_ACP_CAPS: "close", FAKE_ACP_CLOSE_REFUSE: "1" });
+		const turn = client.prompt("go");
+		for (let waited = 0; !find(events, "session.update-observed").length && waited < 200; waited++)
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		expect(await client.cancel()).toBe(true);
+		expect((await turn).stopReason).toBe("cancelled");
+	});
+
+	it("records no run when the prompt was never sent because onEvent closed the session first", async () => {
+		let client: AcpClientV0 | undefined;
+		let fired = false;
+		const events: EndoEventV0[] = [];
+		const connected = await attach(
+			"normal",
+			{ FAKE_ACP_CAPS: "close" },
+			{},
+			{
+				onEvent: (event) => {
+					events.push(event);
+					if (
+						!fired &&
+						event.kind === "control.requested" &&
+						(event.payload as { action: string }).action === "prompt"
+					) {
+						fired = true;
+						void client?.closeSession().catch(() => {});
+					}
+				},
+			},
+		);
+		client = connected.client;
+		await expect(client.prompt("go")).rejects.toBeInstanceOf(TypeError);
+		expect(kinds(events)).not.toContain("lifecycle.run-started");
+		expect(find(events, "lifecycle.stop-requested")).toEqual([]);
+	});
+
 	describe("changes state before it emits, so onEvent cannot re-enter", () => {
 		// An onEvent that calls the same operation again from inside the first control.requested.
 		async function reentrant(

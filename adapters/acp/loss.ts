@@ -17,7 +17,7 @@
 // The table is checked by tests/acp-loss-accounting.test.ts: every stable update variant, every event kind the adapter
 // source can emit, and every optional session method must have an entry, and the table is tied to the pinned schema.
 
-import { ACP_SCHEMA_V0, ACP_STABLE_UPDATE_VARIANTS_V0, readAcpSchemaV0 } from "./schema.ts";
+import { ACP_SCHEMA_V0, ACP_STABLE_UPDATE_VARIANTS_V0, assertAcpSchemaDigestV0, readAcpSchemaV0 } from "./schema.ts";
 import { ACP_MAPPING_VERSION } from "./translate.ts";
 
 export const ACP_LOSS_VERDICTS_V0 = ["EXACT", "QUALIFIED", "LOSSY", "UNREPRESENTABLE"] as const;
@@ -480,7 +480,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		preserved: ["posix: the whole process group is ended and its members checked"],
 		lost: [],
 		qualification:
-			"on Windows the shared ProcessGroupV0 has no job-object containment: only the launched command is ended and descendants are not. This tranche does not change that.",
+			"on Windows the shared ProcessGroupV0 has no job-object containment: only the launched command is ended and descendants are not. On POSIX a descendant that deliberately leaves the group (setsid(2), or a child spawned detached) is also outside what a process group can contain and can survive close(). This tranche does not change either limit.",
 	},
 ];
 
@@ -607,7 +607,10 @@ function updateEntry(variant: string): AcpLossEntryV0 {
 	}
 }
 
-const schemaDefinitions = readAcpSchemaV0().document.$defs as Record<string, { properties?: Record<string, unknown> }>;
+// The loss lists are derived from the pinned schema, so it must be exactly the revision the table is labelled with.
+const pinned = readAcpSchemaV0();
+assertAcpSchemaDigestV0(pinned.sha256);
+const schemaDefinitions = pinned.document.$defs as Record<string, { properties?: Record<string, unknown> }>;
 
 /** The properties of a definition that an entry does not project, as `Definition.property`. */
 export function acpUnprojectedFieldsV0(entry: Pick<AcpLossEntryV0, "projects">): string[] {

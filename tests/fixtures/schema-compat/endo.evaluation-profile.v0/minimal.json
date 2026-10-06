@@ -1,0 +1,20 @@
+{
+	"candidateId": "endo.candidate.fx-2",
+	"candidateRevision": "fx-rev",
+	"cognitionPolicy": "work",
+	"environment": {
+		"environmentId": "fx-env",
+		"schemaVersion": "endo.environment-profile.v0",
+		"simulated": true
+	},
+	"evaluator": "fx-eval",
+	"experimentId": "endo.experiment.fx-1",
+	"grader": "fx-grade",
+	"model": "fx-model",
+	"runtime": "fx-runtime",
+	"schemaVersion": "endo.evaluation-profile.v0",
+	"seeds": [
+		1
+	],
+	"trialCount": 1
+}

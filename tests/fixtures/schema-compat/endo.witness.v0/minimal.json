@@ -1,0 +1,8 @@
+{
+	"id": "endo.evidence.fx-witness-1",
+	"runId": "endo.run.fx-1",
+	"schemaVersion": "endo.witness.v0",
+	"verification": "recomputed-matched",
+	"witnessAlgorithm": "blake3",
+	"witnessRoot": "5555555555555555555555555555555555555555555555555555555555555555"
+}

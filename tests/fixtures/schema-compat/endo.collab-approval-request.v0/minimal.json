@@ -1,0 +1,8 @@
+{
+	"candidateId": "endo.candidate.fx-2",
+	"evidenceRefs": [],
+	"id": "endo.evidence.fx-approval-request-1",
+	"rationale": "fx rationale",
+	"roomId": "endo.evidence.fx-room-1",
+	"schemaVersion": "endo.collab-approval-request.v0"
+}

@@ -1,0 +1,9 @@
+{
+	"branch": "fx-branch",
+	"id": "endo.evidence.fx-patch-1",
+	"patchId": "fx-patch",
+	"repo": "example.invalid/fx/repo",
+	"roomId": "endo.evidence.fx-room-1",
+	"schemaVersion": "endo.collab-patch.v0",
+	"status": "open"
+}

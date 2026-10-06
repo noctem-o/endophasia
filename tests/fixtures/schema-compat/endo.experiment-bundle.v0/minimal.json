@@ -1,0 +1,49 @@
+{
+	"digest": "df547a5cf9a6989aa74e8402864393d9f2ea9fff13d8582761a217a6ab1dab2c",
+	"id": "endo.evidence.fx-bundle-1",
+	"result": {
+		"id": "endo.evidence.fx-result-1",
+		"profile": {
+			"candidateId": "endo.candidate.fx-2",
+			"candidateRevision": "fx-rev",
+			"cognitionPolicy": "work",
+			"environment": {
+				"environmentId": "fx-env",
+				"schemaVersion": "endo.environment-profile.v0",
+				"simulated": true
+			},
+			"evaluator": "fx-eval",
+			"experimentId": "endo.experiment.fx-1",
+			"grader": "fx-grade",
+			"model": "fx-model",
+			"runtime": "fx-runtime",
+			"schemaVersion": "endo.evaluation-profile.v0",
+			"seeds": [
+				1
+			],
+			"trialCount": 1
+		},
+		"resultBundleDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+		"schemaVersion": "endo.evaluation-result.v0",
+		"trials": [
+			{
+				"coordinates": {
+					"candidateId": "endo.candidate.fx-2",
+					"experimentId": "endo.experiment.fx-1",
+					"runId": "endo.run.fx-1",
+					"schemaVersion": "endo.trial.v0",
+					"trial": 0
+				},
+				"derived": {
+					"score": 1
+				},
+				"partition": "validation",
+				"raw": {
+					"ok": true
+				},
+				"schemaVersion": "endo.trial-result.v0"
+			}
+		]
+	},
+	"schemaVersion": "endo.experiment-bundle.v0"
+}

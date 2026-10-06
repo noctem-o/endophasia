@@ -1,0 +1,67 @@
+{
+	"entries": [
+		{
+			"kind": "artifact",
+			"recordId": "endo.evidence.fx-artifact-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 1
+		},
+		{
+			"kind": "mutation",
+			"recordId": "endo.evidence.fx-mutation-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 2
+		},
+		{
+			"kind": "candidate",
+			"recordId": "endo.candidate.fx-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 3
+		},
+		{
+			"kind": "candidate",
+			"recordId": "endo.candidate.fx-2",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 4
+		},
+		{
+			"kind": "evaluation-result",
+			"recordId": "endo.evidence.fx-result-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 5
+		},
+		{
+			"kind": "evaluation-result",
+			"recordId": "endo.evidence.fx-result-2",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 6
+		},
+		{
+			"kind": "selection-decision",
+			"recordId": "endo.evidence.fx-selection-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 7
+		},
+		{
+			"kind": "promotion-request",
+			"recordId": "endo.evidence.fx-request-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 8
+		},
+		{
+			"kind": "promotion-decision",
+			"recordId": "endo.evidence.fx-promotion-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 9
+		},
+		{
+			"kind": "experiment-transition",
+			"recordId": "endo.evidence.fx-transition-1",
+			"schemaVersion": "endo.evidence-ledger-entry.v0",
+			"sequence": 10
+		}
+	],
+	"experimentId": "endo.experiment.fx-1",
+	"id": "endo.evidence.fx-ledger-1",
+	"schemaVersion": "endo.evidence-ledger.v0"
+}

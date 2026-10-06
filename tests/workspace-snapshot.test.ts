@@ -152,7 +152,7 @@ describe("workspace archives", () => {
 		expect(existsSync(join(target, "a"))).toBe(false);
 	});
 
-	it("refuses an entry under a symbolic link the archive creates, and a time on a v0 entry", () => {
+	it("refuses an entry under a symbolic link the archive creates, and a v1-only time on a v0 entry", () => {
 		const underLink = {
 			schemaVersion: "endo.workspace-archive.v1",
 			rootMtimeMs: 1,
@@ -169,7 +169,7 @@ describe("workspace archives", () => {
 			entries: [{ path: "a", type: "directory", mtimeMs: 1 }],
 		};
 		expect(() => parseEndoWorkspaceArchiveV0(new TextEncoder().encode(canonicalEndoJsonV0(v0WithTime)))).toThrow(
-			/bad time/,
+			/unknown field "mtimeMs"/,
 		);
 	});
 });

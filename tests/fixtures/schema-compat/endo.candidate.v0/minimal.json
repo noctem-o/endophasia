@@ -1,0 +1,8 @@
+{
+	"id": "endo.candidate.fx-2",
+	"mutations": [
+		"endo.evidence.fx-mutation-1"
+	],
+	"parentCandidateId": "endo.candidate.fx-1",
+	"schemaVersion": "endo.candidate.v0"
+}

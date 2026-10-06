@@ -5,7 +5,7 @@
 // ingested event is never mutated or removed, and the storage sequence is the append order (1-based),
 // independent of the producer numbering in the events' own sequences.
 
-import { type EndoEventCoordinatesV0, type EndoEventV0, validateEndoEventV0 } from "../../protocol/event.ts";
+import { type EndoEventCoordinatesV0, type EndoEventV0, readEndoEventV0 } from "../../protocol/event.ts";
 import {
 	type EndoEventRecordPageQueryV0,
 	type EndoEventRecordPageV0,
@@ -15,6 +15,7 @@ import {
 	validateEndoResourceUsageV0,
 } from "../../protocol/event-record.ts";
 import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
+import { EndoSchemaVersionErrorV0 } from "../../protocol/versioned.ts";
 import { assertPlainJsonValueV0, canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 import { reduceEndoEventSummaryV0 } from "./event-replay.ts";
 import { deepFreezeCopyV0 } from "./immutability.ts";
@@ -98,8 +99,13 @@ export function createEndoEventStoreV0(): EndoEventStoreV0 {
 			return events.length;
 		},
 		ingest(value: unknown): EndoEventV0 {
-			const event = validateEndoEventV0(value);
-			if (event === null) throw new TypeError("not a valid endo.event.v0 event");
+			const read = readEndoEventV0(value);
+			if (!read.ok)
+				throw new EndoSchemaVersionErrorV0({
+					...read,
+					message: `not a valid endo.event.v0 event (${read.message})`,
+				});
+			const event = read.value;
 			assertPlainJsonValueV0(event);
 			if (seen.has(event.id)) throw new TypeError(`duplicate event id: ${event.id}`);
 			seen.add(event.id);

@@ -1,0 +1,33 @@
+{
+	"entries": [
+		{
+			"base64": "aGk=",
+			"bytes": 2,
+			"executable": false,
+			"mtimeMs": 1700000000001,
+			"path": "a.txt",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1700000000002,
+			"path": "bin",
+			"type": "directory"
+		},
+		{
+			"base64": "IyF4",
+			"bytes": 3,
+			"executable": true,
+			"mtimeMs": 1700000000003,
+			"path": "bin/run.sh",
+			"type": "file"
+		},
+		{
+			"mtimeMs": 1700000000004,
+			"path": "link",
+			"target": "a.txt",
+			"type": "symlink"
+		}
+	],
+	"rootMtimeMs": 1700000000000,
+	"schemaVersion": "endo.workspace-archive.v1"
+}

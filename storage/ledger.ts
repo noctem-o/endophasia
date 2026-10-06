@@ -36,6 +36,7 @@ import type { EndoEvidenceLedgerEntryV0, EndoEvidenceLedgerV0, EndoExperimentRec
 import { validateEndoExperimentRecordV0 } from "../protocol/evolution.ts";
 import { isEndoIdentifierV0 } from "../protocol/identity.ts";
 import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
+import { endoFirstUnknownKeyV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	createEndoFrameLogV0,
@@ -154,6 +155,9 @@ export function createEndoDurableEvidenceLedgerV0(
 		const parsed = readJsonFile(metaFile);
 		if (!isPlainJsonObjectV0(parsed)) throw new TypeError("ledger.meta.json is not a plain JSON object");
 		const envelope = parsed as Record<string, unknown>;
+		// The meta envelope is unversioned and closed: exactly the keys the writer emits, whatever digest they carry.
+		if (endoFirstUnknownKeyV0(envelope, ["digest", "id", "experiment"]) !== undefined)
+			throw new TypeError("ledger.meta.json holds a field this reader does not know; the ledger cannot be opened");
 		const rest: Record<string, unknown> = {};
 		for (const key of Object.keys(envelope)) {
 			if (key !== "digest") rest[key] = envelope[key];
@@ -188,6 +192,10 @@ export function createEndoDurableEvidenceLedgerV0(
 	if (existsSync(snapshotFile)) {
 		const parsed = readJsonFile(snapshotFile);
 		if (!isPlainJsonObjectV0(parsed)) throw new TypeError("ledger.snapshot.json is not a plain JSON object");
+		if (endoFirstUnknownKeyV0(parsed as object, ["digest", "entriesCount", "ledger"]) !== undefined)
+			throw new TypeError(
+				"ledger.snapshot.json holds a field this reader does not know; the ledger cannot be opened",
+			);
 		const envelope = parsed as { digest: unknown; entriesCount: unknown; ledger: unknown };
 		const ledger = replayEndoEvidenceLedgerV0(envelope.ledger);
 		if (typeof envelope.digest !== "string" || envelope.digest !== sha256HexV0(canonicalEndoJsonV0(ledger))) {

@@ -1,0 +1,35 @@
+{
+	"attachment": "fx.attachment",
+	"gaps": [],
+	"id": "endo.evidence.fx-fingerprint-2142e80091af2f31",
+	"identity": {
+		"confidence": "strong",
+		"digest": "fcb516e95fdb559845c027233e4c9a8676a61b6148f918d652e4f547a506dc11"
+	},
+	"local": {
+		"entrypoint": {
+			"bytes": 10,
+			"sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+		},
+		"package": {
+			"name": "fx-runtime",
+			"root": "/fx/lib/fx-runtime",
+			"version": "1.0.0"
+		},
+		"realPath": "/fx/lib/fx-runtime/cli.js",
+		"requested": "fx-runtime",
+		"resolvedPath": "/fx/bin/fx-runtime"
+	},
+	"methods": [
+		"path-search",
+		"realpath",
+		"version-command"
+	],
+	"observedAt": "2026-01-01T00:00:00.000Z",
+	"reported": {
+		"version": "1.0.0",
+		"versionText": "1.0.0"
+	},
+	"runtime": "fx.runtime",
+	"schemaVersion": "endo.harness-fingerprint.v0"
+}

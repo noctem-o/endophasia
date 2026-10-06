@@ -1,0 +1,9 @@
+{
+	"boundTo": "endo.evidence.fx-promotion-1",
+	"capability": "fx capability",
+	"id": "endo.evidence.fx-lease-1",
+	"leaseDigest": "6666666666666666666666666666666666666666666666666666666666666666",
+	"route": "promotion.apply",
+	"schemaVersion": "endo.lease.v0",
+	"signer": "fx-signer"
+}

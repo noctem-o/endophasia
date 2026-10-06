@@ -59,9 +59,9 @@ import type {
 	EndoSelectionDecisionV0,
 } from "../protocol/evolution.ts";
 import {
+	ENDO_EVIDENCE_LEDGER_VERSIONS_V0,
 	validateEndoArtifactV0,
 	validateEndoCandidateV0,
-	validateEndoEvidenceLedgerV0,
 	validateEndoExperimentRecordV0,
 	validateEndoExperimentTransitionV0,
 	validateEndoMutationV0,
@@ -90,6 +90,7 @@ import {
 	validateEndoStandingRecordV0,
 	validateEndoWitnessRecordV0,
 } from "../protocol/trust.ts";
+import { defineEndoVersionTableV0, EndoSchemaVersionErrorV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { deepFreezeCopyV0, deepFreezeV0 } from "../runtime/contracts/immutability.ts";
 
@@ -179,6 +180,17 @@ const ENDO_EVIDENCE_VALIDATORS_V0: Readonly<Record<EndoEvidenceKindV0, (value: u
 		"collab-patch": validateEndoCollabPatchV0,
 		"collab-steering": validateEndoCollabSteeringV0,
 	};
+
+/**
+ * The evidence record versions this ledger reads: each version, with the validator of the kind it maps to. A closed
+ * set; a record whose version is not here is rejected before any validator runs.
+ */
+export const ENDO_EVIDENCE_RECORD_VERSIONS_V0 = defineEndoVersionTableV0<EndoLedgerRecordV0>(
+	"endo.evidence-record",
+	Object.entries(ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0).map(
+		([version, kind]) => [version, ENDO_EVIDENCE_VALIDATORS_V0[kind]] as const,
+	),
+);
 
 /** The ledger references a record must already have been appended with, by its schemaVersion. */
 function referencesV0(record: EndoLedgerRecordV0): string[] {
@@ -296,20 +308,20 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
 			};
 		},
 		append(record: unknown): EndoEvidenceLedgerEntryV0 {
-			if (typeof record !== "object" || record === null) throw new TypeError("ledger records must be objects");
-			const kind =
-				"schemaVersion" in record && typeof record.schemaVersion === "string"
-					? ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0[record.schemaVersion]
-					: undefined;
-			if (kind === undefined) {
-				throw new TypeError("ledger records must be one of the closed evidence record kinds");
+			// The declared schemaVersion selects the one validator; the entry kind follows from the version it selected.
+			const read = readEndoVersionedV0(ENDO_EVIDENCE_RECORD_VERSIONS_V0, record);
+			if (!read.ok) {
+				if (read.kind === "not-an-object") throw new TypeError("ledger records must be objects");
+				throw new EndoSchemaVersionErrorV0({
+					...read,
+					message:
+						read.kind === "invalid"
+							? `not a valid ${read.schemaVersion} record`
+							: `ledger records must be one of the closed evidence record kinds (${read.message})`,
+				});
 			}
-			const validated = ENDO_EVIDENCE_VALIDATORS_V0[kind](record);
-			if (validated === null) {
-				const schemaVersion =
-					"schemaVersion" in record && typeof record.schemaVersion === "string" ? record.schemaVersion : "unknown";
-				throw new TypeError(`not a valid ${schemaVersion} record`);
-			}
+			const validated = read.value;
+			const kind = ENDO_EVIDENCE_KIND_BY_SCHEMA_VERSION_V0[read.schemaVersion]!;
 			const recordId = ledgerIdentityV0(validated);
 			if (ids.has(recordId)) throw new TypeError(`record ${recordId} is already in the ledger`);
 			for (const reference of referencesV0(validated)) {
@@ -354,7 +366,11 @@ export function createEndoEvidenceLedgerV0(id: unknown, record: unknown): EndoEv
  * ledger.
  */
 export function replayEndoEvidenceLedgerV0(value: unknown): EndoEvidenceLedgerV0 {
-	const validated = validateEndoEvidenceLedgerV0(value);
-	if (validated === null) throw new TypeError("not a valid endo.evidence-ledger.v0 ledger");
-	return validated;
+	const read = readEndoVersionedV0(ENDO_EVIDENCE_LEDGER_VERSIONS_V0, value);
+	if (!read.ok)
+		throw new EndoSchemaVersionErrorV0({
+			...read,
+			message: `not a valid endo.evidence-ledger.v0 ledger (${read.message})`,
+		});
+	return read.value;
 }

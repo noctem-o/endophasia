@@ -1,0 +1,6 @@
+{
+	"action": "stop",
+	"id": "endo.evidence.fx-steering-1",
+	"roomId": "endo.evidence.fx-room-1",
+	"schemaVersion": "endo.collab-steering.v0"
+}

@@ -5,6 +5,7 @@
 
 import { type EndoIdentifierKindV0, isEndoIdentifierV0, isWellFormedEventKindV0 } from "./identity.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
+import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
 /**
  * What an event is. The six classes are not interchangeable (README): a runtime fact is never silently upgraded to
@@ -124,4 +125,14 @@ export function validateEndoEventV0(value: unknown): EndoEventV0 | null {
 	if (!Array.isArray(v.derivedFrom) || !v.derivedFrom.every((id) => isEndoIdentifier(id, "event"))) return null;
 	if (!isStrictJsonValue(v.payload)) return null;
 	return value as EndoEventV0;
+}
+
+/** The event versions this reader knows. */
+export const ENDO_EVENT_VERSIONS_V0 = defineEndoVersionTableV0<EndoEventV0>("endo.event", [
+	["endo.event.v0", validateEndoEventV0],
+]);
+
+/** Read an event under the version it declares: a missing, unknown and malformed-known version stay distinguishable. */
+export function readEndoEventV0(value: unknown): EndoVersionedReadV0<EndoEventV0> {
+	return readEndoVersionedV0(ENDO_EVENT_VERSIONS_V0, value);
 }

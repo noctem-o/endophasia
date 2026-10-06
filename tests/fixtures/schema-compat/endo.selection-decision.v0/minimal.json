@@ -1,0 +1,21 @@
+{
+	"candidateId": "endo.candidate.fx-2",
+	"conditions": [
+		{
+			"met": true,
+			"name": "fx-condition",
+			"schemaVersion": "endo.selection-condition.v0"
+		}
+	],
+	"evidence": [
+		"endo.evidence.fx-result-1"
+	],
+	"experimentId": "endo.experiment.fx-1",
+	"id": "endo.evidence.fx-selection-1",
+	"outcome": "selected",
+	"policy": {
+		"name": "fx-policy",
+		"schemaVersion": "endo.selection-policy.v0"
+	},
+	"schemaVersion": "endo.selection-decision.v0"
+}

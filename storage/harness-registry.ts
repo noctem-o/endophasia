@@ -16,18 +16,16 @@
 
 import { mkdirSync } from "node:fs";
 import {
+	ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0,
 	type EndoCapabilityEvidenceV0,
 	type EndoCapabilityStateV0,
 	type EndoHarnessChangeV0,
 	type EndoHarnessFingerprintV0,
 	type EndoHarnessNotificationV0,
-	validateEndoCapabilityEvidenceV0,
-	validateEndoCapabilityStateV0,
-	validateEndoHarnessChangeV0,
-	validateEndoHarnessFingerprintV0,
-	validateEndoHarnessNotificationV0,
 } from "../protocol/harness.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
+import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
+import { EndoSchemaVersionErrorV0, endoFirstUnknownKeyV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	createEndoFrameLogV0,
@@ -36,16 +34,16 @@ import {
 	endoFrameLogRecoveryV0,
 } from "./log.ts";
 
-/** The record kinds the registry holds, each with its protocol validator. */
-const VALIDATORS = {
-	fingerprint: validateEndoHarnessFingerprintV0,
-	change: validateEndoHarnessChangeV0,
-	evidence: validateEndoCapabilityEvidenceV0,
-	state: validateEndoCapabilityStateV0,
-	notification: validateEndoHarnessNotificationV0,
+/** The record kinds the registry holds, each with the one schema version it carries. */
+const VERSION_OF_KIND = {
+	fingerprint: "endo.harness-fingerprint.v0",
+	change: "endo.harness-change.v0",
+	evidence: "endo.capability-evidence.v0",
+	state: "endo.capability-state.v0",
+	notification: "endo.harness-notification.v0",
 } as const;
 
-export type EndoHarnessRegistryKindV0 = keyof typeof VALIDATORS;
+export type EndoHarnessRegistryKindV0 = keyof typeof VERSION_OF_KIND;
 
 export interface EndoHarnessRegistryRecordsV0 {
 	fingerprint: EndoHarnessFingerprintV0;
@@ -98,11 +96,16 @@ export function openEndoHarnessRegistryV0(
 	const ids = new Set<string>();
 
 	const admit = (kind: unknown, record: unknown): { kind: EndoHarnessRegistryKindV0; record: { id?: string } } => {
-		if (typeof kind !== "string" || !Object.hasOwn(VALIDATORS, kind)) {
+		if (typeof kind !== "string" || !Object.hasOwn(VERSION_OF_KIND, kind)) {
 			throw new TypeError("unknown harness registry record kind");
 		}
-		const validated = VALIDATORS[kind as EndoHarnessRegistryKindV0](record) as { attachment?: string; id?: string };
-		if (validated === null) throw new TypeError(`not a valid ${kind} record`);
+		// The record's declared version selects its validator; the kind the frame names must be that version's kind.
+		const read = readEndoVersionedV0(ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0, record);
+		if (!read.ok)
+			throw new EndoSchemaVersionErrorV0({ ...read, message: `not a valid ${kind} record (${read.message})` });
+		if (read.schemaVersion !== VERSION_OF_KIND[kind as EndoHarnessRegistryKindV0])
+			throw new TypeError(`a ${read.schemaVersion} record is not a ${kind} record`);
+		const validated = read.value as { attachment?: string; id?: string };
 		if (validated.attachment !== attachment) throw new TypeError(`the ${kind} record names another attachment`);
 		if (validated.id !== undefined && ids.has(validated.id))
 			throw new TypeError(`duplicate record id ${validated.id}`);
@@ -116,7 +119,10 @@ export function openEndoHarnessRegistryV0(
 		} catch {
 			throw new TypeError("a harness registry frame does not decode as UTF-8 JSON; the registry cannot be opened");
 		}
-		const { kind, record } = (parsed ?? {}) as { kind?: unknown; record?: unknown };
+		// A frame is exactly `{ kind, record }`; the writer emits nothing else.
+		if (!isPlainJsonObjectV0(parsed) || endoFirstUnknownKeyV0(parsed as object, ["kind", "record"]) !== undefined)
+			throw new TypeError("a harness registry frame is not exactly { kind, record }; the registry cannot be opened");
+		const { kind, record } = parsed as { kind?: unknown; record?: unknown };
 		const entry = admit(kind, record);
 		records.push(entry);
 		if (entry.record.id !== undefined) ids.add(entry.record.id);

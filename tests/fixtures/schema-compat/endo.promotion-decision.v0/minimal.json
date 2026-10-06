@@ -1,0 +1,12 @@
+{
+	"authority": "fx-authority",
+	"candidateId": "endo.candidate.fx-2",
+	"evidence": [
+		"endo.evidence.fx-result-1"
+	],
+	"experimentId": "endo.experiment.fx-1",
+	"id": "endo.evidence.fx-promotion-1",
+	"outcome": "granted",
+	"requestId": "endo.evidence.fx-request-1",
+	"schemaVersion": "endo.promotion-decision.v0"
+}

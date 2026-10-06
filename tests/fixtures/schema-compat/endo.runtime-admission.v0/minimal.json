@@ -1,0 +1,13 @@
+{
+	"blockers": [
+		"fx blocker"
+	],
+	"evidence": [
+		"endo.evidence.conformance-suite.e5374a3ebfed3ccf6fcb59f98b2d8430c76f4a0ee9709f600da1561c4980819d"
+	],
+	"id": "endo.evidence.fx-admission-1",
+	"schemaVersion": "endo.runtime-admission.v0",
+	"status": "dormant",
+	"subject": "fx-subject",
+	"version": "0.0.1"
+}

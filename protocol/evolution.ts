@@ -20,6 +20,7 @@ import { validateEndoEnvironmentProfileV0 } from "./evaluation.ts";
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
+import { defineEndoVersionTableV0 } from "./versioned.ts";
 
 /**
  * SHA-256 digest: 64 lowercase hex characters.
@@ -959,3 +960,13 @@ export function validateEndoEvidenceLedgerV0(value: unknown): EndoEvidenceLedger
 	}
 	return value as EndoEvidenceLedgerV0;
 }
+
+/** The experiment-record versions this reader knows. */
+export const ENDO_EXPERIMENT_RECORD_VERSIONS_V0 = defineEndoVersionTableV0<EndoExperimentRecordV0>("endo.experiment", [
+	["endo.experiment.v0", validateEndoExperimentRecordV0],
+]);
+
+/** The persisted evidence-ledger versions this reader knows. */
+export const ENDO_EVIDENCE_LEDGER_VERSIONS_V0 = defineEndoVersionTableV0<EndoEvidenceLedgerV0>("endo.evidence-ledger", [
+	["endo.evidence-ledger.v0", validateEndoEvidenceLedgerV0],
+]);

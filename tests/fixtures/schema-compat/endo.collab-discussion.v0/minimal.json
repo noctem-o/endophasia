@@ -1,0 +1,15 @@
+{
+	"author": "fx-author",
+	"authorKind": "human",
+	"body": "fx body",
+	"candidateId": "endo.candidate.fx-2",
+	"evidenceRefs": [
+		"endo.evidence.fx-result-1"
+	],
+	"id": "endo.evidence.fx-discussion-1",
+	"receiptRefs": [
+		"endo.evidence.fx-receipt-1"
+	],
+	"roomId": "endo.evidence.fx-room-1",
+	"schemaVersion": "endo.collab-discussion.v0"
+}

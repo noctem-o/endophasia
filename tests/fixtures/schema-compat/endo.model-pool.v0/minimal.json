@@ -1,0 +1,10 @@
+{
+	"id": "endo.model.fx-pool",
+	"members": [
+		{
+			"maxConcurrency": 1,
+			"modelId": "endo.model.fx-model"
+		}
+	],
+	"schemaVersion": "endo.model-pool.v0"
+}

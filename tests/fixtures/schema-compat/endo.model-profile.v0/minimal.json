@@ -1,0 +1,11 @@
+{
+	"capabilities": [
+		"chat"
+	],
+	"deployment": "hosted",
+	"id": "endo.model.fx-model",
+	"name": "fx-model",
+	"observation": "none",
+	"provider": "fx-provider",
+	"schemaVersion": "endo.model-profile.v0"
+}

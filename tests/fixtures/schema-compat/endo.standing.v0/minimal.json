@@ -1,0 +1,11 @@
+{
+	"claimId": "fx-claim",
+	"evidence": [
+		"endo.evidence.fx-result-1"
+	],
+	"id": "endo.evidence.fx-standing-1",
+	"policy": "v2",
+	"qualifications": [],
+	"schemaVersion": "endo.standing.v0",
+	"standing": "supported"
+}

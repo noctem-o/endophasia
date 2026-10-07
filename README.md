@@ -419,7 +419,8 @@ pinned rather than silently upgraded.
 Before any arm is run, predeclare the budget and what it can detect; otherwise a null result is uninterpretable.
 
 - **Run budget and power.** Fix the number of independent seeds per arm, the checkpoint cadence and the smallest
-  difference in hacking onset or hack rate the design could detect. Onset is a time-to-event outcome with censoring
+  difference in hacking onset or hack rate the design could detect, together with the significance threshold, target
+  power, statistical test and censoring assumptions that define "detect". Onset is a time-to-event outcome with censoring
   (runs that never hack), so plan the analysis for that. A comparison the budget cannot power is reported as
   exploratory, not as evidence of no effect.
 - **Stage 0 is a gate with a compute cap.** State the maximum runs and compute at the ~4B scout and at ~8B, and the
@@ -434,8 +435,14 @@ Before any arm is run, predeclare the budget and what it can detect; otherwise a
 
 The first calibration treatment rewards only a narrow quantity whose outcome can be independently resolved. It does
 not reward the model for *looking* epistemically virtuous. The outcome must be resolved independently of the
-policy and of the training proxy (a gold test, a hidden check or a delayed downstream result, named before training),
-never by the policy's own grading or by the proxy being optimized.
+policy and of the training proxy, named before training, never by the policy's own grading or by the proxy being
+optimized. Two further rules keep the term honest. First, calibration outcomes come from a **training-outcome set that is
+disjoint from every held-out and shadow evaluation set**: an outcome the optimizer's reward is computed from is no
+longer a clean evaluation surface. Second, the forecast must be about something **the policy cannot influence**
+(a fixed external quantity or a held-fixed resolution), not about whether its own answer will be judged correct: a
+proper scoring rule only rewards honest forecasts when the forecast does not change the outcome. A design that must
+score a policy-influenced outcome has to declare a scoring mechanism built for that case, or treat the arm as
+exploratory.
 
 | Surface | Examples | Optimizer may read it? |
 | :--- | :--- | :---: |

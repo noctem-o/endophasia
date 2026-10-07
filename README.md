@@ -837,11 +837,17 @@ do not import a framework merely because its paper reports a benchmark gain.
     couples skill evolution to policy optimisation through RL; keep those two adaptation axes separately attributable.
 
 19. **Episodic + semantic memory.** Test retrieval of similar past cases alongside compact, reusable
-    lessons, with ablations for each channel and no-memory baselines. Measure retrieval precision,
-    stale advice, context cost, and transfer to unseen repositories. Candidate references:
+    lessons, with ablations for each channel and no-memory baselines. Also test temporal, multiresolution context
+    construction inspired by [OptChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449)
+    and [OptMem](https://github.com/VictorTaelin/OptMem): retain an append-only source history, derive a bounded,
+    progressively compressed view, and permit deterministic expansion back toward source records. Compare this
+    temporal channel independently and in combination with semantic retrieval rather than treating either as the
+    canonical memory architecture. Measure retrieval precision, stale advice, context and cache cost, source recovery,
+    and transfer to unseen repositories. Candidate references also include
     [ExpeRepair](https://github.com/ExpeRepair/ExpeRepair) and
-    [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred
-    lessons, and make every memory item traceable to its source episodes.
+    [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred lessons, and make
+    every derived memory item traceable to its source episodes. Magpie-style epistemic standing remains a separate
+    layer: retrieval or inclusion in active context does not make a claim true.
 
 20. **Compute-aware search-time planning and branching.** Compare one main trajectory with retry/refinement,
     Best-of-N, bounded alternatives, beam/tree search, or provider-defined search such as MCTS. Treat the search

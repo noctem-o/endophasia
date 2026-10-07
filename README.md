@@ -681,9 +681,11 @@ counterfactual / evolution / training work
      claim of stable multi-runtime support.
 
 3. **First Endophasia-native operator surface.**
-   - Wire a thin, read-only cockpit to the real durable store and the already-defined semantic graph/visualisation
-     state. It should show recorded lifecycle, evidence, degraded/unavailable state and graph projection without
-     depending on Pi private services.
+   - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
+     [docs/cockpit.md](docs/cockpit.md): runtime identity/change state, capability state with reasons and a live session
+     timeline, all projected from Endophasia records without depending on Pi private services.
+   - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
+     it is a follow-on within this stage, not a first-slice acceptance requirement.
    - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
      recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
 
@@ -695,7 +697,8 @@ counterfactual / evolution / training work
 
 5. **Return to the broader research loop.**
    - Resume the compute-frontier follow-up (item 13): where success saturates above 32,768 tokens, whether retry after
-     cut-off beats a larger cap, and whether failures merely move.
+     cut-off beats a larger cap, and whether failures merely move. Pre-register the comparison, pin everything else,
+     and use several predefined fixed seeds as the replication unit, with the same seed set across compared arms.
    - Write the consolidated research note for the variance, pinned-environment, steering, path-sensitivity,
      discriminating-task and completion-cap studies.
    - Then feed real experiment bundles and forked trajectories into the evolution, counterfactual and adaptation tracks

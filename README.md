@@ -414,10 +414,28 @@ A–D. Any manipulation of exploit discoverability, hint strength or proxy quali
 not an unrecorded prompt change. The reference implementation and dependency set used for reproduction should be
 pinned rather than silently upgraded.
 
+#### Budget, power and comparison families
+
+Before any arm is run, predeclare the budget and what it can detect; otherwise a null result is uninterpretable.
+
+- **Run budget and power.** Fix the number of independent seeds per arm, the checkpoint cadence and the smallest
+  difference in hacking onset or hack rate the design could detect. Onset is a time-to-event outcome with censoring
+  (runs that never hack), so plan the analysis for that. A comparison the budget cannot power is reported as
+  exploratory, not as evidence of no effect.
+- **Stage 0 is a gate with a compute cap.** State the maximum runs and compute at the ~4B scout and at ~8B, and the
+  outcome that ends the programme if hacking is still absent at ~8B. Stages 1-3 are not funded from an unbounded
+  Stage 0.
+- **A-D is one comparison family.** Arms E and I intentionally differ from A-D (E changes the prompt, I adds
+  interleaved data), so the byte-identical guarantee above does not cover them. Treat them as positive controls
+  against A, in a separate family: never pool them into A-D comparisons or the same multiplicity correction, and do not
+  read them as competing mitigations.
+
 #### What is rewarded and what stays shadow-only
 
 The first calibration treatment rewards only a narrow quantity whose outcome can be independently resolved. It does
-not reward the model for *looking* epistemically virtuous.
+not reward the model for *looking* epistemically virtuous. The outcome must be resolved independently of the
+policy and of the training proxy (a gold test, a hidden check or a delayed downstream result, named before training),
+never by the policy's own grading or by the proxy being optimized.
 
 | Surface | Examples | Optimizer may read it? |
 | :--- | :--- | :---: |

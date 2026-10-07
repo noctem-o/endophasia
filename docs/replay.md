@@ -89,7 +89,8 @@ Per exchange, the capture log (`<store>/capture/`, an Endophasia event store) re
   - how it ended: `complete`, `client-disconnected` (with the chunks relayed by then) or `upstream-error` (with the
     error code, and for `upstream-error` the `transport` classification above).
 - `capture.connection-closed`: who ended the client connection, and after which exchange. `upstream` means the proxy ended
-  it because of a response or upstream failure; `client` means the client did.
+  it because of a response's (or the request's own) `Connection: close`, a close-delimited body or an upstream failure;
+  `client` means the client did.
 
 **Secrets.** Header names containing authorization, cookie, api-key, token, secret, password, credential or session
 are recorded as `{name, redacted: true}`. Their values are stored nowhere. A response head that carries one is kept

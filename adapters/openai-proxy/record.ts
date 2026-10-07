@@ -145,6 +145,8 @@ interface Slot {
 	requestDone: boolean;
 	responseDone: boolean;
 	retired: boolean;
+	/** Its response (or request) ended the connection: remembered if the other half is still arriving. */
+	closeAfter: boolean;
 }
 
 /** Request bytes held for slots that are not yet at the front; above this the client socket is paused (backpressure). */
@@ -347,7 +349,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		/** A slot is finished once its response is complete and its request fully sent; only then does the next one start. */
 		const settleSlot = (slot: Slot, closeClient: boolean) => {
 			if (slot.raw || slot.retired || !(slot.responseDone && slot.requestDone)) return;
-			if (closeClient) {
+			if (closeClient || slot.closeAfter) {
 				// The connection ends here: nothing queued behind this exchange is ever forwarded.
 				retire(slot, false);
 				endClient("upstream");
@@ -423,9 +425,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				if (hop.done || entry === null) return;
 				hop.done = true;
 				slot.responseDone = true;
+				slot.closeAfter = closeClient || requestClose;
 				finish(entry, "complete", null);
 				lastCompleted = entry.exchange;
-				settleSlot(slot, closeClient || requestClose);
+				settleSlot(slot, slot.closeAfter);
 			};
 			const segment = (from: Buffer) => {
 				if (entry === null || from.length === 0) return;
@@ -435,7 +438,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			};
 
 			socket.on("data", (data: Buffer) => {
-				if (hop.done || slot.retired) return; // Bytes after this exchange's response belong to no exchange: dropped.
+				if (slot.retired) return;
+				// The request stream stopped being HTTP/1.1 after this hop opened: from here the relay delimits nothing.
+				if (slot.raw) hopParsing = false;
+				else if (hop.done) return; // Bytes after this exchange's response belong to no exchange: dropped.
 				hop.gotBytes = true;
 				if (!hopParsing) {
 					client.write(data);
@@ -464,7 +470,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			const upstreamOver = (error: string | null) => {
 				if (over || slot.retired) return;
 				over = true;
-				if (hop.done) return;
+				if (slot.raw) hopParsing = false;
+				if (hop.done && !slot.raw) return;
 				if (entry === null || !hopParsing) {
 					// Unparsed: relay the upstream's close as the client's, and report what is known.
 					if (entry !== null && !entry.ended) {
@@ -548,6 +555,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					requestDone: false,
 					responseDone: false,
 					retired: false,
+					closeAfter: false,
 				};
 				slots.push(receiving);
 			}

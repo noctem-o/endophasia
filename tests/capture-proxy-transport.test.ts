@@ -209,6 +209,39 @@ describe("transport closeout: the client's keep-alive connection does not own an
 		expect(recordedRequests(store).map((entry) => entry.path)).toEqual(["/v1/a", "/v1/b"]);
 	});
 
+	it("holds when recording is slow or burns CPU: keep-alive correctness does not depend on when recording runs", async () => {
+		const a = request("/v1/a");
+		const b = request("/v1/b");
+		const upstream = await upstreamOf((seen, _req, respond) => respond(response(`r${seen.index}`), seen.index === 0));
+		const store = scratch();
+		const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
+		const original = log.record.bind(log);
+		log.record = (...args: Parameters<typeof log.record>) => {
+			const until = performance.now() + 30;
+			while (performance.now() < until);
+			return original(...args);
+		};
+		const proxy = await startEndoRecordingProxyV0({ upstream: `http://127.0.0.1:${upstream.port}`, log });
+		cleanup.push(async () => {
+			await proxy.close();
+			log.close();
+		});
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		let sent = false;
+		c.socket.on("data", () => {
+			if (!sent && c.bytes.toString("latin1").endsWith("r0")) {
+				sent = true;
+				c.socket.write(b);
+			}
+		});
+		c.socket.write(a);
+		await until(() => c.bytes.toString("latin1").endsWith("r1"), "both responses");
+		expect(upstream.seen.map((entry) => entry.requests.length)).toEqual([1, 1]);
+		await proxy.flush();
+		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete", "complete"]);
+	});
+
 	it("repeated, so no timing makes B land on the closed connection", async () => {
 		for (let round = 0; round < 25; round += 1) {
 			const a = request("/v1/a");
@@ -501,5 +534,79 @@ describe("transport closeout: https upstream", () => {
 		await proxy.flush();
 		await finish();
 		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete", "complete"]);
+	});
+});
+
+describe("transport closeout: what is not HTTP/1.1 is still relayed untouched", () => {
+	/** An upstream that is no HTTP server: it answers every read with a marker, and keeps the connection open. */
+	async function rawTcpUpstream(reply: (read: number) => string | null) {
+		const reads: Buffer[] = [];
+		const sockets = new Set<Socket>();
+		const server: Server = createServer((socket) => {
+			sockets.add(socket);
+			socket.on("error", () => {});
+			socket.on("close", () => sockets.delete(socket));
+			socket.on("data", (data) => {
+				reads.push(data);
+				const out = reply(reads.length);
+				if (out !== null) socket.write(out);
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		cleanup.push(
+			() =>
+				new Promise<void>((resolve) => {
+					for (const socket of sockets) socket.destroy();
+					server.close(() => resolve());
+				}),
+		);
+		return { port: (server.address() as { port: number }).port, reads };
+	}
+	const unparsed = (store: string) =>
+		readEndoCaptureEventsV0(store).filter((event) => event.kind === "capture.unparsed").length;
+
+	it("bytes that are not an HTTP request reach the upstream and the upstream's answer reaches the client", async () => {
+		const upstream = await rawTcpUpstream((read) => `ANSWER-${read}`);
+		const { store, proxy, finish } = await proxyTo(upstream.port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("\x16\x03\x01 not http at all\r\n\r\n");
+		await until(() => c.bytes.toString("latin1") === "ANSWER-1", "the first answer");
+		c.socket.write("more");
+		await until(() => c.bytes.toString("latin1") === "ANSWER-1ANSWER-2", "the second answer");
+		expect(Buffer.concat(upstream.reads).toString("latin1")).toBe("\x16\x03\x01 not http at all\r\n\r\nmore");
+		await proxy.flush();
+		await finish();
+		expect(unparsed(store)).toBeGreaterThan(0);
+	});
+
+	it("a request whose body turns out malformed after its head: the upstream's bytes, before and after, all reach the client", async () => {
+		// The upstream answers the head at once (a complete response), then says more as the rest arrives.
+		const upstream = await rawTcpUpstream((read) => (read === 1 ? response("early") : `TAIL-${read}`));
+		const { store, proxy, finish } = await proxyTo(upstream.port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("POST /v1/x HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: chunked\r\n\r\n");
+		await until(() => c.bytes.toString("latin1") === response("early"), "the early response");
+		c.socket.write("zz not a chunk size\r\n");
+		await until(() => c.bytes.toString("latin1") === `${response("early")}TAIL-2`, "bytes after the parse failure");
+		await proxy.flush();
+		await finish();
+		expect(unparsed(store)).toBeGreaterThan(0);
+	});
+
+	it("a Connection: close answered before the request body has arrived still ends the connection when it has", async () => {
+		// This upstream replies as soon as it sees the head, before the body.
+		const early = await rawTcpUpstream(() => response("early", "Connection: close\r\n"));
+		const { proxy, finish } = await proxyTo(early.port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("POST /v1/x HTTP/1.1\r\nHost: h\r\nContent-Length: 4\r\n\r\n");
+		await until(() => c.bytes.length > 0, "the early response");
+		expect(c.closed).toBe(false);
+		c.socket.write("body");
+		await until(() => c.closed, "the connection to end");
+		expect(c.bytes.toString("latin1")).toBe(response("early", "Connection: close\r\n"));
+		await finish();
 	});
 });

@@ -245,6 +245,8 @@ flowchart TB
 
 These projects are reference points for future adapters, not dependencies or bundled components. Names indicate candidate roles, not a commitment to support every project.
 
+Evaluation itself can also be an adaptation target. Endophasia treats **evaluator adaptation** as a separate capability from evaluator execution: proposed rubrics, critics, judge programs, or metric expressions are versioned candidates, tested against fixed anchors and held-out evidence, and cannot promote themselves.
+
 | Job | Candidate provider |
 | :--- | :--- |
 | Run reusable task / solver / scorer evaluations | [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) |
@@ -253,6 +255,7 @@ These projects are reference points for future adapters, not dependencies or bun
 | Turn an unmodified harness into trainable rollouts | [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-style capture, or an equivalent provider |
 | Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
 | Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
+| Co-evolve skills and policy during RL | [ReSkill](https://github.com/amazon-science/reskill) as an optional adaptation/training provider over veRL; skill versions and bundle tests remain experiment coordinates |
 | Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
 | Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
 | Observe or intervene on local-model activations | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when vLLM is the model-serving boundary |
@@ -308,6 +311,7 @@ The evolution substrate is designed around explicit records rather than an opaqu
 | **ExperienceStore** | Durable collection of trajectories and derived evidence |
 | **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
 | **Evaluator / Grader** | Explicit source of outcome evidence. A learned grader or judge produces evidence; deterministic adjudication (schema checks, target binding, deduplication, promotion rules) decides what it counts for. A judge never becomes an authority |
+| **Evaluator candidate** | Proposed rubric, critic, judge program, metric expression, or evaluator configuration. It is versioned and compared against fixed anchors and held-out evidence before it can replace an evaluator; its own score never authorises that replacement |
 | **Reward definition** | A versioned record naming the reward source(s), transformation, weights, bounds, missing-evidence policy and provenance. Several grader scores are never combined by an implicit weighting. A verifier that failed to run yields UNAVAILABLE, never a reward of 0: an environment failure is not a wrong answer |
 | **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
 | **Validation and promotion holdout** | Selection may read validation results; the promotion holdout is never given to a selection policy, so a promotion can be checked against data the search never saw |
@@ -686,6 +690,10 @@ Partly done:
      pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
      discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11), and the effective
      harness surface in every experiment's provenance (near-term 2).
+   - [StaminaBench](https://github.com/amazon-science/StaminaBench) is a candidate long-horizon evaluation pack:
+     evolving software specifications and test feedback across up to 100 interaction turns can expose context
+     accumulation, recovery, regression and resource drift. Integrate it behind an evaluation provider rather than
+     making the benchmark a core dependency.
 8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
    consequence. A proposal never becomes permission implicitly.
    - *Status:* STEER, QUEUE and STOP are explicit, authorized, verified interventions through Pi's documented RPC
@@ -773,6 +781,9 @@ Hardening and artifact:
     [sandbox_escape_bench](https://github.com/UKGovernmentBEIS/sandbox_escape_bench) can test sandbox
     misconfiguration/escape capability inside an outer VM boundary. Such a benchmark is evidence about that declared
     environment, not proof that an arbitrary deployment sandbox is safe.
+    [JAWS-Bench](https://github.com/amazon-science/JAWS-Bench) is another candidate external pack for defensive
+    code-agent safety under prompt-only, single-file and multi-file workspace conditions; preserve the exact
+    workspace/attack regime and do not generalise a result beyond that declared environment.
 17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
     comparison → promotion decision trail that another researcher can replay.
 
@@ -787,7 +798,11 @@ do not import a framework merely because its paper reports a benchmark gain.
     skills, and simple trajectory retrieval. Extract, merge, retire, and select procedural skills from
     successful *and failed* episodes. Record provenance, applicability conditions, counterexamples,
     and the tasks used to validate each skill. Useful starting points: [CODESKILL](https://arxiv.org/abs/2605.25430),
-    [Socratic-SWE](https://arxiv.org/abs/2606.07412), and [MUSE-Autoskill](https://arxiv.org/abs/2605.27366).
+    [Socratic-SWE](https://arxiv.org/abs/2606.07412), [MUSE-Autoskill](https://arxiv.org/abs/2605.27366), and
+    [Ratchet](https://github.com/amazon-science/Self-Evolving-Agents-Ratchet); Ratchet's bounded active bank,
+    contribution-driven retirement, retained evidence and rollback are useful lifecycle references.
+    [ReSkill](https://github.com/amazon-science/reskill) is a heavier follow-on when an experiment intentionally
+    couples skill evolution to policy optimisation through RL; keep those two adaptation axes separately attributable.
 
 19. **Episodic + semantic memory.** Test retrieval of similar past cases alongside compact, reusable
     lessons, with ablations for each channel and no-memory baselines. Measure retrieval precision,
@@ -831,6 +846,10 @@ do not import a framework merely because its paper reports a benchmark gain.
     tests, or adversarial environments as well as changes to the agent itself. Treat generated tests as
     hypotheses, not trusted ground truth: independently validate them, test for evaluator gaming, and
     keep a sealed promotion holdout outside both candidate search and evaluator tuning.
+    [Double Ratchet](https://github.com/amazon-science/Self-Evolving-Agents-Double-Ratchet) is a direct reference for
+    co-evolving an inspectable metric and a governed skill library. Preserve the separation Endophasia already
+    requires: evaluator candidates need lineage, fixed anchors or shadow evaluation, and an untouched promotion
+    holdout; an evaluator must not grade its own promotion unchallenged.
 
 23. **Writable procedural memory.** Test whether versioned scripts, repository maps, and executable
     skills outperform prose-only memory. Begin with small, reviewable artifacts and explicit execution
@@ -840,8 +859,11 @@ do not import a framework merely because its paper reports a benchmark gain.
 24. **Model adaptation / training providers.** Once runtime experiments have enough clean data, compare
     prompt and policy changes, memory/skill changes, and optional training methods on the same tasks.
     [Finetuning with Sampling](https://arxiv.org/abs/2610.02140) is one candidate for a separate
-    training provider, not a dependency of the runtime core. Track data provenance, training cost,
-    held-out transfer, and regressions on previously solved tasks.
+    training provider, not a dependency of the runtime core.
+    [PROF-GRPO](https://github.com/amazon-science/PROF-GRPO) is a useful reward-design reference because it uses
+    process-reward scores as a consistency/data-curation signal rather than directly blending them into the optimisation
+    reward; preserve that distinction as an experimentable policy rather than assuming it universally wins. Track data
+    provenance, training cost, held-out transfer, and regressions on previously solved tasks.
 
 25. **Evidence lineage and epistemic lifecycle (Magpie integration).** Test whether experiment
     records can support inspectable claims without collapsing measured outcomes, evidence standing,

@@ -699,7 +699,11 @@ counterfactual / evolution / training work
    - Write the consolidated research note for the variance, pinned-environment, steering, path-sensitivity,
      discriminating-task and completion-cap studies.
    - Then feed real experiment bundles and forked trajectories into the evolution, counterfactual and adaptation tracks
-     below, with the same holdout and authority rules already defined.
+     below, with the same holdout and authority rules already defined. Baseline and candidate comparisons must use a
+     matched declared inference envelope for the coordinate being compared, verified rather than assumed. Output-token
+     caps are mandatory matched coordinates for the current studies; model calls, tool/verifier calls, retries,
+     branches, wall-clock limits and cost must likewise be held fixed when they are part of the claimed comparison, or
+     recorded as separate experimental coordinates rather than silently folded into an adaptation gain.
 
 ### Parked or upstream-gated
 
@@ -771,7 +775,7 @@ They describe **capability dependencies**, not the immediate shipping order abov
    - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and
      pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
      discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11), and the effective
-     harness surface in every experiment's provenance (near-term 2).
+     harness surface in every experiment's provenance (delivery sequence 1).
    - [StaminaBench](https://github.com/amazon-science/StaminaBench) is a candidate long-horizon evaluation pack:
      evolving software specifications and test feedback across up to 100 interaction turns can expose context
      accumulation, recovery, regression and resource drift. Integrate it behind an evaluation provider rather than
@@ -840,7 +844,7 @@ They describe **capability dependencies**, not the immediate shipping order abov
       as experiment provenance, first validate it post-hoc or in shadow mode, and keep it separate from an agent's own
       trajectory-level STOP decision.
     - *First study:* the completion-cap study (done), motivated by the discriminating-task study, where most failures
-      were truncation at the completion cap. The follow-up is near-term 4.
+      were truncation at the completion cap. The follow-up is delivery sequence 5.
 14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
     evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
     adaptation loop. [ControlArena](https://github.com/UKGovernmentBEIS/control-arena) is a useful provider reference

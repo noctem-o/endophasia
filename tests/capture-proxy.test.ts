@@ -172,6 +172,11 @@ function fixed(status: string, headers: string, body: string): Script {
 	};
 }
 
+/** The same response from a server that says it is closing the connection (`Connection: close`). */
+function closing(script: Script): Script {
+	return { ...script, head: script.head.replace("Connection: keep-alive", "Connection: close") };
+}
+
 /** What a client saw: status, raw headers, body chunks as read. */
 interface ClientResult {
 	status: number;
@@ -235,12 +240,21 @@ function post(
 	});
 }
 
-/** Write exact request bytes on a raw TCP connection; collect every byte until the server ends the connection. */
-function rawExchange(port: number, bytes: Buffer): Promise<Buffer> {
+/**
+ * Write exact request bytes on a raw TCP connection; collect every byte until the server ends the connection, or until
+ * `until` says the response is whole (a keep-alive connection is not ended by a response that frames itself).
+ */
+function rawExchange(port: number, bytes: Buffer, until?: (received: Buffer) => boolean): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const parts: Buffer[] = [];
 		const socket = connect({ host: "127.0.0.1", port }, () => socket.write(bytes));
-		socket.on("data", (part: Buffer) => parts.push(part));
+		socket.on("data", (part: Buffer) => {
+			parts.push(part);
+			if (until?.(Buffer.concat(parts))) {
+				socket.destroy();
+				resolve(Buffer.concat(parts));
+			}
+		});
 		socket.on("end", () => resolve(Buffer.concat(parts)));
 		socket.on("error", reject);
 	});
@@ -298,7 +312,9 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		const request = Buffer.from(
 			`POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:${proxy.port}\r\ncontent-type: application/json\r\nAuthorization: Bearer ${SECRET}\r\nX-Mixed-Case:   Value With  Spaces\r\nx-stainless-retry-count: 0\r\nContent-Length: ${Buffer.byteLength(BODY)}\r\n\r\n${BODY}`,
 		);
-		const received = await rawExchange(proxy.port, request);
+		const received = await rawExchange(proxy.port, request, (bytes) =>
+			bytes.toString("latin1").endsWith("0\r\n\r\n"),
+		);
 		// Upstream side: exactly the client's bytes.
 		const atUpstream = upstream.received[0]!;
 		expect(
@@ -324,7 +340,9 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 			...endoRequestDigestV0(KEY, "POST", "/v1/chat/completions", Buffer.from(BODY)),
 		});
 		expect(JSON.stringify(readEndoCaptureEventsV0(store))).not.toContain("messages");
-		expect(kinds(store, "capture.connection-closed")[0]).toMatchObject({ by: "upstream", afterExchange: 1 });
+		// The upstream's close is not the client's close any more (the response said nothing about closing): the connection
+		// ended because the client ended it, after exchange 1.
+		expect(kinds(store, "capture.connection-closed")[0]).toMatchObject({ by: "client", afterExchange: 1 });
 	});
 
 	it("an upstream that closes right after a large response: every byte still reaches a slow client (no data dropped on close)", async () => {
@@ -348,7 +366,12 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 				parts.push(part);
 				socket.pause();
 				setTimeout(() => {
-					socket.on("data", (more: Buffer) => parts.push(more));
+					// A keep-alive response frames itself and the client connection stays open: whole means every byte is here.
+					const whole = Buffer.byteLength(script.head) + big.length;
+					socket.on("data", (more: Buffer) => {
+						parts.push(more);
+						if (parts.reduce((sum, part) => sum + part.length, 0) >= whole) resolve(Buffer.concat(parts));
+					});
 					socket.resume();
 				}, 300);
 			});
@@ -367,7 +390,7 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		// close, so a keep-alive client that reused the connection in that window sent its next request into a closing
 		// connection: Pi reported "Connection error." on 13 of 20 trials of one task. Here every disk write takes 40 ms.
 		const upstream = await rawUpstream([
-			{ ...fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'), closeAfter: true },
+			{ ...closing(fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}')), closeAfter: true },
 		]);
 		const store = scratch();
 		const log = new EndoCaptureLogV0(store, KEY, "record", { queue: new SlowQueue(40) });
@@ -389,7 +412,7 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		// exchange) still ran right after the response completed, when the upstream's close arrives, and delayed relaying
 		// it (9 of 20 live trials). Here every recorded event burns 30 ms of CPU on the event loop.
 		const upstream = await rawUpstream([
-			{ ...fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'), closeAfter: true },
+			{ ...closing(fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}')), closeAfter: true },
 		]);
 		const store = scratch();
 		const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
@@ -479,32 +502,6 @@ describe("the recording proxy: pass-through, byte for byte", () => {
 		expect(kinds(store, "capture.exchange-interrupted").length).toBe(1);
 		const cassette = loadEndoCassetteV0(store, key);
 		expect(cassette.exchanges[0]!.truncated).toMatch(/killed or crashed/);
-	});
-
-	it("a request sent after the upstream closed the connection is recorded as a failed exchange, never lost", async () => {
-		const script = fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}');
-		script.closeAfter = true;
-		const { store, proxy, log } = await recording([script]);
-		await new Promise<void>((resolve) => {
-			const socket = connect({ host: "127.0.0.1", port: proxy.port }, () =>
-				socket.write(`POST /v1/x HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{}`),
-			);
-			socket.on("data", () => {
-				// Reuse the connection the moment the response arrives, as a keep-alive client does.
-				if (!socket.writableEnded)
-					socket.write(`POST /v1/y HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 2\r\n\r\n{}`);
-			});
-			socket.on("close", () => resolve());
-			socket.on("error", () => {});
-		});
-		await sleep(50);
-		await proxy.flush();
-		await proxy.flush();
-		log.close();
-		const ended = kinds(store, "capture.exchange-ended");
-		expect(ended[0]).toMatchObject({ exchange: 1, outcome: "complete" });
-		if (ended.length > 1) expect(ended[1]).toMatchObject({ exchange: 2, outcome: "upstream-error" });
-		expect(kinds(store, "capture.request").length).toBe(ended.length);
 	});
 
 	it("keeps a client's pipelined keep-alive requests apart: one exchange each, in order", async () => {

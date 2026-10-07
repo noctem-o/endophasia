@@ -18,8 +18,21 @@ const storePath = process.env.FAKE_V2_STORE;
 const note = (value: Record<string, unknown>): void => {
 	if (out !== undefined) appendFileSync(out, `${JSON.stringify(value)}\n`);
 };
+// `one-write` puts everything one handler sends into a single write, so the client reads a response and the updates that
+// follow it from the same chunk: the hardest case for a verdict that depends on when the SDK's callbacks run.
+let coalesced: string[] = [];
 const send = (message: Record<string, unknown>): void => {
-	process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+	const line = `${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`;
+	if (!flags.has("one-write")) {
+		process.stdout.write(line);
+		return;
+	}
+	if (coalesced.length === 0)
+		setImmediate(() => {
+			process.stdout.write(coalesced.join(""));
+			coalesced = [];
+		});
+	coalesced.push(line);
 };
 const reply = (id: unknown, result: unknown): void => send({ id, result });
 const fail = (id: unknown, code: number, message: string): void => send({ id, error: { code, message } });
@@ -160,7 +173,9 @@ async function runPrompt(id: unknown, params: Record<string, unknown>): Promise<
 	if (flags.has("running-first")) update(sessionId, { sessionUpdate: "state_update", state: "running" });
 	// `malformed-accept` is refused by the SDK's own parser; `repairable-accept` is the kind it silently repairs (an invalid
 	// _meta), which only the raw-wire schema check catches.
-	if (flags.has("repairable-accept")) send({ id, result: { messageId: umid, _meta: 5 } });
+	// `bad-envelope-accept` is a schema-valid result in an invalid JSON-RPC envelope (wrong version).
+	if (flags.has("bad-envelope-accept")) send({ jsonrpc: "1.0", id, result: { messageId: umid } });
+	else if (flags.has("repairable-accept")) send({ id, result: { messageId: umid, _meta: 5 } });
 	else if (flags.has("malformed-accept")) send({ id, result: {} });
 	else if (!flags.has("ack-late") && !flags.has("ack-after-echo")) accept();
 	if (!flags.has("no-echo")) update(sessionId, { sessionUpdate: "user_message", messageId: umid, content: [block] });

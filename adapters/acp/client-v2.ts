@@ -155,6 +155,8 @@ interface OpenRun {
 	/** A re-entrant cancel() arrived before the prompt was sent: the prompt is not sent at all. */
 	cancelledBeforeSend?: boolean;
 	updates: Record<string, number>;
+	/** The JSON-RPC id of this run's session/prompt request: only its own answer can say the prompt was not accepted. */
+	promptRequestId?: unknown;
 	/** The message id the agent accepted this run's prompt with. */
 	messageId?: string;
 	settle?: { resolve(end: AcpV2RunEndV0): void; reject(error: unknown): void };
@@ -205,6 +207,8 @@ interface TapHooksV2 {
 	permissionRequest(id: unknown, params: unknown): void;
 	/** A response this client sent to a permission request (a result or an error). */
 	permissionAnswered(id: unknown): void;
+	/** A request this client sent, with its JSON-RPC id, at the moment it is written. */
+	requestSent(method: string, id: unknown): void;
 }
 
 /**
@@ -247,8 +251,10 @@ function tapStream(stream: acp2.Stream, hooks: TapHooksV2): acp2.Stream {
 	};
 	const outgoing = (message: unknown): void => {
 		if (!isRecord(message) || !("id" in message)) return;
-		if (typeof message.method === "string") sent.set(idKey(message.id), message.method);
-		else if ("result" in message || "error" in message) guard(() => hooks.permissionAnswered(message.id));
+		if (typeof message.method === "string") {
+			sent.set(idKey(message.id), message.method);
+			guard(() => hooks.requestSent(message.method as string, message.id));
+		} else if ("result" in message || "error" in message) guard(() => hooks.permissionAnswered(message.id));
 	};
 	const writer = stream.writable.getWriter();
 	return {
@@ -375,6 +381,7 @@ export class AcpClientV2 {
 			{
 				update: (params) => this.#onUpdate(params),
 				response: (method, message) => this.#onResponse(method, message),
+				requestSent: (method, id) => this.#onRequestSent(method, id),
 				permissionRequest: (id, params) => this.#onPermissionRequest(id, params),
 				permissionAnswered: (id) => this.#onPermissionAnswered(id),
 			},
@@ -990,9 +997,31 @@ export class AcpClientV2 {
 		return raw;
 	}
 
+	#onRequestSent(method: string, id: unknown): void {
+		const run = this.#run;
+		if (method === "session/prompt" && run?.prompted && run.promptRequestId === undefined) run.promptRequestId = id;
+	}
+
 	#onResponse(method: string, message: Record<string, unknown>): void {
 		if ("result" in message) this.#rawResults.set(method, structuredClone(message.result));
 		else this.#rawResults.delete(method);
+		if (method === "session/prompt") {
+			// The wire order is the causal order: this answer precedes every later update, but prompt()'s awaited request only
+			// unwinds after the SDK's own parse/rejection callback, by which time a following `running` may already have been
+			// processed. An answer that is not a valid acceptance (an error, or a result the SDK refuses or repairs) does not
+			// prove the message was inserted, so the work it precedes must not be tied to the prompt: decide that here, at the
+			// earliest point the fact is known, and never by amending an already-recorded event.
+			const run = this.#run;
+			// The whole envelope, as the SDK will judge it: a valid result in an invalid envelope is not an acceptance.
+			const accepted =
+				message.jsonrpc === "2.0" &&
+				"result" in message &&
+				!("error" in message) &&
+				isRecord(message.result) &&
+				validateAcpV2DefinitionV0("PromptResponse", message.result);
+			if (run?.prompted && run.promptRequestId === message.id && run.messageId === undefined && !accepted)
+				run.prompted = false;
+		}
 		if (method === "initialize") {
 			if ("result" in message && isRecord(message.result)) this.#rawInitialize = structuredClone(message.result);
 			return;

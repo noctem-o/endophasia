@@ -659,7 +659,9 @@ counterfactual / evolution / training work
 1. **Evidence closure before the first alpha.**
    - **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
      server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in
-     the steering study). Classify any remaining transport retries apart from agent behaviour.
+     the steering study). Classify any remaining transport retries apart from agent behaviour. *Status: done.* Each
+     exchange now has its own upstream connection (`docs/replay.md`, "Connections"), and a genuine upstream failure
+     is recorded with its kind; the steering study's result stands as recorded.
    - **Effective harness surface** (items 2, 6 and 9). Record what the model actually experiences, not only which
      executable ran: component digests observed on the wire for system instructions, the tool-definition set and
      effective request parameters, alongside invocation mode, model identity and wire dialect. Variable contributions

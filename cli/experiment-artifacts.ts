@@ -108,6 +108,10 @@ export function readEndoExperimentPlannedTrialV0(
 		throw refusal(
 			`${path}: the result is not the plan entry's trial (position ${entry.position}, ${entry.task} / ${entry.condition} / #${entry.trial})`,
 		);
+	// A completed trial ran its task's success check, and only that: the report's denominator counts `check.ran`.
+	const task = readEndoExperimentRunRecordFileV0(dir).spec.tasks.find((candidate) => candidate.id === entry.task);
+	if (result.status === "completed" && result.check.ran !== (task?.check !== undefined))
+		throw refusal(`${path}: the check record does not match whether task ${entry.task} defines a check`);
 	return result;
 }
 

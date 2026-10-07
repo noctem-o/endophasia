@@ -9,7 +9,7 @@
 	"startedAt": "2026-01-01T00:00:00.000Z",
 	"endedAt": "2026-01-01T00:01:00.000Z",
 	"store": "trials/hello/default/0/store",
-	"session": null,
+	"session": "endo.session.pi.fixture-minimal",
 	"exchanges": 0,
 	"requestParameters": [],
 	"check": {

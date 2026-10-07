@@ -665,6 +665,30 @@ describe("the experiment runner's artifacts", () => {
 		expect(seeded(null, 123, "spec")).toBe("invalid");
 	});
 
+	it("refuses a scratch root that is not the runner's for this spec digest", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const at = (scratchRoot: string) => kind(readEndoExperimentRunRecordV0({ ...run, scratchRoot }));
+		const digest = run.specSha256.slice(0, 12);
+		expect(at(`/var/tmp/endo-experiment-${digest}/scratch`)).toBe("ok");
+		expect(at(`C:\\temp\\endo-experiment-${digest}\\scratch`)).toBe("ok");
+		for (const bad of [
+			"/home/user",
+			"/",
+			"/tmp/scratch",
+			`/tmp/endo-experiment-${digest}`,
+			"/tmp/endo-experiment-0/scratch",
+		])
+			expect(at(bad)).toBe("invalid");
+	});
+
+	it("refuses a completed trial that names no session", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, session: null }))).toBe("invalid");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: "failed", session: null }))).toBe(
+			"ok",
+		);
+	});
+
 	it("refuses a trial that ends before it starts", () => {
 		const trial = json("endo.experiment-trial.v0", "full.json");
 		const at = (startedAt: string, endedAt: string) =>

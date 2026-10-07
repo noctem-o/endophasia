@@ -351,8 +351,13 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	const parent = dirname(run.scratchRoot);
 	mkdirSync(parent, { recursive: true });
 	const marker = join(parent, ".endo-experiment");
-	if (existsSync(marker) && readFileSync(marker, "utf8").trim() !== dir)
-		throw new TypeError(`${parent} belongs to another experiment run (${readFileSync(marker, "utf8").trim()})`);
+	if (existsSync(marker)) {
+		if (readFileSync(marker, "utf8").trim() !== dir)
+			throw new TypeError(`${parent} belongs to another experiment run (${readFileSync(marker, "utf8").trim()})`);
+	} else if (readdirSync(parent).length > 0) {
+		// Only a directory the runner just created is empty and ours; anything else is never deleted from.
+		throw new TypeError(`${parent} is not marked as this experiment run's scratch parent and is not empty`);
+	}
 	writeFileSync(marker, `${dir}\n`);
 	rmSync(run.scratchRoot, { recursive: true, force: true });
 	// One proxy per run session, on the recorded port when it is free (the port is in Pi's models.json).

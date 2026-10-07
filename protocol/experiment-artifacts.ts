@@ -228,6 +228,14 @@ function runProblem(value: unknown): Problem {
 	const derived = experimentRecordProblem(v.runner as string, v.specSha256 as string, spec.value, experiment.value);
 	if (derived !== null) return derived;
 	if (!isText(v.scratchRoot) || v.scratchRoot.includes("\0")) return "scratchRoot must be a non-empty path";
+	// The runner puts it at `<parent>/endo-experiment-<digest prefix>/scratch` and deletes it recursively on resume, so
+	// no other path is accepted as that target.
+	const scratchParts = v.scratchRoot.split(/[\\/]/);
+	if (
+		scratchParts.at(-1) !== "scratch" ||
+		scratchParts.at(-2) !== `endo-experiment-${(v.specSha256 as string).slice(0, 12)}`
+	)
+		return "scratchRoot must be the runner's scratch directory for this spec digest";
 	if (v.proxyPort !== null && !(isCount(v.proxyPort) && v.proxyPort >= 1 && v.proxyPort <= 65_535))
 		return "proxyPort must be a port number or null";
 	if (typeof v.createdAt !== "string" || !isIso8601UtcV0(v.createdAt)) return "createdAt must be an ISO-8601 UTC time";
@@ -415,6 +423,8 @@ function trialProblem(value: unknown): Problem {
 	if (!isText(v.store) || !isEndoExperimentRelativePathV0(v.store))
 		return "store must be a relative path inside the run directory";
 	if (v.session !== null && typeof v.session !== "string") return "session must be a string or null";
+	// A finished session attached to Pi, and the report counts completed trials by their session.
+	if (v.status === "completed" && v.session === null) return "a completed trial must name its session";
 	if (!isCount(v.exchanges)) return "exchanges must be a non-negative integer";
 	if (!Array.isArray(v.requestParameters) || !v.requestParameters.every((entry) => isObject(entry) && isJson(entry)))
 		return "requestParameters must be a list of strict JSON objects";

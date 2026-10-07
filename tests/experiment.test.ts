@@ -4,7 +4,7 @@
 // trial's cassette replaying EXACT. It proves the runner's mechanics, not anything about a real Pi or model.
 
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -358,6 +358,21 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		} finally {
 			other.remove();
 		}
+	}, 180_000);
+
+	it("never deletes from a scratch parent it did not create: an unmarked, non-empty one stops the resume", async () => {
+		const dir = join(base, "unmarked");
+		await runEndoExperimentV0({ spec: spec(), dir, maxTrials: 1, log: () => {}, scratchParent: base });
+		const record = JSON.parse(readFileSync(join(dir, "experiment.json"), "utf8"));
+		const parent = join(base, `endo-experiment-${record.specSha256.slice(0, 12)}`);
+		mkdirSync(join(parent, "scratch"), { recursive: true });
+		writeFileSync(join(parent, "scratch", "precious.txt"), "keep\n");
+		rmSync(join(parent, ".endo-experiment"), { force: true });
+		await expect(runEndoExperimentV0({ spec: spec(), dir, log: () => {}, scratchParent: base })).rejects.toThrow(
+			/not marked/,
+		);
+		expect(readFileSync(join(parent, "scratch", "precious.txt"), "utf8")).toBe("keep\n");
+		rmSync(parent, { recursive: true, force: true });
 	}, 180_000);
 
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {
@@ -721,6 +736,30 @@ describe("the run directory's source-of-truth files are read through their versi
 			firstResult,
 			(v) => {
 				v.check.passed = !v.check.passed;
+			},
+			"invalid",
+		],
+		[
+			"result.json: a check record that disagrees with whether the task defines a check",
+			firstResult,
+			(v) => {
+				v.check = { ran: false, reason: "the task has no success check" };
+			},
+			"invalid",
+		],
+		[
+			"result.json: a completed trial without a session",
+			firstResult,
+			(v) => {
+				v.session = null;
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: a scratch root that is not the runner's for this spec",
+			() => file("experiment.json"),
+			(v) => {
+				v.scratchRoot = join(base, "somewhere-else");
 			},
 			"invalid",
 		],

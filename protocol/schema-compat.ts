@@ -232,7 +232,7 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		boundary: "cli/experiment-artifacts.ts (run directory trials/**/result.json)",
 		fixtures: [
 			{ file: "full.json", sha256: "13f50996b2edc655561675dd9d93380d6b402123478ff799eaba22c2cde7ec5e" },
-			{ file: "minimal.json", sha256: "78374f39f760beded6e6f8196095385fcfc331d16df59e8d003f7499aa5cd477" },
+			{ file: "minimal.json", sha256: "7f0964d0d16c0187926036a0192b27f1ea5d98e5ad1ae6b0db83ccba547ba599" },
 		],
 		openPaths: ["requestParameters"],
 	},

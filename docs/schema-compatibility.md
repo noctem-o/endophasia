@@ -153,6 +153,16 @@ catalogue.
   record's `specSha256` is the digest of the spec it embeds; the plan's seed and ordering are the run record's and its
   entries are exactly the spec's (task, condition, trial) cells, each once; a saved result is the result of the plan
   entry whose directory holds it (coordinates and store). The plan's shuffle itself is not recomputed.
+- **What the readers are, and are not.** They refuse an artifact that is malformed, that contradicts itself, or that does
+  not belong to its run (the checks above, plus: the seed follows from the spec's seed, an embedded experiment record is
+  what the runner derives from the spec, a check verdict follows from its exit code, a completed trial names a session
+  and ran its task's check exactly when the task defines one, a trial does not end before it starts, and a run's scratch
+  root is the runner's own path, which resume deletes only from a directory it created and marked). They are **not
+  tamper-proofing**: a directory edited consistently (the plan's order rewritten and renumbered, the runner-constant
+  `environment` changed, a hand-built result) is still readable, because nothing signs the files. The plan's shuffle is
+  not recomputed (a planner change must not invalidate old runs). Findings of the form "an edited artifact can claim
+  X" are therefore out of scope unless the edit makes two consumers read the artifact differently or makes the runner
+  act destructively.
 - Not covered: Pi attachment state files (`adapters/pi/attachment.ts`), the capture-log layout, and research artifacts
   that scripts read (`research/**`); the study data they read is read through the covered readers above.
 - This is a discipline for the covered families, not a claim about every `schemaVersion` string, arbitrary future

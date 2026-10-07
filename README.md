@@ -637,40 +637,91 @@ Endophasia is ready for architecture experiments. It is not a stable multi-runti
 
 ## Roadmap
 
-### Near-term sequence
+### Delivery sequence — current priority
 
-The numbered items below are the long-term map. The order of work for the next stretch is:
+The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
+shorter and more product-shaped**: close the evidence boundary that the first alpha depends on, make Endophasia
+installable and usable as an operator tool, then wire the first native read-only surface before returning to deeper
+EVOLVE plumbing.
 
-1. **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
-   server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in the
-   steering study). Classify any remaining transport retries apart from agent behaviour.
-2. **Effective harness surface** (items 2, 6 and 9). Identify what the model actually experiences, not only which
-   executable ran. A surface record holds component digests observed on the wire by the recording proxy: the system
-   instructions, the tool-definition set and the effective request parameters. Next to these sit the invocation mode,
-   the model identity and the wire dialect. Variable contributions such as the working directory are separate observed
-   fields; no prompt "template" is reconstructed by heuristics. Raw prompts are never canonical evidence, and a field a
-   runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
-   The surface joins the other experiment-identity coordinates ([Evolve providers](#evolve-providers)), compared
-   coordinate by coordinate.
-3. **ACP v2 conformance study** (item 9). The experimental study is built (see Done): the ACP sequence is ACP v1 slice
-   (done) → ACP v1 semantic coverage and loss accounting (done) → ACP v1 lifecycle/accounting closure (done) → the
-   experimental v2 study (done, deterministic fake-agent evidence only) → a cross-surface conformance study. ACP v2 is
-   still a Draft protocol and is never called stable: the study is pinned to one exact baseline revision and layers no
-   unstable surface. What remains is a smoke against a real agent that actually negotiates v2 (the installed OpenCode
-   answers v1; its v2 work is behind a flag), and a re-study when the baseline moves. Two ACP v1 decisions are
-   deliberately deferred and separate: consuming the *unstable* per-turn `PromptResponse.usage` that real OMP sends (an
-   unstable source field needs an explicit policy and loss-accounting decision), and Windows descendant containment,
-   which belongs in the shared `ProcessGroupV0`, not in any one adapter.
-4. **Compute-frontier follow-up** (item 13). The completion-cap study has been run (see Done), so this is what remains:
-   where success saturates above 32,768 tokens, whether a retry after a cut-off beats a larger cap, and whether failures
-   merely move. Pre-registered, everything else pinned, several fixed seeds as the replication unit. Any later
-   adaptation run must use the same output budget in training and evaluation, checked rather than assumed.
-5. **Forkable checkpoints** (item 10). The substrate primitive beneath search, counterfactual evaluation and training.
-6. **Research note.** The variance, pinned-environment, steering, path-sensitivity, discriminating-task and
-   completion-cap studies, written up with their limits and data.
+~~~text
+evidence closure
+      ↓
+installable operator alpha
+      ↓
+native read-only cockpit
+      ↓
+forkable checkpoints
+      ↓
+counterfactual / evolution / training work
+~~~
 
-Done:
+1. **Evidence closure before the first alpha.**
+   - **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
+     server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in
+     the steering study). Classify any remaining transport retries apart from agent behaviour.
+   - **Effective harness surface** (items 2, 6 and 9). Record what the model actually experiences, not only which
+     executable ran: component digests observed on the wire for system instructions, the tool-definition set and
+     effective request parameters, alongside invocation mode, model identity and wire dialect. Variable contributions
+     such as the working directory remain separate observed fields; no prompt "template" is reconstructed by
+     heuristics. Raw prompts are never canonical evidence, and a field a runtime hides is UNAVAILABLE. The
+     path-sensitivity study is why: a working-directory path alone changed behaviour.
 
+2. **Operator Alpha — make Endophasia something a person can install and run.**
+   - Produce a distributable CLI artifact with a real `endo` executable, version metadata, `--help` and `--version`.
+     The release artifact should emit JavaScript rather than depend on Node executing raw TypeScript from
+     `node_modules`; Node's own TypeScript documentation currently refuses that dependency path.
+   - Add first-run diagnostics (`endo doctor` or an equivalent command), runtime discovery, a sensible default data
+     root, and operator-readable capability/evidence output without requiring knowledge of the store layout.
+   - Keep the first verified path deliberately narrow: a user-installed Pi on the platforms actually exercised by the
+     acceptance suite. Other runtimes and platforms remain experimental until they earn their own evidence.
+   - Add a clean-install acceptance path that starts from the produced artifact, not the repository checkout, and
+     exercises the useful loop end to end: diagnose → check → attach → inspect status/overview → project a trajectory.
+   - Cut a first versioned alpha only after that path passes. The alpha is an experimental research instrument, not a
+     claim of stable multi-runtime support.
+
+3. **First Endophasia-native operator surface.**
+   - Wire a thin, read-only cockpit to the real durable store and the already-defined semantic graph/visualisation
+     state. It should show recorded lifecycle, evidence, degraded/unavailable state and graph projection without
+     depending on Pi private services.
+   - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
+     recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
+
+4. **Forkable checkpoints** (item 10).
+   - Land the substrate primitive beneath search, counterfactual evaluation and training: reconstructable checkpoints,
+     restore/fork lineage and cassette-then-live continuation.
+   - Once this exists, use it to support controlled continuation experiments rather than adding another large
+     protocol-only migration.
+
+5. **Return to the broader research loop.**
+   - Resume the compute-frontier follow-up (item 13): where success saturates above 32,768 tokens, whether retry after
+     cut-off beats a larger cap, and whether failures merely move.
+   - Write the consolidated research note for the variance, pinned-environment, steering, path-sensitivity,
+     discriminating-task and completion-cap studies.
+   - Then feed real experiment bundles and forked trajectories into the evolution, counterfactual and adaptation tracks
+     below, with the same holdout and authority rules already defined.
+
+### Parked or upstream-gated
+
+These are valid directions, but they should **not** displace the Operator Alpha sequence.
+
+- **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
+  guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
+  it when the published baseline materially moves and at least one useful real agent negotiates v2 without relying on a
+  development-only path. Keep ACP v1 working beside it.
+- **ACP v1 unstable per-turn usage:** real OMP sends unstable `PromptResponse.usage`, but consuming it still needs an
+  explicit source-stability and loss-accounting decision. It is not required for the first alpha.
+- **Windows descendant containment:** this belongs in the shared `ProcessGroupV0`, not an ACP adapter. It should land
+  when Windows becomes an acceptance target rather than growing one adapter around it.
+- **Further protocol breadth:** new adapters and large protocol-only migrations wait until the current contracts have
+  survived the installable operator path and produced evidence there.
+
+### Capability map
+
+The entries below keep their existing numbers because research notes and design documents already refer to them.
+They describe **capability dependencies**, not the immediate shipping order above.
+
+#### Done
 1. **Attach model.** Pi attached over its documented RPC mode; the vendored fork removed
    ([inventory and decisions](docs/pi-attach-inventory.md)).
 2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking, audited
@@ -702,8 +753,7 @@ Done:
   directory, automatic migration, and arbitrary future versions
   ([policy and inventory](docs/schema-compatibility.md)).
 
-Partly done:
-
+#### Partly done
 3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed; the cognition graph
    and a cockpit over that store are not wired yet.
    - *Graph semantics:* the graph will be a derived projection, never a second source of truth. Each edge has a
@@ -736,8 +786,7 @@ Partly done:
      for Deadbolt exists; Deadbolt has no matching lease template), and observation and interpretation records created by a
      command.
 
-Next:
-
+#### Next
 7. **Cognition controls.** Bring the runtime-neutral DEVELOP controls into the substrate: Reasoning, Epistemic
    Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
    J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
@@ -756,8 +805,7 @@ Next:
    - Trace export (for example to the OpenTelemetry GenAI conventions, still marked Development) is deferred until it
      has a consumer. It would be an optional exporter using the same lossiness vocabulary, never the internal protocol.
 
-EVOLVE / research loop:
-
+#### EVOLVE / research loop
 10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
     - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,

@@ -152,6 +152,9 @@ interface Slot {
 /** Request bytes held for slots that are not yet at the front; above this the client socket is paused (backpressure). */
 const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
+/** How long a retired hop may take to send request bytes the upstream has not read yet before it is dropped. */
+const HOP_DRAIN_MS = 5000;
+
 export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptionsV0): Promise<EndoRecordingProxyV0> {
 	const host = options.host ?? "127.0.0.1";
 	requireLoopbackBindV0(host);
@@ -251,6 +254,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		let paused = false;
 		let lastCompleted: number | null = null;
 		let parsing = true;
+		/** The slot whose hop became a protocol-switched tunnel: the client's bytes go to it, unparsed. */
+		let upgraded: Slot | null = null;
 		let clientClosed = false;
 		/** The client connection is being ended: nothing further is forwarded on it. */
 		let ending = false;
@@ -309,6 +314,16 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			progress(entry);
 		};
 
+		/** Record that the upstream, not the client, brought this connection down (before it is destroyed). */
+		const markEndedByUpstream = () => {
+			if (ending) return;
+			ending = true;
+			const target = current();
+			const closedAfter = lastCompleted;
+			if (target !== null)
+				hold(() => target.record("capture.connection-closed", { by: "upstream", afterExchange: closedAfter }));
+		};
+
 		/** End the client connection once everything already written to it has been sent (never destroy: a slow reader keeps its bytes). */
 		const endClient = (by: "upstream" | "client") => {
 			if (ending) return;
@@ -340,10 +355,18 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			const hop = slot.hop;
 			slot.hop = null;
 			slot.retired = true;
-			hop?.socket.destroy();
+			if (hop !== undefined && hop !== null) {
+				// Request bytes already handed to the socket but not yet sent (the upstream answered before reading them all)
+				// are still the client's to deliver: end() sends them, then closes. A stalled upstream cannot hold it open.
+				if (hop.socket.writableLength > 0 && !hop.socket.destroyed) {
+					hop.socket.end();
+					setTimeout(() => hop.socket.destroy(), HOP_DRAIN_MS).unref();
+				} else hop.socket.destroy();
+			}
 			const at = slots.indexOf(slot);
 			if (at !== -1) slots.splice(at, 1);
 			if (advance) dispatch();
+			updateFlow();
 		};
 
 		/** A slot is finished once its response is complete and its request fully sent; only then does the next one start. */
@@ -380,10 +403,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			let ends: number[] = [];
 			let interim = false;
 			let sawClose = false;
+			/** The upstream accepted a protocol switch (101): what follows is not HTTP and is relayed as one opaque stream. */
+			let switched = false;
 			const responseParser = new Http1ParserV0("response", {
 				head(head) {
 					if (entry === null) return;
-					if (head.status !== undefined && head.status >= 100 && head.status < 200) {
+					if (head.status === 101) switched = true;
+					else if (head.status !== undefined && head.status >= 100 && head.status < 200) {
 						interim = true;
 						return;
 					}
@@ -461,7 +487,16 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				const end = ends[0];
 				client.write(end === undefined ? data : data.subarray(0, end));
 				segment(end === undefined ? data : data.subarray(0, end));
-				if (end !== undefined) complete(sawClose);
+				if (end !== undefined) {
+					if (switched) {
+						// The exchange ends at the 101 head; the connection becomes a tunnel on this hop, both ways.
+						slot.raw = true;
+						upgraded = slot;
+						hopParsing = false;
+						if (end < data.length) client.write(data.subarray(end));
+					}
+					complete(sawClose);
+				}
 			});
 
 			// A hop ends or closes only by the upstream's doing, or by this proxy's own retirement (after which nothing here
@@ -505,8 +540,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					forwarded: hop.connected && hop.written > 0,
 				});
 				// An upstream failure is the client's failure too: its connection is ended the same way.
-				if (error !== null) client.destroy();
-				else endClient("upstream");
+				if (error !== null) {
+					markEndedByUpstream();
+					client.destroy();
+				} else endClient("upstream");
 				failQueued("the connection was ended by the upstream before this request was forwarded");
 			};
 			socket.on("end", () => upstreamOver(null));
@@ -654,6 +691,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 
 		client.on("data", (data: Buffer) => {
 			if (ending) return;
+			if (upgraded !== null) {
+				forward(upgraded, data);
+				return;
+			}
 			let position = 0;
 			if (parsing) {
 				requestEnds = [];

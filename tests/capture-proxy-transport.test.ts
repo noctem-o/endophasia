@@ -610,3 +610,105 @@ describe("transport closeout: what is not HTTP/1.1 is still relayed untouched", 
 		await finish();
 	});
 });
+
+describe("transport closeout: edges of the hop's lifetime", () => {
+	async function plainUpstream(onConnection: (socket: Socket) => void) {
+		const sockets = new Set<Socket>();
+		const server: Server = createServer((socket) => {
+			sockets.add(socket);
+			socket.on("error", () => {});
+			socket.on("close", () => sockets.delete(socket));
+			onConnection(socket);
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		cleanup.push(
+			() =>
+				new Promise<void>((resolve) => {
+					for (const socket of sockets) socket.destroy();
+					server.close(() => resolve());
+				}),
+		);
+		return (server.address() as { port: number }).port;
+	}
+	const closes = (store: string) =>
+		readEndoCaptureEventsV0(store)
+			.filter((event) => event.kind === "capture.connection-closed")
+			.map((event) => event.payload as Record<string, unknown>);
+
+	it("an accepted protocol switch (101) leaves the client's later bytes on the same hop", async () => {
+		const received: string[] = [];
+		const port = await plainUpstream((socket) => {
+			let switched = false;
+			socket.on("data", (data) => {
+				if (!switched) {
+					switched = true;
+					socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\nS1");
+				} else {
+					received.push(data.toString("latin1"));
+					socket.write(`E:${data.toString("latin1")}`);
+				}
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("GET /v1/realtime HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+		await until(() => c.bytes.toString("latin1").endsWith("S1"), "the 101 and its first bytes");
+		c.socket.write("frame-1");
+		await until(() => c.bytes.toString("latin1").endsWith("E:frame-1"), "the echo");
+		expect(received).toEqual(["frame-1"]);
+		await proxy.flush();
+		await finish();
+		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete"]);
+	});
+
+	it("an upstream reset is recorded as the upstream's doing, not the client's", async () => {
+		const port = await plainUpstream((socket) => {
+			socket.on("data", () => {
+				socket.write("HTTP/1.1 200 OK\r\nContent-Length: 50\r\n\r\npart");
+				setTimeout(() => socket.resetAndDestroy(), 20);
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write(request("/v1/a"));
+		await until(() => c.closed, "client close");
+		await proxy.flush();
+		await finish();
+		expect(ended(store)[0]).toMatchObject({ outcome: "upstream-error" });
+		expect(closes(store)).toEqual([expect.objectContaining({ by: "upstream" })]);
+	});
+
+	it("a response that arrives before the request body is read does not cost the upstream any of that body", async () => {
+		const body = "q".repeat(8 * 1024 * 1024);
+		const big = request("/v1/big", body);
+		let total = 0;
+		const port = await plainUpstream((socket) => {
+			let answered = false;
+			socket.on("data", (data) => {
+				total += data.length;
+				if (answered) return;
+				answered = true;
+				socket.write(response("early"));
+				// Stop reading: the rest of the body sits in the proxy's socket buffers until this resumes.
+				socket.pause();
+				setTimeout(() => socket.resume(), 300);
+			});
+		});
+		const { proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write(big);
+		await until(() => total === big.length, "the whole request at the upstream", 20_000);
+		expect(c.bytes.toString("latin1")).toBe(response("early"));
+		// The client was not left paused: its next request goes through.
+		c.socket.write(request("/v1/next"));
+		await until(
+			() => c.bytes.toString("latin1").endsWith("early") && c.bytes.length > Buffer.byteLength(response("early")),
+			"the next answer",
+			10_000,
+		);
+		await finish();
+	}, 40_000);
+});

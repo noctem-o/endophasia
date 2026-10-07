@@ -580,6 +580,33 @@ describe("transport closeout: what is not HTTP/1.1 is still relayed untouched", 
 		expect(unparsed(store)).toBeGreaterThan(0);
 	});
 
+	it("a line-oriented client that waits for the upstream before finishing its first line is not held back", async () => {
+		const upstream = await rawTcpUpstream((read) => `ANSWER-${read}`);
+		const { store, proxy, finish } = await proxyTo(upstream.port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		// No CRLFCRLF, and not a request line: nothing here will ever complete an HTTP head.
+		c.socket.write("HELLO there\n");
+		await until(() => c.bytes.toString("latin1") === "ANSWER-1", "an answer to a prefix that is not HTTP");
+		c.socket.write("\x00\x00\x00\x05");
+		await until(() => c.bytes.toString("latin1") === "ANSWER-1ANSWER-2", "the second answer");
+		await proxy.flush();
+		await finish();
+		expect(unparsed(store)).toBeGreaterThan(0);
+	});
+
+	it("a request head split across reads is still waited for (the 7-byte test covers every cut)", async () => {
+		const upstream = await upstreamOf((_s, _r, respond) => respond(response("ok")));
+		const { proxy } = await proxyTo(upstream.port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		for (const part of ["PO", "ST /v1/x HT", "TP/1.1\r\nHost: h\r\nContent-Le", "ngth: 0\r\n\r\n"]) {
+			c.socket.write(part);
+			await sleep(10);
+		}
+		await until(() => c.bytes.toString("latin1") === response("ok"), "the answer");
+	});
+
 	it("a request whose body turns out malformed after its head: the upstream's bytes, before and after, all reach the client", async () => {
 		// The upstream answers the head at once (a complete response), then says more as the rest arrives.
 		const upstream = await rawTcpUpstream((read) => (read === 1 ? response("early") : `TAIL-${read}`));

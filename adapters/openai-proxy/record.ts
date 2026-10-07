@@ -149,6 +149,19 @@ interface Slot {
 	closeAfter: boolean;
 }
 
+const REQUEST_LINE = /^[A-Z!#$%&'*+.^_`|~0-9-]+ \S+ HTTP\/1\.[01]$/;
+const TOKEN = /^[A-Z!#$%&'*+.^_`|~0-9-]+$/;
+
+/** Whether the bytes held so far can still turn out to be an HTTP/1.x request head (a complete first line is checked whole). */
+function mayBeRequestHead(held: Buffer[]): boolean {
+	const text = Buffer.concat(held).toString("latin1");
+	const newline = text.indexOf("\n");
+	if (newline !== -1) return REQUEST_LINE.test(text.slice(0, newline).replace(/\r$/, ""));
+	const space = text.indexOf(" ");
+	if (space === -1) return text.length <= 64 && (text === "" || TOKEN.test(text));
+	return TOKEN.test(text.slice(0, space));
+}
+
 /** Request bytes held for slots that are not yet at the front; above this the client socket is paused (backpressure). */
 const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
@@ -712,6 +725,12 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				// Not HTTP/1.1 any more: the rest of the stream is one opaque tail, relayed on one hop, delimiting nothing.
 				if (!parsing) slot.raw = true;
 				forward(slot, data.subarray(position));
+				// A head that has not completed holds its slot back; bytes that cannot be the start of an HTTP request would
+				// hold it back forever (a client of some other protocol waits for the upstream before sending more).
+				if (parsing && slot.entry === null && !slot.raw && slot.hop === null && !mayBeRequestHead(slot.buffered)) {
+					unparsed(new Error("the stream does not start with an HTTP/1.x request line"));
+					slot.raw = true;
+				}
 			}
 			dispatch();
 		});

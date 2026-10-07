@@ -872,4 +872,28 @@ describe("transport closeout: edges of the hop's lifetime", () => {
 		await finish();
 		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete"]);
 	});
+
+	it("an upstream that answers and closes before the upload ends: the connection ends, the unsent body is not claimed", async () => {
+		const seen: Buffer[] = [];
+		const port = await plainUpstream((socket) => {
+			socket.on("data", (data) => {
+				seen.push(data);
+				if (seen.length === 1) socket.end(response("early"));
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("POST /v1/x HTTP/1.1\r\nHost: h\r\nContent-Length: 8\r\n\r\n");
+		await until(() => c.bytes.length > 0, "the early response");
+		await until(() => c.closed, "the connection to end");
+		expect(c.bytes.toString("latin1")).toBe(response("early"));
+		expect(Buffer.concat(seen).toString("latin1")).toBe(
+			"POST /v1/x HTTP/1.1\r\nHost: h\r\nContent-Length: 8\r\n\r\n",
+		);
+		await proxy.flush();
+		await finish();
+		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete"]);
+		expect(recordedRequests(store)).toEqual([]);
+	});
 });

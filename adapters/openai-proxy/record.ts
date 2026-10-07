@@ -570,7 +570,17 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				if (over || slot.retired) return;
 				over = true;
 				if (slot.raw) hopParsing = false;
-				if (hop.done && !slot.raw) return;
+				if (hop.done && !slot.raw) {
+					// Closed after its response: nothing, unless the request is still arriving. The rest of it can no longer be
+					// delivered, so the connection ends rather than the proxy appearing to forward it.
+					if (!slot.requestDone) {
+						if (entry !== null) flushDeferred(entry);
+						retire(slot, false);
+						endClient("upstream");
+						failQueued("the upstream closed the connection before the request was fully uploaded");
+					}
+					return;
+				}
 				if (entry === null || !hopParsing) {
 					// Unparsed: relay the upstream's close as the client's, and report what is known.
 					if (entry !== null && !entry.ended) {
@@ -641,7 +651,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (bytes.length === 0 || slot.retired) return;
 			const hop = slot.hop;
 			if (hop !== null) {
-				if (!hop.socket.destroyed) hop.socket.write(bytes);
+				if (hop.socket.destroyed) return;
+				hop.socket.write(bytes);
 				hop.written += bytes.length;
 			} else {
 				slot.buffered.push(bytes);

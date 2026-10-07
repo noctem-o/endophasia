@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { afterEach, describe, expect, it } from "vitest";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { loadEndoCassetteV0 } from "../adapters/openai-proxy/cassette.ts";
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
@@ -109,13 +110,14 @@ async function upstreamOf(answer: Answer): Promise<{ port: number; seen: Seen[] 
 	return { port: (server.address() as { port: number }).port, seen };
 }
 
-async function proxyTo(port: number, scheme = "http", host = "127.0.0.1", ca?: string) {
+async function proxyTo(port: number, scheme = "http", host = "127.0.0.1", ca?: string, hopDrainMs?: number) {
 	const store = scratch();
 	const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
 	const proxy = await startEndoRecordingProxyV0({
 		upstream: `${scheme}://${host}:${port}`,
 		log,
 		...(ca === undefined ? {} : { ca }),
+		...(hopDrainMs === undefined ? {} : { hopDrainMs }),
 	});
 	let closed = false;
 	const finish = async () => {
@@ -738,4 +740,73 @@ describe("transport closeout: edges of the hop's lifetime", () => {
 		);
 		await finish();
 	}, 40_000);
+
+	it("an exchange answered before its upload finishes is recorded request first, so a cassette can replay it", async () => {
+		const port = await plainUpstream((socket) => {
+			let answered = false;
+			socket.on("data", () => {
+				if (answered) return;
+				answered = true;
+				socket.write(response("early"));
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("POST /v1/x HTTP/1.1\r\nHost: h\r\nContent-Length: 4\r\n\r\n");
+		await until(() => c.bytes.length > 0, "the early response");
+		await proxy.flush();
+		c.socket.write("body");
+		await sleep(50);
+		await proxy.flush();
+		await finish();
+		const kindsInOrder = readEndoCaptureEventsV0(store)
+			.filter((event) => event.kind === "capture.request" || event.kind === "capture.exchange-ended")
+			.map((event) => event.kind);
+		expect(kindsInOrder).toEqual(["capture.request", "capture.exchange-ended"]);
+		const cassette = loadEndoCassetteV0(store, KEY);
+		expect(cassette.exchanges[0]!.truncated).toBeNull();
+		expect(cassette.exchanges[0]!.response).not.toBeNull();
+	});
+
+	it("an upstream that answers and then stops reading a large upload does not hold the connection forever", async () => {
+		const port = await plainUpstream((socket) => {
+			let answered = false;
+			socket.on("data", () => {
+				if (answered) return;
+				answered = true;
+				socket.write(response("early"));
+				socket.pause(); // never reads again, never closes
+			});
+		});
+		const { proxy, finish } = await proxyTo(port, "http", "127.0.0.1", undefined, 150);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write(request("/v1/big", "q".repeat(64 * 1024 * 1024)));
+		await until(() => c.closed, "the connection to be ended", 10_000);
+		await finish();
+	}, 20_000);
+
+	it("a reset on a tunnelled hop reaches the client as a reset, not an orderly end", async () => {
+		const port = await plainUpstream((socket) => {
+			let switched = false;
+			socket.on("data", () => {
+				if (!switched) {
+					switched = true;
+					socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+				} else socket.resetAndDestroy();
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("GET /v1/realtime HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+		await until(() => c.bytes.length > 0, "the 101");
+		c.socket.write("frame");
+		await until(() => c.closed, "client close");
+		expect(c.ended).toBe(false);
+		await proxy.flush();
+		await finish();
+		expect(closes(store)).toEqual([expect.objectContaining({ by: "upstream" })]);
+	});
 });

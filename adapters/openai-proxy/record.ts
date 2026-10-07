@@ -42,6 +42,8 @@ export interface EndoRecordingProxyOptionsV0 {
 	readonly log: EndoCaptureLogV0 | null;
 	/** Extra trust anchors for an https upstream (a private CA); the system roots still apply. */
 	readonly ca?: string | Buffer;
+	/** How long an upstream may sit on request bytes it will not read, after it has answered, before the exchange is dropped. */
+	readonly hopDrainMs?: number;
 }
 
 /** The exchange most recently started, and how many response chunks have been relayed to its client. */
@@ -123,6 +125,10 @@ interface Exchange {
 	waiters: { chunks: number; resolve: () => void }[];
 	/** The request asked for the connection to end after its response (Connection: close, or HTTP/1.0 without keep-alive). */
 	requestClose: boolean;
+	/** The request's end has not been seen yet: its capture.request is not queued, so an early end must wait for it. */
+	requestOpen: boolean;
+	/** Recording jobs of an exchange that ended before its request did, released right after the request is recorded. */
+	deferred: (() => void)[];
 }
 
 /** One upstream connection, made for one exchange and used for nothing else. */
@@ -173,6 +179,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	requireLoopbackBindV0(host);
 	const upstream = endoUpstreamOriginV0(options.upstream);
 	const upstreamPort = upstream.port === "" ? (upstream.protocol === "https:" ? 443 : 80) : Number(upstream.port);
+	const drainMs = options.hopDrainMs ?? HOP_DRAIN_MS;
 	let log = options.log;
 	let generation = 0;
 	let counter = 0;
@@ -319,10 +326,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				if (outcome === "client-disconnected") payload.afterChunks = entry.relayed;
 				if (error !== null) payload.error = error;
 				if (outcome === "upstream-error" && transport !== undefined) payload.transport = { ...transport };
-				hold(() => {
+				const job = () => {
 					payload.wire = { ...target.keep(kept.bytes) } as unknown as JsonValueV0;
 					target.record("capture.exchange-ended", payload);
-				});
+				};
+				// An upstream may answer before the request has been uploaded: the log keeps request before ended.
+				if (entry.requestOpen && !ending && !clientClosed) entry.deferred.push(job);
+				else hold(job);
 			}
 			progress(entry);
 		};
@@ -353,8 +363,14 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			}
 		};
 
+		/** Release an exchange's recording jobs that were waiting for its request to be recorded. */
+		const flushDeferred = (entry: Exchange) => {
+			for (const job of entry.deferred.splice(0)) hold(job);
+		};
+
 		const failQueued = (error: string) => {
 			for (const waiting of slots.splice(0)) {
+				if (waiting.entry !== null) flushDeferred(waiting.entry);
 				waiting.hop?.socket.destroy();
 				if (waiting.entry !== null)
 					finish(waiting.entry, "upstream-error", error, { phase: "not-forwarded", forwarded: false });
@@ -373,7 +389,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				// are still the client's to deliver: end() sends them, then closes. A stalled upstream cannot hold it open.
 				if (hop.socket.writableLength > 0 && !hop.socket.destroyed) {
 					hop.socket.end();
-					setTimeout(() => hop.socket.destroy(), HOP_DRAIN_MS).unref();
+					setTimeout(() => hop.socket.destroy(), drainMs).unref();
 				} else hop.socket.destroy();
 			}
 			const at = slots.indexOf(slot);
@@ -468,6 +484,24 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				finish(entry, "complete", null);
 				lastCompleted = entry.exchange;
 				settleSlot(slot, slot.closeAfter);
+				if (!slot.requestDone && !slot.raw && !slot.retired) watchStall();
+			};
+			// The upstream answered before the request was uploaded. If it then stops reading while the client is held back by
+			// the full socket, the request can never complete and the hop would never retire: end the connection instead.
+			const watchStall = () => {
+				let last = socket.bytesWritten;
+				const tick = () => {
+					if (slot.retired || slot.requestDone || socket.destroyed) return;
+					if (socket.bytesWritten === last && socket.writableNeedDrain) {
+						retire(slot, false);
+						endClient("upstream");
+						failQueued("the upstream stopped reading this request after answering it");
+						return;
+					}
+					last = socket.bytesWritten;
+					setTimeout(tick, drainMs).unref();
+				};
+				setTimeout(tick, drainMs).unref();
 			};
 			const segment = (from: Buffer) => {
 				if (entry === null || from.length === 0) return;
@@ -529,7 +563,11 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 							forwarded: hop.connected && hop.written > 0,
 						});
 					}
-					endClient("upstream");
+					// A reset stays a reset for the client; an orderly end stays orderly.
+					if (error !== null) {
+						markEndedByUpstream();
+						client.resetAndDestroy();
+					} else endClient("upstream");
 					failQueued("the connection was ended by the upstream before this request was forwarded");
 					return;
 				}
@@ -639,6 +677,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					relayed: 0,
 					ended: false,
 					waiters: [],
+					requestOpen: true,
+					deferred: [],
 					requestClose:
 						connection.includes("close") ||
 						(/HTTP\/1\.0$/.test(head.startLine) && !connection.includes("keep-alive")),
@@ -658,6 +698,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				// The next byte starts a new request, and its head (possibly in this same read) starts a new slot.
 				receiving = null;
 				if (entry === null) return;
+				entry.requestOpen = false;
 				const target = current();
 				if (target === null) return;
 				entry.requested = true;
@@ -678,6 +719,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 						offsetMs,
 					});
 				});
+				flushDeferred(entry);
 			},
 		});
 
@@ -741,6 +783,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			const target = current();
 			const closedAfter = lastCompleted;
 			for (const waiting of slots.splice(0)) {
+				if (waiting.entry !== null) flushDeferred(waiting.entry);
 				waiting.hop?.socket.destroy();
 				waiting.retired = true;
 				if (waiting.entry !== null) finish(waiting.entry, "client-disconnected", null);

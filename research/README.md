@@ -172,6 +172,12 @@ switched off per request (E).
 The studies' raw run directories are not in this repository (about 1 GB of tracked files was moved out on 2026-10-05, and later studies' data was never added): see
 [DATA.md](DATA.md) for where they live, how to restore them and what the secret scan found. The results, analyses, run summaries and cassettes stay here.
 
+## Proposed studies — not run
+
+The documents in this section are research contracts or preregistration drafts. They are **not** entries in the real-run table above and do not establish empirical results.
+
+- [Developmental epistemic training v0](developmental-epistemic-training-v0.md) — separates epistemic-content effects from developmental-timing effects in a small synthetic microworld, with matched metadata controls, a plain anchor, learning-rate-controlled timing, downstream conflict-dose stress tests and a whole-generator-family holdout.
+
 ## Fake-only paths
 
 The earlier `completes-repeat` runs, made under a deleted scratch key, were retired. The hostile trajectory cases

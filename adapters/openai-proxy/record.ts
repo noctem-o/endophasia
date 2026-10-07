@@ -3,8 +3,10 @@
 // Pi is pointed at it through its normal model-provider configuration (models.json `baseUrl`); it relays every byte to
 // the upstream and every byte back, and records each exchange into a capture log (capture-log.ts).
 //
-// Never alters a byte in either direction: it is a TCP relay, one upstream connection per client connection. What the
-// client writes is written to the upstream as read, and what the upstream writes is written to the client as read: the
+// Never alters a byte in either direction: it is a TCP relay, with one upstream connection per exchange (a hop), not per
+// client connection: the client's keep-alive does not decide which upstream socket a request is written to, so an upstream
+// closing a finished connection cannot meet the next request. What the client writes is written to the upstream as read,
+// and what the upstream writes is written to the client as read: the
 // request line, headers (names, case, order, values; Host included), transfer framing and body bytes, both ways. A copy
 // of each direction is parsed (http1.ts) only to delimit exchanges and record them; nothing is re-serialized.
 //
@@ -13,11 +15,11 @@
 // never its value), the attempt number (an identical request seen again is attempt 2, 3, ...: a client retry is its own
 // exchange), the response head, every read of the response from the upstream (a chunk) with its offset from the
 // request's arrival, and how the exchange ended: complete, client-disconnected (after how many chunks were relayed), or
-// upstream-error (the error). The response's wire bytes go to the blob store (a head with a secret header is kept with
+// upstream-error (the error, and where the transport failed: connect, awaiting-response, mid-response or not-forwarded). The response's wire bytes go to the blob store (a head with a secret header is kept with
 // that header's line removed, and says so); events carry digests and lengths only.
 
 import { createServer, connect as netConnect, type Server, type Socket } from "node:net";
-import { connect as tlsConnect } from "node:tls";
+import { rootCertificates, connect as tlsConnect } from "node:tls";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { ENDO_CAPTURE_VERSION_V0, type EndoCaptureLogV0 } from "./capture-log.ts";
 import {
@@ -38,6 +40,8 @@ export interface EndoRecordingProxyOptionsV0 {
 	readonly port?: number;
 	/** Where exchanges are recorded; can be switched later (`proxy.log = ...`). Null: connections are refused. */
 	readonly log: EndoCaptureLogV0 | null;
+	/** Extra trust anchors for an https upstream (a private CA); the system roots still apply. */
+	readonly ca?: string | Buffer;
 }
 
 /** The exchange most recently started, and how many response chunks have been relayed to its client. */
@@ -67,9 +71,9 @@ export interface EndoRecordingProxyV0 {
 }
 
 /**
- * How long a connection's recording is held, at most, waiting for the upstream to close it (DESIGN: relay the close
- * first, then record). llama.cpp closes within milliseconds of a response; a server that keeps connections open has its
- * exchanges recorded after this delay.
+ * How long a connection's recording is held, at most, waiting for the client connection to end (DESIGN: relay the close
+ * first, then record). A connection that ends after its response has its exchanges recorded at once; a keep-alive client
+ * that keeps its connection open has them recorded after this delay.
  */
 export const ENDO_PROXY_RECORD_HOLD_MS_V0 = 50;
 const HOLD_MS = ENDO_PROXY_RECORD_HOLD_MS_V0;
@@ -117,7 +121,34 @@ interface Exchange {
 	relayed: number;
 	ended: boolean;
 	waiters: { chunks: number; resolve: () => void }[];
+	/** The request asked for the connection to end after its response (Connection: close, or HTTP/1.0 without keep-alive). */
+	requestClose: boolean;
 }
+
+/** One upstream connection, made for one exchange and used for nothing else. */
+interface Hop {
+	socket: Socket;
+	connected: boolean;
+	/** Request bytes handed to the socket. */
+	written: number;
+	gotBytes: boolean;
+	done: boolean;
+}
+
+/** The raw bytes of one request, from its first byte to its last, and the hop that carries it. */
+interface Slot {
+	entry: Exchange | null;
+	/** The stream is no longer parseable HTTP/1.1: this slot is its opaque tail and delimits nothing. */
+	raw: boolean;
+	buffered: Buffer[];
+	hop: Hop | null;
+	requestDone: boolean;
+	responseDone: boolean;
+	retired: boolean;
+}
+
+/** Request bytes held for slots that are not yet at the front; above this the client socket is paused (backpressure). */
+const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
 export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptionsV0): Promise<EndoRecordingProxyV0> {
 	const host = options.host ?? "127.0.0.1";
@@ -179,9 +210,9 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	const handleConnection = (client: Socket) => {
 		const sink = log;
 		const mine = generation;
-		// This connection's recording is held while the connection may still be closed by the upstream, so its CPU
-		// work (hashing, validating, encoding) never competes with relaying that close: it is released once the
-		// connection has closed, or at most HOLD_MS after it was first held when the upstream keeps the connection open.
+		// This connection's recording is held while the connection may still be closed, so its CPU work (hashing,
+		// validating, encoding) never competes with relaying: it is released once the client connection has closed, or at
+		// most HOLD_MS after it was first held when the connection stays open (a keep-alive client).
 		const held: (() => void)[] = [];
 		let holdTimer: NodeJS.Timeout | null = null;
 		const release = () => {
@@ -204,24 +235,41 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			return;
 		}
 		const current = () => (mine === generation ? sink : null);
-		const upstreamSocket: Socket =
-			upstream.protocol === "https:"
-				? tlsConnect({ host: upstream.hostname, port: upstreamPort, servername: upstream.hostname })
-				: netConnect({ host: upstream.hostname, port: upstreamPort });
-		sockets.add(upstreamSocket);
-		upstreamSocket.on("close", () => sockets.delete(upstreamSocket));
-		const pending: Exchange[] = [];
-		let receiving: Exchange | null = null;
+
+		// Topology. The client connection is the keep-alive; the upstream is reached by one fresh connection (a hop) per
+		// exchange. A hop is created for a slot (the raw bytes of one request) when that slot reaches the front of the
+		// queue, carries exactly that request and its response, and is retired when both are complete. Request bytes are
+		// written only through `forward(slot, ...)`, which can only reach the hop its own slot opened: no byte of a later
+		// request can enter a socket that belongs to an earlier exchange, so an upstream closing a finished hop (RFC 9112
+		// 9.8) can never be met by a request. Nothing is ever replayed: a slot's bytes are written to at most one hop.
+		const slots: Slot[] = [];
+		/** The slot the client's bytes are currently being appended to (its request has not ended). */
+		let receiving: Slot | null = null;
+		let queuedBytes = 0;
+		let paused = false;
 		let lastCompleted: number | null = null;
 		let parsing = true;
-		let closed = false;
-		/** The upstream ended or closed this connection: nothing more can be forwarded on it. */
-		let upstreamGone = false;
+		let clientClosed = false;
+		/** The client connection is being ended: nothing further is forwarded on it. */
+		let ending = false;
+
+		const updateFlow = () => {
+			const front = slots[0];
+			const need = queuedBytes > MAX_QUEUED_BYTES || (front?.hop?.socket.writableNeedDrain ?? false);
+			if (need && !paused) {
+				paused = true;
+				client.pause();
+			} else if (!need && paused) {
+				paused = false;
+				client.resume();
+			}
+		};
 
 		const finish = (
 			entry: Exchange,
 			outcome: "complete" | "client-disconnected" | "upstream-error",
 			error: string | null,
+			transport?: { phase: string; forwarded: boolean },
 		) => {
 			if (entry.ended) return;
 			entry.ended = true;
@@ -250,6 +298,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				};
 				if (outcome === "client-disconnected") payload.afterChunks = entry.relayed;
 				if (error !== null) payload.error = error;
+				if (outcome === "upstream-error" && transport !== undefined) payload.transport = { ...transport };
 				hold(() => {
 					payload.wire = { ...target.keep(kept.bytes) } as unknown as JsonValueV0;
 					target.record("capture.exchange-ended", payload);
@@ -258,9 +307,266 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			progress(entry);
 		};
 
+		/** End the client connection once everything already written to it has been sent (never destroy: a slow reader keeps its bytes). */
+		const endClient = (by: "upstream" | "client") => {
+			if (ending) return;
+			ending = true;
+			const target = current();
+			const closedAfter = lastCompleted;
+			if (target !== null)
+				hold(() => target.record("capture.connection-closed", { by, afterExchange: closedAfter }));
+			// end() only requests the close; the FIN is sent once the socket's writes have drained. Recording is released on
+			// 'finish' (the FIN has been handed to the kernel), never before.
+			if (!client.writableEnded) {
+				client.once("finish", release);
+				client.end();
+			}
+		};
+
+		const failQueued = (error: string) => {
+			for (const waiting of slots.splice(0)) {
+				waiting.hop?.socket.destroy();
+				if (waiting.entry !== null)
+					finish(waiting.entry, "upstream-error", error, { phase: "not-forwarded", forwarded: false });
+			}
+			receiving = null;
+			queuedBytes = 0;
+			updateFlow();
+		};
+
+		const retire = (slot: Slot, advance: boolean) => {
+			const hop = slot.hop;
+			slot.hop = null;
+			slot.retired = true;
+			hop?.socket.destroy();
+			const at = slots.indexOf(slot);
+			if (at !== -1) slots.splice(at, 1);
+			if (advance) dispatch();
+		};
+
+		/** A slot is finished once its response is complete and its request fully sent; only then does the next one start. */
+		const settleSlot = (slot: Slot, closeClient: boolean) => {
+			if (slot.raw || slot.retired || !(slot.responseDone && slot.requestDone)) return;
+			if (closeClient) {
+				// The connection ends here: nothing queued behind this exchange is ever forwarded.
+				retire(slot, false);
+				endClient("upstream");
+				failQueued("the connection was ended by the previous response before this request was forwarded");
+			} else retire(slot, true);
+		};
+
+		const openHop = (slot: Slot) => {
+			const socket: Socket =
+				upstream.protocol === "https:"
+					? tlsConnect({
+							host: upstream.hostname,
+							port: upstreamPort,
+							servername: upstream.hostname,
+							...(options.ca === undefined ? {} : { ca: [...rootCertificates, options.ca] }),
+						})
+					: netConnect({ host: upstream.hostname, port: upstreamPort });
+			sockets.add(socket);
+			socket.on("close", () => sockets.delete(socket));
+			const hop: Hop = { socket, connected: false, written: 0, gotBytes: false, done: false };
+			slot.hop = hop;
+			const connectedEvent = upstream.protocol === "https:" ? "secureConnect" : "connect";
+			socket.once(connectedEvent, () => {
+				hop.connected = true;
+			});
+			const entry = slot.entry;
+			let hopParsing = entry !== null && !slot.raw;
+			let ends: number[] = [];
+			let interim = false;
+			let sawClose = false;
+			const responseParser = new Http1ParserV0("response", {
+				head(head) {
+					if (entry === null) return;
+					if (head.status !== undefined && head.status >= 100 && head.status < 200) {
+						interim = true;
+						return;
+					}
+					interim = false;
+					entry.responseHead = head;
+					const connection = head.headers
+						.filter(([name]) => name.toLowerCase() === "connection")
+						.flatMap(([, value]) =>
+							value
+								.toLowerCase()
+								.split(",")
+								.map((token) => token.trim()),
+						);
+					sawClose =
+						connection.includes("close") ||
+						(/^HTTP\/1\.0\b/.test(head.startLine) && !connection.includes("keep-alive"));
+					const target = current();
+					const response = {
+						exchange: entry.exchange,
+						status: head.status ?? null,
+						headers: capturedHeadersV0(head) as unknown as JsonValueV0,
+						offsetMs: offsetMsV0(entry.start),
+					};
+					if (target !== null) hold(() => target.record("capture.response", response));
+				},
+				body() {},
+				end(_bytes, offset) {
+					if (interim) {
+						interim = false;
+						return;
+					}
+					ends.push(offset);
+				},
+			});
+			if (entry !== null) responseParser.pendingMethods.push(entry.method);
+			const requestClose = entry?.requestClose ?? false;
+
+			const complete = (closeClient: boolean) => {
+				if (hop.done || entry === null) return;
+				hop.done = true;
+				slot.responseDone = true;
+				finish(entry, "complete", null);
+				lastCompleted = entry.exchange;
+				settleSlot(slot, closeClient || requestClose);
+			};
+			const segment = (from: Buffer) => {
+				if (entry === null || from.length === 0) return;
+				entry.segments.push({ offsetMs: offsetMsV0(entry.start), bytes: Buffer.from(from) });
+				entry.relayed += 1;
+				progress(entry);
+			};
+
+			socket.on("data", (data: Buffer) => {
+				if (hop.done || slot.retired) return; // Bytes after this exchange's response belong to no exchange: dropped.
+				hop.gotBytes = true;
+				if (!hopParsing) {
+					client.write(data);
+					return;
+				}
+				ends = [];
+				try {
+					responseParser.push(data);
+				} catch {
+					hopParsing = false;
+					const target = current();
+					if (target !== null)
+						hold(() => target.record("capture.unparsed", { detail: "the response is not an HTTP/1.1 message" }));
+					client.write(data);
+					return;
+				}
+				const end = ends[0];
+				client.write(end === undefined ? data : data.subarray(0, end));
+				segment(end === undefined ? data : data.subarray(0, end));
+				if (end !== undefined) complete(sawClose);
+			});
+
+			// A hop ends or closes only by the upstream's doing, or by this proxy's own retirement (after which nothing here
+			// matters). Before the response is complete it is an upstream failure; after, it is nothing at all.
+			let over = false;
+			const upstreamOver = (error: string | null) => {
+				if (over || slot.retired) return;
+				over = true;
+				if (hop.done) return;
+				if (entry === null || !hopParsing) {
+					// Unparsed: relay the upstream's close as the client's, and report what is known.
+					if (entry !== null && !entry.ended) {
+						hop.done = true;
+						finish(entry, "upstream-error", error ?? "upstream closed the connection", {
+							phase: !hop.connected ? "connect" : hop.gotBytes ? "mid-response" : "awaiting-response",
+							forwarded: hop.connected && hop.written > 0,
+						});
+					}
+					endClient("upstream");
+					failQueued("the connection was ended by the upstream before this request was forwarded");
+					return;
+				}
+				let closedBody = false;
+				if (error === null && entry.responseHead !== null) {
+					try {
+						ends = [];
+						closedBody = responseParser.close() && ends.length > 0;
+					} catch {
+						// A cut message is reported below.
+					}
+				}
+				if (closedBody) {
+					// A response framed by the close is complete, and the close is the client's too.
+					complete(true);
+					return;
+				}
+				hop.done = true;
+				finish(entry, "upstream-error", error ?? "upstream closed the connection", {
+					phase: !hop.connected ? "connect" : hop.gotBytes ? "mid-response" : "awaiting-response",
+					forwarded: hop.connected && hop.written > 0,
+				});
+				// An upstream failure is the client's failure too: its connection is ended the same way.
+				if (error !== null) client.destroy();
+				else endClient("upstream");
+				failQueued("the connection was ended by the upstream before this request was forwarded");
+			};
+			socket.on("end", () => upstreamOver(null));
+			socket.on("error", (error: NodeJS.ErrnoException) => upstreamOver(error.code ?? error.name));
+			socket.on("close", () => upstreamOver(null));
+			socket.on("drain", updateFlow);
+		};
+
+		/** Start the front slot's hop once it has what it needs (its request head, or the raw tail of an unparsed stream). */
+		const dispatch = () => {
+			const front = slots[0];
+			if (front === undefined || front.hop !== null || front.retired) return;
+			if (front.entry === null && !front.raw) return;
+			openHop(front);
+			const hop = front.hop as Hop | null;
+			if (hop === null) return;
+			for (const part of front.buffered.splice(0)) {
+				queuedBytes -= part.length;
+				hop.socket.write(part);
+				hop.written += part.length;
+			}
+			updateFlow();
+		};
+
+		/** Append request bytes to a slot: written to its own hop, or held byte-for-byte until the slot reaches the front. */
+		const forward = (slot: Slot, bytes: Buffer) => {
+			if (bytes.length === 0 || slot.retired) return;
+			const hop = slot.hop;
+			if (hop !== null) {
+				if (!hop.socket.destroyed) hop.socket.write(bytes);
+				hop.written += bytes.length;
+			} else {
+				slot.buffered.push(bytes);
+				queuedBytes += bytes.length;
+			}
+			updateFlow();
+		};
+
+		const ensureReceiving = (): Slot => {
+			if (receiving === null) {
+				receiving = {
+					entry: null,
+					raw: false,
+					buffered: [],
+					hop: null,
+					requestDone: false,
+					responseDone: false,
+					retired: false,
+				};
+				slots.push(receiving);
+			}
+			return receiving;
+		};
+
+		let requestEnds: { slot: Slot; offset: number }[] = [];
 		const requestParser = new Http1ParserV0("request", {
 			head(head) {
 				counter += 1;
+				const slot = ensureReceiving();
+				const connection = head.headers
+					.filter(([name]) => name.toLowerCase() === "connection")
+					.flatMap(([, value]) =>
+						value
+							.toLowerCase()
+							.split(",")
+							.map((token) => token.trim()),
+					);
 				const entry: Exchange = {
 					exchange: counter,
 					start: performance.now(),
@@ -275,22 +581,27 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					relayed: 0,
 					ended: false,
 					waiters: [],
+					requestClose:
+						connection.includes("close") ||
+						(/HTTP\/1\.0$/.test(head.startLine) && !connection.includes("keep-alive")),
 				};
+				slot.entry = entry;
 				exchanges.set(entry.exchange, entry);
 				latest = entry;
 				open += 1;
-				receiving = entry;
-				pending.push(entry);
-				responseParser.pendingMethods.push(entry.method);
 			},
 			body(bytes) {
-				receiving?.bodyParts.push(Buffer.from(bytes));
+				receiving?.entry?.bodyParts.push(Buffer.from(bytes));
 			},
-			end() {
-				const entry = receiving;
+			end(_bytes, offset) {
+				const slot = ensureReceiving();
+				const entry = slot.entry;
+				requestEnds.push({ slot, offset });
+				// The next byte starts a new request, and its head (possibly in this same read) starts a new slot.
 				receiving = null;
+				if (entry === null) return;
 				const target = current();
-				if (entry === null || target === null) return;
+				if (target === null) return;
 				entry.requested = true;
 				const body = Buffer.concat(entry.bodyParts);
 				const offsetMs = offsetMsV0(entry.start);
@@ -309,43 +620,6 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 						offsetMs,
 					});
 				});
-				if (upstreamGone) {
-					// The upstream had already closed this connection: the request was never forwarded. Recorded, not lost.
-					pending.splice(pending.indexOf(entry), 1);
-					finish(entry, "upstream-error", "the upstream had closed the connection before this request arrived");
-				}
-			},
-		});
-
-		// Message ends found while parsing one upstream read: byte offsets within that read.
-		let ends: number[] = [];
-		const responseParser = new Http1ParserV0("response", {
-			head(head) {
-				const entry = pending[0];
-				if (entry === undefined) return;
-				if (head.status !== undefined && head.status >= 100 && head.status < 200) {
-					entry.interim = true;
-					return;
-				}
-				entry.interim = false;
-				entry.responseHead = head;
-				const target = current();
-				const response = {
-					exchange: entry.exchange,
-					status: head.status ?? null,
-					headers: capturedHeadersV0(head) as unknown as JsonValueV0,
-					offsetMs: offsetMsV0(entry.start),
-				};
-				if (target !== null) hold(() => target.record("capture.response", response));
-			},
-			body() {},
-			end(_bytes, offset) {
-				const entry = pending[0];
-				if (entry === undefined || entry.interim) {
-					if (entry !== undefined) entry.interim = false;
-					return;
-				}
-				ends.push(offset);
 			},
 		});
 
@@ -357,107 +631,58 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (target !== null) hold(() => target.record("capture.unparsed", { detail }));
 		};
 
-		client.on("data", (data: Buffer) => {
-			if (!upstreamGone && !upstreamSocket.destroyed) upstreamSocket.write(data);
-			if (!parsing) return;
-			try {
-				requestParser.push(data);
-			} catch (error) {
-				unparsed(error);
-			}
-		});
-		upstreamSocket.on("data", (data: Buffer) => {
-			client.write(data);
-			if (!parsing) return;
-			ends = [];
-			try {
-				responseParser.push(data);
-			} catch (error) {
-				unparsed(error);
-				return;
-			}
+		/** Give each request that ended in this read its bytes; returns where the bytes of the request still open begin. */
+		const routeEnds = (data: Buffer): number => {
 			let position = 0;
-			const segment = (entry: Exchange, from: number, to: number) => {
-				if (to <= from) return;
-				entry.segments.push({ offsetMs: offsetMsV0(entry.start), bytes: Buffer.from(data.subarray(from, to)) });
-				entry.relayed += 1;
-				progress(entry);
-			};
-			for (const end of ends) {
-				const entry = pending.shift();
-				if (entry === undefined) break;
-				segment(entry, position, end);
-				finish(entry, "complete", null);
-				lastCompleted = entry.exchange;
-				position = end;
+			for (const { slot, offset } of requestEnds) {
+				forward(slot, data.subarray(position, offset));
+				slot.requestDone = true;
+				position = offset;
+				dispatch();
+				settleSlot(slot, false);
 			}
-			const entry = pending[0];
-			if (entry !== undefined) segment(entry, position, data.length);
+			return position;
+		};
+
+		client.on("data", (data: Buffer) => {
+			if (ending) return;
+			let position = 0;
+			if (parsing) {
+				requestEnds = [];
+				try {
+					requestParser.push(data);
+				} catch (error) {
+					unparsed(error);
+				}
+				// Every byte up to a request's end belongs to that request; every byte after belongs to the next slot, even
+				// before its head has parsed. The slots' bytes concatenate to exactly what the client wrote.
+				position = routeEnds(data);
+			}
+			if (position < data.length) {
+				const slot = ensureReceiving();
+				// Not HTTP/1.1 any more: the rest of the stream is one opaque tail, relayed on one hop, delimiting nothing.
+				if (!parsing) slot.raw = true;
+				forward(slot, data.subarray(position));
+			}
+			dispatch();
 		});
 
-		// An orderly upstream end is relayed as an orderly end: client.end() flushes every byte already written before the
-		// FIN. The client socket is never destroyed on an orderly upstream end: destroying it dropped bytes still queued
-		// for a slow reader, so the client saw a cut response while the capture log recorded a complete one. A client
-		// that goes away (FIN or reset, e.g. Pi aborting a request) still drops the upstream request at once.
-		const settle = (by: "client" | "upstream", error: string | null) => {
-			if (closed) return;
-			closed = true;
-			if (by === "upstream" && parsing) {
-				try {
-					if (responseParser.close() && pending[0] !== undefined && pending[0].responseHead !== null) {
-						const entry = pending.shift()!;
-						finish(entry, "complete", null);
-						lastCompleted = entry.exchange;
-					}
-				} catch {
-					// A cut message is reported below as the exchange's end.
-				}
-			}
-			for (const entry of pending.splice(0))
-				finish(
-					entry,
-					by === "client" ? "client-disconnected" : "upstream-error",
-					by === "client" ? null : (error ?? "upstream closed the connection"),
-				);
+		const clientGone = () => {
+			if (clientClosed) return;
+			clientClosed = true;
 			const target = current();
 			const closedAfter = lastCompleted;
-			if (target !== null)
-				hold(() => target.record("capture.connection-closed", { by, afterExchange: closedAfter }));
-		};
-		client.on("error", () => {
-			settle("client", null);
-			upstreamSocket.destroy();
-			release();
-		});
-		client.on("close", () => {
-			settle("client", null);
-			upstreamSocket.destroy();
-			release();
-		});
-		upstreamSocket.on("end", () => {
-			// The upstream ended its side: the client's side is ended the same way at once (end() flushes what was
-			// written), and only then is anything recorded.
-			upstreamGone = true;
-			// end() only requests the close; the FIN is sent once the socket's writes have drained. Recording is released
-			// on 'finish' (the FIN has been handed to the kernel), never before.
-			client.once("finish", release);
-			client.end();
-			settle("upstream", null);
-		});
-		upstreamSocket.on("error", (error: NodeJS.ErrnoException) => {
-			upstreamGone = true;
-			client.destroy();
-			settle("upstream", error.code ?? error.name);
-			release();
-		});
-		upstreamSocket.on("close", () => {
-			upstreamGone = true;
-			if (!client.writableEnded) {
-				client.once("finish", release);
-				client.end();
+			for (const waiting of slots.splice(0)) {
+				waiting.hop?.socket.destroy();
+				waiting.retired = true;
+				if (waiting.entry !== null) finish(waiting.entry, "client-disconnected", null);
 			}
-			settle("upstream", null);
-		});
+			if (target !== null && !ending)
+				hold(() => target.record("capture.connection-closed", { by: "client", afterExchange: closedAfter }));
+			release();
+		};
+		client.on("error", clientGone);
+		client.on("close", clientGone);
 	};
 
 	const server: Server = createServer(handleConnection);

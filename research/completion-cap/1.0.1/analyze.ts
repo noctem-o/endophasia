@@ -137,14 +137,31 @@ function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
 
 const STALE_CONNECTION = /closed the connection before this request arrived/;
 
+/** The capture version a recording was made with (`capture.started`); recordings before it was written count as 1. */
+function captureVersionOf(store: string): number {
+	for (const event of readEndoCaptureEventsV0(store)) {
+		if (event.producer !== "capture:record" || event.kind !== "capture.started") continue;
+		const match = /^endo-capture\.(\d+)$/.exec(String((event.payload as { capture?: unknown }).capture ?? ""));
+		return match === null ? 1 : Number(match[1]);
+	}
+	return 1;
+}
+
 /**
- * Each recorded response of a trial, read from its wire bytes, and the number of exchanges that failed without one. An
- * exchange with no bytes whose recorded error is the proxy's "the upstream had closed the connection before this request
- * arrived" is a retry of a stale connection (the retry is the next exchange), so it is neither a response nor a failure;
- * any other exchange without a response head is a failure.
+ * Each recorded response of a trial, read from its wire bytes, and the number of exchanges that failed without one.
+ *
+ * Recordings made with endo-capture.1 (the proxy that held one upstream connection per client connection): an exchange
+ * with no bytes whose recorded error is that proxy's "the upstream had closed the connection before this request arrived"
+ * is a retry of a stale connection (the retry is the next exchange), so it is neither a response nor a failure. That is
+ * recovered from an English message because nothing else was recorded; it is kept for those historical recordings only.
+ *
+ * Recordings made with endo-capture.2 or later open an upstream connection per exchange, so that condition cannot occur:
+ * every exchange without a response head, and every `upstream-error`, is a failure, whatever its message says.
  */
 export function responsesOf(store: string): { responses: WireSummaryV0[]; failedExchanges: number } {
 	const blobs = createEndoBlobStoreV0(join(store, "capture"), piCassetteKeyV0(FIXTURE), { readOnly: true });
+	const historicalStale = captureVersionOf(store) < 2;
+	const stale = (error: string | null | undefined) => historicalStale && STALE_CONNECTION.test(error ?? "");
 	const responses: WireSummaryV0[] = [];
 	let failedExchanges = 0;
 	for (const event of readEndoCaptureEventsV0(store)) {
@@ -158,9 +175,8 @@ export function responsesOf(store: string): { responses: WireSummaryV0[]; failed
 		const hasResponse = summary !== null && summary.httpStatus !== null;
 		if (hasResponse) responses.push(summary);
 		// An upstream that drops after sending a response head is a failure too (a partial response), whatever the status said.
-		if (payload.outcome === "upstream-error" && !(!hasResponse && STALE_CONNECTION.test(payload.error ?? "")))
-			failedExchanges += 1;
-		else if (!hasResponse && !STALE_CONNECTION.test(payload.error ?? "")) failedExchanges += 1;
+		if (payload.outcome === "upstream-error" && !(!hasResponse && stale(payload.error))) failedExchanges += 1;
+		else if (!hasResponse && !stale(payload.error)) failedExchanges += 1;
 	}
 	return { responses, failedExchanges };
 }

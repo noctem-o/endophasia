@@ -11,7 +11,9 @@
 //   capture.started          {role: "record" | "replay", listen, upstream | cassette, digestKey, timing?}
 //   capture.request          {exchange, attempt, method, path, requestDigest, body, headers}
 //   capture.response         {exchange, status, headers, offsetMs}
-//   capture.exchange-ended   {exchange, outcome, status, chunks, body, offsetMs, error?}
+//   capture.exchange-ended   {exchange, outcome, status, chunks, body, offsetMs, error?, transport?}
+//                            transport (endo-capture.2, outcome upstream-error only): {phase: "connect" | "awaiting-response" |
+//                            "mid-response" | "not-forwarded", forwarded: boolean}
 //   capture.served           {exchange, cassetteExchange, requestDigest, outcome, chunksDelivered, offsetMs}
 //   capture.cassette-miss    {exchange, reason, requestDigest, expected, detail}
 //   capture.workspace-snapshot {path, archive, summary}
@@ -32,8 +34,14 @@ import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../
 /** The directory under a store root that holds the capture log. */
 export const ENDO_CAPTURE_DIRECTORY_V0 = "capture";
 
-/** The capture log's version: bumped when an event's meaning or shape changes. */
-export const ENDO_CAPTURE_VERSION_V0 = "endo-capture.1";
+/**
+ * The capture log's version: bumped when an event's meaning or shape changes.
+ *
+ * endo-capture.2: the recording proxy opens one upstream connection per exchange, so an `upstream-error` is never a
+ * request lost to a stale connection, and carries `transport`. Readers of endo-capture.1 logs (no `transport`; a
+ * stale-connection failure identified only by its message) keep working: nothing here is required of a log.
+ */
+export const ENDO_CAPTURE_VERSION_V0 = "endo-capture.2";
 
 /** A keyed digest and the length of what it digests. */
 export interface EndoCapturedBytesRefV0 {

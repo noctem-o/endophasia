@@ -34,6 +34,45 @@ the client as read, in both directions, transfer framing included. A copy of eac
 `tests/capture-proxy.test.ts` writes hand-made bytes on raw sockets at both ends and compares them byte for byte. That
 test exists because the first, Node-HTTP-based design added a `Connection` header that the client had not sent.
 
+### Connections
+
+The client's connection to the proxy and the proxy's connection to the upstream have separate lifetimes.
+
+- **The client connection is the keep-alive.** It carries as many exchanges as the client sends. The proxy ends it only
+  when the response says so (`Connection: close`, an HTTP/1.0 response without keep-alive, or a body framed by the
+  close), when the request said so, when the upstream fails, or when the client does.
+- **The upstream gets one fresh connection per exchange (a hop).** It is opened when the exchange's request reaches the
+  front of the line, carries that one request and its one response, and is closed by the proxy when both are complete.
+  An upstream that closes a connection after its response, as llama.cpp does, closes a hop nobody is using: the
+  next request opens a new one. This is the RFC 9112 §9.3–9.6 race, removed by construction rather than retried.
+  (Before endo-capture.2 the proxy held one upstream connection per client connection, and a request sent as the
+  upstream closed it was lost: 2 of the steering study's 622 requests. That result stands as recorded.)
+- **Why a request cannot enter an earlier exchange's connection.** The proxy splits the client's bytes at the request
+  parser's message ends; every byte after one request's end belongs to the next. A request's bytes are written only to
+  the hop its own slot opened, and a slot's hop is closed when its exchange completes, before the next slot starts.
+  The slots' bytes concatenate to exactly what the client wrote.
+- **Pipelining.** A client may send several requests without waiting. They are forwarded one at a time, in order, each
+  after the previous response is complete, and answered in order. Waiting request bytes are held verbatim, at most 4 MiB;
+  above that the proxy stops reading the client (TCP backpressure). Pipelined requests therefore reach the upstream later
+  than they used to, never earlier or interleaved. If a response ends the connection, the requests behind it are not
+  forwarded and are recorded as such.
+- **TLS.** Each hop is its own TLS session with the upstream's host name as SNI, so an https upstream pays a handshake per
+  exchange.
+- **What is never retried.** Nothing. A request's bytes are written to at most one connection, and a failure is never
+  hidden by sending them again, because a POST cannot be told apart from a duplicate once it may have reached the
+  upstream. An agent's own retry is its own exchange (attempt 2), as before.
+- **How a genuine failure is recorded.** `capture.exchange-ended` with `outcome: "upstream-error"` also carries
+  `transport: {phase, forwarded}` (endo-capture.2). `phase` is `connect` (the upstream could not be reached),
+  `awaiting-response` (it closed or failed before any response byte), `mid-response` (it was cut after response bytes) or
+  `not-forwarded` (the request was never sent: the connection ended first). `forwarded` says whether any request byte was
+  written to a connected upstream. Analysis reads these fields, not the error text. The old
+  "the upstream had closed the connection before this request arrived" error cannot be produced any more; analysis of
+  endo-capture.1 recordings (`research/completion-cap/1.0.1/analyze.ts`) still reads it as the transport retry it was.
+- **Bytes after a response.** Bytes an upstream sends on a hop after its response is complete belong to no exchange and are
+  dropped, not relayed.
+
+### What is recorded
+
 Per exchange, the capture log (`<store>/capture/`, an Endophasia event store) records:
 
 - `capture.request`:
@@ -48,8 +87,9 @@ Per exchange, the capture log (`<store>/capture/`, an Endophasia event store) re
   - every read of the response from the upstream (a **chunk**), with its offset from the request's arrival;
   - the wire bytes' keyed digest and length;
   - how it ended: `complete`, `client-disconnected` (with the chunks relayed by then) or `upstream-error` (with the
-    error code).
-- `capture.connection-closed`: who closed the connection, and after which exchange.
+    error code, and for `upstream-error` the `transport` classification above).
+- `capture.connection-closed`: who ended the client connection, and after which exchange. `upstream` means the proxy ended
+  it because of a response or upstream failure; `client` means the client did.
 
 **Secrets.** Header names containing authorization, cookie, api-key, token, secret, password, credential or session
 are recorded as `{name, redacted: true}`. Their values are stored nowhere. A response head that carries one is kept

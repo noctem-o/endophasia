@@ -19,6 +19,7 @@ import {
 } from "../protocol/experiment-artifacts.ts";
 import { type EndoExperimentSpecV0, readEndoExperimentSpecV0 } from "../protocol/experiment-spec.ts";
 import { EndoSchemaVersionErrorV0, type EndoVersionedReadV0 } from "../protocol/versioned.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 
 /** The file's JSON, shape unknown. */
 function readUnknownJson(path: string): unknown {
@@ -43,7 +44,13 @@ export function readEndoExperimentSpecFileV0(path: string): EndoExperimentSpecV0
 
 /** `<dir>/experiment.json` (`endo.experiment-run.v0`). */
 export function readEndoExperimentRunRecordFileV0(dir: string): EndoExperimentRunRecordV0 {
-	return governed(join(dir, "experiment.json"), readEndoExperimentRunRecordV0);
+	const path = join(dir, "experiment.json");
+	const run = governed(path, readEndoExperimentRunRecordV0);
+	// The digest is of the spec this record embeds (the hash lives with the host, not in protocol/): a changed spec
+	// behind the original digest is not this run.
+	if (run.specSha256 !== sha256HexV0(canonicalEndoJsonV0(run.spec)))
+		throw refusal(`${path}: specSha256 is not the digest of the embedded spec`);
+	return run;
 }
 
 const refusal = (message: string) => new EndoSchemaVersionErrorV0({ ok: false, kind: "invalid", message });

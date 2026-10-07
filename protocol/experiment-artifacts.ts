@@ -182,6 +182,29 @@ const RUN_KEYS = [
 
 const isSeed = (value: unknown): value is number => isCount(value) && value <= 0xffffffff;
 
+/** The embedded experiment record is what the runner derives from the spec, the runner and the digest: nothing else. */
+function experimentRecordProblem(
+	runner: string,
+	specSha256: string,
+	spec: EndoExperimentSpecV0,
+	experiment: EndoExperimentRecordV0,
+): Problem {
+	if (experiment.id !== spec.id) return "experiment.id is not the embedded spec's id";
+	if (experiment.model !== `${spec.provider}/${spec.model}`)
+		return "experiment.model is not the embedded spec's provider/model";
+	const budget = experiment.budget;
+	if (
+		!isObject(budget) ||
+		Object.keys(budget).sort().join() !== "cells,trialsPerCell" ||
+		budget.trialsPerCell !== spec.trials ||
+		budget.cells !== spec.tasks.length * spec.conditions.length
+	)
+		return "experiment.budget is not the embedded spec's trials per cell and cells";
+	if (experiment.provenance !== `${runner}; spec sha256 ${specSha256}`)
+		return "experiment.provenance is not the runner and digest this record names";
+	return null;
+}
+
 function runProblem(value: unknown): Problem {
 	const shape = closed(value, RUN_KEYS, "the run record");
 	if (shape !== null) return shape;
@@ -198,6 +221,8 @@ function runProblem(value: unknown): Problem {
 	if (!isText(v.ordering)) return "ordering must be a non-empty string";
 	const experiment = readEndoVersionedV0(ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0, v.experiment);
 	if (!experiment.ok) return `experiment: ${experiment.message}`;
+	const derived = experimentRecordProblem(v.runner as string, v.specSha256 as string, spec.value, experiment.value);
+	if (derived !== null) return derived;
 	if (!isText(v.scratchRoot) || v.scratchRoot.includes("\0")) return "scratchRoot must be a non-empty path";
 	if (v.proxyPort !== null && !(isCount(v.proxyPort) && v.proxyPort >= 1 && v.proxyPort <= 65_535))
 		return "proxyPort must be a port number or null";

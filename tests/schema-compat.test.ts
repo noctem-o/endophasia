@@ -640,6 +640,20 @@ describe("the experiment runner's artifacts", () => {
 		}
 	});
 
+	it("refuses an embedded experiment record that is not what the runner derives from the spec", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const withExperiment = (change: object) =>
+			kind(readEndoExperimentRunRecordV0({ ...run, experiment: { ...run.experiment, ...change } }));
+		expect(withExperiment({})).toBe("ok");
+		expect(withExperiment({ id: "endo.experiment.another" })).toBe("invalid");
+		expect(withExperiment({ model: "fixture/another-model" })).toBe("invalid");
+		expect(withExperiment({ budget: { trialsPerCell: 9, cells: 4 } })).toBe("invalid");
+		expect(withExperiment({ budget: { trialsPerCell: 2, cells: 4, extra: 1 } })).toBe("invalid");
+		for (const budget of [null, 5, "x", [], undefined]) expect(withExperiment({ budget })).toBe("invalid");
+		expect(withExperiment({ provenance: "endo-experiment-runner.3; spec sha256 abc" })).toBe("invalid");
+		expect(kind(readEndoExperimentRunRecordV0({ ...run, runner: "endo-experiment-runner.9" }))).toBe("invalid");
+	});
+
 	it("refuses a success check whose verdict is not its exit code and timeout", () => {
 		const trial = json("endo.experiment-trial.v0", "full.json");
 		const check = (change: object) =>

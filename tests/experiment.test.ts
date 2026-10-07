@@ -653,6 +653,22 @@ describe("the run directory's source-of-truth files are read through their versi
 			"invalid",
 		],
 		[
+			"experiment.json: an experiment record that names another model",
+			() => file("experiment.json"),
+			(v) => {
+				v.experiment.model = "fake/another-model";
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: an experiment record with another budget",
+			() => file("experiment.json"),
+			(v) => {
+				v.experiment.budget.trialsPerCell += 1;
+			},
+			"invalid",
+		],
+		[
 			"plan.json: a seed that is not the run's",
 			() => file("plan.json"),
 			(v) => {

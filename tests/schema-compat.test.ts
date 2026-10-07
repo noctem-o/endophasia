@@ -654,6 +654,26 @@ describe("the experiment runner's artifacts", () => {
 		expect(kind(readEndoExperimentRunRecordV0({ ...run, runner: "endo-experiment-runner.9" }))).toBe("invalid");
 	});
 
+	it("refuses a run whose seed does not follow from the embedded spec's seed", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const seeded = (specSeed: number | null, seed: number, seedSource: string) =>
+			kind(readEndoExperimentRunRecordV0({ ...run, spec: { ...run.spec, seed: specSeed }, seed, seedSource }));
+		expect(seeded(7, 7, "spec")).toBe("ok");
+		expect(seeded(7, 8, "spec")).toBe("invalid");
+		expect(seeded(7, 7, "drawn")).toBe("invalid");
+		expect(seeded(null, 123, "drawn")).toBe("ok");
+		expect(seeded(null, 123, "spec")).toBe("invalid");
+	});
+
+	it("refuses a trial that ends before it starts", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		const at = (startedAt: string, endedAt: string) =>
+			kind(readEndoExperimentTrialResultV0({ ...trial, startedAt, endedAt }));
+		expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z")).toBe("ok");
+		expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z")).toBe("ok");
+		expect(at("2026-01-01T00:00:01.000Z", "2026-01-01T00:00:00.000Z")).toBe("invalid");
+	});
+
 	it("refuses a success check whose verdict is not its exit code and timeout", () => {
 		const trial = json("endo.experiment-trial.v0", "full.json");
 		const check = (change: object) =>

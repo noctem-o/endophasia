@@ -48,7 +48,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
@@ -619,7 +619,10 @@ async function runTrial(
 		error,
 		startedAt,
 		endedAt: new Date().toISOString(),
-		store: store.slice(dir.length + 1),
+		store: store
+			.slice(dir.length + 1)
+			.split(sep)
+			.join("/"),
 		session: sessionOf(events),
 		exchanges: capture.filter(
 			(event) => event.kind === "capture.exchange-ended" && event.producer === "capture:record",

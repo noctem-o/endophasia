@@ -221,6 +221,10 @@ function runProblem(value: unknown): Problem {
 	if (!isText(v.ordering)) return "ordering must be a non-empty string";
 	const experiment = readEndoVersionedV0(ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0, v.experiment);
 	if (!experiment.ok) return `experiment: ${experiment.message}`;
+	// The seed is the spec's when the spec fixes one, and drawn otherwise: a record cannot claim another ordering.
+	const specSeed = spec.value.seed;
+	if (specSeed === null ? v.seedSource !== "drawn" : v.seed !== specSeed || v.seedSource !== "spec")
+		return "seed and seedSource do not follow from the embedded spec's seed";
 	const derived = experimentRecordProblem(v.runner as string, v.specSha256 as string, spec.value, experiment.value);
 	if (derived !== null) return derived;
 	if (!isText(v.scratchRoot) || v.scratchRoot.includes("\0")) return "scratchRoot must be a non-empty path";
@@ -407,6 +411,7 @@ function trialProblem(value: unknown): Problem {
 	if ((v.status === "completed") !== (v.error === null)) return "status completed holds exactly when error is null";
 	if (typeof v.startedAt !== "string" || !isIso8601UtcV0(v.startedAt)) return "startedAt must be an ISO-8601 UTC time";
 	if (typeof v.endedAt !== "string" || !isIso8601UtcV0(v.endedAt)) return "endedAt must be an ISO-8601 UTC time";
+	if (Date.parse(v.endedAt) < Date.parse(v.startedAt)) return "endedAt must not precede startedAt";
 	if (!isText(v.store) || !isEndoExperimentRelativePathV0(v.store))
 		return "store must be a relative path inside the run directory";
 	if (v.session !== null && typeof v.session !== "string") return "session must be a string or null";

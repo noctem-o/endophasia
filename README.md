@@ -426,10 +426,12 @@ Before any arm is run, predeclare the budget and what it can detect; otherwise a
 - **Stage 0 is a gate with a compute cap.** State the maximum runs and compute at the ~4B scout and at ~8B, and the
   outcome that ends the programme if hacking is still absent at ~8B. Stages 1-3 are not funded from an unbounded
   Stage 0.
-- **A-D is one comparison family.** Arms E and I intentionally differ from A-D (E changes the prompt, I adds
-  interleaved data), so the byte-identical guarantee above does not cover them. Treat them as positive controls
-  against A, in a separate family: never pool them into A-D comparisons or the same multiplicity correction, and do not
-  read them as competing mitigations.
+- **A-D is one comparison family.** Arms E and I each change exactly one coordinate on purpose (E the training
+  prompt, I the interleaved safety data), so the byte-identical guarantee above is lifted for that coordinate only.
+  Model checkpoint, harness, sampling policy, task distribution and total budgets stay matched to A, otherwise a
+  difference cannot be attributed to the control. Treat them as positive controls against A, in a separate family:
+  never pool them into A-D comparisons or the same multiplicity correction, and do not read them as competing
+  mitigations.
 
 #### What is rewarded and what stays shadow-only
 

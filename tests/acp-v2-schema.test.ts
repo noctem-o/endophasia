@@ -260,6 +260,95 @@ describe("ACP v2 baseline validation", () => {
 			expect(validateAcpV2DefinitionV0("ResourceLink", link(bad)), bad).toBe(false);
 	});
 
+	it("validates a bracketed host as an RFC 3986 IPv6 or IPvFuture literal", () => {
+		const link = (uri: string) => ({ type: "resource_link", name: "n", uri });
+		for (const good of [
+			"http://[::1]/",
+			"http://[::]/",
+			"http://[2001:db8::8a2e:370:7334]/",
+			"http://[1:2:3:4:5:6:7:8]/",
+			"http://[1:2:3:4:5:6:7::]/",
+			"http://[::2:3:4:5:6:7:8]/",
+			"http://[1::8]:8080/p",
+			"http://[::ffff:192.0.2.128]/",
+			"http://[1:2:3:4:5:6:192.0.2.1]/",
+			"http://[64:ff9b::192.0.2.33]/",
+			"http://u:p@[fe80::1]/",
+			"http://[v7.a:b]/",
+			"http://[vF.~!$&'()*+,;=:x]/",
+		])
+			expect(validateAcpV2DefinitionV0("ResourceLink", link(good)), good).toBe(true);
+		for (const bad of [
+			"http://[::::]/",
+			"http://[1:2:3:4:5:6:7:8:9]/",
+			"http://[1:2:3:4:5:6:7]/",
+			"http://[1::2::3]/",
+			"http://[:1:2:3:4:5:6:7]/",
+			"http://[1:2:3:4:5:6:7:]/",
+			"http://[:::1]/",
+			"http://[12345::1]/",
+			"http://[g::1]/",
+			"http://[1:2:3:4:5:6:7:8::]/",
+			"http://[::1:2:3:4:5:6:7:8]/",
+			"http://[::1.2.3]/",
+			"http://[::256.0.0.1]/",
+			"http://[::01.2.3.4]/",
+			"http://[1.2.3.4::]/",
+			"http://[1.2.3.4]/",
+			"http://[fe80::1%25eth0]/",
+			"http://[]/",
+			"http://[/",
+			"http://[::1/x",
+			"http://[::1]x/",
+			"http://[::1]:80a/",
+			"http://[v.a]/",
+			"http://[vG.a]/",
+			"http://[v1.]/",
+			"http://[v1.a b]/",
+		])
+			expect(validateAcpV2DefinitionV0("ResourceLink", link(bad)), bad).toBe(false);
+	});
+
+	it("enforces contentEncoding base64 wherever the baseline declares it", () => {
+		const good = ["", "QQ==", "QUI=", "QUJD", "AAECAwQFBgcICQ==", "+/+/"];
+		const bad = [
+			"not base64!",
+			"QQ=",
+			"Q",
+			"QUJDR",
+			"=QQQ",
+			"QQ==QQ==",
+			"QU=J",
+			"QUJD ",
+			"QQ==\n",
+			"Q-J_",
+			"QQ===",
+			"é===",
+			"AB==".concat("="),
+		];
+		const forms: Array<[string, (data: string) => unknown]> = [
+			["ImageContent", (data) => ({ type: "image", data, mimeType: "image/png" })],
+			["AudioContent", (data) => ({ type: "audio", data, mimeType: "audio/wav" })],
+			["BlobResourceContents", (blob) => ({ blob, uri: "file:///a" })],
+			["TerminalOutput", (data) => ({ data })],
+			["TerminalOutputChunk", (data) => ({ terminalId: "t", data })],
+		];
+		for (const [definition, make] of forms) {
+			for (const value of good)
+				expect(validateAcpV2DefinitionV0(definition, make(value)), `${definition} ${value}`).toBe(true);
+			for (const value of bad)
+				expect(validateAcpV2DefinitionV0(definition, make(value)), `${definition} ${value}`).toBe(false);
+		}
+		// And through an update, where the failure becomes a malformed event rather than retained state.
+		expect(
+			validateAcpV2UpdateV0("agent_message", {
+				sessionUpdate: "agent_message",
+				messageId: "m",
+				content: [{ type: "image", data: "not base64!", mimeType: "image/png" }],
+			}),
+		).toBe(false);
+	});
+
 	it("refuses to give a verdict on a variant the baseline does not list", () => {
 		expect(() => validateAcpV2UpdateV0("notice", {})).toThrow(/not a baseline/);
 		expect(() => validateAcpV2DefinitionV0("ListProvidersResponse", {})).toThrow(/defines no/);

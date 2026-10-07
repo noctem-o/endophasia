@@ -86,7 +86,11 @@ export class AcpV2ConversationV0 {
 
 	/** Whether `update` is one this reconstruction consumes (a message, thought or tool-call content variant). */
 	static consumes(variant: string): boolean {
-		return variant in MESSAGE_VARIANTS || variant === "tool_call_update" || variant === "tool_call_content_chunk";
+		return (
+			Object.hasOwn(MESSAGE_VARIANTS, variant) ||
+			variant === "tool_call_update" ||
+			variant === "tool_call_content_chunk"
+		);
 	}
 
 	#conflict(problem: string): AcpV2ApplyV0 {
@@ -116,7 +120,8 @@ export class AcpV2ConversationV0 {
 	/** Apply one baseline-valid `session/update` update, in the order received. */
 	apply(update: Record<string, unknown>): AcpV2ApplyV0 {
 		const variant = String(update.sessionUpdate);
-		const message = MESSAGE_VARIANTS[variant];
+		// Own keys only: a custom update named `toString` or `constructor` is not a message variant.
+		const message = Object.hasOwn(MESSAGE_VARIANTS, variant) ? MESSAGE_VARIANTS[variant] : undefined;
 		if (message !== undefined) return this.#applyMessage(update, message.kind, message.chunk);
 		if (variant === "tool_call_update") return this.#applyToolCall(update);
 		if (variant === "tool_call_content_chunk") return this.#applyToolChunk(update);

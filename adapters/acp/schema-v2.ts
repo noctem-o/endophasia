@@ -95,12 +95,12 @@ export const ACP_V2_FIELDS_READ_V0: Readonly<Record<string, readonly string[]>> 
 	AgentCapabilities: ["session"],
 	SessionCapabilities: ["delete", "additionalDirectories"],
 	NewSessionRequest: ["cwd", "mcpServers"],
-	NewSessionResponse: ["sessionId", "configOptions"],
+	NewSessionResponse: ["sessionId", "configOptions", "availableCommands"],
 	ListSessionsRequest: ["cwd", "cursor"],
 	ListSessionsResponse: ["sessions", "nextCursor"],
 	SessionInfo: ["sessionId", "cwd", "additionalDirectories", "title", "updatedAt"],
 	ResumeSessionRequest: ["sessionId", "cwd", "mcpServers", "replayFrom"],
-	ResumeSessionResponse: ["configOptions"],
+	ResumeSessionResponse: ["configOptions", "availableCommands"],
 	CloseSessionRequest: ["sessionId"],
 	PromptResponse: ["messageId"],
 	ContentChunk: ["messageId", "content"],
@@ -158,21 +158,69 @@ const UNRESERVED_SUB = "A-Za-z0-9\\-._~!$&'()*+,;=";
 const URI_SPLIT = /^([A-Za-z][A-Za-z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/s;
 const URI_PATH = new RegExp(`^(?:[${UNRESERVED_SUB}:@/]|${PCT})*$`);
 const URI_TAIL = new RegExp(`^(?:[${UNRESERVED_SUB}:@/?]|${PCT})*$`);
-const URI_AUTHORITY = new RegExp(
-	`^(?:(?:[${UNRESERVED_SUB}:]|${PCT})*@)?(?:\\[(?:[0-9A-Fa-f:.]+|[vV][0-9A-Fa-f]+\\.[${UNRESERVED_SUB}:]+)\\]|(?:[${UNRESERVED_SUB}]|${PCT})*)(?::[0-9]*)?$`,
-);
+const URI_USERINFO = new RegExp(`^(?:[${UNRESERVED_SUB}:]|${PCT})*$`);
+const URI_REG_NAME = new RegExp(`^(?:[${UNRESERVED_SUB}]|${PCT})*$`);
+const URI_IPV_FUTURE = new RegExp(`^[vV][0-9A-Fa-f]+\\.[${UNRESERVED_SUB}:]+$`);
+const H16 = /^[0-9A-Fa-f]{1,4}$/;
+const DEC_OCTET = /^(?:0|[1-9][0-9]?|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
+
+const isIpv4 = (value: string): boolean => {
+	const parts = value.split(".");
+	return parts.length === 4 && parts.every((part) => DEC_OCTET.test(part));
+};
+
+/** RFC 3986 IPv6address (no zone id): eight 16-bit groups, `::` standing for one or more zero groups, an IPv4 tail as two. */
+function isIpv6(value: string): boolean {
+	const halves = value.split("::");
+	if (halves.length > 2) return false; // `::` at most once
+	const groups = (half: string): string[] | null => (half === "" ? [] : half.split(":"));
+	const left = groups(halves[0] as string) as string[];
+	const right = (halves.length === 2 ? groups(halves[1] as string) : []) as string[];
+	const all = [...left, ...right];
+	let width = 0;
+	for (const [index, group] of all.entries()) {
+		const isLast = index === all.length - 1;
+		// An IPv4 address is the last 32 bits: only as the final group, and not in the left half of a `::` that has a right.
+		if (isLast && group.includes(".") && !(halves.length === 2 && right.length === 0)) {
+			if (!isIpv4(group)) return false;
+			width += 2;
+		} else if (H16.test(group)) width += 1;
+		else return false;
+	}
+	return halves.length === 2 ? width <= 7 : width === 8;
+}
+
+const isIpLiteral = (inner: string): boolean => isIpv6(inner) || URI_IPV_FUTURE.test(inner);
+
+function isUriAuthority(authority: string): boolean {
+	const at = authority.lastIndexOf("@");
+	if (at >= 0 && !URI_USERINFO.test(authority.slice(0, at))) return false;
+	const hostPort = authority.slice(at + 1);
+	if (hostPort.startsWith("[")) {
+		const close = hostPort.indexOf("]");
+		if (close < 0 || !isIpLiteral(hostPort.slice(1, close))) return false;
+		return /^(?::[0-9]*)?$/.test(hostPort.slice(close + 1));
+	}
+	const colon = hostPort.indexOf(":");
+	const host = colon < 0 ? hostPort : hostPort.slice(0, colon);
+	return URI_REG_NAME.test(host) && (colon < 0 || /^[0-9]*$/.test(hostPort.slice(colon + 1)));
+}
 
 function isAbsoluteUri(value: string): boolean {
 	const match = URI_SPLIT.exec(value);
 	if (match === null) return false;
 	const [, , authority, path, query, fragment] = match;
 	return (
-		(authority === undefined || URI_AUTHORITY.test(authority)) &&
+		(authority === undefined || isUriAuthority(authority)) &&
 		URI_PATH.test(path ?? "") &&
 		(query === undefined || URI_TAIL.test(query)) &&
 		(fragment === undefined || URI_TAIL.test(fragment))
 	);
 }
+
+// `contentEncoding: "base64"` (RFC 4648 section 4, the standard alphabet, padded): Ajv treats the keyword as an
+// annotation, so it is asserted here. Empty data is valid.
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 // RFC 3339 date-time, with the calendar checked: Date.parse normalizes an impossible date (February 30th) into a real
 // one, which would pass a message the baseline calls invalid.
@@ -241,6 +289,14 @@ function load(): { document: AcpSchemaV2DocumentV0; ajv: Ajv2020 } {
 	assertAcpSchemaV2Pins(digest);
 	const ajv = new Ajv2020({ strict: true, allowUnionTypes: true, allErrors: false });
 	for (const keyword of ANNOTATION_KEYWORDS) ajv.addKeyword(keyword);
+	// Ajv registers the content vocabulary as annotations only; contentEncoding is replaced by an assertion.
+	ajv.removeKeyword("contentEncoding");
+	ajv.addKeyword({
+		keyword: "contentEncoding",
+		type: "string",
+		schemaType: "string",
+		validate: (encoding: string, data: string) => encoding !== "base64" || BASE64.test(data),
+	});
 	for (const [name, validate] of Object.entries(NUMBER_FORMATS)) ajv.addFormat(name, { type: "number", validate });
 	ajv.addFormat("uri", { type: "string", validate: isAbsoluteUri });
 	ajv.addFormat("date-time", { type: "string", validate: isDateTime });

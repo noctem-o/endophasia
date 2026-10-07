@@ -211,3 +211,19 @@ describe("retention bound by size", () => {
 		expect(state.apply(chunk("m", big)).applied).toBe(false);
 	});
 });
+
+describe("variant membership uses own keys", () => {
+	it("never mistakes a prototype name or a custom variant for a message variant", () => {
+		const state = new AcpV2ConversationV0();
+		for (const variant of ["toString", "constructor", "__proto__", "hasOwnProperty", "_vendor_thing"]) {
+			expect(AcpV2ConversationV0.consumes(variant), variant).toBe(false);
+			expect(state.apply({ sessionUpdate: variant, messageId: "m", content: [] }), variant).toEqual({
+				applied: false,
+				problem: "not-reconstructed",
+			});
+		}
+		expect(state.digest().messages).toEqual([]);
+		expect(state.digest().toolCalls).toEqual([]);
+		expect(AcpV2ConversationV0.consumes("agent_message")).toBe(true);
+	});
+});

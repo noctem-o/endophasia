@@ -44,6 +44,10 @@ interface Store {
 }
 
 const SESSION = "fake-v2-session-1";
+const COMMANDS = [
+	{ name: "SECRET-CMD-1", description: "SECRET-DESC-1" },
+	{ name: "SECRET-CMD-2", description: "SECRET-DESC-2" },
+];
 let store: Store | null = null;
 if (storePath !== undefined && existsSync(storePath)) store = JSON.parse(readFileSync(storePath, "utf8")) as Store;
 const persist = (): void => {
@@ -152,7 +156,12 @@ async function runPrompt(id: unknown, params: Record<string, unknown>): Promise<
 		fail(id, -32000, "refused");
 		return;
 	}
-	if (flags.has("malformed-accept")) send({ id, result: {} });
+	// Foreground work visibly under way before the (malformed) acceptance arrives.
+	if (flags.has("running-first")) update(sessionId, { sessionUpdate: "state_update", state: "running" });
+	// `malformed-accept` is refused by the SDK's own parser; `repairable-accept` is the kind it silently repairs (an invalid
+	// _meta), which only the raw-wire schema check catches.
+	if (flags.has("repairable-accept")) send({ id, result: { messageId: umid, _meta: 5 } });
+	else if (flags.has("malformed-accept")) send({ id, result: {} });
 	else if (!flags.has("ack-late") && !flags.has("ack-after-echo")) accept();
 	if (!flags.has("no-echo")) update(sessionId, { sessionUpdate: "user_message", messageId: umid, content: [block] });
 	if (flags.has("ack-after-echo")) accept();
@@ -162,7 +171,8 @@ async function runPrompt(id: unknown, params: Record<string, unknown>): Promise<
 		return;
 	}
 	if (flags.has("idle-first")) update(sessionId, { sessionUpdate: "state_update", state: "idle" });
-	update(sessionId, { sessionUpdate: "state_update", state: "running" });
+	// `running-first` already said so once: a second running would hide whether the first was kept.
+	if (!flags.has("running-first")) update(sessionId, { sessionUpdate: "state_update", state: "running" });
 	update(sessionId, { sessionUpdate: "agent_thought_chunk", messageId: thid, content: text("think ") });
 	update(sessionId, { sessionUpdate: "agent_thought_chunk", messageId: thid, content: text("hard") });
 	store.messages.push({ id: thid, kind: "thought", content: [text("think "), text("hard")] });
@@ -246,6 +256,15 @@ async function runPrompt(id: unknown, params: Record<string, unknown>): Promise<
 	}
 	const stop = flagValue("stop") ?? "end_turn";
 	if (flags.has("idle-no-stop")) update(sessionId, { sessionUpdate: "state_update", state: "idle" });
+	else if (flags.has("stop-error-payload"))
+		// The shape a later schema release gives a post-insertion failure; under alpha.7 it is a custom stop reason plus an
+		// unknown field.
+		update(sessionId, {
+			sessionUpdate: "state_update",
+			state: "idle",
+			stopReason: "error",
+			error: { code: -32000, message: "SECRET-ERROR-DETAIL" },
+		});
 	else update(sessionId, { sessionUpdate: "state_update", state: "idle", stopReason: stop });
 	if (flags.has("ack-late")) accept();
 	persist();
@@ -356,7 +375,7 @@ lines.on("line", (line) => {
 								{ configId: "verbose", name: "V", type: "boolean", currentValue: false },
 							],
 						}
-					: { sessionId: SESSION },
+					: { sessionId: SESSION, ...(flags.has("commands") ? { availableCommands: COMMANDS } : {}) },
 			);
 			return;
 		case "session/list":
@@ -411,7 +430,7 @@ lines.on("line", (line) => {
 			}
 			if (replayFrom?.type === "start" || flags.has("replay-unrequested")) replay(sessionId);
 			if (flags.has("resume-malformed")) return send({ id, result: { configOptions: "no" } });
-			reply(id, {});
+			reply(id, flags.has("commands") ? { availableCommands: COMMANDS } : {});
 			return;
 		}
 		case "session/close":

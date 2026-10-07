@@ -15,6 +15,7 @@ import {
 	AcpTimeoutErrorV0,
 	AcpUnavailableErrorV0,
 } from "../adapters/acp/index.ts";
+import { ACP_V2_KNOWN_STOP_REASONS_V0 } from "../adapters/acp/translate-v2.ts";
 import {
 	AcpClientV2,
 	type AcpV2ClientOptionsV0,
@@ -372,7 +373,7 @@ describe("ACP v2 prompt lifecycle: accepted is not completed", () => {
 			max_turn_requests: ["lifecycle.run-unclassified", "unclassified"],
 			refusal: ["lifecycle.run-unclassified", "unclassified"],
 			cancelled: ["lifecycle.run-aborted", "aborted"],
-			// A custom stop reason, and the `error` the migration prose mentions but the baseline schema does not list.
+			// A custom stop reason, and `error`, which alpha.7 does not define (see the alpha.7 pin test below).
 			_vendor: ["lifecycle.run-unclassified", "unclassified"],
 			error: ["lifecycle.run-unclassified", "unclassified"],
 		};
@@ -781,6 +782,110 @@ describe("ACP v2 review round 2", () => {
 		await first.client.close();
 		const again = await attach("empty-session", {}, { cwd: scratch, resume: { sessionId: "" } });
 		expect(again.client.sessionId).toBe("");
+	});
+});
+
+describe("ACP v2 review round 3", () => {
+	const pollFor = async (condition: () => boolean, tries = 300) => {
+		for (let i = 0; i < tries && !condition(); i += 1) await sleep(10);
+	};
+
+	it("withdraws a prompt cancelled by a synchronous observer before it is sent, and sends nothing", async () => {
+		let target: AcpClientV2 | undefined;
+		let armed = true;
+		let reentrant: Promise<boolean> | undefined;
+		const seen: EndoEventV0[] = [];
+		const { client } = await attach("hold", {
+			onEvent: (event) => {
+				seen.push(event);
+				if (armed && event.kind === "control.requested" && payload(event).capability === "session.prompt") {
+					armed = false;
+					reentrant = target?.cancel();
+				}
+			},
+		});
+		target = client;
+		await expect(client.prompt("first")).rejects.toThrow(/cancelled before it was sent/);
+		expect(await reentrant).toBe(true);
+		const received = notes().map((note) => note.received);
+		expect(received).not.toContain("session/prompt");
+		expect(received).not.toContain("session/cancel");
+		expect(client.runOpen).toBe(false);
+		expect(payload(find(seen, "control.requested").at(-1))).toMatchObject({
+			capability: "session.cancel",
+			beforeSend: true,
+		});
+		expect(kinds(seen)).not.toContain("lifecycle.stop-requested");
+		// The client is not left wedged: the next prompt is sent, and it is cancellable.
+		const accepted = await client.prompt("second");
+		expect(notes().map((note) => note.received)).toContain("session/prompt");
+		expect(await client.cancel()).toBe(true);
+		expect(await accepted.completed).toEqual({ stopReason: "cancelled", classification: "aborted" });
+		expect(notes().map((note) => note.received)).toContain("session/cancel");
+	});
+
+	it("records the commands carried by session/new and session/resume, by count only", async () => {
+		const opened = await attach("commands");
+		expect(payload(find(opened.events, "session.update-observed")[0])).toEqual({
+			update: "available_commands_update",
+			origin: "session/new",
+			commands: 2,
+		});
+		expect(JSON.stringify(opened.events)).not.toMatch(/SECRET/);
+		await opened.client.close();
+		const resumed = await attach("commands", {}, { cwd: scratch, resume: { sessionId: "fake-v2-session-1" } });
+		expect(payload(find(resumed.events, "session.update-observed")[0])).toEqual({
+			update: "available_commands_update",
+			origin: "session/resume",
+			commands: 2,
+		});
+		expect(JSON.stringify(resumed.events)).not.toMatch(/SECRET/);
+		// An agent that sends none records none.
+		const bare = await attach("");
+		expect(find(bare.events, "session.update-observed")).toEqual([]);
+	});
+
+	it("keeps work the agent reported running open, unattributed, when the prompt acceptance is malformed", async () => {
+		// One answer the SDK's own parser refuses, and one it silently repairs (caught only by the raw-wire check).
+		for (const accept of ["malformed-accept", "repairable-accept"]) {
+			const { client, events } = await attach(`running-first,${accept},hold`);
+			await expect(client.prompt("hi"), accept).rejects.toBeInstanceOf(AcpProtocolErrorV0);
+			expect(client.runOpen, accept).toBe(true);
+			expect(payload(find(events, "harness.protocol-fault").at(-1)), accept).toMatchObject({
+				fault: "prompt-response-malformed",
+			});
+			// Still cancellable, and its end is the run's end rather than an unrelated idle.
+			expect(await client.cancel(), accept).toBe(true);
+			await pollFor(() => endsOf(events).length > 0);
+			expect(
+				endsOf(events).map((event) => event.kind),
+				accept,
+			).toEqual(["lifecycle.run-aborted"]);
+			expect(find(events, "lifecycle.run-started"), accept).toHaveLength(1);
+			expect(client.runOpen, accept).toBe(false);
+			expect(find(events, "lifecycle.run-unclassified"), accept).toEqual([]);
+			await client.close();
+		}
+	});
+
+	it("still closes the run when the acceptance is malformed and nothing was reported running", async () => {
+		const { client } = await attach("malformed-accept,idle-no-stop");
+		await expect(client.prompt("hi")).rejects.toBeInstanceOf(AcpProtocolErrorV0);
+		expect(client.runOpen).toBe(false);
+	});
+
+	// ALPHA.7 PIN. Under schema-v2.0.0-alpha.7 + SDK 1.7.0 the string "error" is not a baseline stop reason: it is a
+	// custom or future one, and any accompanying `error` object is an unknown field. Endophasia (acp-v2-mapping.0) does
+	// not interpret it. This test is MEANT to change when a later mapping adopts a published schema that defines it.
+	it('treats an idle with stopReason "error" as a custom stop reason under alpha.7, and reads no error payload', async () => {
+		expect(ACP_V2_KNOWN_STOP_REASONS_V0 as readonly string[]).not.toContain("error");
+		const { client, events } = await attach("stop-error-payload");
+		const { completed } = await client.prompt("hi");
+		expect(await completed).toEqual({ stopReason: "error", classification: "unclassified" });
+		expect(endsOf(events).map((event) => event.kind)).toEqual(["lifecycle.run-unclassified"]);
+		expect(kinds(events)).not.toContain("runtime.malformed-event");
+		expect(JSON.stringify(events)).not.toMatch(/SECRET-ERROR-DETAIL/);
+		expect(JSON.stringify(endsOf(events))).not.toMatch(/-32000/);
 	});
 });
 

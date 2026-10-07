@@ -32,6 +32,26 @@ than the reference deserializer, which drops a bad optional field and skips a ba
 the stream before the SDK parses it, so a response the SDK would have repaired is a protocol fault instead (the test suite
 shows this for `session/list` and `session/resume`).
 
+## Upstream movement after this pin
+
+**The published study contract is not the current upstream-main draft.**
+
+- This study targets the latest *published* pair it was built on: ACP schema `schema-v2.0.0-alpha.7` and
+  `@agentclientprotocol/sdk` 1.7.0, with Endophasia mapping `acp-v2-mapping.0`. ACP v2 is still a Draft protocol; alpha.7
+  is a pre-release tag, not a stable one.
+- ACP upstream `main` has since moved. In particular upstream PR #2281 adds a new v2 idle stop reason, `stopReason:
+  "error"`, optionally carrying a JSON-RPC error object, for failures after `session/prompt` has already inserted the
+  user message (an error *response* to `session/prompt` still means nothing was inserted). The live documentation
+  already describes this, so it can describe behaviour newer than this study. The change landed after the alpha.7 pin
+  and belongs to the proposed next schema release; that release (PR #2280, `schema-v2.0.0-alpha.8`) was still open when
+  this was written and is **not adopted** here. No schema, digest, SDK version or mapping identifier changed for it.
+- Under alpha.7 the string `"error"` is only a custom or future stop reason. It is not in
+  `ACP_V2_KNOWN_STOP_REASONS_V0`, the run is `run-unclassified`, and an accompanying `error` object is not read: nothing
+  here interprets it with alpha.8 semantics. `tests/acp-v2-adapter.test.ts` pins this on purpose, and that test is
+  expected to change when a later mapping adopts a published schema that defines `error`.
+- The pin is what makes this change visible. A newly published upstream version is evidence for a future tranche, not a
+  reason to change this one.
+
 ## Supported baseline surface
 
 Negotiation (`initialize`, role-neutral `info`/`capabilities`) and the seven baseline session methods as one contract:
@@ -87,7 +107,7 @@ into the conversation (`{ messageId }`); foreground work is reported separately 
 - The run **starts on the agent's `running`** (`lifecycle.run-started`, basis `agent-state-update`) and **ends on its next
   `idle`**. `completed` settles on that idle, rejects on exit or close, and times out without inventing an end.
 - Idle with `end_turn` is `run-completed`; `cancelled` is `run-aborted`; `max_tokens`, `max_turn_requests`, `refusal`, any
-  custom stop reason (and the `error` the migration prose mentions, which the baseline schema does not list) are
+  custom stop reason (including `error`, which is not a stop reason of the pinned alpha.7 baseline; see Upstream movement after this pin) are
   `run-unclassified`. An idle with no stop reason, or with a stop reason but no preceding `running`, is `run-unclassified`
   and never a completion. An idle that ended nothing is recorded only.
 - A `state_update` carries no message or run id, so attributing an idle to a prompt is **by order only**
@@ -157,14 +177,14 @@ project is listed in `lost` by construction. This document's table is checked ag
 | `session.close` | QUALIFIED | session/close | that the client asked; that the agent answered without error | — | the agent must cancel the session's work as if session/cancel had been sent; a response is its acceptance, not proof that work stopped or resources were freed. Pending permission requests are answered cancelled once the close is accepted (a refused close leaves them pending), or when it can no longer succeed; an open run's waiter is released with a closed error. No lifecycle end is derived from the response. |
 | `prompt.request` | QUALIFIED | session/prompt (client request) | that the client sent one prompt | the prompt text, by design | sending a prompt is not starting a run: ACP v2 has no run-start notification the client can wait for, and the run starts on the agent's own `running` state_update. |
 | `prompt.accepted` | QUALIFIED | session/prompt response (messageId) | the id of the message the agent says it inserted (by reference); whether foreground work was already open | — | the agent MUST echo the message as a user_message in the live session (before or after the response); an accepted prompt whose echo never arrives is recorded as a `prompt-echo-missing` protocol fault once acceptance and the end of foreground work are both known, and changes no lifecycle outcome. Acceptance is NOT completion and NOT a run start: it says the prompt was inserted into the conversation, not that it was processed. No lifecycle run event is derived from it. The user_message update carrying the same id may arrive before or after the response; both orders are tolerated. |
-| `prompt.refused` | LOSSY | session/prompt JSON-RPC error | the JSON-RPC error code | the error message and data | a refusal means the agent did not insert the message: no run is claimed and no lifecycle event is derived. A failure after acceptance is reported only by the agent's idle state_update, and the baseline stop reasons have no `error` (a custom stop reason is unclassified). |
+| `prompt.refused` | LOSSY | session/prompt JSON-RPC error | the JSON-RPC error code | the error message and data | a refusal means the agent did not insert the message: no run is claimed and no lifecycle event is derived. A failure after acceptance is reported only by the agent's idle state_update, and under the pinned alpha.7 baseline `error` is not a stop reason Endophasia classifies: it is a custom or future one, hence unclassified, and no payload accompanying it is interpreted (see Upstream movement after this pin in docs/acp-v2-study.md). |
 | `prompt.timeout` | EXACT | the client's own bound on waiting for the agent's idle | the bound | — | — |
 | `run.lifecycle` | QUALIFIED | state_update (running, idle with an optional stopReason) | running, requires_action and idle as reported; the reported stop reason; whether the client had requested a stop | the update's _meta; unstable idle usage | the run starts on `running` and ends on the next `idle`; foreground work the client did not request is a run too (attribution: none). An idle with a stop reason but no preceding running, or without a stop reason, is run-unclassified, never completed. Idle updates that end nothing (an initial idle) are recorded only. Replayed state_updates are history and drive nothing. Background activity while idle is not run activity. |
 | `run.attribution` | UNREPRESENTABLE | which prompt or message a state_update belongs to | — | any link from an idle or a stop reason to a prompt, a message or a run id | a state_update carries no message id and ACP v2 has no run id: attributing an idle to a prompt can only be by order (the next idle after the prompt), which the run-started event states as `client-prompt-by-order`. No run id or turn id is invented. |
 | `state.requires-action` | QUALIFIED | session/update:state_update (requires_action) | that the agent reported foreground work blocked on user action | what action it waits for (a permission request is separate evidence) | recorded as reported; it is not a lifecycle transition and is not taken as evidence that a permission request exists. |
 | `state.unrecognized` | LOSSY | session/update:state_update (custom, future, or unstable `unknown` state) | that a state the baseline does not name was received; the state name when printable; a digest and size of the raw payload | the raw payload | never interpreted as foreground activity, and `unknown` (UNSTABLE upstream) is not translated. |
 | `stop-reason` | QUALIFIED | IdleStateUpdate.stopReason | the reported stop reason | — | end_turn is the agent's report that work ended, not proof that provider work happened; cancelled is the agent's report and whether the operator's request caused it is not inferred; max_tokens, max_turn_requests, refusal and any custom reason are run-unclassified, not failures. |
-| `cancel` | QUALIFIED | session/cancel (client notification) | that the client sent the notification while foreground work was open | — | a notification with no acknowledgement; the agent's answer is an idle state_update whose stop reason it should set to cancelled, and a run whose idle never arrives stays open (the wait is bounded by promptTimeoutMs). It names the session, not one run (stop.target is UNAVAILABLE). Pending permission requests are answered `cancelled`. |
+| `cancel` | QUALIFIED | session/cancel (client notification) | that the client sent the notification while foreground work was open | — | a notification with no acknowledgement; the agent's answer is an idle state_update whose stop reason it should set to cancelled, and a run whose idle never arrives stays open (the wait is bounded by promptTimeoutMs). It names the session, not one run (stop.target is UNAVAILABLE). Pending permission requests are answered `cancelled`. A cancel issued from inside the prompt's own control.requested event, before session/prompt is sent, withdraws the prompt: no session/cancel and no prompt are sent, no lifecycle stop is claimed, and the control.requested event carries beforeSend: true. |
 | `conversation.reconstruction` | QUALIFIED | message upserts and chunks keyed by messageId; tool-call patches keyed by toolCallId | per messageId: kind, and a digest of the reconstructed content, in first-appearance order; per toolCallId: a digest of the reconstructed record; contradictions (one id under two kinds) | the content itself (never recorded); the order of chunks versus replacements | applied in received order: an `*_message` content array replaces everything accumulated (chunks included), null clears, an omitted content is unchanged, later chunks append; tool-call fields patch, null and [] clear. Bounded by count and by retained size (16 Mi serialized characters): past a bound the state claims nothing. In memory only; it is a comparison aid, not a durable record. |
 | `replay.equivalence` | QUALIFIED | a replayed conversation versus the live session it replays | whether every replayed message and tool call matches the live one | messages the agent did not retain (reported as liveOnly, allowed) | equivalence is defined over reconstructed state, not update bytes: same kind and same canonical content for every replayed id, replayed ids in the live first-appearance order, no invented message, no contradiction. Absence is not a violation; the comparison says nothing about what both sides lack. |
 | `replay.unrequested` | LOSSY | message updates received during session/resume without replayFrom | that history arrived without being asked for, and the variant | the replayed content (not applied to any state) | the agent MUST NOT replay on a resume without replayFrom; such updates are not applied. |
@@ -229,9 +249,36 @@ request description.
 - **Session ids are opaque strings**, the empty string included, as the baseline allows.
 - **Retention is bounded by size** (16 Mi serialized characters across all retained content and tool-call fields) as well as
   by count; past a bound the reconstruction stops applying and claims nothing.
+- **`contentEncoding: "base64"` is asserted** (standard alphabet, padded, empty allowed); Ajv alone treats the keyword as
+  an annotation. A bracketed URI host must be a valid RFC 3986 IPv6 address (no zone id) or IPvFuture.
 - **64-bit integers** beyond 2^53 are rejected as not exactly representable (never rounded into evidence).
 - **No real-agent smoke** is part of the acceptance. As a record only: the OpenCode installed when this was written
   (`opencode` 2.0.23, `opencode acp`, no experimental flag) answers `protocolVersion: 1` to an offer of 2, so the v2
   client refuses it with `agent-answered-v1` (observed once, by hand; no session was opened and nothing was forced into
   v2). Its work-in-progress v2 support sits behind a feature flag that was not tried.
 - Windows descendant containment is unchanged from v1 (`process.containment`).
+
+## Next published v2 pin
+
+Documentation only: nothing below is implemented or dormant in code. When an alpha.8 schema and an SDK surface that
+matches it are actually published, the next tranche re-studies the protocol from first principles rather than patching
+this one. Anticipated checklist:
+
+1. verify the actual published alpha.8 schema tag and digest;
+2. verify which SDK release contains matching generated v2 types and schema;
+3. replace the vendored baseline only in a new, versioned mapping tranche;
+4. diff alpha.7 to alpha.8 mechanically;
+5. confirm whether `error` is the only baseline semantic delta (anything beyond #2281 must be found in the published
+   schema, not inferred from today's upstream `main`);
+6. regenerate raw-wire validation from the newly published schema;
+7. model the `error` stop-reason payload explicitly;
+8. test: a prompt error before insertion; an accepted prompt, then running, then idle with `error`; `error` with
+   details; `error` without details; malformed error details according to the new schema; cancellation remaining
+   distinct; custom and future stop reasons staying forward-compatible;
+9. revisit loss accounting for `run.lifecycle`, failure details, `prompt.refused` and post-insertion failure;
+10. bump the Endophasia mapping identifier only when that new protocol contract is actually adopted.
+
+How a post-insertion failure maps onto Endophasia's lifecycle is deliberately not decided here. That tranche inspects
+the then-current core lifecycle vocabulary and decides whether an existing kind is exact enough, whether the outcome stays
+qualified or unclassified, or whether a new core distinction is genuinely justified. Core is not widened for an
+unreleased external draft.

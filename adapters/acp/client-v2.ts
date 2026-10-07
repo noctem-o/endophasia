@@ -150,6 +150,10 @@ interface OpenRun {
 	/** The agent reported `running` since this run was opened. */
 	started: boolean;
 	stopRequested: boolean;
+	/** session/prompt has crossed the transmission boundary. False: a cancel now would be for work not yet submitted. */
+	sent: boolean;
+	/** A re-entrant cancel() arrived before the prompt was sent: the prompt is not sent at all. */
+	cancelledBeforeSend?: boolean;
 	updates: Record<string, number>;
 	/** The message id the agent accepted this run's prompt with. */
 	messageId?: string;
@@ -639,6 +643,14 @@ export class AcpClientV2 {
 				origin: method,
 				...summarizeConfigOptionsV2(configOptions),
 			});
+		// The opening response may carry the agent's commands and need not repeat them in an update: the same count the
+		// update path records, tagged with where it came from.
+		if (Array.isArray(response.availableCommands))
+			this.#recorder.record("session.update-observed", {
+				update: "available_commands_update",
+				origin: method,
+				commands: response.availableCommands.length,
+			});
 	}
 
 	/** A request whose JSON-RPC refusal is recorded (by code) before it propagates. */
@@ -830,7 +842,13 @@ export class AcpClientV2 {
 		const sessionId = this.sessionId;
 		this.#assertUsable("session/prompt");
 		if (this.#run !== null) throw new TypeError("foreground work is already open");
-		const run: OpenRun = { prompted: true, started: false, stopRequested: false, updates: Object.create(null) };
+		const run: OpenRun = {
+			prompted: true,
+			started: false,
+			stopRequested: false,
+			sent: false,
+			updates: Object.create(null),
+		};
 		const completed = new Promise<AcpV2RunEndV0>((resolve, reject) => {
 			run.settle = { resolve, reject };
 		});
@@ -847,9 +865,15 @@ export class AcpClientV2 {
 			if (this.#run === run) this.#run = null;
 			throw new TypeError("the ACP attachment was closed while the prompt was being recorded");
 		}
+		if (run.cancelledBeforeSend) {
+			// An observer cancelled from inside the control.requested event: nothing was submitted, so nothing is sent.
+			this.#closeRun(run);
+			throw new TypeError("the prompt was cancelled before it was sent");
+		}
 		this.#armTimeout(run);
 		let response: unknown;
 		try {
+			run.sent = true;
 			const sending = this.#connection.agent.request(acp2.methods.agent.session.prompt, {
 				sessionId,
 				prompt: [{ type: "text", text }],
@@ -862,11 +886,17 @@ export class AcpClientV2 {
 		if (!isRecord(response) || !validateAcpV2DefinitionV0("PromptResponse", response)) {
 			this.#fault("prompt-response-malformed");
 			// Whether the agent inserted the message is unknown: the run, if any, is unattributed from here.
-			if (this.#run === run)
-				this.#closeRun(
-					run,
-					new AcpProtocolErrorV0("the agent's session/prompt response is not a valid ACP v2 baseline response"),
-				);
+			if (this.#run === run) {
+				if (run.started) {
+					// The agent has already reported `running`: that work is observed and stays open (cancellable, ended by its
+					// idle, an exit or a close), but nothing ties it to this prompt any more.
+					run.prompted = false;
+				} else
+					this.#closeRun(
+						run,
+						new AcpProtocolErrorV0("the agent's session/prompt response is not a valid ACP v2 baseline response"),
+					);
+			}
 			throw new AcpProtocolErrorV0("the agent's session/prompt response is not a valid ACP v2 baseline response");
 		}
 		const messageId = response.messageId as string;
@@ -926,6 +956,21 @@ export class AcpClientV2 {
 		if (this.#closed || this.#unusable || this.#sessionClosed || this.#sessionClosing) return false;
 		const own = { failed: false } as { failed: boolean; error?: unknown };
 		run.stopRequested = true;
+		if (!run.sent) {
+			// Re-entered from inside prompt()'s own control.requested event: the request is withdrawn before it is sent. No
+			// session/cancel goes out (nothing was submitted) and no lifecycle stop is claimed.
+			run.cancelledBeforeSend = true;
+			this.#own(
+				own,
+				this.#recorder.record("control.requested", {
+					capability: "session.cancel",
+					action: "cancel",
+					beforeSend: true,
+				}),
+			);
+			this.#reportObserverFailure(own);
+			return true;
+		}
 		const requested = this.#own(
 			own,
 			this.#recorder.record("control.requested", { capability: "session.cancel", action: "cancel" }),
@@ -1030,7 +1075,7 @@ export class AcpClientV2 {
 		let run = this.#run;
 		if (state === "running" && run === null) {
 			// Foreground work the client did not ask for (or asked for earlier and saw end): the agent's own, unattributed.
-			run = { prompted: false, started: false, stopRequested: false, updates: Object.create(null) };
+			run = { prompted: false, started: false, stopRequested: false, sent: true, updates: Object.create(null) };
 			this.#run = run;
 		}
 		const reported = this.#recorder.record("agent.state-reported", {

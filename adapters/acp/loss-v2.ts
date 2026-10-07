@@ -106,15 +106,25 @@ const declared: readonly AcpLossEntryV0[] = [
 		id: "session.open.new",
 		projects: {
 			NewSessionRequest: ["cwd", "mcpServers"],
-			NewSessionResponse: ["sessionId", "configOptions"],
+			NewSessionResponse: ["sessionId", "configOptions", "availableCommands"],
 		},
 		source: "session/new",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
 		availability: baseline,
-		emits: ["harness.attached", "lifecycle.session-started", "session.config-observed", "control.refused"],
+		emits: [
+			"harness.attached",
+			"lifecycle.session-started",
+			"session.config-observed",
+			"session.update-observed",
+			"control.refused",
+		],
 		preserved: ["session id reference", "process instance", "that the session was opened by session/new"],
-		lost: ["working directory", "mcp server list"],
+		lost: [
+			"working directory",
+			"mcp server list",
+			"the initial command names, descriptions and input hints (only their count is recorded)",
+		],
 		qualification:
 			"ACP v2 reports no run id, turn id or turn count; they are declared UNAVAILABLE on lifecycle.session-started, never zero.",
 	},
@@ -122,19 +132,29 @@ const declared: readonly AcpLossEntryV0[] = [
 		id: "session.open.resume",
 		projects: {
 			ResumeSessionRequest: ["sessionId", "cwd", "mcpServers", "replayFrom"],
-			ResumeSessionResponse: ["configOptions"],
+			ResumeSessionResponse: ["configOptions", "availableCommands"],
 		},
 		source: "session/resume (replayFrom omitted)",
 		target: "harness.attached, lifecycle.session-started",
 		verdict: "QUALIFIED",
 		availability: baseline,
-		emits: ["harness.attached", "lifecycle.session-started", "session.config-observed", "control.refused"],
+		emits: [
+			"harness.attached",
+			"lifecycle.session-started",
+			"session.config-observed",
+			"session.update-observed",
+			"control.refused",
+		],
 		preserved: [
 			"requested session id reference",
 			"that the session was opened by session/resume",
 			"historyReplay: not-requested",
 		],
-		lost: ["working directory", "the relation to the earlier attachment"],
+		lost: [
+			"working directory",
+			"the relation to the earlier attachment",
+			"the initial command names, descriptions and input hints (only their count is recorded)",
+		],
 		qualification:
 			"reattaches without replay; the agent MUST NOT replay history, and message traffic that arrives before the response is recorded as a protocol fault and not applied. The new process instance gets a new coordinate and lifecycle.session-started, not lifecycle.session-resumed: Endophasia holds no record of the earlier attachment under this coordinate.",
 	},
@@ -238,7 +258,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		preserved: ["the JSON-RPC error code"],
 		lost: ["the error message and data"],
 		qualification:
-			"a refusal means the agent did not insert the message: no run is claimed and no lifecycle event is derived. A failure after acceptance is reported only by the agent's idle state_update, and the baseline stop reasons have no `error` (a custom stop reason is unclassified).",
+			"a refusal means the agent did not insert the message: no run is claimed and no lifecycle event is derived. A failure after acceptance is reported only by the agent's idle state_update, and under the pinned alpha.7 baseline `error` is not a stop reason Endophasia classifies: it is a custom or future one, hence unclassified, and no payload accompanying it is interpreted (see Upstream movement after this pin in docs/acp-v2-study.md).",
 	},
 	{
 		id: "prompt.timeout",
@@ -334,7 +354,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		preserved: ["that the client sent the notification while foreground work was open"],
 		lost: [],
 		qualification:
-			"a notification with no acknowledgement; the agent's answer is an idle state_update whose stop reason it should set to cancelled, and a run whose idle never arrives stays open (the wait is bounded by promptTimeoutMs). It names the session, not one run (stop.target is UNAVAILABLE). Pending permission requests are answered `cancelled`.",
+			"a notification with no acknowledgement; the agent's answer is an idle state_update whose stop reason it should set to cancelled, and a run whose idle never arrives stays open (the wait is bounded by promptTimeoutMs). It names the session, not one run (stop.target is UNAVAILABLE). Pending permission requests are answered `cancelled`. A cancel issued from inside the prompt's own control.requested event, before session/prompt is sent, withdraws the prompt: no session/cancel and no prompt are sent, no lifecycle stop is claimed, and the control.requested event carries beforeSend: true.",
 	},
 	{
 		id: "conversation.reconstruction",

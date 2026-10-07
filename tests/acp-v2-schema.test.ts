@@ -237,6 +237,29 @@ describe("ACP v2 baseline validation", () => {
 			expect(validateAcpV2DefinitionV0("SessionInfo", info(bad)), bad).toBe(false);
 	});
 
+	it("validates the URI grammar, not just that the URL parser accepts it", () => {
+		const link = (uri: string) => ({ type: "resource_link", name: "n", uri });
+		for (const good of [
+			"file:///tmp/a%20b.txt",
+			"https://example.test:8080/p?q=1#frag",
+			"http://[::1]/x",
+			"urn:isbn:0451450523",
+			"mailto:a@example.test",
+		])
+			expect(validateAcpV2DefinitionV0("ResourceLink", link(good)), good).toBe(true);
+		for (const bad of [
+			"http://example.test/%zz",
+			"http://example.test/%a",
+			"http://exa mple.test/",
+			"http://example.test/\u00e9",
+			"/no/scheme",
+			"1http://x",
+			"http://example.test/#a#b",
+			"http://[::1/x",
+		])
+			expect(validateAcpV2DefinitionV0("ResourceLink", link(bad)), bad).toBe(false);
+	});
+
 	it("refuses to give a verdict on a variant the baseline does not list", () => {
 		expect(() => validateAcpV2UpdateV0("notice", {})).toThrow(/not a baseline/);
 		expect(() => validateAcpV2DefinitionV0("ListProvidersResponse", {})).toThrow(/defines no/);

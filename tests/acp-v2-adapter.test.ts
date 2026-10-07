@@ -706,6 +706,84 @@ describe("ACP v2 session/list and session/close", () => {
 	});
 });
 
+describe("ACP v2 review round 2", () => {
+	const settle = (completed: Promise<unknown>) =>
+		completed.then(
+			() => "completed",
+			(error: unknown) => (error instanceof AcpClosedErrorV0 ? "closed" : "other"),
+		);
+
+	it("releases an open run's waiter when session/close times out or comes back malformed", async () => {
+		for (const [flags, options] of [
+			["hold,close-hang", { requestTimeoutMs: 300 }],
+			["hold,close-malformed", {}],
+		] as const) {
+			const { client } = await attach(flags, options);
+			const accepted = await client.prompt("hi");
+			const outcome = settle(accepted.completed);
+			await expect(client.closeSession(), flags).rejects.toBeDefined();
+			expect(await Promise.race([outcome, sleep(2000).then(() => "still waiting")]), flags).toBe("closed");
+		}
+	});
+
+	it("leaves a pending permission pending until the close is accepted", async () => {
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const { client, events } = await attach("hold,perm=command,close-refuse", {
+			permissionHandler: async () => {
+				await gate;
+				return { outcome: { outcome: "selected", optionId: "allow" } };
+			},
+		});
+		await client.prompt("hi");
+		for (let i = 0; i < 100 && find(events, "permission.requested").length === 0; i += 1) await sleep(10);
+		await expect(client.closeSession()).rejects.toBeInstanceOf(AcpRefusedErrorV0);
+		await sleep(50);
+		// The refused close cancelled nothing: the agent has been told nothing yet.
+		expect(notes().find((note) => "permissionAnswer" in note)).toBeUndefined();
+		release();
+		for (let i = 0; i < 100 && !notes().some((note) => "permissionAnswer" in note); i += 1) await sleep(10);
+		expect(notes().find((note) => "permissionAnswer" in note)?.permissionAnswer).toEqual({
+			outcome: { outcome: "selected", optionId: "allow" },
+		});
+	});
+
+	it("answers a pending permission cancelled once the close is accepted", async () => {
+		const { client, events } = await attach("hold,perm=command", {
+			permissionHandler: () => new Promise<never>(() => {}),
+		});
+		const accepted = await client.prompt("hi");
+		for (let i = 0; i < 100 && find(events, "permission.requested").length === 0; i += 1) await sleep(10);
+		await client.closeSession();
+		for (let i = 0; i < 100 && !notes().some((note) => "permissionAnswer" in note); i += 1) await sleep(10);
+		expect(notes().find((note) => "permissionAnswer" in note)?.permissionAnswer).toEqual({
+			outcome: { outcome: "cancelled" },
+		});
+		await expect(accepted.completed).rejects.toBeInstanceOf(AcpClosedErrorV0);
+	});
+
+	it("reports an idle that carries a stop reason, with nothing running, as an unclassified run", async () => {
+		const { client, events } = await attach("spontaneous-idle");
+		await client.listSessions();
+		for (let i = 0; i < 100 && find(events, "agent.state-reported").length === 0; i += 1) await sleep(10);
+		expect(payload(find(events, "lifecycle.run-unclassified")[0])).toMatchObject({
+			reason: "idle-without-running",
+			stopRequested: false,
+		});
+		expect(kinds(events)).not.toContain("lifecycle.run-completed");
+	});
+
+	it("accepts the empty session id the baseline allows, for new and for resume", async () => {
+		const first = await attach("empty-session");
+		expect(first.client.sessionId).toBe("");
+		await first.client.close();
+		const again = await attach("empty-session", {}, { cwd: scratch, resume: { sessionId: "" } });
+		expect(again.client.sessionId).toBe("");
+	});
+});
+
 describe("ACP v2 resume and replay", () => {
 	/** Run one live session on a first agent, retain it in the store, and return what it reconstructed. */
 	async function liveSession(flags = "") {

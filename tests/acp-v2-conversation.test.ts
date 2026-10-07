@@ -183,3 +183,31 @@ describe("replay equivalence", () => {
 		);
 	});
 });
+
+describe("retention bound by size", () => {
+	it("stops retaining past a byte budget and says so, however few the items", () => {
+		const big = "x".repeat(ACP_V2_CONVERSATION_LIMITS_V0.retainedChars / 4 + 1);
+		const state = new AcpV2ConversationV0();
+		const results = [1, 2, 3, 4, 5].map((i) => state.apply(chunk(`m${i}`, big)));
+		expect(results.filter((r) => r.applied)).toHaveLength(3);
+		expect(results[4]).toEqual({ applied: false, problem: "content-limit" });
+		expect(state.digest().truncated).toBe(true);
+	});
+
+	it("counts tool-call fields and gives the budget back when a field is replaced or cleared", () => {
+		const big = "y".repeat(ACP_V2_CONVERSATION_LIMITS_V0.retainedChars / 2 + 1);
+		const state = new AcpV2ConversationV0();
+		const call = (fields: Record<string, unknown>) => ({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "t",
+			...fields,
+		});
+		expect(state.apply(call({ rawInput: big })).applied).toBe(true);
+		// Replacing the field releases what it held, so a second large value fits.
+		expect(state.apply(call({ rawInput: big })).applied).toBe(true);
+		expect(state.apply(call({ rawOutput: big })).applied).toBe(false);
+		expect(state.apply(call({ rawInput: null })).applied).toBe(true);
+		expect(state.apply(call({ rawOutput: big })).applied).toBe(true);
+		expect(state.apply(chunk("m", big)).applied).toBe(false);
+	});
+});

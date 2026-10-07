@@ -38,11 +38,22 @@ const MESSAGE_VARIANTS: Readonly<Record<string, { kind: AcpV2MessageKindV0; chun
 };
 
 /** Bounds on what one reconstruction keeps. Past them it stops applying and claims nothing. */
-export const ACP_V2_CONVERSATION_LIMITS_V0 = Object.freeze({ messages: 4096, toolCalls: 4096, contentItems: 65_536 });
+export const ACP_V2_CONVERSATION_LIMITS_V0 = Object.freeze({
+	messages: 4096,
+	toolCalls: 4096,
+	contentItems: 65_536,
+	/** The serialized size of everything retained (content blocks, tool-call fields), in UTF-16 code units. */
+	retainedChars: 16 * 1024 * 1024,
+});
+
+/** The serialized size of a baseline-valid value (JSON, so it always serializes). */
+const sizeOf = (value: unknown): number => JSON.stringify(value)?.length ?? 0;
 
 interface MessageState {
 	readonly kind: AcpV2MessageKindV0;
 	content: unknown[];
+	/** What `content` is charged against the retention budget. */
+	chars: number;
 }
 
 const TOOL_FIELDS = ["name", "title", "kind", "status", "content", "locations", "rawInput", "rawOutput"] as const;
@@ -68,6 +79,9 @@ export class AcpV2ConversationV0 {
 	readonly #toolCalls = new Map<string, Record<string, unknown>>();
 	readonly #conflicts: string[] = [];
 	#items = 0;
+	#chars = 0;
+	// What each tool call's retained fields are charged, by field.
+	readonly #toolChars = new Map<string, Record<string, number>>();
 	#truncated = false;
 
 	/** Whether `update` is one this reconstruction consumes (a message, thought or tool-call content variant). */
@@ -86,6 +100,16 @@ export class AcpV2ConversationV0 {
 			return false;
 		}
 		this.#items += count;
+		return true;
+	}
+
+	/** Charge `size` more characters; false (and truncated) when that would pass the retention budget. */
+	#spend(size: number): boolean {
+		if (this.#chars + size > ACP_V2_CONVERSATION_LIMITS_V0.retainedChars) {
+			this.#truncated = true;
+			return false;
+		}
+		this.#chars += size;
 		return true;
 	}
 
@@ -111,22 +135,37 @@ export class AcpV2ConversationV0 {
 				this.#truncated = true;
 				return { applied: false, problem: "message-limit" };
 			}
-			state = { kind, content: [] };
+			state = { kind, content: [], chars: 0 };
 			this.#messages.set(id, state);
 		}
 		if (chunk) {
+			const size = sizeOf(update.content);
 			if (!this.#room(1)) return { applied: false, problem: "content-limit" };
+			if (!this.#spend(size)) {
+				this.#items -= 1;
+				return { applied: false, problem: "content-limit" };
+			}
 			state.content.push(structuredClone(update.content));
+			state.chars += size;
 			return { applied: true };
 		}
 		if (!Object.hasOwn(update, "content")) return { applied: true };
 		const replacement = update.content === null ? [] : (update.content as unknown[]);
 		this.#items -= state.content.length;
+		this.#chars -= state.chars;
+		state.chars = 0;
+		const size = sizeOf(replacement);
 		if (!this.#room(replacement.length)) {
 			state.content = [];
 			return { applied: false, problem: "content-limit" };
 		}
+		if (!this.#spend(size)) {
+			this.#items -= replacement.length;
+			state.content = [];
+			return { applied: false, problem: "content-limit" };
+		}
 		state.content = structuredClone(replacement);
+		state.chars = size;
 		return { applied: true };
 	}
 
@@ -146,29 +185,53 @@ export class AcpV2ConversationV0 {
 	#applyToolCall(update: Record<string, unknown>): AcpV2ApplyV0 {
 		const call = this.#call(String(update.toolCallId));
 		if (call === undefined) return { applied: false, problem: "tool-call-limit" };
+		const id = String(update.toolCallId);
+		const chars = this.#toolChars.get(id) ?? {};
+		this.#toolChars.set(id, chars);
+		let applied = true;
 		for (const field of TOOL_FIELDS) {
 			if (!Object.hasOwn(update, field)) continue;
 			const value = update[field];
-			if (field === "content" || field === "locations") {
-				const before = Array.isArray(call[field]) ? (call[field] as unknown[]).length : 0;
-				this.#items -= before;
-				// `null` and `[]` both clear a collection.
-				if (value === null || (Array.isArray(value) && value.length === 0)) delete call[field];
-				else if (this.#room((value as unknown[]).length)) call[field] = structuredClone(value);
-				else delete call[field];
-			} else if (value === null) delete call[field];
-			else call[field] = structuredClone(value);
+			const collection = field === "content" || field === "locations";
+			if (collection) this.#items -= Array.isArray(call[field]) ? (call[field] as unknown[]).length : 0;
+			this.#chars -= chars[field] ?? 0;
+			delete chars[field];
+			// `null` (and `[]` for a collection) clears the field.
+			if (value === null || (collection && Array.isArray(value) && value.length === 0)) {
+				delete call[field];
+				continue;
+			}
+			const size = sizeOf(value);
+			if (collection && !this.#room((value as unknown[]).length)) {
+				delete call[field];
+				applied = false;
+			} else if (!this.#spend(size)) {
+				if (collection) this.#items -= (value as unknown[]).length;
+				delete call[field];
+				applied = false;
+			} else {
+				call[field] = structuredClone(value);
+				chars[field] = size;
+			}
 		}
-		return { applied: true };
+		return applied ? { applied: true } : { applied: false, problem: "content-limit" };
 	}
 
 	#applyToolChunk(update: Record<string, unknown>): AcpV2ApplyV0 {
 		const call = this.#call(String(update.toolCallId));
 		if (call === undefined) return { applied: false, problem: "tool-call-limit" };
+		const size = sizeOf(update.content);
 		if (!this.#room(1)) return { applied: false, problem: "content-limit" };
+		if (!this.#spend(size)) {
+			this.#items -= 1;
+			return { applied: false, problem: "content-limit" };
+		}
 		const content = Array.isArray(call.content) ? (call.content as unknown[]) : [];
 		content.push(structuredClone(update.content));
 		call.content = content;
+		const chars = this.#toolChars.get(String(update.toolCallId)) ?? {};
+		chars.content = (chars.content ?? 0) + size;
+		this.#toolChars.set(String(update.toolCallId), chars);
 		return { applied: true };
 	}
 

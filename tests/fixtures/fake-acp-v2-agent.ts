@@ -334,6 +334,11 @@ lines.on("line", (line) => {
 			if (flags.has("new-refuse")) return fail(id, -32000, "refused");
 			store = { sessionId: SESSION, cwd: String(params.cwd), messages: [], toolCalls: [] };
 			persist();
+			if (flags.has("empty-session")) {
+				store = { sessionId: "", cwd: String(params.cwd), messages: [], toolCalls: [] };
+				persist();
+				return reply(id, { sessionId: "" });
+			}
 			reply(
 				id,
 				flags.has("config")
@@ -355,6 +360,12 @@ lines.on("line", (line) => {
 			);
 			return;
 		case "session/list":
+			if (flags.has("spontaneous-idle")) {
+				// An idle that states a stop reason, with nothing ever reported running.
+				reply(id, { sessions: [] });
+				update(SESSION, { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" });
+				return;
+			}
 			if (flags.has("spontaneous") || flags.has("spontaneous-hold")) {
 				// Foreground work the client never asked for, reported after the list answer.
 				reply(id, { sessions: [] });
@@ -405,6 +416,8 @@ lines.on("line", (line) => {
 		}
 		case "session/close":
 			if (flags.has("close-refuse")) return fail(id, -32000, "no");
+			if (flags.has("close-hang")) return;
+			if (flags.has("close-malformed")) return send({ id, result: { _meta: 5 } });
 			reply(id, {});
 			return;
 		case "session/prompt":

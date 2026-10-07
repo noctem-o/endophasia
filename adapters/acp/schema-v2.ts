@@ -151,14 +151,27 @@ const NUMBER_FORMATS: Record<string, (value: number) => boolean> = {
 	double: Number.isFinite,
 };
 
+// RFC 3986 URI grammar. The WHATWG URL parser is not a validator (it accepts `http://host/%zz`), so the structure,
+// the percent escapes and the character classes are checked directly. An IRI with raw non-ASCII is not a URI.
+const PCT = "%[0-9A-Fa-f]{2}";
+const UNRESERVED_SUB = "A-Za-z0-9\\-._~!$&'()*+,;=";
+const URI_SPLIT = /^([A-Za-z][A-Za-z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/s;
+const URI_PATH = new RegExp(`^(?:[${UNRESERVED_SUB}:@/]|${PCT})*$`);
+const URI_TAIL = new RegExp(`^(?:[${UNRESERVED_SUB}:@/?]|${PCT})*$`);
+const URI_AUTHORITY = new RegExp(
+	`^(?:(?:[${UNRESERVED_SUB}:]|${PCT})*@)?(?:\\[(?:[0-9A-Fa-f:.]+|[vV][0-9A-Fa-f]+\\.[${UNRESERVED_SUB}:]+)\\]|(?:[${UNRESERVED_SUB}]|${PCT})*)(?::[0-9]*)?$`,
+);
+
 function isAbsoluteUri(value: string): boolean {
-	if (!/^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) || /[\u0000- \u007f-\u009f]/.test(value)) return false;
-	try {
-		new URL(value);
-		return true;
-	} catch {
-		return false;
-	}
+	const match = URI_SPLIT.exec(value);
+	if (match === null) return false;
+	const [, , authority, path, query, fragment] = match;
+	return (
+		(authority === undefined || URI_AUTHORITY.test(authority)) &&
+		URI_PATH.test(path ?? "") &&
+		(query === undefined || URI_TAIL.test(query)) &&
+		(fragment === undefined || URI_TAIL.test(fragment))
+	);
 }
 
 // RFC 3339 date-time, with the calendar checked: Date.parse normalizes an impossible date (February 30th) into a real

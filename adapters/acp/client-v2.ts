@@ -401,8 +401,7 @@ export class AcpClientV2 {
 		if (typeof session.cwd !== "string" || !isAbsolute(session.cwd))
 			throw new TypeError("session.cwd must be an absolute path");
 		if (session.resume !== undefined) {
-			if (typeof session.resume.sessionId !== "string" || session.resume.sessionId === "")
-				throw new TypeError("resume.sessionId must be a non-empty string");
+			if (typeof session.resume.sessionId !== "string") throw new TypeError("resume.sessionId must be a string");
 			if (session.resume.replay !== undefined && session.resume.replay !== "start")
 				throw new TypeError('resume.replay must be "start" or omitted');
 		}
@@ -599,7 +598,6 @@ export class AcpClientV2 {
 		if (
 			!isRecord(response) ||
 			typeof sessionId !== "string" ||
-			sessionId.length === 0 ||
 			!validateAcpV2DefinitionV0(resume !== undefined ? "ResumeSessionResponse" : "NewSessionResponse", response)
 		) {
 			this.#fault(resume !== undefined ? "session-resume-response-malformed" : "session-new-response-malformed");
@@ -746,8 +744,12 @@ export class AcpClientV2 {
 			restoreLive();
 			throw error;
 		}
-		for (const cancel of [...this.#pendingPermissions]) cancel();
 		let response: unknown;
+		// Pending permissions are answered only once the close is definitive: a `cancelled` outcome is irreversible, and a
+		// refused close leaves the work running.
+		const settlePermissions = (): void => {
+			for (const cancel of [...this.#pendingPermissions]) cancel();
+		};
 		try {
 			await this.#requestOptional(
 				"session/close",
@@ -756,11 +758,20 @@ export class AcpClientV2 {
 			response = this.#takeRaw("session/close");
 		} catch (error) {
 			if (error instanceof AcpRefusedErrorV0) restoreLive();
-			else this.#sessionClosed = true;
+			else {
+				// Timed out, transport failure: the session cannot be used or reported on again, so a waiter is released.
+				this.#sessionClosed = true;
+				settlePermissions();
+				const open = this.#run;
+				if (open !== null) this.#closeRun(open, new AcpClosedErrorV0("session/close"));
+			}
 			throw error;
 		}
 		this.#sessionClosed = true;
+		settlePermissions();
 		if (!isRecord(response) || !validateAcpV2DefinitionV0("CloseSessionResponse", response)) {
+			const open = this.#run;
+			if (open !== null) this.#closeRun(open, new AcpClosedErrorV0("session/close"));
 			this.#fault("session-close-response-malformed");
 			throw new AcpProtocolErrorV0("the agent's session/close response is not a valid ACP v2 baseline response");
 		}
@@ -1035,7 +1046,18 @@ export class AcpClientV2 {
 			runOpen,
 		});
 		if (state === "requires_action") return;
-		if (run === null || this.#run !== run) return; // Nothing was running, or the observer already ended it.
+		if (run === null) {
+			// An idle that states why foreground work stopped, with nothing known to have been running: a missed or malformed
+			// run. A reasonless idle with no run is an initial or stale state and says nothing.
+			if (state === "idle" && stopReason !== undefined && stopReason !== null)
+				this.#recorder.derive(
+					"lifecycle.run-unclassified",
+					{ reason: "idle-without-running", stopRequested: false },
+					reported,
+				);
+			return;
+		}
+		if (this.#run !== run) return; // The observer already ended it.
 		if (state === "running") {
 			if (run.started) return;
 			run.started = true;

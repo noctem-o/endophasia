@@ -198,7 +198,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		preserved: ["that the client asked", "that the agent answered without error"],
 		lost: [],
 		qualification:
-			"the agent must cancel the session's work as if session/cancel had been sent; a response is its acceptance, not proof that work stopped or resources were freed. Pending permission requests are answered cancelled. No lifecycle end is derived from the response.",
+			"the agent must cancel the session's work as if session/cancel had been sent; a response is its acceptance, not proof that work stopped or resources were freed. Pending permission requests are answered cancelled once the close is accepted (a refused close leaves them pending), or when it can no longer succeed; an open run's waiter is released with a closed error. No lifecycle end is derived from the response.",
 	},
 	{
 		id: "prompt.request",
@@ -357,7 +357,7 @@ const declared: readonly AcpLossEntryV0[] = [
 		],
 		lost: ["the content itself (never recorded)", "the order of chunks versus replacements"],
 		qualification:
-			"applied in received order: an `*_message` content array replaces everything accumulated (chunks included), null clears, an omitted content is unchanged, later chunks append; tool-call fields patch, null and [] clear. Bounded: past the bound the state claims nothing. In memory only; it is a comparison aid, not a durable record.",
+			"applied in received order: an `*_message` content array replaces everything accumulated (chunks included), null clears, an omitted content is unchanged, later chunks append; tool-call fields patch, null and [] clear. Bounded by count and by retained size (16 Mi serialized characters): past a bound the state claims nothing. In memory only; it is a comparison aid, not a durable record.",
 	},
 	{
 		id: "replay.equivalence",

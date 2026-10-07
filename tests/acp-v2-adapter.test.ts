@@ -422,12 +422,17 @@ describe("ACP v2 prompt lifecycle: accepted is not completed", () => {
 				await client.close();
 			}
 		}
-		const valid = await attach();
-		const accepted = await valid.client.prompt("hi");
-		await accepted.completed;
-		expect(find(valid.events, "lifecycle.run-started").map((e) => payload(e).attribution)).toEqual([
-			"client-prompt-by-order",
-		]);
+		// A valid acceptance is never detached, however it is scheduled against the updates that follow it.
+		for (const flags of ["", "one-write", "ack-late", "ack-after-echo"]) {
+			const valid = await attach(flags === "" ? undefined : flags);
+			const accepted = await valid.client.prompt("hi");
+			await accepted.completed;
+			expect(
+				find(valid.events, "lifecycle.run-started").map((e) => payload(e).attribution),
+				flags,
+			).toEqual(["client-prompt-by-order"]);
+			await valid.client.close();
+		}
 	});
 
 	it("bounds the wait for idle without inventing an end, and keeps the run open", async () => {

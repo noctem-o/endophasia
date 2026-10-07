@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
+import { readEndoExperimentSpecFileV0 } from "../cli/experiment-artifacts.ts";
+import { endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
 import { NODE_REPORTER_DURATION_V0, residualSourceV0 } from "../research/pinned-environment/1.0.1/analyze.ts";
 import { PINNED, pinnedSpec } from "../research/pinned-environment/1.0.1/make-spec.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -39,7 +40,7 @@ function e2ToolResults(cassette: string): string[] {
 
 describe("the pinned-environment study's spec (DESIGN §3, §4)", () => {
 	const spec = pinnedSpec("pilot", 3);
-	const e2 = JSON.parse(readFileSync(join(E2, "spec.json"), "utf8")) as EndoExperimentSpecV0;
+	const e2 = readEndoExperimentSpecFileV0(join(E2, "spec.json"));
 
 	it("is valid, and keeps E2's tasks, serving inputs and extension sources byte for byte", () => {
 		expect(endoExperimentSpecProblemV0(spec)).toBeNull();

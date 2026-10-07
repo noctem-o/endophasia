@@ -6,6 +6,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readEndoExperimentTrialResultFileV0 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { endoFixtureDigestKeyPathV0 } from "../../../storage/digest-key.ts";
@@ -35,7 +36,7 @@ interface Row {
 const rows: Row[] = [];
 for (const label of Object.keys(outcome).sort()) {
 	const base = `${rawDirectory("path-sensitivity")}/main/${label}/trials/implement-function/base/0`;
-	const result = JSON.parse(readFileSync(`${base}/result.json`, "utf8"));
+	const result = readEndoExperimentTrialResultFileV0(`${base}/result.json`);
 	const requests = normalizeToolCallIds(loadEndoTrialRequestsV0(`${base}/store`, result, key).requests);
 	const messages = (requests.at(-1)!.messages ?? []) as {
 		role: string;

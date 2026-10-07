@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import type { EndoExperimentSpecV0 } from "../protocol/experiment-spec.ts";
 import {
 	analyzeStudy,
@@ -250,9 +251,7 @@ describe("the driver and the analysis on a fake-Pi experiment", () => {
 		).toEqual(["t1", "t2"]);
 		expect(existsSync(join(out, "bad", "trials"))).toBe(false);
 		for (const label of ["t1", "t2"]) {
-			const experiment = JSON.parse(readFileSync(join(out, label, "experiment.json"), "utf8")) as {
-				scratchRoot: string;
-			};
+			const experiment = readEndoExperimentRunRecordFileV0(join(out, label));
 			expect(experiment.scratchRoot).toContain(`endo-experiment-${record.hashes[label]}`);
 		}
 

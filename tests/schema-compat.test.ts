@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { createEndoEvidenceLedgerV0, ENDO_EVIDENCE_RECORD_VERSIONS_V0 } from "../evolution/evidence.ts";
 import {
 	ENDO_EVALUATION_PROFILE_VERSIONS_V0,
@@ -23,9 +24,30 @@ import {
 } from "../protocol/evaluation.ts";
 import { ENDO_EVENT_VERSIONS_V0 } from "../protocol/event.ts";
 import { ENDO_EVIDENCE_LEDGER_VERSIONS_V0, ENDO_EXPERIMENT_RECORD_VERSIONS_V0 } from "../protocol/evolution.ts";
+import {
+	ENDO_EXPERIMENT_PLAN_VERSIONS_V0,
+	ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0,
+	ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0,
+	ENDO_EXPERIMENT_RUN_SPEC_VERSIONS_V0,
+	ENDO_EXPERIMENT_RUN_VERSIONS_V0,
+	ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0,
+	ENDO_EXPERIMENT_TRIAL_VERSIONS_V0,
+	ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0,
+	readEndoExperimentPlanV0,
+	readEndoExperimentRunRecordV0,
+	readEndoExperimentTrialResultV0,
+	readEndoLegacyExperimentPlanV0,
+} from "../protocol/experiment-artifacts.ts";
+import {
+	ENDO_EXPERIMENT_SPEC_SCHEMA_V0,
+	ENDO_EXPERIMENT_SPEC_VERSIONS_V0,
+	parseEndoExperimentSpecV0,
+	readEndoExperimentSpecV0,
+	validateEndoExperimentSpecV0,
+} from "../protocol/experiment-spec.ts";
 import { ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0 } from "../protocol/harness.ts";
 import { ENDO_DURABLE_SCHEMAS_V0 } from "../protocol/schema-compat.ts";
-import { type EndoVersionTableV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
+import { EndoSchemaVersionErrorV0, type EndoVersionTableV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { ENDO_DIGEST_KEY_FILE_VERSIONS_V0, readEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { endoHarnessRegistryDirectoryV0, openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
@@ -50,6 +72,10 @@ const TABLES: readonly EndoVersionTableV0<unknown>[] = [
 	ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0,
 	ENDO_WORKSPACE_ARCHIVE_VERSIONS_V0,
 	ENDO_DIGEST_KEY_FILE_VERSIONS_V0,
+	ENDO_EXPERIMENT_SPEC_VERSIONS_V0,
+	ENDO_EXPERIMENT_RUN_VERSIONS_V0,
+	ENDO_EXPERIMENT_PLAN_VERSIONS_V0,
+	ENDO_EXPERIMENT_TRIAL_VERSIONS_V0,
 ];
 
 const tableOf = (version: string): EndoVersionTableV0<unknown> => {
@@ -61,9 +87,20 @@ const tableOf = (version: string): EndoVersionTableV0<unknown> => {
 const sha256 = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
 const bytesOf = (version: string, file: string): Buffer => readFileSync(join(FIXTURES, version, file));
 
+/** Whether `path` is an open container or inside one: an open path's `*` stands for any one segment (an array element or a map key). */
+function isOpen(open: readonly string[], path: string): boolean {
+	const segments = path === "" ? [] : path.split(".");
+	return open.some((container) => {
+		const pattern = container.split(".");
+		return (
+			segments.length >= pattern.length && pattern.every((part, index) => part === "*" || part === segments[index])
+		);
+	});
+}
+
 /** Every plain object inside `value` (the root as ""), by dotted path, with `*` for array elements; an open path is skipped. */
 function objectPaths(value: unknown, open: readonly string[], path = ""): string[] {
-	if (open.some((o) => o === path || (path !== "" && path.startsWith(`${o}.`)))) return [];
+	if (isOpen(open, path)) return [];
 	if (Array.isArray(value)) return value.flatMap((item) => objectPaths(item, open, path === "" ? "*" : `${path}.*`));
 	if (typeof value !== "object" || value === null) return [];
 	return [
@@ -78,6 +115,8 @@ function objectPaths(value: unknown, open: readonly string[], path = ""): string
 function withUnknownKeyAt(root: unknown, path: string): unknown {
 	const copy = structuredClone(root) as Record<string, unknown>;
 	const walk = (node: unknown, segments: string[]): void => {
+		// Array elements need not share a shape: an optional object one element omits is not there to probe.
+		if (typeof node !== "object" || node === null) return;
 		if (segments.length === 0) {
 			(node as Record<string, unknown>).futureField = 1;
 			return;
@@ -453,4 +492,360 @@ describe("storage boundaries reject what they do not know", () => {
 			createEndoDurableEvidenceLedgerV0(root, LEDGER, { ...experiment, schemaVersion: "endo.experiment.v9" }),
 		).toThrow(/unsupported schemaVersion/);
 	});
+});
+
+// --- the experiment runner's run-directory artifacts -----------------------------------------------------------------
+
+const UNVERSIONED = join(import.meta.dirname, "fixtures", "schema-compat-unversioned");
+const LEGACY_PLAN = join(UNVERSIONED, "experiment-plan", "plan.json");
+const LEGACY_PLAN_SHA256 = "a23e75c6a271ff2e1810846f910d4fb1158ad029e9fa91c002ef3fd2d30f6459";
+
+describe("the experiment runner's artifacts", () => {
+	const json = (version: string, file: string) => JSON.parse(bytesOf(version, file).toString("utf8"));
+	const kind = (read: { ok: boolean; kind?: string }) => (read.ok ? "ok" : read.kind);
+
+	it("writes exactly the current catalogued versions, and the spec stays v0", () => {
+		expect(ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0).toBe("endo.experiment-run.v0");
+		expect(ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0).toBe("endo.experiment-plan.v0");
+		expect(ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0).toBe("endo.experiment-trial.v0");
+		expect(ENDO_EXPERIMENT_SPEC_SCHEMA_V0).toBe("endo.experiment-spec.v0");
+		for (const version of [
+			ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0,
+			ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0,
+			ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0,
+			ENDO_EXPERIMENT_SPEC_SCHEMA_V0,
+		])
+			expect(ENDO_DURABLE_SCHEMAS_V0.find((entry) => entry.schemaVersion === version)?.status).toBe("current");
+	});
+
+	it("reads a spec by its declared version; validating a selected v0 contract is a different operation", () => {
+		const spec = json("endo.experiment-spec.v0", "full.json");
+		expect(readEndoExperimentSpecV0(spec)).toMatchObject({ ok: true, schemaVersion: "endo.experiment-spec.v0" });
+		expect(parseEndoExperimentSpecV0(spec)).toBe(spec);
+		expect(kind(readEndoExperimentSpecV0({ ...spec, schemaVersion: "endo.experiment-spec.v1" }))).toBe(
+			"unsupported-version",
+		);
+		expect(() => parseEndoExperimentSpecV0({ ...spec, schemaVersion: "endo.experiment-spec.v1" })).toThrow(
+			EndoSchemaVersionErrorV0,
+		);
+		expect(() => validateEndoExperimentSpecV0({ ...spec, schemaVersion: "endo.experiment-spec.v1" })).toThrow(
+			/schemaVersion must be/,
+		);
+		// A map key is data, not a schema field: a file named like a field is a file.
+		const mapKeys = structuredClone(spec);
+		mapKeys.tasks[1].workspace = { schemaVersion: "x\n", futureField: "y\n" };
+		expect(kind(readEndoExperimentSpecV0(mapKeys))).toBe("ok");
+		// The closed neighbour of an open map still refuses what it does not define.
+		const manipulation = structuredClone(spec);
+		manipulation.manipulation.conditions.tuned.futureField = 1;
+		expect(kind(readEndoExperimentSpecV0(manipulation))).toBe("invalid");
+	});
+
+	it("each family's versions are its own: no version is readable through another family's table", () => {
+		for (const [version, file, table] of [
+			["endo.experiment-spec.v0", "minimal.json", ENDO_EXPERIMENT_SPEC_VERSIONS_V0],
+			["endo.experiment-run.v0", "minimal.json", ENDO_EXPERIMENT_RUN_VERSIONS_V0],
+			["endo.experiment-trial.v0", "minimal.json", ENDO_EXPERIMENT_TRIAL_VERSIONS_V0],
+			["endo.experiment-plan.v0", "blocked.json", ENDO_EXPERIMENT_PLAN_VERSIONS_V0],
+		] as readonly (readonly [string, string, EndoVersionTableV0<unknown>])[]) {
+			for (const other of TABLES.filter((candidate) => candidate !== table))
+				expect(readEndoVersionedV0(other, json(version, file)), `${version} read by ${other.family}`).toMatchObject(
+					{
+						ok: false,
+					},
+				);
+			// ...and is not readable as another version of its own family.
+			const borrowed = { ...json(version, file), schemaVersion: version.replace(/v0$/, "v1") };
+			expect(kind(readEndoVersionedV0(table, borrowed))).toBe("unsupported-version");
+		}
+	});
+
+	it("a run record embeds the spec and experiment versions the run names, not whatever those families learn", () => {
+		expect(ENDO_EXPERIMENT_RUN_SPEC_VERSIONS_V0).not.toBe(ENDO_EXPERIMENT_SPEC_VERSIONS_V0);
+		expect([...ENDO_EXPERIMENT_RUN_SPEC_VERSIONS_V0.versions]).toEqual(["endo.experiment-spec.v0"]);
+		expect([...ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0.versions]).toEqual(["endo.experiment.v0"]);
+		const run = json("endo.experiment-run.v0", "full.json");
+		const futureSpec = { ...run, spec: { ...run.spec, schemaVersion: "endo.experiment-spec.v1" } };
+		expect(readEndoExperimentRunRecordV0(futureSpec)).toMatchObject({
+			ok: false,
+			kind: "invalid",
+			message: expect.stringMatching(/spec: .*unsupported schemaVersion/),
+		});
+		const futureExperiment = { ...run, experiment: { ...run.experiment, schemaVersion: "endo.experiment.v1" } };
+		expect(readEndoExperimentRunRecordV0(futureExperiment)).toMatchObject({ ok: false, kind: "invalid" });
+		const { schemaVersion: _omitted, ...unversionedSpec } = run.spec;
+		expect(kind(readEndoExperimentRunRecordV0({ ...run, spec: unversionedSpec }))).toBe("invalid");
+	});
+
+	it("the run fixtures are consistent: the recorded sha256 is that of their own spec", () => {
+		for (const file of ["minimal.json", "full.json"]) {
+			const run = json("endo.experiment-run.v0", file);
+			expect(run.specSha256).toBe(sha256HexV0(canonicalEndoJsonV0(run.spec)));
+		}
+	});
+
+	it("refuses a run record or trial result that would make the runner leave its directory", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		for (const store of ["/etc", "../outside", "trials/../../x", "a//b", "a\\b", ""])
+			expect(kind(readEndoExperimentTrialResultV0({ ...trial, store })), `store ${store}`).toBe("invalid");
+		for (const task of ["../x", "a/b", "A", ""])
+			expect(kind(readEndoExperimentTrialResultV0({ ...trial, task })), `task ${task}`).toBe("invalid");
+		const plan = json("endo.experiment-plan.v0", "blocked.json");
+		for (const task of ["../x", "a/b", ""]) {
+			const order = structuredClone(plan.order);
+			order[1].task = task;
+			expect(kind(readEndoExperimentPlanV0({ ...plan, order }))).toBe("invalid");
+		}
+	});
+
+	it("keeps a trial's recorded request parameters open JSON objects, and nothing else", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		const deep = { ...trial, requestParameters: [{ a: { b: [{ c: null, d: 1.5 }] } }, {}] };
+		expect(kind(readEndoExperimentTrialResultV0(deep))).toBe("ok");
+		// Valid JSON is valid however deep (a JSON Schema in response_format): there is no depth limit to trip over.
+		let nested: Record<string, unknown> = { leaf: true };
+		for (let depth = 0; depth < 5000; depth += 1) nested = { next: nested };
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters: [nested] }))).toBe("ok");
+		const cycle: Record<string, unknown> = {};
+		cycle.self = cycle;
+		for (const [index, requestParameters] of [
+			[{ f: () => 1 }],
+			[{ n: Number.NaN }],
+			[{ u: undefined }],
+			[cycle],
+			{},
+			[null],
+			[[]],
+			["text"],
+			[3],
+		].entries())
+			expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters })), `case ${index}`).toBe(
+				"invalid",
+			);
+	});
+
+	it("the host reader refuses a run record whose digest is not that of its embedded spec", () => {
+		const dir = mkdtempSync(join(tmpdir(), "endo-run-digest-"));
+		try {
+			const run = json("endo.experiment-run.v0", "full.json");
+			const write = (value: unknown) => writeFileSync(join(dir, "experiment.json"), JSON.stringify(value));
+			write(run);
+			expect(readEndoExperimentRunRecordFileV0(dir).specSha256).toBe(run.specSha256);
+			write({ ...run, spec: { ...run.spec, description: "another experiment" } });
+			expect(() => readEndoExperimentRunRecordFileV0(dir)).toThrow(/not the digest of the embedded spec/);
+			write({ ...run, specSha256: "0".repeat(64) });
+			expect(() => readEndoExperimentRunRecordFileV0(dir)).toThrow(EndoSchemaVersionErrorV0);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses an embedded experiment record that is not what the runner derives from the spec", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const withExperiment = (change: object) =>
+			kind(readEndoExperimentRunRecordV0({ ...run, experiment: { ...run.experiment, ...change } }));
+		expect(withExperiment({})).toBe("ok");
+		expect(withExperiment({ id: "endo.experiment.another" })).toBe("invalid");
+		expect(withExperiment({ model: "fixture/another-model" })).toBe("invalid");
+		expect(withExperiment({ budget: { trialsPerCell: 9, cells: 4 } })).toBe("invalid");
+		expect(withExperiment({ budget: { trialsPerCell: 2, cells: 4, extra: 1 } })).toBe("invalid");
+		for (const budget of [null, 5, "x", [], undefined]) expect(withExperiment({ budget })).toBe("invalid");
+		expect(withExperiment({ provenance: "endo-experiment-runner.3; spec sha256 abc" })).toBe("invalid");
+		expect(kind(readEndoExperimentRunRecordV0({ ...run, runner: "endo-experiment-runner.9" }))).toBe("invalid");
+	});
+
+	it("refuses a run whose seed does not follow from the embedded spec's seed", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const seeded = (specSeed: number | null, seed: number, seedSource: string) =>
+			kind(readEndoExperimentRunRecordV0({ ...run, spec: { ...run.spec, seed: specSeed }, seed, seedSource }));
+		expect(seeded(7, 7, "spec")).toBe("ok");
+		expect(seeded(7, 8, "spec")).toBe("invalid");
+		expect(seeded(7, 7, "drawn")).toBe("invalid");
+		expect(seeded(null, 123, "drawn")).toBe("ok");
+		expect(seeded(null, 123, "spec")).toBe("invalid");
+	});
+
+	it("refuses a scratch root that is not the runner's for this spec digest", () => {
+		const run = json("endo.experiment-run.v0", "full.json");
+		const at = (scratchRoot: string) => kind(readEndoExperimentRunRecordV0({ ...run, scratchRoot }));
+		const digest = run.specSha256.slice(0, 12);
+		expect(at(`/var/tmp/endo-experiment-${digest}/scratch`)).toBe("ok");
+		expect(at(`C:\\temp\\endo-experiment-${digest}\\scratch`)).toBe("ok");
+		for (const bad of [
+			"/home/user",
+			"/",
+			"/tmp/scratch",
+			`/tmp/endo-experiment-${digest}`,
+			`/tmp/endo-experiment-${digest}/work`,
+			"/tmp/endo-experiment-0/scratch",
+		])
+			expect(at(bad)).toBe("invalid");
+	});
+
+	it("refuses a completed trial that names no session", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, session: null }))).toBe("invalid");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: "failed", session: null }))).toBe(
+			"ok",
+		);
+	});
+
+	it("refuses a trial that ends before it starts", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		const at = (startedAt: string, endedAt: string) =>
+			kind(readEndoExperimentTrialResultV0({ ...trial, startedAt, endedAt }));
+		expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z")).toBe("ok");
+		expect(at("2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z")).toBe("ok");
+		expect(at("2026-01-01T00:00:01.000Z", "2026-01-01T00:00:00.000Z")).toBe("invalid");
+	});
+
+	it("refuses a success check whose verdict is not its exit code and timeout", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		const check = (change: object) =>
+			kind(readEndoExperimentTrialResultV0({ ...trial, check: { ...trial.check, ...change } }));
+		expect(check({})).toBe("ok");
+		expect(check({ exitCode: 1, passed: false })).toBe("ok");
+		expect(check({ exitCode: null, passed: false, timedOut: true })).toBe("ok");
+		expect(check({ exitCode: 1, passed: true })).toBe("invalid");
+		expect(check({ passed: false })).toBe("invalid");
+		expect(check({ timedOut: true, passed: true })).toBe("invalid");
+		expect(check({ exitCode: null, passed: true })).toBe("invalid");
+	});
+
+	it("refuses a trial whose status contradicts its error: completed holds exactly when there is no error", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: "the session failed" }))).toBe(
+			"ok",
+		);
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "completed", error: "failed" }))).toBe("invalid");
+		expect(kind(readEndoExperimentTrialResultV0({ ...trial, status: "error", error: null }))).toBe("invalid");
+	});
+
+	it("refuses a version in a hostile shape without echoing the record", () => {
+		const plan = json("endo.experiment-plan.v0", "blocked.json");
+		const read = readEndoExperimentPlanV0({
+			...plan,
+			schemaVersion: `endo.experiment-plan.v${"9".repeat(400)}\n`,
+			secret: "hunter2",
+		});
+		expect(read.ok).toBe(false);
+		if (read.ok) return;
+		expect(read.kind).toBe("unsupported-version");
+		expect(read.message.length).toBeLessThan(400);
+		expect(read.message).not.toMatch(/hunter2|\n/);
+	});
+});
+
+describe("the legacy unversioned plan", () => {
+	const legacyBytes = readFileSync(LEGACY_PLAN);
+	const legacy = JSON.parse(legacyBytes.toString("utf8"));
+	const versioned = JSON.parse(bytesOf("endo.experiment-plan.v0", "blocked.json").toString("utf8"));
+
+	it("is a permanent fixture, pinned, kept outside the versioned catalogue", () => {
+		expect(sha256(legacyBytes)).toBe(LEGACY_PLAN_SHA256);
+		expect(Object.keys(legacy).sort()).toEqual(["order", "ordering", "seed"]);
+		expect(readdirSync(FIXTURES)).not.toContain("experiment-plan");
+	});
+
+	it("cannot take part in version dispatch: the ordinary table refuses it as having no version", () => {
+		expect(readEndoVersionedV0(ENDO_EXPERIMENT_PLAN_VERSIONS_V0, legacy)).toMatchObject({
+			ok: false,
+			kind: "missing-version",
+		});
+	});
+
+	it("is read by its own exact reader, and reported as the legacy form, never as a v0 plan", () => {
+		const read = readEndoExperimentPlanV0(legacy);
+		expect(read).toMatchObject({ ok: true, form: "legacy-unversioned" });
+		if (read.ok) {
+			expect(read.plan).toBe(legacy);
+			expect("schemaVersion" in read.plan).toBe(false);
+		}
+		expect(readEndoExperimentPlanV0(versioned)).toMatchObject({
+			ok: true,
+			form: "versioned",
+			schemaVersion: "endo.experiment-plan.v0",
+		});
+		expect(readEndoLegacyExperimentPlanV0(legacy)).toMatchObject({ ok: true });
+	});
+
+	it("is narrow: an extra or missing root field, a bad entry or a declared version is refused", () => {
+		const refused = (value: unknown) => readEndoExperimentPlanV0(value);
+		expect(refused({ ...legacy, extra: 1 })).toMatchObject({ ok: false, kind: "invalid" });
+		const { seed: _seed, ...withoutSeed } = legacy;
+		expect(refused(withoutSeed)).toMatchObject({ ok: false, kind: "invalid" });
+		const { ordering: _ordering, ...withoutOrdering } = legacy;
+		expect(refused(withoutOrdering)).toMatchObject({ ok: false, kind: "invalid" });
+		expect(refused({ order: legacy.order })).toMatchObject({ ok: false, kind: "invalid" });
+		for (const mutate of [
+			(entry: Record<string, unknown>) => {
+				entry.extra = 1;
+			},
+			(entry: Record<string, unknown>) => {
+				entry.position = 9;
+			},
+			(entry: Record<string, unknown>) => {
+				entry.task = "../escape";
+			},
+			(entry: Record<string, unknown>) => {
+				delete entry.trial;
+			},
+		]) {
+			const copy = structuredClone(legacy);
+			mutate(copy.order[1]);
+			expect(refused(copy), JSON.stringify(copy.order[1])).toMatchObject({ ok: false, kind: "invalid" });
+		}
+		const duplicate = structuredClone(legacy);
+		duplicate.order[3] = { ...duplicate.order[1], position: 3 };
+		expect(refused(duplicate)).toMatchObject({ ok: false, kind: "invalid" });
+		// A record that declares a version is the version table's, whatever else it looks like.
+		expect(refused({ ...legacy, schemaVersion: "endo.experiment-plan.v1" })).toMatchObject({
+			ok: false,
+			kind: "unsupported-version",
+		});
+		expect(refused({ ...legacy, schemaVersion: 0 })).toMatchObject({ ok: false, kind: "version-not-string" });
+		expect(refused({ ...legacy, schemaVersion: "endo.experiment-plan.v0" })).toMatchObject({
+			ok: true,
+			form: "versioned",
+		});
+	});
+
+	it("is not what a v0 plan is: the legacy reader refuses a record that declares a version", () => {
+		expect(readEndoLegacyExperimentPlanV0(versioned)).toMatchObject({ ok: false });
+		expect(readEndoLegacyExperimentPlanV0(null)).toMatchObject({ ok: false });
+		expect(readEndoLegacyExperimentPlanV0([])).toMatchObject({ ok: false });
+	});
+});
+
+describe("every committed run directory is read by the governed readers", () => {
+	const research = join(import.meta.dirname, "..", "research");
+	const files = existsSync(research)
+		? readdirSync(research, { recursive: true })
+				.map(String)
+				.filter((path) => /(^|\/)(experiment|plan|result)\.json$/.test(path))
+		: [];
+
+	it.skipIf(files.length === 0)(
+		"reads every committed experiment.json, plan.json (as the legacy form) and trial result.json",
+		() => {
+			const seen = { run: 0, plan: 0, trial: 0 };
+			for (const path of files) {
+				const value = JSON.parse(readFileSync(join(research, path), "utf8"));
+				if (path.endsWith("experiment.json")) {
+					expect(readEndoExperimentRunRecordV0(value), path).toMatchObject({ ok: true });
+					seen.run += 1;
+				} else if (path.endsWith("plan.json")) {
+					expect(readEndoExperimentPlanV0(value), path).toMatchObject({ ok: true, form: "legacy-unversioned" });
+					seen.plan += 1;
+				} else if (/(^|\/)trials\//.test(path)) {
+					expect(readEndoExperimentTrialResultV0(value), path).toMatchObject({ ok: true });
+					seen.trial += 1;
+				}
+			}
+			expect(seen.run).toBeGreaterThan(0);
+			expect(seen.run).toBe(seen.plan);
+			expect(seen.trial).toBeGreaterThan(0);
+		},
+		120_000,
+	);
 });

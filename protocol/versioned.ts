@@ -163,6 +163,20 @@ export function endoFirstUnknownKeyV0(value: object, allowed: readonly string[])
 	return undefined;
 }
 
+const MAX_DETAIL_V0 = 240;
+
+/**
+ * A validator's own explanation made safe to carry in a message: control characters and U+2028/U+2029 escaped, the
+ * whole bounded. For a detail that may embed a key or a value taken from the record being refused.
+ */
+export function endoBoundedDetailV0(detail: string): string {
+	const bounded = detail.length > MAX_DETAIL_V0 ? `${detail.slice(0, MAX_DETAIL_V0)}…` : detail;
+	return bounded.replace(
+		/[\u0000-\u001f\u007f\u2028\u2029]/g,
+		(c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
+}
+
 /** A key, path or any other attacker-controlled value made safe for a message, without coercing it. */
 export function endoSafeTextV0(value: unknown): string {
 	// Never coerce an attacker-controlled value: String() on an object can throw.

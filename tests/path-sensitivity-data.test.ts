@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { endoSecretScanDirectoryV0 } from "../cli/secret-scan.ts";
 
 const R = fileURLToPath(new URL("../research/path-sensitivity/1.0.1/", import.meta.url));
@@ -18,8 +19,8 @@ const dirs = (parent: string) =>
 describe("the committed path-sensitivity data", () => {
 	it("passes the secret scan exactly as committed (absolute paths: only the runs' scratch roots and Pi's install)", () => {
 		const roots = [
-			...dirs("main").map((label) => json<{ scratchRoot: string }>("main", label, "experiment.json").scratchRoot),
-			...dirs("pilot").map((label) => json<{ scratchRoot: string }>("pilot", label, "experiment.json").scratchRoot),
+			...dirs("main").map((label) => readEndoExperimentRunRecordFileV0(join(R, "main", label)).scratchRoot),
+			...dirs("pilot").map((label) => readEndoExperimentRunRecordFileV0(join(R, "pilot", label)).scratchRoot),
 		].map((root) => root.replace(/\/scratch$/, ""));
 		expect(new Set(roots).size).toBe(32);
 		for (const directory of ["main", "pilot", "analysis", "logs"]) {

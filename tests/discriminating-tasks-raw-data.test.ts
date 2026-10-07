@@ -4,6 +4,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { endoSecretScanDirectoryV0 } from "../cli/secret-scan.ts";
 import { readEndoStoreEventsV0 } from "../cli/trajectory.ts";
 import { rawDataAvailable, rawDirectory } from "../research/data.ts";
@@ -14,9 +15,7 @@ const runDirectories = [join(RAW, "pilot"), ...["c1", "c2", "c3", "c4"].map((lab
 describe.skipIf(!rawDataAvailable("discriminating-tasks"))("the raw run data of the discriminating-task study", () => {
 	it("passes the secret scan exactly as stored, with only the operator's documented path exception", () => {
 		const scratch = runDirectories.map((dir) =>
-			(
-				JSON.parse(readFileSync(join(dir, "experiment.json"), "utf8")) as { scratchRoot: string }
-			).scratchRoot.replace(/\/scratch$/, ""),
+			readEndoExperimentRunRecordFileV0(dir).scratchRoot.replace(/\/scratch$/, ""),
 		);
 		const exception = JSON.parse(readFileSync(join(RAW, "allowed-paths.json"), "utf8")) as {
 			storesLocation: string;

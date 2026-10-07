@@ -18,14 +18,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materializePiCassetteFixtureV0 } from "../../../cli/cassette-fixture.ts";
 import { type PiCassetteKeySourceV0, replayPiCassetteSessionV0 } from "../../../cli/cassette-session.ts";
-import type {
-	EndoExperimentRunRecordV0,
-	EndoExperimentTrialKeyV0,
-	EndoExperimentTrialResultV0,
-} from "../../../cli/experiment.ts";
+import {
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
+	readEndoExperimentRunRecordFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
 import type { EndoEventV0 } from "../../../protocol/event.ts";
+import type { EndoExperimentRunRecordV0, EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
@@ -40,22 +41,15 @@ import { MESSAGES, STEER_POINT } from "./make-spec.ts";
 
 export { estimate, sensitivity };
 
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 const canonical = (value: unknown) => canonicalEndoJsonV0(value);
 
 function trials(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		try {
-			return [
-				readJson<EndoExperimentTrialResultV0>(
-					join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json"),
-				),
-			];
-		} catch {
-			return [];
-		}
+		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 const label = (trial: EndoExperimentTrialResultV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;
@@ -86,7 +80,7 @@ export function interventionManipulation(
 	dir: string,
 	key: EndoDigestKeyV0 = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0()),
 ) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const i1: Record<string, { trials: number; failures: string[] }> = {};
 	for (const trial of trials(dir).filter((entry) => entry.status === "completed")) {
 		const condition = run.spec.conditions.find((entry) => entry.id === trial.condition)!;
@@ -265,7 +259,7 @@ export async function replayOneTrial(
  * trial must show: each intervention re-issued at its recorded point, with the same proposal digest, and accepted.
  */
 export async function steeredSpotcheck(dir: string, pi: string, named: string[] = []) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const completed = trials(dir).filter((trial) => trial.status === "completed" && trial.session !== null);
 	const chosen =
 		named.length > 0
@@ -380,7 +374,7 @@ export function judgeSteeredTrial(input: {
 
 /** P1 to P5 (DESIGN §7), per task and arm, with every trial's evidence. */
 export function checks(dir: string, keySource: PiCassetteKeySourceV0 = FIXTURE) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const loaded = trials(dir)
 		.filter((entry) => entry.status === "completed" && entry.session !== null)
 		.map((entry) => load(dir, entry, keySource));
@@ -513,8 +507,8 @@ export function checks(dir: string, keySource: PiCassetteKeySourceV0 = FIXTURE) 
  * requests show that the trajectory is a reproducible function of the whole prompt, the path included.
  */
 export function replication(original: string, replicate: string, keySource: PiCassetteKeySourceV0 = FIXTURE) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(replicate, "experiment.json"));
-	const originalRun = readJson<EndoExperimentRunRecordV0>(join(original, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(replicate);
+	const originalRun = readEndoExperimentRunRecordFileV0(original);
 	const cells: Record<string, unknown> = {};
 	for (const trial of trials(replicate).filter((entry) => entry.status === "completed" && entry.session !== null)) {
 		const originalTrial = trials(original).find(

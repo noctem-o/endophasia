@@ -1,0 +1,56 @@
+{
+	"schemaVersion": "endo.experiment-run.v0",
+	"runner": "endo-experiment-runner.3",
+	"spec": {
+		"schemaVersion": "endo.experiment-spec.v0",
+		"id": "endo.experiment.fixture-minimal",
+		"description": "A minimal experiment spec.",
+		"trials": 1,
+		"seed": null,
+		"pi": "pi",
+		"upstream": "http://127.0.0.1:8080",
+		"provider": "fixture",
+		"model": "fixture-model",
+		"digestDomain": "fixture",
+		"timeoutMs": 60000,
+		"tasks": [
+			{
+				"id": "hello",
+				"prompts": [
+					"Say hello."
+				],
+				"workspace": {
+					"README.md": "hello\n"
+				}
+			}
+		],
+		"conditions": [
+			{
+				"id": "default",
+				"description": "Pi as configured."
+			}
+		]
+	},
+	"specSha256": "3c40bbcf5a694179c9660203ee535719d7668c066f4afec419b6490bcea3f8ea",
+	"seed": 42,
+	"seedSource": "drawn",
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"experiment": {
+		"schemaVersion": "endo.experiment.v0",
+		"id": "endo.experiment.fixture-minimal",
+		"environment": {
+			"schemaVersion": "endo.environment-profile.v0",
+			"environmentId": "endophasia-scratch-workspace",
+			"simulated": false
+		},
+		"model": "fixture/fixture-model",
+		"budget": {
+			"trialsPerCell": 1,
+			"cells": 1
+		},
+		"provenance": "endo-experiment-runner.3; spec sha256 3c40bbcf5a694179c9660203ee535719d7668c066f4afec419b6490bcea3f8ea"
+	},
+	"scratchRoot": "/tmp/endo-experiment-3c40bbcf5a69/scratch",
+	"proxyPort": null,
+	"createdAt": "2026-01-01T00:00:00.000Z"
+}

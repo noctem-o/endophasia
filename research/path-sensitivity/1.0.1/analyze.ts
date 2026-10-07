@@ -12,13 +12,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { type PiCassetteKeySourceV0, piCassetteKeyV0 } from "../../../cli/cassette-session.ts";
+import { reportEndoExperimentV0 } from "../../../cli/experiment.ts";
 import {
-	type EndoExperimentRunRecordV0,
-	type EndoExperimentTrialKeyV0,
-	type EndoExperimentTrialResultV0,
-	reportEndoExperimentV0,
-} from "../../../cli/experiment.ts";
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
+	readEndoExperimentRunRecordFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
+import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { endoFixtureDigestKeyPathV0 } from "../../../storage/digest-key.ts";
@@ -128,16 +129,12 @@ export function responsePattern(requests: readonly Record<string, unknown>[], ta
 }
 
 function completedTrials(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		try {
-			const result = readJson<EndoExperimentTrialResultV0>(
-				join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json"),
-			);
-			return result.status === "completed" && result.session !== null ? [result] : [];
-		} catch {
-			return [];
-		}
+		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		if (result === null) return [];
+		return result.status === "completed" && result.session !== null ? [result] : [];
 	});
 }
 
@@ -165,7 +162,7 @@ export function analyzePath(
 	keySource: PiCassetteKeySourceV0 = FIXTURE,
 	environmentChecks = true,
 ): PathAnalysisV0 {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const trials = completedTrials(dir);
 	const loaded = trials.map((trial) => ({
 		trial,
@@ -426,7 +423,7 @@ export async function spotcheck(dir: string, pi: string, keySource: PiCassetteKe
 		.filter((label) => !record.missing.includes(label) && existsSync(join(dir, label, "experiment.json")))
 		.flatMap((label) => {
 			const runDir = join(dir, label);
-			const run = readJson<EndoExperimentRunRecordV0>(join(runDir, "experiment.json"));
+			const run = readEndoExperimentRunRecordFileV0(runDir);
 			return completedTrials(runDir).map((trial) => ({ label, runDir, run, trial }));
 		});
 	const chosen = shuffleV0(all, mulberry32V0(record.seed)).slice(0, 3);

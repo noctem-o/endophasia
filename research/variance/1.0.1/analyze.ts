@@ -8,39 +8,32 @@
 //
 // Each prints one JSON document on stdout.
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { hostname, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { replayPiCassetteSessionV0 } from "../../../cli/cassette-session.ts";
-import type {
-	EndoExperimentRunRecordV0,
-	EndoExperimentTrialKeyV0,
-	EndoExperimentTrialResultV0,
-} from "../../../cli/experiment.ts";
+import {
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
+	readEndoExperimentRunRecordFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
+import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
 
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
-
 function trials(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		try {
-			return [
-				readJson<EndoExperimentTrialResultV0>(
-					join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json"),
-				),
-			];
-		} catch {
-			return [];
-		}
+		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 
@@ -72,7 +65,7 @@ export function estimate(dir: string, mainArms = ["a", "b", "b-c"]) {
 
 /** Three trials chosen by the run's ordering seed (DESIGN §10), replayed from their cassettes. */
 export async function spotcheck(dir: string, pi: string) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const completed = trials(dir).filter((trial) => trial.status === "completed" && trial.session !== null);
 	const chosen = shuffleV0(completed, mulberry32V0(run.seed)).slice(0, 3);
 	const out = [];

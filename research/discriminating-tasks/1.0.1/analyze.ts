@@ -10,18 +10,19 @@
 // `--repo` and `--home` name the protected roots of the leakage check (default: the current directory and the operator's
 // home); they are used for matching and never written to the output. Each command prints one JSON document on stdout.
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
+import { reportEndoExperimentV0 } from "../../../cli/experiment.ts";
 import {
-	type EndoExperimentRunRecordV0,
-	type EndoExperimentTrialKeyV0,
-	type EndoExperimentTrialResultV0,
-	reportEndoExperimentV0,
-} from "../../../cli/experiment.ts";
+	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
+	readEndoExperimentRunRecordFileV0,
+} from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
+import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
 import { spreadV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
@@ -96,10 +97,10 @@ export function classOf(result: EndoExperimentTrialResultV0, leakageReasons: str
 }
 
 function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
-	const plan = readJson<{ order: EndoExperimentTrialKeyV0[] }>(join(dir, "plan.json")).order;
+	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readJson<EndoExperimentTrialResultV0>(file)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 
@@ -110,7 +111,7 @@ export interface RootsV0 {
 
 /** Every trial of one run directory, classified, with the per-trial validity measures. */
 export function analyseRun(dir: string, roots: RootsV0): AnalysedTrialV0[] {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
 	const out: AnalysedTrialV0[] = [];
 	for (const result of trialsOf(dir)) {
@@ -252,7 +253,7 @@ const outputTokens = (dir: string): Record<string, number | null> => {
 
 /** Stage 1: the screen and the selection (DESIGN §6). */
 export function screen(dir: string, roots: RootsV0) {
-	const run = readJson<EndoExperimentRunRecordV0>(join(dir, "experiment.json"));
+	const run = readEndoExperimentRunRecordFileV0(dir);
 	const trials = analyseRun(dir, roots);
 	const tokens = outputTokens(dir);
 	const rows = run.spec.tasks.map((task) => ({
@@ -282,7 +283,7 @@ export function confirm(dir: string, roots: RootsV0) {
 	);
 	const labels = record.order.filter((label) => !record.missing.includes(label));
 	const byPath = new Map(labels.map((label) => [label, analyseRun(join(dir, label), roots)]));
-	const planned = readJson<EndoExperimentRunRecordV0>(join(dir, labels[0]!, "experiment.json")).spec;
+	const planned = readEndoExperimentRunRecordFileV0(join(dir, labels[0]!)).spec;
 	const tokens = Object.fromEntries(labels.map((label) => [label, outputTokens(join(dir, label))]));
 	const tasks = planned.tasks.map((task) => {
 		const perPath = labels.map((label) => tally(task.id, byPath.get(label)!, planned.trials));

@@ -4,7 +4,7 @@
 // trial's cassette replaying EXACT. It proves the runner's mechanics, not anything about a real Pi or model.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,13 +12,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { replayPiCassetteSessionV0 } from "../cli/cassette-session.ts";
 import {
-	type EndoExperimentTrialResultV0,
+	experimentRunCommand,
 	planEndoExperimentV0,
 	reportEndoExperimentV0,
 	runEndoExperimentV0,
 } from "../cli/experiment.ts";
 import { validateEndoExperimentBundleV0 } from "../protocol/evaluation.ts";
+import type { EndoExperimentTrialResultV0 } from "../protocol/experiment-artifacts.ts";
 import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
+import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
+import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { pairwiseRateWithTrialBootstrapV0, spreadV0, wilson95V0 } from "../runtime/contracts/statistics.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
@@ -357,6 +360,21 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		}
 	}, 180_000);
 
+	it("never deletes from a scratch parent it did not create: an unmarked, non-empty one stops the resume", async () => {
+		const dir = join(base, "unmarked");
+		await runEndoExperimentV0({ spec: spec(), dir, maxTrials: 1, log: () => {}, scratchParent: base });
+		const record = JSON.parse(readFileSync(join(dir, "experiment.json"), "utf8"));
+		const parent = join(base, `endo-experiment-${record.specSha256.slice(0, 12)}`);
+		mkdirSync(join(parent, "scratch"), { recursive: true });
+		writeFileSync(join(parent, "scratch", "precious.txt"), "keep\n");
+		rmSync(join(parent, ".endo-experiment"), { force: true });
+		await expect(runEndoExperimentV0({ spec: spec(), dir, log: () => {}, scratchParent: base })).rejects.toThrow(
+			/not marked/,
+		);
+		expect(readFileSync(join(parent, "scratch", "precious.txt"), "utf8")).toBe("keep\n");
+		rmSync(parent, { recursive: true, force: true });
+	}, 180_000);
+
 	it("runs part of a plan, resumes the rest without duplicating a trial, and refuses a changed spec", async () => {
 		const dir = join(base, "partial");
 		const first = await runEndoExperimentV0({ spec: spec(), dir, maxTrials: 3, log: () => {}, scratchParent: base });
@@ -494,4 +512,351 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		// Deterministic: the same directory reports the same bytes.
 		expect(JSON.stringify(reportEndoExperimentV0(dir).report)).toBe(JSON.stringify(report));
 	}, 60_000);
+});
+
+describe("the run directory's source-of-truth files are read through their version readers", () => {
+	let complete: string;
+	const file = (name: string) => join(complete, name);
+	const readText = (path: string) => readFileSync(path, "utf8");
+	const resume = () => runEndoExperimentV0({ spec: spec(), dir: complete, log: () => {}, scratchParent: base });
+	const report = () => reportEndoExperimentV0(complete);
+	const firstResult = () =>
+		join(
+			complete,
+			readdirSync(join(complete, "trials"), { recursive: true })
+				.map(String)
+				.find((p) => p.endsWith("result.json"))!
+				.replace(/^/, "trials/"),
+		);
+	const cleanScratch = () => {
+		for (const name of readdirSync(base).filter((entry) => entry.startsWith("endo-experiment-")))
+			rmSync(join(base, name), { recursive: true, force: true });
+	};
+	/** The kind a refusal carries; anything that is not a version-reader refusal says what it was instead. */
+	const refusal = async (action: () => unknown): Promise<string> => {
+		try {
+			await action();
+			return "no error";
+		} catch (error) {
+			return error instanceof EndoSchemaVersionErrorV0 ? error.kind : `untyped: ${String(error)}`;
+		}
+	};
+
+	it("a new run writes the current versions; partial, resume and report all go through the strict readers", async () => {
+		complete = join(base, "governed");
+		const first = await runEndoExperimentV0({
+			spec: spec(),
+			dir: complete,
+			maxTrials: 2,
+			log: () => {},
+			scratchParent: base,
+		});
+		expect(first).toMatchObject({ planned: 4, completed: 2, remaining: 2 });
+		const run = JSON.parse(readText(file("experiment.json")));
+		const plan = JSON.parse(readText(file("plan.json")));
+		expect(run.schemaVersion).toBe("endo.experiment-run.v0");
+		expect(run.spec.schemaVersion).toBe("endo.experiment-spec.v0");
+		expect(run.experiment.schemaVersion).toBe("endo.experiment.v0");
+		expect(plan.schemaVersion).toBe("endo.experiment-plan.v0");
+		expect(Object.keys(plan).sort()).toEqual(["order", "ordering", "schemaVersion", "seed"]);
+		expect(plan.order).toEqual(planEndoExperimentV0(spec(), 7));
+		const planBytes = readText(file("plan.json"));
+		const second = await resume();
+		expect(second).toMatchObject({ completed: 4, remaining: 0, ranThisSession: 2 });
+		expect(readText(file("plan.json"))).toBe(planBytes);
+		expect(results(complete).every((result) => result.schemaVersion === "endo.experiment-trial.v0")).toBe(true);
+		expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v1" });
+	}, 180_000);
+
+	it("a run directory whose plan.json predates the version is read as that exact legacy form, and never rewritten", async () => {
+		const legacy = join(base, "legacy");
+		cpSync(complete, legacy, { recursive: true });
+		const current = JSON.parse(readText(file("plan.json")));
+		const { schemaVersion: _version, ...body } = current;
+		writeFileSync(join(legacy, "plan.json"), canonicalEndoJsonV0(body));
+		const before = readText(join(legacy, "plan.json"));
+		expect(JSON.parse(before).schemaVersion).toBeUndefined();
+		expect(JSON.stringify(reportEndoExperimentV0(legacy).report)).toBe(JSON.stringify(report().report));
+		const resumed = await runEndoExperimentV0({ spec: spec(), dir: legacy, log: () => {}, scratchParent: base });
+		expect(resumed).toMatchObject({ planned: 4, completed: 4, remaining: 0 });
+		expect(readText(join(legacy, "plan.json"))).toBe(before);
+		cleanScratch();
+		// The legacy form is exact: one more root key, and the report refuses the directory.
+		writeFileSync(join(legacy, "plan.json"), canonicalEndoJsonV0({ ...body, extra: 1 }));
+		expect(await refusal(() => reportEndoExperimentV0(legacy))).toBe("invalid");
+	}, 120_000);
+
+	const CASES: [string, () => string, (value: any) => void, string][] = [
+		[
+			"experiment.json: an unknown root field",
+			() => file("experiment.json"),
+			(v) => {
+				v.futureField = 1;
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: an unknown version",
+			() => file("experiment.json"),
+			(v) => {
+				v.schemaVersion = "endo.experiment-run.v9";
+			},
+			"unsupported-version",
+		],
+		[
+			"experiment.json: no version",
+			() => file("experiment.json"),
+			(v) => {
+				delete v.schemaVersion;
+			},
+			"missing-version",
+		],
+		[
+			"experiment.json: a future spec version inside a v0 run",
+			() => file("experiment.json"),
+			(v) => {
+				v.spec.schemaVersion = "endo.experiment-spec.v1";
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: an unknown field deep in the embedded spec",
+			() => file("experiment.json"),
+			(v) => {
+				v.spec.tasks[0].futureField = 1;
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a future version",
+			() => file("plan.json"),
+			(v) => {
+				v.schemaVersion = "endo.experiment-plan.v1";
+			},
+			"unsupported-version",
+		],
+		[
+			"plan.json: a bad entry",
+			() => file("plan.json"),
+			(v) => {
+				v.order[1].position = 9;
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a task that names a path",
+			() => file("plan.json"),
+			(v) => {
+				v.order[0].task = "../escape";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: an unknown root field",
+			() => file("plan.json"),
+			(v) => {
+				v.futureField = 1;
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: a spec that is not the one its digest names",
+			() => file("experiment.json"),
+			(v) => {
+				v.spec.description = "another experiment";
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: an experiment record that names another model",
+			() => file("experiment.json"),
+			(v) => {
+				v.experiment.model = "fake/another-model";
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: an experiment record with another budget",
+			() => file("experiment.json"),
+			(v) => {
+				v.experiment.budget.trialsPerCell += 1;
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a seed that is not the run's",
+			() => file("plan.json"),
+			(v) => {
+				v.seed += 1;
+			},
+			"invalid",
+		],
+		[
+			"plan.json: an ordering that is not the run's",
+			() => file("plan.json"),
+			(v) => {
+				v.ordering = "another ordering";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a trial of a task the spec does not have",
+			() => file("plan.json"),
+			(v) => {
+				v.order[0].task = "ghost";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a spec trial it leaves out",
+			() => file("plan.json"),
+			(v) => {
+				v.order.pop();
+			},
+			"invalid",
+		],
+		[
+			"result.json: another trial's coordinates",
+			firstResult,
+			(v) => {
+				v.position = 99;
+			},
+			"invalid",
+		],
+		[
+			"result.json: another trial's store",
+			firstResult,
+			(v) => {
+				v.store = "trials/read/a/9/store";
+			},
+			"invalid",
+		],
+		[
+			"result.json: a check verdict its exit code contradicts",
+			firstResult,
+			(v) => {
+				v.check.passed = !v.check.passed;
+			},
+			"invalid",
+		],
+		[
+			"result.json: a check record that disagrees with whether the task defines a check",
+			firstResult,
+			(v) => {
+				v.check = { ran: false, reason: "the task has no success check" };
+			},
+			"invalid",
+		],
+		[
+			"result.json: a completed trial without a session",
+			firstResult,
+			(v) => {
+				v.session = null;
+			},
+			"invalid",
+		],
+		[
+			"experiment.json: a scratch root that is not the runner's for this spec",
+			() => file("experiment.json"),
+			(v) => {
+				v.scratchRoot = join(base, "somewhere-else");
+			},
+			"invalid",
+		],
+		[
+			"result.json: an unknown field",
+			firstResult,
+			(v) => {
+				v.futureField = 1;
+			},
+			"invalid",
+		],
+		[
+			"result.json: an unknown version",
+			firstResult,
+			(v) => {
+				v.schemaVersion = "endo.experiment-trial.v9";
+			},
+			"unsupported-version",
+		],
+		[
+			"result.json: a store outside the run directory",
+			firstResult,
+			(v) => {
+				v.store = "../../outside";
+			},
+			"invalid",
+		],
+	];
+
+	it.each(CASES)(
+		"refuses %s, at the report and at the resume",
+		async (_label, path, change, kind) => {
+			const target = path();
+			const original = readText(target);
+			try {
+				const value = JSON.parse(original);
+				change(value);
+				writeFileSync(target, `${JSON.stringify(value, null, "\t")}\n`);
+				expect(await refusal(report), "report").toBe(kind);
+				expect(await refusal(resume), "resume").toBe(kind);
+			} finally {
+				writeFileSync(target, original);
+				cleanScratch();
+			}
+			// Restored, the directory is whole again.
+			expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v1" });
+		},
+		60_000,
+	);
+
+	it("refuses a saved result it cannot read before it runs any remaining trial", async () => {
+		const partial = join(base, "preflight");
+		cpSync(complete, partial, { recursive: true });
+		const results = readdirSync(join(partial, "trials"), { recursive: true })
+			.map(String)
+			.filter((path) => path.endsWith("result.json"))
+			.sort();
+		const [missing, corrupt] = [join(partial, "trials", results[0]!), join(partial, "trials", results[1]!)];
+		rmSync(missing);
+		writeFileSync(corrupt, JSON.stringify({ ...JSON.parse(readText(corrupt)), futureField: 1 }));
+		const journal = readText(join(partial, "journal.jsonl"));
+		const sessions = readdirSync(join(partial, "environment")).length;
+		expect(
+			await refusal(() => runEndoExperimentV0({ spec: spec(), dir: partial, log: () => {}, scratchParent: base })),
+		).toBe("invalid");
+		// Nothing ran: no trial, no new run session, no journal line.
+		expect(existsSync(missing)).toBe(false);
+		expect(readText(join(partial, "journal.jsonl"))).toBe(journal);
+		expect(readdirSync(join(partial, "environment")).length).toBe(sessions);
+		cleanScratch();
+	}, 60_000);
+
+	it("refuses a spec that declares another version or an unknown field, before it creates anything", async () => {
+		const specFile = join(base, "spec-file.json");
+		const out = join(base, "never-created");
+		const refuseFile = async (value: unknown) => {
+			writeFileSync(specFile, JSON.stringify(value));
+			return refusal(() => experimentRunCommand([specFile, "--out", out]));
+		};
+		expect(await refuseFile({ ...spec(), schemaVersion: "endo.experiment-spec.v1" })).toBe("unsupported-version");
+		expect(await refuseFile({ ...spec(), futureField: 1 })).toBe("invalid");
+		const { schemaVersion: _version, ...unversioned } = spec();
+		expect(await refuseFile(unversioned)).toBe("missing-version");
+		expect(existsSync(out)).toBe(false);
+		// The file reader says which file it refused; the typed run function, handed a spec directly, has no file to name.
+		writeFileSync(specFile, JSON.stringify({ ...spec(), futureField: 1 }));
+		await expect(experimentRunCommand([specFile, "--out", out])).rejects.toThrow(specFile);
+		expect(
+			await refusal(() =>
+				runEndoExperimentV0({
+					spec: { ...spec(), schemaVersion: "endo.experiment-spec.v1" } as unknown as EndoExperimentSpecV0,
+					dir: join(base, "never-created-2"),
+					log: () => {},
+					scratchParent: base,
+				}),
+			),
+		).toBe("unsupported-version");
+		expect(existsSync(join(base, "never-created-2"))).toBe(false);
+	});
 });

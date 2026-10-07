@@ -666,9 +666,11 @@ Done:
   kinds with the ledger and its meta/snapshot, evaluation profiles, workspace archives, the digest-key file and the
   harness-registry records), the declared `schemaVersion` selects exactly one validator; each known version is parsed
   exactly and unknown fields are rejected; an unknown version is rejected as unsupported, never partially read; and
-  every committed version is read under its original contract, proved by permanent fixtures. Not covered: runtime-local,
-  derived and unwired schemas, the experiment runner's run-directory files, automatic migration, and arbitrary future
-  versions ([policy and inventory](docs/schema-compatibility.md)).
+  every committed version is read under its original contract, proved by permanent fixtures. The experiment runner's
+  spec, run record, plan and trial results follow the same rule (the pre-versioning `plan.json` has one narrow legacy
+  reader). Not covered: runtime-local, derived and unwired schemas, the experiment report, the rest of the run
+  directory, automatic migration, and arbitrary future versions
+  ([policy and inventory](docs/schema-compatibility.md)).
 
 Partly done:
 

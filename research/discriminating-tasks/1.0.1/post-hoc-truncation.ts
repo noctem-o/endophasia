@@ -10,7 +10,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { EndoExperimentTrialResultV0 } from "../../../cli/experiment.ts";
+import { readEndoExperimentTrialResultFileV0 } from "../../../cli/experiment-artifacts.ts";
 import { rawDirectory } from "../../data.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,11 +46,7 @@ for (const run of runs) {
 	for (const task of readdirSync(root)) {
 		const dir = join(root, task, "default");
 		for (const trial of readdirSync(dir)) {
-			const result = JSON.parse(
-				readFileSync(join(dir, trial, "result.json"), "utf8"),
-			) as EndoExperimentTrialResultV0 & {
-				requestParameters: { max_completion_tokens?: number }[];
-			};
+			const result = readEndoExperimentTrialResultFileV0(join(dir, trial, "result.json"));
 			if (result.status !== "completed") continue;
 			const length = filesUnder(join(dir, trial, "store")).some((file) => readFileSync(file).includes(NEEDLE));
 			const passed = result.check.ran && result.check.passed;
@@ -69,8 +65,9 @@ for (const run of runs) {
 			if (!passed && length) cell.failedWithLength += 1;
 			if (passed && length) cell.passedWithLength += 1;
 			for (const parameters of result.requestParameters) {
-				if (typeof parameters.max_completion_tokens === "number")
-					cell.maxCompletionTokens.add(parameters.max_completion_tokens);
+				// requestParameters entries are open JSON as Pi sent them.
+				const limit = (parameters as { max_completion_tokens?: unknown } | null)?.max_completion_tokens;
+				if (typeof limit === "number") cell.maxCompletionTokens.add(limit);
 			}
 			cells.set(key, cell);
 		}

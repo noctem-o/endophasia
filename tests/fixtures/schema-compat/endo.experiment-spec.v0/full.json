@@ -1,0 +1,112 @@
+{
+	"schemaVersion": "endo.experiment-spec.v0",
+	"id": "endo.experiment.fixture-full",
+	"description": "An experiment spec using every optional field.",
+	"trials": 2,
+	"seed": 1234,
+	"pi": "pi",
+	"upstream": "http://127.0.0.1:8080",
+	"provider": "fixture",
+	"model": "fixture-model",
+	"digestDomain": "fixture",
+	"timeoutMs": 120000,
+	"tasks": [
+		{
+			"id": "fix-bug",
+			"prompts": [
+				"Fix the bug.",
+				"Run the tests."
+			],
+			"workspace": {
+				"src/a.js": "export const a = 1;\n",
+				"test.js": "// test\n"
+			},
+			"check": {
+				"argv": [
+					"node",
+					"--test"
+				],
+				"cwd": "src",
+				"timeoutMs": 30000
+			}
+		},
+		{
+			"id": "write-note",
+			"prompts": [
+				"Write a note."
+			],
+			"workspace": {
+				"notes.md": "# Notes\n"
+			}
+		}
+	],
+	"conditions": [
+		{
+			"id": "base",
+			"description": "The baseline."
+		},
+		{
+			"id": "tuned",
+			"description": "A tuned condition.",
+			"modelEntry": {
+				"contextWindow": 8192,
+				"compat": {
+					"supportsDeveloperRole": false
+				}
+			},
+			"settings": {
+				"defaultThinkingLevel": "off"
+			},
+			"extensions": {
+				"noop.ts": "export default function () {}\n"
+			},
+			"environment": {
+				"variables": {
+					"TZ": "UTC",
+					"LC_ALL": "C"
+				},
+				"files": {
+					"reporter.js": "module.exports = {};\n"
+				},
+				"fileTime": "2026-01-01T00:00:00.000Z"
+			},
+			"interventions": {
+				"fix-bug": {
+					"operation": "steer",
+					"message": "Look at src/a.js.",
+					"after": {
+						"exchange": 1,
+						"chunks": 3
+					}
+				},
+				"write-note": {
+					"operation": "stop",
+					"after": {
+						"exchange": 1,
+						"chunks": 1
+					}
+				}
+			}
+		}
+	],
+	"manipulation": {
+		"baseline": "base",
+		"conditions": {
+			"tuned": {
+				"injected": {
+					"temperature": 0.2,
+					"stop": [
+						"END"
+					]
+				},
+				"zeroCacheReads": true
+			}
+		},
+		"identical": [
+			[
+				"base",
+				"tuned"
+			]
+		]
+	}
+}

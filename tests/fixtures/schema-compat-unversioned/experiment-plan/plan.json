@@ -1,0 +1,30 @@
+{
+	"order": [
+		{
+			"condition": "b",
+			"position": 0,
+			"task": "hello",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 1,
+			"task": "hello",
+			"trial": 0
+		},
+		{
+			"condition": "a",
+			"position": 2,
+			"task": "hello",
+			"trial": 1
+		},
+		{
+			"condition": "b",
+			"position": 3,
+			"task": "hello",
+			"trial": 1
+		}
+	],
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"seed": 7
+}

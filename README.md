@@ -156,7 +156,7 @@ silently treated as comparable.
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
 | ACP v1 agents | A protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command: the PR #37 slice, then semantic coverage with schema-validated updates, capability-gated `session/list`/`resume`/`close`, and explicit EXACT / QUALIFIED / LOSSY / UNREPRESENTABLE loss accounting, pinned to one SDK and schema revision. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
-| ACP v2 agents | Planned conformance subjects through a protocol-level adapter. ACP v2 is still a Draft protocol: a baseline schema is published and draft additions are layered separately, so any study is explicit, feature-gated and pinned to one exact revision |
+| ACP v2 agents | An **experimental**, version-pinned conformance study of the Draft v2 baseline (`adapters/acp/client-v2.ts`, kept apart from v1): explicit negotiation (an agent that answers v1 is refused, with an opt-in relaunch fallback), the baseline session surface, prompt acceptance kept distinct from run completion, `session/resume` with replay judged by reconstructed state, and fail-closed permission subjects. Deterministic fake-agent evidence only, no real v2 agent yet; ACP v2 is Draft, not stable. See [docs/acp-v2-study.md](docs/acp-v2-study.md). No capability is admitted from it |
 
 What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
 endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
@@ -652,16 +652,15 @@ The numbered items below are the long-term map. The order of work for the next s
    runtime hides is UNAVAILABLE. The path-sensitivity study is why: a working-directory path alone changed behaviour.
    The surface joins the other experiment-identity coordinates ([Evolve providers](#evolve-providers)), compared
    coordinate by coordinate.
-3. **ACP v2 conformance study** (item 9). The ACP sequence is: ACP v1 slice (done) → ACP v1 semantic coverage and loss
-   accounting (done) → ACP v1 lifecycle/accounting closure (done) → this experimental v2 study → a cross-surface
-   conformance study. ACP v2 is still a Draft protocol: a baseline v2 schema is published and draft additions are layered
-   separately, so support stays explicit and feature-gated and the study is pinned to one exact revision (never "stable").
-   A protocol-level adapter study: the prompt lifecycle, `session/resume` with `replayFrom` (replacing the v1
-   load/resume split) compared with the live session, and permission requests (now with a required title and optional
-   structured subjects) answered with default deny and operator confirmation. ACP types stay in the adapter. Two ACP v1
-   decisions are deliberately deferred and separate: consuming the *unstable* per-turn `PromptResponse.usage` that real OMP
-   sends (an unstable source field needs an explicit policy and loss-accounting decision), and Windows descendant
-   containment, which belongs in the shared `ProcessGroupV0`, not in any one adapter.
+3. **ACP v2 conformance study** (item 9). The experimental study is built (see Done): the ACP sequence is ACP v1 slice
+   (done) → ACP v1 semantic coverage and loss accounting (done) → ACP v1 lifecycle/accounting closure (done) → the
+   experimental v2 study (done, deterministic fake-agent evidence only) → a cross-surface conformance study. ACP v2 is
+   still a Draft protocol and is never called stable: the study is pinned to one exact baseline revision and layers no
+   unstable surface. What remains is a smoke against a real agent that actually negotiates v2 (the installed OpenCode
+   answers v1; its v2 work is behind a flag), and a re-study when the baseline moves. Two ACP v1 decisions are
+   deliberately deferred and separate: consuming the *unstable* per-turn `PromptResponse.usage` that real OMP sends (an
+   unstable source field needs an explicit policy and loss-accounting decision), and Windows descendant containment,
+   which belongs in the shared `ProcessGroupV0`, not in any one adapter.
 4. **Compute-frontier follow-up** (item 13). The completion-cap study has been run (see Done), so this is what remains:
    where success saturates above 32,768 tokens, whether a retry after a cut-off beats a larger cap, and whether failures
    merely move. Pre-registered, everything else pinned, several fixed seeds as the replication unit. Any later
@@ -689,6 +688,10 @@ Done:
   discriminating tasks from 10 of 24 to 19 of 23 ([results](research/README.md#completion-cap-study)).
 - **ACP v1 adapter** (#37, #39, and the closure tranche). A pinned-SDK, schema-validated v1 adapter with capability-gated
   session operations and explicit loss accounting, smoke-tested against real OMP ([ACP v1 adapter](docs/acp-v1-slice.md)).
+- **ACP v2 experimental study** (this tranche). A Draft, version-pinned study of the v2 *baseline*: vendored baseline
+  schema pinned to an upstream commit and the SDK's layered schema, separate v2 client and loss accounting, prompt
+  acceptance versus completion, resume/replay equivalence by reconstructed state, fail-closed permission subjects,
+  deterministic fake-agent suite with mutation checks ([ACP v2 study](docs/acp-v2-study.md)). ACP v1 is unchanged.
 - **Schema compatibility rules** (#41). For the covered durable and imported records (events, the 25 evidence record
   kinds with the ledger and its meta/snapshot, evaluation profiles, workspace archives, the digest-key file and the
   harness-registry records), the declared `schemaVersion` selects exactly one validator; each known version is parsed

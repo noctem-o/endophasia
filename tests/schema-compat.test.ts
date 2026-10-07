@@ -676,6 +676,7 @@ describe("the experiment runner's artifacts", () => {
 			"/",
 			"/tmp/scratch",
 			`/tmp/endo-experiment-${digest}`,
+			`/tmp/endo-experiment-${digest}/work`,
 			"/tmp/endo-experiment-0/scratch",
 		])
 			expect(at(bad)).toBe("invalid");

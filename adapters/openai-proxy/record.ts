@@ -127,6 +127,8 @@ interface Exchange {
 	requestClose: boolean;
 	/** The request's end has not been seen yet: its capture.request is not queued, so an early end must wait for it. */
 	requestOpen: boolean;
+	/** The request asked for `Expect: 100-continue`: its body may never be sent if the upstream answers finally first. */
+	expectContinue: boolean;
 	/** Recording jobs of an exchange that ended before its request did, released right after the request is recorded. */
 	deferred: (() => void)[];
 }
@@ -441,6 +443,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			let sawClose = false;
 			/** The upstream accepted a protocol switch (101): what follows is not HTTP and is relayed as one opaque stream. */
 			let switched = false;
+			/** The upstream said `100 Continue`: the client is entitled to send the body. */
+			let continued = false;
 			const responseParser = new Http1ParserV0("response", {
 				head(head) {
 					if (entry === null) return;
@@ -450,6 +454,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					)
 						switched = true;
 					else if (head.status !== undefined && head.status >= 100 && head.status < 200) {
+						if (head.status === 100) continued = true;
 						interim = true;
 						return;
 					}
@@ -495,7 +500,16 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				finish(entry, "complete", null);
 				lastCompleted = entry.exchange;
 				settleSlot(slot, slot.closeAfter);
-				if (!slot.requestDone && !slot.raw && !slot.retired) watchStall();
+				if (!slot.requestDone && !slot.raw && !slot.retired) {
+					if (entry.expectContinue && !continued && !slot.closeAfter) {
+						// A final answer to `Expect: 100-continue` before any `100`: the client may never send the body, and
+						// whatever it sends next would be read as one. The connection ends (RFC 9110 10.1.1 allows it).
+						flushDeferred(entry);
+						retire(slot, false);
+						endClient("upstream");
+						failQueued("the upstream answered before the request body was invited");
+					} else watchStall();
+				}
 			};
 			// The upstream answered before the request was uploaded. If it then stops reading while the client is held back by
 			// the full socket, the request can never complete and the hop would never retire: end the connection instead.
@@ -706,6 +720,9 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					ended: false,
 					waiters: [],
 					requestOpen: true,
+					expectContinue: head.headers.some(
+						([name, value]) => name.toLowerCase() === "expect" && /(^|,)\s*100-continue\s*(,|$)/i.test(value),
+					),
 					deferred: [],
 					requestClose:
 						connection.includes("close") ||

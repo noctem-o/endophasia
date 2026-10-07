@@ -896,4 +896,21 @@ describe("transport closeout: edges of the hop's lifetime", () => {
 		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete"]);
 		expect(recordedRequests(store)).toEqual([]);
 	});
+
+	it("a final answer to Expect: 100-continue ends the connection rather than reading the next request as its body", async () => {
+		const seen: Buffer[] = [];
+		const port = await plainUpstream((socket) => {
+			socket.on("data", (data) => {
+				seen.push(data);
+				if (seen.length === 1) socket.write(`HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n`);
+			});
+		});
+		const { proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("POST /v1/x HTTP/1.1\r\nHost: h\r\nExpect: 100-continue\r\nContent-Length: 20\r\n\r\n");
+		await until(() => c.closed, "the connection to end");
+		expect(c.bytes.toString("latin1")).toBe("HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n");
+		await finish();
+	});
 });

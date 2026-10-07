@@ -158,13 +158,20 @@ interface Slot {
 const REQUEST_LINE = /^[A-Z!#$%&'*+.^_`|~0-9-]+ \S+ HTTP\/1\.[01]$/;
 const TOKEN = /^[A-Z!#$%&'*+.^_`|~0-9-]+$/;
 
-/** Whether the bytes held so far can still turn out to be an HTTP/1.x request head (a complete first line is checked whole). */
+const METHODS = ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "CONNECT", "TRACE"];
+
+/**
+ * Whether the bytes held so far can still turn out to be an HTTP/1.x request head. Decided from the bytes alone, never a
+ * clock: before the first space they must be the start of a known method; after it the method must be a token; once a
+ * line is complete it must be a request line. (Unsupported, and relayed untouched but unrecorded: a non-HTTP client that
+ * sends `TOKEN something` with no newline and then waits.)
+ */
 function mayBeRequestHead(held: Buffer[]): boolean {
 	const text = Buffer.concat(held).toString("latin1");
 	const newline = text.indexOf("\n");
 	if (newline !== -1) return REQUEST_LINE.test(text.slice(0, newline).replace(/\r$/, ""));
 	const space = text.indexOf(" ");
-	if (space === -1) return text.length <= 64 && (text === "" || TOKEN.test(text));
+	if (space === -1) return METHODS.some((method) => method.startsWith(text));
 	return TOKEN.test(text.slice(0, space));
 }
 
@@ -437,7 +444,11 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			const responseParser = new Http1ParserV0("response", {
 				head(head) {
 					if (entry === null) return;
-					if (head.status === 101) switched = true;
+					if (
+						head.status === 101 ||
+						(entry.method === "CONNECT" && head.status !== undefined && head.status >= 200 && head.status < 300)
+					)
+						switched = true;
 					else if (head.status !== undefined && head.status >= 100 && head.status < 200) {
 						interim = true;
 						return;
@@ -524,12 +535,18 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				try {
 					responseParser.push(data);
 				} catch {
-					hopParsing = false;
-					const target = current();
-					if (target !== null)
-						hold(() => target.record("capture.unparsed", { detail: "the response is not an HTTP/1.1 message" }));
-					client.write(data);
-					return;
+					// A complete response found before the bytes that failed is still the response: it ends there, and what
+					// follows belongs to no exchange. Only a failure inside the response itself leaves the stream unparsed.
+					if (ends[0] === undefined) {
+						hopParsing = false;
+						const target = current();
+						if (target !== null)
+							hold(() =>
+								target.record("capture.unparsed", { detail: "the response is not an HTTP/1.1 message" }),
+							);
+						client.write(data);
+						return;
+					}
 				}
 				const end = ends[0];
 				client.write(end === undefined ? data : data.subarray(0, end));
@@ -769,9 +786,11 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				forward(slot, data.subarray(position));
 				// A head that has not completed holds its slot back; bytes that cannot be the start of an HTTP request would
 				// hold it back forever (a client of some other protocol waits for the upstream before sending more).
-				if (parsing && slot.entry === null && !slot.raw && slot.hop === null && !mayBeRequestHead(slot.buffered)) {
-					unparsed(new Error("the stream does not start with an HTTP/1.x request line"));
-					slot.raw = true;
+				if (parsing && slot.entry === null && !slot.raw && slot.hop === null) {
+					if (!mayBeRequestHead(slot.buffered)) {
+						unparsed(new Error("the stream does not start with an HTTP/1.x request line"));
+						slot.raw = true;
+					}
 				}
 			}
 			dispatch();

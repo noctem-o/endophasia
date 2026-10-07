@@ -413,9 +413,11 @@ describe("ACP v2 prompt lifecycle: accepted is not completed", () => {
 		// The answer precedes the `running` update on the wire. Both orders of the SDK's rejection callback and the update
 		// callback must give the same outcome, so the verdict is taken from the wire order, not from when prompt() unwinds.
 		for (let round = 0; round < 3; round += 1) {
-			for (const accept of ["malformed-accept", "repairable-accept"]) {
+			for (const accept of ["malformed-accept", "repairable-accept", "bad-envelope-accept"]) {
 				const { client, events } = await attach(`${accept},one-write`);
-				await expect(client.prompt("hi"), accept).rejects.toBeInstanceOf(AcpProtocolErrorV0);
+				// The SDK judges a bad envelope its own way (it need not be a protocol error); the invariant is the attribution.
+				if (accept === "bad-envelope-accept") await expect(client.prompt("hi")).rejects.toThrow();
+				else await expect(client.prompt("hi"), accept).rejects.toBeInstanceOf(AcpProtocolErrorV0);
 				for (let i = 0; i < 300 && client.runOpen; i += 1) await sleep(10);
 				const started = find(events, "lifecycle.run-started");
 				for (const event of started) expect(payload(event).attribution, `${accept} #${round}`).toBe("none");

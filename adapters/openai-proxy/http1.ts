@@ -161,7 +161,11 @@ export class Http1ParserV0 {
 					const interim = status >= 100 && status < 200;
 					const method = interim ? undefined : this.pendingMethods.shift();
 					this.#framing =
-						interim || status === 204 || status === 304 || method === "HEAD"
+						interim ||
+						status === 204 ||
+						status === 304 ||
+						method === "HEAD" ||
+						(method === "CONNECT" && status >= 200 && status < 300)
 							? { kind: "none" }
 							: chunked
 								? { kind: "chunked" }

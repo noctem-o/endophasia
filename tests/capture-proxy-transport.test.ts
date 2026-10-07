@@ -809,4 +809,67 @@ describe("transport closeout: edges of the hop's lifetime", () => {
 		await finish();
 		expect(closes(store)).toEqual([expect.objectContaining({ by: "upstream" })]);
 	});
+
+	it("a successful CONNECT is a tunnel: later bytes go to the same hop", async () => {
+		const received: string[] = [];
+		const port = await plainUpstream((socket) => {
+			let open = false;
+			socket.on("data", (data) => {
+				if (!open) {
+					open = true;
+					socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+				} else {
+					received.push(data.toString("latin1"));
+					socket.write(`T:${data.toString("latin1")}`);
+				}
+			});
+		});
+		const { proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n");
+		await until(() => c.bytes.length > 0, "the 200");
+		c.socket.write("hello-tunnel");
+		await until(() => c.bytes.toString("latin1").endsWith("T:hello-tunnel"), "the tunnel echo");
+		expect(received).toEqual(["hello-tunnel"]);
+		await finish();
+	});
+
+	it("a client whose first bytes are a token that is no HTTP method is relayed as opaque TCP at once", async () => {
+		const reads: string[] = [];
+		const port = await plainUpstream((socket) => {
+			socket.on("data", (data) => {
+				reads.push(data.toString("latin1"));
+				socket.write("PONG");
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write("PING");
+		await until(() => c.bytes.toString("latin1") === "PONG", "an answer to a bare token");
+		expect(reads).toEqual(["PING"]);
+		await proxy.flush();
+		await finish();
+		expect(readEndoCaptureEventsV0(store).filter((event) => event.kind === "capture.unparsed")).toHaveLength(1);
+	});
+
+	it("malformed bytes coalesced after a complete response do not undo it: the response ends there", async () => {
+		const port = await plainUpstream((socket) => {
+			socket.on("data", () => {
+				socket.write(`${response("fine")}\x01\x02 not http \r\n\r\n`);
+			});
+		});
+		const { store, proxy, finish } = await proxyTo(port);
+		const c = client(proxy.port);
+		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
+		c.socket.write(request("/v1/a"));
+		await until(() => c.bytes.length >= Buffer.byteLength(response("fine")), "the response");
+		await sleep(50);
+		expect(c.bytes.toString("latin1")).toBe(response("fine"));
+		expect(c.closed).toBe(false);
+		await proxy.flush();
+		await finish();
+		expect(ended(store).map((entry) => entry.outcome)).toEqual(["complete"]);
+	});
 });

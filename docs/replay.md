@@ -68,6 +68,17 @@ The client's connection to the proxy and the proxy's connection to the upstream 
   written to a connected upstream. Analysis reads these fields, not the error text. The old
   "the upstream had closed the connection before this request arrived" error cannot be produced any more; analysis of
   endo-capture.1 recordings (`research/completion-cap/1.0.1/analyze.ts`) still reads it as the transport retry it was.
+- **Tunnels.** A `101` response, or a 2xx response to `CONNECT`, ends the exchange at the response head and turns the
+  connection into a tunnel on the same hop, both ways, unparsed. Nothing after the head is recorded. A reset on a tunnelled
+  (or otherwise unparsed) hop reaches the client as a reset; an orderly upstream end stays orderly. (For ordinary HTTP
+  exchanges an upstream error still closes the client with `destroy()`, which the client sees as a FIN.)
+- **Streams that are not HTTP.** The proxy decides from the bytes alone, never a clock. The first bytes must be the start of
+  a known method (`GET`, `HEAD`, `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS`, `CONNECT`, `TRACE`); then a token, then a
+  valid request line. A stream that cannot be an HTTP/1.x request is relayed untouched on one hop and recorded as
+  `capture.unparsed`. Unsupported: a non-HTTP client that sends `TOKEN something` with no newline and then waits for the
+  upstream.
+- **Early answers.** An upstream that answers before the request has been uploaded is recorded request first. If it then
+  stops reading while the client is held back, the exchange is ended after `hopDrainMs` (default 5 s) with no progress.
 - **Bytes after a response.** Bytes an upstream sends on a hop after its response is complete belong to no exchange and are
   dropped, not relayed.
 

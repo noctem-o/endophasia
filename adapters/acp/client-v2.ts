@@ -1012,8 +1012,11 @@ export class AcpClientV2 {
 			// prove the message was inserted, so the work it precedes must not be tied to the prompt: decide that here, at the
 			// earliest point the fact is known, and never by amending an already-recorded event.
 			const run = this.#run;
+			// The whole envelope, as the SDK will judge it: a valid result in an invalid envelope is not an acceptance.
 			const accepted =
+				message.jsonrpc === "2.0" &&
 				"result" in message &&
+				!("error" in message) &&
 				isRecord(message.result) &&
 				validateAcpV2DefinitionV0("PromptResponse", message.result);
 			if (run?.prompted && run.promptRequestId === message.id && run.messageId === undefined && !accepted)

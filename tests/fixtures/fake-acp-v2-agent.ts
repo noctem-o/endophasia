@@ -173,7 +173,9 @@ async function runPrompt(id: unknown, params: Record<string, unknown>): Promise<
 	if (flags.has("running-first")) update(sessionId, { sessionUpdate: "state_update", state: "running" });
 	// `malformed-accept` is refused by the SDK's own parser; `repairable-accept` is the kind it silently repairs (an invalid
 	// _meta), which only the raw-wire schema check catches.
-	if (flags.has("repairable-accept")) send({ id, result: { messageId: umid, _meta: 5 } });
+	// `bad-envelope-accept` is a schema-valid result in an invalid JSON-RPC envelope (wrong version).
+	if (flags.has("bad-envelope-accept")) send({ jsonrpc: "1.0", id, result: { messageId: umid } });
+	else if (flags.has("repairable-accept")) send({ id, result: { messageId: umid, _meta: 5 } });
 	else if (flags.has("malformed-accept")) send({ id, result: {} });
 	else if (!flags.has("ack-late") && !flags.has("ack-after-echo")) accept();
 	if (!flags.has("no-echo")) update(sessionId, { sessionUpdate: "user_message", messageId: umid, content: [block] });

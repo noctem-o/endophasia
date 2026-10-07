@@ -409,6 +409,27 @@ describe("ACP v2 prompt lifecycle: accepted is not completed", () => {
 			expect(payload(started).attribution).toBe("none");
 	});
 
+	it("never attributes work to the prompt once its acceptance is known invalid, whatever the scheduling", async () => {
+		// The answer precedes the `running` update on the wire. Both orders of the SDK's rejection callback and the update
+		// callback must give the same outcome, so the verdict is taken from the wire order, not from when prompt() unwinds.
+		for (let round = 0; round < 3; round += 1) {
+			for (const accept of ["malformed-accept", "repairable-accept"]) {
+				const { client, events } = await attach(`${accept},one-write`);
+				await expect(client.prompt("hi"), accept).rejects.toBeInstanceOf(AcpProtocolErrorV0);
+				for (let i = 0; i < 300 && client.runOpen; i += 1) await sleep(10);
+				const started = find(events, "lifecycle.run-started");
+				for (const event of started) expect(payload(event).attribution, `${accept} #${round}`).toBe("none");
+				await client.close();
+			}
+		}
+		const valid = await attach();
+		const accepted = await valid.client.prompt("hi");
+		await accepted.completed;
+		expect(find(valid.events, "lifecycle.run-started").map((e) => payload(e).attribution)).toEqual([
+			"client-prompt-by-order",
+		]);
+	});
+
 	it("bounds the wait for idle without inventing an end, and keeps the run open", async () => {
 		const { client, events } = await attach("no-idle", { promptTimeoutMs: 150 });
 		const accepted = await client.prompt("hi");

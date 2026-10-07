@@ -993,6 +993,19 @@ export class AcpClientV2 {
 	#onResponse(method: string, message: Record<string, unknown>): void {
 		if ("result" in message) this.#rawResults.set(method, structuredClone(message.result));
 		else this.#rawResults.delete(method);
+		if (method === "session/prompt") {
+			// The wire order is the causal order: this answer precedes every later update, but prompt()'s awaited request only
+			// unwinds after the SDK's own parse/rejection callback, by which time a following `running` may already have been
+			// processed. An answer that is not a valid acceptance (an error, or a result the SDK refuses or repairs) does not
+			// prove the message was inserted, so the work it precedes must not be tied to the prompt: decide that here, at the
+			// earliest point the fact is known, and never by amending an already-recorded event.
+			const run = this.#run;
+			const accepted =
+				"result" in message &&
+				isRecord(message.result) &&
+				validateAcpV2DefinitionV0("PromptResponse", message.result);
+			if (run?.prompted && run.sent && run.messageId === undefined && !accepted) run.prompted = false;
+		}
 		if (method === "initialize") {
 			if ("result" in message && isRecord(message.result)) this.#rawInitialize = structuredClone(message.result);
 			return;

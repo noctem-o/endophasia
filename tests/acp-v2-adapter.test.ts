@@ -401,7 +401,12 @@ describe("ACP v2 prompt lifecycle: accepted is not completed", () => {
 		expect(payload(find(malformed.events, "harness.protocol-fault").at(-1))).toMatchObject({
 			fault: "prompt-response-malformed",
 		});
+		// The agent goes on to report running after the malformed answer; that work may be observed, but it is never tied to
+		// the prompt (whether `runOpen` is still true here depends only on how far the agent has got).
+		for (let i = 0; i < 300 && malformed.client.runOpen; i += 1) await sleep(10);
 		expect(malformed.client.runOpen).toBe(false);
+		for (const started of find(malformed.events, "lifecycle.run-started"))
+			expect(payload(started).attribution).toBe("none");
 	});
 
 	it("bounds the wait for idle without inventing an end, and keeps the run open", async () => {
@@ -869,9 +874,12 @@ describe("ACP v2 review round 3", () => {
 	});
 
 	it("still closes the run when the acceptance is malformed and nothing was reported running", async () => {
-		const { client } = await attach("malformed-accept,idle-no-stop");
+		const { client, events } = await attach("malformed-accept,idle-no-stop");
 		await expect(client.prompt("hi")).rejects.toBeInstanceOf(AcpProtocolErrorV0);
+		// What the agent reports afterwards is its own work; the prompt's run is gone either way.
+		await pollFor(() => !client.runOpen);
 		expect(client.runOpen).toBe(false);
+		for (const started of find(events, "lifecycle.run-started")) expect(payload(started).attribution).toBe("none");
 	});
 
 	// ALPHA.7 PIN. Under schema-v2.0.0-alpha.7 + SDK 1.7.0 the string "error" is not a baseline stop reason: it is a

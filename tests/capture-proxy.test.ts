@@ -865,8 +865,9 @@ describe("the cassette server: recorded order, recorded bytes, explicit misses",
 			return served.offsetMs as number;
 		};
 		// As recorded: the server waits until each chunk's recorded offset, so it finishes no earlier than the last
-		// one. Load can only lengthen this, so the bound holds on any runner.
-		expect(await servedAfter("as-recorded")).toBeGreaterThanOrEqual(pacing - 1);
+		// one. Load can only lengthen this; the margin covers timers that fire a little early (CI once measured 1250.4
+		// against a 1251.5 pacing), and is far below the half-pacing bound that separates this from `immediate`.
+		expect(await servedAfter("as-recorded")).toBeGreaterThanOrEqual(pacing - 10);
 		// Immediate: no waits at all. Allowing half the recorded pacing (about 600 ms) leaves room for runner stalls
 		// while still failing if the recorded gaps were honoured.
 		expect(await servedAfter("immediate")).toBeLessThan(pacing / 2);

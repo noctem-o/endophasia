@@ -12,7 +12,7 @@
 // Each prints one JSON document on stdout. M5, M6, the estimate, the spot check and the sensitivity scan are E3's,
 // imported unchanged.
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +20,8 @@ import { materializePiCassetteFixtureV0 } from "../../../cli/cassette-fixture.ts
 import { type PiCassetteKeySourceV0, replayPiCassetteSessionV0 } from "../../../cli/cassette-session.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
@@ -48,8 +48,8 @@ function trials(dir: string): EndoExperimentTrialResultV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 const label = (trial: EndoExperimentTrialResultV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;

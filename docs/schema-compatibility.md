@@ -149,9 +149,10 @@ catalogue.
   tool results), and committed v0 reports exist under `research/variance/1.0.1/`. It has no version reader yet; its
   compatibility is a separate change that should use those real v0 reports as evidence. The writer emits `v1`.
 - Not covered: the rest of the run directory: `journal.jsonl`, `environment/session-<n>.json`, `evidence/`
-  (capability-study summaries) and the per-trial `check.txt`. The cross-file consistency of a run directory (that the
-  plan names tasks and conditions of the embedded spec, that `specSha256` is the digest of the embedded spec) is not
-  checked by the readers either.
+  (capability-study summaries) and the per-trial `check.txt`. What is checked across the governed files: the run
+  record's `specSha256` is the digest of the spec it embeds; the plan's seed and ordering are the run record's and its
+  entries are exactly the spec's (task, condition, trial) cells, each once; a saved result is the result of the plan
+  entry whose directory holds it (coordinates and store). The plan's shuffle itself is not recomputed.
 - Not covered: Pi attachment state files (`adapters/pi/attachment.ts`), the capture-log layout, and research artifacts
   that scripts read (`research/**`); the study data they read is read through the covered readers above.
 - This is a discipline for the covered families, not a claim about every `schemaVersion` string, arbitrary future

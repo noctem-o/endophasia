@@ -15,8 +15,8 @@ import { type PiCassetteKeySourceV0, piCassetteKeyV0 } from "../../../cli/casset
 import { reportEndoExperimentV0 } from "../../../cli/experiment.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
@@ -132,9 +132,8 @@ function completedTrials(dir: string): EndoExperimentTrialResultV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		if (!existsSync(file)) return [];
-		const result = readEndoExperimentTrialResultFileV0(file);
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		if (result === null) return [];
 		return result.status === "completed" && result.session !== null ? [result] : [];
 	});
 }

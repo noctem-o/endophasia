@@ -10,7 +10,7 @@
 // `--repo` and `--home` name the protected roots of the leakage check (default: the current directory and the operator's
 // home); they are used for matching and never written to the output. Each command prints one JSON document on stdout.
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +18,8 @@ import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-
 import { reportEndoExperimentV0 } from "../../../cli/experiment.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
@@ -99,8 +99,8 @@ export function classOf(result: EndoExperimentTrialResultV0, leakageReasons: str
 function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runEndoExperimentV0 } from "../cli/experiment.ts";
-import { readEndoExperimentSpecFileV0 } from "../cli/experiment-artifacts.ts";
+import { readEndoExperimentPlanFileV0, readEndoExperimentSpecFileV0 } from "../cli/experiment-artifacts.ts";
 import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
 import { PINNED } from "../research/pinned-environment/1.0.1/make-spec.ts";
 import {
@@ -178,10 +178,15 @@ describe("the analysis on a fake-Pi experiment", () => {
 		rmSync(toDir!, { recursive: true, force: true });
 		cpSync(fromDir!, toDir!, { recursive: true });
 		const result = JSON.parse(readFileSync(join(toDir!, "result.json"), "utf8"));
+		// A fabricated result must still be the plan entry's: its own position as well as its coordinates.
+		const position = readEndoExperimentPlanFileV0(root).plan.order.find(
+			(entry) => entry.task === "tool-use" && entry.condition === to[0] && entry.trial === to[1],
+		)!.position;
 		writeFileSync(
 			join(toDir!, "result.json"),
 			JSON.stringify({
 				...result,
+				position,
 				condition: to[0],
 				trial: to[1],
 				store: `trials/tool-use/${to[0]}/${to[1]}/store`,

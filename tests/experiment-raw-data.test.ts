@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../cli/experiment-artifacts.ts";
 import { rawDataAvailable, rawDirectory } from "../research/data.ts";
 
@@ -37,14 +37,8 @@ describe.each(STUDIES)("the raw run directories of %s", (study) => {
 				// Every recorded run predates the versioned plan.
 				expect(form).toBe("legacy-unversioned");
 				for (const entry of plan.order) {
-					const path = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-					if (!existsSync(path)) continue;
-					const result = readEndoExperimentTrialResultFileV0(path);
-					expect([result.task, result.condition, result.trial]).toEqual([
-						entry.task,
-						entry.condition,
-						entry.trial,
-					]);
+					// Bound to its plan entry: coordinates and store.
+					if (readEndoExperimentPlannedTrialV0(dir, entry) === null) continue;
 					trials += 1;
 				}
 			}

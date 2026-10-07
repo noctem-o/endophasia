@@ -13,7 +13,7 @@
 //
 // Each prints one JSON document on stdout.
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,8 +21,8 @@ import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-
 import { replayPiCassetteSessionV0 } from "../../../cli/cassette-session.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
@@ -40,8 +40,8 @@ function trials(dir: string): EndoExperimentTrialResultV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 

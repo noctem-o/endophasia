@@ -104,6 +104,10 @@ shape is refused, naming the file. Nothing is migrated, defaulted or rewritten o
 - `experiment.json` embeds the spec and the `endo.experiment.v0` record. **The run record names which versions it
   embeds** (exactly `endo.experiment-spec.v0` and `endo.experiment.v0`): a later spec version is not valid inside a
   v0 run record merely because the spec family learned it.
+- The files are checked against each other where the runner guarantees it: `specSha256` is the digest of the embedded
+  spec; the plan's seed and ordering are the run record's and its entries are exactly the spec's (task, condition,
+  trial) cells; a result is that of the plan entry whose directory holds it; a trial's `status` is `completed` exactly
+  when its `error` is `null`; a check's `passed` is exit code 0 without a timeout.
 - A task or condition id in `plan.json` or `result.json` is a slug and a trial's `store` is a relative path inside the
   run directory, because the runner builds paths from them.
 - The spec's maps (workspace files, model entry, settings, extensions, a pinned environment's variables and files,

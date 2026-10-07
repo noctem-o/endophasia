@@ -645,6 +645,70 @@ describe("the run directory's source-of-truth files are read through their versi
 			"invalid",
 		],
 		[
+			"experiment.json: a spec that is not the one its digest names",
+			() => file("experiment.json"),
+			(v) => {
+				v.spec.description = "another experiment";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a seed that is not the run's",
+			() => file("plan.json"),
+			(v) => {
+				v.seed += 1;
+			},
+			"invalid",
+		],
+		[
+			"plan.json: an ordering that is not the run's",
+			() => file("plan.json"),
+			(v) => {
+				v.ordering = "another ordering";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a trial of a task the spec does not have",
+			() => file("plan.json"),
+			(v) => {
+				v.order[0].task = "ghost";
+			},
+			"invalid",
+		],
+		[
+			"plan.json: a spec trial it leaves out",
+			() => file("plan.json"),
+			(v) => {
+				v.order.pop();
+			},
+			"invalid",
+		],
+		[
+			"result.json: another trial's coordinates",
+			firstResult,
+			(v) => {
+				v.position = 99;
+			},
+			"invalid",
+		],
+		[
+			"result.json: another trial's store",
+			firstResult,
+			(v) => {
+				v.store = "trials/read/a/9/store";
+			},
+			"invalid",
+		],
+		[
+			"result.json: a check verdict its exit code contradicts",
+			firstResult,
+			(v) => {
+				v.check.passed = !v.check.passed;
+			},
+			"invalid",
+		],
+		[
 			"result.json: an unknown field",
 			firstResult,
 			(v) => {

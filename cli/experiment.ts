@@ -98,9 +98,9 @@ import {
 } from "./cassette-session.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
 	readEndoExperimentSpecFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "./experiment-artifacts.ts";
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
@@ -344,10 +344,7 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	// Every saved result is read before anything costs money: one the reader refuses stops the resume here, not after
 	// the remaining trials have run.
-	for (const entry of plan) {
-		const saved = join(trialDirectory(dir, entry), "result.json");
-		if (existsSync(saved)) readEndoExperimentTrialResultFileV0(saved);
-	}
+	for (const entry of plan) readEndoExperimentPlannedTrialV0(dir, entry);
 	const keySource = keySourceOf(spec);
 	const key = piCassetteKeyV0(keySource);
 	// The scratch parent is ours: marked, and a leftover scratch root from an interrupted session is removed.
@@ -423,9 +420,9 @@ export async function runEndoExperimentV0(options: EndoExperimentRunOptionsV0): 
 		if (!existsSync(join(dir, "trials"))) rmSync(parent, { recursive: true, force: true });
 	}
 	for (const entry of plan) {
-		const resultPath = join(trialDirectory(dir, entry), "result.json");
-		if (!existsSync(resultPath)) summary.remaining += 1;
-		else if (readEndoExperimentTrialResultFileV0(resultPath).status === "completed") summary.completed += 1;
+		const saved = readEndoExperimentPlannedTrialV0(dir, entry);
+		if (saved === null) summary.remaining += 1;
+		else if (saved.status === "completed") summary.completed += 1;
 		else summary.errored += 1;
 	}
 	journal(dir, { event: "run-session-ended", session: sessionNumber, ...summary });
@@ -707,8 +704,8 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 	const run = readEndoExperimentRunRecordFileV0(dir);
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	const results = plan.flatMap((entry) => {
-		const path = join(trialDirectory(dir, entry), "result.json");
-		return existsSync(path) ? [readEndoExperimentTrialResultFileV0(path)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 	const environments = existsSync(join(dir, "environment"))
 		? readdirSync(join(dir, "environment"))

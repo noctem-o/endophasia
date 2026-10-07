@@ -11,15 +11,15 @@
 // used for matching and never written to the output.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoCaptureEventsV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { piCassetteKeyV0 } from "../../../cli/cassette-session.ts";
 import {
 	readEndoExperimentPlanFileV0,
+	readEndoExperimentPlannedTrialV0,
 	readEndoExperimentRunRecordFileV0,
-	readEndoExperimentTrialResultFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
@@ -130,8 +130,8 @@ export function classOf(
 function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
-		const file = join(dir, "trials", entry.task, entry.condition, String(entry.trial), "result.json");
-		return existsSync(file) ? [readEndoExperimentTrialResultFileV0(file)] : [];
+		const result = readEndoExperimentPlannedTrialV0(dir, entry);
+		return result === null ? [] : [result];
 	});
 }
 

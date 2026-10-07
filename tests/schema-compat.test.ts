@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { createEndoEvidenceLedgerV0, ENDO_EVIDENCE_RECORD_VERSIONS_V0 } from "../evolution/evidence.ts";
 import {
 	ENDO_EVALUATION_PROFILE_VERSIONS_V0,
@@ -621,6 +622,35 @@ describe("the experiment runner's artifacts", () => {
 			expect(kind(readEndoExperimentTrialResultV0({ ...trial, requestParameters })), `case ${index}`).toBe(
 				"invalid",
 			);
+	});
+
+	it("the host reader refuses a run record whose digest is not that of its embedded spec", () => {
+		const dir = mkdtempSync(join(tmpdir(), "endo-run-digest-"));
+		try {
+			const run = json("endo.experiment-run.v0", "full.json");
+			const write = (value: unknown) => writeFileSync(join(dir, "experiment.json"), JSON.stringify(value));
+			write(run);
+			expect(readEndoExperimentRunRecordFileV0(dir).specSha256).toBe(run.specSha256);
+			write({ ...run, spec: { ...run.spec, description: "another experiment" } });
+			expect(() => readEndoExperimentRunRecordFileV0(dir)).toThrow(/not the digest of the embedded spec/);
+			write({ ...run, specSha256: "0".repeat(64) });
+			expect(() => readEndoExperimentRunRecordFileV0(dir)).toThrow(EndoSchemaVersionErrorV0);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses a success check whose verdict is not its exit code and timeout", () => {
+		const trial = json("endo.experiment-trial.v0", "full.json");
+		const check = (change: object) =>
+			kind(readEndoExperimentTrialResultV0({ ...trial, check: { ...trial.check, ...change } }));
+		expect(check({})).toBe("ok");
+		expect(check({ exitCode: 1, passed: false })).toBe("ok");
+		expect(check({ exitCode: null, passed: false, timedOut: true })).toBe("ok");
+		expect(check({ exitCode: 1, passed: true })).toBe("invalid");
+		expect(check({ passed: false })).toBe("invalid");
+		expect(check({ timedOut: true, passed: true })).toBe("invalid");
+		expect(check({ exitCode: null, passed: true })).toBe("invalid");
 	});
 
 	it("refuses a trial whose status contradicts its error: completed holds exactly when there is no error", () => {

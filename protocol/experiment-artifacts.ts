@@ -360,6 +360,9 @@ function checkProblem(value: unknown): Problem {
 		return "check.exitCode must be an integer or null";
 	if (typeof value.passed !== "boolean" || typeof value.timedOut !== "boolean")
 		return "check.passed and check.timedOut must be booleans";
+	// The runner writes `passed` as exactly: exit code 0 and no timeout. The report counts it as written.
+	if (value.passed !== (value.exitCode === 0 && !value.timedOut))
+		return "check.passed must be exit code 0 without a timeout";
 	return digestProblem(value.output, "check.output");
 }
 

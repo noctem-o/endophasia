@@ -20,6 +20,7 @@
 	"scripts": {
 		"build": "node scripts/build-cli.mjs",
 		"test:package": "node scripts/package-smoke.mjs",
+		"test:acceptance": "node scripts/package-smoke.mjs --real-pi",
 		"test": "vitest --run",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "biome check .",

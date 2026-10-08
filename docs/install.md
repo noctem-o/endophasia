@@ -114,8 +114,10 @@ installed tarball against a prepared **fake** Pi (a test fixture speaking Pi's d
 proves nothing about a Pi release) and a local fake OpenAI-compatible endpoint: no credentials, no provider. Only Pi on
 the platform CI exercises is verified; no general runtime support is claimed.
 
-## Not yet (pending tranches)
+## Not yet (pending)
 
-4. Clean-install acceptance with a pinned Pi and a local fake model endpoint, then a versioned prerelease.
+A versioned prerelease: see [release-alpha.md](release-alpha.md) for what is verified, what is not claimed and the owner's
+checklist. The real-Pi acceptance (`npm run test:acceptance`, CI job `acceptance`) installs the pinned Pi separately and
+runs the loop from the installed tarball against a fake model endpoint.
 
 No platform other than the CI image (Ubuntu, Node 22) has been exercised for the packaged CLI.

@@ -165,6 +165,23 @@ const isCount = (value: unknown): value is number =>
 const CAPTURE_HEAD_MAX = 256 * 1024;
 const isText = (value: unknown, max = 4096): value is string =>
 	typeof value === "string" && value.length > 0 && value.length <= max;
+/** A digest key id (protocol/ imports nothing outside protocol/; a test pins this to runtime/contracts/keyed-digest.ts). */
+export const ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0 = /^(?:endo\.digest-key\.[0-9a-f]{32}|[a-z][a-z0-9-]{0,62})$/;
+
+/** The byte length of a strict-JSON value with object keys sorted (the size the deriver measured; sizes only). */
+function sortedJsonBytes(value: unknown): number {
+	const sorted = (v: unknown): unknown =>
+		Array.isArray(v)
+			? v.map(sorted)
+			: isObject(v)
+				? Object.fromEntries(
+						Object.keys(v)
+							.sort()
+							.map((k) => [k, sorted(v[k])]),
+					)
+				: v;
+	return new TextEncoder().encode(JSON.stringify(sorted(value))).length;
+}
 const isObject = (value: unknown): value is Record<string, unknown> => isPlainJsonObjectV0(value);
 
 function closed(value: unknown, allowed: readonly string[], what: string): Problem {
@@ -264,6 +281,8 @@ function componentsProblem(value: unknown): Problem {
 		const f = field as Record<string, unknown>;
 		if (!isHex(f.digest)) return "a parameter digest must be 64 lowercase hex digits";
 		if ("value" in f && !isStrictJson(f.value)) return "a parameter value must be strict JSON";
+		if ("value" in f && sortedJsonBytes(f.value) > ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0)
+			return "a parameter value over the size limit is recorded by its digest only";
 	}
 	const defaults = closed(c.serverDefaults, ["status", "reason"], "components.serverDefaults");
 	if (defaults !== null) return defaults;
@@ -302,7 +321,8 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	const key = closed(v.digestKey, ["algorithm", "keyId"], "digestKey");
 	if (key !== null) return key;
 	const k = v.digestKey as Record<string, unknown>;
-	if (k.algorithm !== "hmac-sha256" || !isText(k.keyId, 128)) return "digestKey must name hmac-sha256 and a key id";
+	if (k.algorithm !== "hmac-sha256" || !isText(k.keyId, 128) || !ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0.test(k.keyId))
+		return "digestKey must name hmac-sha256 and a key id";
 	const dialect = observedProblem(v.dialect, "dialect", (d) => d === ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0);
 	if (dialect !== null) return dialect;
 	const d = v.dialect as { status: string };
@@ -359,6 +379,12 @@ export type EndoHarnessSurfaceComparisonV0 =
 			parameterNames: string[];
 	  };
 
+/** Two observations are the same by their members, not by the order a serializer wrote them in. */
+const sameObservation = (
+	a: { status: string; value?: unknown; reason?: string },
+	b: { status: string; value?: unknown; reason?: string },
+): boolean => a.status === b.status && a.value === b.value && a.reason === b.reason;
+
 /**
  * Compare two surfaces. Digests under different keys are in different domains, so nothing follows from them:
  * the answer is "not comparable", never "different". An unrecognized surface (no components) is not comparable either.
@@ -380,8 +406,8 @@ export function compareEndoHarnessSurfacesV0(
 	if (a.dialect.status === "reported" && b.dialect.status === "reported" && a.dialect.value !== b.dialect.value)
 		differs.push("dialect");
 	if (a.source.path !== b.source.path) differs.push("target");
-	if (JSON.stringify(x.model) !== JSON.stringify(y.model)) differs.push("model");
-	if (JSON.stringify(x.streaming) !== JSON.stringify(y.streaming)) differs.push("streaming");
+	if (!sameObservation(x.model, y.model)) differs.push("model");
+	if (!sameObservation(x.streaming, y.streaming)) differs.push("streaming");
 	if (x.instructions.orderedDigest !== y.instructions.orderedDigest) differs.push("instructions");
 	if (x.tools.present !== y.tools.present || x.tools.membershipDigest !== y.tools.membershipDigest)
 		differs.push("tool-definitions");

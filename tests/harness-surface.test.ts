@@ -28,6 +28,7 @@ import {
 } from "../protocol/experiment-artifacts.ts";
 import {
 	compareEndoHarnessSurfacesV0,
+	ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0,
 	ENDO_HARNESS_SURFACE_VERSIONS_V0,
 	type EndoHarnessSurfaceComponentsV0,
 	type EndoHarnessSurfaceV0,
@@ -35,6 +36,7 @@ import {
 } from "../protocol/harness-surface.ts";
 import { readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../runtime/contracts/keyed-digest.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
 
 const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
@@ -682,5 +684,47 @@ describe("review findings", () => {
 			{ ...surface.source, path: "/v1/embeddings" },
 		])
 			expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, { ...surface, source }).ok).toBe(false);
+	});
+
+	it("contributions are summarized over every v1 trial, including those with no recognized request", () => {
+		const none = trialOf(["not json"], 1);
+		const other = {
+			...none,
+			harness: {
+				...none.harness,
+				contributions: {
+					...none.harness.contributions,
+					configuredModel: { status: "reported", value: "p/other", source: "spec" },
+				},
+			},
+		} as EndoExperimentTrialResultV1;
+		const mixed = summarizeEndoCellHarnessSurfacesV0([trialOf([chat()], 0), other]) as {
+			contributions: { configuredModel: { distinct: number } };
+		};
+		expect(mixed.contributions.configuredModel.distinct).toBe(2);
+		const all = summarizeEndoCellHarnessSurfacesV0([other]) as { status: string; contributions?: unknown };
+		expect(all.status).toBe("UNAVAILABLE");
+		expect(all.contributions).toBeDefined();
+	});
+
+	it("model and streaming compare by member, not by serialized key order", () => {
+		const a = surfaceOf(chat());
+		const flipped = JSON.parse(JSON.stringify(a));
+		flipped.components.value.model = { value: "model-a", status: "reported" };
+		flipped.components.value.streaming = { value: true, status: "reported" };
+		expect(compareEndoHarnessSurfacesV0(a, flipped)).toMatchObject({ comparable: true, same: true, differs: [] });
+	});
+
+	it("a persisted parameter value over the size limit, or a malformed key id, is refused", () => {
+		const surface = JSON.parse(JSON.stringify(surfaceOf(chat())));
+		surface.components.value.parameters.fields.big = { digest: "a".repeat(64), value: "x".repeat(2000) };
+		expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(false);
+		const keyed = JSON.parse(JSON.stringify(surfaceOf(chat())));
+		keyed.digestKey.keyId = "bad\u0000id";
+		expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, keyed).ok).toBe(false);
+	});
+
+	it("the protocol-side key id pattern is the keyed-digest contract's", () => {
+		expect(ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0.source).toBe(ENDO_DIGEST_KEY_ID_PATTERN_V0.source);
 	});
 });

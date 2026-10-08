@@ -75,6 +75,21 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 	// A trial with no recognized request has no surface to compare: it is counted, never matched or mismatched.
 	const withSurface = v1.filter((result) => identitiesOf(result.harness).length > 0);
 	const noRecognized = v1.length - withSurface.length;
+	// Contributions are independent of the wire: every v1 trial reports them, recognized request or not.
+	const contribution = (pick: (c: EndoExperimentTrialHarnessV0["contributions"]) => EndoExperimentContributionV0) => {
+		const values = sortedUnique(
+			v1.map((result) => {
+				const c = pick(result.harness.contributions);
+				return c.status === "reported" ? c.value : "UNAVAILABLE";
+			}),
+		);
+		return { distinct: values.length, values };
+	};
+	const contributions = () => ({
+		workingDirectory: contribution((c) => c.workingDirectory),
+		invocationMode: contribution((c) => c.invocationMode),
+		configuredModel: contribution((c) => c.configuredModel),
+	});
 	if (withSurface.length === 0)
 		return JSON.parse(
 			JSON.stringify({
@@ -86,6 +101,7 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 							? "every trial of this cell predates the harness surface (endo.experiment-trial.v0)"
 							: "no trial of this cell showed a recognized chat-completions request",
 				trials: { withSurface: 0, predatingSurface: predating, noRecognizedSurface: noRecognized },
+				...(v1.length > 0 ? { contributions: contributions() } : {}),
 			}),
 		);
 
@@ -167,16 +183,6 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 					};
 				})
 		: [];
-
-	const contribution = (pick: (c: EndoExperimentTrialHarnessV0["contributions"]) => EndoExperimentContributionV0) => {
-		const values = sortedUnique(
-			withSurface.map((result) => {
-				const c = pick(result.harness.contributions);
-				return c.status === "reported" ? c.value : "UNAVAILABLE";
-			}),
-		);
-		return { distinct: values.length, values };
-	};
 
 	return JSON.parse(
 		JSON.stringify({

@@ -17,6 +17,7 @@ import { endoRequestDigestV0 } from "../adapters/openai-proxy/http.ts";
 import { surfaceLine } from "../cli/experiment.ts";
 import {
 	buildEndoTrialHarnessV0,
+	requestParameterObservationsOfTrialV0,
 	requestParametersOfTrialV0,
 	samplingOfParameters,
 	summarizeEndoCellHarnessSurfacesV0,
@@ -763,15 +764,42 @@ describe("review findings", () => {
 		expect(surfaceLine("t", "c", s).split("\n")).toHaveLength(1);
 	});
 
-	it("an unrecognized request's sampling parameters are unknown, never 'none sent'", () => {
+	it("an unrecognized request's sampling parameters are unknown; a legal `unparsed` parameter is not that marker", () => {
 		const keys = ["temperature"];
-		expect(samplingOfParameters([{ unparsed: true }, { model: "m" }], keys)).toEqual({
-			samplingUnknown: true,
-			samplingSent: [{}],
+		expect(
+			samplingOfParameters(
+				[
+					{ parameters: { unparsed: true }, recognized: false },
+					{ parameters: { model: "m" }, recognized: true },
+				],
+				keys,
+			),
+		).toEqual({ samplingUnknown: true, samplingSent: [{}] });
+		const legal = trialOf(['{"messages":[],"unparsed":true}'], 0);
+		const observed = requestParameterObservationsOfTrialV0(legal);
+		expect(observed).toEqual([{ parameters: { unparsed: true }, recognized: true }]);
+		expect(samplingOfParameters(observed, keys)).toEqual({ samplingUnknown: false, samplingSent: [{}] });
+		expect(requestParameterObservationsOfTrialV0(trialOf(["not json"], 1))[0]!.recognized).toBe(false);
+	});
+
+	it("each contribution has its declared source, and a repeated exchange is refused", () => {
+		const trial = trialOf([chat()], 0);
+		const swap = (name: string, source: string) => ({
+			...trial,
+			harness: {
+				...trial.harness,
+				contributions: {
+					...trial.harness.contributions,
+					[name]: { ...(trial.harness.contributions as Record<string, object>)[name], source },
+				},
+			},
 		});
-		expect(samplingOfParameters([{ temperature: 0.2 }], keys)).toEqual({
-			samplingUnknown: false,
-			samplingSent: [{ temperature: 0.2 }],
-		});
+		expect(readEndoExperimentTrialResultV0(swap("workingDirectory", "spec")).ok).toBe(false);
+		expect(readEndoExperimentTrialResultV0(swap("configuredModel", "runner")).ok).toBe(false);
+		const dup = {
+			...trial,
+			harness: { ...trial.harness, requests: [...trial.harness.requests, ...trial.harness.requests] },
+		};
+		expect(readEndoExperimentTrialResultV0(dup).ok).toBe(false);
 	});
 });

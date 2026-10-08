@@ -105,6 +105,7 @@ import {
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
 import {
 	buildEndoTrialHarnessV0,
+	requestParameterObservationsOfTrialV0,
 	requestParametersOfTrialV0,
 	samplingOfParameters,
 	summarizeEndoCellHarnessSurfacesV0,
@@ -855,7 +856,10 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 					),
 				),
 			].sort();
-			const { samplingUnknown, samplingSent } = samplingOfParameters(parameters, SAMPLING_KEYS);
+			const { samplingUnknown, samplingSent } = samplingOfParameters(
+				completed.flatMap(requestParameterObservationsOfTrialV0),
+				SAMPLING_KEYS,
+			);
 			// The profile and bundle records (protocol/evaluation.ts) through the lab's trial discipline (lab/trials.ts).
 			const profile = {
 				schemaVersion: "endo.evaluation-profile.v1",

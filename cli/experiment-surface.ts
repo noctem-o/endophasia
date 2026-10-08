@@ -227,6 +227,30 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 	);
 }
 
+/** One request's parameters and whether the request was recognized, carried out of band from the parameter JSON. */
+export interface EndoRequestParameterObservationV0 {
+	parameters: JsonValueV0;
+	recognized: boolean;
+}
+
+/**
+ * Per request: its parameters and whether it was recognized. For a v1 trial recognition is the surface's own status.
+ * For a v0 trial (recorded before the surface) the only mark is its legacy `{unparsed: true}` entry.
+ */
+export function requestParameterObservationsOfTrialV0(
+	result: EndoExperimentTrialResultAnyV0,
+): EndoRequestParameterObservationV0[] {
+	if (result.schemaVersion === "endo.experiment-trial.v0")
+		return result.requestParameters.map((parameters) => ({ parameters, recognized: !isUnparsed(parameters) }));
+	return result.harness.requests.map((request) => {
+		const surface = result.harness.surfaces[request.surface]!;
+		return {
+			parameters: requestParametersOfEndoHarnessSurfaceV0(surface),
+			recognized: surface.components.status === "reported",
+		};
+	});
+}
+
 const isUnparsed = (entry: JsonValueV0): boolean =>
 	typeof entry === "object" &&
 	entry !== null &&
@@ -239,19 +263,19 @@ const isUnparsed = (entry: JsonValueV0): boolean =>
  * unknown parameters, not none: `samplingUnknown` says so, and the others are projected as they were sent.
  */
 export function samplingOfParameters(
-	parameters: readonly JsonValueV0[],
+	observations: readonly EndoRequestParameterObservationV0[],
 	samplingKeys: readonly string[],
 ): { samplingUnknown: boolean; samplingSent: JsonValueV0[] } {
 	const seen = new Map<string, JsonValueV0>();
-	for (const entry of parameters) {
-		if (isUnparsed(entry)) continue;
+	for (const { parameters, recognized } of observations) {
+		if (!recognized) continue;
 		const picked = Object.fromEntries(
-			Object.entries(entry as Record<string, JsonValueV0>).filter(([field]) => samplingKeys.includes(field)),
+			Object.entries(parameters as Record<string, JsonValueV0>).filter(([field]) => samplingKeys.includes(field)),
 		);
 		seen.set(canonicalEndoJsonV0(picked), picked);
 	}
 	return {
-		samplingUnknown: parameters.some(isUnparsed),
+		samplingUnknown: observations.some((observation) => !observation.recognized),
 		samplingSent: [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v),
 	};
 }

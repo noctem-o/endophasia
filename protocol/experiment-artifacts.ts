@@ -500,14 +500,17 @@ function trialV0Problem(value: unknown): Problem {
 
 const CONTRIBUTION_NAMES = ["workingDirectory", "invocationMode", "configuredModel"] as const;
 
-function contributionProblem(value: unknown, what: string): Problem {
+/** Where each contribution comes from: two the runner observed, one it read from the spec. */
+const CONTRIBUTION_SOURCES = { workingDirectory: "runner", invocationMode: "runner", configuredModel: "spec" } as const;
+
+function contributionProblem(value: unknown, what: string, source: "runner" | "spec"): Problem {
 	if (!isObject(value)) return `${what} is not a JSON object`;
 	if (value.status === "reported") {
 		const shape = closed(value, ["status", "value", "source"], what);
 		if (shape !== null) return shape;
-		return isText(value.value, 4096) && (value.source === "runner" || value.source === "spec")
+		return isText(value.value, 4096) && value.source === source
 			? null
-			: `${what}: a reported contribution has a value and source runner or spec`;
+			: `${what}: a reported contribution has a value and source ${source}`;
 	}
 	if (value.status === "UNAVAILABLE") {
 		const shape = closed(value, ["status", "reason"], what);
@@ -542,6 +545,9 @@ function harnessProblem(value: unknown): Problem {
 		if (!isCount(r.surface) || r.surface >= h.surfaces.length)
 			return `harness.requests[${index}].surface does not name a listed surface`;
 	}
+	// One captured request per exchange: a repeated entry would count one request twice.
+	if (new Set((h.requests as { exchange: number }[]).map((request) => request.exchange)).size !== h.requests.length)
+		return "harness.requests names an exchange more than once";
 	const referenced = new Set((h.requests as { surface: number }[]).map((request) => request.surface));
 	for (const [index, surface] of (h.surfaces as EndoHarnessSurfaceV0[]).entries()) {
 		if (!referenced.has(index)) return `harness.surfaces[${index}] is not referenced by any request`;
@@ -558,7 +564,11 @@ function harnessProblem(value: unknown): Problem {
 	const contributions = closed(c, CONTRIBUTION_NAMES, "harness.contributions");
 	if (contributions !== null) return contributions;
 	for (const name of CONTRIBUTION_NAMES) {
-		const problem = contributionProblem((c as Record<string, unknown>)[name], `harness.contributions.${name}`);
+		const problem = contributionProblem(
+			(c as Record<string, unknown>)[name],
+			`harness.contributions.${name}`,
+			CONTRIBUTION_SOURCES[name],
+		);
 		if (problem !== null) return problem;
 	}
 	return null;

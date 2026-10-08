@@ -116,31 +116,11 @@
 								}
 							}
 						},
-						"headers": {
-							"status": "reported",
-							"value": {
-								"items": [
-									{
-										"name": "authorization",
-										"digest": null
-									},
-									{
-										"name": "content-type",
-										"digest": "cd8870e92bd720ff83b6c4f213e912c713cee8d527c4779ef8eb72a46f000db1"
-									},
-									{
-										"name": "openai-beta",
-										"digest": "86865ab8e1be921ee4087f07d46d6455ff72b9169076a3381c2254b709859e6c"
-									}
-								],
-								"digest": "d99b5a0d5bd2ac90455f1a659a2b9af00eb45602867ff86a4c20ccbfdc2991eb"
-							}
-						},
 						"serverDefaults": {
 							"status": "UNAVAILABLE",
 							"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
 						},
-						"identity": "549006c183c3b78a9337dd9d4b2ca233cc4661020bba90afb3e9f7cdba7fe83b"
+						"identity": "ce94f641f7d345048df36047fb56ba34cecccf3810f1fc6d49f1ca5ace329d0b"
 					}
 				}
 			},
@@ -251,31 +231,11 @@
 								}
 							}
 						},
-						"headers": {
-							"status": "reported",
-							"value": {
-								"items": [
-									{
-										"name": "authorization",
-										"digest": null
-									},
-									{
-										"name": "content-type",
-										"digest": "cd8870e92bd720ff83b6c4f213e912c713cee8d527c4779ef8eb72a46f000db1"
-									},
-									{
-										"name": "openai-beta",
-										"digest": "86865ab8e1be921ee4087f07d46d6455ff72b9169076a3381c2254b709859e6c"
-									}
-								],
-								"digest": "d99b5a0d5bd2ac90455f1a659a2b9af00eb45602867ff86a4c20ccbfdc2991eb"
-							}
-						},
 						"serverDefaults": {
 							"status": "UNAVAILABLE",
 							"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
 						},
-						"identity": "b2b453c06008611b56790d8162576ff7f094ea3f13236b4f29e68055cd40d0d4"
+						"identity": "e9b3a03c2a234e5ca0832b7af06b66419558d9e7568bad596fb8bd50fb5aa89c"
 					}
 				}
 			}

@@ -849,14 +849,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			const walls = trajectories.map(wallTotal).flatMap((value) => (value === null ? [] : [value]));
 			const workspaces = completed.map((result) => result.finalWorkspace?.value ?? "none");
 			const parameters = distinct(completed.flatMap(requestParametersOfTrialV0));
-			const samplingFieldsSent = [
-				...new Set(
-					parameters.flatMap((entry) =>
-						Object.keys(entry as object).filter((field) => SAMPLING_KEYS.includes(field)),
-					),
-				),
-			].sort();
-			const { samplingUnknown, samplingSent } = samplingOfParameters(
+			const { samplingUnknown, samplingSent, samplingFields } = samplingOfParameters(
 				completed.flatMap(requestParameterObservationsOfTrialV0),
 				SAMPLING_KEYS,
 			);
@@ -945,7 +938,15 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				servingInputs: {
 					requestParametersSeen: parameters,
 					samplingFieldsChecked: [...SAMPLING_KEYS],
-					samplingFieldsSent,
+					// Fields seen in recognized requests; UNAVAILABLE (not an empty list) once any request was unrecognized.
+					samplingFieldsSent: samplingUnknown
+						? {
+								status: "UNAVAILABLE",
+								reason:
+									"a request was not a recognized chat-completions request, so what sampling fields it carried is unknown",
+								seenInRecognizedRequests: samplingFields,
+							}
+						: samplingFields,
 					samplingParametersSent: samplingUnknown
 						? {
 								status: "UNAVAILABLE",
@@ -1056,7 +1057,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | :--- | ---: |",
 		...lines,
 		"",
-		"Effective harness surface per cell (system/developer instruction and tool-definition digests, request parameters; a cell expects one):",
+		"Effective harness surface per cell (a cell expects one). Equality here covers only the observed coordinates (target, model, streaming, instruction and tool-definition digests, request parameters); it is not a claim of server-side equivalence:",
 		"",
 		...surfaceLines,
 		"",

@@ -13,15 +13,13 @@ import type {
 	EndoExperimentTrialHarnessV0,
 	EndoExperimentTrialResultAnyV0,
 } from "../protocol/experiment-artifacts.ts";
-import { compareEndoHarnessSurfacesV0, type EndoHarnessSurfaceV0 } from "../protocol/harness-surface.ts";
+import {
+	compareEndoHarnessSurfacesV0,
+	type EndoHarnessSurfaceV0,
+	endoHarnessSurfaceDistinctKeyV0,
+} from "../protocol/harness-surface.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
-
-/** The identity a recognized surface is deduplicated by; an unrecognized one is never merged with another. */
-const dedupeKey = (surface: EndoHarnessSurfaceV0): string =>
-	surface.components.status === "reported"
-		? `${surface.digestKey.keyId}\u0000${surface.components.value.identity}`
-		: `unrecognized\u0000${surface.source.eventId}`;
 
 /** A trial's `harness` from the surfaces of its requests (capture order) and the contributions the runner knows. */
 export function buildEndoTrialHarnessV0(
@@ -32,7 +30,7 @@ export function buildEndoTrialHarnessV0(
 	const index = new Map<string, number>();
 	const requests: EndoExperimentTrialHarnessV0["requests"] = [];
 	for (const surface of surfaces) {
-		const key = dedupeKey(surface);
+		const key = endoHarnessSurfaceDistinctKeyV0(surface);
 		let at = index.get(key);
 		if (at === undefined) {
 			at = distinct.length;
@@ -58,9 +56,7 @@ const sortedUnique = (values: Iterable<string>): string[] => [...new Set(values)
 function identitiesOf(harness: EndoExperimentTrialHarnessV0): string[] {
 	return sortedUnique(
 		harness.surfaces.flatMap((surface) =>
-			surface.components.status === "reported"
-				? [`${surface.digestKey.keyId}\u0000${surface.components.value.identity}`]
-				: [],
+			surface.components.status === "reported" ? [endoHarnessSurfaceDistinctKeyV0(surface)] : [],
 		),
 	);
 }
@@ -124,7 +120,7 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 		for (const request of result.harness.requests) {
 			const surface = result.harness.surfaces[request.surface]!;
 			if (surface.components.status !== "reported") continue;
-			const id = `${surface.digestKey.keyId}\u0000${surface.components.value.identity}`;
+			const id = endoHarnessSurfaceDistinctKeyV0(surface);
 			const entry = byIdentity.get(id) ?? { surface, requests: 0, trials: 0 };
 			entry.requests += 1;
 			if (!seen.has(id)) entry.trials += 1;
@@ -265,7 +261,7 @@ const isUnparsed = (entry: JsonValueV0): boolean =>
 export function samplingOfParameters(
 	observations: readonly EndoRequestParameterObservationV0[],
 	samplingKeys: readonly string[],
-): { samplingUnknown: boolean; samplingSent: JsonValueV0[] } {
+): { samplingUnknown: boolean; samplingSent: JsonValueV0[]; samplingFields: string[] } {
 	const seen = new Map<string, JsonValueV0>();
 	for (const { parameters, recognized } of observations) {
 		if (!recognized) continue;
@@ -276,6 +272,7 @@ export function samplingOfParameters(
 	}
 	return {
 		samplingUnknown: observations.some((observation) => !observation.recognized),
+		samplingFields: [...new Set([...seen.values()].flatMap((entry) => Object.keys(entry as object)))].sort(),
 		samplingSent: [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v),
 	};
 }

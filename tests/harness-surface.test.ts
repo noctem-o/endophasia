@@ -77,7 +77,7 @@ function chat(overrides: Record<string, unknown> = {}, task = "fix the failing t
 
 /** Record `requests` with the capture log's writer, return the store root. */
 function record(
-	requests: { body: Body; method?: string; path?: string; headers?: unknown[] }[],
+	requests: { body: Body; method?: string; path?: string }[],
 	options: { key?: typeof key; version?: string | null } = {},
 ): string {
 	const store = mkdtempSync(join(tmpdir(), "endo-surface-"));
@@ -103,7 +103,7 @@ function record(
 			path,
 			requestDigest: { ...endoRequestDigestV0(k, method, path, body) },
 			body: { ...log.keep(body) } as never,
-			headers: (request.headers ?? []) as never,
+			headers: [],
 			offsetMs: 0,
 		});
 	}
@@ -774,11 +774,15 @@ describe("review findings", () => {
 				],
 				keys,
 			),
-		).toEqual({ samplingUnknown: true, samplingSent: [{}] });
+		).toEqual({ samplingUnknown: true, samplingSent: [{}], samplingFields: [] });
 		const legal = trialOf(['{"messages":[],"unparsed":true}'], 0);
 		const observed = requestParameterObservationsOfTrialV0(legal);
 		expect(observed).toEqual([{ parameters: { unparsed: true }, recognized: true }]);
-		expect(samplingOfParameters(observed, keys)).toEqual({ samplingUnknown: false, samplingSent: [{}] });
+		expect(samplingOfParameters(observed, keys)).toEqual({
+			samplingUnknown: false,
+			samplingSent: [{}],
+			samplingFields: [],
+		});
 		expect(requestParameterObservationsOfTrialV0(trialOf(["not json"], 1))[0]!.recognized).toBe(false);
 	});
 
@@ -803,59 +807,119 @@ describe("review findings", () => {
 		expect(readEndoExperimentTrialResultV0(dup).ok).toBe(false);
 	});
 
-	describe("request headers", () => {
-		const headed = (headers: unknown[], k = key) =>
-			harnessSurfacesOfCaptureV0(record([{ body: chat(), headers }], { key: k }), k)[0]!;
-		const base = [
-			{ name: "Content-Type", value: "application/json" },
-			{ name: "OpenAI-Beta", value: "assistants=v2" },
-			{ name: "Authorization", redacted: true },
-		];
+	describe("the request and surface tables", () => {
+		const two = () => trialOf([chat(), chat({ temperature: 0.2 }), chat()], 0);
+		/** A governed refusal naming the invariant, never a thrown exception. */
+		const refused = (trial: unknown, because: RegExp) => {
+			const read = readEndoExperimentTrialResultV0(trial);
+			expect(read.ok).toBe(false);
+			expect(JSON.stringify(read)).toMatch(because);
+		};
 
-		it("transport headers and wire order do not change the surface; any other header does, and is named", () => {
-			const a = headed([{ name: "Host", value: "127.0.0.1:1" }, { name: "Content-Length", value: "5" }, ...base]);
-			const b = headed([...base].reverse().concat([{ name: "Host", value: "127.0.0.1:9" }]));
-			expect(componentsOf(a).identity).toBe(componentsOf(b).identity);
-			const c = headed([base[0], { name: "OpenAI-Beta", value: "assistants=v3" }, base[2]]);
-			expect(componentsOf(a).identity).not.toBe(componentsOf(c).identity);
-			expect(compareEndoHarnessSurfacesV0(a, c)).toMatchObject({ comparable: true, differs: ["headers"] });
-			// A header present on one side only is a difference as well.
-			expect(compareEndoHarnessSurfacesV0(a, headed([base[0], base[2]]))).toMatchObject({ differs: ["headers"] });
+		it("the producer's own table is accepted: first-observed order, repeated surfaces deduplicated", () => {
+			const trial = two();
+			expect(trial.harness.surfaces).toHaveLength(2);
+			expect(trial.harness.requests.map((r) => r.surface)).toEqual([0, 1, 0]);
+			expect(readEndoExperimentTrialResultV0(trial).ok).toBe(true);
 		});
 
-		it("records presence of a redacted header without a value, and no header value as text", () => {
-			const surface = headed([{ name: "X-Route", value: "secret-route-value" }, base[2]!]);
-			const headers = componentsOf(surface).headers;
-			expect(headers.status).toBe("reported");
-			expect(JSON.stringify(surface)).not.toContain("secret-route-value");
-			if (headers.status === "reported")
-				expect(headers.value.items).toEqual([
-					{ name: "authorization", digest: null },
-					{ name: "x-route", digest: expect.stringMatching(/^[0-9a-f]{64}$/) },
-				]);
-			expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(true);
+		it("requests out of capture order are refused, not reordered", () => {
+			const trial = two();
+			const swapped = [trial.harness.requests[1]!, trial.harness.requests[0]!, trial.harness.requests[2]!];
+			refused({ ...trial, harness: { ...trial.harness, requests: swapped } }, /strictly increasing exchange order/);
+			refused(
+				{ ...trial, harness: { ...trial.harness, requests: [...trial.harness.requests].reverse() } },
+				/strictly increasing exchange order/,
+			);
 		});
 
-		it("a capture without a header list reports headers UNAVAILABLE, never an empty list", () => {
-			const input = surfaceOf(chat());
-			const bare = deriveEndoHarnessSurfaceV0({
-				key,
-				captureVersion: null,
-				exchange: 1,
-				eventId: "e",
-				method: "POST",
-				path: "/v1/chat/completions",
-				requestDigest: endoRequestDigestV0(
-					key,
-					"POST",
-					"/v1/chat/completions",
-					Buffer.from(JSON.stringify(chat())),
-				),
-				body: Buffer.from(JSON.stringify(chat())),
-			});
-			expect(componentsOf(bare).headers.status).toBe("UNAVAILABLE");
-			expect(componentsOf(input).headers.status).toBe("reported");
-			expect(compareEndoHarnessSurfacesV0(bare, input)).toMatchObject({ differs: ["headers"] });
+		it("a surface table out of first-observed order, or naming a surface early, is refused", () => {
+			const trial = two();
+			const [a, b] = trial.harness.surfaces;
+			refused(
+				{
+					...trial,
+					harness: {
+						...trial.harness,
+						surfaces: [b, a],
+						requests: trial.harness.requests.map((r) => ({ ...r, surface: 1 - r.surface })),
+					},
+				},
+				/before its first observation/,
+			);
+			refused(
+				{
+					...trial,
+					harness: { ...trial.harness, requests: trial.harness.requests.map((r) => ({ ...r, surface: 0 })) },
+				},
+				/is not referenced by any request/,
+			);
 		});
+
+		it("duplicate recognized identities in the surface table are refused", () => {
+			const trial = trialOf([chat(), chat({}, "another task")], 0);
+			const [only] = trial.harness.surfaces;
+			const second = { ...only!, source: { ...only!.source, exchange: 2, eventId: "e2" } };
+			refused(
+				{
+					...trial,
+					harness: {
+						...trial.harness,
+						surfaces: [only, second],
+						requests: [trial.harness.requests[0]!, { ...trial.harness.requests[1]!, exchange: 2, surface: 1 }],
+					},
+				},
+				/repeats the identity of an earlier surface/,
+			);
+		});
+
+		it("duplicate unrecognized event identities are refused; distinct ones are kept apart", () => {
+			const trial = trialOf(["not json", "also not json"], 0);
+			expect(trial.harness.surfaces).toHaveLength(2);
+			expect(readEndoExperimentTrialResultV0(trial).ok).toBe(true);
+			const [first] = trial.harness.surfaces;
+			const second = { ...first!, source: { ...first!.source, exchange: 2, requestDigest: "b".repeat(64) } };
+			refused(
+				{
+					...trial,
+					harness: {
+						...trial.harness,
+						surfaces: [first, second],
+						requests: [trial.harness.requests[0]!, { exchange: 2, requestDigest: "b".repeat(64), surface: 1 }],
+					},
+				},
+				/repeats the identity of an earlier surface/,
+			);
+		});
+
+		it("a request whose source does not match the first request naming its surface is refused", () => {
+			const trial = two();
+			const requests = trial.harness.requests.map((r, i) => (i === 0 ? { ...r, requestDigest: "c".repeat(64) } : r));
+			refused({ ...trial, harness: { ...trial.harness, requests } }, /is not the source of the first request/);
+		});
+
+		it("malformed imported data is refused without an exception", () => {
+			const trial = two();
+			for (const bad of [
+				{ ...trial, harness: { ...trial.harness, requests: [{ exchange: -1, requestDigest: "x", surface: 99 }] } },
+				{ ...trial, harness: { ...trial.harness, surfaces: [null] } },
+				{ ...trial, harness: null },
+				{ ...trial, harness: { ...trial.harness, requests: "no" } },
+			])
+				expect(() => readEndoExperimentTrialResultV0(bad)).not.toThrow();
+		});
+	});
+
+	it("sampling field names are unknown, not an empty list, once any request was unrecognized", () => {
+		const recognized = samplingOfParameters(
+			requestParameterObservationsOfTrialV0(trialOf([chat({ temperature: 0.3 })], 0)),
+			["temperature"],
+		);
+		expect(recognized).toMatchObject({ samplingUnknown: false, samplingFields: ["temperature"] });
+		const mixed = samplingOfParameters(
+			requestParameterObservationsOfTrialV0(trialOf([chat({ temperature: 0.3 }), "not json"], 0)),
+			["temperature"],
+		);
+		expect(mixed.samplingUnknown).toBe(true);
 	});
 });

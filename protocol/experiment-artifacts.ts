@@ -31,6 +31,7 @@ import {
 import {
 	ENDO_HARNESS_SURFACE_VERSION_V0,
 	type EndoHarnessSurfaceV0,
+	endoHarnessSurfaceDistinctKeyV0,
 	endoHarnessSurfaceValidatorV0,
 } from "./harness-surface.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
@@ -545,21 +546,31 @@ function harnessProblem(value: unknown): Problem {
 		if (!isCount(r.surface) || r.surface >= h.surfaces.length)
 			return `harness.requests[${index}].surface does not name a listed surface`;
 	}
-	// One captured request per exchange: a repeated entry would count one request twice.
-	if (new Set((h.requests as { exchange: number }[]).map((request) => request.exchange)).size !== h.requests.length)
-		return "harness.requests names an exchange more than once";
-	const referenced = new Set((h.requests as { surface: number }[]).map((request) => request.surface));
-	for (const [index, surface] of (h.surfaces as EndoHarnessSurfaceV0[]).entries()) {
-		if (!referenced.has(index)) return `harness.surfaces[${index}] is not referenced by any request`;
-		// A listed surface is the first observation of a request that names it: some referencing request is its source.
-		const sourced = (h.requests as { exchange: number; requestDigest: string; surface: number }[]).some(
-			(request) =>
-				request.surface === index &&
-				request.exchange === surface.source.exchange &&
-				request.requestDigest === surface.source.requestDigest,
-		);
-		if (!sourced) return `harness.surfaces[${index}] is the source of none of the requests that name it`;
+	// Capture order: the producer walks the capture log once, and exchange numbers rise strictly within it.
+	const requests = h.requests as { exchange: number; requestDigest: string; surface: number }[];
+	for (let index = 1; index < requests.length; index++)
+		if (requests[index]!.exchange <= requests[index - 1]!.exchange)
+			return `harness.requests[${index}] is not in strictly increasing exchange order`;
+	// The surface table lists each distinct surface once, in the order its first request was captured, and each
+	// surface is the first observation of that distinct surface (its source is the first request that names it).
+	const surfaces = h.surfaces as EndoHarnessSurfaceV0[];
+	const distinct = new Set<string>();
+	for (const [index, surface] of surfaces.entries()) {
+		const key = endoHarnessSurfaceDistinctKeyV0(surface);
+		if (distinct.has(key)) return `harness.surfaces[${index}] repeats the identity of an earlier surface`;
+		distinct.add(key);
 	}
+	let next = 0;
+	for (const [index, request] of requests.entries()) {
+		if (request.surface > next) return `harness.requests[${index}] names a surface before its first observation`;
+		if (request.surface === next) {
+			const source = surfaces[next]!.source;
+			if (request.exchange !== source.exchange || request.requestDigest !== source.requestDigest)
+				return `harness.surfaces[${next}] is not the source of the first request that names it`;
+			next++;
+		}
+	}
+	if (next !== surfaces.length) return `harness.surfaces[${next}] is not referenced by any request`;
 	const c = h.contributions;
 	const contributions = closed(c, CONTRIBUTION_NAMES, "harness.contributions");
 	if (contributions !== null) return contributions;

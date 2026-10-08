@@ -17,7 +17,7 @@
  *   trials/<task>/<condition>/<k>/   the trial's store (session events and capture log) and result.json
  *                       (endo.experiment-trial.v0)
  *   interrupted/        trials a previous run session started and never finished, moved aside, never counted
- *   report/             bundle.json (endo.experiment-report.v1) and summary.md, written by `report`
+ *   report/             bundle.json (endo.experiment-report.v2) and summary.md, written by `report`
  *
  * The run's source-of-truth files (the spec, experiment.json, plan.json, result.json) are read back only through their
  * version-directed readers (cli/experiment-artifacts.ts); a file that does not satisfy its contract is refused. The
@@ -50,6 +50,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { harnessSurfacesOfCaptureV0 } from "../adapters/openai-proxy/harness-surface.ts";
 import { startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { buildEndoExperimentBundleV0 } from "../lab/experiment-bundle.ts";
@@ -63,7 +64,7 @@ import {
 	ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0,
 	type EndoExperimentRunRecordV0,
 	type EndoExperimentTrialKeyV0,
-	type EndoExperimentTrialResultV0,
+	type EndoExperimentTrialResultAnyV0,
 	readEndoExperimentRunRecordV0,
 	readEndoExperimentTrialResultV0,
 } from "../protocol/experiment-artifacts.ts";
@@ -85,7 +86,6 @@ import {
 	wilson95V0,
 } from "../runtime/contracts/statistics.ts";
 import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
-import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0 } from "../storage/digest-key.ts";
 import { archiveEndoWorkspaceV0 } from "../storage/workspace-snapshot.ts";
 import {
@@ -103,10 +103,15 @@ import {
 	readEndoExperimentSpecFileV0,
 } from "./experiment-artifacts.ts";
 import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-checks.ts";
+import {
+	buildEndoTrialHarnessV0,
+	requestParametersOfTrialV0,
+	summarizeEndoCellHarnessSurfacesV0,
+} from "./experiment-surface.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
 
 export const ENDO_EXPERIMENT_RUNNER_VERSION_V0 = "endo-experiment-runner.3";
-export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v1";
+export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v2";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
 
@@ -209,6 +214,9 @@ async function observeEnvironment(spec: EndoExperimentSpecV0, keyId: string, scr
 	};
 }
 
+/** How the runner drives Pi (adapters/pi/rpc.ts starts `pi --mode rpc`): an independent source for the invocation mode. */
+const PI_INVOCATION_MODE = "pi --mode rpc";
+
 const SAMPLING_KEYS = [
 	"temperature",
 	"top_p",
@@ -220,26 +228,6 @@ const SAMPLING_KEYS = [
 	"frequency_penalty",
 	"repeat_penalty",
 ];
-
-/** Request parameters from a trial's capture log: every top-level field but messages and tools, per request. */
-function requestParametersOf(store: string, keySource: PiCassetteKeySourceV0): JsonValueV0[] {
-	const key = piCassetteKeyV0(keySource);
-	const blobs = createEndoBlobStoreV0(join(store, "capture"), key, { readOnly: true });
-	const out: JsonValueV0[] = [];
-	for (const event of readEndoCaptureEventsV0(store)) {
-		if (event.kind !== "capture.request" || event.producer !== "capture:record") continue;
-		const body = (event.payload as { body: { digest: { keyId: string; algorithm: "hmac-sha256"; value: string } } })
-			.body;
-		try {
-			const parsed = JSON.parse(Buffer.from(blobs.get(body.digest)).toString("utf8")) as Record<string, JsonValueV0>;
-			const { messages: _messages, tools: _tools, ...rest } = parsed;
-			out.push(rest);
-		} catch {
-			out.push({ unparsed: true });
-		}
-	}
-	return out;
-}
 
 function sessionOf(events: readonly EndoEventV0[]): string | null {
 	const attached = events.find((event) => event.kind === "harness.attached");
@@ -557,14 +545,14 @@ async function runTrial(
 	keySource: PiCassetteKeySourceV0,
 	keyId: string,
 	evidence: ReadonlyMap<string, string>,
-): Promise<EndoExperimentTrialResultV0> {
+): Promise<EndoExperimentTrialResultAnyV0> {
 	const task = spec.tasks.find((candidate) => candidate.id === entry.task)!;
 	const condition = spec.conditions.find((candidate) => candidate.id === entry.condition)!;
 	const store = join(trialDir, "store");
 	const startedAt = new Date().toISOString();
 	const key = piCassetteKeyV0(keySource);
-	let check: EndoExperimentTrialResultV0["check"] = { ran: false, reason: "the task has no success check" };
-	let finalWorkspace: EndoExperimentTrialResultV0["finalWorkspace"] = null;
+	let check: EndoExperimentTrialResultAnyV0["check"] = { ran: false, reason: "the task has no success check" };
+	let finalWorkspace: EndoExperimentTrialResultAnyV0["finalWorkspace"] = null;
 	const afterSession = (scratchRoot: string) => {
 		const archive = archiveEndoWorkspaceV0(join(scratchRoot, "work"));
 		const digest = key.digestBytes(archive.bytes);
@@ -632,7 +620,12 @@ async function runTrial(
 		exchanges: capture.filter(
 			(event) => event.kind === "capture.exchange-ended" && event.producer === "capture:record",
 		).length,
-		requestParameters: capture.length === 0 ? [] : requestParametersOf(store, keySource),
+		harness: buildEndoTrialHarnessV0(capture.length === 0 ? [] : harnessSurfacesOfCaptureV0(store, key), {
+			// Independent sources, kept apart from what the wire carries; nothing here is read out of a prompt.
+			workingDirectory: { status: "reported", value: join(run.scratchRoot, "work"), source: "runner" },
+			invocationMode: { status: "reported", value: PI_INVOCATION_MODE, source: "runner" },
+			configuredModel: { status: "reported", value: `${spec.provider}/${spec.model}`, source: "runner" },
+		}),
 		check,
 		finalWorkspace,
 		notes: [...notes, ...(keyId === key.keyId ? [] : ["the digest key changed during the run"])],
@@ -645,7 +638,7 @@ function runCheck(
 	scratchRoot: string,
 	trialDir: string,
 	key: ReturnType<typeof piCassetteKeyV0>,
-): EndoExperimentTrialResultV0["check"] {
+): EndoExperimentTrialResultAnyV0["check"] {
 	const check = task.check!;
 	const result = spawnSync(check.argv[0]!, check.argv.slice(1), {
 		cwd: join(scratchRoot, "work", check.cwd ?? ""),
@@ -706,7 +699,34 @@ function distinct(values: readonly JsonValueV0[]): JsonValueV0[] {
 	return [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, value]) => value);
 }
 
-/** Aggregate a run directory into an endo.experiment-report.v1 (pure over what the directory holds). */
+/** One summary line for a cell's harness surface; a mismatch is stated, never hidden. */
+function surfaceLine(task: string, condition: string, summary: JsonValueV0): string {
+	const s = summary as {
+		status: string;
+		reason?: string;
+		distinctSurfaces?: number;
+		matched?: boolean | null;
+		comparable?: boolean;
+		trialsDifferingFromModalSet?: string[];
+		differences?: { differs: string[]; parameterNames: string[] }[];
+		trials?: { predatingSurface: number };
+	};
+	const head = `- ${task} / ${condition}: `;
+	if (s.status !== "reported") return `${head}UNAVAILABLE (${s.reason})`;
+	const predating =
+		s.trials!.predatingSurface > 0 ? `; ${s.trials!.predatingSurface} trial(s) predate the surface` : "";
+	if (s.comparable === false) return `${head}not comparable: digested under different keys${predating}`;
+	if (s.matched === true)
+		return `${head}${s.distinctSurfaces} distinct, matched across trials${s.distinctSurfaces === 1 ? "" : " (same set)"}${predating}`;
+	const coordinates = [
+		...new Set(
+			(s.differences ?? []).flatMap((d) => [...d.differs, ...d.parameterNames.map((n) => `parameter ${n}`)]),
+		),
+	];
+	return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces; ${s.trialsDifferingFromModalSet!.join(", ")} differ from the modal set${coordinates.length > 0 ? ` (${coordinates.join(", ")})` : ""}${predating}`;
+}
+
+/** Aggregate a run directory into an endo.experiment-report.v2 (pure over what the directory holds). */
 export function reportEndoExperimentV0(directory: string): { report: JsonValueV0; summary: string } {
 	const dir = resolve(directory);
 	const run = readEndoExperimentRunRecordFileV0(dir);
@@ -723,6 +743,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 	const interrupted = existsSync(join(dir, "interrupted")) ? readdirSync(join(dir, "interrupted")).length : 0;
 	const cells: JsonValueV0[] = [];
 	const lines: string[] = [];
+	const surfaceLines: string[] = [];
 	for (const task of run.spec.tasks) {
 		for (const condition of run.spec.conditions) {
 			const cellResults = results.filter((result) => result.task === task.id && result.condition === condition.id);
@@ -817,7 +838,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 			}
 			const walls = trajectories.map(wallTotal).flatMap((value) => (value === null ? [] : [value]));
 			const workspaces = completed.map((result) => result.finalWorkspace?.value ?? "none");
-			const parameters = distinct(completed.flatMap((result) => result.requestParameters));
+			const parameters = distinct(completed.flatMap(requestParametersOfTrialV0));
 			const samplingFieldsSent = [
 				...new Set(
 					parameters.flatMap((entry) =>
@@ -886,6 +907,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				evaluation === null
 					? { status: "UNAVAILABLE", reason: "no trial of this cell completed" }
 					: buildEndoExperimentBundleV0(`endo.evidence.${idLocal}.bundle`, evaluation);
+			const harnessSurface = summarizeEndoCellHarnessSurfacesV0(completed);
 			const cell = {
 				task: task.id,
 				condition: condition.id,
@@ -912,6 +934,9 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 								status: "UNAVAILABLE",
 								reason: `${trajectories.length - walls.length} of ${trajectories.length} trial(s) have no wall time`,
 							},
+				// What the trials' requests showed of the model-facing harness: system/developer instruction digests, the
+				// tool-definition surface and the request parameters. Evidence, not a validity verdict.
+				harnessSurface,
 				servingInputs: {
 					requestParametersSeen: parameters,
 					samplingFieldsChecked: [...SAMPLING_KEYS],
@@ -971,6 +996,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 				return `${modal}; ${l.distinctTrajectories} distinct; ${pairwise}`;
 			};
 			const checkText = task.check === undefined ? "no check" : `${passed}/${checked.length} pass`;
+			surfaceLines.push(surfaceLine(task.id, condition.id, harnessSurface));
 			lines.push(
 				`| ${task.id} | ${condition.id} | ${completed.length}/${run.spec.trials} | ${rate("lifecycle")} | ${rate("toolCalls")} | ${rate("toolResults")} | ${rate("outcome")} | ${checkText} | ${walls.length ? `${spreadV0(walls)!.median} ms` : "n/a"} |`,
 			);
@@ -1018,6 +1044,10 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 		"| task | condition | trials | lifecycle | tool calls | tool results | outcome | check | median wall |",
 		"| :--- | :--- | ---: | :--- | :--- | :--- | :--- | :--- | ---: |",
 		...lines,
+		"",
+		"Effective harness surface per cell (system/developer instruction and tool-definition digests, request parameters; a cell expects one):",
+		"",
+		...surfaceLines,
 		"",
 		...("validity" in manipulation
 			? [

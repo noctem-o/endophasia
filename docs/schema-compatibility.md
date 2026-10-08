@@ -99,8 +99,16 @@ Classified from the tree; a `schemaVersion` string is not by itself a durability
 | `endo.experiment-spec`                            | v0            | v0 (operator-authored) | the spec file `endo experiment run` reads |
 | `endo.experiment-run`                             | v0            | v0          | run directory `experiment.json`             |
 | `endo.experiment-plan`                            | v0 (+ the unversioned legacy form, below) | v0 | run directory `plan.json`      |
-| `endo.experiment-trial`                           | v0            | v0          | run directory `trials/**/result.json`       |
+| `endo.experiment-trial`                           | v0, v1        | **v1 only** | run directory `trials/**/result.json`       |
+| `endo.harness-surface`                            | v0            | v0          | embedded in `endo.experiment-trial.v1`      |
 | harness registry: fingerprint, change, capability evidence, capability state, notification | v0 each | v0 | `storage/harness-registry` frames |
+
+The trial result has two versions by design. `endo.experiment-trial.v0` is read-only history (every committed study);
+`v1` replaces `requestParameters` with `harness`, a list of `endo.harness-surface.v0` records and the request-to-surface
+index, so adding the effective harness surface did not touch the v0 contract. **The trial owns which surface versions
+it embeds** (`ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1`: exactly `endo.harness-surface.v0`). v0 and v1 each have
+permanent fixtures (`full.json`, `minimal.json`), the v0 ones unedited, and neither is converted to the other. The
+surface family also has its own table and fixtures, so an embedded record is dispatched by the version it declares.
 
 The runner's run-directory artifacts (the last four rows) are read by `cli/experiment-artifacts.ts` and the research
 analysis scripts through the readers in `protocol/experiment-artifacts.ts` and `protocol/experiment-spec.ts`; no reader
@@ -108,7 +116,8 @@ casts `JSON.parse` output. A run record embeds a spec and an `endo.experiment.v0
 which versions it embeds** (`ENDO_EXPERIMENT_RUN_SPEC_VERSIONS_V0`, `ENDO_EXPERIMENT_RUN_EXPERIMENT_VERSIONS_V0`), as a
 result owns its profile versions: a future spec version is not legal inside a v0 run. Closed objects are closed
 throughout; the open data is the spec's maps (workspace files, model entry, settings, extensions, environment variables
-and files, injected fields), the experiment record's `budget`, and a trial's `requestParameters`. Making this
+and files, injected fields), the experiment record's `budget`, a v0 trial's `requestParameters` and the value of a
+recorded parameter of a harness surface (`components.value.parameters.fields.*.value`). Making this
 exhaustive closed one hole in the already-strict v0 spec validator: an entry of `manipulation.conditions` accepted
 unknown fields; it now refuses them (every one of the 98 spec documents in the repository and the research data
 satisfies it).
@@ -144,10 +153,10 @@ catalogue.
 
 ### Known limitations
 
-- Deferred, not covered: **the experiment report** (`endo.experiment-report.v0` and `.v1`, `report/bundle.json`).
+- Deferred, not covered: **the experiment report** (`endo.experiment-report.v0`, `.v1` and `.v2`, `report/bundle.json`).
   It is derived and large, the two versions genuinely differ (the trajectory tools layer was split into tool calls and
   tool results), and committed v0 reports exist under `research/variance/1.0.1/`. It has no version reader yet; its
-  compatibility is a separate change that should use those real v0 reports as evidence. The writer emits `v1`.
+  compatibility is a separate change that should use those real v0 reports as evidence. The writer emits `v2` (which adds `cells[].harnessSurface`).
 - Not covered: the rest of the run directory: `journal.jsonl`, `environment/session-<n>.json`, `evidence/`
   (capability-study summaries) and the per-trial `check.txt`. What is checked across the governed files: the run
   record's `specSha256` is the digest of the spec it embeds; the plan's seed and ordering are the run record's and its

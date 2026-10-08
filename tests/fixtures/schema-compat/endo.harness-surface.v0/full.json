@@ -1,0 +1,92 @@
+{
+	"schemaVersion": "endo.harness-surface.v0",
+	"source": {
+		"captureVersion": "endo-capture.2",
+		"exchange": 1,
+		"eventId": "endo.event.capture.fixture.1",
+		"method": "POST",
+		"path": "/v1/chat/completions",
+		"requestDigest": "ba7f982554dd17c38dcca84c0815d447f11e43ee24bce13bc57e305717bdcd6b"
+	},
+	"digestKey": {
+		"algorithm": "hmac-sha256",
+		"keyId": "fixture-public"
+	},
+	"dialect": {
+		"status": "reported",
+		"value": "openai.chat-completions"
+	},
+	"components": {
+		"status": "reported",
+		"value": {
+			"model": {
+				"status": "reported",
+				"value": "fixture-model"
+			},
+			"streaming": {
+				"status": "reported",
+				"value": true
+			},
+			"instructions": {
+				"items": [
+					{
+						"position": 0,
+						"role": "system",
+						"bytes": 64,
+						"digest": "e9d94b423dbaa5d4ce95db72032c7819902bc0ad7cf931bac515225a7c604764"
+					},
+					{
+						"position": 1,
+						"role": "developer",
+						"bytes": 70,
+						"digest": "c2abd221860e3d271a00733a60229976bb3dfef4c8adf8452cb84dd9f01bf310"
+					}
+				],
+				"orderedDigest": "07f5fc85d415e546e94d52edbba72c743d77ef8c1d6b6bedd15de0f12e06a862"
+			},
+			"tools": {
+				"present": true,
+				"count": 2,
+				"items": [
+					{
+						"name": "read",
+						"digest": "d3385514c690776397b971116f8a8231e8269d5d7767cee854258d2c651123cc"
+					},
+					{
+						"name": "bash",
+						"digest": "b6c6bdeb05b2b893475d8fc90680d33a7ebf7e628020c6ef8f4ae6ef130fea24"
+					}
+				],
+				"orderedDigest": "0552752999cdc18646034fc29956a0371ad6abb13b704a7d24f77b804d43ad2e",
+				"membershipDigest": "9952a0a9089860c5123cbb0b24c4c029ac412da6893ae35f24e5f50b0d164a57"
+			},
+			"parameters": {
+				"digest": "8268b37be4c3d83c7e81682b51f2b3bd7be4afa6b4245c39690bd62a29b0a0bf",
+				"fields": {
+					"stop": {
+						"digest": "5bd5de29f40d5788cc8b45f334b955f76fdcda9305686e8dbd32c6d6089b0f8a"
+					},
+					"stream_options": {
+						"digest": "36f9ce9fd342f80d6f010af98a9d0c2d2cd12ac74b9795e8c30d16262c918ed1",
+						"value": {
+							"include_usage": true
+						}
+					},
+					"temperature": {
+						"digest": "f2048322b04422fffb76930783c6b6b14df6a39f2206b37eae8f6ea61985401b",
+						"value": 0.2
+					},
+					"tool_choice": {
+						"digest": "fd87489b3065d63953bdfa36e97c8d888a013db36de5dc637f41910bbe2dbc97",
+						"value": "auto"
+					}
+				}
+			},
+			"serverDefaults": {
+				"status": "UNAVAILABLE",
+				"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
+			},
+			"identity": "3703a0c3c983cc23c725ba928169a89f233df5b51dd3259d998530b11cff8305"
+		}
+	}
+}

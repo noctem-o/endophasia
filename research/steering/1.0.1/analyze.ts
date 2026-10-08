@@ -26,7 +26,10 @@ import {
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
 import type { EndoEventV0 } from "../../../protocol/event.ts";
-import type { EndoExperimentRunRecordV0, EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type {
+	EndoExperimentRunRecordV0,
+	EndoExperimentTrialResultAnyV0,
+} from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
@@ -44,7 +47,7 @@ export { estimate, sensitivity };
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 const canonical = (value: unknown) => canonicalEndoJsonV0(value);
 
-function trials(dir: string): EndoExperimentTrialResultV0[] {
+function trials(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
@@ -52,7 +55,7 @@ function trials(dir: string): EndoExperimentTrialResultV0[] {
 		return result === null ? [] : [result];
 	});
 }
-const label = (trial: EndoExperimentTrialResultV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;
+const label = (trial: EndoExperimentTrialResultAnyV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;
 
 /** The intervention records of a session store, in order. */
 function interventionRecords(store: string): EndoEventV0[] {
@@ -207,7 +210,7 @@ export function manipulation(dir: string) {
 export async function replayOneTrial(
 	run: EndoExperimentRunRecordV0,
 	dir: string,
-	trial: EndoExperimentTrialResultV0,
+	trial: EndoExperimentTrialResultAnyV0,
 	pi: string,
 	keySource: PiCassetteKeySourceV0 = FIXTURE,
 ) {
@@ -282,14 +285,14 @@ export async function steeredSpotcheck(dir: string, pi: string, named: string[] 
 }
 
 interface Loaded {
-	trial: EndoExperimentTrialResultV0;
+	trial: EndoExperimentTrialResultAnyV0;
 	requests: Record<string, unknown>[];
 	layers: Record<string, string>;
 	outcome: string;
 	records: EndoEventV0[];
 }
 
-function load(dir: string, trial: EndoExperimentTrialResultV0, keySource: PiCassetteKeySourceV0): Loaded {
+function load(dir: string, trial: EndoExperimentTrialResultAnyV0, keySource: PiCassetteKeySourceV0): Loaded {
 	const store = join(dir, trial.store);
 	const { requests } = loadEndoTrialRequestsV0(store, trial, keySource);
 	const trajectory = trajectoryFromStoreV0(store, trial.session!, { label: trial.store });

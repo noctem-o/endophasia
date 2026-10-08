@@ -28,6 +28,7 @@ import {
 	isEndoExperimentRelativePathV0,
 	isEndoExperimentSlugV0,
 } from "./experiment-spec.ts";
+import { ENDO_HARNESS_SURFACE_VERSIONS_V0, type EndoHarnessSurfaceV0 } from "./harness-surface.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 import {
 	defineEndoVersionTableV0,
@@ -45,7 +46,14 @@ import {
 /** The versions the runner writes. The writer owns them; no caller supplies one. */
 export const ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0 = "endo.experiment-run.v0";
 export const ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0 = "endo.experiment-plan.v0";
-export const ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0 = "endo.experiment-trial.v0";
+/**
+ * The trial versions. v0 is the historical contract (every committed study): `requestParameters`, no harness surface.
+ * v1 replaces `requestParameters` with `harness`, the effective harness surface derived from the recorded wire.
+ */
+export const ENDO_EXPERIMENT_TRIAL_VERSION_V0 = "endo.experiment-trial.v0";
+export const ENDO_EXPERIMENT_TRIAL_VERSION_V1 = "endo.experiment-trial.v1";
+/** The trial version the runner writes. */
+export const ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0 = ENDO_EXPERIMENT_TRIAL_VERSION_V1;
 
 /** One planned trial. */
 export interface EndoExperimentTrialKeyV0 {
@@ -92,9 +100,8 @@ export interface EndoExperimentKeyedDigestV0 {
 	bytes: number;
 }
 
-/** What one trial produced (result.json). */
-export interface EndoExperimentTrialResultV0 {
-	schemaVersion: typeof ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0;
+/** What every trial version records. */
+interface EndoExperimentTrialCommonV0 {
 	position: number;
 	task: string;
 	condition: string;
@@ -108,8 +115,6 @@ export interface EndoExperimentTrialResultV0 {
 	/** The endo session coordinate, or null when no session opened. */
 	session: string | null;
 	exchanges: number;
-	/** Every top-level request field except messages and tools, per request, as Pi sent it. Open JSON. */
-	requestParameters: JsonValueV0[];
 	check:
 		| { ran: false; reason: string }
 		| {
@@ -123,6 +128,47 @@ export interface EndoExperimentTrialResultV0 {
 	finalWorkspace: EndoExperimentKeyedDigestV0 | null;
 	notes: string[];
 }
+
+/** What one trial produced (result.json), as `endo.experiment-trial.v0` recorded it. Never written now; read exactly as before. */
+export interface EndoExperimentTrialResultV0 extends EndoExperimentTrialCommonV0 {
+	schemaVersion: typeof ENDO_EXPERIMENT_TRIAL_VERSION_V0;
+	/** Every top-level request field except messages and tools, per request, as Pi sent it. Open JSON. */
+	requestParameters: JsonValueV0[];
+}
+
+/** A variable contribution the runner knows independently of the wire (never read out of a prompt). */
+export type EndoExperimentContributionV0 =
+	| { status: "reported"; value: string; source: "runner" }
+	| { status: "UNAVAILABLE"; reason: string };
+
+/** The effective harness surface a trial observed, and the contributions kept apart from it. */
+export interface EndoExperimentTrialHarnessV0 {
+	/**
+	 * The distinct surfaces the trial's requests showed, in first-observed order: one entry per distinct identity, and
+	 * one per request that could not be recognized (each says why). Every request is listed in `requests`.
+	 */
+	surfaces: EndoHarnessSurfaceV0[];
+	/** Every captured request, in capture order, and the surface it showed. */
+	requests: { exchange: number; requestDigest: string; surface: number }[];
+	/** Independent sources of what the wire also carries. They are compared with the wire, never derived from it. */
+	contributions: {
+		/** The directory the runner started Pi in. */
+		workingDirectory: EndoExperimentContributionV0;
+		/** How the runner drove Pi. */
+		invocationMode: EndoExperimentContributionV0;
+		/** The provider/model the spec configured: a different fact from the model the wire names. */
+		configuredModel: EndoExperimentContributionV0;
+	};
+}
+
+/** What one trial produced (result.json), as `endo.experiment-trial.v1` records it. */
+export interface EndoExperimentTrialResultV1 extends EndoExperimentTrialCommonV0 {
+	schemaVersion: typeof ENDO_EXPERIMENT_TRIAL_VERSION_V1;
+	harness: EndoExperimentTrialHarnessV0;
+}
+
+/** A trial of any version the reader knows. Code that needs a version's own field narrows on `schemaVersion`. */
+export type EndoExperimentTrialResultAnyV0 = EndoExperimentTrialResultV0 | EndoExperimentTrialResultV1;
 
 // --- shared checks -------------------------------------------------------------------------------------------------
 
@@ -338,7 +384,7 @@ export function parseEndoExperimentPlanV0(value: unknown): Extract<EndoExperimen
 
 // --- the trial result ----------------------------------------------------------------------------------------------
 
-const TRIAL_KEYS = [
+const TRIAL_COMMON_KEYS = [
 	"schemaVersion",
 	"position",
 	"task",
@@ -351,11 +397,12 @@ const TRIAL_KEYS = [
 	"store",
 	"session",
 	"exchanges",
-	"requestParameters",
 	"check",
 	"finalWorkspace",
 	"notes",
 ] as const;
+const TRIAL_V0_KEYS = [...TRIAL_COMMON_KEYS, "requestParameters"] as const;
+const TRIAL_V1_KEYS = [...TRIAL_COMMON_KEYS, "harness"] as const;
 
 /** Whether `value` is strict JSON. Iterative, so a deeply nested request parameter (a JSON Schema) is still JSON; a cycle is not. */
 function isJson(value: unknown): value is JsonValueV0 {
@@ -403,12 +450,8 @@ function checkProblem(value: unknown): Problem {
 	return digestProblem(value.output, "check.output");
 }
 
-function trialProblem(value: unknown): Problem {
-	const shape = closed(value, TRIAL_KEYS, "the trial result");
-	if (shape !== null) return shape;
-	const v = value as Record<string, unknown>;
-	if (v.schemaVersion !== ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0)
-		return `schemaVersion must be ${ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0}`;
+/** The checks every trial version shares. The caller has checked the keys and the version. */
+function trialCommonProblem(v: Record<string, unknown>): Problem {
 	if (!isCount(v.position)) return "position must be a non-negative integer";
 	if (!isEndoExperimentSlugV0(v.task)) return "task must be a slug";
 	if (!isEndoExperimentSlugV0(v.condition)) return "condition must be a slug";
@@ -426,8 +469,6 @@ function trialProblem(value: unknown): Problem {
 	// A finished session attached to Pi, and the report counts completed trials by their session.
 	if (v.status === "completed" && v.session === null) return "a completed trial must name its session";
 	if (!isCount(v.exchanges)) return "exchanges must be a non-negative integer";
-	if (!Array.isArray(v.requestParameters) || !v.requestParameters.every((entry) => isObject(entry) && isJson(entry)))
-		return "requestParameters must be a list of strict JSON objects";
 	const check = checkProblem(v.check);
 	if (check !== null) return check;
 	if (v.finalWorkspace !== null) {
@@ -439,10 +480,90 @@ function trialProblem(value: unknown): Problem {
 	return null;
 }
 
-/** The trial-result versions this reader knows. */
-export const ENDO_EXPERIMENT_TRIAL_VERSIONS_V0 = defineEndoVersionTableV0<EndoExperimentTrialResultV0>(
+/** v0: exactly what the runner wrote before the harness surface existed. This validator does not move. */
+function trialV0Problem(value: unknown): Problem {
+	const shape = closed(value, TRIAL_V0_KEYS, "the trial result");
+	if (shape !== null) return shape;
+	const v = value as Record<string, unknown>;
+	if (v.schemaVersion !== ENDO_EXPERIMENT_TRIAL_VERSION_V0)
+		return `schemaVersion must be ${ENDO_EXPERIMENT_TRIAL_VERSION_V0}`;
+	const common = trialCommonProblem(v);
+	if (common !== null) return common;
+	if (!Array.isArray(v.requestParameters) || !v.requestParameters.every((entry) => isObject(entry) && isJson(entry)))
+		return "requestParameters must be a list of strict JSON objects";
+	return null;
+}
+
+const CONTRIBUTION_NAMES = ["workingDirectory", "invocationMode", "configuredModel"] as const;
+
+function contributionProblem(value: unknown, what: string): Problem {
+	if (!isObject(value)) return `${what} is not a JSON object`;
+	if (value.status === "reported") {
+		const shape = closed(value, ["status", "value", "source"], what);
+		if (shape !== null) return shape;
+		return isText(value.value, 4096) && value.source === "runner"
+			? null
+			: `${what}: a reported contribution has a value and source runner`;
+	}
+	if (value.status === "UNAVAILABLE") {
+		const shape = closed(value, ["status", "reason"], what);
+		if (shape !== null) return shape;
+		return isText(value.reason, 512) ? null : `${what}.reason must be a non-empty string`;
+	}
+	return `${what}.status must be reported or UNAVAILABLE`;
+}
+
+/** The surface family's versions a v1 trial may embed: exactly `endo.harness-surface.v0`. */
+export const ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1 = ENDO_HARNESS_SURFACE_VERSIONS_V0;
+
+function harnessProblem(value: unknown): Problem {
+	const shape = closed(value, ["surfaces", "requests", "contributions"], "harness");
+	if (shape !== null) return shape;
+	const h = value as Record<string, unknown>;
+	if (!Array.isArray(h.surfaces)) return "harness.surfaces must be a list";
+	for (const [index, surface] of h.surfaces.entries()) {
+		const read = readEndoVersionedV0(ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1, surface);
+		if (!read.ok) return `harness.surfaces[${index}]: ${read.message}`;
+	}
+	if (!Array.isArray(h.requests)) return "harness.requests must be a list";
+	for (const [index, request] of h.requests.entries()) {
+		const requestShape = closed(request, ["exchange", "requestDigest", "surface"], `harness.requests[${index}]`);
+		if (requestShape !== null) return requestShape;
+		const r = request as Record<string, unknown>;
+		if (!isCount(r.exchange) || typeof r.requestDigest !== "string" || !/^[0-9a-f]{64}$/.test(r.requestDigest))
+			return `harness.requests[${index}] is malformed`;
+		if (!isCount(r.surface) || r.surface >= h.surfaces.length)
+			return `harness.requests[${index}].surface does not name a listed surface`;
+	}
+	const c = h.contributions;
+	const contributions = closed(c, CONTRIBUTION_NAMES, "harness.contributions");
+	if (contributions !== null) return contributions;
+	for (const name of CONTRIBUTION_NAMES) {
+		const problem = contributionProblem((c as Record<string, unknown>)[name], `harness.contributions.${name}`);
+		if (problem !== null) return problem;
+	}
+	return null;
+}
+
+/** v1: the effective harness surface replaces `requestParameters` (which is derived from it for the report). */
+function trialV1Problem(value: unknown): Problem {
+	const shape = closed(value, TRIAL_V1_KEYS, "the trial result");
+	if (shape !== null) return shape;
+	const v = value as Record<string, unknown>;
+	if (v.schemaVersion !== ENDO_EXPERIMENT_TRIAL_VERSION_V1)
+		return `schemaVersion must be ${ENDO_EXPERIMENT_TRIAL_VERSION_V1}`;
+	const common = trialCommonProblem(v);
+	if (common !== null) return common;
+	return harnessProblem(v.harness);
+}
+
+/** The trial-result versions this reader knows. Neither is migrated to the other. */
+export const ENDO_EXPERIMENT_TRIAL_VERSIONS_V0 = defineEndoVersionTableV0<EndoExperimentTrialResultAnyV0>(
 	"endo.experiment-trial",
-	[[ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0, throwing<EndoExperimentTrialResultV0>(trialProblem)]],
+	[
+		[ENDO_EXPERIMENT_TRIAL_VERSION_V0, throwing<EndoExperimentTrialResultAnyV0>(trialV0Problem)],
+		[ENDO_EXPERIMENT_TRIAL_VERSION_V1, throwing<EndoExperimentTrialResultAnyV0>(trialV1Problem)],
+	],
 );
 
 // --- reading -------------------------------------------------------------------------------------------------------
@@ -453,6 +574,6 @@ export function readEndoExperimentRunRecordV0(value: unknown): EndoVersionedRead
 }
 
 /** Read a trial result under the version it declares. */
-export function readEndoExperimentTrialResultV0(value: unknown): EndoVersionedReadV0<EndoExperimentTrialResultV0> {
+export function readEndoExperimentTrialResultV0(value: unknown): EndoVersionedReadV0<EndoExperimentTrialResultAnyV0> {
 	return readEndoVersionedV0(ENDO_EXPERIMENT_TRIAL_VERSIONS_V0, value);
 }

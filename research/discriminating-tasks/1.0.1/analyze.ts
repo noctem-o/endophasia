@@ -22,7 +22,7 @@ import {
 	readEndoExperimentRunRecordFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
-import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../../../protocol/experiment-artifacts.ts";
 import { spreadV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
@@ -81,7 +81,7 @@ export function toolActivityOf(request: Record<string, unknown>): { calls: strin
 }
 
 /** The failure mode of a counted failure, from the trial's own record (DESIGN §8). */
-export function failureModeOf(result: Pick<EndoExperimentTrialResultV0, "check" | "notes">): FailureModeV0 {
+export function failureModeOf(result: Pick<EndoExperimentTrialResultAnyV0, "check" | "notes">): FailureModeV0 {
 	if (!result.check.ran) return "check-could-not-run";
 	if (result.check.timedOut) return "check-timeout";
 	if (result.notes.some((note) => /agent_settled was not observed/.test(note))) return "session-did-not-finish";
@@ -89,14 +89,14 @@ export function failureModeOf(result: Pick<EndoExperimentTrialResultV0, "check" 
 }
 
 /** The class of a trial that has no leakage verdict yet (an error is excluded, not counted as a failure). */
-export function classOf(result: EndoExperimentTrialResultV0, leakageReasons: string[]): TrialClassV0 {
+export function classOf(result: EndoExperimentTrialResultAnyV0, leakageReasons: string[]): TrialClassV0 {
 	if (result.status === "error") return { kind: "error", error: (result.error ?? "").slice(0, 200) };
 	if (leakageReasons.length > 0) return { kind: "invalid", reasons: leakageReasons };
 	if (result.check.ran && result.check.passed) return { kind: "success" };
 	return { kind: "failure", mode: failureModeOf(result) };
 }
 
-function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
+function trialsOf(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		const result = readEndoExperimentPlannedTrialV0(dir, entry);

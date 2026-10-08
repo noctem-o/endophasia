@@ -803,7 +803,12 @@ counterfactual / evolution / training work
      effective request parameters, alongside invocation mode, model identity and wire dialect. Variable contributions
      such as the working directory remain separate observed fields; no prompt "template" is reconstructed by
      heuristics. Raw prompts are never canonical evidence, and a field a runtime hides is UNAVAILABLE. The
-     path-sensitivity study is why: a working-directory path alone changed behaviour.
+     path-sensitivity study is why: a working-directory path alone changed behaviour. *Status: done.* Each experiment trial
+     (`endo.experiment-trial.v1`) now carries the keyed digests of the system and developer instructions, the tool
+     definitions (ordered and as a set) and the request parameters the model server received, with the observed model and
+     the stream flag, derived from the recorded requests; the report states, per cell, whether the trials showed one
+     surface (`docs/experiments.md`, "The effective harness surface"). Historical `v0` trials still read as they were
+     and report their surface as UNAVAILABLE. Not recorded: the server's defaults, and the model's internals.
 
 2. **Operator Alpha — make Endophasia something a person can install and run.**
    - Produce a distributable CLI artifact with a real `endo` executable, version metadata, `--help` and `--version`.
@@ -923,8 +928,8 @@ They describe **capability dependencies**, not the immediate shipping order abov
    point back to evidence.
    - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and
      pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
-     discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11), and the effective
-     harness surface in every experiment's provenance (delivery sequence 1).
+     discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11). The effective harness
+     surface is in every new trial's provenance (delivery sequence 1).
    - [StaminaBench](https://github.com/amazon-science/StaminaBench) is a candidate long-horizon evaluation pack:
      evolving software specifications and test feedback across up to 100 interaction turns can expose context
      accumulation, recovery, regression and resource drift. Integrate it behind an evaluation provider rather than

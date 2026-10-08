@@ -21,14 +21,14 @@ import {
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
 import { trajectoryFromStoreV0 } from "../../../cli/trajectory.ts";
-import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../../storage/digest-key.ts";
 
-function trials(dir: string): EndoExperimentTrialResultV0[] {
+function trials(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
@@ -220,7 +220,7 @@ function normalizeToolCallIds(requests: Record<string, unknown>[]): Record<strin
 export function divergence(dir: string) {
 	const key = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 	const completed = trials(dir).filter((trial) => trial.status === "completed");
-	const byCell = new Map<string, { trial: EndoExperimentTrialResultV0; requests: Record<string, unknown>[] }[]>();
+	const byCell = new Map<string, { trial: EndoExperimentTrialResultAnyV0; requests: Record<string, unknown>[] }[]>();
 	for (const trial of completed) {
 		const loaded = loadEndoTrialRequestsV0(join(dir, trial.store), trial, key);
 		const cell = `${trial.task}/${trial.condition}`;

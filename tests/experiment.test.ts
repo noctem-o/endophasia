@@ -18,7 +18,7 @@ import {
 	runEndoExperimentV0,
 } from "../cli/experiment.ts";
 import { validateEndoExperimentBundleV0 } from "../protocol/evaluation.ts";
-import type { EndoExperimentTrialResultV0 } from "../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../protocol/experiment-artifacts.ts";
 import { type EndoExperimentSpecV0, endoExperimentSpecProblemV0 } from "../protocol/experiment-spec.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -77,7 +77,7 @@ function spec(overrides: Partial<EndoExperimentSpecV0> = {}): EndoExperimentSpec
 	};
 }
 
-const results = (dir: string): EndoExperimentTrialResultV0[] =>
+const results = (dir: string): EndoExperimentTrialResultAnyV0[] =>
 	readdirSync(join(dir, "trials"), { recursive: true })
 		.map(String)
 		.filter((path) => path.endsWith("result.json"))
@@ -304,7 +304,7 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		expect(existsSync(join(dir, "evidence", "session-1", "1", "capability-summary.json"))).toBe(true);
 		const byCondition = (condition: string) => results(dir).filter((result) => result.condition === condition);
 		expect(byCondition("steer").map((result) => result.status)).toEqual(["completed", "completed"]);
-		const kinds = (result: EndoExperimentTrialResultV0) => {
+		const kinds = (result: EndoExperimentTrialResultAnyV0) => {
 			const store = createEndoDurableEventStoreV0(join(dir, result.store), { readOnly: true });
 			const out = store.page({ limit: 10_000 }).events.map((event) => event.kind);
 			store.close();
@@ -484,7 +484,7 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 			}[];
 			environment: { models: { status: string }; serverDefaults: { status: string } }[];
 		};
-		expect(r.schemaVersion).toBe("endo.experiment-report.v1");
+		expect(r.schemaVersion).toBe("endo.experiment-report.v2");
 		for (const cell of r.cells as unknown as { toolCallsUpToFirstDivergentInput: Record<string, number> }[])
 			expect(cell.toolCallsUpToFirstDivergentInput).toEqual({ identical: 1, notIdentical: 0, undecidable: 0 });
 		expect(r.seed).toBe(7);
@@ -509,8 +509,77 @@ describe("endo experiment run / report (fake Pi, fake upstream)", () => {
 		}
 		expect(r.environment[0]!.serverDefaults.status).toBe("UNAVAILABLE");
 		expect(summary).toContain("| read | a | 2/2 |");
+		// The effective harness surface: the trials of a cell share one model-facing surface, and the report says so.
+		for (const cell of r.cells as unknown as { harnessSurface: Record<string, unknown> }[])
+			expect(cell.harnessSurface).toMatchObject({
+				status: "reported",
+				trials: { withSurface: 2, predatingSurface: 0 },
+				comparable: true,
+				distinctSurfaces: 1,
+				matched: true,
+				trialsDifferingFromModalSet: [],
+				contributions: { invocationMode: { values: ["pi --mode rpc"] } },
+			});
+		expect(summary).toContain("- read / a: 1 distinct, matched across trials");
 		// Deterministic: the same directory reports the same bytes.
 		expect(JSON.stringify(reportEndoExperimentV0(dir).report)).toBe(JSON.stringify(report));
+	}, 60_000);
+});
+
+describe("the harness surface in a run's trials and report", () => {
+	it("trials carry the surface as observed on the wire and no prompt text; a within-cell difference is reported as evidence", () => {
+		const dir = join(base, "partial");
+		const trialFiles = readdirSync(join(dir, "trials"), { recursive: true })
+			.map(String)
+			.filter((path) => path.endsWith("result.json"));
+		expect(trialFiles.length).toBeGreaterThan(1);
+		for (const file of trialFiles) {
+			const text = readFileSync(join(dir, "trials", file), "utf8");
+			const trial = JSON.parse(text) as EndoExperimentTrialResultAnyV0;
+			expect(trial.schemaVersion).toBe("endo.experiment-trial.v1");
+			expect(trial).not.toHaveProperty("requestParameters");
+			// The fake Pi writes "fake pi" and its working directory into the system message, and the task into the user's:
+			// none of that text is in the canonical record (the working directory appears only as the runner's own field).
+			expect(text).not.toContain("fake pi");
+			expect(text).not.toContain("Use the read tool");
+			if (trial.schemaVersion !== "endo.experiment-trial.v1") throw new Error("unreachable");
+			expect(trial.harness.surfaces.length).toBeGreaterThan(0);
+			// The per-trial capture log declares its version, so the record names it.
+			expect(trial.harness.surfaces[0]!.source.captureVersion).toBe("endo-capture.2");
+			expect(trial.harness.requests.length).toBe(trial.exchanges);
+			const c = trial.harness.surfaces[0]!.components;
+			expect(c.status === "reported" && c.value.instructions.items[0]?.role).toBe("system");
+			expect(trial.harness.contributions.workingDirectory).toMatchObject({ status: "reported", source: "runner" });
+		}
+		// Make one trial of cell read/a show another tool order, as if the harness had changed between trials.
+		const copy = join(base, "surface-mismatch");
+		rmSync(copy, { recursive: true, force: true });
+		cpSync(dir, copy, { recursive: true });
+		const target = join(copy, "trials", "read", "a", "1", "result.json");
+		const trial = JSON.parse(readFileSync(target, "utf8"));
+		for (const surface of trial.harness.surfaces) {
+			surface.components.value.tools.orderedDigest = "f".repeat(64);
+			surface.components.value.identity = "e".repeat(64);
+		}
+		writeFileSync(target, `${JSON.stringify(trial, null, "\t")}\n`);
+		const { report, summary } = reportEndoExperimentV0(copy);
+		const cell = (
+			report as { cells: { task: string; condition: string; harnessSurface: Record<string, unknown> }[] }
+		).cells.find((candidate) => candidate.condition === "a")!;
+		expect(cell.harnessSurface).toMatchObject({
+			matched: false,
+			distinctSurfaces: 2,
+			trialsDifferingFromModalSet: expect.any(Array),
+			differences: [{ differs: expect.arrayContaining(["tool-order"]) }],
+		});
+		expect(summary).toMatch(
+			/- read \/ a: MISMATCH: 2 distinct surfaces; trial #\d differ from the modal set \(tool-order\)/,
+		);
+		// The other cell is untouched, and nothing is called invalid because of it.
+		const other = (report as { cells: { condition: string; harnessSurface: { matched: boolean } }[] }).cells.find(
+			(candidate) => candidate.condition === "b",
+		)!;
+		expect(other.harnessSurface.matched).toBe(true);
 	}, 60_000);
 });
 
@@ -564,8 +633,8 @@ describe("the run directory's source-of-truth files are read through their versi
 		const second = await resume();
 		expect(second).toMatchObject({ completed: 4, remaining: 0, ranThisSession: 2 });
 		expect(readText(file("plan.json"))).toBe(planBytes);
-		expect(results(complete).every((result) => result.schemaVersion === "endo.experiment-trial.v0")).toBe(true);
-		expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v1" });
+		expect(results(complete).every((result) => result.schemaVersion === "endo.experiment-trial.v1")).toBe(true);
+		expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v2" });
 	}, 180_000);
 
 	it("a run directory whose plan.json predates the version is read as that exact legacy form, and never rewritten", async () => {
@@ -805,7 +874,7 @@ describe("the run directory's source-of-truth files are read through their versi
 				cleanScratch();
 			}
 			// Restored, the directory is whole again.
-			expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v1" });
+			expect(report().report).toMatchObject({ schemaVersion: "endo.experiment-report.v2" });
 		},
 		60_000,
 	);

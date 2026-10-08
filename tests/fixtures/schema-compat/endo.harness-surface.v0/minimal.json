@@ -1,0 +1,23 @@
+{
+	"schemaVersion": "endo.harness-surface.v0",
+	"source": {
+		"captureVersion": null,
+		"exchange": 1,
+		"eventId": "endo.event.capture.fixture.1",
+		"method": "POST",
+		"path": "/v1/embeddings",
+		"requestDigest": "1dc608fb7c3fdf1fb8a061c4e824b18ee4f3581393353d49353f7751f8b4b9eb"
+	},
+	"digestKey": {
+		"algorithm": "hmac-sha256",
+		"keyId": "fixture-public"
+	},
+	"dialect": {
+		"status": "UNAVAILABLE",
+		"reason": "POST /v1/embeddings is not a recognized chat-completions endpoint"
+	},
+	"components": {
+		"status": "UNAVAILABLE",
+		"reason": "no recognized dialect"
+	}
+}

@@ -1,0 +1,38 @@
+{
+	"schemaVersion": "endo.experiment-trial.v1",
+	"position": 0,
+	"task": "hello",
+	"condition": "default",
+	"trial": 0,
+	"status": "completed",
+	"error": null,
+	"startedAt": "2026-01-01T00:00:00.000Z",
+	"endedAt": "2026-01-01T00:01:00.000Z",
+	"store": "trials/hello/default/0/store",
+	"session": "endo.session.pi.fixture-minimal",
+	"exchanges": 0,
+	"check": {
+		"ran": false,
+		"reason": "the task has no success check"
+	},
+	"finalWorkspace": null,
+	"notes": [],
+	"harness": {
+		"surfaces": [],
+		"requests": [],
+		"contributions": {
+			"workingDirectory": {
+				"status": "UNAVAILABLE",
+				"reason": "the runner recorded no such contribution"
+			},
+			"invocationMode": {
+				"status": "UNAVAILABLE",
+				"reason": "the runner recorded no such contribution"
+			},
+			"configuredModel": {
+				"status": "UNAVAILABLE",
+				"reason": "the runner recorded no such contribution"
+			}
+		}
+	}
+}

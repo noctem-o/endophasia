@@ -28,6 +28,14 @@ The data is kept beside this checkout, in `../endophasia-research/` (laid out as
 To restore a study: `tar --zstd -xf <study>-1.0.1.tar.zst -C <directory>` (each archive holds `<study>/1.0.1/...`), then point the tools at it with
 `ENDO_RESEARCH_DATA=<directory>` (the default is `../endophasia-research`). `research/data.ts` resolves the location.
 
+## Trial versions in the data
+
+The studies' per-trial `result.json` files are `endo.experiment-trial.v0` and are committed unedited; they are read exactly
+as before, and the raw data is not re-derived into the effective harness surface (`docs/experiments.md`). Runs made now write
+`endo.experiment-trial.v1`, whose `harness` holds keyed digests, lengths, tool names and short request-parameter values
+and no prompt, system or tool-definition text, so a committed v1 result file carries no more than a v0 one did. The raw
+request bodies stay in the capture blobs, outside the repository like the rest of the raw data.
+
 ## What reads it
 
 - `tests/steering-raw-data.test.ts`, `tests/path-sensitivity-raw-data.test.ts`, `tests/discriminating-tasks-raw-data.test.ts` and `tests/completion-cap-raw-data.test.ts` run the secret scan over a study's

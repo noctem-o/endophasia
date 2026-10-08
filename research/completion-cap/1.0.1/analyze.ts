@@ -22,7 +22,7 @@ import {
 	readEndoExperimentRunRecordFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { ENDO_MANIPULATION_WATCHED_FIELDS_V0, loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
-import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { spreadV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
@@ -111,7 +111,7 @@ export function failureModeOf(input: {
 }
 
 export function classOf(
-	result: Pick<EndoExperimentTrialResultV0, "status" | "error" | "check" | "notes">,
+	result: Pick<EndoExperimentTrialResultAnyV0, "status" | "error" | "check" | "notes">,
 	leakageReasons: string[],
 	wire: { cutOffResponses: number; httpErrors: number },
 ): ClassV0 {
@@ -127,7 +127,7 @@ export function classOf(
 	};
 }
 
-function trialsOf(dir: string): EndoExperimentTrialResultV0[] {
+function trialsOf(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		const result = readEndoExperimentPlannedTrialV0(dir, entry);

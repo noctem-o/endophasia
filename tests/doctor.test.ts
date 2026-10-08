@@ -4,6 +4,7 @@
 import { spawnSync } from "node:child_process";
 import {
 	appendFileSync,
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -26,6 +27,7 @@ import { type FakePiInstall, fakePiEnv, installFakePi } from "./fixtures/fake-pi
 
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
 const cleanup: (() => void)[] = [];
+const cleanupLater = (step: () => void) => void cleanup.unshift(step);
 afterEach(() => {
 	for (const step of cleanup.splice(0)) step();
 });
@@ -429,5 +431,23 @@ describe("endo doctor", () => {
 		expect(none.evidence.status).toBe("none-recorded");
 		expect(none.evidence.capabilities).toEqual([]);
 		expect(none.nextSteps.join(" ")).toMatch(/Record local checks/);
+	});
+
+	it.skipIf(process.getuid?.() === 0)("does not offer a write that the store's permissions would refuse", async () => {
+		const install = fakePi();
+		const readOnlyStore = scratch();
+		chmodSync(readOnlyStore, 0o555);
+		cleanupLater(() => chmodSync(readOnlyStore, 0o755));
+		const present = await endoDoctorV0({ root: readOnlyStore, pi: install.bin }, hostEnv());
+		expect(present.evidence.status).toBe("none-recorded");
+		expect(present.nextSteps.join(" ")).toMatch(/harness check would fail: .* not writable/);
+		expect(present.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+		// An absent store beneath an unwritable parent is the same case.
+		const beneath = await endoDoctorV0({ root: join(readOnlyStore, "new", "store"), pi: install.bin }, hostEnv());
+		expect(beneath.store.presence).toBe("absent");
+		expect(beneath.nextSteps.join(" ")).toMatch(/harness check would fail/);
+		// A writable location still gets the recommendation.
+		const fine = await endoDoctorV0({ root: join(scratch(), "store"), pi: install.bin }, hostEnv());
+		expect(fine.nextSteps.join(" ")).toMatch(/Record local checks/);
 	});
 });

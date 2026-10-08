@@ -11,7 +11,7 @@
  */
 
 import { accessSync, constants, lstatSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	fingerprintPiRuntimeV0,
 	PiFingerprintErrorV0,
@@ -81,6 +81,29 @@ export interface EndoDoctorReportV0 {
 	nextSteps: string[];
 	/** Failures of the doctor itself, kept apart from missing prerequisites. */
 	diagnosticErrors: string[];
+}
+
+/**
+ * Why `path` could not be written or created, or null when it can: the file itself when it exists, else the nearest
+ * existing ancestor directory (which must be writable and searchable). A check creates harness/<attachment>/records.log.
+ * Best effort: access(2) permission bits only; it does not see ACL denials, read-only mounts or quotas, so a null result
+ * is not a promise that the write will succeed. Inspection never writes.
+ */
+function writeBlock(path: string): string | null {
+	for (let current = path; ; current = dirname(current)) {
+		try {
+			const info = statSync(current);
+			const wanted = info.isDirectory() ? constants.W_OK | constants.X_OK : constants.W_OK;
+			if (current === path && !info.isFile()) return `${path} is not a regular file`;
+			if (current !== path && !info.isDirectory()) return `${current} is not a directory`;
+			accessSync(current, wanted);
+			return null;
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOENT" || dirname(current) === current)
+				return `${current} is not writable (${code ?? "unknown error"})`;
+		}
+	}
 }
 
 function presence(path: string, kind: "directory" | "file"): Presence {
@@ -348,7 +371,22 @@ export async function endoDoctorV0(
 		const unchecked = evidence.capabilities.filter(
 			(entry) => entry.status === "unverified" && entry.requires === "local-protocol",
 		);
-		if (sealed)
+		const blocked =
+			rootPath === null
+				? null
+				: writeBlock(join(endoHarnessRegistryDirectoryV0(rootPath, attachment), "records.log"));
+		const wantsCheck =
+			evidence.status === "none-recorded" ||
+			(evidence.status === "recorded" &&
+				(evidence.capabilities.length === 0 ||
+					unchecked.length > 0 ||
+					evidence.currentMatchesRecorded === false ||
+					evidence.capabilitiesStale));
+		if (blocked !== null && !sealed && wantsCheck)
+			steps.push(
+				`harness check would fail: ${blocked}. Make the store location writable, or choose a different store root.`,
+			);
+		else if (sealed)
 			steps.push(
 				"harness check would be refused: a sealed registry accepts no appends. Keep this store for inspection and use a different store root for new checks.",
 			);

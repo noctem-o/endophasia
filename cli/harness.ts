@@ -3,12 +3,12 @@
  * about it, and run checks. Each command prints one canonical-JSON document to stdout; a runtime-change notification
  * is also printed to stderr as plain text, so an operator sees it without reading JSON.
  *
- *   endo harness status   <root> [--attachment a]                       registry only, read-only; starts nothing
- *   endo harness overview <root> [--attachment a]                       the session overview, replayed read-only
- *   endo harness identify <root> [selection]                            fingerprint and compare; starts no session
- *   endo harness check    <root> [selection] [--force]                  identify + automatic local checks
- *   endo harness study    <root> [selection] --authorize-live-study      the live study (agent work, provider cost)
- *   endo harness attach   <root> [selection] [--prompt text] [--wait ms] identify + local checks + record a session
+ *   endo harness status   [<root> | --root dir] [--attachment a]                       registry only, read-only; starts nothing
+ *   endo harness overview [<root> | --root dir] [--attachment a]                       the session overview, replayed read-only
+ *   endo harness identify [<root> | --root dir] [selection]                            fingerprint and compare; starts no session
+ *   endo harness check    [<root> | --root dir] [selection] [--force]                  identify + automatic local checks
+ *   endo harness study    [<root> | --root dir] [selection] --authorize-live-study      the live study (agent work, provider cost)
+ *   endo harness attach   [<root> | --root dir] [selection] [--prompt text] [--wait ms] identify + local checks + record a session
  *                         [--control]                                    …and serve the intervention desk on the local
  *                                                                        control endpoint (cli/control.ts) until an
  *                                                                        `endo steer close` or a signal
@@ -28,6 +28,8 @@ import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
+import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
+import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -48,9 +50,8 @@ const VALUE_FLAGS = new Set([
 const SWITCHES = new Set(["--force", "--authorize-live-study", "--control"]);
 
 function parse(argv: readonly string[], usage: string): ParsedV0 {
-	const args = [...argv];
-	const root = args.shift();
-	if (root === undefined || root.startsWith("--")) throw new TypeError(usage);
+	const taken = takeEndoRootV0(argv, 0, VALUE_FLAGS);
+	const { root, rest: args } = taken;
 	const flags = new Map<string, string>();
 	const switches = new Set<string>();
 	while (args.length > 0) {
@@ -59,11 +60,13 @@ function parse(argv: readonly string[], usage: string): ParsedV0 {
 			switches.add(flag);
 			continue;
 		}
+		if (!flag.startsWith("--")) throw new TypeError(usage);
 		if (!VALUE_FLAGS.has(flag)) throw new TypeError(`unknown flag ${flag}`);
 		const value = args.shift();
 		if (value === undefined) throw new TypeError(`the flag ${flag} needs a value`);
 		flags.set(flag, value);
 	}
+	announceEndoRootV0(taken);
 	return { root, flags, switches };
 }
 
@@ -96,11 +99,11 @@ function print(value: unknown): void {
 }
 
 /**
- * `harness status <root> [--attachment a]` — the recorded identity, change, notice and capability state. The registry
+ * `harness status [<root> | --root dir] [--attachment a]` — the recorded identity, change, notice and capability state. The registry
  * is opened read-only: status creates no directory (an unknown attachment reports nothing recorded) and cuts nothing.
  */
 export async function harnessStatusCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness status <root> [--attachment a]");
+	const parsed = parse(argv, "usage: endo harness status [<root> | --root dir] [--attachment a]");
 	const registry = openEndoHarnessRegistryV0(parsed.root, parsed.flags.get("--attachment") ?? "pi.default", {
 		readOnly: true,
 	});
@@ -122,11 +125,11 @@ export async function harnessStatusCommand(argv: readonly string[]): Promise<voi
 }
 
 /**
- * `harness overview <root> [--attachment a]` — the session overview (protocol/session-overview.ts), reduced from one
+ * `harness overview [<root> | --root dir] [--attachment a]` — the session overview (protocol/session-overview.ts), reduced from one
  * attachment's recorded lifecycle events. The event store is opened read-only; nothing is started or written.
  */
 export async function harnessOverviewCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness overview <root> [--attachment a]");
+	const parsed = parse(argv, "usage: endo harness overview [<root> | --root dir] [--attachment a]");
 	const producer = `pi-lifecycle:${parsed.flags.get("--attachment") ?? "pi.default"}`;
 	const store = createEndoDurableEventStoreV0(parsed.root, { readOnly: true });
 	const events = [];
@@ -142,18 +145,18 @@ export async function harnessOverviewCommand(argv: readonly string[]): Promise<v
 	print({ overview: reduceEndoSessionOverviewV0(events), recovery });
 }
 
-/** `harness identify <root> [selection]` — fingerprint the selected Pi and compare. */
+/** `harness identify [<root> | --root dir] [selection]` — fingerprint the selected Pi and compare. */
 export async function harnessIdentifyCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness identify <root> [--pi path] [--attachment a]");
+	const parsed = parse(argv, "usage: endo harness identify [<root> | --root dir] [--pi path] [--attachment a]");
 	const pi = new PiAttachmentV0(options(parsed));
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
 	print({ ...identified, state: pi.state() });
 }
 
-/** `harness check <root> [selection] [--force]` — identify and run the automatic local checks. */
+/** `harness check [<root> | --root dir] [selection] [--force]` — identify and run the automatic local checks. */
 export async function harnessCheckCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness check <root> [--pi path] [--attachment a] [--force]");
+	const parsed = parse(argv, "usage: endo harness check [<root> | --root dir] [--pi path] [--attachment a] [--force]");
 	const pi = new PiAttachmentV0(options(parsed));
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
@@ -161,11 +164,11 @@ export async function harnessCheckCommand(argv: readonly string[]): Promise<void
 	print({ change: identified.change, ran: checked.ran, state: checked.state });
 }
 
-/** `harness study <root> [selection] --authorize-live-study` — the live study, only with the explicit switch. */
+/** `harness study [<root> | --root dir] [selection] --authorize-live-study` — the live study, only with the explicit switch. */
 export async function harnessStudyCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(
 		argv,
-		"usage: endo harness study <root> --authorize-live-study [--pi path] [--provider p --model m]",
+		"usage: endo harness study [<root> | --root dir] --authorize-live-study [--pi path] [--provider p --model m]",
 	);
 	if (!parsed.switches.has("--authorize-live-study")) {
 		throw new TypeError(
@@ -180,15 +183,36 @@ export async function harnessStudyCommand(argv: readonly string[]): Promise<void
 	print({ change: identified.change, inconclusive: studied.inconclusive, state: studied.state });
 }
 
-/** `harness attach <root> [selection] [--prompt text] [--wait ms]` — record a session; optionally send one prompt. */
+/** The attach summary and next commands, on stderr. */
+function summarize(
+	parsed: ParsedV0,
+	piSessionId: string | null,
+	prompt: { disposition: string; settled: boolean | null } | null,
+	waitMs: number,
+): void {
+	for (const line of attachSummaryV0({
+		root: parsed.root,
+		attachment: parsed.flags.get("--attachment"),
+		piSessionId,
+		prompt,
+		waitMs,
+	}))
+		process.stderr.write(`${line}\n`);
+}
+
+/** `harness attach [<root> | --root dir] [selection] [--prompt text] [--wait ms]` — record a session; optionally send one prompt. */
 export async function harnessAttachCommand(argv: readonly string[]): Promise<void> {
-	const parsed = parse(argv, "usage: endo harness attach <root> [--pi path] [--prompt text] [--wait ms] [--control]");
+	const parsed = parse(
+		argv,
+		"usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control]",
+	);
 	const wait = parsed.flags.has("--wait") ? Number(parsed.flags.get("--wait")) : 120_000;
 	if (!Number.isSafeInteger(wait) || wait < 0) throw new TypeError("--wait must be a non-negative integer");
 	const pi = new PiAttachmentV0(options(parsed));
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
 	const checked = await pi.checkLocal();
+	if (parsed.flags.has("--prompt")) process.stderr.write(`note: ${ENDO_PROMPT_COST_NOTICE_V0}\n`);
 	const session = await pi.openSession();
 	if (parsed.switches.has("--control")) return attachWithControl(parsed, identified.change, checked.state, session);
 	let disposition: string | null = null;
@@ -209,6 +233,7 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 		counters: session.counters,
 		state: checked.state,
 	});
+	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled }, wait);
 }
 
 /**
@@ -249,6 +274,8 @@ async function attachWithControl(
 		counters: session.counters,
 		state,
 	});
+	// The control path does not wait for the run to settle: acceptance is all it can report.
+	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled: null }, 0);
 }
 
 export const HARNESS_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {

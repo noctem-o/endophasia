@@ -65,7 +65,20 @@ Run a command family without arguments (for example "endo harness") to see its u
 prints one canonical-JSON document on stdout (except "doctor", which prints a human report unless given --json); errors are one line on stderr with exit status 1. Exit status 2 means
 the invocation itself was invalid (unknown or missing command).
 
-Requires Node >= 22.19.0. Stores are passed explicitly as <root>; commands other than doctor have no default location yet.
-Default store (reported by doctor): $ENDO_STORE_ROOT, else $XDG_DATA_HOME/endophasia/store, else ~/.local/share/endophasia/store.
+The store: every command that takes <root> also takes --root dir, or neither (the default store). Naming it both ways is an
+error. Default store (reported by doctor): $ENDO_STORE_ROOT, else $XDG_DATA_HOME/endophasia/store, else
+~/.local/share/endophasia/store. A command that uses the default says so on stderr.
+
+The installed Pi loop (Pi installed separately; --pi path selects an executable, --cwd dir its working directory, which is
+independent of the store):
+  1. endo doctor                                  diagnose the installation
+  2. endo harness check [--pi path]               fingerprint Pi and run the local checks (no model call)
+  3. endo harness attach [--pi path] [--cwd dir] --prompt "..." [--provider p --model m]
+                                                  record one session; the prompt may incur provider cost
+  4. endo harness status | overview               recorded identity, capability evidence, session lifecycle
+  5. endo trajectory show <pi-session-id>         project the recorded trajectory (attach prints the id and these commands)
+Acceptance of a prompt is not completion: attach reports whether Pi accepted it and whether the run was seen to settle.
+
+Requires Node >= 22.19.0.
 `;
 }

@@ -6,8 +6,8 @@
 //
 // Scratch lives under $TMPDIR (or the OS temp directory) and is removed at the end.
 
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,6 +161,66 @@ try {
 	// 7. Nothing durable appeared in HOME, XDG, or the working directories.
 	const after = tree(scratch).filter((p) => !p.startsWith(join(scratch, "install")) && !p.startsWith(join(scratch, "pack")) && !p.startsWith(join(scratch, "npm-cache")));
 	check(JSON.stringify(before) === JSON.stringify(after), "no state was created in HOME, XDG, the stores or the working directories");
+
+	// 8. The installed Pi loop, against a prepared (fake, clearly not real) Pi and a local fake model endpoint: no credentials,
+	// no provider. Runs after the no-state check above because it creates the default store. The harness helpers are test
+	// fixtures read through this script's own Node (type stripping on); the installed endo still runs with stripping off.
+	const { installFakePi } = await import("../tests/fixtures/fake-pi/install.ts");
+	const { startFakeOpenAiServer } = await import("../tests/fixtures/fake-openai-server.ts");
+	const fakePi = installFakePi("1.0.0", join(scratch, "pi-prefix"));
+	fakePi.setScenario("model-endpoint");
+	const model = await startFakeOpenAiServer({ chunkMs: 2, slowChunkMs: 5 });
+	try {
+		const agentDir = join(scratch, "pi-agent");
+		const work = join(scratch, "pi-work");
+		mkdirSync(agentDir, { recursive: true });
+		mkdirSync(work, { recursive: true });
+		writeFileSync(
+			join(agentDir, "models.json"),
+			JSON.stringify({ providers: { fake: { baseUrl: model.baseUrl, api: "openai-completions", apiKey: "local", models: [{ id: "fake-1" }] } } }),
+		);
+		const piEnv = { ...env, PI_CODING_AGENT_DIR: agentDir };
+		// Asynchronous: the fake model endpoint lives in this process and must keep serving while endo runs.
+		const loop = (args) =>
+			new Promise((done) => {
+				const child = spawn(process.execPath, [...noStripFlags, bin, ...args], { cwd: cwdB, env: piEnv });
+				let stdout = "";
+				let stderr = "";
+				child.stdout.on("data", (chunk) => (stdout += chunk));
+				child.stderr.on("data", (chunk) => (stderr += chunk));
+				child.on("close", (status) => done({ status, stdout, stderr }));
+			});
+		const defaultStore = join(xdgData, "endophasia", "store");
+
+		const diagnosed = await loop(["doctor", "--pi", fakePi.bin, "--json"]);
+		const diagnosis = diagnosed.status === 0 ? JSON.parse(diagnosed.stdout) : null;
+		check(diagnosis !== null && diagnosis.pi.status === "found" && diagnosis.store.source === "XDG_DATA_HOME", "loop 1: doctor finds the prepared Pi and reports the default store");
+		const checked = await loop(["harness", "check", "--pi", fakePi.bin]);
+		check(checked.status === 0 && /using the default store/.test(checked.stderr) && existsSync(defaultStore), `loop 2: harness check records local evidence in the default store${checked.status === 0 ? "" : `: ${checked.stderr}`}`);
+		const requestsBefore = model.requests.length;
+		const attached = await loop(["harness", "attach", "--pi", fakePi.bin, "--cwd", work, "--provider", "fake", "--model", "fake-1", "--prompt", "Say hello", "--wait", "20000"]);
+		const session = attached.status === 0 ? JSON.parse(attached.stdout) : null;
+		check(session !== null && typeof session.piSessionId === "string" && session.prompt.disposition === "started" && session.prompt.settled === true, `loop 3: attach records a session and reports the prompt accepted and the run settled${attached.status === 0 ? "" : `: ${attached.stderr}`}`);
+		check(model.requests.length > requestsBefore, "loop 3: the prepared Pi called the local fake model endpoint (no provider)");
+		check(/note: a prompted agent session can call the model provider/.test(attached.stderr), "loop 3: attach states the provider-cost notice before prompting");
+		check(session !== null && attached.stderr.includes(`Pi session id: ${session.piSessionId}`) && /endo trajectory show --root \S+ \S+/.test(attached.stderr), "loop 3: attach prints the session id and the next commands on stderr");
+		const status8 = await loop(["harness", "status"]);
+		check(status8.status === 0 && JSON.parse(status8.stdout).capabilityState !== null, "loop 4: harness status (default store) shows recorded capability state");
+		const explicit = await loop(["harness", "status", "--root", defaultStore]);
+		check(explicit.status === 0 && explicit.stdout === status8.stdout, "loop 4: --root on the default store gives the identical report");
+		const both = await loop(["harness", "status", defaultStore, "--root", defaultStore]);
+		check(both.status === 1 && /given twice/.test(both.stderr), "a root named twice is a usage error");
+		const overview8 = await loop(["harness", "overview"]);
+		const sessionStatus = overview8.status === 0 ? JSON.parse(overview8.stdout).overview.session.status : null;
+		check(sessionStatus !== null && sessionStatus !== "UNAVAILABLE", `loop 5: harness overview shows the recorded session (${sessionStatus})`);
+		const trajectory = session === null ? null : await loop(["trajectory", "show", session.piSessionId]);
+		const projected = trajectory?.status === 0 ? JSON.parse(trajectory.stdout) : null;
+		check(projected !== null, `loop 6: trajectory show projects the recorded session from the default store${trajectory?.status === 0 ? "" : `: ${trajectory?.stderr}`}`);
+		check(projected !== null && JSON.stringify(projected).includes(session.piSessionId), "loop 6: the trajectory names the Pi session id attach reported");
+	} finally {
+		await model.close();
+		fakePi.remove();
+	}
 } catch (error) {
 	check(false, `smoke aborted: ${error instanceof Error ? error.message : String(error)}`);
 } finally {

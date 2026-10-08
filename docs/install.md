@@ -73,21 +73,49 @@ detail); exit 1 means the doctor itself failed or was misused (`diagnosticErrors
 
 One resolver (`cli/store-root.ts`), first match wins:
 
-1. an explicit `--root` (doctor today),
+1. an explicit root (`--root dir`, or the positional `<root>` of the older spelling),
 2. `ENDO_STORE_ROOT` (absolute; a relative `ENDO_STORE_ROOT`, `XDG_DATA_HOME` or `HOME` is refused),
 3. `$XDG_DATA_HOME/endophasia/store`,
 4. `$HOME/.local/share/endophasia/store`.
 
 Never the working directory or the checkout. The installation digest key keeps its own location and override
 (`ENDO_DIGEST_KEY_FILE`, else `$XDG_DATA_HOME/endophasia/digest-key`, else `~/.local/share/endophasia/digest-key`); the
-two do not influence each other. **Existing commands still take an explicit `<root>` and do not use the default yet**;
-wiring the default (and rejecting a positional root that conflicts with `--root`) belongs with the operator loop in
-tranche 3, so no command changes where it reads or writes in this tranche.
+two do not influence each other.
+
+Every store-taking command (`status`, `events`, `ingest`, `ledger`, `artifacts`, `harness *`, `steer *`,
+`trajectory show`) accepts the positional `<root>` as before, `--root dir`, or neither (the default store; stderr says
+so). Naming the root both ways is a usage error, never a silent choice. `trajectory diff`, `replay`, `proxy` and
+`experiment` still take explicit stores. Commands that write create the default store on first use; the read-only ones
+never do.
+
+## The installed Pi loop
+
+Pi is installed and managed separately (`pi` on `PATH`, or `--pi /path/to/pi`). Endophasia only attaches to it. The
+working directory Pi runs in is independent of the store: `--cwd dir`.
+
+```sh
+endo doctor                                  # 1. diagnose: Node, Pi, store/key locations, recorded evidence
+endo harness check [--pi path]               # 2. fingerprint Pi, run the local checks (no model call), record evidence
+endo harness attach [--pi path] [--cwd dir] \
+    --provider p --model m --prompt "..."     # 3. record one session (may call the provider Pi is configured with: cost)
+endo harness status                          # 4. recorded identity and capability evidence
+endo harness overview                        #    the recorded session lifecycle
+endo trajectory show <pi-session-id>         # 5. project the trajectory from the durable records
+```
+
+`attach` prints its JSON document on stdout and, on stderr, what was observed and the next commands with the real session
+id and root filled in. A prompt reported as *accepted* is only that; the run is separately *seen to settle* or not within
+`--wait` ms, and a run that did not settle may still have been going when the session closed. If Pi reports no session
+id, none is named. Everything after `attach` reads the store only, so it works after the process has exited.
+
+The live study (`harness study --authorize-live-study`) remains a separate, explicit authorisation; nothing in this loop
+runs one, and `doctor` never starts a session. The automated acceptance (`npm run test:package`) runs this loop from the
+installed tarball against a prepared **fake** Pi (a test fixture speaking Pi's documented RPC surface; it is not Pi and
+proves nothing about a Pi release) and a local fake OpenAI-compatible endpoint: no credentials, no provider. Only Pi on
+the platform CI exercises is verified; no general runtime support is claimed.
 
 ## Not yet (pending tranches)
 
-3. A coherent installed Pi loop: check, attach, status/overview and trajectory from the installed package, using the
-   default store root.
 4. Clean-install acceptance with a pinned Pi and a local fake model endpoint, then a versioned prerelease.
 
 No platform other than the CI image (Ubuntu, Node 22) has been exercised for the packaged CLI.

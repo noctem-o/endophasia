@@ -24,6 +24,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyPathV0 } from "../storage/digest-key.ts";
 import { endoHarnessRegistryDirectoryV0, openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { endoVersionV0 } from "./help.ts";
+import { shellWordV0 } from "./loop-hints.ts";
 import { resolveEndoStoreRootV0 } from "./store-root.ts";
 
 export const ENDO_NODE_REQUIRED_V0 = { major: 22, minor: 19, text: ">=22.19.0" } as const;
@@ -133,10 +134,6 @@ function nodeCompatible(version: string): boolean {
 }
 
 /** A word safe to paste into a shell. */
-function shellWord(text: string): string {
-	return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`;
-}
-
 export async function endoDoctorV0(
 	input: { root?: string; pi?: string; attachment?: string },
 	env: Env = process.env,
@@ -362,9 +359,9 @@ export async function endoDoctorV0(
 	if (pi.status === "found") {
 		const check = [
 			"endo harness check",
-			shellWord(rootPath ?? "<root>"),
-			...(input.pi === undefined ? [] : ["--pi", shellWord(pi.path ?? input.pi)]),
-			...(input.attachment === undefined ? [] : ["--attachment", shellWord(input.attachment)]),
+			shellWordV0(rootPath ?? "<root>"),
+			...(input.pi === undefined ? [] : ["--pi", shellWordV0(pi.path ?? input.pi)]),
+			...(input.attachment === undefined ? [] : ["--attachment", shellWordV0(input.attachment)]),
 		].join(" ");
 		// Only local-protocol capabilities are something `harness check` can newly establish. static-surface entries stay
 		// unverified for a release whose RPC surface has not been reviewed, and live-study entries need authorisation.

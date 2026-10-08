@@ -18,6 +18,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoArtifactStoreV0 } from "../storage/artifacts.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { createEndoDurableEvidenceLedgerV0 } from "../storage/ledger.ts";
+import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 /** The open mode of every reporting command. */
 const READ_ONLY = { readOnly: true } as const;
@@ -46,8 +47,10 @@ function intFlagV0(flag: string, value: string): number {
 
 /** `status <root>` — the event log, the ledger layer (when a ledger exists), and artifact digests. */
 export function statusCommand(argv: readonly string[]): void {
-	const [root] = argv;
-	if (typeof root !== "string") throw new TypeError("usage: endo status <root>");
+	const taken = takeEndoRootV0(argv, 0);
+	const root = taken.root;
+	if (taken.rest.length > 0) throw new TypeError("usage: endo status [<root> | --root dir]");
+	announceEndoRootV0(taken);
 	const events = createEndoDurableEventStoreV0(root, READ_ONLY);
 	const eventLength = events.length;
 	const recovery = events.recovery();
@@ -74,9 +77,9 @@ export function statusCommand(argv: readonly string[]): void {
 
 /** `events <root> [--limit n] [--after sequence]` — a forward page of the durable event log. */
 export function eventsCommand(argv: readonly string[]): void {
-	const args = [...argv];
-	const root = args.shift();
-	if (typeof root !== "string") throw new TypeError("usage: endo events <root> [--limit n] [--after sequence]");
+	const taken = takeEndoRootV0(argv, 0, new Set(["--limit", "--after"]));
+	const root = taken.root;
+	const args = taken.rest;
 	let limit: number | undefined;
 	let afterSequence: number | undefined;
 	while (args.length > 0) {
@@ -87,6 +90,7 @@ export function eventsCommand(argv: readonly string[]): void {
 		else if (flag === "--after") afterSequence = intFlagV0(flag, value);
 		else throw new TypeError(`unknown flag ${flag}`);
 	}
+	announceEndoRootV0(taken);
 	const store = createEndoDurableEventStoreV0(root, READ_ONLY);
 	const page = store.page({
 		...(limit === undefined ? {} : { limit }),
@@ -98,8 +102,12 @@ export function eventsCommand(argv: readonly string[]): void {
 
 /** `ingest <root> <file>` — ingest one endo.event.v0 from a JSON file; prints the stored event. */
 export function ingestCommand(argv: readonly string[]): void {
-	const [root, file] = argv;
-	if (typeof root !== "string" || typeof file !== "string") throw new TypeError("usage: endo ingest <root> <file>");
+	const taken = takeEndoRootV0(argv, 1);
+	const root = taken.root;
+	const [file] = taken.rest;
+	if (typeof file !== "string" || taken.rest.length !== 1)
+		throw new TypeError("usage: endo ingest [<root> | --root dir] <file>");
+	announceEndoRootV0(taken);
 	const store = createEndoDurableEventStoreV0(root);
 	const event = store.ingest(readJsonValueV0(file));
 	store.close();
@@ -108,8 +116,10 @@ export function ingestCommand(argv: readonly string[]): void {
 
 /** `ledger <root>` — the ledger's replay classification and its full record list. */
 export function ledgerCommand(argv: readonly string[]): void {
-	const [root] = argv;
-	if (typeof root !== "string") throw new TypeError("usage: endo ledger <root>");
+	const taken = takeEndoRootV0(argv, 0);
+	const root = taken.root;
+	if (taken.rest.length > 0) throw new TypeError("usage: endo ledger [<root> | --root dir]");
+	announceEndoRootV0(taken);
 	const metaFile = `${root}/ledger/ledger.meta.json`;
 	if (!existsSync(metaFile)) throw new TypeError(`no durable ledger under ${root}`);
 	const meta = readJsonValueV0(metaFile) as { id?: unknown; experiment?: unknown };
@@ -123,7 +133,9 @@ export function ledgerCommand(argv: readonly string[]): void {
 
 /** `artifacts <root>` — the stored artifact digests, ascending. */
 export function artifactsCommand(argv: readonly string[]): void {
-	const [root] = argv;
-	if (typeof root !== "string") throw new TypeError("usage: endo artifacts <root>");
+	const taken = takeEndoRootV0(argv, 0);
+	const root = taken.root;
+	if (taken.rest.length > 0) throw new TypeError("usage: endo artifacts [<root> | --root dir]");
+	announceEndoRootV0(taken);
 	console.log(canonicalEndoJsonV0(createEndoArtifactStoreV0(root, READ_ONLY).list()));
 }

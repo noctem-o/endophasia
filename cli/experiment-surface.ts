@@ -21,15 +21,27 @@ import {
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 
-/** A trial's `harness` from the surfaces of its requests (capture order) and the contributions the runner knows. */
+/**
+ * A trial's `harness` from the surfaces of its requests and the contributions the runner knows.
+ *
+ * The logical request order is the exchange order: exchange numbers are allocated as request heads arrive, while the
+ * capture log appends each `capture.request` when its recording job is released, which can be later for a request with
+ * a slow body. So the surfaces (event order) are put in exchange order here, once, and the request index and the
+ * first-observed surface table are built from that order. The validator checks exactly this invariant. The capture log
+ * itself is not touched.
+ */
 export function buildEndoTrialHarnessV0(
 	surfaces: readonly EndoHarnessSurfaceV0[],
 	contributions: EndoExperimentTrialHarnessV0["contributions"],
 ): EndoExperimentTrialHarnessV0 {
+	const ordered = surfaces
+		.map((surface, event) => ({ surface, event }))
+		.sort((a, b) => a.surface.source.exchange - b.surface.source.exchange || a.event - b.event)
+		.map((entry) => entry.surface);
 	const distinct: EndoHarnessSurfaceV0[] = [];
 	const index = new Map<string, number>();
 	const requests: EndoExperimentTrialHarnessV0["requests"] = [];
-	for (const surface of surfaces) {
+	for (const surface of ordered) {
 		const key = endoHarnessSurfaceDistinctKeyV0(surface);
 		let at = index.get(key);
 		if (at === undefined) {
@@ -150,6 +162,18 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 		(result) => identitiesOf(result.harness).join("\u0001") !== modal.set.join("\u0001"),
 	);
 
+	// The other direction: a surface the modal trials showed that a differing trial did not. There is nothing of it
+	// to compare coordinate by coordinate, so it is reported as missing, with the trials it is missing from.
+	const missing = comparable
+		? modal.set.flatMap((id) => {
+				const trialsMissing = withSurface.filter((result) => !identitiesOf(result.harness).includes(id));
+				const entry = byIdentity.get(id);
+				return trialsMissing.length === 0 || entry === undefined || entry.surface.components.status !== "reported"
+					? []
+					: [{ identity: entry.surface.components.value.identity, missingFromTrials: trialsMissing.map(label) }];
+			})
+		: [];
+
 	const differences = comparable
 		? identities
 				.filter((entry) => !modalIds.has(entry.id))
@@ -210,6 +234,7 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 			trialsDifferingFromModalSet: comparable ? differing.map(label) : [],
 			withinTrialVariation: withSurface.filter((result) => identitiesOf(result.harness).length > 1).map(label),
 			differences,
+			missing,
 			contributions: {
 				workingDirectory: contribution((c) => c.workingDirectory),
 				invocationMode: contribution((c) => c.invocationMode),

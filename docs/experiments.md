@@ -151,7 +151,8 @@ Per captured request, the surface records:
   request did not send is **absent**; absent never means the server's default (`temperature` absent is not
   `temperature = 1`), and the server's resulting defaults are explicitly UNAVAILABLE;
 - **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the request target
-  (path and query as sent, since a route or query parameter may select other server behavior), the model,
+  (as the keyed digest of the complete target, query included, since a route or query parameter may select other server
+  behavior; the query text itself is never recorded because it can carry credentials), the model,
   the streaming flag, the ordered instruction digest, the ordered tool digest and presence, and the parameters digest.
 
 What is **not** in the surface: the user's messages, the assistant's and tool results (task input is not harness
@@ -176,11 +177,36 @@ values (Authorization, cookies) are unknown, not equal, and same-name header ord
 kept; a header coordinate needs its own privacy model and a new surface version. Nor are hidden provider configuration,
 server defaults or anything inside the model observed. A cell reported as matched is matched on those coordinates only.
 
-**The tables inside a v1 trial.** `harness.requests` lists every captured request in capture order, with strictly
+**The request target.** The surface records the path only when it is a recognized chat-completions path (otherwise
+null), whether a query was present (`absent` or `redacted`), and a keyed digest of the whole original target under its own
+basis. It is not the request digest (which also covers the body) and not a plain hash. Same target and key give the same
+digest; any change of path or query gives another; another key domain is "not comparable". The target digest is the
+`target` coordinate of a comparison. This protects what a new trial result or report carries. It does **not** sanitize the
+older capture layer: `capture.request` events still hold the raw request target as the proxy received it, and the request
+digest (hence cassette matching and replay identity) is computed over it. Changing that is a capture-protocol and replay
+compatibility decision, not part of this surface; a follow-up needs a threat model (who reads a capture store, what a
+query can hold), an opt-in or versioned redaction that keeps cassette matching decidable, and acceptance tests on existing
+cassettes. Until then treat a capture store as sensitive.
+
+**Order.** Exchange numbers are allocated as request heads arrive; the capture log appends each `capture.request` when
+its recording job is released, so with concurrent connections an earlier exchange whose body is slow can be logged after
+a later one. The log is never reordered. The logical order of a trial is the exchange order: the recorder sorts the
+surfaces by exchange once (`buildEndoTrialHarnessV0`), and the validator requires exactly that. A gap in the numbers is
+fine; a repeated exchange is refused.
+
+**The tables inside a v1 trial.** `harness.requests` lists every captured request in exchange order, with strictly
 increasing exchange numbers; it is never reordered on read. `harness.surfaces` lists each distinct surface once, in the
-order its first request was captured: a recognized surface is distinct by digest key and identity, an unrecognized one
+order its first request (by exchange) appeared: a recognized surface is distinct by digest key and identity, an unrecognized one
 by its capture event (one shared definition, `endoHarnessSurfaceDistinctKeyV0`). Each surface is the source (exchange and
 request digest) of the first request that names it, and every surface is named by some request.
+
+**Instruction positions.** Each instruction's absolute position among the messages is recorded as provenance but is not
+part of the identity. Where a system or developer message sits depends on how many task messages came before it, so
+putting it in the identity would report ordinary task history as a changed harness. The identity covers the ordered
+sequence of the instructions themselves (role and digest): their order and content, not their interleaving with
+task messages. Whether a mid-conversation instruction placement matters is not inferred; a surface version that wants it
+needs a separate definition. Tests pin: other task content, other conversation length and an instruction moved across
+task messages keep the identity, while reordering, adding or removing an instruction changes it.
 
 **Digest domains.** All digests of a record are under one key. Surfaces under different keys are in different domains:
 the comparison answers "not comparable", never "different". Component digests cover the canonical JSON of the parsed
@@ -190,7 +216,8 @@ separate two surfaces while any changed value does, and a component digest equal
 **In the report** (`endo.experiment-report.v2`, which adds `cells[].harnessSurface`; v1 reports stay as they are): per
 cell, the number of v1 and predating trials, the digest keys, request counts (recognized and not), the **distinct
 surfaces** with their identity and how many trials and requests showed each, `matched` (every trial showed the modal
-set of identities), the trials that differ from the modal set, the major coordinates that differ (`model`,
+set of identities), the trials that differ from the modal set, the modal surfaces **missing** from a differing trial (`missing`, with the trials; there is no
+coordinate to compare for an absent surface), the major coordinates that differ (`target`, `model`,
 `streaming`, `instructions`, `tool-definitions`, `tool-order`, `parameters` with the parameter names) and not their
 content, surfaces that change inside one trial, and the distinct contributions. `summary.md` lists one line per cell. A cell
 is expected to hold one surface, and a cell that shows more says so; the report does not call the experiment invalid

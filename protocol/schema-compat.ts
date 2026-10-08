@@ -242,7 +242,7 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		status: "current",
 		boundary: "cli/experiment-artifacts.ts (run directory trials/**/result.json)",
 		fixtures: [
-			{ file: "full.json", sha256: "d62d6f07152ff83de38b8208b30ca6a8380cb5aba4d366ff0b8bbedab0b4da79" },
+			{ file: "full.json", sha256: "3775279b77e4303eddfbe0912bf2080c0603b32ac7d1f86e37eb5f53430337c5" },
 			{ file: "minimal.json", sha256: "796bd0c8cacf420b6f11ea8888737e9608ee40bdcb2c83c4356b62b10df12bc1" },
 		],
 		openPaths: ["harness.surfaces.*.components.value.parameters.fields.*.value"],
@@ -282,8 +282,8 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		boundary:
 			"adapters/openai-proxy/harness-surface.ts (derived from the capture log; embedded in endo.experiment-trial.v1)",
 		fixtures: [
-			{ file: "full.json", sha256: "181a69245568dce4cdac274449ce52825f742f20848a771ca456696694c2a5e3" },
-			{ file: "minimal.json", sha256: "8951e2e4a2ffff59d64f25bd7d8becbd60b0926a3ac538b0a85daf81bd8bfd45" },
+			{ file: "full.json", sha256: "c20d4789c7171fcf7931d86168d6891fe18dbae430798e547e39dbd23953116d" },
+			{ file: "minimal.json", sha256: "0324e213b3ea1b193770702edd41a47e3d6dc01a00daa867254997ce9e92e602" },
 		],
 		openPaths: ["components.value.parameters.fields.*.value"],
 	},

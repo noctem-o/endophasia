@@ -711,6 +711,7 @@ export function surfaceLine(task: string, condition: string, summary: JsonValueV
 		comparable?: boolean;
 		trialsDifferingFromModalSet?: string[];
 		differences?: { differs: string[]; parameterNames: string[] }[];
+		missing?: { missingFromTrials: string[] }[];
 		trials?: { predatingSurface: number; noRecognizedSurface?: number };
 	};
 	const head = `- ${task} / ${condition}: `;
@@ -733,7 +734,8 @@ export function surfaceLine(task: string, condition: string, summary: JsonValueV
 			]),
 		),
 	];
-	return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces; ${s.trialsDifferingFromModalSet!.join(", ")} differ from the modal set${coordinates.length > 0 ? ` (${coordinates.join(", ")})` : ""}${predating}`;
+	const absent = (s.missing ?? []).length;
+	return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces; ${s.trialsDifferingFromModalSet!.join(", ")} differ from the modal set${coordinates.length > 0 ? ` (${coordinates.join(", ")})` : ""}${absent > 0 ? `; ${absent} modal surface(s) missing from some trials` : ""}${predating}`;
 }
 
 /** Aggregate a run directory into an endo.experiment-report.v2 (pure over what the directory holds). */

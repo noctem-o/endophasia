@@ -5,7 +5,11 @@
 		"exchange": 1,
 		"eventId": "endo.event.capture.fixture.1",
 		"method": "POST",
-		"path": "/v1/embeddings",
+		"target": {
+			"path": null,
+			"query": "absent",
+			"digest": "dfae8810602ba8948950bb1aaf076dd2d47e920ffe31481ac7e3c53d95138aaf"
+		},
 		"requestDigest": "1dc608fb7c3fdf1fb8a061c4e824b18ee4f3581393353d49353f7751f8b4b9eb"
 	},
 	"digestKey": {
@@ -14,7 +18,7 @@
 	},
 	"dialect": {
 		"status": "UNAVAILABLE",
-		"reason": "POST /v1/embeddings is not a recognized chat-completions endpoint"
+		"reason": "the request is not a POST to a recognized chat-completions endpoint"
 	},
 	"components": {
 		"status": "UNAVAILABLE",

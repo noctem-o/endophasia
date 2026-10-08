@@ -5,7 +5,11 @@
 		"exchange": 1,
 		"eventId": "endo.event.capture.fixture.1",
 		"method": "POST",
-		"path": "/v1/chat/completions",
+		"target": {
+			"path": "/v1/chat/completions",
+			"query": "absent",
+			"digest": "31a41af90a0c8a6081886cb32ee2ca10bbf8317f8fdac00317ade243fa74e434"
+		},
 		"requestDigest": "ba7f982554dd17c38dcca84c0815d447f11e43ee24bce13bc57e305717bdcd6b"
 	},
 	"digestKey": {
@@ -86,7 +90,7 @@
 				"status": "UNAVAILABLE",
 				"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
 			},
-			"identity": "ce94f641f7d345048df36047fb56ba34cecccf3810f1fc6d49f1ca5ace329d0b"
+			"identity": "d5c89b8bac210a627af3cf1cd594498d7487353c8f79892b25ae3cbd563e7e29"
 		}
 	}
 }

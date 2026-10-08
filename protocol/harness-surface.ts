@@ -5,7 +5,8 @@
 // One record is one observation of one captured request. It is derived from the recorded wire (adapters/openai-proxy/
 // harness-surface.ts), never from a prompt template and never from configuration:
 //
-//   source        which capture event it came from: capture version, exchange, request digest, method and path
+//   source        which capture event it came from: capture version, exchange, request digest, method and a redacted target
+//                 (recognized path, whether a query was present, and the keyed digest of the whole target; never the query)
 //   dialect       the wire dialect, when the endpoint and the body shape establish it; otherwise UNAVAILABLE with a reason
 //   model         the model the request names; UNAVAILABLE when the wire names none (a configured model is another fact)
 //   streaming     the request's `stream` flag; UNAVAILABLE when absent (what the server then does is not observed)
@@ -60,6 +61,7 @@ export const ENDO_HARNESS_SURFACE_BASES_V0 = {
 	toolSet: "endo.harness-surface.v0/tool-set",
 	parameter: "endo.harness-surface.v0/parameter",
 	parameters: "endo.harness-surface.v0/parameters",
+	target: "endo.harness-surface.v0/target",
 	identity: "endo.harness-surface.v0/identity",
 } as const;
 
@@ -123,7 +125,16 @@ export interface EndoHarnessSurfaceV0 {
 		/** The capture.request event's id. */
 		eventId: string;
 		method: string;
-		path: string;
+		/**
+		 * The request target, kept without its content: the path only when it is a recognized chat-completions path
+		 * (null otherwise), whether a query was present, and the keyed digest of the complete original target.
+		 * The query's text is never recorded (it can carry credentials); the digest still tells two targets apart.
+		 */
+		target: {
+			path: string | null;
+			query: "absent" | "redacted";
+			digest: string;
+		};
 		/** The cassette-matching request digest (HMAC over {method, path, body}), value only; the key is `digestKey`. */
 		requestDigest: string;
 	};
@@ -138,13 +149,14 @@ export interface EndoHarnessSurfaceV0 {
 export function endoHarnessSurfaceIdentityBasisV0(
 	components: Omit<EndoHarnessSurfaceComponentsV0, "identity">,
 	dialect: string,
-	target: string,
+	targetDigest: string,
 ): JsonValueV0 {
 	return {
 		basis: ENDO_HARNESS_SURFACE_BASES_V0.identity,
 		dialect,
-		// The request target as sent (path and query): a route or query parameter may select other server behavior.
-		target,
+		// The keyed digest of the complete request target as sent: a route or query parameter may select other server
+		// behavior, and the query text itself is not recorded.
+		target: targetDigest,
 		model: components.model,
 		streaming: components.streaming,
 		instructions: components.instructions.orderedDigest,
@@ -322,7 +334,7 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 		return `schemaVersion must be ${ENDO_HARNESS_SURFACE_VERSION_V0}`;
 	const source = closed(
 		v.source,
-		["captureVersion", "exchange", "eventId", "method", "path", "requestDigest"],
+		["captureVersion", "exchange", "eventId", "method", "target", "requestDigest"],
 		"source",
 	);
 	if (source !== null) return source;
@@ -330,10 +342,15 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	if (s.captureVersion !== null && !isText(s.captureVersion, 64))
 		return "source.captureVersion must be a string or null";
 	if (!isCount(s.exchange)) return "source.exchange must be a non-negative integer";
-	// The method and target are bounded by the capture parser's head limit (256 KiB), not a smaller one: the complete
-	// target is part of the identity, so a target the parser recorded must be a target this record can hold.
-	if (!isText(s.eventId, 256) || !isText(s.method, CAPTURE_HEAD_MAX) || !isText(s.path, CAPTURE_HEAD_MAX))
-		return "source.eventId, method and path must be non-empty strings";
+	if (!isText(s.eventId, 256) || !isText(s.method, CAPTURE_HEAD_MAX))
+		return "source.eventId and method must be non-empty strings";
+	const target = closed(s.target, ["path", "query", "digest"], "source.target");
+	if (target !== null) return target;
+	const t = s.target as Record<string, unknown>;
+	if (t.path !== null && !(typeof t.path === "string" && ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(t.path)))
+		return "source.target.path is a recognized chat-completions path or null";
+	if (t.query !== "absent" && t.query !== "redacted") return "source.target.query must be absent or redacted";
+	if (!isHex(t.digest)) return "source.target.digest must be 64 lowercase hex digits";
 	if (!isHex(s.requestDigest)) return "source.requestDigest must be 64 lowercase hex digits";
 	const key = closed(v.digestKey, ["algorithm", "keyId"], "digestKey");
 	if (key !== null) return key;
@@ -348,8 +365,7 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	if (d.status !== components?.status) return "components are reported exactly when the dialect is";
 	if (d.status === "reported") {
 		// Endpoint recognition establishes the dialect: a reported dialect belongs to a POST to a chat-completions path.
-		const pathname = (s.path as string).split("?")[0]!;
-		if (s.method !== "POST" || !ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(pathname))
+		if (s.method !== "POST" || t.path === null)
 			return "a reported dialect requires a POST to a chat-completions path as its source";
 		const wrapper = closed(v.components, ["status", "value"], "components");
 		return wrapper ?? componentsProblem((v.components as { value: unknown }).value);
@@ -422,7 +438,7 @@ export function compareEndoHarnessSurfacesV0(
 	const differs: EndoHarnessSurfaceCoordinateV0[] = [];
 	if (a.dialect.status === "reported" && b.dialect.status === "reported" && a.dialect.value !== b.dialect.value)
 		differs.push("dialect");
-	if (a.source.path !== b.source.path) differs.push("target");
+	if (a.source.target.digest !== b.source.target.digest) differs.push("target");
 	if (!sameObservation(x.model, y.model)) differs.push("model");
 	if (!sameObservation(x.streaming, y.streaming)) differs.push("streaming");
 	if (x.instructions.orderedDigest !== y.instructions.orderedDigest) differs.push("instructions");

@@ -54,7 +54,7 @@ const bytesOf = (value: unknown): number => Buffer.byteLength(canonicalEndoJsonV
 
 type Recognized = { ok: true; components: EndoHarnessSurfaceComponentsV0 } | { ok: false; reason: string };
 
-function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target: string): Recognized {
+function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, targetDigest: string): Recognized {
 	const { messages, tools } = parsed;
 	if (!Array.isArray(messages)) return { ok: false, reason: "the body has no `messages` list" };
 	if (tools !== undefined && !Array.isArray(tools))
@@ -144,7 +144,7 @@ function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target
 		serverDefaults: { status: "UNAVAILABLE", reason: SERVER_DEFAULTS_REASON },
 	};
 	const identity = key.digest(
-		endoHarnessSurfaceIdentityBasisV0(partial, ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0, target),
+		endoHarnessSurfaceIdentityBasisV0(partial, ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0, targetDigest),
 	).value;
 	return { ok: true, components: { ...partial, identity } };
 }
@@ -158,7 +158,14 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 			exchange: input.exchange,
 			eventId: input.eventId,
 			method: input.method,
-			path: input.path,
+			target: {
+				path: ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(input.path.split("?")[0]!)
+					? input.path.split("?")[0]!
+					: null,
+				query: input.path.includes("?") ? ("redacted" as const) : ("absent" as const),
+				// Under the record's key and its own basis: the complete target, query included, never stored.
+				digest: input.key.digest({ basis: ENDO_HARNESS_SURFACE_BASES_V0.target, target: input.path }).value,
+			},
 			requestDigest: input.requestDigest.value,
 		},
 		digestKey: { algorithm: "hmac-sha256" as const, keyId: input.key.keyId },
@@ -172,9 +179,7 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 		return unavailable("the request was digested under another key than the one given");
 	const pathname = input.path.split("?")[0]!;
 	if (input.method !== "POST" || !ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(pathname))
-		return unavailable(
-			`${input.method.slice(0, 64)} ${pathname.slice(0, 200)} is not a recognized chat-completions endpoint`,
-		);
+		return unavailable("the request is not a POST to a recognized chat-completions endpoint");
 	if (input.body === null) return unavailable("the request body is not in the blob store");
 	let parsed: unknown;
 	try {
@@ -189,7 +194,7 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 		// The whole tree, ignored messages included: a body with a value that has no canonical form is opaque to the
 		// request digest, so it is not a surface (1e400 parses to Infinity).
 		canonicalEndoJsonV0(parsed);
-		recognized = recognize(input.key, parsed, input.path);
+		recognized = recognize(input.key, parsed, base.source.target.digest);
 	} catch {
 		// A value JSON.parse accepts but canonical JSON cannot carry (an overflowing number such as 1e400).
 		return unavailable("the request body holds a value with no canonical form (for example a non-finite number)");

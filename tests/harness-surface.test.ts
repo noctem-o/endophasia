@@ -129,7 +129,7 @@ describe("the harness surface is derived from the recorded wire", () => {
 			captureVersion: ENDO_CAPTURE_VERSION_V0,
 			exchange: 1,
 			method: "POST",
-			path: "/v1/chat/completions",
+			target: { path: "/v1/chat/completions", query: "absent" },
 		});
 		expect(surface.digestKey).toEqual({ algorithm: "hmac-sha256", keyId: key.keyId });
 		expect(surface.dialect).toEqual({ status: "reported", value: "openai.chat-completions" });
@@ -366,7 +366,7 @@ describe("the harness surface is derived from the recorded wire", () => {
 	it("the identity is the keyed digest of the exported basis, and the basis carries no raw content", () => {
 		const surface = surfaceOf(chat({ temperature: 0.2 }));
 		const { identity, ...rest } = componentsOf(surface);
-		const basis = endoHarnessSurfaceIdentityBasisV0(rest, "openai.chat-completions", surface.source.path);
+		const basis = endoHarnessSurfaceIdentityBasisV0(rest, "openai.chat-completions", surface.source.target.digest);
 		expect(key.digest(basis).value).toBe(identity);
 		expect(JSON.stringify(basis)).not.toContain("coding agent");
 		// Component digests are domain-separated from the keyed digest of the plain value.
@@ -683,7 +683,7 @@ describe("review findings", () => {
 		expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(true);
 		for (const source of [
 			{ ...surface.source, method: "GET" },
-			{ ...surface.source, path: "/v1/embeddings" },
+			{ ...surface.source, target: { ...surface.source.target, path: null } },
 		])
 			expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, { ...surface, source }).ok).toBe(false);
 	});
@@ -921,5 +921,156 @@ describe("review findings", () => {
 			["temperature"],
 		);
 		expect(mixed.samplingUnknown).toBe(true);
+	});
+
+	describe("the request target keeps no query text", () => {
+		const CANARY = "sk-canary-7f3a9c1e5b2d4f60";
+		const targeted = (path: string, k = key) =>
+			harnessSurfacesOfCaptureV0(record([{ body: chat(), path }], { key: k }), k)[0]!;
+		const trialAt = (path: string, number: number, k = key): EndoExperimentTrialResultV1 => ({
+			...(fixture("endo.experiment-trial.v1", "minimal.json") as EndoExperimentTrialResultV1),
+			trial: number,
+			harness: buildEndoTrialHarnessV0(harnessSurfacesOfCaptureV0(record([{ body: chat(), path }], { key: k }), k), {
+				...contributions,
+			}),
+		});
+
+		it("the canary is in no surface, trial result, cell summary or summary line, and recognition still works", () => {
+			const path = `/v1/chat/completions?api_key=${CANARY}&x=1`;
+			const surface = targeted(path);
+			expect(surface.dialect.status).toBe("reported");
+			expect(surface.source.target).toMatchObject({ path: "/v1/chat/completions", query: "redacted" });
+			const trial = trialAt(path, 0);
+			const cell = summarizeEndoCellHarnessSurfacesV0([trial, trialAt(path, 1)]);
+			for (const evidence of [surface, trial, cell, surfaceLine("t", "c", cell)])
+				expect(JSON.stringify(evidence)).not.toContain(CANARY);
+			expect(readEndoExperimentTrialResultV0(trial).ok).toBe(true);
+		});
+
+		it("not even a path that is no chat endpoint is kept, nor named in the reason", () => {
+			const surface = targeted(`/v1/embeddings/${CANARY}?k=${CANARY}`);
+			expect(surface.components.status).toBe("UNAVAILABLE");
+			expect(surface.source.target.path).toBeNull();
+			expect(JSON.stringify(surface)).not.toContain(CANARY);
+		});
+
+		it("query values separate the identity under one key, stably, without being stored", () => {
+			const a1 = targeted(`/v1/chat/completions?api_key=${CANARY}`);
+			const a2 = targeted(`/v1/chat/completions?api_key=${CANARY}`);
+			const b = targeted(`/v1/chat/completions?api_key=${CANARY}x`);
+			const none = targeted("/v1/chat/completions");
+			expect(a1.source.target.digest).toBe(a2.source.target.digest);
+			expect(componentsOf(a1).identity).toBe(componentsOf(a2).identity);
+			expect(a1.source.target.digest).not.toBe(b.source.target.digest);
+			expect(componentsOf(a1).identity).not.toBe(componentsOf(b).identity);
+			expect(componentsOf(none).identity).not.toBe(componentsOf(a1).identity);
+			expect(compareEndoHarnessSurfacesV0(a1, b)).toMatchObject({ comparable: true, differs: ["target"] });
+			expect(compareEndoHarnessSurfacesV0(a1, a2)).toMatchObject({ comparable: true, same: true });
+		});
+
+		it("the same target under another key domain is not comparable, never equal or different", () => {
+			const path = `/v1/chat/completions?api_key=${CANARY}`;
+			const here = targeted(path);
+			const there = targeted(path, altKey);
+			expect(here.source.target.digest).not.toBe(there.source.target.digest);
+			expect(compareEndoHarnessSurfacesV0(here, there)).toMatchObject({ comparable: false });
+		});
+
+		it("the target digest is its own domain: not the request digest and not a plain hash", () => {
+			const path = "/v1/chat/completions?x=1";
+			const surface = targeted(path);
+			expect(surface.source.target.digest).not.toBe(surface.source.requestDigest);
+			expect(surface.source.target.digest).not.toBe(createHash("sha256").update(path).digest("hex"));
+		});
+	});
+
+	describe("a request's place among the task's messages", () => {
+		const sys = { role: "system", content: "You are a coding agent." };
+		const dev = { role: "developer", content: "Prefer small diffs." };
+		const msgs = (messages: unknown[]) => chat({ messages });
+
+		it("task content and conversation length do not change the identity", () => {
+			const a = identityOf(msgs([sys, { role: "user", content: "fix the test" }]));
+			const b = identityOf(msgs([sys, { role: "user", content: "something else entirely" }]));
+			const longer = identityOf(
+				msgs([
+					sys,
+					{ role: "user", content: "q1" },
+					{ role: "assistant", content: "a1" },
+					{ role: "tool", content: "t1" },
+					{ role: "user", content: "q2" },
+				]),
+			);
+			expect(b).toBe(a);
+			expect(longer).toBe(a);
+		});
+
+		it("an instruction moving across task messages keeps the identity, and its position stays recorded", () => {
+			const early = componentsOf(surfaceOf(msgs([sys, dev, { role: "user", content: "x" }])));
+			const late = componentsOf(surfaceOf(msgs([sys, { role: "user", content: "x" }, dev])));
+			expect(late.identity).toBe(early.identity);
+			expect(early.instructions.items.map((i) => i.position)).toEqual([0, 1]);
+			expect(late.instructions.items.map((i) => i.position)).toEqual([0, 2]);
+		});
+
+		it("a change in the sequence of the instructions themselves is a change of identity", () => {
+			const user = { role: "user", content: "x" };
+			expect(identityOf(msgs([dev, sys, user]))).not.toBe(identityOf(msgs([sys, dev, user])));
+			expect(identityOf(msgs([sys, user]))).not.toBe(identityOf(msgs([sys, dev, user])));
+			expect(identityOf(msgs([sys, user]))).not.toBe(identityOf(msgs([dev, user])));
+		});
+	});
+
+	describe("both directions of a modal-set difference", () => {
+		const A = () => chat();
+		const B = () => chat({ temperature: 0.2 });
+		const C = () => chat({ temperature: 0.5 });
+		const cell = (...sets: Body[][]) =>
+			summarizeEndoCellHarnessSurfacesV0(sets.map((bodies, i) => trialOf(bodies, i))) as {
+				matched: boolean;
+				trialsDifferingFromModalSet: string[];
+				differences: { comparedWith: string; differs: string[] }[];
+				missing: { identity: string; missingFromTrials: string[] }[];
+			};
+		const idOf = (body: Body) => identityOf(body);
+
+		it("{A,B} against {A}: the missing surface is reported, with the trial", () => {
+			const s = cell([A(), B()], [A(), B()], [A()]);
+			expect(s.matched).toBe(false);
+			expect(s.trialsDifferingFromModalSet).toEqual(["trial #2"]);
+			expect(s.differences).toEqual([]);
+			expect(s.missing).toEqual([{ identity: idOf(B()), missingFromTrials: ["trial #2"] }]);
+		});
+
+		it("{A} against {A,B}: the extra surface is compared with the modal one, nothing is missing", () => {
+			const s = cell([A()], [A()], [A(), B()]);
+			expect(s.trialsDifferingFromModalSet).toEqual(["trial #2"]);
+			expect(s.differences).toMatchObject([{ comparedWith: idOf(A()), differs: ["parameters"] }]);
+			expect(s.missing).toEqual([]);
+		});
+
+		it("{A,B} against {A,C}: one extra and one missing", () => {
+			const s = cell([A(), B()], [A(), B()], [A(), C()]);
+			expect(s.differences).toHaveLength(1);
+			expect(s.missing).toEqual([{ identity: idOf(B()), missingFromTrials: ["trial #2"] }]);
+		});
+
+		it("equal sets report nothing missing; a tie is broken the same way whatever the trial order", () => {
+			expect(cell([A(), B()], [B(), A()]).missing).toEqual([]);
+			const forward = cell([A()], [B()]);
+			const backward = cell([B()], [A()]);
+			expect(forward.trialsDifferingFromModalSet).toHaveLength(1);
+			expect(backward.trialsDifferingFromModalSet).toHaveLength(1);
+			expect(forward.missing.map((m) => m.identity)).toEqual(backward.missing.map((m) => m.identity));
+		});
+
+		it("different digest domains: nothing is missing or different, only not comparable", () => {
+			const s = summarizeEndoCellHarnessSurfacesV0([trialOf([A(), B()], 0), trialOf([A()], 1, altKey)]) as {
+				comparable: boolean;
+				matched: null;
+				missing: unknown[];
+			};
+			expect(s).toMatchObject({ comparable: false, matched: null, missing: [] });
+		});
 	});
 });

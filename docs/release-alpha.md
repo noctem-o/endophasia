@@ -1,7 +1,6 @@
 # First alpha: what it is, what is verified, and the release checklist
 
-This is the preparation for a first versioned alpha. **Nothing here publishes anything**: the package stays
-`private: true` (version `0.1.0-alpha.1` prepared) until the owner decides, and tagging, publishing and changing visibility are owner actions.
+This is the preparation for a first versioned alpha. **Nothing here publishes anything**: the package stays (version `0.1.0-alpha.1` prepared) until the owner decides, and tagging, publishing and changing visibility are owner actions.
 
 ## What the alpha is
 

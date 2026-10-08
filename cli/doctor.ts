@@ -229,6 +229,10 @@ export async function endoDoctorV0(
 		let logProbe: "present" | "absent" | string = "present";
 		try {
 			statSync(log);
+			// It must be a readable regular file: the frame-log reader treats a read error as an empty log.
+			const usable = presence(log, "file");
+			if (usable !== "present")
+				logProbe = `the registry log is ${usable === "invalid" ? "not a regular file" : "not readable"}`;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
 			// Only a genuinely missing path is "nothing recorded"; ENOTDIR, EACCES and the rest mean the registry cannot be used.
@@ -294,13 +298,17 @@ export async function endoDoctorV0(
 			...(input.pi === undefined ? [] : ["--pi", shellWord(pi.path ?? input.pi)]),
 			...(input.attachment === undefined ? [] : ["--attachment", shellWord(input.attachment)]),
 		].join(" ");
+		// Capabilities local checks can establish but that are still unverified (an identify-only state, or a change).
+		const unchecked = evidence.capabilities.filter(
+			(entry) => entry.status === "unverified" && entry.requires !== "live-study",
+		);
 		if (sealed)
 			steps.push(
 				"harness check would be refused: a sealed registry accepts no appends. Keep this store for inspection and use a different store root for new checks.",
 			);
 		else if (
 			evidence.status === "none-recorded" ||
-			(evidence.status === "recorded" && evidence.capabilities.length === 0)
+			(evidence.status === "recorded" && (evidence.capabilities.length === 0 || unchecked.length > 0))
 		)
 			steps.push(`Record local checks (no model call): ${check}. Until then no capability is admitted.`);
 		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)

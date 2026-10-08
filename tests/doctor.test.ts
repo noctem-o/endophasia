@@ -306,4 +306,35 @@ describe("endo doctor", () => {
 		expect(text).toMatch(/could not be established/);
 		expect(text).not.toMatch(/has that identity/);
 	});
+
+	it("a registry log that is a directory is unreadable, not an empty recorded state", async () => {
+		const install = fakePi();
+		const root = scratch();
+		mkdirSync(join(endoHarnessRegistryDirectoryV0(root, "pi.default"), "records.log"), { recursive: true });
+		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(report.evidence.status).toBe("unreadable");
+		expect(report.evidence.reason).toMatch(/not a regular file/);
+		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("an identify-only state still asks for the local checks, but a finished check does not", async () => {
+		const install = fakePi();
+		const root = join(scratch(), "store");
+		mkdirSync(root, { recursive: true });
+		const pi = new PiAttachmentV0({
+			root,
+			cwd: scratch(),
+			executable: install.bin,
+			env: fakePiEnv({}),
+			requestTimeoutMs: 10_000,
+		});
+		await pi.identify();
+		pi.state(); // what `endo harness identify` records: a state whose capabilities are all unverified
+		const identified = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(identified.evidence.capabilities.length).toBeGreaterThan(0);
+		expect(identified.nextSteps.join(" ")).toMatch(/Record local checks/);
+		await pi.checkLocal();
+		const checked = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(checked.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
 });

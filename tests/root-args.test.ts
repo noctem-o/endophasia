@@ -38,6 +38,11 @@ describe("takeEndoRootV0", () => {
 
 	it("refuses a root named twice, a repeated or valueless --root", () => {
 		expect(() => takeEndoRootV0(["/a", "--root", "/b"], 0, new Set(), env)).toThrow(/given twice/);
+		// --root first: the leading positionals after it are still classified
+		expect(() => takeEndoRootV0(["--root", "/a", "/b", "proposal", "--x", "1"], 1, new Set(), env)).toThrow(
+			/given twice/,
+		);
+		expect(() => takeEndoRootV0(["--root", "/a", "/b", "--x", "1"], 0, new Set(), env)).toThrow(/given twice/);
 		expect(() => takeEndoRootV0(["/a", "file", "--root", "/b"], 1, new Set(), env)).toThrow(/given twice/);
 		expect(() => takeEndoRootV0(["--root", "/a", "--root", "/b"], 0, new Set(), env)).toThrow(/more than once/);
 		expect(() => takeEndoRootV0(["--root"], 0, new Set(), env)).toThrow(/needs a value/);

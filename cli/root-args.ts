@@ -46,7 +46,7 @@ export function takeEndoRootV0(
 		if (value.length === 0) throw new TypeError("the store root is empty");
 		named = value;
 		args.splice(index, 2);
-		if (index < firstFlag) firstFlag = args.findIndex((arg) => arg.startsWith("--"));
+		firstFlag = args.findIndex((arg) => arg.startsWith("--"));
 		if (firstFlag === -1) firstFlag = args.length;
 	}
 	const hasPositionalRoot = firstFlag > positionals;

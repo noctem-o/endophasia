@@ -2,9 +2,18 @@
 // Pi installation and a scratch HOME/XDG; no real Pi, provider or network.
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
@@ -240,5 +249,61 @@ describe("endo doctor", () => {
 			expect(result.stdout).toBe("");
 			expect(result.stderr).toMatch(/needs a value/);
 		}
+	});
+
+	it("does not recommend a re-check a sealed registry would refuse", async () => {
+		const { install, root } = await recordedStore();
+		const log = join(endoHarnessRegistryDirectoryV0(root, "pi.default"), "records.log");
+		const bytes = readFileSync(log);
+		bytes[Math.floor(bytes.length / 2)] ^= 0xff; // a complete frame that no longer verifies
+		writeFileSync(log, bytes);
+		install.rebuild("changed after sealing");
+		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(report.evidence.status).toBe("damaged");
+		expect(report.nextSteps.join(" ")).toMatch(/sealed registry accepts no appends/);
+		expect(report.nextSteps.join(" ")).not.toMatch(/run endo harness check/);
+	});
+
+	it("recommends the resolved Pi path, not a relative spelling that depends on the working directory", async () => {
+		const install = fakePi();
+		const root = join(scratch(), "store");
+		const report = await endoDoctorV0({ root, pi: relative(process.cwd(), install.bin) }, { HOME: scratch() });
+		expect(report.pi.path).toBe(install.bin);
+		expect(report.nextSteps.join(" ")).toContain(`--pi ${install.bin}`);
+	});
+
+	it("an unusable registry path is not 'nothing recorded'", async () => {
+		const install = fakePi();
+		const root = scratch();
+		writeFileSync(join(root, "harness"), "a file where the registry directory belongs");
+		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(report.evidence.status).toBe("unreadable");
+		expect(report.evidence.reason).toMatch(/ENOTDIR/);
+		expect(report.nextSteps.join(" ")).toMatch(/Fix the registry path/);
+		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("does not call equal reduced-confidence identities a match", async () => {
+		const install = fakePi();
+		install.setScenario("version-fail");
+		const root = join(scratch(), "store");
+		mkdirSync(root, { recursive: true });
+		const pi = new PiAttachmentV0({
+			root,
+			cwd: scratch(),
+			executable: install.bin,
+			env: fakePiEnv({}),
+			requestTimeoutMs: 10_000,
+		});
+		await pi.identify();
+		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		expect(report.pi.identityConfidence).toBe("reduced");
+		expect(report.pi.gaps.some((gap) => gap.fact === "version")).toBe(true);
+		expect(report.evidence.recordedIdentityConfidence).toBe("reduced");
+		expect(report.evidence.currentMatchesRecorded).toBeNull();
+		const text = renderEndoDoctorV0(report);
+		expect(text).toMatch(/REDUCED confidence/);
+		expect(text).toMatch(/could not be established/);
+		expect(text).not.toMatch(/has that identity/);
 	});
 });

@@ -61,7 +61,7 @@ whether Pi is found (an explicit `--pi`, else `pi` on `PATH`) and what it report
 the installation key would live and whether each exists, and the identity and capability evidence already recorded in
 that store, copied as recorded (ADMITTED, UNVERIFIED, UNAVAILABLE and the rest are all shown; the evaluator is not
 re-run). Capabilities derived for an earlier identity than the latest recorded one are marked STALE, and a torn or
-corrupt registry log is reported as DAMAGED (the valid prefix is shown, never repaired). It says whether the Pi found now has the identity the evidence describes, and lists next steps.
+corrupt registry log is reported as DAMAGED (the valid prefix is shown, never repaired). It says whether the Pi found now has the identity the evidence describes (a match is claimed only between strong identities; a reduced-confidence identity, whose entrypoint or version could not be observed, is shown with its gaps and a match is reported as not established), and lists next steps. It does not recommend a re-check that a sealed registry would refuse.
 
 It never installs or modifies Pi, starts an agent session, calls a provider, runs a study, creates a key, or writes to
 the store; the only process it runs is `<pi> --version`. **Finding Pi is not a capability**: nothing is admitted until

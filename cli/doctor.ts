@@ -10,7 +10,7 @@
  * itself failed or was misused. Missing prerequisites are `unavailable`, never an internal failure.
  */
 
-import { accessSync, constants, existsSync, statSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, resolvePiExecutableV0 } from "../adapters/pi/identity.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
@@ -44,6 +44,10 @@ export interface EndoDoctorReportV0 {
 		versionGap: string | null;
 		versionStanding: string | null;
 		identityDigest: string | null;
+		/** "reduced" when the entrypoint or version could not be observed: equality of such identities proves little. */
+		identityConfidence: string | null;
+		/** Every fact the fingerprint could not obtain, with why. */
+		gaps: { fact: string; reason: string }[];
 		reason: string | null;
 	};
 	store: { root: string | null; source: string | null; presence: Presence | null; reason: string | null };
@@ -53,8 +57,13 @@ export interface EndoDoctorReportV0 {
 		attachment: string;
 		recordedFingerprintAt: string | null;
 		recordedVersion: string | null;
-		/** Whether the Pi found now has the identity that was recorded; null when either is missing. */
+		/**
+		 * Whether the Pi found now has the identity that was recorded: false when the digests differ; true only when they
+		 * match and both identities are strong; null when either is missing or a reduced identity makes a match unproven.
+		 */
 		currentMatchesRecorded: boolean | null;
+		/** The confidence of the latest recorded identity. */
+		recordedIdentityConfidence: string | null;
 		/** The fingerprint the recorded capability state was derived for, or null when none. */
 		capabilitiesFingerprintId: string | null;
 		/** True when the capabilities were derived for another identity than the latest recorded one: not current. */
@@ -105,6 +114,7 @@ export async function endoDoctorV0(
 	if (!compatible) steps.push(`Install Node ${ENDO_NODE_REQUIRED_V0.text} (running ${nodeVersion}).`);
 
 	// Pi: resolve, then (only if found) take the existing fingerprint, which runs `<pi> --version` once.
+	let piRecord: { identity: { digest: string; confidence: string } } | null = null;
 	const pi: EndoDoctorReportV0["pi"] = {
 		status: "not-found",
 		requested: null,
@@ -115,6 +125,8 @@ export async function endoDoctorV0(
 		versionGap: null,
 		versionStanding: null,
 		identityDigest: null,
+		identityConfidence: null,
+		gaps: [],
 		reason: null,
 	};
 	try {
@@ -143,6 +155,9 @@ export async function endoDoctorV0(
 				pi.reportedVersion = fingerprint.reported.version;
 				pi.versionStanding = piVersionStandingV0(fingerprint.reported.version);
 				pi.identityDigest = fingerprint.identity.digest;
+				pi.identityConfidence = fingerprint.identity.confidence;
+				pi.gaps = fingerprint.gaps.map((gap) => ({ fact: gap.fact, reason: gap.reason }));
+				piRecord = fingerprint;
 				pi.versionText = fingerprint.reported.versionText;
 				pi.versionGap = fingerprint.gaps.find((gap) => gap.fact === "version")?.reason ?? null;
 				if (fingerprint.reported.version === null)
@@ -193,12 +208,14 @@ export async function endoDoctorV0(
 	}
 
 	// Recorded evidence: copied from the registry opened read-only; the capability evaluator is not run.
+	let sealed = false;
 	const evidence: EndoDoctorReportV0["evidence"] = {
 		status: "not-checked",
 		attachment,
 		recordedFingerprintAt: null,
 		recordedVersion: null,
 		currentMatchesRecorded: null,
+		recordedIdentityConfidence: null,
 		capabilitiesFingerprintId: null,
 		capabilitiesStale: false,
 		logDamage: null,
@@ -208,9 +225,22 @@ export async function endoDoctorV0(
 	if (rootPath !== null && (store.presence === "invalid" || store.presence === "not-accessible")) {
 		evidence.reason = `not checked: ${store.reason}`;
 	} else if (rootPath !== null) {
-		if (!existsSync(join(endoHarnessRegistryDirectoryV0(rootPath, attachment), "records.log"))) {
+		const log = join(endoHarnessRegistryDirectoryV0(rootPath, attachment), "records.log");
+		let logProbe: "present" | "absent" | string = "present";
+		try {
+			statSync(log);
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			// Only a genuinely missing path is "nothing recorded"; ENOTDIR, EACCES and the rest mean the registry cannot be used.
+			logProbe = code === "ENOENT" ? "absent" : `the registry path cannot be examined (${code ?? "unknown error"})`;
+		}
+		if (logProbe === "absent") {
 			evidence.status = "none-recorded";
 			evidence.reason = "no identity or capability evidence is recorded for this attachment in this store";
+		} else if (logProbe !== "present") {
+			evidence.status = "unreadable";
+			evidence.reason = logProbe;
+			steps.push(`Fix the registry path under the store: ${logProbe}.`);
 		} else {
 			try {
 				const registry = openEndoHarnessRegistryV0(rootPath, attachment, { readOnly: true });
@@ -219,8 +249,16 @@ export async function endoDoctorV0(
 				evidence.status = "recorded";
 				evidence.recordedFingerprintAt = fingerprint?.observedAt ?? null;
 				evidence.recordedVersion = fingerprint?.reported.version ?? null;
-				if (fingerprint !== null && pi.identityDigest !== null)
-					evidence.currentMatchesRecorded = fingerprint.identity.digest === pi.identityDigest;
+				evidence.recordedIdentityConfidence = fingerprint?.identity.confidence ?? null;
+				if (fingerprint !== null && piRecord !== null) {
+					const sameDigest = fingerprint.identity.digest === piRecord.identity.digest;
+					// A reduced identity (no entrypoint digest or no version) may not change when the runtime does.
+					evidence.currentMatchesRecorded = !sameDigest
+						? false
+						: fingerprint.identity.confidence === "strong" && piRecord.identity.confidence === "strong"
+							? true
+							: null;
+				}
 				evidence.capabilities = state?.capabilities ?? [];
 				evidence.capabilitiesFingerprintId = state?.fingerprintId ?? null;
 				// The state is current only for the identity it was derived for. A newer fingerprint recorded without a
@@ -232,6 +270,7 @@ export async function endoDoctorV0(
 					evidence.reason =
 						"the capabilities below were derived for an earlier identity than the latest recorded one: they are not current";
 				const recovery = registry.recovery();
+				sealed = recovery.sealed;
 				if (recovery.truncated || recovery.sealed || recovery.corruptAt !== null || recovery.discarded !== null) {
 					evidence.status = "damaged";
 					evidence.logDamage = recovery.sealed
@@ -252,10 +291,17 @@ export async function endoDoctorV0(
 		const check = [
 			"endo harness check",
 			shellWord(rootPath ?? "<root>"),
-			...(input.pi === undefined ? [] : ["--pi", shellWord(input.pi)]),
+			...(input.pi === undefined ? [] : ["--pi", shellWord(pi.path ?? input.pi)]),
 			...(input.attachment === undefined ? [] : ["--attachment", shellWord(input.attachment)]),
 		].join(" ");
-		if (evidence.status === "none-recorded" || (evidence.status === "recorded" && evidence.capabilities.length === 0))
+		if (sealed)
+			steps.push(
+				"harness check would be refused: a sealed registry accepts no appends. Keep this store for inspection and use a different store root for new checks.",
+			);
+		else if (
+			evidence.status === "none-recorded" ||
+			(evidence.status === "recorded" && evidence.capabilities.length === 0)
+		)
 			steps.push(`Record local checks (no model call): ${check}. Until then no capability is admitted.`);
 		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)
 			steps.push(`The recorded capabilities do not describe the installed Pi: run ${check} again.`);
@@ -293,6 +339,10 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 			? `Pi        found at ${pi.path}, reports ${pi.reportedVersion ?? "no parsable version"} (${pi.versionStanding}); a found executable is not an admitted capability`
 			: `Pi        ${pi.status.toUpperCase()}${pi.reason === null ? "" : ` — ${pi.reason}`}`,
 	);
+	if (pi.status === "found" && pi.identityConfidence === "reduced")
+		lines.push(
+			`          identity is REDUCED confidence: ${pi.gaps.map((g) => `${g.fact} (${g.reason})`).join("; ")}`,
+		);
 	if (pi.status === "found" && pi.reason !== null) lines.push(`          note: ${pi.reason}`);
 	if (pi.status === "found" && pi.reportedVersion === null && pi.versionText !== null)
 		lines.push(`          \`--version\` printed: ${JSON.stringify(pi.versionText)}`);
@@ -317,7 +367,7 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 					: report.evidence.currentMatchesRecorded
 						? "; the installed Pi has that identity"
 						: "; the installed Pi has a DIFFERENT identity"
-			}`,
+			}${report.evidence.currentMatchesRecorded === null && report.evidence.recordedFingerprintAt !== null && report.pi.identityDigest !== null ? "; whether the installed Pi is the same could not be established (a reduced-confidence identity does not prove it)" : ""}`,
 		);
 	if (report.evidence.capabilitiesStale)
 		lines.push("  capabilities below are STALE (recorded for an earlier identity):");

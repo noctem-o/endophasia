@@ -24,3 +24,4 @@ coverage/
 .pi_config/
 todo.md
 plans/
+*.tgz

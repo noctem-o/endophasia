@@ -1,6 +1,8 @@
+#!/usr/bin/env node
 /**
  * The `endo` command. Runs directly on Node ≥ 22.19 (native TypeScript):
  *
+ *   node cli/index.ts --help | --version
  *   node cli/index.ts <status|events|ingest|ledger|artifacts> <root> ...
  *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
@@ -19,6 +21,7 @@ import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCo
 import { digestKeyCommand } from "./digest-key.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
+import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
 import { STEER_COMMANDS_V0 } from "./steer.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
@@ -67,12 +70,20 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 };
 
 const [, , command, ...argv] = process.argv;
-const dispatch = typeof command === "string" ? COMMANDS_V0[command] : undefined;
+if (command === "--help" || command === "-h" || command === "help") {
+	process.stdout.write(endoHelpV0());
+	process.exit(0);
+}
+if (command === "--version" || command === "-V") {
+	process.stdout.write(`${endoVersionV0()}\n`);
+	process.exit(0);
+}
+const dispatch = typeof command === "string" && Object.hasOwn(COMMANDS_V0, command) ? COMMANDS_V0[command] : undefined;
 if (dispatch === undefined) {
 	console.error(
-		"usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment|steer> ...",
+		`${command === undefined ? "missing command" : `unknown command: ${command}`}\n${ENDO_USAGE_LINE_V0}\nrun "endo --help" for details`,
 	);
-	process.exit(1);
+	process.exit(2);
 }
 try {
 	await dispatch(argv);

@@ -262,7 +262,10 @@ function pidAlive(pid: number): boolean {
 	}
 }
 
-const CHILD = fileURLToPath(new URL("./cassette-child.ts", import.meta.url));
+// The sibling child module keeps this module's own extension (.ts in the checkout, .js in the built package).
+const CHILD = fileURLToPath(
+	new URL(`./cassette-child${import.meta.url.endsWith(".ts") ? ".ts" : ".js"}`, import.meta.url),
+);
 
 /** A child process that opens the session on `config.root`, prompts, reports, and waits to be killed. */
 async function promptInChild(

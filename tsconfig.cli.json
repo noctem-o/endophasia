@@ -1,0 +1,15 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"declaration": false,
+		"declarationMap": false,
+		"sourceMap": false,
+		"inlineSources": false,
+		"noEmit": false,
+		"outDir": "dist",
+		"rootDir": "."
+	},
+	"files": ["cli/index.ts", "cli/cassette-child.ts"]
+}

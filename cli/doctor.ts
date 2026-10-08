@@ -10,7 +10,7 @@
  * itself failed or was misused. Missing prerequisites are `unavailable`, never an internal failure.
  */
 
-import { accessSync, constants, existsSync, lstatSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, resolvePiExecutableV0 } from "../adapters/pi/identity.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
@@ -25,7 +25,7 @@ export const ENDO_NODE_REQUIRED_V0 = { major: 22, minor: 19, text: ">=22.19.0" }
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-type Presence = "present" | "absent" | "not-accessible";
+type Presence = "present" | "absent" | "not-accessible" | "invalid";
 
 export interface EndoDoctorReportV0 {
 	schemaVersion: "endo.doctor.v0";
@@ -38,6 +38,10 @@ export interface EndoDoctorReportV0 {
 		method: string | null;
 		path: string | null;
 		reportedVersion: string | null;
+		/** What `--version` printed (bounded), when it printed anything. */
+		versionText: string | null;
+		/** Why no version was obtained, when the probe did not complete. */
+		versionGap: string | null;
 		versionStanding: string | null;
 		identityDigest: string | null;
 		reason: string | null;
@@ -45,12 +49,18 @@ export interface EndoDoctorReportV0 {
 	store: { root: string | null; source: string | null; presence: Presence | null; reason: string | null };
 	digestKey: { path: string | null; presence: Presence | null; note: string; reason: string | null };
 	evidence: {
-		status: "none-recorded" | "recorded" | "unreadable" | "not-checked";
+		status: "none-recorded" | "recorded" | "damaged" | "unreadable" | "not-checked";
 		attachment: string;
 		recordedFingerprintAt: string | null;
 		recordedVersion: string | null;
 		/** Whether the Pi found now has the identity that was recorded; null when either is missing. */
 		currentMatchesRecorded: boolean | null;
+		/** The fingerprint the recorded capability state was derived for, or null when none. */
+		capabilitiesFingerprintId: string | null;
+		/** True when the capabilities were derived for another identity than the latest recorded one: not current. */
+		capabilitiesStale: boolean;
+		/** How the read-only open classified the log (torn tail, failed frame), as recorded. */
+		logDamage: string | null;
 		capabilities: EndoCapabilityStateEntryV0[];
 		reason: string | null;
 	};
@@ -59,10 +69,11 @@ export interface EndoDoctorReportV0 {
 	diagnosticErrors: string[];
 }
 
-function presence(path: string): Presence {
+function presence(path: string, kind: "directory" | "file"): Presence {
 	try {
-		lstatSync(path);
-		accessSync(path, constants.R_OK);
+		const info = statSync(path);
+		if (kind === "directory" ? !info.isDirectory() : !info.isFile()) return "invalid";
+		accessSync(path, kind === "directory" ? constants.R_OK | constants.X_OK : constants.R_OK);
 		return "present";
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "not-accessible";
@@ -75,6 +86,11 @@ function nodeCompatible(version: string): boolean {
 		major > ENDO_NODE_REQUIRED_V0.major ||
 		(major === ENDO_NODE_REQUIRED_V0.major && minor >= ENDO_NODE_REQUIRED_V0.minor)
 	);
+}
+
+/** A word safe to paste into a shell. */
+function shellWord(text: string): string {
+	return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`;
 }
 
 export async function endoDoctorV0(
@@ -95,6 +111,8 @@ export async function endoDoctorV0(
 		method: null,
 		path: null,
 		reportedVersion: null,
+		versionText: null,
+		versionGap: null,
 		versionStanding: null,
 		identityDigest: null,
 		reason: null,
@@ -125,8 +143,10 @@ export async function endoDoctorV0(
 				pi.reportedVersion = fingerprint.reported.version;
 				pi.versionStanding = piVersionStandingV0(fingerprint.reported.version);
 				pi.identityDigest = fingerprint.identity.digest;
+				pi.versionText = fingerprint.reported.versionText;
+				pi.versionGap = fingerprint.gaps.find((gap) => gap.fact === "version")?.reason ?? null;
 				if (fingerprint.reported.version === null)
-					pi.reason = "Pi did not report a version that parses; its identity rests on the file alone";
+					pi.reason = `no version was obtained (${pi.versionGap ?? `Pi printed ${JSON.stringify(pi.versionText)}, which is not a version`}); its identity rests on the file alone`;
 			} catch (error) {
 				if (error instanceof PiFingerprintErrorV0) {
 					pi.status = "unidentifiable";
@@ -150,7 +170,10 @@ export async function endoDoctorV0(
 		rootPath = resolved.path;
 		store.root = resolved.path;
 		store.source = resolved.source;
-		store.presence = presence(resolved.path);
+		store.presence = presence(resolved.path, "directory");
+		if (store.presence === "invalid") store.reason = "the store path exists but is not a directory";
+		if (store.presence === "not-accessible") store.reason = "the store directory cannot be read and searched";
+		if (store.reason !== null) steps.push(`Fix the store path: ${store.reason}.`);
 	} catch (error) {
 		store.reason = error instanceof Error ? error.message : String(error);
 		steps.push(`Choose a store: ${store.reason}.`);
@@ -163,7 +186,8 @@ export async function endoDoctorV0(
 	};
 	try {
 		digestKey.path = endoDigestKeyPathV0(env);
-		digestKey.presence = presence(digestKey.path);
+		digestKey.presence = presence(digestKey.path, "file");
+		if (digestKey.presence === "invalid") digestKey.reason = "the key path exists but is not a regular file";
 	} catch (error) {
 		digestKey.reason = error instanceof Error ? error.message : String(error);
 	}
@@ -175,10 +199,15 @@ export async function endoDoctorV0(
 		recordedFingerprintAt: null,
 		recordedVersion: null,
 		currentMatchesRecorded: null,
+		capabilitiesFingerprintId: null,
+		capabilitiesStale: false,
+		logDamage: null,
 		capabilities: [],
 		reason: null,
 	};
-	if (rootPath !== null) {
+	if (rootPath !== null && (store.presence === "invalid" || store.presence === "not-accessible")) {
+		evidence.reason = `not checked: ${store.reason}`;
+	} else if (rootPath !== null) {
 		if (!existsSync(join(endoHarnessRegistryDirectoryV0(rootPath, attachment), "records.log"))) {
 			evidence.status = "none-recorded";
 			evidence.reason = "no identity or capability evidence is recorded for this attachment in this store";
@@ -193,22 +222,43 @@ export async function endoDoctorV0(
 				if (fingerprint !== null && pi.identityDigest !== null)
 					evidence.currentMatchesRecorded = fingerprint.identity.digest === pi.identityDigest;
 				evidence.capabilities = state?.capabilities ?? [];
+				evidence.capabilitiesFingerprintId = state?.fingerprintId ?? null;
+				// The state is current only for the identity it was derived for. A newer fingerprint recorded without a
+				// following state (identify, then the process stopped) leaves older capabilities describing another Pi.
+				evidence.capabilitiesStale =
+					state !== null && fingerprint !== null && state.fingerprintId !== fingerprint.id;
 				if (state === null) evidence.reason = "no capability state is recorded yet";
+				else if (evidence.capabilitiesStale)
+					evidence.reason =
+						"the capabilities below were derived for an earlier identity than the latest recorded one: they are not current";
+				const recovery = registry.recovery();
+				if (recovery.truncated || recovery.sealed || recovery.corruptAt !== null || recovery.discarded !== null) {
+					evidence.status = "damaged";
+					evidence.logDamage = recovery.sealed
+						? `a recorded frame failed verification (frame ${recovery.corruptAt}); only the valid prefix is shown and the registry is sealed`
+						: "the log ends in a torn tail; only the complete records before it are shown";
+				}
 			} catch (error) {
 				evidence.status = "unreadable";
 				evidence.reason = error instanceof Error ? error.message : String(error);
 			}
 		}
 	}
+	if (evidence.status === "damaged")
+		steps.push(
+			"The registry log is damaged: do not repair it by hand; inspect it read-only with endo harness status.",
+		);
 	if (pi.status === "found") {
-		if (evidence.status === "none-recorded" || evidence.capabilities.length === 0)
-			steps.push(
-				"Record local checks (no model call): endo harness check <root>. Until then no capability is admitted.",
-			);
-		else if (evidence.currentMatchesRecorded === false)
-			steps.push(
-				"The installed Pi differs from the one the evidence describes: run endo harness check <root> again.",
-			);
+		const check = [
+			"endo harness check",
+			shellWord(rootPath ?? "<root>"),
+			...(input.pi === undefined ? [] : ["--pi", shellWord(input.pi)]),
+			...(input.attachment === undefined ? [] : ["--attachment", shellWord(input.attachment)]),
+		].join(" ");
+		if (evidence.status === "none-recorded" || (evidence.status === "recorded" && evidence.capabilities.length === 0))
+			steps.push(`Record local checks (no model call): ${check}. Until then no capability is admitted.`);
+		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)
+			steps.push(`The recorded capabilities do not describe the installed Pi: run ${check} again.`);
 	}
 
 	return {
@@ -244,6 +294,8 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 			: `Pi        ${pi.status.toUpperCase()}${pi.reason === null ? "" : ` — ${pi.reason}`}`,
 	);
 	if (pi.status === "found" && pi.reason !== null) lines.push(`          note: ${pi.reason}`);
+	if (pi.status === "found" && pi.reportedVersion === null && pi.versionText !== null)
+		lines.push(`          \`--version\` printed: ${JSON.stringify(pi.versionText)}`);
 	lines.push(
 		report.store.root === null
 			? `Store     UNAVAILABLE — ${report.store.reason}`
@@ -256,6 +308,7 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 	);
 	lines.push("", `Recorded evidence for ${report.evidence.attachment}: ${report.evidence.status.toUpperCase()}`);
 	if (report.evidence.reason !== null) lines.push(`  ${report.evidence.reason}`);
+	if (report.evidence.logDamage !== null) lines.push(`  DAMAGED LOG: ${report.evidence.logDamage}`);
 	if (report.evidence.recordedFingerprintAt !== null)
 		lines.push(
 			`  last identity ${report.evidence.recordedFingerprintAt}, Pi ${report.evidence.recordedVersion ?? "version not reported"}${
@@ -266,6 +319,8 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 						: "; the installed Pi has a DIFFERENT identity"
 			}`,
 		);
+	if (report.evidence.capabilitiesStale)
+		lines.push("  capabilities below are STALE (recorded for an earlier identity):");
 	for (const entry of report.evidence.capabilities)
 		lines.push(
 			`  ${entry.status.toUpperCase().padEnd(16)} ${entry.capability.padEnd(28)} ${entry.classification ?? "-"}  ${entry.reason}${entry.status === "unverified" && entry.requires === "live-study" ? " (needs an authorised live study)" : ""}`,
@@ -290,7 +345,10 @@ export async function doctorCommand(argv: readonly string[]): Promise<void> {
 		const key = flag === "--root" ? "root" : flag === "--pi" ? "pi" : flag === "--attachment" ? "attachment" : null;
 		if (key === null) throw new TypeError(`unknown argument ${flag}\n${usage}`);
 		const value = args.shift();
-		if (value === undefined) throw new TypeError(`the flag ${flag} needs a value`);
+		if (value === undefined || value.length === 0 || value.startsWith("--"))
+			throw new TypeError(
+				`the flag ${flag} needs a value${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}`,
+			);
 		if (input[key] !== undefined) throw new TypeError(`the flag ${flag} was given twice`);
 		input[key] = value;
 	}

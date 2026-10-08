@@ -60,7 +60,8 @@ Read-only. It reports the Endophasia version, Node compatibility, the platform (
 whether Pi is found (an explicit `--pi`, else `pi` on `PATH`) and what it reports for `--version`, where the store and
 the installation key would live and whether each exists, and the identity and capability evidence already recorded in
 that store, copied as recorded (ADMITTED, UNVERIFIED, UNAVAILABLE and the rest are all shown; the evaluator is not
-re-run). It says whether the Pi found now has the identity the evidence describes, and lists next steps.
+re-run). Capabilities derived for an earlier identity than the latest recorded one are marked STALE, and a torn or
+corrupt registry log is reported as DAMAGED (the valid prefix is shown, never repaired). It says whether the Pi found now has the identity the evidence describes, and lists next steps.
 
 It never installs or modifies Pi, starts an agent session, calls a provider, runs a study, creates a key, or writes to
 the store; the only process it runs is `<pi> --version`. **Finding Pi is not a capability**: nothing is admitted until
@@ -73,7 +74,7 @@ detail); exit 1 means the doctor itself failed or was misused (`diagnosticErrors
 One resolver (`cli/store-root.ts`), first match wins:
 
 1. an explicit `--root` (doctor today),
-2. `ENDO_STORE_ROOT` (absolute),
+2. `ENDO_STORE_ROOT` (absolute; a relative `ENDO_STORE_ROOT`, `XDG_DATA_HOME` or `HOME` is refused),
 3. `$XDG_DATA_HOME/endophasia/store`,
 4. `$HOME/.local/share/endophasia/store`.
 

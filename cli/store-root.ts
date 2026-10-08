@@ -35,7 +35,14 @@ export function resolveEndoStoreRootV0(
 		if (!isAbsolute(env.ENDO_STORE_ROOT)) throw new TypeError("ENDO_STORE_ROOT must be an absolute path");
 		return { path: env.ENDO_STORE_ROOT, source: "ENDO_STORE_ROOT" };
 	}
-	if (env.XDG_DATA_HOME) return { path: join(env.XDG_DATA_HOME, "endophasia", "store"), source: "XDG_DATA_HOME" };
-	if (env.HOME) return { path: join(env.HOME, ".local", "share", "endophasia", "store"), source: "HOME" };
+	// A relative base would make the store depend on where the command is launched: refuse it, as for ENDO_STORE_ROOT.
+	if (env.XDG_DATA_HOME) {
+		if (!isAbsolute(env.XDG_DATA_HOME)) throw new TypeError("XDG_DATA_HOME must be an absolute path");
+		return { path: join(env.XDG_DATA_HOME, "endophasia", "store"), source: "XDG_DATA_HOME" };
+	}
+	if (env.HOME) {
+		if (!isAbsolute(env.HOME)) throw new TypeError("HOME must be an absolute path");
+		return { path: join(env.HOME, ".local", "share", "endophasia", "store"), source: "HOME" };
+	}
 	throw new TypeError("no store location: pass a root, or set ENDO_STORE_ROOT, XDG_DATA_HOME or HOME");
 }

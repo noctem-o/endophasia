@@ -242,11 +242,18 @@ logits, probes and layer/token traces. Model-internal observation is capability-
 a signal remains `UNAVAILABLE`.
 
 Model-internal capabilities are backend-specific. Endophasia records what the serving implementation actually exposes
-rather than normalising unavailable signals into fictitious equivalence. A high-throughput serving backend may expose
-residual streams, Q/K capture and steering while a reference Hugging Face execution exposes gradients, explicit
-attention patterns and finer hook points. These are different observation surfaces over related model implementations,
-not interchangeable measurements. For a recorded run, the live serving backend is the primary observation of what
-actually executed.
+rather than normalising unavailable signals into fictitious equivalence. The preferred reference architecture, where
+the model family is supported, is [TransformerLens 4.0](https://transformerlensorg.github.io/TransformerLens/content/news/release-4.0.html):
+one `TransformerBridge` hook vocabulary over different Drivers, with each backend declaring its
+`supported_hook_points` and `non_fireable_hook_points`. Its compiled vLLM Driver keeps `torch.compile` and CUDA
+graphs for high-throughput capture and declarative steering; its Hugging Face `transformers` Driver provides the
+full hook tree, gradients and explicit attention patterns for deeper inspection.
+
+[vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) remains a specialist provider rather than the default common
+surface: it is useful when an experiment specifically needs Q/K capture and attention reconstruction, Jacobian/R-lens
+readout, persistent hooks, arbitrary Python hooks, or its broader distributed execution paths. Those are additional
+capabilities, not grounds to erase backend differences. For a recorded run, the backend that actually executed it is
+the primary observation; a reference backend supplies comparison evidence.
 
 Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
 hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
@@ -268,6 +275,19 @@ backend and version; execution driver; relevant compute or attention kernel; com
 analysis method and revision; and the evidence or artifact from which it was produced. Quantised and full-precision
 variants are therefore distinct experimental subjects, not silently interchangeable representations of one model.
 
+Weight-processing semantics are part of that identity. A raw Hugging Face bridge and a
+[TransformerLens compatibility-mode](https://transformerlensorg.github.io/TransformerLens/content/compatibility_mode.html)
+bridge may generate equivalent outputs while exposing different residual norms, logit-lens values and processed
+weights. Record whether the bridge used raw HF weights or compatibility mode and, when enabled, the exact processing
+flags such as LayerNorm folding and weight centring. Compatibility-mode processing is one-shot and mutates the bridge
+in place, so a raw-vs-processed comparison must use separately identified executions.
+
+Tensor shape is provenance too. Under grouped-query attention, TransformerLens 4.0 keeps Q at the query-head count but
+K/V at the native key/value-head count rather than expanding them to one copy per query head. OBSERVE therefore records
+both query-head and KV-head counts plus the tensor's head semantics; a renderer or reconstruction must never infer
+per-query-head K/V that the backend did not expose. See the
+[TransformerBridge model-structure contract](https://transformerlensorg.github.io/TransformerLens/content/model_structure.html).
+
 The same recorded observation can be re-projected without changing the underlying evidence. Deeper inspection may also
 **reference-replay** the exact recorded token sequence through another backend, for example teacher-forcing a live vLLM
 run through a Hugging Face backend with fuller hooks:
@@ -285,10 +305,17 @@ comparison
 Replay is separately identified comparison evidence. It does not overwrite the serving-backend observation or claim
 that replay activations produced the original answer.
 
-Recorded and derived model signals remain distinct as well. If a provider records Q/K states and reconstructs an
-attention pattern afterward, the Q/K tensors are recorded evidence and the attention pattern is `DERIVED`. An
-attention pattern captured directly from an eager reference execution is recorded for that replay backend. Both can be
-useful; neither is relabelled as the other.
+Recorded and derived model signals remain distinct as well. TransformerLens's vLLM Driver does not expose attention
+patterns or scores because that path is fused in the serving kernel; the capability remains `UNAVAILABLE` there.
+An eager Hugging Face reference execution can record an explicit attention pattern for that replay backend. A
+vLLM-Lens run can instead record Q/K tensors and reconstruct the pattern afterward; in Endophasia the Q/K tensors are
+recorded evidence and the reconstructed pattern is `DERIVED`. Both can be useful; neither is relabelled as the other.
+
+Arbitrary executable hooks are a separate high-trust capability. vLLM-Lens documents that Python hook functions sent
+over HTTP are serialized with `cloudpickle`, which is arbitrary code execution on the serving process. Endophasia
+should therefore leave generic remote Python hooks `UNAVAILABLE` by default and admit them only in an explicitly
+trusted-local research configuration. Declarative TransformerLens vLLM interventions (`suppress`, `scale`, `add`,
+`set`) are the preferred default mutation surface when they are sufficient.
 
 The planned browser cockpit can render these scenes through
 [WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
@@ -343,8 +370,9 @@ Evaluation itself can also be an adaptation target. Endophasia treats **evaluato
 | Co-evolve skills and policy during RL | [ReSkill](https://github.com/amazon-science/reskill) as an optional adaptation/training provider over veRL; skill versions and bundle tests remain experiment coordinates |
 | Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
 | Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
-| High-throughput local-model capture and controlled intervention | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) or the [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) vLLM driver when vLLM owns serving |
-| Deep local inspection and reference replay | [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) on its Hugging Face `transformers` driver; [NNsight](https://github.com/ndif-team/nnsight) where direct HF tracing is preferable |
+| Preferred compiled local-model capture and declarative intervention | [TransformerLens 4.0](https://transformerlensorg.github.io/TransformerLens/content/news/release-4.0.html) on its vLLM Driver, where the model/engine combination is supported |
+| Specialist vLLM interpretability | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when an experiment needs Q/K reconstruction, Jacobian/R-lens readout, persistent/custom hooks, or capabilities outside the TransformerLens vLLM surface |
+| Deep local inspection and reference replay | [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) on its Hugging Face `transformers` Driver; [NNsight](https://github.com/ndif-team/nnsight) where direct HF tracing is preferable |
 | Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
 | Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
 | Train model weights | [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) when Inspect owns rollout and reward while TRL/GRPO owns optimisation; [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
@@ -355,13 +383,20 @@ and control protocols over them; Inspect RL reuses complete Inspect rollouts as 
 into the early-stopping interface; vLLM-Lens registers as an Inspect model provider; and the sandbox packages provide
 replaceable execution environments. A future Endophasia integration should admit these capabilities separately and
 record each provider's version and configuration rather than flattening them into a single "Inspect" capability.
-Observation through a provider such as vLLM-Lens or a TransformerLens driver does not imply an EVOLVE action:
-activation capture can feed OBSERVE without changing the model, while steering or intervention remains a separately
-admitted capability.
+Observation through a TransformerLens Driver or vLLM-Lens does not imply an EVOLVE action: activation capture can feed
+OBSERVE without changing the model, while steering or intervention remains a separately admitted capability.
 
-TransformerLens 4.0's Driver contract is also a useful reference for observation-provider design: each execution
-backend declares which hook points it can and cannot serve rather than promising false parity across engines. Endophasia
-should preserve that backend truth in its own capability surface.
+TransformerLens 4.0's Driver contract is the preferred reference for observation-provider design: each execution
+backend declares which hook points it can and cannot serve rather than promising false parity across engines, and the
+same canonical names can be reused when a hook is genuinely equivalent. Endophasia should import that capability truth
+rather than maintain a hand-written fiction of backend parity. TransformerLens also ships backend-parity scripts that
+compare vLLM/Inspect execution against `boot_transformers`; equivalent Endophasia studies should establish and record
+a backend-specific numerical noise floor before treating small live-vs-reference differences as meaningful.
+
+The trade-off is deliberate: current vLLM-Lens
+[forces eager execution so its hooks can fire](https://github.com/UKGovernmentBEIS/vllm-lens#disabling-the-plugin),
+while TransformerLens installs its vLLM capture hooks before compilation and can retain the compiled/CUDA-graph path.
+That performance distinction is provider provenance, not an invisible implementation detail.
 
 For broad local compatibility, [llama.cpp](https://github.com/ggml-org/llama.cpp) may support a lower-fidelity native
 adapter through its evaluation callback, but stock `llama-server` does not expose intermediate activations as a stable
@@ -790,9 +825,11 @@ counterfactual / evolution / training work
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
      model-observation scenes as separate typed projections even if they later share one renderer.
-   - Follow with capability-gated model-internal observation: record exposed activations and related signals through
-     providers such as vLLM-Lens, preserve raw observations apart from derived PCA/MFA/SAE/lens artifacts, and make
-     every missing signal explicit.
+   - Follow with capability-gated model-internal observation. Prefer TransformerLens 4.0's Driver model as the common
+     hook/capability vocabulary where supported: compiled vLLM for the live capture tier and Hugging Face for deep
+     reference replay. Keep vLLM-Lens as an optional specialist provider for Q/K-derived attention, Jacobian/R-lens,
+     persistent/custom hooks or other capabilities that justify its eager-mode trade-off. Preserve raw observations
+     apart from derived PCA/MFA/SAE/lens artifacts, and make every missing signal explicit.
    - A later WebGPU renderer may consume both Dream and Observe scenes. WebGPU is a presentation backend, never a
      source of truth; scene geometry must remain reproducible from recorded state and declared transforms.
    - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real

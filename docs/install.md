@@ -1,6 +1,6 @@
 # Installing the `endo` CLI and first run (Operator Alpha, tranches 1–2 of 4)
 
-Status: **experimental; not published.** The package is `private` at version `0.0.0`. Nothing here is a release.
+Status: **experimental; not published.** The package is `private`, version `0.1.0-alpha.1` (prepared, not released).
 
 ## What the tarball is
 
@@ -25,14 +25,14 @@ turn `./x.ts` imports into `./x.js`. No bundler is used. The full-repository `np
 ~~~sh
 npm ci
 npm run build                      # tsc -p tsconfig.cli.json + fixture keys -> dist/
-npm pack                           # endophasia-0.0.0.tgz (prepack rebuilds dist/)
-npm install --prefix ~/endo-try --ignore-scripts --omit=dev ./endophasia-0.0.0.tgz
+npm pack                           # endophasia-0.1.0-alpha.1.tgz (prepack rebuilds dist/)
+npm install --prefix ~/endo-try --ignore-scripts --omit=dev ./endophasia-0.1.0-alpha.1.tgz
 ~/endo-try/node_modules/.bin/endo --help
 ~/endo-try/node_modules/.bin/endo --version
 ~/endo-try/node_modules/.bin/endo harness overview ./some-store   # read-only; a missing store creates nothing
 ~~~
 
-`npm install -g ./endophasia-0.0.0.tgz` puts `endo` on `PATH`. To remove a trial install: `rm -rf ~/endo-try`
+`npm install -g ./endophasia-0.1.0-alpha.1.tgz` puts `endo` on `PATH`. To remove a trial install: `rm -rf ~/endo-try`
 (or `npm uninstall -g endophasia`). Requires Node >= 22.19.0.
 
 `npm run test:package` (`scripts/package-smoke.mjs`) does this in a scratch directory with an isolated `HOME` and

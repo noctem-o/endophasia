@@ -79,8 +79,8 @@ try {
 	console.log(`sha512 ${packed.integrity}`);
 
 	// 2. Inventory.
-	const allowedTop = new Set(["package.json", "README.md", "LICENSE"]);
-	check(paths.every((p) => p.startsWith("dist/") || allowedTop.has(p)), "only dist/, package.json, README.md and LICENSE are packed");
+	const allowedTop = new Set(["package.json", "README.md", "CHANGELOG.md", "LICENSE"]);
+	check(paths.every((p) => p.startsWith("dist/") || allowedTop.has(p)), "only dist/, package.json, README.md, CHANGELOG.md and LICENSE are packed");
 	check(!paths.some((p) => /\.(ts|mts|cts|tsx)$/.test(p)), "no TypeScript source or declaration files in the tarball");
 	check(!paths.some((p) => p.includes("node_modules") || p.includes("tests/") || p.includes(".map")), "no node_modules, tests or source maps");
 	check(

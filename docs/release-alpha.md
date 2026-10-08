@@ -1,7 +1,7 @@
 # First alpha: what it is, what is verified, and the release checklist
 
 This is the preparation for a first versioned alpha. **Nothing here publishes anything**: the package stays
-`private: true` at `0.0.0` until the owner decides, and tagging, publishing and changing visibility are owner actions.
+`private: true` (version `0.1.0-alpha.1` prepared) until the owner decides, and tagging, publishing and changing visibility are owner actions.
 
 ## What the alpha is
 
@@ -32,8 +32,8 @@ they can be attached, and earn capability admission through the same local check
 ## Checklist before a first alpha (owner actions marked)
 
 1. `main` is green: `check`, `package`, `acceptance`, `exchange`.
-2. Decide the version (suggested `0.1.0-alpha.1`) and set it in `package.json`; remove `private: true` **(owner)**.
-3. Confirm `npm pack --dry-run` lists only `dist/`, `README.md`, `LICENSE` and `package.json` (the package smoke asserts this).
+2. The version is prepared as `0.1.0-alpha.1` (changelog: `CHANGELOG.md`). Remove `private: true` **(owner)**: it is the switch that allows publishing.
+3. Confirm `npm pack --dry-run` lists only `dist/`, `README.md`, `CHANGELOG.md`, `LICENSE` and `package.json` (the package smoke asserts this).
 4. Re-run `npm run test:acceptance` against the exact tarball to be published.
 5. Write release notes from this page (verified / not claimed), and link `docs/install.md`.
 6. Tag and publish with a dist-tag that is not `latest` (for example `alpha`) **(owner)**.

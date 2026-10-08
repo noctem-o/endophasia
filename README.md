@@ -812,7 +812,8 @@ counterfactual / evolution / training work
 
 2. **Operator Alpha — make Endophasia something a person can install and run.**
    - Produce a distributable CLI artifact with a real `endo` executable, version metadata, `--help` and `--version`.
-     The release artifact should emit JavaScript rather than depend on Node executing raw TypeScript from
+     *Status: tranche 1 implemented, awaiting review* (compiled-JS tarball, isolated-install smoke in CI; see
+     [docs/install.md](docs/install.md); still unpublished at `0.0.0`). The release artifact should emit JavaScript rather than depend on Node executing raw TypeScript from
      `node_modules`; Node's own TypeScript documentation currently refuses that dependency path.
    - Add first-run diagnostics (`endo doctor` or an equivalent command), runtime discovery, a sensible default data
      root, and operator-readable capability/evidence output without requiring knowledge of the store layout.
@@ -1180,6 +1181,8 @@ node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session 
 npm test                                                   # deterministic suite (no Pi, no network, no history)
 ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in check against your installed Pi
 ~~~
+
+To try the packaged CLI instead of the checkout, see [docs/install.md](docs/install.md) (`npm run build && npm pack`).
 
 Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
 separately.

@@ -2,8 +2,24 @@
 	"name": "endophasia",
 	"private": true,
 	"version": "0.0.0",
+	"description": "Endophasia: an experimental research instrument that attaches to an existing agent harness and records what it observes.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/noctem-o/endophasia.git"
+	},
+	"bin": {
+		"endo": "dist/cli/index.js"
+	},
+	"files": [
+		"dist/",
+		"README.md",
+		"LICENSE"
+	],
 	"type": "module",
 	"scripts": {
+		"build": "node scripts/build-cli.mjs",
+		"test:package": "node scripts/package-smoke.mjs",
 		"test": "vitest --run",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "biome check .",
@@ -12,7 +28,8 @@
 		"check:prime-conformance:097": "node research/prime-conformance/cli-097.ts",
 		"check:prime-conformance:097:offline": "node research/prime-conformance/offline-097.ts",
 		"test:pi-real": "vitest --run tests/pi-real-runtime.test.ts",
-		"test:acp-omp-real": "vitest --run tests/acp-omp-real.test.ts"
+		"test:acp-omp-real": "vitest --run tests/acp-omp-real.test.ts",
+		"prepack": "npm run build"
 	},
 	"devDependencies": {
 		"@agentclientprotocol/sdk": "1.7.0",

@@ -30,6 +30,20 @@ jobs:
       # up-front refusal, and the exchange job below checks the exchange itself.
       - run: npm test
 
+  package:
+    name: Packaged CLI (build, pack, isolated install)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:package
+
   exchange:
     name: Reference exchange (coreutils with mv --exchange)
     runs-on: ubuntu-24.04

@@ -543,8 +543,17 @@ function harnessProblem(value: unknown): Problem {
 			return `harness.requests[${index}].surface does not name a listed surface`;
 	}
 	const referenced = new Set((h.requests as { surface: number }[]).map((request) => request.surface));
-	for (let index = 0; index < h.surfaces.length; index++)
+	for (const [index, surface] of (h.surfaces as EndoHarnessSurfaceV0[]).entries()) {
 		if (!referenced.has(index)) return `harness.surfaces[${index}] is not referenced by any request`;
+		// A listed surface is the first observation of a request that names it: some referencing request is its source.
+		const sourced = (h.requests as { exchange: number; requestDigest: string; surface: number }[]).some(
+			(request) =>
+				request.surface === index &&
+				request.exchange === surface.source.exchange &&
+				request.requestDigest === surface.source.requestDigest,
+		);
+		if (!sourced) return `harness.surfaces[${index}] is the source of none of the requests that name it`;
+	}
 	const c = h.contributions;
 	const contributions = closed(c, CONTRIBUTION_NAMES, "harness.contributions");
 	if (contributions !== null) return contributions;

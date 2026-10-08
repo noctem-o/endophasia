@@ -15,6 +15,7 @@ import type {
 } from "../protocol/experiment-artifacts.ts";
 import { compareEndoHarnessSurfacesV0, type EndoHarnessSurfaceV0 } from "../protocol/harness-surface.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
+import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 
 /** The identity a recognized surface is deduplicated by; an unrecognized one is never merged with another. */
 const dedupeKey = (surface: EndoHarnessSurfaceV0): string =>
@@ -224,4 +225,33 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 			},
 		}),
 	);
+}
+
+const isUnparsed = (entry: JsonValueV0): boolean =>
+	typeof entry === "object" &&
+	entry !== null &&
+	!Array.isArray(entry) &&
+	Object.keys(entry).length === 1 &&
+	(entry as Record<string, JsonValueV0>).unparsed === true;
+
+/**
+ * The sampling parameters the requests carried. A request that was not a recognized chat-completions request has
+ * unknown parameters, not none: `samplingUnknown` says so, and the others are projected as they were sent.
+ */
+export function samplingOfParameters(
+	parameters: readonly JsonValueV0[],
+	samplingKeys: readonly string[],
+): { samplingUnknown: boolean; samplingSent: JsonValueV0[] } {
+	const seen = new Map<string, JsonValueV0>();
+	for (const entry of parameters) {
+		if (isUnparsed(entry)) continue;
+		const picked = Object.fromEntries(
+			Object.entries(entry as Record<string, JsonValueV0>).filter(([field]) => samplingKeys.includes(field)),
+		);
+		seen.set(canonicalEndoJsonV0(picked), picked);
+	}
+	return {
+		samplingUnknown: parameters.some(isUnparsed),
+		samplingSent: [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v),
+	};
 }

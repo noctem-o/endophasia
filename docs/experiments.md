@@ -147,7 +147,7 @@ Per captured request, the surface records:
   **membership digest** over the sorted component digests (duplicates kept). "Same tools, other order" therefore shows
   as a change of `tool-order` only, and a changed definition as `tool-definitions`;
 - **parameters**: every other top-level field the request carried (`model` and `stream` are recorded once, above).
-  Short values are recorded verbatim (at most 1024 bytes of canonical JSON), longer ones by digest. A parameter the
+  Short values are recorded verbatim (at most 1024 bytes of compact JSON, one measure shared by the recorder and the validator), longer ones by digest. A parameter the
   request did not send is **absent**; absent never means the server's default (`temperature` absent is not
   `temperature = 1`), and the server's resulting defaults are explicitly UNAVAILABLE;
 - **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the request target
@@ -167,7 +167,9 @@ is not parsed out of the text; it is recorded separately, from the runner, as a 
 | `invocationMode` | the runner | `pi --mode rpc`, how the runner drives Pi (not the wire's `stream` flag) |
 | `configuredModel` | the spec (`source: "spec"`; the other two are `"runner"`) | `provider/model` as configured; compare with the model the wire names, do not merge them |
 
-A body that is not valid UTF-8, or holds a value with no canonical form (such as an overflowing number), is UNAVAILABLE, as the request digest already treats it as opaque. A v1 trial lists no surface that none of its requests used.
+A body that is not valid UTF-8, or holds a value with no canonical form (such as an overflowing number), is UNAVAILABLE, as the request digest already treats it as opaque. A v1 trial lists no surface that none of its requests used, and each listed surface is the first observation of a request that names it.
+
+Request **headers** are not part of the v0 surface. The capture keeps them, but which headers select server behavior is a judgment about each provider, and some carry secrets; v0 records none of them and does not claim that surfaces matched on headers. A later version can add a declared, redacted header coordinate.
 
 **Digest domains.** All digests of a record are under one key. Surfaces under different keys are in different domains:
 the comparison answers "not comparable", never "different". Component digests cover the canonical JSON of the parsed

@@ -168,20 +168,33 @@ const isText = (value: unknown, max = 4096): value is string =>
 /** A digest key id (protocol/ imports nothing outside protocol/; a test pins this to runtime/contracts/keyed-digest.ts). */
 export const ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0 = /^(?:endo\.digest-key\.[0-9a-f]{32}|[a-z][a-z0-9-]{0,62})$/;
 
-/** The byte length of a strict-JSON value with object keys sorted (the size the deriver measured; sizes only). */
-function sortedJsonBytes(value: unknown): number {
-	const sorted = (v: unknown): unknown =>
-		Array.isArray(v)
-			? v.map(sorted)
-			: isObject(v)
-				? Object.fromEntries(
-						Object.keys(v)
-							.sort()
-							.map((k) => [k, sorted(v[k])]),
-					)
-				: v;
-	return new TextEncoder().encode(JSON.stringify(sorted(value))).length;
+/**
+ * The size a parameter value is measured by, in bytes: its compact JSON (no whitespace; key order does not change the
+ * length). One measure for the producer and the validator, taken iteratively so a deeply nested value cannot exhaust
+ * the stack, and stopping once it passes `stopAfter`.
+ */
+export function endoHarnessSurfaceValueBytesV0(value: unknown, stopAfter = Number.POSITIVE_INFINITY): number {
+	const encoder = new TextEncoder();
+	const stack: unknown[] = [value];
+	let total = 0;
+	while (stack.length > 0 && total <= stopAfter) {
+		const v = stack.pop();
+		if (typeof v === "string") total += encoder.encode(JSON.stringify(v)).length;
+		else if (Array.isArray(v)) {
+			total += 2 + Math.max(0, v.length - 1);
+			for (const item of v) stack.push(item);
+		} else if (typeof v === "object" && v !== null) {
+			const keys = Object.keys(v);
+			total += 2 + Math.max(0, keys.length - 1);
+			for (const key of keys) {
+				total += encoder.encode(JSON.stringify(key)).length + 1;
+				stack.push((v as Record<string, unknown>)[key]);
+			}
+		} else total += String(JSON.stringify(v)).length;
+	}
+	return total;
 }
+
 const isObject = (value: unknown): value is Record<string, unknown> => isPlainJsonObjectV0(value);
 
 function closed(value: unknown, allowed: readonly string[], what: string): Problem {
@@ -281,7 +294,11 @@ function componentsProblem(value: unknown): Problem {
 		const f = field as Record<string, unknown>;
 		if (!isHex(f.digest)) return "a parameter digest must be 64 lowercase hex digits";
 		if ("value" in f && !isStrictJson(f.value)) return "a parameter value must be strict JSON";
-		if ("value" in f && sortedJsonBytes(f.value) > ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0)
+		if (
+			"value" in f &&
+			endoHarnessSurfaceValueBytesV0(f.value, ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0) >
+				ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0
+		)
 			return "a parameter value over the size limit is recorded by its digest only";
 	}
 	const defaults = closed(c.serverDefaults, ["status", "reason"], "components.serverDefaults");

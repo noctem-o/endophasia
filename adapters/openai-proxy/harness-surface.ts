@@ -23,6 +23,7 @@ import {
 	type EndoHarnessSurfaceComponentsV0,
 	type EndoHarnessSurfaceV0,
 	endoHarnessSurfaceIdentityBasisV0,
+	endoHarnessSurfaceValueBytesV0,
 } from "../../protocol/harness-surface.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -102,7 +103,8 @@ function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target
 			name,
 			{
 				digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.parameter, { name, value }),
-				...(bytesOf(value) <= ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0
+				...(endoHarnessSurfaceValueBytesV0(value, ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0) <=
+				ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0
 					? { value: value as JsonValueV0 }
 					: {}),
 			},

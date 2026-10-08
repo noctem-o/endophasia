@@ -106,6 +106,7 @@ import { endoManipulationChecksV0, loadEndoTrialRequestsV0 } from "./experiment-
 import {
 	buildEndoTrialHarnessV0,
 	requestParametersOfTrialV0,
+	samplingOfParameters,
 	summarizeEndoCellHarnessSurfacesV0,
 } from "./experiment-surface.ts";
 import { readEndoStoreEventsV0, trajectoryFromStoreV0 } from "./trajectory.ts";
@@ -725,7 +726,10 @@ export function surfaceLine(task: string, condition: string, summary: JsonValueV
 		return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces in this cell (expected 1); every trial showed the same set${predating}`;
 	const coordinates = [
 		...new Set(
-			(s.differences ?? []).flatMap((d) => [...d.differs, ...d.parameterNames.map((n) => `parameter ${n}`)]),
+			(s.differences ?? []).flatMap((d) => [
+				...d.differs,
+				...d.parameterNames.map((n) => `parameter ${JSON.stringify(n.slice(0, 64))}`),
+			]),
 		),
 	];
 	return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces; ${s.trialsDifferingFromModalSet!.join(", ")} differ from the modal set${coordinates.length > 0 ? ` (${coordinates.join(", ")})` : ""}${predating}`;
@@ -851,15 +855,7 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 					),
 				),
 			].sort();
-			const samplingSent = distinct(
-				parameters.map((entry) =>
-					Object.fromEntries(
-						Object.entries(entry as Record<string, JsonValueV0>).filter(([field]) =>
-							SAMPLING_KEYS.includes(field),
-						),
-					),
-				),
-			);
+			const { samplingUnknown, samplingSent } = samplingOfParameters(parameters, SAMPLING_KEYS);
 			// The profile and bundle records (protocol/evaluation.ts) through the lab's trial discipline (lab/trials.ts).
 			const profile = {
 				schemaVersion: "endo.evaluation-profile.v1",
@@ -946,8 +942,14 @@ export function reportEndoExperimentV0(directory: string): { report: JsonValueV0
 					requestParametersSeen: parameters,
 					samplingFieldsChecked: [...SAMPLING_KEYS],
 					samplingFieldsSent,
-					samplingParametersSent:
-						samplingSent.length === 1 && Object.keys(samplingSent[0] as object).length === 0
+					samplingParametersSent: samplingUnknown
+						? {
+								status: "UNAVAILABLE",
+								reason:
+									"a request was not a recognized chat-completions request, so what sampling parameters it carried is unknown",
+								seenInRecognizedRequests: samplingSent,
+							}
+						: samplingSent.length === 1 && Object.keys(samplingSent[0] as object).length === 0
 							? {
 									status: "none sent",
 									meaning:

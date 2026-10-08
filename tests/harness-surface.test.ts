@@ -18,6 +18,7 @@ import { surfaceLine } from "../cli/experiment.ts";
 import {
 	buildEndoTrialHarnessV0,
 	requestParametersOfTrialV0,
+	samplingOfParameters,
 	summarizeEndoCellHarnessSurfacesV0,
 } from "../cli/experiment-surface.ts";
 import {
@@ -726,5 +727,51 @@ describe("review findings", () => {
 
 	it("the protocol-side key id pattern is the keyed-digest contract's", () => {
 		expect(ENDO_HARNESS_SURFACE_KEY_ID_PATTERN_V0.source).toBe(ENDO_DIGEST_KEY_ID_PATTERN_V0.source);
+	});
+
+	it("the size limit is one measure for the producer and the validator, and a deep value is refused, not a crash", () => {
+		// 1022 characters is 1024 compact bytes: kept verbatim by the producer, accepted by the validator.
+		const edge = componentsOf(surfaceOf(chat({ note: "x".repeat(1022) }))).parameters.fields.note!;
+		expect("value" in edge).toBe(true);
+		const over = componentsOf(surfaceOf(chat({ note: "x".repeat(1023) }))).parameters.fields.note!;
+		expect("value" in over).toBe(false);
+		const surface = JSON.parse(JSON.stringify(surfaceOf(chat())));
+		let deep: unknown = "x";
+		for (let i = 0; i < 20000; i++) deep = [deep];
+		surface.components.value.parameters.fields.deep = { digest: "a".repeat(64), value: deep };
+		expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(false);
+	});
+
+	it("each listed surface must be the source of a request that names it", () => {
+		const trial = trialOf([chat()], 0);
+		const moved = {
+			...trial,
+			harness: {
+				...trial.harness,
+				requests: trial.harness.requests.map((r) => ({ ...r, exchange: r.exchange + 7 })),
+			},
+		};
+		expect(readEndoExperimentTrialResultV0(moved).ok).toBe(false);
+		expect(readEndoExperimentTrialResultV0(trial).ok).toBe(true);
+	});
+
+	it("a parameter name with Markdown or newlines cannot add lines to the summary", () => {
+		const s = summarizeEndoCellHarnessSurfacesV0([
+			trialOf([chat()], 0),
+			trialOf([chat({ "x\n## injected\n- evil": 1 })], 1),
+		]);
+		expect(surfaceLine("t", "c", s).split("\n")).toHaveLength(1);
+	});
+
+	it("an unrecognized request's sampling parameters are unknown, never 'none sent'", () => {
+		const keys = ["temperature"];
+		expect(samplingOfParameters([{ unparsed: true }, { model: "m" }], keys)).toEqual({
+			samplingUnknown: true,
+			samplingSent: [{}],
+		});
+		expect(samplingOfParameters([{ temperature: 0.2 }], keys)).toEqual({
+			samplingUnknown: false,
+			samplingSent: [{ temperature: 0.2 }],
+		});
 	});
 });

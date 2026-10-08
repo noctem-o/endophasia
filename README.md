@@ -241,6 +241,13 @@ provider exposes model internals, OBSERVE may also record model-level signals su
 logits, probes and layer/token traces. Model-internal observation is capability-gated: a provider that does not expose
 a signal remains `UNAVAILABLE`.
 
+Model-internal capabilities are backend-specific. Endophasia records what the serving implementation actually exposes
+rather than normalising unavailable signals into fictitious equivalence. A high-throughput serving backend may expose
+residual streams, Q/K capture and steering while a reference Hugging Face execution exposes gradients, explicit
+attention patterns and finer hook points. These are different observation surfaces over related model implementations,
+not interchangeable measurements. For a recorded run, the live serving backend is the primary observation of what
+actually executed.
+
 Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
 hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
 
@@ -255,9 +262,33 @@ typed Observe scene
 browser renderer
 ~~~
 
-Derived geometry must identify the model and checkpoint, capture point, layer, provider, analysis method and revision,
-and the evidence or artifact from which it was produced. The same recorded observation can therefore be re-projected,
-compared and replayed without changing the underlying evidence.
+Every model-internal artifact must identify enough execution provenance to say what was actually measured: model
+family and checkpoint or weight digest; weight dtype or quantisation; quantiser and revision where applicable; serving
+backend and version; execution driver; relevant compute or attention kernel; compute dtype; capture point and layer;
+analysis method and revision; and the evidence or artifact from which it was produced. Quantised and full-precision
+variants are therefore distinct experimental subjects, not silently interchangeable representations of one model.
+
+The same recorded observation can be re-projected without changing the underlying evidence. Deeper inspection may also
+**reference-replay** the exact recorded token sequence through another backend, for example teacher-forcing a live vLLM
+run through a Hugging Face backend with fuller hooks:
+
+~~~text
+live serving observation
+        ↓
+recorded token sequence
+        ↓
+reference replay
+        ↓
+comparison
+~~~
+
+Replay is separately identified comparison evidence. It does not overwrite the serving-backend observation or claim
+that replay activations produced the original answer.
+
+Recorded and derived model signals remain distinct as well. If a provider records Q/K states and reconstructs an
+attention pattern afterward, the Q/K tensors are recorded evidence and the attention pattern is `DERIVED`. An
+attention pattern captured directly from an eager reference execution is recorded for that replay backend. Both can be
+useful; neither is relabelled as the other.
 
 The planned browser cockpit can render these scenes through
 [WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
@@ -312,7 +343,8 @@ Evaluation itself can also be an adaptation target. Endophasia treats **evaluato
 | Co-evolve skills and policy during RL | [ReSkill](https://github.com/amazon-science/reskill) as an optional adaptation/training provider over veRL; skill versions and bundle tests remain experiment coordinates |
 | Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
 | Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
-| Expose local-model internals for observation or controlled intervention | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when vLLM is the model-serving boundary |
+| High-throughput local-model capture and controlled intervention | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) or the [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) vLLM driver when vLLM owns serving |
+| Deep local inspection and reference replay | [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) on its Hugging Face `transformers` driver; [NNsight](https://github.com/ndif-team/nnsight) where direct HF tracing is preferable |
 | Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
 | Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
 | Train model weights | [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) when Inspect owns rollout and reward while TRL/GRPO owns optimisation; [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
@@ -323,8 +355,18 @@ and control protocols over them; Inspect RL reuses complete Inspect rollouts as 
 into the early-stopping interface; vLLM-Lens registers as an Inspect model provider; and the sandbox packages provide
 replaceable execution environments. A future Endophasia integration should admit these capabilities separately and
 record each provider's version and configuration rather than flattening them into a single "Inspect" capability.
-Observation through a provider such as vLLM-Lens does not imply an EVOLVE action: activation capture can feed OBSERVE
-without changing the model, while steering or intervention remains a separately admitted capability.
+Observation through a provider such as vLLM-Lens or a TransformerLens driver does not imply an EVOLVE action:
+activation capture can feed OBSERVE without changing the model, while steering or intervention remains a separately
+admitted capability.
+
+TransformerLens 4.0's Driver contract is also a useful reference for observation-provider design: each execution
+backend declares which hook points it can and cannot serve rather than promising false parity across engines. Endophasia
+should preserve that backend truth in its own capability surface.
+
+For broad local compatibility, [llama.cpp](https://github.com/ggml-org/llama.cpp) may support a lower-fidelity native
+adapter through its evaluation callback, but stock `llama-server` does not expose intermediate activations as a stable
+server API. Any such integration should therefore identify itself as native/callback instrumentation rather than
+ordinary OpenAI-compatible serving.
 
 Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
 

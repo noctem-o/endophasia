@@ -410,4 +410,24 @@ describe("endo doctor", () => {
 		const help = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
 		expect(help).toMatch(/except "doctor", which prints a human report unless given --json/);
 	});
+
+	it("a dangling symlink as the log itself is unusable, and an empty log recorded nothing", async () => {
+		const install = fakePi();
+		const dangling = scratch();
+		const directory = endoHarnessRegistryDirectoryV0(dangling, "pi.default");
+		mkdirSync(directory, { recursive: true });
+		symlinkSync(join(scratch(), "nowhere", "records.log"), join(directory, "records.log"));
+		const broken = await endoDoctorV0({ root: dangling, pi: install.bin }, hostEnv());
+		expect(broken.evidence.status).toBe("unreadable");
+		expect(broken.evidence.reason).toMatch(/dangling symlink/);
+		expect(broken.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+
+		const empty = scratch();
+		mkdirSync(endoHarnessRegistryDirectoryV0(empty, "pi.default"), { recursive: true });
+		writeFileSync(join(endoHarnessRegistryDirectoryV0(empty, "pi.default"), "records.log"), "");
+		const none = await endoDoctorV0({ root: empty, pi: install.bin }, hostEnv());
+		expect(none.evidence.status).toBe("none-recorded");
+		expect(none.evidence.capabilities).toEqual([]);
+		expect(none.nextSteps.join(" ")).toMatch(/Record local checks/);
+	});
 });

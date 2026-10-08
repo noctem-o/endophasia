@@ -259,7 +259,11 @@ export async function endoDoctorV0(
 			logProbe = code === "ENOENT" ? "absent" : `the registry path cannot be examined (${code ?? "unknown error"})`;
 			// A missing log under a dangling symlink (harness/ or the attachment directory) cannot be created either.
 			if (logProbe === "absent") {
-				for (const ancestor of [join(rootPath, "harness"), endoHarnessRegistryDirectoryV0(rootPath, attachment)]) {
+				for (const ancestor of [
+					join(rootPath, "harness"),
+					endoHarnessRegistryDirectoryV0(rootPath, attachment),
+					log,
+				]) {
 					try {
 						statSync(ancestor);
 					} catch {
@@ -287,6 +291,11 @@ export async function endoDoctorV0(
 				const fingerprint = registry.list("fingerprint").at(-1) ?? null;
 				const state = registry.last("state");
 				evidence.status = "recorded";
+				// A log that exists but holds no records (created, then stopped before the first append) recorded nothing.
+				if (fingerprint === null && state === null && registry.list("evidence").length === 0) {
+					evidence.status = "none-recorded";
+					evidence.reason = "the registry log exists but holds no records";
+				}
 				evidence.recordedFingerprintAt = fingerprint?.observedAt ?? null;
 				evidence.recordedVersion = fingerprint?.reported.version ?? null;
 				evidence.recordedIdentityConfidence = fingerprint?.identity.confidence ?? null;

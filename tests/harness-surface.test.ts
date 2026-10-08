@@ -77,7 +77,7 @@ function chat(overrides: Record<string, unknown> = {}, task = "fix the failing t
 
 /** Record `requests` with the capture log's writer, return the store root. */
 function record(
-	requests: { body: Body; method?: string; path?: string }[],
+	requests: { body: Body; method?: string; path?: string; headers?: unknown[] }[],
 	options: { key?: typeof key; version?: string | null } = {},
 ): string {
 	const store = mkdtempSync(join(tmpdir(), "endo-surface-"));
@@ -103,7 +103,7 @@ function record(
 			path,
 			requestDigest: { ...endoRequestDigestV0(k, method, path, body) },
 			body: { ...log.keep(body) } as never,
-			headers: [],
+			headers: (request.headers ?? []) as never,
 			offsetMs: 0,
 		});
 	}
@@ -801,5 +801,61 @@ describe("review findings", () => {
 			harness: { ...trial.harness, requests: [...trial.harness.requests, ...trial.harness.requests] },
 		};
 		expect(readEndoExperimentTrialResultV0(dup).ok).toBe(false);
+	});
+
+	describe("request headers", () => {
+		const headed = (headers: unknown[], k = key) =>
+			harnessSurfacesOfCaptureV0(record([{ body: chat(), headers }], { key: k }), k)[0]!;
+		const base = [
+			{ name: "Content-Type", value: "application/json" },
+			{ name: "OpenAI-Beta", value: "assistants=v2" },
+			{ name: "Authorization", redacted: true },
+		];
+
+		it("transport headers and wire order do not change the surface; any other header does, and is named", () => {
+			const a = headed([{ name: "Host", value: "127.0.0.1:1" }, { name: "Content-Length", value: "5" }, ...base]);
+			const b = headed([...base].reverse().concat([{ name: "Host", value: "127.0.0.1:9" }]));
+			expect(componentsOf(a).identity).toBe(componentsOf(b).identity);
+			const c = headed([base[0], { name: "OpenAI-Beta", value: "assistants=v3" }, base[2]]);
+			expect(componentsOf(a).identity).not.toBe(componentsOf(c).identity);
+			expect(compareEndoHarnessSurfacesV0(a, c)).toMatchObject({ comparable: true, differs: ["headers"] });
+			// A header present on one side only is a difference as well.
+			expect(compareEndoHarnessSurfacesV0(a, headed([base[0], base[2]]))).toMatchObject({ differs: ["headers"] });
+		});
+
+		it("records presence of a redacted header without a value, and no header value as text", () => {
+			const surface = headed([{ name: "X-Route", value: "secret-route-value" }, base[2]!]);
+			const headers = componentsOf(surface).headers;
+			expect(headers.status).toBe("reported");
+			expect(JSON.stringify(surface)).not.toContain("secret-route-value");
+			if (headers.status === "reported")
+				expect(headers.value.items).toEqual([
+					{ name: "authorization", digest: null },
+					{ name: "x-route", digest: expect.stringMatching(/^[0-9a-f]{64}$/) },
+				]);
+			expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(true);
+		});
+
+		it("a capture without a header list reports headers UNAVAILABLE, never an empty list", () => {
+			const input = surfaceOf(chat());
+			const bare = deriveEndoHarnessSurfaceV0({
+				key,
+				captureVersion: null,
+				exchange: 1,
+				eventId: "e",
+				method: "POST",
+				path: "/v1/chat/completions",
+				requestDigest: endoRequestDigestV0(
+					key,
+					"POST",
+					"/v1/chat/completions",
+					Buffer.from(JSON.stringify(chat())),
+				),
+				body: Buffer.from(JSON.stringify(chat())),
+			});
+			expect(componentsOf(bare).headers.status).toBe("UNAVAILABLE");
+			expect(componentsOf(input).headers.status).toBe("reported");
+			expect(compareEndoHarnessSurfacesV0(bare, input)).toMatchObject({ differs: ["headers"] });
+		});
 	});
 });

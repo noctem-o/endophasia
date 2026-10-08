@@ -152,7 +152,7 @@ Per captured request, the surface records:
   `temperature = 1`), and the server's resulting defaults are explicitly UNAVAILABLE;
 - **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the request target
   (path and query as sent, since a route or query parameter may select other server behavior), the model,
-  the streaming flag, the ordered instruction digest, the ordered tool digest and presence, and the parameters digest.
+  the streaming flag, the ordered instruction digest, the ordered tool digest and presence, the parameters digest and the headers.
 
 What is **not** in the surface: the user's messages, the assistant's and tool results (task input is not harness
 surface, so a different prompt, history or tool output leaves the identity unchanged); system or developer text and
@@ -169,7 +169,12 @@ is not parsed out of the text; it is recorded separately, from the runner, as a 
 
 A body that is not valid UTF-8, or holds a value with no canonical form (such as an overflowing number), is UNAVAILABLE, as the request digest already treats it as opaque. A v1 trial lists no surface that none of its requests used, and each listed surface is the first observation of a request that names it.
 
-Request **headers** are not part of the v0 surface. The capture keeps them, but which headers select server behavior is a judgment about each provider, and some carry secrets; v0 records none of them and does not claim that surfaces matched on headers. A later version can add a declared, redacted header coordinate.
+Request **headers** are part of the surface, without judging which of them change server behavior. Every recorded header
+except the transport ones (Host, Content-Length, Connection, Transfer-Encoding and the like, which differ per connection
+without asking the server for anything else) is recorded by lowercase name with the keyed digest of its value, sorted,
+so wire order does not matter. A header whose value the capture redacted (Authorization) is recorded as present with no
+digest: the value is unknown, never guessed. A capture that recorded no header list gives headers UNAVAILABLE, not an
+empty list. A difference in any header is named as the `headers` coordinate.
 
 **Digest domains.** All digests of a record are under one key. Surfaces under different keys are in different domains:
 the comparison answers "not comparable", never "different". Component digests cover the canonical JSON of the parsed

@@ -16,9 +16,11 @@ import {
 	ENDO_HARNESS_SURFACE_BASES_V0,
 	ENDO_HARNESS_SURFACE_CHAT_PATHS_V0,
 	ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0,
+	ENDO_HARNESS_SURFACE_HEADER_NAME_PATTERN_V0,
 	ENDO_HARNESS_SURFACE_NON_PARAMETER_FIELDS_V0,
 	ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0,
 	ENDO_HARNESS_SURFACE_TOOL_NAME_PATTERN_V0,
+	ENDO_HARNESS_SURFACE_TRANSPORT_HEADERS_V0,
 	ENDO_HARNESS_SURFACE_VERSION_V0,
 	type EndoHarnessSurfaceComponentsV0,
 	type EndoHarnessSurfaceV0,
@@ -40,6 +42,8 @@ export interface EndoHarnessSurfaceInputV0 {
 	method: string;
 	path: string;
 	requestDigest: EndoKeyedDigestV0;
+	/** The recorded header list (`capture.request` payload `headers`); undefined when the capture has none. */
+	headers?: unknown;
 	/** The recorded request body; null when its blob is not available. */
 	body: Uint8Array | null;
 }
@@ -52,9 +56,41 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const bytesOf = (value: unknown): number => Buffer.byteLength(canonicalEndoJsonV0(value));
 
+/** The surface's headers from the capture's recorded list: transport headers dropped, values digested, order removed. */
+function headersOf(
+	recorded: unknown,
+	digest: (basis: string, fields: Record<string, unknown>) => string,
+): EndoHarnessSurfaceComponentsV0["headers"] {
+	if (!Array.isArray(recorded))
+		return { status: "UNAVAILABLE", reason: "the capture recorded no request header list" };
+	const items: { name: string; digest: string | null }[] = [];
+	for (const header of recorded) {
+		if (!isRecord(header) || typeof header.name !== "string")
+			return { status: "UNAVAILABLE", reason: "a recorded header is not a name with a value or a redaction" };
+		const name = header.name.toLowerCase();
+		if (!ENDO_HARNESS_SURFACE_HEADER_NAME_PATTERN_V0.test(name))
+			return { status: "UNAVAILABLE", reason: "a recorded header name is not a plain token" };
+		if (ENDO_HARNESS_SURFACE_TRANSPORT_HEADERS_V0.includes(name)) continue;
+		if (header.redacted === true) items.push({ name, digest: null });
+		else if (typeof header.value === "string")
+			items.push({ name, digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.header, { name, value: header.value }) });
+		else return { status: "UNAVAILABLE", reason: "a recorded header has neither a value nor a redaction" };
+	}
+	items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : (a.digest ?? "") < (b.digest ?? "") ? -1 : 1));
+	return {
+		status: "reported",
+		value: { items, digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.headers, { items }) },
+	};
+}
+
 type Recognized = { ok: true; components: EndoHarnessSurfaceComponentsV0 } | { ok: false; reason: string };
 
-function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target: string): Recognized {
+function recognize(
+	key: EndoDigestKeyV0,
+	parsed: Record<string, unknown>,
+	target: string,
+	recordedHeaders: unknown,
+): Recognized {
 	const { messages, tools } = parsed;
 	if (!Array.isArray(messages)) return { ok: false, reason: "the body has no `messages` list" };
 	if (tools !== undefined && !Array.isArray(tools))
@@ -141,6 +177,7 @@ function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target
 			}),
 		},
 		parameters: { digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.parameters, { fields: parameterValues }), fields },
+		headers: headersOf(recordedHeaders, digest),
 		serverDefaults: { status: "UNAVAILABLE", reason: SERVER_DEFAULTS_REASON },
 	};
 	const identity = key.digest(
@@ -189,7 +226,7 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 		// The whole tree, ignored messages included: a body with a value that has no canonical form is opaque to the
 		// request digest, so it is not a surface (1e400 parses to Infinity).
 		canonicalEndoJsonV0(parsed);
-		recognized = recognize(input.key, parsed, input.path);
+		recognized = recognize(input.key, parsed, input.path, input.headers);
 	} catch {
 		// A value JSON.parse accepts but canonical JSON cannot carry (an overflowing number such as 1e400).
 		return unavailable("the request body holds a value with no canonical form (for example a non-finite number)");
@@ -234,6 +271,7 @@ export function harnessSurfacesOfCaptureV0(storeRoot: string, key: EndoDigestKey
 				method: payload.method as string,
 				path: payload.path as string,
 				requestDigest: payload.requestDigest as EndoKeyedDigestV0,
+				headers: payload.headers,
 				body: bytes,
 			}),
 		);

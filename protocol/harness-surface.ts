@@ -60,8 +60,31 @@ export const ENDO_HARNESS_SURFACE_BASES_V0 = {
 	toolSet: "endo.harness-surface.v0/tool-set",
 	parameter: "endo.harness-surface.v0/parameter",
 	parameters: "endo.harness-surface.v0/parameters",
+	header: "endo.harness-surface.v0/header",
+	headers: "endo.harness-surface.v0/headers",
 	identity: "endo.harness-surface.v0/identity",
 } as const;
+
+/**
+ * Request headers the surface leaves out because they frame or route the transport, not the request: they differ per
+ * connection (Host carries the proxy's port, Content-Length follows the task) without the model or server behavior
+ * being asked for anything else. Every other recorded header is part of the surface; none is judged "behavior-affecting".
+ */
+export const ENDO_HARNESS_SURFACE_TRANSPORT_HEADERS_V0: readonly string[] = [
+	"host",
+	"content-length",
+	"connection",
+	"keep-alive",
+	"proxy-connection",
+	"transfer-encoding",
+	"te",
+	"trailer",
+	"upgrade",
+	"expect",
+];
+
+/** A header name as the surface records it (lowercase token); anything else makes the headers UNAVAILABLE. */
+export const ENDO_HARNESS_SURFACE_HEADER_NAME_PATTERN_V0 = /^[a-z0-9!#$%&'*+.^_`|~-]{1,128}$/;
 
 export type EndoHarnessSurfaceObservedV0<T> =
 	| { status: "reported"; value: T }
@@ -89,6 +112,13 @@ export interface EndoHarnessSurfaceParameterV0 {
 	value?: JsonValueV0;
 }
 
+export interface EndoHarnessSurfaceHeaderV0 {
+	/** Lowercased name, as recorded (names are not secret). */
+	name: string;
+	/** The keyed digest of the value; null when the capture redacted it (presence is known, the value is not). */
+	digest: string | null;
+}
+
 export interface EndoHarnessSurfaceComponentsV0 {
 	model: EndoHarnessSurfaceObservedV0<string>;
 	streaming: EndoHarnessSurfaceObservedV0<boolean>;
@@ -108,6 +138,11 @@ export interface EndoHarnessSurfaceComponentsV0 {
 		digest: string;
 		fields: Record<string, EndoHarnessSurfaceParameterV0>;
 	};
+	/**
+	 * Every recorded request header but the transport ones (`ENDO_HARNESS_SURFACE_TRANSPORT_HEADERS_V0`), sorted by
+	 * name and digest. Order on the wire is not part of it. UNAVAILABLE when the capture recorded no header list.
+	 */
+	headers: EndoHarnessSurfaceObservedV0<{ items: EndoHarnessSurfaceHeaderV0[]; digest: string }>;
 	/** The server's resulting defaults are not on the wire. */
 	serverDefaults: { status: "UNAVAILABLE"; reason: string };
 	/** The keyed digest of the identity basis. */
@@ -150,6 +185,8 @@ export function endoHarnessSurfaceIdentityBasisV0(
 		instructions: components.instructions.orderedDigest,
 		tools: { present: components.tools.present, ordered: components.tools.orderedDigest },
 		parameters: components.parameters.digest,
+		headers:
+			components.headers.status === "reported" ? { digest: components.headers.value.digest } : components.headers,
 	};
 }
 
@@ -238,7 +275,7 @@ function isStrictJson(value: unknown): boolean {
 function componentsProblem(value: unknown): Problem {
 	const shape = closed(
 		value,
-		["model", "streaming", "instructions", "tools", "parameters", "serverDefaults", "identity"],
+		["model", "streaming", "instructions", "tools", "parameters", "headers", "serverDefaults", "identity"],
 		"components",
 	);
 	if (shape !== null) return shape;
@@ -301,6 +338,20 @@ function componentsProblem(value: unknown): Problem {
 		)
 			return "a parameter value over the size limit is recorded by its digest only";
 	}
+	const headers = observedProblem(c.headers, "components.headers", (v) => {
+		if (!isObject(v) || endoFirstUnknownKeyV0(v, ["items", "digest"]) !== undefined || !isHex(v.digest)) return false;
+		if (!Array.isArray(v.items)) return false;
+		return v.items.every(
+			(item) =>
+				isObject(item) &&
+				endoFirstUnknownKeyV0(item, ["name", "digest"]) === undefined &&
+				typeof item.name === "string" &&
+				ENDO_HARNESS_SURFACE_HEADER_NAME_PATTERN_V0.test(item.name) &&
+				!ENDO_HARNESS_SURFACE_TRANSPORT_HEADERS_V0.includes(item.name) &&
+				(item.digest === null || isHex(item.digest)),
+		);
+	});
+	if (headers !== null) return headers;
 	const defaults = closed(c.serverDefaults, ["status", "reason"], "components.serverDefaults");
 	if (defaults !== null) return defaults;
 	const d = c.serverDefaults as Record<string, unknown>;
@@ -383,7 +434,8 @@ export type EndoHarnessSurfaceCoordinateV0 =
 	| "instructions"
 	| "tool-definitions"
 	| "tool-order"
-	| "parameters";
+	| "parameters"
+	| "headers";
 
 export type EndoHarnessSurfaceComparisonV0 =
 	| { comparable: false; reason: string }
@@ -429,6 +481,8 @@ export function compareEndoHarnessSurfacesV0(
 	if (x.tools.present !== y.tools.present || x.tools.membershipDigest !== y.tools.membershipDigest)
 		differs.push("tool-definitions");
 	else if (x.tools.orderedDigest !== y.tools.orderedDigest) differs.push("tool-order");
+	const headerDigest = (o: typeof x.headers) => (o.status === "reported" ? o.value.digest : `UNAVAILABLE:${o.reason}`);
+	if (headerDigest(x.headers) !== headerDigest(y.headers)) differs.push("headers");
 	const parameterNames: string[] = [];
 	if (x.parameters.digest !== y.parameters.digest) {
 		differs.push("parameters");

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-alpha.1 (prepared, not published)
+## [0.1.0-alpha.1](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) (released 2026-10-08)
 
 The first alpha of Endophasia: an **experimental research instrument**, not a stable product. It attaches to a
 user-installed agent harness (Pi) and records what it observes in a durable store. It does not install, upgrade or patch

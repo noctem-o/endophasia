@@ -34,6 +34,8 @@ and keep measurement, evidence and permission separate.
 
 ---
 
+**Installable alpha:** [Endophasia 0.1.0-alpha.1](https://www.npmjs.com/package/endophasia) is published. Install with `npm install -g endophasia@0.1.0-alpha.1`, then run `endo doctor`. Pi is installed separately; Node >= 22.19.0 is required. See the [first-run guide](docs/install.md) and [release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1).
+
 Endophasia is a harness-neutral experimental substrate for observing, steering, comparing and evolving coding-agent
 systems without replacing their native execution loops.
 
@@ -696,6 +698,7 @@ A summary. The detail of what is implemented, with every limitation, is in [docs
 each real recording and study establishes, and what it does not, is in [research/README.md](research/README.md).
 
 **What runs, implemented and tested here:**
+- **Installable Operator Alpha.** The experimental `0.1.0-alpha.1` CLI is published on [npm](https://www.npmjs.com/package/endophasia) and [GitHub](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1). It includes `endo doctor`, default store selection, Pi attach guidance and read-only inspection of recorded sessions; Pi remains independently installed.
 - **Protocol, store and CLI.** Versioned `endo.*` events and identities, an evidence store with replay, durable storage
   with validated recovery, and the `endo` CLI. The reporting commands open stores read-only.
 - **The Pi attachment** (`endo harness …`), over Pi's documented RPC mode. It covers fingerprints and change records,
@@ -715,8 +718,7 @@ each real recording and study establishes, and what it does not, is in [research
   Pi's acceptance, the consumption the recording proxy shows, and the consequence, each its own record.
   `endo harness attach --control` and `endo steer propose|authorize|apply|status` operate it. v0 proposals come only
   from the operator, and an external authority provider is a documented seam, not wired.
-- **Tests:** a deterministic suite with a fake Pi and a fake OpenAI-compatible endpoint, plus an opt-in acceptance
-  suite against a real installed Pi.
+- **Installed-package verification:** `npm run test:package` exercises the installed tarball with a fake Pi and local fake model endpoint; CI `acceptance` runs the same operator loop against a separately installed, pinned **real Pi 1.0.0** and a local fake endpoint (no provider credentials or cost). Other Pi releases and platforms are not established by those tests.
 
 **Real evidence so far** ([research/README.md](research/README.md)). All of it comes from Pi 1.0.1, qwen3.8-27b on
 llama.cpp, and one machine:
@@ -753,11 +755,12 @@ Three protocol schemas (`protocol/{continuity,control,runtime-profile}.ts`) and 
 `protocol/session-overview.ts` are planned surfaces with no producer at all. Their fork-era producers were removed;
 they are kept for the steering and replay work and the sealed Prime study.
 
-**Simulated, not real:** the deterministic suites' Pi is a fake that speaks Pi 1.0.0's documented records; passing them
-says nothing about another Pi release. The real-runtime check covered one Pi 1.0.0 installation on Linux with Node 22,
-an otherwise empty Pi configuration, no extensions, and Pi's model provider pointed at a local fake endpoint; no real
-model was called. The hostile trajectory cases, and the lifecycle's failure, retry, compaction and unknown-record
-paths, are exercised only against the fake Pi ([research/README.md](research/README.md#fake-only-paths)).
+**Simulation and real-runtime boundaries:** the deterministic suites' Pi is a fake speaking Pi 1.0.0's documented
+records; those tests alone say nothing about a real Pi release. Separately, the installed-package `acceptance` job
+exercises a **real Pi 1.0.0** on Ubuntu with Node 22 and a local fake model endpoint; no real model provider is called.
+This is a packaging/operator-path acceptance baseline, distinct from the **Pi 1.0.1 + qwen3.8-27b** research studies
+listed above. Hostile trajectory cases and the lifecycle's failure, retry, compaction and unknown-record paths are
+exercised only against fake Pi ([research/README.md](research/README.md#fake-only-paths)).
 
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.
@@ -776,16 +779,15 @@ Endophasia is ready for architecture experiments. It is not a stable multi-runti
 ### Delivery sequence — current priority
 
 The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
-shorter and more product-shaped**: close the evidence boundary that the first alpha depends on, make Endophasia
-installable and usable as an operator tool, then wire the first native read-only surface before returning to deeper
-EVOLVE plumbing.
+shorter and more product-shaped**. Evidence closure and the installable Operator Alpha are complete; the next delivery
+priority is the first Endophasia-native read-only cockpit, followed by checkpoints and deeper EVOLVE work.
 
 ~~~text
-evidence closure
+evidence closure (done)
       ↓
-installable operator alpha
+installable operator alpha (released: 0.1.0-alpha.1)
       ↓
-native read-only cockpit
+native read-only cockpit (next)
       ↓
 forkable checkpoints
       ↓
@@ -810,19 +812,14 @@ counterfactual / evolution / training work
      surface (`docs/experiments.md`, "The effective harness surface"). Historical `v0` trials still read as they were
      and report their surface as UNAVAILABLE. Not recorded: the server's defaults, and the model's internals.
 
-2. **Operator Alpha — make Endophasia something a person can install and run.**
-   - Produce a distributable CLI artifact with a real `endo` executable, version metadata, `--help` and `--version`.
-     *Status: tranches 1–3 merged; tranche 4 (clean-install acceptance with a pinned real Pi, [release preparation](docs/release-alpha.md)) awaiting review; no version is published* (compiled-JS tarball, isolated-install smoke in CI; see
-     [docs/install.md](docs/install.md); prepared as `0.1.0-alpha.1`, still unpublished). The release artifact should emit JavaScript rather than depend on Node executing raw TypeScript from
-     `node_modules`; Node's own TypeScript documentation currently refuses that dependency path.
-   - Add first-run diagnostics (`endo doctor` or an equivalent command), runtime discovery, a sensible default data
-     root, and operator-readable capability/evidence output without requiring knowledge of the store layout.
-   - Keep the first verified path deliberately narrow: a user-installed Pi on the platforms actually exercised by the
-     acceptance suite. Other runtimes and platforms remain experimental until they earn their own evidence.
-   - Add a clean-install acceptance path that starts from the produced artifact, not the repository checkout, and
-     exercises the useful loop end to end: diagnose → check → attach → inspect status/overview → project a trajectory.
-   - Cut a first versioned alpha only after that path passes. The alpha is an experimental research instrument, not a
-     claim of stable multi-runtime support.
+2. **Operator Alpha — installable first-run Pi workflow (complete).**
+   - *Status: released.* Tranches [1](https://github.com/noctem-o/endophasia/pull/52), [2](https://github.com/noctem-o/endophasia/pull/53), [3](https://github.com/noctem-o/endophasia/pull/54) and [4](https://github.com/noctem-o/endophasia/pull/55) are merged. [`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) is published on [npm](https://www.npmjs.com/package/endophasia); see [installation](docs/install.md) and [release verification](docs/release-alpha.md).
+   - Compiled JavaScript CLI with an `endo` executable, `--help`/`--version`, read-only `endo doctor`, runtime discovery,
+     default store root, capability/evidence reporting and operator guidance. No TypeScript execution from `node_modules`.
+   - The installed-tarball path exercises diagnose → local checks → attach → status/overview → trajectory against a
+     fake Pi and, separately in CI, a real pinned Pi 1.0.0 with a local fake model endpoint.
+   - Scope is intentionally narrow: a user-installed Pi on the CI-verified platform, not stable multi-runtime support.
+     Live-provider behaviour and other platforms still require their own evidence.
 
 3. **First Endophasia-native operator surface.**
    - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
@@ -862,7 +859,7 @@ counterfactual / evolution / training work
 
 ### Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the Operator Alpha sequence.
+These are valid directions, but they should **not** displace the next delivery priority: the first native read-only cockpit.
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
@@ -1171,18 +1168,25 @@ large protocol-only migration before these contracts have survived a real agent 
 
 ## Try it
 
+The published alpha requires **Node >= 22.19.0** and a separately installed Pi runtime for attachment. `endo doctor`
+is read-only; it does not start a session or contact a model provider.
+
 ~~~sh
-npm ci
-node cli/index.ts harness check  ./endo-root               # identify your `pi` and run the automatic local checks
-node cli/index.ts harness status ./endo-root               # identity, last change, capability state (read-only; starts nothing)
-node cli/index.ts harness overview ./endo-root             # the recorded session's lifecycle overview (read-only)
-node cli/index.ts harness study  ./endo-root --authorize-live-study   # prompts your configured provider: may cost money
-node cli/index.ts harness attach ./endo-root --prompt "…"  # record a session into ./endo-root
-npm test                                                   # deterministic suite (no Pi, no network, no history)
-ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real   # opt-in check against your installed Pi
+npm install -g endophasia@0.1.0-alpha.1
+endo doctor                                  # diagnose Pi, Node, store locations and recorded evidence
+endo harness check                           # local Pi checks, no model call; records evidence
+endo harness attach --prompt "..."            # optional: calls your configured model provider and may incur cost
+endo harness status                          # read-only identity and capability status
+endo harness overview                        # read-only session lifecycle
+endo trajectory show <pi-session-id>         # use the id printed by attach
 ~~~
 
-To try the packaged CLI instead of the checkout, see [docs/install.md](docs/install.md) (`npm run build && npm pack`).
+A local install also works: `npm install endophasia@0.1.0-alpha.1` followed by `npx --no-install endo doctor`.
+See [docs/install.md](docs/install.md) for the complete first-run guide and [release verification](docs/release-alpha.md)
+for the precise Pi/platform acceptance boundary.
+
+From a source checkout, use `npm ci`, `npm test` and `node cli/index.ts ...` to develop or run the deterministic suite.
+`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real` remains an opt-in test against your installed Pi.
 
 Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
 separately.

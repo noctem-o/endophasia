@@ -1,10 +1,14 @@
-# First alpha: what it is, what is verified, and the release checklist
+# First alpha: published status, verified scope and release procedure
 
 ## What the alpha is
 
 An experimental research instrument. It attaches to a user-installed agent harness (Pi), records what it observes in a
 durable store, and reads that store back. It does not install, upgrade or patch Pi, and it does not claim stable
 multi-runtime support.
+
+**Published:** [`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) (GitHub
+prerelease) and [`endophasia@0.1.0-alpha.1`](https://www.npmjs.com/package/endophasia) (npm). The first versioned
+release and its four Operator Alpha tranches are complete.
 
 ## What is verified, and where
 
@@ -26,12 +30,15 @@ they can be attached, and earn capability admission through the same local check
   `--authorize-live-study` and may incur provider cost.
 - Model-internal observation, a cockpit, new adapters, or schema migrations.
 
-## Checklist before a first alpha (owner actions marked)
+## Checklist for subsequent releases
 
-1. `main` is green: `check`, `package`, `acceptance`, `exchange`.
-2. The version is prepared as `0.1.0-alpha.1` (changelog: `CHANGELOG.md`). Remove `private: true` **(owner)**: it is the switch that allows publishing.
-3. Confirm `npm pack --dry-run` lists only `dist/`, `README.md`, `CHANGELOG.md`, `LICENSE` and `package.json` (the package smoke asserts this).
+The first alpha is already published; these are **future** owner-operated release checks, not pending steps for
+`0.1.0-alpha.1`.
+
+1. Confirm `main` is green: `check`, `package`, `acceptance`, `exchange`.
+2. Choose the next version, update `CHANGELOG.md`, and confirm the package manifest permits publishing.
+3. Confirm `npm pack --dry-run` includes only `dist/`, `README.md`, `CHANGELOG.md`, `LICENSE` and `package.json`.
 4. Re-run `npm run test:acceptance` against the exact tarball to be published.
-5. Write release notes from this page (verified / not claimed), and link `docs/install.md`.
-6. Tag and publish with a dist-tag that is not `latest` (for example `alpha`) **(owner)**.
-7. After publishing, install it from the registry into a clean prefix and run `endo doctor` and the loop once more.
+5. Write concise release notes that separate verified evidence from unsupported claims; link `docs/install.md`.
+6. Tag and publish an alpha with a prerelease dist-tag such as `alpha`, rather than changing `latest` accidentally.
+7. After publishing, install from the registry in a clean prefix and run `endo doctor` and the operator loop.

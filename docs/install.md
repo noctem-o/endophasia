@@ -1,12 +1,12 @@
-# Installing the `endo` CLI and first run (Operator Alpha, tranches 1–2 of 4)
+# Installing the `endo` CLI and first run (Operator Alpha 0.1.0-alpha.1)
 
-Status: **experimental; not published.** The package is `private`, version `0.1.0-alpha.1` (prepared, not released).
+Status: **experimental alpha, published** on [npm](https://www.npmjs.com/package/endophasia) and as a [GitHub prerelease](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1). Node >= 22.19.0 is required; Pi is installed separately.
 
 ## What the tarball is
 
 `npm pack` produces `endophasia-<version>.tgz`: the compiled JavaScript of the `endo` command's import closure
-(`dist/`), `package.json`, `README.md` and `LICENSE`, about 85 files and 0.26 MB packed. It has **no runtime npm
-dependencies** and ships no TypeScript, tests, source maps, declarations, private keys, captures or research data.
+(`dist/`), `package.json`, `README.md`, `CHANGELOG.md` and `LICENSE`. It has **no runtime npm dependencies** and
+ships no TypeScript, tests, source maps, declarations, private keys, captures or research data.
 
 The one non-JavaScript runtime asset is the pair of public synthetic fixture keys (`dist/research/fixture-keys/`),
 which `storage/digest-key.js` resolves relative to itself (`../research/fixture-keys/`) for the fixture recorders. They
@@ -20,7 +20,19 @@ Node (>= 22.19) can run `.ts` directly in a checkout, but refuses to strip types
 [`rewriteRelativeImportExtensions`](https://www.typescriptlang.org/tsconfig/rewriteRelativeImportExtensions.html) to
 turn `./x.ts` imports into `./x.js`. No bundler is used. The full-repository `npm run typecheck` is unchanged.
 
-## Build, pack, install
+## Install from npm
+
+~~~sh
+npm install -g endophasia@0.1.0-alpha.1
+endo --version
+endo doctor                          # read-only first-run diagnosis; Pi is installed separately
+~~~
+
+Or install in a project with `npm install endophasia@0.1.0-alpha.1`, then run
+`npx --no-install endo doctor` from that project. To uninstall the global CLI:
+`npm uninstall -g endophasia`.
+
+## Build and test a tarball from a checkout (contributors)
 
 ~~~sh
 npm ci
@@ -29,11 +41,10 @@ npm pack                           # endophasia-0.1.0-alpha.1.tgz (prepack rebui
 npm install --prefix ~/endo-try --ignore-scripts --omit=dev ./endophasia-0.1.0-alpha.1.tgz
 ~/endo-try/node_modules/.bin/endo --help
 ~/endo-try/node_modules/.bin/endo --version
-~/endo-try/node_modules/.bin/endo harness overview ./some-store   # read-only; a missing store creates nothing
+~/endo-try/node_modules/.bin/endo harness overview ./some-store   # read-only; missing store creates nothing
 ~~~
 
-`npm install -g ./endophasia-0.1.0-alpha.1.tgz` puts `endo` on `PATH`. To remove a trial install: `rm -rf ~/endo-try`
-(or `npm uninstall -g endophasia`). Requires Node >= 22.19.0.
+This tarball test uses a clean prefix instead of the registry package. To remove it: `rm -rf ~/endo-try`.
 
 `npm run test:package` (`scripts/package-smoke.mjs`) does this in a scratch directory with an isolated `HOME` and
 `XDG_*`, runs the installed binary under `node --no-strip-types` from two other working directories, audits the
@@ -47,8 +58,8 @@ in the `package` job.
 
 ## Pi is installed separately
 
-Endophasia attaches to a Pi you installed; it never installs, upgrades, patches or rebuilds it, and help and version
-need no Pi. Command semantics, store formats and output formats are unchanged by this tranche.
+Endophasia attaches to a Pi you installed; it never installs, upgrades, patches or rebuilds it. Help, version and
+`doctor` can run without Pi; a missing Pi is reported rather than inferred to have capabilities.
 
 ## First run: `endo doctor`
 
@@ -109,15 +120,15 @@ id and root filled in. A prompt reported as *accepted* is only that; the run is 
 id, none is named. Everything after `attach` reads the store only, so it works after the process has exited.
 
 The live study (`harness study --authorize-live-study`) remains a separate, explicit authorisation; nothing in this loop
-runs one, and `doctor` never starts a session. The automated acceptance (`npm run test:package`) runs this loop from the
-installed tarball against a prepared **fake** Pi (a test fixture speaking Pi's documented RPC surface; it is not Pi and
-proves nothing about a Pi release) and a local fake OpenAI-compatible endpoint: no credentials, no provider. Only Pi on
-the platform CI exercises is verified; no general runtime support is claimed.
+runs one, and `doctor` never starts a session.
 
-## Not yet (pending)
+## Release and verification
 
-A versioned prerelease: see [release-alpha.md](release-alpha.md) for what is verified, what is not claimed and the owner's
-checklist. The real-Pi acceptance (`npm run test:acceptance`, CI job `acceptance`) installs the pinned Pi separately and
-runs the loop from the installed tarball against a fake model endpoint.
+[`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) is published on
+[npm](https://www.npmjs.com/package/endophasia). The installed-tarball package smoke (`npm run test:package`, CI
+`package`) exercises this loop with a **fake** Pi and a local fake OpenAI-compatible endpoint, without real credentials
+or provider cost. The separate `npm run test:acceptance` CI job installs a pinned **real Pi 1.0.0** independently and
+runs the same operator loop against a local fake model endpoint; it does not contact a live provider.
 
-No platform other than the CI image (Ubuntu, Node 22) has been exercised for the packaged CLI.
+These checks establish the packaged CLI on the CI image (Ubuntu, Node 22), not other platforms or Pi versions.
+For the exact evidence and limits, see [release-alpha.md](release-alpha.md).

@@ -25,7 +25,7 @@ import {
 	readEndoExperimentRunRecordFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
-import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { mulberry32V0, shuffleV0 } from "../../../runtime/contracts/statistics.ts";
@@ -36,7 +36,7 @@ import { sensitivity } from "../../variance/1.0.1/analyze.ts";
 
 const FIXTURE = { kind: "fixture" as const, path: endoFixtureDigestKeyPathV0() };
 
-function trials(dir: string): EndoExperimentTrialResultV0[] {
+function trials(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.
@@ -45,7 +45,7 @@ function trials(dir: string): EndoExperimentTrialResultV0[] {
 	});
 }
 
-const label = (trial: EndoExperimentTrialResultV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;
+const label = (trial: EndoExperimentTrialResultAnyV0) => `${trial.task}/${trial.condition}/#${trial.trial}`;
 
 /** Mean wall time per (task, condition) and T(N) over all 12 cells (DESIGN §9). */
 export function estimate(dir: string) {
@@ -258,7 +258,7 @@ export function residualSourceV0(
  * trial ended after requests identical to the other's). Environment pairs are classified by residual source.
  */
 export function divergence(dir: string) {
-	const byCell = new Map<string, { trial: EndoExperimentTrialResultV0; requests: Record<string, unknown>[] }[]>();
+	const byCell = new Map<string, { trial: EndoExperimentTrialResultAnyV0; requests: Record<string, unknown>[] }[]>();
 	for (const trial of trials(dir).filter((entry) => entry.status === "completed")) {
 		const loaded = loadEndoTrialRequestsV0(join(dir, trial.store), trial, FIXTURE);
 		const cell = `${trial.task}/${trial.condition}`;

@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readEndoExperimentTrialResultFileV0 } from "../../../cli/experiment-artifacts.ts";
+import { requestParametersOfTrialV0 } from "../../../cli/experiment-surface.ts";
 import { rawDirectory } from "../../data.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -64,8 +65,8 @@ for (const run of runs) {
 			else cell.failed += 1;
 			if (!passed && length) cell.failedWithLength += 1;
 			if (passed && length) cell.passedWithLength += 1;
-			for (const parameters of result.requestParameters) {
-				// requestParameters entries are open JSON as Pi sent them.
+			for (const parameters of requestParametersOfTrialV0(result)) {
+				// The request parameters per request: recorded verbatim (v0), or the view of the harness surface (v1).
 				const limit = (parameters as { max_completion_tokens?: unknown } | null)?.max_completion_tokens;
 				if (typeof limit === "number") cell.maxCompletionTokens.add(limit);
 			}

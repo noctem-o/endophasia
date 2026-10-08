@@ -19,7 +19,7 @@ import {
 	readEndoExperimentRunRecordFileV0,
 } from "../../../cli/experiment-artifacts.ts";
 import { loadEndoTrialRequestsV0 } from "../../../cli/experiment-checks.ts";
-import type { EndoExperimentTrialResultV0 } from "../../../protocol/experiment-artifacts.ts";
+import type { EndoExperimentTrialResultAnyV0 } from "../../../protocol/experiment-artifacts.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { mulberry32V0, shuffleV0, wilson95V0 } from "../../../runtime/contracts/statistics.ts";
 import { endoFixtureDigestKeyPathV0 } from "../../../storage/digest-key.ts";
@@ -128,7 +128,7 @@ export function responsePattern(requests: readonly Record<string, unknown>[], ta
 	return bashes.length >= 2 ? "commands-in-separate-turns" : "only-the-asked-for-command";
 }
 
-function completedTrials(dir: string): EndoExperimentTrialResultV0[] {
+function completedTrials(dir: string): EndoExperimentTrialResultAnyV0[] {
 	const plan = readEndoExperimentPlanFileV0(dir).plan.order;
 	return plan.flatMap((entry) => {
 		// A trial that never ran has no result; one that has a result the reader refuses is an error, not a gap.

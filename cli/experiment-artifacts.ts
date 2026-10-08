@@ -12,7 +12,7 @@ import {
 	type EndoExperimentPlanReadV0,
 	type EndoExperimentRunRecordV0,
 	type EndoExperimentTrialKeyV0,
-	type EndoExperimentTrialResultV0,
+	type EndoExperimentTrialResultAnyV0,
 	readEndoExperimentPlanV0,
 	readEndoExperimentRunRecordV0,
 	readEndoExperimentTrialResultV0,
@@ -93,7 +93,7 @@ export function readEndoExperimentPlanFileV0(dir: string): Extract<EndoExperimen
 export function readEndoExperimentPlannedTrialV0(
 	dir: string,
 	entry: EndoExperimentTrialKeyV0,
-): EndoExperimentTrialResultV0 | null {
+): EndoExperimentTrialResultAnyV0 | null {
 	const store = `trials/${entry.task}/${entry.condition}/${entry.trial}`;
 	const path = join(dir, store, "result.json");
 	if (!existsSync(path)) return null;
@@ -116,6 +116,6 @@ export function readEndoExperimentPlannedTrialV0(
 }
 
 /** A trial's `result.json` (`endo.experiment-trial.v0`), by its path. */
-export function readEndoExperimentTrialResultFileV0(path: string): EndoExperimentTrialResultV0 {
+export function readEndoExperimentTrialResultFileV0(path: string): EndoExperimentTrialResultAnyV0 {
 	return governed(path, readEndoExperimentTrialResultV0);
 }

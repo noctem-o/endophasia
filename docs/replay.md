@@ -113,6 +113,26 @@ value.
 sha256: a plain hash in a file name would be the same confirmation oracle that keyed argument digests close
 ([trajectory.md](trajectory.md#argument-digests-and-digest-domains)). Events carry digests and lengths only.
 
+### From the captured request to harness-surface evidence
+
+A captured request body stays a blob. What becomes canonical evidence from it is the effective harness surface
+(`endo.harness-surface.v0`, derived on demand by `adapters/openai-proxy/harness-surface.ts`; the experiment runner
+embeds it in each trial, [experiments.md](experiments.md#the-effective-harness-surface)). For a recognized
+chat-completions request:
+
+| part of the request | in canonical evidence | in the blob only |
+| :--- | :--- | :--- |
+| `model`, `stream` | the values, as separate observed fields | |
+| `system` / `developer` messages | keyed digest, length, role and position, in wire order | the text |
+| `tools` | keyed digest per definition (and a plain name), ordered and membership digests | the definitions |
+| every other top-level field | the value when short, else a keyed digest; absent stays absent | |
+| `user`, `assistant` and `tool` messages | nothing: task input is not harness surface | the text |
+
+The recorder is unchanged: it still relays bytes unmodified and records off the byte path, the request digest and the
+cassette matching are what they were, and the capture version stays `endo-capture.2` (nothing the proxy writes
+changed). The surface is a reading of the log, never written back into it. A request that is not a recognized
+chat-completions request is UNAVAILABLE with a reason.
+
 ## The cassette server
 
 `endo proxy replay` (`adapters/openai-proxy/cassette.ts`) answers in recorded order. The n-th request must carry the

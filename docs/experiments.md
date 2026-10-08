@@ -99,7 +99,7 @@ shape is refused, naming the file. Nothing is migrated, defaulted or rewritten o
 | the spec you pass to `endo experiment run` | `endo.experiment-spec.v0` | [`protocol/experiment-spec.ts`](../protocol/experiment-spec.ts) |
 | `experiment.json` | `endo.experiment-run.v0` | [`protocol/experiment-artifacts.ts`](../protocol/experiment-artifacts.ts) |
 | `plan.json` | `endo.experiment-plan.v0` | the same module: `seed`, `ordering` and `order`, every entry exactly `{ position, task, condition, trial }` |
-| `trials/<task>/<condition>/<k>/result.json` | `endo.experiment-trial.v0` | the same module |
+| `trials/<task>/<condition>/<k>/result.json` | `endo.experiment-trial.v1` written now; `endo.experiment-trial.v0` read as history | the same module |
 
 - `experiment.json` embeds the spec and the `endo.experiment.v0` record. **The run record names which versions it
   embeds** (exactly `endo.experiment-spec.v0` and `endo.experiment.v0`): a later spec version is not valid inside a
@@ -111,7 +111,118 @@ shape is refused, naming the file. Nothing is migrated, defaulted or rewritten o
 - A task or condition id in `plan.json` or `result.json` is a slug and a trial's `store` is a relative path inside the
   run directory, because the runner builds paths from them.
 - The spec's maps (workspace files, model entry, settings, extensions, a pinned environment's variables and files,
-  injected fields) and a trial's recorded `requestParameters` are open data, not schema fields.
+  injected fields) and a trial's recorded request parameter values are open data, not schema fields.
+- **Trial versions.** `endo.experiment-trial.v1` is what the runner writes. It replaces v0's `requestParameters` with
+  `harness`, the [effective harness surface](#the-effective-harness-surface) of the trial. Every committed study
+  (variance, pinned environment, steering, path sensitivity, discriminating tasks, completion cap) holds v0 trials. They
+  are read exactly as before (`requestParameters` and nothing else), are never rewritten, and are not re-derived: a v0
+  trial's harness surface is UNAVAILABLE ("predates the surface"), because the report cannot know what the model
+  server received beyond what that record kept. A run directory begun before this version and resumed after it holds
+  both; the report consumes both, and a cell mixing them reports the v1 trials' surfaces and counts the v0 trials as
+  predating it, never as differing. Neither version is converted to the other. A version this reader does not know is
+  refused.
+
+## The effective harness surface
+
+README "Evidence closure": record what the model actually experiences, not only which executable ran. Each trial's
+`harness` is derived from the trial's own capture log (the recording proxy's `capture.request` events and the request
+bodies in the keyed blob store), by `adapters/openai-proxy/harness-surface.ts`. The same derivation produces the
+request parameters the report has always listed (`requestParametersOfTrialV0`): there is one parser, and the parameters
+are a view of the surface. Contract: [`protocol/harness-surface.ts`](../protocol/harness-surface.ts) (`endo.harness-surface.v0`).
+
+Per captured request, the surface records:
+
+- **source**: the capture version the log declared, the exchange, the capture event, method and path, and the request
+  digest; and one **digest key** for every digest of the record;
+- **dialect**: `openai.chat-completions` when the request is a POST to a chat-completions endpoint and its body has that
+  shape, and otherwise UNAVAILABLE with the reason. A JSON object that merely resembles a chat request on another path
+  is not recognized, and an unrecognized request has no components at all;
+- **model**: the model the request names; UNAVAILABLE when it names none. The configured model is a different fact
+  (below) and is never substituted;
+- **streaming**: the request's `stream` flag; UNAVAILABLE when the request carries none (what the server does then is
+  not observed, so `false` is not assumed);
+- **instructions**: every `system` and `developer` message in wire order, as role, position, keyed digest and length;
+- **tools**: every tool definition in wire order as a keyed digest and, when it is a plain identifier, the tool's name;
+  an **ordered digest** (the model-facing fact: tool order has changed behaviour in these studies) and a
+  **membership digest** over the sorted component digests (duplicates kept). "Same tools, other order" therefore shows
+  as a change of `tool-order` only, and a changed definition as `tool-definitions`;
+- **parameters**: every other top-level field the request carried (`model` and `stream` are recorded once, above).
+  Short values are recorded verbatim (at most 1024 bytes of compact JSON, one measure shared by the recorder and the validator), longer ones by digest. A parameter the
+  request did not send is **absent**; absent never means the server's default (`temperature` absent is not
+  `temperature = 1`), and the server's resulting defaults are explicitly UNAVAILABLE;
+- **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the request target
+  (as the keyed digest of the complete target, query included, since a route or query parameter may select other server
+  behavior; the query text itself is never recorded because it can carry credentials), the model,
+  the streaming flag, the ordered instruction digest, the ordered tool digest and presence, and the parameters digest.
+
+What is **not** in the surface: the user's messages, the assistant's and tool results (task input is not harness
+surface, so a different prompt, history or tool output leaves the identity unchanged); system or developer text and
+tool definitions as text (only their keyed digests; the request itself stays in the blob store, outside canonical
+evidence); and any reconstructed prompt "template". If a harness puts its working directory into the system message, the
+on-wire instruction digest is the digest of what the model received, and it changes with the directory. The directory
+is not parsed out of the text; it is recorded separately, from the runner, as a **contribution**:
+
+| contribution | source | meaning |
+| :--- | :--- | :--- |
+| `workingDirectory` | the runner | the directory Pi was started in (`<scratch root>/work`) |
+| `invocationMode` | the runner | `pi --mode rpc`, how the runner drives Pi (not the wire's `stream` flag) |
+| `configuredModel` | the spec (`source: "spec"`; the other two are `"runner"`) | `provider/model` as configured; compare with the model the wire names, do not merge them |
+
+A body that is not valid UTF-8, or holds a value with no canonical form (such as an overflowing number), is UNAVAILABLE, as the request digest already treats it as opaque. A v1 trial lists no surface that none of its requests used, and each listed surface is the first observation of a request that names it.
+
+**What equality means.** Two surfaces are equal when the declared observed coordinates are equal: the request target,
+model, streaming flag, instruction digests, tool-definition digests and order, and the request parameters actually
+sent. That is not server-side equivalence. Request **headers** are not part of v0: the capture keeps them, but redacted
+values (Authorization, cookies) are unknown, not equal, and same-name header order (RFC 9110 §5.3) would have to be
+kept; a header coordinate needs its own privacy model and a new surface version. Nor are hidden provider configuration,
+server defaults or anything inside the model observed. A cell reported as matched is matched on those coordinates only.
+
+**The request target.** The surface records the path only when it is a recognized chat-completions path (otherwise
+null), whether a query was present (`absent` or `redacted`), and a keyed digest of the whole original target under its own
+basis. It is not the request digest (which also covers the body) and not a plain hash. Same target and key give the same
+digest; any change of path or query gives another; another key domain is "not comparable". The target digest is the
+`target` coordinate of a comparison. This protects what a new trial result or report carries. It does **not** sanitize the
+older capture layer: `capture.request` events still hold the raw request target as the proxy received it, and the request
+digest (hence cassette matching and replay identity) is computed over it. Changing that is a capture-protocol and replay
+compatibility decision, not part of this surface; a follow-up needs a threat model (who reads a capture store, what a
+query can hold), an opt-in or versioned redaction that keeps cassette matching decidable, and acceptance tests on existing
+cassettes. Until then treat a capture store as sensitive.
+
+**Order.** Exchange numbers are allocated as request heads arrive; the capture log appends each `capture.request` when
+its recording job is released, so with concurrent connections an earlier exchange whose body is slow can be logged after
+a later one. The log is never reordered. The logical order of a trial is the exchange order: the recorder sorts the
+surfaces by exchange once (`buildEndoTrialHarnessV0`), and the validator requires exactly that. A gap in the numbers is
+fine; a repeated exchange is refused.
+
+**The tables inside a v1 trial.** `harness.requests` lists every captured request in exchange order, with strictly
+increasing exchange numbers; it is never reordered on read. `harness.surfaces` lists each distinct surface once, in the
+order its first request (by exchange) appeared: a recognized surface is distinct by digest key and identity, an unrecognized one
+by its capture event (one shared definition, `endoHarnessSurfaceDistinctKeyV0`). Each surface is the source (exchange and
+request digest) of the first request that names it, and every surface is named by some request.
+
+**Instruction positions.** Each instruction's absolute position among the messages is recorded as provenance but is not
+part of the identity. Where a system or developer message sits depends on how many task messages came before it, so
+putting it in the identity would report ordinary task history as a changed harness. The identity covers the ordered
+sequence of the instructions themselves (role and digest): their order and content, not their interleaving with
+task messages. Whether a mid-conversation instruction placement matters is not inferred; a surface version that wants it
+needs a separate definition. Tests pin: other task content, other conversation length and an instruction moved across
+task messages keep the identity, while reordering, adding or removing an instruction changes it.
+
+**Digest domains.** All digests of a record are under one key. Surfaces under different keys are in different domains:
+the comparison answers "not comparable", never "different". Component digests cover the canonical JSON of the parsed
+value, under a per-purpose basis literal, so number formatting, key order and duplicate object keys in the body do not
+separate two surfaces while any changed value does, and a component digest equals no other keyed digest in the store.
+
+**In the report** (`endo.experiment-report.v2`, which adds `cells[].harnessSurface`; v1 reports stay as they are): per
+cell, the number of v1 and predating trials, the digest keys, request counts (recognized and not), the **distinct
+surfaces** with their identity and how many trials and requests showed each, `matched` (every trial showed the modal
+set of identities), the trials that differ from the modal set, the modal surfaces **missing** from a differing trial (`missing`, with the trials; there is no
+coordinate to compare for an absent surface), the major coordinates that differ (`target`, `model`,
+`streaming`, `instructions`, `tool-definitions`, `tool-order`, `parameters` with the parameter names) and not their
+content, surfaces that change inside one trial, and the distinct contributions. `summary.md` lists one line per cell. A cell
+is expected to hold one surface, and a cell that shows more says so; the report does not call the experiment invalid
+for it (only the declared manipulation checks do that). The manipulation checks themselves are unchanged: they keep
+their own pre-registered reading of the request bodies.
 - **`plan.json` of an older run has no `schemaVersion`.** It is read, when it declares none, as exactly
   `{ seed, ordering, order }` with the same entries (the shape runs wrote before the plan was versioned), reported as
   the legacy form and never rewritten, so those runs still resume and report. Any other root or entry field is
@@ -119,7 +230,7 @@ shape is refused, naming the file. Nothing is migrated, defaulted or rewritten o
 - `journal.jsonl`, `environment/session-<n>.json`, `evidence/` and `report/` are **not** covered
   ([limits](schema-compatibility.md#known-limitations)).
 
-## The report (`endo.experiment-report.v1`)
+## The report (`endo.experiment-report.v2`)
 
 For each task and condition, over the completed trials:
 
@@ -142,10 +253,13 @@ For each task and condition, over the completed trials:
 - **Final workspaces:** how many distinct ones the trials left.
 - **Usage** (Pi-reported tokens) **and timing** (observer clock): median and interquartile range (type 7 quartiles).
   Never judged.
+- **Effective harness surface** (v2): see [above](#the-effective-harness-surface).
 - **Serving inputs:**
-  - the distinct request parameters seen;
+  - the distinct request parameters seen (model and stream included, as before);
   - which sampling fields were checked for and which Pi actually sent (`samplingFieldsSent`). `none sent` means the
-    server's defaults applied, and their values are UNAVAILABLE;
+    server's defaults applied, and their values are UNAVAILABLE. Once any request was not a recognized chat-completions
+    request, both `samplingFieldsSent` and `samplingParametersSent` are UNAVAILABLE (with what the recognized requests
+    showed), never an empty list or "none sent";
   - the condition's configuration.
 
   For Pi 1.0.1, see the conformance finding

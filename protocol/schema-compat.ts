@@ -228,13 +228,24 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 	{
 		family: "endo.experiment-trial",
 		schemaVersion: "endo.experiment-trial.v0",
-		status: "current",
+		status: "legacy",
 		boundary: "cli/experiment-artifacts.ts (run directory trials/**/result.json)",
 		fixtures: [
 			{ file: "full.json", sha256: "13f50996b2edc655561675dd9d93380d6b402123478ff799eaba22c2cde7ec5e" },
 			{ file: "minimal.json", sha256: "7f0964d0d16c0187926036a0192b27f1ea5d98e5ad1ae6b0db83ccba547ba599" },
 		],
 		openPaths: ["requestParameters"],
+	},
+	{
+		family: "endo.experiment-trial",
+		schemaVersion: "endo.experiment-trial.v1",
+		status: "current",
+		boundary: "cli/experiment-artifacts.ts (run directory trials/**/result.json)",
+		fixtures: [
+			{ file: "full.json", sha256: "3775279b77e4303eddfbe0912bf2080c0603b32ac7d1f86e37eb5f53430337c5" },
+			{ file: "minimal.json", sha256: "796bd0c8cacf420b6f11ea8888737e9608ee40bdcb2c83c4356b62b10df12bc1" },
+		],
+		openPaths: ["harness.surfaces.*.components.value.parameters.fields.*.value"],
 	},
 	{
 		family: "endo.experiment",
@@ -263,6 +274,18 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		status: "current",
 		boundary: "storage/harness-registry.ts (registry frames)",
 		fixtures: [{ file: "minimal.json", sha256: "0ab617b91a863c8a8e1312474c81c91ff24e8b5dc6769b9142d63252e6875695" }],
+	},
+	{
+		family: "endo.harness-surface",
+		schemaVersion: "endo.harness-surface.v0",
+		status: "current",
+		boundary:
+			"adapters/openai-proxy/harness-surface.ts (derived from the capture log; embedded in endo.experiment-trial.v1)",
+		fixtures: [
+			{ file: "full.json", sha256: "c20d4789c7171fcf7931d86168d6891fe18dbae430798e547e39dbd23953116d" },
+			{ file: "minimal.json", sha256: "0324e213b3ea1b193770702edd41a47e3d6dc01a00daa867254997ce9e92e602" },
+		],
+		openPaths: ["components.value.parameters.fields.*.value"],
 	},
 	{
 		family: "endo.lease",

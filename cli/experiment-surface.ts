@@ -1,0 +1,303 @@
+// The effective harness surface in an experiment: building a trial's `harness` record from its capture log, reading
+// the request parameters back out of it, and summarizing a cell's surfaces for the report.
+//
+// A cell's trials share one task and one condition, so they are expected to show one model-facing surface. The summary
+// reports what the trials showed: how many distinct surfaces, which trials differ from the modal set, and which major
+// coordinates differ (never the content). A difference is evidence, not a verdict: nothing here marks an experiment
+// invalid. Surfaces are comparable only within one digest domain; trials recorded before the surface existed
+// (`endo.experiment-trial.v0`) are reported as predating it, never as differing.
+
+import { requestParametersOfEndoHarnessSurfaceV0 } from "../adapters/openai-proxy/harness-surface.ts";
+import type {
+	EndoExperimentContributionV0,
+	EndoExperimentTrialHarnessV0,
+	EndoExperimentTrialResultAnyV0,
+} from "../protocol/experiment-artifacts.ts";
+import {
+	compareEndoHarnessSurfacesV0,
+	type EndoHarnessSurfaceV0,
+	endoHarnessSurfaceDistinctKeyV0,
+} from "../protocol/harness-surface.ts";
+import type { JsonValueV0 } from "../protocol/primitives.ts";
+import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+
+/**
+ * A trial's `harness` from the surfaces of its requests and the contributions the runner knows.
+ *
+ * The logical request order is the exchange order: exchange numbers are allocated as request heads arrive, while the
+ * capture log appends each `capture.request` when its recording job is released, which can be later for a request with
+ * a slow body. So the surfaces (event order) are put in exchange order here, once, and the request index and the
+ * first-observed surface table are built from that order. The validator checks exactly this invariant. The capture log
+ * itself is not touched.
+ */
+export function buildEndoTrialHarnessV0(
+	surfaces: readonly EndoHarnessSurfaceV0[],
+	contributions: EndoExperimentTrialHarnessV0["contributions"],
+): EndoExperimentTrialHarnessV0 {
+	const ordered = surfaces
+		.map((surface, event) => ({ surface, event }))
+		.sort((a, b) => a.surface.source.exchange - b.surface.source.exchange || a.event - b.event)
+		.map((entry) => entry.surface);
+	const distinct: EndoHarnessSurfaceV0[] = [];
+	const index = new Map<string, number>();
+	const requests: EndoExperimentTrialHarnessV0["requests"] = [];
+	for (const surface of ordered) {
+		const key = endoHarnessSurfaceDistinctKeyV0(surface);
+		let at = index.get(key);
+		if (at === undefined) {
+			at = distinct.length;
+			index.set(key, at);
+			distinct.push(surface);
+		}
+		requests.push({ exchange: surface.source.exchange, requestDigest: surface.source.requestDigest, surface: at });
+	}
+	return { surfaces: distinct, requests, contributions };
+}
+
+/** A trial's request parameters, per request: the recorded list (v0), or the view of its surfaces (v1). One basis. */
+export function requestParametersOfTrialV0(result: EndoExperimentTrialResultAnyV0): JsonValueV0[] {
+	if (result.schemaVersion === "endo.experiment-trial.v0") return result.requestParameters;
+	return result.harness.requests.map((request) =>
+		requestParametersOfEndoHarnessSurfaceV0(result.harness.surfaces[request.surface]!),
+	);
+}
+
+const sortedUnique = (values: Iterable<string>): string[] => [...new Set(values)].sort();
+
+/** The distinct recognized identities (digest domain + identity) a v1 trial showed, sorted. */
+function identitiesOf(harness: EndoExperimentTrialHarnessV0): string[] {
+	return sortedUnique(
+		harness.surfaces.flatMap((surface) =>
+			surface.components.status === "reported" ? [endoHarnessSurfaceDistinctKeyV0(surface)] : [],
+		),
+	);
+}
+
+const label = (result: EndoExperimentTrialResultAnyV0) => `trial #${result.trial}`;
+
+/**
+ * What a cell's completed trials showed of the effective harness surface. Pure over the trial records.
+ */
+export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperimentTrialResultAnyV0[]): JsonValueV0 {
+	const v1 = trials.flatMap((result) => (result.schemaVersion === "endo.experiment-trial.v1" ? [result] : []));
+	const predating = trials.length - v1.length;
+	// A trial with no recognized request has no surface to compare: it is counted, never matched or mismatched.
+	const withSurface = v1.filter((result) => identitiesOf(result.harness).length > 0);
+	const noRecognized = v1.length - withSurface.length;
+	// Contributions are independent of the wire: every v1 trial reports them, recognized request or not.
+	const contribution = (pick: (c: EndoExperimentTrialHarnessV0["contributions"]) => EndoExperimentContributionV0) => {
+		const values = sortedUnique(
+			v1.map((result) => {
+				const c = pick(result.harness.contributions);
+				return c.status === "reported" ? c.value : "UNAVAILABLE";
+			}),
+		);
+		return { distinct: values.length, values };
+	};
+	const contributions = () => ({
+		workingDirectory: contribution((c) => c.workingDirectory),
+		invocationMode: contribution((c) => c.invocationMode),
+		configuredModel: contribution((c) => c.configuredModel),
+	});
+	if (withSurface.length === 0)
+		return JSON.parse(
+			JSON.stringify({
+				status: "UNAVAILABLE",
+				reason:
+					trials.length === 0
+						? "no trial of this cell completed"
+						: v1.length === 0
+							? "every trial of this cell predates the harness surface (endo.experiment-trial.v0)"
+							: "no trial of this cell showed a recognized chat-completions request",
+				trials: { withSurface: 0, predatingSurface: predating, noRecognizedSurface: noRecognized },
+				...(v1.length > 0 ? { contributions: contributions() } : {}),
+			}),
+		);
+
+	const surfaces = withSurface.flatMap((result) => result.harness.surfaces);
+	const keyIds = sortedUnique(surfaces.map((surface) => surface.digestKey.keyId));
+	const requestsObserved = v1.reduce((n, result) => n + result.harness.requests.length, 0);
+	const unrecognizedRequests = v1.reduce(
+		(n, result) =>
+			n +
+			result.harness.requests.filter((r) => result.harness.surfaces[r.surface]!.components.status !== "reported")
+				.length,
+		0,
+	);
+
+	// Per identity: requests and trials that showed it, and one surface that carries it.
+	const byIdentity = new Map<string, { surface: EndoHarnessSurfaceV0; requests: number; trials: number }>();
+	for (const result of withSurface) {
+		const seen = new Set<string>();
+		for (const request of result.harness.requests) {
+			const surface = result.harness.surfaces[request.surface]!;
+			if (surface.components.status !== "reported") continue;
+			const id = endoHarnessSurfaceDistinctKeyV0(surface);
+			const entry = byIdentity.get(id) ?? { surface, requests: 0, trials: 0 };
+			entry.requests += 1;
+			if (!seen.has(id)) entry.trials += 1;
+			seen.add(id);
+			byIdentity.set(id, entry);
+		}
+	}
+	const identities = [...byIdentity.entries()]
+		.map(([id, entry]) => ({ id, ...entry }))
+		.sort((a, b) => b.trials - a.trials || (a.id < b.id ? -1 : 1));
+
+	// The modal set: the identity set most trials showed (ties: the first by identity order).
+	const signatures = new Map<string, { trials: typeof withSurface; set: string[] }>();
+	for (const result of withSurface) {
+		const set = identitiesOf(result.harness);
+		const signature = set.join("\u0001");
+		const entry = signatures.get(signature) ?? { trials: [], set };
+		entry.trials.push(result);
+		signatures.set(signature, entry);
+	}
+	const modal = [...signatures.entries()].sort(
+		(a, b) => b[1].trials.length - a[1].trials.length || (a[0] < b[0] ? -1 : 1),
+	)[0]![1];
+	const modalIds = new Set(modal.set);
+	const comparable = keyIds.length <= 1;
+	const differing = withSurface.filter(
+		(result) => identitiesOf(result.harness).join("\u0001") !== modal.set.join("\u0001"),
+	);
+
+	// The other direction: a surface the modal trials showed that a differing trial did not. There is nothing of it
+	// to compare coordinate by coordinate, so it is reported as missing, with the trials it is missing from.
+	const missing = comparable
+		? modal.set.flatMap((id) => {
+				const trialsMissing = withSurface.filter((result) => !identitiesOf(result.harness).includes(id));
+				const entry = byIdentity.get(id);
+				return trialsMissing.length === 0 || entry === undefined || entry.surface.components.status !== "reported"
+					? []
+					: [{ identity: entry.surface.components.value.identity, missingFromTrials: trialsMissing.map(label) }];
+			})
+		: [];
+
+	const differences = comparable
+		? identities
+				.filter((entry) => !modalIds.has(entry.id))
+				.map((entry) => {
+					const against = modal.set
+						.map((id) => byIdentity.get(id))
+						.flatMap((other) =>
+							other === undefined
+								? []
+								: [{ other, comparison: compareEndoHarnessSurfacesV0(other.surface, entry.surface) }],
+						)
+						.sort(
+							(a, b) =>
+								(a.comparison.comparable ? a.comparison.differs.length : 99) -
+								(b.comparison.comparable ? b.comparison.differs.length : 99),
+						)[0];
+					return {
+						identity:
+							entry.surface.components.status === "reported" ? entry.surface.components.value.identity : null,
+						trials: entry.trials,
+						comparedWith:
+							against?.other.surface.components.status === "reported"
+								? against.other.surface.components.value.identity
+								: null,
+						...(against?.comparison.comparable
+							? { differs: against.comparison.differs, parameterNames: against.comparison.parameterNames }
+							: { differs: [], parameterNames: [] }),
+					};
+				})
+		: [];
+
+	return JSON.parse(
+		JSON.stringify({
+			status: "reported",
+			expectation: "one surface per cell: its trials share a task and a condition",
+			trials: { withSurface: withSurface.length, predatingSurface: predating, noRecognizedSurface: noRecognized },
+			digestKeyIds: keyIds,
+			comparable,
+			requests: {
+				observed: requestsObserved,
+				recognized: requestsObserved - unrecognizedRequests,
+				unrecognized: unrecognizedRequests,
+			},
+			distinctSurfaces: identities.length,
+			surfaces: identities.map((entry) => ({
+				identity: entry.surface.components.status === "reported" ? entry.surface.components.value.identity : null,
+				keyId: entry.surface.digestKey.keyId,
+				requests: entry.requests,
+				trials: entry.trials,
+			})),
+			matched: comparable ? differing.length === 0 : null,
+			...(comparable
+				? {}
+				: {
+						notComparable:
+							"the trials were digested under different keys (different digest domains); no equality follows",
+					}),
+			trialsDifferingFromModalSet: comparable ? differing.map(label) : [],
+			withinTrialVariation: withSurface.filter((result) => identitiesOf(result.harness).length > 1).map(label),
+			differences,
+			missing,
+			contributions: {
+				workingDirectory: contribution((c) => c.workingDirectory),
+				invocationMode: contribution((c) => c.invocationMode),
+				configuredModel: contribution((c) => c.configuredModel),
+			},
+			unrecognized: {
+				requests: unrecognizedRequests,
+				note: "requests that were not recognized chat-completions requests have no components and are never counted as differing",
+			},
+		}),
+	);
+}
+
+/** One request's parameters and whether the request was recognized, carried out of band from the parameter JSON. */
+export interface EndoRequestParameterObservationV0 {
+	parameters: JsonValueV0;
+	recognized: boolean;
+}
+
+/**
+ * Per request: its parameters and whether it was recognized. For a v1 trial recognition is the surface's own status.
+ * For a v0 trial (recorded before the surface) the only mark is its legacy `{unparsed: true}` entry.
+ */
+export function requestParameterObservationsOfTrialV0(
+	result: EndoExperimentTrialResultAnyV0,
+): EndoRequestParameterObservationV0[] {
+	if (result.schemaVersion === "endo.experiment-trial.v0")
+		return result.requestParameters.map((parameters) => ({ parameters, recognized: !isUnparsed(parameters) }));
+	return result.harness.requests.map((request) => {
+		const surface = result.harness.surfaces[request.surface]!;
+		return {
+			parameters: requestParametersOfEndoHarnessSurfaceV0(surface),
+			recognized: surface.components.status === "reported",
+		};
+	});
+}
+
+const isUnparsed = (entry: JsonValueV0): boolean =>
+	typeof entry === "object" &&
+	entry !== null &&
+	!Array.isArray(entry) &&
+	Object.keys(entry).length === 1 &&
+	(entry as Record<string, JsonValueV0>).unparsed === true;
+
+/**
+ * The sampling parameters the requests carried. A request that was not a recognized chat-completions request has
+ * unknown parameters, not none: `samplingUnknown` says so, and the others are projected as they were sent.
+ */
+export function samplingOfParameters(
+	observations: readonly EndoRequestParameterObservationV0[],
+	samplingKeys: readonly string[],
+): { samplingUnknown: boolean; samplingSent: JsonValueV0[]; samplingFields: string[] } {
+	const seen = new Map<string, JsonValueV0>();
+	for (const { parameters, recognized } of observations) {
+		if (!recognized) continue;
+		const picked = Object.fromEntries(
+			Object.entries(parameters as Record<string, JsonValueV0>).filter(([field]) => samplingKeys.includes(field)),
+		);
+		seen.set(canonicalEndoJsonV0(picked), picked);
+	}
+	return {
+		samplingUnknown: observations.some((observation) => !observation.recognized),
+		samplingFields: [...new Set([...seen.values()].flatMap((entry) => Object.keys(entry as object)))].sort(),
+		samplingSent: [...seen.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v),
+	};
+}

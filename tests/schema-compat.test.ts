@@ -46,6 +46,7 @@ import {
 	validateEndoExperimentSpecV0,
 } from "../protocol/experiment-spec.ts";
 import { ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0 } from "../protocol/harness.ts";
+import { ENDO_HARNESS_SURFACE_VERSIONS_V0 } from "../protocol/harness-surface.ts";
 import { ENDO_DURABLE_SCHEMAS_V0 } from "../protocol/schema-compat.ts";
 import { EndoSchemaVersionErrorV0, type EndoVersionTableV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
@@ -76,6 +77,7 @@ const TABLES: readonly EndoVersionTableV0<unknown>[] = [
 	ENDO_EXPERIMENT_RUN_VERSIONS_V0,
 	ENDO_EXPERIMENT_PLAN_VERSIONS_V0,
 	ENDO_EXPERIMENT_TRIAL_VERSIONS_V0,
+	ENDO_HARNESS_SURFACE_VERSIONS_V0,
 ];
 
 const tableOf = (version: string): EndoVersionTableV0<unknown> => {
@@ -507,7 +509,8 @@ describe("the experiment runner's artifacts", () => {
 	it("writes exactly the current catalogued versions, and the spec stays v0", () => {
 		expect(ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0).toBe("endo.experiment-run.v0");
 		expect(ENDO_EXPERIMENT_PLAN_WRITE_VERSION_V0).toBe("endo.experiment-plan.v0");
-		expect(ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0).toBe("endo.experiment-trial.v0");
+		// The runner writes trial v1 (the harness surface); v0 is read-only history.
+		expect(ENDO_EXPERIMENT_TRIAL_WRITE_VERSION_V0).toBe("endo.experiment-trial.v1");
 		expect(ENDO_EXPERIMENT_SPEC_SCHEMA_V0).toBe("endo.experiment-spec.v0");
 		for (const version of [
 			ENDO_EXPERIMENT_RUN_WRITE_VERSION_V0,
@@ -555,7 +558,7 @@ describe("the experiment runner's artifacts", () => {
 					},
 				);
 			// ...and is not readable as another version of its own family.
-			const borrowed = { ...json(version, file), schemaVersion: version.replace(/v0$/, "v1") };
+			const borrowed = { ...json(version, file), schemaVersion: version.replace(/v\d+$/, "v999") };
 			expect(kind(readEndoVersionedV0(table, borrowed))).toBe("unsupported-version");
 		}
 	});

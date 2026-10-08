@@ -62,7 +62,7 @@ Commands that run a prompted agent session or an experiment:
   explicit, authorised operations; nothing runs one implicitly.
 
 Run a command family without arguments (for example "endo harness") to see its usage. Each command that succeeds
-prints one canonical-JSON document on stdout; errors are one line on stderr with exit status 1. Exit status 2 means
+prints one canonical-JSON document on stdout (except "doctor", which prints a human report unless given --json); errors are one line on stderr with exit status 1. Exit status 2 means
 the invocation itself was invalid (unknown or missing command).
 
 Requires Node >= 22.19.0. Stores are passed explicitly as <root>; commands other than doctor have no default location yet.

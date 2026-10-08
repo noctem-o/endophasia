@@ -119,6 +119,8 @@ export async function endoDoctorV0(
 	env: Env = process.env,
 ): Promise<EndoDoctorReportV0> {
 	const attachment = input.attachment ?? "pi.default";
+	// Malformed input is misuse whatever else is or is not available: throws TypeError for a malformed attachment name.
+	endoHarnessRegistryDirectoryV0("", attachment);
 	// The supplied environment, not the host's, decides both where Pi is searched for and what `--version` runs under.
 	const searchPath = env.PATH ?? "";
 	const probeEnv = { ...piIdentityEnvironmentV0(), PATH: searchPath, HOME: env.HOME ?? "" };
@@ -255,6 +257,22 @@ export async function endoDoctorV0(
 			const code = (error as NodeJS.ErrnoException).code;
 			// Only a genuinely missing path is "nothing recorded"; ENOTDIR, EACCES and the rest mean the registry cannot be used.
 			logProbe = code === "ENOENT" ? "absent" : `the registry path cannot be examined (${code ?? "unknown error"})`;
+			// A missing log under a dangling symlink (harness/ or the attachment directory) cannot be created either.
+			if (logProbe === "absent") {
+				for (const ancestor of [join(rootPath, "harness"), endoHarnessRegistryDirectoryV0(rootPath, attachment)]) {
+					try {
+						statSync(ancestor);
+					} catch {
+						try {
+							lstatSync(ancestor);
+							logProbe = `the registry path cannot be used: ${ancestor} is a dangling symlink`;
+						} catch {
+							// genuinely absent: a check can create it
+						}
+						break;
+					}
+				}
+			}
 		}
 		if (logProbe === "absent") {
 			evidence.status = "none-recorded";

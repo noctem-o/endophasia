@@ -385,4 +385,29 @@ describe("endo doctor", () => {
 		const hosted = await endoDoctorV0({ pi: install.bin }, { HOME: scratch(), PATH: process.env.PATH });
 		expect(hosted.pi.reportedVersion).toBe("1.0.0");
 	});
+
+	it("a dangling symlink inside the registry path is unusable, not an empty store", async () => {
+		const install = fakePi();
+		const root = scratch();
+		symlinkSync(join(scratch(), "nowhere"), join(root, "harness"));
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
+		expect(report.evidence.status).toBe("unreadable");
+		expect(report.evidence.reason).toMatch(/dangling symlink/);
+		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("a malformed attachment is misuse even when no store or Pi is available", async () => {
+		await expect(endoDoctorV0({ attachment: "Not Valid!" }, { PATH: "" })).rejects.toThrow(TypeError);
+		const result = spawnSync(process.execPath, [CLI, "doctor", "--attachment", "Not Valid!"], {
+			encoding: "utf8",
+			env: { PATH: "" },
+		});
+		expect(result.status).toBe(1);
+		expect(result.stdout).toBe("");
+	});
+
+	it("documents that doctor's default output is not JSON", () => {
+		const help = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
+		expect(help).toMatch(/except "doctor", which prints a human report unless given --json/);
+	});
 });

@@ -14,12 +14,14 @@ import {
 	requestParametersOfEndoHarnessSurfaceV0,
 } from "../adapters/openai-proxy/harness-surface.ts";
 import { endoRequestDigestV0 } from "../adapters/openai-proxy/http.ts";
+import { surfaceLine } from "../cli/experiment.ts";
 import {
 	buildEndoTrialHarnessV0,
 	requestParametersOfTrialV0,
 	summarizeEndoCellHarnessSurfacesV0,
 } from "../cli/experiment-surface.ts";
 import {
+	ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1,
 	type EndoExperimentTrialResultAnyV0,
 	type EndoExperimentTrialResultV1,
 	readEndoExperimentTrialResultV0,
@@ -576,5 +578,44 @@ describe("the cell summary of harness surfaces", () => {
 			unknown
 		>;
 		expect(s).toMatchObject({ matched: true, requests: { observed: 4, recognized: 3, unrecognized: 1 } });
+	});
+});
+
+describe("review findings", () => {
+	const same = (n: number) => trialOf([chat({}, `task ${n}`)], n);
+
+	it("a trial with no recognized request is not a surface: never matched, never differing", () => {
+		const none = trialOf(["not json"], 1);
+		const mixed = summarizeEndoCellHarnessSurfacesV0([same(0), none, same(2)]) as Record<string, unknown>;
+		expect(mixed).toMatchObject({
+			matched: true,
+			trialsDifferingFromModalSet: [],
+			trials: { withSurface: 2, noRecognizedSurface: 1 },
+		});
+		expect(surfaceLine("t", "c", mixed as never)).toContain("1 trial(s) showed no recognized request");
+		const all = summarizeEndoCellHarnessSurfacesV0([none, trialOf(["still not json"], 2)]);
+		expect(all).toMatchObject({ status: "UNAVAILABLE", trials: { withSurface: 0, noRecognizedSurface: 2 } });
+	});
+
+	it("a top-level __proto__ request parameter is recorded as an own parameter", () => {
+		const body = `{"model":"model-a","stream":true,"messages":[{"role":"system","content":"s"}],"__proto__":{"x":1},"max_tokens":5}`;
+		const c = componentsOf(surfaceOf(body));
+		expect(Object.keys(c.parameters.fields)).toEqual(["__proto__", "max_tokens"]);
+		expect(Object.hasOwn(c.parameters.fields, "__proto__")).toBe(true);
+		const other = componentsOf(surfaceOf(body.replace('{"x":1}', '{"x":2}')));
+		expect(other.identity).not.toBe(c.identity);
+		const view = requestParametersOfEndoHarnessSurfaceV0(surfaceOf(body)) as Record<string, unknown>;
+		expect(Object.hasOwn(view, "__proto__")).toBe(true);
+	});
+
+	it("the surface table a v1 trial embeds is its own, pinned to v0", () => {
+		expect(ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1).not.toBe(ENDO_HARNESS_SURFACE_VERSIONS_V0);
+	});
+
+	it("a cell that consistently shows several surfaces is a mismatch headline, not matched", () => {
+		const two = (n: number) => trialOf([chat({}, `a${n}`), chat({ temperature: 0.2 }, `b${n}`)], n);
+		const s = summarizeEndoCellHarnessSurfacesV0([two(0), two(1)]) as Record<string, unknown>;
+		expect(s).toMatchObject({ distinctSurfaces: 2, matched: true });
+		expect(surfaceLine("t", "c", s as never)).toContain("MISMATCH: 2 distinct surfaces in this cell");
 	});
 });

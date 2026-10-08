@@ -700,7 +700,7 @@ function distinct(values: readonly JsonValueV0[]): JsonValueV0[] {
 }
 
 /** One summary line for a cell's harness surface; a mismatch is stated, never hidden. */
-function surfaceLine(task: string, condition: string, summary: JsonValueV0): string {
+export function surfaceLine(task: string, condition: string, summary: JsonValueV0): string {
 	const s = summary as {
 		status: string;
 		reason?: string;
@@ -709,15 +709,20 @@ function surfaceLine(task: string, condition: string, summary: JsonValueV0): str
 		comparable?: boolean;
 		trialsDifferingFromModalSet?: string[];
 		differences?: { differs: string[]; parameterNames: string[] }[];
-		trials?: { predatingSurface: number };
+		trials?: { predatingSurface: number; noRecognizedSurface?: number };
 	};
 	const head = `- ${task} / ${condition}: `;
 	if (s.status !== "reported") return `${head}UNAVAILABLE (${s.reason})`;
 	const predating =
-		s.trials!.predatingSurface > 0 ? `; ${s.trials!.predatingSurface} trial(s) predate the surface` : "";
+		(s.trials!.predatingSurface > 0 ? `; ${s.trials!.predatingSurface} trial(s) predate the surface` : "") +
+		((s.trials!.noRecognizedSurface ?? 0) > 0
+			? `; ${s.trials!.noRecognizedSurface} trial(s) showed no recognized request`
+			: "");
 	if (s.comparable === false) return `${head}not comparable: digested under different keys${predating}`;
+	if (s.matched === true && s.distinctSurfaces === 1) return `${head}1 distinct, matched across trials${predating}`;
+	// Trials agreeing on a set of several surfaces is still not the expected one surface per cell.
 	if (s.matched === true)
-		return `${head}${s.distinctSurfaces} distinct, matched across trials${s.distinctSurfaces === 1 ? "" : " (same set)"}${predating}`;
+		return `${head}MISMATCH: ${s.distinctSurfaces} distinct surfaces in this cell (expected 1); every trial showed the same set${predating}`;
 	const coordinates = [
 		...new Set(
 			(s.differences ?? []).flatMap((d) => [...d.differs, ...d.parameterNames.map((n) => `parameter ${n}`)]),

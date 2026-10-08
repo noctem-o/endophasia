@@ -309,6 +309,9 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	return observedProblem(v.components, "components", () => false);
 }
 
+const ownField = (fields: Record<string, EndoHarnessSurfaceParameterV0>, name: string) =>
+	Object.hasOwn(fields, name) ? fields[name] : undefined;
+
 /** The validator for a version table: the value unchanged, or an `EndoInvalidRecordV0`. */
 export function endoHarnessSurfaceValidatorV0(value: unknown): EndoHarnessSurfaceV0 {
 	const problem = endoHarnessSurfaceProblemV0(value);
@@ -374,7 +377,8 @@ export function compareEndoHarnessSurfacesV0(
 	if (x.parameters.digest !== y.parameters.digest) {
 		differs.push("parameters");
 		for (const name of new Set([...Object.keys(x.parameters.fields), ...Object.keys(y.parameters.fields)]))
-			if (x.parameters.fields[name]?.digest !== y.parameters.fields[name]?.digest) parameterNames.push(name);
+			if (ownField(x.parameters.fields, name)?.digest !== ownField(y.parameters.fields, name)?.digest)
+				parameterNames.push(name);
 	}
 	return { comparable: true, same: differs.length === 0, differs, parameterNames: parameterNames.sort() };
 }

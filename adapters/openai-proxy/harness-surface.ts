@@ -90,17 +90,24 @@ function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>): Recog
 			digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.tool, { tool }),
 		};
 	});
-	const parameterValues: Record<string, unknown> = {};
-	for (const name of Object.keys(parsed).sort())
-		if (!ENDO_HARNESS_SURFACE_NON_PARAMETER_FIELDS_V0.includes(name)) parameterValues[name] = parsed[name];
-	const fields: EndoHarnessSurfaceComponentsV0["parameters"]["fields"] = {};
-	for (const [name, value] of Object.entries(parameterValues))
-		fields[name] = {
-			digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.parameter, { name, value }),
-			...(bytesOf(value) <= ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0
-				? { value: value as JsonValueV0 }
-				: {}),
-		};
+	// Built with Object.fromEntries: a JSON key such as "__proto__" is an own property there, never the prototype setter.
+	const parameterValues: Record<string, unknown> = Object.fromEntries(
+		Object.keys(parsed)
+			.sort()
+			.filter((name) => !ENDO_HARNESS_SURFACE_NON_PARAMETER_FIELDS_V0.includes(name))
+			.map((name) => [name, parsed[name]]),
+	);
+	const fields: EndoHarnessSurfaceComponentsV0["parameters"]["fields"] = Object.fromEntries(
+		Object.entries(parameterValues).map(([name, value]) => [
+			name,
+			{
+				digest: digest(ENDO_HARNESS_SURFACE_BASES_V0.parameter, { name, value }),
+				...(bytesOf(value) <= ENDO_HARNESS_SURFACE_PARAMETER_VALUE_MAX_BYTES_V0
+					? { value: value as JsonValueV0 }
+					: {}),
+			},
+		]),
+	);
 
 	const model = parsed.model;
 	const stream = parsed.stream;
@@ -228,10 +235,10 @@ export function harnessSurfacesOfCaptureV0(storeRoot: string, key: EndoDigestKey
 export function requestParametersOfEndoHarnessSurfaceV0(surface: EndoHarnessSurfaceV0): JsonValueV0 {
 	if (surface.components.status !== "reported") return { unparsed: true };
 	const c = surface.components.value;
-	const view: Record<string, JsonValueV0> = {};
-	if (c.model.status === "reported") view.model = c.model.value;
-	if (c.streaming.status === "reported") view.stream = c.streaming.value;
+	const entries: [string, JsonValueV0][] = [];
+	if (c.model.status === "reported") entries.push(["model", c.model.value]);
+	if (c.streaming.status === "reported") entries.push(["stream", c.streaming.value]);
 	for (const [name, field] of Object.entries(c.parameters.fields))
-		view[name] = "value" in field ? (field.value as JsonValueV0) : { digestOnly: field.digest };
-	return view;
+		entries.push([name, "value" in field ? (field.value as JsonValueV0) : { digestOnly: field.digest }]);
+	return Object.fromEntries(entries);
 }

@@ -70,10 +70,11 @@ const label = (result: EndoExperimentTrialResultAnyV0) => `trial #${result.trial
  * What a cell's completed trials showed of the effective harness surface. Pure over the trial records.
  */
 export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperimentTrialResultAnyV0[]): JsonValueV0 {
-	const withSurface = trials.flatMap((result) =>
-		result.schemaVersion === "endo.experiment-trial.v1" ? [result] : [],
-	);
-	const predating = trials.length - withSurface.length;
+	const v1 = trials.flatMap((result) => (result.schemaVersion === "endo.experiment-trial.v1" ? [result] : []));
+	const predating = trials.length - v1.length;
+	// A trial with no recognized request has no surface to compare: it is counted, never matched or mismatched.
+	const withSurface = v1.filter((result) => identitiesOf(result.harness).length > 0);
+	const noRecognized = v1.length - withSurface.length;
 	if (withSurface.length === 0)
 		return JSON.parse(
 			JSON.stringify({
@@ -81,15 +82,17 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 				reason:
 					trials.length === 0
 						? "no trial of this cell completed"
-						: "every trial of this cell predates the harness surface (endo.experiment-trial.v0)",
-				trials: { withSurface: 0, predatingSurface: predating },
+						: v1.length === 0
+							? "every trial of this cell predates the harness surface (endo.experiment-trial.v0)"
+							: "no trial of this cell showed a recognized chat-completions request",
+				trials: { withSurface: 0, predatingSurface: predating, noRecognizedSurface: noRecognized },
 			}),
 		);
 
 	const surfaces = withSurface.flatMap((result) => result.harness.surfaces);
 	const keyIds = sortedUnique(surfaces.map((surface) => surface.digestKey.keyId));
-	const requestsObserved = withSurface.reduce((n, result) => n + result.harness.requests.length, 0);
-	const unrecognizedRequests = withSurface.reduce(
+	const requestsObserved = v1.reduce((n, result) => n + result.harness.requests.length, 0);
+	const unrecognizedRequests = v1.reduce(
 		(n, result) =>
 			n +
 			result.harness.requests.filter((r) => result.harness.surfaces[r.surface]!.components.status !== "reported")
@@ -179,7 +182,7 @@ export function summarizeEndoCellHarnessSurfacesV0(trials: readonly EndoExperime
 		JSON.stringify({
 			status: "reported",
 			expectation: "one surface per cell: its trials share a task and a condition",
-			trials: { withSurface: withSurface.length, predatingSurface: predating },
+			trials: { withSurface: withSurface.length, predatingSurface: predating, noRecognizedSurface: noRecognized },
 			digestKeyIds: keyIds,
 			comparable,
 			requests: {

@@ -28,7 +28,11 @@ import {
 	isEndoExperimentRelativePathV0,
 	isEndoExperimentSlugV0,
 } from "./experiment-spec.ts";
-import { ENDO_HARNESS_SURFACE_VERSIONS_V0, type EndoHarnessSurfaceV0 } from "./harness-surface.ts";
+import {
+	ENDO_HARNESS_SURFACE_VERSION_V0,
+	type EndoHarnessSurfaceV0,
+	endoHarnessSurfaceValidatorV0,
+} from "./harness-surface.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 import {
 	defineEndoVersionTableV0,
@@ -514,7 +518,10 @@ function contributionProblem(value: unknown, what: string): Problem {
 }
 
 /** The surface family's versions a v1 trial may embed: exactly `endo.harness-surface.v0`. */
-export const ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1 = ENDO_HARNESS_SURFACE_VERSIONS_V0;
+export const ENDO_EXPERIMENT_TRIAL_SURFACE_VERSIONS_V1 = defineEndoVersionTableV0<EndoHarnessSurfaceV0>(
+	"endo.harness-surface",
+	[[ENDO_HARNESS_SURFACE_VERSION_V0, endoHarnessSurfaceValidatorV0]],
+);
 
 function harnessProblem(value: unknown): Problem {
 	const shape = closed(value, ["surfaces", "requests", "contributions"], "harness");

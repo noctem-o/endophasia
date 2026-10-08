@@ -50,6 +50,16 @@ describe("endo help and version", () => {
 				expect(result.stderr).toMatch(new RegExp(`usage: endo ${family}`));
 			}
 	});
+	it("a usage error does not claim a default store was used, and an empty root is refused", () => {
+		const bare = endo(["ingest"], dir);
+		expect(bare.status).toBe(1);
+		expect(bare.stderr).toMatch(/usage: endo ingest/);
+		expect(bare.stderr).not.toMatch(/default store/);
+		const empty = endo(["ingest", "--root", "", "event.json"], dir);
+		expect(empty.status).toBe(1);
+		expect(empty.stderr).toMatch(/store root is empty/);
+	});
+
 	it("a command's own usage error keeps exit 1", () => {
 		const result = endo(["status", "a", "b"], dir);
 		expect(result.status).toBe(1);

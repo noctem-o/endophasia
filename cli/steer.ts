@@ -15,7 +15,7 @@
 
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoControlRequestV0 } from "./control.ts";
-import { takeEndoRootV0 } from "./root-args.ts";
+import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 function take(args: string[], flag: string): string | undefined {
 	const index = args.indexOf(flag);
@@ -26,7 +26,23 @@ function take(args: string[], flag: string): string | undefined {
 	return value;
 }
 
-async function send(root: string, message: Record<string, unknown>): Promise<void> {
+/** The steer options that take a value: a value is never read as the store option `--root`. */
+const VALUE_FLAGS = new Set([
+	"--steer",
+	"--queue",
+	"--observation",
+	"--interpretation",
+	"--confirm",
+	"--authorization",
+]);
+
+function rootOf(argv: readonly string[], positionals: number) {
+	const taken = takeEndoRootV0(argv, positionals, VALUE_FLAGS);
+	return { root: taken.root, rest: taken.rest, announce: () => announceEndoRootV0(taken) };
+}
+
+async function send(announce: () => void, root: string, message: Record<string, unknown>): Promise<void> {
+	announce();
 	const reply = await endoControlRequestV0(root, message);
 	console.log(canonicalEndoJsonV0(JSON.parse(JSON.stringify(reply))));
 	const result = reply.result as { status?: string } | undefined;
@@ -35,7 +51,7 @@ async function send(root: string, message: Record<string, unknown>): Promise<voi
 
 export const STEER_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {
 	async propose(argv) {
-		const { root, rest: args } = takeEndoRootV0(argv, 0);
+		const { root, rest: args, announce } = rootOf(argv, 0);
 		const steer = take(args, "--steer");
 		const queue = take(args, "--queue");
 		const stop = args.includes("--stop");
@@ -45,7 +61,7 @@ export const STEER_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]
 		if (args.length > 0) throw new TypeError(`unknown arguments ${args.join(" ")}`);
 		if ([steer !== undefined, queue !== undefined, stop].filter(Boolean).length !== 1)
 			throw new TypeError("give exactly one of --steer text, --queue text, --stop");
-		await send(root, {
+		await send(announce, root, {
 			type: "propose",
 			operation: stop ? "stop" : steer !== undefined ? "steer" : "queue",
 			...(steer !== undefined ? { message: steer } : queue !== undefined ? { message: queue } : {}),
@@ -54,33 +70,37 @@ export const STEER_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]
 		});
 	},
 	async authorize(argv) {
-		const { root, rest: args } = takeEndoRootV0(argv, 1);
+		const { root, rest: args, announce } = rootOf(argv, 1);
 		const proposalId = args.shift();
 		if (proposalId === undefined || proposalId.startsWith("--"))
 			throw new TypeError(
 				"usage: endo steer authorize [<root> | --root dir] <proposalId> --confirm <proposal digest>",
 			);
 		const confirmDigest = take(args, "--confirm");
-		await send(root, { type: "authorize", proposalId, ...(confirmDigest === undefined ? {} : { confirmDigest }) });
+		await send(announce, root, {
+			type: "authorize",
+			proposalId,
+			...(confirmDigest === undefined ? {} : { confirmDigest }),
+		});
 	},
 	async apply(argv) {
-		const { root, rest: args } = takeEndoRootV0(argv, 1);
+		const { root, rest: args, announce } = rootOf(argv, 1);
 		const proposalId = args.shift();
 		const authorizationId = take(args, "--authorization");
 		if (proposalId === undefined || proposalId.startsWith("--") || authorizationId === undefined)
 			throw new TypeError(
 				"usage: endo steer apply [<root> | --root dir] <proposalId> --authorization <authorizationId>",
 			);
-		await send(root, { type: "apply", proposalId, authorizationId });
+		await send(announce, root, { type: "apply", proposalId, authorizationId });
 	},
 	async status(argv) {
-		const { root, rest } = takeEndoRootV0(argv, 0);
+		const { root, rest, announce } = rootOf(argv, 0);
 		if (rest.length > 0) throw new TypeError("usage: endo steer status [<root> | --root dir]");
-		await send(root, { type: "status" });
+		await send(announce, root, { type: "status" });
 	},
 	async close(argv) {
-		const { root, rest } = takeEndoRootV0(argv, 0);
+		const { root, rest, announce } = rootOf(argv, 0);
 		if (rest.length > 0) throw new TypeError("usage: endo steer close [<root> | --root dir]");
-		await send(root, { type: "close" });
+		await send(announce, root, { type: "close" });
 	},
 };

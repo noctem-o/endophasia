@@ -29,7 +29,7 @@ import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
-import { takeEndoRootV0 } from "./root-args.ts";
+import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -50,7 +50,8 @@ const VALUE_FLAGS = new Set([
 const SWITCHES = new Set(["--force", "--authorize-live-study", "--control"]);
 
 function parse(argv: readonly string[], usage: string): ParsedV0 {
-	const { root, rest: args } = takeEndoRootV0(argv, 0);
+	const taken = takeEndoRootV0(argv, 0, VALUE_FLAGS);
+	const { root, rest: args } = taken;
 	const flags = new Map<string, string>();
 	const switches = new Set<string>();
 	while (args.length > 0) {
@@ -65,6 +66,7 @@ function parse(argv: readonly string[], usage: string): ParsedV0 {
 		if (value === undefined) throw new TypeError(`the flag ${flag} needs a value`);
 		flags.set(flag, value);
 	}
+	announceEndoRootV0(taken);
 	return { root, flags, switches };
 }
 
@@ -181,6 +183,23 @@ export async function harnessStudyCommand(argv: readonly string[]): Promise<void
 	print({ change: identified.change, inconclusive: studied.inconclusive, state: studied.state });
 }
 
+/** The attach summary and next commands, on stderr. */
+function summarize(
+	parsed: ParsedV0,
+	piSessionId: string | null,
+	prompt: { disposition: string; settled: boolean | null } | null,
+	waitMs: number,
+): void {
+	for (const line of attachSummaryV0({
+		root: parsed.root,
+		attachment: parsed.flags.get("--attachment"),
+		piSessionId,
+		prompt,
+		waitMs,
+	}))
+		process.stderr.write(`${line}\n`);
+}
+
 /** `harness attach [<root> | --root dir] [selection] [--prompt text] [--wait ms]` — record a session; optionally send one prompt. */
 export async function harnessAttachCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(
@@ -214,15 +233,7 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 		counters: session.counters,
 		state: checked.state,
 	});
-	const prompted = disposition === null ? null : { disposition, settled };
-	for (const line of attachSummaryV0({
-		root: parsed.root,
-		attachment: parsed.flags.get("--attachment"),
-		piSessionId: session.piSessionId,
-		prompt: prompted,
-		waitMs: wait,
-	}))
-		process.stderr.write(`${line}\n`);
+	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled }, wait);
 }
 
 /**
@@ -263,6 +274,8 @@ async function attachWithControl(
 		counters: session.counters,
 		state,
 	});
+	// The control path does not wait for the run to settle: acceptance is all it can report.
+	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled: null }, 0);
 }
 
 export const HARNESS_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {

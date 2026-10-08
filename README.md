@@ -9,8 +9,8 @@
 <p><strong>Instrumented cognition for coding agents.</strong></p>
 
 <p>
-Observe agent runtimes, steer current work, compare experiments,<br>
-and keep evidence separate from permission.
+Observe harness behaviour, steer current work, compare experiments,<br>
+and keep measurement, evidence and permission separate.
 </p>
 
 <p>
@@ -34,16 +34,16 @@ and keep evidence separate from permission.
 
 ---
 
-Endophasia is a harness-neutral cognition, observation, control and evolution substrate that can attach to agent runtimes without replacing their native execution loops.
+Endophasia is a harness-neutral experimental substrate for observing, steering, comparing and evolving coding-agent
+systems without replacing their native execution loops.
 
-It records what a harness actually does, evaluates capabilities against
-explicit evidence, and keeps observation, experimentation, and authority
-as separate layers.
+It records what a harness actually does, evaluates capabilities against explicit evidence, and keeps recorded
+observation, derived analysis, experimentation and authority as separate layers.
 
-It is not an agent runtime, model provider, benchmark, or deployment system.
+It is not an agent runtime, model provider, benchmark or deployment system.
 
-In practice it has become an experimental instrument: a way to ask defensible questions about agent behaviour.
-It keeps three properties apart, because they are different claims:
+It is an experimental instrument for asking defensible questions about agent behaviour. It keeps three properties
+apart, because they are different claims:
 
 ~~~text
 exact replay               did the recorded session reproduce under its recorded responses?
@@ -55,7 +55,8 @@ Coding agents do more than send a prompt to a model. They select context, compac
 
 Endophasia gives those parts explicit contracts and one place to inspect them.
 
-It does not expose private chain of thought. It does not treat every runtime feature as equivalent. It does not turn a benchmark score into truth, or a model's proposal into permission.
+It does not expose private chain of thought or relabel model activations as thoughts. It does not treat every runtime
+feature as equivalent. It does not turn a benchmark score into truth, or a model's proposal into permission.
 
 > [!IMPORTANT]
 > Endophasia is experimental. This repository is the standalone home of the project; the earlier Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated). See [Current state](#current-state) for exactly what runs today, and [Try it](#try-it) to attach to your own Pi.
@@ -106,7 +107,7 @@ Endophasia is a substrate, not a runtime. It attaches to agent harnesses you alr
 flowchart TB
     R["Harness you install<br/>Pi · Codex · Prime"] --> A["Endophasia adapter"]
     A --> S["Endophasia services<br/>events · evidence · graph"]
-    S --> C["Operator CLI · cockpit"]
+    S --> C["Operator CLI · planned cockpit"]
 ~~~
 
 **You install and update harnesses with your normal method. Endophasia never installs, updates, downgrades, patches or
@@ -153,7 +154,7 @@ silently treated as comparable.
 
 | Runtime | Role |
 | :--- | :--- |
-| Pi | Reference runtime, attached over `pi --mode rpc`. Verified baseline: Pi 1.0.0 (other releases earn admission on their own evidence) |
+| Pi | Reference runtime, attached over `pi --mode rpc`. Current real-study baseline: Pi 1.0.1; the Pi 1.0.0 conformance recording below is retained as a historical specimen. Other installations and releases earn admission on their own evidence |
 | Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
 | Codex | Future candidate, pending its own pinned study |
 | ACP v1 agents | A protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command: the PR #37 slice, then semantic coverage with schema-validated updates, capability-gated `session/list`/`resume`/`close`, and explicit EXACT / QUALIFIED / LOSSY / UNREPRESENTABLE loss accounting, pinned to one SDK and schema revision. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
@@ -226,6 +227,58 @@ adaptation
 new cognition
       └───────────────────────↺
 ~~~
+
+### Observe and Verify
+
+OBSERVE and VERIFY cut across DEVELOP and EVOLVE: they describe what is measured and what the evidence justifies, not
+another adaptation stage.
+
+**OBSERVE** is the measurement surface. It shows what Endophasia actually recorded and what can be derived reproducibly
+from those records.
+
+At the harness level this includes lifecycle, context, tools, usage, evidence and trajectories. Where a local-model
+provider exposes model internals, OBSERVE may also record model-level signals such as residual-stream activations,
+logits, probes and layer/token traces. Model-internal observation is capability-gated: a provider that does not expose
+a signal remains `UNAVAILABLE`.
+
+Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
+hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
+
+~~~text
+recorded model state
+        ↓
+declared analysis
+PCA · MFA · SAE · lens · probe
+        ↓
+typed Observe scene
+        ↓
+browser renderer
+~~~
+
+Derived geometry must identify the model and checkpoint, capture point, layer, provider, analysis method and revision,
+and the evidence or artifact from which it was produced. The same recorded observation can therefore be re-projected,
+compared and replayed without changing the underlying evidence.
+
+The planned browser cockpit can render these scenes through
+[WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
+regions, connections and quantitative visual encodings must correspond to recorded values or declared deterministic
+transforms of them. Presentation effects such as lighting, bloom and camera motion may improve readability, but never
+manufacture structure.
+
+DREAM and OBSERVE can share a rendering engine without sharing semantics:
+
+~~~text
+cognition graph ─────→ Dream scene ────┐
+                                      ├──→ WebGPU
+model observations ─→ Observe scene ───┘
+~~~
+
+DREAM presents a coherent projection of recorded cognition state. OBSERVE exposes the measurements and declared
+analyses underneath it.
+
+**VERIFY** asks a different question: what do those observations justify? Replay, fixed-condition repetition,
+perturbation invariance, causal interventions and comparison remain evidence procedures rather than properties of the
+rendered scene.
 
 ### Evolve providers
 
@@ -532,56 +585,9 @@ more branches  != more truth
 more agreement != more permission
 ~~~
 
-Visualisations of either mode are projections of recorded state. If a model does not expose a signal, the view says so; it never invents cognition to make the scene look interesting.
-
-## Observe and Verify
-
-**OBSERVE** is the measurement surface. It shows what Endophasia actually recorded and what can be derived reproducibly
-from those records.
-
-At the harness level this includes lifecycle, context, tools, usage, evidence and trajectories. Where a local-model
-provider exposes model internals, OBSERVE may also record model-level signals such as residual-stream activations,
-logits, probes and layer/token traces. Model-internal observation is capability-gated: a provider that does not expose
-a signal remains `UNAVAILABLE`.
-
-Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
-hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
-
-~~~text
-recorded model state
-        ↓
-declared analysis
-PCA · MFA · SAE · lens · probe
-        ↓
-typed Observe scene
-        ↓
-browser renderer
-~~~
-
-Derived geometry must identify the model and checkpoint, capture point, layer, provider, analysis method and revision,
-and the evidence or artifact from which it was produced. The same recorded observation can therefore be re-projected,
-compared and replayed without changing the underlying evidence.
-
-The planned browser cockpit can render these scenes through
-[WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
-regions, connections and quantitative visual encodings must correspond to recorded values or declared deterministic
-transforms of them. Presentation effects such as lighting, bloom and camera motion may improve readability, but never
-manufacture structure.
-
-DREAM and OBSERVE can share a rendering engine without sharing semantics:
-
-~~~text
-cognition graph ─────→ Dream scene ────┐
-                                      ├──→ WebGPU
-model observations ─→ Observe scene ───┘
-~~~
-
-DREAM presents a coherent projection of recorded cognition state. OBSERVE exposes the measurements and declared
-analyses underneath it.
-
-**VERIFY** asks a different question: what do those observations justify? Replay, fixed-condition repetition,
-perturbation invariance, causal interventions and comparison remain evidence procedures rather than properties of the
-rendered scene.
+Visualisations of either mode are projections of recorded cognition state. They remain separate from the OBSERVE
+measurement surface above: if a signal is unavailable, the view says so rather than inventing cognition to make the
+scene look interesting.
 
 ## Evidence and authority
 

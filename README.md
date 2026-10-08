@@ -24,6 +24,7 @@ and keep evidence separate from permission.
   <a href="#how-it-attaches">Attach</a> &nbsp; · &nbsp;
   <a href="#develop-and-evolve">Develop / Evolve</a> &nbsp; · &nbsp;
   <a href="#work-and-dream">Work / Dream</a> &nbsp; · &nbsp;
+  <a href="#observe-and-verify">Observe / Verify</a> &nbsp; · &nbsp;
   <a href="#evidence-and-authority">Evidence</a> &nbsp; · &nbsp;
   <a href="#current-state">Status</a> &nbsp; · &nbsp;
   <a href="#roadmap">Roadmap</a>
@@ -258,7 +259,7 @@ Evaluation itself can also be an adaptation target. Endophasia treats **evaluato
 | Co-evolve skills and policy during RL | [ReSkill](https://github.com/amazon-science/reskill) as an optional adaptation/training provider over veRL; skill versions and bundle tests remain experiment coordinates |
 | Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
 | Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
-| Observe or intervene on local-model activations | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when vLLM is the model-serving boundary |
+| Expose local-model internals for observation or controlled intervention | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when vLLM is the model-serving boundary |
 | Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
 | Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
 | Train model weights | [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) when Inspect owns rollout and reward while TRL/GRPO owns optimisation; [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
@@ -269,6 +270,8 @@ and control protocols over them; Inspect RL reuses complete Inspect rollouts as 
 into the early-stopping interface; vLLM-Lens registers as an Inspect model provider; and the sandbox packages provide
 replaceable execution environments. A future Endophasia integration should admit these capabilities separately and
 record each provider's version and configuration rather than flattening them into a single "Inspect" capability.
+Observation through a provider such as vLLM-Lens does not imply an EVOLVE action: activation capture can feed OBSERVE
+without changing the model, while steering or intervention remains a separately admitted capability.
 
 Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
 
@@ -531,6 +534,55 @@ more agreement != more permission
 
 Visualisations of either mode are projections of recorded state. If a model does not expose a signal, the view says so; it never invents cognition to make the scene look interesting.
 
+## Observe and Verify
+
+**OBSERVE** is the measurement surface. It shows what Endophasia actually recorded and what can be derived reproducibly
+from those records.
+
+At the harness level this includes lifecycle, context, tools, usage, evidence and trajectories. Where a local-model
+provider exposes model internals, OBSERVE may also record model-level signals such as residual-stream activations,
+logits, probes and layer/token traces. Model-internal observation is capability-gated: a provider that does not expose
+a signal remains `UNAVAILABLE`.
+
+Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
+hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
+
+~~~text
+recorded model state
+        ↓
+declared analysis
+PCA · MFA · SAE · lens · probe
+        ↓
+typed Observe scene
+        ↓
+browser renderer
+~~~
+
+Derived geometry must identify the model and checkpoint, capture point, layer, provider, analysis method and revision,
+and the evidence or artifact from which it was produced. The same recorded observation can therefore be re-projected,
+compared and replayed without changing the underlying evidence.
+
+The planned browser cockpit can render these scenes through
+[WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
+regions, connections and quantitative visual encodings must correspond to recorded values or declared deterministic
+transforms of them. Presentation effects such as lighting, bloom and camera motion may improve readability, but never
+manufacture structure.
+
+DREAM and OBSERVE can share a rendering engine without sharing semantics:
+
+~~~text
+cognition graph ─────→ Dream scene ────┐
+                                      ├──→ WebGPU
+model observations ─→ Observe scene ───┘
+~~~
+
+DREAM presents a coherent projection of recorded cognition state. OBSERVE exposes the measurements and declared
+analyses underneath it.
+
+**VERIFY** asks a different question: what do those observations justify? Replay, fixed-condition repetition,
+perturbation invariance, causal interventions and comparison remain evidence procedures rather than properties of the
+rendered scene.
+
 ## Evidence and authority
 
 These are four different statements, and Endophasia keeps them as four different records:
@@ -628,9 +680,10 @@ The boundary and the evidence rules were audited adversarially ([audit](docs/pi-
 limitations accepted for now.
 
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
-spoke Pi's private services and was removed, and the operator view today is `endo harness status`), an optional Pi
-extension for active-tool control,
-model-originated steering proposals and an external authority provider, any live provider integration wired into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
+spoke Pi's private services and was removed, and the operator view today is `endo harness status`), model-internal
+observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
+control, model-originated steering proposals and an external authority provider, any live provider integration wired
+into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
 integration, and attachments for other harnesses.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
@@ -687,7 +740,13 @@ counterfactual / evolution / training work
      [docs/cockpit.md](docs/cockpit.md): runtime identity/change state, capability state with reasons and a live session
      timeline, all projected from Endophasia records without depending on Pi private services.
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
-     it is a follow-on within this stage, not a first-slice acceptance requirement.
+     it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
+     model-observation scenes as separate typed projections even if they later share one renderer.
+   - Follow with capability-gated model-internal observation: record exposed activations and related signals through
+     providers such as vLLM-Lens, preserve raw observations apart from derived PCA/MFA/SAE/lens artifacts, and make
+     every missing signal explicit.
+   - A later WebGPU renderer may consume both Dream and Observe scenes. WebGPU is a presentation backend, never a
+     source of truth; scene geometry must remain reproducible from recorded state and declared transforms.
    - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
      recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
 

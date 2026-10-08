@@ -12,8 +12,9 @@ Pi. See [docs/install.md](docs/install.md) and [docs/release-alpha.md](docs/rele
   discovery, store and key locations, recorded identity and capability evidence copied as recorded). It installs
   nothing, starts no session, calls no provider and writes nothing.
 - A default store root (`ENDO_STORE_ROOT`, else `$XDG_DATA_HOME/endophasia/store`, else
-  `~/.local/share/endophasia/store`), accepted by every store-taking command as `--root dir`, the positional `<root>`,
-  or neither.
+  `~/.local/share/endophasia/store`), accepted as `--root dir`, the positional `<root>`, or neither by `status`,
+  `events`, `ingest`, `ledger`, `artifacts`, `harness *`, `steer *` and `trajectory show`. `trajectory diff`, `replay`,
+  `proxy` and `experiment` still take explicit stores.
 - The installed Pi loop: `doctor` → `harness check` → `harness attach` → `harness status`/`overview` →
   `trajectory show`. `attach` reports whether Pi accepted a prompt and whether the run was seen to settle, the Pi
   session id as reported, and the next read-only commands.

@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment|steer> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment|steer> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -37,6 +37,7 @@ Usage: endo <command> [arguments]
        endo --help | --version
 
 Read-only inspection (create no store, directory or key):
+  doctor [--root dir] [--pi path] [--json]   first-run diagnosis: Node, Pi discovery, store/key locations, recorded evidence
   status <root>                      summarise a durable store
   events <root> [--limit n] [--after sequence]
   ledger <root>
@@ -64,6 +65,7 @@ Run a command family without arguments (for example "endo harness") to see its u
 prints one canonical-JSON document on stdout; errors are one line on stderr with exit status 1. Exit status 2 means
 the invocation itself was invalid (unknown or missing command).
 
-Requires Node >= 22.19.0. Stores are passed explicitly as <root>; there is no default location yet.
+Requires Node >= 22.19.0. Stores are passed explicitly as <root>; commands other than doctor have no default location yet.
+Default store (reported by doctor): $ENDO_STORE_ROOT, else $XDG_DATA_HOME/endophasia/store, else ~/.local/share/endophasia/store.
 `;
 }

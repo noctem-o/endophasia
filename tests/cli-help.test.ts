@@ -42,6 +42,14 @@ describe("endo help and version", () => {
 			expect(result.stderr).toMatch(/usage: endo/);
 		}
 	});
+	it("an inherited property name is a usage error in every command family, not a silent success", () => {
+		for (const family of ["harness", "proxy", "steer", "experiment", "trajectory"])
+			for (const sub of ["constructor", "toString", "__proto__"]) {
+				const result = endo([family, sub], dir);
+				expect(result.status, `${family} ${sub}`).toBe(1);
+				expect(result.stderr).toMatch(new RegExp(`usage: endo ${family}`));
+			}
+	});
 	it("a command's own usage error keeps exit 1", () => {
 		const result = endo(["status"], dir);
 		expect(result.status).toBe(1);

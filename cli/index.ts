@@ -26,6 +26,19 @@ import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
 import { STEER_COMMANDS_V0 } from "./steer.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
 
+/** A command family: its subcommand table is read by own property only, so inherited names ("constructor") are usage errors. */
+function family(
+	table: Record<string, (argv: readonly string[]) => void | Promise<void>>,
+	usage: string,
+): (argv: readonly string[]) => void | Promise<void> {
+	return (argv) => {
+		const [sub, ...rest] = argv;
+		const dispatch = typeof sub === "string" && Object.hasOwn(table, sub) ? table[sub] : undefined;
+		if (dispatch === undefined) throw new TypeError(usage);
+		return dispatch(rest);
+	};
+}
+
 /** The closed command table: name to command function. */
 const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	status: statusCommand,
@@ -33,40 +46,13 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	ingest: ingestCommand,
 	ledger: ledgerCommand,
 	artifacts: artifactsCommand,
-	harness: (argv) => {
-		const [sub, ...rest] = argv;
-		const dispatch = typeof sub === "string" ? HARNESS_COMMANDS_V0[sub] : undefined;
-		if (dispatch === undefined)
-			throw new TypeError("usage: endo harness <status|overview|identify|check|study|attach> <root> ...");
-		return dispatch(rest);
-	},
+	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
 	"digest-key": digestKeyCommand,
-	proxy: (argv) => {
-		const [sub, ...rest] = argv;
-		const dispatch = typeof sub === "string" ? PROXY_COMMANDS_V0[sub] : undefined;
-		if (dispatch === undefined) throw new TypeError("usage: endo proxy <record|replay> ...");
-		return dispatch(rest);
-	},
+	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),
 	replay: replayCommand,
-	steer: (argv) => {
-		const [sub, ...rest] = argv;
-		const dispatch = typeof sub === "string" ? STEER_COMMANDS_V0[sub] : undefined;
-		if (dispatch === undefined)
-			throw new TypeError("usage: endo steer <propose|authorize|apply|status|close> <root> ...");
-		return dispatch(rest);
-	},
-	experiment: (argv) => {
-		const [sub, ...rest] = argv;
-		const dispatch = typeof sub === "string" ? EXPERIMENT_COMMANDS_V0[sub] : undefined;
-		if (dispatch === undefined) throw new TypeError("usage: endo experiment <run|report> ...");
-		return dispatch(rest);
-	},
-	trajectory: (argv) => {
-		const [sub, ...rest] = argv;
-		const dispatch = typeof sub === "string" ? TRAJECTORY_COMMANDS_V0[sub] : undefined;
-		if (dispatch === undefined) throw new TypeError("usage: endo trajectory <show|diff> <store> <session> ...");
-		return dispatch(rest);
-	},
+	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
+	experiment: family(EXPERIMENT_COMMANDS_V0, "usage: endo experiment <run|report> ..."),
+	trajectory: family(TRAJECTORY_COMMANDS_V0, "usage: endo trajectory <show|diff> <store> <session> ..."),
 };
 
 const [, , command, ...argv] = process.argv;

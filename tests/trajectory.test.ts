@@ -991,7 +991,7 @@ describe("endo trajectory show / diff", () => {
 		expect(() => trajectoryShowCommand([a.root, "no-such-session"])).toThrow(
 			new RegExp(`recorded sessions: endo\\.session\\.pi\\.${a.session}`),
 		);
-		expect(() => trajectoryShowCommand([a.root])).toThrow(/usage/);
+		expect(() => trajectoryShowCommand([])).toThrow(/usage/);
 		expect(() => trajectoryShowCommand([a.root, a.session, "--bogus", "x"])).toThrow(/unknown flag/);
 	});
 });

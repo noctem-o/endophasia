@@ -51,9 +51,9 @@ describe("endo help and version", () => {
 			}
 	});
 	it("a command's own usage error keeps exit 1", () => {
-		const result = endo(["status"], dir);
+		const result = endo(["status", "a", "b"], dir);
 		expect(result.status).toBe(1);
-		expect(result.stderr).toMatch(/usage: endo status <root>/);
+		expect(result.stderr).toMatch(/usage: endo status/);
 		rmSync(dir, { recursive: true, force: true });
 	});
 });

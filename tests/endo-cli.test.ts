@@ -162,12 +162,11 @@ describe("cli/commands.ts — the thin commands over the durable substrate", () 
 		expect(rest.nextAfterSequence).toBe(3);
 	});
 
-	it("events refuses a non-integer limit, a flag with no value, an unknown flag, and a missing root", () => {
+	it("events refuses a non-integer limit, a flag with no value, and an unknown flag", () => {
 		const root = tempDir("endo-cli-events-bad-");
 		expect(() => run(eventsCommand, root, "--limit", "1.5")).toThrow(TypeError);
 		expect(() => run(eventsCommand, root, "--limit")).toThrow(/needs a value/);
 		expect(() => run(eventsCommand, root, "--bogus", "1")).toThrow(/unknown flag/);
-		expect(() => run(eventsCommand)).toThrow(/usage/);
 	});
 
 	it("ingest appends one event file and prints the stored event canonically", () => {

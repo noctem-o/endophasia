@@ -15,6 +15,7 @@
 
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoControlRequestV0 } from "./control.ts";
+import { takeEndoRootV0 } from "./root-args.ts";
 
 function take(args: string[], flag: string): string | undefined {
 	const index = args.indexOf(flag);
@@ -34,10 +35,7 @@ async function send(root: string, message: Record<string, unknown>): Promise<voi
 
 export const STEER_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {
 	async propose(argv) {
-		const args = [...argv];
-		const root = args.shift();
-		if (root === undefined)
-			throw new TypeError("usage: endo steer propose <root> --steer text | --queue text | --stop");
+		const { root, rest: args } = takeEndoRootV0(argv, 0);
 		const steer = take(args, "--steer");
 		const queue = take(args, "--queue");
 		const stop = args.includes("--stop");
@@ -56,27 +54,33 @@ export const STEER_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]
 		});
 	},
 	async authorize(argv) {
-		const args = [...argv];
-		const [root, proposalId] = [args.shift(), args.shift()];
-		if (root === undefined || proposalId === undefined)
-			throw new TypeError("usage: endo steer authorize <root> <proposalId> --confirm <proposal digest>");
+		const { root, rest: args } = takeEndoRootV0(argv, 1);
+		const proposalId = args.shift();
+		if (proposalId === undefined || proposalId.startsWith("--"))
+			throw new TypeError(
+				"usage: endo steer authorize [<root> | --root dir] <proposalId> --confirm <proposal digest>",
+			);
 		const confirmDigest = take(args, "--confirm");
 		await send(root, { type: "authorize", proposalId, ...(confirmDigest === undefined ? {} : { confirmDigest }) });
 	},
 	async apply(argv) {
-		const args = [...argv];
-		const [root, proposalId] = [args.shift(), args.shift()];
+		const { root, rest: args } = takeEndoRootV0(argv, 1);
+		const proposalId = args.shift();
 		const authorizationId = take(args, "--authorization");
-		if (root === undefined || proposalId === undefined || authorizationId === undefined)
-			throw new TypeError("usage: endo steer apply <root> <proposalId> --authorization <authorizationId>");
+		if (proposalId === undefined || proposalId.startsWith("--") || authorizationId === undefined)
+			throw new TypeError(
+				"usage: endo steer apply [<root> | --root dir] <proposalId> --authorization <authorizationId>",
+			);
 		await send(root, { type: "apply", proposalId, authorizationId });
 	},
 	async status(argv) {
-		if (argv[0] === undefined) throw new TypeError("usage: endo steer status <root>");
-		await send(argv[0], { type: "status" });
+		const { root, rest } = takeEndoRootV0(argv, 0);
+		if (rest.length > 0) throw new TypeError("usage: endo steer status [<root> | --root dir]");
+		await send(root, { type: "status" });
 	},
 	async close(argv) {
-		if (argv[0] === undefined) throw new TypeError("usage: endo steer close <root>");
-		await send(argv[0], { type: "close" });
+		const { root, rest } = takeEndoRootV0(argv, 0);
+		if (rest.length > 0) throw new TypeError("usage: endo steer close [<root> | --root dir]");
+		await send(root, { type: "close" });
 	},
 };

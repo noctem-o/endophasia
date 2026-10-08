@@ -15,6 +15,7 @@ import type { EndoTrajectoryV0 } from "../protocol/trajectory.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { takeEndoRootV0 } from "./root-args.ts";
 
 /** Every event of the store at `root`, in store order, read through a read-only open. */
 export function readEndoStoreEventsV0(root: string): EndoEventV0[] {
@@ -78,11 +79,12 @@ function print(value: unknown): void {
 
 /** `trajectory show <store> <session> [--attachment a]` */
 export function trajectoryShowCommand(argv: readonly string[]): void {
-	const args = [...argv];
-	const flags = flagsOf(args, ["--attachment"]);
-	if (args.length !== 2) throw new TypeError("usage: endo trajectory show <store> <session> [--attachment a]");
+	const { root, rest } = takeEndoRootV0(argv, 1);
+	const flags = flagsOf(rest, ["--attachment"]);
+	if (rest.length !== 1)
+		throw new TypeError("usage: endo trajectory show [<store> | --root dir] <session> [--attachment a]");
 	const attachment = flags.get("--attachment");
-	print(trajectoryFromStoreV0(args[0]!, args[1]!, attachment === undefined ? {} : { attachment }));
+	print(trajectoryFromStoreV0(root, rest[0]!, attachment === undefined ? {} : { attachment }));
 }
 
 /** `trajectory diff <storeA> <sessionA> <storeB> <sessionB> [--attachment-a a] [--attachment-b b]` */

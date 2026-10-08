@@ -44,6 +44,31 @@ jobs:
       - run: npm run build
       - run: npm run test:package
 
+  acceptance:
+    name: Clean-install acceptance (real Pi, fake model endpoint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # The verified baseline (adapters/pi/version.ts). Bumping it is a deliberate act that needs its own evidence.
+      PI_PINNED_VERSION: "1.0.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Pi is installed here, by the CI job, as a user would; Endophasia never installs it.
+      - name: Install the pinned Pi, separately from Endophasia
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pi" --no-audit --no-fund "@earendil-works/pi-coding-agent@${PI_PINNED_VERSION}"
+          echo "ENDO_ACCEPT_PI=$RUNNER_TEMP/pi/node_modules/.bin/pi" >> "$GITHUB_ENV"
+          echo "ENDO_ACCEPT_PI_VERSION=${PI_PINNED_VERSION}" >> "$GITHUB_ENV"
+      # Packs and installs the tarball in a scratch prefix, then runs doctor, check, attach, status, overview and
+      # trajectory show from the installed bin, with an isolated HOME/XDG, the real Pi and a local fake OpenAI endpoint.
+      - run: npm run test:acceptance
+
   exchange:
     name: Reference exchange (coreutils with mv --exchange)
     runs-on: ubuntu-24.04

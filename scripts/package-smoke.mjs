@@ -18,6 +18,13 @@ const noStripFlags =
 		(flag) => spawnSync(process.execPath, [flag, "-e", "0"]).status === 0,
 	).slice(0, 1);
 console.log(`node ${process.version}; TypeScript stripping disabled with: ${noStripFlags[0] ?? "(no flag accepted; relying on the .ts-free inventory check)"}`);
+// --real-pi: the loop runs against a real Pi installed by the caller (ENDO_ACCEPT_PI = its executable) instead of the fake,
+// and must be exactly ENDO_ACCEPT_PI_VERSION. Endophasia never installs Pi; the CI job does, from a pinned version.
+const realPi = process.argv.includes("--real-pi");
+if (realPi && (!process.env.ENDO_ACCEPT_PI || !process.env.ENDO_ACCEPT_PI_VERSION)) {
+	console.error("--real-pi needs ENDO_ACCEPT_PI (the Pi executable) and ENDO_ACCEPT_PI_VERSION (the exact version expected)");
+	process.exit(1);
+}
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), "endo-package-smoke-"));
 const failures = [];
@@ -167,8 +174,12 @@ try {
 	// fixtures read through this script's own Node (type stripping on); the installed endo still runs with stripping off.
 	const { installFakePi } = await import("../tests/fixtures/fake-pi/install.ts");
 	const { startFakeOpenAiServer } = await import("../tests/fixtures/fake-openai-server.ts");
-	const fakePi = installFakePi("1.0.0", join(scratch, "pi-prefix"));
-	fakePi.setScenario("model-endpoint");
+	const fakePi = realPi
+		? { bin: process.env.ENDO_ACCEPT_PI, remove() {} }
+		: installFakePi("1.0.0", join(scratch, "pi-prefix"));
+	if (!realPi) fakePi.setScenario("model-endpoint");
+	const provider = realPi ? "endofake" : "fake";
+	console.log(realPi ? `loop subject: REAL Pi at ${fakePi.bin}, expected version ${process.env.ENDO_ACCEPT_PI_VERSION}` : "loop subject: the fake Pi fixture (not Pi)");
 	const model = await startFakeOpenAiServer({ chunkMs: 2, slowChunkMs: 5 });
 	try {
 		const agentDir = join(scratch, "pi-agent");
@@ -177,9 +188,13 @@ try {
 		mkdirSync(work, { recursive: true });
 		writeFileSync(
 			join(agentDir, "models.json"),
-			JSON.stringify({ providers: { fake: { baseUrl: model.baseUrl, api: "openai-completions", apiKey: "local", models: [{ id: "fake-1" }] } } }),
+			JSON.stringify({ providers: { [provider]: { baseUrl: model.baseUrl, api: "openai-completions", apiKey: "local", models: [{ id: "fake-1" }] } } }),
 		);
-		const piEnv = { ...env, PI_CODING_AGENT_DIR: agentDir };
+		const piEnv = {
+			...env,
+			PI_CODING_AGENT_DIR: agentDir,
+			...(realPi ? { PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" } : {}),
+		};
 		// Asynchronous: the fake model endpoint lives in this process and must keep serving while endo runs.
 		const loop = (args) =>
 			new Promise((done) => {
@@ -194,14 +209,23 @@ try {
 
 		const diagnosed = await loop(["doctor", "--pi", fakePi.bin, "--json"]);
 		const diagnosis = diagnosed.status === 0 ? JSON.parse(diagnosed.stdout) : null;
-		check(diagnosis !== null && diagnosis.pi.status === "found" && diagnosis.store.source === "XDG_DATA_HOME", "loop 1: doctor finds the prepared Pi and reports the default store");
+		check(diagnosis !== null && diagnosis.pi.status === "found" && diagnosis.store.source === "XDG_DATA_HOME", "loop 1: doctor finds the Pi and reports the default store");
+		if (realPi) {
+			const expected = process.env.ENDO_ACCEPT_PI_VERSION;
+			check(
+				diagnosis !== null && diagnosis.pi.reportedVersion === expected,
+				`the real Pi reports exactly the pinned version ${expected} (got ${diagnosis?.pi.reportedVersion ?? "nothing"}); a drift fails the acceptance`,
+			);
+			check(diagnosis !== null && diagnosis.pi.identityConfidence === "strong", "the real Pi's identity is a strong fingerprint");
+			console.log(`     version standing reported by doctor: ${diagnosis?.pi.versionStanding}`);
+		}
 		const checked = await loop(["harness", "check", "--pi", fakePi.bin]);
 		check(checked.status === 0 && /using the default store/.test(checked.stderr) && existsSync(defaultStore), `loop 2: harness check records local evidence in the default store${checked.status === 0 ? "" : `: ${checked.stderr}`}`);
 		const requestsBefore = model.requests.length;
-		const attached = await loop(["harness", "attach", "--pi", fakePi.bin, "--cwd", work, "--provider", "fake", "--model", "fake-1", "--prompt", "Say hello", "--wait", "20000"]);
+		const attached = await loop(["harness", "attach", "--pi", fakePi.bin, "--cwd", work, "--provider", provider, "--model", "fake-1", "--prompt", "Say hello", "--wait", realPi ? "90000" : "20000"]);
 		const session = attached.status === 0 ? JSON.parse(attached.stdout) : null;
 		check(session !== null && typeof session.piSessionId === "string" && session.prompt.disposition === "started" && session.prompt.settled === true, `loop 3: attach records a session and reports the prompt accepted and the run settled${attached.status === 0 ? "" : `: ${attached.stderr}`}`);
-		check(model.requests.length > requestsBefore, "loop 3: the prepared Pi called the local fake model endpoint (no provider)");
+		check(model.requests.length > requestsBefore, "loop 3: the Pi under test called the local fake model endpoint (no provider)");
 		check(/note: a prompted agent session can call the model provider/.test(attached.stderr), "loop 3: attach states the provider-cost notice before prompting");
 		check(session !== null && attached.stderr.includes(`Pi session id: ${session.piSessionId}`) && /endo trajectory show --root \S+ \S+/.test(attached.stderr), "loop 3: attach prints the session id and the next commands on stderr");
 		const status8 = await loop(["harness", "status"]);

@@ -19,6 +19,7 @@
 
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { digestKeyCommand } from "./digest-key.ts";
+import { doctorCommand } from "./doctor.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
@@ -48,6 +49,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	artifacts: artifactsCommand,
 	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
 	"digest-key": digestKeyCommand,
+	doctor: doctorCommand,
 	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),
 	replay: replayCommand,
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),

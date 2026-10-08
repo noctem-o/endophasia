@@ -1,4 +1,4 @@
-# Installing the `endo` CLI (Operator Alpha, tranche 1 of 4)
+# Installing the `endo` CLI and first run (Operator Alpha, tranches 1–2 of 4)
 
 Status: **experimental; not published.** The package is `private` at version `0.0.0`. Nothing here is a release.
 
@@ -50,10 +50,44 @@ in the `package` job.
 Endophasia attaches to a Pi you installed; it never installs, upgrades, patches or rebuilds it, and help and version
 need no Pi. Command semantics, store formats and output formats are unchanged by this tranche.
 
+## First run: `endo doctor`
+
+~~~sh
+endo doctor [--root dir] [--pi path] [--attachment a] [--json]
+~~~
+
+Read-only. It reports the Endophasia version, Node compatibility, the platform (only Linux with Node 22 is exercised),
+whether Pi is found (an explicit `--pi`, else `pi` on `PATH`) and what it reports for `--version`, where the store and
+the installation key would live and whether each exists, and the identity and capability evidence already recorded in
+that store, copied as recorded (ADMITTED, UNVERIFIED, UNAVAILABLE and the rest are all shown; the evaluator is not
+re-run). Capabilities derived for an earlier identity than the latest recorded one are marked STALE, and a torn or
+corrupt registry log is reported as DAMAGED (the valid prefix is shown, never repaired). It says whether the Pi found now has the identity the evidence describes (a match is claimed only between strong identities; a reduced-confidence identity, whose entrypoint or version could not be observed, is shown with its gaps and a match is reported as not established), and lists next steps. It does not recommend a re-check that a sealed registry would refuse.
+
+It never installs or modifies Pi, starts an agent session, calls a provider, runs a study, creates a key, or writes to
+the store; the only process it runs is `<pi> --version`. **Finding Pi is not a capability**: nothing is admitted until
+`endo harness check` records evidence. A missing prerequisite is a normal report with exit 0 (`--json` carries the
+detail); exit 1 means the doctor itself failed or was misused (`diagnosticErrors`). The JSON shape is
+`endo.doctor.v0` (see `cli/doctor.ts`).
+
+## Default store root
+
+One resolver (`cli/store-root.ts`), first match wins:
+
+1. an explicit `--root` (doctor today),
+2. `ENDO_STORE_ROOT` (absolute; a relative `ENDO_STORE_ROOT`, `XDG_DATA_HOME` or `HOME` is refused),
+3. `$XDG_DATA_HOME/endophasia/store`,
+4. `$HOME/.local/share/endophasia/store`.
+
+Never the working directory or the checkout. The installation digest key keeps its own location and override
+(`ENDO_DIGEST_KEY_FILE`, else `$XDG_DATA_HOME/endophasia/digest-key`, else `~/.local/share/endophasia/digest-key`); the
+two do not influence each other. **Existing commands still take an explicit `<root>` and do not use the default yet**;
+wiring the default (and rejecting a positional root that conflicts with `--root`) belongs with the operator loop in
+tranche 3, so no command changes where it reads or writes in this tranche.
+
 ## Not yet (pending tranches)
 
-2. `endo doctor`, runtime discovery, a default data root (stores are still passed explicitly as `<root>`).
-3. A coherent installed Pi loop: check, attach, status/overview and trajectory from the installed package.
+3. A coherent installed Pi loop: check, attach, status/overview and trajectory from the installed package, using the
+   default store root.
 4. Clean-install acceptance with a pinned Pi and a local fake model endpoint, then a versioned prerelease.
 
 No platform other than the CI image (Ubuntu, Node 22) has been exercised for the packaged CLI.

@@ -131,6 +131,17 @@ try {
 	check(bare.status === 2 && /missing command/.test(bare.stderr), "no command exits 2");
 	const misuse = run(["harness", "nonsense"]);
 	check(misuse.status === 1 && /usage: endo harness/.test(misuse.stderr), "a family-level usage error keeps its existing exit 1");
+	const doctor = run(["doctor", "--json"]);
+	const doctored = doctor.status === 0 ? JSON.parse(doctor.stdout) : null;
+	check(
+		doctored !== null && doctored.schemaVersion === "endo.doctor.v0" && doctored.endophasia.version === manifest.version,
+		"endo doctor --json runs from the installed package on an empty home",
+	);
+	check(
+		doctored !== null && doctored.store.source === "XDG_DATA_HOME" && doctored.store.presence === "absent" && doctored.digestKey.presence === "absent",
+		"doctor reports the default store and key locations as absent and creates neither",
+	);
+	check(run(["doctor"]).stdout.includes("doctor (read-only"), "endo doctor prints a human report by default");
 	const keyId = run(["digest-key", "id"]);
 	check(keyId.status === 1 && !existsSync(join(xdgData, "endophasia")), "digest-key id does not create a key when none exists");
 

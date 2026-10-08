@@ -12,6 +12,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Node spells "do not strip TypeScript types" differently across versions; use the first spelling this Node accepts.
+const noStripFlags =
+	["--no-strip-types", "--no-experimental-strip-types"].filter(
+		(flag) => spawnSync(process.execPath, [flag, "-e", "0"]).status === 0,
+	).slice(0, 1);
+console.log(`node ${process.version}; TypeScript stripping disabled with: ${noStripFlags[0] ?? "(no flag accepted; relying on the .ts-free inventory check)"}`);
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), "endo-package-smoke-"));
 const failures = [];
@@ -105,7 +111,7 @@ try {
 
 	// 5. Run the installed binary. Plain Node, TypeScript stripping off, outside the repository.
 	const run = (args, cwd = cwdA) =>
-		spawnSync(process.execPath, ["--no-strip-types", bin, ...args], { cwd, env, encoding: "utf8" });
+		spawnSync(process.execPath, [...noStripFlags, bin, ...args], { cwd, env, encoding: "utf8" });
 	const before = tree(scratch).filter((p) => !p.startsWith(join(scratch, "install")) && !p.startsWith(join(scratch, "pack")) && !p.startsWith(join(scratch, "npm-cache")));
 
 	const help = run(["--help"]);
@@ -132,7 +138,7 @@ try {
 	const probe = spawnSync(
 		process.execPath,
 		[
-			"--no-strip-types",
+			...noStripFlags,
 			"--input-type=module",
 			"-e",
 			`const m = await import(${JSON.stringify(join(pkgDir, "dist/storage/digest-key.js"))}); const k = m.loadEndoFixtureDigestKeyV0(m.endoFixtureDigestKeyPathV0()); process.stdout.write(k.keyId);`,

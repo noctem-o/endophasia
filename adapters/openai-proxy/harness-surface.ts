@@ -170,7 +170,9 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 		return unavailable("the request was digested under another key than the one given");
 	const pathname = input.path.split("?")[0]!;
 	if (input.method !== "POST" || !ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(pathname))
-		return unavailable(`${input.method} ${pathname.slice(0, 200)} is not a recognized chat-completions endpoint`);
+		return unavailable(
+			`${input.method.slice(0, 64)} ${pathname.slice(0, 200)} is not a recognized chat-completions endpoint`,
+		);
 	if (input.body === null) return unavailable("the request body is not in the blob store");
 	let parsed: unknown;
 	try {
@@ -182,6 +184,9 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 	if (!isRecord(parsed)) return unavailable("the request body is not a JSON object");
 	let recognized: Recognized;
 	try {
+		// The whole tree, ignored messages included: a body with a value that has no canonical form is opaque to the
+		// request digest, so it is not a surface (1e400 parses to Infinity).
+		canonicalEndoJsonV0(parsed);
 		recognized = recognize(input.key, parsed, input.path);
 	} catch {
 		// A value JSON.parse accepts but canonical JSON cannot carry (an overflowing number such as 1e400).

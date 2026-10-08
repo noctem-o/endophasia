@@ -667,4 +667,20 @@ describe("review findings", () => {
 		};
 		expect(readEndoExperimentTrialResultV0(bad).ok).toBe(false);
 	});
+
+	it("a non-finite number in an ignored message still makes the request unavailable", () => {
+		const surface = surfaceOf('{"messages":[{"role":"user","content":1e400}]}');
+		expect(surface.components.status).toBe("UNAVAILABLE");
+	});
+
+	it("a long recorded target is a valid surface; a reported dialect needs a chat-completions source", () => {
+		const long = `/v1/chat/completions?q=${"a".repeat(10000)}`;
+		const surface = surfaceOf(chat(), key, { path: long });
+		expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, surface).ok).toBe(true);
+		for (const source of [
+			{ ...surface.source, method: "GET" },
+			{ ...surface.source, path: "/v1/embeddings" },
+		])
+			expect(readEndoVersionedV0(ENDO_HARNESS_SURFACE_VERSIONS_V0, { ...surface, source }).ok).toBe(false);
+	});
 });

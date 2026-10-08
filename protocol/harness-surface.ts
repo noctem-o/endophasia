@@ -161,6 +161,8 @@ const HEX = /^[0-9a-f]{64}$/;
 const isHex = (value: unknown): value is string => typeof value === "string" && HEX.test(value);
 const isCount = (value: unknown): value is number =>
 	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+/** The recording proxy's HTTP parser bound on a request head (adapters/openai-proxy/http1.ts MAX_HEAD). */
+const CAPTURE_HEAD_MAX = 256 * 1024;
 const isText = (value: unknown, max = 4096): value is string =>
 	typeof value === "string" && value.length > 0 && value.length <= max;
 const isObject = (value: unknown): value is Record<string, unknown> => isPlainJsonObjectV0(value);
@@ -292,7 +294,9 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	if (s.captureVersion !== null && !isText(s.captureVersion, 64))
 		return "source.captureVersion must be a string or null";
 	if (!isCount(s.exchange)) return "source.exchange must be a non-negative integer";
-	if (!isText(s.eventId, 256) || !isText(s.method, 32) || !isText(s.path, 4096))
+	// The method and target are bounded by the capture parser's head limit (256 KiB), not a smaller one: the complete
+	// target is part of the identity, so a target the parser recorded must be a target this record can hold.
+	if (!isText(s.eventId, 256) || !isText(s.method, CAPTURE_HEAD_MAX) || !isText(s.path, CAPTURE_HEAD_MAX))
 		return "source.eventId, method and path must be non-empty strings";
 	if (!isHex(s.requestDigest)) return "source.requestDigest must be 64 lowercase hex digits";
 	const key = closed(v.digestKey, ["algorithm", "keyId"], "digestKey");
@@ -306,6 +310,10 @@ export function endoHarnessSurfaceProblemV0(value: unknown): Problem {
 	if (!isObject(v.components)) return "components is not a JSON object";
 	if (d.status !== components?.status) return "components are reported exactly when the dialect is";
 	if (d.status === "reported") {
+		// Endpoint recognition establishes the dialect: a reported dialect belongs to a POST to a chat-completions path.
+		const pathname = (s.path as string).split("?")[0]!;
+		if (s.method !== "POST" || !ENDO_HARNESS_SURFACE_CHAT_PATHS_V0.includes(pathname))
+			return "a reported dialect requires a POST to a chat-completions path as its source";
 		const wrapper = closed(v.components, ["status", "value"], "components");
 		return wrapper ?? componentsProblem((v.components as { value: unknown }).value);
 	}

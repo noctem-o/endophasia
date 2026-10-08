@@ -53,7 +53,7 @@ const bytesOf = (value: unknown): number => Buffer.byteLength(canonicalEndoJsonV
 
 type Recognized = { ok: true; components: EndoHarnessSurfaceComponentsV0 } | { ok: false; reason: string };
 
-function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>): Recognized {
+function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>, target: string): Recognized {
 	const { messages, tools } = parsed;
 	if (!Array.isArray(messages)) return { ok: false, reason: "the body has no `messages` list" };
 	if (tools !== undefined && !Array.isArray(tools))
@@ -142,7 +142,7 @@ function recognize(key: EndoDigestKeyV0, parsed: Record<string, unknown>): Recog
 		serverDefaults: { status: "UNAVAILABLE", reason: SERVER_DEFAULTS_REASON },
 	};
 	const identity = key.digest(
-		endoHarnessSurfaceIdentityBasisV0(partial, ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0),
+		endoHarnessSurfaceIdentityBasisV0(partial, ENDO_HARNESS_SURFACE_DIALECT_CHAT_COMPLETIONS_V0, target),
 	).value;
 	return { ok: true, components: { ...partial, identity } };
 }
@@ -174,12 +174,19 @@ export function deriveEndoHarnessSurfaceV0(input: EndoHarnessSurfaceInputV0): En
 	if (input.body === null) return unavailable("the request body is not in the blob store");
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(Buffer.from(input.body).toString("utf8"));
+		// Fatal decoding, as the request digest does: invalid UTF-8 is opaque bytes, not a JSON body with U+FFFD in it.
+		parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(input.body));
 	} catch {
-		return unavailable("the request body is not JSON");
+		return unavailable("the request body is not UTF-8 JSON");
 	}
 	if (!isRecord(parsed)) return unavailable("the request body is not a JSON object");
-	const recognized = recognize(input.key, parsed);
+	let recognized: Recognized;
+	try {
+		recognized = recognize(input.key, parsed, input.path);
+	} catch {
+		// A value JSON.parse accepts but canonical JSON cannot carry (an overflowing number such as 1e400).
+		return unavailable("the request body holds a value with no canonical form (for example a non-finite number)");
+	}
 	if (!recognized.ok) return unavailable(recognized.reason);
 	return {
 		...base,

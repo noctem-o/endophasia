@@ -624,7 +624,7 @@ async function runTrial(
 			// Independent sources, kept apart from what the wire carries; nothing here is read out of a prompt.
 			workingDirectory: { status: "reported", value: join(run.scratchRoot, "work"), source: "runner" },
 			invocationMode: { status: "reported", value: PI_INVOCATION_MODE, source: "runner" },
-			configuredModel: { status: "reported", value: `${spec.provider}/${spec.model}`, source: "runner" },
+			configuredModel: { status: "reported", value: `${spec.provider}/${spec.model}`, source: "spec" },
 		}),
 		check,
 		finalWorkspace,

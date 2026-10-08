@@ -142,7 +142,7 @@ export interface EndoExperimentTrialResultV0 extends EndoExperimentTrialCommonV0
 
 /** A variable contribution the runner knows independently of the wire (never read out of a prompt). */
 export type EndoExperimentContributionV0 =
-	| { status: "reported"; value: string; source: "runner" }
+	| { status: "reported"; value: string; source: "runner" | "spec" }
 	| { status: "UNAVAILABLE"; reason: string };
 
 /** The effective harness surface a trial observed, and the contributions kept apart from it. */
@@ -505,9 +505,9 @@ function contributionProblem(value: unknown, what: string): Problem {
 	if (value.status === "reported") {
 		const shape = closed(value, ["status", "value", "source"], what);
 		if (shape !== null) return shape;
-		return isText(value.value, 4096) && value.source === "runner"
+		return isText(value.value, 4096) && (value.source === "runner" || value.source === "spec")
 			? null
-			: `${what}: a reported contribution has a value and source runner`;
+			: `${what}: a reported contribution has a value and source runner or spec`;
 	}
 	if (value.status === "UNAVAILABLE") {
 		const shape = closed(value, ["status", "reason"], what);
@@ -542,6 +542,9 @@ function harnessProblem(value: unknown): Problem {
 		if (!isCount(r.surface) || r.surface >= h.surfaces.length)
 			return `harness.requests[${index}].surface does not name a listed surface`;
 	}
+	const referenced = new Set((h.requests as { surface: number }[]).map((request) => request.surface));
+	for (let index = 0; index < h.surfaces.length; index++)
+		if (!referenced.has(index)) return `harness.surfaces[${index}] is not referenced by any request`;
 	const c = h.contributions;
 	const contributions = closed(c, CONTRIBUTION_NAMES, "harness.contributions");
 	if (contributions !== null) return contributions;

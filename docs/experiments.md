@@ -150,7 +150,8 @@ Per captured request, the surface records:
   Short values are recorded verbatim (at most 1024 bytes of canonical JSON), longer ones by digest. A parameter the
   request did not send is **absent**; absent never means the server's default (`temperature` absent is not
   `temperature = 1`), and the server's resulting defaults are explicitly UNAVAILABLE;
-- **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the model,
+- **identity**: the keyed digest of one exported basis (`endoHarnessSurfaceIdentityBasisV0`): the dialect, the request target
+  (path and query as sent, since a route or query parameter may select other server behavior), the model,
   the streaming flag, the ordered instruction digest, the ordered tool digest and presence, and the parameters digest.
 
 What is **not** in the surface: the user's messages, the assistant's and tool results (task input is not harness
@@ -164,7 +165,9 @@ is not parsed out of the text; it is recorded separately, from the runner, as a 
 | :--- | :--- | :--- |
 | `workingDirectory` | the runner | the directory Pi was started in (`<scratch root>/work`) |
 | `invocationMode` | the runner | `pi --mode rpc`, how the runner drives Pi (not the wire's `stream` flag) |
-| `configuredModel` | the spec | `provider/model` as configured; compare with the model the wire names, do not merge them |
+| `configuredModel` | the spec (`source: "spec"`; the other two are `"runner"`) | `provider/model` as configured; compare with the model the wire names, do not merge them |
+
+A body that is not valid UTF-8, or holds a value with no canonical form (such as an overflowing number), is UNAVAILABLE, as the request digest already treats it as opaque. A v1 trial lists no surface that none of its requests used.
 
 **Digest domains.** All digests of a record are under one key. Surfaces under different keys are in different domains:
 the comparison answers "not comparable", never "different". Component digests cover the canonical JSON of the parsed

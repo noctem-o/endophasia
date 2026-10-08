@@ -138,10 +138,13 @@ export interface EndoHarnessSurfaceV0 {
 export function endoHarnessSurfaceIdentityBasisV0(
 	components: Omit<EndoHarnessSurfaceComponentsV0, "identity">,
 	dialect: string,
+	target: string,
 ): JsonValueV0 {
 	return {
 		basis: ENDO_HARNESS_SURFACE_BASES_V0.identity,
 		dialect,
+		// The request target as sent (path and query): a route or query parameter may select other server behavior.
+		target,
 		model: components.model,
 		streaming: components.streaming,
 		instructions: components.instructions.orderedDigest,
@@ -329,6 +332,7 @@ export const ENDO_HARNESS_SURFACE_VERSIONS_V0 = defineEndoVersionTableV0<EndoHar
 /** The major coordinates a surface comparison can name. No coordinate carries content. */
 export type EndoHarnessSurfaceCoordinateV0 =
 	| "dialect"
+	| "target"
 	| "model"
 	| "streaming"
 	| "instructions"
@@ -367,6 +371,7 @@ export function compareEndoHarnessSurfacesV0(
 	const differs: EndoHarnessSurfaceCoordinateV0[] = [];
 	if (a.dialect.status === "reported" && b.dialect.status === "reported" && a.dialect.value !== b.dialect.value)
 		differs.push("dialect");
+	if (a.source.path !== b.source.path) differs.push("target");
 	if (JSON.stringify(x.model) !== JSON.stringify(y.model)) differs.push("model");
 	if (JSON.stringify(x.streaming) !== JSON.stringify(y.streaming)) differs.push("streaming");
 	if (x.instructions.orderedDigest !== y.instructions.orderedDigest) differs.push("instructions");

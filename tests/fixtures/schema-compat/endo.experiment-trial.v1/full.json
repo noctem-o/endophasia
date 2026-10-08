@@ -120,7 +120,7 @@
 							"status": "UNAVAILABLE",
 							"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
 						},
-						"identity": "3703a0c3c983cc23c725ba928169a89f233df5b51dd3259d998530b11cff8305"
+						"identity": "ce94f641f7d345048df36047fb56ba34cecccf3810f1fc6d49f1ca5ace329d0b"
 					}
 				}
 			},
@@ -235,7 +235,7 @@
 							"status": "UNAVAILABLE",
 							"reason": "the wire carries only what the harness sent; the server's resulting defaults are not on it, and a parameter the request omits is absent, not defaulted"
 						},
-						"identity": "67cf43035f14d8ab7b7beb7f223bcd5a9f17af9dca047c6bd617f082cbee3841"
+						"identity": "e9b3a03c2a234e5ca0832b7af06b66419558d9e7568bad596fb8bd50fb5aa89c"
 					}
 				}
 			}
@@ -276,7 +276,7 @@
 			"configuredModel": {
 				"status": "reported",
 				"value": "fixture/fixture-model",
-				"source": "runner"
+				"source": "spec"
 			}
 		}
 	}

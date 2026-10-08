@@ -362,7 +362,7 @@ describe("the harness surface is derived from the recorded wire", () => {
 	it("the identity is the keyed digest of the exported basis, and the basis carries no raw content", () => {
 		const surface = surfaceOf(chat({ temperature: 0.2 }));
 		const { identity, ...rest } = componentsOf(surface);
-		const basis = endoHarnessSurfaceIdentityBasisV0(rest, "openai.chat-completions");
+		const basis = endoHarnessSurfaceIdentityBasisV0(rest, "openai.chat-completions", surface.source.path);
 		expect(key.digest(basis).value).toBe(identity);
 		expect(JSON.stringify(basis)).not.toContain("coding agent");
 		// Component digests are domain-separated from the keyed digest of the plain value.
@@ -409,7 +409,7 @@ const fixture = (version: string, file: string) => JSON.parse(readFileSync(join(
 const contributions = {
 	workingDirectory: { status: "reported", value: "/scratch/work", source: "runner" },
 	invocationMode: { status: "reported", value: "pi --mode rpc", source: "runner" },
-	configuredModel: { status: "reported", value: "p/model-a", source: "runner" },
+	configuredModel: { status: "reported", value: "p/model-a", source: "spec" },
 } as const;
 
 /** A v1 trial whose requests are the capture of `bodies`, through the real writer path. */
@@ -617,5 +617,54 @@ describe("review findings", () => {
 		const s = summarizeEndoCellHarnessSurfacesV0([two(0), two(1)]) as Record<string, unknown>;
 		expect(s).toMatchObject({ distinctSurfaces: 2, matched: true });
 		expect(surfaceLine("t", "c", s as never)).toContain("MISMATCH: 2 distinct surfaces in this cell");
+	});
+
+	it("invalid UTF-8 inside otherwise valid JSON is not a recognized body", () => {
+		const bytes = Buffer.concat([
+			Buffer.from('{"messages":[{"role":"system","content":"a'),
+			Buffer.from([0xff]),
+			Buffer.from('b"}]}'),
+		]);
+		const surface = harnessSurfacesOfCaptureV0(record([{ body: bytes as never }]), key)[0]!;
+		expect(surface.components.status).toBe("UNAVAILABLE");
+	});
+
+	it("an overflowing number makes the request unavailable instead of aborting the derivation", () => {
+		const surface = surfaceOf('{"messages":[{"role":"user","content":"x"}],"temperature":1e400}');
+		expect(surface.components.status).toBe("UNAVAILABLE");
+	});
+
+	it("the request target is part of the identity and is named as a coordinate", () => {
+		const a = surfaceOf(chat(), key, { path: "/v1/chat/completions?api-version=a" });
+		const b = surfaceOf(chat(), key, { path: "/v1/chat/completions?api-version=b" });
+		const c = surfaceOf(chat(), key, { path: "/chat/completions" });
+		expect(componentsOf(a).identity).not.toBe(componentsOf(b).identity);
+		expect(componentsOf(a).identity).not.toBe(componentsOf(c).identity);
+		expect(compareEndoHarnessSurfacesV0(a, b)).toMatchObject({ comparable: true, differs: ["target"] });
+		expect(compareEndoHarnessSurfacesV0(a, a)).toMatchObject({ same: true, differs: [] });
+	});
+
+	it("a v1 trial refuses a surface that no request references", () => {
+		const trial = trialOf([chat()], 0);
+		const orphan = trialOf([chat({ temperature: 0.9 })], 1).harness.surfaces[0]!;
+		const bad = { ...trial, harness: { ...trial.harness, surfaces: [...trial.harness.surfaces, orphan] } };
+		expect(readEndoExperimentTrialResultV0(bad).ok).toBe(false);
+		expect(readEndoExperimentTrialResultV0(trial).ok).toBe(true);
+	});
+
+	it("the configured model is sourced from the spec, and a contribution source is runner or spec only", () => {
+		const trial = trialOf([chat()], 0);
+		expect(trial.harness.contributions.configuredModel).toMatchObject({ source: "spec" });
+		const bad = {
+			...trial,
+			harness: {
+				...trial.harness,
+				contributions: {
+					...trial.harness.contributions,
+					configuredModel: { status: "reported", value: "p/m", source: "wire" },
+				},
+			},
+		};
+		expect(readEndoExperimentTrialResultV0(bad).ok).toBe(false);
 	});
 });

@@ -10,9 +10,14 @@
  * itself failed or was misused. Missing prerequisites are `unavailable`, never an internal failure.
  */
 
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, lstatSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, resolvePiExecutableV0 } from "../adapters/pi/identity.ts";
+import {
+	fingerprintPiRuntimeV0,
+	PiFingerprintErrorV0,
+	piIdentityEnvironmentV0,
+	resolvePiExecutableV0,
+} from "../adapters/pi/identity.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
 import type { EndoCapabilityStateEntryV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -85,7 +90,14 @@ function presence(path: string, kind: "directory" | "file"): Presence {
 		accessSync(path, kind === "directory" ? constants.R_OK | constants.X_OK : constants.R_OK);
 		return "present";
 	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "not-accessible";
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "not-accessible";
+		// A dangling symlink is not an absent path: nothing can be created through it.
+		try {
+			lstatSync(path);
+			return "invalid";
+		} catch {
+			return "absent";
+		}
 	}
 }
 
@@ -107,6 +119,9 @@ export async function endoDoctorV0(
 	env: Env = process.env,
 ): Promise<EndoDoctorReportV0> {
 	const attachment = input.attachment ?? "pi.default";
+	// The supplied environment, not the host's, decides both where Pi is searched for and what `--version` runs under.
+	const searchPath = env.PATH ?? "";
+	const probeEnv = { ...piIdentityEnvironmentV0(), PATH: searchPath, HOME: env.HOME ?? "" };
 	const errors: string[] = [];
 	const steps: string[] = [];
 	const nodeVersion = process.version;
@@ -132,7 +147,7 @@ export async function endoDoctorV0(
 	try {
 		const resolution = await resolvePiExecutableV0({
 			...(input.pi === undefined ? {} : { executable: input.pi }),
-			...(env.PATH === undefined ? {} : { path: env.PATH }),
+			path: searchPath,
 		});
 		pi.requested = resolution.requested;
 		pi.method = resolution.method;
@@ -148,8 +163,9 @@ export async function endoDoctorV0(
 			try {
 				const fingerprint = await fingerprintPiRuntimeV0({
 					attachment,
+					env: probeEnv,
 					...(input.pi === undefined ? {} : { executable: input.pi }),
-					...(env.PATH === undefined ? {} : { path: env.PATH }),
+					path: searchPath,
 				});
 				pi.status = "found";
 				pi.reportedVersion = fingerprint.reported.version;
@@ -186,7 +202,8 @@ export async function endoDoctorV0(
 		store.root = resolved.path;
 		store.source = resolved.source;
 		store.presence = presence(resolved.path, "directory");
-		if (store.presence === "invalid") store.reason = "the store path exists but is not a directory";
+		if (store.presence === "invalid")
+			store.reason = "the store path is not a usable directory (a file, or a dangling symlink)";
 		if (store.presence === "not-accessible") store.reason = "the store directory cannot be read and searched";
 		if (store.reason !== null) steps.push(`Fix the store path: ${store.reason}.`);
 	} catch (error) {
@@ -202,7 +219,8 @@ export async function endoDoctorV0(
 	try {
 		digestKey.path = endoDigestKeyPathV0(env);
 		digestKey.presence = presence(digestKey.path, "file");
-		if (digestKey.presence === "invalid") digestKey.reason = "the key path exists but is not a regular file";
+		if (digestKey.presence === "invalid")
+			digestKey.reason = "the key path is not a usable regular file (another file type, or a dangling symlink)";
 	} catch (error) {
 		digestKey.reason = error instanceof Error ? error.message : String(error);
 	}
@@ -298,9 +316,10 @@ export async function endoDoctorV0(
 			...(input.pi === undefined ? [] : ["--pi", shellWord(pi.path ?? input.pi)]),
 			...(input.attachment === undefined ? [] : ["--attachment", shellWord(input.attachment)]),
 		].join(" ");
-		// Capabilities local checks can establish but that are still unverified (an identify-only state, or a change).
+		// Only local-protocol capabilities are something `harness check` can newly establish. static-surface entries stay
+		// unverified for a release whose RPC surface has not been reviewed, and live-study entries need authorisation.
 		const unchecked = evidence.capabilities.filter(
-			(entry) => entry.status === "unverified" && entry.requires !== "live-study",
+			(entry) => entry.status === "unverified" && entry.requires === "local-protocol",
 		);
 		if (sealed)
 			steps.push(
@@ -310,7 +329,13 @@ export async function endoDoctorV0(
 			evidence.status === "none-recorded" ||
 			(evidence.status === "recorded" && (evidence.capabilities.length === 0 || unchecked.length > 0))
 		)
-			steps.push(`Record local checks (no model call): ${check}. Until then no capability is admitted.`);
+			steps.push(
+				`Record local checks (no model call): ${check}.${
+					evidence.capabilities.some((entry) => entry.status === "admitted" || entry.status === "admitted-partial")
+						? ""
+						: " Until then no capability is admitted."
+				}`,
+			);
 		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)
 			steps.push(`The recorded capabilities do not describe the installed Pi: run ${check} again.`);
 	}

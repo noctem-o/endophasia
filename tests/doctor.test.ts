@@ -10,6 +10,7 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,6 +33,10 @@ function scratch(): string {
 	const dir = mkdtempSync(join(tmpdir(), "endo-doctor-"));
 	cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
 	return dir;
+}
+/** A scratch HOME with the host PATH (the fake Pi's launcher is `#!/usr/bin/env node`). */
+function hostEnv(): Record<string, string | undefined> {
+	return { HOME: scratch(), PATH: process.env.PATH };
 }
 function fakePi(version = "1.0.0"): FakePiInstall {
 	const install = installFakePi(version);
@@ -103,7 +108,7 @@ describe("endo doctor", () => {
 	it("with a Pi but no evidence: the executable is found and no capability is claimed", async () => {
 		const install = fakePi();
 		const root = join(scratch(), "store");
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.pi).toMatchObject({
 			status: "found",
 			reportedVersion: "1.0.0",
@@ -131,7 +136,7 @@ describe("endo doctor", () => {
 		expect(recorded?.capabilities.length).toBeGreaterThan(0);
 		const before = readdirSync(root, { recursive: true }).sort();
 
-		const same = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const same = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(same.evidence.status).toBe("recorded");
 		expect(same.evidence.currentMatchesRecorded).toBe(true);
 		expect(same.evidence.capabilities).toEqual(recorded?.capabilities);
@@ -141,13 +146,13 @@ describe("endo doctor", () => {
 			expect(text).toContain(`${entry.status.toUpperCase().padEnd(16)} ${entry.capability}`);
 
 		install.rebuild("changed");
-		const changed = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const changed = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(changed.evidence.currentMatchesRecorded).toBe(false);
 		expect(changed.nextSteps.join(" ")).toMatch(/do not describe the installed Pi/);
 		expect(readdirSync(root, { recursive: true }).sort()).toEqual(before);
 	});
 	it("reports a bad --pi as unavailable, a bad flag as misuse, and a conflicting repeat as an error", async () => {
-		const missing = await endoDoctorV0({ pi: "/no/such/pi" }, { HOME: scratch() });
+		const missing = await endoDoctorV0({ pi: "/no/such/pi" }, hostEnv());
 		expect(missing.pi).toMatchObject({ status: "not-found", method: "explicit-path" });
 		expect(missing.diagnosticErrors).toEqual([]);
 		const run = (args: string[]) =>
@@ -185,7 +190,7 @@ describe("endo doctor", () => {
 			requestTimeoutMs: 10_000,
 		});
 		await again.identify(); // records the new fingerprint; no state follows
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.evidence.currentMatchesRecorded).toBe(true);
 		expect(report.evidence.capabilitiesStale).toBe(true);
 		expect(report.evidence.reason).toMatch(/not current/);
@@ -196,7 +201,7 @@ describe("endo doctor", () => {
 	it("reports a damaged registry log instead of a clean recorded state", async () => {
 		const { install, root } = await recordedStore();
 		appendFileSync(join(endoHarnessRegistryDirectoryV0(root, "pi.default"), "records.log"), Buffer.from([1, 2, 3]));
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.evidence.status).toBe("damaged");
 		expect(report.evidence.logDamage).toMatch(/torn tail|failed verification/);
 		expect(renderEndoDoctorV0(report)).toMatch(/DAMAGED LOG/);
@@ -207,7 +212,7 @@ describe("endo doctor", () => {
 		const install = fakePi();
 		const file = join(scratch(), "not-a-dir");
 		writeFileSync(file, "x");
-		const report = await endoDoctorV0({ root: file, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root: file, pi: install.bin }, hostEnv());
 		expect(report.store.presence).toBe("invalid");
 		expect(report.evidence.status).toBe("not-checked");
 		expect(report.nextSteps.join(" ")).toMatch(/Fix the store path/);
@@ -217,12 +222,12 @@ describe("endo doctor", () => {
 	it("says what the version probe did when it did not yield a version", async () => {
 		const install = fakePi();
 		install.setScenario("version-garbage");
-		const garbage = await endoDoctorV0({ pi: install.bin }, { HOME: scratch() });
+		const garbage = await endoDoctorV0({ pi: install.bin }, hostEnv());
 		expect(garbage.pi.status).toBe("found");
 		expect(garbage.pi.versionText).toBe("pi build from source (dirty)");
 		expect(renderEndoDoctorV0(garbage)).toContain("pi build from source (dirty)");
 		install.setScenario("version-fail");
-		const failed = await endoDoctorV0({ pi: install.bin }, { HOME: scratch() });
+		const failed = await endoDoctorV0({ pi: install.bin }, hostEnv());
 		expect(failed.pi.reportedVersion).toBeNull();
 		expect(failed.pi.versionGap).toMatch(/\S/);
 		expect(failed.pi.reason).toContain(failed.pi.versionGap!);
@@ -231,7 +236,7 @@ describe("endo doctor", () => {
 	it("the recommended check repeats the selected Pi, attachment and root", async () => {
 		const install = fakePi();
 		const root = join(scratch(), "my store");
-		const report = await endoDoctorV0({ root, pi: install.bin, attachment: "pi.lab" }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin, attachment: "pi.lab" }, hostEnv());
 		expect(report.nextSteps.join(" ")).toContain(
 			`endo harness check '${root}' --pi ${install.bin} --attachment pi.lab`,
 		);
@@ -258,7 +263,7 @@ describe("endo doctor", () => {
 		bytes[Math.floor(bytes.length / 2)] ^= 0xff; // a complete frame that no longer verifies
 		writeFileSync(log, bytes);
 		install.rebuild("changed after sealing");
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.evidence.status).toBe("damaged");
 		expect(report.nextSteps.join(" ")).toMatch(/sealed registry accepts no appends/);
 		expect(report.nextSteps.join(" ")).not.toMatch(/run endo harness check/);
@@ -267,7 +272,7 @@ describe("endo doctor", () => {
 	it("recommends the resolved Pi path, not a relative spelling that depends on the working directory", async () => {
 		const install = fakePi();
 		const root = join(scratch(), "store");
-		const report = await endoDoctorV0({ root, pi: relative(process.cwd(), install.bin) }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: relative(process.cwd(), install.bin) }, hostEnv());
 		expect(report.pi.path).toBe(install.bin);
 		expect(report.nextSteps.join(" ")).toContain(`--pi ${install.bin}`);
 	});
@@ -276,7 +281,7 @@ describe("endo doctor", () => {
 		const install = fakePi();
 		const root = scratch();
 		writeFileSync(join(root, "harness"), "a file where the registry directory belongs");
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.evidence.status).toBe("unreadable");
 		expect(report.evidence.reason).toMatch(/ENOTDIR/);
 		expect(report.nextSteps.join(" ")).toMatch(/Fix the registry path/);
@@ -296,7 +301,7 @@ describe("endo doctor", () => {
 			requestTimeoutMs: 10_000,
 		});
 		await pi.identify();
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.pi.identityConfidence).toBe("reduced");
 		expect(report.pi.gaps.some((gap) => gap.fact === "version")).toBe(true);
 		expect(report.evidence.recordedIdentityConfidence).toBe("reduced");
@@ -311,7 +316,7 @@ describe("endo doctor", () => {
 		const install = fakePi();
 		const root = scratch();
 		mkdirSync(join(endoHarnessRegistryDirectoryV0(root, "pi.default"), "records.log"), { recursive: true });
-		const report = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(report.evidence.status).toBe("unreadable");
 		expect(report.evidence.reason).toMatch(/not a regular file/);
 		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
@@ -330,11 +335,54 @@ describe("endo doctor", () => {
 		});
 		await pi.identify();
 		pi.state(); // what `endo harness identify` records: a state whose capabilities are all unverified
-		const identified = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const identified = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(identified.evidence.capabilities.length).toBeGreaterThan(0);
 		expect(identified.nextSteps.join(" ")).toMatch(/Record local checks/);
 		await pi.checkLocal();
-		const checked = await endoDoctorV0({ root, pi: install.bin }, { HOME: scratch() });
+		const checked = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(checked.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("a dangling symlink store is invalid, not an absent path a check could create", async () => {
+		const install = fakePi();
+		const link = join(scratch(), "store");
+		symlinkSync(join(scratch(), "nowhere"), link);
+		const report = await endoDoctorV0({ root: link, pi: install.bin }, hostEnv());
+		expect(report.store.presence).toBe("invalid");
+		expect(report.evidence.status).toBe("not-checked");
+		expect(report.nextSteps.join(" ")).toMatch(/Fix the store path/);
+		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("does not keep recommending a check that cannot establish an unreviewed release's static surface", async () => {
+		const install = fakePi("1.0.1"); // not a reviewed release: static-surface capabilities stay unverified by design
+		const root = join(scratch(), "store");
+		mkdirSync(root, { recursive: true });
+		const pi = new PiAttachmentV0({
+			root,
+			cwd: scratch(),
+			executable: install.bin,
+			env: fakePiEnv({}),
+			requestTimeoutMs: 10_000,
+		});
+		await pi.checkLocal();
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
+		expect(
+			report.evidence.capabilities.some(
+				(entry) => entry.status === "unverified" && entry.requires === "static-surface",
+			),
+		).toBe(true);
+		expect(report.evidence.capabilities.some((entry) => entry.status === "admitted")).toBe(true);
+		expect(report.nextSteps.join(" ")).not.toMatch(/Record local checks/);
+	});
+
+	it("runs the version probe under the supplied environment, not the host's", async () => {
+		const install = fakePi();
+		// The launcher is `#!/usr/bin/env node`: with an empty PATH it cannot start, whatever the host PATH holds.
+		const isolated = await endoDoctorV0({ pi: install.bin }, { HOME: scratch(), PATH: "" });
+		expect(isolated.pi.reportedVersion).toBeNull();
+		expect(isolated.pi.versionGap).toMatch(/\S/);
+		const hosted = await endoDoctorV0({ pi: install.bin }, { HOME: scratch(), PATH: process.env.PATH });
+		expect(hosted.pi.reportedVersion).toBe("1.0.0");
 	});
 });

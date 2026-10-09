@@ -328,9 +328,9 @@ manufacture structure.
 DREAM and OBSERVE can share a rendering engine without sharing semantics:
 
 ~~~text
-cognition graph ─────→ Dream scene ────┐
-                                      ├──→ WebGPU
-model observations ─→ Observe scene ───┘
+cognition graph ───── → Dream scene ────┐
+                                        ├── → WebGPU
+model observations ─ → Observe scene ───┘
 ~~~
 
 DREAM presents a coherent projection of recorded cognition state. OBSERVE exposes the measurements and declared

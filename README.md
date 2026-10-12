@@ -766,7 +766,9 @@ The boundary and the evidence rules were audited adversarially ([audit](docs/pi-
 limitations accepted for now.
 
 **Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
-spoke Pi's private services and was removed, and the operator view today is `endo harness status`), model-internal
+spoke Pi's private services and was removed, and the operator view today is `endo harness status`; its read-only
+observation bridge, `cockpit/`, exists as a library of versioned projections and a read-only store reader, with no
+server or page yet), model-internal
 observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
 control, model-originated steering proposals and an external authority provider, any live provider integration wired
 into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
@@ -824,7 +826,8 @@ counterfactual / evolution / training work
 3. **First Endophasia-native operator surface.**
    - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
      [docs/cockpit.md](docs/cockpit.md): runtime identity/change state, capability state with reasons and a live session
-     timeline, all projected from Endophasia records without depending on Pi private services.
+     timeline, all projected from Endophasia records without depending on Pi private services. The projection and
+     read-only reader layer is built (`cockpit/`); the local HTTP server and the page are not.
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
      model-observation scenes as separate typed projections even if they later share one renderer.

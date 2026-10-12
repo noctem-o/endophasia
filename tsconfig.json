@@ -7,6 +7,7 @@
 	},
 	"include": [
 		"protocol/**/*",
+		"cockpit/**/*",
 		"graph/**/*",
 		"visualization/**/*",
 		"lab/**/*",

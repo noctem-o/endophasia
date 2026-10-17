@@ -110,7 +110,7 @@ says so (`consistency`) and carries each source's own watermark:
 `checkEndoCockpitSourceFreshnessV0(root, heldSource)` tells a consumer, per source, `unchanged`, `advanced` (event log:
 more events and the events it held are still the first ones, by complete contents and order, so page on from
 `afterSequence = old length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten, repaired with different
-events, or shorter: discard and take a fresh snapshot), or `unavailable`. The event log is opened once per check, so the
+events, or shorter: discard and take a fresh snapshot), or `unavailable` (the source cannot be opened now, or the held source had no position, such as an earlier `unopenable` read: take a fresh read as the new baseline). The event log is opened once per check, so the
 length, the held prefix and the condition are one observation, and the log is traversed once. Frame integrity is the
 log's own digest check, reported as `degraded`.
 A registry update never moves the event log's watermark, and an event append never moves a registry's.
@@ -121,7 +121,7 @@ A registry update never moves the event log's watermark, and an event append nev
 null`, which also has no entries). A cursor past the end of the log is a valid empty window, as the event store answers
 it: `nextAfterSequence` stays at `afterSequence` and `hasMore` is `false`. Without ignored duplicates the cursor is
 exactly the last entry's position; an ignored duplicate is read but not presented, so it may move the cursor past it
-(`duplicatesIgnored > 0`). The validator rejects metadata that contradicts the watermark.
+(`duplicatesIgnored > 0`). `sessions` is exactly what the presented entries give, in first-appearance order, and a zero-length watermark must agree with the condition (`empty` or `absent`, or `degraded`; never `readable`), as must a registry with no records. A snapshot's identity and capabilities for one attachment must carry identical sources. The validator rejects metadata that contradicts the watermark.
 
 **Wire validation is not store verification.** `validateEndoCockpit*V0` and `readEndoCockpitRecordV0` prove that a
 serialized record is well formed and consistent with itself: each view's `ref` is a registry reference of the right kind
@@ -144,7 +144,7 @@ capability admission: the recorded status is carried as written, and `limits` on
 (a state for an older fingerprint than the latest recorded, or for one nobody recorded; a cited evidence record that is
 missing, names another capability or classifies differently; evidence recorded under a different runtime identity than
 the one the state names; the state, its cited evidence, the fingerprint it names or the latest fingerprint recording
-different runtime families (`runtime-differs`, with those records as references: each record is valid alone, the
+a cheaper kind of check than the capability requires (`evidence-check-insufficient`; evidence from a costlier kind, such as a live study standing for a local check, is legitimate and raises nothing), different runtime families (`runtime-differs`, with those records as references: each record is valid alone, the
 registry checks attachment, not family); evidence carried across observations on a reduced-confidence identity; a status that does not
 follow from its classification). Evidence legitimately outlives the observation it was recorded against while the
 identity digest is unchanged, so the observation id is not compared, only the identity. A state recorded for an older
@@ -161,7 +161,7 @@ producers, the lifecycle and intervention vocabularies record in the event log; 
 alone, unflagged, its payload counted as withheld). The `harness.attached` runtime session reference is presented as
 `runtimeSessionId` whether the producer recorded it as `piSessionId` or `acpSessionId`; if both are recorded and differ,
 neither is chosen: the field is `unavailable`, the entry is flagged `anomaly`, and both keys count as withheld. It is
-never the canonical session id. Free text a record author wrote (a capability reason, an evidence limitation, a notice
+never the canonical session id. The reference is the runtime's own opaque string, so it is admitted only as a UUID, the `sha256-` digest form the ACP recorder writes, or the `endo-<attachment>-<12 hex>` id Endophasia generates for Pi; any other value is withheld whole (`unavailable`, counted as withheld) rather than judged by a content filter. The same applies to the event `producer` name: it is presented only in the shape Endophasia's producers use (a lowercase prefix, optionally `:` and an attachment-like name), else as the fixed withheld text. Free text a record author wrote (a capability reason, an evidence limitation, a notice
 title, and every presented string of a timeline entry) is bounded and passes a deterministic filter: text that looks like
 it embeds a local path, a network address or a credential is replaced whole by a fixed withheld text
 (`ENDO_COCKPIT_WITHHELD_TEXT_V0`; for a timeline field the field becomes `unavailable` with that text and its key counts

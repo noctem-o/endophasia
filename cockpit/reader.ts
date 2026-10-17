@@ -431,7 +431,8 @@ export function checkEndoCockpitSourceFreshnessV0(
 	if (previous.domain === "harness-registry") {
 		const now = readEndoCockpitRegistryV0(root, previous.attachment).source;
 		if (now.condition.state === "unopenable") return "unavailable";
-		if (previous.watermark === null) return "changed";
+		// A consumer that holds no position (its source could not be opened) has nothing to compare: start from a fresh read.
+		if (previous.watermark === null) return "unavailable";
 		return canonicalEndoJsonV0({ c: now.condition, w: now.watermark }) ===
 			canonicalEndoJsonV0({ c: previous.condition, w: previous.watermark })
 			? "unchanged"
@@ -445,7 +446,7 @@ export function checkEndoCockpitSourceFreshnessV0(
 	);
 	const now = read.source;
 	if (now.condition.state === "unopenable" || now.watermark === null) return "unavailable";
-	if (mark === null) return "changed";
+	if (mark === null) return "unavailable";
 	if (now.watermark.length < mark.length) return "shrunk";
 	// The first `mark.length` events must still be the ones the consumer saw, by their complete contents and order.
 	if (mark.length > 0 && heldDigest !== mark.prefixDigest) return "diverged";

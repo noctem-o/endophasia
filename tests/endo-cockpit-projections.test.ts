@@ -847,8 +847,8 @@ describe("harness.attached runtime session reference (PR #57 review: ACP session
 	const acpRef = `sha256-${"a".repeat(48)}`;
 
 	it("presents Pi's piSessionId as the runtime session reference, apart from the canonical session", () => {
-		const entry = attached({ instance: "i1", mapping: "pi-mapping.1", piSessionId: "pi-session-1" });
-		expect(entry.fields.runtimeSessionId).toEqual({ basis: "reported", value: "pi-session-1" });
+		const entry = attached({ instance: "i1", mapping: "pi-mapping.1", piSessionId: "endo-pi-default-a33c9b2338da" });
+		expect(entry.fields.runtimeSessionId).toEqual({ basis: "reported", value: "endo-pi-default-a33c9b2338da" });
 		expect(entry.sessionId).toBe("endo.session.test.one");
 		expect(entry.withheldFields).toBe(0);
 	});
@@ -857,7 +857,7 @@ describe("harness.attached runtime session reference (PR #57 review: ACP session
 		const v1 = attached({
 			mapping: "acp-v1-mapping.3",
 			instance: "i1",
-			acpSessionId: "sess_abc123",
+			acpSessionId: "0b1f6c1e-3c2a-4e0b-9d1c-5b9c7a2f4e10",
 			openedBy: "session/new",
 		});
 		const v2 = attached({
@@ -867,7 +867,7 @@ describe("harness.attached runtime session reference (PR #57 review: ACP session
 			openedBy: "session/resume",
 			historyReplay: "not-requested",
 		});
-		expect(v1.fields.runtimeSessionId).toEqual({ basis: "reported", value: "sess_abc123" });
+		expect(v1.fields.runtimeSessionId).toEqual({ basis: "reported", value: "0b1f6c1e-3c2a-4e0b-9d1c-5b9c7a2f4e10" });
 		expect(v2.fields.runtimeSessionId).toEqual({ basis: "reported", value: acpRef });
 		expect(v1.fields).not.toHaveProperty("acpSessionId");
 		expect(v1.sessionId).toBe("endo.session.test.one");
@@ -886,14 +886,14 @@ describe("harness.attached runtime session reference (PR #57 review: ACP session
 	});
 
 	it("treats two equal references as one and two different references as a stated conflict", () => {
-		const same = attached({ piSessionId: "s1", acpSessionId: "s1" });
-		expect(same.fields.runtimeSessionId).toEqual({ basis: "reported", value: "s1" });
+		const same = attached({ piSessionId: acpRef, acpSessionId: acpRef });
+		expect(same.fields.runtimeSessionId).toEqual({ basis: "reported", value: acpRef });
 		expect(same.withheldFields).toBe(0);
 
-		const conflict = attached({ piSessionId: "pi-1", acpSessionId: "acp-1" });
+		const conflict = attached({ piSessionId: acpRef, acpSessionId: "0b1f6c1e-3c2a-4e0b-9d1c-5b9c7a2f4e10" });
 		expect(conflict.fields.runtimeSessionId).toMatchObject({ basis: "unavailable" });
-		expect(JSON.stringify(conflict)).not.toContain("pi-1");
-		expect(JSON.stringify(conflict)).not.toContain("acp-1");
+		expect(JSON.stringify(conflict)).not.toContain(acpRef);
+		expect(JSON.stringify(conflict)).not.toContain("0b1f6c1e");
 		expect(conflict.flags).toContain("anomaly");
 		expect(conflict.withheldFields).toBe(2);
 		expect(
@@ -1533,5 +1533,229 @@ describe("free-text presentation boundary (PR #57 audit)", () => {
 			).toBe(false);
 			expect(JSON.stringify(entries), text).not.toContain(CANARY);
 		}
+	});
+});
+
+describe("second review round (PR #57)", () => {
+	const WITHHELD = "withheld: the recorded text appears to embed a local path, network address or credential";
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	function good() {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input(records));
+		const capabilities = projectEndoCockpitCapabilityStateV0(input(records));
+		const log = timeline([event("tool.started", { toolName: "read" })]);
+		return {
+			records,
+			identity,
+			capabilities,
+			log,
+			snapshot: {
+				schemaVersion: "endo.cockpit-snapshot.v0",
+				projectionVersion: "cockpit-snapshot.1",
+				consistency: "independent-sources",
+				timeline: log,
+				runtimes: [{ identity, capabilities }],
+			},
+		};
+	}
+
+	it("P1: an opaque producer is withheld unless it has the shape Endophasia's producers use", () => {
+		const hostile = [
+			`/home/${CANARY}/tool`,
+			`https://u:${CANARY}@example.test`,
+			`ghp_${"A".repeat(30)}`,
+			`token-${CANARY}`,
+			`my producer ${CANARY}`,
+			"p".repeat(600),
+			"UPPER:case",
+		];
+		for (const producer of hostile) {
+			const entry = timeline([event("tool.started", {}, { producer })]).entries[0]!;
+			expect(entry.producer, producer).toBe(WITHHELD);
+			expect(JSON.stringify(entry), producer).not.toContain(CANARY);
+		}
+		for (const producer of [
+			"pi-rpc-adapter:pi.default",
+			"pi-lifecycle:pi.default",
+			"test-producer",
+			"capture:record",
+		]) {
+			expect(timeline([event("tool.started", {}, { producer })]).entries[0]!.producer).toBe(producer);
+		}
+		expect(
+			validateEndoCockpitSessionTimelineV0(timeline([event("tool.started", {}, { producer: "/x/y" })])),
+		).not.toBeNull();
+	});
+
+	it("P1: a runtime session reference is presented only in an admitted shape; others are withheld and counted", () => {
+		const hostileRefs = [
+			`/home/${CANARY}/session`,
+			`ghp_${"A".repeat(30)}${CANARY}`,
+			`sess_${CANARY}`,
+			"C:\\x\\y",
+			"plain-word",
+		];
+		for (const ref of hostileRefs) {
+			for (const key of ["piSessionId", "acpSessionId"]) {
+				const entry = timeline([event("harness.attached", { instance: "i1", [key]: ref })]).entries[0]!;
+				expect(entry.fields.runtimeSessionId, `${key} ${ref}`).toEqual({ basis: "unavailable", reason: WITHHELD });
+				expect(entry.withheldFields, `${key} ${ref}`).toBe(1);
+				expect(JSON.stringify(entry), ref).not.toContain(CANARY);
+			}
+		}
+		const admitted = [
+			"0b1f6c1e-3c2a-4e0b-9d1c-5b9c7a2f4e10",
+			`sha256-${"a".repeat(48)}`,
+			"endo-pi-default-a33c9b2338da",
+		];
+		for (const ref of admitted) {
+			const entry = timeline([event("harness.attached", { acpSessionId: ref })]).entries[0]!;
+			expect(entry.fields.runtimeSessionId).toEqual({ basis: "reported", value: ref });
+		}
+	});
+
+	it("P2: identity and capabilities of one runtime view must share one source condition and watermark", () => {
+		const { snapshot, records } = good();
+		expect(validateEndoCockpitSnapshotV0(snapshot)).not.toBeNull();
+		const stale = projectEndoCockpitCapabilityStateV0(input({ ...records, notification: [] }));
+		const spliced = mutated(snapshot, (c) => {
+			c.runtimes[0].capabilities = stale;
+		});
+		expect(stale.source.attachment).toBe(snapshot.runtimes[0]!.identity.source.attachment);
+		expect(validateEndoCockpitSnapshotV0(spliced)).toBeNull();
+		const otherCondition = mutated(snapshot, (c) => {
+			c.runtimes[0].capabilities.source.condition = {
+				state: "degraded",
+				tornTail: { bytes: 1, sha256: "a".repeat(64) },
+				sealedAt: null,
+				error: null,
+			};
+		});
+		expect(validateEndoCockpitSnapshotV0(otherCondition)).toBeNull();
+	});
+
+	it("P2: session summaries must be exactly what the presented entries give", () => {
+		const events = [
+			event("tool.started", {}, { session: "endo.session.test.a" }),
+			event("tool.finished", {}, { session: "endo.session.test.b" }),
+			event("tool.started", {}, { session: "endo.session.test.a" }),
+			event("tool.started", {}, { session: null }),
+		];
+		const log = timeline(events);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		const edits: [string, (copy: any) => void][] = [
+			[
+				"nonexistent session",
+				(c) =>
+					c.sessions.push({
+						sessionId: "endo.session.test.ghost",
+						firstStorageSequence: 1,
+						lastStorageSequence: 1,
+						entries: 1,
+					}),
+			],
+			["duplicate session", (c) => c.sessions.push(structuredClone(c.sessions[0]))],
+			[
+				"wrong count",
+				(c) => {
+					c.sessions[0].entries = 5;
+				},
+			],
+			[
+				"wrong range",
+				(c) => {
+					c.sessions[0].lastStorageSequence = 2;
+				},
+			],
+			["wrong order", (c) => c.sessions.reverse()],
+			["missing session", (c) => c.sessions.pop()],
+			[
+				"summaries with no entries",
+				(c) => {
+					c.entries = [];
+				},
+			],
+		];
+		for (const [name, edit] of edits)
+			expect(validateEndoCockpitSessionTimelineV0(mutated(log, edit)), name).toBeNull();
+	});
+
+	it("P2: evidence from a cheaper check kind than the capability requires is limited, not re-admitted or rewritten", () => {
+		const records = specimenRecords();
+		const state = structuredClone(records.state[0]!);
+		const target = state.capabilities.find((c) => c.requires === "live-study" && c.status !== "unverified")!;
+		const evidence = structuredClone(records.evidence);
+		const cited = evidence.find((item) => item.id === target.evidenceId)!;
+		cited.check.kind = "static-surface";
+		const result = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence, state: [state] }));
+		const view = result.capabilities.find((c) => c.capability === target.capability)!;
+		expect(view.limits.map((l) => l.code)).toEqual(["evidence-check-insufficient"]);
+		expect(view.limits[0]!.refs).toEqual([view.ref, view.evidence!.ref]);
+		expect(view.status).toBe(target.status);
+		expect(validateEndoCockpitCapabilityStateV0(result)).not.toBeNull();
+		// The recorded specimen cites live-study evidence for cheaper requirements: that is legitimate and raises nothing.
+		for (const item of projectEndoCockpitCapabilityStateV0(input(records)).capabilities)
+			expect(item.limits).toEqual([]);
+	});
+
+	it("P2: withheldFields counts a fully presented usage object as presented and a partial one as withheld", () => {
+		const usage = { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3, costTotal: 0.1, reasoning: 0 };
+		const whole = timeline([event("message.completed", { runtimeEvent: "message_end", role: "assistant", usage })])
+			.entries[0]!;
+		expect(whole.usage).toMatchObject({ basis: "reported" });
+		expect(whole.withheldFields).toBe(0);
+		const partial = timeline([
+			event("message.completed", { role: "assistant", usage: { ...usage, cost: { input: 1 } } }),
+		]).entries[0]!;
+		expect(partial.usage).toMatchObject({ basis: "reported" });
+		expect(partial.withheldFields).toBe(1);
+		const malformed = timeline([event("message.completed", { role: "assistant", usage: { input: 1 } })]).entries[0]!;
+		expect(malformed.usage).toMatchObject({ basis: "unavailable" });
+		expect(malformed.withheldFields).toBe(1);
+	});
+
+	it("P2: a zero-length watermark must agree with the source condition", () => {
+		const clean = (state: string) => ({ state, tornTail: null, sealedAt: null, error: null });
+		const log = (state: string, length = 0) =>
+			timeline([]) && {
+				...timeline([]),
+				source: {
+					domain: "event-log",
+					condition: clean(state),
+					watermark: { length, lastEventId: null, prefixDigest: null },
+				},
+			};
+		for (const state of ["empty", "absent"])
+			expect(validateEndoCockpitSessionTimelineV0(log(state)), state).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(log("readable"))).toBeNull();
+		const degraded = mutated(log("empty"), (c) => {
+			c.source.condition = {
+				state: "degraded",
+				tornTail: { bytes: 4, sha256: "b".repeat(64) },
+				sealedAt: null,
+				error: null,
+			};
+		});
+		expect(validateEndoCockpitSessionTimelineV0(degraded)).not.toBeNull();
+
+		const { identity, capabilities } = good();
+		const emptyRegistry = projectEndoCockpitRuntimeIdentityV0(
+			input({ fingerprint: [], change: [], evidence: [], state: [], notification: [] }),
+		);
+		expect(emptyRegistry.source.condition.state).toBe("empty");
+		expect(validateEndoCockpitRuntimeIdentityV0(emptyRegistry)).not.toBeNull();
+		const readableEmpty = mutated(emptyRegistry, (c) => {
+			c.source.condition.state = "readable";
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(readableEmpty)).toBeNull();
+		const emptyWithRecords = mutated(identity, (c) => {
+			c.source.condition.state = "empty";
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(emptyWithRecords)).toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
 	});
 });

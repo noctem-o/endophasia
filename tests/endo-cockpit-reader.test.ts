@@ -447,7 +447,10 @@ describe("contract totality over valid source records", () => {
 			event("tool.finished", {}, { producer: "short" }),
 		]);
 		const timeline = readEndoCockpitTimelineV0(root);
-		expect(timeline.entries[0]!.producer).toHaveLength(512);
+		// A producer name outside the shape Endophasia's producers use is withheld whole, not cut.
+		expect(timeline.entries[0]!.producer).toBe(
+			"withheld: the recorded text appears to embed a local path, network address or credential",
+		);
 		expect(timeline.entries[0]!.producerSequence).toBe(Number.MAX_SAFE_INTEGER * 4);
 		expect(timeline.entries[1]!.producer).toBe("short");
 	});
@@ -628,5 +631,29 @@ describe("source condition messages (PR #57 audit)", () => {
 		}
 		const { root, condition } = unsupported("endo.event.v999");
 		expect(JSON.stringify(condition)).not.toContain(root);
+	});
+});
+
+describe("freshness without a held position (PR #57 review round 2)", () => {
+	it("is unavailable, not changed, when the held source had no watermark", () => {
+		const { root } = seeded();
+		const heldLog = readEndoCockpitEventLogV0(root, { limit: 1 }).source;
+		const noPositionLog = {
+			...heldLog,
+			condition: {
+				state: "unopenable" as const,
+				tornTail: null,
+				sealedAt: null,
+				error: { kind: "invalid-store", message: "bad" },
+			},
+			watermark: null,
+		};
+		expect(checkEndoCockpitSourceFreshnessV0(root, noPositionLog)).toBe("unavailable");
+		const heldRegistry = readEndoCockpitRegistryV0(root, ATTACHMENT).source;
+		const noPositionRegistry = { ...heldRegistry, condition: noPositionLog.condition, watermark: null };
+		expect(checkEndoCockpitSourceFreshnessV0(root, noPositionRegistry)).toBe("unavailable");
+		// With a position the ordinary comparison still applies.
+		expect(checkEndoCockpitSourceFreshnessV0(root, heldLog)).toBe("unchanged");
+		expect(checkEndoCockpitSourceFreshnessV0(root, heldRegistry)).toBe("unchanged");
 	});
 });

@@ -14,6 +14,7 @@
 //  - the evidence is carried across observations on a reduced-confidence identity (the protocol's rule: such evidence is
 //    never reused for a later observation);
 //  - the recorded status does not follow from the recorded classification;
+//  - the cited evidence came from a cheaper kind of check than the capability requires (the reverse is legitimate);
 //  - the runtime family differs between the state, the cited evidence, the fingerprint the state names or the latest
 //    fingerprint. Each record is valid alone (the registry checks attachment, not family), so this is the only place the
 //    disagreement shows; the recorded status is still carried as recorded, never recomputed. Fingerprint ids are NOT
@@ -43,6 +44,13 @@ import {
 	presentableTextV0,
 	registryRefV0,
 } from "./common.ts";
+
+/**
+ * How much a check kind can establish (adapters/pi/capabilities.ts: `requires` is the cheapest kind that can establish a
+ * capability). Evidence from a costlier kind may legitimately stand for a cheaper requirement (a live study that re-tests
+ * what a local check does); evidence from a cheaper kind cannot stand for a costlier one.
+ */
+const CHECK_COST = { "static-surface": 0, "local-protocol": 1, "live-study": 2 } as const;
 
 const WITHHELD_EVIDENCE_FIELDS = ["expected", "inputsDigest", "observed"];
 
@@ -141,6 +149,8 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 			if (cited === null) limits.push({ code: "evidence-record-missing", refs: [stateRef] });
 			else {
 				const refs = [stateRef, citedRef!];
+				if (CHECK_COST[cited.record.check.kind] < CHECK_COST[entry.requires])
+					limits.push({ code: "evidence-check-insufficient", refs });
 				if (cited.record.capability !== entry.capability)
 					limits.push({ code: "evidence-capability-differs", refs });
 				if (cited.record.classification !== entry.classification)

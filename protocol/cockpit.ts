@@ -127,6 +127,7 @@ export const ENDO_COCKPIT_LIMIT_CODES_V0 = [
 	"evidence-reduced-identity",
 	"status-classification-mismatch",
 	"runtime-differs",
+	"evidence-check-insufficient",
 ] as const;
 export type EndoCockpitLimitCodeV0 = (typeof ENDO_COCKPIT_LIMIT_CODES_V0)[number];
 
@@ -610,7 +611,10 @@ function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 
 	const mark = value.watermark;
 	if (!isPlain(mark) || !exactKeys(mark, ["length", "lastEventId", "prefixDigest"]) || !isCount(mark.length))
 		return false;
-	if (mark.length === 0) return mark.lastEventId === null && mark.prefixDigest === null;
+	// The state and the position must agree: a clean log with no events is absent or empty, never readable. (A log can be
+	// degraded at zero events: a torn tail or a bad first frame leaves no verified prefix.)
+	if (mark.length === 0)
+		return mark.lastEventId === null && mark.prefixDigest === null && value.condition.state !== "readable";
 	if (typeof mark.lastEventId !== "string" || !isEndoIdentifierV0(mark.lastEventId, "event")) return false;
 	if (!isSha256(mark.prefixDigest)) return false;
 	return value.condition.state !== "absent" && value.condition.state !== "empty";
@@ -635,8 +639,11 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 		if (lastId !== null && !isEvidenceId(lastId)) return false;
 		total += count;
 	}
-	// An absent or empty registry holds no records.
-	return !(value.condition.state === "absent" || value.condition.state === "empty") || total === 0;
+	// The state and the records must agree: an absent or empty registry holds none, and a registry with none is never
+	// readable (it may be degraded: damage can leave no verified record).
+	return total === 0
+		? value.condition.state !== "readable"
+		: value.condition.state === "readable" || value.condition.state === "degraded";
 }
 
 const CONFIDENCES = ["strong", "reduced"] as const;
@@ -912,6 +919,20 @@ function isRegistryRef(
 	return value.kind === "state" ? value.id === null : value.id !== null;
 }
 
+/** Deep equality of two JSON values, independent of key order. */
+function sameJson(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (Array.isArray(a) || Array.isArray(b))
+		return (
+			Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, at) => sameJson(item, b[at]))
+		);
+	if (!isPlain(a) || !isPlain(b)) return false;
+	const keys = Object.keys(a);
+	return (
+		keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameJson(a[key], b[key]))
+	);
+}
+
 function sameRef(a: unknown, b: unknown): boolean {
 	if (!isRef(a) || !isRef(b)) return false;
 	if (a.domain === "event-log")
@@ -974,6 +995,7 @@ const LIMIT_REF_KINDS: Readonly<Record<EndoCockpitLimitCodeV0, readonly EndoCock
 	"evidence-reduced-identity": ["state", "evidence", "fingerprint"],
 	"status-classification-mismatch": ["state"],
 	"runtime-differs": ["state", "evidence", "fingerprint"],
+	"evidence-check-insufficient": ["state", "evidence"],
 };
 
 function validateRegistryProjection(value: Record<string, unknown>, projectionVersion: string): boolean {
@@ -1173,6 +1195,24 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 		)
 	)
 		return null;
+	// The summaries are exactly what the presented entries give: nothing more, nothing different, in first-appearance order.
+	const expected = new Map<string, EndoCockpitSessionSummaryV0>();
+	for (const entry of value.entries as EndoCockpitTimelineEntryV0[]) {
+		if (entry.sessionId === null) continue;
+		const summary = expected.get(entry.sessionId);
+		if (summary === undefined)
+			expected.set(entry.sessionId, {
+				sessionId: entry.sessionId,
+				firstStorageSequence: entry.storageSequence,
+				lastStorageSequence: entry.storageSequence,
+				entries: 1,
+			});
+		else {
+			summary.lastStorageSequence = entry.storageSequence;
+			summary.entries += 1;
+		}
+	}
+	if (!sameJson(sessions, [...expected.values()])) return null;
 	return value as unknown as EndoCockpitSessionTimelineV0;
 }
 
@@ -1193,7 +1233,8 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		const identity = validateEndoCockpitRuntimeIdentityV0(runtime.identity);
 		const capabilities = validateEndoCockpitCapabilityStateV0(runtime.capabilities);
 		if (identity === null || capabilities === null) return null;
-		if (identity.source.attachment !== capabilities.source.attachment) return null;
+		// Both views of one attachment come from one read of its registry: the same condition and the same position.
+		if (!sameJson(identity.source, capabilities.source)) return null;
 		if (seen.has(identity.source.attachment)) return null;
 		seen.add(identity.source.attachment);
 	}

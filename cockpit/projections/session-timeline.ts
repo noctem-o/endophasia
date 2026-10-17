@@ -21,7 +21,6 @@
 import {
 	ENDO_COCKPIT_CATEGORIES_V0,
 	ENDO_COCKPIT_FLAGS_V0,
-	ENDO_COCKPIT_MAX_PRODUCER_V0,
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
 	ENDO_COCKPIT_WITHHELD_TEXT_V0,
 	type EndoCockpitCategoryV0,
@@ -445,6 +444,24 @@ function flagsOf(event: EndoEventV0, payload: Record<string, unknown>, recognize
 	return ENDO_COCKPIT_FLAGS_V0.filter((flag) => flags.has(flag));
 }
 
+/**
+ * The runtime session reference shapes admitted for presentation: a UUID, the digest form the ACP recorder writes for an
+ * id that is long or not printable (`sha256-` and 48 hex digits), and the id Endophasia itself generates for a Pi
+ * session (`endo-<attachment>-<12 hex digits>`). A runtime may choose any other string, including one that is a path or a
+ * token; that cannot be told from a harmless id, so it is withheld whole.
+ */
+const ADMITTED_RUNTIME_SESSION: readonly RegExp[] = [
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+	/^sha256-[0-9a-f]{48}$/,
+	/^endo-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{12}$/,
+];
+
+/**
+ * The producer name as the event wrote it (any non-empty string), presented only in the shape Endophasia's own producers
+ * use: a lowercase prefix, optionally `:` and an attachment-like name. Anything else is withheld whole.
+ */
+const ADMITTED_PRODUCER = /^[a-z][a-z0-9-]{0,63}(?::[A-Za-z0-9][A-Za-z0-9._-]{0,127})?$/;
+
 const RUNTIME_SESSION_CONFLICT =
 	"the attachment recorded two different runtime session references (piSessionId and acpSessionId); neither is presented";
 
@@ -460,17 +477,41 @@ function runtimeSessionOf(payload: Record<string, unknown>): {
 } {
 	const found: { key: string; value: string }[] = [];
 	for (const key of ["piSessionId", "acpSessionId"]) {
-		const value = scalar(own(payload, key), "string", false);
-		if (typeof value === "string") found.push({ key, value });
+		const value = own(payload, key);
+		if (typeof value === "string" && value.length > 0) found.push({ key, value });
 	}
 	if (found.length === 2 && found[0]!.value !== found[1]!.value)
 		return { field: { basis: "unavailable", reason: RUNTIME_SESSION_CONFLICT }, keys: [], conflict: true };
 	const first = found[0];
+	// The reference is the runtime's own opaque string: it is presented only in a form Endophasia itself writes or a
+	// plain identifier shape (ADMITTED_RUNTIME_SESSION), never on the strength of a content filter.
+	if (first !== undefined && !ADMITTED_RUNTIME_SESSION.some((shape) => shape.test(first.value)))
+		return { field: withheldField(), keys: [], conflict: false };
 	return {
 		field: first && { basis: "reported", value: first.value },
 		keys: found.map((item) => item.key),
 		conflict: false,
 	};
+}
+
+const USAGE_KEYS: readonly string[] = [
+	"input",
+	"output",
+	"cacheRead",
+	"cacheWrite",
+	"totalTokens",
+	"costTotal",
+	"reasoning",
+];
+
+/** The usage object is presented whole only when every key it carries is one the contract presents, as a finite number. */
+function usageIsWhole(payload: Record<string, unknown>): boolean {
+	const usage = own(payload, "usage");
+	return (
+		isRecord(usage) &&
+		readUsage(usage) !== undefined &&
+		Object.entries(usage).every(([key, value]) => USAGE_KEYS.includes(key) && finite(value) !== undefined)
+	);
 }
 
 function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
@@ -497,6 +538,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		if (session.field !== undefined) fields.runtimeSessionId = session.field;
 		for (const key of session.keys) presentedWhole.add(key);
 	}
+	if (event.kind === "message.completed" && usageIsWhole(payload)) presentedWhole.add("usage");
 	const keys = isRecord(event.payload) ? Object.keys(event.payload) : [];
 	return {
 		storageSequence,
@@ -504,10 +546,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		kind: event.kind,
 		category: categoryOf(event.kind),
 		source: event.source,
-		producer:
-			event.producer.length > ENDO_COCKPIT_MAX_PRODUCER_V0
-				? event.producer.slice(0, ENDO_COCKPIT_MAX_PRODUCER_V0)
-				: event.producer,
+		producer: ADMITTED_PRODUCER.test(event.producer) ? event.producer : ENDO_COCKPIT_WITHHELD_TEXT_V0,
 		producerSequence: event.sequence,
 		recordedAt: event.at,
 		sessionId: event.coordinates.sessionId ?? null,

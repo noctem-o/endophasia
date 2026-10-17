@@ -5,6 +5,7 @@ import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { cockpitAliasesV0 } from "../cockpit/projections/common.ts";
 import {
+	type EndoCockpitRefV0,
 	type EndoCockpitSessionTimelineV0,
 	validateEndoCockpitCapabilityStateV0,
 	validateEndoCockpitRuntimeIdentityV0,
@@ -80,6 +81,7 @@ function registryInput(records: ReturnType<typeof specimenRecords>, keyId = TEST
 	};
 }
 
+type RegistryRef = Extract<EndoCockpitRefV0, { domain: "harness-registry" }>;
 const mutated = <T>(value: T, edit: (copy: any) => void): T => {
 	const copy = structuredClone(value);
 	edit(copy);
@@ -316,9 +318,10 @@ describe("usage that is not presented is withheld (P2)", () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe("record ids are unique across kinds (P2)", () => {
-	function withEvidenceId(id: string) {
+	/** The specimen with the evidence record at `at` (default: the first) carrying `id`. */
+	function withEvidenceId(id: string, at = 0) {
 		const records = specimenRecords();
-		const evidence = records.evidence.map((item, index, all) => (index === all.length - 1 ? { ...item, id } : item));
+		const evidence = records.evidence.map((item, index) => (index === at ? { ...item, id } : item));
 		// The state cites evidence by id: keep its citations pointing at the originals.
 		return { ...records, evidence };
 	}
@@ -334,17 +337,31 @@ describe("record ids are unique across kinds (P2)", () => {
 				domain: "harness-registry",
 				attachment: "pi.default",
 				kind: "evidence",
-				index: records.evidence.length - 1,
+				index: 0,
 				id: publicIdV0(records.fingerprint[0]!.id),
 			},
 		]);
-		// The watermark's last evidence id IS the discarded repeat. The projector cannot know append order across kinds, so it
-		// does not certify the registry clean: it keeps the first record in kind order and says what it set aside.
-		expect(projected.source.watermark!.lastIds.evidence).toBe(publicIdV0(records.fingerprint[0]!.id));
+		// The projector cannot know append order across kinds, so it keeps the first record in kind order and says what it
+		// set aside; the source's watermark stays coherent because the repeat is not the last record of its kind.
 		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
 	});
 
-	it("the same collision is judged the same way by the projection that does not present the later kind", () => {
+	it("refuses, as a violated precondition, a source whose watermark ends two kinds at one id", () => {
+		const records = specimenRecords();
+		const last = records.evidence.length - 1;
+		expect(last).toBeGreaterThan(0);
+		// The repeat is the LAST evidence record, so the watermark itself names one id as the last of two kinds. That source
+		// cannot have come from a registry (ids are unique across kinds), and no replacement id or position is invented for it.
+		const reused = withEvidenceId(records.fingerprint[0]!.id, last);
+		expect(() => projectEndoCockpitCapabilityStateV0(registryInput(reused as never) as never, TEST_KEY)).toThrow(
+			TypeError,
+		);
+		expect(() => projectEndoCockpitRuntimeIdentityV0(registryInput(reused as never) as never, TEST_KEY)).toThrow(
+			TypeError,
+		);
+	});
+
+	it("the same collision is judged by the projection that does not present the later kind", () => {
 		const records = specimenRecords();
 		const reused = withEvidenceId(records.fingerprint[0]!.id);
 		const identity = projectEndoCockpitRuntimeIdentityV0(registryInput(reused as never) as never, TEST_KEY);
@@ -354,9 +371,8 @@ describe("record ids are unique across kinds (P2)", () => {
 
 	it("keeps the first record in kind order across kinds a projection does not present", () => {
 		const records = specimenRecords();
-		// A change reusing the id of the last evidence record: the change (earlier kind) wins, the evidence record is the repeat.
-		const lastEvidence = records.evidence.at(-1)!;
-		const change = changeRecord({ id: lastEvidence.id });
+		// A change reusing the id of the first evidence record: the change (earlier kind) wins, the evidence record is the repeat.
+		const change = changeRecord({ id: records.evidence[0]!.id });
 		const combined = { ...records, change: [change] };
 		const capabilities = projectEndoCockpitCapabilityStateV0(registryInput(combined as never) as never, TEST_KEY);
 		expect(capabilities.notes.map((note) => note.code)).toEqual(["duplicate-record-id"]);
@@ -490,5 +506,202 @@ describe("a foreign or repeated record note names exactly that record (P2)", () 
 		);
 		expect(absent.notes).toEqual([{ code: "source-not-projectable", refs: [] }]);
 		expect(validateEndoCockpitCapabilityStateV0(absent)).not.toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review round 12: relationships between public values that describe one fact
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("withheldFields is at least what the presented fields prove (P2)", () => {
+	const entryOf = (kind: string, payload: Record<string, unknown>) => timelineOf([event(kind, payload)]);
+	const withCount = (timeline: EndoCockpitSessionTimelineV0, count: number) =>
+		mutated(timeline, (t) => {
+			t.entries[0].withheldFields = count;
+		});
+	const valid = (timeline: EndoCockpitSessionTimelineV0) => validateEndoCockpitSessionTimelineV0(timeline) !== null;
+
+	it("two fields from different nested parents prove two withheld keys", () => {
+		const t = entryOf("session.entry-observed", {
+			entryType: "message",
+			source: { entryId: "entry-1" },
+			details: { role: "user" },
+		});
+		expect(t.entries[0]!.fields.entryId).toMatchObject({ value: "entry-1" });
+		expect(t.entries[0]!.fields.role).toMatchObject({ value: "user" });
+		expect(t.entries[0]!.withheldFields).toBe(2);
+		expect(valid(withCount(t, 0))).toBe(false);
+		expect(valid(withCount(t, 1))).toBe(false);
+		expect(valid(withCount(t, 2))).toBe(true);
+		expect(valid(withCount(t, 7))).toBe(true);
+	});
+
+	it("nested fields sharing one parent prove one key, not one per field", () => {
+		const t = entryOf("session.entry-observed", {
+			entryType: "message",
+			details: { role: "assistant", stopReason: "stop" },
+		});
+		expect(t.entries[0]!.withheldFields).toBe(1);
+		expect(valid(withCount(t, 0))).toBe(false);
+		expect(valid(withCount(t, 1))).toBe(true);
+	});
+
+	it("a value the boundary replaced proves its whole key was left out", () => {
+		const t = entryOf("harness.attached", {
+			instance: "sk-aaaaaaaaaaaaaaaaaaaaaaaa",
+			fingerprintId: "endo.evidence.x.1",
+		});
+		expect(t.entries[0]!.fields.instance).toMatchObject({ basis: "unavailable" });
+		expect(valid(withCount(t, 0))).toBe(false);
+		expect(valid(withCount(t, t.entries[0]!.withheldFields))).toBe(true);
+	});
+
+	it("a runtime-reported gap is presented whole and proves nothing; neither does missing or presented usage", () => {
+		const gap = entryOf("lifecycle.turn-completed", {
+			turn: 1,
+			stopReason: { status: "UNAVAILABLE", reason: "not reported" },
+		});
+		expect(gap.entries[0]!.fields.stopReason).toEqual({ basis: "unavailable", reason: "not reported" });
+		expect(valid(withCount(gap, 0))).toBe(true);
+		const usage = { input: 3, output: 4, cacheRead: 0, cacheWrite: 0, totalTokens: 7 };
+		for (const payload of [
+			{ role: "user" },
+			{ role: "assistant" },
+			{ role: "assistant", usage },
+			{ role: "user", usage },
+		])
+			expect(valid(withCount(entryOf("message.completed", payload), 0)), JSON.stringify(payload)).toBe(true);
+	});
+});
+
+describe("a registry watermark ends no two kinds at one id (P2)", () => {
+	const records = {
+		...specimenRecords(),
+		fingerprint: [fingerprintAt(VICTIM_PATH), fingerprintAt("/opt/pi")],
+		change: [changeRecord()],
+		notification: [notificationRecord()],
+	};
+	const identity = projectEndoCockpitRuntimeIdentityV0(registryInput(records as never) as never, TEST_KEY);
+	const capabilities = projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY);
+
+	it("accepts the unique watermark, and null last ids repeat freely (empty kinds, the state kind)", () => {
+		const lasts = Object.values(identity.source.watermark!.lastIds).filter((id) => id !== null);
+		expect(new Set(lasts).size).toBe(lasts.length);
+		expect(Object.values(identity.source.watermark!.lastIds).filter((id) => id === null).length).toBeGreaterThan(0);
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+	});
+
+	it("accepts several empty kinds and an absent registry (their null last ids repeat)", () => {
+		const empty = registryInput({ fingerprint: [], change: [], evidence: [], state: [], notification: [] } as never);
+		const nulls = Object.values(empty.source.watermark.lastIds).filter((id) => id === null);
+		expect(nulls.length).toBe(5);
+		const absent = projectEndoCockpitRuntimeIdentityV0(
+			{
+				source: {
+					...empty.source,
+					condition: { ...CLEAN, state: "absent" },
+					watermark: { ...empty.source.watermark, contentDigest: sha256HexV0(canonicalEndoJsonV0({})) },
+				},
+				records: null,
+			} as never,
+			TEST_KEY,
+		);
+		expect(validateEndoCockpitRuntimeIdentityV0(absent)).not.toBeNull();
+		const emptied = projectEndoCockpitRuntimeIdentityV0(
+			{ ...empty, source: { ...empty.source, condition: { ...CLEAN, state: "empty" } } } as never,
+			TEST_KEY,
+		);
+		expect(validateEndoCockpitRuntimeIdentityV0(emptied)).not.toBeNull();
+	});
+
+	it("rejects one id as the last of two kinds, in either projection", () => {
+		const forgedIdentity = mutated(identity, (i) => {
+			i.source.watermark.lastIds.evidence = i.source.watermark.lastIds.fingerprint;
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(forgedIdentity)).toBeNull();
+		const forgedCapabilities = mutated(capabilities, (c) => {
+			c.source.watermark.lastIds.notification = c.source.watermark.lastIds.change;
+		});
+		expect(validateEndoCockpitCapabilityStateV0(forgedCapabilities)).toBeNull();
+	});
+});
+
+describe("a record a cleaning note discards is not also a view (P2)", () => {
+	const records = {
+		...specimenRecords(),
+		fingerprint: [fingerprintAt(VICTIM_PATH), fingerprintAt("/opt/pi")],
+		change: [changeRecord()],
+		notification: [notificationRecord()],
+	};
+	const identity = projectEndoCockpitRuntimeIdentityV0(registryInput(records as never) as never, TEST_KEY);
+	const capabilities = projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY);
+	const withNote = <T>(value: T, code: string, ref: unknown) =>
+		mutated(value, (v) => {
+			v.notes.push({ code, refs: [structuredClone(ref)] });
+		});
+
+	const views: [string, () => unknown][] = [
+		["current", () => identity.current!.ref],
+		["previousDifferent", () => identity.previousDifferent!.ref],
+		["lastChange", () => identity.lastChange!.ref],
+		["lastNotification", () => identity.lastNotification!.ref],
+	];
+	for (const code of ["foreign-attachment-record", "duplicate-record-id"]) {
+		for (const [name, ref] of views)
+			it(`${code} naming the presented ${name} is refused`, () => {
+				expect(identity[name as "current"]).not.toBeNull();
+				expect(validateEndoCockpitRuntimeIdentityV0(withNote(identity, code, ref()))).toBeNull();
+			});
+		it(`${code} naming the cited evidence is refused`, () => {
+			const cited = capabilities.capabilities.find((view) => view.evidence !== null)!;
+			expect(validateEndoCockpitCapabilityStateV0(withNote(capabilities, code, cited.evidence!.ref))).toBeNull();
+		});
+	}
+
+	it("foreign-attachment-record naming the presented state is refused", () => {
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				withNote(capabilities, "foreign-attachment-record", capabilities.state!.ref),
+			),
+		).toBeNull();
+	});
+
+	it("accepts the same code about an omitted record of the same kind (another index), and unrelated notes", () => {
+		// Two changes: the later is presented; the earlier (index 0) is the one the note discards.
+		const lone = projectEndoCockpitRuntimeIdentityV0(
+			registryInput({ ...specimenRecords(), change: [changeRecord()] } as never) as never,
+			TEST_KEY,
+		);
+		const two = mutated(lone, (i) => {
+			i.source.watermark.counts.change = 2;
+			i.lastChange.ref.index = 1;
+		});
+		const omitted = {
+			...(lone.lastChange!.ref as RegistryRef),
+			index: 0,
+			id: `endo.evidence.withheld-${"0".repeat(32)}`,
+		};
+		expect(validateEndoCockpitRuntimeIdentityV0(two)).not.toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(withNote(two, "duplicate-record-id", omitted))).not.toBeNull();
+		// An equal id at another index is not the presented record: the comparison is by the complete reference.
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				withNote(two, "duplicate-record-id", { ...omitted, id: (lone.lastChange!.ref as RegistryRef).id }),
+			),
+		).not.toBeNull();
+		// The same id at the presented index is the presented record itself.
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				withNote(two, "duplicate-record-id", {
+					...omitted,
+					index: 1,
+					id: (lone.lastChange!.ref as RegistryRef).id,
+				}),
+			),
+		).toBeNull();
+		// A note that is not a cleaning note may cite a presented record.
+		const stale = withNote(identity, "latest-change-not-for-latest-fingerprint", identity.current!.ref);
+		expect(stale.notes.at(-1)?.code).toBe("latest-change-not-for-latest-fingerprint");
 	});
 });

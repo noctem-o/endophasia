@@ -161,6 +161,18 @@ would read as changed, which is the safe direction. Also tightened in `.3`: ids 
 a timeline window's first consumed position is always presented, a `foreign-attachment-record` or `duplicate-record-id` note
 names exactly one record, and `usage` on an ineligible message counts as withheld.
 
+Three more relationships between public values are decided by the wire (no output changes, so no version change):
+`withheldFields` is at least what the presented fields prove was left out (a field read from a nested payload path, or a
+value replaced by the withheld text, leaves its top-level key unpresented; distinct keys only; it is a lower bound, since an
+absent `usage` or a payload key the entry never mentions proves nothing); a registry watermark names no id as the last of
+two kinds (ids are unique across kinds, and keyed presentation keeps equal ids equal); and a `foreign-attachment-record` or
+`duplicate-record-id` note never names, by its complete reference, a record the same projection presents as a view (the
+current fingerprint, previous different fingerprint, last change, last notice, the state, or a cited evidence record). The
+wire does not decide whether a discarded record was really foreign or repeated; that needs the records. A direct projector
+given records whose watermark repeats one id as the last of two kinds (a source no registry can produce) throws a
+`TypeError` rather than return a projection its own validator refuses; no replacement id is invented. A repeat that is not
+the last record of its kind still yields the note.
+
 Two facts the wire alone decides are enforced by the validators. `sealedAt` is the first frame that failed verification,
 so it is exactly the one after the verified prefix: `watermark.length + 1` for an event log, the sum of the registry
 counts `+ 1` for a registry (a torn tail is a different condition and carries no position). A registry with no records

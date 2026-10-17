@@ -61,6 +61,7 @@ import {
 	endoCockpitTextUnsafeV0,
 	endoCockpitUnavailableAdmittedV0,
 	endoCockpitUnreadableRuntimeReasonV0,
+	endoCockpitWithheldLowerBoundV0,
 	isEndoCockpitPublicIdV0,
 } from "./cockpit-fields.ts";
 
@@ -743,6 +744,10 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 	if (!isPlain(mark.counts) || !exactKeys(mark.counts, ENDO_COCKPIT_REGISTRY_KINDS_V0)) return false;
 	if (!isPlain(mark.lastIds) || !exactKeys(mark.lastIds, ENDO_COCKPIT_REGISTRY_KINDS_V0)) return false;
 	let total = 0;
+	// Ids are unique across all kinds of a registry, and keyed presentation keeps equal ids equal: no two kinds end at one id.
+	const lastIds = mark.lastIds as Record<EndoCockpitRegistryKindV0, string | null>;
+	const lasts = ENDO_COCKPIT_REGISTRY_KINDS_V0.map((kind) => lastIds[kind]).filter((id) => id !== null);
+	if (new Set(lasts).size !== lasts.length) return false;
 	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
 		const count = mark.counts[kind];
 		const lastId = mark.lastIds[kind];
@@ -1136,6 +1141,12 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	if (!isCount(value.withheldFields)) return false;
 	// What an entry may show is the presentation policy's (protocol/cockpit-fields.ts), the same one the projection applies.
 	if (!entryFollowsPolicy(value as unknown as EndoCockpitTimelineEntryV0)) return false;
+	// The counter is at least what the presented fields prove was left out (a nested path withholds its top-level key).
+	const provenWithheld = endoCockpitWithheldLowerBoundV0(
+		value.kind,
+		value.fields as Record<string, { basis: string; reason?: unknown }>,
+	);
+	if (value.withheldFields < provenWithheld) return false;
 	const usage = value.usage;
 	if (usage === null) return true;
 	if (!isPlain(usage)) return false;
@@ -1435,8 +1446,26 @@ function capabilityNotesAreTrue(projection: EndoCockpitCapabilityStateV0): boole
 	return true;
 }
 
+/** Whether a foreign/duplicate note names, by its complete reference, a record that is also presented as a view. */
+function discardsPresented(notes: EndoCockpitNoteV0[], presented: readonly (EndoCockpitRefV0 | null)[]): boolean {
+	return notes.some(
+		(note) =>
+			FOREIGN_OR_DUPLICATE.includes(note.code) &&
+			note.refs.some((ref) => presented.some((view) => view !== null && sameRef(view, ref))),
+	);
+}
+
 function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
 	if (!projectableAgrees(identity.source, identity.notes)) return false;
+	if (
+		discardsPresented(identity.notes, [
+			identity.current?.ref ?? null,
+			identity.previousDifferent?.ref ?? null,
+			identity.lastChange?.ref ?? null,
+			identity.lastNotification?.ref ?? null,
+		])
+	)
+		return false;
 	if (!identityNotesAreTrue(identity)) return false;
 	// `current`, the last change and the last notice are the records the watermark ends at.
 	if (!isLatest("fingerprint", identity.current, ctx, identity.notes)) return false;
@@ -1657,6 +1686,13 @@ function limitsAreSound(
 
 function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: RefContext): boolean {
 	if (!projectableAgrees(projection.source, projection.notes)) return false;
+	if (
+		discardsPresented(projection.notes, [
+			projection.state?.ref ?? null,
+			...projection.capabilities.map((view) => view.evidence?.ref ?? null),
+		])
+	)
+		return false;
 	if (!isProjectable(projection.source) && (projection.state !== null || projection.capabilities.length > 0))
 		return false;
 	if (!capabilityNotesAreTrue(projection)) return false;

@@ -546,3 +546,29 @@ export const ENDO_COCKPIT_CHECK_COST_V0: Readonly<Record<string, number>> = free
 	"local-protocol": 1,
 	"live-study": 2,
 });
+
+/**
+ * The fewest top-level payload keys an entry of this kind can have left unpresented, as the presented fields prove it:
+ * a field read from a nested path leaves the rest of its top-level key withheld, and a value the boundary replaced
+ * (the fixed withheld text) leaves its whole key withheld. A key another field presents whole is not counted. Distinct
+ * keys only. A bound, not a count: an absent usage, a conflicting runtime session reference or a declared gap prove
+ * nothing here, and the payload's other keys cannot be seen from the entry.
+ */
+export function endoCockpitWithheldLowerBoundV0(
+	kind: string,
+	fields: Readonly<Record<string, { basis: string; reason?: unknown }>>,
+): number {
+	if (!Object.hasOwn(ENDO_COCKPIT_FIELD_SPECS_V0, kind)) return 0;
+	const withheld = new Set<string>();
+	const whole = new Set<string>();
+	for (const spec of ENDO_COCKPIT_FIELD_SPECS_V0[kind]!) {
+		const field = Object.hasOwn(fields, spec[0]) ? fields[spec[0]]! : undefined;
+		if (field === undefined) continue;
+		const top = spec[1].split(".")[0]!;
+		const replaced = field.basis === "unavailable" && field.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0;
+		if (spec[1].includes(".") || replaced) withheld.add(top);
+		else whole.add(top);
+	}
+	for (const key of whole) withheld.delete(key);
+	return withheld.size;
+}

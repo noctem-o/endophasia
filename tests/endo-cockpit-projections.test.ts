@@ -1260,16 +1260,25 @@ describe("contextual reference validation (PR #57 review: wire validation is not
 			index: 0,
 			id,
 		});
-		const withNote = mutated(identity, (c) =>
-			c.notes.push({ code: "duplicate-record-id", refs: [refTo("change", identity.lastChange!.id)] }),
-		);
+		// Two changes are recorded, the later one presented; the note names the earlier, which no view embeds.
+		const withNote = mutated(identity, (c) => {
+			c.source.watermark.counts.change = 2;
+			c.lastChange.ref.index = 1;
+			c.notes.push({ code: "duplicate-record-id", refs: [refTo("change", "endo.evidence.test-change.0")] });
+		});
 		expect(validateEndoCockpitRuntimeIdentityV0(withNote)).not.toBeNull();
-		const evidenceNote = mutated(capabilities, (c) =>
-			c.notes.push({
-				code: "duplicate-record-id",
-				refs: [refTo("evidence", capabilities.capabilities.find((v) => v.evidence)!.evidence!.id)],
-			}),
+		const presentedEvidence = new Set(
+			capabilities.capabilities.map((v) => (v.evidence?.ref as { index: number } | undefined)?.index),
 		);
+		const free = Array.from({ length: capabilities.source.watermark!.counts.evidence }, (_, i) => i).find(
+			(i) => !presentedEvidence.has(i),
+		);
+		expect(free).toBeDefined();
+		const evidenceNote = mutated(capabilities, (c) => {
+			const ref = refTo("evidence", "endo.evidence.test-evidence.0");
+			ref.index = free!;
+			c.notes.push({ code: "duplicate-record-id", refs: [ref] });
+		});
 		expect(validateEndoCockpitCapabilityStateV0(evidenceNote)).not.toBeNull();
 		// Wire validation only: with several records of a kind, an id inside the watermark's range cannot be checked
 		// against the log without reading it, so a plausible reference is accepted. Disk verification is the reader's job.
@@ -3511,7 +3520,13 @@ describe("seventh review round (PR #57)", () => {
 		// A derived or observed string may only be withheld by the boundary, never given a reason of the record's choosing.
 		rejects(forge(3, "previousEnd", "not observed"), "derived string");
 		rejects(forge(3, "instance", "not observed"), "observed string");
-		accepts(forge(3, "instance", WITHHELD));
+		// A replaced value proves its payload key was left out, so the counter must say so.
+		rejects(forge(3, "instance", WITHHELD), "withheld instance with a zero counter");
+		accepts(
+			mutated(forge(3, "instance", WITHHELD), (c) => {
+				c.entries[3].withheldFields += 1;
+			}),
+		);
 		// A reported field's reason is judged like any text.
 		rejects(forge(1, "stopReason", "see https://example.com/a?token=abcdef0123456789"), "unsafe reason");
 		rejects(forge(1, "stopReason", ""), "empty reason");

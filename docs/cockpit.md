@@ -168,7 +168,7 @@ capability whose state names the latest fingerprint, citing evidence recorded ag
 identity, carries `evidence-reduced-identity`. The 256-character rule is unchanged: the Pi specimen's 283-character
 reason stays withheld (its limitations are recorded separately in evidence).
 
-`checkEndoCockpitSourceFreshnessV0(root, heldSource)` tells a consumer, per source, `unchanged`, `advanced` (event log:
+`checkEndoCockpitSourceFreshnessV0(root, heldSource, digestKey)` tells a consumer, per source, `unchanged`, `advanced` (event log:
 more events and the events it held are still the first ones, by complete contents and order, so page on from
 `afterSequence = old length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten, repaired with different
 events, or shorter: discard and take a fresh snapshot), or `unavailable` (the source cannot be opened now, or the held source had no position, such as an earlier `unopenable` read: take a fresh read as the new baseline). The event log is opened once per check, so the
@@ -244,7 +244,31 @@ is approved, and never widening the allowlists of the default projections.
 (`reduceEndoSessionOverviewV0`) is not applied: it needs the whole log, not a window. Usage is shown per event where
 recorded and is not summed (the same call can be recorded by more than one event). The cognition graph is not read.
 
-**For the next stage (local HTTP).** A server needs only `cockpit/index.ts`: `readEndoCockpitSnapshotV0`,
-`readEndoCockpitTimelineV0(root, { afterSequence, limit })`, `readEndoCockpitRuntimeV0(root, attachment)`,
-`checkEndoCockpitSourceFreshnessV0`, and `readEndoCockpitRecordV0` to validate what it forwards. Bodies are the contracts
-unchanged; pagination is the timeline `window`.
+**For the next stage (local HTTP).** A server needs only `cockpit/index.ts` and one digest key that the host loads from
+an existing key (never created, defaulted or persisted by the bridge) and passes explicitly to every call:
+
+```ts
+import {
+  checkEndoCockpitSourceFreshnessV0,
+  type EndoDigestKeyV0,
+  readEndoCockpitRecordV0,
+  readEndoCockpitRuntimeV0,
+  readEndoCockpitSnapshotV0,
+  readEndoCockpitTimelineV0,
+} from "./cockpit/index.ts";
+
+declare const digestKey: EndoDigestKeyV0; // host-managed, private; a public fixture key is for synthetic data only
+
+const timeline = readEndoCockpitTimelineV0(root, { afterSequence, limit, digestKey });
+const runtime = readEndoCockpitRuntimeV0(root, attachment, digestKey);
+const snapshot = readEndoCockpitSnapshotV0(root, { limit, attachments, digestKey });
+const verdict = checkEndoCockpitSourceFreshnessV0(root, heldSource, digestKey); // may be "digest-context-differs"
+const record = readEndoCockpitRecordV0(body); // validates what the server forwards
+```
+
+Bodies are the contracts unchanged; pagination is the timeline `window`. A server validates a client's `afterSequence` and
+`limit` itself against the exported bounds (`ENDO_COCKPIT_PAGE_MAX_LIMIT_V0`), so any `TypeError` from the bridge is a host
+or internal defect, not a client error: a read without a usable key throws one before touching the disk, a projection
+under another key than its source's throws one, and the projectors throw one for input that breaks their contract or
+results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` with another key, or none, answers
+`digest-context-differs` for a source that holds a position instead of throwing.

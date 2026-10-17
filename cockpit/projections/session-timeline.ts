@@ -31,6 +31,7 @@ import {
 	type EndoCockpitTimelineEntryV0,
 	type EndoCockpitUsageV0,
 	endoCockpitCategoryOfV0,
+	validateEndoCockpitSessionTimelineV0,
 } from "../../protocol/cockpit.ts";
 import {
 	ENDO_COCKPIT_ANOMALY_KINDS_V0,
@@ -407,8 +408,10 @@ function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0):
  * The timeline projection of one window of the event log. Throws a TypeError when the input breaks its own contract: a
  * storage sequence that is not the previous position plus one, beginning at `afterSequence + 1`: every consumed position
  * is an event of the window or a duplicate it ignored, so the result accounts for them all. (A store reads contiguously.)
+ * Every supplied position must also lie within the source's declared length, and a source with no watermark supplies no
+ * events. The input is trusted for nothing else: the projector reads no file and verifies no source.
  */
-export function projectEndoCockpitSessionTimelineV0(
+function projectEndoCockpitSessionTimelineUncheckedV0(
 	input: EndoCockpitTimelineInputV0,
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitSessionTimelineV0 {
@@ -427,6 +430,15 @@ export function projectEndoCockpitSessionTimelineV0(
 	for (const stored of events) {
 		if (!Number.isSafeInteger(stored.storageSequence) || stored.storageSequence !== previous + 1)
 			throw new TypeError("storage sequences must be contiguous, beginning right after the window's afterSequence");
+		// No event lies beyond the source's declared position, and a source with none (unopenable) supplies no events.
+		if (source.watermark === null || stored.storageSequence > source.watermark.length)
+			throw new TypeError("an event lies beyond the source's declared length");
+		// The event at the source's last position is the one its watermark names (a duplicate's id is already in the window).
+		if (
+			stored.storageSequence === source.watermark.length &&
+			alias.id(stored.event.id) !== source.watermark.lastEventId
+		)
+			throw new TypeError("the event at the source's last position is not the one its watermark names");
 		previous = stored.storageSequence;
 		if (seen.has(stored.event.id)) {
 			duplicatesIgnored += 1;
@@ -467,4 +479,18 @@ export function projectEndoCockpitSessionTimelineV0(
 		duplicatesIgnored,
 		notes,
 	};
+}
+
+/**
+ * The timeline projection of one window of the event log. Throws a TypeError when the input breaks its own contract (see
+ * above) or when the result would not satisfy the timeline contract, so a value that fails its validator is never returned.
+ */
+export function projectEndoCockpitSessionTimelineV0(
+	input: EndoCockpitTimelineInputV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitSessionTimelineV0 {
+	const result = projectEndoCockpitSessionTimelineUncheckedV0(input, digestKey);
+	if (validateEndoCockpitSessionTimelineV0(result) === null)
+		throw new TypeError("the events do not agree with the source they were read from");
+	return result;
 }

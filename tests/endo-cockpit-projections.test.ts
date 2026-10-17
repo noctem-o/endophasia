@@ -3614,8 +3614,19 @@ describe("seventh review round (PR #57)", () => {
 			Array.from({ length: count }, (_, index) => event("tool.started", {}, { id: `endo.event.page.${index}` }));
 		accepts(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0), 7));
 		accepts(timeline(many(1), 7));
-		rejects(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1), 7), "one over, with an offset");
-		rejects(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1)), "one over");
+		// The projector refuses to return an over-long page; a serialized one (forged here with a counted duplicate so that
+		// only the maximum is violated) is rejected by the validator.
+		expect(() => timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1), 7), "one over, with an offset").toThrow(
+			TypeError,
+		);
+		expect(() => timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1))).toThrow(TypeError);
+		rejects(
+			mutated(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0), 7), (c) => {
+				c.window.afterSequence -= 1;
+				c.duplicatesIgnored = 1;
+			}),
+			"serialized one over",
+		);
 		// An empty window, a cursor past the end, and a window far from the start stay valid.
 		accepts(timeline([]));
 		accepts(projectEndoCockpitSessionTimelineV0({ source: logSource(0, null), afterSequence: 500, events: [] }));
@@ -4090,5 +4101,82 @@ describe("eighth review round (PR #57)", () => {
 		);
 		expect(foreignCapabilities.notes.map((n) => n.code)).toContain("foreign-attachment-record");
 		expect(validateEndoCockpitCapabilityStateV0(foreignCapabilities)).not.toBeNull();
+	});
+
+	// ---- projector input against the source's declared length -------------------------------------------------------
+
+	it("P5 (watermark): the projector accepts no event beyond the source's declared length", () => {
+		const ev = (n: number, id = `endo.event.mark.${n}`) => ({
+			storageSequence: n,
+			event: event("tool.started", {}, { id }),
+		});
+		const run = (length: number | null, afterSequence: number, events: ReturnType<typeof ev>[], lastId?: string) =>
+			projectEndoCockpitSessionTimelineV0({
+				source:
+					length === null
+						? {
+								domain: "event-log",
+								condition: {
+									state: "unopenable",
+									tornTail: null,
+									sealedAt: null,
+									error: { kind: "invalid-store", message: "the store could not be opened" },
+								},
+								watermark: null,
+							}
+						: logSource(length, length === 0 ? null : (lastId ?? `endo.event.mark.${length}`)),
+				afterSequence,
+				events,
+			});
+		// Overruns: an empty source with an event, a null watermark with an event, one past the length, an offset window.
+		expect(() => run(0, 0, [ev(1)]), "empty source").toThrow(TypeError);
+		expect(() => run(null, 0, [ev(1)]), "null watermark").toThrow(TypeError);
+		expect(() => run(3, 0, [ev(1), ev(2), ev(3), ev(4)]), "one past the length").toThrow(TypeError);
+		expect(() => run(4, 2, [ev(3), ev(4), ev(5)]), "offset overrun").toThrow(TypeError);
+		// Exact boundaries and contiguous windows are valid and satisfy the validator.
+		for (const [length, after, events] of [
+			[3, 0, [ev(1), ev(2), ev(3)]],
+			[4, 2, [ev(3), ev(4)]],
+			[3, 2, [ev(3)]],
+		] as const) {
+			const out = run(length, after, [...events]);
+			expect(out.entries).toHaveLength(events.length);
+			accepts(out);
+		}
+		// Empty pages: an empty log, an unopenable source, and a cursor past the end.
+		accepts(run(0, 0, []));
+		accepts(run(null, 0, []));
+		const past = run(3, 10, []);
+		expect(past.window).toEqual({ afterSequence: 10, nextAfterSequence: 10, hasMore: false });
+		accepts(past);
+		// A duplicate at the boundary still consumes its position and is counted.
+		const dup = run(3, 0, [ev(1, "endo.event.mark.9"), ev(2), ev(3, "endo.event.mark.9")], "endo.event.mark.9");
+		expect(dup.duplicatesIgnored).toBe(1);
+		accepts(dup);
+	});
+
+	it("P5 (terminal): the event at the source's last position is the one its watermark names", () => {
+		const ev = (n: number, id: string) => ({ storageSequence: n, event: event("tool.started", {}, { id }) });
+		const run = (last: string, events: ReturnType<typeof ev>[]) =>
+			projectEndoCockpitSessionTimelineV0({ source: logSource(3, last), afterSequence: 0, events });
+		const three = [ev(1, "endo.event.t.1"), ev(2, "endo.event.t.2"), ev(3, "endo.event.t.3")];
+		accepts(run("endo.event.t.3", three));
+		expect(() => run("endo.event.t.1", three), "another id at the end").toThrow(TypeError);
+		// A window that ends before the end of the log names nothing about the last event.
+		accepts(run("endo.event.t.9", three.slice(0, 2)));
+	});
+
+	it("a registry projection whose records disagree with its source is refused, not returned", () => {
+		const records = specimenRecords();
+		const second = { ...structuredClone(records.fingerprint[0]!), id: "endo.evidence.test-fingerprint.2" };
+		const consistent = input(records);
+		expect(() => projectEndoCockpitRuntimeIdentityV0(consistent)).not.toThrow();
+		// Two fingerprints against a watermark that counts one.
+		const disagreeing = {
+			source: consistent.source,
+			records: { ...records, fingerprint: [records.fingerprint[0]!, second] },
+		};
+		expect(() => projectEndoCockpitRuntimeIdentityV0(disagreeing)).toThrow(TypeError);
+		expect(() => projectEndoCockpitCapabilityStateV0(disagreeing)).toThrow(TypeError);
 	});
 });

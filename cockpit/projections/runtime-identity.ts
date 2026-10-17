@@ -22,6 +22,7 @@ import {
 	type EndoCockpitNotificationViewV0,
 	type EndoCockpitObservationViewV0,
 	type EndoCockpitRuntimeIdentityV0,
+	validateEndoCockpitRuntimeIdentityV0,
 } from "../../protocol/cockpit.ts";
 import {
 	ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0,
@@ -143,7 +144,7 @@ function notificationView(
 }
 
 /** The runtime identity projection of one attachment. */
-export function projectEndoCockpitRuntimeIdentityV0(
+function projectEndoCockpitRuntimeIdentityV0Unchecked(
 	input: EndoCockpitRegistryInputV0,
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitRuntimeIdentityV0 {
@@ -257,4 +258,15 @@ export function projectEndoCockpitRuntimeIdentityV0(
 		lastNotification: lastNotification === null ? null : notificationView(alias, attachment, lastNotification),
 		notes,
 	};
+}
+
+/** The projection of one attachment; a result that breaks its own contract is a defect (or input inconsistent with its source), never returned. */
+export function projectEndoCockpitRuntimeIdentityV0(
+	input: EndoCockpitRegistryInputV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitRuntimeIdentityV0 {
+	const result = projectEndoCockpitRuntimeIdentityV0Unchecked(input, digestKey);
+	if (validateEndoCockpitRuntimeIdentityV0(result) === null)
+		throw new TypeError("the registry records do not agree with the source they were read from");
+	return result;
 }

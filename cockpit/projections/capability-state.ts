@@ -32,6 +32,7 @@ import {
 	type EndoCockpitEvidenceViewV0,
 	type EndoCockpitNoteV0,
 	type EndoCockpitRefV0,
+	validateEndoCockpitCapabilityStateV0,
 } from "../../protocol/cockpit.ts";
 import { ENDO_COCKPIT_CHECK_COST_V0, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0 } from "../../protocol/cockpit-fields.ts";
 import {
@@ -91,7 +92,7 @@ function evidenceView(
 }
 
 /** The capability state projection of one attachment. */
-export function projectEndoCockpitCapabilityStateV0(
+function projectEndoCockpitCapabilityStateV0Unchecked(
 	input: EndoCockpitRegistryInputV0,
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitCapabilityStateV0 {
@@ -214,4 +215,15 @@ export function projectEndoCockpitCapabilityStateV0(
 		capabilities,
 		notes,
 	};
+}
+
+/** The projection of one attachment; a result that breaks its own contract is a defect (or input inconsistent with its source), never returned. */
+export function projectEndoCockpitCapabilityStateV0(
+	input: EndoCockpitRegistryInputV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitCapabilityStateV0 {
+	const result = projectEndoCockpitCapabilityStateV0Unchecked(input, digestKey);
+	if (validateEndoCockpitCapabilityStateV0(result) === null)
+		throw new TypeError("the registry records do not agree with the source they were read from");
+	return result;
 }

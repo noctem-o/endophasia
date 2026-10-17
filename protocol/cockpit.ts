@@ -1350,21 +1350,23 @@ function validateRegistryProjection(
 const FOREIGN_OR_DUPLICATE: readonly string[] = ["foreign-attachment-record", "duplicate-record-id"];
 
 /**
- * Whether a record of this kind was set aside as foreign or repeated (a store never produces either; input that did not
- * come from one can). Then the projection's "latest" is the latest KEPT record, which the watermark does not locate, so the
- * latest-record claims below fall back to the range check.
+ * The position of the latest KEPT record of a kind, or null when none was kept: the highest position the cleaning notes
+ * (foreign or repeated records, one note per discarded record) do not name. A kind never cleaned ends at its last position.
  */
-function setAside(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKindV0): boolean {
-	return notes.some(
-		(note) =>
-			FOREIGN_OR_DUPLICATE.includes(note.code) &&
-			note.refs.some((ref) => ref.domain === "harness-registry" && ref.kind === kind),
-	);
+function latestKeptIndex(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKindV0, count: number): number | null {
+	const discarded = new Set<number>();
+	for (const note of notes)
+		if (FOREIGN_OR_DUPLICATE.includes(note.code))
+			for (const ref of note.refs)
+				if (ref.domain === "harness-registry" && ref.kind === kind) discarded.add(ref.index);
+	for (let at = count - 1; at >= 0; at -= 1) if (!discarded.has(at)) return at;
+	return null;
 }
 
 /**
- * The latest record of a kind is the one the watermark ends at: absent exactly when there are none, otherwise at the last
- * position and carrying the last id. (A capability state has no id, so its id is null.)
+ * The latest record of a kind is the latest one kept: absent exactly when none was kept, otherwise at that position. When
+ * that is the last position the watermark names, it carries the last id (a capability state has no id, so its id is null);
+ * an earlier position's id is not located by the watermark.
  */
 function isLatest(
 	kind: EndoCockpitRegistryKindV0,
@@ -1372,11 +1374,13 @@ function isLatest(
 	ctx: RefContext,
 	notes: EndoCockpitNoteV0[],
 ): boolean {
-	if (setAside(notes, kind) || ctx.counts === null || ctx.lastIds === null) return true;
+	if (ctx.counts === null || ctx.lastIds === null) return true;
 	const count = ctx.counts[kind];
-	if (view === null) return count === 0;
+	const kept = latestKeptIndex(notes, kind, count);
+	if (view === null) return kept === null;
 	const ref = view.ref;
-	return ref.domain === "harness-registry" && ref.index === count - 1 && ref.id === ctx.lastIds[kind];
+	if (ref.domain !== "harness-registry" || kept === null || ref.index !== kept) return false;
+	return kept !== count - 1 || ref.id === ctx.lastIds[kind];
 }
 
 const notesOf = (notes: EndoCockpitNoteV0[], code: EndoCockpitNoteCodeV0) => notes.filter((note) => note.code === code);
@@ -1416,6 +1420,10 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// wire decides is that it needs a notice to speak of, with exactly its reference, and cannot be the last change.
 	const missing = notesOf(notes, "notification-change-missing");
 	if (missing.length > 1) return false;
+	// With no change kept (none recorded, or every one discarded: the latest-record rule makes `lastChange` null exactly then),
+	// the notice's change cannot be among them: the note is required, not just allowed.
+	if (lastNotification !== null && identity.source.watermark !== null && lastChange === null && missing.length !== 1)
+		return false;
 	if (missing.length === 1) {
 		if (
 			lastNotification === null ||
@@ -1622,6 +1630,16 @@ function limitsAreSound(
 				: has(code as EndoCockpitLimitCodeV0) !== expected
 		)
 			return false;
+	// With no fingerprint kept (none recorded, or every one discarded: `latestFingerprintId` is null exactly then), the one the
+	// state names cannot be among them. A nonempty history may hold an older one, so that is not demanded.
+	if (
+		admitted &&
+		fingerprintId !== null &&
+		latestId === null &&
+		ctx.counts !== null &&
+		!has("state-fingerprint-not-recorded")
+	)
+		return false;
 	const possible: Partial<Record<EndoCockpitLimitCodeV0, boolean>> = {
 		"state-fingerprint-not-recorded": fingerprintId !== null && fingerprintId !== latestId,
 		"evidence-capability-differs": evidence !== null,
@@ -1698,14 +1716,18 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 	if (!capabilityNotesAreTrue(projection)) return false;
 	if (!isLatest("state", projection.state, ctx, projection.notes)) return false;
 	// The latest fingerprint the state names beside its own is the one the watermark ends at.
-	if (
-		projection.state !== null &&
-		!setAside(projection.notes, "fingerprint") &&
-		ctx.counts !== null &&
-		ctx.lastIds !== null &&
-		projection.state.latestFingerprintId !== (ctx.counts.fingerprint === 0 ? null : ctx.lastIds.fingerprint)
-	)
-		return false;
+	if (projection.state !== null && ctx.counts !== null && ctx.lastIds !== null) {
+		// The latest fingerprint the state names beside its own is the latest one kept; the watermark locates its id only when
+		// that is the last position.
+		const kept = latestKeptIndex(projection.notes, "fingerprint", ctx.counts.fingerprint);
+		const latest = projection.state.latestFingerprintId;
+		if (
+			kept === null
+				? latest !== null
+				: latest === null || (kept === ctx.counts.fingerprint - 1 && latest !== ctx.lastIds.fingerprint)
+		)
+			return false;
+	}
 	// An unverified capability cites no evidence, and none of the limits (which qualify an admitted status) apply to it.
 	if (
 		projection.capabilities.some(
@@ -1724,8 +1746,20 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 				? "current"
 				: "stale";
 	if (state.currency !== expected) return false;
+	const cited: EndoCockpitCapabilityViewV0[] = [];
 	for (const capability of projection.capabilities) {
 		if (!sameRef(capability.ref, state.ref)) return false;
+		// One evidence record is one view: capabilities citing the same record agree on everything about it. (Their `limits`
+		// are about the capability, not the record, and may differ.)
+		if (capability.evidence !== null) {
+			const same = cited.find((other) => sameRef(other.evidence!.ref, capability.evidence!.ref));
+			if (
+				same !== undefined &&
+				!(sameJson(same.evidence, capability.evidence) && sameJson(same.limitations, capability.limitations))
+			)
+				return false;
+			if (same === undefined) cited.push(capability);
+		}
 		const evidence = capability.evidence;
 		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;
 		if (evidence !== null && !sameJson(evidence.withheld, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0)) return false;

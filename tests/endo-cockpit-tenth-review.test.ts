@@ -5,6 +5,7 @@ import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import { cockpitAliasesV0 } from "../cockpit/projections/common.ts";
 import {
+	ENDO_COCKPIT_LIMIT_CODES_V0,
 	type EndoCockpitRefV0,
 	type EndoCockpitSessionTimelineV0,
 	validateEndoCockpitCapabilityStateV0,
@@ -12,6 +13,7 @@ import {
 	validateEndoCockpitSessionTimelineV0,
 } from "../protocol/cockpit.ts";
 import { isEndoCockpitContentAddressedIdV0, isEndoCockpitPublicIdV0 } from "../protocol/cockpit-fields.ts";
+import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0 } from "../protocol/evaluation.ts";
 import { endoHarnessIdentityBasisV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import {
@@ -474,7 +476,16 @@ describe("a foreign or repeated record note names exactly that record (P2)", () 
 		id,
 	});
 	const records = specimenRecords();
-	const fingerprintRef = ref("fingerprint", 0, publicIdV0(records.fingerprint[0]!.id));
+	// An evidence record the projection does not present (and not the last, whose id the watermark names).
+	const presentedEvidence = new Set(
+		projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY).capabilities.map(
+			(view) => (view.evidence?.ref as { index: number } | undefined)?.index,
+		),
+	);
+	const omittedIndex = records.evidence.findIndex(
+		(_, at) => at < records.evidence.length - 1 && !presentedEvidence.has(at),
+	);
+	const fingerprintRef = ref("evidence", omittedIndex, publicIdV0("endo.evidence.test-omitted.1"));
 
 	for (const code of ["foreign-attachment-record", "duplicate-record-id"] as const) {
 		it(`${code}: zero references are refused, one valid reference is accepted, two are refused`, () => {
@@ -703,5 +714,333 @@ describe("a record a cleaning note discards is not also a view (P2)", () => {
 		// A note that is not a cleaning note may cite a presented record.
 		const stale = withNote(identity, "latest-change-not-for-latest-fingerprint", identity.current!.ref);
 		expect(stale.notes.at(-1)?.code).toBe("latest-change-not-for-latest-fingerprint");
+	});
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review round 13: required notes and limits, the latest kept record, shared evidence
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("a notice with no change record to name requires its note (P2)", () => {
+	const project = (records: unknown) =>
+		projectEndoCockpitRuntimeIdentityV0(registryInput(records as never) as never, TEST_KEY);
+	const base = specimenRecords();
+	const zero = project({ ...base, notification: [notificationRecord()] });
+	const noteOf = (identity: typeof zero) => identity.notes.filter((n) => n.code === "notification-change-missing");
+
+	it("accepts the projector's output for zero changes, and rejects its note being removed, mis-referenced or repeated", () => {
+		expect(noteOf(zero)).toHaveLength(1);
+		expect(validateEndoCockpitRuntimeIdentityV0(zero)).not.toBeNull();
+		const without = mutated(zero, (i) => {
+			i.notes = i.notes.filter((n: { code: string }) => n.code !== "notification-change-missing");
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(without)).toBeNull();
+		const wrongRef = mutated(zero, (i) => {
+			i.notes.find((n: { code: string }) => n.code === "notification-change-missing").refs[0].index = 5;
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(wrongRef)).toBeNull();
+		const twice = mutated(zero, (i) => {
+			i.notes.push(structuredClone(i.notes.find((n: { code: string }) => n.code === "notification-change-missing")));
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(twice)).toBeNull();
+	});
+
+	it("does not require it when a notice is absent, or when changes exist (their list is not embedded)", () => {
+		const none = project(base);
+		expect(noteOf(none)).toHaveLength(0);
+		expect(validateEndoCockpitRuntimeIdentityV0(none)).not.toBeNull();
+		const matching = project({ ...base, change: [changeRecord()], notification: [notificationRecord()] });
+		expect(noteOf(matching)).toHaveLength(0);
+		expect(validateEndoCockpitRuntimeIdentityV0(matching)).not.toBeNull();
+		const missing = project({
+			...base,
+			change: [changeRecord()],
+			notification: [notificationRecord({ changeId: "endo.evidence.test-change.2" })],
+		});
+		expect(noteOf(missing)).toHaveLength(1);
+		expect(validateEndoCockpitRuntimeIdentityV0(missing)).not.toBeNull();
+		// With changes recorded, whether the named one is among them is not decidable from the view: no note is demanded.
+		const dropped = mutated(missing, (i) => {
+			i.notes = i.notes.filter((n: { code: string }) => n.code !== "notification-change-missing");
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(dropped)).not.toBeNull();
+	});
+});
+
+describe("a state naming a fingerprint that cannot exist requires its limit (P2)", () => {
+	const base = specimenRecords();
+	const project = (records: unknown) =>
+		projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY);
+	const limitCodes = (view: { limits: { code: string }[] }) => view.limits.map((l) => l.code);
+	const empty = project({ ...base, fingerprint: [] });
+	const admittedAt = empty.capabilities.findIndex((c) => c.status !== "unverified");
+
+	it("accepts the projector's output with no fingerprint recorded, and rejects the limit omitted or mis-referenced", () => {
+		expect(base.state[0]!.fingerprintId).not.toBeNull();
+		expect(limitCodes(empty.capabilities[admittedAt]!)).toContain("state-fingerprint-not-recorded");
+		expect(limitCodes(empty.capabilities[admittedAt]!)).toContain("state-without-fingerprint");
+		expect(validateEndoCockpitCapabilityStateV0(empty)).not.toBeNull();
+		const omitted = mutated(empty, (c) => {
+			c.capabilities[admittedAt].limits = c.capabilities[admittedAt].limits.filter(
+				(l: { code: string }) => l.code !== "state-fingerprint-not-recorded",
+			);
+		});
+		expect(validateEndoCockpitCapabilityStateV0(omitted)).toBeNull();
+		const wrongRef = mutated(empty, (c) => {
+			const limit = c.capabilities[admittedAt].limits.find(
+				(l: { code: string }) => l.code === "state-fingerprint-not-recorded",
+			);
+			limit.refs = [];
+		});
+		expect(validateEndoCockpitCapabilityStateV0(wrongRef)).toBeNull();
+	});
+
+	it("does not require it for a nonempty history (an older record may exist), for a null fingerprint, or unverified capabilities", () => {
+		const older = { ...fingerprintAt("/opt/pi") };
+		const nonEmpty = project({ ...base, fingerprint: [older] });
+		expect(limitCodes(nonEmpty.capabilities[admittedAt]!)).toContain("state-fingerprint-not-recorded");
+		const dropped = mutated(nonEmpty, (c) => {
+			c.capabilities[admittedAt].limits = c.capabilities[admittedAt].limits.filter(
+				(l: { code: string }) => l.code !== "state-fingerprint-not-recorded",
+			);
+		});
+		expect(validateEndoCockpitCapabilityStateV0(dropped)).not.toBeNull();
+		const nullNamed = project({ ...base, fingerprint: [], state: [{ ...base.state[0]!, fingerprintId: null }] });
+		expect(limitCodes(nullNamed.capabilities[admittedAt]!)).not.toContain("state-fingerprint-not-recorded");
+		expect(validateEndoCockpitCapabilityStateV0(nullNamed)).not.toBeNull();
+		for (const view of empty.capabilities.filter((c) => c.status === "unverified")) expect(view.limits).toEqual([]);
+	});
+});
+
+type Fp = ReturnType<typeof fingerprintAt>;
+describe("the latest record is the latest one kept (P2)", () => {
+	const fps = ["/a/pi", "/b/pi", "/c/pi", "/d/pi"].map(fingerprintAt);
+	const foreign = (fp: (typeof fps)[number]) => ({ ...fp, attachment: "other.attachment" });
+	const identityOf = (list: unknown[]) =>
+		projectEndoCockpitRuntimeIdentityV0(
+			registryInput({ ...specimenRecords(), fingerprint: list } as never) as never,
+			TEST_KEY,
+		);
+	const currentIndex = (i: { current: { ref: { index: number } } | null }) => i.current?.ref.index ?? null;
+	/** The identity with `current` moved to position `to`: every reference to the old current record follows it. */
+	const forgeCurrent = (identity: ReturnType<typeof identityOf>, to: number, id: string) =>
+		mutated(identity, (i) => {
+			i.current ??= structuredClone(identityOf(fps).current);
+			const before = JSON.stringify(i.current.ref);
+			const after = { ...i.current.ref, index: to, id };
+			const follow = (node: any): void => {
+				if (typeof node !== "object" || node === null) return;
+				for (const key of Object.keys(node)) {
+					if (JSON.stringify(node[key]) === before) node[key] = structuredClone(after);
+					else follow(node[key]);
+				}
+			};
+			follow(i);
+			i.current.ref = after;
+			i.current.id = id;
+			// No earlier-different observation is kept, so the order rule between the two cannot be what refuses.
+			i.previousDifferent = null;
+			i.notes = i.notes.filter((n: { code: string }) => n.code !== "no-fingerprint-recorded");
+		});
+
+	it("accepts the projector's output when the first, middle or last record is discarded, or several, or all", () => {
+		const [f0, f1, f2, f3] = fps as [Fp, Fp, Fp, Fp];
+		const cases: [string, unknown[], number | null][] = [
+			["undisturbed", fps, 3],
+			["first discarded", [foreign(f0), f1, f2, f3], 3],
+			["middle discarded", [f0, foreign(f1), f2, f3], 3],
+			["last discarded", [f0, f1, f2, foreign(f3)], 2],
+			["last two discarded", [f0, f1, foreign(f2), foreign(f3)], 1],
+			["all discarded", fps.map(foreign), null],
+		];
+		for (const [name, list, expected] of cases) {
+			const identity = identityOf(list);
+			expect(currentIndex(identity as never), name).toBe(expected);
+			expect(validateEndoCockpitRuntimeIdentityV0(identity), name).not.toBeNull();
+		}
+	});
+
+	const [f0, f1, f2, f3] = fps as [Fp, Fp, Fp, Fp];
+	const refused = (list: unknown[], to: number) =>
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(forgeCurrent(identityOf(list), to, publicIdV0(fps[to]!.id))),
+		).toBeNull();
+	// Codex's scenario: position 0 discarded, the tail kept - presenting position 1 is impossible.
+	it("refuses position 1 as current when position 0 was discarded and the tail kept", () => {
+		refused([foreign(f0), f1, f2, f3], 1);
+	});
+	it("refuses a non-latest current when a middle position was discarded", () => {
+		refused([f0, foreign(f1), f2, f3], 2);
+	});
+	it("refuses position 0, and the discarded tail, when the last was discarded", () => {
+		refused([f0, f1, f2, foreign(f3)], 0);
+		refused([f0, f1, f2, foreign(f3)], 3);
+	});
+	it("refuses position 0 when the last two were discarded (position 1 is the latest kept)", () => {
+		refused([f0, f1, foreign(f2), foreign(f3)], 0);
+	});
+	it("refuses a state's latestFingerprintId of null while a fingerprint is kept", () => {
+		const list = [f0, f1, f2, foreign(f3)];
+		const state = projectEndoCockpitCapabilityStateV0(
+			registryInput({ ...specimenRecords(), fingerprint: list } as never) as never,
+			TEST_KEY,
+		);
+		expect(validateEndoCockpitCapabilityStateV0(state)).not.toBeNull();
+		const forged = mutated(state, (c) => {
+			c.state.latestFingerprintId = null;
+			c.state.currency = "unknown";
+			c.notes.push({ code: "state-without-fingerprint", refs: [structuredClone(c.state.ref)] });
+			for (const view of c.capabilities)
+				if (view.status !== "unverified") {
+					view.limits = view.limits.filter((l: { code: string }) => l.code !== "state-not-for-latest-fingerprint");
+					view.limits.push({ code: "state-without-fingerprint", refs: [structuredClone(c.state.ref)] });
+					view.limits.sort(
+						(x: { code: string }, y: { code: string }) =>
+							ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(x.code as never) -
+							ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(y.code as never),
+					);
+				}
+		});
+		expect(validateEndoCockpitCapabilityStateV0(forged)).toBeNull();
+	});
+
+	it("refuses any current when every record was discarded", () => {
+		refused(fps.map(foreign), 0);
+	});
+	it("refuses a non-tail current in an undisturbed history", () => {
+		refused(fps, 1);
+	});
+});
+
+describe("capabilities citing one evidence record agree about it (P2)", () => {
+	const base = specimenRecords();
+	const cap = base.state[0]!.capabilities;
+	// The second admitted capability cites the first one's evidence record: legitimate, with its own limits.
+	const firstAdmitted = cap.findIndex((c) => c.evidenceId !== null);
+	const secondAdmitted = cap.findIndex((c, at) => at > firstAdmitted && c.evidenceId !== null);
+	const shared = {
+		...base,
+		state: [
+			{
+				...base.state[0]!,
+				capabilities: cap.map((c, at) =>
+					at === secondAdmitted ? { ...c, evidenceId: cap[firstAdmitted]!.evidenceId } : c,
+				),
+			},
+		],
+	};
+	const projected = projectEndoCockpitCapabilityStateV0(registryInput(shared as never) as never, TEST_KEY);
+	const views = projected.capabilities.filter((c) => c.evidence !== null);
+	const a = projected.capabilities.findIndex((c) => c.evidence !== null);
+	const b = projected.capabilities.findIndex(
+		(c, at) => at > a && c.evidence !== null && c.evidence.id === projected.capabilities[a]!.evidence!.id,
+	);
+	const _forge = (edit: (second: any, first: any) => void) =>
+		mutated(projected, (p) => edit(p.capabilities[b], p.capabilities[a]));
+
+	it("accepts the projector's output, with capability-specific limits that differ", () => {
+		expect(views.length).toBeGreaterThan(1);
+		expect(b).toBeGreaterThan(a);
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+		// Different limits from one record are legitimate: the second capability's own check differs from the record's.
+		expect(projected.capabilities[b]!.limits.map((l) => l.code)).not.toEqual(
+			projected.capabilities[a]!.limits.map((l) => l.code),
+		);
+	});
+
+	// Each member in its own test. `both` applies the edit to the two citing capabilities (each stays valid alone, with its own
+	// limits adjusted where the member feeds one); `one` applies it to the second only. Only the disagreement can refuse `one`.
+	const classificationOf = (c: { classification: string | null }) => c.classification;
+	const setClassification = (view: any, value: string) => {
+		view.evidence.classification = value;
+		const differs = view.evidence.classification !== classificationOf(view);
+		view.limits = view.limits.filter((l: { code: string }) => l.code !== "evidence-classification-differs");
+		if (differs) {
+			view.limits.push({ code: "evidence-classification-differs", refs: [view.ref, view.evidence.ref] });
+			view.limits.sort(
+				(x: { code: string }, y: { code: string }) =>
+					ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(x.code as never) -
+					ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(y.code as never),
+			);
+		}
+	};
+	const members: [string, (view: any) => void][] = [
+		[
+			"classification",
+			(view) =>
+				setClassification(
+					view,
+					ENDO_CONFORMANCE_CLASSIFICATIONS_V0.find(
+						(value) =>
+							value !== projected.capabilities[a]!.classification &&
+							value !== projected.capabilities[b]!.classification,
+					)!,
+				),
+		],
+		[
+			"check",
+			(view) => {
+				view.evidence.check.name = "another-check";
+			},
+		],
+		[
+			"dependencies",
+			(view) => {
+				view.evidence.dependencies.adapterVersion = "9.9.9";
+			},
+		],
+		["supporting", (view) => view.evidence.supporting.push("b".repeat(64))],
+		["recorded limitations", (view) => view.limitations.push("an extra limitation")],
+	];
+	for (const [name, edit] of members) {
+		it(`${name}: a one-sided difference is refused; the same edit on both is accepted`, () => {
+			const both = mutated(projected, (p) => {
+				edit(p.capabilities[a]);
+				edit(p.capabilities[b]);
+			});
+			expect(validateEndoCockpitCapabilityStateV0(both)).not.toBeNull();
+			const one = mutated(projected, (p) => edit(p.capabilities[b]));
+			expect(validateEndoCockpitCapabilityStateV0(one)).toBeNull();
+		});
+	}
+
+	it("accepts distinct evidence records that differ", () => {
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				projectEndoCockpitCapabilityStateV0(registryInput(base as never) as never, TEST_KEY),
+			),
+		).not.toBeNull();
+	});
+});
+
+describe("required notes and limits when every record of a kind was discarded (P2)", () => {
+	const base = specimenRecords();
+	it("a notice whose change cannot be found requires its note even when the changes were all discarded", () => {
+		const records = {
+			...base,
+			change: [{ ...changeRecord(), attachment: "other.attachment" }],
+			notification: [notificationRecord()],
+		};
+		const identity = projectEndoCockpitRuntimeIdentityV0(registryInput(records as never) as never, TEST_KEY);
+		expect(identity.lastChange).toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		const without = mutated(identity, (i) => {
+			i.notes = i.notes.filter((n: { code: string }) => n.code !== "notification-change-missing");
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(without)).toBeNull();
+	});
+
+	it("a state naming a fingerprint requires its limit even when the fingerprints were all discarded", () => {
+		const records = { ...base, fingerprint: [{ ...base.fingerprint[0]!, attachment: "other.attachment" }] };
+		const view = projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY);
+		const at = view.capabilities.findIndex((c) => c.status !== "unverified");
+		expect(view.capabilities[at]!.limits.map((l) => l.code)).toContain("state-fingerprint-not-recorded");
+		expect(validateEndoCockpitCapabilityStateV0(view)).not.toBeNull();
+		const omitted = mutated(view, (c) => {
+			c.capabilities[at].limits = c.capabilities[at].limits.filter(
+				(l: { code: string }) => l.code !== "state-fingerprint-not-recorded",
+			);
+		});
+		expect(validateEndoCockpitCapabilityStateV0(omitted)).toBeNull();
 	});
 });

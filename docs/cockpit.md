@@ -173,6 +173,15 @@ given records whose watermark repeats one id as the last of two kinds (a source 
 `TypeError` rather than return a projection its own validator refuses; no replacement id is invented. A repeat that is not
 the last record of its kind still yields the note.
 
+Four more relationships the presented values decide, again with no output change and so no version change (validators only).
+A notice with `counts.change === 0` requires exactly one `notification-change-missing` note (with changes recorded, whether
+the named one is among them is not decidable from the view, and the note is not demanded). An admitted capability whose
+state names a fingerprint, with `counts.fingerprint === 0`, requires `state-fingerprint-not-recorded` (in a nonempty history
+an older record may exist, so it is not demanded). The latest record of a kind is the latest *kept*: the highest position
+the foreign/duplicate notes do not name (none, when all are named), and, when that is the watermark's last position, it
+carries the last id; a discarded tail relaxes only that. Capabilities citing one evidence record show the same evidence view
+and the same limitations; their `limits` are about the capability and may differ. None of this verifies the records.
+
 Two facts the wire alone decides are enforced by the validators. `sealedAt` is the first frame that failed verification,
 so it is exactly the one after the verified prefix: `watermark.length + 1` for an event log, the sum of the registry
 counts `+ 1` for a registry (a torn tail is a different condition and carries no position). A registry with no records

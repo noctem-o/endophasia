@@ -11,8 +11,9 @@
 //   degraded    a prefix is readable and the log ends in a torn tail or at a frame that failed verification
 //   unopenable  the source exists but cannot be opened: an invalid record, an unknown version, an unreadable path
 //
-// The stores' own read-only open cannot tell an absent log from an empty one (an unreadable file reads as no frames), so
-// the adapter probes the path first and refuses to call a non-empty file with no readable frame "empty".
+// The stores' read-only open cannot tell an absent log from an empty one, so the adapter probes the path first. A file that
+// exists but cannot be read fails the store's open (EndoLogUnreadableErrorV0) and is `unopenable`; file size is never
+// taken as evidence that a read happened.
 //
 // A writer in another process makes a read-only reader see a torn tail while an append is in flight. That is reported as
 // `degraded` with the tail's length and digest, exactly as a crash would look: the adapter cannot tell them apart and
@@ -41,6 +42,7 @@ import {
 	endoHarnessRegistryDirectoryV0,
 	openEndoHarnessRegistryV0,
 } from "../storage/harness-registry.ts";
+import { EndoLogUnreadableErrorV0 } from "../storage/log.ts";
 import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "./projections/common.ts";
 import { compareCodeUnitsV0 } from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
@@ -63,7 +65,7 @@ export interface EndoCockpitEventLogReadV0 {
 	events: EndoCockpitStoredEventV0[];
 }
 
-type Probe = { kind: "absent" } | { kind: "present"; bytes: number } | { kind: "unreadable"; message: string };
+type Probe = { kind: "absent" } | { kind: "present" } | { kind: "unreadable"; message: string };
 
 const NO_DAMAGE = { tornTail: null, sealedAt: null, error: null } as const;
 
@@ -72,7 +74,7 @@ function probe(path: string): Probe {
 	try {
 		const stats = statSync(path);
 		return stats.isFile()
-			? { kind: "present", bytes: stats.size }
+			? { kind: "present" }
 			: { kind: "unreadable", message: "the log path is not a regular file" };
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
@@ -98,35 +100,36 @@ function probe(path: string): Probe {
 	return { kind: "absent" };
 }
 
-/** A version label as the contracts write one: short, from the characters of identifiers and dotted versions. */
-const VERSION_LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-
 /**
- * The store's own message, with the one value it echoes from the record being refused made safe: the version string a
- * record declared (`unsupported schemaVersion "..."`). That string is the record author's, so it is quoted back only when
- * it is shaped like a version label; anything else (a path, a sentence, a secret) is replaced.
+ * What a refused record's schema-version failure says. FIXED text per failure kind: the message the store builds quotes
+ * the version string the record declared, and that string is the record author's (a path, a sentence, a credential in a
+ * format no filter knows). Nothing of the record is echoed, so nothing needs to be recognised.
  */
-function withoutEchoedValues(message: string): string {
-	return message.replace(/(unsupported schemaVersion )("(?:[^"\\]|\\.)*")/g, (_, lead: string, quoted: string) => {
-		let label: unknown;
-		try {
-			label = JSON.parse(quoted);
-		} catch {
-			label = null;
-		}
-		return `${lead}${typeof label === "string" && VERSION_LABEL.test(label) ? quoted : '"<not a version label>"'}`;
-	});
-}
+const SCHEMA_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+	"not-an-object": "a stored record is not an object",
+	"missing-version": "a stored record declares no schema version",
+	"version-not-string": "a stored record declares a schema version that is not a string",
+	"unsupported-version": "a stored record declares a schema version this reader does not support",
+	invalid: "a stored record does not satisfy the schema version it declares",
+};
 
 /** A bounded, escaped message of 1 to 512 characters: control-character escaping can lengthen it, and a cut can empty it. */
 function presentableMessage(error: unknown): string {
-	const bounded = error instanceof Error ? endoBoundedDetailV0(withoutEchoedValues(error.message)) : "";
+	if (error instanceof EndoSchemaVersionErrorV0)
+		return SCHEMA_FAILURE_MESSAGES[error.kind] ?? "a stored record is not valid under its schema version";
+	if (error instanceof EndoLogUnreadableErrorV0) return error.message;
+	const bounded = error instanceof Error ? endoBoundedDetailV0(error.message) : "";
 	if (bounded.length === 0) return "the store could not be opened";
 	return bounded.length > 512 ? `${bounded.slice(0, 511)}…` : bounded;
 }
 
 function unopenable(error: unknown): EndoCockpitSourceConditionV0 {
-	const kind = error instanceof EndoSchemaVersionErrorV0 ? `schema-${error.kind}` : "invalid-store";
+	const kind =
+		error instanceof EndoSchemaVersionErrorV0
+			? `schema-${error.kind}`
+			: error instanceof EndoLogUnreadableErrorV0
+				? "unreadable"
+				: "invalid-store";
 	return {
 		state: "unopenable",
 		tornTail: null,
@@ -172,7 +175,7 @@ function checkWindow(options: EndoCockpitEventLogReadOptionsV0): { afterSequence
 /** Run `use` over the store opened read-only, closing it on every path. Null when there is no store to open. */
 function withEventStore<T>(
 	root: string,
-	use: (store: EndoDurableEventStoreV0, bytes: number) => T,
+	use: (store: EndoDurableEventStoreV0) => T,
 ):
 	| { source: "absent" }
 	| { source: "unopenable"; condition: EndoCockpitSourceConditionV0 }
@@ -187,7 +190,7 @@ function withEventStore<T>(
 		return { source: "unopenable", condition: unopenable(error) };
 	}
 	try {
-		return { source: "open", value: use(store, found.bytes) };
+		return { source: "open", value: use(store) };
 	} finally {
 		store.close();
 	}
@@ -243,7 +246,7 @@ function observeEventLog(
 	held: number | null,
 ): EventLogObservation {
 	const { afterSequence, limit } = checkWindow(options);
-	const opened = withEventStore(root, (store, bytes) => {
+	const opened = withEventStore(root, (store) => {
 		const recovery = store.recovery();
 		const length = store.length;
 		const page = store.page({ afterSequence, limit });
@@ -252,7 +255,6 @@ function observeEventLog(
 		return {
 			recovery,
 			length,
-			bytes,
 			events,
 			lastEventId: lastEventIdOf(store),
 			prefixDigest: digests.full,
@@ -272,14 +274,7 @@ function observeEventLog(
 		});
 	if (opened.source === "unopenable")
 		return result({ domain: "event-log", condition: opened.condition, watermark: null });
-	const { recovery, length, bytes, events, lastEventId, prefixDigest, heldDigest } = opened.value;
-	// A file with bytes but no readable frame, torn tail or corrupt frame is a file this process could not read.
-	if (bytes > 0 && length === 0 && !recovery.truncated && !recovery.sealed)
-		return result({
-			domain: "event-log",
-			condition: unreadable("the log has content but no frame could be read"),
-			watermark: null,
-		});
+	const { recovery, length, events, lastEventId, prefixDigest, heldDigest } = opened.value;
 	return result(
 		{
 			domain: "event-log",
@@ -397,11 +392,6 @@ export function readEndoCockpitRegistryV0(root: string, attachment: string): End
 	const records = recordsOf(registry);
 	const recovery = registry.recovery();
 	const total = ENDO_COCKPIT_REGISTRY_KINDS_V0.reduce((sum, kind) => sum + records[kind].length, 0);
-	if (found.bytes > 0 && total === 0 && !recovery.truncated && !recovery.sealed)
-		return {
-			source: registrySource(attachment, unreadable("the log has content but no record could be read"), null),
-			records: null,
-		};
 	return { source: registrySource(attachment, conditionOf(recovery, total), records), records };
 }
 

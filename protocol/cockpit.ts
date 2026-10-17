@@ -38,6 +38,16 @@
 //
 // The protocol imports only the protocol.
 
+import {
+	ENDO_COCKPIT_ANOMALY_KINDS_V0,
+	ENDO_COCKPIT_DISCONTINUITY_KINDS_V0,
+	ENDO_COCKPIT_INTERRUPTION_KINDS_V0,
+	ENDO_COCKPIT_PAYLOAD_FLAG_KINDS_V0,
+	ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0,
+	endoCockpitFieldRuleV0,
+	endoCockpitKindUnrecognizedV0,
+	endoCockpitProducerAdmittedV0,
+} from "./cockpit-fields.ts";
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0, type EndoConformanceClassificationV0 } from "./evaluation.ts";
 import { ENDO_EVENT_SOURCES_V0, type EndoEventSourceV0 } from "./event.ts";
 import {
@@ -871,6 +881,43 @@ function isUsage(value: unknown): value is EndoCockpitUsageV0 {
 	);
 }
 
+/**
+ * An entry shows only what the presentation policy allows for its kind: allowlisted fields (plus the runtime session
+ * reference and declared gaps) with the policy's basis and value type, opaque values only in an admitted shape, the flags
+ * its kind implies, usage only on a kind that can carry it, and a producer name only in an admitted shape or withheld.
+ */
+function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
+	const { kind, fields } = entry;
+	if (!endoCockpitProducerAdmittedV0(entry.producer) && entry.producer !== ENDO_COCKPIT_WITHHELD_TEXT_V0) return false;
+	for (const [key, field] of Object.entries(fields)) {
+		const rule = endoCockpitFieldRuleV0(kind, key);
+		if (rule === null) return false;
+		if (field.basis === "unavailable") continue;
+		if (rule.dynamic === true || field.basis !== rule.basis) return false;
+		if (field.value === null) {
+			if (!rule.nullable) return false;
+		} else if (typeof field.value !== rule.type) return false;
+		if (rule.admitted !== undefined && typeof field.value === "string" && !rule.admitted(field.value)) return false;
+	}
+	const runtimeSession = fields.runtimeSessionId;
+	const conflict =
+		kind === "harness.attached" &&
+		runtimeSession?.basis === "unavailable" &&
+		runtimeSession.reason === ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0;
+	const has = (flag: EndoCockpitFlagV0) => entry.flags.includes(flag);
+	if (has("interruption") !== ENDO_COCKPIT_INTERRUPTION_KINDS_V0.includes(kind)) return false;
+	if (has("anomaly") !== (ENDO_COCKPIT_ANOMALY_KINDS_V0.includes(kind) || conflict)) return false;
+	if (has("unrecognized") !== endoCockpitKindUnrecognizedV0(kind)) return false;
+	// A flag a payload decides (a store reopened after damage) may be set or not; every other kind's is its kind's.
+	if (
+		!Object.hasOwn(ENDO_COCKPIT_PAYLOAD_FLAG_KINDS_V0, kind) &&
+		has("discontinuity") !== ENDO_COCKPIT_DISCONTINUITY_KINDS_V0.includes(kind)
+	)
+		return false;
+	if (entry.usage !== null && kind !== "message.completed" && kind !== "session.entry-observed") return false;
+	return true;
+}
+
 function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	if (
 		!isPlain(value) ||
@@ -928,6 +975,8 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	if (!isPlain(value.fields) || !Object.values(value.fields).every(isField)) return false;
 	if (!Object.keys(value.fields).every((key) => isText(key, 128))) return false;
 	if (!isCount(value.withheldFields)) return false;
+	// What an entry may show is the presentation policy's (protocol/cockpit-fields.ts), the same one the projection applies.
+	if (!entryFollowsPolicy(value as unknown as EndoCockpitTimelineEntryV0)) return false;
 	const usage = value.usage;
 	if (usage === null) return true;
 	if (!isPlain(usage)) return false;
@@ -1017,14 +1066,12 @@ function ownRefOk(view: { ref: unknown; id: string }, ctx: RefContext, kind: End
 	return isRegistryRef(view.ref, ctx, [kind]) && view.ref.id === view.id;
 }
 
-/** Every reference of the claim points at the record of `kind` with this id (the record the value was read from). */
-function claimReadFrom(
-	claim: { refs: EndoCockpitRefV0[] },
-	ctx: RefContext,
-	kind: EndoCockpitRegistryKindV0,
-	id: string,
-) {
-	return claim.refs.every((ref) => isRegistryRef(ref, ctx, [kind]) && ref.id === id);
+/**
+ * A fingerprint claim was read from exactly one record, the view's own: its references are that one reference and no
+ * other. An empty list (no provenance) and an extra reference (provenance from somewhere else) both fail.
+ */
+function claimReadFromOwn(claim: { refs: EndoCockpitRefV0[] }, view: { ref: EndoCockpitRefV0 }): boolean {
+	return claim.refs.length === 1 && sameRef(claim.refs[0], view.ref);
 }
 
 /** What kinds of record a note may point at, by code. An empty list means the note carries no reference. */
@@ -1092,11 +1139,7 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	for (const view of [identity.current, identity.previousDifferent]) {
 		if (view === null) continue;
 		if (!ownRefOk(view, ctx, "fingerprint")) return false;
-		if (
-			![view.identity, view.version, view.entrypoint, view.package].every((c) =>
-				claimReadFrom(c, ctx, "fingerprint", view.id),
-			)
-		)
+		if (![view.identity, view.version, view.entrypoint, view.package].every((c) => claimReadFromOwn(c, view)))
 			return false;
 	}
 	if (identity.lastChange !== null && !ownRefOk(identity.lastChange, ctx, "change")) return false;

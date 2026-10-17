@@ -4,11 +4,13 @@
 // not anything about a live runtime.
 import {
 	appendFileSync,
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -218,7 +220,7 @@ describe("absent, empty, degraded and unopenable sources", () => {
 			state: "unopenable",
 			error: { kind: "schema-unsupported-version" },
 		});
-		expect(read.source.condition.error!.message).toContain("v999");
+		expect(read.source.condition.error!.message).not.toContain("v999");
 		expect(read.source.watermark).toBeNull();
 		expect(read.records).toBeNull();
 		expect(treeHash(invalid)).toBe(before);
@@ -300,7 +302,7 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		expect(treeHash(root)).toBe(before);
 	});
 
-	it("an event of an unknown schema version makes the log unopenable and names the version", () => {
+	it("an event of an unknown schema version makes the log unopenable without echoing the version", () => {
 		const root = tempRoot();
 		mkdirSync(join(root, "events"));
 		createEndoFrameLogV0(eventsLog(root)).append(
@@ -308,7 +310,7 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		);
 		const condition = readEndoCockpitEventLogV0(root).source.condition;
 		expect(condition).toMatchObject({ state: "unopenable", error: { kind: "schema-unsupported-version" } });
-		expect(condition.error!.message).toContain("endo.event.v999");
+		expect(condition.error!.message).toBe("a stored record declares a schema version this reader does not support");
 	});
 
 	it("a registry state whose status contradicts its classification is refused on open, not repaired", () => {
@@ -611,24 +613,59 @@ describe("source condition messages (PR #57 audit)", () => {
 		return { root, condition: readEndoCockpitEventLogV0(root).source.condition };
 	}
 
-	it("echoes a declared version only when it is shaped like one, and never the store's location", () => {
-		const plain = unsupported("endo.event.v999");
-		expect(plain.condition.error).toMatchObject({ kind: "schema-unsupported-version" });
-		expect(plain.condition.error!.message).toContain('"endo.event.v999"');
-		for (const hostile of [
+	it("never echoes a declared schema version: the message is fixed text per failure kind", () => {
+		const FIXED = "a stored record declares a schema version this reader does not support";
+		const hostile = [
+			"endo.event.v999",
 			`/home/${CANARY}/secret`,
 			`token=${CANARY}`,
+			`ghp_${"A".repeat(36)}`,
+			"AKIAABCDEFGHIJKLMNOP",
+			`xyz-${"9".repeat(40)}`,
 			`a sentence with ${CANARY} in it`,
 			`x\u0007${CANARY}`,
-		]) {
-			const { root, condition } = unsupported(hostile);
-			expect(condition.error!.kind).toBe("schema-unsupported-version");
-			expect(JSON.stringify(condition), hostile).not.toContain(CANARY);
-			expect(condition.error!.message).toContain("<not a version label>");
-			expect(JSON.stringify(condition)).not.toContain(root);
+			"v".repeat(5000),
+		];
+		for (const label of hostile) {
+			const { root, condition } = unsupported(label);
+			expect(condition.error, label).toEqual({ kind: "schema-unsupported-version", message: FIXED });
+			expect(JSON.stringify(condition), label).not.toContain(root);
 		}
-		const { root, condition } = unsupported("endo.event.v999");
-		expect(JSON.stringify(condition)).not.toContain(root);
+		// The other ways a record can fail its schema version are fixed text too.
+		const failures: [string, unknown, string][] = [
+			[
+				"missing-version",
+				{ ...event("tool.started"), schemaVersion: undefined },
+				"a stored record declares no schema version",
+			],
+			[
+				"version-not-string",
+				{ ...event("tool.started"), schemaVersion: { [CANARY]: 1 } },
+				"a stored record declares a schema version that is not a string",
+			],
+			[
+				"invalid",
+				{ ...event("tool.started"), id: `/home/${CANARY}` },
+				"a stored record does not satisfy the schema version it declares",
+			],
+		];
+		for (const [kind, record, message] of failures) {
+			const root = tempRoot();
+			mkdirSync(join(root, "events"));
+			createEndoFrameLogV0(eventsLog(root)).append(new TextEncoder().encode(JSON.stringify(record)));
+			const condition = readEndoCockpitEventLogV0(root).source.condition;
+			expect(condition.error, kind).toEqual({ kind: `schema-${kind}`, message });
+		}
+		// A registry record behaves the same way.
+		const root = tempRoot();
+		const { fingerprint } = specimen();
+		mkdirSync(join(root, "harness", ATTACHMENT), { recursive: true });
+		appendFrame(registryLog(root), {
+			kind: "fingerprint",
+			record: { ...fingerprint, schemaVersion: `ghp_${"B".repeat(36)}` },
+		});
+		const condition = readEndoCockpitRegistryV0(root, ATTACHMENT).source.condition;
+		expect(condition.error).toEqual({ kind: "schema-unsupported-version", message: FIXED });
 	});
 });
 
@@ -653,5 +690,92 @@ describe("freshness without a held position (PR #57 review round 2)", () => {
 		// With a position the ordinary comparison still applies.
 		expect(checkEndoCockpitSourceFreshnessV0(root, heldLog)).toBe("unchanged");
 		expect(checkEndoCockpitSourceFreshnessV0(root, heldRegistry)).toBe("unchanged");
+	});
+});
+
+describe("unreadable files are not empty files (PR #57 review round 3)", () => {
+	// Real permission failures need an unprivileged process: root reads any file.
+	const unprivileged = typeof process.getuid === "function" && process.getuid() !== 0;
+	const it2 = unprivileged ? it : it.skip;
+
+	function denied(path: string, content: Uint8Array | string): () => void {
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, content);
+		chmodSync(path, 0o000);
+		return () => chmodSync(path, 0o600);
+	}
+
+	it2("an event log that cannot be read is unopenable at any size, never empty, and nothing is changed", () => {
+		for (const content of ["", "x", "garbage ".repeat(40)]) {
+			const root = tempRoot();
+			const restore = denied(eventsLog(root), content);
+			try {
+				const before = statSync(eventsLog(root));
+				const read = readEndoCockpitEventLogV0(root);
+				expect(read.source.condition, `${content.length}`).toEqual({
+					state: "unopenable",
+					tornTail: null,
+					sealedAt: null,
+					error: { kind: "unreadable", message: "the log cannot be read (EACCES)" },
+				});
+				expect(read.source.watermark).toBeNull();
+				expect(read.events).toEqual([]);
+				expect(JSON.stringify(read.source)).not.toContain(root);
+				expect(readEndoCockpitTimelineV0(root).notes.map((n) => n.code)).toEqual(["source-not-projectable"]);
+				const after = statSync(eventsLog(root));
+				expect([after.size, after.mode, after.mtimeMs]).toEqual([before.size, before.mode, before.mtimeMs]);
+			} finally {
+				restore();
+			}
+		}
+	});
+
+	it2("a registry that cannot be read is unopenable at any size, consistently with the event log", () => {
+		for (const content of ["", "x", "garbage ".repeat(40)]) {
+			const root = tempRoot();
+			const restore = denied(registryLog(root), content);
+			try {
+				const read = readEndoCockpitRegistryV0(root, ATTACHMENT);
+				expect(read.source.condition, `${content.length}`).toEqual({
+					state: "unopenable",
+					tornTail: null,
+					sealedAt: null,
+					error: { kind: "unreadable", message: "the log cannot be read (EACCES)" },
+				});
+				expect(read.source.watermark).toBeNull();
+				expect(read.records).toBeNull();
+				expect(JSON.stringify(read.source)).not.toContain(root);
+			} finally {
+				restore();
+			}
+		}
+	});
+
+	it2("freshness treats an unreadable source as unavailable", () => {
+		const { root } = seeded();
+		const heldLog = readEndoCockpitEventLogV0(root, { limit: 1 }).source;
+		const heldRegistry = readEndoCockpitRegistryV0(root, ATTACHMENT).source;
+		chmodSync(eventsLog(root), 0o000);
+		chmodSync(registryLog(root), 0o000);
+		try {
+			expect(checkEndoCockpitSourceFreshnessV0(root, heldLog)).toBe("unavailable");
+			expect(checkEndoCockpitSourceFreshnessV0(root, heldRegistry)).toBe("unavailable");
+		} finally {
+			chmodSync(eventsLog(root), 0o600);
+			chmodSync(registryLog(root), 0o600);
+		}
+		expect(checkEndoCockpitSourceFreshnessV0(root, heldLog)).toBe("unchanged");
+	});
+
+	it("a file that is really empty is empty, and one that is really absent is absent", () => {
+		const empty = tempRoot();
+		mkdirSync(join(empty, "events"));
+		writeFileSync(eventsLog(empty), "");
+		expect(readEndoCockpitEventLogV0(empty).source.condition.state).toBe("empty");
+		expect(readEndoCockpitEventLogV0(tempRoot()).source.condition.state).toBe("absent");
+		const emptyRegistry = tempRoot();
+		mkdirSync(join(emptyRegistry, "harness", ATTACHMENT), { recursive: true });
+		writeFileSync(registryLog(emptyRegistry), "");
+		expect(readEndoCockpitRegistryV0(emptyRegistry, ATTACHMENT).source.condition.state).toBe("empty");
 	});
 });

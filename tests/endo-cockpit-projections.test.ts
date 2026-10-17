@@ -20,6 +20,7 @@ import {
 	validateEndoCockpitSessionTimelineV0,
 	validateEndoCockpitSnapshotV0,
 } from "../protocol/cockpit.ts";
+import { ENDO_COCKPIT_FIELD_SPECS_V0 } from "../protocol/cockpit-fields.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { deepFreezeCopyV0 } from "../runtime/contracts/immutability.ts";
 import {
@@ -2171,5 +2172,284 @@ describe("third review round and invariant audit (PR #57)", () => {
 		expect(validateEndoCockpitRuntimeIdentityV0(projectEndoCockpitRuntimeIdentityV0(input(null)))).not.toBeNull();
 		expect(validateEndoCockpitCapabilityStateV0(projectEndoCockpitCapabilityStateV0(input(null)))).not.toBeNull();
 		void records;
+	});
+});
+
+describe("one presentation policy for projection and validator (PR #57 review round 3)", () => {
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const rejects = (log: unknown) => expect(validateEndoCockpitSessionTimelineV0(log)).toBeNull();
+	const UUID = "0b1f6c1e-3c2a-4e0b-9d1c-5b9c7a2f4e10";
+
+	it("closes the drift class: every allowlisted field of every kind, produced from the policy, validates", () => {
+		for (const [kind, specs] of Object.entries(ENDO_COCKPIT_FIELD_SPECS_V0)) {
+			const payload: Record<string, any> = {};
+			for (const [, path, , type] of specs) {
+				const value = type === "string" ? "a-value" : type === "number" ? 3 : true;
+				const segments = path.split(".");
+				let at = payload;
+				for (const segment of segments.slice(0, -1)) at = at[segment] ??= {};
+				at[segments.at(-1)!] = value;
+			}
+			const entry = timeline([event(kind, payload)]);
+			const keys = specs.map((spec) => spec[0]);
+			expect(Object.keys(entry.entries[0]!.fields).sort(), kind).toEqual([...new Set(keys)].sort());
+			expect(validateEndoCockpitSessionTimelineV0(entry), kind).not.toBeNull();
+			// The same payload with every value of the wrong type presents nothing, and still validates.
+			const wrong: Record<string, any> = {};
+			for (const [, path] of specs) {
+				const segments = path.split(".");
+				let at = wrong;
+				for (const segment of segments.slice(0, -1)) at = at[segment] ??= {};
+				at[segments.at(-1)!] = [1, 2];
+			}
+			const bad = timeline([event(kind, wrong)]);
+			expect(bad.entries[0]!.fields, kind).toEqual({});
+			expect(validateEndoCockpitSessionTimelineV0(bad), kind).not.toBeNull();
+		}
+	});
+
+	it("rejects a field the policy does not present for the entry's kind", () => {
+		const log = timeline([
+			event("lifecycle.run-started", { instance: "i1" }),
+			event("tool.started", { toolName: "read" }),
+			event("vendor.thing", {}),
+		]);
+		const secret = { basis: "reported", value: "ordinary-looking" };
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.apiKey = secret;
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.toolName = secret;
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].fields.instance = { basis: "observed", value: "i1" };
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[2].fields.anything = secret;
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].fields.runtimeSessionId = { basis: "reported", value: UUID };
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].fields["unavailable.runId"] = { basis: "unavailable", reason: "x" };
+			}),
+		);
+	});
+
+	it("rejects a field relabelled with another basis or carrying a value of another type", () => {
+		const log = timeline([
+			event("lifecycle.turn-started", { turn: 2 }),
+			event("lifecycle.run-started", { instance: "i1" }),
+			event("tool.started", { toolName: "read", toolCallId: "c1" }),
+			event("harness.process-exited", { code: null, signal: "SIGKILL", spawnFailed: false, expected: false }),
+		]);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.turn.basis = "observed";
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.turn.basis = "reported";
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].fields.instance.basis = "reported";
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[2].fields.toolName.basis = "derived";
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.turn.value = "2";
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.turn.value = null;
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[2].fields.toolName.value = 7;
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[3].fields.spawnFailed.value = "no";
+			}),
+		);
+		// A nullable field may be null, and an unavailable form is allowed for any presented field.
+		expect(log.entries[3]!.fields.code).toEqual({ basis: "observed", value: null });
+		const gap = mutated(log, (c) => {
+			c.entries[0].fields.turn = { basis: "unavailable", reason: "not reported" };
+		});
+		expect(validateEndoCockpitSessionTimelineV0(gap)).not.toBeNull();
+	});
+
+	it("admits a runtime session reference and a producer only in the policy's shapes", () => {
+		const log = timeline([event("harness.attached", { acpSessionId: UUID })]);
+		expect(log.entries[0]!.fields.runtimeSessionId).toEqual({ basis: "reported", value: UUID });
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		for (const value of ["/home/x/secret", `ghp_${"A".repeat(30)}`, "plain"]) {
+			rejects(
+				mutated(log, (c) => {
+					c.entries[0].fields.runtimeSessionId.value = value;
+				}),
+			);
+		}
+		for (const producer of ["/home/x", "has space", "UPPER", "p".repeat(300)]) {
+			rejects(
+				mutated(log, (c) => {
+					c.entries[0].producer = producer;
+				}),
+			);
+		}
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.entries[0].producer = "withheld: looks like a path, address or credential";
+				}),
+			),
+		).not.toBeNull();
+	});
+
+	it("rejects flags that do not follow from the kind, and usage on a kind that cannot carry it", () => {
+		const log = timeline([
+			event("tool.started", {}),
+			event("lifecycle.interrupted", {}),
+			event("vendor.thing", {}),
+			event("lifecycle.anomaly", { observed: "x", problem: "y" }),
+			event("harness.store-opened", {
+				lifecycleRepaired: 0,
+				recovery: { truncated: false, recovered: false, sealed: false },
+			}),
+			event("message.completed", { role: "assistant" }),
+		]);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].flags = ["anomaly"];
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].flags = [];
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[2].flags = [];
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[3].flags = ["interruption", "anomaly"];
+			}),
+		);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].usage = { basis: "unavailable", reason: "x" };
+			}),
+		);
+		// A payload-decided flag may be set or not on a store reopened; a message may carry usage.
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.entries[4].flags = ["discontinuity"];
+				}),
+			),
+		).not.toBeNull();
+		expect(log.entries[5]!.usage).not.toBeNull();
+		rejects(
+			mutated(log, (c) => {
+				c.entries[1].flags = ["interruption", "discontinuity"];
+			}),
+		);
+	});
+
+	it("requires a conflicting runtime session pair to be flagged, and only then", () => {
+		const log = timeline([
+			event("harness.attached", { piSessionId: UUID, acpSessionId: `sha256-${"a".repeat(48)}` }),
+		]);
+		expect(log.entries[0]!.flags).toEqual(["anomaly"]);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].flags = [];
+			}),
+		);
+	});
+
+	it("requires each fingerprint claim to cite exactly its own fingerprint", () => {
+		const records = specimenRecords();
+		const second = {
+			...structuredClone(records.fingerprint[0]!),
+			id: "endo.evidence.test-fingerprint.2",
+			observedAt: "2026-10-04T10:00:00Z",
+		};
+		second.identity.digest = "d".repeat(64);
+		const identity = projectEndoCockpitRuntimeIdentityV0(
+			input({ ...records, fingerprint: [records.fingerprint[0]!, second] }),
+		);
+		expect(identity.previousDifferent).not.toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		for (const view of ["current", "previousDifferent"] as const) {
+			for (const claim of ["identity", "version", "entrypoint", "package"]) {
+				const other = view === "current" ? "previousDifferent" : "current";
+				const edits: [string, (c: any) => void][] = [
+					[
+						"emptied",
+						(c) => {
+							c[view][claim].refs = [];
+						},
+					],
+					[
+						"doubled",
+						(c) => {
+							c[view][claim].refs.push(structuredClone(c[view][claim].refs[0]));
+						},
+					],
+					[
+						"another fingerprint's",
+						(c) => {
+							c[view][claim].refs = [structuredClone(c[other].ref)];
+						},
+					],
+					[
+						"plus another",
+						(c) => {
+							c[view][claim].refs.push(structuredClone(c[other].ref));
+						},
+					],
+				];
+				for (const [name, edit] of edits)
+					expect(
+						validateEndoCockpitRuntimeIdentityV0(mutated(identity, edit)),
+						`${view}.${claim} ${name}`,
+					).toBeNull();
+			}
+		}
 	});
 });

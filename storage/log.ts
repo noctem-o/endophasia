@@ -170,6 +170,31 @@ export interface EndoFrameLogV0 {
 	length: number;
 }
 
+/**
+ * A log file that exists but could not be read (permission denied, a read error). It is NOT an empty log: reading it as
+ * one would present an inaccessible store as a valid empty one, and a writer would append to what it never saw. The
+ * message carries the error code only, never the path.
+ */
+export class EndoLogUnreadableErrorV0 extends TypeError {
+	readonly code: string;
+	constructor(code: string) {
+		super(`the log cannot be read (${code})`);
+		this.name = "EndoLogUnreadableErrorV0";
+		this.code = code;
+	}
+}
+
+/** The bytes of the log file; none when it does not exist; an EndoLogUnreadableErrorV0 when it exists and cannot be read. */
+function readLogBytes(path: string): Buffer {
+	try {
+		return readFileSync(path);
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") return Buffer.alloc(0);
+		throw new EndoLogUnreadableErrorV0(code ?? "unknown error");
+	}
+}
+
 /** Create the durable frame log at `path` (the file is created on first append). */
 export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV0 = {}): EndoFrameLogV0 {
 	const readOnly = options.readOnly === true;
@@ -195,12 +220,7 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 		const frames: Uint8Array[] = [];
 		let truncated = false;
 		let corruptAt: number | null = null;
-		let buffer: Buffer;
-		try {
-			buffer = readFileSync(path);
-		} catch {
-			buffer = Buffer.alloc(0);
-		}
+		const buffer = readLogBytes(path);
 		let offset = 0;
 		let index = 0;
 		/** The end of the last valid frame: where a torn tail begins. */
@@ -269,12 +289,7 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 			const out = Buffer.concat(frames.slice(0, cut).map(frameOf));
 			// The kept frames verified, and framing is deterministic, so `out` is byte-for-byte the file's prefix and
 			// everything after it is what this call removes. Preserve it before the file is replaced.
-			let original: Buffer;
-			try {
-				original = readFileSync(path);
-			} catch {
-				original = Buffer.alloc(0);
-			}
+			const original = readLogBytes(path);
 			const cutBytes = original.subarray(out.length);
 			let discarded: EndoFrameLogDiscardV0 | null = null;
 			if (cutBytes.length > 0) {

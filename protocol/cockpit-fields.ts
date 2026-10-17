@@ -305,12 +305,32 @@ export interface EndoCockpitFieldRuleV0 {
 export function endoCockpitFieldRuleV0(kind: string, key: string): EndoCockpitFieldRuleV0 | null {
 	const specs = Object.hasOwn(ENDO_COCKPIT_FIELD_SPECS_V0, kind) ? ENDO_COCKPIT_FIELD_SPECS_V0[kind]! : [];
 	const spec = specs.find((item) => item[0] === key);
+	// The runtime's session reference is opaque wherever it is recorded, so it is admitted by shape wherever it appears.
+	if (key === "runtimeSessionId" && (spec !== undefined || kind === "harness.attached"))
+		return { basis: "reported", type: "string", nullable: false, admitted: endoCockpitRuntimeSessionAdmittedV0 };
 	if (spec !== undefined) return { basis: spec[2], type: spec[3], nullable: spec[4] === true };
 	if (kind === "harness.attached" && key === "runtimeSessionId")
 		return { basis: "reported", type: "string", nullable: false, admitted: endoCockpitRuntimeSessionAdmittedV0 };
 	if (ENDO_COCKPIT_DECLARED_UNAVAILABLE_KINDS_V0.includes(kind) && key.startsWith("unavailable."))
 		return { basis: "reported", type: "string", nullable: false, dynamic: true };
 	return null;
+}
+
+/**
+ * Whether a field of this kind may be "unavailable" for this reason, as the projection produces it. A runtime-reported
+ * field may carry the reason the runtime gave (any presentable text) and a declared gap likewise; any string field may be
+ * withheld whole by the boundary (the fixed text). A derived or observed number or boolean is never unavailable: a value
+ * that is not of its type is omitted, not replaced. The runtime session reference of `harness.attached` is also
+ * unavailable when two producers' references conflict.
+ */
+export function endoCockpitUnavailableAdmittedV0(kind: string, key: string, reason: string): boolean {
+	const rule = endoCockpitFieldRuleV0(kind, key);
+	if (rule === null) return false;
+	if (kind === "harness.attached" && key === "runtimeSessionId" && reason === ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0)
+		return true;
+	if (reason === ENDO_COCKPIT_WITHHELD_TEXT_V0 && (rule.type === "string" || rule.type === "id")) return true;
+	if (kind === "harness.attached" && key === "runtimeSessionId") return false;
+	return (rule.basis === "reported" || rule.dynamic === true) && endoCockpitTextPresentableV0(reason);
 }
 
 /** A kind the policy flags "unrecognized" by itself: not recorded by any producer, or named so, or an unknown lifecycle kind. */

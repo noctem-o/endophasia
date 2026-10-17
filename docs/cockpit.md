@@ -116,6 +116,20 @@ classification exactly when its status is not `unverified`; its limitations are 
 none without evidence; a notification view has at least one line (`lineCount >= 1`). A reported or unavailable wrapper
 carrying a member beside `status` and `value`/`reason` still shows the value or reason, but its key counts as withheld; so does a declared gap (`unavailable`) with a member beside `field` and `reason`, or whose reason was withheld. A log is never both torn and sealed (the reader stops at the first corrupt frame), and a torn tail is at least one byte.
 
+The runtime's session reference is admitted by shape (UUID, `sha256-` digest, Endophasia's generated id) wherever it is
+recorded, including `lifecycle.session-started` and `-resumed`; any other value is withheld whole. An `unavailable` field
+is valid only where the projection produces one: for a runtime-reported field (the reason the runtime gave, as text that
+passes the text policy) and a declared gap likewise, for a string the boundary withheld (the fixed text), and for the
+conflicting references of `harness.attached`; never for a derived or observed number or boolean. The `discontinuity` flag
+of `harness.store-opened` is set when any shown recovery value is true and clear when all three are shown false (a value
+not shown is not read as false). A usage-unavailable reason is one the kind can produce (`the event records no entry
+details` only for `session.entry-observed`). A timeline page spans at most `ENDO_COCKPIT_PAGE_MAX_LIMIT_V0` positions, and
+the note of an unopenable timeline cites nothing. A runtime identity's withheld family needs a current fingerprint or last
+change to have named it, its previous different observation is another record (another id) than the current one, and a
+capability whose state names the latest fingerprint, citing evidence recorded against another fingerprint on a reduced
+identity, carries `evidence-reduced-identity`. The 256-character rule is unchanged: the Pi specimen's 283-character
+reason stays withheld (its limitations are recorded separately in evidence).
+
 `checkEndoCockpitSourceFreshnessV0(root, heldSource)` tells a consumer, per source, `unchanged`, `advanced` (event log:
 more events and the events it held are still the first ones, by complete contents and order, so page on from
 `afterSequence = old length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten, repaired with different

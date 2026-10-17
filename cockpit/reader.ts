@@ -32,12 +32,15 @@ import type {
 	EndoCockpitSourceConditionV0,
 	EndoCockpitSourceErrorKindV0,
 } from "../protocol/cockpit.ts";
-import { ENDO_COCKPIT_REGISTRY_KINDS_V0, ENDO_COCKPIT_SOURCE_ERRORS_V0 } from "../protocol/cockpit.ts";
+import {
+	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
+	ENDO_COCKPIT_REGISTRY_KINDS_V0,
+	ENDO_COCKPIT_SOURCE_ERRORS_V0,
+} from "../protocol/cockpit.ts";
 import { endoCockpitTextUnsafeV0 } from "../protocol/cockpit-fields.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
-import { ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0 } from "../runtime/contracts/event-store.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import {
 	type EndoHarnessRegistryV0,
@@ -49,9 +52,9 @@ import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from ".
 import { compareCodeUnitsV0, publicIdV0 } from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
 
-/** The default and maximum timeline page of the cockpit; the maximum is the event store's own. */
+/** The default and maximum timeline page of the cockpit; the maximum is the event store's own (pinned by a test). */
 export const ENDO_COCKPIT_PAGE_DEFAULT_LIMIT_V0 = 200;
-export const ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 = ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0;
+export { ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 };
 
 export interface EndoCockpitEventLogReadOptionsV0 {
 	/** Return events with a storage sequence greater than this. Default 0. */

@@ -42,6 +42,7 @@ import {
 	ENDO_COCKPIT_USAGE_REASONS_V0,
 	type EndoCockpitFieldSpecV0,
 	type EndoCockpitFieldTypeV0,
+	endoCockpitFieldRuleV0,
 	endoCockpitGapNameAdmittedV0,
 	endoCockpitKindRecognizedV0,
 	endoCockpitProducerAdmittedV0,
@@ -120,17 +121,24 @@ const isWithheld = (field: EndoCockpitFieldV0): boolean =>
  * One allowlisted field, or undefined when the payload does not carry it in the expected form. A string that looks like it
  * embeds a path, address or credential is presented as the fixed withheld text instead (withheldField()).
  */
-function readField(payload: Record<string, unknown>, spec: EndoCockpitFieldSpecV0): EndoCockpitFieldV0 | undefined {
+function readField(
+	kind: string,
+	payload: Record<string, unknown>,
+	spec: EndoCockpitFieldSpecV0,
+): EndoCockpitFieldV0 | undefined {
 	const [, path, basis, type, nullable] = spec;
 	const raw = pathValue(payload, path);
 	if (raw === undefined) return undefined;
+	// A field of an opaque value is shown only in the shape the policy admits for it; any other is withheld whole.
+	const admitted = endoCockpitFieldRuleV0(kind, spec[0])?.admitted;
+	const judged = (text: string): boolean => freeText(text) !== null && (admitted === undefined || admitted(text));
 	// A value the runtime reported, or the reason it did not (protocol/session-lifecycle.ts EndoReportedV0). Only a field
 	// whose basis IS "reported" can arrive in that wrapper: a wrapper around an observed or derived field is malformed and
 	// is omitted (so counted as withheld), never allowed to change what the field claims to be.
 	const wrapped = basis === "reported";
 	if (wrapped && isRecord(raw) && raw.status === "reported") {
 		const value = scalar(own(raw, "value"), type, false);
-		if (typeof value === "string" && freeText(value) === null) return withheldField();
+		if (typeof value === "string" && !judged(value)) return withheldField();
 		return value === undefined ? undefined : { basis: "reported", value };
 	}
 	if (wrapped && isRecord(raw) && raw.status === "UNAVAILABLE") {
@@ -140,7 +148,7 @@ function readField(payload: Record<string, unknown>, spec: EndoCockpitFieldSpecV
 			: undefined;
 	}
 	const value = scalar(raw, type, nullable === true);
-	if (typeof value === "string" && freeText(value) === null) return withheldField();
+	if (typeof value === "string" && !judged(value)) return withheldField();
 	return value === undefined ? undefined : { basis, value };
 }
 
@@ -339,7 +347,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	const fields: Record<string, EndoCockpitFieldV0> = {};
 	const presentedWhole = new Set<string>();
 	for (const spec of specs ?? []) {
-		const field = readField(payload, spec);
+		const field = readField(event.kind, payload, spec);
 		if (field === undefined) continue;
 		fields[spec[0]] = field;
 		// A key counts as presented only when the whole top-level value is shown; a nested path leaves the rest withheld,

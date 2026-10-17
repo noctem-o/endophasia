@@ -902,6 +902,23 @@ describe("rejection: seeded mutation of valid wire records", () => {
 			},
 		},
 		{
+			name: "an unavailable claim on a derived or observed number or boolean",
+			apply(record, random) {
+				const fields = nodes(record).filter(
+					(n) =>
+						n.value &&
+						(n.value.basis === "derived" || n.value.basis === "observed") &&
+						(typeof n.value.value === "number" || typeof n.value.value === "boolean"),
+				);
+				if (fields.length === 0) return null;
+				const field = pick(random, fields).value;
+				field.basis = "unavailable";
+				delete field.value;
+				field.reason = pick(random, ["not reported", "unknown"]);
+				return "unavailable";
+			},
+		},
+		{
 			name: "a classification taken from an admitted capability",
 			apply(record, random) {
 				const views = nodes(record).filter(

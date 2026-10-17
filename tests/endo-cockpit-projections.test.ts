@@ -10,6 +10,7 @@ import { publicIdV0 } from "../cockpit/projections/common.ts";
 import { projectEndoCockpitRuntimeIdentityV0 } from "../cockpit/projections/runtime-identity.ts";
 import { projectEndoCockpitSessionTimelineV0 } from "../cockpit/projections/session-timeline.ts";
 import {
+	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
 	ENDO_COCKPIT_VERSIONS_V0,
 	type EndoCockpitCapabilityStateV0,
 	type EndoCockpitEventLogSourceV0,
@@ -27,6 +28,7 @@ import {
 	isEndoCockpitSourceIdAdmittedV0,
 } from "../protocol/cockpit-fields.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0 } from "../runtime/contracts/event-store.ts";
 import { deepFreezeCopyV0 } from "../runtime/contracts/immutability.ts";
 import {
 	ATTACHMENT,
@@ -2324,12 +2326,12 @@ describe("one presentation policy for projection and validator (PR #57 review ro
 				c.entries[3].fields.spawnFailed.value = "no";
 			}),
 		);
-		// A nullable field may be null, and an unavailable form is allowed for any presented field.
+		// A nullable field may be null; a derived number is never unavailable (see the seventh round for the full matrix).
 		expect(log.entries[3]!.fields.code).toEqual({ basis: "observed", value: null });
 		const gap = mutated(log, (c) => {
 			c.entries[0].fields.turn = { basis: "unavailable", reason: "not reported" };
 		});
-		expect(validateEndoCockpitSessionTimelineV0(gap)).not.toBeNull();
+		rejects(gap);
 	});
 
 	it("admits a runtime session reference and a producer only in the policy's shapes", () => {
@@ -2397,14 +2399,12 @@ describe("one presentation policy for projection and validator (PR #57 review ro
 				c.entries[0].usage = { basis: "unavailable", reason: "x" };
 			}),
 		);
-		// A payload-decided flag may be set or not on a store reopened; a message may carry usage.
-		expect(
-			validateEndoCockpitSessionTimelineV0(
-				mutated(log, (c) => {
-					c.entries[4].flags = ["discontinuity"];
-				}),
-			),
-		).not.toBeNull();
+		// A payload-decided flag follows the recovery values the entry shows (the seventh round); a message may carry usage.
+		rejects(
+			mutated(log, (c) => {
+				c.entries[4].flags = ["discontinuity"];
+			}),
+		);
 		expect(log.entries[5]!.usage).not.toBeNull();
 		rejects(
 			mutated(log, (c) => {
@@ -3398,5 +3398,371 @@ describe("sixth review round (PR #57)", () => {
 		);
 		expect(one.lastNotification!.lineCount).toBe(1);
 		expect(validateEndoCockpitRuntimeIdentityV0(one)).not.toBeNull();
+	});
+});
+
+describe("seventh review round (PR #57)", () => {
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const WITHHELD = "withheld: looks like a path, address or credential";
+	const accepts = (value: unknown) => expect(validateEndoCockpitSessionTimelineV0(value)).not.toBeNull();
+	const rejects = (value: unknown, why = "") => expect(validateEndoCockpitSessionTimelineV0(value), why).toBeNull();
+
+	// ---- P1. lifecycle runtime session ids ------------------------------------------------------------------------
+
+	it("P1: a lifecycle session id is presented only in an admitted shape, by both producer and validator", () => {
+		const admitted = [
+			"endo-pi-default-118ac71e29ed",
+			"0f8fad5b-d9cb-469f-a165-9a7f8c1f2a3b",
+			`sha256-${"ab".repeat(24)}`,
+		];
+		for (const kind of ["lifecycle.session-started", "lifecycle.session-resumed"] as const) {
+			for (const id of admitted) {
+				const log = timeline([event(kind, { runtime: "pi", runtimeSessionId: id, instance: "i-1" })]);
+				expect(log.entries[0]!.fields.runtimeSessionId, id).toEqual({ basis: "reported", value: id });
+				accepts(log);
+			}
+			for (const hostile of ["session-secret-opaque-123456", "s-1", "abc123", "tok_SECRET", "endo-pi-default-XYZ"]) {
+				const log = timeline([event(kind, { runtime: "pi", runtimeSessionId: hostile, instance: "i-1" })]);
+				const entry = log.entries[0]!;
+				expect(entry.fields.runtimeSessionId, hostile).toEqual({ basis: "unavailable", reason: WITHHELD });
+				expect(JSON.stringify(log)).not.toContain(hostile);
+				expect(entry.withheldFields).toBeGreaterThanOrEqual(1);
+				accepts(log);
+				// A forged record presenting the value is refused by the validator alone.
+				rejects(
+					mutated(log, (c) => {
+						c.entries[0].fields.runtimeSessionId = { basis: "reported", value: hostile };
+					}),
+					hostile,
+				);
+			}
+		}
+		// A reported wrapper is judged the same way.
+		const wrapped = timeline([
+			event("lifecycle.session-started", {
+				runtime: "pi",
+				runtimeSessionId: { status: "reported", value: "session-secret-opaque-123456" },
+				instance: "i-1",
+			}),
+		]);
+		expect(wrapped.entries[0]!.fields.runtimeSessionId).toEqual({ basis: "unavailable", reason: WITHHELD });
+	});
+
+	// ---- P2. unavailable claims ----------------------------------------------------------------------------------
+
+	it("P2: an unavailable claim is accepted only where the projection can produce it", () => {
+		const log = timeline([
+			event("lifecycle.turn-started", { turn: 1 }),
+			event("lifecycle.turn-completed", { turn: 1, stopReason: { status: "UNAVAILABLE", reason: "not reported" } }),
+			event("agent.turn-finished", { toolResultCount: { status: "UNAVAILABLE", reason: "not reported" } }),
+			event("lifecycle.session-resumed", {
+				runtime: "pi",
+				runtimeSessionId: "endo-pi-default-118ac71e29ed",
+				instance: "i-2",
+				previousInstance: "i-1",
+				previousEnd: "tok_SECRET/with spaces?x=1&token=abcdef0123456789abcdef",
+				unavailable: [{ field: "run.id", reason: "not reported" }],
+			}),
+		]);
+		accepts(log);
+		// Legitimate: a runtime-reported gap (string and number fields), a withheld derived string, a declared gap.
+		expect(log.entries[1]!.fields.stopReason).toEqual({ basis: "unavailable", reason: "not reported" });
+		expect(log.entries[2]!.fields.toolResultCount).toEqual({ basis: "unavailable", reason: "not reported" });
+		expect(log.entries[3]!.fields.previousEnd).toEqual({ basis: "unavailable", reason: WITHHELD });
+		expect(log.entries[3]!.fields["unavailable.run.id"]).toEqual({ basis: "unavailable", reason: "not reported" });
+		const forge = (entry: number, key: string, reason: string) =>
+			mutated(log, (c) => {
+				c.entries[entry].fields[key] = { basis: "unavailable", reason };
+			});
+		// A derived number, or an observed one, is never unavailable; its type mismatch omits it instead.
+		rejects(forge(0, "turn", "not reported"), "derived number");
+		rejects(forge(0, "turn", WITHHELD), "derived number, withheld text");
+		// A derived or observed string may only be withheld by the boundary, never given a reason of the record's choosing.
+		rejects(forge(3, "previousEnd", "not observed"), "derived string");
+		rejects(forge(3, "instance", "not observed"), "observed string");
+		accepts(forge(3, "instance", WITHHELD));
+		// A reported field's reason is judged like any text.
+		rejects(forge(1, "stopReason", "see https://example.com/a?token=abcdef0123456789"), "unsafe reason");
+		rejects(forge(1, "stopReason", ""), "empty reason");
+		rejects(forge(1, "stopReason", "x".repeat(257)), "too long");
+		accepts(forge(2, "toolResultCount", "the runtime does not count them"));
+		// Observed booleans too.
+		const aborted = timeline([event("lifecycle.run-aborted", { turns: 1, stopRequested: true })]);
+		accepts(aborted);
+		rejects(
+			mutated(aborted, (c) => {
+				c.entries[0].fields.stopRequested = { basis: "unavailable", reason: "unknown" };
+			}),
+		);
+	});
+
+	// ---- P2. store-opened discontinuity --------------------------------------------------------------------------
+
+	it("P2: the discontinuity flag of a reopened store follows the recovery values the entry shows", () => {
+		const recovery = (truncated: boolean, recovered: boolean, sealed: boolean) =>
+			timeline([
+				event("harness.store-opened", { lifecycleRepaired: 0, recovery: { truncated, recovered, sealed } }),
+			]);
+		for (const [t, r, sl] of [
+			[true, false, false],
+			[false, true, false],
+			[false, false, true],
+			[true, true, true],
+		] as const) {
+			const log = recovery(t, r, sl);
+			expect(log.entries[0]!.flags).toContain("discontinuity");
+			accepts(log);
+			rejects(
+				mutated(log, (c) => {
+					c.entries[0].flags = [];
+				}),
+				`${t}${r}${sl} without flag`,
+			);
+		}
+		const clean = recovery(false, false, false);
+		expect(clean.entries[0]!.flags).not.toContain("discontinuity");
+		accepts(clean);
+		rejects(
+			mutated(clean, (c) => {
+				c.entries[0].flags = ["discontinuity"];
+			}),
+			"all false with flag",
+		);
+		// Not shown is not false: a payload with no (or malformed) recovery may or may not have been a discontinuity.
+		const bare = timeline([event("harness.store-opened", { lifecycleRepaired: 0 })]);
+		accepts(bare);
+		accepts(
+			mutated(bare, (c) => {
+				c.entries[0].flags = ["discontinuity"];
+			}),
+		);
+		const partial = timeline([event("harness.store-opened", { recovery: { truncated: false } })]);
+		accepts(partial);
+		accepts(
+			mutated(partial, (c) => {
+				c.entries[0].flags = ["discontinuity"];
+			}),
+		);
+		// A shown true needs the flag even beside values that are not shown.
+		const oneTrue = timeline([event("harness.store-opened", { recovery: { sealed: true } })]);
+		accepts(oneTrue);
+		rejects(
+			mutated(oneTrue, (c) => {
+				c.entries[0].flags = [];
+			}),
+		);
+	});
+
+	// ---- P2. source-not-projectable references -------------------------------------------------------------------
+
+	it("P2: the note of an unopenable timeline cites nothing", () => {
+		const source: EndoCockpitEventLogSourceV0 = {
+			domain: "event-log",
+			condition: {
+				state: "unopenable",
+				tornTail: null,
+				sealedAt: null,
+				error: { kind: "invalid-store", message: "the store could not be opened" },
+			},
+			watermark: null,
+		};
+		const log = projectEndoCockpitSessionTimelineV0({ source, afterSequence: 0, events: [] });
+		accepts(log);
+		rejects(
+			mutated(log, (c) => {
+				c.notes[0].refs = [{ domain: "event-log", storageSequence: 1, eventId: "endo.event.plain.1" }];
+			}),
+		);
+	});
+
+	// ---- P2. window maximum --------------------------------------------------------------------------------------
+
+	it("P2: a page spans at most the exported page maximum", () => {
+		expect(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0).toBe(ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0);
+		const many = (count: number) =>
+			Array.from({ length: count }, (_, index) => event("tool.started", {}, { id: `endo.event.page.${index}` }));
+		accepts(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0), 7));
+		accepts(timeline(many(1), 7));
+		rejects(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1), 7), "one over, with an offset");
+		rejects(timeline(many(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 + 1)), "one over");
+		// An empty window, a cursor past the end, and a window far from the start stay valid.
+		accepts(timeline([]));
+		accepts(projectEndoCockpitSessionTimelineV0({ source: logSource(0, null), afterSequence: 500, events: [] }));
+		accepts(timeline(many(3), 2 ** 40));
+	});
+
+	// ---- capability and identity -------------------------------------------------------------------------------
+
+	function carried(confidence: "strong" | "reduced", latest = true) {
+		const records = specimenRecords();
+		const first = records.fingerprint[0]!;
+		const second = {
+			...structuredClone(first),
+			id: "endo.evidence.test-fingerprint.2",
+			observedAt: "2026-10-04T10:00:00.000Z",
+		};
+		second.identity = { ...second.identity, digest: "d".repeat(64) };
+		const state = structuredClone(records.state[0]!);
+		state.fingerprintId = latest ? second.id : first.id;
+		const evidence = structuredClone(records.evidence);
+		const target = evidence.find((item) => item.id === state.capabilities[0]!.evidenceId)!;
+		target.dependencies.fingerprintId = first.id; // carried: recorded against the first observation
+		target.dependencies.confidence = confidence;
+		return { ...records, fingerprint: [first, second], evidence, state: [state], target };
+	}
+
+	it("P2: carried evidence on a reduced identity under the latest fingerprint requires evidence-reduced-identity", () => {
+		const records = carried("reduced");
+		const projected = projectEndoCockpitCapabilityStateV0(input(records));
+		const view = projected.capabilities.find((c) => c.evidence?.id === records.target.id)!;
+		expect(view.status).not.toBe("unverified");
+		expect(view.limits.map((l) => l.code)).toContain("evidence-reduced-identity");
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+		const index = projected.capabilities.indexOf(view);
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				mutated(projected, (c) => {
+					c.capabilities[index].limits = c.capabilities[index].limits.filter(
+						(l: any) => l.code !== "evidence-reduced-identity",
+					);
+				}),
+			),
+		).toBeNull();
+		// Strong carried evidence (a legitimate carry-forward) needs no such limit; adding it stays permitted by the wire.
+		const strong = projectEndoCockpitCapabilityStateV0(input(carried("strong")));
+		const strongView = strong.capabilities.find((c) => c.evidence?.id === records.target.id)!;
+		expect(strongView.limits.map((l) => l.code)).not.toContain("evidence-reduced-identity");
+		expect(validateEndoCockpitCapabilityStateV0(strong)).not.toBeNull();
+		// A state for an older fingerprint is not "the latest": the evidence names the later one, the state the first. The
+		// wire does not demand the limit there (whether it applies needs the records), so removing it still validates.
+		const older = carried("reduced", false);
+		const [first, second] = older.fingerprint;
+		older.target.dependencies.fingerprintId = second!.id;
+		const staleProjection = projectEndoCockpitCapabilityStateV0(input(older));
+		const staleIndex = staleProjection.capabilities.findIndex((c) => c.evidence?.id === older.target.id);
+		expect(staleProjection.state).toMatchObject({ currency: "stale", fingerprintId: publicIdV0(first!.id) });
+		expect(validateEndoCockpitCapabilityStateV0(staleProjection)).not.toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				mutated(staleProjection, (c) => {
+					c.capabilities[staleIndex].limits = c.capabilities[staleIndex].limits.filter(
+						(l: any) => l.code !== "evidence-reduced-identity",
+					);
+				}),
+			),
+		).not.toBeNull();
+	});
+
+	it("P2: a withheld runtime family needs a record that could have named it", () => {
+		const empty = projectEndoCockpitRuntimeIdentityV0(
+			input({ fingerprint: [], change: [], evidence: [], state: [], notification: [] }),
+		);
+		expect(empty.runtime).toMatchObject({
+			basis: "unavailable",
+			reason: "no runtime family is recorded for this attachment",
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(empty)).not.toBeNull();
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				mutated(empty, (c) => {
+					c.runtime.reason = WITHHELD;
+				}),
+			),
+		).toBeNull();
+		// With a fingerprint that does name a sensitive family, withholding is the legitimate outcome.
+		const records = specimenRecords();
+		const withheld = projectEndoCockpitRuntimeIdentityV0(
+			input({
+				...records,
+				fingerprint: [{ ...structuredClone(records.fingerprint[0]!), runtime: "sk-canarysecretcanarysecret" }],
+			}),
+		);
+		expect(withheld.runtime).toMatchObject({ basis: "unavailable", reason: WITHHELD });
+		expect(validateEndoCockpitRuntimeIdentityV0(withheld)).not.toBeNull();
+		// ... and so with only a change naming it.
+		const viaChange = projectEndoCockpitRuntimeIdentityV0(
+			input({
+				fingerprint: [],
+				change: [changeRecord({ runtime: "sk-canarysecretcanarysecret" })],
+				evidence: [],
+				state: [],
+				notification: [],
+			}),
+		);
+		expect(viaChange.runtime).toMatchObject({ basis: "unavailable", reason: WITHHELD });
+		expect(validateEndoCockpitRuntimeIdentityV0(viaChange)).not.toBeNull();
+	});
+
+	it("P2: the previous different observation is another record from the current one", () => {
+		const records = specimenRecords();
+		const first = records.fingerprint[0]!;
+		const second = {
+			...structuredClone(first),
+			id: "endo.evidence.test-fingerprint.2",
+			observedAt: "2026-10-04T10:00:00.000Z",
+		};
+		second.identity = { ...second.identity, digest: "d".repeat(64) };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input({ ...records, fingerprint: [first, second] }));
+		expect(identity.previousDifferent!.id).toBe(publicIdV0(first.id));
+		expect(identity.current!.id).toBe(publicIdV0(second.id));
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		// Distinct ids, earlier index, distinct digest: valid. Equal ids across the two positions: not a registry state.
+		const sameId = mutated(identity, (c) => {
+			c.previousDifferent.id = c.current.id;
+			c.previousDifferent.ref.id = c.current.ref.id;
+		});
+		expect((sameId.previousDifferent!.ref as any).index).toBeLessThan((sameId.current!.ref as any).index);
+		expect((sameId.previousDifferent!.identity as any).value.digest).not.toBe(
+			(sameId.current!.identity as any).value.digest,
+		);
+		expect(validateEndoCockpitRuntimeIdentityV0(sameId)).toBeNull();
+	});
+
+	// ---- usage reasons -------------------------------------------------------------------------------------------
+
+	it("P2: a usage-unavailable reason is one the event kind can produce", () => {
+		const NO_DETAILS = "the event records no entry details";
+		const NO_USAGE = "the event records no usage";
+		const MALFORMED = "the recorded usage is not in the expected shape";
+		const message = timeline([
+			event("message.completed", { role: "assistant" }),
+			event("message.completed", { role: "assistant", usage: { input: "x" } }),
+		]);
+		expect(message.entries[0]!.usage).toEqual({ basis: "unavailable", reason: NO_USAGE });
+		expect(message.entries[1]!.usage).toEqual({ basis: "unavailable", reason: MALFORMED });
+		accepts(message);
+		rejects(
+			mutated(message, (c) => {
+				c.entries[0].usage.reason = NO_DETAILS;
+			}),
+			"message with no-details",
+		);
+		const entries = timeline([
+			event("session.entry-observed", { entryType: "message", role: "assistant" }),
+			event("session.entry-observed", { entryType: "message", role: "assistant", details: {} }),
+			event("session.entry-observed", { entryType: "message", role: "assistant", details: { usage: 1 } }),
+		]);
+		expect(entries.entries.map((e) => (e.usage as any).reason)).toEqual([NO_DETAILS, NO_USAGE, MALFORMED]);
+		accepts(entries);
+		// An entry observation may legitimately say any of the three; the swap of one for another is still wire-valid.
+		for (const reason of [NO_DETAILS, NO_USAGE, MALFORMED])
+			accepts(
+				mutated(entries, (c) => {
+					c.entries[0].usage.reason = reason;
+				}),
+			);
+		// A user entry without details carries no role the entry shows, so it is eligible and says so; with one it carries none.
+		const userEntries = timeline([
+			event("session.entry-observed", { entryType: "message", role: "user" }),
+			event("session.entry-observed", { entryType: "message", details: { role: "user" } }),
+		]);
+		expect(userEntries.entries.map((e) => e.usage === null)).toEqual([false, true]);
+		accepts(userEntries);
+		// Absent, unavailable and withheld role/entry type still decide eligibility as presented.
+		accepts(timeline([event("message.completed", { role: { status: "UNAVAILABLE", reason: "unknown" } })]));
 	});
 });

@@ -57,6 +57,7 @@ import {
 	endoCockpitProducerAdmittedV0,
 	endoCockpitTextPresentableV0,
 	endoCockpitTextUnsafeV0,
+	endoCockpitUnavailableAdmittedV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 	isEndoCockpitPublicIdV0,
 } from "./cockpit-fields.ts";
@@ -680,6 +681,9 @@ function isCondition(value: unknown): value is EndoCockpitSourceConditionV0 {
 	}
 }
 
+/** The most positions one timeline page spans (equal to the event store's page maximum, which a test pins). */
+export const ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 = 10000;
+
 function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 {
 	if (!isPlain(value) || !exactKeys(value, ["domain", "condition", "watermark"])) return false;
 	if (value.domain !== "event-log" || !isCondition(value.condition)) return false;
@@ -971,7 +975,10 @@ function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 		const rule = endoCockpitFieldRuleV0(kind, key);
 		if (rule === null) return false;
 		if (rule.dynamic === true && !endoCockpitGapNameAdmittedV0(key.slice("unavailable.".length))) return false;
-		if (field.basis === "unavailable") continue;
+		if (field.basis === "unavailable") {
+			if (!endoCockpitUnavailableAdmittedV0(kind, key, field.reason)) return false;
+			continue;
+		}
 		if (rule.dynamic === true || field.basis !== rule.basis) return false;
 		if (field.value === null) {
 			if (!rule.nullable) return false;
@@ -997,6 +1004,18 @@ function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 		has("discontinuity") !== ENDO_COCKPIT_DISCONTINUITY_KINDS_V0.includes(kind)
 	)
 		return false;
+	// ... but where the entry shows what it was decided by, the flag follows it: set when any of the three is true, clear
+	// when all three are shown false. (A value that is absent or unavailable is not read as false.)
+	if (kind === "harness.store-opened") {
+		const shown = ["recoveryTruncated", "recoveryRecovered", "recoverySealed"].map((key) => {
+			const field = fields[key];
+			return field !== undefined && field.basis !== "unavailable" && typeof field.value === "boolean"
+				? field.value
+				: undefined;
+		});
+		if (shown.includes(true) && !has("discontinuity")) return false;
+		if (shown.every((item) => item === false) && has("discontinuity")) return false;
+	}
 	// Usage is present exactly when the event can carry it, decided by fields the entry itself presents. (A presented
 	// `role` or `entryType` is a string that was judged presentable; one that was absent, withheld or unavailable is not the
 	// word the projection tests for, so it never makes an event ineligible.) Whether the usage it carries is reported or
@@ -1090,7 +1109,9 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 		return (
 			exactKeys(usage, ["basis", "reason"]) &&
 			typeof usage.reason === "string" &&
-			ENDO_COCKPIT_USAGE_REASONS_V0.includes(usage.reason)
+			ENDO_COCKPIT_USAGE_REASONS_V0.includes(usage.reason) &&
+			// Only an entry observation can lack its details; a message carries its usage (or not) directly.
+			(usage.reason !== ENDO_COCKPIT_USAGE_REASONS_V0[0] || value.kind === "session.entry-observed")
 		);
 	return exactKeys(usage, ["basis", "value"]) && usage.basis === "reported" && isUsage(usage.value);
 }
@@ -1353,6 +1374,8 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	// The latest different observation is, by definition, a different identity from the current one.
 	if (identity.previousDifferent !== null) {
 		if (identity.current === null) return false;
+		// Two records of one registry never share an id.
+		if (identity.previousDifferent.id === identity.current.id) return false;
 		if (
 			identity.previousDifferent.identity.basis === "derived" &&
 			identity.current.identity.basis === "derived" &&
@@ -1384,7 +1407,9 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 			: endoCockpitUnreadableRuntimeReasonV0(identity.source.condition.state);
 		// A family the text policy flags is withheld, whatever records name it.
 		if (runtime.refs.length !== 0) return false;
-		if (runtime.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0) return isProjectable(identity.source);
+		// (Only a record that names a family can have one to withhold.)
+		if (runtime.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0)
+			return isProjectable(identity.source) && (identity.current !== null || identity.lastChange !== null);
 		return runtime.reason === expected && identity.current === null && identity.lastChange === null;
 	}
 	const from = identity.current ?? identity.lastChange;
@@ -1467,9 +1492,23 @@ function limitsAreSound(
 				(ENDO_COCKPIT_CHECK_COST_V0[capability.requires] ?? 0),
 		"evidence-classification-differs":
 			admitted && evidence !== null && evidence.classification !== capability.classification,
+		// The state names the latest fingerprint (so the record exists), the evidence another one, and that evidence is
+		// itself on a reduced identity: carried across observations, which the protocol never allows.
+		"evidence-reduced-identity":
+			admitted &&
+			evidence !== null &&
+			fingerprintId !== null &&
+			fingerprintId === latestId &&
+			evidence.dependencies.fingerprintId !== fingerprintId &&
+			evidence.dependencies.confidence === "reduced",
 	};
 	for (const [code, expected] of Object.entries(decided))
-		if (has(code as EndoCockpitLimitCodeV0) !== expected) return false;
+		if (
+			code === "evidence-reduced-identity"
+				? expected && !has(code)
+				: has(code as EndoCockpitLimitCodeV0) !== expected
+		)
+			return false;
 	const possible: Partial<Record<EndoCockpitLimitCodeV0, boolean>> = {
 		"state-fingerprint-not-recorded": fingerprintId !== null && fingerprintId !== latestId,
 		"evidence-capability-differs": evidence !== null,
@@ -1632,11 +1671,14 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 	if (value.notes.length !== (value.source.condition.state === "unopenable" ? 1 : 0)) return null;
 	if (value.notes.some((note) => note.code !== "source-not-projectable")) return null;
 	// A timeline's notes can only point into the event log it was read from.
-	if (!value.notes.every((note) => note.refs.every((ref) => ref.domain === "event-log"))) return null;
+	// ... and it cites nothing: a source that could not be opened has no position to cite an event from.
+	if (!value.notes.every((note) => note.refs.length === 0)) return null;
 	const window = value.window;
 	if (!isPlain(window) || !exactKeys(window, ["afterSequence", "nextAfterSequence", "hasMore"])) return null;
 	if (!isCount(window.afterSequence) || !isCount(window.nextAfterSequence)) return null;
 	if (window.nextAfterSequence < window.afterSequence) return null;
+	// No reader result spans more positions than the page maximum.
+	if (window.nextAfterSequence - window.afterSequence > ENDO_COCKPIT_PAGE_MAX_LIMIT_V0) return null;
 	if (window.hasMore !== null && typeof window.hasMore !== "boolean") return null;
 	if (!arrayOf(value.entries, isTimelineEntry)) return null;
 	const mark = value.source.watermark;

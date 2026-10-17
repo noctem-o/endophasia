@@ -95,10 +95,10 @@ import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0
 
 /** The projection definition versions of this contract version. A change to what a projection computes bumps its own. */
 export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
-	runtimeIdentity: "cockpit-runtime-identity.2",
-	capabilityState: "cockpit-capability-state.2",
-	sessionTimeline: "cockpit-session-timeline.2",
-	snapshot: "cockpit-snapshot.2",
+	runtimeIdentity: "cockpit-runtime-identity.3",
+	capabilityState: "cockpit-capability-state.3",
+	sessionTimeline: "cockpit-session-timeline.3",
+	snapshot: "cockpit-snapshot.3",
 } as const;
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
@@ -1297,6 +1297,12 @@ function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection:
 	return notes.every((note) => {
 		if (!policy.codes.includes(note.code)) return false;
 		const kinds = FOREIGN_OR_DUPLICATE.includes(note.code) ? policy.cleaned : NOTE_REF_KINDS[note.code];
+		// A note about a discarded record names that one record, and only a record with an id can repeat one.
+		if (FOREIGN_OR_DUPLICATE.includes(note.code)) {
+			const [ref] = note.refs;
+			if (note.refs.length !== 1 || ref === undefined) return false;
+			if (note.code === "duplicate-record-id" && ref.domain === "harness-registry" && ref.id === null) return false;
+		}
 		return note.refs.every((ref) => isRegistryRef(ref, ctx, kinds));
 	});
 }
@@ -1781,6 +1787,13 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 	// are contiguous apart from the duplicates. (The canonical store refuses a repeated event id on open, so a window read
 	// from it has none; the count exists for input that did not come from the store.)
 	if (value.entries.length + value.duplicatesIgnored !== window.nextAfterSequence - window.afterSequence) return null;
+	// The first position consumed is always presented: a window's duplicate set starts empty, so the first event cannot be
+	// a repeat, and an entry that begins later would leave the positions before it unaccounted for.
+	if (
+		window.nextAfterSequence > window.afterSequence &&
+		(value.entries as EndoCockpitTimelineEntryV0[])[0]?.storageSequence !== window.afterSequence + 1
+	)
+		return null;
 	if (value.duplicatesIgnored > 0 && mark !== null && window.nextAfterSequence > mark.length) return null;
 	// A window that ends at the end of the log ends at the event the watermark names as the last.
 	if (mark !== null && mark.length > 0 && window.nextAfterSequence === mark.length && value.entries.length > 0) {

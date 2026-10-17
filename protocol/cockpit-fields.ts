@@ -303,6 +303,8 @@ export const ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0: Readonly<Record<string, { pare
 	});
 
 const KEYED_DIGEST_PARTS: Readonly<Record<string, (value: string) => boolean>> = freezeDeep({
+	// The runtime identity digest, as its keyed token (the same token the registry views carry for it).
+	identityDigest: (value: string) => /^[0-9a-f]{64}$/.test(value),
 	argsDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	resultDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	argsDigestKeyId: (value: string) => ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value),
@@ -436,6 +438,21 @@ export function endoCockpitPresentableTextV0(text: string, max = ENDO_COCKPIT_MA
 	return endoCockpitTextPresentableV0(text, max) ? text : ENDO_COCKPIT_WITHHELD_TEXT_V0;
 }
 
+/**
+ * Whether an identifier is a content-addressed evidence record id: `endo.evidence.<name>.<64 hex>`, where the hex is the
+ * sha256 of the record's whole body (a runtime fingerprint, a change, a notification, a capability check, an intervention).
+ * That body can contain facts the cockpit withholds (a real path, the identity and configuration digests, an expected or
+ * observed value), so the id is a commitment to them: anyone who can guess the body can recompute it and confirm the guess.
+ * Such an id is never presented as it is, wherever it occurs; it is presented as its keyed alias (common.ts), which gives
+ * the same value for the same id everywhere under one key. Event ids hash only the runtime's own session and entry
+ * identifiers, which the cockpit presents, and are not in this family.
+ */
+export function isEndoCockpitContentAddressedIdV0(value: string): boolean {
+	const parsed = parseEndoIdentifierV0(value);
+	if (parsed === null || parsed.kind !== "evidence") return false;
+	return /^[0-9a-f]{64}$/.test(parsed.local.split(".").at(-1) ?? "");
+}
+
 const SAFE_ID_SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
@@ -448,6 +465,7 @@ const SAFE_ID_SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function isEndoCockpitPublicIdV0(value: string, kind?: EndoIdentifierKindV0): boolean {
 	const parsed = parseEndoIdentifierV0(value);
 	if (parsed === null || (kind !== undefined && parsed.kind !== kind)) return false;
+	if (isEndoCockpitContentAddressedIdV0(value)) return false;
 	if (!parsed.local.split(".").every((segment) => segment.length <= 64 && SAFE_ID_SEGMENT.test(segment))) return false;
 	// Admitted by shape AND by content: what the text policy flags is admitted nowhere.
 	return !endoCockpitTextUnsafeV0(value);

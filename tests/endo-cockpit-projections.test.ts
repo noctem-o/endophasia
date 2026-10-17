@@ -142,9 +142,9 @@ describe("determinism and purity", () => {
 	it("the projection definition versions are part of every output", () => {
 		const identity = projectEndoCockpitRuntimeIdentityV0(input(specimenRecords()));
 		const capabilities = projectEndoCockpitCapabilityStateV0(input(specimenRecords()));
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.2");
-		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.2");
-		expect(timeline([event("tool.started")]).projectionVersion).toBe("cockpit-session-timeline.2");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.3");
+		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.3");
+		expect(timeline([event("tool.started")]).projectionVersion).toBe("cockpit-session-timeline.3");
 	});
 });
 
@@ -366,7 +366,7 @@ describe("runtime identity", () => {
 		const { fingerprint } = specimen();
 		expect(result.runtime).toMatchObject({ basis: "observed", value: "pi" });
 		expect(result.current).toMatchObject({
-			id: fingerprint.id,
+			id: publicIdV0(fingerprint.id),
 			version: { basis: "reported", value: "1.0.0" },
 			identity: { basis: "derived", value: { confidence: "strong" } },
 			entrypoint: { basis: "observed" },
@@ -409,8 +409,8 @@ describe("runtime identity", () => {
 		const result = projectEndoCockpitRuntimeIdentityV0(
 			input({ ...specimenRecords(), fingerprint: [fingerprint, newer], change: [changeRecord()] }),
 		);
-		expect(result.current!.id).toBe(newer.id);
-		expect(result.previousDifferent!.id).toBe(fingerprint.id);
+		expect(result.current!.id).toBe(publicIdV0(newer.id));
+		expect(result.previousDifferent!.id).toBe(publicIdV0(fingerprint.id));
 		expect(result.notes.map((note) => note.code)).toEqual(["latest-change-not-for-latest-fingerprint"]);
 	});
 
@@ -460,7 +460,7 @@ describe("capability state", () => {
 		const records = specimenRecords();
 		const result = projectEndoCockpitCapabilityStateV0(input(records));
 		const state = records.state[0]!;
-		expect(result.state).toMatchObject({ currency: "current", fingerprintId: state.fingerprintId });
+		expect(result.state).toMatchObject({ currency: "current", fingerprintId: publicIdV0(state.fingerprintId!) });
 		expect(result.capabilities.map((c) => [c.capability, c.status, c.classification])).toEqual(
 			state.capabilities.map((c) => [c.capability, c.status, c.classification]),
 		);
@@ -468,9 +468,9 @@ describe("capability state", () => {
 			expect(view.limits).toEqual([]);
 			if (view.status !== "unverified") {
 				expect(view.evidence!.id).toBe(
-					state.capabilities.find((c) => c.capability === view.capability)!.evidenceId,
+					publicIdV0(state.capabilities.find((c) => c.capability === view.capability)!.evidenceId!),
 				);
-				expect(view.evidence!.dependencies.fingerprintId).toBe(state.fingerprintId);
+				expect(view.evidence!.dependencies.fingerprintId).toBe(publicIdV0(state.fingerprintId!));
 			}
 		}
 		expect(result.capabilities.some((c) => c.limitations.length > 0)).toBe(true);
@@ -734,7 +734,7 @@ describe("contract validators", () => {
 			log,
 			snapshot: {
 				schemaVersion: "endo.cockpit-snapshot.v0",
-				projectionVersion: "cockpit-snapshot.2",
+				projectionVersion: "cockpit-snapshot.3",
 				consistency: "independent-sources",
 				timeline: log,
 				runtimes: [{ identity, capabilities }],
@@ -1411,7 +1411,7 @@ describe("projection version compatibility (PR #57 review)", () => {
 		const log = timeline([event("tool.started", { toolName: "read" })]);
 		const snapshot = {
 			schemaVersion: "endo.cockpit-snapshot.v0",
-			projectionVersion: "cockpit-snapshot.2",
+			projectionVersion: "cockpit-snapshot.3",
 			consistency: "independent-sources",
 			timeline: log,
 			runtimes: [{ identity, capabilities }],
@@ -1422,9 +1422,9 @@ describe("projection version compatibility (PR #57 review)", () => {
 
 	it("pins each record to its declared projection version, and keeps it apart from the schema version", () => {
 		const { identity, capabilities, log, snapshot } = good();
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.2");
-		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.2");
-		expect(log.projectionVersion).toBe("cockpit-session-timeline.2");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.3");
+		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.3");
+		expect(log.projectionVersion).toBe("cockpit-session-timeline.3");
 		const validators: [string, unknown, (value: unknown) => unknown][] = [
 			["identity", identity, validateEndoCockpitRuntimeIdentityV0],
 			["capabilities", capabilities, validateEndoCockpitCapabilityStateV0],
@@ -1436,7 +1436,7 @@ describe("projection version compatibility (PR #57 review)", () => {
 			for (const bad of BAD)
 				expect(validate({ ...(value as object), projectionVersion: bad }), `${name} ${bad}`).toBeNull();
 			// Another record's valid projection version is not this record's.
-			const foreign = name === "timeline" ? "cockpit-snapshot.2" : "cockpit-session-timeline.2";
+			const foreign = name === "timeline" ? "cockpit-snapshot.3" : "cockpit-session-timeline.3";
 			expect(validate({ ...(value as object), projectionVersion: foreign }), `${name} foreign`).toBeNull();
 		}
 	});
@@ -1591,7 +1591,7 @@ describe("second review round (PR #57)", () => {
 			log,
 			snapshot: {
 				schemaVersion: "endo.cockpit-snapshot.v0",
-				projectionVersion: "cockpit-snapshot.2",
+				projectionVersion: "cockpit-snapshot.3",
 				consistency: "independent-sources",
 				timeline: log,
 				runtimes: [{ identity, capabilities }],
@@ -1874,7 +1874,7 @@ describe("third review round and invariant audit (PR #57)", () => {
 			item.dependencies.suiteVersion = text;
 			item.dependencies.extension = { id: text, version: text };
 			const capabilities = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence }));
-			const view = capabilities.capabilities.find((c) => c.evidence?.id === item.id)!.evidence!;
+			const view = capabilities.capabilities.find((c) => c.evidence?.id === publicIdV0(item.id))!.evidence!;
 			expect(
 				[
 					view.check.name,
@@ -1966,7 +1966,7 @@ describe("third review round and invariant audit (PR #57)", () => {
 		const log = timeline([event("tool.started")]);
 		const snapshot = (runtimes: unknown[]) => ({
 			schemaVersion: "endo.cockpit-snapshot.v0",
-			projectionVersion: "cockpit-snapshot.2",
+			projectionVersion: "cockpit-snapshot.3",
 			consistency: "independent-sources",
 			timeline: log,
 			runtimes,
@@ -2846,7 +2846,7 @@ describe("fifth review round (PR #57)", () => {
 		expect(names[1]).not.toBe(placeholder);
 		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
 		const kinds = timeline([
-			event(odd + ".x"),
+			event(`${odd}.x`),
 			event(`other.withheld-${token("endo.cockpit.kind-alias.v0", "kind", `${odd}.x`)}`),
 		]).entries.map((e) => e.kind);
 		expect(new Set(kinds).size).toBe(2);
@@ -3656,7 +3656,7 @@ describe("seventh review round (PR #57)", () => {
 	it("P2: carried evidence on a reduced identity under the latest fingerprint requires evidence-reduced-identity", () => {
 		const records = carried("reduced");
 		const projected = projectEndoCockpitCapabilityStateV0(input(records));
-		const view = projected.capabilities.find((c) => c.evidence?.id === records.target.id)!;
+		const view = projected.capabilities.find((c) => c.evidence?.id === publicIdV0(records.target.id))!;
 		expect(view.status).not.toBe("unverified");
 		expect(view.limits.map((l) => l.code)).toContain("evidence-reduced-identity");
 		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
@@ -3672,7 +3672,7 @@ describe("seventh review round (PR #57)", () => {
 		).toBeNull();
 		// Strong carried evidence (a legitimate carry-forward) needs no such limit; adding it stays permitted by the wire.
 		const strong = projectEndoCockpitCapabilityStateV0(input(carried("strong")));
-		const strongView = strong.capabilities.find((c) => c.evidence?.id === records.target.id)!;
+		const strongView = strong.capabilities.find((c) => c.evidence?.id === publicIdV0(records.target.id))!;
 		expect(strongView.limits.map((l) => l.code)).not.toContain("evidence-reduced-identity");
 		expect(validateEndoCockpitCapabilityStateV0(strong)).not.toBeNull();
 		// A state for an older fingerprint is not "the latest": the evidence names the later one, the state the first. The
@@ -3681,7 +3681,7 @@ describe("seventh review round (PR #57)", () => {
 		const [first, second] = older.fingerprint;
 		older.target.dependencies.fingerprintId = second!.id;
 		const staleProjection = projectEndoCockpitCapabilityStateV0(input(older));
-		const staleIndex = staleProjection.capabilities.findIndex((c) => c.evidence?.id === older.target.id);
+		const staleIndex = staleProjection.capabilities.findIndex((c) => c.evidence?.id === publicIdV0(older.target.id));
 		expect(staleProjection.state).toMatchObject({ currency: "stale", fingerprintId: publicIdV0(first!.id) });
 		expect(validateEndoCockpitCapabilityStateV0(staleProjection)).not.toBeNull();
 		expect(

@@ -171,9 +171,9 @@ function projectEndoCockpitRuntimeIdentityV0Unchecked(
 		};
 	}
 
-	const fingerprints = cleanRegistryRecordsV0(source, alias, "fingerprint", records.fingerprint, notes);
-	const changes = cleanRegistryRecordsV0(source, alias, "change", records.change, notes);
-	const notifications = cleanRegistryRecordsV0(source, alias, "notification", records.notification, notes);
+	const fingerprints = cleanRegistryRecordsV0(source, alias, "fingerprint", records, notes);
+	const changes = cleanRegistryRecordsV0(source, alias, "change", records, notes);
+	const notifications = cleanRegistryRecordsV0(source, alias, "notification", records, notes);
 
 	const current = fingerprints.at(-1) ?? null;
 	let previousDifferent: EndoCockpitIndexedV0<EndoHarnessFingerprintV0> | null = null;

@@ -45,6 +45,7 @@ import {
 	removeTempRoots,
 	seedRegistry,
 	specimen,
+	specimenRecords,
 	tempRoot,
 	treeHash,
 } from "./cockpit-fixtures.ts";
@@ -55,6 +56,7 @@ import {
 	OTHER_KEY,
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitSessionTimelineV0,
+	publicIdV0,
 	readEndoCockpitEventLogV0,
 	readEndoCockpitRegistryV0,
 	readEndoCockpitRuntimeV0,
@@ -117,6 +119,24 @@ function frameStart(path: string, index: number): number {
 }
 
 describe("store to projection", () => {
+	it("publishes none of the content-addressed ids or identity digests the recorded store holds, in full or by 12-character prefix", () => {
+		const { root, events } = seeded();
+		const raw = JSON.stringify([events, specimenRecords()]);
+		const commitments = new Set<string>();
+		for (const match of raw.matchAll(/endo\.evidence\.[a-z0-9.-]*?\.([0-9a-f]{64})/g)) commitments.add(match[1]!);
+		for (const match of raw.matchAll(/"(?:identityDigest|digest)":"([0-9a-f]{64})"/g)) commitments.add(match[1]!);
+		expect(commitments.size).toBeGreaterThanOrEqual(3);
+		const snapshot = readEndoCockpitSnapshotV0(root, { limit: events.length });
+		expect(validateEndoCockpitSnapshotV0(snapshot)).not.toBeNull();
+		// The recorded attachments are in the timeline as harness.attached / runtime-changed fields.
+		expect(snapshot.timeline.entries.some((e) => e.fields.fingerprintId !== undefined)).toBe(true);
+		const published = JSON.stringify(snapshot);
+		for (const value of commitments) {
+			expect(published, value).not.toContain(value);
+			expect(published, value.slice(0, 12)).not.toContain(value.slice(0, 12));
+		}
+	});
+
 	it("projects a recorded store to exactly what the records say", () => {
 		const { root, events } = seeded();
 		const snapshot = readEndoCockpitSnapshotV0(root, { limit: events.length });
@@ -162,8 +182,11 @@ describe("store to projection", () => {
 		// The registry side is the specimen, read through the registry.
 		const [runtime] = snapshot.runtimes;
 		const { fingerprint, state } = specimen();
-		expect(runtime!.identity.current!.id).toBe(fingerprint.id);
-		expect(runtime!.capabilities.state).toMatchObject({ currency: "current", fingerprintId: state.fingerprintId });
+		expect(runtime!.identity.current!.id).toBe(publicIdV0(fingerprint.id));
+		expect(runtime!.capabilities.state).toMatchObject({
+			currency: "current",
+			fingerprintId: publicIdV0(state.fingerprintId!),
+		});
 		expect(
 			runtime!.capabilities.capabilities.map((c) => [c.capability, c.status, c.classification, c.reason]),
 		).toEqual(

@@ -9,6 +9,7 @@ import type {
 	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
 } from "../../protocol/cockpit.ts";
+import { ENDO_COCKPIT_REGISTRY_KINDS_V0 } from "../../protocol/cockpit.ts";
 import {
 	endoCockpitPresentableTextV0,
 	endoCockpitTextUnsafeV0,
@@ -157,34 +158,44 @@ export function noteV0(code: EndoCockpitNoteCodeV0, refs: EndoCockpitRefV0[] = [
  * The records of one kind that belong to this registry's attachment, first of each id. A record naming another
  * attachment, or repeating an id, is not presented as a record of this registry; each is noted with its reference. The
  * durable registry refuses both on open, so this only matters for input that did not come from it.
+ *
+ * Ids are unique across ALL kinds of a registry, so the first-of-each-id ledger is built over every kind in
+ * ENDO_COCKPIT_REGISTRY_KINDS_V0 order, whichever kinds this projection presents: which record of two sharing an id is the
+ * repeat then does not depend on the projection asked. Only the records of the requested kind are returned and noted.
+ * (The input lists are per kind, so their append order across kinds is not known; the kind order stands in for it.)
  */
-export function cleanRegistryRecordsV0<
-	K extends EndoCockpitRegistryKindV0,
-	T extends { attachment: string; id?: string },
->(
+export function cleanRegistryRecordsV0<K extends EndoCockpitRegistryKindV0>(
 	source: EndoCockpitRegistrySourceV0,
 	alias: EndoCockpitAliasesV0,
 	kind: K,
-	records: readonly T[],
+	records: EndoCockpitRegistryRecordsV0,
 	notes: EndoCockpitNoteV0[],
-): EndoCockpitIndexedV0<T>[] {
-	const kept: EndoCockpitIndexedV0<T>[] = [];
+): EndoCockpitIndexedV0<EndoCockpitRegistryRecordsV0[K][number]>[] {
+	const kept: EndoCockpitIndexedV0<EndoCockpitRegistryRecordsV0[K][number]>[] = [];
 	const ids = new Set<string>();
-	records.forEach((record, index) => {
-		const id = record.id ?? null;
-		if (record.attachment !== source.attachment) {
-			notes.push(noteV0("foreign-attachment-record", [registryRefV0(alias, source.attachment, kind, index, id)]));
-			return;
-		}
-		if (id !== null) {
-			if (ids.has(id)) {
-				notes.push(noteV0("duplicate-record-id", [registryRefV0(alias, source.attachment, kind, index, id)]));
+	for (const each of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
+		(records[each] as readonly { attachment: string; id?: string }[]).forEach((record, index) => {
+			if (record.attachment !== source.attachment) {
+				if (each === kind)
+					notes.push(
+						noteV0("foreign-attachment-record", [
+							registryRefV0(alias, source.attachment, kind, index, record.id ?? null),
+						]),
+					);
 				return;
 			}
-			ids.add(id);
-		}
-		kept.push({ record, index });
-	});
+			const id = record.id ?? null;
+			if (id !== null) {
+				if (ids.has(id)) {
+					if (each === kind)
+						notes.push(noteV0("duplicate-record-id", [registryRefV0(alias, source.attachment, kind, index, id)]));
+					return;
+				}
+				ids.add(id);
+			}
+			if (each === kind) kept.push({ record: record as EndoCockpitRegistryRecordsV0[K][number], index });
+		});
+	}
 	return kept;
 }
 

@@ -110,10 +110,10 @@ function projectEndoCockpitCapabilityStateV0Unchecked(
 		return { ...base, state: null, capabilities: [], notes };
 	}
 
-	const fingerprints = cleanRegistryRecordsV0(source, alias, "fingerprint", records.fingerprint, notes);
-	const evidence = cleanRegistryRecordsV0(source, alias, "evidence", records.evidence, notes);
+	const fingerprints = cleanRegistryRecordsV0(source, alias, "fingerprint", records, notes);
+	const evidence = cleanRegistryRecordsV0(source, alias, "evidence", records, notes);
 	// A state record has no id of its own, so only its attachment is checked.
-	const states = cleanRegistryRecordsV0(source, alias, "state", records.state, notes);
+	const states = cleanRegistryRecordsV0(source, alias, "state", records, notes);
 	const latest = states.at(-1) ?? null;
 	if (latest === null) {
 		notes.push(noteV0("no-capability-state-recorded"));

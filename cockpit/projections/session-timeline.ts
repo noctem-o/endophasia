@@ -158,6 +158,11 @@ function readField(
 			? { basis: "unavailable", reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0 }
 			: undefined;
 	}
+	// The runtime identity digest commits to withheld facts (the real path): shown only as its keyed token, never as recorded.
+	if (spec[0] === "identityDigest") {
+		if (typeof raw !== "string") return undefined;
+		return /^[0-9a-f]{64}$/.test(raw) ? { basis, value: alias.digest("identity", raw) } : withheldField();
+	}
 	const value = scalar(alias, raw, type, nullable === true);
 	if (typeof value === "string" && !judged(value)) return withheldField();
 	return value === undefined ? undefined : { basis, value };
@@ -378,7 +383,10 @@ function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0):
 		if (session.field !== undefined) fields.runtimeSessionId = session.field;
 		for (const key of session.keys) presentedWhole.add(key);
 	}
-	if (event.kind === "message.completed" && usageIsWhole(payload)) presentedWhole.add("usage");
+	const usage = usageOf(event, payload, fields);
+	// The usage key is presented whole only when the entry carries the complete reported value (an ineligible role shows none).
+	if (event.kind === "message.completed" && usage?.basis === "reported" && usageIsWhole(payload))
+		presentedWhole.add("usage");
 	// A kind is grammar-valid whatever it says: one the text policy flags is presented as a placeholder in "other".
 	const presentedKind = !isEndoCockpitSourceKindAdmittedV0(event.kind)
 		? `other.${alias.kind(event.kind)}`
@@ -399,7 +407,7 @@ function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0):
 		derivedFrom: event.derivedFrom.map((id) => alias.id(id)),
 		flags: flagsOf(event, payload, endoCockpitKindRecognizedV0(event.kind)),
 		fields,
-		usage: usageOf(event, payload, fields),
+		usage,
 		withheldFields: keys.filter((key) => !presentedWhole.has(key)).length + (isRecord(event.payload) ? 0 : 1),
 	};
 }

@@ -902,6 +902,51 @@ describe("rejection: seeded mutation of valid wire records", () => {
 			},
 		},
 		{
+			name: "a classification taken from an admitted capability",
+			apply(record, random) {
+				const views = nodes(record).filter(
+					(n) => n.value?.status !== undefined && n.value.status !== "unverified" && n.value.classification,
+				);
+				if (views.length === 0) return null;
+				pick(random, views).value.classification = null;
+				return "classification";
+			},
+		},
+		{
+			name: "a limitation attributed to evidence that is not cited",
+			apply(record, random) {
+				const views = nodes(record).filter(
+					(n) => n.value?.evidence === null && Array.isArray(n.value?.limitations) && "capability" in n.value,
+				);
+				if (views.length === 0) return null;
+				pick(random, views).value.limitations = ["a limitation nothing states"];
+				return "limitations";
+			},
+		},
+		{
+			name: "a notification view with no lines",
+			apply(record, random) {
+				const views = nodes(record).filter((n) => typeof n.value?.lineCount === "number");
+				if (views.length === 0) return null;
+				pick(random, views).value.lineCount = 0;
+				return "lineCount";
+			},
+		},
+		{
+			name: "the digest of an empty registry replaced",
+			apply(record, random) {
+				const marks = nodes(record).filter(
+					(n) =>
+						n.key === "watermark" &&
+						n.value?.counts &&
+						Object.values(n.value.counts).every((count) => count === 0),
+				);
+				if (marks.length === 0) return null;
+				pick(random, marks).value.contentDigest = "0".repeat(64);
+				return "contentDigest";
+			},
+		},
+		{
 			name: "a cursor or sequence moved",
 			apply(record, random) {
 				const windows = nodes(record).filter((n) => n.key === "window" && n.value?.nextAfterSequence !== undefined);

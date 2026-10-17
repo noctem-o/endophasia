@@ -651,6 +651,9 @@ function isCondition(value: unknown): value is EndoCockpitSourceConditionV0 {
 	if (tail !== null) {
 		if (!isPlain(tail) || !exactKeys(tail, ["bytes", "sha256"]) || !isCount(tail.bytes) || !isSha256(tail.sha256))
 			return false;
+		// A torn tail is at least one byte of an incomplete frame, and the reader stops at the first corrupt frame without
+		// looking past it, so a log is never both torn and sealed.
+		if (tail.bytes < 1 || value.sealedAt !== null) return false;
 	}
 	if (value.sealedAt !== null && !(isCount(value.sealedAt) && value.sealedAt >= 1)) return false;
 	const error = value.error;
@@ -687,12 +690,19 @@ function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 
 		return false;
 	// The state and the position must agree: a clean log with no events is absent or empty, never readable. (A log can be
 	// degraded at zero events: a torn tail or a bad first frame leaves no verified prefix.)
+	// The first frame that failed verification is the one right after the verified prefix.
+	const sealedAt = value.condition.sealedAt;
+	if (sealedAt !== null && sealedAt !== mark.length + 1) return false;
 	if (mark.length === 0)
 		return mark.lastEventId === null && mark.prefixDigest === null && value.condition.state !== "readable";
 	if (typeof mark.lastEventId !== "string" || !isPublicId(mark.lastEventId, "event")) return false;
 	if (!isSha256(mark.prefixDigest)) return false;
 	return value.condition.state !== "absent" && value.condition.state !== "empty";
 }
+
+/** sha256 of the canonical JSON `{}` (an absent registry) and of the five empty record lists (an opened, empty one). */
+const ABSENT_REGISTRY_DIGEST = "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356";
+const EMPTY_REGISTRY_DIGEST = "de9bc43d669ccacd726cb1594bcf67f047f7c4daacdae8e78edfa4078ce27d59";
 
 function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 {
 	if (!isPlain(value) || !exactKeys(value, ["domain", "attachment", "condition", "watermark"])) return false;
@@ -715,11 +725,18 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 		if (kind === "state" ? lastId !== null : count > 0 && lastId === null) return false;
 		total += count;
 	}
+	// Each verified frame is one record, so the first frame that failed verification is the one after them.
+	if (value.condition.sealedAt !== null && value.condition.sealedAt !== total + 1) return false;
 	// The state and the records must agree: an absent or empty registry holds none, and a registry with none is never
-	// readable (it may be degraded: damage can leave no verified record).
-	return total === 0
-		? value.condition.state !== "readable"
-		: value.condition.state === "readable" || value.condition.state === "degraded";
+	// readable (it may be degraded: damage can leave no verified record). The whole content is then known, so its digest
+	// is too: an absent registry has no content to hash ({}), an opened one has five empty lists.
+	if (total === 0) {
+		if (value.condition.state === "readable") return false;
+		return (
+			mark.contentDigest === (value.condition.state === "absent" ? ABSENT_REGISTRY_DIGEST : EMPTY_REGISTRY_DIGEST)
+		);
+	}
+	return value.condition.state === "readable" || value.condition.state === "degraded";
 }
 
 const CONFIDENCES = ["strong", "reduced"] as const;
@@ -838,6 +855,7 @@ function isNotificationView(value: unknown): value is EndoCockpitNotificationVie
 		oneOf(ENDO_HARNESS_NOTIFICATION_KINDS_V0, value.kind) &&
 		isLabel(value.title, 256) &&
 		isCount(value.lineCount) &&
+		value.lineCount >= 1 &&
 		value.linesWithheld === true
 	);
 }
@@ -913,6 +931,10 @@ function isCapabilityView(value: unknown): value is EndoCockpitCapabilityViewV0 
 		oneOf(ENDO_CAPABILITY_CHECK_KINDS_V0, value.requires) &&
 		nullable(value.evidence, isEvidenceView) &&
 		arrayOf(value.limitations, (item): item is string => isLabel(item, 256)) &&
+		// Limitations are the cited evidence's own: without evidence there are none. A classification is what separates an
+		// unverified capability from every other status.
+		(value.evidence !== null || (value.limitations as unknown[]).length === 0) &&
+		(value.status === "unverified") === (value.classification === null) &&
 		arrayOf(
 			value.limits,
 			(item): item is { code: EndoCockpitLimitCodeV0; refs: EndoCockpitRefV0[] } =>

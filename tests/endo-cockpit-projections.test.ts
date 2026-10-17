@@ -3199,3 +3199,204 @@ describe("fifth review round (PR #57)", () => {
 		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
 	});
 });
+
+describe("sixth review round (PR #57)", () => {
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+
+	// ---- 1. classification, both directions ---------------------------------------------------------------------
+
+	it("1: a capability has a classification exactly when it is not unverified", () => {
+		const projected = projectEndoCockpitCapabilityStateV0(input(specimenRecords()));
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+		const statuses = new Set(projected.capabilities.map((c) => c.status));
+		expect(statuses.size).toBeGreaterThan(0);
+		expect(projected.capabilities.every((c) => (c.status === "unverified") === (c.classification === null))).toBe(
+			true,
+		);
+		for (const index of projected.capabilities.keys()) {
+			const capability = projected.capabilities[index]!;
+			// The converse: a recorded status with the classification removed.
+			if (capability.status !== "unverified")
+				expect(
+					validateEndoCockpitCapabilityStateV0(
+						mutated(projected, (c) => {
+							c.capabilities[index].classification = null;
+						}),
+					),
+					`${capability.capability} without classification`,
+				).toBeNull();
+			// And the inverse: a classification on an unverified one.
+			else
+				expect(
+					validateEndoCockpitCapabilityStateV0(
+						mutated(projected, (c) => {
+							c.capabilities[index].classification = "EXACT";
+						}),
+					),
+				).toBeNull();
+		}
+	});
+
+	it("1: a classification on an unverified capability is rejected (the enum member is a real one)", () => {
+		const records = specimenRecords();
+		const unverified = {
+			...records.state[0]!,
+			fingerprintId: null,
+			capabilities: [
+				{
+					capability: "session.identity",
+					status: "unverified" as const,
+					classification: null,
+					evidenceId: null,
+					reason: "the runtime is unidentified",
+					requires: "local-protocol" as const,
+				},
+			],
+		};
+		const projected = projectEndoCockpitCapabilityStateV0(input({ ...records, state: [unverified] }));
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				mutated(projected, (c) => {
+					c.capabilities[0].classification = "EXACT";
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("1: a legitimately missing evidence record leaves the classification and its limits in place", () => {
+		const records = specimenRecords();
+		const missing = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence: [] }));
+		expect(validateEndoCockpitCapabilityStateV0(missing)).not.toBeNull();
+		const admitted = missing.capabilities.filter((c) => c.status !== "unverified");
+		expect(admitted.length).toBeGreaterThan(0);
+		expect(admitted.every((c) => c.classification !== null && c.evidence === null)).toBe(true);
+		expect(admitted.every((c) => c.limits.some((l) => l.code === "evidence-record-missing"))).toBe(true);
+		// The converse: the same record with its classification removed is no longer a recorded status.
+		for (const c of admitted.keys())
+			expect(
+				validateEndoCockpitCapabilityStateV0(
+					mutated(missing, (m) => {
+						m.capabilities[missing.capabilities.indexOf(admitted[c]!)].classification = null;
+					}),
+				),
+			).toBeNull();
+	});
+
+	// ---- 2. limitations come from evidence -----------------------------------------------------------------------
+
+	it("2: limitations require the evidence they come from", () => {
+		const records = specimenRecords();
+		const withEvidence = projectEndoCockpitCapabilityStateV0(input(records));
+		const cited = withEvidence.capabilities.findIndex((c) => c.evidence !== null);
+		expect(cited).toBeGreaterThanOrEqual(0);
+		expect(validateEndoCockpitCapabilityStateV0(withEvidence)).not.toBeNull();
+		const missing = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence: [] }));
+		expect(missing.capabilities.every((c) => c.evidence === null && c.limitations.length === 0)).toBe(true);
+		for (const index of missing.capabilities.keys())
+			expect(
+				validateEndoCockpitCapabilityStateV0(
+					mutated(missing, (c) => {
+						c.capabilities[index].limitations = ["fabricated limitation"];
+					}),
+				),
+				`capability ${index}`,
+			).toBeNull();
+		// Evidence that states limitations keeps them.
+		expect(withEvidence.capabilities.some((c) => c.limitations.length > 0)).toBe(true);
+	});
+
+	// ---- 3. extended wrappers ------------------------------------------------------------------------------------
+
+	it("3: a wrapper with a member beside status and value keeps the value but counts the key as withheld", () => {
+		const exact = timeline([
+			event("lifecycle.turn-completed", { turn: 1, stopReason: { status: "reported", value: "stop" } }),
+		]);
+		const extended = timeline([
+			event("lifecycle.turn-completed", {
+				turn: 1,
+				stopReason: { status: "reported", value: "stop", detail: CANARY },
+			}),
+		]);
+		const entry = extended.entries[0]!;
+		expect(entry.fields.stopReason).toEqual({ basis: "reported", value: "stop" });
+		expect(entry.withheldFields).toBe(exact.entries[0]!.withheldFields + 1);
+		expect(JSON.stringify(extended)).not.toContain(CANARY);
+		expect(validateEndoCockpitSessionTimelineV0(extended)).not.toBeNull();
+		// An unavailable wrapper is judged the same way.
+		const gap = timeline([
+			event("lifecycle.turn-completed", { turn: 1, stopReason: { status: "UNAVAILABLE", reason: "not reported" } }),
+		]).entries[0]!;
+		const gapPlus = timeline([
+			event("lifecycle.turn-completed", {
+				turn: 1,
+				stopReason: { status: "UNAVAILABLE", reason: "not reported", detail: CANARY },
+			}),
+		]).entries[0]!;
+		expect(gapPlus.fields.stopReason).toEqual(gap.fields.stopReason);
+		expect(gapPlus.withheldFields).toBe(gap.withheldFields + 1);
+		expect(JSON.stringify(gapPlus)).not.toContain(CANARY);
+	});
+
+	it("3: a declared gap carrying a member beside field and reason is not presented whole", () => {
+		const gap = { field: "run.id", reason: "not reported" };
+		const base = timeline([
+			event("lifecycle.session-started", {
+				runtime: "pi",
+				runtimeSessionId: "s-1",
+				instance: "i-1",
+				unavailable: [gap],
+			}),
+		]).entries[0]!;
+		const extended = timeline([
+			event("lifecycle.session-started", {
+				runtime: "pi",
+				runtimeSessionId: "s-1",
+				instance: "i-1",
+				unavailable: [{ ...gap, detail: CANARY }],
+			}),
+		]).entries[0]!;
+		expect(extended.fields["unavailable.run.id"]).toEqual(base.fields["unavailable.run.id"]);
+		expect(extended.withheldFields).toBe(base.withheldFields + 1);
+		expect(JSON.stringify(extended)).not.toContain(CANARY);
+	});
+
+	it("5: a source is never both torn and sealed, and a torn tail has at least one byte", () => {
+		const tornAndSealed = timeline([event("tool.started", {})]);
+		const mark = tornAndSealed.source.watermark!;
+		const degraded = (tail: { bytes: number; sha256: string } | null, sealedAt: number | null) =>
+			mutated(tornAndSealed, (c) => {
+				c.source.condition = { state: "degraded", tornTail: tail, sealedAt, error: null };
+			});
+		const tail = { bytes: 5, sha256: "a".repeat(64) };
+		expect(validateEndoCockpitSessionTimelineV0(degraded(tail, null))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(degraded(null, mark.length + 1))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(degraded(tail, mark.length + 1))).toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(degraded({ ...tail, bytes: 0 }, null))).toBeNull();
+	});
+
+	// ---- 6. notification line count ------------------------------------------------------------------------------
+
+	it("6: a notification view has at least one line, as the durable schema requires", () => {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input(records));
+		expect(identity.lastNotification!.lineCount).toBe(2);
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				mutated(identity, (c) => {
+					c.lastNotification.lineCount = 0;
+				}),
+			),
+		).toBeNull();
+		const one = projectEndoCockpitRuntimeIdentityV0(
+			input({ ...records, notification: [notificationRecord({ lines: ["only line"] })] }),
+		);
+		expect(one.lastNotification!.lineCount).toBe(1);
+		expect(validateEndoCockpitRuntimeIdentityV0(one)).not.toBeNull();
+	});
+});

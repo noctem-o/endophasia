@@ -165,13 +165,17 @@ function declaredUnavailable(payload: Record<string, unknown>): {
 			whole = false;
 			continue;
 		}
+		// A member beside `field` and `reason` is not shown, so the item is not presented whole.
+		if (Object.keys(item as object).length !== 2) whole = false;
 		if (!endoCockpitGapNameAdmittedV0(field)) {
 			whole = false;
 			continue;
 		}
+		const shown = freeText(reason);
+		if (shown === null) whole = false;
 		fields[`unavailable.${field}`] = {
 			basis: "unavailable",
-			reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0,
+			reason: shown ?? ENDO_COCKPIT_WITHHELD_TEXT_V0,
 		};
 	}
 	return { fields, whole };
@@ -319,6 +323,13 @@ function usageIsWhole(payload: Record<string, unknown>): boolean {
 	);
 }
 
+/** A reported or unavailable wrapper is exactly `{ status, value }` or `{ status, reason }`; a member beside them is not shown. */
+function wrapperIsExact(raw: unknown): boolean {
+	if (!isRecord(raw) || (raw.status !== "reported" && raw.status !== "UNAVAILABLE")) return true;
+	const keys = Object.keys(raw);
+	return keys.length === 2 && keys.includes(raw.status === "reported" ? "value" : "reason");
+}
+
 function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	const { event, storageSequence } = stored;
 	const payload = isRecord(event.payload) ? event.payload : {};
@@ -333,7 +344,8 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		fields[spec[0]] = field;
 		// A key counts as presented only when the whole top-level value is shown; a nested path leaves the rest withheld,
 		// and so does a value the boundary replaced.
-		if (!spec[1].includes(".") && !isWithheld(field)) presentedWhole.add(spec[1]);
+		if (!spec[1].includes(".") && !isWithheld(field) && wrapperIsExact(pathValue(payload, spec[1])))
+			presentedWhole.add(spec[1]);
 	}
 	if (event.kind === "lifecycle.session-started" || event.kind === "lifecycle.session-resumed") {
 		const declared = declaredUnavailable(payload);

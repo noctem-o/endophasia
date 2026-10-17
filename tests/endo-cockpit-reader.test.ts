@@ -27,7 +27,12 @@ import {
 	readEndoCockpitTimelineV0,
 	validateEndoCockpitSnapshotV0,
 } from "../cockpit/index.ts";
-import { ENDO_COCKPIT_SOURCE_ERRORS_V0 } from "../protocol/cockpit.ts";
+import { projectEndoCockpitCapabilityStateV0 } from "../cockpit/projections/capability-state.ts";
+import {
+	ENDO_COCKPIT_SOURCE_ERRORS_V0,
+	validateEndoCockpitCapabilityStateV0,
+	validateEndoCockpitSessionTimelineV0,
+} from "../protocol/cockpit.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
@@ -896,5 +901,121 @@ describe("generated aliases never collide with source identifiers (PR #57 review
 		expect(checkEndoCockpitSourceFreshnessV0(root, snapshot.timeline.source)).toBe("unchanged");
 		expect(checkEndoCockpitSourceFreshnessV0(root, identity.source)).toBe("unchanged");
 		expect(treeHash(root)).toBe(before);
+	});
+});
+
+describe("sealed positions and empty registry digests (sixth review round)", () => {
+	const withSeal = (value: any, sealedAt: number) => {
+		const copy = structuredClone(value);
+		copy.source.condition.sealedAt = sealedAt;
+		return copy;
+	};
+	const capabilitiesOf = (root: string) =>
+		projectEndoCockpitCapabilityStateV0(readEndoCockpitRegistryV0(root, ATTACHMENT));
+
+	it("an event log sealed after a verified prefix names the frame right after it, and no other", () => {
+		const { root } = seeded();
+		flipByte(eventsLog(root), frameStart(eventsLog(root), 5) + 8);
+		const timeline = readEndoCockpitTimelineV0(root, { limit: 1000 });
+		expect(timeline.source.watermark!.length).toBe(5);
+		expect(timeline.source.condition.sealedAt).toBe(6);
+		expect(validateEndoCockpitSnapshotV0(readEndoCockpitSnapshotV0(root, { limit: 1000 }))).not.toBeNull();
+		for (const wrong of [1, 5, 7, 100]) {
+			const bad = structuredClone(timeline);
+			bad.source.condition.sealedAt = wrong;
+			expect(validateEndoCockpitSessionTimelineV0(bad), `sealedAt ${wrong}`).toBeNull();
+		}
+		expect(validateEndoCockpitSessionTimelineV0(timeline)).not.toBeNull();
+	});
+
+	it("an event log whose first frame is corrupt is sealed at 1 with a zero-length prefix", () => {
+		const { root } = seeded();
+		flipByte(eventsLog(root), 8);
+		const before = treeHash(root);
+		const timeline = readEndoCockpitTimelineV0(root);
+		expect(treeHash(root)).toBe(before);
+		expect(timeline.source.condition).toMatchObject({ state: "degraded", sealedAt: 1 });
+		expect(timeline.source.watermark!.length).toBe(0);
+		expect(validateEndoCockpitSessionTimelineV0(timeline)).not.toBeNull();
+		const bad = structuredClone(timeline);
+		bad.source.condition.sealedAt = 2;
+		expect(validateEndoCockpitSessionTimelineV0(bad)).toBeNull();
+	});
+
+	it("a torn tail is not a seal: it carries no position, and a sealed position carries no torn tail requirement", () => {
+		const { root, events } = seeded();
+		appendFileSync(eventsLog(root), Buffer.from([0, 0, 0, 9, 1, 2]));
+		const timeline = readEndoCockpitTimelineV0(root, { limit: 1000 });
+		expect(timeline.source.condition).toMatchObject({ state: "degraded", sealedAt: null });
+		expect(timeline.source.condition.tornTail).not.toBeNull();
+		expect(timeline.source.watermark!.length).toBe(events.length);
+		expect(validateEndoCockpitSessionTimelineV0(timeline)).not.toBeNull();
+	});
+
+	it("a registry sealed after n verified records names record n + 1; a zero prefix names 1", () => {
+		const { root } = seeded();
+		const total = readEndoCockpitRegistryV0(root, ATTACHMENT).records!;
+		const n = total.fingerprint.length + total.evidence.length + total.state.length;
+		expect(n).toBeGreaterThan(1);
+		flipByte(registryLog(root), frameStart(registryLog(root), n - 1) + 8);
+		const sealed = capabilitiesOf(root);
+		expect(sealed.source.condition).toMatchObject({ state: "degraded", sealedAt: n });
+		expect(validateEndoCockpitCapabilityStateV0(sealed)).not.toBeNull();
+		for (const wrong of [1, n - 1, n + 1, 1000]) {
+			expect(validateEndoCockpitCapabilityStateV0(withSeal(sealed, wrong)), `sealedAt ${wrong}`).toBeNull();
+		}
+
+		const zero = seeded().root;
+		flipByte(registryLog(zero), 8);
+		const zeroBefore = treeHash(zero);
+		const none = capabilitiesOf(zero);
+		expect(treeHash(zero)).toBe(zeroBefore);
+		expect(none.source.condition).toMatchObject({ state: "degraded", sealedAt: 1 });
+		expect(validateEndoCockpitCapabilityStateV0(none)).not.toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(withSeal(none, 2))).toBeNull();
+	});
+
+	it("an absent registry and an opened empty one each carry their own fixed digest", () => {
+		const absent = capabilitiesOf(tempRoot());
+		expect(absent.source.condition.state).toBe("absent");
+		expect(validateEndoCockpitCapabilityStateV0(absent)).not.toBeNull();
+
+		const root = tempRoot();
+		mkdirSync(dirname(registryLog(root)), { recursive: true });
+		writeFileSync(registryLog(root), Buffer.from([0, 0, 1, 0, 7])); // a torn tail only: opened, no record
+		const empty = capabilitiesOf(root);
+		expect(empty.source.condition).toMatchObject({ state: "degraded" });
+		expect(empty.source.watermark!.counts).toEqual({
+			fingerprint: 0,
+			change: 0,
+			evidence: 0,
+			state: 0,
+			notification: 0,
+		});
+		expect(validateEndoCockpitCapabilityStateV0(empty)).not.toBeNull();
+		expect(empty.source.watermark!.contentDigest).not.toBe(absent.source.watermark!.contentDigest);
+
+		// A zero-byte log is an opened, empty registry: the same content, so the same digest.
+		const blank = tempRoot();
+		mkdirSync(dirname(registryLog(blank)), { recursive: true });
+		writeFileSync(registryLog(blank), Buffer.alloc(0));
+		const blankBefore = treeHash(blank);
+		const opened = capabilitiesOf(blank);
+		expect(treeHash(blank)).toBe(blankBefore);
+		expect(opened.source.condition.state).toBe("empty");
+		expect(validateEndoCockpitCapabilityStateV0(opened)).not.toBeNull();
+		expect(opened.source.watermark!.contentDigest).toBe(empty.source.watermark!.contentDigest);
+
+		// Neither digest stands in for the other, nor does any fabricated one.
+		const swap = (value: any, digest: string) => {
+			const copy = structuredClone(value);
+			copy.source.watermark.contentDigest = digest;
+			return copy;
+		};
+		expect(validateEndoCockpitCapabilityStateV0(swap(absent, empty.source.watermark!.contentDigest))).toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(swap(empty, absent.source.watermark!.contentDigest))).toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(swap(empty, "0".repeat(64)))).toBeNull();
+		// The digest of a non-empty registry is still not decided by the wire.
+		expect(validateEndoCockpitCapabilityStateV0(swap(capabilitiesOf(seeded().root), "0".repeat(64)))).not.toBeNull();
 	});
 });

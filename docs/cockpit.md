@@ -107,6 +107,15 @@ says so (`consistency`) and carries each source's own watermark:
 - registry: per-kind counts, last ids and a `contentDigest` of the records. There is no incremental cursor, so any
   difference means re-reading that attachment.
 
+Two facts the wire alone decides are enforced by the validators. `sealedAt` is the first frame that failed verification,
+so it is exactly the one after the verified prefix: `watermark.length + 1` for an event log, the sum of the registry
+counts `+ 1` for a registry (a torn tail is a different condition and carries no position). A registry with no records
+has fully known content, so its `contentDigest` is fixed: the sha256 of the canonical JSON `{}` when it is absent, and
+of the five empty record lists when it was opened (empty, or degraded before any verified record). A capability has a
+classification exactly when its status is not `unverified`; its limitations are the cited evidence's own, so there are
+none without evidence; a notification view has at least one line (`lineCount >= 1`). A reported or unavailable wrapper
+carrying a member beside `status` and `value`/`reason` still shows the value or reason, but its key counts as withheld; so does a declared gap (`unavailable`) with a member beside `field` and `reason`, or whose reason was withheld. A log is never both torn and sealed (the reader stops at the first corrupt frame), and a torn tail is at least one byte.
+
 `checkEndoCockpitSourceFreshnessV0(root, heldSource)` tells a consumer, per source, `unchanged`, `advanced` (event log:
 more events and the events it held are still the first ones, by complete contents and order, so page on from
 `afterSequence = old length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten, repaired with different

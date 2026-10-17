@@ -77,8 +77,7 @@ export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
  * is the same on every run. Heuristic and deliberately conservative (cockpit/projections/common.ts): it withholds, it
  * never rewrites, and a value it passes is bounded but not certified safe.
  */
-export const ENDO_COCKPIT_WITHHELD_TEXT_V0 =
-	"withheld: the recorded text appears to embed a local path, network address or credential";
+export const ENDO_COCKPIT_WITHHELD_TEXT_V0 = "withheld: looks like a path, address or credential";
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
 export const ENDO_COCKPIT_BASES_V0 = ["observed", "reported", "derived", "inferred"] as const;
@@ -146,6 +145,15 @@ export const ENDO_COCKPIT_CATEGORIES_V0 = [
 	"other",
 ] as const;
 export type EndoCockpitCategoryV0 = (typeof ENDO_COCKPIT_CATEGORIES_V0)[number];
+
+/** The category of a kind: its first dotted segment when that is in the vocabulary, else "other". The one definition. */
+export function endoCockpitCategoryOfV0(kind: string): EndoCockpitCategoryV0 {
+	const dot = kind.indexOf(".");
+	const segment = dot === -1 ? kind : kind.slice(0, dot);
+	return (ENDO_COCKPIT_CATEGORIES_V0 as readonly string[]).includes(segment)
+		? (segment as EndoCockpitCategoryV0)
+		: "other";
+}
 
 export const ENDO_COCKPIT_FLAGS_V0 = ["interruption", "discontinuity", "anomaly", "unrecognized"] as const;
 export type EndoCockpitFlagV0 = (typeof ENDO_COCKPIT_FLAGS_V0)[number];
@@ -637,6 +645,8 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 		if (!isCount(count)) return false;
 		if (count === 0 && lastId !== null) return false;
 		if (lastId !== null && !isEvidenceId(lastId)) return false;
+		// Every kind but a capability state has an id on each record, so a non-empty list names its last; a state has none.
+		if (kind === "state" ? lastId !== null : count > 0 && lastId === null) return false;
 		total += count;
 	}
 	// The state and the records must agree: an absent or empty registry holds none, and a registry with none is never
@@ -706,8 +716,48 @@ function isChangeView(value: unknown): value is EndoCockpitChangeViewV0 {
 		oneOf(ENDO_HARNESS_VERSION_ORDERS_V0, value.versionOrder) &&
 		nullable(value.previous, isObservationView) &&
 		nullable(value.current, isObservationView) &&
-		(value.failure === "none" || value.failure === "withheld")
+		(value.failure === "none" || value.failure === "withheld") &&
+		changeIsCoherent(value as unknown as EndoCockpitChangeViewV0)
 	);
+}
+
+/** The change kind, its two sides, its differences and its failure agree, as the harness change record requires. */
+function changeIsCoherent(change: EndoCockpitChangeViewV0): boolean {
+	if (new Set(change.differences).size !== change.differences.length) return false;
+	const { previous, current } = change;
+	switch (change.kind) {
+		case "first-observation":
+			return (
+				previous === null &&
+				current !== null &&
+				change.differences.length === 0 &&
+				change.failure === "none" &&
+				change.versionOrder === "unknown"
+			);
+		case "unchanged":
+			return (
+				previous !== null &&
+				current !== null &&
+				change.differences.length === 0 &&
+				change.failure === "none" &&
+				previous.identityDigest === current.identityDigest
+			);
+		case "changed":
+			return (
+				previous !== null &&
+				current !== null &&
+				change.differences.length > 0 &&
+				change.failure === "none" &&
+				previous.identityDigest !== current.identityDigest
+			);
+		case "collection-failed":
+			return (
+				current === null &&
+				change.differences.length === 0 &&
+				change.failure === "withheld" &&
+				change.versionOrder === "unknown"
+			);
+	}
 }
 
 function isNotificationView(value: unknown): value is EndoCockpitNotificationViewV0 {
@@ -847,6 +897,8 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	if (!isCount(value.storageSequence) || value.storageSequence < 1) return false;
 	if (typeof value.eventId !== "string" || !isEndoIdentifierV0(value.eventId, "event")) return false;
 	if (!isText(value.kind, 128) || !oneOf(ENDO_COCKPIT_CATEGORIES_V0, value.category)) return false;
+	// The category is defined by the kind; a record may not file an event under another.
+	if (value.category !== endoCockpitCategoryOfV0(value.kind)) return false;
 	if (!oneOf(ENDO_EVENT_SOURCES_V0, value.source) || !isText(value.producer, MAX_PRODUCER)) return false;
 	// The event envelope accepts any non-negative integer sequence, safe or not: the contract must not be stricter.
 	if (
@@ -870,6 +922,9 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	)
 		return false;
 	if (!arrayOf(value.flags, (item): item is EndoCockpitFlagV0 => oneOf(ENDO_COCKPIT_FLAGS_V0, item))) return false;
+	// Flags are listed once each, in the vocabulary's order.
+	const flagOrder = (value.flags as EndoCockpitFlagV0[]).map((flag) => ENDO_COCKPIT_FLAGS_V0.indexOf(flag));
+	if (!flagOrder.every((at, index) => index === 0 || flagOrder[index - 1]! < at)) return false;
 	if (!isPlain(value.fields) || !Object.values(value.fields).every(isField)) return false;
 	if (!Object.keys(value.fields).every((key) => isText(key, 128))) return false;
 	if (!isCount(value.withheldFields)) return false;
@@ -920,6 +975,17 @@ function isRegistryRef(
 }
 
 /** Deep equality of two JSON values, independent of key order. */
+/** Whether the registry could be opened and read: records exist to project (an `absent` registry has none to read). */
+function isProjectable(source: EndoCockpitRegistrySourceV0): boolean {
+	return source.condition.state !== "absent" && source.condition.state !== "unopenable";
+}
+
+/** `source-not-projectable` is noted exactly when the source is not projectable. */
+function projectableAgrees(source: EndoCockpitRegistrySourceV0, notes: EndoCockpitNoteV0[]): boolean {
+	const noted = notes.filter((note) => note.code === "source-not-projectable").length;
+	return isProjectable(source) ? noted === 0 : noted === 1;
+}
+
 function sameJson(a: unknown, b: unknown): boolean {
 	if (a === b) return true;
 	if (Array.isArray(a) || Array.isArray(b))
@@ -1008,6 +1074,21 @@ function validateRegistryProjection(value: Record<string, unknown>, projectionVe
 // ---------------------------------------------------------------------------------------------------------------
 
 function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
+	if (!projectableAgrees(identity.source, identity.notes)) return false;
+	if (!isProjectable(identity.source)) {
+		if (identity.current !== null || identity.previousDifferent !== null) return false;
+		if (identity.lastChange !== null || identity.lastNotification !== null) return false;
+	}
+	// The latest different observation is, by definition, a different identity from the current one.
+	if (identity.previousDifferent !== null) {
+		if (identity.current === null) return false;
+		if (
+			identity.previousDifferent.identity.basis === "derived" &&
+			identity.current.identity.basis === "derived" &&
+			identity.previousDifferent.identity.value.digest === identity.current.identity.value.digest
+		)
+			return false;
+	}
 	for (const view of [identity.current, identity.previousDifferent]) {
 		if (view === null) continue;
 		if (!ownRefOk(view, ctx, "fingerprint")) return false;
@@ -1056,6 +1137,12 @@ export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpi
 }
 
 function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: RefContext): boolean {
+	if (!projectableAgrees(projection.source, projection.notes)) return false;
+	if (!isProjectable(projection.source) && (projection.state !== null || projection.capabilities.length > 0))
+		return false;
+	// An unverified capability cites no evidence, and none of the limits (which qualify an admitted status) apply to it.
+	if (projection.capabilities.some((c) => c.status === "unverified" && (c.evidence !== null || c.limits.length > 0)))
+		return false;
 	const state = projection.state;
 	if (state === null) return true;
 	if (!isRegistryRef(state.ref, ctx, ["state"])) return false;
@@ -1147,6 +1234,9 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 	if (value.projectionVersion !== ENDO_COCKPIT_PROJECTION_VERSIONS_V0.sessionTimeline) return null;
 	if (!isEventLogSource(value.source) || !isCount(value.duplicatesIgnored) || !arrayOf(value.notes, isNote))
 		return null;
+	// The only note a timeline carries is that its source could not be opened, and it carries it exactly then.
+	if (value.notes.length !== (value.source.condition.state === "unopenable" ? 1 : 0)) return null;
+	if (value.notes.some((note) => note.code !== "source-not-projectable")) return null;
 	// A timeline's notes can only point into the event log it was read from.
 	if (!value.notes.every((note) => note.refs.every((ref) => ref.domain === "event-log"))) return null;
 	const window = value.window;
@@ -1172,12 +1262,17 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 		ids.add(entry.eventId);
 		previous = entry.storageSequence;
 	}
-	// The cursor stops at the last event read. An ignored duplicate is read but not presented, so it can move the cursor
-	// past the last entry; without one the cursor is exactly the last entry's position (or where the window started).
-	if (value.duplicatesIgnored === 0 && window.nextAfterSequence !== previous) return null;
-	else if (value.duplicatesIgnored > 0) {
-		if (window.nextAfterSequence <= window.afterSequence) return null;
-		if (mark !== null && window.nextAfterSequence > mark.length) return null;
+	// Every position in the window is either presented or an ignored duplicate: nothing is silently missing, so the entries
+	// are contiguous apart from the duplicates. (The canonical store refuses a repeated event id on open, so a window read
+	// from it has none; the count exists for input that did not come from the store.)
+	if (value.entries.length + value.duplicatesIgnored !== window.nextAfterSequence - window.afterSequence) return null;
+	if (value.duplicatesIgnored > 0 && mark !== null && window.nextAfterSequence > mark.length) return null;
+	// A window that ends at the end of the log ends at the event the watermark names as the last.
+	if (mark !== null && mark.length > 0 && window.nextAfterSequence === mark.length && value.entries.length > 0) {
+		const atEnd = (value.entries as EndoCockpitTimelineEntryV0[]).find(
+			(entry) => entry.storageSequence === mark.length,
+		);
+		if (atEnd !== undefined ? atEnd.eventId !== mark.lastEventId : !ids.has(mark.lastEventId as string)) return null;
 	}
 	const sessions = value.sessions;
 	if (
@@ -1228,6 +1323,7 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 	if (validateEndoCockpitSessionTimelineV0(value.timeline) === null) return null;
 	if (!Array.isArray(value.runtimes)) return null;
 	const seen = new Set<string>();
+	let lastAttachment = "";
 	for (const runtime of value.runtimes) {
 		if (!isPlain(runtime) || !exactKeys(runtime, ["identity", "capabilities"])) return null;
 		const identity = validateEndoCockpitRuntimeIdentityV0(runtime.identity);
@@ -1235,7 +1331,9 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (identity === null || capabilities === null) return null;
 		// Both views of one attachment come from one read of its registry: the same condition and the same position.
 		if (!sameJson(identity.source, capabilities.source)) return null;
-		if (seen.has(identity.source.attachment)) return null;
+		// One view per attachment, in code-unit order of the attachment name.
+		if (seen.size > 0 && !(lastAttachment < identity.source.attachment)) return null;
+		lastAttachment = identity.source.attachment;
 		seen.add(identity.source.attachment);
 	}
 	return value as unknown as EndoCockpitSnapshotV0;

@@ -62,18 +62,28 @@ function evidenceView(
 	return {
 		ref: registryRefV0(attachment, "evidence", index, record.id),
 		id: record.id,
-		check: { name: record.check.name, version: record.check.version, kind: record.check.kind },
+		check: {
+			name: presentableTextV0(record.check.name),
+			version: presentableTextV0(record.check.version),
+			kind: record.check.kind,
+		},
 		at: record.at,
 		classification: record.classification,
 		dependencies: {
 			fingerprintId: record.dependencies.fingerprintId,
 			identityDigest: record.dependencies.identityDigest,
 			confidence: record.dependencies.confidence,
-			adapterVersion: record.dependencies.adapterVersion,
-			mappingVersion: record.dependencies.mappingVersion,
-			suiteVersion: record.dependencies.suiteVersion,
+			adapterVersion: presentableTextV0(record.dependencies.adapterVersion),
+			mappingVersion: presentableTextV0(record.dependencies.mappingVersion),
+			suiteVersion: presentableTextV0(record.dependencies.suiteVersion),
 			configurationDigest: record.dependencies.configurationDigest,
-			extension: record.dependencies.extension === null ? null : { ...record.dependencies.extension },
+			extension:
+				record.dependencies.extension === null
+					? null
+					: {
+							id: presentableTextV0(record.dependencies.extension.id),
+							version: presentableTextV0(record.dependencies.extension.version),
+						},
 		},
 		supporting: [...record.evidence],
 		withheld: [...WITHHELD_EVIDENCE_FIELDS],

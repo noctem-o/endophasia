@@ -1442,7 +1442,7 @@ describe("projection version compatibility (PR #57 review)", () => {
 });
 
 describe("free-text presentation boundary (PR #57 audit)", () => {
-	const WITHHELD = "withheld: the recorded text appears to embed a local path, network address or credential";
+	const WITHHELD = "withheld: looks like a path, address or credential";
 	const SENSITIVE = [
 		`/home/${CANARY}/project`,
 		`see ~/${CANARY}/notes`,
@@ -1500,7 +1500,7 @@ describe("free-text presentation boundary (PR #57 audit)", () => {
 				event("lifecycle.anomaly", { observed: text, problem: "a plain problem" }),
 				event("harness.protocol-fault", { fault: text }),
 				event("tool.started", { toolName: text, toolCallId: "call-1", runtimeEvent: "tool_execution_start" }),
-				event("lifecycle.run-unclassified", { turns: 1, reason: { status: "reported", value: text } }),
+				event("lifecycle.run-completed", { turns: 1, stopReason: { status: "reported", value: text } }),
 				event("lifecycle.turn-completed", { turn: 1, stopReason: { status: "UNAVAILABLE", reason: text } }),
 				event("lifecycle.session-started", {
 					runtime: "pi",
@@ -1518,7 +1518,7 @@ describe("free-text presentation boundary (PR #57 audit)", () => {
 			expect(entries[1]!.fields.fault, text).toEqual({ basis: "unavailable", reason: WITHHELD });
 			expect(entries[2]!.fields.toolName, text).toEqual({ basis: "unavailable", reason: WITHHELD });
 			expect(entries[2]!.fields.toolCallId, text).toEqual({ basis: "reported", value: "call-1" });
-			expect(entries[3]!.fields.reason, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(entries[3]!.fields.stopReason, text).toEqual({ basis: "unavailable", reason: WITHHELD });
 			expect(entries[4]!.fields.stopReason, text).toEqual({ basis: "unavailable", reason: WITHHELD });
 			// A replaced value is a withheld key, whichever way it was recorded.
 			expect(entries[2]!.withheldFields, text).toBe(1);
@@ -1537,7 +1537,7 @@ describe("free-text presentation boundary (PR #57 audit)", () => {
 });
 
 describe("second review round (PR #57)", () => {
-	const WITHHELD = "withheld: the recorded text appears to embed a local path, network address or credential";
+	const WITHHELD = "withheld: looks like a path, address or credential";
 	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
 		const copy = structuredClone(value);
 		edit(copy);
@@ -1757,5 +1757,419 @@ describe("second review round (PR #57)", () => {
 		});
 		expect(validateEndoCockpitRuntimeIdentityV0(emptyWithRecords)).toBeNull();
 		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+	});
+});
+
+describe("third review round and invariant audit (PR #57)", () => {
+	const WITHHELD = "withheld: looks like a path, address or credential";
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const SENSITIVE = [
+		`/home/${CANARY}/pkg`,
+		`https://u:${CANARY}@example.test/p`,
+		`token=${CANARY}-abcdef`,
+		`C:\\Users\\${CANARY}`,
+	];
+	const pageIds = (n: number) =>
+		Array.from({ length: n }, (_, i) => event("tool.started", {}, { id: `endo.event.third.${i + 1}` }));
+	function page(length: number, afterSequence: number, take: number) {
+		const all = pageIds(length);
+		return projectEndoCockpitSessionTimelineV0({
+			source: {
+				domain: "event-log",
+				condition: { state: "readable", tornTail: null, sealedAt: null, error: null },
+				watermark: { length, lastEventId: all.at(-1)?.id ?? null, prefixDigest: sha256HexV0(`prefix-${length}`) },
+			},
+			afterSequence,
+			events: stored(all.slice(afterSequence, afterSequence + take), afterSequence + 1),
+		});
+	}
+	function good() {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		return {
+			records,
+			identity: projectEndoCockpitRuntimeIdentityV0(input(records)),
+			capabilities: projectEndoCockpitCapabilityStateV0(input(records)),
+		};
+	}
+
+	it("P1: fingerprint package, reported version, change observations and evidence labels are withheld when they look sensitive", () => {
+		for (const text of SENSITIVE) {
+			const records = specimenRecords();
+			const fingerprint = structuredClone(records.fingerprint[0]!);
+			fingerprint.local.package = { ...fingerprint.local.package!, name: text };
+			const second = structuredClone(fingerprint);
+			second.id = "endo.evidence.test-fingerprint.2";
+			second.reported.version = text;
+			second.local.package = { ...second.local.package!, name: "plain", version: text };
+			second.identity.digest = "d".repeat(64);
+			const change = changeRecord({
+				kind: "changed",
+				previous: { ...changeRecord().current!, version: text },
+				current: { ...changeRecord().current!, version: text, identityDigest: "d".repeat(64) },
+				differences: ["version"],
+			});
+			const identity = projectEndoCockpitRuntimeIdentityV0(
+				input({ ...records, fingerprint: [fingerprint, second], change: [change] }),
+			);
+			expect(identity.previousDifferent!.package, text).toMatchObject({ basis: "unavailable", reason: WITHHELD });
+			expect(identity.current!.package, text).toMatchObject({ basis: "unavailable", reason: WITHHELD });
+			expect(identity.current!.version, text).toMatchObject({ basis: "unavailable", reason: WITHHELD });
+			expect(identity.lastChange!.previous!.version, text).toBe(WITHHELD);
+			expect(identity.lastChange!.current!.version, text).toBe(WITHHELD);
+
+			const evidence = structuredClone(records.evidence);
+			const item = evidence.find(
+				(candidate) =>
+					candidate.id === records.state[0]!.capabilities.find((c) => c.evidenceId !== null)!.evidenceId,
+			)!;
+			item.check.name = text;
+			item.check.version = text;
+			item.dependencies.adapterVersion = text;
+			item.dependencies.mappingVersion = text;
+			item.dependencies.suiteVersion = text;
+			item.dependencies.extension = { id: text, version: text };
+			const capabilities = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence }));
+			const view = capabilities.capabilities.find((c) => c.evidence?.id === item.id)!.evidence!;
+			expect(
+				[
+					view.check.name,
+					view.check.version,
+					view.dependencies.adapterVersion,
+					view.dependencies.mappingVersion,
+					view.dependencies.suiteVersion,
+					view.dependencies.extension!.id,
+					view.dependencies.extension!.version,
+				],
+				text,
+			).toEqual(Array(7).fill(WITHHELD));
+			expect(JSON.stringify([identity, capabilities]), text).not.toContain(CANARY);
+			expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+			expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+		}
+		// A plain scoped package name and a semver are kept.
+		const records = specimenRecords();
+		const plain = projectEndoCockpitRuntimeIdentityV0(input(records));
+		expect(plain.current!.package).toMatchObject({ basis: "observed" });
+		expect(plain.current!.version).toMatchObject({ basis: "reported" });
+		const scoped = structuredClone(records.fingerprint[0]!);
+		scoped.local.package = {
+			...scoped.local.package!,
+			name: "@scope/pi-coding-agent",
+			version: "1.0.0-rc.1+build.5",
+		};
+		expect(
+			projectEndoCockpitRuntimeIdentityV0(input({ ...records, fingerprint: [scoped] })).current!.package,
+		).toMatchObject({ basis: "observed", value: { name: "@scope/pi-coding-agent" } });
+	});
+
+	it("P2: a timeline window has no silent gap", () => {
+		const log = page(6, 0, 4);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		const gap = mutated(log, (c) => {
+			c.entries.splice(1, 1);
+		});
+		expect(gap.entries.map((e) => e.storageSequence)).toEqual([1, 3, 4]);
+		expect(validateEndoCockpitSessionTimelineV0(gap)).toBeNull();
+		const short = mutated(log, (c) => {
+			c.window.nextAfterSequence = 3;
+		});
+		expect(validateEndoCockpitSessionTimelineV0(short)).toBeNull();
+		const extra = mutated(log, (c) => {
+			c.window.nextAfterSequence = 5;
+		});
+		expect(validateEndoCockpitSessionTimelineV0(extra)).toBeNull();
+		// An ignored duplicate fills exactly one position; claiming one where none was read still leaves a gap.
+		const withDuplicate = projectEndoCockpitSessionTimelineV0({
+			source: log.source,
+			afterSequence: 0,
+			events: stored([pageIds(6)[0]!, event("tool.started", {}, { id: "endo.event.third.1" }), pageIds(6)[2]!]),
+		});
+		expect(withDuplicate.duplicatesIgnored).toBe(1);
+		expect(validateEndoCockpitSessionTimelineV0(withDuplicate)).not.toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(withDuplicate, (c) => {
+					c.duplicatesIgnored = 0;
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(withDuplicate, (c) => {
+					c.duplicatesIgnored = 2;
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("P2: snapshot runtime views are in code-unit attachment order", () => {
+		const records = specimenRecords();
+		const view = (attachment: string) => {
+			const named = {
+				fingerprint: records.fingerprint.map((r) => ({ ...r, attachment })),
+				change: [],
+				evidence: records.evidence.map((r) => ({ ...r, attachment })),
+				state: records.state.map((r) => ({ ...r, attachment })),
+				notification: [],
+			};
+			const source = { ...registrySource(named), attachment };
+			return {
+				identity: projectEndoCockpitRuntimeIdentityV0({ source, records: named }),
+				capabilities: projectEndoCockpitCapabilityStateV0({ source, records: named }),
+			};
+		};
+		const log = timeline([event("tool.started")]);
+		const snapshot = (runtimes: unknown[]) => ({
+			schemaVersion: "endo.cockpit-snapshot.v0",
+			projectionVersion: "cockpit-snapshot.1",
+			consistency: "independent-sources",
+			timeline: log,
+			runtimes,
+		});
+		expect(validateEndoCockpitSnapshotV0(snapshot([view("acp.default"), view("pi.default")]))).not.toBeNull();
+		expect(validateEndoCockpitSnapshotV0(snapshot([view("pi.default"), view("acp.default")]))).toBeNull();
+		expect(validateEndoCockpitSnapshotV0(snapshot([view("pi.default"), view("pi.default")]))).toBeNull();
+		expect(validateEndoCockpitSnapshotV0(snapshot([]))).not.toBeNull();
+	});
+
+	it("P2: only a reported field may arrive in a reported wrapper; observed and derived fields keep their basis", () => {
+		const wrapped = (value: unknown) => ({ status: "reported", value });
+		const cases: [string, Record<string, unknown>, string][] = [
+			["lifecycle.turn-started", { turn: wrapped(3) }, "turn"],
+			["lifecycle.run-started", { instance: wrapped("i1") }, "instance"],
+			["harness.attached", { fingerprintId: wrapped("endo.evidence.x.1") }, "fingerprintId"],
+			["lifecycle.stop-requested", { runOpen: wrapped(true) }, "runOpen"],
+			["lifecycle.run-unclassified", { turns: 1, reason: { status: "UNAVAILABLE", reason: "x" } }, "reason"],
+		];
+		for (const [kind, payload, key] of cases) {
+			const entry = timeline([event(kind, payload)]).entries[0]!;
+			expect(entry.fields, kind).not.toHaveProperty(key);
+			expect(entry.withheldFields, kind).toBeGreaterThanOrEqual(1);
+		}
+		// A reported field in the wrapper, and the wrapper's own UNAVAILABLE form, are still read as reported / unavailable.
+		const ok = timeline([
+			event("lifecycle.turn-completed", { turn: 1, stopReason: wrapped("stop") }),
+			event("lifecycle.turn-completed", {
+				turn: 2,
+				stopReason: { status: "UNAVAILABLE", reason: "the runtime did not say" },
+			}),
+		]).entries;
+		expect(ok[0]!.fields.stopReason).toEqual({ basis: "reported", value: "stop" });
+		expect(ok[0]!.fields.turn).toEqual({ basis: "derived", value: 1 });
+		expect(ok[1]!.fields.stopReason).toEqual({ basis: "unavailable", reason: "the runtime did not say" });
+	});
+
+	it("P2: an entry's category and flags follow from its kind and the vocabulary", () => {
+		const log = timeline([event("tool.started"), event("lifecycle.interrupted", {})]);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		for (const category of ["lifecycle", "other", "agent"]) {
+			expect(
+				validateEndoCockpitSessionTimelineV0(
+					mutated(log, (c) => {
+						c.entries[0].category = category;
+					}),
+				),
+				category,
+			).toBeNull();
+		}
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.entries[0].kind = "vendor.thing";
+				}),
+			),
+		).toBeNull();
+		const flagged = timeline([event("lifecycle.interrupted", {}), event("vendor.thing")]);
+		expect(flagged.entries[1]!.category).toBe("other");
+		expect(validateEndoCockpitSessionTimelineV0(flagged)).not.toBeNull();
+		const both = mutated(log, (c) => {
+			c.entries[1].flags = ["anomaly", "interruption"];
+		});
+		expect(validateEndoCockpitSessionTimelineV0(both)).toBeNull();
+		const twice = mutated(log, (c) => {
+			c.entries[1].flags = ["interruption", "interruption"];
+		});
+		expect(validateEndoCockpitSessionTimelineV0(twice)).toBeNull();
+	});
+
+	it("P2: a window that ends at the end of the log ends at the watermark's last event", () => {
+		const end = page(5, 3, 2);
+		expect(validateEndoCockpitSessionTimelineV0(end)).not.toBeNull();
+		const swapped = mutated(end, (c) => {
+			c.entries[1].eventId = "endo.event.third.99";
+		});
+		expect(validateEndoCockpitSessionTimelineV0(swapped)).toBeNull();
+		const lastNamed = mutated(end, (c) => {
+			c.source.watermark.lastEventId = "endo.event.third.99";
+		});
+		expect(validateEndoCockpitSessionTimelineV0(lastNamed)).toBeNull();
+		// A page that stops short is not bound to it; an empty page past the end has nothing to bind.
+		expect(validateEndoCockpitSessionTimelineV0(page(5, 0, 2))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(page(5, 9, 2))).not.toBeNull();
+		// A trailing ignored duplicate: the last position repeats an earlier id of the window, which must be the last event.
+		const dup = projectEndoCockpitSessionTimelineV0({
+			source: {
+				...end.source,
+				watermark: { ...end.source.watermark!, length: 2, lastEventId: "endo.event.third.1" },
+			},
+			afterSequence: 0,
+			events: stored([pageIds(5)[0]!, event("tool.started", {}, { id: "endo.event.third.1" })]),
+		});
+		expect(dup.duplicatesIgnored).toBe(1);
+		expect(validateEndoCockpitSessionTimelineV0(dup)).not.toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(dup, (c) => {
+					c.source.watermark.lastEventId = "endo.event.third.2";
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("audit: adjacent cross-field invariants of the identity, capability and timeline records", () => {
+		const { identity, capabilities, records } = good();
+		const identityEdits: [string, (copy: any) => void][] = [
+			[
+				"a last id of a kind that has ids is missing",
+				(c) => {
+					c.source.watermark.lastIds.fingerprint = null;
+				},
+			],
+			[
+				"a capability state has a last id",
+				(c) => {
+					c.source.watermark.lastIds.state = "endo.evidence.test-x.1";
+				},
+			],
+			[
+				"a change that says unchanged differs in identity",
+				(c) => {
+					c.lastChange.kind = "unchanged";
+					c.lastChange.previous = c.lastChange.current;
+					c.lastChange.current = { ...c.lastChange.current, identityDigest: "e".repeat(64) };
+				},
+			],
+			[
+				"a first observation with a previous side",
+				(c) => {
+					c.lastChange.previous = c.lastChange.current;
+				},
+			],
+			[
+				"a collection failure that is not withheld",
+				(c) => {
+					c.lastChange.kind = "collection-failed";
+					c.lastChange.current = null;
+				},
+			],
+			[
+				"a failure text on a change that did not fail",
+				(c) => {
+					c.lastChange.failure = "withheld";
+				},
+			],
+			[
+				"a changed identity with no difference",
+				(c) => {
+					c.lastChange.kind = "changed";
+					c.lastChange.previous = { ...c.lastChange.current };
+				},
+			],
+			[
+				"repeated differences",
+				(c) => {
+					c.lastChange.differences = ["version", "version"];
+				},
+			],
+			[
+				"a previous different identity equal to the current one",
+				(c) => {
+					c.previousDifferent = structuredClone(c.current);
+					c.previousDifferent.ref = { ...c.current.ref, index: 0 };
+				},
+			],
+			[
+				"a previous different identity with no current one",
+				(c) => {
+					c.previousDifferent = structuredClone(c.current);
+					c.current = null;
+				},
+			],
+			[
+				"a not-projectable source that carries a view",
+				(c) => {
+					c.source.condition.state = "absent";
+					c.source.watermark.counts = { fingerprint: 0, change: 0, evidence: 0, state: 0, notification: 0 };
+					c.source.watermark.lastIds = {
+						fingerprint: null,
+						change: null,
+						evidence: null,
+						state: null,
+						notification: null,
+					};
+				},
+			],
+			[
+				"a projectable source noted as not projectable",
+				(c) => {
+					c.notes.push({ code: "source-not-projectable", refs: [] });
+				},
+			],
+		];
+		for (const [name, edit] of identityEdits)
+			expect(validateEndoCockpitRuntimeIdentityV0(mutated(identity, edit)), name).toBeNull();
+
+		const capabilityEdits: [string, (copy: any) => void][] = [
+			[
+				"an unverified capability that cites evidence",
+				(c) => {
+					const v = c.capabilities.find((x: any) => x.status === "unverified") ?? c.capabilities[0];
+					v.status = "unverified";
+				},
+			],
+			[
+				"a not-projectable source that carries a state",
+				(c) => {
+					c.source.condition.state = "unopenable";
+					c.source.condition.error = { kind: "invalid-store", message: "x" };
+					c.source.watermark = null;
+				},
+			],
+		];
+		for (const [name, edit] of capabilityEdits)
+			expect(validateEndoCockpitCapabilityStateV0(mutated(capabilities, edit)), name).toBeNull();
+
+		const log = timeline([event("tool.started")]);
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.notes.push({ code: "source-not-projectable", refs: [] });
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.source.condition = {
+						state: "unopenable",
+						tornTail: null,
+						sealedAt: null,
+						error: { kind: "invalid-store", message: "x" },
+					};
+					c.source.watermark = null;
+					c.entries = [];
+				}),
+			),
+		).toBeNull();
+
+		// The unmodified outputs, and a real absent registry, still validate.
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(projectEndoCockpitRuntimeIdentityV0(input(null)))).not.toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(projectEndoCockpitCapabilityStateV0(input(null)))).not.toBeNull();
+		void records;
 	});
 });

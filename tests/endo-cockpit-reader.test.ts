@@ -448,9 +448,7 @@ describe("contract totality over valid source records", () => {
 		]);
 		const timeline = readEndoCockpitTimelineV0(root);
 		// A producer name outside the shape Endophasia's producers use is withheld whole, not cut.
-		expect(timeline.entries[0]!.producer).toBe(
-			"withheld: the recorded text appears to embed a local path, network address or credential",
-		);
+		expect(timeline.entries[0]!.producer).toBe("withheld: looks like a path, address or credential");
 		expect(timeline.entries[0]!.producerSequence).toBe(Number.MAX_SAFE_INTEGER * 4);
 		expect(timeline.entries[1]!.producer).toBe("short");
 	});

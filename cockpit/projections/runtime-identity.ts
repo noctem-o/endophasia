@@ -14,6 +14,7 @@
 
 import {
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
+	ENDO_COCKPIT_WITHHELD_TEXT_V0,
 	type EndoCockpitChangeViewV0,
 	type EndoCockpitClaimV0,
 	type EndoCockpitFingerprintViewV0,
@@ -33,6 +34,7 @@ import {
 	cleanRegistryRecordsV0,
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
+	looksSensitiveTextV0,
 	noteV0,
 	presentableTextV0,
 	registryRefV0,
@@ -47,6 +49,8 @@ const WITHHELD_FINGERPRINT_FIELDS = [
 	"reported.versionText",
 ];
 
+const WITHHELD_TEXT = ENDO_COCKPIT_WITHHELD_TEXT_V0;
+
 const GAP_REASON = "the fingerprint records this fact as not collected; the recorded reason is not presented";
 
 function observationView(ref: EndoHarnessObservationRefV0): EndoCockpitObservationViewV0 {
@@ -54,7 +58,7 @@ function observationView(ref: EndoHarnessObservationRefV0): EndoCockpitObservati
 		fingerprintId: ref.fingerprintId,
 		identityDigest: ref.identityDigest,
 		confidence: ref.confidence,
-		version: ref.version,
+		version: ref.version === null ? null : presentableTextV0(ref.version),
 	};
 }
 
@@ -73,7 +77,9 @@ function fingerprintView(
 		version:
 			record.reported.version === null
 				? unavailableV0(GAP_REASON, refs)
-				: claimV0("reported", record.reported.version, refs),
+				: looksSensitiveTextV0(record.reported.version)
+					? unavailableV0(WITHHELD_TEXT, refs)
+					: claimV0("reported", record.reported.version, refs),
 		entrypoint:
 			record.local.entrypoint === null
 				? unavailableV0(GAP_REASON, refs)
@@ -85,7 +91,9 @@ function fingerprintView(
 		package:
 			record.local.package === null
 				? unavailableV0(GAP_REASON, refs)
-				: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
+				: looksSensitiveTextV0(record.local.package.name) || looksSensitiveTextV0(record.local.package.version)
+					? unavailableV0(WITHHELD_TEXT, refs)
+					: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
 		withheld: [...WITHHELD_FINGERPRINT_FIELDS],
 	};
 }

@@ -19,11 +19,9 @@
 // configuration contents, and unknown fields.
 
 import {
-	ENDO_COCKPIT_CATEGORIES_V0,
 	ENDO_COCKPIT_FLAGS_V0,
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
 	ENDO_COCKPIT_WITHHELD_TEXT_V0,
-	type EndoCockpitCategoryV0,
 	type EndoCockpitEventLogSourceV0,
 	type EndoCockpitFieldV0,
 	type EndoCockpitFlagV0,
@@ -32,6 +30,7 @@ import {
 	type EndoCockpitSessionTimelineV0,
 	type EndoCockpitTimelineEntryV0,
 	type EndoCockpitUsageV0,
+	endoCockpitCategoryOfV0,
 } from "../../protocol/cockpit.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import { ENDO_INTERVENTION_KINDS_V0 } from "../../protocol/intervention.ts";
@@ -309,13 +308,16 @@ function readField(payload: Record<string, unknown>, spec: FieldSpec): EndoCockp
 	const [, path, basis, type, nullable] = spec;
 	const raw = pathValue(payload, path);
 	if (raw === undefined) return undefined;
-	// A value the runtime reported, or the reason it did not (protocol/session-lifecycle.ts EndoReportedV0).
-	if (isRecord(raw) && raw.status === "reported") {
+	// A value the runtime reported, or the reason it did not (protocol/session-lifecycle.ts EndoReportedV0). Only a field
+	// whose basis IS "reported" can arrive in that wrapper: a wrapper around an observed or derived field is malformed and
+	// is omitted (so counted as withheld), never allowed to change what the field claims to be.
+	const wrapped = basis === "reported";
+	if (wrapped && isRecord(raw) && raw.status === "reported") {
 		const value = scalar(own(raw, "value"), type, false);
 		if (typeof value === "string" && freeText(value) === null) return withheldField();
 		return value === undefined ? undefined : { basis: "reported", value };
 	}
-	if (isRecord(raw) && raw.status === "UNAVAILABLE") {
+	if (wrapped && isRecord(raw) && raw.status === "UNAVAILABLE") {
 		const reason = own(raw, "reason");
 		return typeof reason === "string" && reason.length > 0
 			? { basis: "unavailable", reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0 }
@@ -414,12 +416,7 @@ function usageOf(event: EndoEventV0, payload: Record<string, unknown>): EndoCock
 		: { basis: "reported", value: usage };
 }
 
-function categoryOf(kind: string): EndoCockpitCategoryV0 {
-	const segment = kind.slice(0, kind.indexOf("."));
-	return (ENDO_COCKPIT_CATEGORIES_V0 as readonly string[]).includes(segment)
-		? (segment as EndoCockpitCategoryV0)
-		: "other";
-}
+const categoryOf = endoCockpitCategoryOfV0;
 
 function flagsOf(event: EndoEventV0, payload: Record<string, unknown>, recognized: boolean): EndoCockpitFlagV0[] {
 	const flags = new Set<EndoCockpitFlagV0>();

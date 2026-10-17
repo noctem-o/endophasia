@@ -39,15 +39,20 @@ import {
 	ENDO_COCKPIT_INTERRUPTION_KINDS_V0,
 	ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0,
 	ENDO_COCKPIT_UNRECOGNIZED_KINDS_V0,
+	ENDO_COCKPIT_USAGE_REASONS_V0,
 	type EndoCockpitFieldSpecV0,
 	type EndoCockpitFieldTypeV0,
+	endoCockpitGapNameAdmittedV0,
 	endoCockpitKindRecognizedV0,
 	endoCockpitProducerAdmittedV0,
 	endoCockpitRuntimeSessionAdmittedV0,
+	endoCockpitTextPresentableV0,
+	endoCockpitTextUnsafeV0,
 } from "../../protocol/cockpit-fields.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
+import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
 import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
-import { looksSensitiveTextV0 } from "./common.ts";
+import { kindLabelV0, publicIdV0 } from "./common.ts";
 
 /** One event of the log with the storage sequence it was read at. */
 export interface EndoCockpitStoredEventV0 {
@@ -90,17 +95,20 @@ function scalar(
 	nullable: boolean,
 ): string | number | boolean | null | undefined {
 	if (value === null) return nullable ? null : undefined;
-	if (type === "string" && typeof value === "string")
-		return value.length > MAX_STRING ? value.slice(0, MAX_STRING) : value;
+	if (type === "string" && typeof value === "string") return value;
+	if (type === "id" && typeof value === "string")
+		return parseEndoIdentifierV0(value) === null ? undefined : publicIdV0(value);
 	if (type === "number" && typeof value === "number" && Number.isFinite(value)) return value;
 	if (type === "boolean" && typeof value === "boolean") return value;
 	return undefined;
 }
 
-/** A reason or field text the runtime or adapter wrote: bounded, and null (withheld whole) when it looks sensitive. */
+/**
+ * A reason or field text the runtime or adapter wrote. Judged whole and never cut (a cut can split a secret so that
+ * neither half is recognised): presented as it is when it is non-empty, within the bound and not unsafe, else null.
+ */
 function freeText(text: string): string | null {
-	const bounded = text.length > MAX_STRING ? text.slice(0, MAX_STRING) : text;
-	return looksSensitiveTextV0(bounded) ? null : bounded;
+	return endoCockpitTextPresentableV0(text, MAX_STRING) ? text : null;
 }
 
 /** A fresh object each time: results are plain data, and no two of them may share one. */
@@ -157,12 +165,11 @@ function declaredUnavailable(payload: Record<string, unknown>): {
 			whole = false;
 			continue;
 		}
-		const name = freeText(field.slice(0, 100));
-		if (name === null) {
+		if (!endoCockpitGapNameAdmittedV0(field)) {
 			whole = false;
 			continue;
 		}
-		fields[`unavailable.${name}`] = {
+		fields[`unavailable.${field}`] = {
 			basis: "unavailable",
 			reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0,
 		};
@@ -212,15 +219,15 @@ function usageOf(event: EndoEventV0, payload: Record<string, unknown>): EndoCock
 			entryType !== "usage"
 		)
 			return null;
-		if (!isRecord(details)) return { basis: "unavailable", reason: "the event records no entry details" };
+		if (!isRecord(details)) return { basis: "unavailable", reason: ENDO_COCKPIT_USAGE_REASONS_V0[0]! };
 		carrier = own(details, "usage");
 		role = entryType === "message" ? own(details, "role") : undefined;
 	} else return null;
 	if (role === "user") return null;
-	if (carrier === undefined) return { basis: "unavailable", reason: "the event records no usage" };
+	if (carrier === undefined) return { basis: "unavailable", reason: ENDO_COCKPIT_USAGE_REASONS_V0[1]! };
 	const usage = readUsage(carrier);
 	return usage === undefined
-		? { basis: "unavailable", reason: "the recorded usage is not in the expected shape" }
+		? { basis: "unavailable", reason: ENDO_COCKPIT_USAGE_REASONS_V0[2]! }
 		: { basis: "reported", value: usage };
 }
 
@@ -329,20 +336,22 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		for (const key of session.keys) presentedWhole.add(key);
 	}
 	if (event.kind === "message.completed" && usageIsWhole(payload)) presentedWhole.add("usage");
+	// A kind is grammar-valid whatever it says: one the text policy flags is presented as a placeholder in "other".
+	const presentedKind = endoCockpitTextUnsafeV0(event.kind) ? `other.${kindLabelV0(event.kind)}` : event.kind;
 	const keys = isRecord(event.payload) ? Object.keys(event.payload) : [];
 	return {
 		storageSequence,
-		eventId: event.id,
-		kind: event.kind,
-		category: categoryOf(event.kind),
+		eventId: publicIdV0(event.id),
+		kind: presentedKind,
+		category: categoryOf(presentedKind),
 		source: event.source,
 		producer: endoCockpitProducerAdmittedV0(event.producer) ? event.producer : ENDO_COCKPIT_WITHHELD_TEXT_V0,
 		producerSequence: event.sequence,
 		recordedAt: event.at,
-		sessionId: event.coordinates.sessionId ?? null,
-		runId: event.coordinates.runId ?? null,
-		experimentId: event.coordinates.experimentId ?? null,
-		derivedFrom: [...event.derivedFrom],
+		sessionId: event.coordinates.sessionId === undefined ? null : publicIdV0(event.coordinates.sessionId),
+		runId: event.coordinates.runId === undefined ? null : publicIdV0(event.coordinates.runId),
+		experimentId: event.coordinates.experimentId === undefined ? null : publicIdV0(event.coordinates.experimentId),
+		derivedFrom: event.derivedFrom.map(publicIdV0),
 		flags: flagsOf(event, payload, endoCockpitKindRecognizedV0(event.kind)),
 		fields,
 		usage: usageOf(event, payload),

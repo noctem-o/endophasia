@@ -9,6 +9,7 @@
 //
 // The protocol imports only the protocol.
 
+import { type EndoIdentifierKindV0, parseEndoIdentifierV0 } from "./identity.ts";
 import { ENDO_INTERVENTION_KINDS_V0 } from "./intervention.ts";
 import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "./session-lifecycle.ts";
 
@@ -21,7 +22,8 @@ function freezeDeep<T>(value: T): T {
 }
 
 export type EndoCockpitFieldBasisV0 = "observed" | "reported" | "derived";
-export type EndoCockpitFieldTypeV0 = "string" | "number" | "boolean";
+/** "id": an Endophasia identifier, presented in the public form (or as its deterministic alias). */
+export type EndoCockpitFieldTypeV0 = "string" | "number" | "boolean" | "id";
 /** [exposed key, payload path, basis, type, null allowed] */
 export type EndoCockpitFieldSpecV0 = readonly [
 	key: string,
@@ -147,7 +149,7 @@ export const ENDO_COCKPIT_FIELD_SPECS_V0: Readonly<Record<string, readonly EndoC
 	"session.leaf-observed": [["leafId", "leafId", "reported", "string", true]],
 	"harness.attached": [
 		instance,
-		["fingerprintId", "fingerprintId", "observed", "string"],
+		["fingerprintId", "fingerprintId", "observed", "id"],
 		["identityDigest", "identityDigest", "derived", "string"],
 		["version", "version", "reported", "string", true],
 		["mapping", "mapping", "observed", "string"],
@@ -170,8 +172,8 @@ export const ENDO_COCKPIT_FIELD_SPECS_V0: Readonly<Record<string, readonly EndoC
 		["added", "added", "observed", "number"],
 	],
 	"harness.runtime-changed": [
-		["previousFingerprintId", "previousFingerprintId", "observed", "string"],
-		["currentFingerprintId", "currentFingerprintId", "observed", "string"],
+		["previousFingerprintId", "previousFingerprintId", "observed", "id"],
+		["currentFingerprintId", "currentFingerprintId", "observed", "id"],
 		["previousVersion", "previousVersion", "reported", "string", true],
 		["currentVersion", "currentVersion", "reported", "string", true],
 	],
@@ -270,12 +272,12 @@ export const ENDO_COCKPIT_DECLARED_UNAVAILABLE_KINDS_V0: readonly string[] = fre
 
 /** An opaque producer name is presented only in the shape Endophasia's own producers use. */
 export function endoCockpitProducerAdmittedV0(producer: string): boolean {
-	return ADMITTED_PRODUCER.test(producer);
+	return ADMITTED_PRODUCER.test(producer) && !endoCockpitTextUnsafeV0(producer);
 }
 
 /** An opaque runtime session reference is presented only in a shape Endophasia writes or a UUID. */
 export function endoCockpitRuntimeSessionAdmittedV0(reference: string): boolean {
-	return ADMITTED_RUNTIME_SESSION.some((shape) => shape.test(reference));
+	return ADMITTED_RUNTIME_SESSION.some((shape) => shape.test(reference)) && !endoCockpitTextUnsafeV0(reference);
 }
 
 /** Whether a kind is one the producers record (or a lifecycle/intervention kind this version defines). */
@@ -319,3 +321,134 @@ export function endoCockpitKindUnrecognizedV0(kind: string): boolean {
 		(kind.startsWith("lifecycle.") && !isEndoLifecycleKindV0(kind))
 	);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Text and identifier admission (shared by the projections and the validators)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * What stands in place of a recorded free-text value that appears to embed a local path, a network address, a credential
+ * or control characters, or that is too long to present whole. A fixed text (50 characters, so it fits every bounded
+ * field): it reveals nothing of the original and is the same on every run.
+ */
+export const ENDO_COCKPIT_WITHHELD_TEXT_V0 = "withheld: looks like a path, address or credential";
+
+/** The longest free-text field value presented whole. A longer value is withheld, never cut: a cut can split a secret. */
+export const ENDO_COCKPIT_MAX_FIELD_TEXT_V0 = 256;
+
+/**
+ * Text that looks like it carries a local path, a network address, a credential or control characters. A heuristic for
+ * free text an author wrote: it is not a secret scanner and a pass does not certify the text safe, so every value it is
+ * applied to is ALSO bounded, and values whose shape is known (identifiers, digests, versions of the contract) are
+ * admitted by shape instead. What it flags is withheld whole, never partly rewritten, so the result is deterministic.
+ * The text is normalised first (NFKC; zero-width, bidirectional and control characters removed) and tested both as
+ * written and normalised, so a secret split by an invisible character is still seen.
+ */
+const SENSITIVE_TEXT: readonly RegExp[] = [
+	/(?:^|[\s"'`([{=:,;<])(?:\/|~\/|\.{1,2}\/)[^\s]/,
+	/\b[A-Za-z]:[\\/]/,
+	/\\\\[^\s\\]+\\/,
+	/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S/,
+	/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/,
+	/\bgh[pousr]_[A-Za-z0-9]{20,}/,
+	/\bgithub_pat_[A-Za-z0-9_]{20,}/,
+	/\bxox[abprs]-[A-Za-z0-9-]{8,}/,
+	/\bAKIA[0-9A-Z]{16}\b/,
+	/-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+	/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
+	/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
+	/\b(?:api[_-]?key|secret|token|password|passwd|authorization)\s*[=:]\s*\S{4,}/i,
+];
+
+/** Control characters and invisible or direction-changing characters, written as escapes so none is literal here. */
+const INVISIBLE_CLASS =
+	"[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]";
+const CONTROL_OR_INVISIBLE = new RegExp(INVISIBLE_CLASS);
+const CONTROL_OR_INVISIBLE_ALL = new RegExp(INVISIBLE_CLASS, "g");
+
+export function endoCockpitTextUnsafeV0(text: string): boolean {
+	if (CONTROL_OR_INVISIBLE.test(text)) return true;
+	const folded = text.normalize("NFKC").replace(CONTROL_OR_INVISIBLE_ALL, "");
+	return SENSITIVE_TEXT.some((pattern) => pattern.test(text) || pattern.test(folded));
+}
+
+/** Free text fit to present whole: non-empty, within `max`, and not unsafe. Tested on the whole value before any bound. */
+export function endoCockpitTextPresentableV0(text: string, max = ENDO_COCKPIT_MAX_FIELD_TEXT_V0): boolean {
+	return text.length >= 1 && text.length <= max && !endoCockpitTextUnsafeV0(text);
+}
+
+/** The text itself, or the fixed withheld text when it is not presentable. */
+export function endoCockpitPresentableTextV0(text: string, max = ENDO_COCKPIT_MAX_FIELD_TEXT_V0): string {
+	return endoCockpitTextPresentableV0(text, max) ? text : ENDO_COCKPIT_WITHHELD_TEXT_V0;
+}
+
+const SAFE_ID_SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Whether an identifier may be presented as it is: a well-formed Endophasia identifier whose opaque local part is
+ * lowercase letters, digits and hyphens in dot-separated segments of at most 64 characters. Real identifiers are of that
+ * shape (digests, counters, attachment-derived names). A credential has no reason to be, but a lowercase hex token is
+ * indistinguishable from the digests identifiers legitimately carry; that residual is stated, not claimed away. An
+ * identifier of another shape is presented as a deterministic alias (cockpit/projections/common.ts), which is of this shape.
+ */
+export function isEndoCockpitPublicIdV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+	const parsed = parseEndoIdentifierV0(value);
+	if (parsed === null || (kind !== undefined && parsed.kind !== kind)) return false;
+	if (!parsed.local.split(".").every((segment) => segment.length <= 64 && SAFE_ID_SEGMENT.test(segment))) return false;
+	// Admitted by shape AND by content: what the text policy flags is admitted nowhere.
+	return !endoCockpitTextUnsafeV0(value);
+}
+
+/** The name of a declared-unavailable gap (`unavailable.<name>`): a short plain label. */
+export function endoCockpitGapNameAdmittedV0(name: string): boolean {
+	return /^[A-Za-z][A-Za-z0-9._-]{0,99}$/.test(name) && !endoCockpitTextUnsafeV0(name);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fixed provenance texts (shared by the projections and the validators)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Why a fingerprint fact is unavailable when the fingerprint recorded it as not collected. The recorded reason is not shown. */
+export const ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0 =
+	"the fingerprint records this fact as not collected; the recorded reason is not presented";
+
+/** The recorded fingerprint fields that are not presented: local paths and the version command's raw output. */
+export const ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0: readonly string[] = freezeDeep([
+	"local.package.root",
+	"local.realPath",
+	"local.requested",
+	"local.resolvedPath",
+	"reported.versionText",
+]);
+
+/** The evidence fields that are not presented. */
+export const ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0: readonly string[] = freezeDeep([
+	"expected",
+	"inputsDigest",
+	"observed",
+]);
+
+/** The runtime family claim's reason when no record names one. */
+export const ENDO_COCKPIT_NO_RUNTIME_REASON_V0 = "no runtime family is recorded for this attachment";
+
+/** The runtime family claim's reason when the registry could not be read (`state` is its source state). */
+export const endoCockpitUnreadableRuntimeReasonV0 = (state: string): string =>
+	`the registry is ${state}; no runtime is recorded here`;
+
+/** The reasons a usage claim is unavailable. */
+export const ENDO_COCKPIT_USAGE_REASONS_V0: readonly string[] = freezeDeep([
+	"the event records no entry details",
+	"the event records no usage",
+	"the recorded usage is not in the expected shape",
+]);
+
+/**
+ * How much a check kind can establish (adapters/pi/capabilities.ts: `requires` is the cheapest kind that can establish a
+ * capability). Evidence from a costlier kind may legitimately stand for a cheaper requirement (a live study that re-tests
+ * what a local check does); evidence from a cheaper kind cannot stand for a costlier one.
+ */
+export const ENDO_COCKPIT_CHECK_COST_V0: Readonly<Record<string, number>> = freezeDeep({
+	"static-surface": 0,
+	"local-protocol": 1,
+	"live-study": 2,
+});

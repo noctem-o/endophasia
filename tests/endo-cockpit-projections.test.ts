@@ -332,7 +332,7 @@ describe("session timeline", () => {
 				state: "unopenable",
 				tornTail: null,
 				sealedAt: null,
-				error: { kind: "invalid-store", message: "duplicate event id" },
+				error: { kind: "invalid-store", message: "the store could not be opened" },
 			},
 			watermark: null,
 		};
@@ -534,7 +534,7 @@ describe("capability state", () => {
 			expect.arrayContaining(["status-classification-mismatch", "evidence-classification-differs"]),
 		);
 		expect(codes(c!.capability)).toEqual(["evidence-capability-differs"]);
-		expect(codes(d!.capability)).toEqual(["evidence-reduced-identity"]);
+		expect(codes(d!.capability)).toEqual(["evidence-confidence-differs", "evidence-reduced-identity"]);
 		expect(codes(e!.capability)).toEqual(["evidence-identity-differs"]);
 		// The status is carried as recorded in every case.
 		expect(result.capabilities.find((v) => v.capability === b!.capability)!.status).toBe(b!.status);
@@ -672,9 +672,19 @@ describe("presentation boundary", () => {
 		expect(result.entries[6]!.fields).toEqual({});
 	});
 
-	it("truncates an over-long string field instead of passing it on", () => {
+	it("withholds an over-long string field whole instead of cutting it", () => {
 		const result = timeline([event("harness.protocol-fault", { fault: "x".repeat(10_000) })]);
-		expect((result.entries[0]!.fields.fault as { value: string }).value).toHaveLength(256);
+		expect(result.entries[0]!.fields.fault).toEqual({
+			basis: "unavailable",
+			reason: "withheld: looks like a path, address or credential",
+		});
+		expect(JSON.stringify(result).length).toBeLessThan(2000);
+		const atBound = timeline([event("harness.protocol-fault", { fault: "x".repeat(256) })]);
+		expect(atBound.entries[0]!.fields.fault).toEqual({ basis: "observed", value: "x".repeat(256) });
+		const secretPastTheBound = timeline([
+			event("harness.protocol-fault", { fault: `${"x".repeat(250)} ghp_${"A".repeat(36)}` }),
+		]);
+		expect(JSON.stringify(secretPastTheBound)).not.toContain("ghp_");
 	});
 
 	it("hostile payload shapes do not break the projection", () => {
@@ -1320,7 +1330,7 @@ describe("timeline pagination metadata against its watermark (PR #57 review)", (
 					state: "unopenable",
 					tornTail: null,
 					sealedAt: null,
-					error: { kind: "invalid-store", message: "bad" },
+					error: { kind: "invalid-store", message: "the store could not be opened" },
 				},
 				watermark: null,
 			},
@@ -2159,7 +2169,7 @@ describe("third review round and invariant audit (PR #57)", () => {
 						state: "unopenable",
 						tornTail: null,
 						sealedAt: null,
-						error: { kind: "invalid-store", message: "x" },
+						error: { kind: "invalid-store", message: "the store could not be opened" },
 					};
 					c.source.watermark = null;
 					c.entries = [];
@@ -2188,7 +2198,8 @@ describe("one presentation policy for projection and validator (PR #57 review ro
 		for (const [kind, specs] of Object.entries(ENDO_COCKPIT_FIELD_SPECS_V0)) {
 			const payload: Record<string, any> = {};
 			for (const [, path, , type] of specs) {
-				const value = type === "string" ? "a-value" : type === "number" ? 3 : true;
+				const value =
+					type === "string" ? "a-value" : type === "id" ? "endo.evidence.a-value" : type === "number" ? 3 : true;
 				const segments = path.split(".");
 				let at = payload;
 				for (const segment of segments.slice(0, -1)) at = at[segment] ??= {};
@@ -2451,5 +2462,239 @@ describe("one presentation policy for projection and validator (PR #57 review ro
 					).toBeNull();
 			}
 		}
+	});
+});
+
+describe("fourth review round (PR #57)", () => {
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const FLAGGED_TEXT = [
+		"ghp_CANARYSECRETCANARYSECRET",
+		"/home/CANARYSECRET/x",
+		"token=CANARYSECRETabcd",
+		"gh​p_CANARYSECRETCANARYSECRET",
+	];
+
+	it("P1: a forged timeline field value that the projection would withhold is rejected, as is an over-long one", () => {
+		const log = timeline([event("tool.started", { toolName: "read", toolCallId: "c1" })]);
+		expect(validateEndoCockpitSessionTimelineV0(log)).not.toBeNull();
+		for (const text of [...FLAGGED_TEXT, "x".repeat(257), "", "line\nbreak"]) {
+			expect(
+				validateEndoCockpitSessionTimelineV0(
+					mutated(log, (c) => {
+						c.entries[0].fields.toolName.value = text;
+					}),
+				),
+				text,
+			).toBeNull();
+			expect(
+				readEndoCockpitRecordV0(
+					mutated(log, (c) => {
+						c.entries[0].fields.toolName.value = text;
+					}),
+				).ok,
+				text,
+			).toBe(false);
+		}
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(log, (c) => {
+					c.entries[0].fields.toolName.value = "x".repeat(256);
+				}),
+			),
+		).not.toBeNull();
+		// An unavailable reason is judged the same way, and a declared gap's name is admitted by shape.
+		const gap = timeline([
+			event("lifecycle.session-started", {
+				runtime: "pi",
+				runtimeSessionId: "s",
+				instance: "i",
+				unavailable: [{ field: "runId", reason: "not reported" }],
+			}),
+		]);
+		expect(validateEndoCockpitSessionTimelineV0(gap)).not.toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(gap, (c) => {
+					c.entries[0].fields["unavailable.runId"].reason = FLAGGED_TEXT[0];
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(gap, (c) => {
+					c.entries[0].fields[`unavailable.${FLAGGED_TEXT[0]}`] = c.entries[0].fields["unavailable.runId"];
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("P1: redaction is judged on the whole value before any bound: a secret past the old cut is still withheld", () => {
+		const long = `${"x".repeat(240)} ghp_CANARYSECRETCANARYSECRET`;
+		const entry = timeline([event("harness.protocol-fault", { fault: long })]).entries[0]!;
+		expect(entry.fields.fault).toEqual({
+			basis: "unavailable",
+			reason: "withheld: looks like a path, address or credential",
+		});
+		const split = timeline([event("harness.protocol-fault", { fault: "ｇｈｐ＿CANARYSECRETCANARYSECRET" })])
+			.entries[0]!;
+		expect(JSON.stringify(split)).not.toContain("CANARYSECRET");
+	});
+
+	it("P2: a limit that contradicts the capability view is rejected, and so is one missing its derivable precondition", () => {
+		const records = specimenRecords();
+		const result = projectEndoCockpitCapabilityStateV0(input(records));
+		const view = result.capabilities.find((c) => c.status !== "unverified" && c.evidence !== null)!;
+		expect(view.limits).toEqual([]);
+		const at = result.capabilities.indexOf(view);
+		const withLimit = (code: string, refs?: unknown[]) =>
+			mutated(result, (c) => {
+				c.capabilities[at].limits.push({ code, refs: refs ?? [c.capabilities[at].ref] });
+			});
+		// "evidence-record-missing" while the evidence is presented.
+		expect(validateEndoCockpitCapabilityStateV0(withLimit("evidence-record-missing"))).toBeNull();
+		// Fabricated currency and classification contradictions.
+		expect(validateEndoCockpitCapabilityStateV0(withLimit("state-not-for-latest-fingerprint"))).toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				withLimit("evidence-classification-differs", [view.ref, view.evidence!.ref]),
+			),
+		).toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(withLimit("status-classification-mismatch"))).toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(withLimit("evidence-check-insufficient", [view.ref, view.evidence!.ref])),
+		).toBeNull();
+		// A limit whose references are not the exact set for its code, or that repeats, or that is out of order.
+		expect(validateEndoCockpitCapabilityStateV0(withLimit("evidence-capability-differs"))).toBeNull();
+		const right = withLimit("evidence-capability-differs", [view.ref, view.evidence!.ref]);
+		expect(validateEndoCockpitCapabilityStateV0(right)).not.toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				mutated(right, (c) => {
+					c.capabilities[at].limits.push(structuredClone(c.capabilities[at].limits[0]));
+				}),
+			),
+		).toBeNull();
+		// A limit that is derivable is required: stale currency without its limit is rejected.
+		const first = records.fingerprint[0]!;
+		const newer = {
+			...first,
+			id: "endo.evidence.test-fingerprint.2",
+			identity: { ...first.identity, digest: "c".repeat(64) },
+		};
+		const stale = projectEndoCockpitCapabilityStateV0(input({ ...records, fingerprint: [first, newer] }));
+		expect(validateEndoCockpitCapabilityStateV0(stale)).not.toBeNull();
+		const removed = mutated(stale, (c) => {
+			for (const v of c.capabilities)
+				v.limits = v.limits.filter((l: any) => l.code !== "state-not-for-latest-fingerprint");
+		});
+		expect(validateEndoCockpitCapabilityStateV0(removed)).toBeNull();
+		// Statuses are what the registry recorded, in every case.
+		expect(stale.capabilities.map((c) => c.status)).toEqual(records.state[0]!.capabilities.map((c) => c.status));
+	});
+
+	it("P2: evidence whose confidence differs from the fingerprint it names is limited, even on the same fingerprint id", () => {
+		const records = specimenRecords();
+		const fingerprint = structuredClone(records.fingerprint[0]!);
+		fingerprint.identity = { ...fingerprint.identity, confidence: "reduced" };
+		const result = projectEndoCockpitCapabilityStateV0(input({ ...records, fingerprint: [fingerprint] }));
+		const admitted = result.capabilities.filter((c) => c.status !== "unverified" && c.evidence !== null);
+		expect(admitted.length).toBeGreaterThan(0);
+		for (const view of admitted) {
+			const limit = view.limits.find((l) => l.code === "evidence-confidence-differs");
+			expect(limit, view.capability).toBeDefined();
+			expect(limit!.refs.map((r) => (r.domain === "harness-registry" ? r.kind : r.domain))).toEqual([
+				"state",
+				"evidence",
+				"fingerprint",
+			]);
+			// The same fingerprint id is not a carry-forward, so the carry-forward limit is not raised.
+			expect(view.limits.map((l) => l.code)).not.toContain("evidence-reduced-identity");
+		}
+		expect(result.capabilities.map((c) => c.status)).toEqual(records.state[0]!.capabilities.map((c) => c.status));
+		expect(validateEndoCockpitCapabilityStateV0(result)).not.toBeNull();
+		// Legitimate carry-forward at one confidence still raises nothing.
+		const second = { ...records.fingerprint[0]!, id: "endo.evidence.test-fingerprint.2" };
+		const state = { ...structuredClone(records.state[0]!), fingerprintId: second.id, at: "2026-10-04T10:00:01.000Z" };
+		const carried = projectEndoCockpitCapabilityStateV0(
+			input({ ...records, fingerprint: [records.fingerprint[0]!, second], state: [records.state[0]!, state] }),
+		);
+		for (const view of carried.capabilities) expect(view.limits).toEqual([]);
+	});
+
+	it("P2: the basis of every identity claim is fixed by what the claim is", () => {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input(records));
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		for (const [claim, basis] of [
+			["identity", "derived"],
+			["version", "reported"],
+			["entrypoint", "observed"],
+			["package", "observed"],
+		] as const) {
+			expect(identity.current![claim].basis).toBe(basis);
+			for (const wrong of ["observed", "reported", "derived", "inferred", "unavailable"].filter(
+				(b) => b !== basis,
+			)) {
+				expect(
+					validateEndoCockpitRuntimeIdentityV0(
+						mutated(identity, (c) => {
+							c.current[claim].basis = wrong;
+						}),
+					),
+					`${claim} ${wrong}`,
+				).toBeNull();
+			}
+		}
+		for (const wrong of ["derived", "reported", "inferred"]) {
+			expect(
+				validateEndoCockpitRuntimeIdentityV0(
+					mutated(identity, (c) => {
+						c.runtime.basis = wrong;
+					}),
+				),
+				`runtime ${wrong}`,
+			).toBeNull();
+		}
+		// A legitimate gap keeps its basis family: unavailable with the projection's reason, and no other reason.
+		const gap = structuredClone(records.fingerprint[0]!);
+		gap.local.entrypoint = null;
+		const withGap = projectEndoCockpitRuntimeIdentityV0(input({ ...records, fingerprint: [gap] }));
+		expect(withGap.current!.entrypoint.basis).toBe("unavailable");
+		expect(validateEndoCockpitRuntimeIdentityV0(withGap)).not.toBeNull();
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				mutated(withGap, (c) => {
+					c.current.entrypoint.reason = "some other reason";
+				}),
+			),
+		).toBeNull();
+	});
+
+	it("audit: kind-typed values are judged by content as well as grammar", () => {
+		// A lowercase credential shape is a valid dotted kind: the runtime family, capability, event kind are still withheld.
+		const secret = "sk-canarysecretcanarysecret";
+		const records = specimenRecords();
+		const fingerprint = { ...structuredClone(records.fingerprint[0]!), runtime: secret };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input({ ...records, fingerprint: [fingerprint] }));
+		expect(identity.runtime).toMatchObject({
+			basis: "unavailable",
+			reason: "withheld: looks like a path, address or credential",
+		});
+		expect(JSON.stringify(identity)).not.toContain(secret);
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		const state = structuredClone(records.state[0]!);
+		state.capabilities[0]!.capability = secret;
+		const capabilities = projectEndoCockpitCapabilityStateV0(input({ ...records, state: [state] }));
+		expect(capabilities.capabilities[0]!.capability).toMatch(/^withheld-[0-9a-f]{32}$/);
+		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+		const entry = timeline([event(`${secret}.step`, { a: 1 })]).entries[0]!;
+		expect(entry.kind).toMatch(/^other\.withheld-[0-9a-f]{32}$/);
+		expect(entry.category).toBe("other");
+		expect(entry.flags).toContain("unrecognized");
+		expect(validateEndoCockpitSessionTimelineV0(timeline([event(`${secret}.step`, { a: 1 })]))).not.toBeNull();
 	});
 });

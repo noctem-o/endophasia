@@ -9,7 +9,11 @@ import type {
 	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
 } from "../../protocol/cockpit.ts";
-import { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "../../protocol/cockpit.ts";
+import {
+	ENDO_COCKPIT_WITHHELD_TEXT_V0,
+	endoCockpitTextUnsafeV0,
+	isEndoCockpitPublicIdV0,
+} from "../../protocol/cockpit-fields.ts";
 import type {
 	EndoCapabilityEvidenceV0,
 	EndoCapabilityStateV0,
@@ -17,6 +21,8 @@ import type {
 	EndoHarnessFingerprintV0,
 	EndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
+import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
+import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 
 /** The validated records of one attachment's registry, each kind in append order. */
 export interface EndoCockpitRegistryRecordsV0 {
@@ -42,36 +48,35 @@ export interface EndoCockpitIndexedV0<T> {
 	index: number;
 }
 
-/**
- * Text that looks like it carries a local path, a network address or a credential. A heuristic for free text a record
- * author wrote (a reason, a limitation, a title, a runtime-reported string): it is not a secret scanner and a pass does
- * not certify the text safe, but what it flags is withheld whole, never partly rewritten, so the result is deterministic.
- * Prose that merely contains a slash ("input/output") is not flagged; a token that starts with one, or a drive letter,
- * a home shorthand, a URL or a known credential shape, is.
- */
-const SENSITIVE_TEXT: readonly RegExp[] = [
-	/(?:^|[\s"'`([{=:,;<])(?:\/|~\/|\.{1,2}\/)[^\s]/,
-	/\b[A-Za-z]:[\\/]/,
-	/\\\\[^\s\\]+\\/,
-	/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S/,
-	/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/,
-	/\bgh[pousr]_[A-Za-z0-9]{20,}/,
-	/\bgithub_pat_[A-Za-z0-9_]{20,}/,
-	/\bxox[abprs]-[A-Za-z0-9-]{8,}/,
-	/\bAKIA[0-9A-Z]{16}\b/,
-	/-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-	/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
-	/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
-	/\b(?:api[_-]?key|secret|token|password|passwd|authorization)\s*[=:]\s*\S{4,}/i,
-];
+/** Text that is not presentable whole (a path, an address, a credential, control characters): see the protocol policy. */
+export const looksSensitiveTextV0 = endoCockpitTextUnsafeV0;
 
-export function looksSensitiveTextV0(text: string): boolean {
-	return SENSITIVE_TEXT.some((pattern) => pattern.test(text));
+/** The text itself, or the fixed withheld text when it looks sensitive. The record's own bound applies, not a cut. */
+export function presentableTextV0(text: string): string {
+	return endoCockpitTextUnsafeV0(text) ? ENDO_COCKPIT_WITHHELD_TEXT_V0 : text;
 }
 
-/** The text itself, or the fixed withheld text when it looks sensitive. */
-export function presentableTextV0(text: string): string {
-	return looksSensitiveTextV0(text) ? ENDO_COCKPIT_WITHHELD_TEXT_V0 : text;
+/**
+ * A dotted kind (a capability, an event kind) as the cockpit presents it: as it is, or, when the text policy flags it, a
+ * deterministic placeholder of the same grammar (`withheld-` and 32 hex digits of its sha256). A kind is grammar-valid
+ * whatever it says, so the grammar alone does not keep a credential-shaped one out of a result.
+ */
+export function kindLabelV0(kind: string): string {
+	return endoCockpitTextUnsafeV0(kind) ? `withheld-${sha256HexV0(kind).slice(0, 32)}` : kind;
+}
+
+/**
+ * An identifier as the cockpit presents it. An identifier of the shape identifiers have (isEndoCockpitPublicIdV0) is
+ * presented as it is. Any other is replaced by a deterministic alias in the same namespace, `endo.<kind>.withheld-` and
+ * 32 hex digits of the sha256 of the identifier: the same identifier gives the same alias everywhere, so every reference
+ * relationship (an event and the events derived from it, a state and its fingerprint) is kept, and the underlying
+ * identifier is neither changed nor recoverable from the alias. A low-entropy secret could be guessed and confirmed
+ * against the alias; that is not claimed away.
+ */
+export function publicIdV0(id: string): string {
+	if (isEndoCockpitPublicIdV0(id)) return id;
+	const kind = parseEndoIdentifierV0(id)?.kind ?? "evidence";
+	return `endo.${kind}.withheld-${sha256HexV0(id).slice(0, 32)}`;
 }
 
 /** Order two strings by UTF-16 code unit, independent of the host's locale. */
@@ -85,7 +90,7 @@ export function registryRefV0(
 	index: number,
 	id: string | null,
 ): EndoCockpitRefV0 {
-	return { domain: "harness-registry", attachment, kind, index, id };
+	return { domain: "harness-registry", attachment, kind, index, id: id === null ? null : publicIdV0(id) };
 }
 
 export function claimV0<T>(

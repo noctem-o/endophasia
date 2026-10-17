@@ -40,14 +40,29 @@
 
 import {
 	ENDO_COCKPIT_ANOMALY_KINDS_V0,
+	ENDO_COCKPIT_CHECK_COST_V0,
 	ENDO_COCKPIT_DISCONTINUITY_KINDS_V0,
+	ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0,
 	ENDO_COCKPIT_INTERRUPTION_KINDS_V0,
+	ENDO_COCKPIT_NO_RUNTIME_REASON_V0,
 	ENDO_COCKPIT_PAYLOAD_FLAG_KINDS_V0,
 	ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0,
+	ENDO_COCKPIT_USAGE_REASONS_V0,
+	ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0,
+	ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0,
+	ENDO_COCKPIT_WITHHELD_TEXT_V0,
 	endoCockpitFieldRuleV0,
+	endoCockpitGapNameAdmittedV0,
 	endoCockpitKindUnrecognizedV0,
 	endoCockpitProducerAdmittedV0,
+	endoCockpitTextPresentableV0,
+	endoCockpitTextUnsafeV0,
+	endoCockpitUnreadableRuntimeReasonV0,
+	isEndoCockpitPublicIdV0,
 } from "./cockpit-fields.ts";
+
+export { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "./cockpit-fields.ts";
+
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0, type EndoConformanceClassificationV0 } from "./evaluation.ts";
 import { ENDO_EVENT_SOURCES_V0, type EndoEventSourceV0 } from "./event.ts";
 import {
@@ -64,8 +79,9 @@ import {
 	type EndoHarnessIdentityConfidenceV0,
 	type EndoHarnessNotificationKindV0,
 	type EndoHarnessVersionOrderV0,
+	endoCapabilityStatusForV0,
 } from "./harness.ts";
-import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
+import { type EndoIdentifierKindV0, isWellFormedEventKindV0, isWellFormedKindV0 } from "./identity.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
 import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
@@ -80,14 +96,6 @@ export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
 	sessionTimeline: "cockpit-session-timeline.1",
 	snapshot: "cockpit-snapshot.1",
 } as const;
-
-/**
- * What stands in place of a recorded free-text value (a reason, a limitation, a title, a runtime-reported string) that
- * appears to embed a local path, a network address or a credential. A fixed text: it reveals nothing of the original and
- * is the same on every run. Heuristic and deliberately conservative (cockpit/projections/common.ts): it withholds, it
- * never rewrites, and a value it passes is bounded but not certified safe.
- */
-export const ENDO_COCKPIT_WITHHELD_TEXT_V0 = "withheld: looks like a path, address or credential";
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
 export const ENDO_COCKPIT_BASES_V0 = ["observed", "reported", "derived", "inferred"] as const;
@@ -110,6 +118,31 @@ export type EndoCockpitRegistryKindV0 = (typeof ENDO_COCKPIT_REGISTRY_KINDS_V0)[
 export const ENDO_COCKPIT_SOURCE_STATES_V0 = ["absent", "empty", "readable", "degraded", "unopenable"] as const;
 export type EndoCockpitSourceStateV0 = (typeof ENDO_COCKPIT_SOURCE_STATES_V0)[number];
 
+/**
+ * The public errors of an unopenable source: a closed set of diagnostic categories, each with ONE fixed message. Nothing
+ * a store or a record said is ever public (an Error message can quote an identifier, a path or a record's own text), so a
+ * condition carries a category and the sentence that category always has. The validator requires exactly this pair.
+ */
+export const ENDO_COCKPIT_SOURCE_ERRORS_V0 = {
+	"schema-not-an-object": "a stored record is not an object",
+	"schema-missing-version": "a stored record declares no schema version",
+	"schema-version-not-string": "a stored record declares a schema version that is not a string",
+	"schema-unsupported-version": "a stored record declares a schema version this reader does not support",
+	"schema-invalid": "a stored record does not satisfy the schema version it declares",
+	unreadable: "the log file exists but cannot be read",
+	"path-not-a-file": "the log path is not a regular file",
+	"path-unreadable": "the log path cannot be read",
+	"path-dangling-symlink": "the log path goes through a dangling symlink",
+	"duplicate-id": "a stored record repeats the identifier of an earlier record",
+	sealed: "the store is sealed: a frame failed verification",
+	"record-misplaced": "a stored record does not belong where it was found",
+	"unknown-record-kind": "a stored record is of a kind this reader does not know",
+	"malformed-frame": "a stored frame is not in the form the store writes",
+	"invalid-record": "a stored record is not valid",
+	"invalid-store": "the store could not be opened",
+} as const;
+export type EndoCockpitSourceErrorKindV0 = keyof typeof ENDO_COCKPIT_SOURCE_ERRORS_V0;
+
 export const ENDO_COCKPIT_NOTE_CODES_V0 = [
 	"no-fingerprint-recorded",
 	"latest-change-not-for-latest-fingerprint",
@@ -125,18 +158,23 @@ export const ENDO_COCKPIT_NOTE_CODES_V0 = [
 ] as const;
 export type EndoCockpitNoteCodeV0 = (typeof ENDO_COCKPIT_NOTE_CODES_V0)[number];
 
+/**
+ * The limit codes, in the ORDER a capability lists them (each at most once): the projection emits in this order and the
+ * validator requires it, so a limit list has one canonical form.
+ */
 export const ENDO_COCKPIT_LIMIT_CODES_V0 = [
 	"state-not-for-latest-fingerprint",
 	"state-without-fingerprint",
+	"status-classification-mismatch",
 	"state-fingerprint-not-recorded",
+	"runtime-differs",
 	"evidence-record-missing",
+	"evidence-check-insufficient",
 	"evidence-capability-differs",
 	"evidence-classification-differs",
 	"evidence-identity-differs",
+	"evidence-confidence-differs",
 	"evidence-reduced-identity",
-	"status-classification-mismatch",
-	"runtime-differs",
-	"evidence-check-insufficient",
 ] as const;
 export type EndoCockpitLimitCodeV0 = (typeof ENDO_COCKPIT_LIMIT_CODES_V0)[number];
 
@@ -207,7 +245,7 @@ export interface EndoCockpitSourceConditionV0 {
 	tornTail: { bytes: number; sha256: string } | null;
 	/** The 1-based index of the first frame that failed verification, or null. Writes to a sealed store are refused. */
 	sealedAt: number | null;
-	error: { kind: string; message: string } | null;
+	error: { kind: EndoCockpitSourceErrorKindV0; message: string } | null;
 }
 
 /**
@@ -486,6 +524,9 @@ export type EndoCockpitRecordV0 =
 // Validation helpers
 // ---------------------------------------------------------------------------------------------------------------
 
+/** The bases a v0 record may carry. "inferred" is reserved in the vocabulary and produced by no v0 projection. */
+const V0_BASES = ENDO_COCKPIT_BASES_V0.filter((basis) => basis !== "inferred");
+
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const MAX_TEXT = 4096;
 /** The longest producer name presented; the event envelope accepts any length, so the projection cuts at this. */
@@ -517,8 +558,23 @@ function isSha256(value: unknown): value is string {
 	return typeof value === "string" && SHA256_HEX.test(value);
 }
 
+/** A public identifier of the namespace: well formed, and of the shape an identifier may be presented in. */
+function isPublicId(value: unknown, kind: EndoIdentifierKindV0): value is string {
+	return typeof value === "string" && isEndoCockpitPublicIdV0(value, kind);
+}
+
 function isEvidenceId(value: unknown): value is string {
-	return typeof value === "string" && isEndoIdentifierV0(value, "evidence");
+	return isPublicId(value, "evidence");
+}
+
+/** A dotted kind (a runtime family, an attachment, a capability) that is also not text the policy flags. */
+function isKindLabel(value: unknown): value is string {
+	return typeof value === "string" && isWellFormedKindV0(value) && !endoCockpitTextUnsafeV0(value);
+}
+
+/** A free-text label (a name, a version, a title, a reason): bounded and not unsafe. Withheld text is not unsafe. */
+function isLabel(value: unknown, max = MAX_TEXT): value is string {
+	return isText(value, max) && !endoCockpitTextUnsafeV0(value);
 }
 
 function oneOf<T extends string>(list: readonly T[], value: unknown): value is T {
@@ -541,14 +597,14 @@ function isRef(value: unknown): value is EndoCockpitRefV0 {
 			isCount(value.storageSequence) &&
 			value.storageSequence >= 1 &&
 			typeof value.eventId === "string" &&
-			isEndoIdentifierV0(value.eventId, "event")
+			isPublicId(value.eventId, "event")
 		);
 	}
 	if (value.domain === "harness-registry") {
 		return (
 			exactKeys(value, ["domain", "attachment", "kind", "index", "id"]) &&
 			typeof value.attachment === "string" &&
-			isWellFormedKindV0(value.attachment) &&
+			isKindLabel(value.attachment) &&
 			oneOf(ENDO_COCKPIT_REGISTRY_KINDS_V0, value.kind) &&
 			isCount(value.index) &&
 			(value.id === null || isEvidenceId(value.id))
@@ -561,18 +617,17 @@ const isRefs = (value: unknown): value is EndoCockpitRefV0[] => arrayOf(value, i
 
 function isClaim<T>(value: unknown, check: (item: unknown) => item is T): value is EndoCockpitClaimV0<T> {
 	if (!isPlain(value) || !isRefs(value.refs)) return false;
-	if (value.basis === "unavailable") return exactKeys(value, ["basis", "reason", "refs"]) && isText(value.reason);
-	return (
-		exactKeys(value, ["basis", "value", "refs"]) && oneOf(ENDO_COCKPIT_BASES_V0, value.basis) && check(value.value)
-	);
+	if (value.basis === "unavailable")
+		return exactKeys(value, ["basis", "reason", "refs"]) && isLabel(value.reason, 256);
+	return exactKeys(value, ["basis", "value", "refs"]) && oneOf(V0_BASES, value.basis) && check(value.value);
 }
 
 function isField(value: unknown): value is EndoCockpitFieldV0 {
 	if (!isPlain(value)) return false;
-	if (value.basis === "unavailable") return exactKeys(value, ["basis", "reason"]) && isText(value.reason);
+	if (value.basis === "unavailable") return exactKeys(value, ["basis", "reason"]) && isLabel(value.reason, 256);
 	return (
 		exactKeys(value, ["basis", "value"]) &&
-		oneOf(ENDO_COCKPIT_BASES_V0, value.basis) &&
+		oneOf(V0_BASES, value.basis) &&
 		(value.value === null ||
 			typeof value.value === "boolean" ||
 			typeof value.value === "string" ||
@@ -603,8 +658,9 @@ function isCondition(value: unknown): value is EndoCockpitSourceConditionV0 {
 		if (
 			!isPlain(error) ||
 			!exactKeys(error, ["kind", "message"]) ||
-			!isText(error.kind, 128) ||
-			!isText(error.message, 512)
+			typeof error.kind !== "string" ||
+			!Object.hasOwn(ENDO_COCKPIT_SOURCE_ERRORS_V0, error.kind) ||
+			error.message !== ENDO_COCKPIT_SOURCE_ERRORS_V0[error.kind as EndoCockpitSourceErrorKindV0]
 		)
 			return false;
 	}
@@ -633,7 +689,7 @@ function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 
 	// degraded at zero events: a torn tail or a bad first frame leaves no verified prefix.)
 	if (mark.length === 0)
 		return mark.lastEventId === null && mark.prefixDigest === null && value.condition.state !== "readable";
-	if (typeof mark.lastEventId !== "string" || !isEndoIdentifierV0(mark.lastEventId, "event")) return false;
+	if (typeof mark.lastEventId !== "string" || !isPublicId(mark.lastEventId, "event")) return false;
 	if (!isSha256(mark.prefixDigest)) return false;
 	return value.condition.state !== "absent" && value.condition.state !== "empty";
 }
@@ -641,7 +697,7 @@ function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 
 function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 {
 	if (!isPlain(value) || !exactKeys(value, ["domain", "attachment", "condition", "watermark"])) return false;
 	if (value.domain !== "harness-registry" || typeof value.attachment !== "string") return false;
-	if (!isWellFormedKindV0(value.attachment) || !isCondition(value.condition)) return false;
+	if (!isKindLabel(value.attachment) || !isCondition(value.condition)) return false;
 	if (value.condition.state === "unopenable") return value.watermark === null;
 	const mark = value.watermark;
 	if (!isPlain(mark) || !exactKeys(mark, ["counts", "lastIds", "contentDigest"]) || !isSha256(mark.contentDigest))
@@ -675,7 +731,7 @@ function isObservationView(value: unknown): value is EndoCockpitObservationViewV
 		isEvidenceId(value.fingerprintId) &&
 		isSha256(value.identityDigest) &&
 		oneOf(CONFIDENCES, value.confidence) &&
-		nullable(value.version, (item): item is string => isText(item, 256))
+		nullable(value.version, (item): item is string => isLabel(item, 256))
 	);
 }
 
@@ -695,7 +751,7 @@ function isFingerprintView(value: unknown): value is EndoCockpitFingerprintViewV
 				isSha256(item.digest) &&
 				oneOf(CONFIDENCES, item.confidence),
 		) &&
-		isClaim(value.version, (item): item is string => isText(item, 256)) &&
+		isClaim(value.version, (item): item is string => isLabel(item, 256)) &&
 		isClaim(
 			value.entrypoint,
 			(item): item is { sha256: string; bytes: number } =>
@@ -706,8 +762,8 @@ function isFingerprintView(value: unknown): value is EndoCockpitFingerprintViewV
 			(item): item is { name: string; version: string } =>
 				isPlain(item) &&
 				exactKeys(item, ["name", "version"]) &&
-				isText(item.name, 256) &&
-				isText(item.version, 256),
+				isLabel(item.name, 256) &&
+				isLabel(item.version, 256),
 		) &&
 		arrayOf(value.withheld, (item): item is string => isText(item, 128))
 	);
@@ -780,7 +836,7 @@ function isNotificationView(value: unknown): value is EndoCockpitNotificationVie
 		typeof value.at === "string" &&
 		isIso8601UtcV0(value.at) &&
 		oneOf(ENDO_HARNESS_NOTIFICATION_KINDS_V0, value.kind) &&
-		isText(value.title, 256) &&
+		isLabel(value.title, 256) &&
 		isCount(value.lineCount) &&
 		value.linesWithheld === true
 	);
@@ -799,8 +855,8 @@ function isEvidenceView(value: unknown): value is EndoCockpitEvidenceViewV0 {
 		isEvidenceId(value.id) &&
 		isPlain(check) &&
 		exactKeys(check, ["name", "version", "kind"]) &&
-		isText(check.name, 256) &&
-		isText(check.version, 64) &&
+		isLabel(check.name, 256) &&
+		isLabel(check.version, 64) &&
 		oneOf(ENDO_CAPABILITY_CHECK_KINDS_V0, check.kind) &&
 		typeof value.at === "string" &&
 		isIso8601UtcV0(value.at) &&
@@ -819,14 +875,14 @@ function isEvidenceView(value: unknown): value is EndoCockpitEvidenceViewV0 {
 		isEvidenceId(dependencies.fingerprintId) &&
 		isSha256(dependencies.identityDigest) &&
 		oneOf(CONFIDENCES, dependencies.confidence) &&
-		isText(dependencies.adapterVersion, 64) &&
-		isText(dependencies.mappingVersion, 64) &&
-		isText(dependencies.suiteVersion, 64) &&
+		isLabel(dependencies.adapterVersion, 64) &&
+		isLabel(dependencies.mappingVersion, 64) &&
+		isLabel(dependencies.suiteVersion, 64) &&
 		isSha256(dependencies.configurationDigest) &&
 		nullable(
 			dependencies.extension,
 			(item): item is { id: string; version: string } =>
-				isPlain(item) && exactKeys(item, ["id", "version"]) && isText(item.id, 256) && isText(item.version, 256),
+				isPlain(item) && exactKeys(item, ["id", "version"]) && isLabel(item.id, 256) && isLabel(item.version, 256),
 		) &&
 		arrayOf(value.supporting, (item): item is string => isSha256(item) || isEvidenceId(item)) &&
 		arrayOf(value.withheld, (item): item is string => isText(item, 128))
@@ -848,15 +904,15 @@ function isCapabilityView(value: unknown): value is EndoCockpitCapabilityViewV0 
 			"ref",
 		]) &&
 		typeof value.capability === "string" &&
-		isWellFormedKindV0(value.capability) &&
+		isKindLabel(value.capability) &&
 		oneOf(ENDO_CAPABILITY_STATUSES_V0, value.status) &&
 		nullable(value.classification, (item): item is EndoConformanceClassificationV0 =>
 			oneOf(ENDO_CONFORMANCE_CLASSIFICATIONS_V0, item),
 		) &&
-		isText(value.reason, 2048) &&
+		isLabel(value.reason, 2048) &&
 		oneOf(ENDO_CAPABILITY_CHECK_KINDS_V0, value.requires) &&
 		nullable(value.evidence, isEvidenceView) &&
-		arrayOf(value.limitations, (item): item is string => isText(item)) &&
+		arrayOf(value.limitations, (item): item is string => isLabel(item)) &&
 		arrayOf(
 			value.limits,
 			(item): item is { code: EndoCockpitLimitCodeV0; refs: EndoCockpitRefV0[] } =>
@@ -892,11 +948,16 @@ function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 	for (const [key, field] of Object.entries(fields)) {
 		const rule = endoCockpitFieldRuleV0(kind, key);
 		if (rule === null) return false;
+		if (rule.dynamic === true && !endoCockpitGapNameAdmittedV0(key.slice("unavailable.".length))) return false;
 		if (field.basis === "unavailable") continue;
 		if (rule.dynamic === true || field.basis !== rule.basis) return false;
 		if (field.value === null) {
 			if (!rule.nullable) return false;
+		} else if (rule.type === "id") {
+			if (typeof field.value !== "string" || !isEndoCockpitPublicIdV0(field.value)) return false;
 		} else if (typeof field.value !== rule.type) return false;
+		// Every presented string is judged whole and within the field bound, as the projection judged it.
+		if (typeof field.value === "string" && !endoCockpitTextPresentableV0(field.value)) return false;
 		if (rule.admitted !== undefined && typeof field.value === "string" && !rule.admitted(field.value)) return false;
 	}
 	const runtimeSession = fields.runtimeSessionId;
@@ -942,8 +1003,10 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	)
 		return false;
 	if (!isCount(value.storageSequence) || value.storageSequence < 1) return false;
-	if (typeof value.eventId !== "string" || !isEndoIdentifierV0(value.eventId, "event")) return false;
-	if (!isText(value.kind, 128) || !oneOf(ENDO_COCKPIT_CATEGORIES_V0, value.category)) return false;
+	if (typeof value.eventId !== "string" || !isPublicId(value.eventId, "event")) return false;
+	if (typeof value.kind !== "string" || !isWellFormedEventKindV0(value.kind) || endoCockpitTextUnsafeV0(value.kind))
+		return false;
+	if (!oneOf(ENDO_COCKPIT_CATEGORIES_V0, value.category)) return false;
 	// The category is defined by the kind; a record may not file an event under another.
 	if (value.category !== endoCockpitCategoryOfV0(value.kind)) return false;
 	if (!oneOf(ENDO_EVENT_SOURCES_V0, value.source) || !isText(value.producer, MAX_PRODUCER)) return false;
@@ -958,16 +1021,10 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	const id =
 		(kind: "session" | "run" | "experiment") =>
 		(item: unknown): item is string =>
-			typeof item === "string" && isEndoIdentifierV0(item, kind);
+			isPublicId(item, kind);
 	if (!nullable(value.sessionId, id("session")) || !nullable(value.runId, id("run"))) return false;
 	if (!nullable(value.experimentId, id("experiment"))) return false;
-	if (
-		!arrayOf(
-			value.derivedFrom,
-			(item): item is string => typeof item === "string" && isEndoIdentifierV0(item, "event"),
-		)
-	)
-		return false;
+	if (!arrayOf(value.derivedFrom, (item): item is string => isPublicId(item, "event"))) return false;
 	if (!arrayOf(value.flags, (item): item is EndoCockpitFlagV0 => oneOf(ENDO_COCKPIT_FLAGS_V0, item))) return false;
 	// Flags are listed once each, in the vocabulary's order.
 	const flagOrder = (value.flags as EndoCockpitFlagV0[]).map((flag) => ENDO_COCKPIT_FLAGS_V0.indexOf(flag));
@@ -980,7 +1037,12 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	const usage = value.usage;
 	if (usage === null) return true;
 	if (!isPlain(usage)) return false;
-	if (usage.basis === "unavailable") return exactKeys(usage, ["basis", "reason"]) && isText(usage.reason);
+	if (usage.basis === "unavailable")
+		return (
+			exactKeys(usage, ["basis", "reason"]) &&
+			typeof usage.reason === "string" &&
+			ENDO_COCKPIT_USAGE_REASONS_V0.includes(usage.reason)
+		);
 	return exactKeys(usage, ["basis", "value"]) && usage.basis === "reported" && isUsage(usage.value);
 }
 
@@ -1109,6 +1171,7 @@ const LIMIT_REF_KINDS: Readonly<Record<EndoCockpitLimitCodeV0, readonly EndoCock
 	"status-classification-mismatch": ["state"],
 	"runtime-differs": ["state", "evidence", "fingerprint"],
 	"evidence-check-insufficient": ["state", "evidence"],
+	"evidence-confidence-differs": ["state", "evidence", "fingerprint"],
 };
 
 function validateRegistryProjection(value: Record<string, unknown>, projectionVersion: string): boolean {
@@ -1139,6 +1202,12 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	for (const view of [identity.current, identity.previousDifferent]) {
 		if (view === null) continue;
 		if (!ownRefOk(view, ctx, "fingerprint")) return false;
+		// How each fact was established is fixed by what it is, and a gap says one of the two things the projection says.
+		if (view.identity.basis !== "derived") return false;
+		if (!claimIs(view.version, "reported", GAP_OR_WITHHELD)) return false;
+		if (!claimIs(view.entrypoint, "observed", [ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0])) return false;
+		if (!claimIs(view.package, "observed", GAP_OR_WITHHELD)) return false;
+		if (!sameJson(view.withheld, ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0)) return false;
 		if (![view.identity, view.version, view.entrypoint, view.package].every((c) => claimReadFromOwn(c, view)))
 			return false;
 	}
@@ -1146,9 +1215,26 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	if (identity.lastNotification !== null && !ownRefOk(identity.lastNotification, ctx, "notification")) return false;
 	// The runtime family is read from the current fingerprint, else from the last change; it names that record.
 	const runtime = identity.runtime;
-	if (runtime.basis === "unavailable") return runtime.refs.length === 0;
+	if (runtime.basis !== "observed" && runtime.basis !== "unavailable") return false;
+	if (runtime.basis === "unavailable") {
+		// Unavailable exactly when no record names a family, with the reason for it.
+		const expected = isProjectable(identity.source)
+			? ENDO_COCKPIT_NO_RUNTIME_REASON_V0
+			: endoCockpitUnreadableRuntimeReasonV0(identity.source.condition.state);
+		// A family the text policy flags is withheld, whatever records name it.
+		if (runtime.refs.length !== 0) return false;
+		if (runtime.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0) return isProjectable(identity.source);
+		return runtime.reason === expected && identity.current === null && identity.lastChange === null;
+	}
 	const from = identity.current ?? identity.lastChange;
 	return from !== null && runtime.refs.length === 1 && sameRef(runtime.refs[0], from.ref);
+}
+
+const GAP_OR_WITHHELD: readonly string[] = [ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0, ENDO_COCKPIT_WITHHELD_TEXT_V0];
+
+/** A claim has this basis, or is unavailable for one of the reasons the projection gives. */
+function claimIs(claim: { basis: string; reason?: string }, basis: string, reasons: readonly string[]): boolean {
+	return claim.basis === basis || (claim.basis === "unavailable" && reasons.includes(claim.reason ?? ""));
 }
 
 /** Validates a runtime identity projection (closed record, strict). Returns the value unchanged, or null. */
@@ -1170,13 +1256,119 @@ export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpi
 		return null;
 	if (value.schemaVersion !== "endo.cockpit-runtime-identity.v0") return null;
 	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.runtimeIdentity)) return null;
-	if (!isClaim(value.runtime, (item): item is string => typeof item === "string" && isWellFormedKindV0(item)))
-		return null;
+	if (!isClaim(value.runtime, (item): item is string => typeof item === "string" && isKindLabel(item))) return null;
 	if (!nullable(value.current, isFingerprintView) || !nullable(value.previousDifferent, isFingerprintView))
 		return null;
 	if (!nullable(value.lastChange, isChangeView) || !nullable(value.lastNotification, isNotificationView)) return null;
 	const identity = value as unknown as EndoCockpitRuntimeIdentityV0;
 	return identityPointsInto(identity, contextOf(identity.source)) ? identity : null;
+}
+
+/**
+ * A capability's limits are derived reasons its recorded status cannot be taken at face value. Wire validation checks what
+ * the wire itself decides: each limit appears at most once and in the canonical order; the limits whose precondition is
+ * decided by values on the wire (a stale state, no cited evidence, a classification that differs, a status that does not
+ * follow its classification, evidence from a cheaper check kind than required) appear EXACTLY when it holds; the others
+ * (a record that is not in the registry, an identity digest, a runtime family or a confidence that differs from a
+ * fingerprint the view does not embed) can only be checked for a possible precondition and for their exact references,
+ * because deciding them needs the registry. A forged limit of that second kind with correct references is not detectable
+ * from the wire: that is the store-verification boundary, not a gap in this check.
+ */
+function limitsAreSound(
+	capability: EndoCockpitCapabilityViewV0,
+	state: NonNullable<EndoCockpitCapabilityStateV0["state"]>,
+	evidence: EndoCockpitEvidenceViewV0 | null,
+	ctx: RefContext,
+): boolean {
+	const { limits } = capability;
+	let last = -1;
+	for (const limit of limits) {
+		const at = ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(limit.code);
+		if (at <= last) return false;
+		last = at;
+	}
+	const has = (code: EndoCockpitLimitCodeV0) => limits.some((limit) => limit.code === code);
+	const admitted = capability.status !== "unverified";
+	const fingerprintId = state.fingerprintId;
+	const latestId = state.latestFingerprintId;
+	const decided: Partial<Record<EndoCockpitLimitCodeV0, boolean>> = {
+		"state-not-for-latest-fingerprint": admitted && state.currency === "stale",
+		"state-without-fingerprint": admitted && latestId === null,
+		"status-classification-mismatch":
+			admitted &&
+			capability.classification !== null &&
+			endoCapabilityStatusForV0(capability.classification) !== capability.status,
+		"evidence-record-missing": admitted && evidence === null,
+		"evidence-check-insufficient":
+			admitted &&
+			evidence !== null &&
+			(ENDO_COCKPIT_CHECK_COST_V0[evidence.check.kind] ?? 0) <
+				(ENDO_COCKPIT_CHECK_COST_V0[capability.requires] ?? 0),
+		"evidence-classification-differs":
+			admitted && evidence !== null && evidence.classification !== capability.classification,
+	};
+	for (const [code, expected] of Object.entries(decided))
+		if (has(code as EndoCockpitLimitCodeV0) !== expected) return false;
+	const possible: Partial<Record<EndoCockpitLimitCodeV0, boolean>> = {
+		"state-fingerprint-not-recorded": fingerprintId !== null && fingerprintId !== latestId,
+		"evidence-capability-differs": evidence !== null,
+		"evidence-identity-differs": evidence !== null && fingerprintId !== null,
+		"evidence-confidence-differs": evidence !== null && fingerprintId !== null,
+		"evidence-reduced-identity":
+			evidence !== null && fingerprintId !== null && evidence.dependencies.fingerprintId !== fingerprintId,
+		"runtime-differs": evidence !== null || fingerprintId !== null || latestId !== null,
+	};
+	const fingerprintRef = (ref: EndoCockpitRefV0 | undefined, id: string | null): boolean =>
+		ref !== undefined && id !== null && isRegistryRef(ref, ctx, ["fingerprint"]) && ref.id === id;
+	for (const limit of limits) {
+		if (possible[limit.code] === false) return false;
+		const [first, ...rest] = limit.refs;
+		if (first === undefined || !sameRef(first, state.ref)) return false;
+		if (!limit.refs.every((ref) => isRegistryRef(ref, ctx, LIMIT_REF_KINDS[limit.code]))) return false;
+		const cited = evidence === null ? undefined : evidence.ref;
+		switch (limit.code) {
+			case "state-not-for-latest-fingerprint":
+				if (rest.length !== 1 || !fingerprintRef(rest[0], latestId)) return false;
+				break;
+			case "state-without-fingerprint":
+			case "state-fingerprint-not-recorded":
+			case "evidence-record-missing":
+			case "status-classification-mismatch":
+				if (rest.length !== 0) return false;
+				break;
+			case "evidence-check-insufficient":
+			case "evidence-capability-differs":
+			case "evidence-classification-differs":
+				if (rest.length !== 1 || cited === undefined || !sameRef(rest[0], cited)) return false;
+				break;
+			case "evidence-identity-differs":
+			case "evidence-confidence-differs":
+			case "evidence-reduced-identity":
+				if (rest.length !== 2 || cited === undefined || !sameRef(rest[0], cited)) return false;
+				if (!fingerprintRef(rest[1], fingerprintId)) return false;
+				break;
+			case "runtime-differs": {
+				// The records whose family differs, in the order they are named: the cited evidence, the fingerprint the state
+				// names, the latest fingerprint (when it is another record).
+				let at = 0;
+				let named = 0;
+				if (cited !== undefined && rest[at] !== undefined && sameRef(rest[at], cited)) at += 1;
+				if (rest[at] !== undefined && fingerprintRef(rest[at], fingerprintId)) {
+					at += 1;
+					named = 1;
+				}
+				if (
+					rest[at] !== undefined &&
+					fingerprintRef(rest[at], latestId) &&
+					!(named === 1 && fingerprintId === latestId)
+				)
+					at += 1;
+				if (at !== rest.length || rest.length === 0) return false;
+				break;
+			}
+		}
+	}
+	return true;
 }
 
 function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: RefContext): boolean {
@@ -1201,25 +1393,8 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		if (!sameRef(capability.ref, state.ref)) return false;
 		const evidence = capability.evidence;
 		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;
-		for (const limit of capability.limits) {
-			const kinds = LIMIT_REF_KINDS[limit.code];
-			// Every limit starts with the state it qualifies; its other references name the cited evidence and the
-			// fingerprints the state itself names.
-			if (limit.refs.length === 0 || !sameRef(limit.refs[0], state.ref)) return false;
-			for (const ref of limit.refs) {
-				if (!isRegistryRef(ref, ctx, kinds)) return false;
-				if (ref.kind === "evidence" && (evidence === null || !sameRef(ref, evidence.ref))) return false;
-				if (ref.kind === "fingerprint") {
-					const allowed =
-						limit.code === "state-not-for-latest-fingerprint"
-							? [state.latestFingerprintId]
-							: limit.code === "runtime-differs"
-								? [state.fingerprintId, state.latestFingerprintId]
-								: [state.fingerprintId];
-					if (ref.id === null || !allowed.includes(ref.id)) return false;
-				}
-			}
-		}
+		if (evidence !== null && !sameJson(evidence.withheld, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0)) return false;
+		if (!limitsAreSound(capability, state, evidence, ctx)) return false;
 	}
 	return true;
 }
@@ -1325,7 +1500,7 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 				isPlain(item) &&
 				exactKeys(item, ["sessionId", "firstStorageSequence", "lastStorageSequence", "entries"]) &&
 				typeof item.sessionId === "string" &&
-				isEndoIdentifierV0(item.sessionId, "session") &&
+				isPublicId(item.sessionId, "session") &&
 				isCount(item.firstStorageSequence) &&
 				isCount(item.lastStorageSequence) &&
 				isCount(item.entries) &&

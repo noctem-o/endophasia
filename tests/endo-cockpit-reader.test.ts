@@ -27,6 +27,7 @@ import {
 	readEndoCockpitTimelineV0,
 	validateEndoCockpitSnapshotV0,
 } from "../cockpit/index.ts";
+import { ENDO_COCKPIT_SOURCE_ERRORS_V0 } from "../protocol/cockpit.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
@@ -293,8 +294,8 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		log.append(new TextEncoder().encode(canonicalEndoJsonV0(dup)));
 		const before = treeHash(root);
 		const read = readEndoCockpitEventLogV0(root);
-		expect(read.source.condition).toMatchObject({ state: "unopenable", error: { kind: "invalid-store" } });
-		expect(read.source.condition.error!.message).toContain("duplicate event id");
+		expect(read.source.condition).toMatchObject({ state: "unopenable", error: { kind: "duplicate-id" } });
+		expect(read.source.condition.error!.message).toBe("a stored record repeats the identifier of an earlier record");
 		expect(read.source.watermark).toBeNull();
 		expect(read.events).toEqual([]);
 		const projected = readEndoCockpitTimelineV0(root);
@@ -329,7 +330,7 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		mkdirSync(join(root, "events"));
 		symlinkSync(join(root, "no-such-target"), eventsLog(root));
 		const condition = readEndoCockpitEventLogV0(root).source.condition;
-		expect(condition).toMatchObject({ state: "unopenable", error: { kind: "unreadable" } });
+		expect(condition).toMatchObject({ state: "unopenable", error: { kind: "path-dangling-symlink" } });
 	});
 
 	it("a log path that is not a file is unopenable", () => {
@@ -679,7 +680,7 @@ describe("freshness without a held position (PR #57 review round 2)", () => {
 				state: "unopenable" as const,
 				tornTail: null,
 				sealedAt: null,
-				error: { kind: "invalid-store", message: "bad" },
+				error: { kind: "invalid-store" as const, message: "the store could not be opened" },
 			},
 			watermark: null,
 		};
@@ -716,7 +717,7 @@ describe("unreadable files are not empty files (PR #57 review round 3)", () => {
 					state: "unopenable",
 					tornTail: null,
 					sealedAt: null,
-					error: { kind: "unreadable", message: "the log cannot be read (EACCES)" },
+					error: { kind: "unreadable", message: "the log file exists but cannot be read" },
 				});
 				expect(read.source.watermark).toBeNull();
 				expect(read.events).toEqual([]);
@@ -740,7 +741,7 @@ describe("unreadable files are not empty files (PR #57 review round 3)", () => {
 					state: "unopenable",
 					tornTail: null,
 					sealedAt: null,
-					error: { kind: "unreadable", message: "the log cannot be read (EACCES)" },
+					error: { kind: "unreadable", message: "the log file exists but cannot be read" },
 				});
 				expect(read.source.watermark).toBeNull();
 				expect(read.records).toBeNull();
@@ -777,5 +778,75 @@ describe("unreadable files are not empty files (PR #57 review round 3)", () => {
 		mkdirSync(join(emptyRegistry, "harness", ATTACHMENT), { recursive: true });
 		writeFileSync(registryLog(emptyRegistry), "");
 		expect(readEndoCockpitRegistryV0(emptyRegistry, ATTACHMENT).source.condition.state).toBe("empty");
+	});
+});
+
+describe("open failures never quote the store (PR #57 review round 4)", () => {
+	it("a repeated credential-shaped identifier gives the fixed category text, for events and for registry records", () => {
+		const hostileId = `endo.event.ghp_${CANARY}${CANARY}`;
+		const root = tempRoot();
+		mkdirSync(join(root, "events"));
+		const dup = event("tool.started", {}, { id: hostileId });
+		const log = createEndoFrameLogV0(eventsLog(root));
+		log.append(new TextEncoder().encode(canonicalEndoJsonV0(dup)));
+		log.append(new TextEncoder().encode(canonicalEndoJsonV0(dup)));
+		const condition = readEndoCockpitEventLogV0(root).source.condition;
+		expect(condition.error).toEqual({
+			kind: "duplicate-id",
+			message: "a stored record repeats the identifier of an earlier record",
+		});
+		expect(JSON.stringify(condition)).not.toContain(CANARY);
+
+		const registryRoot = tempRoot();
+		const { fingerprint } = specimen();
+		mkdirSync(join(registryRoot, "harness", ATTACHMENT), { recursive: true });
+		const twice = { ...fingerprint, id: `endo.evidence.Tok_ghp_${CANARY}${CANARY}` };
+		appendFrame(registryLog(registryRoot), { kind: "fingerprint", record: twice });
+		appendFrame(registryLog(registryRoot), { kind: "fingerprint", record: twice });
+		const registry = readEndoCockpitRegistryV0(registryRoot, ATTACHMENT).source.condition;
+		expect(registry.error).toEqual({
+			kind: "duplicate-id",
+			message: "a stored record repeats the identifier of an earlier record",
+		});
+		expect(JSON.stringify(registry)).not.toContain(CANARY);
+	});
+
+	it("every public error is one of the closed set, each with exactly its fixed message", () => {
+		for (const kind of Object.keys(ENDO_COCKPIT_SOURCE_ERRORS_V0)) {
+			const message = ENDO_COCKPIT_SOURCE_ERRORS_V0[kind as keyof typeof ENDO_COCKPIT_SOURCE_ERRORS_V0];
+			expect(message.length).toBeGreaterThan(0);
+			expect(message.length).toBeLessThanOrEqual(512);
+		}
+		const root = tempRoot();
+		mkdirSync(join(root, "events"));
+		symlinkSync(join(root, "no-such-target"), eventsLog(root));
+		const condition = readEndoCockpitEventLogV0(root).source.condition;
+		expect(condition.error).toEqual({
+			kind: "path-dangling-symlink",
+			message: ENDO_COCKPIT_SOURCE_ERRORS_V0["path-dangling-symlink"],
+		});
+		expect(JSON.stringify(condition)).not.toContain(root);
+	});
+
+	it("presents a non-public identifier as one consistent alias and still pages, validates and checks freshness", () => {
+		const root = tempRoot();
+		const events = [
+			event("tool.started", {}, { id: "endo.event.plain.1" }),
+			event("tool.finished", {}, { id: `endo.event.Tok_${CANARY}` }),
+		];
+		ingestAll(root, events);
+		const timeline = readEndoCockpitTimelineV0(root);
+		const [first, last] = timeline.entries;
+		expect(first!.eventId).toBe("endo.event.plain.1");
+		expect(last!.eventId).toMatch(/^endo\.event\.withheld-[0-9a-f]{32}$/);
+		expect(timeline.source.watermark!.lastEventId).toBe(last!.eventId);
+		// Addressability does not depend on the identifier: the position does.
+		expect(last!.storageSequence).toBe(2);
+		expect(readEndoCockpitTimelineV0(root, { afterSequence: 1 }).entries.map((e) => e.eventId)).toEqual([
+			last!.eventId,
+		]);
+		expect(validateEndoCockpitSnapshotV0(JSON.parse(JSON.stringify(readEndoCockpitSnapshotV0(root))))).not.toBeNull();
+		expect(checkEndoCockpitSourceFreshnessV0(root, timeline.source)).toBe("unchanged");
+		expect(JSON.stringify(timeline)).not.toContain(CANARY);
 	});
 });

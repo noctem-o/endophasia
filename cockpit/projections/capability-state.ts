@@ -15,6 +15,7 @@
 //    never reused for a later observation);
 //  - the recorded status does not follow from the recorded classification;
 //  - the cited evidence came from a cheaper kind of check than the capability requires (the reverse is legitimate);
+//  - the evidence's confidence differs from the identity record it names (even when it names the same fingerprint);
 //  - the runtime family differs between the state, the cited evidence, the fingerprint the state names or the latest
 //    fingerprint. Each record is valid alone (the registry checks attachment, not family), so this is the only place the
 //    disagreement shows; the recorded status is still carried as recorded, never recomputed. Fingerprint ids are NOT
@@ -24,6 +25,7 @@
 // the state's reason, each withheld whole when it looks like it embeds a local path, address or credential.
 
 import {
+	ENDO_COCKPIT_LIMIT_CODES_V0,
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
 	type EndoCockpitCapabilityStateV0,
 	type EndoCockpitCapabilityViewV0,
@@ -31,6 +33,7 @@ import {
 	type EndoCockpitNoteV0,
 	type EndoCockpitRefV0,
 } from "../../protocol/cockpit.ts";
+import { ENDO_COCKPIT_CHECK_COST_V0, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0 } from "../../protocol/cockpit-fields.ts";
 import {
 	type EndoCapabilityEvidenceV0,
 	type EndoCapabilityStateEntryV0,
@@ -40,19 +43,12 @@ import {
 	cleanRegistryRecordsV0,
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
+	kindLabelV0,
 	noteV0,
 	presentableTextV0,
+	publicIdV0,
 	registryRefV0,
 } from "./common.ts";
-
-/**
- * How much a check kind can establish (adapters/pi/capabilities.ts: `requires` is the cheapest kind that can establish a
- * capability). Evidence from a costlier kind may legitimately stand for a cheaper requirement (a live study that re-tests
- * what a local check does); evidence from a cheaper kind cannot stand for a costlier one.
- */
-const CHECK_COST = { "static-surface": 0, "local-protocol": 1, "live-study": 2 } as const;
-
-const WITHHELD_EVIDENCE_FIELDS = ["expected", "inputsDigest", "observed"];
 
 function evidenceView(
 	attachment: string,
@@ -61,7 +57,7 @@ function evidenceView(
 	const { record, index } = item;
 	return {
 		ref: registryRefV0(attachment, "evidence", index, record.id),
-		id: record.id,
+		id: publicIdV0(record.id),
 		check: {
 			name: presentableTextV0(record.check.name),
 			version: presentableTextV0(record.check.version),
@@ -70,7 +66,7 @@ function evidenceView(
 		at: record.at,
 		classification: record.classification,
 		dependencies: {
-			fingerprintId: record.dependencies.fingerprintId,
+			fingerprintId: publicIdV0(record.dependencies.fingerprintId),
 			identityDigest: record.dependencies.identityDigest,
 			confidence: record.dependencies.confidence,
 			adapterVersion: presentableTextV0(record.dependencies.adapterVersion),
@@ -85,8 +81,8 @@ function evidenceView(
 							version: presentableTextV0(record.dependencies.extension.version),
 						},
 		},
-		supporting: [...record.evidence],
-		withheld: [...WITHHELD_EVIDENCE_FIELDS],
+		supporting: record.evidence.map((item) => (/^[0-9a-f]{64}$/.test(item) ? item : publicIdV0(item))),
+		withheld: [...ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0],
 	};
 }
 
@@ -159,7 +155,7 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 			if (cited === null) limits.push({ code: "evidence-record-missing", refs: [stateRef] });
 			else {
 				const refs = [stateRef, citedRef!];
-				if (CHECK_COST[cited.record.check.kind] < CHECK_COST[entry.requires])
+				if (ENDO_COCKPIT_CHECK_COST_V0[cited.record.check.kind] < ENDO_COCKPIT_CHECK_COST_V0[entry.requires])
 					limits.push({ code: "evidence-check-insufficient", refs });
 				if (cited.record.capability !== entry.capability)
 					limits.push({ code: "evidence-capability-differs", refs });
@@ -169,6 +165,9 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 					const namedRef = registryRefV0(attachment, "fingerprint", named.index, named.record.id);
 					if (cited.record.dependencies.identityDigest !== named.record.identity.digest)
 						limits.push({ code: "evidence-identity-differs", refs: [...refs, namedRef] });
+					// Same fingerprint id or not, the evidence's confidence is a claim about the identity record it names.
+					if (cited.record.dependencies.confidence !== named.record.identity.confidence)
+						limits.push({ code: "evidence-confidence-differs", refs: [...refs, namedRef] });
 					const carried = cited.record.dependencies.fingerprintId !== named.record.id;
 					if (
 						carried &&
@@ -179,8 +178,10 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 			}
 		}
 
+		// One canonical order (ENDO_COCKPIT_LIMIT_CODES_V0): the contract has one form of a limit list.
+		limits.sort((a, b) => ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(a.code) - ENDO_COCKPIT_LIMIT_CODES_V0.indexOf(b.code));
 		capabilities.push({
-			capability: entry.capability,
+			capability: kindLabelV0(entry.capability),
 			status: entry.status,
 			classification: entry.classification,
 			reason: presentableTextV0(entry.reason),
@@ -197,8 +198,8 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 		state: {
 			ref: stateRef,
 			recordedAt: state.at,
-			fingerprintId: state.fingerprintId,
-			latestFingerprintId: newest?.record.id ?? null,
+			fingerprintId: state.fingerprintId === null ? null : publicIdV0(state.fingerprintId),
+			latestFingerprintId: newest === null ? null : publicIdV0(newest.record.id),
 			currency,
 		},
 		capabilities,

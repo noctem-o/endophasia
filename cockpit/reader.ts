@@ -30,10 +30,12 @@ import type {
 	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
 	EndoCockpitSourceConditionV0,
+	EndoCockpitSourceErrorKindV0,
 } from "../protocol/cockpit.ts";
-import { ENDO_COCKPIT_REGISTRY_KINDS_V0 } from "../protocol/cockpit.ts";
+import { ENDO_COCKPIT_REGISTRY_KINDS_V0, ENDO_COCKPIT_SOURCE_ERRORS_V0 } from "../protocol/cockpit.ts";
+import { endoCockpitTextUnsafeV0 } from "../protocol/cockpit-fields.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
-import { EndoSchemaVersionErrorV0, endoBoundedDetailV0 } from "../protocol/versioned.ts";
+import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { ENDO_EVENT_RECORD_PAGE_MAX_LIMIT_V0 } from "../runtime/contracts/event-store.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../storage/event-store.ts";
@@ -44,7 +46,7 @@ import {
 } from "../storage/harness-registry.ts";
 import { EndoLogUnreadableErrorV0 } from "../storage/log.ts";
 import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "./projections/common.ts";
-import { compareCodeUnitsV0 } from "./projections/common.ts";
+import { compareCodeUnitsV0, publicIdV0 } from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
 
 /** The default and maximum timeline page of the cockpit; the maximum is the event store's own. */
@@ -65,7 +67,7 @@ export interface EndoCockpitEventLogReadV0 {
 	events: EndoCockpitStoredEventV0[];
 }
 
-type Probe = { kind: "absent" } | { kind: "present" } | { kind: "unreadable"; message: string };
+type Probe = { kind: "absent" } | { kind: "present" } | { kind: "unreadable"; error: EndoCockpitSourceErrorKindV0 };
 
 const NO_DAMAGE = { tornTail: null, sealedAt: null, error: null } as const;
 
@@ -73,13 +75,10 @@ const NO_DAMAGE = { tornTail: null, sealedAt: null, error: null } as const;
 function probe(path: string): Probe {
 	try {
 		const stats = statSync(path);
-		return stats.isFile()
-			? { kind: "present" }
-			: { kind: "unreadable", message: "the log path is not a regular file" };
+		return stats.isFile() ? { kind: "present" } : { kind: "unreadable", error: "path-not-a-file" };
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (code !== "ENOENT")
-			return { kind: "unreadable", message: `the log path cannot be read (${code ?? "unknown error"})` };
+		if (code !== "ENOENT") return { kind: "unreadable", error: "path-unreadable" };
 	}
 	// Walk up to the first level that exists. A level that is there to lstat but does not resolve is a dangling symlink; the
 	// path is then not absent, it is unusable, and a writer that "created" it would fail.
@@ -93,7 +92,7 @@ function probe(path: string): Probe {
 		try {
 			statSync(at);
 		} catch {
-			return { kind: "unreadable", message: "the log path goes through a dangling symlink" };
+			return { kind: "unreadable", error: "path-dangling-symlink" };
 		}
 		break;
 	}
@@ -101,46 +100,36 @@ function probe(path: string): Probe {
 }
 
 /**
- * What a refused record's schema-version failure says. FIXED text per failure kind: the message the store builds quotes
- * the version string the record declared, and that string is the record author's (a path, a sentence, a credential in a
- * format no filter knows). Nothing of the record is echoed, so nothing needs to be recognised.
+ * The public category of an open failure. NOTHING of the failure's message is public: a store's Error message can quote an
+ * identifier, a path or a record's own text (an identifier may be credential-shaped), so a condition carries one of a
+ * closed set of categories and the fixed sentence that category always has (ENDO_COCKPIT_SOURCE_ERRORS_V0). The category
+ * is chosen from the typed error where there is one, and otherwise from the fixed phrase the store's own code uses; a
+ * failure that matches none is `invalid-store`.
  */
-const SCHEMA_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
-	"not-an-object": "a stored record is not an object",
-	"missing-version": "a stored record declares no schema version",
-	"version-not-string": "a stored record declares a schema version that is not a string",
-	"unsupported-version": "a stored record declares a schema version this reader does not support",
-	invalid: "a stored record does not satisfy the schema version it declares",
-};
-
-/** A bounded, escaped message of 1 to 512 characters: control-character escaping can lengthen it, and a cut can empty it. */
-function presentableMessage(error: unknown): string {
-	if (error instanceof EndoSchemaVersionErrorV0)
-		return SCHEMA_FAILURE_MESSAGES[error.kind] ?? "a stored record is not valid under its schema version";
-	if (error instanceof EndoLogUnreadableErrorV0) return error.message;
-	const bounded = error instanceof Error ? endoBoundedDetailV0(error.message) : "";
-	if (bounded.length === 0) return "the store could not be opened";
-	return bounded.length > 512 ? `${bounded.slice(0, 511)}…` : bounded;
+function categoryOf(error: unknown): EndoCockpitSourceErrorKindV0 {
+	if (error instanceof EndoSchemaVersionErrorV0) return `schema-${error.kind}` as EndoCockpitSourceErrorKindV0;
+	if (error instanceof EndoLogUnreadableErrorV0) return "unreadable";
+	const message = error instanceof Error ? error.message : "";
+	if (/^duplicate (event|record) id/.test(message)) return "duplicate-id";
+	if (/sealed/.test(message)) return "sealed";
+	if (/^unknown harness registry record kind/.test(message)) return "unknown-record-kind";
+	if (/names another attachment|is not a \w+ record/.test(message)) return "record-misplaced";
+	if (/does not decode as UTF-8 JSON|is not exactly \{ kind, record \}/.test(message)) return "malformed-frame";
+	if (/^record (id|coordinates|resources) /.test(message)) return "invalid-record";
+	return "invalid-store";
 }
 
-function unopenable(error: unknown): EndoCockpitSourceConditionV0 {
-	const kind =
-		error instanceof EndoSchemaVersionErrorV0
-			? `schema-${error.kind}`
-			: error instanceof EndoLogUnreadableErrorV0
-				? "unreadable"
-				: "invalid-store";
+function conditionFor(kind: EndoCockpitSourceErrorKindV0): EndoCockpitSourceConditionV0 {
 	return {
 		state: "unopenable",
 		tornTail: null,
 		sealedAt: null,
-		error: { kind, message: presentableMessage(error) },
+		error: { kind, message: ENDO_COCKPIT_SOURCE_ERRORS_V0[kind] },
 	};
 }
 
-function unreadable(message: string): EndoCockpitSourceConditionV0 {
-	return { state: "unopenable", tornTail: null, sealedAt: null, error: { kind: "unreadable", message } };
-}
+const unopenable = (error: unknown): EndoCockpitSourceConditionV0 => conditionFor(categoryOf(error));
+const unreadable = conditionFor;
 
 function conditionOf(
 	recovery: {
@@ -182,7 +171,7 @@ function withEventStore<T>(
 	| { source: "open"; value: T } {
 	const found = probe(`${root}/events/events.log`);
 	if (found.kind === "absent") return { source: "absent" };
-	if (found.kind === "unreadable") return { source: "unopenable", condition: unreadable(found.message) };
+	if (found.kind === "unreadable") return { source: "unopenable", condition: unreadable(found.error) };
 	let store: EndoDurableEventStoreV0;
 	try {
 		store = createEndoDurableEventStoreV0(root, { readOnly: true });
@@ -231,7 +220,8 @@ function prefixDigestsOf(
 
 function lastEventIdOf(store: EndoDurableEventStoreV0): string | null {
 	const length = store.length;
-	return length === 0 ? null : (store.page({ afterSequence: length - 1, limit: 1 }).events[0]?.id ?? null);
+	const id = length === 0 ? null : (store.page({ afterSequence: length - 1, limit: 1 }).events[0]?.id ?? null);
+	return id === null ? null : publicIdV0(id);
 }
 
 /** What one open of the event log found: the public read and, when asked, the digest of the first `held` events. */
@@ -308,7 +298,8 @@ export function listEndoCockpitAttachmentsV0(root: string): string[] {
 	}
 	return names
 		.filter((name) => {
-			if (!isWellFormedKindV0(name)) return false;
+			// A name the text policy flags cannot be presented, so it is not listed (reading it by name is refused).
+			if (!isWellFormedKindV0(name) || endoCockpitTextUnsafeV0(name)) return false;
 			try {
 				return statSync(`${root}/harness/${name}`).isDirectory();
 			} catch {
@@ -360,7 +351,8 @@ function registrySource(
 	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
 		const list = records[kind] as readonly { id?: string }[];
 		counts[kind] = list.length;
-		lastIds[kind] = list.at(-1)?.id ?? null;
+		const last = list.at(-1)?.id;
+		lastIds[kind] = last === undefined ? null : publicIdV0(last);
 		content[kind] = [...list];
 	}
 	return {
@@ -377,12 +369,13 @@ function registrySource(
  * the reason, and is never presented as empty. The registry has no close; nothing is held after the call.
  */
 export function readEndoCockpitRegistryV0(root: string, attachment: string): EndoCockpitRegistryInputV0 {
-	if (!isWellFormedKindV0(attachment)) throw new TypeError("attachment must be a well-formed dotted kind");
+	if (!isWellFormedKindV0(attachment) || endoCockpitTextUnsafeV0(attachment))
+		throw new TypeError("attachment must be a well-formed dotted kind that can be presented");
 	const found = probe(`${endoHarnessRegistryDirectoryV0(root, attachment)}/records.log`);
 	if (found.kind === "absent")
 		return { source: registrySource(attachment, { state: "absent", ...NO_DAMAGE }, null), records: null };
 	if (found.kind === "unreadable")
-		return { source: registrySource(attachment, unreadable(found.message), null), records: null };
+		return { source: registrySource(attachment, unreadable(found.error), null), records: null };
 	let registry: EndoHarnessRegistryV0;
 	try {
 		registry = openEndoHarnessRegistryV0(root, attachment, { readOnly: true });

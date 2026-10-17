@@ -23,6 +23,12 @@ import {
 	type EndoCockpitObservationViewV0,
 	type EndoCockpitRuntimeIdentityV0,
 } from "../../protocol/cockpit.ts";
+import {
+	ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0,
+	ENDO_COCKPIT_NO_RUNTIME_REASON_V0,
+	ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0,
+	endoCockpitUnreadableRuntimeReasonV0,
+} from "../../protocol/cockpit-fields.ts";
 import type {
 	EndoHarnessChangeV0,
 	EndoHarnessFingerprintV0,
@@ -37,25 +43,17 @@ import {
 	looksSensitiveTextV0,
 	noteV0,
 	presentableTextV0,
+	publicIdV0,
 	registryRefV0,
 	unavailableV0,
 } from "./common.ts";
 
-const WITHHELD_FINGERPRINT_FIELDS = [
-	"local.package.root",
-	"local.realPath",
-	"local.requested",
-	"local.resolvedPath",
-	"reported.versionText",
-];
-
+const GAP_REASON = ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0;
 const WITHHELD_TEXT = ENDO_COCKPIT_WITHHELD_TEXT_V0;
-
-const GAP_REASON = "the fingerprint records this fact as not collected; the recorded reason is not presented";
 
 function observationView(ref: EndoHarnessObservationRefV0): EndoCockpitObservationViewV0 {
 	return {
-		fingerprintId: ref.fingerprintId,
+		fingerprintId: publicIdV0(ref.fingerprintId),
 		identityDigest: ref.identityDigest,
 		confidence: ref.confidence,
 		version: ref.version === null ? null : presentableTextV0(ref.version),
@@ -71,7 +69,7 @@ function fingerprintView(
 	const refs = [ref];
 	return {
 		ref,
-		id: record.id,
+		id: publicIdV0(record.id),
 		observedAt: record.observedAt,
 		identity: claimV0("derived", { digest: record.identity.digest, confidence: record.identity.confidence }, refs),
 		version:
@@ -94,7 +92,7 @@ function fingerprintView(
 				: looksSensitiveTextV0(record.local.package.name) || looksSensitiveTextV0(record.local.package.version)
 					? unavailableV0(WITHHELD_TEXT, refs)
 					: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
-		withheld: [...WITHHELD_FINGERPRINT_FIELDS],
+		withheld: [...ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0],
 	};
 }
 
@@ -102,7 +100,7 @@ function changeView(attachment: string, item: EndoCockpitIndexedV0<EndoHarnessCh
 	const { record, index } = item;
 	return {
 		ref: registryRefV0(attachment, "change", index, record.id),
-		id: record.id,
+		id: publicIdV0(record.id),
 		at: record.at,
 		kind: record.kind,
 		differences: [...record.differences],
@@ -120,10 +118,10 @@ function notificationView(
 	const { record, index } = item;
 	return {
 		ref: registryRefV0(attachment, "notification", index, record.id),
-		id: record.id,
+		id: publicIdV0(record.id),
 		at: record.at,
 		kind: record.kind,
-		changeId: record.changeId,
+		changeId: publicIdV0(record.changeId),
 		title: presentableTextV0(record.title),
 		lineCount: record.lines.length,
 		linesWithheld: true,
@@ -145,7 +143,7 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 		notes.push(noteV0("source-not-projectable"));
 		return {
 			...base,
-			runtime: unavailableV0(`the registry is ${source.condition.state}; no runtime is recorded here`),
+			runtime: unavailableV0(endoCockpitUnreadableRuntimeReasonV0(source.condition.state)),
 			current: null,
 			previousDifferent: null,
 			lastChange: null,
@@ -215,10 +213,13 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 			),
 		);
 	}
-	const family = current?.record.runtime ?? lastChange?.record.runtime ?? null;
+	const recordedFamily = current?.record.runtime ?? lastChange?.record.runtime ?? null;
+	// A family is a well-formed kind whatever it says; one the text policy flags is withheld, not presented.
+	const familyWithheld = recordedFamily !== null && looksSensitiveTextV0(recordedFamily);
+	const family = familyWithheld ? null : recordedFamily;
 	const runtime: EndoCockpitClaimV0<string> =
 		family === null
-			? unavailableV0("no runtime family is recorded for this attachment")
+			? unavailableV0(familyWithheld ? WITHHELD_TEXT : ENDO_COCKPIT_NO_RUNTIME_REASON_V0)
 			: claimV0(
 					"observed",
 					family,

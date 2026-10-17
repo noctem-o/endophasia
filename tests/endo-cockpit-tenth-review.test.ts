@@ -11,6 +11,7 @@ import {
 	validateEndoCockpitCapabilityStateV0,
 	validateEndoCockpitRuntimeIdentityV0,
 	validateEndoCockpitSessionTimelineV0,
+	validateEndoCockpitSnapshotV0,
 } from "../protocol/cockpit.ts";
 import { isEndoCockpitContentAddressedIdV0, isEndoCockpitPublicIdV0 } from "../protocol/cockpit-fields.ts";
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0 } from "../protocol/evaluation.ts";
@@ -1042,5 +1043,288 @@ describe("required notes and limits when every record of a kind was discarded (P
 			);
 		});
 		expect(validateEndoCockpitCapabilityStateV0(omitted)).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review round 14: usage-proven omissions, distinct presented ids, one disposition per record, pagination progress,
+// reserved runtime families
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("withheldFields counts what usage proves (P2)", () => {
+	const usage = { input: 3, output: 4, cacheRead: 0, cacheWrite: 0, totalTokens: 7 };
+	const entryOf = (payload: Record<string, unknown>) => timelineOf([event("session.entry-observed", payload)]);
+	const withCount = (t: EndoCockpitSessionTimelineV0, n: number) =>
+		mutated(t, (x) => {
+			x.entries[0].withheldFields = n;
+		});
+	const ok = (t: EndoCockpitSessionTimelineV0) => validateEndoCockpitSessionTimelineV0(t) !== null;
+
+	it("reported usage proves its carrier: Codex's mutation (1 to 0) is refused", () => {
+		const t = entryOf({ entryType: "usage", details: { usage } });
+		expect(t.entries[0]!.usage).toMatchObject({ basis: "reported" });
+		expect(t.entries[0]!.withheldFields).toBe(1);
+		expect(ok(t)).toBe(true);
+		expect(ok(withCount(t, 0))).toBe(false);
+	});
+
+	it("unavailable usage proves the carrier unless the entry has no details", () => {
+		const noUsage = entryOf({ entryType: "usage", details: {} });
+		expect(noUsage.entries[0]!.usage).toMatchObject({ basis: "unavailable", reason: "the event records no usage" });
+		expect(ok(withCount(noUsage, 0))).toBe(false);
+		const malformed = entryOf({ entryType: "usage", details: { usage: { input: "x" } } });
+		expect(malformed.entries[0]!.usage).toMatchObject({ reason: "the recorded usage is not in the expected shape" });
+		expect(ok(withCount(malformed, 0))).toBe(false);
+		for (const details of [undefined, "text"]) {
+			const none = entryOf({ entryType: "usage", ...(details === undefined ? {} : { details }) });
+			expect(none.entries[0]!.usage).toMatchObject({ reason: "the event records no entry details" });
+			expect(ok(withCount(none, 0))).toBe(true);
+		}
+	});
+
+	it("counts the shared parent once, and a message's own usage key proves nothing", () => {
+		const shared = entryOf({ entryType: "message", details: { role: "assistant", usage } });
+		expect(shared.entries[0]!.withheldFields).toBe(1);
+		expect(ok(withCount(shared, 1))).toBe(true);
+		expect(ok(withCount(shared, 0))).toBe(false);
+		const message = timelineOf([event("message.completed", { role: "assistant", usage })]);
+		expect(
+			ok(
+				mutated(message, (x) => {
+					x.entries[0].withheldFields = 0;
+				}),
+			),
+		).toBe(true);
+	});
+});
+
+describe("presented records of one registry carry distinct ids (P2)", () => {
+	const fpA = fingerprintAt("/a/pi");
+	const fpB = fingerprintAt("/b/pi");
+	const records = { ...specimenRecords(), fingerprint: [fpA, fpB], change: [changeRecord()] };
+	const identity = projectEndoCockpitRuntimeIdentityV0(registryInput(records as never) as never, TEST_KEY);
+	const capabilities = projectEndoCockpitCapabilityStateV0(registryInput(records as never) as never, TEST_KEY);
+	const base0 = () => specimenRecords();
+
+	/** Give the view at `ref` another id everywhere it is named (its ref, the lists, the watermark when it is the last). */
+	const reid = (root: any, view: any, id: string, kind: string) => {
+		const before = JSON.stringify(view.ref);
+		const after = { ...view.ref, id };
+		const follow = (node: any): void => {
+			if (typeof node !== "object" || node === null) return;
+			for (const key of Object.keys(node)) {
+				if (JSON.stringify(node[key]) === before) node[key] = structuredClone(after);
+				else follow(node[key]);
+			}
+		};
+		follow(root);
+		view.ref = after;
+		view.id = id;
+		if (view.ref.index === root.source.watermark.counts[kind] - 1) root.source.watermark.lastIds[kind] = id;
+	};
+
+	it("accepts distinct ids; refuses an earlier fingerprint and the last change sharing one", () => {
+		expect(identity.previousDifferent).not.toBeNull();
+		expect(identity.lastChange).not.toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		const forged = mutated(identity, (i) => {
+			reid(i, i.lastChange, i.previousDifferent.id, "change");
+		});
+		expect(forged.lastChange!.id).toBe(forged.previousDifferent!.id);
+		expect(validateEndoCockpitRuntimeIdentityV0(forged)).toBeNull();
+	});
+
+	const evidenceSetup = () => {
+		const counts = capabilities.source.watermark!.counts;
+		// Two cited records that are not the last evidence record, so the watermark's last id is not what a forgery collides with.
+		const usable = capabilities.capabilities.flatMap((c, at) =>
+			c.evidence !== null && (c.evidence.ref as { index: number }).index < counts.evidence - 1 ? [at] : [],
+		);
+		expect(usable.length).toBeGreaterThan(1);
+		const [first, second] = usable as [number, number];
+		return { first, second };
+	};
+
+	it("accepts the projector's capabilities, whose cited evidence ids are distinct", () => {
+		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+	});
+
+	it("refuses two different cited evidence records sharing an id", () => {
+		const { first, second } = evidenceSetup();
+		const twin = mutated(capabilities, (c) => {
+			reid(c, c.capabilities[second].evidence, c.capabilities[first].evidence.id, "evidence");
+			c.capabilities[second].evidence.id = c.capabilities[first].evidence.id;
+		});
+		expect(validateEndoCockpitCapabilityStateV0(twin)).toBeNull();
+	});
+
+	it("refuses a cited evidence record sharing the id of the latest fingerprint", () => {
+		const { first } = evidenceSetup();
+		const named = mutated(capabilities, (c) => {
+			reid(c, c.capabilities[first].evidence, c.state.latestFingerprintId, "evidence");
+		});
+		expect(validateEndoCockpitCapabilityStateV0(named)).toBeNull();
+	});
+
+	it("does not refuse a state that merely names the id of a cited evidence record (a reference, not a presented record)", () => {
+		const cited = base0().state[0]!.capabilities.find((c) => c.evidenceId !== null)!.evidenceId!;
+		const odd = { ...base0(), state: [{ ...base0().state[0]!, fingerprintId: cited }] };
+		const projected = projectEndoCockpitCapabilityStateV0(registryInput(odd as never) as never, TEST_KEY);
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+	});
+
+	it("the identity and capability views of one snapshot entry present distinct records", () => {
+		const { first } = evidenceSetup();
+		const timeline = timelineOf([event("agent.prompt-accepted")]);
+		const good = {
+			schemaVersion: "endo.cockpit-snapshot.v0",
+			projectionVersion: "cockpit-snapshot.3",
+			consistency: "independent-sources",
+			timeline,
+			runtimes: [{ identity, capabilities }],
+		};
+		expect(validateEndoCockpitSnapshotV0(good)).not.toBeNull();
+		const forged = mutated(good, (g) => {
+			reid(
+				g.runtimes[0].capabilities,
+				g.runtimes[0].capabilities.capabilities[first].evidence,
+				g.runtimes[0].identity.lastChange.id,
+				"evidence",
+			);
+		});
+		expect(validateEndoCockpitCapabilityStateV0(forged.runtimes[0]!.capabilities)).not.toBeNull();
+		expect(validateEndoCockpitSnapshotV0(forged)).toBeNull();
+	});
+});
+
+describe("one cleaning disposition per discarded record (P2)", () => {
+	const base = specimenRecords();
+	const fp = base.fingerprint[0]!.id;
+	const twoReusing = {
+		...base,
+		evidence: base.evidence.map((item, at) => (at < 2 ? { ...item, id: fp } : item)),
+	};
+	const projected = projectEndoCockpitCapabilityStateV0(registryInput(twoReusing as never) as never, TEST_KEY);
+	const dupes = projected.notes.filter((n) => n.code === "duplicate-record-id");
+
+	it("accepts one note per record, for two positions whose ids are equal", () => {
+		expect(dupes).toHaveLength(2);
+		expect(dupes[0]!.refs[0]).toMatchObject({ index: 0 });
+		expect(dupes[1]!.refs[0]).toMatchObject({ index: 1 });
+		expect(dupes[0]!.refs[0]).toMatchObject({ id: (dupes[1]!.refs[0] as { id: string }).id });
+		expect(validateEndoCockpitCapabilityStateV0(projected)).not.toBeNull();
+	});
+
+	it("refuses the same note again", () => {
+		const again = mutated(projected, (p) => {
+			p.notes.push(structuredClone(dupes[0]));
+		});
+		expect(validateEndoCockpitCapabilityStateV0(again)).toBeNull();
+	});
+
+	it("refuses another cleaning code for the same position", () => {
+		const conflicting = mutated(projected, (p) => {
+			p.notes.push({ code: "foreign-attachment-record", refs: structuredClone(dupes[0]!.refs) });
+		});
+		expect(validateEndoCockpitCapabilityStateV0(conflicting)).toBeNull();
+	});
+});
+
+describe("a page before the tail advances (P2)", () => {
+	const three = [event("agent.prompt-accepted"), event("agent.prompt-accepted"), event("agent.prompt-accepted")];
+	const run = (length: number, after: number, events: typeof three) =>
+		projectEndoCockpitSessionTimelineV0(
+			{
+				source: logSource(length, length === 0 ? null : three[length - 1]!.id),
+				afterSequence: after,
+				events: stored(events, after + 1),
+			},
+			TEST_KEY,
+		);
+
+	it("refuses an empty page with a cursor before the tail in the validator", () => {
+		const page = run(3, 0, three.slice(0, 1));
+		const stuck = mutated(page, (t) => {
+			t.entries = [];
+			t.sessions = [];
+			t.window = { afterSequence: 0, nextAfterSequence: 0, hasMore: true };
+		});
+		expect(validateEndoCockpitSessionTimelineV0(stuck)).toBeNull();
+	});
+
+	it("makes the direct projector refuse a window that consumes nothing before the tail", () => {
+		expect(() => run(3, 0, [])).toThrow(TypeError);
+	});
+
+	it("accepts a one-event page, a page to the tail, and empty pages at, past and with no tail", () => {
+		expect(validateEndoCockpitSessionTimelineV0(run(3, 0, three.slice(0, 1)))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(run(3, 0, three))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(run(3, 3, []))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(run(3, 7, []))).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(run(0, 0, []))).not.toBeNull();
+		const unopenable = projectEndoCockpitSessionTimelineV0(
+			{
+				source: {
+					domain: "event-log",
+					condition: {
+						state: "unopenable",
+						tornTail: null,
+						sealedAt: null,
+						error: { kind: "invalid-store", message: "the store could not be opened" },
+					},
+					watermark: null,
+				},
+				afterSequence: 0,
+				events: [],
+			} as never,
+			TEST_KEY,
+		);
+		expect(validateEndoCockpitSessionTimelineV0(unopenable)).not.toBeNull();
+	});
+});
+
+describe("a runtime family in the reserved namespace is aliased (P2)", () => {
+	const reserved = `withheld-${"a".repeat(32)}`;
+	const identityFor = (runtime: string, key = TEST_KEY) => {
+		const records = specimenRecords();
+		const input = registryInput(
+			{ ...records, fingerprint: [{ ...records.fingerprint[0]!, runtime }] } as never,
+			key.keyId,
+			key,
+		);
+		return projectEndoCockpitRuntimeIdentityV0(input as never, key);
+	};
+	const familyOf = (i: ReturnType<typeof identityFor>) => (i.runtime.basis === "observed" ? i.runtime.value : null);
+
+	it("keeps ordinary families, aliases reserved segments (also within a dotted name) and still withholds sensitive text", () => {
+		expect(familyOf(identityFor("pi"))).toBe("pi");
+		for (const runtime of [reserved, `acp.${reserved}.v2`]) {
+			const identity = identityFor(runtime);
+			const alias = cockpitAliasesV0(TEST_KEY).kind(runtime);
+			expect(familyOf(identity)).toBe(alias);
+			expect(alias).not.toBe(runtime);
+			expect(alias).toMatch(/^withheld-[0-9a-f]{32}$/);
+			expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+			expect(JSON.stringify(identityFor(runtime))).toBe(JSON.stringify(identity));
+			expect(familyOf(identityFor(runtime, OTHER_KEY))).not.toBe(alias);
+		}
+		expect(identityFor("/home/alice/pi").runtime).toMatchObject({ basis: "unavailable" });
+	});
+});
+
+describe("a lifecycle runtime field in the reserved namespace is withheld (P2)", () => {
+	const runtimeField = (runtime: string) =>
+		timelineOf([event("lifecycle.session-started", { runtime, instance: "i-1" })]);
+
+	it("shows an ordinary family as written and withholds a reserved one, and the validator agrees", () => {
+		const ordinary = runtimeField("pi");
+		expect(ordinary.entries[0]!.fields.runtime).toEqual({ basis: "observed", value: "pi" });
+		const reserved = runtimeField(`acp.withheld-${"b".repeat(32)}`);
+		expect(reserved.entries[0]!.fields.runtime).toMatchObject({ basis: "unavailable" });
+		expect(validateEndoCockpitSessionTimelineV0(reserved)).not.toBeNull();
+		const forged = mutated(ordinary, (t) => {
+			t.entries[0].fields.runtime.value = `acp.withheld-${"b".repeat(32)}`;
+		});
+		expect(validateEndoCockpitSessionTimelineV0(forged)).toBeNull();
 	});
 });

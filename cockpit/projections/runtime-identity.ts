@@ -237,7 +237,8 @@ function projectEndoCockpitRuntimeIdentityV0Unchecked(
 	const recordedFamily = current?.record.runtime ?? lastChange?.record.runtime ?? null;
 	// A family is a well-formed kind whatever it says; one the text policy flags is withheld, not presented.
 	const familyWithheld = recordedFamily !== null && looksSensitiveTextV0(recordedFamily);
-	const family = familyWithheld ? null : recordedFamily;
+	// A family in the reserved alias namespace is presented as its keyed alias, like any other kind the source names.
+	const family = familyWithheld || recordedFamily === null ? null : alias.kind(recordedFamily);
 	const runtime: EndoCockpitClaimV0<string> =
 		family === null
 			? unavailableV0(familyWithheld ? WITHHELD_TEXT : ENDO_COCKPIT_NO_RUNTIME_REASON_V0)

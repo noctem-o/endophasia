@@ -1145,6 +1145,8 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	const provenWithheld = endoCockpitWithheldLowerBoundV0(
 		value.kind,
 		value.fields as Record<string, { basis: string; reason?: unknown }>,
+		// (A usage that is not a record is refused below; only its claim matters here.)
+		isPlain(value.usage) ? (value.usage as { basis: string; reason?: unknown }) : null,
 	);
 	if (value.withheldFields < provenWithheld) return false;
 	const usage = value.usage;
@@ -1305,6 +1307,8 @@ const NOTE_POLICY: Readonly<
 
 function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection: keyof typeof NOTE_POLICY): boolean {
 	const policy = NOTE_POLICY[projection];
+	// A record is discarded once: one cleaning note, of one code, per position (the cleaner emits exactly one disposition).
+	const discarded = new Set<string>();
 	return notes.every((note) => {
 		if (!policy.codes.includes(note.code)) return false;
 		const kinds = FOREIGN_OR_DUPLICATE.includes(note.code) ? policy.cleaned : NOTE_REF_KINDS[note.code];
@@ -1313,6 +1317,11 @@ function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection:
 			const [ref] = note.refs;
 			if (note.refs.length !== 1 || ref === undefined) return false;
 			if (note.code === "duplicate-record-id" && ref.domain === "harness-registry" && ref.id === null) return false;
+			if (ref.domain === "harness-registry") {
+				const position = `${ref.kind}:${ref.index}`;
+				if (discarded.has(position)) return false;
+				discarded.add(position);
+			}
 		}
 		return note.refs.every((ref) => isRegistryRef(ref, ctx, kinds));
 	});
@@ -1463,8 +1472,24 @@ function discardsPresented(notes: EndoCockpitNoteV0[], presented: readonly (Endo
 	);
 }
 
+/**
+ * Two presented views of different records never carry one id (ids are unique across all kinds of a registry, and keyed
+ * presentation keeps equal ids equal). Views of one record - the same complete reference - are one appearance.
+ */
+function presentedIdsDistinct(views: readonly { ref: EndoCockpitRefV0; id: string }[]): boolean {
+	return views.every((a, at) => views.every((b, to) => to <= at || sameRef(a.ref, b.ref) || a.id !== b.id));
+}
+
 function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
 	if (!projectableAgrees(identity.source, identity.notes)) return false;
+	if (
+		!presentedIdsDistinct(
+			[identity.current, identity.previousDifferent, identity.lastChange, identity.lastNotification].filter(
+				(view) => view !== null,
+			),
+		)
+	)
+		return false;
 	if (
 		discardsPresented(identity.notes, [
 			identity.current?.ref ?? null,
@@ -1747,6 +1772,14 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 				: "stale";
 	if (state.currency !== expected) return false;
 	const cited: EndoCockpitCapabilityViewV0[] = [];
+	// The cited evidence records are records of one registry: no two share an id, and none shares the id of a fingerprint
+	// the state names (a different kind of record).
+	// `latestFingerprintId` is the id of a kept fingerprint record, and the cleaning ledger keeps ids unique across kinds, so no
+	// kept evidence record shares it. (`fingerprintId` is only a reference the state carries, possibly to nothing recorded:
+	// not compared.)
+	const named = [state.latestFingerprintId].filter((id) => id !== null);
+	const evidenceViews = projection.capabilities.flatMap((c) => (c.evidence === null ? [] : [c.evidence]));
+	if (!presentedIdsDistinct(evidenceViews) || evidenceViews.some((view) => named.includes(view.id))) return false;
 	for (const capability of projection.capabilities) {
 		if (!sameRef(capability.ref, state.ref)) return false;
 		// One evidence record is one view: capabilities citing the same record agree on everything about it. (Their `limits`
@@ -1832,6 +1865,13 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 	if (!isPlain(window) || !exactKeys(window, ["afterSequence", "nextAfterSequence", "hasMore"])) return null;
 	if (!isCount(window.afterSequence) || !isCount(window.nextAfterSequence)) return null;
 	if (window.nextAfterSequence < window.afterSequence) return null;
+	// A cursor before a known tail must move: a page that consumes nothing there would send a follower round in a circle.
+	if (
+		value.source.watermark !== null &&
+		window.afterSequence < value.source.watermark.length &&
+		window.nextAfterSequence === window.afterSequence
+	)
+		return null;
 	// No reader result spans more positions than the page maximum.
 	if (window.nextAfterSequence - window.afterSequence > ENDO_COCKPIT_PAGE_MAX_LIMIT_V0) return null;
 	if (window.hasMore !== null && typeof window.hasMore !== "boolean") return null;
@@ -1934,6 +1974,15 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		// Both views of one attachment come from one read of its registry: the same condition and the same position.
 		if (!sameJson(identity.source, capabilities.source)) return null;
 		if (identity.source.watermark !== null) keyIds.add(identity.source.watermark.keyId);
+		// The records presented by the two views of one registry are distinct records: no two share an id.
+		const shown: ({ ref: EndoCockpitRefV0; id: string } | null)[] = [
+			identity.current,
+			identity.previousDifferent,
+			identity.lastChange,
+			identity.lastNotification,
+			...capabilities.capabilities.map((view) => view.evidence),
+		];
+		if (!presentedIdsDistinct(shown.filter((view) => view !== null))) return null;
 		// One view per attachment, in code-unit order of the attachment name.
 		if (seen.size > 0 && !(lastAttachment < identity.source.attachment)) return null;
 		lastAttachment = identity.source.attachment;

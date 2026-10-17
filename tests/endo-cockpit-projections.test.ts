@@ -4025,12 +4025,13 @@ describe("eighth review round (PR #57)", () => {
 		for (const [after, events] of [
 			[0, [ev(1), ev(2), ev(3)]],
 			[5, [ev(6), ev(7)]],
-			[0, []],
 		] as const) {
 			const out = run(after, [...events]);
 			expect(out.window.nextAfterSequence).toBe(after + events.length);
 			accepts(out);
 		}
+		// An empty window before the declared tail would send a follower round in a circle: refused (round 14).
+		expect(() => run(0, []), "empty window before the tail").toThrow(TypeError);
 		// A duplicate event consumes its position: the window is still accounted for (its count is the result's own).
 		const withDuplicate = run(0, [ev(1, "endo.event.same.1"), ev(2, "endo.event.same.1"), ev(3)]);
 		expect(withDuplicate.duplicatesIgnored).toBe(1);

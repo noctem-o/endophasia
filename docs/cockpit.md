@@ -182,6 +182,15 @@ the foreign/duplicate notes do not name (none, when all are named), and, when th
 carries the last id; a discarded tail relaxes only that. Capabilities citing one evidence record show the same evidence view
 and the same limitations; their `limits` are about the capability and may differ. None of this verifies the records.
 
+Five more, validators and one projector input (no output change, so still `.3`): an entry observation whose usage claim
+is anything but "no entry details" proves its `details` object and so counts it in `withheldFields`; two presented records
+of different references never carry one id (and no cited evidence id equals a fingerprint id the state names; one evidence
+reference shown by several capabilities is one appearance); a cleaning note names each discarded position once, under one
+code; a timeline page whose cursor lies before a known tail must advance (the direct projector throws on a window that
+consumes nothing there, rather than invent progress); and a recorded runtime family in the reserved `withheld-` namespace is
+presented as its keyed kind alias, like any other kind (the value changes only for a source that wrote that namespace, which
+no producer does, so the projection version is not bumped: `.3` already reserved that namespace, so passing such a source value through was never valid). A lifecycle `runtime` field in that namespace is likewise withheld whole, and the snapshot validator applies the distinct-ids rule across an attachment's identity and capability views.
+
 Two facts the wire alone decides are enforced by the validators. `sealedAt` is the first frame that failed verification,
 so it is exactly the one after the verified prefix: `watermark.length + 1` for an event log, the sum of the registry
 counts `+ 1` for a registry (a torn tail is a different condition and carries no position). A registry with no records

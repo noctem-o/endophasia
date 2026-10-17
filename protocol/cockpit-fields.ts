@@ -305,6 +305,8 @@ export const ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0: Readonly<Record<string, { pare
 const KEYED_DIGEST_PARTS: Readonly<Record<string, (value: string) => boolean>> = freezeDeep({
 	// The runtime identity digest, as its keyed token (the same token the registry views carry for it).
 	identityDigest: (value: string) => /^[0-9a-f]{64}$/.test(value),
+	// A runtime family is a kind the source names: one in the reserved alias namespace is withheld whole, not shown as written.
+	runtime: (value: string) => isEndoCockpitSourceKindAdmittedV0(value),
 	argsDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	resultDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	argsDigestKeyId: (value: string) => ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value),
@@ -557,9 +559,19 @@ export const ENDO_COCKPIT_CHECK_COST_V0: Readonly<Record<string, number>> = free
 export function endoCockpitWithheldLowerBoundV0(
 	kind: string,
 	fields: Readonly<Record<string, { basis: string; reason?: unknown }>>,
+	usage: { basis: string; reason?: unknown } | null = null,
 ): number {
 	if (!Object.hasOwn(ENDO_COCKPIT_FIELD_SPECS_V0, kind)) return 0;
 	const withheld = new Set<string>();
+	// A durable entry's usage is read from `details.usage`: any usage claim but "the entry has no details" proves `details`
+	// is an object, whose members are shown only by nested path. (A message's own `usage` key proves nothing here: it may
+	// be presented whole, and an absent one proves no key.)
+	if (
+		kind === "session.entry-observed" &&
+		usage !== null &&
+		!(usage.basis === "unavailable" && usage.reason === ENDO_COCKPIT_USAGE_REASONS_V0[0])
+	)
+		withheld.add("details");
 	const whole = new Set<string>();
 	for (const spec of ENDO_COCKPIT_FIELD_SPECS_V0[kind]!) {
 		const field = Object.hasOwn(fields, spec[0]) ? fields[spec[0]]! : undefined;

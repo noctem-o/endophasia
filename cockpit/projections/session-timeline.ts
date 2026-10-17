@@ -471,6 +471,9 @@ function projectEndoCockpitSessionTimelineUncheckedV0(
 		}
 	}
 	const nextAfterSequence = previous;
+	// A cursor before the declared tail that consumes nothing cannot be followed to the end: refuse it, do not invent progress.
+	if (source.watermark !== null && afterSequence < source.watermark.length && nextAfterSequence === afterSequence)
+		throw new TypeError("the window consumes no event although the source holds events after its cursor");
 	if (source.condition.state === "unopenable") notes.push({ code: "source-not-projectable", refs: [] });
 	return {
 		schemaVersion: "endo.cockpit-session-timeline.v0",

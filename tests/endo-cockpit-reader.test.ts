@@ -119,6 +119,27 @@ function frameStart(path: string, index: number): number {
 }
 
 describe("store to projection", () => {
+	it("a reader follows nextAfterSequence one event at a time to the end, and past it", () => {
+		const { root, events } = seeded();
+		let after = 0;
+		let steps = 0;
+		for (;;) {
+			const page = readEndoCockpitTimelineV0(root, { afterSequence: after, limit: 1 });
+			expect(validateEndoCockpitSessionTimelineV0(page)).not.toBeNull();
+			if (page.window.hasMore !== true) break;
+			expect(page.window.nextAfterSequence).toBeGreaterThan(after);
+			after = page.window.nextAfterSequence;
+			steps += 1;
+			expect(steps).toBeLessThanOrEqual(events.length);
+		}
+		expect(steps).toBe(events.length - 1);
+		for (const beyond of [events.length, events.length + 5]) {
+			const page = readEndoCockpitTimelineV0(root, { afterSequence: beyond, limit: 1 });
+			expect(page.entries).toEqual([]);
+			expect(validateEndoCockpitSessionTimelineV0(page)).not.toBeNull();
+		}
+	});
+
 	it("publishes none of the content-addressed ids or identity digests the recorded store holds, in full or by 12-character prefix", () => {
 		const { root, events } = seeded();
 		const raw = JSON.stringify([events, specimenRecords()]);

@@ -133,7 +133,15 @@ describe("store to projection", () => {
 		expect(runtime!.capabilities.state).toMatchObject({ currency: "current", fingerprintId: state.fingerprintId });
 		expect(
 			runtime!.capabilities.capabilities.map((c) => [c.capability, c.status, c.classification, c.reason]),
-		).toEqual(state.capabilities.map((c) => [c.capability, c.status, c.classification, c.reason]));
+		).toEqual(
+			state.capabilities.map((c) => [
+				c.capability,
+				c.status,
+				c.classification,
+				// Free text over the 256-character bound is withheld whole.
+				c.reason.length > 256 ? "withheld: looks like a path, address or credential" : c.reason,
+			]),
+		);
 	});
 
 	it("is repeatable: two reads of unchanged stores give byte-identical output", () => {
@@ -848,5 +856,45 @@ describe("open failures never quote the store (PR #57 review round 4)", () => {
 		expect(validateEndoCockpitSnapshotV0(JSON.parse(JSON.stringify(readEndoCockpitSnapshotV0(root))))).not.toBeNull();
 		expect(checkEndoCockpitSourceFreshnessV0(root, timeline.source)).toBe("unchanged");
 		expect(JSON.stringify(timeline)).not.toContain(CANARY);
+	});
+});
+
+describe("generated aliases never collide with source identifiers (PR #57 review round 5)", () => {
+	const aliasOf = (id: string) => `${id.split(".").slice(0, 2).join(".")}.withheld-${sha256HexV0(id).slice(0, 32)}`;
+
+	it("reads a store holding an identifier and another identifier equal to its alias, across events and a registry", () => {
+		const a = "endo.event.Tok_collide";
+		const b = aliasOf(a);
+		const root = tempRoot();
+		ingestAll(root, [
+			event("tool.started", {}, { id: a }),
+			event("tool.finished", {}, { id: b }),
+			{ ...event("agent.settled", {}, { id: "endo.event.plain.1" }), derivedFrom: [a, b] },
+		]);
+		const { fingerprint, state } = specimen();
+		const f = "endo.evidence.Tok_fp";
+		const g = aliasOf(f);
+		const registry = openEndoHarnessRegistryV0(root, ATTACHMENT);
+		registry.append("fingerprint", { ...fingerprint, id: f });
+		registry.append("fingerprint", {
+			...fingerprint,
+			id: g,
+			observedAt: "2026-10-04T10:00:00.000Z",
+			identity: { ...fingerprint.identity, digest: "d".repeat(64) },
+		});
+		registry.append("state", { ...state, fingerprintId: g, at: "2026-10-04T10:00:01.000Z" });
+		const before = treeHash(root);
+		const snapshot = readEndoCockpitSnapshotV0(root);
+		expect(validateEndoCockpitSnapshotV0(JSON.parse(JSON.stringify(snapshot)))).not.toBeNull();
+		const ids = snapshot.timeline.entries.map((e) => e.eventId);
+		expect(new Set(ids).size).toBe(3);
+		expect(snapshot.timeline.entries[2]!.derivedFrom).toEqual([ids[0], ids[1]]);
+		expect(snapshot.timeline.source.watermark!.lastEventId).toBe(ids[2]);
+		const identity = snapshot.runtimes[0]!.identity;
+		expect(identity.current!.id).not.toBe(identity.previousDifferent!.id);
+		expect(snapshot.runtimes[0]!.capabilities.state!.fingerprintId).toBe(identity.current!.id);
+		expect(checkEndoCockpitSourceFreshnessV0(root, snapshot.timeline.source)).toBe("unchanged");
+		expect(checkEndoCockpitSourceFreshnessV0(root, identity.source)).toBe("unchanged");
+		expect(treeHash(root)).toBe(before);
 	});
 });

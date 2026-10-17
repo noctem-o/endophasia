@@ -10,9 +10,10 @@ import type {
 	EndoCockpitRegistrySourceV0,
 } from "../../protocol/cockpit.ts";
 import {
-	ENDO_COCKPIT_WITHHELD_TEXT_V0,
+	endoCockpitPresentableTextV0,
 	endoCockpitTextUnsafeV0,
-	isEndoCockpitPublicIdV0,
+	isEndoCockpitSourceIdAdmittedV0,
+	isEndoCockpitSourceKindAdmittedV0,
 } from "../../protocol/cockpit-fields.ts";
 import type {
 	EndoCapabilityEvidenceV0,
@@ -51,9 +52,13 @@ export interface EndoCockpitIndexedV0<T> {
 /** Text that is not presentable whole (a path, an address, a credential, control characters): see the protocol policy. */
 export const looksSensitiveTextV0 = endoCockpitTextUnsafeV0;
 
-/** The text itself, or the fixed withheld text when it looks sensitive. The record's own bound applies, not a cut. */
+/**
+ * The text itself, or the fixed withheld text when it is not presentable whole: flagged, empty, or longer than the cockpit's
+ * 256-character bound. The one rule for every free text a record author wrote (a capability reason, a limitation, a title,
+ * a version, a label): judged on the whole value, never cut.
+ */
 export function presentableTextV0(text: string): string {
-	return endoCockpitTextUnsafeV0(text) ? ENDO_COCKPIT_WITHHELD_TEXT_V0 : text;
+	return endoCockpitPresentableTextV0(text);
 }
 
 /**
@@ -62,7 +67,7 @@ export function presentableTextV0(text: string): string {
  * whatever it says, so the grammar alone does not keep a credential-shaped one out of a result.
  */
 export function kindLabelV0(kind: string): string {
-	return endoCockpitTextUnsafeV0(kind) ? `withheld-${sha256HexV0(kind).slice(0, 32)}` : kind;
+	return isEndoCockpitSourceKindAdmittedV0(kind) ? kind : `withheld-${sha256HexV0(kind).slice(0, 32)}`;
 }
 
 /**
@@ -74,7 +79,9 @@ export function kindLabelV0(kind: string): string {
  * against the alias; that is not claimed away.
  */
 export function publicIdV0(id: string): string {
-	if (isEndoCockpitPublicIdV0(id)) return id;
+	// Only a source identifier admitted as it is passes through: the generated-alias namespace is reserved, so a source
+	// identifier that looks like an alias is itself aliased, and no two distinct identifiers share a public one.
+	if (isEndoCockpitSourceIdAdmittedV0(id)) return id;
 	const kind = parseEndoIdentifierV0(id)?.kind ?? "evidence";
 	return `endo.${kind}.withheld-${sha256HexV0(id).slice(0, 32)}`;
 }

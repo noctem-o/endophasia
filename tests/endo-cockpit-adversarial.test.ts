@@ -451,6 +451,50 @@ function fixtures(): { name: string; record: Json }[] {
 	});
 	add("carried", carried);
 
+	// A registry with several records of every kind, so "latest" and the notes have something to be wrong about.
+	const busy = tempRoot();
+	ingestAll(busy, events.slice(0, 6));
+	seedRegistry(busy);
+	const busyRegistry = openEndoHarnessRegistryV0(busy, ATTACHMENT);
+	const third = {
+		...structuredClone(fingerprint),
+		id: "endo.evidence.test-fingerprint.4",
+		observedAt: "2026-10-05T10:00:00.000Z",
+	};
+	third.identity = { ...third.identity, digest: "e".repeat(64) };
+	busyRegistry.append("fingerprint", third);
+	const firstChange = changeRecord();
+	busyRegistry.append("change", firstChange);
+	busyRegistry.append(
+		"change",
+		changeRecord({
+			id: "endo.evidence.test-change.2",
+			kind: "changed",
+			previous: firstChange.current,
+			current: { ...firstChange.current!, fingerprintId: third.id, identityDigest: "e".repeat(64) },
+			differences: ["version"],
+		}),
+	);
+	busyRegistry.append("notification", notificationRecord());
+	busyRegistry.append(
+		"notification",
+		notificationRecord({
+			id: "endo.evidence.test-notification.2",
+			changeId: "endo.evidence.test-change.2",
+			kind: "runtime-changed",
+		}),
+	);
+	const latestState = { ...structuredClone(state), fingerprintId: third.id, at: "2026-10-05T10:00:01.000Z" };
+	latestState.capabilities[0] = {
+		...latestState.capabilities[0]!,
+		status: "unverified",
+		classification: null,
+		evidenceId: null,
+		reason: "no evidence yet",
+	};
+	busyRegistry.append("state", latestState);
+	add("busy", busy);
+
 	// Sources that are not readable records: an event log and a registry that cannot be opened, and nothing at all.
 	const broken = tempRoot();
 	mkdirSync(join(broken, "events"));
@@ -477,7 +521,7 @@ describe("rejection: seeded mutation of valid wire records", () => {
 	const all = fixtures();
 
 	it("the unmutated fixtures validate", () => {
-		expect(all.length).toBe(20);
+		expect(all.length).toBe(24);
 		for (const { name, record } of all) expect(validatorOf(record)(record), name).not.toBeNull();
 		// The stale fixture really has derived limits, and the carried one really has none.
 		const stale = all.find((f) => f.name === "stale/capabilities")!.record;
@@ -759,6 +803,102 @@ describe("rejection: seeded mutation of valid wire records", () => {
 					target.value,
 				);
 				return target.path;
+			},
+		},
+		{
+			name: "a derived note added that the view contradicts",
+			apply(record, random) {
+				const views = nodes(record).filter(
+					(n) => Array.isArray(n.value?.notes) && n.value.source?.domain === "harness-registry",
+				);
+				if (views.length === 0) return null;
+				const view = pick(random, views).value;
+				const have = (code: string) => view.notes.some((note: Json) => note.code === code);
+				const candidates: Json[] = [];
+				if (view.schemaVersion === "endo.cockpit-runtime-identity.v0") {
+					if (view.current !== null && !have("no-fingerprint-recorded"))
+						candidates.push({ code: "no-fingerprint-recorded", refs: [] });
+					if (
+						view.lastChange !== null &&
+						view.lastChange.kind !== "collection-failed" &&
+						!have("latest-change-is-collection-failure")
+					)
+						candidates.push({
+							code: "latest-change-is-collection-failure",
+							refs: [structuredClone(view.lastChange.ref)],
+						});
+					if (
+						view.lastChange !== null &&
+						view.current !== null &&
+						!have("latest-change-not-for-latest-fingerprint") &&
+						view.lastChange.current?.fingerprintId === view.current.id
+					)
+						candidates.push({
+							code: "latest-change-not-for-latest-fingerprint",
+							refs: [structuredClone(view.lastChange.ref), structuredClone(view.current.ref)],
+						});
+				} else {
+					if (view.state !== null && !have("no-capability-state-recorded"))
+						candidates.push({ code: "no-capability-state-recorded", refs: [] });
+					if (view.state !== null && view.state.latestFingerprintId !== null && !have("state-without-fingerprint"))
+						candidates.push({ code: "state-without-fingerprint", refs: [structuredClone(view.state.ref)] });
+				}
+				if (candidates.length === 0) return null;
+				const note = pick(random, candidates);
+				view.notes.push(note);
+				return note.code;
+			},
+		},
+		{
+			name: "a latest record replaced by an earlier one",
+			apply(record, random) {
+				const views = nodes(record).filter((n) => n.value?.schemaVersion === "endo.cockpit-runtime-identity.v0");
+				if (views.length === 0) return null;
+				const view = pick(random, views).value;
+				if (view.previousDifferent === null) return null;
+				const edits = [
+					() => {
+						view.current = structuredClone(view.previousDifferent);
+					},
+					() => {
+						view.current = null;
+					},
+				];
+				pick(random, edits)();
+				return "current";
+			},
+		},
+		{
+			name: "usage given or taken away against the event's role and entry type",
+			apply(record, random) {
+				const lists = nodes(record).filter(
+					(n) =>
+						n.key === "entries" &&
+						Array.isArray(n.value) &&
+						n.value.some(
+							(e: Json) =>
+								e.kind === "message.completed" ||
+								e.kind === "session.entry-observed" ||
+								e.kind === "tool.started",
+						),
+				);
+				if (lists.length === 0) return null;
+				const entries = (pick(random, lists).value as Json[]).filter(
+					(e) =>
+						e.kind === "message.completed" || e.kind === "session.entry-observed" || e.kind === "tool.started",
+				);
+				const entry = pick(random, entries);
+				entry.usage = entry.usage === null ? { basis: "unavailable", reason: "the event records no usage" } : null;
+				return entry.kind;
+			},
+		},
+		{
+			name: "a classification given to an unverified capability",
+			apply(record, random) {
+				const views = nodes(record).filter((n) => n.value?.status === "unverified" && "classification" in n.value);
+				if (views.length === 0) return null;
+				pick(random, views).value.classification = "EXACT";
+				return "classification";
 			},
 		},
 		{

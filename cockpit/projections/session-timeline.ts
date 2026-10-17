@@ -47,7 +47,7 @@ import {
 	endoCockpitProducerAdmittedV0,
 	endoCockpitRuntimeSessionAdmittedV0,
 	endoCockpitTextPresentableV0,
-	endoCockpitTextUnsafeV0,
+	isEndoCockpitSourceKindAdmittedV0,
 } from "../../protocol/cockpit-fields.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
@@ -202,28 +202,38 @@ function readUsage(value: unknown): EndoCockpitUsageV0 | undefined {
 	};
 }
 
-/** Kinds that can carry usage: an assistant message, and the durable entries that record a model call. */
-function usageOf(event: EndoEventV0, payload: Record<string, unknown>): EndoCockpitTimelineEntryV0["usage"] {
+/** The string a presented field carries, or undefined when the entry presents none (absent, unavailable or withheld). */
+function presentedString(fields: Record<string, EndoCockpitFieldV0>, key: string): string | undefined {
+	const field = fields[key];
+	return field !== undefined && field.basis !== "unavailable" && typeof field.value === "string"
+		? field.value
+		: undefined;
+}
+
+const USAGE_ENTRY_TYPES: readonly string[] = ["message", "compaction", "branch_summary", "usage"];
+
+/**
+ * Kinds that can carry usage: an assistant (any non-user) message, and the durable entries that record a model call
+ * (except a user message). Decided from the fields the entry PRESENTS, the same ones the validator reads
+ * (protocol/cockpit.ts usageEligible), so the two cannot disagree: a wrapped or withheld value is judged as presented.
+ */
+function usageOf(
+	event: EndoEventV0,
+	payload: Record<string, unknown>,
+	fields: Record<string, EndoCockpitFieldV0>,
+): EndoCockpitTimelineEntryV0["usage"] {
 	let carrier: unknown;
-	let role: unknown;
 	if (event.kind === "message.completed") {
+		if (presentedString(fields, "role") === "user") return null;
 		carrier = own(payload, "usage");
-		role = own(payload, "role");
 	} else if (event.kind === "session.entry-observed") {
-		const entryType = own(payload, "entryType");
+		const entryType = presentedString(fields, "entryType");
+		if (entryType === undefined || !USAGE_ENTRY_TYPES.includes(entryType)) return null;
 		const details = own(payload, "details");
-		if (
-			entryType !== "message" &&
-			entryType !== "compaction" &&
-			entryType !== "branch_summary" &&
-			entryType !== "usage"
-		)
-			return null;
 		if (!isRecord(details)) return { basis: "unavailable", reason: ENDO_COCKPIT_USAGE_REASONS_V0[0]! };
+		if (entryType === "message" && presentedString(fields, "role") === "user") return null;
 		carrier = own(details, "usage");
-		role = entryType === "message" ? own(details, "role") : undefined;
 	} else return null;
-	if (role === "user") return null;
 	if (carrier === undefined) return { basis: "unavailable", reason: ENDO_COCKPIT_USAGE_REASONS_V0[1]! };
 	const usage = readUsage(carrier);
 	return usage === undefined
@@ -337,7 +347,9 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	}
 	if (event.kind === "message.completed" && usageIsWhole(payload)) presentedWhole.add("usage");
 	// A kind is grammar-valid whatever it says: one the text policy flags is presented as a placeholder in "other".
-	const presentedKind = endoCockpitTextUnsafeV0(event.kind) ? `other.${kindLabelV0(event.kind)}` : event.kind;
+	const presentedKind = !isEndoCockpitSourceKindAdmittedV0(event.kind)
+		? `other.${kindLabelV0(event.kind)}`
+		: event.kind;
 	const keys = isRecord(event.payload) ? Object.keys(event.payload) : [];
 	return {
 		storageSequence,
@@ -354,7 +366,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		derivedFrom: event.derivedFrom.map(publicIdV0),
 		flags: flagsOf(event, payload, endoCockpitKindRecognizedV0(event.kind)),
 		fields,
-		usage: usageOf(event, payload),
+		usage: usageOf(event, payload, fields),
 		withheldFields: keys.filter((key) => !presentedWhole.has(key)).length + (isRecord(event.payload) ? 0 : 1),
 	};
 }

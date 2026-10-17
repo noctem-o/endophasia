@@ -27,6 +27,7 @@ import {
 	ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0,
 	ENDO_COCKPIT_NO_RUNTIME_REASON_V0,
 	ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0,
+	endoCockpitTextPresentableV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 } from "../../protocol/cockpit-fields.ts";
 import type {
@@ -75,7 +76,7 @@ function fingerprintView(
 		version:
 			record.reported.version === null
 				? unavailableV0(GAP_REASON, refs)
-				: looksSensitiveTextV0(record.reported.version)
+				: !endoCockpitTextPresentableV0(record.reported.version)
 					? unavailableV0(WITHHELD_TEXT, refs)
 					: claimV0("reported", record.reported.version, refs),
 		entrypoint:
@@ -89,7 +90,8 @@ function fingerprintView(
 		package:
 			record.local.package === null
 				? unavailableV0(GAP_REASON, refs)
-				: looksSensitiveTextV0(record.local.package.name) || looksSensitiveTextV0(record.local.package.version)
+				: !endoCockpitTextPresentableV0(record.local.package.name) ||
+						!endoCockpitTextPresentableV0(record.local.package.version)
 					? unavailableV0(WITHHELD_TEXT, refs)
 					: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
 		withheld: [...ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0],

@@ -399,6 +399,28 @@ export function isEndoCockpitPublicIdV0(value: string, kind?: EndoIdentifierKind
 	return !endoCockpitTextUnsafeV0(value);
 }
 
+/**
+ * The generated-alias namespace. A segment that begins `withheld-` is RESERVED for the placeholders the cockpit generates
+ * (an identifier's alias, a withheld capability or event kind): no source identifier or kind in it is ever presented as it
+ * is, so a generated alias can never be equal to anything a source wrote, and two distinct sources cannot collapse into
+ * one public value. Source admission and public validation are distinct on purpose: the first is what a SOURCE value must
+ * be to pass through unchanged (shape, content, not reserved); the second is what a wire record may CARRY (the same, or a
+ * generated alias).
+ */
+const RESERVED_SEGMENT = /^withheld-/;
+
+/** Whether a source identifier may be presented as it is: a public-shaped identifier that is not in the reserved namespace. */
+export function isEndoCockpitSourceIdAdmittedV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+	const parsed = parseEndoIdentifierV0(value);
+	if (parsed === null || !isEndoCockpitPublicIdV0(value, kind)) return false;
+	return !parsed.local.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
+}
+
+/** Whether a dotted kind (a capability, an event kind) may be presented as it is: not flagged, not in the reserved namespace. */
+export function isEndoCockpitSourceKindAdmittedV0(kind: string): boolean {
+	return !endoCockpitTextUnsafeV0(kind) && !kind.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
+}
+
 /** The name of a declared-unavailable gap (`unavailable.<name>`): a short plain label. */
 export function endoCockpitGapNameAdmittedV0(name: string): boolean {
 	return /^[A-Za-z][A-Za-z0-9._-]{0,99}$/.test(name) && !endoCockpitTextUnsafeV0(name);

@@ -909,10 +909,10 @@ function isCapabilityView(value: unknown): value is EndoCockpitCapabilityViewV0 
 		nullable(value.classification, (item): item is EndoConformanceClassificationV0 =>
 			oneOf(ENDO_CONFORMANCE_CLASSIFICATIONS_V0, item),
 		) &&
-		isLabel(value.reason, 2048) &&
+		isLabel(value.reason, 256) &&
 		oneOf(ENDO_CAPABILITY_CHECK_KINDS_V0, value.requires) &&
 		nullable(value.evidence, isEvidenceView) &&
-		arrayOf(value.limitations, (item): item is string => isLabel(item)) &&
+		arrayOf(value.limitations, (item): item is string => isLabel(item, 256)) &&
 		arrayOf(
 			value.limits,
 			(item): item is { code: EndoCockpitLimitCodeV0; refs: EndoCockpitRefV0[] } =>
@@ -975,8 +975,35 @@ function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 		has("discontinuity") !== ENDO_COCKPIT_DISCONTINUITY_KINDS_V0.includes(kind)
 	)
 		return false;
-	if (entry.usage !== null && kind !== "message.completed" && kind !== "session.entry-observed") return false;
-	return true;
+	// Usage is present exactly when the event can carry it, decided by fields the entry itself presents. (A presented
+	// `role` or `entryType` is a string that was judged presentable; one that was absent, withheld or unavailable is not the
+	// word the projection tests for, so it never makes an event ineligible.) Whether the usage it carries is reported or
+	// unavailable is not decidable from the wire and is left as the entry says.
+	return (entry.usage !== null) === usageEligible(entry);
+}
+
+const USAGE_ENTRY_TYPES: readonly string[] = ["message", "compaction", "branch_summary", "usage"];
+
+/** The presented string value of a field, or undefined when it is not presented as a value. */
+function presentedString(entry: EndoCockpitTimelineEntryV0, key: string): string | undefined {
+	const field = entry.fields[key];
+	return field !== undefined && field.basis !== "unavailable" && typeof field.value === "string"
+		? field.value
+		: undefined;
+}
+
+/**
+ * Whether the event can carry usage, as the projection decides it: an assistant (any non-user) message, and the durable
+ * entries that record a model call, except a user message. No other kind can.
+ */
+function usageEligible(entry: EndoCockpitTimelineEntryV0): boolean {
+	if (entry.kind === "message.completed") return presentedString(entry, "role") !== "user";
+	if (entry.kind === "session.entry-observed") {
+		const type = presentedString(entry, "entryType");
+		if (type === undefined || !USAGE_ENTRY_TYPES.includes(type)) return false;
+		return !(type === "message" && presentedString(entry, "role") === "user");
+	}
+	return false;
 }
 
 function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
@@ -1183,8 +1210,120 @@ function validateRegistryProjection(value: Record<string, unknown>, projectionVe
 // Validators
 // ---------------------------------------------------------------------------------------------------------------
 
+const FOREIGN_OR_DUPLICATE: readonly string[] = ["foreign-attachment-record", "duplicate-record-id"];
+
+/**
+ * Whether a record of this kind was set aside as foreign or repeated (a store never produces either; input that did not
+ * come from one can). Then the projection's "latest" is the latest KEPT record, which the watermark does not locate, so the
+ * latest-record claims below fall back to the range check.
+ */
+function setAside(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKindV0): boolean {
+	return notes.some(
+		(note) =>
+			FOREIGN_OR_DUPLICATE.includes(note.code) &&
+			note.refs.some((ref) => ref.domain === "harness-registry" && ref.kind === kind),
+	);
+}
+
+/**
+ * The latest record of a kind is the one the watermark ends at: absent exactly when there are none, otherwise at the last
+ * position and carrying the last id. (A capability state has no id, so its id is null.)
+ */
+function isLatest(
+	kind: EndoCockpitRegistryKindV0,
+	view: { ref: EndoCockpitRefV0 } | null,
+	ctx: RefContext,
+	notes: EndoCockpitNoteV0[],
+): boolean {
+	if (setAside(notes, kind) || ctx.counts === null || ctx.lastIds === null) return true;
+	const count = ctx.counts[kind];
+	if (view === null) return count === 0;
+	const ref = view.ref;
+	return ref.domain === "harness-registry" && ref.index === count - 1 && ref.id === ctx.lastIds[kind];
+}
+
+const notesOf = (notes: EndoCockpitNoteV0[], code: EndoCockpitNoteCodeV0) => notes.filter((note) => note.code === code);
+
+/** A derived note is present exactly when its condition holds, once, with exactly the references the projection gives. */
+function noteIs(
+	notes: EndoCockpitNoteV0[],
+	code: EndoCockpitNoteCodeV0,
+	holds: boolean,
+	refs: EndoCockpitRefV0[],
+): boolean {
+	const found = notesOf(notes, code);
+	if (!holds) return found.length === 0;
+	return (
+		found.length === 1 &&
+		found[0]!.refs.length === refs.length &&
+		refs.every((ref, at) => sameRef(found[0]!.refs[at], ref))
+	);
+}
+
+/** The notes of a runtime identity are true of the view they sit beside, wherever the wire decides them. */
+function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
+	const { current, lastChange, lastNotification, notes } = identity;
+	if (!isProjectable(identity.source)) return true;
+	if (!noteIs(notes, "no-fingerprint-recorded", current === null, [])) return false;
+	const failed = lastChange !== null && lastChange.kind === "collection-failed";
+	if (!noteIs(notes, "latest-change-is-collection-failure", failed, lastChange === null ? [] : [lastChange.ref]))
+		return false;
+	const stray =
+		lastChange !== null &&
+		!failed &&
+		current !== null &&
+		(lastChange.current === null || lastChange.current.fingerprintId !== current.id);
+	if (!noteIs(notes, "latest-change-not-for-latest-fingerprint", stray, stray ? [lastChange!.ref, current!.ref] : []))
+		return false;
+	// The notice's change is not among the changes: decided by the whole change list, which the view does not embed. What the
+	// wire decides is that it needs a notice to speak of, with exactly its reference, and cannot be the last change.
+	const missing = notesOf(notes, "notification-change-missing");
+	if (missing.length > 1) return false;
+	if (missing.length === 1) {
+		if (
+			lastNotification === null ||
+			missing[0]!.refs.length !== 1 ||
+			!sameRef(missing[0]!.refs[0], lastNotification.ref)
+		)
+			return false;
+		if (lastChange !== null && lastChange.id === lastNotification.changeId) return false;
+	}
+	const disagreement = notesOf(notes, "runtime-disagreement");
+	if (disagreement.length > 1 || disagreement.some((note) => note.refs.length < 2)) return false;
+	return true;
+}
+
+/** The notes of a capability state are true of the view they sit beside. */
+function capabilityNotesAreTrue(projection: EndoCockpitCapabilityStateV0): boolean {
+	const { state, notes } = projection;
+	if (!isProjectable(projection.source)) return true;
+	if (!noteIs(notes, "no-capability-state-recorded", state === null, [])) return false;
+	const withoutFingerprint = state !== null && state.latestFingerprintId === null;
+	if (!noteIs(notes, "state-without-fingerprint", withoutFingerprint, state === null ? [] : [state.ref])) return false;
+	const duplicated = notesOf(notes, "duplicate-capability");
+	if (
+		duplicated.length > 0 &&
+		(state === null || duplicated.some((note) => note.refs.length !== 1 || !sameRef(note.refs[0], state.ref)))
+	)
+		return false;
+	return true;
+}
+
 function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
 	if (!projectableAgrees(identity.source, identity.notes)) return false;
+	if (!identityNotesAreTrue(identity)) return false;
+	// `current`, the last change and the last notice are the records the watermark ends at.
+	if (!isLatest("fingerprint", identity.current, ctx, identity.notes)) return false;
+	if (!isLatest("change", identity.lastChange, ctx, identity.notes)) return false;
+	if (!isLatest("notification", identity.lastNotification, ctx, identity.notes)) return false;
+	if (
+		identity.previousDifferent !== null &&
+		identity.current !== null &&
+		identity.previousDifferent.ref.domain === "harness-registry" &&
+		identity.current.ref.domain === "harness-registry" &&
+		identity.previousDifferent.ref.index >= identity.current.ref.index
+	)
+		return false;
 	if (!isProjectable(identity.source)) {
 		if (identity.current !== null || identity.previousDifferent !== null) return false;
 		if (identity.lastChange !== null || identity.lastNotification !== null) return false;
@@ -1375,8 +1514,23 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 	if (!projectableAgrees(projection.source, projection.notes)) return false;
 	if (!isProjectable(projection.source) && (projection.state !== null || projection.capabilities.length > 0))
 		return false;
+	if (!capabilityNotesAreTrue(projection)) return false;
+	if (!isLatest("state", projection.state, ctx, projection.notes)) return false;
+	// The latest fingerprint the state names beside its own is the one the watermark ends at.
+	if (
+		projection.state !== null &&
+		!setAside(projection.notes, "fingerprint") &&
+		ctx.counts !== null &&
+		ctx.lastIds !== null &&
+		projection.state.latestFingerprintId !== (ctx.counts.fingerprint === 0 ? null : ctx.lastIds.fingerprint)
+	)
+		return false;
 	// An unverified capability cites no evidence, and none of the limits (which qualify an admitted status) apply to it.
-	if (projection.capabilities.some((c) => c.status === "unverified" && (c.evidence !== null || c.limits.length > 0)))
+	if (
+		projection.capabilities.some(
+			(c) => c.status === "unverified" && (c.evidence !== null || c.limits.length > 0 || c.classification !== null),
+		)
+	)
 		return false;
 	const state = projection.state;
 	if (state === null) return true;

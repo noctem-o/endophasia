@@ -86,7 +86,7 @@ because the stores' own read-only open reads an absent or unreadable log as empt
 | `absent` | nothing there (a registry may legitimately not exist; reading never creates it) |
 | `empty` | the log exists with no frames |
 | `readable` | every frame verified and validated |
-| `degraded` | the verified prefix is served; a torn tail (length and sha256 reported) or a frame that failed verification (`sealedAt`) follows |
+| `degraded` | the verified prefix is served; a torn tail (length and a keyed token of its bytes reported) or a frame that failed verification (`sealedAt`) follows |
 | `unopenable` | it exists but cannot be opened (invalid record, unknown version, unreadable or dangling path); the bounded error is reported and nothing is projected |
 
 A torn tail is also what a live writer's append in flight looks like to a reader. It is reported as `degraded`, not
@@ -98,14 +98,52 @@ history with no cursor) and the cognition graph (its own revisions; not read by 
 atomic boundary. Sources are read one after another: the event log first, then registries in code-unit order. A snapshot
 says so (`consistency`) and carries each source's own watermark:
 
-- event log: `{ length, lastEventId, prefixDigest }`. The digest binds the **complete contents** of the events read, in
-  storage order: the sha256 over one line per event, each line the lowercase hex sha256 of the event's canonical JSON
-  (`runtime/contracts/canonical-json.ts`) followed by `"\n"`. Every line has the same width and alphabet, so the framing
-  is unambiguous and any language can recompute it; an event replaced under the same id with another kind, coordinates,
-  payload or time changes its line. `storageSequence` is the 1-based append position and the only ordering of the
-  timeline; producer `sequence` and recorded `at` are shown and order nothing.
-- registry: per-kind counts, last ids and a `contentDigest` of the records. There is no incremental cursor, so any
-  difference means re-reading that attachment.
+- event log: `{ length, lastEventId, prefixDigest, keyId }`. The digest binds the **complete contents** of the events read,
+  in storage order. Internally a chain is computed (the sha256 over one line per event, each line the lowercase hex sha256
+  of the event's canonical JSON followed by `"\n"`); the chain commits to content the timeline withholds, so it is never
+  published. What is published is `HMAC-SHA256(key, canonical JSON of { purpose: "endo.cockpit.event-prefix.v0", length,
+  chain })`; an event replaced under the same id with another kind, coordinates, payload or time changes the chain and so
+  the token. `storageSequence` is the 1-based append position and the only ordering of the timeline; producer `sequence`
+  and recorded `at` are shown and order nothing.
+- registry: per-kind counts, last ids and a `contentDigest` of the records, plus `keyId`. There is no incremental cursor,
+  so any difference means re-reading that attachment. A registry with records is committed to by `HMAC(key,
+  { purpose: "endo.cockpit.registry-content.v0", content })`; a registry with none commits to nothing, so its digest is
+  the fixed unkeyed constant (below).
+
+**The digest key (a contract of this version).** A plain hash of data the cockpit withholds is a confirmation oracle: a
+reader who knows the surrounding envelope can enumerate guesses for a low-entropy hidden value until the hash matches, and
+a second unkeyed hash or a public salt does not change that. So every value the bridge publishes that is derived from
+withheld bytes is a keyed token under a key the **caller supplies explicitly**: `digestKey` on every read, a second
+argument on every projector and on the freshness check. The library creates no key, loads none, reads no environment and
+writes nothing (`loadOrCreateEndoDigestKeyV0` and `endoDigestKeyFromEnvironmentV0` are not reachable from `cockpit/`; a
+test pins that); a host loads an existing key at its own boundary and should use one dedicated to the cockpit, not the
+evidence-comparison key (tokens are domain-separated by `purpose`, but a dedicated key keeps the two apart). A public
+fixture key (`endoDigestKeyV0(..., { public: true })`) may be supplied for synthetic data; it offers no secrecy, and its id
+is its name, so a reader of any source sees that. Key material is never serialized: sources record only `keyId`. The
+keyed tokens are: the event prefix digest, the registry content digest (when it has records), a torn tail's `digest`
+(`purpose: "endo.cockpit.torn-tail.v0"`, over its length and plain hash), identifier and kind aliases
+(`endo.cockpit.id-alias.v0`, `endo.cockpit.kind-alias.v0`), and the stored identity digest (which covers the real path),
+configuration digest (the user's configuration) and supporting transcript digests where they are presented
+(`endo.cockpit.identity-digest.v0`, `-configuration-digest.v0`, `-supporting-digest.v0`); equal stored digests give equal
+tokens under one key, so every comparison between views holds, and the stored evidence is unchanged. Digests of data that
+is itself shown or public stay as they are (the entrypoint file's sha256, an ACP session reference, keyed tool-argument
+digests that are already HMACs). Determinism: the same source data, projection versions and key give byte-identical
+output; another key gives other tokens and aliases. A read without a usable key throws a `TypeError` before touching the
+disk (it is a usage error, not a source condition); a projection under a key other than the one in the source's
+watermark is refused. `checkEndoCockpitSourceFreshnessV0` compares the key context first: another key, or none, yields
+`digest-context-differs` and never `unchanged`, `shrunk` or `diverged`. A snapshot's sources share one `keyId`.
+Residuals, stated rather than claimed away: an empty registry commits to nothing, so its digest is an unkeyed constant; a
+key holder can still confirm a guess (the key is the secret); a public key's id is its name, so two public keys of one
+name and different bytes look like one context (the repository's loader pins public names to bytes); tool-argument
+digests under a public fixture key are confirmable (producer policy keeps public keys to fixtures, and the `keyId`
+shows it); the entrypoint file's sha256 is kept (it hashes a public artifact whose size is shown beside it).
+
+**What changed in `.2`.** `watermark.keyId` is new on both source kinds; `tornTail.sha256` is `tornTail.digest` (keyed);
+`prefixDigest`, `contentDigest` (with records), identifier and kind aliases and the stored identity, configuration and
+supporting digests are keyed tokens; `digestKey` is required on every read (`readEndoCockpitEventLogV0`,
+`readEndoCockpitRegistryV0`, the timeline, runtime and snapshot reads) and is a required argument of the three projectors
+and of `checkEndoCockpitSourceFreshnessV0`, which gains the outcome `digest-context-differs`; every projection version is
+`cockpit-*.2`, so a held `.1` record fails the exact match. These are changes to a contract not yet released.
 
 Two facts the wire alone decides are enforced by the validators. `sealedAt` is the first frame that failed verification,
 so it is exactly the one after the verified prefix: `watermark.length + 1` for an event log, the sum of the registry
@@ -190,9 +228,12 @@ it embeds a local path, a network address or a credential is replaced whole by a
 (`ENDO_COCKPIT_WITHHELD_TEXT_V0`; for a timeline field the field becomes `unavailable` with that text and its key counts
 as withheld). The filter is a heuristic: it withholds, it does not certify what it passes, so a free-text value is also bounded and is **withheld whole when longer than 256 characters, never cut** (this includes a capability's recorded reason and an evidence record's limitations: the committed Pi specimen has one 283-character reason, which is therefore withheld) (a cut can split a secret so that neither half is recognised), judged on the whole value, after Unicode normalisation (NFKC) and with zero-width, bidirectional and control characters treated as unsafe. Values whose shape is known are admitted by shape instead, and by the same content check: identifiers, digests, the producer name, the runtime session reference, the names of declared gaps. Dotted kinds (a runtime family, a capability, an event kind, an attachment name) are valid whatever they say, so they pass the content check too; one it flags is shown as a placeholder (a withheld runtime family, `withheld-<hash>` for a capability, `other.withheld-<hash>` for an event kind) and an attachment so named is not listed (reading it by name is refused). The bases a v0 record may carry exclude `inferred`, and the basis of each identity claim is fixed by what it is (identity derived, version reported, entrypoint and package observed, or unavailable with the projection's own reason).
 
-**Identifiers and aliases.** An identifier is presented as it is when its opaque local part is lowercase letters, digits and hyphens in dot-separated segments of at most 64 characters and the content check passes it; real identifiers (digests, counters, attachment-derived names) are of that shape. Any other identifier is presented as a deterministic alias in the same namespace, `endo.<kind>.withheld-` and 32 hex digits of its sha256, the same everywhere it appears, so every reference relationship (a derived event and its source, a state and its fingerprint, the watermark's last event and the entry) holds, while the underlying identity protocol is unchanged. The alias is one-way, and a reference stays addressable by position (`storageSequence` or `index`), which the alias does not touch. The alias namespace is reserved: any identifier or dotted kind with a segment beginning `withheld-` is never presented as it is, only aliased, so a generated alias can never equal a value a source wrote and two distinct sources never share a public value (source admission and public validation are separate: a wire record may carry an alias, a source may not pass one through). Residuals, stated rather than claimed away: a lowercase hexadecimal credential is indistinguishable from the digests identifiers legitimately carry; a low-entropy secret can be confirmed against its alias.
+**Identifiers and aliases.** An identifier is presented as it is when its opaque local part is lowercase letters, digits and hyphens in dot-separated segments of at most 64 characters and the content check passes it; real identifiers (digests, counters, attachment-derived names) are of that shape. Any other identifier is presented as a deterministic alias in the same namespace, `endo.<kind>.withheld-` and 32 hex digits of a keyed token of the identifier (above), the same everywhere under one key it appears, so every reference relationship (a derived event and its source, a state and its fingerprint, the watermark's last event and the entry) holds, while the underlying identity protocol is unchanged. The alias is one-way, and a reference stays addressable by position (`storageSequence` or `index`), which the alias does not touch. The alias namespace is reserved: any identifier or dotted kind with a segment beginning `withheld-` is never presented as it is, only aliased, so a generated alias can never equal a value a source wrote and two distinct sources never share a public value (source admission and public validation are separate: a wire record may carry an alias, a source may not pass one through). Residuals, stated rather than claimed away: a lowercase hexadecimal credential is indistinguishable from the digests identifiers legitimately carry; a low-entropy secret can no longer be confirmed against its alias without the key, but a key holder can.
 
-**Notes and latest records.** A derived note is present exactly when its condition holds, once, with exactly its references, wherever the wire decides it (no fingerprint, a failed or unrelated latest change, no capability state, a state without a fingerprint); a note that needs the whole record list (a notice whose change is missing, a runtime family disagreement) is checked for a possible precondition and its references. `current`, the last change, the last notice, the capability state and the state's latest fingerprint are the records the watermark ends at (present exactly when there are any, at the last position, carrying the last id), and the previous different observation is an earlier one. When a record was set aside as foreign or repeated (a store never produces either) the latest is the latest KEPT record, which the watermark does not locate, and the check falls back to the range.
+**Notes and latest records.** A derived note is present exactly when its condition holds, once, with exactly its references, wherever the wire decides it (no fingerprint, a failed or unrelated latest change, no capability state, a state without a fingerprint); a note that needs the whole record list (a notice whose change is missing, a runtime family disagreement) is checked for a possible precondition and its references. `current`, the last change, the last notice, the capability state and the state's latest fingerprint are the records the watermark ends at (present exactly when there are any, at the last position, carrying the last id), and the previous different observation is an earlier one. When a record was set aside as foreign or repeated (a store never produces either) the latest is the latest KEPT record, which the watermark does not locate, and the check falls back to the range. Each registry projection carries only the notes its own projector emits (identity: no fingerprint, the two latest-change notes, a notice whose change is missing, a runtime disagreement; capability state: a duplicate capability, a state without a fingerprint, no state recorded; both: a source that is not projectable and the foreign/repeated-record notes, for the kinds each projection cleans), so a code of the other projection is refused.
+
+**Declared gaps, digests and positions.** A session start or resume considers at most `ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0` (32) items of its `unavailable` list and presents at most that many `unavailable.<name>` fields (the validator enforces the same bound); a name declared twice keeps its last item and the array then counts once as withheld, as does an array with a lost, malformed or extra-member item. A tool event's `argsDigest`/`resultDigest` members are shown only when the whole parent object is an exact keyed digest (`hmac-sha256`, the key-id grammar, 64 lowercase hex; shape only, not the HMAC or the key's secrecy), together or not at all. The exported timeline projector requires its input positions to be contiguous from `afterSequence + 1` (a duplicate event consumes its position and is counted), so its result always accounts for the whole window.
+
 
 **Public errors.** A source's `error` is one of a closed set of categories (`ENDO_COCKPIT_SOURCE_ERRORS_V0`), each with ONE fixed message, and the validator requires exactly that pair. Nothing a store, an operating-system error or a record said is public: an Error message can quote an identifier, a path or the record's own text, so the category is chosen from the typed error or the store's own fixed phrase and the message is the category's sentence. A future explicit evidence-inspection endpoint can
 extend this safely only by being a separate, deliberate request for one referenced record: addressed by the `ref` a

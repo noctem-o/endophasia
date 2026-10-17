@@ -37,6 +37,8 @@ import {
 	ENDO_COCKPIT_DISCONTINUITY_KINDS_V0,
 	ENDO_COCKPIT_FIELD_SPECS_V0,
 	ENDO_COCKPIT_INTERRUPTION_KINDS_V0,
+	ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0,
+	ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0,
 	ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0,
 	ENDO_COCKPIT_UNRECOGNIZED_KINDS_V0,
 	ENDO_COCKPIT_USAGE_REASONS_V0,
@@ -52,8 +54,10 @@ import {
 } from "../../protocol/cockpit-fields.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
+import { isEndoKeyedDigestV0 } from "../../protocol/keyed-digest-shape.ts";
 import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
-import { kindLabelV0, publicIdV0 } from "./common.ts";
+import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
+import { cockpitAliasesV0, type EndoCockpitAliasesV0 } from "./common.ts";
 
 /** One event of the log with the storage sequence it was read at. */
 export interface EndoCockpitStoredEventV0 {
@@ -70,7 +74,6 @@ export interface EndoCockpitTimelineInputV0 {
 }
 
 const MAX_STRING = 256;
-const MAX_DECLARED_UNAVAILABLE = 32;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -91,6 +94,7 @@ function pathValue(payload: Record<string, unknown>, path: string): unknown {
 }
 
 function scalar(
+	alias: EndoCockpitAliasesV0,
 	value: unknown,
 	type: EndoCockpitFieldTypeV0,
 	nullable: boolean,
@@ -98,7 +102,7 @@ function scalar(
 	if (value === null) return nullable ? null : undefined;
 	if (type === "string" && typeof value === "string") return value;
 	if (type === "id" && typeof value === "string")
-		return parseEndoIdentifierV0(value) === null ? undefined : publicIdV0(value);
+		return parseEndoIdentifierV0(value) === null ? undefined : alias.id(value);
 	if (type === "number" && typeof value === "number" && Number.isFinite(value)) return value;
 	if (type === "boolean" && typeof value === "boolean") return value;
 	return undefined;
@@ -122,6 +126,7 @@ const isWithheld = (field: EndoCockpitFieldV0): boolean =>
  * embeds a path, address or credential is presented as the fixed withheld text instead (withheldField()).
  */
 function readField(
+	alias: EndoCockpitAliasesV0,
 	kind: string,
 	payload: Record<string, unknown>,
 	spec: EndoCockpitFieldSpecV0,
@@ -129,6 +134,11 @@ function readField(
 	const [, path, basis, type, nullable] = spec;
 	const raw = pathValue(payload, path);
 	if (raw === undefined) return undefined;
+	// A member of a keyed digest is shown only when the whole digest object is a well-formed one.
+	const digest = Object.hasOwn(ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0, spec[0])
+		? ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0[spec[0]]
+		: undefined;
+	if (digest !== undefined && !isEndoKeyedDigestV0(own(payload, digest.parent))) return undefined;
 	// A field of an opaque value is shown only in the shape the policy admits for it; any other is withheld whole.
 	const admitted = endoCockpitFieldRuleV0(kind, spec[0])?.admitted;
 	const judged = (text: string): boolean => freeText(text) !== null && (admitted === undefined || admitted(text));
@@ -137,7 +147,7 @@ function readField(
 	// is omitted (so counted as withheld), never allowed to change what the field claims to be.
 	const wrapped = basis === "reported";
 	if (wrapped && isRecord(raw) && raw.status === "reported") {
-		const value = scalar(own(raw, "value"), type, false);
+		const value = scalar(alias, own(raw, "value"), type, false);
 		if (typeof value === "string" && !judged(value)) return withheldField();
 		return value === undefined ? undefined : { basis: "reported", value };
 	}
@@ -147,7 +157,7 @@ function readField(
 			? { basis: "unavailable", reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0 }
 			: undefined;
 	}
-	const value = scalar(raw, type, nullable === true);
+	const value = scalar(alias, raw, type, nullable === true);
 	if (typeof value === "string" && !judged(value)) return withheldField();
 	return value === undefined ? undefined : { basis, value };
 }
@@ -165,8 +175,8 @@ function declaredUnavailable(payload: Record<string, unknown>): {
 	const list = own(payload, "unavailable");
 	if (list === undefined) return { fields, whole: false };
 	if (!Array.isArray(list)) return { fields, whole: false };
-	let whole = list.length <= MAX_DECLARED_UNAVAILABLE;
-	for (const item of list.slice(0, MAX_DECLARED_UNAVAILABLE)) {
+	let whole = list.length <= ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0;
+	for (const item of list.slice(0, ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0)) {
 		const field = isRecord(item) ? own(item, "field") : undefined;
 		const reason = isRecord(item) ? own(item, "reason") : undefined;
 		if (typeof field !== "string" || field.length === 0 || typeof reason !== "string" || reason.length === 0) {
@@ -181,6 +191,8 @@ function declaredUnavailable(payload: Record<string, unknown>): {
 		}
 		const shown = freeText(reason);
 		if (shown === null) whole = false;
+		// A name declared twice keeps its last item (as it always has), and the array is then not shown whole.
+		if (Object.hasOwn(fields, `unavailable.${field}`)) whole = false;
 		fields[`unavailable.${field}`] = {
 			basis: "unavailable",
 			reason: shown ?? ENDO_COCKPIT_WITHHELD_TEXT_V0,
@@ -338,7 +350,7 @@ function wrapperIsExact(raw: unknown): boolean {
 	return keys.length === 2 && keys.includes(raw.status === "reported" ? "value" : "reason");
 }
 
-function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
+function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	const { event, storageSequence } = stored;
 	const payload = isRecord(event.payload) ? event.payload : {};
 	const specs = Object.hasOwn(ENDO_COCKPIT_FIELD_SPECS_V0, event.kind)
@@ -347,7 +359,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	const fields: Record<string, EndoCockpitFieldV0> = {};
 	const presentedWhole = new Set<string>();
 	for (const spec of specs ?? []) {
-		const field = readField(event.kind, payload, spec);
+		const field = readField(alias, event.kind, payload, spec);
 		if (field === undefined) continue;
 		fields[spec[0]] = field;
 		// A key counts as presented only when the whole top-level value is shown; a nested path leaves the rest withheld,
@@ -368,22 +380,22 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 	if (event.kind === "message.completed" && usageIsWhole(payload)) presentedWhole.add("usage");
 	// A kind is grammar-valid whatever it says: one the text policy flags is presented as a placeholder in "other".
 	const presentedKind = !isEndoCockpitSourceKindAdmittedV0(event.kind)
-		? `other.${kindLabelV0(event.kind)}`
+		? `other.${alias.kind(event.kind)}`
 		: event.kind;
 	const keys = isRecord(event.payload) ? Object.keys(event.payload) : [];
 	return {
 		storageSequence,
-		eventId: publicIdV0(event.id),
+		eventId: alias.id(event.id),
 		kind: presentedKind,
 		category: categoryOf(presentedKind),
 		source: event.source,
 		producer: endoCockpitProducerAdmittedV0(event.producer) ? event.producer : ENDO_COCKPIT_WITHHELD_TEXT_V0,
 		producerSequence: event.sequence,
 		recordedAt: event.at,
-		sessionId: event.coordinates.sessionId === undefined ? null : publicIdV0(event.coordinates.sessionId),
-		runId: event.coordinates.runId === undefined ? null : publicIdV0(event.coordinates.runId),
-		experimentId: event.coordinates.experimentId === undefined ? null : publicIdV0(event.coordinates.experimentId),
-		derivedFrom: event.derivedFrom.map(publicIdV0),
+		sessionId: event.coordinates.sessionId === undefined ? null : alias.id(event.coordinates.sessionId),
+		runId: event.coordinates.runId === undefined ? null : alias.id(event.coordinates.runId),
+		experimentId: event.coordinates.experimentId === undefined ? null : alias.id(event.coordinates.experimentId),
+		derivedFrom: event.derivedFrom.map((id) => alias.id(id)),
 		flags: flagsOf(event, payload, endoCockpitKindRecognizedV0(event.kind)),
 		fields,
 		usage: usageOf(event, payload, fields),
@@ -393,10 +405,17 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 
 /**
  * The timeline projection of one window of the event log. Throws a TypeError when the input breaks its own contract: a
- * storage sequence at or below the window's lower bound, or not strictly ascending. (A store cannot produce either.)
+ * storage sequence that is not the previous position plus one, beginning at `afterSequence + 1`: every consumed position
+ * is an event of the window or a duplicate it ignored, so the result accounts for them all. (A store reads contiguously.)
  */
-export function projectEndoCockpitSessionTimelineV0(input: EndoCockpitTimelineInputV0): EndoCockpitSessionTimelineV0 {
+export function projectEndoCockpitSessionTimelineV0(
+	input: EndoCockpitTimelineInputV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitSessionTimelineV0 {
 	const { source, afterSequence, events } = input;
+	if (source.watermark !== null && source.watermark.keyId !== digestKey.keyId)
+		throw new TypeError("the digest key is not the key the source was read under");
+	const alias = cockpitAliasesV0(digestKey);
 	if (!Number.isSafeInteger(afterSequence) || afterSequence < 0)
 		throw new TypeError("the window's afterSequence must be a non-negative integer");
 	const entries: EndoCockpitTimelineEntryV0[] = [];
@@ -406,15 +425,15 @@ export function projectEndoCockpitSessionTimelineV0(input: EndoCockpitTimelineIn
 	let duplicatesIgnored = 0;
 	let previous = afterSequence;
 	for (const stored of events) {
-		if (!Number.isSafeInteger(stored.storageSequence) || stored.storageSequence <= previous)
-			throw new TypeError("storage sequences must be strictly ascending and above the window's afterSequence");
+		if (!Number.isSafeInteger(stored.storageSequence) || stored.storageSequence !== previous + 1)
+			throw new TypeError("storage sequences must be contiguous, beginning right after the window's afterSequence");
 		previous = stored.storageSequence;
 		if (seen.has(stored.event.id)) {
 			duplicatesIgnored += 1;
 			continue;
 		}
 		seen.add(stored.event.id);
-		const entry = entryOf(stored);
+		const entry = entryOf(alias, stored);
 		entries.push(entry);
 		if (entry.sessionId !== null) {
 			const summary = sessions.get(entry.sessionId);

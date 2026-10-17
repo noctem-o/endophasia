@@ -44,6 +44,8 @@ import {
 	ENDO_COCKPIT_DISCONTINUITY_KINDS_V0,
 	ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0,
 	ENDO_COCKPIT_INTERRUPTION_KINDS_V0,
+	ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0,
+	ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0,
 	ENDO_COCKPIT_NO_RUNTIME_REASON_V0,
 	ENDO_COCKPIT_PAYLOAD_FLAG_KINDS_V0,
 	ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0,
@@ -83,6 +85,7 @@ import {
 	endoCapabilityStatusForV0,
 } from "./harness.ts";
 import { type EndoIdentifierKindV0, isWellFormedEventKindV0, isWellFormedKindV0 } from "./identity.ts";
+import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "./keyed-digest-shape.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
 import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
@@ -92,10 +95,10 @@ import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0
 
 /** The projection definition versions of this contract version. A change to what a projection computes bumps its own. */
 export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
-	runtimeIdentity: "cockpit-runtime-identity.1",
-	capabilityState: "cockpit-capability-state.1",
-	sessionTimeline: "cockpit-session-timeline.1",
-	snapshot: "cockpit-snapshot.1",
+	runtimeIdentity: "cockpit-runtime-identity.2",
+	capabilityState: "cockpit-capability-state.2",
+	sessionTimeline: "cockpit-session-timeline.2",
+	snapshot: "cockpit-snapshot.2",
 } as const;
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
@@ -242,8 +245,11 @@ export interface EndoCockpitNoteV0 {
 /** The state of one source and what a read-only open found; `error` holds only a bounded, escaped message. */
 export interface EndoCockpitSourceConditionV0 {
 	state: EndoCockpitSourceStateV0;
-	/** The torn tail left in place (length and sha256), or null. */
-	tornTail: { bytes: number; sha256: string } | null;
+	/**
+	 * The torn tail left in place, or null: its length and a keyed token of its bytes (purpose `endo.cockpit.torn-tail.v0`
+	 * under the read's digest key). The tail is data the cockpit withholds, so no plain hash of it is published.
+	 */
+	tornTail: { bytes: number; digest: string } | null;
 	/** The 1-based index of the first frame that failed verification, or null. Writes to a sealed store are refused. */
 	sealedAt: number | null;
 	error: { kind: EndoCockpitSourceErrorKindV0; message: string } | null;
@@ -251,17 +257,21 @@ export interface EndoCockpitSourceConditionV0 {
 
 /**
  * The event log's position. `length` events were read, the last of them `lastEventId`; `prefixDigest` binds the complete
- * content of those events, in storage order: the sha256 over one line per event, each line the lowercase hex sha256 of
- * the event's canonical JSON (runtime/contracts/canonical-json.ts) followed by "\n". Every line has the same width and
- * alphabet, so the framing is unambiguous and any language can recompute it. The same digest over the first `length`
- * events of a later read proves the held prefix is still the prefix, even when an event was replaced under the same id.
- * A consumer continues from `afterSequence = its length` only after that check (cockpit/reader.ts,
- * checkEndoCockpitSourceFreshnessV0). Both are null for an empty log.
+ * content of those events, in storage order, under the digest key the read was made with (`keyId`): the HMAC of
+ * `{ purpose: "endo.cockpit.event-prefix.v0", length, chain }`, where `chain` is the sha256 over one line per event, each
+ * line the lowercase hex sha256 of the event's canonical JSON followed by "\n" (kept internal: it commits to withheld
+ * content, so it is never published). The same token over the first `length` events of a later read, under the same key,
+ * proves the held prefix is still the prefix, even when an event was replaced under the same id; without the key it can
+ * be neither recomputed nor confirmed against a guess. A consumer continues from `afterSequence = its length` only after
+ * that check (cockpit/reader.ts, checkEndoCockpitSourceFreshnessV0). `lastEventId` and `prefixDigest` are null for an
+ * empty log.
  */
 export interface EndoCockpitEventLogWatermarkV0 {
 	length: number;
 	lastEventId: string | null;
 	prefixDigest: string | null;
+	/** The id of the digest key the tokens of this source were made under (never the key). */
+	keyId: string;
 }
 
 export interface EndoCockpitEventLogSourceV0 {
@@ -273,13 +283,17 @@ export interface EndoCockpitEventLogSourceV0 {
 
 /**
  * One attachment's registry position. The registry has no cursor, so a change of any part means re-reading the
- * attachment's registry; `contentDigest` is the sha256 of the canonical JSON of its records, kind by kind, in append
- * order, so equal watermarks mean equal records.
+ * attachment's registry; `contentDigest` is the keyed token (purpose `endo.cockpit.registry-content.v0`, under the digest key
+ * of `keyId`) of the canonical JSON of its records, kind by kind, in append order, so equal watermarks under one key mean
+ * equal records. A registry with no records commits to nothing, so its digest is a fixed unkeyed constant (the sha256 of
+ * `{}` when absent, of the five empty lists when opened).
  */
 export interface EndoCockpitRegistryWatermarkV0 {
 	counts: Record<EndoCockpitRegistryKindV0, number>;
 	lastIds: Record<EndoCockpitRegistryKindV0, string | null>;
 	contentDigest: string;
+	/** The id of the digest key the tokens of this source were made under (never the key). */
+	keyId: string;
 }
 
 export interface EndoCockpitRegistrySourceV0 {
@@ -555,6 +569,10 @@ function isCount(value: unknown): value is number {
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isKeyId(value: unknown): value is string {
+	return typeof value === "string" && ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value);
+}
+
 function isSha256(value: unknown): value is string {
 	return typeof value === "string" && SHA256_HEX.test(value);
 }
@@ -650,7 +668,7 @@ function isCondition(value: unknown): value is EndoCockpitSourceConditionV0 {
 	if (!oneOf(ENDO_COCKPIT_SOURCE_STATES_V0, value.state)) return false;
 	const tail = value.tornTail;
 	if (tail !== null) {
-		if (!isPlain(tail) || !exactKeys(tail, ["bytes", "sha256"]) || !isCount(tail.bytes) || !isSha256(tail.sha256))
+		if (!isPlain(tail) || !exactKeys(tail, ["bytes", "digest"]) || !isCount(tail.bytes) || !isSha256(tail.digest))
 			return false;
 		// A torn tail is at least one byte of an incomplete frame, and the reader stops at the first corrupt frame without
 		// looking past it, so a log is never both torn and sealed.
@@ -690,8 +708,9 @@ function isEventLogSource(value: unknown): value is EndoCockpitEventLogSourceV0 
 	const unopenable = value.condition.state === "unopenable";
 	if (unopenable) return value.watermark === null;
 	const mark = value.watermark;
-	if (!isPlain(mark) || !exactKeys(mark, ["length", "lastEventId", "prefixDigest"]) || !isCount(mark.length))
+	if (!isPlain(mark) || !exactKeys(mark, ["length", "lastEventId", "prefixDigest", "keyId"]) || !isCount(mark.length))
 		return false;
+	if (!isKeyId(mark.keyId)) return false;
 	// The state and the position must agree: a clean log with no events is absent or empty, never readable. (A log can be
 	// degraded at zero events: a torn tail or a bad first frame leaves no verified prefix.)
 	// The first frame that failed verification is the one right after the verified prefix.
@@ -714,8 +733,13 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 	if (!isKindLabel(value.attachment) || !isCondition(value.condition)) return false;
 	if (value.condition.state === "unopenable") return value.watermark === null;
 	const mark = value.watermark;
-	if (!isPlain(mark) || !exactKeys(mark, ["counts", "lastIds", "contentDigest"]) || !isSha256(mark.contentDigest))
+	if (
+		!isPlain(mark) ||
+		!exactKeys(mark, ["counts", "lastIds", "contentDigest", "keyId"]) ||
+		!isSha256(mark.contentDigest)
+	)
 		return false;
+	if (!isKeyId(mark.keyId)) return false;
 	if (!isPlain(mark.counts) || !exactKeys(mark.counts, ENDO_COCKPIT_REGISTRY_KINDS_V0)) return false;
 	if (!isPlain(mark.lastIds) || !exactKeys(mark.lastIds, ENDO_COCKPIT_REGISTRY_KINDS_V0)) return false;
 	let total = 0;
@@ -971,8 +995,13 @@ function isUsage(value: unknown): value is EndoCockpitUsageV0 {
 function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 	const { kind, fields } = entry;
 	if (!endoCockpitProducerAdmittedV0(entry.producer) && entry.producer !== ENDO_COCKPIT_WITHHELD_TEXT_V0) return false;
+	let declared = 0;
 	for (const [key, field] of Object.entries(fields)) {
 		const rule = endoCockpitFieldRuleV0(kind, key);
+		if (rule?.dynamic === true) {
+			declared += 1;
+			if (declared > ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0) return false;
+		}
 		if (rule === null) return false;
 		if (rule.dynamic === true && !endoCockpitGapNameAdmittedV0(key.slice("unavailable.".length))) return false;
 		if (field.basis === "unavailable") {
@@ -988,6 +1017,11 @@ function entryFollowsPolicy(entry: EndoCockpitTimelineEntryV0): boolean {
 		// Every presented string is judged whole and within the field bound, as the projection judged it.
 		if (typeof field.value === "string" && !endoCockpitTextPresentableV0(field.value)) return false;
 		if (rule.admitted !== undefined && typeof field.value === "string" && !rule.admitted(field.value)) return false;
+	}
+	// The two members of a keyed digest are shown together or not at all.
+	for (const key of Object.keys(fields)) {
+		if (!Object.hasOwn(ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0, key)) continue;
+		if (fields[ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0[key]!.partner] === undefined) return false;
 	}
 	const runtimeSession = fields.runtimeSessionId;
 	const conflict =
@@ -1221,9 +1255,48 @@ const NOTE_REF_KINDS: Readonly<Record<EndoCockpitNoteCodeV0, readonly EndoCockpi
 	"source-not-projectable": [],
 };
 
-function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext): boolean {
+/**
+ * The notes each registry projection may carry, and the record kinds it cleans (so the only kinds a foreign or repeated
+ * record can be noted for). The diagnostics shared by both are the source's and the set-aside ones; a code belonging to
+ * the other projection is never one this projection emits.
+ */
+const NOTE_POLICY: Readonly<
+	Record<
+		"runtimeIdentity" | "capabilityState",
+		{ codes: readonly EndoCockpitNoteCodeV0[]; cleaned: readonly EndoCockpitRegistryKindV0[] }
+	>
+> = {
+	runtimeIdentity: {
+		codes: [
+			"no-fingerprint-recorded",
+			"latest-change-not-for-latest-fingerprint",
+			"latest-change-is-collection-failure",
+			"notification-change-missing",
+			"runtime-disagreement",
+			"foreign-attachment-record",
+			"duplicate-record-id",
+			"source-not-projectable",
+		],
+		cleaned: ["fingerprint", "change", "notification"],
+	},
+	capabilityState: {
+		codes: [
+			"foreign-attachment-record",
+			"duplicate-record-id",
+			"duplicate-capability",
+			"state-without-fingerprint",
+			"no-capability-state-recorded",
+			"source-not-projectable",
+		],
+		cleaned: ["fingerprint", "evidence", "state"],
+	},
+};
+
+function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection: keyof typeof NOTE_POLICY): boolean {
+	const policy = NOTE_POLICY[projection];
 	return notes.every((note) => {
-		const kinds = NOTE_REF_KINDS[note.code];
+		if (!policy.codes.includes(note.code)) return false;
+		const kinds = FOREIGN_OR_DUPLICATE.includes(note.code) ? policy.cleaned : NOTE_REF_KINDS[note.code];
 		return note.refs.every((ref) => isRegistryRef(ref, ctx, kinds));
 	});
 }
@@ -1244,9 +1317,13 @@ const LIMIT_REF_KINDS: Readonly<Record<EndoCockpitLimitCodeV0, readonly EndoCock
 	"evidence-confidence-differs": ["state", "evidence", "fingerprint"],
 };
 
-function validateRegistryProjection(value: Record<string, unknown>, projectionVersion: string): boolean {
+function validateRegistryProjection(
+	value: Record<string, unknown>,
+	projectionVersion: string,
+	projection: keyof typeof NOTE_POLICY,
+): boolean {
 	if (value.projectionVersion !== projectionVersion || !isRegistrySource(value.source)) return false;
-	return arrayOf(value.notes, isNote) && notesPointInto(value.notes, contextOf(value.source));
+	return arrayOf(value.notes, isNote) && notesPointInto(value.notes, contextOf(value.source), projection);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1441,7 +1518,8 @@ export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpi
 	)
 		return null;
 	if (value.schemaVersion !== "endo.cockpit-runtime-identity.v0") return null;
-	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.runtimeIdentity)) return null;
+	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.runtimeIdentity, "runtimeIdentity"))
+		return null;
 	if (!isClaim(value.runtime, (item): item is string => typeof item === "string" && isKindLabel(item))) return null;
 	if (!nullable(value.current, isFingerprintView) || !nullable(value.previousDifferent, isFingerprintView))
 		return null;
@@ -1622,7 +1700,8 @@ export function validateEndoCockpitCapabilityStateV0(value: unknown): EndoCockpi
 	)
 		return null;
 	if (value.schemaVersion !== "endo.cockpit-capability-state.v0") return null;
-	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.capabilityState)) return null;
+	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.capabilityState, "capabilityState"))
+		return null;
 	const state = value.state;
 	if (state !== null) {
 		if (
@@ -1760,6 +1839,10 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 	if (!Array.isArray(value.runtimes)) return null;
 	const seen = new Set<string>();
 	let lastAttachment = "";
+	// One read is made under one digest key: every source that has a position names the same key.
+	const keyIds = new Set<string>();
+	const timelineMark = (value.timeline as EndoCockpitSessionTimelineV0).source.watermark;
+	if (timelineMark !== null) keyIds.add(timelineMark.keyId);
 	for (const runtime of value.runtimes) {
 		if (!isPlain(runtime) || !exactKeys(runtime, ["identity", "capabilities"])) return null;
 		const identity = validateEndoCockpitRuntimeIdentityV0(runtime.identity);
@@ -1767,11 +1850,13 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (identity === null || capabilities === null) return null;
 		// Both views of one attachment come from one read of its registry: the same condition and the same position.
 		if (!sameJson(identity.source, capabilities.source)) return null;
+		if (identity.source.watermark !== null) keyIds.add(identity.source.watermark.keyId);
 		// One view per attachment, in code-unit order of the attachment name.
 		if (seen.size > 0 && !(lastAttachment < identity.source.attachment)) return null;
 		lastAttachment = identity.source.attachment;
 		seen.add(identity.source.attachment);
 	}
+	if (keyIds.size > 1) return null;
 	return value as unknown as EndoCockpitSnapshotV0;
 }
 

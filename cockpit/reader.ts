@@ -39,8 +39,10 @@ import {
 } from "../protocol/cockpit.ts";
 import { endoCockpitTextUnsafeV0 } from "../protocol/cockpit-fields.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
+import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../protocol/keyed-digest-shape.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import {
 	type EndoHarnessRegistryV0,
@@ -48,8 +50,14 @@ import {
 	openEndoHarnessRegistryV0,
 } from "../storage/harness-registry.ts";
 import { EndoLogUnreadableErrorV0 } from "../storage/log.ts";
-import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "./projections/common.ts";
-import { compareCodeUnitsV0, publicIdV0 } from "./projections/common.ts";
+import {
+	cockpitAliasesV0,
+	cockpitTokenV0,
+	compareCodeUnitsV0,
+	ENDO_COCKPIT_TOKEN_PURPOSES_V0,
+	type EndoCockpitRegistryInputV0,
+	type EndoCockpitRegistryRecordsV0,
+} from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
 
 /** The default and maximum timeline page of the cockpit; the maximum is the event store's own (pinned by a test). */
@@ -57,6 +65,12 @@ export const ENDO_COCKPIT_PAGE_DEFAULT_LIMIT_V0 = 200;
 export { ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 };
 
 export interface EndoCockpitEventLogReadOptionsV0 {
+	/**
+	 * The digest key the position tokens and placeholders of this read are made under: required, supplied by the host,
+	 * never created, loaded or defaulted here (reading writes nothing, and no key is read from the environment). It is
+	 * never serialized; sources record only its id. Use a key dedicated to the cockpit.
+	 */
+	digestKey: EndoDigestKeyV0;
 	/** Return events with a storage sequence greater than this. Default 0. */
 	afterSequence?: number;
 	/** Maximum events returned. Default 200, maximum 10000. */
@@ -134,7 +148,22 @@ function conditionFor(kind: EndoCockpitSourceErrorKindV0): EndoCockpitSourceCond
 const unopenable = (error: unknown): EndoCockpitSourceConditionV0 => conditionFor(categoryOf(error));
 const unreadable = conditionFor;
 
+/** The key a read is made under: a usage error (not a source condition) when it is absent or not a digest key. */
+function requireKey(key: unknown): EndoDigestKeyV0 {
+	const candidate = key as Partial<EndoDigestKeyV0> | null | undefined;
+	if (
+		typeof candidate !== "object" ||
+		candidate === null ||
+		typeof candidate.digest !== "function" ||
+		typeof candidate.keyId !== "string" ||
+		!ENDO_DIGEST_KEY_ID_PATTERN_V0.test(candidate.keyId)
+	)
+		throw new TypeError("a cockpit read needs an explicit digest key (digestKey)");
+	return candidate as EndoDigestKeyV0;
+}
+
 function conditionOf(
+	key: EndoDigestKeyV0,
 	recovery: {
 		truncated: boolean;
 		tail: { bytes: number; sha256: string } | null;
@@ -146,7 +175,17 @@ function conditionOf(
 	if (recovery.truncated || recovery.sealed) {
 		return {
 			state: "degraded",
-			tornTail: recovery.tail === null ? null : { bytes: recovery.tail.bytes, sha256: recovery.tail.sha256 },
+			// The tail is data the cockpit withholds, so only a keyed token of it is published.
+			tornTail:
+				recovery.tail === null
+					? null
+					: {
+							bytes: recovery.tail.bytes,
+							digest: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.tornTail, {
+								bytes: recovery.tail.bytes,
+								sha256: recovery.tail.sha256,
+							}),
+						},
 			sealedAt: recovery.corruptAt,
 			error: null,
 		};
@@ -189,10 +228,11 @@ function withEventStore<T>(
 }
 
 /**
- * The one digest of an event log prefix: the sha256 over one line per event, in storage order, each line the lowercase hex
- * sha256 of the event's canonical JSON (runtime/contracts/canonical-json.ts) and a newline. Every line has the same width
- * and alphabet, so the framing is unambiguous; a replaced event with the same id but another kind, coordinates, payload
- * or time changes its line. Null for no events.
+ * One line of the internal chain over an event log prefix: the lowercase hex sha256 of the event's canonical JSON
+ * (runtime/contracts/canonical-json.ts) and a newline, in storage order. Every line has the same width and alphabet, so
+ * the framing is unambiguous; a replaced event with the same id but another kind, coordinates, payload or time changes its
+ * line. The chain commits to content the timeline withholds, so it is NEVER published: the public prefix digest is a keyed
+ * token of it (prefixToken).
  */
 function frameOf(event: unknown): string {
 	return `${sha256HexV0(canonicalEndoJsonV0(event))}\n`;
@@ -221,10 +261,10 @@ function prefixDigestsOf(
 	return { full: count === 0 ? null : hash.digest("hex"), held: heldDigest };
 }
 
-function lastEventIdOf(store: EndoDurableEventStoreV0): string | null {
+function lastEventIdOf(store: EndoDurableEventStoreV0, key: EndoDigestKeyV0): string | null {
 	const length = store.length;
 	const id = length === 0 ? null : (store.page({ afterSequence: length - 1, limit: 1 }).events[0]?.id ?? null);
-	return id === null ? null : publicIdV0(id);
+	return id === null ? null : cockpitAliasesV0(key).id(id);
 }
 
 /** What one open of the event log found: the public read and, when asked, the digest of the first `held` events. */
@@ -233,11 +273,18 @@ interface EventLogObservation {
 	heldDigest: string | null;
 }
 
+/** The public token of the first `length` events' internal chain. Null for no events. */
+const prefixToken = (key: EndoDigestKeyV0, length: number, chain: string | null): string | null =>
+	chain === null || length === 0
+		? null
+		: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.eventPrefix, { length, chain });
+
 function observeEventLog(
 	root: string,
 	options: EndoCockpitEventLogReadOptionsV0,
 	held: number | null,
 ): EventLogObservation {
+	const key = requireKey(options?.digestKey);
 	const { afterSequence, limit } = checkWindow(options);
 	const opened = withEventStore(root, (store) => {
 		const recovery = store.recovery();
@@ -249,9 +296,9 @@ function observeEventLog(
 			recovery,
 			length,
 			events,
-			lastEventId: lastEventIdOf(store),
-			prefixDigest: digests.full,
-			heldDigest: digests.held,
+			lastEventId: lastEventIdOf(store, key),
+			prefixDigest: prefixToken(key, length, digests.full),
+			heldDigest: held === null ? null : prefixToken(key, Math.min(held, length), digests.held),
 		};
 	});
 	const result = (
@@ -263,7 +310,7 @@ function observeEventLog(
 		return result({
 			domain: "event-log",
 			condition: { state: "absent", ...NO_DAMAGE },
-			watermark: { length: 0, lastEventId: null, prefixDigest: null },
+			watermark: { length: 0, lastEventId: null, prefixDigest: null, keyId: key.keyId },
 		});
 	if (opened.source === "unopenable")
 		return result({ domain: "event-log", condition: opened.condition, watermark: null });
@@ -271,8 +318,8 @@ function observeEventLog(
 	return result(
 		{
 			domain: "event-log",
-			condition: conditionOf(recovery, length),
-			watermark: { length, lastEventId, prefixDigest },
+			condition: conditionOf(key, recovery, length),
+			watermark: { length, lastEventId, prefixDigest, keyId: key.keyId },
 		},
 		events,
 		heldDigest,
@@ -285,7 +332,7 @@ function observeEventLog(
  */
 export function readEndoCockpitEventLogV0(
 	root: string,
-	options: EndoCockpitEventLogReadOptionsV0 = {},
+	options: EndoCockpitEventLogReadOptionsV0,
 ): EndoCockpitEventLogReadV0 {
 	return observeEventLog(root, options, null).read;
 }
@@ -327,6 +374,7 @@ function emptyCounts(): Record<EndoCockpitRegistryKindV0, number> {
 }
 
 function registrySource(
+	key: EndoDigestKeyV0,
 	attachment: string,
 	condition: EndoCockpitSourceConditionV0,
 	records: EndoCockpitRegistryRecordsV0 | null,
@@ -339,7 +387,12 @@ function registrySource(
 			domain: "harness-registry",
 			attachment,
 			condition,
-			watermark: { counts: emptyCounts(), lastIds, contentDigest: sha256HexV0(canonicalEndoJsonV0({})) },
+			watermark: {
+				counts: emptyCounts(),
+				lastIds,
+				contentDigest: sha256HexV0(canonicalEndoJsonV0({})),
+				keyId: key.keyId,
+			},
 		};
 	}
 	const counts = emptyCounts();
@@ -350,19 +403,28 @@ function registrySource(
 		state: null,
 		notification: null,
 	};
+	const alias = cockpitAliasesV0(key);
 	const content: Record<string, unknown[]> = {};
 	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
 		const list = records[kind] as readonly { id?: string }[];
 		counts[kind] = list.length;
 		const last = list.at(-1)?.id;
-		lastIds[kind] = last === undefined ? null : publicIdV0(last);
+		lastIds[kind] = last === undefined ? null : alias.id(last);
 		content[kind] = [...list];
 	}
 	return {
 		domain: "harness-registry",
 		attachment,
 		condition,
-		watermark: { counts, lastIds, contentDigest: sha256HexV0(canonicalEndoJsonV0(content)) },
+		watermark: {
+			counts,
+			lastIds,
+			// No records commit to nothing (a fixed constant); records are committed to under the key only.
+			contentDigest: ENDO_COCKPIT_REGISTRY_KINDS_V0.every((kind) => counts[kind] === 0)
+				? sha256HexV0(canonicalEndoJsonV0(content))
+				: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.registryContent, { content }),
+			keyId: key.keyId,
+		},
 	};
 }
 
@@ -371,24 +433,29 @@ function registrySource(
  * validated records. An absent registry is `absent` with no records; an existing but invalid one is `unopenable`, with
  * the reason, and is never presented as empty. The registry has no close; nothing is held after the call.
  */
-export function readEndoCockpitRegistryV0(root: string, attachment: string): EndoCockpitRegistryInputV0 {
+export function readEndoCockpitRegistryV0(
+	root: string,
+	attachment: string,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitRegistryInputV0 {
+	const key = requireKey(digestKey);
 	if (!isWellFormedKindV0(attachment) || endoCockpitTextUnsafeV0(attachment))
 		throw new TypeError("attachment must be a well-formed dotted kind that can be presented");
 	const found = probe(`${endoHarnessRegistryDirectoryV0(root, attachment)}/records.log`);
 	if (found.kind === "absent")
-		return { source: registrySource(attachment, { state: "absent", ...NO_DAMAGE }, null), records: null };
+		return { source: registrySource(key, attachment, { state: "absent", ...NO_DAMAGE }, null), records: null };
 	if (found.kind === "unreadable")
-		return { source: registrySource(attachment, unreadable(found.error), null), records: null };
+		return { source: registrySource(key, attachment, unreadable(found.error), null), records: null };
 	let registry: EndoHarnessRegistryV0;
 	try {
 		registry = openEndoHarnessRegistryV0(root, attachment, { readOnly: true });
 	} catch (error) {
-		return { source: registrySource(attachment, unopenable(error), null), records: null };
+		return { source: registrySource(key, attachment, unopenable(error), null), records: null };
 	}
 	const records = recordsOf(registry);
 	const recovery = registry.recovery();
 	const total = ENDO_COCKPIT_REGISTRY_KINDS_V0.reduce((sum, kind) => sum + records[kind].length, 0);
-	return { source: registrySource(attachment, conditionOf(recovery, total), records), records };
+	return { source: registrySource(key, attachment, conditionOf(key, recovery, total), records), records };
 }
 
 /**
@@ -401,8 +468,17 @@ export function readEndoCockpitRegistryV0(root: string, attachment: string): End
  *   under the same id); discard its view.
  * - shrunk: (event log) fewer events than the consumer saw; discard its view.
  * - unavailable: the source cannot be opened now, or the consumer has no position to compare.
+ * - digest-context-differs: the held source was read under another digest key (or none the caller supplies): its tokens
+ *   cannot be compared with this key's, so nothing is concluded about the source. Checked first, before the source is opened.
  */
-export type EndoCockpitFreshnessV0 = "unchanged" | "advanced" | "changed" | "diverged" | "shrunk" | "unavailable";
+export type EndoCockpitFreshnessV0 =
+	| "unchanged"
+	| "advanced"
+	| "changed"
+	| "diverged"
+	| "shrunk"
+	| "unavailable"
+	| "digest-context-differs";
 
 /**
  * Compare a source the consumer holds with the store now, read-only. This is the supported way to learn that a fresh
@@ -413,9 +489,15 @@ export type EndoCockpitFreshnessV0 = "unchanged" | "advanced" | "changed" | "div
 export function checkEndoCockpitSourceFreshnessV0(
 	root: string,
 	previous: EndoCockpitEventLogSourceV0 | EndoCockpitRegistrySourceV0,
+	digestKey: EndoDigestKeyV0,
 ): EndoCockpitFreshnessV0 {
+	// The context comes first: a key that is not the one the held source was read under can say nothing about the source.
+	const held = previous.watermark;
+	if (held !== null && (digestKey?.keyId !== held.keyId || typeof digestKey.digest !== "function"))
+		return "digest-context-differs";
+	const key = requireKey(digestKey);
 	if (previous.domain === "harness-registry") {
-		const now = readEndoCockpitRegistryV0(root, previous.attachment).source;
+		const now = readEndoCockpitRegistryV0(root, previous.attachment, key).source;
 		if (now.condition.state === "unopenable") return "unavailable";
 		// A consumer that holds no position (its source could not be opened) has nothing to compare: start from a fresh read.
 		if (previous.watermark === null) return "unavailable";
@@ -427,7 +509,7 @@ export function checkEndoCockpitSourceFreshnessV0(
 	const mark = previous.watermark;
 	const { read, heldDigest } = observeEventLog(
 		root,
-		{ limit: 1, afterSequence: mark?.length ?? 0 },
+		{ digestKey: key, limit: 1, afterSequence: mark?.length ?? 0 },
 		mark?.length ?? null,
 	);
 	const now = read.source;

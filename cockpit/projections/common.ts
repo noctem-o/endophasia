@@ -23,7 +23,7 @@ import type {
 	EndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
 import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
-import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 
 /** The validated records of one attachment's registry, each kind in append order. */
 export interface EndoCockpitRegistryRecordsV0 {
@@ -62,28 +62,64 @@ export function presentableTextV0(text: string): string {
 }
 
 /**
- * A dotted kind (a capability, an event kind) as the cockpit presents it: as it is, or, when the text policy flags it, a
- * deterministic placeholder of the same grammar (`withheld-` and 32 hex digits of its sha256). A kind is grammar-valid
- * whatever it says, so the grammar alone does not keep a credential-shaped one out of a result.
+ * The deterministic placeholders of a projection, under an explicit digest key. A placeholder is the first 32 hex digits
+ * of an HMAC of the withheld value, domain-separated by what it stands for; without the key it can be neither recomputed
+ * from a guess nor confirmed against one. The same value gives the same placeholder under one key, everywhere, so every
+ * reference relationship is kept; under another key it gives another.
  */
-export function kindLabelV0(kind: string): string {
-	return isEndoCockpitSourceKindAdmittedV0(kind) ? kind : `withheld-${sha256HexV0(kind).slice(0, 32)}`;
+export interface EndoCockpitAliasesV0 {
+	/** An identifier as presented: itself when admitted (isEndoCockpitSourceIdAdmittedV0), else its alias. */
+	id(id: string): string;
+	/** A dotted kind as presented: itself when admitted, else `withheld-` and its token. */
+	kind(kind: string): string;
+	/**
+	 * A stored digest whose preimage includes data the cockpit withholds (the identity digest covers the real path, the
+	 * configuration digest the user's configuration, a supporting digest a transcript), as presented: a keyed token of
+	 * it. Equal stored digests give equal tokens under one key, so every comparison between views holds.
+	 */
+	digest(purpose: "identity" | "configuration" | "supporting", hex: string): string;
 }
 
-/**
- * An identifier as the cockpit presents it. An identifier of the shape identifiers have (isEndoCockpitPublicIdV0) is
- * presented as it is. Any other is replaced by a deterministic alias in the same namespace, `endo.<kind>.withheld-` and
- * 32 hex digits of the sha256 of the identifier: the same identifier gives the same alias everywhere, so every reference
- * relationship (an event and the events derived from it, a state and its fingerprint) is kept, and the underlying
- * identifier is neither changed nor recoverable from the alias. A low-entropy secret could be guessed and confirmed
- * against the alias; that is not claimed away.
- */
-export function publicIdV0(id: string): string {
-	// Only a source identifier admitted as it is passes through: the generated-alias namespace is reserved, so a source
-	// identifier that looks like an alias is itself aliased, and no two distinct identifiers share a public one.
-	if (isEndoCockpitSourceIdAdmittedV0(id)) return id;
-	const kind = parseEndoIdentifierV0(id)?.kind ?? "evidence";
-	return `endo.${kind}.withheld-${sha256HexV0(id).slice(0, 32)}`;
+/** The purposes the cockpit's keyed tokens are domain-separated by (each is part of the digested value). */
+export const ENDO_COCKPIT_TOKEN_PURPOSES_V0 = {
+	idAlias: "endo.cockpit.id-alias.v0",
+	kindAlias: "endo.cockpit.kind-alias.v0",
+	eventPrefix: "endo.cockpit.event-prefix.v0",
+	registryContent: "endo.cockpit.registry-content.v0",
+	tornTail: "endo.cockpit.torn-tail.v0",
+	identityDigest: "endo.cockpit.identity-digest.v0",
+	configurationDigest: "endo.cockpit.configuration-digest.v0",
+	supportingDigest: "endo.cockpit.supporting-digest.v0",
+} as const;
+
+/** 64 hex characters of the HMAC of `{ purpose, ...parts }` under the key. */
+export function cockpitTokenV0(key: EndoDigestKeyV0, purpose: string, parts: Record<string, unknown>): string {
+	return key.digest({ purpose, ...parts }).value;
+}
+
+export function cockpitAliasesV0(key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
+	return {
+		id(id) {
+			// Only a source identifier admitted as it is passes through: the generated-alias namespace is reserved, so a
+			// source identifier that looks like an alias is itself aliased, and no two distinct identifiers share one.
+			if (isEndoCockpitSourceIdAdmittedV0(id)) return id;
+			const kind = parseEndoIdentifierV0(id)?.kind ?? "evidence";
+			return `endo.${kind}.withheld-${cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.idAlias, { id }).slice(0, 32)}`;
+		},
+		digest(purpose, hex) {
+			const name = {
+				identity: ENDO_COCKPIT_TOKEN_PURPOSES_V0.identityDigest,
+				configuration: ENDO_COCKPIT_TOKEN_PURPOSES_V0.configurationDigest,
+				supporting: ENDO_COCKPIT_TOKEN_PURPOSES_V0.supportingDigest,
+			}[purpose];
+			return cockpitTokenV0(key, name, { digest: hex });
+		},
+		kind(kind) {
+			return isEndoCockpitSourceKindAdmittedV0(kind)
+				? kind
+				: `withheld-${cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.kindAlias, { kind }).slice(0, 32)}`;
+		},
+	};
 }
 
 /** Order two strings by UTF-16 code unit, independent of the host's locale. */
@@ -92,12 +128,13 @@ export function compareCodeUnitsV0(a: string, b: string): number {
 }
 
 export function registryRefV0(
+	alias: EndoCockpitAliasesV0,
 	attachment: string,
 	kind: EndoCockpitRegistryKindV0,
 	index: number,
 	id: string | null,
 ): EndoCockpitRefV0 {
-	return { domain: "harness-registry", attachment, kind, index, id: id === null ? null : publicIdV0(id) };
+	return { domain: "harness-registry", attachment, kind, index, id: id === null ? null : alias.id(id) };
 }
 
 export function claimV0<T>(
@@ -126,6 +163,7 @@ export function cleanRegistryRecordsV0<
 	T extends { attachment: string; id?: string },
 >(
 	source: EndoCockpitRegistrySourceV0,
+	alias: EndoCockpitAliasesV0,
 	kind: K,
 	records: readonly T[],
 	notes: EndoCockpitNoteV0[],
@@ -135,12 +173,12 @@ export function cleanRegistryRecordsV0<
 	records.forEach((record, index) => {
 		const id = record.id ?? null;
 		if (record.attachment !== source.attachment) {
-			notes.push(noteV0("foreign-attachment-record", [registryRefV0(source.attachment, kind, index, id)]));
+			notes.push(noteV0("foreign-attachment-record", [registryRefV0(alias, source.attachment, kind, index, id)]));
 			return;
 		}
 		if (id !== null) {
 			if (ids.has(id)) {
-				notes.push(noteV0("duplicate-record-id", [registryRefV0(source.attachment, kind, index, id)]));
+				notes.push(noteV0("duplicate-record-id", [registryRefV0(alias, source.attachment, kind, index, id)]));
 				return;
 			}
 			ids.add(id);
@@ -148,4 +186,15 @@ export function cleanRegistryRecordsV0<
 		kept.push({ record, index });
 	});
 	return kept;
+}
+
+/**
+ * The aliases a registry projection uses, under the key the caller supplies. The source was read under a key (its
+ * watermark records the key's id); a projection under another key would alias differently from the watermark's own ids,
+ * so it is refused as a usage error, not presented.
+ */
+export function registryAliasesV0(source: EndoCockpitRegistrySourceV0, key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
+	if (source.watermark !== null && source.watermark.keyId !== key.keyId)
+		throw new TypeError("the digest key is not the key the source was read under");
+	return cockpitAliasesV0(key);
 }

@@ -36,15 +36,17 @@ import type {
 	EndoHarnessNotificationV0,
 	EndoHarnessObservationRefV0,
 } from "../../protocol/harness.ts";
+import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import {
 	claimV0,
 	cleanRegistryRecordsV0,
+	type EndoCockpitAliasesV0,
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
 	looksSensitiveTextV0,
 	noteV0,
 	presentableTextV0,
-	publicIdV0,
+	registryAliasesV0,
 	registryRefV0,
 	unavailableV0,
 } from "./common.ts";
@@ -52,27 +54,32 @@ import {
 const GAP_REASON = ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0;
 const WITHHELD_TEXT = ENDO_COCKPIT_WITHHELD_TEXT_V0;
 
-function observationView(ref: EndoHarnessObservationRefV0): EndoCockpitObservationViewV0 {
+function observationView(alias: EndoCockpitAliasesV0, ref: EndoHarnessObservationRefV0): EndoCockpitObservationViewV0 {
 	return {
-		fingerprintId: publicIdV0(ref.fingerprintId),
-		identityDigest: ref.identityDigest,
+		fingerprintId: alias.id(ref.fingerprintId),
+		identityDigest: alias.digest("identity", ref.identityDigest),
 		confidence: ref.confidence,
 		version: ref.version === null ? null : presentableTextV0(ref.version),
 	};
 }
 
 function fingerprintView(
+	alias: EndoCockpitAliasesV0,
 	attachment: string,
 	item: EndoCockpitIndexedV0<EndoHarnessFingerprintV0>,
 ): EndoCockpitFingerprintViewV0 {
 	const { record, index } = item;
-	const ref = registryRefV0(attachment, "fingerprint", index, record.id);
+	const ref = registryRefV0(alias, attachment, "fingerprint", index, record.id);
 	const refs = [ref];
 	return {
 		ref,
-		id: publicIdV0(record.id),
+		id: alias.id(record.id),
 		observedAt: record.observedAt,
-		identity: claimV0("derived", { digest: record.identity.digest, confidence: record.identity.confidence }, refs),
+		identity: claimV0(
+			"derived",
+			{ digest: alias.digest("identity", record.identity.digest), confidence: record.identity.confidence },
+			refs,
+		),
 		version:
 			record.reported.version === null
 				? unavailableV0(GAP_REASON, refs)
@@ -98,32 +105,37 @@ function fingerprintView(
 	};
 }
 
-function changeView(attachment: string, item: EndoCockpitIndexedV0<EndoHarnessChangeV0>): EndoCockpitChangeViewV0 {
+function changeView(
+	alias: EndoCockpitAliasesV0,
+	attachment: string,
+	item: EndoCockpitIndexedV0<EndoHarnessChangeV0>,
+): EndoCockpitChangeViewV0 {
 	const { record, index } = item;
 	return {
-		ref: registryRefV0(attachment, "change", index, record.id),
-		id: publicIdV0(record.id),
+		ref: registryRefV0(alias, attachment, "change", index, record.id),
+		id: alias.id(record.id),
 		at: record.at,
 		kind: record.kind,
 		differences: [...record.differences],
 		versionOrder: record.versionOrder,
-		previous: record.previous === null ? null : observationView(record.previous),
-		current: record.current === null ? null : observationView(record.current),
+		previous: record.previous === null ? null : observationView(alias, record.previous),
+		current: record.current === null ? null : observationView(alias, record.current),
 		failure: record.failure === undefined ? "none" : "withheld",
 	};
 }
 
 function notificationView(
+	alias: EndoCockpitAliasesV0,
 	attachment: string,
 	item: EndoCockpitIndexedV0<EndoHarnessNotificationV0>,
 ): EndoCockpitNotificationViewV0 {
 	const { record, index } = item;
 	return {
-		ref: registryRefV0(attachment, "notification", index, record.id),
-		id: publicIdV0(record.id),
+		ref: registryRefV0(alias, attachment, "notification", index, record.id),
+		id: alias.id(record.id),
 		at: record.at,
 		kind: record.kind,
-		changeId: publicIdV0(record.changeId),
+		changeId: alias.id(record.changeId),
 		title: presentableTextV0(record.title),
 		lineCount: record.lines.length,
 		linesWithheld: true,
@@ -131,8 +143,12 @@ function notificationView(
 }
 
 /** The runtime identity projection of one attachment. */
-export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryInputV0): EndoCockpitRuntimeIdentityV0 {
+export function projectEndoCockpitRuntimeIdentityV0(
+	input: EndoCockpitRegistryInputV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitRuntimeIdentityV0 {
 	const { source, records } = input;
+	const alias = registryAliasesV0(source, digestKey);
 	const attachment = source.attachment;
 	const notes: EndoCockpitNoteV0[] = [];
 	const base = {
@@ -154,9 +170,9 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 		};
 	}
 
-	const fingerprints = cleanRegistryRecordsV0(source, "fingerprint", records.fingerprint, notes);
-	const changes = cleanRegistryRecordsV0(source, "change", records.change, notes);
-	const notifications = cleanRegistryRecordsV0(source, "notification", records.notification, notes);
+	const fingerprints = cleanRegistryRecordsV0(source, alias, "fingerprint", records.fingerprint, notes);
+	const changes = cleanRegistryRecordsV0(source, alias, "change", records.change, notes);
+	const notifications = cleanRegistryRecordsV0(source, alias, "notification", records.notification, notes);
 
 	const current = fingerprints.at(-1) ?? null;
 	let previousDifferent: EndoCockpitIndexedV0<EndoHarnessFingerprintV0> | null = null;
@@ -176,7 +192,7 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 	if (lastChange !== null && lastChange.record.kind === "collection-failed") {
 		notes.push(
 			noteV0("latest-change-is-collection-failure", [
-				registryRefV0(attachment, "change", lastChange.index, lastChange.record.id),
+				registryRefV0(alias, attachment, "change", lastChange.index, lastChange.record.id),
 			]),
 		);
 	} else if (
@@ -186,15 +202,15 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 	) {
 		notes.push(
 			noteV0("latest-change-not-for-latest-fingerprint", [
-				registryRefV0(attachment, "change", lastChange.index, lastChange.record.id),
-				registryRefV0(attachment, "fingerprint", current.index, current.record.id),
+				registryRefV0(alias, attachment, "change", lastChange.index, lastChange.record.id),
+				registryRefV0(alias, attachment, "fingerprint", current.index, current.record.id),
 			]),
 		);
 	}
 	if (lastNotification !== null && !changes.some((change) => change.record.id === lastNotification.record.changeId)) {
 		notes.push(
 			noteV0("notification-change-missing", [
-				registryRefV0(attachment, "notification", lastNotification.index, lastNotification.record.id),
+				registryRefV0(alias, attachment, "notification", lastNotification.index, lastNotification.record.id),
 			]),
 		);
 	}
@@ -211,7 +227,9 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 		notes.push(
 			noteV0(
 				"runtime-disagreement",
-				[...families.values()].map((item) => registryRefV0(attachment, item.kind, item.index, item.record.id)),
+				[...families.values()].map((item) =>
+					registryRefV0(alias, attachment, item.kind, item.index, item.record.id),
+				),
 			),
 		);
 	}
@@ -226,17 +244,17 @@ export function projectEndoCockpitRuntimeIdentityV0(input: EndoCockpitRegistryIn
 					"observed",
 					family,
 					current !== null
-						? [registryRefV0(attachment, "fingerprint", current.index, current.record.id)]
-						: [registryRefV0(attachment, "change", lastChange!.index, lastChange!.record.id)],
+						? [registryRefV0(alias, attachment, "fingerprint", current.index, current.record.id)]
+						: [registryRefV0(alias, attachment, "change", lastChange!.index, lastChange!.record.id)],
 				);
 
 	return {
 		...base,
 		runtime,
-		current: current === null ? null : fingerprintView(attachment, current),
-		previousDifferent: previousDifferent === null ? null : fingerprintView(attachment, previousDifferent),
-		lastChange: lastChange === null ? null : changeView(attachment, lastChange),
-		lastNotification: lastNotification === null ? null : notificationView(attachment, lastNotification),
+		current: current === null ? null : fingerprintView(alias, attachment, current),
+		previousDifferent: previousDifferent === null ? null : fingerprintView(alias, attachment, previousDifferent),
+		lastChange: lastChange === null ? null : changeView(alias, attachment, lastChange),
+		lastNotification: lastNotification === null ? null : notificationView(alias, attachment, lastNotification),
 		notes,
 	};
 }

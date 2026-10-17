@@ -2,13 +2,10 @@
 // by hand (a real specimen where one exists, synthetic records where the case needs a disagreement) and check what the
 // projections guarantee: determinism, storage order, explicit gaps, provenance, the presentation boundary, and the
 // contract validators. The store-to-projection path is in endo-cockpit-reader.test.ts.
+import { createHmac } from "node:crypto";
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import { projectEndoCockpitCapabilityStateV0 } from "../cockpit/projections/capability-state.ts";
 import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "../cockpit/projections/common.ts";
-import { publicIdV0 } from "../cockpit/projections/common.ts";
-import { projectEndoCockpitRuntimeIdentityV0 } from "../cockpit/projections/runtime-identity.ts";
-import { projectEndoCockpitSessionTimelineV0 } from "../cockpit/projections/session-timeline.ts";
 import {
 	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
 	ENDO_COCKPIT_VERSIONS_V0,
@@ -41,6 +38,13 @@ import {
 	specimenRecords,
 	stored,
 } from "./cockpit-fixtures.ts";
+import {
+	projectEndoCockpitCapabilityStateV0,
+	projectEndoCockpitRuntimeIdentityV0,
+	projectEndoCockpitSessionTimelineV0,
+	publicIdV0,
+	TEST_KEY,
+} from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -54,6 +58,7 @@ function logSource(length: number, lastEventId: string | null): EndoCockpitEvent
 			length,
 			lastEventId,
 			prefixDigest: length === 0 ? null : sha256HexV0(`prefix-${length}`),
+			keyId: TEST_KEY.keyId,
 		},
 	};
 }
@@ -85,6 +90,7 @@ function registrySource(records: EndoCockpitRegistryRecordsV0 | null): EndoCockp
 				notification: publicOrNull(records?.notification.at(-1)?.id),
 			},
 			contentDigest: sha256HexV0(canonicalEndoJsonV0(records ?? {})),
+			keyId: TEST_KEY.keyId,
 		},
 	};
 }
@@ -136,9 +142,9 @@ describe("determinism and purity", () => {
 	it("the projection definition versions are part of every output", () => {
 		const identity = projectEndoCockpitRuntimeIdentityV0(input(specimenRecords()));
 		const capabilities = projectEndoCockpitCapabilityStateV0(input(specimenRecords()));
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.1");
-		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.1");
-		expect(timeline([event("tool.started")]).projectionVersion).toBe("cockpit-session-timeline.1");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.2");
+		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.2");
+		expect(timeline([event("tool.started")]).projectionVersion).toBe("cockpit-session-timeline.2");
 	});
 });
 
@@ -636,7 +642,7 @@ describe("presentation boundary", () => {
 				toolName: "bash",
 				toolCallId: "c",
 				args: { command: CANARY },
-				argsDigest: { algorithm: "hmac-sha256", keyId: "k", value: "d".repeat(64), note: CANARY },
+				argsDigest: { algorithm: "hmac-sha256", keyId: "k", value: "d".repeat(64) },
 			}),
 			event("tool.finished", { toolName: "bash", result: CANARY, isError: false }),
 			event("session.entry-observed", {
@@ -728,7 +734,7 @@ describe("contract validators", () => {
 			log,
 			snapshot: {
 				schemaVersion: "endo.cockpit-snapshot.v0",
-				projectionVersion: "cockpit-snapshot.1",
+				projectionVersion: "cockpit-snapshot.2",
 				consistency: "independent-sources",
 				timeline: log,
 				runtimes: [{ identity, capabilities }],
@@ -804,7 +810,7 @@ describe("contract validators", () => {
 		// A clean state with damage recorded, damage with no state, an unopenable source with a watermark.
 		for (const mutate of [
 			(v: any) => {
-				v.source.condition.tornTail = { bytes: 3, sha256: "a".repeat(64) };
+				v.source.condition.tornTail = { bytes: 3, digest: "a".repeat(64) };
 			},
 			(v: any) => {
 				v.source.condition.state = "degraded";
@@ -1246,22 +1252,25 @@ describe("contextual reference validation (PR #57 review: wire validation is not
 
 	it("keeps legitimate references to records a presentation does not embed, and does not claim to read the store", () => {
 		const { identity, capabilities } = good();
-		// A note may name an evidence record or a state that no view embeds.
+		// A note may name a record that no view embeds: a change or notification (identity), an evidence record (capabilities).
+		const refTo = (kind: string, id: string) => ({
+			domain: "harness-registry",
+			attachment: ATTACHMENT,
+			kind,
+			index: 0,
+			id,
+		});
 		const withNote = mutated(identity, (c) =>
-			c.notes.push({
-				code: "duplicate-record-id",
-				refs: [
-					{
-						domain: "harness-registry",
-						attachment: ATTACHMENT,
-						kind: "evidence",
-						index: 0,
-						id: capabilities.capabilities.find((v) => v.evidence)!.evidence!.id,
-					},
-				],
-			}),
+			c.notes.push({ code: "duplicate-record-id", refs: [refTo("change", identity.lastChange!.id)] }),
 		);
 		expect(validateEndoCockpitRuntimeIdentityV0(withNote)).not.toBeNull();
+		const evidenceNote = mutated(capabilities, (c) =>
+			c.notes.push({
+				code: "duplicate-record-id",
+				refs: [refTo("evidence", capabilities.capabilities.find((v) => v.evidence)!.evidence!.id)],
+			}),
+		);
+		expect(validateEndoCockpitCapabilityStateV0(evidenceNote)).not.toBeNull();
 		// Wire validation only: with several records of a kind, an id inside the watermark's range cannot be checked
 		// against the log without reading it, so a plausible reference is accepted. Disk verification is the reader's job.
 		const records = specimenRecords();
@@ -1295,6 +1304,7 @@ describe("timeline pagination metadata against its watermark (PR #57 review)", (
 					length,
 					lastEventId: all.at(-1)?.id ?? null,
 					prefixDigest: length === 0 ? null : sha256HexV0(`prefix-${length}`),
+					keyId: TEST_KEY.keyId,
 				},
 			},
 			afterSequence,
@@ -1401,20 +1411,20 @@ describe("projection version compatibility (PR #57 review)", () => {
 		const log = timeline([event("tool.started", { toolName: "read" })]);
 		const snapshot = {
 			schemaVersion: "endo.cockpit-snapshot.v0",
-			projectionVersion: "cockpit-snapshot.1",
+			projectionVersion: "cockpit-snapshot.2",
 			consistency: "independent-sources",
 			timeline: log,
 			runtimes: [{ identity, capabilities }],
 		};
 		return { identity, capabilities, log, snapshot };
 	}
-	const BAD = ["cockpit-x.99", "cockpit-runtime-identity.2", "", "cockpit-snapshot.1 ", "cockpit-session-timeline.0"];
+	const BAD = ["cockpit-x.99", "cockpit-runtime-identity.1", "", "cockpit-snapshot.1 ", "cockpit-session-timeline.0"];
 
 	it("pins each record to its declared projection version, and keeps it apart from the schema version", () => {
 		const { identity, capabilities, log, snapshot } = good();
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.1");
-		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.1");
-		expect(log.projectionVersion).toBe("cockpit-session-timeline.1");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.2");
+		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.2");
+		expect(log.projectionVersion).toBe("cockpit-session-timeline.2");
 		const validators: [string, unknown, (value: unknown) => unknown][] = [
 			["identity", identity, validateEndoCockpitRuntimeIdentityV0],
 			["capabilities", capabilities, validateEndoCockpitCapabilityStateV0],
@@ -1426,7 +1436,7 @@ describe("projection version compatibility (PR #57 review)", () => {
 			for (const bad of BAD)
 				expect(validate({ ...(value as object), projectionVersion: bad }), `${name} ${bad}`).toBeNull();
 			// Another record's valid projection version is not this record's.
-			const foreign = name === "timeline" ? "cockpit-snapshot.1" : "cockpit-session-timeline.1";
+			const foreign = name === "timeline" ? "cockpit-snapshot.2" : "cockpit-session-timeline.2";
 			expect(validate({ ...(value as object), projectionVersion: foreign }), `${name} foreign`).toBeNull();
 		}
 	});
@@ -1440,22 +1450,22 @@ describe("projection version compatibility (PR #57 review)", () => {
 		};
 		expect(
 			bad((c) => {
-				c.timeline.projectionVersion = "cockpit-session-timeline.2";
+				c.timeline.projectionVersion = "cockpit-session-timeline.1";
 			}),
 		).toBeNull();
 		expect(
 			bad((c) => {
-				c.runtimes[0].identity.projectionVersion = "cockpit-runtime-identity.2";
+				c.runtimes[0].identity.projectionVersion = "cockpit-runtime-identity.1";
 			}),
 		).toBeNull();
 		expect(
 			bad((c) => {
-				c.runtimes[0].capabilities.projectionVersion = "cockpit-capability-state.2";
+				c.runtimes[0].capabilities.projectionVersion = "cockpit-capability-state.1";
 			}),
 		).toBeNull();
 		expect(
 			bad((c) => {
-				c.projectionVersion = "cockpit-snapshot.2";
+				c.projectionVersion = "cockpit-snapshot.1";
 			}),
 		).toBeNull();
 		expect(bad(() => {})).not.toBeNull();
@@ -1581,7 +1591,7 @@ describe("second review round (PR #57)", () => {
 			log,
 			snapshot: {
 				schemaVersion: "endo.cockpit-snapshot.v0",
-				projectionVersion: "cockpit-snapshot.1",
+				projectionVersion: "cockpit-snapshot.2",
 				consistency: "independent-sources",
 				timeline: log,
 				runtimes: [{ identity, capabilities }],
@@ -1656,7 +1666,7 @@ describe("second review round (PR #57)", () => {
 		const otherCondition = mutated(snapshot, (c) => {
 			c.runtimes[0].capabilities.source.condition = {
 				state: "degraded",
-				tornTail: { bytes: 1, sha256: "a".repeat(64) },
+				tornTail: { bytes: 1, digest: "a".repeat(64) },
 				sealedAt: null,
 				error: null,
 			};
@@ -1752,7 +1762,7 @@ describe("second review round (PR #57)", () => {
 				source: {
 					domain: "event-log",
 					condition: clean(state),
-					watermark: { length, lastEventId: null, prefixDigest: null },
+					watermark: { length, lastEventId: null, prefixDigest: null, keyId: TEST_KEY.keyId },
 				},
 			};
 		for (const state of ["empty", "absent"])
@@ -1761,7 +1771,7 @@ describe("second review round (PR #57)", () => {
 		const degraded = mutated(log("empty"), (c) => {
 			c.source.condition = {
 				state: "degraded",
-				tornTail: { bytes: 4, sha256: "b".repeat(64) },
+				tornTail: { bytes: 4, digest: "b".repeat(64) },
 				sealedAt: null,
 				error: null,
 			};
@@ -1807,7 +1817,12 @@ describe("third review round and invariant audit (PR #57)", () => {
 			source: {
 				domain: "event-log",
 				condition: { state: "readable", tornTail: null, sealedAt: null, error: null },
-				watermark: { length, lastEventId: all.at(-1)?.id ?? null, prefixDigest: sha256HexV0(`prefix-${length}`) },
+				watermark: {
+					length,
+					lastEventId: all.at(-1)?.id ?? null,
+					prefixDigest: sha256HexV0(`prefix-${length}`),
+					keyId: TEST_KEY.keyId,
+				},
 			},
 			afterSequence,
 			events: stored(all.slice(afterSequence, afterSequence + take), afterSequence + 1),
@@ -1951,7 +1966,7 @@ describe("third review round and invariant audit (PR #57)", () => {
 		const log = timeline([event("tool.started")]);
 		const snapshot = (runtimes: unknown[]) => ({
 			schemaVersion: "endo.cockpit-snapshot.v0",
-			projectionVersion: "cockpit-snapshot.1",
+			projectionVersion: "cockpit-snapshot.2",
 			consistency: "independent-sources",
 			timeline: log,
 			runtimes,
@@ -2220,6 +2235,10 @@ describe("one presentation policy for projection and validator (PR #57 review ro
 				for (const segment of segments.slice(0, -1)) at = at[segment] ??= {};
 				at[segments.at(-1)!] = value;
 			}
+			// A keyed digest is shown only whole: give each its algorithm and a 64-hex value.
+			for (const parent of ["argsDigest", "resultDigest"])
+				if (payload[parent] !== undefined)
+					payload[parent] = { algorithm: "hmac-sha256", keyId: "a-value", value: "a".repeat(64) };
 			const entry = timeline([event(kind, payload)]);
 			const keys = specs.map((spec) => spec[0]);
 			expect(Object.keys(entry.entries[0]!.fields).sort(), kind).toEqual([...new Set(keys)].sort());
@@ -2719,7 +2738,15 @@ describe("fifth review round (PR #57)", () => {
 		return copy;
 	};
 	const WITHHELD = "withheld: looks like a path, address or credential";
-	const aliasOf = (id: string) => `${id.split(".").slice(0, 2).join(".")}.withheld-${sha256HexV0(id).slice(0, 32)}`;
+	// Restated independently of the library: an HMAC under the fixture key's bytes of the canonical JSON of the purpose and
+	// the value, 32 hex digits of it.
+	const token = (purpose: string, name: string, value: string) =>
+		createHmac("sha256", Buffer.alloc(32, 0x5a))
+			.update(canonicalEndoJsonV0({ purpose, [name]: value }))
+			.digest("hex")
+			.slice(0, 32);
+	const aliasOf = (id: string) =>
+		`${id.split(".").slice(0, 2).join(".")}.withheld-${token("endo.cockpit.id-alias.v0", "id", id)}`;
 
 	// A registry with several records of every kind, in a legitimate state.
 	function busy() {
@@ -2809,7 +2836,7 @@ describe("fifth review round (PR #57)", () => {
 		// Two capabilities whose names are each other's placeholder do not merge.
 		const state = structuredClone(records.state[0]!);
 		const odd = "sk-canarysecretcanarysecret";
-		const placeholder = `withheld-${sha256HexV0(odd).slice(0, 32)}`;
+		const placeholder = `withheld-${token("endo.cockpit.kind-alias.v0", "kind", odd)}`;
 		state.capabilities[0]!.capability = odd;
 		state.capabilities[1]!.capability = placeholder;
 		const capabilities = projectEndoCockpitCapabilityStateV0(input({ ...records, state: [state] }));
@@ -2820,7 +2847,7 @@ describe("fifth review round (PR #57)", () => {
 		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
 		const kinds = timeline([
 			event(odd + ".x"),
-			event(`other.withheld-${sha256HexV0(`${odd}.x`).slice(0, 32)}`),
+			event(`other.withheld-${token("endo.cockpit.kind-alias.v0", "kind", `${odd}.x`)}`),
 		]).entries.map((e) => e.kind);
 		expect(new Set(kinds).size).toBe(2);
 	});
@@ -3368,11 +3395,11 @@ describe("sixth review round (PR #57)", () => {
 	it("5: a source is never both torn and sealed, and a torn tail has at least one byte", () => {
 		const tornAndSealed = timeline([event("tool.started", {})]);
 		const mark = tornAndSealed.source.watermark!;
-		const degraded = (tail: { bytes: number; sha256: string } | null, sealedAt: number | null) =>
+		const degraded = (tail: { bytes: number; digest: string } | null, sealedAt: number | null) =>
 			mutated(tornAndSealed, (c) => {
 				c.source.condition = { state: "degraded", tornTail: tail, sealedAt, error: null };
 			});
-		const tail = { bytes: 5, sha256: "a".repeat(64) };
+		const tail = { bytes: 5, digest: "a".repeat(64) };
 		expect(validateEndoCockpitSessionTimelineV0(degraded(tail, null))).not.toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(degraded(null, mark.length + 1))).not.toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(degraded(tail, mark.length + 1))).toBeNull();
@@ -3764,5 +3791,304 @@ describe("seventh review round (PR #57)", () => {
 		accepts(userEntries);
 		// Absent, unavailable and withheld role/entry type still decide eligibility as presented.
 		accepts(timeline([event("message.completed", { role: { status: "UNAVAILABLE", reason: "unknown" } })]));
+	});
+});
+
+describe("eighth review round (PR #57)", () => {
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const accepts = (value: unknown) => expect(validateEndoCockpitSessionTimelineV0(value)).not.toBeNull();
+	const rejects = (value: unknown, why = "") => expect(validateEndoCockpitSessionTimelineV0(value), why).toBeNull();
+
+	// ---- P6. keyed digests are shown whole or not at all ----------------------------------------------------------
+
+	it("P6: a keyed digest's members are shown only when the whole object is an EndoKeyedDigestV0", () => {
+		const HEX = "ab".repeat(32);
+		const good = { algorithm: "hmac-sha256", keyId: "endo.digest-key.0123456789abcdef0123456789abcdef", value: HEX };
+		for (const [kind, parent, shown, keyShown] of [
+			["tool.started", "argsDigest", "argsDigest", "argsDigestKeyId"],
+			["tool.finished", "resultDigest", "resultDigest", "resultDigestKeyId"],
+		] as const) {
+			const make = (digest: unknown) => timeline([event(kind, { toolName: "bash", [parent]: digest })]);
+			// Legitimate private and public key shapes.
+			for (const keyId of [good.keyId, "fixture-public"]) {
+				const log = make({ ...good, keyId });
+				expect(log.entries[0]!.fields[shown], keyId).toEqual({ basis: "derived", value: HEX });
+				expect(log.entries[0]!.fields[keyShown]).toEqual({ basis: "derived", value: keyId });
+				accepts(log);
+			}
+			const invalid: [string, unknown][] = [
+				["no algorithm", { keyId: good.keyId, value: HEX }],
+				["wrong algorithm", { ...good, algorithm: "sha256" }],
+				["algorithm in another case", { ...good, algorithm: "HMAC-SHA256" }],
+				["arbitrary key id", { ...good, keyId: "Tok_SECRET value" }],
+				["uppercase key id", { ...good, keyId: "FIXTURE" }],
+				["private id with short hex", { ...good, keyId: "endo.digest-key.abc" }],
+				["non-hex value", { ...good, value: "z".repeat(64) }],
+				["short value", { ...good, value: "ab".repeat(31) }],
+				["uppercase hex value", { ...good, value: "AB".repeat(32) }],
+				["an extra member", { ...good, note: "x" }],
+				["a missing value", { algorithm: good.algorithm, keyId: good.keyId, note: "x" }],
+				["an array", [HEX, good.keyId]],
+				["a string", HEX],
+			];
+			for (const [name, digest] of invalid) {
+				const log = make(digest);
+				const fields = log.entries[0]!.fields;
+				expect(fields[shown], name).toBeUndefined();
+				expect(fields[keyShown], name).toBeUndefined();
+				expect(log.entries[0]!.withheldFields, name).toBeGreaterThanOrEqual(1);
+				accepts(log);
+			}
+			// The wire: members forged into an entry are judged by shape, and only as a pair.
+			const valid = make(good);
+			rejects(
+				mutated(valid, (c) => {
+					delete c.entries[0].fields[keyShown];
+				}),
+				"value without its key id",
+			);
+			rejects(
+				mutated(valid, (c) => {
+					delete c.entries[0].fields[shown];
+				}),
+				"key id without its value",
+			);
+			rejects(
+				mutated(valid, (c) => {
+					c.entries[0].fields[shown].value = "tok_not_hex";
+				}),
+				"non-hex value",
+			);
+			rejects(
+				mutated(valid, (c) => {
+					c.entries[0].fields[keyShown].value = "Tok SECRET";
+				}),
+				"arbitrary key id",
+			);
+		}
+	});
+
+	it("P6: a digest value is never unavailable (its shape is never withheld), a flagged key id may be", () => {
+		const WITHHELD = "withheld: looks like a path, address or credential";
+		const log = timeline([
+			event("tool.started", {
+				toolName: "bash",
+				argsDigest: { algorithm: "hmac-sha256", keyId: "fixture-public", value: "ab".repeat(32) },
+			}),
+		]);
+		accepts(log);
+		rejects(
+			mutated(log, (c) => {
+				c.entries[0].fields.argsDigest = { basis: "unavailable", reason: WITHHELD };
+			}),
+		);
+		accepts(
+			mutated(log, (c) => {
+				c.entries[0].fields.argsDigestKeyId = { basis: "unavailable", reason: WITHHELD };
+			}),
+		);
+	});
+
+	// ---- P3 / P4. declared unavailable gaps ------------------------------------------------------------------------
+
+	const gaps = (count: number, reason = "not reported") =>
+		Array.from({ length: count }, (_, index) => ({ field: `gap.n${index}`, reason }));
+	const started = (kind: "lifecycle.session-started" | "lifecycle.session-resumed", unavailable: unknown) =>
+		timeline([
+			event(kind, {
+				runtime: "pi",
+				runtimeSessionId: "endo-pi-default-118ac71e29ed",
+				instance: "i-1",
+				...(kind === "lifecycle.session-resumed" ? { previousInstance: "i-0", previousEnd: "crash" } : {}),
+				unavailable,
+			}),
+		]);
+	const dynamic = (log: EndoCockpitSessionTimelineV0) =>
+		Object.keys(log.entries[0]!.fields).filter((key) => key.startsWith("unavailable."));
+
+	it("P3: at most 32 declared gaps are considered and shown, by both producer and validator", () => {
+		for (const kind of ["lifecycle.session-started", "lifecycle.session-resumed"] as const) {
+			const at32 = started(kind, gaps(32));
+			expect(dynamic(at32)).toHaveLength(32);
+			accepts(at32);
+			// The producer considers the first 32 source items; the 33rd is lost, so the array is not whole.
+			const at33 = started(kind, gaps(33));
+			expect(dynamic(at33)).toHaveLength(32);
+			expect(at33.entries[0]!.withheldFields).toBe(at32.entries[0]!.withheldFields + 1);
+			accepts(at33);
+			expect(dynamic(started(kind, gaps(3)))).toHaveLength(3);
+			// A serialized entry with a 33rd distinct field cannot come from any read.
+			rejects(
+				mutated(at32, (c) => {
+					c.entries[0].fields["unavailable.gap.extra"] = { basis: "unavailable", reason: "not reported" };
+				}),
+				kind,
+			);
+			rejects(
+				mutated(at33, (c) => {
+					for (let n = 40; n < 2000; n += 1)
+						c.entries[0].fields[`unavailable.gap.n${n}`] = { basis: "unavailable", reason: "x" };
+				}),
+				"thousands",
+			);
+		}
+		// Items considered vs distinct fields: 33 items of which two are one name present 32 fields.
+		const repeated = started("lifecycle.session-started", [
+			...gaps(31),
+			{ field: "gap.n0", reason: "again" },
+			...gaps(1),
+		]);
+		expect(dynamic(repeated).length).toBeLessThanOrEqual(32);
+		accepts(repeated);
+	});
+
+	it("P4: a name declared twice is counted as withheld and keeps its last reason", () => {
+		const one = started("lifecycle.session-started", [{ field: "run.id", reason: "not reported" }]);
+		for (const reasons of [
+			["not reported", "not reported"],
+			["first reason", "second reason"],
+		]) {
+			const dup = started(
+				"lifecycle.session-started",
+				reasons.map((reason) => ({ field: "run.id", reason })),
+			);
+			expect(dynamic(dup)).toEqual(["unavailable.run.id"]);
+			expect(dup.entries[0]!.fields["unavailable.run.id"]).toEqual({ basis: "unavailable", reason: reasons[1] });
+			expect(dup.entries[0]!.withheldFields, reasons.join("|")).toBe(one.entries[0]!.withheldFields + 1);
+			accepts(dup);
+		}
+		// Unique names: nothing lost, nothing counted.
+		const unique = started("lifecycle.session-started", [
+			{ field: "run.id", reason: "a" },
+			{ field: "turn.id", reason: "b" },
+		]);
+		expect(unique.entries[0]!.withheldFields).toBe(one.entries[0]!.withheldFields);
+		// One lost array counts once, however many items were lost.
+		const many = started("lifecycle.session-started", [
+			{ field: "run.id", reason: "a" },
+			{ field: "run.id", reason: "b" },
+			{ field: "run.id", reason: "c" },
+		]);
+		expect(many.entries[0]!.withheldFields).toBe(one.entries[0]!.withheldFields + 1);
+	});
+
+	// ---- P5. direct projector input -----------------------------------------------------------------------------
+
+	it("P5: the projector requires contiguous storage positions starting after the cursor", () => {
+		const ev = (n: number, id = `endo.event.pos.${n}`) => ({
+			storageSequence: n,
+			event: event("tool.started", {}, { id }),
+		});
+		const run = (afterSequence: number, events: ReturnType<typeof ev>[], length = 100) =>
+			projectEndoCockpitSessionTimelineV0({
+				source: logSource(length, "endo.event.pos.1"),
+				afterSequence,
+				events,
+			});
+		expect(() => run(0, [ev(2)]), "initial gap").toThrow(TypeError);
+		expect(() => run(0, [ev(1), ev(3)]), "internal gap").toThrow(TypeError);
+		expect(() => run(5, [ev(6), ev(8)]), "internal gap after an offset").toThrow(TypeError);
+		expect(() => run(5, [ev(5)]), "at the cursor").toThrow(TypeError);
+		expect(() => run(5, [ev(7)]), "offset gap").toThrow(TypeError);
+		expect(() => run(0, [ev(1), ev(1)]), "repeated position").toThrow(TypeError);
+		// Contiguous input, an offset window and an empty window are valid and validate.
+		for (const [after, events] of [
+			[0, [ev(1), ev(2), ev(3)]],
+			[5, [ev(6), ev(7)]],
+			[0, []],
+		] as const) {
+			const out = run(after, [...events]);
+			expect(out.window.nextAfterSequence).toBe(after + events.length);
+			accepts(out);
+		}
+		// A duplicate event consumes its position: the window is still accounted for (its count is the result's own).
+		const withDuplicate = run(0, [ev(1, "endo.event.same.1"), ev(2, "endo.event.same.1"), ev(3)]);
+		expect(withDuplicate.duplicatesIgnored).toBe(1);
+		expect(withDuplicate.entries.map((e) => e.storageSequence)).toEqual([1, 3]);
+		expect(withDuplicate.window.nextAfterSequence).toBe(3);
+		expect(() => run(0, [ev(1, "endo.event.same.1"), ev(3, "endo.event.same.1")]), "duplicate with a gap").toThrow(
+			TypeError,
+		);
+	});
+
+	// ---- P2. notes belong to their projection -------------------------------------------------------------------
+
+	it("P2: a projection carries only the note codes (and reference kinds) its own projector emits", () => {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		const empty = { fingerprint: [], change: [], evidence: [], state: [], notification: [] };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input(records));
+		const capabilities = projectEndoCockpitCapabilityStateV0(input(records));
+		const emptyIdentity = projectEndoCockpitRuntimeIdentityV0(input(empty));
+		const emptyCapabilities = projectEndoCockpitCapabilityStateV0(input(empty));
+		// Legitimate notes validate in their own projection.
+		expect(emptyIdentity.notes.map((n) => n.code)).toEqual(["no-fingerprint-recorded"]);
+		expect(emptyCapabilities.notes.map((n) => n.code)).toEqual(["no-capability-state-recorded"]);
+		expect(validateEndoCockpitRuntimeIdentityV0(emptyIdentity)).not.toBeNull();
+		expect(validateEndoCockpitCapabilityStateV0(emptyCapabilities)).not.toBeNull();
+		for (const absent of [
+			projectEndoCockpitRuntimeIdentityV0(input(null)),
+			projectEndoCockpitCapabilityStateV0(input(null)),
+		])
+			expect(absent.notes.map((n) => n.code)).toEqual(["source-not-projectable"]);
+		// A note of the other projection is refused, whatever its references.
+		const identityOnly = ["no-fingerprint-recorded", "notification-change-missing", "runtime-disagreement"];
+		const capabilityOnly = ["no-capability-state-recorded", "duplicate-capability", "state-without-fingerprint"];
+		for (const code of capabilityOnly)
+			expect(
+				validateEndoCockpitRuntimeIdentityV0(
+					mutated(identity, (c) => {
+						c.notes.push({ code, refs: [] });
+					}),
+				),
+				code,
+			).toBeNull();
+		for (const code of identityOnly)
+			expect(
+				validateEndoCockpitCapabilityStateV0(
+					mutated(capabilities, (c) => {
+						c.notes.push({ code, refs: [] });
+					}),
+				),
+				code,
+			).toBeNull();
+		// The shared diagnostics are limited to the kinds each projection cleans.
+		const ref = (kind: string, id: string | null) => ({
+			domain: "harness-registry",
+			attachment: ATTACHMENT,
+			kind,
+			index: 0,
+			id,
+		});
+		const dup = (kind: string, id: string | null) => ({ code: "duplicate-record-id", refs: [ref(kind, id)] });
+		expect(
+			validateEndoCockpitRuntimeIdentityV0(
+				mutated(identity, (c) => {
+					c.notes.push(dup("evidence", capabilities.capabilities.find((v) => v.evidence)!.evidence!.id));
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateEndoCockpitCapabilityStateV0(
+				mutated(capabilities, (c) => {
+					c.notes.push(dup("change", identity.lastChange!.id));
+				}),
+			),
+		).toBeNull();
+		// A foreign record, as the projector notes it, validates in each.
+		const foreign = (record: any) => ({ ...record, attachment: "other.attachment" });
+		const foreignIdentity = projectEndoCockpitRuntimeIdentityV0(
+			input({ ...records, change: [changeRecord(), foreign(changeRecord({ id: "endo.evidence.test-change.2" }))] }),
+		);
+		expect(foreignIdentity.notes.map((n) => n.code)).toContain("foreign-attachment-record");
+		expect(validateEndoCockpitRuntimeIdentityV0(foreignIdentity)).not.toBeNull();
+		const foreignCapabilities = projectEndoCockpitCapabilityStateV0(
+			input({ ...records, evidence: [...records.evidence, foreign(records.evidence[0]!)] }),
+		);
+		expect(foreignCapabilities.notes.map((n) => n.code)).toContain("foreign-attachment-record");
+		expect(validateEndoCockpitCapabilityStateV0(foreignCapabilities)).not.toBeNull();
 	});
 });

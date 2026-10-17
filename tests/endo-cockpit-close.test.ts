@@ -34,7 +34,7 @@ vi.mock("../storage/event-store.ts", async (importActual) => {
 	};
 });
 
-import { checkEndoCockpitSourceFreshnessV0, readEndoCockpitEventLogV0 } from "../cockpit/reader.ts";
+import { checkEndoCockpitSourceFreshnessV0, readEndoCockpitEventLogV0 } from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
 

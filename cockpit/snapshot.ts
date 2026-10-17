@@ -18,6 +18,7 @@ import {
 	validateEndoCockpitSessionTimelineV0,
 	validateEndoCockpitSnapshotV0,
 } from "../protocol/cockpit.ts";
+import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { projectEndoCockpitCapabilityStateV0 } from "./projections/capability-state.ts";
 import { projectEndoCockpitRuntimeIdentityV0 } from "./projections/runtime-identity.ts";
 import { projectEndoCockpitSessionTimelineV0 } from "./projections/session-timeline.ts";
@@ -37,16 +38,19 @@ function checked<T>(name: string, value: T, validate: (value: unknown) => T | nu
 /** The session timeline window `options` names (default: the first page). */
 export function readEndoCockpitTimelineV0(
 	root: string,
-	options: EndoCockpitEventLogReadOptionsV0 = {},
+	options: EndoCockpitEventLogReadOptionsV0,
 ): EndoCockpitSessionTimelineV0 {
 	const read = readEndoCockpitEventLogV0(root, options);
 	return checked(
 		"session timeline",
-		projectEndoCockpitSessionTimelineV0({
-			source: read.source,
-			afterSequence: read.afterSequence,
-			events: read.events,
-		}),
+		projectEndoCockpitSessionTimelineV0(
+			{
+				source: read.source,
+				afterSequence: read.afterSequence,
+				events: read.events,
+			},
+			options.digestKey,
+		),
 		validateEndoCockpitSessionTimelineV0,
 	);
 }
@@ -55,17 +59,18 @@ export function readEndoCockpitTimelineV0(
 export function readEndoCockpitRuntimeV0(
 	root: string,
 	attachment: string,
+	digestKey: EndoDigestKeyV0,
 ): { identity: EndoCockpitRuntimeIdentityV0; capabilities: EndoCockpitCapabilityStateV0 } {
-	const input = readEndoCockpitRegistryV0(root, attachment);
+	const input = readEndoCockpitRegistryV0(root, attachment, digestKey);
 	return {
 		identity: checked(
 			"runtime identity",
-			projectEndoCockpitRuntimeIdentityV0(input),
+			projectEndoCockpitRuntimeIdentityV0(input, digestKey),
 			validateEndoCockpitRuntimeIdentityV0,
 		),
 		capabilities: checked(
 			"capability state",
-			projectEndoCockpitCapabilityStateV0(input),
+			projectEndoCockpitCapabilityStateV0(input, digestKey),
 			validateEndoCockpitCapabilityStateV0,
 		),
 	};
@@ -77,10 +82,7 @@ export interface EndoCockpitSnapshotOptionsV0 extends EndoCockpitEventLogReadOpt
 }
 
 /** The snapshot: a timeline window and the runtime views of the attachments, each with its own source position. */
-export function readEndoCockpitSnapshotV0(
-	root: string,
-	options: EndoCockpitSnapshotOptionsV0 = {},
-): EndoCockpitSnapshotV0 {
+export function readEndoCockpitSnapshotV0(root: string, options: EndoCockpitSnapshotOptionsV0): EndoCockpitSnapshotV0 {
 	const timeline = readEndoCockpitTimelineV0(root, options);
 	const names =
 		options.attachments === undefined ? listEndoCockpitAttachmentsV0(root) : [...new Set(options.attachments)].sort();
@@ -91,7 +93,7 @@ export function readEndoCockpitSnapshotV0(
 			projectionVersion: ENDO_COCKPIT_PROJECTION_VERSIONS_V0.snapshot,
 			consistency: "independent-sources",
 			timeline,
-			runtimes: names.map((attachment) => readEndoCockpitRuntimeV0(root, attachment)),
+			runtimes: names.map((attachment) => readEndoCockpitRuntimeV0(root, attachment, options.digestKey)),
 		},
 		validateEndoCockpitSnapshotV0,
 	);

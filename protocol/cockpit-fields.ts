@@ -11,6 +11,7 @@
 
 import { type EndoIdentifierKindV0, parseEndoIdentifierV0 } from "./identity.ts";
 import { ENDO_INTERVENTION_KINDS_V0 } from "./intervention.ts";
+import { ENDO_DIGEST_KEY_ID_PATTERN_V0, ENDO_KEYED_DIGEST_VALUE_PATTERN_V0 } from "./keyed-digest-shape.ts";
 import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "./session-lifecycle.ts";
 
 function freezeDeep<T>(value: T): T {
@@ -264,6 +265,9 @@ export const ENDO_COCKPIT_PAYLOAD_FLAG_KINDS_V0: Readonly<Record<string, "discon
 	"harness.store-opened": "discontinuity",
 });
 
+/** The most items of a declared `unavailable` list the projection considers; at most this many dynamic fields appear. */
+export const ENDO_COCKPIT_MAX_DECLARED_UNAVAILABLE_V0 = 32;
+
 /** The kinds whose `unavailable` list of `{ field, reason }` becomes dynamic `unavailable.<field>` presented fields. */
 export const ENDO_COCKPIT_DECLARED_UNAVAILABLE_KINDS_V0: readonly string[] = freezeDeep([
 	"lifecycle.session-started",
@@ -284,6 +288,26 @@ export function endoCockpitRuntimeSessionAdmittedV0(reference: string): boolean 
 export function endoCockpitKindRecognizedV0(kind: string): boolean {
 	return ENDO_COCKPIT_RECOGNIZED_KINDS_V0.includes(kind);
 }
+
+/**
+ * The fields shown from a tool event's keyed digest (`argsDigest`, `resultDigest`): each is a member of a whole
+ * EndoKeyedDigestV0, shown only when the complete parent object is one (protocol/keyed-digest-shape.ts), and the two
+ * members of a digest are shown together or not at all.
+ */
+export const ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0: Readonly<Record<string, { parent: string; partner: string }>> =
+	freezeDeep({
+		argsDigest: { parent: "argsDigest", partner: "argsDigestKeyId" },
+		argsDigestKeyId: { parent: "argsDigest", partner: "argsDigest" },
+		resultDigest: { parent: "resultDigest", partner: "resultDigestKeyId" },
+		resultDigestKeyId: { parent: "resultDigest", partner: "resultDigest" },
+	});
+
+const KEYED_DIGEST_PARTS: Readonly<Record<string, (value: string) => boolean>> = freezeDeep({
+	argsDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
+	resultDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
+	argsDigestKeyId: (value: string) => ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value),
+	resultDigestKeyId: (value: string) => ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value),
+});
 
 /** What a presented field of an entry of this kind may be. */
 export interface EndoCockpitFieldRuleV0 {
@@ -308,7 +332,15 @@ export function endoCockpitFieldRuleV0(kind: string, key: string): EndoCockpitFi
 	// The runtime's session reference is opaque wherever it is recorded, so it is admitted by shape wherever it appears.
 	if (key === "runtimeSessionId" && (spec !== undefined || kind === "harness.attached"))
 		return { basis: "reported", type: "string", nullable: false, admitted: endoCockpitRuntimeSessionAdmittedV0 };
-	if (spec !== undefined) return { basis: spec[2], type: spec[3], nullable: spec[4] === true };
+	if (spec !== undefined) {
+		const digest = KEYED_DIGEST_PARTS[key];
+		return {
+			basis: spec[2],
+			type: spec[3],
+			nullable: spec[4] === true,
+			...(digest === undefined ? {} : { admitted: digest }),
+		};
+	}
 	if (kind === "harness.attached" && key === "runtimeSessionId")
 		return { basis: "reported", type: "string", nullable: false, admitted: endoCockpitRuntimeSessionAdmittedV0 };
 	if (ENDO_COCKPIT_DECLARED_UNAVAILABLE_KINDS_V0.includes(kind) && key.startsWith("unavailable."))
@@ -328,6 +360,8 @@ export function endoCockpitUnavailableAdmittedV0(kind: string, key: string, reas
 	if (rule === null) return false;
 	if (kind === "harness.attached" && key === "runtimeSessionId" && reason === ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0)
 		return true;
+	// A digest value is 64 lowercase hex characters, which the text policy never withholds: no unavailable form exists.
+	if (key === "argsDigest" || key === "resultDigest") return false;
 	if (reason === ENDO_COCKPIT_WITHHELD_TEXT_V0 && (rule.type === "string" || rule.type === "id")) return true;
 	if (kind === "harness.attached" && key === "runtimeSessionId") return false;
 	return (rule.basis === "reported" || rule.dynamic === true) && endoCockpitTextPresentableV0(reason);

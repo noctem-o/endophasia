@@ -23,12 +23,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import { AcpClientV0 } from "../adapters/acp/index.ts";
 import { AcpClientV2 } from "../adapters/acp/v2.ts";
 import {
-	checkEndoCockpitSourceFreshnessV0,
-	readEndoCockpitEventLogV0,
-	readEndoCockpitRegistryV0,
-	readEndoCockpitSnapshotV0,
-} from "../cockpit/index.ts";
-import {
 	ENDO_COCKPIT_LIMIT_CODES_V0,
 	readEndoCockpitRecordV0,
 	validateEndoCockpitCapabilityStateV0,
@@ -53,6 +47,12 @@ import {
 	tempRoot,
 	treeHash,
 } from "./cockpit-fixtures.ts";
+import {
+	checkEndoCockpitSourceFreshnessV0,
+	readEndoCockpitEventLogV0,
+	readEndoCockpitRegistryV0,
+	readEndoCockpitSnapshotV0,
+} from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -155,7 +155,7 @@ describe("totality: valid but hostile sources", () => {
 						toolName: FLAGGED[at]!,
 						toolCallId: FLAGGED[at + 1]!,
 						runtimeEvent: "x".repeat(300),
-						argsDigest: { value: FLAGGED[2]!, keyId: FLAGGED[7]! },
+						argsDigest: { algorithm: "hmac-sha256", value: FLAGGED[2]!, keyId: FLAGGED[7]! },
 					},
 					{ id: `endo.event.${local}`, producer: FLAGGED[at]!, session },
 				),

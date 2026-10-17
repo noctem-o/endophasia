@@ -15,20 +15,16 @@
 // (storage/digest-key.ts, adapters/pi/attachment.ts enforce the separation).
 
 import { createHmac } from "node:crypto";
+import {
+	ENDO_DIGEST_KEY_ID_PATTERN_V0,
+	ENDO_KEYED_DIGEST_ALGORITHM_V0,
+	type EndoKeyedDigestV0,
+	isEndoKeyedDigestV0,
+} from "../../protocol/keyed-digest-shape.ts";
 import { canonicalEndoJsonV0 } from "./canonical-json.ts";
 
-export const ENDO_KEYED_DIGEST_ALGORITHM_V0 = "hmac-sha256";
-
-/** A private key's id (`endo.digest-key.` and 32 lowercase hex characters), or a public key's name (`fixture-public`). */
-export const ENDO_DIGEST_KEY_ID_PATTERN_V0 = /^(?:endo\.digest-key\.[0-9a-f]{32}|[a-z][a-z0-9-]{0,62})$/;
-
-/** One keyed digest as evidence carries it. */
-export interface EndoKeyedDigestV0 {
-	algorithm: "hmac-sha256";
-	keyId: string;
-	/** HMAC-SHA256 of the value's canonical JSON, 64 lowercase hex characters. */
-	value: string;
-}
+// The shape rules live in protocol/ (pure, usable by validators); they are re-exported here unchanged.
+export { ENDO_DIGEST_KEY_ID_PATTERN_V0, ENDO_KEYED_DIGEST_ALGORITHM_V0, type EndoKeyedDigestV0, isEndoKeyedDigestV0 };
 
 /** A comparison-domain key. The key bytes are held in a closure and never exposed. */
 export interface EndoDigestKeyV0 {
@@ -83,18 +79,4 @@ export function endoDigestKeyV0(key: Uint8Array, domain: string, options: { publ
 			};
 		},
 	});
-}
-
-/** Whether a value is a well-formed EndoKeyedDigestV0. */
-export function isEndoKeyedDigestV0(value: unknown): value is EndoKeyedDigestV0 {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-	const record = value as Record<string, unknown>;
-	return (
-		Object.keys(record).length === 3 &&
-		record.algorithm === ENDO_KEYED_DIGEST_ALGORITHM_V0 &&
-		typeof record.keyId === "string" &&
-		ENDO_DIGEST_KEY_ID_PATTERN_V0.test(record.keyId) &&
-		typeof record.value === "string" &&
-		/^[0-9a-f]{64}$/.test(record.value)
-	);
 }

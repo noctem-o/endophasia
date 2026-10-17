@@ -2,6 +2,7 @@
 // Pi 1.0.0 specimen), opened read-only by the cockpit reader and projected. The fixtures are FAKE-Pi recordings and a
 // real-Pi specimen replayed into a store; they establish that the bridge reads and projects what the substrate recorded,
 // not anything about a live runtime.
+import { createHmac } from "node:crypto";
 import {
 	appendFileSync,
 	chmodSync,
@@ -14,20 +15,16 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { projectEndoCockpitSessionTimelineV0 as projectRaw } from "../cockpit/projections/session-timeline.ts";
 import {
-	checkEndoCockpitSourceFreshnessV0,
-	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
-	listEndoCockpitAttachmentsV0,
-	projectEndoCockpitSessionTimelineV0,
-	readEndoCockpitEventLogV0,
-	readEndoCockpitRegistryV0,
-	readEndoCockpitSnapshotV0,
-	readEndoCockpitTimelineV0,
-	validateEndoCockpitSnapshotV0,
-} from "../cockpit/index.ts";
-import { projectEndoCockpitCapabilityStateV0 } from "../cockpit/projections/capability-state.ts";
+	checkEndoCockpitSourceFreshnessV0 as checkRaw,
+	readEndoCockpitEventLogV0 as readLogRaw,
+	readEndoCockpitRegistryV0 as readRegistryRaw,
+} from "../cockpit/reader.ts";
+import { readEndoCockpitSnapshotV0 as readSnapshotRaw } from "../cockpit/snapshot.ts";
 import {
 	ENDO_COCKPIT_SOURCE_ERRORS_V0,
 	validateEndoCockpitCapabilityStateV0,
@@ -51,17 +48,43 @@ import {
 	tempRoot,
 	treeHash,
 } from "./cockpit-fixtures.ts";
+import {
+	checkEndoCockpitSourceFreshnessV0,
+	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
+	listEndoCockpitAttachmentsV0,
+	OTHER_KEY,
+	projectEndoCockpitCapabilityStateV0,
+	projectEndoCockpitSessionTimelineV0,
+	readEndoCockpitEventLogV0,
+	readEndoCockpitRegistryV0,
+	readEndoCockpitRuntimeV0,
+	readEndoCockpitSnapshotV0,
+	readEndoCockpitTimelineV0,
+	TEST_KEY,
+	validateEndoCockpitSnapshotV0,
+} from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
 
 const FIXTURE = "killed-and-resumed";
 
 /**
- * What the watermark's prefix digest is, restated independently of the reader: the sha256 over one line per event in
- * storage order, each line the hex sha256 of the event's canonical JSON and a newline.
+ * The internal chain (never published): the sha256 over one line per event in storage order, each line the hex sha256 of
+ * the event's canonical JSON and a newline.
  */
-const idsDigest = (events: readonly unknown[]) =>
+const rawChain = (events: readonly unknown[]) =>
 	sha256HexV0(events.map((e) => `${sha256HexV0(canonicalEndoJsonV0(e))}\n`).join(""));
+/** What the watermark's prefix digest is, restated independently: an HMAC under the fixture key of the chain. */
+const idsDigest = (events: readonly unknown[]) =>
+	createHmac("sha256", Buffer.alloc(32, 0x5a))
+		.update(
+			canonicalEndoJsonV0({
+				purpose: "endo.cockpit.event-prefix.v0",
+				length: events.length,
+				chain: rawChain(events),
+			}),
+		)
+		.digest("hex");
 const eventsLog = (root: string) => join(root, "events", "events.log");
 const registryLog = (root: string) => join(root, "harness", ATTACHMENT, "records.log");
 
@@ -105,7 +128,12 @@ describe("store to projection", () => {
 		expect(snapshot.timeline.source).toEqual({
 			domain: "event-log",
 			condition: { state: "readable", tornTail: null, sealedAt: null, error: null },
-			watermark: { length: events.length, lastEventId: events.at(-1)!.id, prefixDigest: idsDigest(events) },
+			watermark: {
+				length: events.length,
+				lastEventId: events.at(-1)!.id,
+				prefixDigest: idsDigest(events),
+				keyId: TEST_KEY.keyId,
+			},
 		});
 		expect(snapshot.timeline.window.hasMore).toBe(false);
 
@@ -208,7 +236,12 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		const snapshot = readEndoCockpitSnapshotV0(root, { attachments: [ATTACHMENT] });
 		expect(existsSync(root)).toBe(false);
 		expect(snapshot.timeline.source.condition.state).toBe("absent");
-		expect(snapshot.timeline.source.watermark).toEqual({ length: 0, lastEventId: null, prefixDigest: null });
+		expect(snapshot.timeline.source.watermark).toEqual({
+			length: 0,
+			lastEventId: null,
+			prefixDigest: null,
+			keyId: TEST_KEY.keyId,
+		});
 		expect(snapshot.runtimes[0]!.identity.source.condition.state).toBe("absent");
 		expect(snapshot.runtimes[0]!.identity.notes.map((n) => n.code)).toEqual(["source-not-projectable"]);
 		expect(listEndoCockpitAttachmentsV0(root)).toEqual([]);
@@ -255,7 +288,14 @@ describe("absent, empty, degraded and unopenable sources", () => {
 			error: null,
 			tornTail: { bytes: 21 },
 		});
-		expect(timeline.source.condition.tornTail!.sha256).toBe(sha256HexV0(tail));
+		// The token is the HMAC under the key of the purpose, the length and the unkeyed hash of the bytes; the unkeyed
+		// hash itself is not published.
+		expect(timeline.source.condition.tornTail!.digest).toBe(
+			createHmac("sha256", Buffer.alloc(32, 0x5a))
+				.update(canonicalEndoJsonV0({ purpose: "endo.cockpit.torn-tail.v0", bytes: 21, sha256: sha256HexV0(tail) }))
+				.digest("hex"),
+		);
+		expect(JSON.stringify(timeline)).not.toContain(sha256HexV0(tail));
 		expect(timeline.entries.map((e) => e.eventId)).toEqual(events.map((e) => e.id));
 		expect(timeline.source.watermark!.length).toBe(events.length);
 		// Not truncated, not preserved elsewhere: the read-only open repaired nothing.
@@ -269,7 +309,12 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		writeFileSync(eventsLog(root), Buffer.from([0, 0, 0, 9, 1, 2]));
 		const read = readEndoCockpitEventLogV0(root);
 		expect(read.source.condition.state).toBe("degraded");
-		expect(read.source.watermark).toEqual({ length: 0, lastEventId: null, prefixDigest: null });
+		expect(read.source.watermark).toEqual({
+			length: 0,
+			lastEventId: null,
+			prefixDigest: null,
+			keyId: TEST_KEY.keyId,
+		});
 	});
 
 	it("reports a corrupt frame as sealed, serves the verified prefix only, and changes nothing", () => {
@@ -283,6 +328,7 @@ describe("absent, empty, degraded and unopenable sources", () => {
 			length: 5,
 			lastEventId: events[4]!.id,
 			prefixDigest: idsDigest(events.slice(0, 5)),
+			keyId: TEST_KEY.keyId,
 		});
 		expect(treeHash(root)).toBe(before);
 	});
@@ -501,9 +547,9 @@ describe("freshness binds event contents (PR #57 review)", () => {
 		expect(source.watermark!.prefixDigest).toBe(idsDigest(events));
 		const one = tempRoot();
 		ingestAll(one, events.slice(0, 1));
-		expect(readEndoCockpitEventLogV0(one).source.watermark!.prefixDigest).toBe(
-			sha256HexV0(`${sha256HexV0(canonicalEndoJsonV0(events[0]))}\n`),
-		);
+		expect(readEndoCockpitEventLogV0(one).source.watermark!.prefixDigest).toBe(idsDigest(events.slice(0, 1)));
+		// The plain chain is internal: it appears nowhere in the published source.
+		expect(JSON.stringify(source)).not.toContain(rawChain(events));
 	});
 
 	it("tells a replaced event from the original when its id, the length and the order are unchanged", () => {
@@ -1017,5 +1063,223 @@ describe("sealed positions and empty registry digests (sixth review round)", () 
 		expect(validateEndoCockpitCapabilityStateV0(swap(empty, "0".repeat(64)))).toBeNull();
 		// The digest of a non-empty registry is still not decided by the wire.
 		expect(validateEndoCockpitCapabilityStateV0(swap(capabilitiesOf(seeded().root), "0".repeat(64)))).not.toBeNull();
+	});
+});
+
+describe("public commitments under an explicit digest key (eighth review round, P1)", () => {
+	const KEY_BYTES = Buffer.alloc(32, 0x5a);
+	const hmac = (value: unknown) => createHmac("sha256", KEY_BYTES).update(canonicalEndoJsonV0(value)).digest("hex");
+	// The consumer knows every field of the event but the hidden one, so it can build each candidate exactly.
+	const guessable = (secret: string) =>
+		event("tool.started", { toolName: "bash", args: { command: secret } }, { id: "endo.event.guess.1", sequence: 1 });
+	const secretLog = (secret: string) => {
+		const root = tempRoot();
+		const hidden = guessable(secret);
+		ingestAll(root, [hidden]);
+		return { root, hidden };
+	};
+
+	it("a hidden low-entropy value cannot be confirmed from the published prefix digest, but still binds it", () => {
+		const { root } = secretLog("7341");
+		const read = readEndoCockpitEventLogV0(root);
+		const published = read.source.watermark!.prefixDigest!;
+		// The consumer knows the whole projected envelope and enumerates every four-digit candidate for the hidden value,
+		// with the construction the earlier contract used: a plain sha256 over the line of the event's plain sha256.
+		const plainPrefix = (secret: string) => sha256HexV0(`${sha256HexV0(canonicalEndoJsonV0(guessable(secret)))}\n`);
+		const candidates = Array.from({ length: 10000 }, (_, n) => String(n).padStart(4, "0"));
+		expect(candidates.filter((c) => plainPrefix(c) === published)).toEqual([]);
+		// The key holder, and only they, can recompute it.
+		const chain = (secret: string) => plainPrefix(secret);
+		expect(
+			hmac({
+				purpose: "endo.cockpit.event-prefix.v0",
+				length: 1,
+				chain: chain("7341"),
+			}),
+		).toBe(published);
+		expect(hmac({ purpose: "endo.cockpit.event-prefix.v0", length: 1, chain: chain("7342") })).not.toBe(published);
+		// The tokens of the timeline JSON never contain the plain chain.
+		expect(JSON.stringify(readEndoCockpitTimelineV0(root))).not.toContain(chain("7341"));
+	});
+
+	it("a registry's hidden record text is committed to only under the key", () => {
+		const root = tempRoot();
+		seedRegistry(root);
+		const registry = openEndoHarnessRegistryV0(root, ATTACHMENT);
+		registry.append("change", changeRecord());
+		registry.append("notification", notificationRecord({ lines: ["Detected: pin 4417"] }));
+		const { source, records } = readEndoCockpitRegistryV0(root, ATTACHMENT);
+		const content = Object.fromEntries(
+			["fingerprint", "change", "evidence", "state", "notification"].map((kind) => [kind, (records as any)[kind]]),
+		);
+		const plain = sha256HexV0(canonicalEndoJsonV0(content));
+		expect(source.watermark!.contentDigest).not.toBe(plain);
+		expect(source.watermark!.contentDigest).toBe(hmac({ purpose: "endo.cockpit.registry-content.v0", content }));
+		// Guessing the hidden line against the plain construction finds nothing.
+		for (let n = 4400; n < 4430; n += 1) {
+			const guess = structuredClone(content) as any;
+			guess.notification[0].lines = [`Detected: pin ${n}`];
+			expect(sha256HexV0(canonicalEndoJsonV0(guess))).not.toBe(source.watermark!.contentDigest);
+		}
+		// The stored identity digest covers the real path; it is presented only as a keyed token.
+		const stored = (records as any).fingerprint[0].identity.digest as string;
+		const snapshot = JSON.stringify(readEndoCockpitSnapshotV0(root));
+		expect(snapshot).not.toContain(stored);
+		const identity = readEndoCockpitRuntimeV0(root, ATTACHMENT).identity;
+		expect(identity.current!.identity).toMatchObject({
+			value: { digest: hmac({ purpose: "endo.cockpit.identity-digest.v0", digest: stored }) },
+		});
+		// An unchanged registry is unchanged; a changed record under the same ids is changed.
+		expect(checkEndoCockpitSourceFreshnessV0(root, source)).toBe("unchanged");
+		registry.append("notification", notificationRecord({ id: "endo.evidence.test-notification.2" }));
+		expect(checkEndoCockpitSourceFreshnessV0(root, source)).toBe("changed");
+	});
+
+	it("aliases of withheld identifiers are keyed: a guessed identifier does not confirm", () => {
+		const root = tempRoot();
+		ingestAll(root, [event("tool.started", {}, { id: "endo.event.Tok_one" })]);
+		const entry = readEndoCockpitTimelineV0(root).entries[0]!;
+		const plainAlias = `endo.event.withheld-${sha256HexV0("endo.event.Tok_one").slice(0, 32)}`;
+		expect(entry.eventId).not.toBe(plainAlias);
+		expect(entry.eventId).toBe(
+			`endo.event.withheld-${hmac({ purpose: "endo.cockpit.id-alias.v0", id: "endo.event.Tok_one" }).slice(0, 32)}`,
+		);
+		// The watermark's last id is the same alias as the entry's.
+		expect(readEndoCockpitTimelineV0(root).source.watermark!.lastEventId).toBe(entry.eventId);
+	});
+
+	it("is deterministic within one context and differs across contexts", () => {
+		const { root } = seeded();
+		const a = canonicalEndoJsonV0(readEndoCockpitSnapshotV0(root, { limit: 1000 }));
+		expect(canonicalEndoJsonV0(readEndoCockpitSnapshotV0(root, { limit: 1000 }))).toBe(a);
+		const other = readSnapshotRaw(root, { digestKey: OTHER_KEY, limit: 1000 });
+		expect(validateEndoCockpitSnapshotV0(other)).not.toBeNull();
+		expect(other.timeline.source.watermark!.keyId).toBe(OTHER_KEY.keyId);
+		expect(other.timeline.source.watermark!.prefixDigest).not.toBe(
+			readEndoCockpitTimelineV0(root).source.watermark!.prefixDigest,
+		);
+		expect(canonicalEndoJsonV0(other)).not.toBe(a);
+		// A snapshot never mixes key contexts.
+		const mixed = structuredClone(readEndoCockpitSnapshotV0(root));
+		mixed.runtimes[0]!.identity.source.watermark!.keyId = OTHER_KEY.keyId;
+		mixed.runtimes[0]!.capabilities.source.watermark!.keyId = OTHER_KEY.keyId;
+		expect(validateEndoCockpitSnapshotV0(mixed)).toBeNull();
+	});
+
+	it("freshness under another or no key says so, and never unchanged, shrunk or diverged", () => {
+		const { root, events } = seeded();
+		const log = readEndoCockpitEventLogV0(root, { limit: 1000 }).source;
+		const registry = readEndoCockpitRegistryV0(root, ATTACHMENT).source;
+		const before = treeHash(root);
+		expect(checkEndoCockpitSourceFreshnessV0(root, log)).toBe("unchanged");
+		expect(checkEndoCockpitSourceFreshnessV0(root, registry)).toBe("unchanged");
+		expect(checkEndoCockpitSourceFreshnessV0(root, log, OTHER_KEY)).toBe("digest-context-differs");
+		expect(checkEndoCockpitSourceFreshnessV0(root, registry, OTHER_KEY)).toBe("digest-context-differs");
+		expect(checkRaw(root, log, undefined as never)).toBe("digest-context-differs");
+		expect(checkRaw(root, registry, null as never)).toBe("digest-context-differs");
+		expect(treeHash(root)).toBe(before);
+		// A same-id content rewrite is still diverged under the right key, and the log can still be continued from.
+		const rewritten = tempRoot();
+		ingestAll(rewritten, [
+			{ ...events[0]!, payload: { ...(events[0]!.payload as object), replaced: true } },
+			...events.slice(1),
+		]);
+		expect(checkEndoCockpitSourceFreshnessV0(rewritten, log)).toBe("diverged");
+		const grown = tempRoot();
+		ingestAll(grown, [...events, event("tool.started", {}, { id: "endo.event.more.1" })]);
+		expect(checkEndoCockpitSourceFreshnessV0(grown, log)).toBe("advanced");
+	});
+
+	it("a registry record rewritten under the same ids and counts is still detected", () => {
+		const build = (line: string) => {
+			const root = tempRoot();
+			seedRegistry(root);
+			const registry = openEndoHarnessRegistryV0(root, ATTACHMENT);
+			registry.append("change", changeRecord());
+			registry.append("notification", notificationRecord({ lines: [line] }));
+			return root;
+		};
+		const a = build("Detected: pin 4417");
+		const b = build("Detected: pin 4418");
+		const held = readEndoCockpitRegistryV0(a, ATTACHMENT).source;
+		const other = readEndoCockpitRegistryV0(b, ATTACHMENT).source;
+		expect(other.watermark!.counts).toEqual(held.watermark!.counts);
+		expect(other.watermark!.lastIds).toEqual(held.watermark!.lastIds);
+		expect(other.watermark!.contentDigest).not.toBe(held.watermark!.contentDigest);
+		expect(checkEndoCockpitSourceFreshnessV0(b, held)).toBe("changed");
+		expect(checkEndoCockpitSourceFreshnessV0(a, held)).toBe("unchanged");
+	});
+
+	it("is byte-identical across reads under one private key, and different under another", () => {
+		const { root } = seeded();
+		const read = (key: typeof OTHER_KEY) =>
+			canonicalEndoJsonV0(readSnapshotRaw(root, { digestKey: key, limit: 1000 }));
+		expect(OTHER_KEY.public).toBe(false);
+		expect(read(OTHER_KEY)).toBe(read(OTHER_KEY));
+		expect(read(OTHER_KEY)).not.toBe(read(TEST_KEY));
+		// Neither key's raw bytes appear in any output.
+		for (const [key, bytes] of [
+			[OTHER_KEY, Buffer.alloc(32, 0x11)],
+			[TEST_KEY, Buffer.alloc(32, 0x5a)],
+		] as const) {
+			const text = read(key);
+			expect(text).not.toContain(bytes.toString("hex"));
+			expect(text).not.toContain(bytes.toString("base64"));
+		}
+	});
+
+	it("no stored digest whose preimage includes withheld data is published unkeyed", () => {
+		const root = tempRoot();
+		seedRegistry(root);
+		const { fingerprint, evidence, state } = specimen();
+		const stored = new Set<string>([fingerprint.identity.digest]);
+		for (const item of evidence) {
+			stored.add(item.dependencies.identityDigest);
+			stored.add(item.dependencies.configurationDigest);
+			for (const support of item.evidence) if (/^[0-9a-f]{64}$/.test(support)) stored.add(support);
+		}
+		void state;
+		expect(stored.size).toBeGreaterThan(2);
+		const text = JSON.stringify(readEndoCockpitSnapshotV0(root));
+		for (const digest of stored) expect(text, digest).not.toContain(digest);
+		// What is kept on purpose: the entrypoint file's own sha256 (a public artifact whose size is shown beside it).
+		expect(text).toContain(fingerprint.local.entrypoint!.sha256);
+	});
+
+	it("a read without a usable key is a usage error before any disk access, and creates nothing", () => {
+		const root = join(tempRoot(), "nowhere");
+		const home = homedir();
+		const homeBefore = existsSync(home) ? readdirSync(home).sort().join("|") : "";
+		for (const bad of [undefined, null, {}, { keyId: "x", digest: 1 }, { keyId: "Bad Id", digest: () => ({}) }])
+			expect(() => readLogRaw(root, { digestKey: bad as never }), String(bad)).toThrow(TypeError);
+		expect(() => readLogRaw(root, undefined as never)).toThrow(TypeError);
+		expect(() => readRegistryRaw(root, ATTACHMENT, undefined as never)).toThrow(TypeError);
+		expect(() => readSnapshotRaw(root, {} as never)).toThrow(TypeError);
+		expect(existsSync(root)).toBe(false);
+		expect(existsSync(home) ? readdirSync(home).sort().join("|") : "").toBe(homeBefore);
+	});
+
+	it("a projection under a key the source was not read under is refused", () => {
+		const { root } = seeded();
+		const read = readLogRaw(root, { digestKey: TEST_KEY, limit: 5 });
+		expect(() => projectRaw({ source: read.source, afterSequence: 0, events: read.events }, OTHER_KEY)).toThrow(
+			TypeError,
+		);
+		expect(() => projectRaw({ source: read.source, afterSequence: 0, events: read.events }, TEST_KEY)).not.toThrow();
+	});
+
+	it("key material is never serialized, and no loader or fixed key is reachable from the library", () => {
+		const { root } = seeded();
+		const text = JSON.stringify([readEndoCockpitSnapshotV0(root), readEndoCockpitEventLogV0(root).source]);
+		expect(text).not.toContain(KEY_BYTES.toString("hex"));
+		expect(text).not.toContain(KEY_BYTES.toString("base64"));
+		for (const dir of ["cockpit", "cockpit/projections"]) {
+			for (const name of readdirSync(join(import.meta.dirname, "..", dir)).filter((f) => f.endsWith(".ts"))) {
+				const source = readFileSync(join(import.meta.dirname, "..", dir, name), "utf8");
+				expect(source, `${dir}/${name}`).not.toMatch(
+					/loadOrCreateEndoDigestKeyV0|endoDigestKeyFromEnvironmentV0|storage\/digest-key|process\.env|Date\.now|Math\.random/,
+				);
+			}
+		}
 	});
 });

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
-import { readEndoCockpitRuntimeV0, validateEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
+import { readEndoCockpitRuntimeV0, validateEndoCockpitSnapshotV0 } from "./cockpit-keyed.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 
 const cleanup: (() => void)[] = [];
@@ -87,11 +87,11 @@ describe("a registry written by the Pi attachment", () => {
 		const { root, attach } = setup();
 		await attach().checkLocal();
 		const read = readEndoCockpitRuntimeV0(root, "pi.default");
-		const timeline = (await import("../cockpit/index.ts")).readEndoCockpitTimelineV0(root);
+		const timeline = (await import("./cockpit-keyed.ts")).readEndoCockpitTimelineV0(root);
 		expect(
 			validateEndoCockpitSnapshotV0({
 				schemaVersion: "endo.cockpit-snapshot.v0",
-				projectionVersion: "cockpit-snapshot.1",
+				projectionVersion: "cockpit-snapshot.2",
 				consistency: "independent-sources",
 				timeline,
 				runtimes: [read],

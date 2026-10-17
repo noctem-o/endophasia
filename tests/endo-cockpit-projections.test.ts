@@ -66,7 +66,13 @@ function registrySource(records: EndoCockpitRegistryRecordsV0 | null): EndoCockp
 			records === null ? { ...CLEAN, state: "absent" } : { ...CLEAN, state: total === 0 ? "empty" : "readable" },
 		watermark: {
 			counts,
-			lastIds: { fingerprint: null, change: null, evidence: null, state: null, notification: null },
+			lastIds: {
+				fingerprint: records?.fingerprint.at(-1)?.id ?? null,
+				change: records?.change.at(-1)?.id ?? null,
+				evidence: records?.evidence.at(-1)?.id ?? null,
+				state: null,
+				notification: records?.notification.at(-1)?.id ?? null,
+			},
 			contentDigest: sha256HexV0(canonicalEndoJsonV0(records ?? {})),
 		},
 	};
@@ -833,5 +839,699 @@ describe("contract validators", () => {
 		const orphan = structuredClone(capabilities) as EndoCockpitCapabilityStateV0;
 		orphan.state = null;
 		expect(validateEndoCockpitCapabilityStateV0(orphan)).toBeNull();
+	});
+});
+
+describe("harness.attached runtime session reference (PR #57 review: ACP session ids)", () => {
+	const attached = (payload: Record<string, unknown>) => timeline([event("harness.attached", payload)]).entries[0]!;
+	const acpRef = `sha256-${"a".repeat(48)}`;
+
+	it("presents Pi's piSessionId as the runtime session reference, apart from the canonical session", () => {
+		const entry = attached({ instance: "i1", mapping: "pi-mapping.1", piSessionId: "pi-session-1" });
+		expect(entry.fields.runtimeSessionId).toEqual({ basis: "reported", value: "pi-session-1" });
+		expect(entry.sessionId).toBe("endo.session.test.one");
+		expect(entry.withheldFields).toBe(0);
+	});
+
+	it("presents ACP v1 and v2 acpSessionId through the same generic field", () => {
+		const v1 = attached({
+			mapping: "acp-v1-mapping.3",
+			instance: "i1",
+			acpSessionId: "sess_abc123",
+			openedBy: "session/new",
+		});
+		const v2 = attached({
+			mapping: "acp-v2-mapping.0",
+			instance: "i1",
+			acpSessionId: acpRef,
+			openedBy: "session/resume",
+			historyReplay: "not-requested",
+		});
+		expect(v1.fields.runtimeSessionId).toEqual({ basis: "reported", value: "sess_abc123" });
+		expect(v2.fields.runtimeSessionId).toEqual({ basis: "reported", value: acpRef });
+		expect(v1.fields).not.toHaveProperty("acpSessionId");
+		expect(v1.sessionId).toBe("endo.session.test.one");
+		// openedBy and historyReplay are not allowlisted, so they stay counted as withheld.
+		expect(v1.withheldFields).toBe(1);
+		expect(v2.withheldFields).toBe(2);
+	});
+
+	it("invents nothing when no reference is recorded or the recorded one is not a string", () => {
+		for (const payload of [{ instance: "i1" }, { instance: "i1", acpSessionId: 7 }, { acpSessionId: null }]) {
+			const entry = attached(payload);
+			expect(entry.fields).not.toHaveProperty("runtimeSessionId");
+			expect(entry.flags).not.toContain("anomaly");
+		}
+		expect(attached({ acpSessionId: 7 }).withheldFields).toBe(1);
+	});
+
+	it("treats two equal references as one and two different references as a stated conflict", () => {
+		const same = attached({ piSessionId: "s1", acpSessionId: "s1" });
+		expect(same.fields.runtimeSessionId).toEqual({ basis: "reported", value: "s1" });
+		expect(same.withheldFields).toBe(0);
+
+		const conflict = attached({ piSessionId: "pi-1", acpSessionId: "acp-1" });
+		expect(conflict.fields.runtimeSessionId).toMatchObject({ basis: "unavailable" });
+		expect(JSON.stringify(conflict)).not.toContain("pi-1");
+		expect(JSON.stringify(conflict)).not.toContain("acp-1");
+		expect(conflict.flags).toContain("anomaly");
+		expect(conflict.withheldFields).toBe(2);
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				timeline([event("harness.attached", { piSessionId: "a", acpSessionId: "b" })]),
+			),
+		).not.toBeNull();
+	});
+});
+
+describe("recognised kinds versus presented fields (PR #57 review: envelope-only kinds)", () => {
+	// Kinds the repository's Pi and ACP producers record, which carry no approved presentation field.
+	const KNOWN_ENVELOPE_ONLY = [
+		"permission.requested",
+		"permission.decided",
+		"session.update-observed",
+		"session.config-observed",
+		"session.listed",
+		"session.close-accepted",
+		"session.state-conflict",
+		"session.info-changed",
+		"control.refused",
+		"control.unavailable",
+		"control.message-refused",
+		"agent.prompt-accepted",
+		"agent.prompt-refused",
+		"agent.prompt-responded",
+		"agent.prompt-failed",
+		"agent.state-reported",
+		"config.thinking-changed",
+		"extension.ui-requested",
+		"extension.dialog-cancelled",
+		"harness.acp-initialized",
+		"harness.late-message",
+		"harness.prompt-timeout",
+		"intervention.proposal",
+		"intervention.request",
+		"intervention.consequence",
+	];
+
+	it("does not flag a known kind that has no approved field, and still withholds its whole payload", () => {
+		for (const kind of KNOWN_ENVELOPE_ONLY) {
+			const entry = timeline([event(kind, { secret: CANARY, nested: { path: `/home/${CANARY}` } })]).entries[0]!;
+			expect(entry.flags, kind).not.toContain("unrecognized");
+			expect(entry.fields, kind).toEqual({});
+			expect(entry.withheldFields, kind).toBe(2);
+			expect(JSON.stringify(entry), kind).not.toContain(CANARY);
+		}
+	});
+
+	it("keeps genuinely unknown kinds unrecognised, including capability names that are not event kinds", () => {
+		for (const kind of [
+			"vendor.unknown-kind",
+			"control.model",
+			"session.identity",
+			"session.prompt",
+			"session.cancel",
+			"session.close",
+			"capture.request",
+			"permission.subject.command",
+		]) {
+			const entry = timeline([event(kind, { whatever: 1 })]).entries[0]!;
+			expect(entry.flags, kind).toContain("unrecognized");
+			expect(entry.fields, kind).toEqual({});
+		}
+	});
+});
+
+describe("capability runtime disagreement (PR #57 review)", () => {
+	const admitted = (result: EndoCockpitCapabilityStateV0) =>
+		result.capabilities.filter((c) => c.status !== "unverified");
+
+	it("limits every admitted capability whose cited evidence is for another runtime family, without rewriting its status", () => {
+		const records = specimenRecords();
+		const evidence = structuredClone(records.evidence).map((item) => ({ ...item, runtime: "acp" }));
+		const result = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence }));
+		expect(admitted(result).length).toBeGreaterThan(0);
+		for (const view of admitted(result)) {
+			const limit = view.limits.find((l) => l.code === "runtime-differs");
+			expect(limit, view.capability).toBeDefined();
+			expect(limit!.refs).toEqual([view.ref, view.evidence!.ref]);
+		}
+		expect(result.capabilities.map((c) => c.status)).toEqual(records.state[0]!.capabilities.map((c) => c.status));
+		expect(validateEndoCockpitCapabilityStateV0(result)).not.toBeNull();
+	});
+
+	it("limits a state whose named or latest fingerprint is another runtime family, with those fingerprints as references", () => {
+		const records = specimenRecords();
+		const first = records.fingerprint[0]!;
+		const foreignNewest = { ...first, id: "endo.evidence.test-fingerprint.2", runtime: "acp" };
+		const stale = projectEndoCockpitCapabilityStateV0(input({ ...records, fingerprint: [first, foreignNewest] }));
+		for (const view of admitted(stale)) {
+			const limit = view.limits.find((l) => l.code === "runtime-differs")!;
+			expect(limit.refs.map((ref) => (ref.domain === "harness-registry" ? `${ref.kind}:${ref.id}` : ""))).toEqual([
+				"state:null",
+				`fingerprint:${foreignNewest.id}`,
+			]);
+		}
+		expect(validateEndoCockpitCapabilityStateV0(stale)).not.toBeNull();
+
+		const named = { ...first, id: "endo.evidence.test-fingerprint.3", runtime: "acp" };
+		const state = { ...structuredClone(records.state[0]!), fingerprintId: named.id, at: "2026-10-04T10:00:01Z" };
+		const mismatched = projectEndoCockpitCapabilityStateV0(
+			input({ ...records, fingerprint: [first, named], state: [records.state[0]!, state] }),
+		);
+		expect(admitted(mismatched).every((v) => v.limits.some((l) => l.code === "runtime-differs"))).toBe(true);
+		expect(validateEndoCockpitCapabilityStateV0(mismatched)).not.toBeNull();
+	});
+
+	it("raises nothing for evidence carried across observations of one runtime, and ignores an unverified capability", () => {
+		const records = specimenRecords();
+		const first = records.fingerprint[0]!;
+		const second = { ...first, id: "endo.evidence.test-fingerprint.2", observedAt: "2026-10-04T10:00:00Z" };
+		const state = { ...structuredClone(records.state[0]!), fingerprintId: second.id, at: "2026-10-04T10:00:01Z" };
+		const result = projectEndoCockpitCapabilityStateV0(
+			input({ ...records, fingerprint: [first, second], state: [records.state[0]!, state] }),
+		);
+		for (const view of result.capabilities) expect(view.limits).toEqual([]);
+		const foreign = projectEndoCockpitCapabilityStateV0(
+			input({ ...records, fingerprint: [{ ...first, runtime: "acp" }] }),
+		);
+		for (const view of foreign.capabilities.filter((v) => v.status === "unverified")) expect(view.limits).toEqual([]);
+	});
+});
+
+describe("contextual reference validation (PR #57 review: wire validation is not store verification)", () => {
+	function good() {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		return {
+			identity: projectEndoCockpitRuntimeIdentityV0(input(records)),
+			capabilities: projectEndoCockpitCapabilityStateV0(input(records)),
+		};
+	}
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+	const other = "endo.evidence.test-other.1";
+
+	it("rejects a runtime identity whose reference is altered in exactly one field", () => {
+		const { identity } = good();
+		expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		const edits: [string, (copy: any) => void][] = [
+			[
+				"fingerprint ref to another kind",
+				(c) => {
+					c.current.ref.kind = "evidence";
+				},
+			],
+			[
+				"fingerprint ref id differs from the view",
+				(c) => {
+					c.current.ref.id = other;
+				},
+			],
+			[
+				"fingerprint ref attachment",
+				(c) => {
+					c.current.ref.attachment = "other.default";
+				},
+			],
+			[
+				"fingerprint ref index beyond the watermark",
+				(c) => {
+					c.current.ref.index = 3;
+				},
+			],
+			[
+				"fingerprint ref replaced by an event reference",
+				(c) => {
+					c.current.ref = { domain: "event-log", storageSequence: 1, eventId: "endo.event.test.1" };
+				},
+			],
+			[
+				"claim reads from another record",
+				(c) => {
+					c.current.identity.refs[0].id = other;
+				},
+			],
+			[
+				"claim reads from another kind",
+				(c) => {
+					c.current.version.refs[0].kind = "change";
+				},
+			],
+			[
+				"change ref kind",
+				(c) => {
+					c.lastChange.ref.kind = "notification";
+				},
+			],
+			[
+				"change ref id",
+				(c) => {
+					c.lastChange.ref.id = other;
+				},
+			],
+			[
+				"notification ref kind",
+				(c) => {
+					c.lastNotification.ref.kind = "change";
+				},
+			],
+			[
+				"notification ref index",
+				(c) => {
+					c.lastNotification.ref.index = 1;
+				},
+			],
+			[
+				"runtime claim names another record",
+				(c) => {
+					c.runtime.refs[0] = c.lastChange.ref;
+				},
+			],
+			[
+				"runtime claim has no source",
+				(c) => {
+					c.runtime.refs = [];
+				},
+			],
+			[
+				"note points into another attachment",
+				(c) =>
+					c.notes.push({
+						code: "notification-change-missing",
+						refs: [{ ...c.lastNotification.ref, attachment: "other.default" }],
+					}),
+			],
+			[
+				"note points at the wrong kind of record",
+				(c) => c.notes.push({ code: "notification-change-missing", refs: [c.current.ref] }),
+			],
+			[
+				"note carries a reference its code never has",
+				(c) => c.notes.push({ code: "no-fingerprint-recorded", refs: [c.current.ref] }),
+			],
+		];
+		for (const [name, edit] of edits)
+			expect(validateEndoCockpitRuntimeIdentityV0(mutated(identity, edit)), name).toBeNull();
+	});
+
+	it("rejects a capability state whose reference or currency is altered in exactly one field", () => {
+		const { capabilities } = good();
+		expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+		const first = (c: any) => c.capabilities.find((v: any) => v.evidence !== null);
+		const edits: [string, (copy: any) => void][] = [
+			[
+				"state ref kind",
+				(c) => {
+					c.state.ref.kind = "fingerprint";
+				},
+			],
+			[
+				"state ref given an id",
+				(c) => {
+					c.state.ref.id = other;
+				},
+			],
+			[
+				"state ref index",
+				(c) => {
+					c.state.ref.index = 1;
+				},
+			],
+			[
+				"capability ref differs from the state",
+				(c) => {
+					first(c).ref.index = 1;
+				},
+			],
+			[
+				"evidence ref kind",
+				(c) => {
+					first(c).evidence.ref.kind = "fingerprint";
+				},
+			],
+			[
+				"evidence ref id differs from the view",
+				(c) => {
+					first(c).evidence.ref.id = other;
+				},
+			],
+			[
+				"evidence ref replaced by an event reference",
+				(c) => {
+					first(c).evidence.ref = { domain: "event-log", storageSequence: 1, eventId: "endo.event.test.1" };
+				},
+			],
+			[
+				"currency contradicts the ids",
+				(c) => {
+					c.state.currency = "stale";
+				},
+			],
+			[
+				"limit without the state reference",
+				(c) => first(c).limits.push({ code: "evidence-capability-differs", refs: [first(c).evidence.ref] }),
+			],
+			[
+				"limit names a fingerprint the state does not",
+				(c) =>
+					first(c).limits.push({
+						code: "runtime-differs",
+						refs: [first(c).ref, { ...c.state.ref, kind: "fingerprint", id: other }],
+					}),
+			],
+			[
+				"limit names evidence that is not the cited one",
+				(c) =>
+					first(c).limits.push({
+						code: "evidence-capability-differs",
+						refs: [first(c).ref, { ...first(c).evidence.ref, index: 0, id: other }],
+					}),
+			],
+			[
+				"limit references a kind its code never has",
+				(c) =>
+					first(c).limits.push({
+						code: "status-classification-mismatch",
+						refs: [first(c).ref, first(c).evidence.ref],
+					}),
+			],
+		];
+		for (const [name, edit] of edits)
+			expect(validateEndoCockpitCapabilityStateV0(mutated(capabilities, edit)), name).toBeNull();
+	});
+
+	it("keeps legitimate references to records a presentation does not embed, and does not claim to read the store", () => {
+		const { identity, capabilities } = good();
+		// A note may name an evidence record or a state that no view embeds.
+		const withNote = mutated(identity, (c) =>
+			c.notes.push({
+				code: "duplicate-record-id",
+				refs: [
+					{
+						domain: "harness-registry",
+						attachment: ATTACHMENT,
+						kind: "evidence",
+						index: 0,
+						id: capabilities.capabilities.find((v) => v.evidence)!.evidence!.id,
+					},
+				],
+			}),
+		);
+		expect(validateEndoCockpitRuntimeIdentityV0(withNote)).not.toBeNull();
+		// Wire validation only: with several records of a kind, an id inside the watermark's range cannot be checked
+		// against the log without reading it, so a plausible reference is accepted. Disk verification is the reader's job.
+		const records = specimenRecords();
+		const second = { ...records.fingerprint[0]!, id: "endo.evidence.test-fingerprint.2" };
+		const wire = projectEndoCockpitRuntimeIdentityV0(
+			input({ ...records, fingerprint: [records.fingerprint[0]!, second] }),
+		);
+		const swapped = mutated(wire, (c) => {
+			c.previousDifferent = null;
+		});
+		expect(validateEndoCockpitRuntimeIdentityV0(swapped)).not.toBeNull();
+	});
+});
+
+describe("timeline pagination metadata against its watermark (PR #57 review)", () => {
+	const ids = (n: number) =>
+		Array.from({ length: n }, (_, i) => event("tool.started", {}, { id: `endo.event.page.${i + 1}` }));
+	function page(
+		length: number,
+		afterSequence: number,
+		take: number,
+		state: "readable" | "empty" | "absent" = "readable",
+	) {
+		const all = ids(length);
+		const events = all.slice(afterSequence, afterSequence + take);
+		return projectEndoCockpitSessionTimelineV0({
+			source: {
+				domain: "event-log",
+				condition: { state, tornTail: null, sealedAt: null, error: null },
+				watermark: {
+					length,
+					lastEventId: all.at(-1)?.id ?? null,
+					prefixDigest: length === 0 ? null : sha256HexV0(`prefix-${length}`),
+				},
+			},
+			afterSequence,
+			events: stored(events, afterSequence + 1),
+		});
+	}
+	const withMore = (value: EndoCockpitSessionTimelineV0, hasMore: boolean | null) =>
+		mutated(value, (c) => {
+			c.window.hasMore = hasMore;
+		});
+	const mutated = <T>(value: T, edit: (copy: any) => void): T => {
+		const copy = structuredClone(value);
+		edit(copy);
+		return copy;
+	};
+
+	it("accepts the beginning, the middle, the exact end, a window past the end, an empty and an absent log", () => {
+		const cases: [string, EndoCockpitSessionTimelineV0, boolean][] = [
+			["beginning", page(5, 0, 2), true],
+			["middle", page(5, 2, 2), true],
+			["exact end", page(5, 3, 2), false],
+			["exact end, full page", page(4, 0, 4), false],
+			["past the end", page(4, 9, 3), false],
+			["empty log", page(0, 0, 0, "empty"), false],
+			["absent log", page(0, 0, 0, "absent"), false],
+		];
+		for (const [name, value, hasMore] of cases) {
+			expect(value.window.hasMore, name).toBe(hasMore);
+			expect(validateEndoCockpitSessionTimelineV0(value), name).not.toBeNull();
+			// The opposite claim, or no claim at all, contradicts the watermark.
+			expect(validateEndoCockpitSessionTimelineV0(withMore(value, !hasMore)), name).toBeNull();
+			expect(validateEndoCockpitSessionTimelineV0(withMore(value, null)), name).toBeNull();
+		}
+		expect(page(4, 9, 3).entries).toEqual([]);
+		expect(page(4, 9, 3).window).toEqual({ afterSequence: 9, nextAfterSequence: 9, hasMore: false });
+	});
+
+	it("allows no position claim only when the source has no position", () => {
+		const unavailable = projectEndoCockpitSessionTimelineV0({
+			source: {
+				domain: "event-log",
+				condition: {
+					state: "unopenable",
+					tornTail: null,
+					sealedAt: null,
+					error: { kind: "invalid-store", message: "bad" },
+				},
+				watermark: null,
+			},
+			afterSequence: 0,
+			events: [],
+		});
+		expect(unavailable.window.hasMore).toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(unavailable)).not.toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(withMore(unavailable, false))).toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(withMore(unavailable, true))).toBeNull();
+		const entries = mutated(page(2, 0, 2), (c) => {
+			c.source.watermark = null;
+		});
+		expect(validateEndoCockpitSessionTimelineV0(withMore(entries, null))).toBeNull();
+	});
+
+	it("rejects entries past the source's length and a cursor that does not stop at the last entry", () => {
+		const base = page(5, 0, 3);
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(base, (c) => {
+					c.source.watermark.length = 2;
+				}),
+			),
+		).toBeNull();
+		expect(
+			validateEndoCockpitSessionTimelineV0(
+				mutated(base, (c) => {
+					c.window.nextAfterSequence = 4;
+				}),
+			),
+		).toBeNull();
+		expect(validateEndoCockpitSessionTimelineV0(mutated(base, (c) => c.entries.reverse()))).toBeNull();
+		// An ignored duplicate is read but not presented, so the cursor may pass the last presented entry.
+		const dup = event("tool.started", {}, { id: "endo.event.page.1" });
+		const withDuplicate = projectEndoCockpitSessionTimelineV0({
+			source: base.source,
+			afterSequence: 0,
+			events: stored([ids(5)[0]!, dup], 1),
+		});
+		expect(withDuplicate.duplicatesIgnored).toBe(1);
+		expect(withDuplicate.window.nextAfterSequence).toBe(2);
+		expect(validateEndoCockpitSessionTimelineV0(withDuplicate)).not.toBeNull();
+		const stuck = structuredClone(withDuplicate);
+		stuck.window.nextAfterSequence = 0;
+		expect(validateEndoCockpitSessionTimelineV0(stuck)).toBeNull();
+		const beyond = structuredClone(withDuplicate);
+		beyond.window.nextAfterSequence = 99;
+		expect(validateEndoCockpitSessionTimelineV0(beyond)).toBeNull();
+	});
+});
+
+describe("projection version compatibility (PR #57 review)", () => {
+	function good() {
+		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
+		const identity = projectEndoCockpitRuntimeIdentityV0(input(records));
+		const capabilities = projectEndoCockpitCapabilityStateV0(input(records));
+		const log = timeline([event("tool.started", { toolName: "read" })]);
+		const snapshot = {
+			schemaVersion: "endo.cockpit-snapshot.v0",
+			projectionVersion: "cockpit-snapshot.1",
+			consistency: "independent-sources",
+			timeline: log,
+			runtimes: [{ identity, capabilities }],
+		};
+		return { identity, capabilities, log, snapshot };
+	}
+	const BAD = ["cockpit-x.99", "cockpit-runtime-identity.2", "", "cockpit-snapshot.1 ", "cockpit-session-timeline.0"];
+
+	it("pins each record to its declared projection version, and keeps it apart from the schema version", () => {
+		const { identity, capabilities, log, snapshot } = good();
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.1");
+		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.1");
+		expect(log.projectionVersion).toBe("cockpit-session-timeline.1");
+		const validators: [string, unknown, (value: unknown) => unknown][] = [
+			["identity", identity, validateEndoCockpitRuntimeIdentityV0],
+			["capabilities", capabilities, validateEndoCockpitCapabilityStateV0],
+			["timeline", log, validateEndoCockpitSessionTimelineV0],
+			["snapshot", snapshot, validateEndoCockpitSnapshotV0],
+		];
+		for (const [name, value, validate] of validators) {
+			expect(validate(value), name).not.toBeNull();
+			for (const bad of BAD)
+				expect(validate({ ...(value as object), projectionVersion: bad }), `${name} ${bad}`).toBeNull();
+			// Another record's valid projection version is not this record's.
+			const foreign = name === "timeline" ? "cockpit-snapshot.1" : "cockpit-session-timeline.1";
+			expect(validate({ ...(value as object), projectionVersion: foreign }), `${name} foreign`).toBeNull();
+		}
+	});
+
+	it("rejects an unsupported version nested inside a snapshot, in every slot", () => {
+		const { snapshot } = good();
+		const bad = (edit: (copy: any) => void) => {
+			const copy = structuredClone(snapshot);
+			edit(copy);
+			return validateEndoCockpitSnapshotV0(copy);
+		};
+		expect(
+			bad((c) => {
+				c.timeline.projectionVersion = "cockpit-session-timeline.2";
+			}),
+		).toBeNull();
+		expect(
+			bad((c) => {
+				c.runtimes[0].identity.projectionVersion = "cockpit-runtime-identity.2";
+			}),
+		).toBeNull();
+		expect(
+			bad((c) => {
+				c.runtimes[0].capabilities.projectionVersion = "cockpit-capability-state.2";
+			}),
+		).toBeNull();
+		expect(
+			bad((c) => {
+				c.projectionVersion = "cockpit-snapshot.2";
+			}),
+		).toBeNull();
+		expect(bad(() => {})).not.toBeNull();
+	});
+});
+
+describe("free-text presentation boundary (PR #57 audit)", () => {
+	const WITHHELD = "withheld: the recorded text appears to embed a local path, network address or credential";
+	const SENSITIVE = [
+		`/home/${CANARY}/project`,
+		`see ~/${CANARY}/notes`,
+		`C:\\Users\\${CANARY}\\x`,
+		`failed at \\\\${CANARY}\\share\\x`,
+		`https://user:${CANARY}@example.test/x`,
+		`token=${CANARY}-abcdef`,
+		`Authorization: Bearer ${CANARY}abcdefgh`,
+		`key sk-${CANARY}${"a".repeat(20)}`,
+		`ghp_${"A".repeat(30)}`,
+		"-----BEGIN OPENSSH PRIVATE KEY-----",
+	];
+
+	it("withholds a capability reason, limitation or notice title that embeds a path, address or credential", () => {
+		for (const text of SENSITIVE) {
+			const records = specimenRecords();
+			const state = structuredClone(records.state[0]!);
+			state.capabilities[0]!.reason = text;
+			const evidence = structuredClone(records.evidence);
+			const cited = evidence.find((item) => item.id === state.capabilities[1]!.evidenceId)!;
+			cited.limitations = [text, "A plain limitation: input/output only"];
+			const capabilities = projectEndoCockpitCapabilityStateV0(input({ ...records, evidence, state: [state] }));
+			expect(capabilities.capabilities[0]!.reason, text).toBe(WITHHELD);
+			expect(capabilities.capabilities[1]!.limitations, text).toEqual([
+				WITHHELD,
+				"A plain limitation: input/output only",
+			]);
+			const identity = projectEndoCockpitRuntimeIdentityV0(
+				input({
+					...records,
+					change: [changeRecord()],
+					notification: [notificationRecord({ title: text })],
+				}),
+			);
+			expect(identity.lastNotification!.title, text).toBe(WITHHELD);
+			expect(JSON.stringify([capabilities, identity]), text).not.toContain(CANARY);
+			expect(validateEndoCockpitCapabilityStateV0(capabilities)).not.toBeNull();
+			expect(validateEndoCockpitRuntimeIdentityV0(identity)).not.toBeNull();
+		}
+	});
+
+	it("keeps the recorded wording of the committed specimen: nothing it says is withheld", () => {
+		const records = specimenRecords();
+		const result = projectEndoCockpitCapabilityStateV0(input(records));
+		expect(result.capabilities.map((c) => c.reason)).toEqual(records.state[0]!.capabilities.map((c) => c.reason));
+		const wanted = records.evidence.flatMap((item) => item.limitations);
+		const shown = result.capabilities.flatMap((c) => c.limitations);
+		expect(shown.every((text) => wanted.includes(text))).toBe(true);
+		expect(shown).not.toContain(WITHHELD);
+	});
+
+	it("presents a runtime-written string field as unavailable, and counts it withheld, when it looks sensitive", () => {
+		for (const text of SENSITIVE) {
+			const entries = timeline([
+				event("lifecycle.anomaly", { observed: text, problem: "a plain problem" }),
+				event("harness.protocol-fault", { fault: text }),
+				event("tool.started", { toolName: text, toolCallId: "call-1", runtimeEvent: "tool_execution_start" }),
+				event("lifecycle.run-unclassified", { turns: 1, reason: { status: "reported", value: text } }),
+				event("lifecycle.turn-completed", { turn: 1, stopReason: { status: "UNAVAILABLE", reason: text } }),
+				event("lifecycle.session-started", {
+					runtime: "pi",
+					runtimeSessionId: "s1",
+					instance: "i1",
+					unavailable: [
+						{ field: "runId", reason: text },
+						{ field: text, reason: "a plain reason" },
+					],
+				}),
+			]).entries;
+			expect(entries[0]!.fields.observed, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(entries[0]!.fields.problem, text).toEqual({ basis: "derived", value: "a plain problem" });
+			expect(entries[0]!.withheldFields, text).toBe(1);
+			expect(entries[1]!.fields.fault, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(entries[2]!.fields.toolName, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(entries[2]!.fields.toolCallId, text).toEqual({ basis: "reported", value: "call-1" });
+			expect(entries[3]!.fields.reason, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(entries[4]!.fields.stopReason, text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			// A replaced value is a withheld key, whichever way it was recorded.
+			expect(entries[2]!.withheldFields, text).toBe(1);
+			expect(entries[3]!.withheldFields, text).toBe(1);
+			expect(entries[4]!.withheldFields, text).toBe(1);
+			// Results are plain data: two withheld fields never share an object.
+			expect(entries[0]!.fields.observed).not.toBe(entries[1]!.fields.fault);
+			expect(entries[5]!.fields["unavailable.runId"], text).toEqual({ basis: "unavailable", reason: WITHHELD });
+			expect(
+				Object.keys(entries[5]!.fields).some((key) => key.includes(CANARY)),
+				text,
+			).toBe(false);
+			expect(JSON.stringify(entries), text).not.toContain(CANARY);
+		}
 	});
 });

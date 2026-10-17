@@ -98,16 +98,41 @@ history with no cursor) and the cognition graph (its own revisions; not read by 
 atomic boundary. Sources are read one after another: the event log first, then registries in code-unit order. A snapshot
 says so (`consistency`) and carries each source's own watermark:
 
-- event log: `{ length, lastEventId, prefixDigest }` (the digest is over the event ids in storage order). `storageSequence` is the 1-based append position and the only ordering of the
+- event log: `{ length, lastEventId, prefixDigest }`. The digest binds the **complete contents** of the events read, in
+  storage order: the sha256 over one line per event, each line the lowercase hex sha256 of the event's canonical JSON
+  (`runtime/contracts/canonical-json.ts`) followed by `"\n"`. Every line has the same width and alphabet, so the framing
+  is unambiguous and any language can recompute it; an event replaced under the same id with another kind, coordinates,
+  payload or time changes its line. `storageSequence` is the 1-based append position and the only ordering of the
   timeline; producer `sequence` and recorded `at` are shown and order nothing.
 - registry: per-kind counts, last ids and a `contentDigest` of the records. There is no incremental cursor, so any
   difference means re-reading that attachment.
 
 `checkEndoCockpitSourceFreshnessV0(root, heldSource)` tells a consumer, per source, `unchanged`, `advanced` (event log:
-more events and the events it held are still the first ones, by id and order, so page on from `afterSequence = old
-length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten or shorter: discard and take a fresh snapshot),
-or `unavailable`. The prefix check is by event id; frame integrity is the log's own digest check, reported as `degraded`.
+more events and the events it held are still the first ones, by complete contents and order, so page on from
+`afterSequence = old length`), `changed` (re-read), `diverged` or `shrunk` (event log rewritten, repaired with different
+events, or shorter: discard and take a fresh snapshot), or `unavailable`. The event log is opened once per check, so the
+length, the held prefix and the condition are one observation, and the log is traversed once. Frame integrity is the
+log's own digest check, reported as `degraded`.
 A registry update never moves the event log's watermark, and an event append never moves a registry's.
+
+**Pagination.** The timeline `window` is `{ afterSequence, nextAfterSequence, hasMore }`. Entries satisfy
+`afterSequence < storageSequence <= nextAfterSequence`, ascending and never beyond `watermark.length`. `hasMore` is
+`watermark.length > nextAfterSequence` and is `null` exactly when the source has no position (`unopenable`, `watermark:
+null`, which also has no entries). A cursor past the end of the log is a valid empty window, as the event store answers
+it: `nextAfterSequence` stays at `afterSequence` and `hasMore` is `false`. Without ignored duplicates the cursor is
+exactly the last entry's position; an ignored duplicate is read but not presented, so it may move the cursor past it
+(`duplicatesIgnored > 0`). The validator rejects metadata that contradicts the watermark.
+
+**Wire validation is not store verification.** `validateEndoCockpit*V0` and `readEndoCockpitRecordV0` prove that a
+serialized record is well formed and consistent with itself: each view's `ref` is a registry reference of the right kind
+with the view's own id, for the projection's attachment, inside the record count the source's watermark states (the last
+position naming the watermark's last id); capability references equal the state's; limit and note references have the
+kinds their code allows and name the fingerprints and evidence the state names; an event reference is never a registry
+reference; `projectionVersion` equals the version declared for the record in `ENDO_COCKPIT_PROJECTION_VERSIONS_V0`
+(exact match, nested projections included; `schemaVersion` stays the record's own, separate version). They do **not**
+open the store: that the referenced record exists and says what the view says is only established by re-reading the
+source through the reader. A transport that must prove it re-reads; a consumer must not read "validated" as "verified on
+disk".
 
 **Provenance.** Presented values are claims with a basis: `observed` (collected by Endophasia from the local
 installation or process), `reported` (stated by the runtime), `derived` (computed by Endophasia from recorded facts,
@@ -118,7 +143,9 @@ and id, or `harness-registry` attachment, kind, index and id) to what it was rea
 capability admission: the recorded status is carried as written, and `limits` only name disagreements between records
 (a state for an older fingerprint than the latest recorded, or for one nobody recorded; a cited evidence record that is
 missing, names another capability or classifies differently; evidence recorded under a different runtime identity than
-the one the state names; evidence carried across observations on a reduced-confidence identity; a status that does not
+the one the state names; the state, its cited evidence, the fingerprint it names or the latest fingerprint recording
+different runtime families (`runtime-differs`, with those records as references: each record is valid alone, the
+registry checks attachment, not family); evidence carried across observations on a reduced-confidence identity; a status that does not
 follow from its classification). Evidence legitimately outlives the observation it was recorded against while the
 identity digest is unchanged, so the observation id is not compared, only the identity. A state recorded for an older
 observation (for example, after `identify` but before the next check) is reported `stale`, as `endo doctor` does.
@@ -127,9 +154,20 @@ observation (for example, after `identify` but before the next check) is reporte
 entry ids, identity and keyed argument/result digests) are kept. Withheld, and counted or named as withheld: local paths
 in fingerprints and changes, the version command's raw output, a collection failure's text, a notification's lines (they
 embed paths and failure text), evidence `expected`/`observed` text, `harness.attached` arguments, failure and recovery
-details, tool arguments and results, and every payload field of a kind the projection does not list. A kind that is not
-listed appears by its envelope alone and is flagged `unrecognized`. Presented strings are cut at 256 characters and a
-producer name at 512, so any valid stored record fits the contract. A future explicit evidence-inspection endpoint can
+details, tool arguments and results, permission and configuration contents, and every payload field the projection does
+not list. Two tables decide what a timeline entry shows: the set of **recognised** kinds (every kind the Pi and ACP
+producers, the lifecycle and intervention vocabularies record in the event log; a kind outside it is flagged
+`unrecognized`) and, separately, the **allowlist of fields** per kind (a recognised kind with none appears by its envelope
+alone, unflagged, its payload counted as withheld). The `harness.attached` runtime session reference is presented as
+`runtimeSessionId` whether the producer recorded it as `piSessionId` or `acpSessionId`; if both are recorded and differ,
+neither is chosen: the field is `unavailable`, the entry is flagged `anomaly`, and both keys count as withheld. It is
+never the canonical session id. Free text a record author wrote (a capability reason, an evidence limitation, a notice
+title, and every presented string of a timeline entry) is bounded and passes a deterministic filter: text that looks like
+it embeds a local path, a network address or a credential is replaced whole by a fixed withheld text
+(`ENDO_COCKPIT_WITHHELD_TEXT_V0`; for a timeline field the field becomes `unavailable` with that text and its key counts
+as withheld). The filter is a heuristic: it withholds, it does not certify what it passes. The store's error message
+echoes a declared version string only when it is shaped like a version label. Presented strings are cut at 256
+characters and a producer name at 512, so any valid stored record fits the contract. A future explicit evidence-inspection endpoint can
 extend this safely only by being a separate, deliberate request for one referenced record: addressed by the `ref` a
 projection already carries, gated and logged by the transport, serving one record's approved body or reporting that none
 is approved, and never widening the allowlists of the default projections.

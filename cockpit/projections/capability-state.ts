@@ -13,8 +13,14 @@
 //    NOT compared, only the identity;
 //  - the evidence is carried across observations on a reduced-confidence identity (the protocol's rule: such evidence is
 //    never reused for a later observation);
-//  - the recorded status does not follow from the recorded classification.
-// The evidence's written expectation and observation are not presented; its limitations (adapter-written) are.
+//  - the recorded status does not follow from the recorded classification;
+//  - the runtime family differs between the state, the cited evidence, the fingerprint the state names or the latest
+//    fingerprint. Each record is valid alone (the registry checks attachment, not family), so this is the only place the
+//    disagreement shows; the recorded status is still carried as recorded, never recomputed. Fingerprint ids are NOT
+//    compared for this: the identity digest already covers the runtime, and evidence carried across observations is
+//    legitimate while it holds.
+// The evidence's written expectation and observation are not presented; its limitations (adapter-written) are, and so is
+// the state's reason, each withheld whole when it looks like it embeds a local path, address or credential.
 
 import {
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
@@ -34,6 +40,7 @@ import {
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
 	noteV0,
+	presentableTextV0,
 	registryRefV0,
 } from "./common.ts";
 
@@ -125,6 +132,12 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 				limits.push({ code: "status-classification-mismatch", refs: [stateRef] });
 			if (state.fingerprintId !== null && named === null)
 				limits.push({ code: "state-fingerprint-not-recorded", refs: [stateRef] });
+			const differing: EndoCockpitRefV0[] = [];
+			if (cited !== null && cited.record.runtime !== state.runtime) differing.push(citedRef!);
+			if (named !== null && named.record.runtime !== state.runtime)
+				differing.push(registryRefV0(attachment, "fingerprint", named.index, named.record.id));
+			if (newest !== null && newest !== named && newest.record.runtime !== state.runtime) differing.push(newestRef!);
+			if (differing.length > 0) limits.push({ code: "runtime-differs", refs: [stateRef, ...differing] });
 			if (cited === null) limits.push({ code: "evidence-record-missing", refs: [stateRef] });
 			else {
 				const refs = [stateRef, citedRef!];
@@ -150,10 +163,10 @@ export function projectEndoCockpitCapabilityStateV0(input: EndoCockpitRegistryIn
 			capability: entry.capability,
 			status: entry.status,
 			classification: entry.classification,
-			reason: entry.reason,
+			reason: presentableTextV0(entry.reason),
 			requires: entry.requires,
 			evidence: cited === null ? null : evidenceView(attachment, cited),
-			limitations: cited === null ? [] : [...cited.record.limitations],
+			limitations: cited === null ? [] : cited.record.limitations.map(presentableTextV0),
 			limits,
 			ref: stateRef,
 		});

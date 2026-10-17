@@ -9,6 +9,7 @@ import type {
 	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
 } from "../../protocol/cockpit.ts";
+import { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "../../protocol/cockpit.ts";
 import type {
 	EndoCapabilityEvidenceV0,
 	EndoCapabilityStateV0,
@@ -39,6 +40,38 @@ export interface EndoCockpitRegistryInputV0 {
 export interface EndoCockpitIndexedV0<T> {
 	record: T;
 	index: number;
+}
+
+/**
+ * Text that looks like it carries a local path, a network address or a credential. A heuristic for free text a record
+ * author wrote (a reason, a limitation, a title, a runtime-reported string): it is not a secret scanner and a pass does
+ * not certify the text safe, but what it flags is withheld whole, never partly rewritten, so the result is deterministic.
+ * Prose that merely contains a slash ("input/output") is not flagged; a token that starts with one, or a drive letter,
+ * a home shorthand, a URL or a known credential shape, is.
+ */
+const SENSITIVE_TEXT: readonly RegExp[] = [
+	/(?:^|[\s"'`([{=:,;<])(?:\/|~\/|\.{1,2}\/)[^\s]/,
+	/\b[A-Za-z]:[\\/]/,
+	/\\\\[^\s\\]+\\/,
+	/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S/,
+	/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/,
+	/\bgh[pousr]_[A-Za-z0-9]{20,}/,
+	/\bgithub_pat_[A-Za-z0-9_]{20,}/,
+	/\bxox[abprs]-[A-Za-z0-9-]{8,}/,
+	/\bAKIA[0-9A-Z]{16}\b/,
+	/-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+	/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i,
+	/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
+	/\b(?:api[_-]?key|secret|token|password|passwd|authorization)\s*[=:]\s*\S{4,}/i,
+];
+
+export function looksSensitiveTextV0(text: string): boolean {
+	return SENSITIVE_TEXT.some((pattern) => pattern.test(text));
+}
+
+/** The text itself, or the fixed withheld text when it looks sensitive. */
+export function presentableTextV0(text: string): string {
+	return looksSensitiveTextV0(text) ? ENDO_COCKPIT_WITHHELD_TEXT_V0 : text;
 }
 
 /** Order two strings by UTF-16 code unit, independent of the host's locale. */

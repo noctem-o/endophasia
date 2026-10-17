@@ -9,7 +9,8 @@
 //  - the version: reported by the runtime itself;
 //  - a fact the fingerprint lists as a gap: unavailable, with a fixed reason (the recorded reason can name paths).
 // What is withheld: local paths (requested, resolved, real, package root), the version command's raw output, a
-// collection failure's text, and a notification's lines (they embed paths and failure text).
+// collection failure's text, and a notification's lines (they embed paths and failure text). A notification's title is
+// presented unless it looks like it embeds a path, address or credential.
 
 import {
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
@@ -33,6 +34,7 @@ import {
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
 	noteV0,
+	presentableTextV0,
 	registryRefV0,
 	unavailableV0,
 } from "./common.ts";
@@ -114,7 +116,7 @@ function notificationView(
 		at: record.at,
 		kind: record.kind,
 		changeId: record.changeId,
-		title: record.title,
+		title: presentableTextV0(record.title),
 		lineCount: record.lines.length,
 		linesWithheld: true,
 	};

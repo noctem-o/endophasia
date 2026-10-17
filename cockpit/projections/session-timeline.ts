@@ -8,17 +8,22 @@
 // Nothing is synthesized. A run id, turn id, completion claim or outcome appears only if the event's coordinates or
 // payload carry it; lifecycle `turn` and `turns` are the observer's counts (basis derived), not the runtime's.
 //
-// Presentation boundary. Each kind has an allowlist of payload fields (FIELD_SPECS) with the basis of each, read from a
-// fixed path and type-checked. Everything else, including every field of a kind that is not listed, is counted in
-// `withheldFields` and not copied: tool arguments and results (only their keyed digests are presented), failure text,
-// command-line arguments with local paths, recovery paths, and unknown fields. A kind that is not listed is flagged
-// "unrecognized" and shown by its envelope alone.
+// Presentation boundary. Two separate questions, two tables:
+//  - Is the kind RECOGNISED? RECOGNIZED_KINDS names every kind the repository's producers record in the durable event log
+//    (the Pi and ACP adapters, the lifecycle and intervention vocabularies), as plain strings: the projection imports no
+//    adapter. A kind outside it is flagged "unrecognized".
+//  - Which payload fields may be PRESENTED? FIELD_SPECS is an allowlist per kind, with the basis of each field, read from a
+//    fixed path and type-checked. A recognised kind with no entry shows its envelope only.
+// Everything not allowlisted is counted in `withheldFields` and not copied: tool arguments and results (only their keyed
+// digests are presented), failure text, command-line arguments with local paths, recovery paths, permission and
+// configuration contents, and unknown fields.
 
 import {
 	ENDO_COCKPIT_CATEGORIES_V0,
 	ENDO_COCKPIT_FLAGS_V0,
 	ENDO_COCKPIT_MAX_PRODUCER_V0,
 	ENDO_COCKPIT_PROJECTION_VERSIONS_V0,
+	ENDO_COCKPIT_WITHHELD_TEXT_V0,
 	type EndoCockpitCategoryV0,
 	type EndoCockpitEventLogSourceV0,
 	type EndoCockpitFieldV0,
@@ -30,8 +35,10 @@ import {
 	type EndoCockpitUsageV0,
 } from "../../protocol/cockpit.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
-import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
+import { ENDO_INTERVENTION_KINDS_V0 } from "../../protocol/intervention.ts";
+import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
 import { deepFreezeV0 } from "../../runtime/contracts/immutability.ts";
+import { looksSensitiveTextV0 } from "./common.ts";
 
 /** One event of the log with the storage sequence it was read at. */
 export interface EndoCockpitStoredEventV0 {
@@ -60,7 +67,7 @@ const runtimeEvent: FieldSpec = ["runtimeEvent", "runtimeEvent", "reported", "st
 const turns: FieldSpec = ["turns", "turns", "derived", "number"];
 const stopReason: FieldSpec = ["stopReason", "stopReason", "reported", "string"];
 
-/** The allowlist per event kind. A kind absent from this table is "unrecognized": the envelope only. */
+/** The allowlist per event kind. A recognised kind absent from this table is shown by its envelope only. */
 const FIELD_SPECS: Readonly<Record<string, readonly FieldSpec[]>> = deepFreezeV0({
 	"lifecycle.session-started": [
 		["runtime", "runtime", "observed", "string"],
@@ -174,7 +181,6 @@ const FIELD_SPECS: Readonly<Record<string, readonly FieldSpec[]>> = deepFreezeV0
 		["fingerprintId", "fingerprintId", "observed", "string"],
 		["identityDigest", "identityDigest", "derived", "string"],
 		["version", "version", "reported", "string", true],
-		["runtimeSessionId", "piSessionId", "reported", "string"],
 		["mapping", "mapping", "observed", "string"],
 	],
 	"harness.process-exited": [
@@ -205,6 +211,41 @@ const FIELD_SPECS: Readonly<Record<string, readonly FieldSpec[]>> = deepFreezeV0
 	"runtime.unrecognized-event": [runtimeEvent],
 	"runtime.malformed-event": [runtimeEvent],
 });
+
+/**
+ * Every kind the repository's producers record in the durable event log, besides the lifecycle and intervention kinds
+ * (taken from their protocol tables) and the kinds with a field table. Audit rule: a kind is here when an adapter's
+ * recorder, attachment or event mapping emits it into a session's event store (adapters/pi/{mapping,attachment}.ts,
+ * adapters/acp/client*.ts and translate*.ts). Capability names (`control.model`, `session.identity`, ...), loss-ledger
+ * keys and the proxy's `capture.*` events (a separate capture store) are not event kinds of this log.
+ */
+const RECOGNIZED_KINDS: readonly string[] = deepFreezeV0([
+	...ENDO_LIFECYCLE_KINDS_V0,
+	...Object.keys(ENDO_INTERVENTION_KINDS_V0),
+	...Object.keys(FIELD_SPECS),
+	"agent.prompt-accepted",
+	"agent.prompt-failed",
+	"agent.prompt-refused",
+	"agent.prompt-responded",
+	"agent.state-reported",
+	"config.thinking-changed",
+	"control.message-refused",
+	"control.refused",
+	"control.unavailable",
+	"extension.dialog-cancelled",
+	"extension.ui-requested",
+	"harness.acp-initialized",
+	"harness.late-message",
+	"harness.prompt-timeout",
+	"permission.decided",
+	"permission.requested",
+	"session.close-accepted",
+	"session.config-observed",
+	"session.info-changed",
+	"session.listed",
+	"session.state-conflict",
+	"session.update-observed",
+]);
 
 const INTERRUPTION_KINDS: readonly string[] = deepFreezeV0([
 	"lifecycle.interrupted",
@@ -250,7 +291,21 @@ function scalar(value: unknown, type: FieldType, nullable: boolean): string | nu
 	return undefined;
 }
 
-/** One allowlisted field, or undefined when the payload does not carry it in the expected form. */
+/** A reason or field text the runtime or adapter wrote: bounded, and null (withheld whole) when it looks sensitive. */
+function freeText(text: string): string | null {
+	const bounded = text.length > MAX_STRING ? text.slice(0, MAX_STRING) : text;
+	return looksSensitiveTextV0(bounded) ? null : bounded;
+}
+
+/** A fresh object each time: results are plain data, and no two of them may share one. */
+const withheldField = (): EndoCockpitFieldV0 => ({ basis: "unavailable", reason: ENDO_COCKPIT_WITHHELD_TEXT_V0 });
+const isWithheld = (field: EndoCockpitFieldV0): boolean =>
+	field.basis === "unavailable" && field.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0;
+
+/**
+ * One allowlisted field, or undefined when the payload does not carry it in the expected form. A string that looks like it
+ * embeds a path, address or credential is presented as the fixed withheld text instead (withheldField()).
+ */
 function readField(payload: Record<string, unknown>, spec: FieldSpec): EndoCockpitFieldV0 | undefined {
 	const [, path, basis, type, nullable] = spec;
 	const raw = pathValue(payload, path);
@@ -258,15 +313,17 @@ function readField(payload: Record<string, unknown>, spec: FieldSpec): EndoCockp
 	// A value the runtime reported, or the reason it did not (protocol/session-lifecycle.ts EndoReportedV0).
 	if (isRecord(raw) && raw.status === "reported") {
 		const value = scalar(own(raw, "value"), type, false);
+		if (typeof value === "string" && freeText(value) === null) return withheldField();
 		return value === undefined ? undefined : { basis: "reported", value };
 	}
 	if (isRecord(raw) && raw.status === "UNAVAILABLE") {
 		const reason = own(raw, "reason");
 		return typeof reason === "string" && reason.length > 0
-			? { basis: "unavailable", reason: reason.slice(0, MAX_STRING) }
+			? { basis: "unavailable", reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0 }
 			: undefined;
 	}
 	const value = scalar(raw, type, nullable === true);
+	if (typeof value === "string" && freeText(value) === null) return withheldField();
 	return value === undefined ? undefined : { basis, value };
 }
 
@@ -291,7 +348,15 @@ function declaredUnavailable(payload: Record<string, unknown>): {
 			whole = false;
 			continue;
 		}
-		fields[`unavailable.${field.slice(0, 100)}`] = { basis: "unavailable", reason: reason.slice(0, MAX_STRING) };
+		const name = freeText(field.slice(0, 100));
+		if (name === null) {
+			whole = false;
+			continue;
+		}
+		fields[`unavailable.${name}`] = {
+			basis: "unavailable",
+			reason: freeText(reason) ?? ENDO_COCKPIT_WITHHELD_TEXT_V0,
+		};
 	}
 	return { fields, whole };
 }
@@ -357,7 +422,7 @@ function categoryOf(kind: string): EndoCockpitCategoryV0 {
 		: "other";
 }
 
-function flagsOf(event: EndoEventV0, payload: Record<string, unknown>, listed: boolean): EndoCockpitFlagV0[] {
+function flagsOf(event: EndoEventV0, payload: Record<string, unknown>, recognized: boolean): EndoCockpitFlagV0[] {
 	const flags = new Set<EndoCockpitFlagV0>();
 	if (INTERRUPTION_KINDS.includes(event.kind)) flags.add("interruption");
 	if (DISCONTINUITY_KINDS.includes(event.kind)) flags.add("discontinuity");
@@ -370,13 +435,42 @@ function flagsOf(event: EndoEventV0, payload: Record<string, unknown>, listed: b
 			flags.add("discontinuity");
 	}
 	if (ANOMALY_KINDS.includes(event.kind)) flags.add("anomaly");
+	if (event.kind === "harness.attached" && runtimeSessionOf(payload).conflict) flags.add("anomaly");
 	if (
 		UNRECOGNIZED_KINDS.includes(event.kind) ||
-		!listed ||
+		!recognized ||
 		(event.kind.startsWith("lifecycle.") && !isEndoLifecycleKindV0(event.kind))
 	)
 		flags.add("unrecognized");
 	return ENDO_COCKPIT_FLAGS_V0.filter((flag) => flags.has(flag));
+}
+
+const RUNTIME_SESSION_CONFLICT =
+	"the attachment recorded two different runtime session references (piSessionId and acpSessionId); neither is presented";
+
+/**
+ * The runtime session reference a `harness.attached` event records, under either producer's name for it: Pi's
+ * `piSessionId`, ACP v1 and v2's `acpSessionId` (already the id itself or a digest of it, as the recorder wrote it).
+ * Never invented: no field, no presentation. If both are recorded and differ, neither is chosen.
+ */
+function runtimeSessionOf(payload: Record<string, unknown>): {
+	field: EndoCockpitFieldV0 | undefined;
+	keys: string[];
+	conflict: boolean;
+} {
+	const found: { key: string; value: string }[] = [];
+	for (const key of ["piSessionId", "acpSessionId"]) {
+		const value = scalar(own(payload, key), "string", false);
+		if (typeof value === "string") found.push({ key, value });
+	}
+	if (found.length === 2 && found[0]!.value !== found[1]!.value)
+		return { field: { basis: "unavailable", reason: RUNTIME_SESSION_CONFLICT }, keys: [], conflict: true };
+	const first = found[0];
+	return {
+		field: first && { basis: "reported", value: first.value },
+		keys: found.map((item) => item.key),
+		conflict: false,
+	};
 }
 
 function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
@@ -389,13 +483,19 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		const field = readField(payload, spec);
 		if (field === undefined) continue;
 		fields[spec[0]] = field;
-		// A key counts as presented only when the whole top-level value is shown; a nested path leaves the rest withheld.
-		if (!spec[1].includes(".")) presentedWhole.add(spec[1]);
+		// A key counts as presented only when the whole top-level value is shown; a nested path leaves the rest withheld,
+		// and so does a value the boundary replaced.
+		if (!spec[1].includes(".") && !isWithheld(field)) presentedWhole.add(spec[1]);
 	}
 	if (event.kind === "lifecycle.session-started" || event.kind === "lifecycle.session-resumed") {
 		const declared = declaredUnavailable(payload);
 		Object.assign(fields, declared.fields);
 		if (declared.whole) presentedWhole.add("unavailable");
+	}
+	if (event.kind === "harness.attached") {
+		const session = runtimeSessionOf(payload);
+		if (session.field !== undefined) fields.runtimeSessionId = session.field;
+		for (const key of session.keys) presentedWhole.add(key);
 	}
 	const keys = isRecord(event.payload) ? Object.keys(event.payload) : [];
 	return {
@@ -414,7 +514,7 @@ function entryOf(stored: EndoCockpitStoredEventV0): EndoCockpitTimelineEntryV0 {
 		runId: event.coordinates.runId ?? null,
 		experimentId: event.coordinates.experimentId ?? null,
 		derivedFrom: [...event.derivedFrom],
-		flags: flagsOf(event, payload, specs !== null),
+		flags: flagsOf(event, payload, RECOGNIZED_KINDS.includes(event.kind)),
 		fields,
 		usage: usageOf(event, payload),
 		withheldFields: keys.filter((key) => !presentedWhole.has(key)).length + (isRecord(event.payload) ? 0 : 1),

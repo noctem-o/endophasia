@@ -29,6 +29,13 @@
 // arguments, error text, notice lines, unknown payload fields) is counted or named as withheld, never copied. Where a
 // record exists without an approved presentation body, its reference and availability are exposed instead.
 //
+// Two guarantees, kept apart. WIRE validation (the validators below) proves a serialized record is well formed and
+// consistent with itself: references name the right domain, attachment, record kind and id for the view that holds them,
+// lie inside the source's watermark, and the pagination metadata agrees with the watermark. STORE verification (that the
+// referenced record exists on disk and says what the view says) needs the store and is NOT performed by any validator
+// here; a consumer that needs it re-reads the source (cockpit/reader.ts). A validator that accepts a record has not
+// looked at the disk.
+//
 // The protocol imports only the protocol.
 
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0, type EndoConformanceClassificationV0 } from "./evaluation.ts";
@@ -63,6 +70,15 @@ export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
 	sessionTimeline: "cockpit-session-timeline.1",
 	snapshot: "cockpit-snapshot.1",
 } as const;
+
+/**
+ * What stands in place of a recorded free-text value (a reason, a limitation, a title, a runtime-reported string) that
+ * appears to embed a local path, a network address or a credential. A fixed text: it reveals nothing of the original and
+ * is the same on every run. Heuristic and deliberately conservative (cockpit/projections/common.ts): it withholds, it
+ * never rewrites, and a value it passes is bounded but not certified safe.
+ */
+export const ENDO_COCKPIT_WITHHELD_TEXT_V0 =
+	"withheld: the recorded text appears to embed a local path, network address or credential";
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
 export const ENDO_COCKPIT_BASES_V0 = ["observed", "reported", "derived", "inferred"] as const;
@@ -110,6 +126,7 @@ export const ENDO_COCKPIT_LIMIT_CODES_V0 = [
 	"evidence-identity-differs",
 	"evidence-reduced-identity",
 	"status-classification-mismatch",
+	"runtime-differs",
 ] as const;
 export type EndoCockpitLimitCodeV0 = (typeof ENDO_COCKPIT_LIMIT_CODES_V0)[number];
 
@@ -175,10 +192,13 @@ export interface EndoCockpitSourceConditionV0 {
 }
 
 /**
- * The event log's position. `length` events were read, the last of them `lastEventId`; `prefixDigest` is the sha256 of
- * those events' ids in storage order, one per line, so the same digest over the first `length` events of a later read
- * proves the held prefix is still the prefix. A consumer continues from `afterSequence = its length` only after that
- * check (cockpit/reader.ts, checkEndoCockpitSourceFreshnessV0). Both are null for an empty log.
+ * The event log's position. `length` events were read, the last of them `lastEventId`; `prefixDigest` binds the complete
+ * content of those events, in storage order: the sha256 over one line per event, each line the lowercase hex sha256 of
+ * the event's canonical JSON (runtime/contracts/canonical-json.ts) followed by "\n". Every line has the same width and
+ * alphabet, so the framing is unambiguous and any language can recompute it. The same digest over the first `length`
+ * events of a later read proves the held prefix is still the prefix, even when an event was replaced under the same id.
+ * A consumer continues from `afterSequence = its length` only after that check (cockpit/reader.ts,
+ * checkEndoCockpitSourceFreshnessV0). Both are null for an empty log.
  */
 export interface EndoCockpitEventLogWatermarkV0 {
 	length: number;
@@ -256,6 +276,7 @@ export interface EndoCockpitNotificationViewV0 {
 	at: string;
 	kind: EndoHarnessNotificationKindV0;
 	changeId: string;
+	/** The notice title, or ENDO_COCKPIT_WITHHELD_TEXT_V0 when it looks sensitive. */
 	title: string;
 	/** The notice's lines can embed local paths and failure text, so they are counted, not presented. */
 	lineCount: number;
@@ -308,12 +329,12 @@ export interface EndoCockpitCapabilityViewV0 {
 	/** The recorded status, verbatim. Never recomputed, strengthened or weakened here. */
 	status: EndoCapabilityStatusV0;
 	classification: EndoConformanceClassificationV0 | null;
-	/** The recorded reason, as the attachment wrote it. */
+	/** The recorded reason as the attachment wrote it, or ENDO_COCKPIT_WITHHELD_TEXT_V0 when it looks sensitive. */
 	reason: string;
 	requires: EndoCapabilityCheckKindV0;
 	/** The evidence record the state cites, or null when unverified or when the cited record is not in the registry. */
 	evidence: EndoCockpitEvidenceViewV0 | null;
-	/** The limitations the cited evidence record states. */
+	/** The limitations the cited evidence record states (each ENDO_COCKPIT_WITHHELD_TEXT_V0 when it looks sensitive). */
 	limitations: string[];
 	/** Derived reasons the recorded status cannot be taken at face value. Empty when records agree. */
 	limits: { code: EndoCockpitLimitCodeV0; refs: EndoCockpitRefV0[] }[];
@@ -377,7 +398,10 @@ export interface EndoCockpitTimelineEntryV0 {
 	experimentId: string | null;
 	derivedFrom: string[];
 	flags: EndoCockpitFlagV0[];
-	/** The allowlisted payload fields this projection version knows for the kind. Empty for an unlisted kind. */
+	/**
+	 * The allowlisted payload fields this projection version presents for the kind. Empty for a kind with no approved
+	 * field, whether the kind is recognised (envelope only) or not (flagged "unrecognized").
+	 */
 	fields: Record<string, EndoCockpitFieldV0>;
 	/**
 	 * Usage as recorded, or an "unavailable" claim where the kind can carry usage and this event does not, or null where
@@ -400,7 +424,12 @@ export interface EndoCockpitSessionTimelineV0 {
 	projectionVersion: string;
 	source: EndoCockpitEventLogSourceV0;
 	order: "storage-ascending";
-	/** The window: entries are those with afterSequence < storageSequence <= nextAfterSequence. */
+	/**
+	 * The window: entries are those with afterSequence < storageSequence <= nextAfterSequence. `hasMore` is whether the
+	 * source holds events beyond `nextAfterSequence` (`watermark.length > nextAfterSequence`), and null exactly when the
+	 * source has no position (it could not be opened). A window after the end of the log is empty, `nextAfterSequence`
+	 * stays at `afterSequence`, and `hasMore` is false.
+	 */
 	window: { afterSequence: number; nextAfterSequence: number; hasMore: boolean | null };
 	entries: EndoCockpitTimelineEntryV0[];
 	/** The sessions seen in this window, by first appearance. */
@@ -844,13 +873,137 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 	return exactKeys(usage, ["basis", "value"]) && usage.basis === "reported" && isUsage(usage.value);
 }
 
-function validateRegistryProjection(value: Record<string, unknown>): boolean {
-	return isText(value.projectionVersion, 128) && isRegistrySource(value.source) && arrayOf(value.notes, isNote);
+// ---------------------------------------------------------------------------------------------------------------
+// Contextual reference validation (wire validation: consistency with the enclosing projection, not with the disk)
+// ---------------------------------------------------------------------------------------------------------------
+
+type RegistryRef = Extract<EndoCockpitRefV0, { domain: "harness-registry" }>;
+
+/** Where the references of one registry projection must point: its attachment and, once it has a position, its counts. */
+interface RefContext {
+	attachment: string;
+	counts: Record<EndoCockpitRegistryKindV0, number> | null;
+	lastIds: Record<EndoCockpitRegistryKindV0, string | null> | null;
+}
+
+function contextOf(source: EndoCockpitRegistrySourceV0): RefContext {
+	return {
+		attachment: source.attachment,
+		counts: source.watermark?.counts ?? null,
+		lastIds: source.watermark?.lastIds ?? null,
+	};
+}
+
+/**
+ * A registry reference of one of `kinds` into THIS registry: the same attachment, a position inside the record count the
+ * watermark states for the kind (the last position naming the watermark's last id), an id exactly when the kind has one
+ * (a capability state has none). A source with no position (unopenable) has no records to refer to. An event-log
+ * reference is never a registry reference.
+ */
+function isRegistryRef(
+	value: unknown,
+	ctx: RefContext,
+	kinds: readonly EndoCockpitRegistryKindV0[],
+): value is RegistryRef {
+	if (!isRef(value) || value.domain !== "harness-registry") return false;
+	if (value.attachment !== ctx.attachment || !kinds.includes(value.kind)) return false;
+	if (ctx.counts === null || ctx.lastIds === null || value.index >= ctx.counts[value.kind]) return false;
+	if (value.index === ctx.counts[value.kind] - 1 && value.id !== ctx.lastIds[value.kind]) return false;
+	return value.kind === "state" ? value.id === null : value.id !== null;
+}
+
+function sameRef(a: unknown, b: unknown): boolean {
+	if (!isRef(a) || !isRef(b)) return false;
+	if (a.domain === "event-log")
+		return b.domain === "event-log" && a.storageSequence === b.storageSequence && a.eventId === b.eventId;
+	return (
+		b.domain === "harness-registry" &&
+		a.attachment === b.attachment &&
+		a.kind === b.kind &&
+		a.index === b.index &&
+		a.id === b.id
+	);
+}
+
+/** A view's own `ref` names a record of `kind` whose id is the view's id. */
+function ownRefOk(view: { ref: unknown; id: string }, ctx: RefContext, kind: EndoCockpitRegistryKindV0): boolean {
+	return isRegistryRef(view.ref, ctx, [kind]) && view.ref.id === view.id;
+}
+
+/** Every reference of the claim points at the record of `kind` with this id (the record the value was read from). */
+function claimReadFrom(
+	claim: { refs: EndoCockpitRefV0[] },
+	ctx: RefContext,
+	kind: EndoCockpitRegistryKindV0,
+	id: string,
+) {
+	return claim.refs.every((ref) => isRegistryRef(ref, ctx, [kind]) && ref.id === id);
+}
+
+/** What kinds of record a note may point at, by code. An empty list means the note carries no reference. */
+const NOTE_REF_KINDS: Readonly<Record<EndoCockpitNoteCodeV0, readonly EndoCockpitRegistryKindV0[]>> = {
+	"no-fingerprint-recorded": [],
+	"latest-change-not-for-latest-fingerprint": ["change", "fingerprint"],
+	"latest-change-is-collection-failure": ["change"],
+	"notification-change-missing": ["notification"],
+	"runtime-disagreement": ["fingerprint", "change"],
+	"foreign-attachment-record": ENDO_COCKPIT_REGISTRY_KINDS_V0,
+	"duplicate-record-id": ENDO_COCKPIT_REGISTRY_KINDS_V0,
+	"duplicate-capability": ["state"],
+	"state-without-fingerprint": ["state"],
+	"no-capability-state-recorded": [],
+	"source-not-projectable": [],
+};
+
+function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext): boolean {
+	return notes.every((note) => {
+		const kinds = NOTE_REF_KINDS[note.code];
+		return note.refs.every((ref) => isRegistryRef(ref, ctx, kinds));
+	});
+}
+
+/** The limit codes' reference kinds. Every limit starts with the state reference of its capability. */
+const LIMIT_REF_KINDS: Readonly<Record<EndoCockpitLimitCodeV0, readonly EndoCockpitRegistryKindV0[]>> = {
+	"state-not-for-latest-fingerprint": ["state", "fingerprint"],
+	"state-without-fingerprint": ["state"],
+	"state-fingerprint-not-recorded": ["state"],
+	"evidence-record-missing": ["state"],
+	"evidence-capability-differs": ["state", "evidence"],
+	"evidence-classification-differs": ["state", "evidence"],
+	"evidence-identity-differs": ["state", "evidence", "fingerprint"],
+	"evidence-reduced-identity": ["state", "evidence", "fingerprint"],
+	"status-classification-mismatch": ["state"],
+	"runtime-differs": ["state", "evidence", "fingerprint"],
+};
+
+function validateRegistryProjection(value: Record<string, unknown>, projectionVersion: string): boolean {
+	if (value.projectionVersion !== projectionVersion || !isRegistrySource(value.source)) return false;
+	return arrayOf(value.notes, isNote) && notesPointInto(value.notes, contextOf(value.source));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validators
 // ---------------------------------------------------------------------------------------------------------------
+
+function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
+	for (const view of [identity.current, identity.previousDifferent]) {
+		if (view === null) continue;
+		if (!ownRefOk(view, ctx, "fingerprint")) return false;
+		if (
+			![view.identity, view.version, view.entrypoint, view.package].every((c) =>
+				claimReadFrom(c, ctx, "fingerprint", view.id),
+			)
+		)
+			return false;
+	}
+	if (identity.lastChange !== null && !ownRefOk(identity.lastChange, ctx, "change")) return false;
+	if (identity.lastNotification !== null && !ownRefOk(identity.lastNotification, ctx, "notification")) return false;
+	// The runtime family is read from the current fingerprint, else from the last change; it names that record.
+	const runtime = identity.runtime;
+	if (runtime.basis === "unavailable") return runtime.refs.length === 0;
+	const from = identity.current ?? identity.lastChange;
+	return from !== null && runtime.refs.length === 1 && sameRef(runtime.refs[0], from.ref);
+}
 
 /** Validates a runtime identity projection (closed record, strict). Returns the value unchanged, or null. */
 export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpitRuntimeIdentityV0 | null {
@@ -869,13 +1022,54 @@ export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpi
 		])
 	)
 		return null;
-	if (value.schemaVersion !== "endo.cockpit-runtime-identity.v0" || !validateRegistryProjection(value)) return null;
+	if (value.schemaVersion !== "endo.cockpit-runtime-identity.v0") return null;
+	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.runtimeIdentity)) return null;
 	if (!isClaim(value.runtime, (item): item is string => typeof item === "string" && isWellFormedKindV0(item)))
 		return null;
 	if (!nullable(value.current, isFingerprintView) || !nullable(value.previousDifferent, isFingerprintView))
 		return null;
 	if (!nullable(value.lastChange, isChangeView) || !nullable(value.lastNotification, isNotificationView)) return null;
-	return value as unknown as EndoCockpitRuntimeIdentityV0;
+	const identity = value as unknown as EndoCockpitRuntimeIdentityV0;
+	return identityPointsInto(identity, contextOf(identity.source)) ? identity : null;
+}
+
+function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: RefContext): boolean {
+	const state = projection.state;
+	if (state === null) return true;
+	if (!isRegistryRef(state.ref, ctx, ["state"])) return false;
+	// The currency is derived from the two ids it sits beside.
+	const expected =
+		state.fingerprintId === null || state.latestFingerprintId === null
+			? "unknown"
+			: state.fingerprintId === state.latestFingerprintId
+				? "current"
+				: "stale";
+	if (state.currency !== expected) return false;
+	for (const capability of projection.capabilities) {
+		if (!sameRef(capability.ref, state.ref)) return false;
+		const evidence = capability.evidence;
+		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;
+		for (const limit of capability.limits) {
+			const kinds = LIMIT_REF_KINDS[limit.code];
+			// Every limit starts with the state it qualifies; its other references name the cited evidence and the
+			// fingerprints the state itself names.
+			if (limit.refs.length === 0 || !sameRef(limit.refs[0], state.ref)) return false;
+			for (const ref of limit.refs) {
+				if (!isRegistryRef(ref, ctx, kinds)) return false;
+				if (ref.kind === "evidence" && (evidence === null || !sameRef(ref, evidence.ref))) return false;
+				if (ref.kind === "fingerprint") {
+					const allowed =
+						limit.code === "state-not-for-latest-fingerprint"
+							? [state.latestFingerprintId]
+							: limit.code === "runtime-differs"
+								? [state.fingerprintId, state.latestFingerprintId]
+								: [state.fingerprintId];
+					if (ref.id === null || !allowed.includes(ref.id)) return false;
+				}
+			}
+		}
+	}
+	return true;
 }
 
 /** Validates a capability state projection. Returns the value unchanged, or null. */
@@ -885,7 +1079,8 @@ export function validateEndoCockpitCapabilityStateV0(value: unknown): EndoCockpi
 		!exactKeys(value, ["schemaVersion", "projectionVersion", "source", "state", "capabilities", "notes"])
 	)
 		return null;
-	if (value.schemaVersion !== "endo.cockpit-capability-state.v0" || !validateRegistryProjection(value)) return null;
+	if (value.schemaVersion !== "endo.cockpit-capability-state.v0") return null;
+	if (!validateRegistryProjection(value, ENDO_COCKPIT_PROJECTION_VERSIONS_V0.capabilityState)) return null;
 	const state = value.state;
 	if (state !== null) {
 		if (
@@ -905,7 +1100,8 @@ export function validateEndoCockpitCapabilityStateV0(value: unknown): EndoCockpi
 		if (seen.has(capability.capability)) return null;
 		seen.add(capability.capability);
 	}
-	return value as unknown as EndoCockpitCapabilityStateV0;
+	const projection = value as unknown as EndoCockpitCapabilityStateV0;
+	return capabilityPointsInto(projection, contextOf(projection.source)) ? projection : null;
 }
 
 /** Validates a session timeline projection, including that its entries follow storage order inside the window. */
@@ -926,22 +1122,40 @@ export function validateEndoCockpitSessionTimelineV0(value: unknown): EndoCockpi
 	)
 		return null;
 	if (value.schemaVersion !== "endo.cockpit-session-timeline.v0" || value.order !== "storage-ascending") return null;
-	if (!isText(value.projectionVersion, 128)) return null;
+	if (value.projectionVersion !== ENDO_COCKPIT_PROJECTION_VERSIONS_V0.sessionTimeline) return null;
 	if (!isEventLogSource(value.source) || !isCount(value.duplicatesIgnored) || !arrayOf(value.notes, isNote))
 		return null;
+	// A timeline's notes can only point into the event log it was read from.
+	if (!value.notes.every((note) => note.refs.every((ref) => ref.domain === "event-log"))) return null;
 	const window = value.window;
 	if (!isPlain(window) || !exactKeys(window, ["afterSequence", "nextAfterSequence", "hasMore"])) return null;
 	if (!isCount(window.afterSequence) || !isCount(window.nextAfterSequence)) return null;
 	if (window.nextAfterSequence < window.afterSequence) return null;
 	if (window.hasMore !== null && typeof window.hasMore !== "boolean") return null;
 	if (!arrayOf(value.entries, isTimelineEntry)) return null;
+	const mark = value.source.watermark;
+	// `hasMore` is a statement about the source's position: absent exactly when the source has none, else it must agree
+	// with the watermark. A cursor past the end is a valid empty window (the event store answers it so), not an error.
+	if (mark === null) {
+		if (window.hasMore !== null || value.entries.length > 0 || window.nextAfterSequence !== window.afterSequence)
+			return null;
+	} else if (window.hasMore !== mark.length > window.nextAfterSequence) return null;
 	let previous = window.afterSequence;
 	const ids = new Set<string>();
 	for (const entry of value.entries as EndoCockpitTimelineEntryV0[]) {
 		if (entry.storageSequence <= previous || entry.storageSequence > window.nextAfterSequence) return null;
+		// No entry can lie beyond the events the source holds.
+		if (mark !== null && entry.storageSequence > mark.length) return null;
 		if (ids.has(entry.eventId)) return null;
 		ids.add(entry.eventId);
 		previous = entry.storageSequence;
+	}
+	// The cursor stops at the last event read. An ignored duplicate is read but not presented, so it can move the cursor
+	// past the last entry; without one the cursor is exactly the last entry's position (or where the window started).
+	if (value.duplicatesIgnored === 0 && window.nextAfterSequence !== previous) return null;
+	else if (value.duplicatesIgnored > 0) {
+		if (window.nextAfterSequence <= window.afterSequence) return null;
+		if (mark !== null && window.nextAfterSequence > mark.length) return null;
 	}
 	const sessions = value.sessions;
 	if (
@@ -970,7 +1184,7 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 	)
 		return null;
 	if (value.schemaVersion !== "endo.cockpit-snapshot.v0" || value.consistency !== "independent-sources") return null;
-	if (!isText(value.projectionVersion, 128)) return null;
+	if (value.projectionVersion !== ENDO_COCKPIT_PROJECTION_VERSIONS_V0.snapshot) return null;
 	if (validateEndoCockpitSessionTimelineV0(value.timeline) === null) return null;
 	if (!Array.isArray(value.runtimes)) return null;
 	const seen = new Set<string>();

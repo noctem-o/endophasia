@@ -31,6 +31,7 @@ import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { createEndoFrameLogV0, endoFrameBytesV0 } from "../storage/log.ts";
 import {
 	ATTACHMENT,
+	CANARY,
 	changeRecord,
 	event,
 	ingestAll,
@@ -47,8 +48,12 @@ afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: tr
 
 const FIXTURE = "killed-and-resumed";
 
-/** What the watermark's prefix digest is: sha256 of the event ids in storage order, one per line. */
-const idsDigest = (events: readonly { id: string }[]) => sha256HexV0(events.map((e) => `${e.id}\n`).join(""));
+/**
+ * What the watermark's prefix digest is, restated independently of the reader: the sha256 over one line per event in
+ * storage order, each line the hex sha256 of the event's canonical JSON and a newline.
+ */
+const idsDigest = (events: readonly unknown[]) =>
+	sha256HexV0(events.map((e) => `${sha256HexV0(canonicalEndoJsonV0(e))}\n`).join(""));
 const eventsLog = (root: string) => join(root, "events", "events.log");
 const registryLog = (root: string) => join(root, "harness", ATTACHMENT, "records.log");
 
@@ -459,5 +464,169 @@ describe("contract totality over valid source records", () => {
 		expect(message.length).toBeGreaterThan(0);
 		expect(message.length).toBeLessThanOrEqual(512);
 		expect(message).not.toMatch(/[\u0000-\u001f\u2028\u2029]/);
+	});
+});
+
+describe("freshness binds event contents (PR #57 review)", () => {
+	/** The same events with one replaced event keeping its id: only its contents differ. */
+	function replaced(events: ReturnType<typeof lifecycleEvents>, at: number, edit: (copy: any) => void) {
+		return events.map((item, index) => {
+			if (index !== at) return item;
+			const copy = structuredClone(item) as any;
+			edit(copy);
+			return copy;
+		});
+	}
+
+	it("restates the digest as one fixed-width line per event over its canonical JSON", () => {
+		const { root, events } = seeded();
+		const source = readEndoCockpitEventLogV0(root, { limit: 1 }).source;
+		expect(source.watermark!.prefixDigest).toBe(idsDigest(events));
+		const one = tempRoot();
+		ingestAll(one, events.slice(0, 1));
+		expect(readEndoCockpitEventLogV0(one).source.watermark!.prefixDigest).toBe(
+			sha256HexV0(`${sha256HexV0(canonicalEndoJsonV0(events[0]))}\n`),
+		);
+	});
+
+	it("tells a replaced event from the original when its id, the length and the order are unchanged", () => {
+		const { root, events } = seeded();
+		const held = readEndoCockpitEventLogV0(root, { limit: 1000 }).source;
+		const edits: [string, (copy: any) => void][] = [
+			[
+				"payload",
+				(c) => {
+					c.payload = { ...c.payload, replaced: true };
+				},
+			],
+			[
+				"kind",
+				(c) => {
+					c.kind = "tool.finished";
+				},
+			],
+			[
+				"recorded time",
+				(c) => {
+					c.at = "2030-01-01T00:00:00Z";
+				},
+			],
+			[
+				"producer sequence",
+				(c) => {
+					c.sequence = c.sequence + 1000;
+				},
+			],
+			[
+				"coordinates",
+				(c) => {
+					c.coordinates = { sessionId: "endo.session.test.replaced" };
+				},
+			],
+			[
+				"source class",
+				(c) => {
+					c.source = c.source === "runtime-fact" ? "interpretation" : "runtime-fact";
+				},
+			],
+		];
+		for (const at of [0, 2, events.length - 1]) {
+			for (const [name, edit] of edits) {
+				const other = tempRoot();
+				const changed = replaced(events, at, edit);
+				expect(changed[at]!.id).toBe(events[at]!.id);
+				ingestAll(other, changed);
+				const now = readEndoCockpitEventLogV0(other).source.watermark!;
+				expect(now.length, `${name}@${at}`).toBe(held.watermark!.length);
+				expect(now.lastEventId, `${name}@${at}`).toBe(held.watermark!.lastEventId);
+				expect(checkEndoCockpitSourceFreshnessV0(other, held), `${name}@${at}`).toBe("diverged");
+			}
+		}
+		expect(checkEndoCockpitSourceFreshnessV0(root, held)).toBe("unchanged");
+	});
+
+	it("reports a changed prefix followed by more events as diverged, not advanced", () => {
+		const { root, events } = seeded();
+		const held = readEndoCockpitEventLogV0(root, { limit: 1000 }).source;
+		const other = tempRoot();
+		ingestAll(other, [
+			...replaced(events, 1, (c) => {
+				c.payload = { ...c.payload, replaced: true };
+			}),
+			event("tool.finished", {}, { id: "endo.event.more.1" }),
+			event("tool.finished", {}, { id: "endo.event.more.2" }),
+		]);
+		expect(readEndoCockpitEventLogV0(other).source.watermark!.length).toBe(held.watermark!.length + 2);
+		expect(checkEndoCockpitSourceFreshnessV0(other, held)).toBe("diverged");
+		// The same appends over the unchanged prefix are an advance.
+		const advanced = tempRoot();
+		ingestAll(advanced, [
+			...events,
+			event("tool.finished", {}, { id: "endo.event.more.1" }),
+			event("tool.finished", {}, { id: "endo.event.more.2" }),
+		]);
+		expect(checkEndoCockpitSourceFreshnessV0(advanced, held)).toBe("advanced");
+	});
+
+	it("checks the held prefix, not the whole log, and still reports a shorter log as shrunk", () => {
+		const { root, events } = seeded();
+		const half = readEndoCockpitEventLogV0(root, { limit: 1000 }).source;
+		const earlier = tempRoot();
+		ingestAll(earlier, events.slice(0, 3));
+		const held = readEndoCockpitEventLogV0(earlier).source;
+		// A later suffix does not matter when the held prefix is intact.
+		expect(checkEndoCockpitSourceFreshnessV0(root, held)).toBe("advanced");
+		const shorter = tempRoot();
+		ingestAll(shorter, events.slice(0, 2));
+		expect(checkEndoCockpitSourceFreshnessV0(shorter, half)).toBe("shrunk");
+	});
+
+	it("changes nothing on disk while checking", () => {
+		const { root, events } = seeded();
+		const held = readEndoCockpitEventLogV0(root, { limit: 1000 }).source;
+		const before = treeHash(root);
+		checkEndoCockpitSourceFreshnessV0(root, held);
+		const other = tempRoot();
+		ingestAll(
+			other,
+			replaced(events, 0, (c) => {
+				c.payload = { replaced: true };
+			}),
+		);
+		const otherBefore = treeHash(other);
+		expect(checkEndoCockpitSourceFreshnessV0(other, held)).toBe("diverged");
+		expect(treeHash(other)).toBe(otherBefore);
+		expect(treeHash(root)).toBe(before);
+	});
+});
+
+describe("source condition messages (PR #57 audit)", () => {
+	function unsupported(label: string) {
+		const root = tempRoot();
+		mkdirSync(join(root, "events"));
+		createEndoFrameLogV0(eventsLog(root)).append(
+			new TextEncoder().encode(JSON.stringify({ ...event("tool.started"), schemaVersion: label })),
+		);
+		return { root, condition: readEndoCockpitEventLogV0(root).source.condition };
+	}
+
+	it("echoes a declared version only when it is shaped like one, and never the store's location", () => {
+		const plain = unsupported("endo.event.v999");
+		expect(plain.condition.error).toMatchObject({ kind: "schema-unsupported-version" });
+		expect(plain.condition.error!.message).toContain('"endo.event.v999"');
+		for (const hostile of [
+			`/home/${CANARY}/secret`,
+			`token=${CANARY}`,
+			`a sentence with ${CANARY} in it`,
+			`x\u0007${CANARY}`,
+		]) {
+			const { root, condition } = unsupported(hostile);
+			expect(condition.error!.kind).toBe("schema-unsupported-version");
+			expect(JSON.stringify(condition), hostile).not.toContain(CANARY);
+			expect(condition.error!.message).toContain("<not a version label>");
+			expect(JSON.stringify(condition)).not.toContain(root);
+		}
+		const { root, condition } = unsupported("endo.event.v999");
+		expect(JSON.stringify(condition)).not.toContain(root);
 	});
 });

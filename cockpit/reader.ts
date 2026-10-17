@@ -98,9 +98,29 @@ function probe(path: string): Probe {
 	return { kind: "absent" };
 }
 
+/** A version label as the contracts write one: short, from the characters of identifiers and dotted versions. */
+const VERSION_LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * The store's own message, with the one value it echoes from the record being refused made safe: the version string a
+ * record declared (`unsupported schemaVersion "..."`). That string is the record author's, so it is quoted back only when
+ * it is shaped like a version label; anything else (a path, a sentence, a secret) is replaced.
+ */
+function withoutEchoedValues(message: string): string {
+	return message.replace(/(unsupported schemaVersion )("(?:[^"\\]|\\.)*")/g, (_, lead: string, quoted: string) => {
+		let label: unknown;
+		try {
+			label = JSON.parse(quoted);
+		} catch {
+			label = null;
+		}
+		return `${lead}${typeof label === "string" && VERSION_LABEL.test(label) ? quoted : '"<not a version label>"'}`;
+	});
+}
+
 /** A bounded, escaped message of 1 to 512 characters: control-character escaping can lengthen it, and a cut can empty it. */
 function presentableMessage(error: unknown): string {
-	const bounded = error instanceof Error ? endoBoundedDetailV0(error.message) : "";
+	const bounded = error instanceof Error ? endoBoundedDetailV0(withoutEchoedValues(error.message)) : "";
 	if (bounded.length === 0) return "the store could not be opened";
 	return bounded.length > 512 ? `${bounded.slice(0, 511)}…` : bounded;
 }
@@ -173,17 +193,37 @@ function withEventStore<T>(
 	}
 }
 
-/** The sha256 of the ids of the first `count` events, one per line, in storage order; null for none. */
-function prefixDigestOf(store: EndoDurableEventStoreV0, count: number): string | null {
-	if (count === 0) return null;
+/**
+ * The one digest of an event log prefix: the sha256 over one line per event, in storage order, each line the lowercase hex
+ * sha256 of the event's canonical JSON (runtime/contracts/canonical-json.ts) and a newline. Every line has the same width
+ * and alphabet, so the framing is unambiguous; a replaced event with the same id but another kind, coordinates, payload
+ * or time changes its line. Null for no events.
+ */
+function frameOf(event: unknown): string {
+	return `${sha256HexV0(canonicalEndoJsonV0(event))}\n`;
+}
+
+/**
+ * The digest of the first `count` events and, in the same pass over the store, of the first `held` events (`held <=
+ * count`; null when not asked). The hash is copied at `held`, so nothing is traversed twice.
+ */
+function prefixDigestsOf(
+	store: EndoDurableEventStoreV0,
+	count: number,
+	held: number | null,
+): { full: string | null; held: string | null } {
 	const hash = createHash("sha256");
-	for (let after = 0; after < count; ) {
-		const page = store.page({ afterSequence: after, limit: Math.min(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0, count - after) });
+	let heldDigest: string | null = null;
+	let seen = 0;
+	while (seen < count) {
+		const want = held !== null && seen < held ? held - seen : count - seen;
+		const page = store.page({ afterSequence: seen, limit: Math.min(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0, want) });
 		if (page.events.length === 0) break;
-		for (const item of page.events) hash.update(`${item.id}\n`);
-		after += page.events.length;
+		for (const item of page.events) hash.update(frameOf(item));
+		seen += page.events.length;
+		if (held !== null && held > 0 && seen === held) heldDigest = hash.copy().digest("hex");
 	}
-	return hash.digest("hex");
+	return { full: count === 0 ? null : hash.digest("hex"), held: heldDigest };
 }
 
 function lastEventIdOf(store: EndoDurableEventStoreV0): string | null {
@@ -191,37 +231,39 @@ function lastEventIdOf(store: EndoDurableEventStoreV0): string | null {
 	return length === 0 ? null : (store.page({ afterSequence: length - 1, limit: 1 }).events[0]?.id ?? null);
 }
 
-/**
- * One bounded read of the event log under `root`, read-only. Throws TypeError for an invalid window; every condition of
- * the source itself is reported in the result, never thrown and never turned into an empty log.
- */
-export function readEndoCockpitEventLogV0(
+/** What one open of the event log found: the public read and, when asked, the digest of the first `held` events. */
+interface EventLogObservation {
+	read: EndoCockpitEventLogReadV0;
+	heldDigest: string | null;
+}
+
+function observeEventLog(
 	root: string,
-	options: EndoCockpitEventLogReadOptionsV0 = {},
-): EndoCockpitEventLogReadV0 {
+	options: EndoCockpitEventLogReadOptionsV0,
+	held: number | null,
+): EventLogObservation {
 	const { afterSequence, limit } = checkWindow(options);
 	const opened = withEventStore(root, (store, bytes) => {
 		const recovery = store.recovery();
 		const length = store.length;
 		const page = store.page({ afterSequence, limit });
 		const events = page.events.map((event, offset) => ({ storageSequence: afterSequence + offset + 1, event }));
+		const digests = prefixDigestsOf(store, length, held === null ? null : Math.min(held, length));
 		return {
 			recovery,
 			length,
 			bytes,
 			events,
 			lastEventId: lastEventIdOf(store),
-			prefixDigest: prefixDigestOf(store, length),
+			prefixDigest: digests.full,
+			heldDigest: digests.held,
 		};
 	});
 	const result = (
 		source: EndoCockpitEventLogSourceV0,
 		events: EndoCockpitStoredEventV0[] = [],
-	): EndoCockpitEventLogReadV0 => ({
-		source,
-		afterSequence,
-		events,
-	});
+		heldDigest: string | null = null,
+	): EventLogObservation => ({ read: { source, afterSequence, events }, heldDigest });
 	if (opened.source === "absent")
 		return result({
 			domain: "event-log",
@@ -230,7 +272,7 @@ export function readEndoCockpitEventLogV0(
 		});
 	if (opened.source === "unopenable")
 		return result({ domain: "event-log", condition: opened.condition, watermark: null });
-	const { recovery, length, bytes, events, lastEventId, prefixDigest } = opened.value;
+	const { recovery, length, bytes, events, lastEventId, prefixDigest, heldDigest } = opened.value;
 	// A file with bytes but no readable frame, torn tail or corrupt frame is a file this process could not read.
 	if (bytes > 0 && length === 0 && !recovery.truncated && !recovery.sealed)
 		return result({
@@ -245,7 +287,19 @@ export function readEndoCockpitEventLogV0(
 			watermark: { length, lastEventId, prefixDigest },
 		},
 		events,
+		heldDigest,
 	);
+}
+
+/**
+ * One bounded read of the event log under `root`, read-only. Throws TypeError for an invalid window; every condition of
+ * the source itself is reported in the result, never thrown and never turned into an empty log.
+ */
+export function readEndoCockpitEventLogV0(
+	root: string,
+	options: EndoCockpitEventLogReadOptionsV0 = {},
+): EndoCockpitEventLogReadV0 {
+	return observeEventLog(root, options, null).read;
 }
 
 /** The attachments with a registry directory under `root`, in code-unit order. Reading creates nothing. */
@@ -354,10 +408,11 @@ export function readEndoCockpitRegistryV0(root: string, attachment: string): End
 /**
  * How a source compares with the position a consumer last saw.
  * - unchanged: the same condition and the same position.
- * - advanced: (event log) more events, and the first events (as many as the consumer held) are the same ids in the same
- *   order, so paging from `afterSequence = its old length` continues its view.
+ * - advanced: (event log) more events, and the first events (as many as the consumer held) are the same events, byte for
+ *   byte of their canonical JSON, in the same order, so paging from `afterSequence = its old length` continues its view.
  * - changed: (registry, or an event log whose condition changed at the same length) re-read the source.
- * - diverged: (event log) the events the consumer held are no longer the first events of the log; discard its view.
+ * - diverged: (event log) the events the consumer held are no longer the first events of the log (one was replaced, even
+ *   under the same id); discard its view.
  * - shrunk: (event log) fewer events than the consumer saw; discard its view.
  * - unavailable: the source cannot be opened now, or the consumer has no position to compare.
  */
@@ -365,8 +420,9 @@ export type EndoCockpitFreshnessV0 = "unchanged" | "advanced" | "changed" | "div
 
 /**
  * Compare a source the consumer holds with the store now, read-only. This is the supported way to learn that a fresh
- * snapshot is needed: the event log offers a prefix check by event ids (it is append-only), the registry only equality (it
- * has no cursor). The sources are independent: this says nothing about any other.
+ * snapshot is needed: the event log offers a prefix check over the events' complete contents (it is append-only), the
+ * registry only equality (it has no cursor). The event log is opened once, so the length, the held prefix and the
+ * condition are one observation. The sources are independent: this says nothing about any other.
  */
 export function checkEndoCockpitSourceFreshnessV0(
 	root: string,
@@ -382,16 +438,17 @@ export function checkEndoCockpitSourceFreshnessV0(
 			: "changed";
 	}
 	const mark = previous.watermark;
-	const probeNow = readEndoCockpitEventLogV0(root, { limit: 1, afterSequence: mark?.length ?? 0 });
-	const now = probeNow.source;
+	const { read, heldDigest } = observeEventLog(
+		root,
+		{ limit: 1, afterSequence: mark?.length ?? 0 },
+		mark?.length ?? null,
+	);
+	const now = read.source;
 	if (now.condition.state === "unopenable" || now.watermark === null) return "unavailable";
 	if (mark === null) return "changed";
 	if (now.watermark.length < mark.length) return "shrunk";
-	if (mark.length > 0) {
-		// The first `mark.length` events must still be the ones the consumer saw, by id and order.
-		const at = withEventStore(root, (store) => prefixDigestOf(store, mark.length));
-		if (at.source !== "open" || at.value !== mark.prefixDigest) return "diverged";
-	}
+	// The first `mark.length` events must still be the ones the consumer saw, by their complete contents and order.
+	if (mark.length > 0 && heldDigest !== mark.prefixDigest) return "diverged";
 	if (now.watermark.length > mark.length) return "advanced";
 	return canonicalEndoJsonV0(now.condition) === canonicalEndoJsonV0(previous.condition) ? "unchanged" : "changed";
 }

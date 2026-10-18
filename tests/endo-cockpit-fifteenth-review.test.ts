@@ -33,6 +33,7 @@ import {
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
+	readAs,
 	readEndoCockpitRegistryV0,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
@@ -94,11 +95,14 @@ describe("malformed message usage counts as withheld (P2)", () => {
 	const timeline = (payload: Record<string, unknown>, kind = "message.completed") => {
 		const one = event(kind, payload);
 		return projectEndoCockpitSessionTimelineV0(
-			{
-				source: sourceFor(one),
-				afterSequence: 0,
-				events: stored([one]),
-			} as never,
+			readAs(
+				{
+					source: sourceFor(one),
+					afterSequence: 0,
+					events: stored([one]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 	};
@@ -474,20 +478,23 @@ describe("evidence limits reconcile with the embedded fingerprint (P2)", () => {
 	const timeline = (() => {
 		const one = event("agent.prompt-accepted");
 		return projectEndoCockpitSessionTimelineV0(
-			{
-				source: {
-					domain: "event-log",
-					condition: { ...CLEAN },
-					watermark: {
-						length: 1,
-						lastEventId: aliasOf(one.id),
-						prefixDigest: sha256HexV0("p"),
-						keyId: TEST_KEY.keyId,
+			readAs(
+				{
+					source: {
+						domain: "event-log",
+						condition: { ...CLEAN },
+						watermark: {
+							length: 1,
+							lastEventId: aliasOf(one.id),
+							prefixDigest: sha256HexV0("p"),
+							keyId: TEST_KEY.keyId,
+						},
 					},
-				},
-				afterSequence: 0,
-				events: stored([one]),
-			} as never,
+					afterSequence: 0,
+					events: stored([one]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 	})();

@@ -126,6 +126,37 @@ export function cockpitAliasesV0(key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
 	};
 }
 
+/**
+ * One line of the internal chain over an event log prefix: the lowercase hex sha256 of the original stored event's canonical
+ * JSON (runtime/contracts/canonical-json.ts) and a newline, in storage order. Every line has the same width and alphabet, so
+ * the framing is unambiguous; a replaced event with the same id but another kind, coordinates, payload or time changes its
+ * line. The chain is the sha256 of the lines (the reader streams them into one hash; the projector hashes them whole). It
+ * commits to content the timeline withholds, so it is NEVER published: the public prefix digest is a keyed token of it
+ * (eventPrefixTokenV0). Every event the log holds is framed, a repeated id included.
+ */
+export function eventLogFrameV0(event: unknown): string {
+	return `${sha256HexV0(canonicalEndoJsonV0(event))}\n`;
+}
+
+/** The public token of the first `length` events' chain (the hex sha256 of their lines). Null for no events. */
+export function eventPrefixTokenV0(key: EndoDigestKeyV0, length: number, chain: string | null): string | null {
+	return chain === null || length === 0
+		? null
+		: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.eventPrefix, { length, chain });
+}
+
+/**
+ * The prefix digest the event-log reader advertises for exactly these events, which are the first `events.length` of the
+ * log in storage order, as stored (not as the timeline presents them): the lines and the token are the reader's own
+ * (eventLogFrameV0, eventPrefixTokenV0), so the timeline projector checks a complete input against the construction the
+ * reader makes and the two cannot drift. Null for no events. The key is the one the source was read under.
+ */
+export function eventLogPrefixDigestV0(key: EndoDigestKeyV0, events: readonly unknown[]): string | null {
+	return events.length === 0
+		? null
+		: eventPrefixTokenV0(key, events.length, sha256HexV0(events.map(eventLogFrameV0).join("")));
+}
+
 /** Order two strings by UTF-16 code unit, independent of the host's locale. */
 export function compareCodeUnitsV0(a: string, b: string): number {
 	return a < b ? -1 : a > b ? 1 : 0;

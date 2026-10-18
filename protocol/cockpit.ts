@@ -1433,13 +1433,14 @@ function discardedPositions(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistr
 /**
  * Whether a `duplicate-record-id` note at this position can be genuine. The cleaner keeps one id ledger over the kinds in
  * ENDO_COCKPIT_REGISTRY_KINDS_V0 order: a record repeats an id only if an earlier record of an earlier kind, or of its own
- * kind before it, was KEPT (foreign records and repeats never enter it; a state has no id). So the note is impossible when no
- * such record can exist, and, when every such record's id is exposed by the projection, it must carry one of those ids.
- * `exposed` maps `kind:index` to the id of a kept record the projection presents; a kind the view does not clean has no known
- * discards (its unexposed positions only make the earlier set possibly nonempty and incomplete). A kept record presented
- * AFTER the note's position cannot carry the repeated id: the owner sits before it. Besides validity the scan reports the KINDS
- * of the records that could own the id (every candidate: kept earlier positions, and every position of an uncleaned kind), which
- * is all `keptOwners` takes from a valid note: when they share one kind, that kind owns the id.
+ * kind before it, was KEPT (foreign records and repeats never enter it; a state has no id), and kept records carry distinct
+ * ids. So the owner of the repeated id is one of the CANDIDATES: an earlier position that is not known to be discarded and
+ * whose id is not shown to be another (`exposed` maps `kind:index` to the id of a kept record the projection presents; a kind
+ * the view does not clean has no known discards, and an unexposed position's id is simply not known). The note is impossible
+ * when there is no candidate, and also when a kept record presented AFTER its position carries the repeated id: the owner sits
+ * before it. Besides validity the scan reports the KINDS of the candidates, which is all `keptOwners` takes from a valid note:
+ * when they share one kind, that kind owns the id. (A position presented with this very id is a candidate too; it needs no
+ * inference, as `keptOwners` takes its kind from the presentation.)
  */
 function scanDuplicate(
 	ref: RegistryRef,
@@ -1449,8 +1450,6 @@ function scanDuplicate(
 ): { valid: boolean; kinds: ReadonlySet<EndoCockpitRegistryKindV0> } {
 	const kinds = new Set<EndoCockpitRegistryKindV0>();
 	if (ctx.counts === null || ref.id === null) return { valid: true, kinds };
-	let complete = true;
-	const known = new Set<string>();
 	const earlier = new Set<string>();
 	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
 		if (kind === "state") continue;
@@ -1458,17 +1457,16 @@ function scanDuplicate(
 		for (let at = 0; at < upto; at += 1) {
 			earlier.add(`${kind}:${at}`);
 			if (discarded.get(kind)?.has(at) === true) continue;
-			kinds.add(kind);
+			// A kept record shown with another id cannot be the owner; one whose id is not shown, or is this one, can.
 			const id = exposed.get(`${kind}:${at}`);
-			if (id === undefined) complete = false;
-			else known.add(id);
+			if (id === undefined || id === ref.id) kinds.add(kind);
 		}
 		if (kind === ref.kind) break;
 	}
 	if (kinds.size === 0) return { valid: false, kinds };
 	// The record that owns the repeated id sits before this one: a kept record presented AFTER it cannot carry that id.
 	for (const [position, id] of exposed) if (id === ref.id && !earlier.has(position)) return { valid: false, kinds };
-	return { valid: !complete || known.has(ref.id), kinds };
+	return { valid: true, kinds };
 }
 
 /** The kept records a registry projection presents (with their ids), as the ledger rule can see them. */
@@ -1917,6 +1915,50 @@ function evidenceLimitsAgreeWithFingerprint(
 		}
 	}
 	return true;
+}
+
+/** The fingerprint references of a list of references (a limit's, a note's). */
+const fingerprintRefsOf = (refs: readonly EndoCockpitRefV0[]): RegistryRef[] =>
+	refs.filter((ref): ref is RegistryRef => ref.domain === "harness-registry" && ref.kind === "fingerprint");
+
+/**
+ * Runtime families across the two views. The identity cites one fingerprint per distinct runtime family in its
+ * `runtime-disagreement` note: the latest kept one of each (no note: every kept fingerprint has one family). So the wire shows
+ * how the fingerprint the state names (H) relates in family to the latest one (L), without showing either family:
+ *  - the note cites both: DIFFERENT families. The state's single runtime cannot equal both, so at least one of H and L
+ *    differs from it, and every admitted capability carries a `runtime-differs` that cites a fingerprint, H or L (which one is
+ *    not on the wire; a limit citing only the evidence record stands for neither);
+ *  - H is a kept fingerprint the note does not cite, and no fingerprint the note cites besides L comes after H (all of them are
+ *    known to come before it, or there are none): the family of H is represented by a LATER cited fingerprint, which can only
+ *    be L. SAME family, so H and L differ from the state's runtime together, or neither does, and the limit cites both or neither;
+ *  - otherwise nothing is established (H may share a family with an earlier or a middle fingerprint).
+ * Two different ids prove nothing, only the note does. An unverified entry carries no limits and is not counted.
+ */
+function runtimeLimitsFollowDisagreement(
+	identity: EndoCockpitRuntimeIdentityV0,
+	capabilities: EndoCockpitCapabilityStateV0,
+	owners: ReadonlyMap<string, EndoCockpitRegistryKindV0>,
+): boolean {
+	const named = capabilities.state?.fingerprintId ?? null;
+	const latest = identity.current?.id ?? null;
+	if (named === null || latest === null || named === latest || !isProjectable(identity.source)) return true;
+	const cited = identity.notes
+		.filter((note) => note.code === "runtime-disagreement")
+		.flatMap((note) => fingerprintRefsOf(note.refs));
+	const admitted = capabilities.capabilities.filter((view) => view.status !== "unverified");
+	const citing = (view: EndoCockpitCapabilityViewV0) =>
+		view.limits.flatMap((limit) => (limit.code === "runtime-differs" ? fingerprintRefsOf(limit.refs) : []));
+	if (cited.some((ref) => ref.id === named))
+		return admitted.every((view) => citing(view).some((ref) => ref.id === named || ref.id === latest));
+	if (owners.get(named) !== "fingerprint") return true;
+	// Where H sits among the kept fingerprints, when a kept reference shows it.
+	const at = [...keptRefsOf(identity), ...keptRefsOf(capabilities)].find(
+		(ref) => ref.kind === "fingerprint" && ref.id === named,
+	)?.index;
+	if (cited.some((ref) => ref.id !== latest && (at === undefined || ref.index > at))) return true;
+	return admitted.every(
+		(view) => citing(view).some((ref) => ref.id === named) === citing(view).some((ref) => ref.id === latest),
+	);
 }
 
 /**
@@ -2517,6 +2559,7 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 			capabilities,
 		);
 		if (!evidenceLimitsAgreeWithFingerprint(identity, capabilities, owners)) return null;
+		if (!runtimeLimitsFollowDisagreement(identity, capabilities, owners)) return null;
 		// Together the two views state every kind's dispositions (identity: fingerprint, change, notification; capabilities:
 		// fingerprint, evidence, state): the full ledger a duplicate note is checked against.
 		if (

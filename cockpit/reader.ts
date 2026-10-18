@@ -40,7 +40,7 @@ import { isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../protocol/keyed-digest-shape.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
-import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import {
@@ -56,6 +56,8 @@ import {
 	ENDO_COCKPIT_TOKEN_PURPOSES_V0,
 	type EndoCockpitRegistryInputV0,
 	type EndoCockpitRegistryRecordsV0,
+	eventLogFrameV0,
+	eventPrefixTokenV0,
 	registryWatermarkV0,
 } from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
@@ -228,19 +230,9 @@ function withEventStore<T>(
 }
 
 /**
- * One line of the internal chain over an event log prefix: the lowercase hex sha256 of the event's canonical JSON
- * (runtime/contracts/canonical-json.ts) and a newline, in storage order. Every line has the same width and alphabet, so
- * the framing is unambiguous; a replaced event with the same id but another kind, coordinates, payload or time changes its
- * line. The chain commits to content the timeline withholds, so it is NEVER published: the public prefix digest is a keyed
- * token of it (prefixToken).
- */
-function frameOf(event: unknown): string {
-	return `${sha256HexV0(canonicalEndoJsonV0(event))}\n`;
-}
-
-/**
  * The digest of the first `count` events and, in the same pass over the store, of the first `held` events (`held <=
- * count`; null when not asked). The hash is copied at `held`, so nothing is traversed twice.
+ * count`; null when not asked). The lines are the shared ones (eventLogFrameV0); the hash is copied at `held`, so nothing is
+ * traversed twice.
  */
 function prefixDigestsOf(
 	store: EndoDurableEventStoreV0,
@@ -254,7 +246,7 @@ function prefixDigestsOf(
 		const want = held !== null && seen < held ? held - seen : count - seen;
 		const page = store.page({ afterSequence: seen, limit: Math.min(ENDO_COCKPIT_PAGE_MAX_LIMIT_V0, want) });
 		if (page.events.length === 0) break;
-		for (const item of page.events) hash.update(frameOf(item));
+		for (const item of page.events) hash.update(eventLogFrameV0(item));
 		seen += page.events.length;
 		if (held !== null && held > 0 && seen === held) heldDigest = hash.copy().digest("hex");
 	}
@@ -272,12 +264,6 @@ interface EventLogObservation {
 	read: EndoCockpitEventLogReadV0;
 	heldDigest: string | null;
 }
-
-/** The public token of the first `length` events' internal chain. Null for no events. */
-const prefixToken = (key: EndoDigestKeyV0, length: number, chain: string | null): string | null =>
-	chain === null || length === 0
-		? null
-		: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.eventPrefix, { length, chain });
 
 function observeEventLog(
 	root: string,
@@ -297,8 +283,8 @@ function observeEventLog(
 			length,
 			events,
 			lastEventId: lastEventIdOf(store, key),
-			prefixDigest: prefixToken(key, length, digests.full),
-			heldDigest: held === null ? null : prefixToken(key, Math.min(held, length), digests.held),
+			prefixDigest: eventPrefixTokenV0(key, length, digests.full),
+			heldDigest: held === null ? null : eventPrefixTokenV0(key, Math.min(held, length), digests.held),
 		};
 	});
 	const result = (

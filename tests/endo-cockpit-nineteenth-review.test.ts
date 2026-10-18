@@ -31,6 +31,7 @@ import {
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
+	readAs,
 	readEndoCockpitTimelineV0,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
@@ -89,7 +90,7 @@ const logSource = (one: { id: string }) => ({
 });
 const timelineOf = (one: ReturnType<typeof event>): EndoCockpitSessionTimelineV0 =>
 	projectEndoCockpitSessionTimelineV0(
-		{ source: logSource(one), afterSequence: 0, events: stored([one]) } as never,
+		readAs({ source: logSource(one), afterSequence: 0, events: stored([one]) } as never, TEST_KEY),
 		TEST_KEY,
 	);
 const snapshotFrom = (identity: any, capabilities: any): any => ({
@@ -206,9 +207,11 @@ describe("a duplicate note establishes the kind of the earlier owner of its id (
 		expect(validateEndoCockpitSnapshotV0(presented)).not.toBeNull();
 	});
 
-	it("withholds the inference while a change is kept: fingerprints and a change could own the id (snapshot)", () => {
+	it("withholds the inference while an unpresented change is kept: fingerprints and a change could own the id (snapshot)", () => {
 		const evidence = evidenceMatching(fa).map((item, i) => (i === 0 ? { ...item, id: fa.id } : item));
-		const s = snapshotOf(records({ evidence, change: [c1] }));
+		// Round 20: the one kept change of the earlier fixture was the PRESENTED last change, with another id, and so no owner;
+		// the older change here is not presented, and its id is not known.
+		const s = snapshotOf(records({ evidence, change: [c1, c2] }));
 		expect(validateEndoCockpitSnapshotV0(s)).not.toBeNull();
 		const forged = mutated(s, (x) => withNotRecorded(x.runtimes[0].capabilities));
 		expect(validateEndoCockpitSnapshotV0(forged)).not.toBeNull();

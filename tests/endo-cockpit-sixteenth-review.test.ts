@@ -27,6 +27,7 @@ import {
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
+	readAs,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
 
@@ -76,20 +77,23 @@ const capabilitiesOf = (records: unknown, condition: Record<string, unknown> = {
 const timeline = (() => {
 	const one = event("agent.prompt-accepted");
 	return projectEndoCockpitSessionTimelineV0(
-		{
-			source: {
-				domain: "event-log",
-				condition: { ...CLEAN },
-				watermark: {
-					length: 1,
-					lastEventId: aliasOf(one.id),
-					prefixDigest: sha256HexV0("p"),
-					keyId: TEST_KEY.keyId,
+		readAs(
+			{
+				source: {
+					domain: "event-log",
+					condition: { ...CLEAN },
+					watermark: {
+						length: 1,
+						lastEventId: aliasOf(one.id),
+						prefixDigest: sha256HexV0("p"),
+						keyId: TEST_KEY.keyId,
+					},
 				},
-			},
-			afterSequence: 0,
-			events: stored([one]),
-		} as never,
+				afterSequence: 0,
+				events: stored([one]),
+			} as never,
+			TEST_KEY,
+		),
 		TEST_KEY,
 	);
 })();
@@ -422,20 +426,23 @@ describe("the no-details usage reason contradicts a shown details field (P2)", (
 	const entryOf = (payload: Record<string, unknown>) => {
 		const one = event("session.entry-observed", payload);
 		return projectEndoCockpitSessionTimelineV0(
-			{
-				source: {
-					domain: "event-log",
-					condition: { ...CLEAN },
-					watermark: {
-						length: 1,
-						lastEventId: aliasOf(one.id),
-						prefixDigest: sha256HexV0("p"),
-						keyId: TEST_KEY.keyId,
+			readAs(
+				{
+					source: {
+						domain: "event-log",
+						condition: { ...CLEAN },
+						watermark: {
+							length: 1,
+							lastEventId: aliasOf(one.id),
+							prefixDigest: sha256HexV0("p"),
+							keyId: TEST_KEY.keyId,
+						},
 					},
-				},
-				afterSequence: 0,
-				events: stored([one]),
-			} as never,
+					afterSequence: 0,
+					events: stored([one]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 	};
@@ -491,20 +498,23 @@ describe("a store-opened discontinuity needs a shown true recovery value (P2)", 
 			...(recovery === undefined ? {} : { recovery }),
 		});
 		return projectEndoCockpitSessionTimelineV0(
-			{
-				source: {
-					domain: "event-log",
-					condition: { ...CLEAN },
-					watermark: {
-						length: 1,
-						lastEventId: aliasOf(one.id),
-						prefixDigest: sha256HexV0("p"),
-						keyId: TEST_KEY.keyId,
+			readAs(
+				{
+					source: {
+						domain: "event-log",
+						condition: { ...CLEAN },
+						watermark: {
+							length: 1,
+							lastEventId: aliasOf(one.id),
+							prefixDigest: sha256HexV0("p"),
+							keyId: TEST_KEY.keyId,
+						},
 					},
-				},
-				afterSequence: 0,
-				events: stored([one]),
-			} as never,
+					afterSequence: 0,
+					events: stored([one]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 	};
@@ -565,20 +575,23 @@ describe("a store-opened discontinuity needs a shown true recovery value (P2)", 
 			currentFingerprintId: "endo.evidence.b",
 		});
 		const t = projectEndoCockpitSessionTimelineV0(
-			{
-				source: {
-					domain: "event-log",
-					condition: { ...CLEAN },
-					watermark: {
-						length: 1,
-						lastEventId: aliasOf(one.id),
-						prefixDigest: sha256HexV0("p"),
-						keyId: TEST_KEY.keyId,
+			readAs(
+				{
+					source: {
+						domain: "event-log",
+						condition: { ...CLEAN },
+						watermark: {
+							length: 1,
+							lastEventId: aliasOf(one.id),
+							prefixDigest: sha256HexV0("p"),
+							keyId: TEST_KEY.keyId,
+						},
 					},
-				},
-				afterSequence: 0,
-				events: stored([one]),
-			} as never,
+					afterSequence: 0,
+					events: stored([one]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 		expect(t.entries[0]!.flags).toContain("discontinuity");

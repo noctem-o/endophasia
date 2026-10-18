@@ -47,6 +47,7 @@ import {
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
 	publicIdV0,
+	readAs,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
 
@@ -83,11 +84,13 @@ function input(records: EndoCockpitRegistryRecordsV0 | null): EndoCockpitRegistr
 }
 
 function timeline(events: ReturnType<typeof event>[], afterSequence = 0): EndoCockpitSessionTimelineV0 {
-	return projectEndoCockpitSessionTimelineV0({
-		source: logSource(events.length + afterSequence, events.at(-1)?.id ?? null),
-		afterSequence,
-		events: stored(events, afterSequence + 1),
-	});
+	return projectEndoCockpitSessionTimelineV0(
+		readAs({
+			source: logSource(events.length + afterSequence, events.at(-1)?.id ?? null),
+			afterSequence,
+			events: stored(events, afterSequence + 1),
+		}),
+	);
 }
 
 describe("determinism and purity", () => {
@@ -153,7 +156,7 @@ describe("session timeline", () => {
 	it("refuses an input that is not in strictly ascending storage order above the window", () => {
 		const [a, b] = [event("tool.started"), event("tool.finished")];
 		const project = (events: { storageSequence: number; event: typeof a }[], afterSequence = 0) =>
-			projectEndoCockpitSessionTimelineV0({ source: logSource(2, b.id), afterSequence, events });
+			projectEndoCockpitSessionTimelineV0(readAs({ source: logSource(2, b.id), afterSequence, events }));
 		expect(() =>
 			project([
 				{ storageSequence: 2, event: a },
@@ -310,17 +313,21 @@ describe("session timeline", () => {
 
 	it("reports the window and whether more follows, from the source's own watermark", () => {
 		const events = [event("tool.started"), event("tool.finished")];
-		const middle = projectEndoCockpitSessionTimelineV0({
-			source: logSource(5, "endo.event.test.last"),
-			afterSequence: 2,
-			events: stored(events, 3),
-		});
+		const middle = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: logSource(5, "endo.event.test.last"),
+				afterSequence: 2,
+				events: stored(events, 3),
+			}),
+		);
 		expect(middle.window).toEqual({ afterSequence: 2, nextAfterSequence: 4, hasMore: true });
-		const empty = projectEndoCockpitSessionTimelineV0({
-			source: logSource(4, "endo.event.test.last"),
-			afterSequence: 4,
-			events: [],
-		});
+		const empty = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: logSource(4, "endo.event.test.last"),
+				afterSequence: 4,
+				events: [],
+			}),
+		);
 		expect(empty.window).toEqual({ afterSequence: 4, nextAfterSequence: 4, hasMore: false });
 	});
 
@@ -335,7 +342,7 @@ describe("session timeline", () => {
 			},
 			watermark: null,
 		};
-		const result = projectEndoCockpitSessionTimelineV0({ source, afterSequence: 0, events: [] });
+		const result = projectEndoCockpitSessionTimelineV0(readAs({ source, afterSequence: 0, events: [] }));
 		expect(result.source.condition.state).toBe("unopenable");
 		expect(result.window.hasMore).toBeNull();
 		expect(result.notes).toEqual([{ code: "source-not-projectable", refs: [] }]);
@@ -1289,20 +1296,22 @@ describe("timeline pagination metadata against its watermark (PR #57 review)", (
 	) {
 		const all = ids(length);
 		const events = all.slice(afterSequence, afterSequence + take);
-		return projectEndoCockpitSessionTimelineV0({
-			source: {
-				domain: "event-log",
-				condition: { state, tornTail: null, sealedAt: null, error: null },
-				watermark: {
-					length,
-					lastEventId: all.at(-1)?.id ?? null,
-					prefixDigest: length === 0 ? null : sha256HexV0(`prefix-${length}`),
-					keyId: TEST_KEY.keyId,
+		return projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: {
+					domain: "event-log",
+					condition: { state, tornTail: null, sealedAt: null, error: null },
+					watermark: {
+						length,
+						lastEventId: all.at(-1)?.id ?? null,
+						prefixDigest: length === 0 ? null : sha256HexV0(`prefix-${length}`),
+						keyId: TEST_KEY.keyId,
+					},
 				},
-			},
-			afterSequence,
-			events: stored(events, afterSequence + 1),
-		});
+				afterSequence,
+				events: stored(events, afterSequence + 1),
+			}),
+		);
 	}
 	const withMore = (value: EndoCockpitSessionTimelineV0, hasMore: boolean | null) =>
 		mutated(value, (c) => {
@@ -1336,20 +1345,22 @@ describe("timeline pagination metadata against its watermark (PR #57 review)", (
 	});
 
 	it("allows no position claim only when the source has no position", () => {
-		const unavailable = projectEndoCockpitSessionTimelineV0({
-			source: {
-				domain: "event-log",
-				condition: {
-					state: "unopenable",
-					tornTail: null,
-					sealedAt: null,
-					error: { kind: "invalid-store", message: "the store could not be opened" },
+		const unavailable = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: {
+					domain: "event-log",
+					condition: {
+						state: "unopenable",
+						tornTail: null,
+						sealedAt: null,
+						error: { kind: "invalid-store", message: "the store could not be opened" },
+					},
+					watermark: null,
 				},
-				watermark: null,
-			},
-			afterSequence: 0,
-			events: [],
-		});
+				afterSequence: 0,
+				events: [],
+			}),
+		);
 		expect(unavailable.window.hasMore).toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(unavailable)).not.toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(withMore(unavailable, false))).toBeNull();
@@ -1379,11 +1390,13 @@ describe("timeline pagination metadata against its watermark (PR #57 review)", (
 		expect(validateEndoCockpitSessionTimelineV0(mutated(base, (c) => c.entries.reverse()))).toBeNull();
 		// An ignored duplicate is read but not presented, so the cursor may pass the last presented entry.
 		const dup = event("tool.started", {}, { id: "endo.event.page.1" });
-		const withDuplicate = projectEndoCockpitSessionTimelineV0({
-			source: base.source,
-			afterSequence: 0,
-			events: stored([ids(5)[0]!, dup], 1),
-		});
+		const withDuplicate = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: base.source,
+				afterSequence: 0,
+				events: stored([ids(5)[0]!, dup], 1),
+			}),
+		);
 		expect(withDuplicate.duplicatesIgnored).toBe(1);
 		expect(withDuplicate.window.nextAfterSequence).toBe(2);
 		expect(validateEndoCockpitSessionTimelineV0(withDuplicate)).not.toBeNull();
@@ -1806,20 +1819,22 @@ describe("third review round and invariant audit (PR #57)", () => {
 		Array.from({ length: n }, (_, i) => event("tool.started", {}, { id: `endo.event.third.${i + 1}` }));
 	function page(length: number, afterSequence: number, take: number) {
 		const all = pageIds(length);
-		return projectEndoCockpitSessionTimelineV0({
-			source: {
-				domain: "event-log",
-				condition: { state: "readable", tornTail: null, sealedAt: null, error: null },
-				watermark: {
-					length,
-					lastEventId: all.at(-1)?.id ?? null,
-					prefixDigest: sha256HexV0(`prefix-${length}`),
-					keyId: TEST_KEY.keyId,
+		return projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: {
+					domain: "event-log",
+					condition: { state: "readable", tornTail: null, sealedAt: null, error: null },
+					watermark: {
+						length,
+						lastEventId: all.at(-1)?.id ?? null,
+						prefixDigest: sha256HexV0(`prefix-${length}`),
+						keyId: TEST_KEY.keyId,
+					},
 				},
-			},
-			afterSequence,
-			events: stored(all.slice(afterSequence, afterSequence + take), afterSequence + 1),
-		});
+				afterSequence,
+				events: stored(all.slice(afterSequence, afterSequence + take), afterSequence + 1),
+			}),
+		);
 	}
 	function good() {
 		const records = { ...specimenRecords(), change: [changeRecord()], notification: [notificationRecord()] };
@@ -1917,11 +1932,13 @@ describe("third review round and invariant audit (PR #57)", () => {
 		});
 		expect(validateEndoCockpitSessionTimelineV0(extra)).toBeNull();
 		// An ignored duplicate fills exactly one position; claiming one where none was read still leaves a gap.
-		const withDuplicate = projectEndoCockpitSessionTimelineV0({
-			source: log.source,
-			afterSequence: 0,
-			events: stored([pageIds(6)[0]!, event("tool.started", {}, { id: "endo.event.third.1" }), pageIds(6)[2]!]),
-		});
+		const withDuplicate = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: log.source,
+				afterSequence: 0,
+				events: stored([pageIds(6)[0]!, event("tool.started", {}, { id: "endo.event.third.1" }), pageIds(6)[2]!]),
+			}),
+		);
 		expect(withDuplicate.duplicatesIgnored).toBe(1);
 		expect(validateEndoCockpitSessionTimelineV0(withDuplicate)).not.toBeNull();
 		expect(
@@ -2045,14 +2062,16 @@ describe("third review round and invariant audit (PR #57)", () => {
 		expect(validateEndoCockpitSessionTimelineV0(page(5, 0, 2))).not.toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(page(5, 9, 2))).not.toBeNull();
 		// A trailing ignored duplicate: the last position repeats an earlier id of the window, which must be the last event.
-		const dup = projectEndoCockpitSessionTimelineV0({
-			source: {
-				...end.source,
-				watermark: { ...end.source.watermark!, length: 2, lastEventId: "endo.event.third.1" },
-			},
-			afterSequence: 0,
-			events: stored([pageIds(5)[0]!, event("tool.started", {}, { id: "endo.event.third.1" })]),
-		});
+		const dup = projectEndoCockpitSessionTimelineV0(
+			readAs({
+				source: {
+					...end.source,
+					watermark: { ...end.source.watermark!, length: 2, lastEventId: "endo.event.third.1" },
+				},
+				afterSequence: 0,
+				events: stored([pageIds(5)[0]!, event("tool.started", {}, { id: "endo.event.third.1" })]),
+			}),
+		);
 		expect(dup.duplicatesIgnored).toBe(1);
 		expect(validateEndoCockpitSessionTimelineV0(dup)).not.toBeNull();
 		expect(
@@ -3599,7 +3618,7 @@ describe("seventh review round (PR #57)", () => {
 			},
 			watermark: null,
 		};
-		const log = projectEndoCockpitSessionTimelineV0({ source, afterSequence: 0, events: [] });
+		const log = projectEndoCockpitSessionTimelineV0(readAs({ source, afterSequence: 0, events: [] }));
 		accepts(log);
 		rejects(
 			mutated(log, (c) => {
@@ -3631,7 +3650,9 @@ describe("seventh review round (PR #57)", () => {
 		);
 		// An empty window, a cursor past the end, and a window far from the start stay valid.
 		accepts(timeline([]));
-		accepts(projectEndoCockpitSessionTimelineV0({ source: logSource(0, null), afterSequence: 500, events: [] }));
+		accepts(
+			projectEndoCockpitSessionTimelineV0(readAs({ source: logSource(0, null), afterSequence: 500, events: [] })),
+		);
 		accepts(timeline(many(3), 2 ** 40));
 	});
 
@@ -4002,11 +4023,13 @@ describe("eighth review round (PR #57)", () => {
 			event: event("tool.started", {}, { id }),
 		});
 		const run = (afterSequence: number, events: ReturnType<typeof ev>[], length = 100) =>
-			projectEndoCockpitSessionTimelineV0({
-				source: logSource(length, "endo.event.pos.1"),
-				afterSequence,
-				events,
-			});
+			projectEndoCockpitSessionTimelineV0(
+				readAs({
+					source: logSource(length, "endo.event.pos.1"),
+					afterSequence,
+					events,
+				}),
+			);
 		expect(() => run(0, [ev(2)]), "initial gap").toThrow(TypeError);
 		expect(() => run(0, [ev(1), ev(3)]), "internal gap").toThrow(TypeError);
 		expect(() => run(5, [ev(6), ev(8)]), "internal gap after an offset").toThrow(TypeError);
@@ -4119,23 +4142,25 @@ describe("eighth review round (PR #57)", () => {
 			event: event("tool.started", {}, { id }),
 		});
 		const run = (length: number | null, afterSequence: number, events: ReturnType<typeof ev>[], lastId?: string) =>
-			projectEndoCockpitSessionTimelineV0({
-				source:
-					length === null
-						? {
-								domain: "event-log",
-								condition: {
-									state: "unopenable",
-									tornTail: null,
-									sealedAt: null,
-									error: { kind: "invalid-store", message: "the store could not be opened" },
-								},
-								watermark: null,
-							}
-						: logSource(length, length === 0 ? null : (lastId ?? `endo.event.mark.${length}`)),
-				afterSequence,
-				events,
-			});
+			projectEndoCockpitSessionTimelineV0(
+				readAs({
+					source:
+						length === null
+							? {
+									domain: "event-log",
+									condition: {
+										state: "unopenable",
+										tornTail: null,
+										sealedAt: null,
+										error: { kind: "invalid-store", message: "the store could not be opened" },
+									},
+									watermark: null,
+								}
+							: logSource(length, length === 0 ? null : (lastId ?? `endo.event.mark.${length}`)),
+					afterSequence,
+					events,
+				}),
+			);
 		// Overruns: an empty source with an event, a null watermark with an event, one past the length, an offset window.
 		expect(() => run(0, 0, [ev(1)]), "empty source").toThrow(TypeError);
 		expect(() => run(null, 0, [ev(1)]), "null watermark").toThrow(TypeError);
@@ -4166,7 +4191,7 @@ describe("eighth review round (PR #57)", () => {
 	it("P5 (terminal): the event at the source's last position is the one its watermark names", () => {
 		const ev = (n: number, id: string) => ({ storageSequence: n, event: event("tool.started", {}, { id }) });
 		const run = (last: string, events: ReturnType<typeof ev>[]) =>
-			projectEndoCockpitSessionTimelineV0({ source: logSource(3, last), afterSequence: 0, events });
+			projectEndoCockpitSessionTimelineV0(readAs({ source: logSource(3, last), afterSequence: 0, events }));
 		const three = [ev(1, "endo.event.t.1"), ev(2, "endo.event.t.2"), ev(3, "endo.event.t.3")];
 		accepts(run("endo.event.t.3", three));
 		expect(() => run("endo.event.t.1", three), "another id at the end").toThrow(TypeError);

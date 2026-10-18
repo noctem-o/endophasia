@@ -32,6 +32,7 @@ import {
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
 	publicIdV0,
+	readAs,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
 
@@ -75,11 +76,14 @@ const mutated = <T>(value: T, edit: (copy: any) => void): T => {
 
 function timelineOf(events: ReturnType<typeof event>[], key = TEST_KEY): EndoCockpitSessionTimelineV0 {
 	return projectEndoCockpitSessionTimelineV0(
-		{
-			source: logSource(events.length, events.at(-1)?.id ?? null, key.keyId),
-			afterSequence: 0,
-			events: stored(events),
-		},
+		readAs(
+			{
+				source: logSource(events.length, events.at(-1)?.id ?? null, key.keyId),
+				afterSequence: 0,
+				events: stored(events),
+			},
+			key,
+		),
 		key,
 	);
 }
@@ -392,7 +396,7 @@ describe("the first position of a nonempty window is presented (P2)", () => {
 	const three = [event("agent.prompt-accepted"), event("agent.prompt-accepted"), event("agent.prompt-accepted")];
 	const base = (): EndoCockpitSessionTimelineV0 =>
 		projectEndoCockpitSessionTimelineV0(
-			{ source: logSource(3, three[2]!.id), afterSequence: 0, events: stored(three.slice(0, 3)) },
+			readAs({ source: logSource(3, three[2]!.id), afterSequence: 0, events: stored(three.slice(0, 3)) }, TEST_KEY),
 			TEST_KEY,
 		);
 
@@ -423,14 +427,14 @@ describe("the first position of a nonempty window is presented (P2)", () => {
 	it("accepts a duplicate after the first position, from the projector, and empty or past-the-end windows", () => {
 		const repeated = [three[0]!, three[1]!, three[0]!];
 		const projected = projectEndoCockpitSessionTimelineV0(
-			{ source: logSource(3, three[0]!.id), afterSequence: 0, events: stored(repeated) },
+			readAs({ source: logSource(3, three[0]!.id), afterSequence: 0, events: stored(repeated) }, TEST_KEY),
 			TEST_KEY,
 		);
 		expect(projected.duplicatesIgnored).toBe(1);
 		expect(projected.entries[0]!.storageSequence).toBe(1);
 		expect(validateEndoCockpitSessionTimelineV0(projected)).not.toBeNull();
 		const past = projectEndoCockpitSessionTimelineV0(
-			{ source: logSource(2, three[1]!.id), afterSequence: 5, events: [] },
+			readAs({ source: logSource(2, three[1]!.id), afterSequence: 5, events: [] }, TEST_KEY),
 			TEST_KEY,
 		);
 		expect(past.entries).toEqual([]);
@@ -1239,11 +1243,14 @@ describe("a page before the tail advances (P2)", () => {
 	const three = [event("agent.prompt-accepted"), event("agent.prompt-accepted"), event("agent.prompt-accepted")];
 	const run = (length: number, after: number, events: typeof three) =>
 		projectEndoCockpitSessionTimelineV0(
-			{
-				source: logSource(length, length === 0 ? null : three[length - 1]!.id),
-				afterSequence: after,
-				events: stored(events, after + 1),
-			},
+			readAs(
+				{
+					source: logSource(length, length === 0 ? null : three[length - 1]!.id),
+					afterSequence: after,
+					events: stored(events, after + 1),
+				},
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 
@@ -1268,20 +1275,23 @@ describe("a page before the tail advances (P2)", () => {
 		expect(validateEndoCockpitSessionTimelineV0(run(3, 7, []))).not.toBeNull();
 		expect(validateEndoCockpitSessionTimelineV0(run(0, 0, []))).not.toBeNull();
 		const unopenable = projectEndoCockpitSessionTimelineV0(
-			{
-				source: {
-					domain: "event-log",
-					condition: {
-						state: "unopenable",
-						tornTail: null,
-						sealedAt: null,
-						error: { kind: "invalid-store", message: "the store could not be opened" },
+			readAs(
+				{
+					source: {
+						domain: "event-log",
+						condition: {
+							state: "unopenable",
+							tornTail: null,
+							sealedAt: null,
+							error: { kind: "invalid-store", message: "the store could not be opened" },
+						},
+						watermark: null,
 					},
-					watermark: null,
-				},
-				afterSequence: 0,
-				events: [],
-			} as never,
+					afterSequence: 0,
+					events: [],
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 		expect(validateEndoCockpitSessionTimelineV0(unopenable)).not.toBeNull();

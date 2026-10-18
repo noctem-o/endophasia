@@ -5,8 +5,9 @@ export * from "../protocol/cockpit.ts";
 export type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 export { projectEndoCockpitCapabilityStateV0 } from "./projections/capability-state.ts";
 export type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "./projections/common.ts";
-// A direct registry projector admits only an input its source describes; this is the construction the reader advertises.
-export { registryWatermarkV0 } from "./projections/common.ts";
+// A direct projector admits only an input its source describes; these are the constructions the reader advertises: a registry's
+// content watermark and, for an event log read whole, the prefix digest of its events.
+export { eventLogPrefixDigestV0, registryWatermarkV0 } from "./projections/common.ts";
 export { projectEndoCockpitRuntimeIdentityV0 } from "./projections/runtime-identity.ts";
 export type {
 	EndoCockpitStoredEventV0,

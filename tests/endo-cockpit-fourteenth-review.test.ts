@@ -27,6 +27,7 @@ import {
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
+	readAs,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
 
@@ -96,11 +97,14 @@ describe("a withheld runtime session reference counts as withheld (P2)", () => {
 			...extra,
 		});
 		const timeline = projectEndoCockpitSessionTimelineV0(
-			{
-				source: logSourceFor(attached),
-				afterSequence: 0,
-				events: stored([attached]),
-			} as never,
+			readAs(
+				{
+					source: logSourceFor(attached),
+					afterSequence: 0,
+					events: stored([attached]),
+				} as never,
+				TEST_KEY,
+			),
 			TEST_KEY,
 		);
 		return timeline;
@@ -180,11 +184,14 @@ describe("both snapshot views agree on the fingerprint records cleaned (P2)", ()
 	};
 	const prompt = event("agent.prompt-accepted");
 	const timeline = projectEndoCockpitSessionTimelineV0(
-		{
-			source: logSourceFor(prompt),
-			afterSequence: 0,
-			events: stored([prompt]),
-		} as never,
+		readAs(
+			{
+				source: logSourceFor(prompt),
+				afterSequence: 0,
+				events: stored([prompt]),
+			} as never,
+			TEST_KEY,
+		),
 		TEST_KEY,
 	);
 	const snapshot = (identity: unknown, capabilities: unknown) => ({
@@ -443,7 +450,7 @@ describe("one position carries one id; legitimate collisions between kinds still
 	const timeline = (() => {
 		const prompt = event("agent.prompt-accepted");
 		return projectEndoCockpitSessionTimelineV0(
-			{ source: logSourceFor(prompt), afterSequence: 0, events: stored([prompt]) } as never,
+			readAs({ source: logSourceFor(prompt), afterSequence: 0, events: stored([prompt]) } as never, TEST_KEY),
 			TEST_KEY,
 		);
 	})();

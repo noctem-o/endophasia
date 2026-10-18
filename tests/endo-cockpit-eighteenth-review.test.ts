@@ -30,6 +30,7 @@ import {
 	projectEndoCockpitCapabilityStateV0,
 	projectEndoCockpitRuntimeIdentityV0,
 	projectEndoCockpitSessionTimelineV0,
+	readAs,
 	readEndoCockpitRegistryV0,
 	TEST_KEY,
 } from "./cockpit-keyed.ts";
@@ -85,20 +86,23 @@ const capabilitiesOf = (records: unknown) =>
 const timeline = (() => {
 	const one = event("agent.prompt-accepted");
 	return projectEndoCockpitSessionTimelineV0(
-		{
-			source: {
-				domain: "event-log",
-				condition: { ...CLEAN },
-				watermark: {
-					length: 1,
-					lastEventId: aliasOf(one.id),
-					prefixDigest: sha256HexV0("p"),
-					keyId: TEST_KEY.keyId,
+		readAs(
+			{
+				source: {
+					domain: "event-log",
+					condition: { ...CLEAN },
+					watermark: {
+						length: 1,
+						lastEventId: aliasOf(one.id),
+						prefixDigest: sha256HexV0("p"),
+						keyId: TEST_KEY.keyId,
+					},
 				},
-			},
-			afterSequence: 0,
-			events: stored([one]),
-		} as never,
+				afterSequence: 0,
+				events: stored([one]),
+			} as never,
+			TEST_KEY,
+		),
 		TEST_KEY,
 	);
 })();

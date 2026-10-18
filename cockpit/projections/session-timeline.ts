@@ -58,7 +58,7 @@ import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
 import { isEndoKeyedDigestV0 } from "../../protocol/keyed-digest-shape.ts";
 import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
-import { cockpitAliasesV0, type EndoCockpitAliasesV0 } from "./common.ts";
+import { cockpitAliasesV0, type EndoCockpitAliasesV0, eventLogPrefixDigestV0 } from "./common.ts";
 
 /** One event of the log with the storage sequence it was read at. */
 export interface EndoCockpitStoredEventV0 {
@@ -417,7 +417,9 @@ function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0):
  * storage sequence that is not the previous position plus one, beginning at `afterSequence + 1`: every consumed position
  * is an event of the window or a duplicate it ignored, so the result accounts for them all. (A store reads contiguously.)
  * Every supplied position must also lie within the source's declared length, and a source with no watermark supplies no
- * events. The input is trusted for nothing else: the projector reads no file and verifies no source.
+ * events. When the input is the whole prefix (it begins at the start and reaches the declared length), the source's prefix
+ * digest must be the one the reader computes over exactly those events. The input is trusted for nothing else: the projector
+ * reads no file and verifies no source.
  */
 function projectEndoCockpitSessionTimelineUncheckedV0(
 	input: EndoCockpitTimelineInputV0,
@@ -474,6 +476,20 @@ function projectEndoCockpitSessionTimelineUncheckedV0(
 	// A cursor before the declared tail that consumes nothing cannot be followed to the end: refuse it, do not invent progress.
 	if (source.watermark !== null && afterSequence < source.watermark.length && nextAfterSequence === afterSequence)
 		throw new TypeError("the window consumes no event although the source holds events after its cursor");
+	// Input that holds the source's whole prefix (it begins at the start and reaches the declared length) holds what the
+	// source's prefix digest commits to, so the commitment is recomputed from the original events under the same key. A later
+	// or shorter window lacks events the digest covers: it cannot be checked, and is not refused for that.
+	if (
+		afterSequence === 0 &&
+		source.watermark !== null &&
+		source.watermark.length > 0 &&
+		nextAfterSequence === source.watermark.length &&
+		eventLogPrefixDigestV0(
+			digestKey,
+			events.map((stored) => stored.event),
+		) !== source.watermark.prefixDigest
+	)
+		throw new TypeError("the events do not match the prefix digest their source advertises");
 	if (source.condition.state === "unopenable") notes.push({ code: "source-not-projectable", refs: [] });
 	return {
 		schemaVersion: "endo.cockpit-session-timeline.v0",

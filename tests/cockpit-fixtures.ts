@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EndoCockpitRegistryRecordsV0 } from "../cockpit/projections/common.ts";
+import type { EndoCockpitEventLogSourceV0 } from "../protocol/cockpit.ts";
 import type { EndoEventSourceV0, EndoEventV0 } from "../protocol/event.ts";
 import type {
 	EndoCapabilityEvidenceV0,
@@ -14,6 +15,8 @@ import type {
 	EndoHarnessFingerprintV0,
 	EndoHarnessNotificationV0,
 } from "../protocol/harness.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 
@@ -132,6 +135,32 @@ export function event(
 
 export function stored(events: readonly EndoEventV0[], from = 1): { storageSequence: number; event: EndoEventV0 }[] {
 	return events.map((item, offset) => ({ storageSequence: from + offset, event: item }));
+}
+
+/**
+ * The prefix digest a reader advertises for these events, restated independently of the production helper: one line per
+ * event in storage order (the hex sha256 of its canonical JSON and a newline), the sha256 of the lines, and the keyed token
+ * of `{ purpose, length, chain }`. Null for no events. A fixture that models a complete read uses it, never an arbitrary token.
+ */
+export function modelPrefixDigest(events: readonly unknown[], key: EndoDigestKeyV0): string | null {
+	if (events.length === 0) return null;
+	const chain = sha256HexV0(events.map((item) => `${sha256HexV0(canonicalEndoJsonV0(item))}\n`).join(""));
+	return key.digest({ purpose: "endo.cockpit.event-prefix.v0", length: events.length, chain }).value;
+}
+
+/** The source a reader reports after reading the whole of a clean log holding exactly these events (their ids are public). */
+export function completeLogSource(events: readonly EndoEventV0[], key: EndoDigestKeyV0): EndoCockpitEventLogSourceV0 {
+	const last = events.at(-1);
+	return {
+		domain: "event-log",
+		condition: { state: events.length === 0 ? "empty" : "readable", tornTail: null, sealedAt: null, error: null },
+		watermark: {
+			length: events.length,
+			lastEventId: last === undefined ? null : last.id,
+			prefixDigest: modelPrefixDigest(events, key),
+			keyId: key.keyId,
+		},
+	};
 }
 
 const FINGERPRINT_ID = "endo.evidence.test-fingerprint.1";

@@ -24,6 +24,7 @@ import {
 } from "../cockpit/snapshot.ts";
 import type { EndoCockpitEventLogSourceV0, EndoCockpitRegistrySourceV0 } from "../protocol/cockpit.ts";
 import { type EndoDigestKeyV0, endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
+import { modelPrefixDigest } from "./cockpit-fixtures.ts";
 
 export * from "../cockpit/index.ts";
 
@@ -33,6 +34,25 @@ export const OTHER_KEY: EndoDigestKeyV0 = endoDigestKeyV0(Buffer.alloc(32, 0x11)
 
 /** A public identifier as the cockpit presents it under the fixture key. */
 export const publicIdV0 = (id: string, key: EndoDigestKeyV0 = TEST_KEY): string => cockpitAliasesV0(key).id(id);
+
+/**
+ * A timeline input whose source models what a reader reports. The window that is the whole log (it begins at the start and
+ * holds every event up to the declared length) carries the prefix digest a reader advertises for exactly its events, restated
+ * independently (modelPrefixDigest); any other window keeps the digest it names, which nobody can check from a window. Every
+ * other property of the fixture is left as written, so a fixture that is wrong in another way stays wrong in that way.
+ */
+export function readAs<T extends { source: any; afterSequence: number; events: readonly { event: unknown }[] }>(
+	input: T,
+	key: EndoDigestKeyV0 = TEST_KEY,
+): T {
+	const mark = input.source?.watermark;
+	if (!mark || input.afterSequence !== 0 || mark.length === 0 || input.events.length !== mark.length) return input;
+	const prefixDigest = modelPrefixDigest(
+		input.events.map((stored) => stored.event),
+		key,
+	);
+	return { ...input, source: { ...input.source, watermark: { ...mark, prefixDigest } } };
+}
 
 type Options<T> = Omit<T, "digestKey"> & { digestKey?: EndoDigestKeyV0 };
 

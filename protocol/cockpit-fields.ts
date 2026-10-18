@@ -9,7 +9,12 @@
 //
 // The protocol imports only the protocol.
 
-import { type EndoIdentifierKindV0, parseEndoIdentifierV0 } from "./identity.ts";
+import {
+	type EndoIdentifierKindV0,
+	isEndoIdentifierV0,
+	isWellFormedKindV0,
+	parseEndoIdentifierV0,
+} from "./identity.ts";
 import { ENDO_INTERVENTION_KINDS_V0 } from "./intervention.ts";
 import { ENDO_DIGEST_KEY_ID_PATTERN_V0, ENDO_KEYED_DIGEST_VALUE_PATTERN_V0 } from "./keyed-digest-shape.ts";
 import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "./session-lifecycle.ts";
@@ -302,11 +307,17 @@ export const ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0: Readonly<Record<string, { pare
 		resultDigestKeyId: { parent: "resultDigest", partner: "resultDigest" },
 	});
 
-const KEYED_DIGEST_PARTS: Readonly<Record<string, (value: string) => boolean>> = freezeDeep({
+/** The shape a presented value of a field must have, by field key (an opaque digest part, a kind, an identifier namespace). */
+const FIELD_ADMISSION: Readonly<Record<string, (value: string) => boolean>> = freezeDeep({
 	// The runtime identity digest, as its keyed token (the same token the registry views carry for it).
 	identityDigest: (value: string) => /^[0-9a-f]{64}$/.test(value),
 	// A runtime family is a kind the source names: one in the reserved alias namespace is withheld whole, not shown as written.
 	runtime: (value: string) => isEndoCockpitSourceKindAdmittedV0(value),
+	// A fingerprint reference is an evidence identifier (an alias keeps its `endo.<kind>.` segment, so the namespace holds for
+	// the source value and for what is presented alike); an identifier of another namespace is not a fingerprint reference.
+	fingerprintId: (value: string) => isEndoIdentifierV0(value, "evidence"),
+	previousFingerprintId: (value: string) => isEndoIdentifierV0(value, "evidence"),
+	currentFingerprintId: (value: string) => isEndoIdentifierV0(value, "evidence"),
 	argsDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	resultDigest: (value: string) => ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value),
 	argsDigestKeyId: (value: string) => ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value),
@@ -337,7 +348,7 @@ export function endoCockpitFieldRuleV0(kind: string, key: string): EndoCockpitFi
 	if (key === "runtimeSessionId" && (spec !== undefined || kind === "harness.attached"))
 		return { basis: "reported", type: "string", nullable: false, admitted: endoCockpitRuntimeSessionAdmittedV0 };
 	if (spec !== undefined) {
-		const digest = KEYED_DIGEST_PARTS[key];
+		const digest = FIELD_ADMISSION[key];
 		return {
 			basis: spec[2],
 			type: spec[3],
@@ -490,9 +501,16 @@ export function isEndoCockpitSourceIdAdmittedV0(value: string, kind?: EndoIdenti
 	return !parsed.local.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
 }
 
-/** Whether a dotted kind (a capability, an event kind) may be presented as it is: not flagged, not in the reserved namespace. */
+/**
+ * Whether a dotted kind (a capability, an event kind, a runtime family) may be presented as it is: in the protocol's kind
+ * grammar, not flagged, not in the reserved namespace. A value of another shape is not a kind and is withheld or aliased.
+ */
 export function isEndoCockpitSourceKindAdmittedV0(kind: string): boolean {
-	return !endoCockpitTextUnsafeV0(kind) && !kind.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
+	return (
+		isWellFormedKindV0(kind) &&
+		!endoCockpitTextUnsafeV0(kind) &&
+		!kind.split(".").some((segment) => RESERVED_SEGMENT.test(segment))
+	);
 }
 
 /** The name of a declared-unavailable gap (`unavailable.<name>`): a short plain label. */

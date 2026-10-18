@@ -1437,16 +1437,18 @@ function discardedPositions(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistr
  * such record can exist, and, when every such record's id is exposed by the projection, it must carry one of those ids.
  * `exposed` maps `kind:index` to the id of a kept record the projection presents; a kind the view does not clean has no known
  * discards (its unexposed positions only make the earlier set possibly nonempty and incomplete). A kept record presented
- * AFTER the note's position cannot carry the repeated id: the owner sits before it.
+ * AFTER the note's position cannot carry the repeated id: the owner sits before it. Besides validity the scan reports the KINDS
+ * of the records that could own the id (every candidate: kept earlier positions, and every position of an uncleaned kind), which
+ * is all `keptOwners` takes from a valid note: when they share one kind, that kind owns the id.
  */
-function duplicateIdPossible(
+function scanDuplicate(
 	ref: RegistryRef,
 	discarded: ReadonlyMap<EndoCockpitRegistryKindV0, ReadonlySet<number>>,
 	ctx: RefContext,
 	exposed: ReadonlyMap<string, string>,
-): boolean {
-	if (ctx.counts === null || ref.id === null) return true;
-	let possible = false;
+): { valid: boolean; kinds: ReadonlySet<EndoCockpitRegistryKindV0> } {
+	const kinds = new Set<EndoCockpitRegistryKindV0>();
+	if (ctx.counts === null || ref.id === null) return { valid: true, kinds };
 	let complete = true;
 	const known = new Set<string>();
 	const earlier = new Set<string>();
@@ -1456,17 +1458,17 @@ function duplicateIdPossible(
 		for (let at = 0; at < upto; at += 1) {
 			earlier.add(`${kind}:${at}`);
 			if (discarded.get(kind)?.has(at) === true) continue;
-			possible = true;
+			kinds.add(kind);
 			const id = exposed.get(`${kind}:${at}`);
 			if (id === undefined) complete = false;
 			else known.add(id);
 		}
 		if (kind === ref.kind) break;
 	}
-	if (!possible) return false;
+	if (kinds.size === 0) return { valid: false, kinds };
 	// The record that owns the repeated id sits before this one: a kept record presented AFTER it cannot carry that id.
-	for (const [position, id] of exposed) if (id === ref.id && !earlier.has(position)) return false;
-	return !complete || known.has(ref.id);
+	for (const [position, id] of exposed) if (id === ref.id && !earlier.has(position)) return { valid: false, kinds };
+	return { valid: !complete || known.has(ref.id), kinds };
 }
 
 /** The kept records a registry projection presents (with their ids), as the ledger rule can see them. */
@@ -1518,11 +1520,17 @@ function exposedIds(
 	discarded: ReadonlyMap<EndoCockpitRegistryKindV0, ReadonlySet<number>>,
 	cleaned: readonly EndoCockpitRegistryKindV0[],
 	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
+	...values: { notes: EndoCockpitNoteV0[] }[]
 ): Map<string, string> {
 	const exposed = new Map<string, string>();
 	for (const view of views)
 		if (view !== null && view.ref.domain === "harness-registry")
 			exposed.set(`${view.ref.kind}:${view.ref.index}`, view.id);
+	// Every kept reference states a true position with its true id, whether or not a view presents the record.
+	for (const value of values)
+		for (const ref of keptRefsOf(value))
+			if (ref.id !== null && discarded.get(ref.kind)?.has(ref.index) !== true)
+				exposed.set(`${ref.kind}:${ref.index}`, ref.id);
 	if (ctx.counts !== null && ctx.lastIds !== null)
 		for (const kind of cleaned) {
 			const tail = ctx.lastIds[kind];
@@ -1542,15 +1550,16 @@ function duplicateNotesFollowLedger(
 	ctx: RefContext,
 	cleaned: readonly EndoCockpitRegistryKindV0[],
 	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
+	...values: { notes: EndoCockpitNoteV0[] }[]
 ): boolean {
 	// A kind this set of notes does not clean may hold records of any disposition: nothing is known to be discarded in it.
 	const discarded = discardedByKind(notes, cleaned);
-	const exposed = exposedIds(ctx, discarded, cleaned, views);
+	const exposed = exposedIds(ctx, discarded, cleaned, views, ...values);
 	return notes.every(
 		(note) =>
 			note.code !== "duplicate-record-id" ||
 			note.refs.every(
-				(ref) => ref.domain !== "harness-registry" || duplicateIdPossible(ref, discarded, ctx, exposed),
+				(ref) => ref.domain !== "harness-registry" || scanDuplicate(ref, discarded, ctx, exposed).valid,
 			),
 	);
 }
@@ -1703,10 +1712,11 @@ function keepsOffDiscarded(
 
 /**
  * Who owns an id. Registry ids are unique across kinds, so a kept reference of kind K with id X establishes that a kept K
- * record owns X and that no record of another kind does. Only kept references count: those outside the cleaning notes (a
- * duplicate note carries an EARLIER record's id, a foreign one an id that never entered the ledger), at positions the
- * cleaning notes do not discard, plus the positions pinned by the watermark and the latest kept fingerprint. What a reference
- * establishes is existence and kind, never the record's attributes. Everything inferred from a validated claim here only adds
+ * record owns X and that no record of another kind does. Kept references are those outside the cleaning notes (a duplicate
+ * note carries an EARLIER record's id, a foreign one an id that never entered the ledger), at positions the cleaning notes do
+ * not discard, plus the positions pinned by the watermark and the latest kept fingerprint. A valid duplicate note adds the KIND
+ * of the earlier owner when every record that could be it has that kind (the cleaner's order fixes who can be earlier).
+ * What a reference establishes is existence and kind, never the record's attributes. Everything inferred from a validated claim here only adds
  * obligations or refusals and never discharges one, so a forged claim can make a forgery fail more, not pass.
  */
 function keptOwners(
@@ -1717,12 +1727,20 @@ function keptOwners(
 	...values: { notes: EndoCockpitNoteV0[] }[]
 ): Map<string, EndoCockpitRegistryKindV0> {
 	const discarded = discardedByKind(notes, cleaned);
+	const exposed = exposedIds(ctx, discarded, cleaned, views, ...values);
 	const owners = new Map<string, EndoCockpitRegistryKindV0>();
-	for (const value of values)
-		for (const ref of keptRefsOf(value))
-			if (ref.id !== null && discarded.get(ref.kind)?.has(ref.index) !== true) owners.set(ref.id, ref.kind);
-	for (const [position, id] of exposedIds(ctx, discarded, cleaned, views))
-		owners.set(id, position.split(":")[0] as EndoCockpitRegistryKindV0);
+	for (const [position, id] of exposed) owners.set(id, position.split(":")[0] as EndoCockpitRegistryKindV0);
+	// A VALID duplicate note says an earlier kept record owns its id. Which one is not established, but when every possible
+	// owner is of one kind, that kind is (and nothing more: no position, no attribute). The note is never itself a record, and
+	// what it adds is only ever consulted to add obligations or refusals, so a note that fails the scan adds nothing.
+	for (const note of notes)
+		if (note.code === "duplicate-record-id")
+			for (const ref of note.refs) {
+				if (ref.domain !== "harness-registry" || ref.id === null || owners.has(ref.id)) continue;
+				const scan = scanDuplicate(ref, discarded, ctx, exposed);
+				const [only] = scan.kinds;
+				if (scan.valid && scan.kinds.size === 1 && only !== undefined) owners.set(ref.id, only);
+			}
 	return owners;
 }
 
@@ -1947,7 +1965,13 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	)
 		return false;
 	if (
-		!duplicateNotesFollowLedger(identity.notes, ctx, NOTE_POLICY.runtimeIdentity.cleaned, identityExposure(identity))
+		!duplicateNotesFollowLedger(
+			identity.notes,
+			ctx,
+			NOTE_POLICY.runtimeIdentity.cleaned,
+			identityExposure(identity),
+			identity,
+		)
 	)
 		return false;
 	// `current`, the last change and the last notice are the records the watermark ends at.
@@ -2200,6 +2224,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 			ctx,
 			NOTE_POLICY.capabilityState.cleaned,
 			capabilityExposure(projection, ctx),
+			projection,
 		)
 	)
 		return false;
@@ -2500,6 +2525,8 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 				contextOf(identity.source),
 				ENDO_COCKPIT_REGISTRY_KINDS_V0,
 				[...identityExposure(identity), ...capabilityExposure(capabilities, contextOf(capabilities.source))],
+				identity,
+				capabilities,
 			)
 		)
 			return null;

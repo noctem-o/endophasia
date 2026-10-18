@@ -96,8 +96,12 @@ describe("cockpit import boundary", () => {
 
 describe("cockpit purity and read-only operation", () => {
 	it("the pure projections and the contract use no file, clock, random, environment or node: module", () => {
-		const pure = [...PROJECTIONS, join(packageRoot, "protocol", "cockpit.ts")];
-		expect(pure.length).toBeGreaterThanOrEqual(5);
+		const pure = [
+			...PROJECTIONS,
+			join(packageRoot, "protocol", "cockpit.ts"),
+			join(packageRoot, "protocol", "cockpit-ledger.ts"),
+		];
+		expect(pure.length).toBeGreaterThanOrEqual(6);
 		for (const file of pure) {
 			const source = withoutComments(readFileSync(file, "utf8"));
 			expect(source, file).not.toMatch(/\bnode:/);

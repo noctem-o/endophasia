@@ -588,7 +588,13 @@ describe("evidence limits reconcile with the embedded fingerprint (P2)", () => {
 		expect(accepted(strong)).toBe(true);
 		expect(accepted(addLimit(strong, "evidence-reduced-identity"))).toBe(false);
 		// The fingerprint itself reduced, the evidence strong and carried.
-		const fp = { ...base.fingerprint[0]!, identity: { ...base.fingerprint[0]!.identity, confidence: "reduced" } };
+		// (A reduced durable fingerprint lacks its entrypoint or its version, and lists the gap: strong facts make a strong identity.)
+		const fp = {
+			...base.fingerprint[0]!,
+			local: { ...base.fingerprint[0]!.local, entrypoint: null },
+			gaps: [...base.fingerprint[0]!.gaps, { fact: "entrypoint", reason: "no entrypoint" }],
+			identity: { ...base.fingerprint[0]!.identity, confidence: "reduced" },
+		};
 		const reducedFp = snapshotOf({
 			...withDependencies({ fingerprintId: "endo.evidence.pi-fingerprint.older" }),
 			fingerprint: [fp],

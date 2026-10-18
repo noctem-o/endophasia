@@ -135,11 +135,17 @@ function readField(
 	const [, path, basis, type, nullable] = spec;
 	const raw = pathValue(payload, path);
 	if (raw === undefined) return undefined;
-	// A member of a keyed digest is shown only when the whole digest object is a well-formed one.
+	// A member of a keyed digest is shown only when the whole digest object is a well-formed one whose two members are both
+	// presentable: its key id names the comparison domain the digest is read in, so a digest is never shown beside a withheld
+	// key id (a public key's name can look like a credential to the text policy). The pair is shown together or not at all.
 	const digest = Object.hasOwn(ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0, spec[0])
 		? ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0[spec[0]]
 		: undefined;
-	if (digest !== undefined && !isEndoKeyedDigestV0(own(payload, digest.parent))) return undefined;
+	if (digest !== undefined) {
+		const parent = own(payload, digest.parent);
+		if (!isEndoKeyedDigestV0(parent) || freeText(parent.keyId) === null || freeText(parent.value) === null)
+			return undefined;
+	}
 	// A field of an opaque value is shown only in the shape the policy admits for it; any other is withheld whole.
 	const admitted = endoCockpitFieldRuleV0(kind, spec[0])?.admitted;
 	const judged = (text: string): boolean => freeText(text) !== null && (admitted === undefined || admitted(text));

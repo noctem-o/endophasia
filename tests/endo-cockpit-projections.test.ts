@@ -2704,8 +2704,12 @@ describe("fourth review round (PR #57)", () => {
 			).toBeNull();
 		}
 		// A legitimate gap keeps its basis family: unavailable with the projection's reason, and no other reason.
+		// (Without an entrypoint the durable fingerprint is `reduced`, and lists the missing fact: a gap with a `strong` identity
+		// is no record the registry holds.)
 		const gap = structuredClone(records.fingerprint[0]!);
 		gap.local.entrypoint = null;
+		gap.gaps = [...gap.gaps, { fact: "entrypoint", reason: "no entrypoint" }];
+		gap.identity = { ...gap.identity, confidence: "reduced" };
 		const withGap = projectEndoCockpitRuntimeIdentityV0(input({ ...records, fingerprint: [gap] }));
 		expect(withGap.current!.entrypoint.basis).toBe("unavailable");
 		expect(validateEndoCockpitRuntimeIdentityV0(withGap)).not.toBeNull();
@@ -3911,7 +3915,7 @@ describe("eighth review round (PR #57)", () => {
 		}
 	});
 
-	it("P6: a digest value is never unavailable (its shape is never withheld), a flagged key id may be", () => {
+	it("P6: neither member of a keyed digest is ever unavailable, and a pair with a flagged member is omitted whole", () => {
 		const WITHHELD = "withheld: looks like a path, address or credential";
 		const log = timeline([
 			event("tool.started", {
@@ -3920,16 +3924,24 @@ describe("eighth review round (PR #57)", () => {
 			}),
 		]);
 		accepts(log);
-		rejects(
-			mutated(log, (c) => {
-				c.entries[0].fields.argsDigest = { basis: "unavailable", reason: WITHHELD };
+		for (const member of ["argsDigest", "argsDigestKeyId"])
+			rejects(
+				mutated(log, (c) => {
+					c.entries[0].fields[member] = { basis: "unavailable", reason: WITHHELD };
+				}),
+			);
+		// (Round 20: the key id names the comparison domain the digest is read in, so it is never withheld beside the digest. A
+		// key id the text policy flags, which the grammar admits, omits the pair: shown together or not at all.)
+		const flagged = timeline([
+			event("tool.started", {
+				toolName: "bash",
+				argsDigest: { algorithm: "hmac-sha256", keyId: "sk-canarysecretcanarysecret", value: "ab".repeat(32) },
 			}),
-		);
-		accepts(
-			mutated(log, (c) => {
-				c.entries[0].fields.argsDigestKeyId = { basis: "unavailable", reason: WITHHELD };
-			}),
-		);
+		]);
+		accepts(flagged);
+		expect(Object.keys(flagged.entries[0]!.fields)).not.toContain("argsDigest");
+		expect(Object.keys(flagged.entries[0]!.fields)).not.toContain("argsDigestKeyId");
+		expect(flagged.entries[0]!.withheldFields).toBeGreaterThanOrEqual(1);
 	});
 
 	// ---- P3 / P4. declared unavailable gaps ------------------------------------------------------------------------

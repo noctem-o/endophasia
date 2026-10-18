@@ -67,6 +67,7 @@ import {
 	isEndoCockpitPublicIdV0,
 	isEndoCockpitSourceKindAdmittedV0,
 } from "./cockpit-fields.ts";
+import { type EndoCockpitLedgerV0, endoCockpitLedgerV0, scanEndoCockpitDuplicateV0 } from "./cockpit-ledger.ts";
 
 export { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "./cockpit-fields.ts";
 
@@ -1258,6 +1259,14 @@ function sameRef(a: unknown, b: unknown): boolean {
 	);
 }
 
+/** A key under which two valid references are equal exactly when `sameRef` holds; null for a value that is no reference. */
+function refKey(value: unknown): string | null {
+	if (!isRef(value)) return null;
+	return value.domain === "event-log"
+		? JSON.stringify([value.storageSequence, value.eventId])
+		: JSON.stringify([value.attachment, value.kind, value.index, value.id]);
+}
+
 /** A view's own `ref` names a record of `kind` whose id is the view's id. */
 function ownRefOk(view: { ref: unknown; id: string }, ctx: RefContext, kind: EndoCockpitRegistryKindV0): boolean {
 	return isRegistryRef(view.ref, ctx, [kind]) && view.ref.id === view.id;
@@ -1431,42 +1440,35 @@ function discardedPositions(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistr
 }
 
 /**
- * Whether a `duplicate-record-id` note at this position can be genuine. The cleaner keeps one id ledger over the kinds in
- * ENDO_COCKPIT_REGISTRY_KINDS_V0 order: a record repeats an id only if an earlier record of an earlier kind, or of its own
- * kind before it, was KEPT (foreign records and repeats never enter it; a state has no id), and kept records carry distinct
- * ids. So the owner of the repeated id is one of the CANDIDATES: an earlier position that is not known to be discarded and
- * whose id is not shown to be another (`exposed` maps `kind:index` to the id of a kept record the projection presents; a kind
- * the view does not clean has no known discards, and an unexposed position's id is simply not known). The note is impossible
- * when there is no candidate, and also when a kept record presented AFTER its position carries the repeated id: the owner sits
- * before it. Besides validity the scan reports the KINDS of the candidates, which is all `keptOwners` takes from a valid note:
- * when they share one kind, that kind owns the id. (A position presented with this very id is a candidate too; it needs no
- * inference, as `keptOwners` takes its kind from the presentation.)
+ * Whether a `duplicate-record-id` note at this position can be genuine, and the kinds of the records that could own the id.
+ * The cleaner keeps one id ledger over the kinds in ENDO_COCKPIT_REGISTRY_KINDS_V0 order (a state has no id): a record repeats
+ * an id only if an earlier record of an earlier kind, or of its own kind before it, was KEPT, and kept records carry distinct
+ * ids. So the owner of the repeated id is one of the CANDIDATES: an earlier position not known to be discarded and not shown
+ * with another id (a kind the view does not clean has no known discards, and an unshown position's id is simply not known).
+ * The note is impossible when there is no candidate, and also when a kept record presented AFTER its position carries the
+ * repeated id: the owner sits before it. `keptOwners` takes from a valid note only the candidate KINDS: when they share one
+ * kind, that kind owns the id. The scan is sparse (cockpit-ledger.ts): the watermark's counts are untrusted and are only ever
+ * subtracted, never walked.
  */
 function scanDuplicate(
 	ref: RegistryRef,
-	discarded: ReadonlyMap<EndoCockpitRegistryKindV0, ReadonlySet<number>>,
-	ctx: RefContext,
-	exposed: ReadonlyMap<string, string>,
+	ledger: IdLedger | null,
 ): { valid: boolean; kinds: ReadonlySet<EndoCockpitRegistryKindV0> } {
-	const kinds = new Set<EndoCockpitRegistryKindV0>();
-	if (ctx.counts === null || ref.id === null) return { valid: true, kinds };
-	const earlier = new Set<string>();
-	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
-		if (kind === "state") continue;
-		const upto = kind === ref.kind ? ref.index : ctx.counts[kind];
-		for (let at = 0; at < upto; at += 1) {
-			earlier.add(`${kind}:${at}`);
-			if (discarded.get(kind)?.has(at) === true) continue;
-			// A kept record shown with another id cannot be the owner; one whose id is not shown, or is this one, can.
-			const id = exposed.get(`${kind}:${at}`);
-			if (id === undefined || id === ref.id) kinds.add(kind);
-		}
-		if (kind === ref.kind) break;
-	}
-	if (kinds.size === 0) return { valid: false, kinds };
-	// The record that owns the repeated id sits before this one: a kept record presented AFTER it cannot carry that id.
-	for (const [position, id] of exposed) if (id === ref.id && !earlier.has(position)) return { valid: false, kinds };
-	return { valid: true, kinds };
+	if (ledger === null || ref.id === null) return { valid: true, kinds: new Set() };
+	return scanEndoCockpitDuplicateV0(ledger, { kind: ref.kind, index: ref.index, id: ref.id });
+}
+
+/** The kinds that carry an id, in the cleaner's order. */
+const LEDGER_KINDS = ENDO_COCKPIT_REGISTRY_KINDS_V0.filter((kind) => kind !== "state");
+type IdLedger = EndoCockpitLedgerV0<Exclude<EndoCockpitRegistryKindV0, "state">>;
+
+/** The sparse ledger of a projection, or null when its source has no position to count from. */
+function ledgerOf(
+	ctx: RefContext,
+	discarded: ReadonlyMap<EndoCockpitRegistryKindV0, ReadonlySet<number>>,
+	exposed: ReadonlyMap<string, string>,
+): IdLedger | null {
+	return ctx.counts === null ? null : endoCockpitLedgerV0(LEDGER_KINDS, ctx.counts, discarded, exposed);
 }
 
 /** The kept records a registry projection presents (with their ids), as the ledger rule can see them. */
@@ -1550,15 +1552,14 @@ function duplicateNotesFollowLedger(
 	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
 	...values: { notes: EndoCockpitNoteV0[] }[]
 ): boolean {
+	if (!notes.some((note) => note.code === "duplicate-record-id")) return true;
 	// A kind this set of notes does not clean may hold records of any disposition: nothing is known to be discarded in it.
 	const discarded = discardedByKind(notes, cleaned);
-	const exposed = exposedIds(ctx, discarded, cleaned, views, ...values);
+	const ledger = ledgerOf(ctx, discarded, exposedIds(ctx, discarded, cleaned, views, ...values));
 	return notes.every(
 		(note) =>
 			note.code !== "duplicate-record-id" ||
-			note.refs.every(
-				(ref) => ref.domain !== "harness-registry" || scanDuplicate(ref, discarded, ctx, exposed).valid,
-			),
+			note.refs.every((ref) => ref.domain !== "harness-registry" || scanDuplicate(ref, ledger).valid),
 	);
 }
 
@@ -1643,19 +1644,16 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// The projector cites one representative per distinct runtime family, so one record cited again establishes no disagreement.
 	// (That the families differ is the source's to show, not the wire's.)
 	if (
-		disagreement.some((note) =>
-			note.refs.some(
-				(ref, at) =>
-					ref.domain !== "harness-registry" ||
-					note.refs.some(
-						(other, to) =>
-							to < at &&
-							other.domain === "harness-registry" &&
-							other.kind === ref.kind &&
-							other.index === ref.index,
-					),
-			),
-		)
+		disagreement.some((note) => {
+			const cited = new Set<string>();
+			return note.refs.some((ref) => {
+				if (ref.domain !== "harness-registry") return true;
+				const position = `${ref.kind}:${ref.index}`;
+				if (cited.has(position)) return true;
+				cited.add(position);
+				return false;
+			});
+		})
 	)
 		return false;
 	return true;
@@ -1731,11 +1729,13 @@ function keptOwners(
 	// A VALID duplicate note says an earlier kept record owns its id. Which one is not established, but when every possible
 	// owner is of one kind, that kind is (and nothing more: no position, no attribute). The note is never itself a record, and
 	// what it adds is only ever consulted to add obligations or refusals, so a note that fails the scan adds nothing.
+	let ledger: IdLedger | null | undefined;
 	for (const note of notes)
 		if (note.code === "duplicate-record-id")
 			for (const ref of note.refs) {
 				if (ref.domain !== "harness-registry" || ref.id === null || owners.has(ref.id)) continue;
-				const scan = scanDuplicate(ref, discarded, ctx, exposed);
+				ledger ??= ledgerOf(ctx, discarded, exposed);
+				const scan = scanDuplicate(ref, ledger);
 				const [only] = scan.kinds;
 				if (scan.valid && scan.kinds.size === 1 && only !== undefined) owners.set(ref.id, only);
 			}
@@ -1824,7 +1824,9 @@ function sharedEvidenceAgrees(admitted: readonly EndoCockpitCapabilityViewV0[]):
 	for (const view of admitted) {
 		const ref = view.evidence?.ref;
 		if (ref === undefined || ref.domain !== "harness-registry") continue;
-		groups.set(ref.index, [...(groups.get(ref.index) ?? []), view]);
+		const group = groups.get(ref.index);
+		if (group === undefined) groups.set(ref.index, [view]);
+		else group.push(view);
 	}
 	const common = (view: EndoCockpitCapabilityViewV0) =>
 		view.limits.filter((limit) =>
@@ -1983,7 +1985,15 @@ function fingerprintCleaning(notes: EndoCockpitNoteV0[]): string[] {
  * presentation keeps equal ids equal). Views of one record - the same complete reference - are one appearance.
  */
 function presentedIdsDistinct(views: readonly { ref: EndoCockpitRefV0; id: string }[]): boolean {
-	return views.every((a, at) => views.every((b, to) => to <= at || sameRef(a.ref, b.ref) || a.id !== b.id));
+	// Every view sharing an id must be that id's first appearance (equality of complete references is transitive), so one pass
+	// compares each view with the first one that carries its id: linear, where comparing every pair is quadratic.
+	const first = new Map<string, EndoCockpitRefV0>();
+	for (const view of views) {
+		const seen = first.get(view.id);
+		if (seen === undefined) first.set(view.id, view.ref);
+		else if (!sameRef(seen, view.ref)) return false;
+	}
+	return true;
 }
 
 function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefContext): boolean {
@@ -2052,6 +2062,15 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 		if (!claimIs(view.version, "reported", GAP_OR_WITHHELD)) return false;
 		if (!claimIs(view.entrypoint, "observed", [ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0])) return false;
 		if (!claimIs(view.package, "observed", GAP_OR_WITHHELD)) return false;
+		// The durable fingerprint's confidence is `strong` exactly when its entrypoint and its reported version are both
+		// recorded (endoHarnessIdentityConfidenceV0). A claim is unavailable for the recorded-gap reason exactly when the
+		// fact is missing; a version withheld by the privacy policy is a recorded one, not a missing one.
+		const recorded = (claim: { basis: string; reason?: string }) =>
+			!(claim.basis === "unavailable" && claim.reason === ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0);
+		if (
+			view.identity.value.confidence !== (recorded(view.entrypoint) && recorded(view.version) ? "strong" : "reduced")
+		)
+			return false;
 		if (!sameJson(view.withheld, ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0)) return false;
 		if (![view.identity, view.version, view.entrypoint, view.package].every((c) => claimReadFromOwn(c, view)))
 			return false;
@@ -2324,7 +2343,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 			(state.fingerprintId !== null && state.fingerprintId === state.latestFingerprintId),
 		other: ownerKind !== undefined && ownerKind !== "fingerprint",
 	};
-	const cited: EndoCockpitCapabilityViewV0[] = [];
+	const cited = new Map<string, EndoCockpitCapabilityViewV0>();
 	// The cited evidence records are records of one registry: no two share an id, and none shares the id of a fingerprint
 	// the state names (a different kind of record).
 	// `latestFingerprintId` is the id of a kept fingerprint record, and the cleaning ledger keeps ids unique across kinds, so no
@@ -2338,13 +2357,15 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		// One evidence record is one view: capabilities citing the same record agree on everything about it. (Their `limits`
 		// are checked as a group after the loop: the record's and the state's agree, the entry-specific ones may differ.)
 		if (capability.evidence !== null) {
-			const same = cited.find((other) => sameRef(other.evidence!.ref, capability.evidence!.ref));
+			// (Looked up by complete reference: a scan over the earlier capabilities would be quadratic in their number.)
+			const key = refKey(capability.evidence.ref);
+			const same = key === null ? undefined : cited.get(key);
 			if (
 				same !== undefined &&
 				!(sameJson(same.evidence, capability.evidence) && sameJson(same.limitations, capability.limitations))
 			)
 				return false;
-			if (same === undefined) cited.push(capability);
+			if (same === undefined && key !== null) cited.set(key, capability);
 		}
 		const evidence = capability.evidence;
 		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;

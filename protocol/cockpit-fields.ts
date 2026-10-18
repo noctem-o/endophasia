@@ -375,8 +375,10 @@ export function endoCockpitUnavailableAdmittedV0(kind: string, key: string, reas
 	if (rule === null) return false;
 	if (kind === "harness.attached" && key === "runtimeSessionId" && reason === ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0)
 		return true;
-	// A digest value is 64 lowercase hex characters, which the text policy never withholds: no unavailable form exists.
-	if (key === "argsDigest" || key === "resultDigest") return false;
+	// A member of a keyed digest is shown only beside its partner, and only when both are presentable (the projector omits the
+	// pair otherwise): the value is 64 lowercase hex characters and the key id, which names the comparison domain the value is
+	// read in, is a grammar-checked name. Neither has an unavailable form.
+	if (Object.hasOwn(ENDO_COCKPIT_KEYED_DIGEST_FIELDS_V0, key)) return false;
 	if (reason === ENDO_COCKPIT_WITHHELD_TEXT_V0 && (rule.type === "string" || rule.type === "id")) return true;
 	if (kind === "harness.attached" && key === "runtimeSessionId") return false;
 	return (rule.basis === "reported" || rule.dynamic === true) && endoCockpitTextPresentableV0(reason);

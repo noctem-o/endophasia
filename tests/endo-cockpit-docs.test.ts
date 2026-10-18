@@ -46,6 +46,7 @@ describe("docs/cockpit.md integration recipe", () => {
 			...readdirSync(`${root}cockpit/projections`).map((name) => `cockpit/projections/${name}`),
 			"protocol/cockpit.ts",
 			"protocol/cockpit-fields.ts",
+			"protocol/cockpit-ledger.ts",
 			"protocol/keyed-digest-shape.ts",
 		];
 		for (const file of files) {

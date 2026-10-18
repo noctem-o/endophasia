@@ -65,6 +65,7 @@ import {
 	endoCockpitUnreadableRuntimeReasonV0,
 	endoCockpitWithheldLowerBoundV0,
 	isEndoCockpitPublicIdV0,
+	isEndoCockpitSourceKindAdmittedV0,
 } from "./cockpit-fields.ts";
 
 export { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "./cockpit-fields.ts";
@@ -734,6 +735,8 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 	if (!isPlain(value) || !exactKeys(value, ["domain", "attachment", "condition", "watermark"])) return false;
 	if (value.domain !== "harness-registry" || typeof value.attachment !== "string") return false;
 	if (!isKindLabel(value.attachment) || !isCondition(value.condition)) return false;
+	// An attachment is never aliased on the wire: a reserved segment in its name was written by the source.
+	if (!isEndoCockpitSourceKindAdmittedV0(value.attachment)) return false;
 	if (value.condition.state === "unopenable") return value.watermark === null;
 	const mark = value.watermark;
 	if (
@@ -1605,14 +1608,16 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 		missing.length !== 1
 	)
 		return false;
-	// Ids are unique across all kinds of a registry: a notice naming the id of a presented fingerprint (or of the notice itself)
-	// names no change, however many are kept.
-	if (
-		lastNotification !== null &&
-		[current, identity.previousDifferent, lastNotification].some((view) => view?.id === lastNotification.changeId) &&
-		missing.length !== 1
-	)
-		return false;
+	// Ids are unique across all kinds of a registry: a notice naming the id of a kept record of another kind names no change,
+	// however many changes are kept; one naming a kept change's id names one.
+	const owner =
+		lastNotification === null
+			? undefined
+			: keptOwners(ctx, notes, NOTE_POLICY.runtimeIdentity.cleaned, identityExposure(identity), identity).get(
+					lastNotification.changeId,
+				);
+	if (owner !== undefined && owner !== "change" && missing.length !== 1) return false;
+	if (owner === "change" && missing.length === 1) return false;
 	if (missing.length === 1) {
 		if (
 			lastNotification === null ||
@@ -1624,21 +1629,8 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	}
 	const disagreement = notesOf(notes, "runtime-disagreement");
 	if (disagreement.length > 1 || disagreement.some((note) => note.refs.length < 2)) return false;
-	// Families are collected from the records that survived cleaning: a discarded position cannot disagree with anything,
-	// whatever id it is cited under, and the latest kept fingerprint (`current`) is always a representative.
-	const discardedFingerprints = discardedPositions(notes, "fingerprint");
-	const discardedChanges = discardedPositions(notes, "change");
-	if (
-		disagreement.some((note) =>
-			note.refs.some(
-				(ref) =>
-					ref.domain === "harness-registry" &&
-					((ref.kind === "fingerprint" && discardedFingerprints.has(ref.index)) ||
-						(ref.kind === "change" && discardedChanges.has(ref.index))),
-			),
-		)
-	)
-		return false;
+	// Families are collected from the records that survived cleaning (a discarded position is refused by keepsOffDiscarded), and
+	// the latest kept fingerprint (`current`) is always a family's representative.
 	if (current !== null && disagreement.some((note) => !note.refs.some((ref) => sameRef(ref, current.ref))))
 		return false;
 	// The projector cites one representative per distinct runtime family, so one record cited again establishes no disagreement.
@@ -1681,15 +1673,6 @@ function capabilityNotesAreTrue(projection: EndoCockpitCapabilityStateV0): boole
 	return true;
 }
 
-/** Whether a foreign/duplicate note names, by its complete reference, a record that is also presented as a view. */
-function discardsPresented(notes: EndoCockpitNoteV0[], presented: readonly (EndoCockpitRefV0 | null)[]): boolean {
-	return notes.some(
-		(note) =>
-			FOREIGN_OR_DUPLICATE.includes(note.code) &&
-			note.refs.some((ref) => presented.some((view) => view !== null && sameRef(view, ref))),
-	);
-}
-
 /** Every registry reference anywhere in a value, however deep (a view's own, a claim's, a note's, a limit's). */
 function registryRefsIn(value: unknown, found: RegistryRef[] = []): RegistryRef[] {
 	if (Array.isArray(value)) for (const item of value) registryRefsIn(item, found);
@@ -1698,6 +1681,49 @@ function registryRefsIn(value: unknown, found: RegistryRef[] = []): RegistryRef[
 		else for (const item of Object.values(value)) registryRefsIn(item, found);
 	}
 	return found;
+}
+
+/** The references of a value outside its cleaning notes: every one points at a record the projection kept. */
+function keptRefsOf(value: { notes: EndoCockpitNoteV0[] }): RegistryRef[] {
+	return registryRefsIn({ ...value, notes: value.notes.filter((note) => !FOREIGN_OR_DUPLICATE.includes(note.code)) });
+}
+
+/**
+ * Retention and exclusion: a position a cleaning note discards is not also a source of any other reference. `cleaned` are the
+ * kinds `notes` state the dispositions of; every other reference of those kinds names a kept record.
+ */
+function keepsOffDiscarded(
+	notes: EndoCockpitNoteV0[],
+	cleaned: readonly EndoCockpitRegistryKindV0[],
+	...values: { notes: EndoCockpitNoteV0[] }[]
+): boolean {
+	const discarded = discardedByKind(notes, cleaned);
+	return values.every((value) => keptRefsOf(value).every((ref) => discarded.get(ref.kind)?.has(ref.index) !== true));
+}
+
+/**
+ * Who owns an id. Registry ids are unique across kinds, so a kept reference of kind K with id X establishes that a kept K
+ * record owns X and that no record of another kind does. Only kept references count: those outside the cleaning notes (a
+ * duplicate note carries an EARLIER record's id, a foreign one an id that never entered the ledger), at positions the
+ * cleaning notes do not discard, plus the positions pinned by the watermark and the latest kept fingerprint. What a reference
+ * establishes is existence and kind, never the record's attributes. Everything inferred from a validated claim here only adds
+ * obligations or refusals and never discharges one, so a forged claim can make a forgery fail more, not pass.
+ */
+function keptOwners(
+	ctx: RefContext,
+	notes: EndoCockpitNoteV0[],
+	cleaned: readonly EndoCockpitRegistryKindV0[],
+	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
+	...values: { notes: EndoCockpitNoteV0[] }[]
+): Map<string, EndoCockpitRegistryKindV0> {
+	const discarded = discardedByKind(notes, cleaned);
+	const owners = new Map<string, EndoCockpitRegistryKindV0>();
+	for (const value of values)
+		for (const ref of keptRefsOf(value))
+			if (ref.id !== null && discarded.get(ref.kind)?.has(ref.index) !== true) owners.set(ref.id, ref.kind);
+	for (const [position, id] of exposedIds(ctx, discarded, cleaned, views))
+		owners.set(id, position.split(":")[0] as EndoCockpitRegistryKindV0);
+	return owners;
 }
 
 /** One position of one kind is one record: wherever it is named, it carries the same id. */
@@ -1815,6 +1841,7 @@ function sharedEvidenceAgrees(admitted: readonly EndoCockpitCapabilityViewV0[]):
 function evidenceLimitsAgreeWithFingerprint(
 	identity: EndoCockpitRuntimeIdentityV0,
 	capabilities: EndoCockpitCapabilityStateV0,
+	owners: ReadonlyMap<string, EndoCockpitRegistryKindV0>,
 ): boolean {
 	const state = capabilities.state;
 	if (state === null || state.fingerprintId === null) return true;
@@ -1822,17 +1849,32 @@ function evidenceLimitsAgreeWithFingerprint(
 	const named = embedded.find((view) => view.id === state.fingerprintId);
 	// The state names a fingerprint the identity embeds: it is recorded. Naming none, when every kept fingerprint is embedded
 	// (their count is the retained count), it is not. Otherwise an older kept record may be the one: undecidable.
-	// An id the identity view presents for a change or a notice is no fingerprint's (ids are unique across kinds).
-	const namedByOtherKind = [identity.lastChange, identity.lastNotification].some(
-		(view) => view !== null && view.id === state.fingerprintId,
-	);
+	// An id a kept record of another kind owns, in either view, is no fingerprint's (ids are unique across kinds); one a kept
+	// fingerprint owns names a recorded fingerprint, though nothing of it is embedded.
+	const ownerKind = owners.get(state.fingerprintId);
+	const namedByOtherKind = ownerKind !== undefined && ownerKind !== "fingerprint";
+	const recordedUnembedded = named === undefined && ownerKind === "fingerprint";
 	const everyKeptEmbedded =
 		retainedCount(capabilities.notes, "fingerprint", contextOf(capabilities.source)) === embedded.length;
 	for (const capability of capabilities.capabilities) {
 		if (capability.status === "unverified") continue;
 		const unrecorded = capability.limits.some((limit) => limit.code === "state-fingerprint-not-recorded");
-		if (named !== undefined && unrecorded) return false;
+		if ((named !== undefined || recordedUnembedded) && unrecorded) return false;
 		if (named === undefined && (everyKeptEmbedded || namedByOtherKind) && !unrecorded) return false;
+	}
+	if (recordedUnembedded) {
+		// Existence is established, its attributes are not: only carried evidence on a reduced identity is decided (by the
+		// evidence side alone), and it is required of every admitted capability that cites such evidence.
+		for (const capability of capabilities.capabilities) {
+			const evidence = capability.evidence;
+			if (capability.status === "unverified" || evidence === null) continue;
+			const against = endoCockpitEvidenceVsFingerprintV0(evidence.dependencies, {
+				id: state.fingerprintId,
+				identity: null,
+			});
+			if (against.reducedIdentity === true && !capability.limits.some((l) => l.code === "evidence-reduced-identity"))
+				return false;
+		}
 	}
 	if (named === undefined) return true;
 	const identityClaim = named.identity;
@@ -1894,15 +1936,7 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 		)
 	)
 		return false;
-	if (
-		discardsPresented(identity.notes, [
-			identity.current?.ref ?? null,
-			identity.previousDifferent?.ref ?? null,
-			identity.lastChange?.ref ?? null,
-			identity.lastNotification?.ref ?? null,
-		])
-	)
-		return false;
+	if (!keepsOffDiscarded(identity.notes, NOTE_POLICY.runtimeIdentity.cleaned, identity)) return false;
 	if (!identityNotesAreTrue(identity)) return false;
 	if (
 		!idsKeepPositions(
@@ -2028,7 +2062,7 @@ function limitsAreSound(
 	evidence: EndoCockpitEvidenceViewV0 | null,
 	ctx: RefContext,
 	retained: number | null,
-	namedIsEvidence: boolean,
+	named: { exists: boolean; other: boolean },
 ): boolean {
 	const { limits } = capability;
 	let last = -1;
@@ -2062,7 +2096,7 @@ function limitsAreSound(
 			admitted &&
 			evidence !== null &&
 			fingerprintId !== null &&
-			fingerprintId === latestId &&
+			named.exists &&
 			evidence.dependencies.fingerprintId !== fingerprintId &&
 			evidence.dependencies.confidence === "reduced",
 	};
@@ -2080,12 +2114,12 @@ function limitsAreSound(
 		fingerprintId !== null &&
 		ctx.counts !== null &&
 		// ... and a state naming the id of a cited evidence record names no fingerprint: ids are unique across kinds.
-		(retained === 0 || (retained === 1 && fingerprintId !== latestId) || namedIsEvidence) &&
+		(retained === 0 || (retained === 1 && fingerprintId !== latestId) || named.other) &&
 		!has("state-fingerprint-not-recorded")
 	)
 		return false;
 	const possible: Partial<Record<EndoCockpitLimitCodeV0, boolean>> = {
-		"state-fingerprint-not-recorded": fingerprintId !== null && fingerprintId !== latestId,
+		"state-fingerprint-not-recorded": fingerprintId !== null && fingerprintId !== latestId && !named.exists,
 		"evidence-capability-differs": evidence !== null,
 		"evidence-identity-differs": evidence !== null && fingerprintId !== null,
 		"evidence-confidence-differs": evidence !== null && fingerprintId !== null,
@@ -2148,13 +2182,7 @@ function limitsAreSound(
 
 function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: RefContext): boolean {
 	if (!projectableAgrees(projection.source, projection.notes)) return false;
-	if (
-		discardsPresented(projection.notes, [
-			projection.state?.ref ?? null,
-			...projection.capabilities.map((view) => view.evidence?.ref ?? null),
-		])
-	)
-		return false;
+	if (!keepsOffDiscarded(projection.notes, NOTE_POLICY.capabilityState.cleaned, projection)) return false;
 	if (!isProjectable(projection.source) && (projection.state !== null || projection.capabilities.length > 0))
 		return false;
 	if (!capabilityNotesAreTrue(projection)) return false;
@@ -2211,9 +2239,24 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 				: "stale";
 	if (state.currency !== expected) return false;
 	const retained = retainedCount(projection.notes, "fingerprint", ctx);
-	const namedIsEvidence =
-		state.fingerprintId !== null &&
-		projection.capabilities.some((c) => c.evidence !== null && c.evidence.id === state.fingerprintId);
+	// What the kept references of this projection establish about the id the state names: that a fingerprint owns it (the
+	// record exists; nothing of its attributes), that another kind does (it is no fingerprint), or nothing.
+	const ownerKind =
+		state.fingerprintId === null
+			? undefined
+			: keptOwners(
+					ctx,
+					projection.notes,
+					NOTE_POLICY.capabilityState.cleaned,
+					capabilityExposure(projection, ctx),
+					projection,
+				).get(state.fingerprintId);
+	const namedState = {
+		exists:
+			ownerKind === "fingerprint" ||
+			(state.fingerprintId !== null && state.fingerprintId === state.latestFingerprintId),
+		other: ownerKind !== undefined && ownerKind !== "fingerprint",
+	};
 	const cited: EndoCockpitCapabilityViewV0[] = [];
 	// The cited evidence records are records of one registry: no two share an id, and none shares the id of a fingerprint
 	// the state names (a different kind of record).
@@ -2239,7 +2282,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		const evidence = capability.evidence;
 		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;
 		if (evidence !== null && !sameJson(evidence.withheld, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0)) return false;
-		if (!limitsAreSound(capability, state, evidence, ctx, retained, namedIsEvidence)) return false;
+		if (!limitsAreSound(capability, state, evidence, ctx, retained, namedState)) return false;
 	}
 	const admitted = projection.capabilities.filter((c) => c.status !== "unverified");
 	return stateLimitsAreUniform(admitted, state) && sharedEvidenceAgrees(admitted);
@@ -2439,7 +2482,16 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (!sameJson(fingerprintCleaning(identity.notes), fingerprintCleaning(capabilities.notes))) return null;
 		if (capabilities.state !== null && capabilities.state.latestFingerprintId !== (identity.current?.id ?? null))
 			return null;
-		if (!evidenceLimitsAgreeWithFingerprint(identity, capabilities)) return null;
+		const unionCtx = contextOf(identity.source);
+		const owners = keptOwners(
+			unionCtx,
+			[...identity.notes, ...capabilities.notes],
+			ENDO_COCKPIT_REGISTRY_KINDS_V0,
+			[...identityExposure(identity), ...capabilityExposure(capabilities, unionCtx)],
+			identity,
+			capabilities,
+		);
+		if (!evidenceLimitsAgreeWithFingerprint(identity, capabilities, owners)) return null;
 		// Together the two views state every kind's dispositions (identity: fingerprint, change, notification; capabilities:
 		// fingerprint, evidence, state): the full ledger a duplicate note is checked against.
 		if (
@@ -2451,14 +2503,13 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 			)
 		)
 			return null;
-		// A notice naming the id of a cited evidence record names no change: its note is required.
-		const noticeId = identity.lastNotification?.changeId;
-		if (
-			noticeId !== undefined &&
-			capabilities.capabilities.some((view) => view.evidence?.id === noticeId) &&
-			!identity.notes.some((note) => note.code === "notification-change-missing")
-		)
-			return null;
+		// A notice naming the id of a kept record of another kind (in either view) names no change; one naming a kept change's id
+		// names one.
+		const noticeOwner =
+			identity.lastNotification === null ? undefined : owners.get(identity.lastNotification.changeId);
+		const noticed = identity.notes.some((note) => note.code === "notification-change-missing");
+		if (noticeOwner !== undefined && noticeOwner !== "change" && !noticed) return null;
+		if (noticeOwner === "change" && noticed) return null;
 		if (identity.source.watermark !== null) keyIds.add(identity.source.watermark.keyId);
 		// The records presented by the two views of one registry are distinct records: no two share an id.
 		const shown: ({ ref: EndoCockpitRefV0; id: string } | null)[] = [

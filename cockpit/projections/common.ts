@@ -257,6 +257,9 @@ export function admitRegistryInputV0(input: EndoCockpitRegistryInputV0, key: End
 	const { source, records } = input;
 	if (source.watermark !== null && source.watermark.keyId !== key.keyId)
 		throw new TypeError("the digest key is not the key the source was read under");
+	// An attachment is never aliased: a name in the reserved alias namespace was written by the source, and is not presented.
+	if (!isEndoCockpitSourceKindAdmittedV0(source.attachment))
+		throw new TypeError("the attachment is not a name that can be presented");
 	const state = source.condition.state;
 	// Records exist exactly when the registry was opened, and then the state says whether any were found.
 	const opened = state === "empty" || state === "readable" || state === "degraded";

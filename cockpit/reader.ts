@@ -36,7 +36,7 @@ import {
 	ENDO_COCKPIT_REGISTRY_KINDS_V0,
 	ENDO_COCKPIT_SOURCE_ERRORS_V0,
 } from "../protocol/cockpit.ts";
-import { endoCockpitTextUnsafeV0 } from "../protocol/cockpit-fields.ts";
+import { isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../protocol/keyed-digest-shape.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
@@ -348,8 +348,9 @@ export function listEndoCockpitAttachmentsV0(root: string): string[] {
 	}
 	return names
 		.filter((name) => {
-			// A name the text policy flags cannot be presented, so it is not listed (reading it by name is refused).
-			if (!isWellFormedKindV0(name) || endoCockpitTextUnsafeV0(name)) return false;
+			// A name the source-admission policy refuses (flagged text, or a segment in the reserved alias namespace) cannot be
+			// presented as written, so it is not listed (reading it by name is refused).
+			if (!isWellFormedKindV0(name) || !isEndoCockpitSourceKindAdmittedV0(name)) return false;
 			try {
 				return statSync(`${root}/harness/${name}`).isDirectory();
 			} catch {
@@ -395,7 +396,7 @@ export function readEndoCockpitRegistryV0(
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitRegistryInputV0 {
 	const key = requireKey(digestKey);
-	if (!isWellFormedKindV0(attachment) || endoCockpitTextUnsafeV0(attachment))
+	if (!isWellFormedKindV0(attachment) || !isEndoCockpitSourceKindAdmittedV0(attachment))
 		throw new TypeError("attachment must be a well-formed dotted kind that can be presented");
 	const found = probe(`${endoHarnessRegistryDirectoryV0(root, attachment)}/records.log`);
 	if (found.kind === "absent")

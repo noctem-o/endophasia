@@ -3677,8 +3677,9 @@ describe("seventh review round (PR #57)", () => {
 		const strongView = strong.capabilities.find((c) => c.evidence?.id === publicIdV0(records.target.id))!;
 		expect(strongView.limits.map((l) => l.code)).not.toContain("evidence-reduced-identity");
 		expect(validateEndoCockpitCapabilityStateV0(strong)).not.toBeNull();
-		// A state for an older fingerprint is not "the latest": the evidence names the later one, the state the first. The
-		// wire does not demand the limit there (whether it applies needs the records), so removing it still validates.
+		// A state for an older fingerprint is not "the latest": the evidence names the later one, the state the first. Another
+		// limit still cites the named fingerprint by its complete reference, which proves it is recorded (not what it holds): so
+		// removing only the reduced-identity limit is refused (round 18) ...
 		const older = carried("reduced", false);
 		const [first, second] = older.fingerprint;
 		older.target.dependencies.fingerprintId = second!.id;
@@ -3686,13 +3687,17 @@ describe("seventh review round (PR #57)", () => {
 		const staleIndex = staleProjection.capabilities.findIndex((c) => c.evidence?.id === publicIdV0(older.target.id));
 		expect(staleProjection.state).toMatchObject({ currency: "stale", fingerprintId: publicIdV0(first!.id) });
 		expect(validateEndoCockpitCapabilityStateV0(staleProjection)).not.toBeNull();
+		const withoutLimits = (codes: string[]) =>
+			mutated(staleProjection, (c) => {
+				c.capabilities[staleIndex].limits = c.capabilities[staleIndex].limits.filter(
+					(l: any) => !codes.includes(l.code),
+				);
+			});
+		expect(validateEndoCockpitCapabilityStateV0(withoutLimits(["evidence-reduced-identity"]))).toBeNull();
+		// ... while with no limit citing the named fingerprint its existence is not established, and nothing is demanded.
 		expect(
 			validateEndoCockpitCapabilityStateV0(
-				mutated(staleProjection, (c) => {
-					c.capabilities[staleIndex].limits = c.capabilities[staleIndex].limits.filter(
-						(l: any) => l.code !== "evidence-reduced-identity",
-					);
-				}),
+				withoutLimits(["evidence-reduced-identity", "evidence-confidence-differs"]),
 			),
 		).not.toBeNull();
 	});

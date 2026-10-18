@@ -5,7 +5,8 @@
 // IP-literal shape, never a dot alone (the same predicate gates kinds, producers, identifiers and versions, whose grammars are
 // dotted): IPv4 with or without a port; `localhost` or a dotted name ending in a letter label, with a port; IPv6 literals, bare or
 // bracketed. A flagged value is withheld WHOLE. The scheme pattern is also rewritten to a form that scans each run once: it was
-// quadratic in the length of a token of scheme characters, on text checked before any length bound.
+// quadratic in the length of a token of scheme characters. Every in-tree caller bounds a string first, so it was reachable only by
+// passing the exported predicate unbounded text; it is now linear whatever the caller does.
 //
 // A heuristic: single-label `host:port`, a bare dotted name, unusual IPv4 spellings and obfuscated forms are NOT detected
 // (the `documented residuals` test pins that, so a later change is deliberate).

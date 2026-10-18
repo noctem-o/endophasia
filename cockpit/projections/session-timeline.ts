@@ -58,7 +58,7 @@ import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
 import { isEndoKeyedDigestV0 } from "../../protocol/keyed-digest-shape.ts";
 import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
-import { cockpitAliasesV0, type EndoCockpitAliasesV0, eventLogPrefixDigestV0 } from "./common.ts";
+import { cockpitAliasesV0, type EndoCockpitAliasesV0, eventLogPrefixDigestV0, requireAdmittedKeyV0 } from "./common.ts";
 
 /** One event of the log with the storage sequence it was read at. */
 export interface EndoCockpitStoredEventV0 {
@@ -432,6 +432,7 @@ function projectEndoCockpitSessionTimelineUncheckedV0(
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitSessionTimelineV0 {
 	const { source, afterSequence, events } = input;
+	requireAdmittedKeyV0(digestKey);
 	if (source.watermark !== null && source.watermark.keyId !== digestKey.keyId)
 		throw new TypeError("the digest key is not the key the source was read under");
 	const alias = cockpitAliasesV0(digestKey);

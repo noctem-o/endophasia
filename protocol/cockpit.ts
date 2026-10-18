@@ -64,6 +64,7 @@ import {
 	endoCockpitUnavailableAdmittedV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 	endoCockpitWithheldLowerBoundV0,
+	isEndoCockpitDigestKeyIdV0,
 	isEndoCockpitPublicEventKindV0,
 	isEndoCockpitPublicIdV0,
 	isEndoCockpitPublicKindV0,
@@ -97,7 +98,6 @@ import {
 	endoCapabilityStatusForV0,
 } from "./harness.ts";
 import type { EndoIdentifierKindV0 } from "./identity.ts";
-import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "./keyed-digest-shape.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
 import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
@@ -582,7 +582,7 @@ function isCount(value: unknown): value is number {
 }
 
 function isKeyId(value: unknown): value is string {
-	return typeof value === "string" && ENDO_DIGEST_KEY_ID_PATTERN_V0.test(value);
+	return isEndoCockpitDigestKeyIdV0(value);
 }
 
 function isSha256(value: unknown): value is string {
@@ -1317,7 +1317,12 @@ const NOTE_REF_KINDS: Readonly<Record<EndoCockpitNoteCodeV0, readonly EndoCockpi
 const NOTE_POLICY: Readonly<
 	Record<
 		"runtimeIdentity" | "capabilityState",
-		{ codes: readonly EndoCockpitNoteCodeV0[]; cleaned: readonly EndoCockpitRegistryKindV0[] }
+		{
+			codes: readonly EndoCockpitNoteCodeV0[];
+			cleaned: readonly EndoCockpitRegistryKindV0[];
+			/** The derived notes in the order the projector emits them, after every cleaning note; one group is one place. */
+			derived: readonly (readonly EndoCockpitNoteCodeV0[])[];
+		}
 	>
 > = {
 	runtimeIdentity: {
@@ -1332,6 +1337,12 @@ const NOTE_POLICY: Readonly<
 			"source-not-projectable",
 		],
 		cleaned: ["fingerprint", "change", "notification"],
+		derived: [
+			["no-fingerprint-recorded"],
+			["latest-change-is-collection-failure", "latest-change-not-for-latest-fingerprint"],
+			["notification-change-missing"],
+			["runtime-disagreement"],
+		],
 	},
 	capabilityState: {
 		codes: [
@@ -1343,13 +1354,23 @@ const NOTE_POLICY: Readonly<
 			"source-not-projectable",
 		],
 		cleaned: ["fingerprint", "evidence", "state"],
+		derived: [["no-capability-state-recorded", "state-without-fingerprint"], ["duplicate-capability"]],
 	},
 };
 
+/**
+ * The notes of a projection in the order its projector emits them (not an alphabetical or a code order): the cleaner runs once
+ * per kind in `policy.cleaned` order and notes a discarded record at its position, so foreign and repeated-id notes of a kind
+ * interleave by rising index; then the derived notes follow, in `policy.derived` order (a group holds codes that exclude one
+ * another, or one that repeats). So the rank of a note never decreases, and within one kind's cleaning it rises strictly by
+ * position. A projection that did not read its source has the one note `source-not-projectable`, outside the order.
+ */
 function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection: keyof typeof NOTE_POLICY): boolean {
 	const policy = NOTE_POLICY[projection];
 	// A record is discarded once: one cleaning note, of one code, per position (the cleaner emits exactly one disposition).
 	const discarded = new Set<string>();
+	let rank = -1;
+	let index = -1;
 	return notes.every((note) => {
 		if (!policy.codes.includes(note.code)) return false;
 		const kinds = FOREIGN_OR_DUPLICATE.includes(note.code) ? policy.cleaned : NOTE_REF_KINDS[note.code];
@@ -1362,6 +1383,19 @@ function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection:
 				const position = `${ref.kind}:${ref.index}`;
 				if (discarded.has(position)) return false;
 				discarded.add(position);
+				// The kind's turn comes after the earlier kinds' and before the later ones', and its notes rise by position.
+				const turn = policy.cleaned.indexOf(ref.kind);
+				if (turn < rank || (turn === rank && ref.index <= index)) return false;
+				rank = turn;
+				index = ref.index;
+			}
+		} else {
+			const place = policy.derived.findIndex((group) => group.includes(note.code));
+			if (place >= 0) {
+				const turn = policy.cleaned.length + place;
+				if (turn < rank) return false;
+				rank = turn;
+				index = -1;
 			}
 		}
 		return note.refs.every((ref) => isRegistryRef(ref, ctx, kinds));

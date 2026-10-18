@@ -267,14 +267,16 @@ describe("both snapshot views agree on the fingerprint records cleaned (P2)", ()
 		expect(accepted(recodedIdentity, capabilities)).toBe(false);
 	});
 
-	it("is not sensitive to the order of the notes, and ignores diagnostics about other kinds of record", () => {
+	it("compares the views' dispositions in the projector's one order, and ignores diagnostics about other kinds of record", () => {
 		const { identity, capabilities } = views([foreign(fps[0]!), foreign(fps[1]!), fps[2], fps[3]]);
 		expect(cleaning(identity)).toHaveLength(2);
+		expect(accepted(identity, capabilities)).toBe(true);
+		// Round 29: the notes are in the order the projector emits them (cleaning by position), so a reversed list is no
+		// projection's and is refused; it was accepted before, when no order was checked. The dispositions the two views are
+		// compared on are the same ones, read in that one order.
 		const reversed = mutated(capabilities, (x) => x.notes.reverse());
-		expect(validateEndoCockpitCapabilityStateV0(reversed)).not.toBeNull();
-		// The comparison is of the sets of dispositions, not of their order.
-		expect(accepted(identity, reversed)).toBe(true);
-		expect(cleaning(reversed)[0]).toEqual(cleaning(capabilities)[1]);
+		expect(validateEndoCockpitCapabilityStateV0(reversed)).toBeNull();
+		expect(accepted(identity, reversed)).toBe(false);
 		// Evidence and state diagnostics belong to the capability view alone.
 		const base = specimenRecords();
 		const twoReusing = {

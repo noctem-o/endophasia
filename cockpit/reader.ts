@@ -36,9 +36,8 @@ import {
 	ENDO_COCKPIT_REGISTRY_KINDS_V0,
 	ENDO_COCKPIT_SOURCE_ERRORS_V0,
 } from "../protocol/cockpit.ts";
-import { isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts";
+import { endoCockpitDigestKeyAdmittedV0, isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
-import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../protocol/keyed-digest-shape.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
@@ -150,17 +149,24 @@ function conditionFor(kind: EndoCockpitSourceErrorKindV0): EndoCockpitSourceCond
 const unopenable = (error: unknown): EndoCockpitSourceConditionV0 => conditionFor(categoryOf(error));
 const unreadable = conditionFor;
 
-/** The key a read is made under: a usage error (not a source condition) when it is absent or not a digest key. */
+/**
+ * The key a read is made under: a usage error (not a source condition) when it is absent or not a digest key, or not one a
+ * cockpit read admits (a private key, or a committed public fixture key: see endoCockpitDigestKeyAdmittedV0). Checked before
+ * any file is read, so a refused key opens nothing and names nothing.
+ */
 function requireKey(key: unknown): EndoDigestKeyV0 {
 	const candidate = key as Partial<EndoDigestKeyV0> | null | undefined;
 	if (
 		typeof candidate !== "object" ||
 		candidate === null ||
 		typeof candidate.digest !== "function" ||
-		typeof candidate.keyId !== "string" ||
-		!ENDO_DIGEST_KEY_ID_PATTERN_V0.test(candidate.keyId)
+		typeof candidate.keyId !== "string"
 	)
 		throw new TypeError("a cockpit read needs an explicit digest key (digestKey)");
+	if (!endoCockpitDigestKeyAdmittedV0(candidate))
+		throw new TypeError(
+			"the digest key is not one a cockpit read admits: use a private key or a committed public fixture key",
+		);
 	return candidate as EndoDigestKeyV0;
 }
 

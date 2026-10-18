@@ -17,7 +17,11 @@ import {
 	parseEndoIdentifierV0,
 } from "./identity.ts";
 import { ENDO_INTERVENTION_KINDS_V0 } from "./intervention.ts";
-import { ENDO_DIGEST_KEY_ID_PATTERN_V0, ENDO_KEYED_DIGEST_VALUE_PATTERN_V0 } from "./keyed-digest-shape.ts";
+import {
+	ENDO_DIGEST_KEY_ID_PATTERN_V0,
+	ENDO_FIXTURE_DIGEST_KEYS_V0,
+	ENDO_KEYED_DIGEST_VALUE_PATTERN_V0,
+} from "./keyed-digest-shape.ts";
 import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "./session-lifecycle.ts";
 
 function freezeDeep<T>(value: T): T {
@@ -477,13 +481,56 @@ function holdsIpv6Literal(text: string): boolean {
 	return false;
 }
 
+/**
+ * Whether the text holds a relative path of two segments or more that is recognisably a file or a directory the author
+ * named: a maximal run of path characters (`/` or `\\` between segments, trailing dots dropped so a sentence's full stop does
+ * not hide one) with two non-empty segments and either a hidden or traversal segment (`.env`, `.github`, `..`) or a last
+ * segment with a file extension (a dot, then one to eight lowercase letters and digits, or capitals and digits, starting with
+ * a letter: `.json`, `.ts`, `.yaml`, `.JPG`). A slash alone is not the evidence: `application/json`, `yes/no`, `1/2` and
+ * `owner/repo` have neither. An extension must start with a letter and keep one case, which keeps `api/v1.2`, `releases/1.2.3`,
+ * model ids such as `Qwen/Qwen2.5-7B` and `Salesforce/blip2-opt-2.7b`, and method names such as
+ * `pi.getActiveTools/pi.setActiveTools` (the committed specimen's own wording) out.
+ * A path with a space, or with no extension and no hidden segment (`packages/core`), is not recognised. One scan, no split
+ * and no backtracking regex: constant work per character.
+ */
+function holdsRelativePath(text: string): boolean {
+	if (!/[\\/]/.test(text)) return false;
+	for (const match of text.matchAll(/[A-Za-z0-9._@+~\\/-]+/g)) {
+		const run = match[0];
+		let end = run.length;
+		while (end > 0 && run[end - 1] === ".") end -= 1;
+		// Dots after a separator are a traversal (`src/..`), not a sentence's full stop.
+		if (end > 0 && end < run.length && (run[end - 1] === "/" || run[end - 1] === "\\")) end = run.length;
+		let segments = 0;
+		let marked = false;
+		let start = 0;
+		let lastStart = 0;
+		for (let at = 0; at <= end; at += 1) {
+			if (at < end && run[at] !== "/" && run[at] !== "\\") continue;
+			if (at > start) {
+				segments += 1;
+				lastStart = start;
+				const dotted = run[start] === "." && at - start >= 2;
+				if (dotted && (run[start + 1] === "." ? at - start === 2 : /[A-Za-z]/.test(run[start + 1]!))) marked = true;
+			}
+			start = at + 1;
+		}
+		if (segments < 2) continue;
+		if (marked) return true;
+		const dot = run.lastIndexOf(".", end - 1);
+		if (dot > lastStart && /^(?:[a-z][a-z0-9]{0,7}|[A-Z][A-Z0-9]{0,7})$/.test(run.slice(dot + 1, end))) return true;
+	}
+	return false;
+}
+
 export function endoCockpitTextUnsafeV0(text: string): boolean {
 	if (CONTROL_OR_INVISIBLE.test(text)) return true;
 	const folded = text.normalize("NFKC").replace(CONTROL_OR_INVISIBLE_ALL, "");
 	return (
 		SENSITIVE_TEXT.some((pattern) => pattern.test(text) || pattern.test(folded)) ||
 		holdsIpv6Literal(text) ||
-		(folded !== text && holdsIpv6Literal(folded))
+		holdsRelativePath(text) ||
+		(folded !== text && (holdsIpv6Literal(folded) || holdsRelativePath(folded)))
 	);
 }
 
@@ -495,6 +542,57 @@ export function endoCockpitTextPresentableV0(text: string, max = ENDO_COCKPIT_MA
 /** The text itself, or the fixed withheld text when it is not presentable. */
 export function endoCockpitPresentableTextV0(text: string, max = ENDO_COCKPIT_MAX_FIELD_TEXT_V0): string {
 	return endoCockpitTextPresentableV0(text, max) ? text : ENDO_COCKPIT_WITHHELD_TEXT_V0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Digest keys (the context a read is made under)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The public digest keys a cockpit read admits, by label: the committed fixture keys (storage/digest-key.ts checks the bytes
+ * of each against its pinned fingerprint) and the synthetic key the cockpit's own tests read under. A public key's id is its
+ * LABEL, which names no bytes: two public keys can share a label and differ in bytes, and their digests and aliases cannot
+ * be compared. So only a label pinned to the fingerprint of the bytes it stands for is admitted, and then an id is enough to
+ * tell one context from another. (A private key's id is already derived from its bytes: `endo.digest-key.<fingerprint>`.)
+ */
+export const ENDO_COCKPIT_PUBLIC_DIGEST_KEYS_V0: Readonly<Record<string, string>> = Object.freeze({
+	...ENDO_FIXTURE_DIGEST_KEYS_V0,
+	/** The synthetic public key the cockpit's tests read under: 32 bytes of 0x5a. It protects nothing, by design. */
+	"cockpit-fixture": "b6a01878ef5ddbf0b4688aadd5209e52",
+});
+
+const PRIVATE_DIGEST_KEY_ID = /^endo\.digest-key\.([0-9a-f]{32})$/;
+
+/** Whether a digest key id is one a cockpit wire carries: a private key's, or the label of a pinned public key. */
+export function isEndoCockpitDigestKeyIdV0(keyId: unknown): keyId is string {
+	return (
+		typeof keyId === "string" &&
+		ENDO_DIGEST_KEY_ID_PATTERN_V0.test(keyId) &&
+		(PRIVATE_DIGEST_KEY_ID.test(keyId) || Object.hasOwn(ENDO_COCKPIT_PUBLIC_DIGEST_KEYS_V0, keyId))
+	);
+}
+
+/**
+ * Whether a digest key is one a cockpit read admits: a private key whose id is derived from its own fingerprint, or a public
+ * key whose label is pinned to exactly its fingerprint. For an admitted key an equal `keyId` means equal key bytes (given the
+ * key object is the trusted one the caller holds: its bytes are in a closure, and a forged object could claim anything), so
+ * every comparison of key ids is a comparison of contexts. It also keeps a caller-chosen label that looks like a credential
+ * (`sk-...`) out of every watermark: an unpinned label names no bytes and is refused, whatever it looks like.
+ */
+export function endoCockpitDigestKeyAdmittedV0(key: unknown): boolean {
+	const candidate = key as
+		| { keyId?: unknown; fingerprint?: unknown; public?: unknown; digest?: unknown }
+		| null
+		| undefined;
+	if (typeof candidate !== "object" || candidate === null) return false;
+	if (typeof candidate.digest !== "function" || typeof candidate.keyId !== "string") return false;
+	if (typeof candidate.fingerprint !== "string" || !/^[0-9a-f]{32}$/.test(candidate.fingerprint)) return false;
+	if (candidate.public === true)
+		return (
+			Object.hasOwn(ENDO_COCKPIT_PUBLIC_DIGEST_KEYS_V0, candidate.keyId) &&
+			ENDO_COCKPIT_PUBLIC_DIGEST_KEYS_V0[candidate.keyId] === candidate.fingerprint
+		);
+	return candidate.public === false && candidate.keyId === `endo.digest-key.${candidate.fingerprint}`;
 }
 
 /**

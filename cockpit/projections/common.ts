@@ -13,6 +13,7 @@ import type {
 } from "../../protocol/cockpit.ts";
 import { ENDO_COCKPIT_REGISTRY_KINDS_V0 } from "../../protocol/cockpit.ts";
 import {
+	endoCockpitDigestKeyAdmittedV0,
 	endoCockpitPresentableTextV0,
 	endoCockpitTextUnsafeV0,
 	isEndoCockpitSourceIdAdmittedV0,
@@ -244,6 +245,7 @@ export function registryWatermarkV0(
 	state: EndoCockpitSourceConditionV0["state"],
 	records: EndoCockpitRegistryRecordsV0 | null,
 ): EndoCockpitRegistryWatermarkV0 | null {
+	requireAdmittedKeyV0(key);
 	const counts = { fingerprint: 0, change: 0, evidence: 0, state: 0, notification: 0 };
 	const lastIds: Record<EndoCockpitRegistryKindV0, string | null> = {
 		fingerprint: null,
@@ -277,6 +279,19 @@ export function registryWatermarkV0(
 }
 
 /**
+ * The digest key a cockpit read or projection runs under, or a TypeError: a private key, or a committed public fixture key
+ * (endoCockpitDigestKeyAdmittedV0). For such a key an equal key id means equal key bytes, so a watermark's id identifies the
+ * context it was made in, and no label a caller chose can reach a public watermark.
+ */
+export function requireAdmittedKeyV0(key: EndoDigestKeyV0): EndoDigestKeyV0 {
+	if (!endoCockpitDigestKeyAdmittedV0(key))
+		throw new TypeError(
+			"the digest key is not one a cockpit read admits: use a private key or a committed public fixture key",
+		);
+	return key;
+}
+
+/**
  * Admits one registry projection input, or refuses it with a TypeError (a usage error: the input contradicts itself). The
  * source was read under a key (its watermark records the key's id): a projection under another would alias differently from
  * the watermark's own ids. And the position the source advertises must be the position of the records supplied: counts, last
@@ -286,6 +301,7 @@ export function registryWatermarkV0(
  */
 export function admitRegistryInputV0(input: EndoCockpitRegistryInputV0, key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
 	const { source, records } = input;
+	requireAdmittedKeyV0(key);
 	if (source.watermark !== null && source.watermark.keyId !== key.keyId)
 		throw new TypeError("the digest key is not the key the source was read under");
 	// An attachment is never aliased: a name in the reserved alias namespace was written by the source, and is not presented.

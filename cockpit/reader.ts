@@ -27,7 +27,6 @@ import { lstatSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
 	EndoCockpitEventLogSourceV0,
-	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
 	EndoCockpitSourceConditionV0,
 	EndoCockpitSourceErrorKindV0,
@@ -57,6 +56,7 @@ import {
 	ENDO_COCKPIT_TOKEN_PURPOSES_V0,
 	type EndoCockpitRegistryInputV0,
 	type EndoCockpitRegistryRecordsV0,
+	registryWatermarkV0,
 } from "./projections/common.ts";
 import type { EndoCockpitStoredEventV0 } from "./projections/session-timeline.ts";
 
@@ -369,62 +369,18 @@ function recordsOf(registry: EndoHarnessRegistryV0): EndoCockpitRegistryRecordsV
 	};
 }
 
-function emptyCounts(): Record<EndoCockpitRegistryKindV0, number> {
-	return { fingerprint: 0, change: 0, evidence: 0, state: 0, notification: 0 };
-}
-
 function registrySource(
 	key: EndoDigestKeyV0,
 	attachment: string,
 	condition: EndoCockpitSourceConditionV0,
 	records: EndoCockpitRegistryRecordsV0 | null,
 ): EndoCockpitRegistrySourceV0 {
-	if (records === null) {
-		if (condition.state === "unopenable")
-			return { domain: "harness-registry", attachment, condition, watermark: null };
-		const lastIds = { fingerprint: null, change: null, evidence: null, state: null, notification: null };
-		return {
-			domain: "harness-registry",
-			attachment,
-			condition,
-			watermark: {
-				counts: emptyCounts(),
-				lastIds,
-				contentDigest: sha256HexV0(canonicalEndoJsonV0({})),
-				keyId: key.keyId,
-			},
-		};
-	}
-	const counts = emptyCounts();
-	const lastIds: Record<EndoCockpitRegistryKindV0, string | null> = {
-		fingerprint: null,
-		change: null,
-		evidence: null,
-		state: null,
-		notification: null,
-	};
-	const alias = cockpitAliasesV0(key);
-	const content: Record<string, unknown[]> = {};
-	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
-		const list = records[kind] as readonly { id?: string }[];
-		counts[kind] = list.length;
-		const last = list.at(-1)?.id;
-		lastIds[kind] = last === undefined ? null : alias.id(last);
-		content[kind] = [...list];
-	}
+	// The advertised position is made by the one construction the projectors check their input against.
 	return {
 		domain: "harness-registry",
 		attachment,
 		condition,
-		watermark: {
-			counts,
-			lastIds,
-			// No records commit to nothing (a fixed constant); records are committed to under the key only.
-			contentDigest: ENDO_COCKPIT_REGISTRY_KINDS_V0.every((kind) => counts[kind] === 0)
-				? sha256HexV0(canonicalEndoJsonV0(content))
-				: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.registryContent, { content }),
-			keyId: key.keyId,
-		},
+		watermark: registryWatermarkV0(key, condition.state, records),
 	};
 }
 

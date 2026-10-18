@@ -34,7 +34,11 @@ import {
 	type EndoCockpitRefV0,
 	validateEndoCockpitCapabilityStateV0,
 } from "../../protocol/cockpit.ts";
-import { ENDO_COCKPIT_CHECK_COST_V0, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0 } from "../../protocol/cockpit-fields.ts";
+import {
+	ENDO_COCKPIT_CHECK_COST_V0,
+	ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0,
+	endoCockpitEvidenceVsFingerprintV0,
+} from "../../protocol/cockpit-fields.ts";
 import {
 	type EndoCapabilityEvidenceV0,
 	type EndoCapabilityStateEntryV0,
@@ -42,13 +46,13 @@ import {
 } from "../../protocol/harness.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import {
+	admitRegistryInputV0,
 	cleanRegistryRecordsV0,
 	type EndoCockpitAliasesV0,
 	type EndoCockpitIndexedV0,
 	type EndoCockpitRegistryInputV0,
 	noteV0,
 	presentableTextV0,
-	registryAliasesV0,
 	registryRefV0,
 } from "./common.ts";
 
@@ -97,7 +101,7 @@ function projectEndoCockpitCapabilityStateV0Unchecked(
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitCapabilityStateV0 {
 	const { source, records } = input;
-	const alias = registryAliasesV0(source, digestKey);
+	const alias = admitRegistryInputV0(input, digestKey);
 	const attachment = source.attachment;
 	const notes: EndoCockpitNoteV0[] = [];
 	const base = {
@@ -173,16 +177,17 @@ function projectEndoCockpitCapabilityStateV0Unchecked(
 					limits.push({ code: "evidence-classification-differs", refs });
 				if (named !== null) {
 					const namedRef = registryRefV0(alias, attachment, "fingerprint", named.index, named.record.id);
-					if (cited.record.dependencies.identityDigest !== named.record.identity.digest)
+					// (The predicate the snapshot validator re-derives from the views it embeds.) The evidence's confidence is a claim
+					// about the identity record it names, whether or not that is the named fingerprint's own id.
+					const against = endoCockpitEvidenceVsFingerprintV0(cited.record.dependencies, {
+						id: named.record.id,
+						identity: named.record.identity,
+					});
+					if (against.identityDiffers)
 						limits.push({ code: "evidence-identity-differs", refs: [...refs, namedRef] });
-					// Same fingerprint id or not, the evidence's confidence is a claim about the identity record it names.
-					if (cited.record.dependencies.confidence !== named.record.identity.confidence)
+					if (against.confidenceDiffers)
 						limits.push({ code: "evidence-confidence-differs", refs: [...refs, namedRef] });
-					const carried = cited.record.dependencies.fingerprintId !== named.record.id;
-					if (
-						carried &&
-						(cited.record.dependencies.confidence === "reduced" || named.record.identity.confidence === "reduced")
-					)
+					if (against.reducedIdentity)
 						limits.push({ code: "evidence-reduced-identity", refs: [...refs, namedRef] });
 				}
 			}

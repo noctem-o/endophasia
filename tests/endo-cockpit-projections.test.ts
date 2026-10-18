@@ -5,7 +5,11 @@
 import { createHmac } from "node:crypto";
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "../cockpit/projections/common.ts";
+import {
+	type EndoCockpitRegistryInputV0,
+	type EndoCockpitRegistryRecordsV0,
+	registryWatermarkV0,
+} from "../cockpit/projections/common.ts";
 import {
 	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
 	ENDO_COCKPIT_VERSIONS_V0,
@@ -63,35 +67,14 @@ function logSource(length: number, lastEventId: string | null): EndoCockpitEvent
 	};
 }
 
-/** A watermark names its last record by the public form of the identifier, as the reader does. */
-const publicOrNull = (id: string | undefined): string | null => (id === undefined ? null : publicIdV0(id));
-
 function registrySource(records: EndoCockpitRegistryRecordsV0 | null): EndoCockpitRegistrySourceV0 {
-	const counts = {
-		fingerprint: records?.fingerprint.length ?? 0,
-		change: records?.change.length ?? 0,
-		evidence: records?.evidence.length ?? 0,
-		state: records?.state.length ?? 0,
-		notification: records?.notification.length ?? 0,
-	};
-	const total = Object.values(counts).reduce((a, b) => a + b, 0);
+	const total = records === null ? 0 : Object.values(records).reduce((sum, list) => sum + list.length, 0);
+	const state = records === null ? ("absent" as const) : total === 0 ? ("empty" as const) : ("readable" as const);
 	return {
 		domain: "harness-registry",
 		attachment: ATTACHMENT,
-		condition:
-			records === null ? { ...CLEAN, state: "absent" } : { ...CLEAN, state: total === 0 ? "empty" : "readable" },
-		watermark: {
-			counts,
-			lastIds: {
-				fingerprint: publicOrNull(records?.fingerprint.at(-1)?.id),
-				change: publicOrNull(records?.change.at(-1)?.id),
-				evidence: publicOrNull(records?.evidence.at(-1)?.id),
-				state: null,
-				notification: publicOrNull(records?.notification.at(-1)?.id),
-			},
-			contentDigest: sha256HexV0(canonicalEndoJsonV0(records ?? {})),
-			keyId: TEST_KEY.keyId,
-		},
+		condition: { ...CLEAN, state },
+		watermark: registryWatermarkV0(TEST_KEY, state, records),
 	};
 }
 

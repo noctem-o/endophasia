@@ -39,6 +39,7 @@ import type {
 } from "../../protocol/harness.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import {
+	admitRegistryInputV0,
 	claimV0,
 	cleanRegistryRecordsV0,
 	type EndoCockpitAliasesV0,
@@ -47,7 +48,6 @@ import {
 	looksSensitiveTextV0,
 	noteV0,
 	presentableTextV0,
-	registryAliasesV0,
 	registryRefV0,
 	unavailableV0,
 } from "./common.ts";
@@ -149,7 +149,7 @@ function projectEndoCockpitRuntimeIdentityV0Unchecked(
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitRuntimeIdentityV0 {
 	const { source, records } = input;
-	const alias = registryAliasesV0(source, digestKey);
+	const alias = admitRegistryInputV0(input, digestKey);
 	const attachment = source.attachment;
 	const notes: EndoCockpitNoteV0[] = [];
 	const base = {

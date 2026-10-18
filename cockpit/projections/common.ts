@@ -8,6 +8,8 @@ import type {
 	EndoCockpitRefV0,
 	EndoCockpitRegistryKindV0,
 	EndoCockpitRegistrySourceV0,
+	EndoCockpitRegistryWatermarkV0,
+	EndoCockpitSourceConditionV0,
 } from "../../protocol/cockpit.ts";
 import { ENDO_COCKPIT_REGISTRY_KINDS_V0 } from "../../protocol/cockpit.ts";
 import {
@@ -24,6 +26,7 @@ import type {
 	EndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
 import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 
 /** The validated records of one attachment's registry, each kind in append order. */
@@ -200,12 +203,71 @@ export function cleanRegistryRecordsV0<K extends EndoCockpitRegistryKindV0>(
 }
 
 /**
- * The aliases a registry projection uses, under the key the caller supplies. The source was read under a key (its
- * watermark records the key's id); a projection under another key would alias differently from the watermark's own ids,
- * so it is refused as a usage error, not presented.
+ * The watermark a registry read advertises for these records under this key: the one construction, shared by the reader (which
+ * makes it) and the projectors (which check the input against it), so the two cannot drift. `null` when the registry could not
+ * be opened; records that are `null` for another reason (absent) commit to nothing, as do empty lists. Nonempty records are
+ * committed to under the key only, over ALL five kinds in append order, whichever a projection presents.
  */
-export function registryAliasesV0(source: EndoCockpitRegistrySourceV0, key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
+export function registryWatermarkV0(
+	key: EndoDigestKeyV0,
+	state: EndoCockpitSourceConditionV0["state"],
+	records: EndoCockpitRegistryRecordsV0 | null,
+): EndoCockpitRegistryWatermarkV0 | null {
+	const counts = { fingerprint: 0, change: 0, evidence: 0, state: 0, notification: 0 };
+	const lastIds: Record<EndoCockpitRegistryKindV0, string | null> = {
+		fingerprint: null,
+		change: null,
+		evidence: null,
+		state: null,
+		notification: null,
+	};
+	if (records === null) {
+		if (state === "unopenable") return null;
+		return { counts, lastIds, contentDigest: sha256HexV0(canonicalEndoJsonV0({})), keyId: key.keyId };
+	}
+	const alias = cockpitAliasesV0(key);
+	const content: Record<string, unknown[]> = {};
+	for (const kind of ENDO_COCKPIT_REGISTRY_KINDS_V0) {
+		const list = records[kind] as readonly { id?: string }[];
+		counts[kind] = list.length;
+		const last = list.at(-1)?.id;
+		lastIds[kind] = last === undefined ? null : alias.id(last);
+		content[kind] = [...list];
+	}
+	return {
+		counts,
+		lastIds,
+		// No records commit to nothing (a fixed constant); records are committed to under the key only.
+		contentDigest: ENDO_COCKPIT_REGISTRY_KINDS_V0.every((kind) => counts[kind] === 0)
+			? sha256HexV0(canonicalEndoJsonV0(content))
+			: cockpitTokenV0(key, ENDO_COCKPIT_TOKEN_PURPOSES_V0.registryContent, { content }),
+		keyId: key.keyId,
+	};
+}
+
+/**
+ * Admits one registry projection input, or refuses it with a TypeError (a usage error: the input contradicts itself). The
+ * source was read under a key (its watermark records the key's id): a projection under another would alias differently from
+ * the watermark's own ids. And the position the source advertises must be the position of the records supplied: counts, last
+ * ids and content digest of ALL five kinds, whichever the projection presents, and a condition that can hold them. (Foreign or
+ * repeated records are not refused here: they are cleaned and noted, which a coherent defensive input may ask for.)
+ * Returns the aliases the projection uses.
+ */
+export function admitRegistryInputV0(input: EndoCockpitRegistryInputV0, key: EndoDigestKeyV0): EndoCockpitAliasesV0 {
+	const { source, records } = input;
 	if (source.watermark !== null && source.watermark.keyId !== key.keyId)
 		throw new TypeError("the digest key is not the key the source was read under");
+	const state = source.condition.state;
+	// Records exist exactly when the registry was opened, and then the state says whether any were found.
+	const opened = state === "empty" || state === "readable" || state === "degraded";
+	if (opened !== (records !== null)) throw new TypeError("the source condition disagrees with the records supplied");
+	if (records !== null) {
+		const total = ENDO_COCKPIT_REGISTRY_KINDS_V0.reduce((sum, kind) => sum + records[kind].length, 0);
+		if ((state === "empty" && total !== 0) || (state === "readable" && total === 0))
+			throw new TypeError("the source condition disagrees with the records supplied");
+	}
+	const expected = registryWatermarkV0(key, state, records);
+	if (canonicalEndoJsonV0(expected) !== canonicalEndoJsonV0(source.watermark))
+		throw new TypeError("the source watermark disagrees with the records supplied");
 	return cockpitAliasesV0(key);
 }

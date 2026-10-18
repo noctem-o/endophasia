@@ -3,7 +3,7 @@
 
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import { cockpitAliasesV0 } from "../cockpit/projections/common.ts";
+import { cockpitAliasesV0, registryWatermarkV0 } from "../cockpit/projections/common.ts";
 import {
 	type EndoCockpitSessionTimelineV0,
 	validateEndoCockpitCapabilityStateV0,
@@ -52,31 +52,14 @@ const logSourceFor = (last: { id: string }) => ({
 });
 
 function registryInput(records: ReturnType<typeof specimenRecords>) {
-	const alias = cockpitAliasesV0(TEST_KEY);
-	const last = (list: readonly { id: string }[]) => (list.length === 0 ? null : alias.id(list.at(-1)!.id));
+	const total = Object.values(records).reduce((sum, list) => sum + list.length, 0);
+	const state = total === 0 ? ("empty" as const) : ("readable" as const);
 	return {
 		source: {
 			domain: "harness-registry" as const,
 			attachment: "pi.default",
-			condition: { ...CLEAN },
-			watermark: {
-				counts: {
-					fingerprint: records.fingerprint.length,
-					change: records.change.length,
-					evidence: records.evidence.length,
-					state: records.state.length,
-					notification: records.notification.length,
-				},
-				lastIds: {
-					fingerprint: last(records.fingerprint),
-					change: last(records.change),
-					evidence: last(records.evidence),
-					state: null,
-					notification: last(records.notification),
-				},
-				contentDigest: sha256HexV0(canonicalEndoJsonV0(records)),
-				keyId: TEST_KEY.keyId,
-			},
+			condition: { ...CLEAN, state: state },
+			watermark: { ...registryWatermarkV0(TEST_KEY, state, records)!, keyId: TEST_KEY.keyId },
 		},
 		records,
 	} as never;

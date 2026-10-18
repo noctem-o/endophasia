@@ -575,6 +575,14 @@ export function endoCockpitWithheldLowerBoundV0(
 		!(usage.basis === "unavailable" && usage.reason === ENDO_COCKPIT_USAGE_REASONS_V0[0])
 	)
 		withheld.add("details");
+	// A message's own malformed usage: the recorded value existed under the top-level `usage` key and is not presented whole.
+	// (No usage, a user message's and a valid, reported usage prove nothing here.)
+	if (
+		kind === "message.completed" &&
+		usage?.basis === "unavailable" &&
+		usage.reason === ENDO_COCKPIT_USAGE_REASONS_V0[2]
+	)
+		withheld.add("usage");
 	const session = fields.runtimeSessionId;
 	if (kind === "harness.attached" && session?.basis === "unavailable") {
 		// A replaced reference proves one omitted key, which of the two the wire does not say. A conflict is only ever made of
@@ -596,4 +604,26 @@ export function endoCockpitWithheldLowerBoundV0(
 	}
 	for (const key of whole) withheld.delete(key);
 	return withheld.size;
+}
+
+/**
+ * What an evidence record's dependencies say against the fingerprint the state names, as the capability projection derives
+ * it and the snapshot validator re-derives it from the views it embeds: the one predicate, over whatever form of the digest
+ * both sides hold (raw in the projection, its keyed token on the wire: equal values are equal in either). A fact the named
+ * fingerprint does not show (its identity unavailable, so no digest or confidence) is `null`: undecidable, never guessed.
+ * Evidence carried from another observation (its own fingerprint id differs) on a reduced identity - the evidence's or the
+ * named fingerprint's - is the reduced-identity limitation.
+ */
+export function endoCockpitEvidenceVsFingerprintV0(
+	evidence: { fingerprintId: string; identityDigest: string; confidence: string },
+	named: { id: string; identity: { digest: string; confidence: string } | null },
+): { identityDiffers: boolean | null; confidenceDiffers: boolean | null; reducedIdentity: boolean | null } {
+	const carried = evidence.fingerprintId !== named.id;
+	const reducedKnown = evidence.confidence === "reduced" || named.identity?.confidence === "reduced";
+	return {
+		identityDiffers: named.identity === null ? null : evidence.identityDigest !== named.identity.digest,
+		confidenceDiffers: named.identity === null ? null : evidence.confidence !== named.identity.confidence,
+		// Settled when the evidence itself is reduced, or when the named identity is known at all.
+		reducedIdentity: !carried ? false : reducedKnown ? true : named.identity === null ? null : false,
+	};
 }

@@ -53,6 +53,7 @@ import {
 	ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0,
 	ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0,
 	ENDO_COCKPIT_WITHHELD_TEXT_V0,
+	endoCockpitEvidenceVsFingerprintV0,
 	endoCockpitFieldRuleV0,
 	endoCockpitGapNameAdmittedV0,
 	endoCockpitKindUnrecognizedV0,
@@ -1309,6 +1310,15 @@ function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection:
 	const policy = NOTE_POLICY[projection];
 	// A record is discarded once: one cleaning note, of one code, per position (the cleaner emits exactly one disposition).
 	const discarded = new Set<string>();
+	const foreignFingerprints = new Set<number>(
+		notes.flatMap((note) =>
+			note.code === "foreign-attachment-record" &&
+			note.refs[0]?.domain === "harness-registry" &&
+			note.refs[0].kind === "fingerprint"
+				? [note.refs[0].index]
+				: [],
+		),
+	);
 	return notes.every((note) => {
 		if (!policy.codes.includes(note.code)) return false;
 		const kinds = FOREIGN_OR_DUPLICATE.includes(note.code) ? policy.cleaned : NOTE_REF_KINDS[note.code];
@@ -1317,6 +1327,15 @@ function notesPointInto(notes: EndoCockpitNoteV0[], ctx: RefContext, projection:
 			const [ref] = note.refs;
 			if (note.refs.length !== 1 || ref === undefined) return false;
 			if (note.code === "duplicate-record-id" && ref.domain === "harness-registry" && ref.id === null) return false;
+			// Fingerprints are cleaned first, and a foreign one never enters the ledger: a fingerprint can repeat an id only
+			// when some earlier fingerprint position is not foreign-noted (position 0 repeats nothing).
+			if (
+				note.code === "duplicate-record-id" &&
+				ref.domain === "harness-registry" &&
+				ref.kind === "fingerprint" &&
+				!Array.from({ length: ref.index }, (_, before) => before).some((before) => !foreignFingerprints.has(before))
+			)
+				return false;
 			if (ref.domain === "harness-registry") {
 				const position = `${ref.kind}:${ref.index}`;
 				if (discarded.has(position)) return false;
@@ -1392,6 +1411,21 @@ function isLatest(
 	return kept !== count - 1 || ref.id === ctx.lastIds[kind];
 }
 
+/**
+ * How many records of a kind the projection kept: the watermark's count less the positions the cleaning notes discarded
+ * (one disposition per position). Null when the source has no position to count from.
+ */
+function retainedCount(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKindV0, ctx: RefContext): number | null {
+	if (ctx.counts === null) return null;
+	const discarded = new Set<number>();
+	for (const note of notes)
+		if (FOREIGN_OR_DUPLICATE.includes(note.code))
+			for (const ref of note.refs)
+				if (ref.domain === "harness-registry" && ref.kind === kind && ref.index < ctx.counts[kind])
+					discarded.add(ref.index);
+	return ctx.counts[kind] - discarded.size;
+}
+
 const notesOf = (notes: EndoCockpitNoteV0[], code: EndoCockpitNoteCodeV0) => notes.filter((note) => note.code === code);
 
 /** A derived note is present exactly when its condition holds, once, with exactly the references the projection gives. */
@@ -1412,6 +1446,7 @@ function noteIs(
 
 /** The notes of a runtime identity are true of the view they sit beside, wherever the wire decides them. */
 function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
+	const ctx = contextOf(identity.source);
 	const { current, lastChange, lastNotification, notes } = identity;
 	if (!isProjectable(identity.source)) return true;
 	if (!noteIs(notes, "no-fingerprint-recorded", current === null, [])) return false;
@@ -1432,6 +1467,16 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// With no change kept (none recorded, or every one discarded: the latest-record rule makes `lastChange` null exactly then),
 	// the notice's change cannot be among them: the note is required, not just allowed.
 	if (lastNotification !== null && identity.source.watermark !== null && lastChange === null && missing.length !== 1)
+		return false;
+	// With exactly one change kept, the notice's change is that one or nothing: a different id requires the note. (With
+	// several kept, an earlier one may be the notice's: undecidable from the wire.)
+	if (
+		lastNotification !== null &&
+		lastChange !== null &&
+		retainedCount(notes, "change", ctx) === 1 &&
+		lastChange.id !== lastNotification.changeId &&
+		missing.length !== 1
+	)
 		return false;
 	if (missing.length === 1) {
 		if (
@@ -1475,7 +1520,10 @@ function capabilityNotesAreTrue(projection: EndoCockpitCapabilityStateV0): boole
 	const duplicated = notesOf(notes, "duplicate-capability");
 	if (
 		duplicated.length > 0 &&
-		(state === null || duplicated.some((note) => note.refs.length !== 1 || !sameRef(note.refs[0], state.ref)))
+		(state === null ||
+			// The first occurrence of a capability is kept: a later one is noted only beside it.
+			projection.capabilities.length === 0 ||
+			duplicated.some((note) => note.refs.length !== 1 || !sameRef(note.refs[0], state.ref)))
 	)
 		return false;
 	return true;
@@ -1507,6 +1555,56 @@ function positionsKeepIds(...values: unknown[]): boolean {
 		const position = `${ref.attachment}|${ref.kind}|${ref.index}`;
 		if (ids.has(position) && ids.get(position) !== ref.id) return false;
 		ids.set(position, ref.id);
+	}
+	return true;
+}
+
+/**
+ * The evidence limits an embedded fingerprint decides. When the state names a fingerprint the identity view presents (its
+ * current one, or the latest one with another identity), the snapshot holds both sides of each comparison - the evidence's
+ * dependencies and the fingerprint's identity - so the limits that follow from them are required, and those they disprove
+ * are refused, exactly as the capability projection derives them (the shared predicate). A state naming a fingerprint the
+ * identity does not embed (a historical one) is not reasoned about: nothing is inferred from the current one.
+ */
+function evidenceLimitsAgreeWithFingerprint(
+	identity: EndoCockpitRuntimeIdentityV0,
+	capabilities: EndoCockpitCapabilityStateV0,
+): boolean {
+	const state = capabilities.state;
+	if (state === null || state.fingerprintId === null) return true;
+	const embedded = [identity.current, identity.previousDifferent].filter((view) => view !== null);
+	const named = embedded.find((view) => view.id === state.fingerprintId);
+	// The state names a fingerprint the identity embeds: it is recorded. Naming none, when every kept fingerprint is embedded
+	// (their count is the retained count), it is not. Otherwise an older kept record may be the one: undecidable.
+	const everyKeptEmbedded =
+		retainedCount(capabilities.notes, "fingerprint", contextOf(capabilities.source)) === embedded.length;
+	for (const capability of capabilities.capabilities) {
+		if (capability.status === "unverified") continue;
+		const unrecorded = capability.limits.some((limit) => limit.code === "state-fingerprint-not-recorded");
+		if (named !== undefined && unrecorded) return false;
+		if (named === undefined && everyKeptEmbedded && !unrecorded) return false;
+	}
+	if (named === undefined) return true;
+	const identityClaim = named.identity;
+	for (const capability of capabilities.capabilities) {
+		const evidence = capability.evidence;
+		if (capability.status === "unverified" || evidence === null) continue;
+		const against = endoCockpitEvidenceVsFingerprintV0(evidence.dependencies, {
+			id: named.id,
+			identity: identityClaim.basis === "unavailable" ? null : identityClaim.value,
+		});
+		const limitOf = (code: EndoCockpitLimitCodeV0) => capability.limits.find((limit) => limit.code === code);
+		const decided: [EndoCockpitLimitCodeV0, boolean | null][] = [
+			["evidence-identity-differs", against.identityDiffers],
+			["evidence-confidence-differs", against.confidenceDiffers],
+			["evidence-reduced-identity", against.reducedIdentity],
+		];
+		for (const [code, expected] of decided) {
+			const limit = limitOf(code);
+			if (expected !== null && (limit !== undefined) !== expected) return false;
+			// A limit about the fingerprint cites the one the state names, by its complete reference.
+			if (limit !== undefined && !sameRef(limit.refs[2], named.ref)) return false;
+		}
 	}
 	return true;
 }
@@ -1667,6 +1765,7 @@ function limitsAreSound(
 	state: NonNullable<EndoCockpitCapabilityStateV0["state"]>,
 	evidence: EndoCockpitEvidenceViewV0 | null,
 	ctx: RefContext,
+	retained: number | null,
 ): boolean {
 	const { limits } = capability;
 	let last = -1;
@@ -1711,13 +1810,13 @@ function limitsAreSound(
 				: has(code as EndoCockpitLimitCodeV0) !== expected
 		)
 			return false;
-	// With no fingerprint kept (none recorded, or every one discarded: `latestFingerprintId` is null exactly then), the one the
-	// state names cannot be among them. A nonempty history may hold an older one, so that is not demanded.
+	// With no fingerprint kept (none recorded, or every one discarded), or exactly one kept and it is not the one named, the
+	// one the state names cannot be among them. With several kept, a different id may be an older kept record: not demanded.
 	if (
 		admitted &&
 		fingerprintId !== null &&
-		latestId === null &&
 		ctx.counts !== null &&
+		(retained === 0 || (retained === 1 && fingerprintId !== latestId)) &&
 		!has("state-fingerprint-not-recorded")
 	)
 		return false;
@@ -1830,6 +1929,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 				? "current"
 				: "stale";
 	if (state.currency !== expected) return false;
+	const retained = retainedCount(projection.notes, "fingerprint", ctx);
 	const cited: EndoCockpitCapabilityViewV0[] = [];
 	// The cited evidence records are records of one registry: no two share an id, and none shares the id of a fingerprint
 	// the state names (a different kind of record).
@@ -1855,7 +1955,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		const evidence = capability.evidence;
 		if (evidence !== null && !ownRefOk(evidence, ctx, "evidence")) return false;
 		if (evidence !== null && !sameJson(evidence.withheld, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0)) return false;
-		if (!limitsAreSound(capability, state, evidence, ctx)) return false;
+		if (!limitsAreSound(capability, state, evidence, ctx, retained)) return false;
 	}
 	return true;
 }
@@ -2041,6 +2141,7 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (!sameJson(fingerprintCleaning(identity.notes), fingerprintCleaning(capabilities.notes))) return null;
 		if (capabilities.state !== null && capabilities.state.latestFingerprintId !== (identity.current?.id ?? null))
 			return null;
+		if (!evidenceLimitsAgreeWithFingerprint(identity, capabilities)) return null;
 		if (identity.source.watermark !== null) keyIds.add(identity.source.watermark.keyId);
 		// The records presented by the two views of one registry are distinct records: no two share an id.
 		const shown: ({ ref: EndoCockpitRefV0; id: string } | null)[] = [

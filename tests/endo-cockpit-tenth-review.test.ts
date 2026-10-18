@@ -3,7 +3,7 @@
 
 import { rmSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
-import { cockpitAliasesV0 } from "../cockpit/projections/common.ts";
+import { cockpitAliasesV0, registryWatermarkV0 } from "../cockpit/projections/common.ts";
 import {
 	ENDO_COCKPIT_LIMIT_CODES_V0,
 	type EndoCockpitRefV0,
@@ -53,32 +53,14 @@ function logSource(length: number, lastEventId: string | null, keyId = TEST_KEY.
 }
 
 function registryInput(records: ReturnType<typeof specimenRecords>, keyId = TEST_KEY.keyId, key = TEST_KEY) {
-	const counts = {
-		fingerprint: records.fingerprint.length,
-		change: records.change.length,
-		evidence: records.evidence.length,
-		state: records.state.length,
-		notification: records.notification.length,
-	};
-	const alias = cockpitAliasesV0(key);
-	const last = (list: readonly { id: string }[]) => (list.length === 0 ? null : alias.id(list.at(-1)!.id));
+	const total = Object.values(records).reduce((sum, list) => sum + list.length, 0);
+	const state = total === 0 ? ("empty" as const) : ("readable" as const);
 	return {
 		source: {
 			domain: "harness-registry" as const,
 			attachment: "pi.default",
-			condition: { ...CLEAN, state: "readable" as const },
-			watermark: {
-				counts,
-				lastIds: {
-					fingerprint: last(records.fingerprint),
-					change: last(records.change),
-					evidence: last(records.evidence),
-					state: null,
-					notification: last(records.notification),
-				},
-				contentDigest: sha256HexV0(canonicalEndoJsonV0(records)),
-				keyId,
-			},
+			condition: { ...CLEAN, state: state },
+			watermark: { ...registryWatermarkV0(key, state, records)!, keyId: keyId },
 		},
 		records,
 	};
@@ -746,7 +728,7 @@ describe("a notice with no change record to name requires its note (P2)", () => 
 		expect(validateEndoCockpitRuntimeIdentityV0(twice)).toBeNull();
 	});
 
-	it("does not require it when a notice is absent, or when changes exist (their list is not embedded)", () => {
+	it("does not require it when a notice is absent, or when several changes exist (their list is not embedded)", () => {
 		const none = project(base);
 		expect(noteOf(none)).toHaveLength(0);
 		expect(validateEndoCockpitRuntimeIdentityV0(none)).not.toBeNull();
@@ -760,11 +742,20 @@ describe("a notice with no change record to name requires its note (P2)", () => 
 		});
 		expect(noteOf(missing)).toHaveLength(1);
 		expect(validateEndoCockpitRuntimeIdentityV0(missing)).not.toBeNull();
-		// With changes recorded, whether the named one is among them is not decidable from the view: no note is demanded.
-		const dropped = mutated(missing, (i) => {
-			i.notes = i.notes.filter((n: { code: string }) => n.code !== "notification-change-missing");
+		const without = (i: typeof missing) =>
+			mutated(i, (x) => {
+				x.notes = x.notes.filter((n: { code: string }) => n.code !== "notification-change-missing");
+			});
+		// With exactly one change kept the notice names it or nothing: the note is required (round 15).
+		expect(validateEndoCockpitRuntimeIdentityV0(without(missing))).toBeNull();
+		// With several kept, whether the named one is among them is not decidable from the view: no note is demanded.
+		const several = project({
+			...base,
+			change: [changeRecord(), changeRecord({ id: "endo.evidence.test-change.3" })],
+			notification: [notificationRecord({ changeId: "endo.evidence.test-change.2" })],
 		});
-		expect(validateEndoCockpitRuntimeIdentityV0(dropped)).not.toBeNull();
+		expect(noteOf(several)).toHaveLength(1);
+		expect(validateEndoCockpitRuntimeIdentityV0(without(several))).not.toBeNull();
 	});
 });
 
@@ -797,8 +788,7 @@ describe("a state naming a fingerprint that cannot exist requires its limit (P2)
 	});
 
 	it("does not require it for a nonempty history (an older record may exist), for a null fingerprint, or unverified capabilities", () => {
-		const older = { ...fingerprintAt("/opt/pi") };
-		const nonEmpty = project({ ...base, fingerprint: [older] });
+		const nonEmpty = project({ ...base, fingerprint: [fingerprintAt("/opt/pi"), fingerprintAt("/opt/pi2")] });
 		expect(limitCodes(nonEmpty.capabilities[admittedAt]!)).toContain("state-fingerprint-not-recorded");
 		const dropped = mutated(nonEmpty, (c) => {
 			c.capabilities[admittedAt].limits = c.capabilities[admittedAt].limits.filter(

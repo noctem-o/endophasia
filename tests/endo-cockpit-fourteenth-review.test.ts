@@ -399,10 +399,11 @@ describe("a runtime-disagreement note cites distinct records (P2)", () => {
 		for (const refs of [
 			[a, b],
 			[a, c],
-			[b, c],
 			[a, b, c],
 		])
 			expect(validateEndoCockpitRuntimeIdentityV0(withNote(refs)), String(refs.length)).not.toBeNull();
+		// The latest kept fingerprint is always a family's representative: a note without it is not the projector's.
+		expect(validateEndoCockpitRuntimeIdentityV0(withNote([b, c]))).toBeNull();
 	});
 
 	it("refuses one record cited twice, or a repeated member among three", () => {

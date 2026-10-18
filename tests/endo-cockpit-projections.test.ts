@@ -1243,11 +1243,12 @@ describe("contextual reference validation (PR #57 review: wire validation is not
 			index: 0,
 			id,
 		});
-		// Two changes are recorded, the later one presented; the note names the earlier, which no view embeds.
+		// Two changes are recorded, the later one presented; the note names the earlier, which no view embeds. A change repeats
+		// an id of an earlier kind: the one kept fingerprint, which the identity presents.
 		const withNote = mutated(identity, (c) => {
 			c.source.watermark.counts.change = 2;
 			c.lastChange.ref.index = 1;
-			c.notes.push({ code: "duplicate-record-id", refs: [refTo("change", "endo.evidence.test-change.0")] });
+			c.notes.push({ code: "duplicate-record-id", refs: [refTo("change", identity.current!.id)] });
 		});
 		expect(validateEndoCockpitRuntimeIdentityV0(withNote)).not.toBeNull();
 		const presentedEvidence = new Set(
@@ -3560,17 +3561,20 @@ describe("seventh review round (PR #57)", () => {
 		// Not shown is not false: a payload with no (or malformed) recovery may or may not have been a discontinuity.
 		const bare = timeline([event("harness.store-opened", { lifecycleRepaired: 0 })]);
 		accepts(bare);
-		accepts(
+		// ... but the flag has a cause the entry must show: a true recovery value (round 16).
+		rejects(
 			mutated(bare, (c) => {
 				c.entries[0].flags = ["discontinuity"];
 			}),
+			"flag with nothing shown true",
 		);
 		const partial = timeline([event("harness.store-opened", { recovery: { truncated: false } })]);
 		accepts(partial);
-		accepts(
+		rejects(
 			mutated(partial, (c) => {
 				c.entries[0].flags = ["discontinuity"];
 			}),
+			"flag beside only a false value",
 		);
 		// A shown true needs the flag even beside values that are not shown.
 		const oneTrue = timeline([event("harness.store-opened", { recovery: { sealed: true } })]);

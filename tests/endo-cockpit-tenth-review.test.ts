@@ -468,7 +468,8 @@ describe("a foreign or repeated record note names exactly that record (P2)", () 
 	const omittedIndex = records.evidence.findIndex(
 		(_, at) => at < records.evidence.length - 1 && !presentedEvidence.has(at),
 	);
-	const fingerprintRef = ref("evidence", omittedIndex, publicIdV0("endo.evidence.test-omitted.1"));
+	// (An evidence record repeats an id of an earlier kind: the one kept fingerprint.)
+	const fingerprintRef = ref("evidence", omittedIndex, publicIdV0(records.fingerprint[0]!.id));
 
 	for (const code of ["foreign-attachment-record", "duplicate-record-id"] as const) {
 		it(`${code}: zero references are refused, one valid reference is accepted, two are refused`, () => {
@@ -671,19 +672,21 @@ describe("a record a cleaning note discards is not also a view (P2)", () => {
 			i.source.watermark.counts.change = 2;
 			i.lastChange.ref.index = 1;
 		});
+		// A change repeats an id of an earlier kind: the one kept fingerprint, which the identity presents.
 		const omitted = {
 			...(lone.lastChange!.ref as RegistryRef),
 			index: 0,
-			id: `endo.evidence.withheld-${"0".repeat(32)}`,
+			id: lone.current!.id,
 		};
 		expect(validateEndoCockpitRuntimeIdentityV0(two)).not.toBeNull();
 		expect(validateEndoCockpitRuntimeIdentityV0(withNote(two, "duplicate-record-id", omitted))).not.toBeNull();
-		// An equal id at another index is not the presented record: the comparison is by the complete reference.
+		// An equal id at another index is not the presented record (the comparison is by the complete reference), but an
+		// earlier change cannot repeat a LATER change's id: only an earlier record's id is in the ledger.
 		expect(
 			validateEndoCockpitRuntimeIdentityV0(
 				withNote(two, "duplicate-record-id", { ...omitted, id: (lone.lastChange!.ref as RegistryRef).id }),
 			),
-		).not.toBeNull();
+		).toBeNull();
 		// The same id at the presented index is the presented record itself.
 		expect(
 			validateEndoCockpitRuntimeIdentityV0(

@@ -553,8 +553,11 @@ export const ENDO_COCKPIT_CHECK_COST_V0: Readonly<Record<string, number>> = free
  * The fewest top-level payload keys an entry of this kind can have left unpresented, as the presented fields prove it:
  * a field read from a nested path leaves the rest of its top-level key withheld, and a value the boundary replaced
  * (the fixed withheld text) leaves its whole key withheld. A key another field presents whole is not counted. Distinct
- * keys only. A bound, not a count: an absent usage, a conflicting runtime session reference or a declared gap prove
- * nothing here, and the payload's other keys cannot be seen from the entry.
+ * keys only. A bound, not a count: an absent usage or a declared gap proves
+ * nothing here, and the payload's other keys cannot be seen from the entry. The one synthesized field, a
+ * `harness.attached` runtime session reference the boundary replaced (the fixed withheld text), proves that at least one of
+ * the two producers' keys (`piSessionId`, `acpSessionId`) was omitted; which one, or both, the wire does not say, so it
+ * counts once. A conflict between the two names proves both omitted.
  */
 export function endoCockpitWithheldLowerBoundV0(
 	kind: string,
@@ -572,6 +575,16 @@ export function endoCockpitWithheldLowerBoundV0(
 		!(usage.basis === "unavailable" && usage.reason === ENDO_COCKPIT_USAGE_REASONS_V0[0])
 	)
 		withheld.add("details");
+	const session = fields.runtimeSessionId;
+	if (kind === "harness.attached" && session?.basis === "unavailable") {
+		// A replaced reference proves one omitted key, which of the two the wire does not say. A conflict is only ever made of
+		// two non-empty values under the two names, neither of which is presented: it proves both.
+		if (session.reason === ENDO_COCKPIT_WITHHELD_TEXT_V0) withheld.add("piSessionId|acpSessionId");
+		else if (session.reason === ENDO_COCKPIT_RUNTIME_SESSION_CONFLICT_V0) {
+			withheld.add("piSessionId");
+			withheld.add("acpSessionId");
+		}
+	}
 	const whole = new Set<string>();
 	for (const spec of ENDO_COCKPIT_FIELD_SPECS_V0[kind]!) {
 		const field = Object.hasOwn(fields, spec[0]) ? fields[spec[0]]! : undefined;

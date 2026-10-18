@@ -1444,6 +1444,24 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	}
 	const disagreement = notesOf(notes, "runtime-disagreement");
 	if (disagreement.length > 1 || disagreement.some((note) => note.refs.length < 2)) return false;
+	// The projector cites one representative per distinct runtime family, so one record cited again establishes no disagreement.
+	// (That the families differ is the source's to show, not the wire's.)
+	if (
+		disagreement.some((note) =>
+			note.refs.some(
+				(ref, at) =>
+					ref.domain !== "harness-registry" ||
+					note.refs.some(
+						(other, to) =>
+							to < at &&
+							other.domain === "harness-registry" &&
+							other.kind === ref.kind &&
+							other.index === ref.index,
+					),
+			),
+		)
+	)
+		return false;
 	return true;
 }
 
@@ -1470,6 +1488,44 @@ function discardsPresented(notes: EndoCockpitNoteV0[], presented: readonly (Endo
 			FOREIGN_OR_DUPLICATE.includes(note.code) &&
 			note.refs.some((ref) => presented.some((view) => view !== null && sameRef(view, ref))),
 	);
+}
+
+/** Every registry reference anywhere in a value, however deep (a view's own, a claim's, a note's, a limit's). */
+function registryRefsIn(value: unknown, found: RegistryRef[] = []): RegistryRef[] {
+	if (Array.isArray(value)) for (const item of value) registryRefsIn(item, found);
+	else if (isPlain(value)) {
+		if (isRef(value) && value.domain === "harness-registry") found.push(value);
+		else for (const item of Object.values(value)) registryRefsIn(item, found);
+	}
+	return found;
+}
+
+/** One position of one kind is one record: wherever it is named, it carries the same id. */
+function positionsKeepIds(...values: unknown[]): boolean {
+	const ids = new Map<string, string | null>();
+	for (const ref of values.flatMap((value) => registryRefsIn(value))) {
+		const position = `${ref.attachment}|${ref.kind}|${ref.index}`;
+		if (ids.has(position) && ids.get(position) !== ref.id) return false;
+		ids.set(position, ref.id);
+	}
+	return true;
+}
+
+/**
+ * How the cleaner disposed of each fingerprint record, as one view's notes say it: the complete reference of the record and
+ * the reason it was set aside, in a canonical order. Both views of one registry read clean the same fingerprints.
+ */
+function fingerprintCleaning(notes: EndoCockpitNoteV0[]): string[] {
+	return notes
+		.filter((note) => FOREIGN_OR_DUPLICATE.includes(note.code))
+		.flatMap((note) =>
+			note.refs.flatMap((ref) =>
+				ref.domain === "harness-registry" && ref.kind === "fingerprint"
+					? [JSON.stringify([note.code, ref.attachment, ref.index, ref.id])]
+					: [],
+			),
+		)
+		.sort();
 }
 
 /**
@@ -1593,7 +1649,7 @@ export function validateEndoCockpitRuntimeIdentityV0(value: unknown): EndoCockpi
 		return null;
 	if (!nullable(value.lastChange, isChangeView) || !nullable(value.lastNotification, isNotificationView)) return null;
 	const identity = value as unknown as EndoCockpitRuntimeIdentityV0;
-	return identityPointsInto(identity, contextOf(identity.source)) ? identity : null;
+	return identityPointsInto(identity, contextOf(identity.source)) && positionsKeepIds(identity) ? identity : null;
 }
 
 /**
@@ -1763,6 +1819,9 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 	const state = projection.state;
 	if (state === null) return true;
 	if (!isRegistryRef(state.ref, ctx, ["state"])) return false;
+	// An admitted capability is established for a fingerprint: the durable state refuses one without it. (Whether that record
+	// is still in the registry is not decided here.)
+	if (state.fingerprintId === null && projection.capabilities.some((c) => c.status !== "unverified")) return false;
 	// The currency is derived from the two ids it sits beside.
 	const expected =
 		state.fingerprintId === null || state.latestFingerprintId === null
@@ -1831,7 +1890,9 @@ export function validateEndoCockpitCapabilityStateV0(value: unknown): EndoCockpi
 		seen.add(capability.capability);
 	}
 	const projection = value as unknown as EndoCockpitCapabilityStateV0;
-	return capabilityPointsInto(projection, contextOf(projection.source)) ? projection : null;
+	return capabilityPointsInto(projection, contextOf(projection.source)) && positionsKeepIds(projection)
+		? projection
+		: null;
 }
 
 /** Validates a session timeline projection, including that its entries follow storage order inside the window. */
@@ -1973,6 +2034,13 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (identity === null || capabilities === null) return null;
 		// Both views of one attachment come from one read of its registry: the same condition and the same position.
 		if (!sameJson(identity.source, capabilities.source)) return null;
+		// Where the two views name one position they name one record.
+		if (!positionsKeepIds(identity, capabilities)) return null;
+		// ... so they set aside the same fingerprint records, for the same reasons, and the state's latest fingerprint is the
+		// identity's current one (neither is derivable from the watermark alone). Other diagnostics are each view's own.
+		if (!sameJson(fingerprintCleaning(identity.notes), fingerprintCleaning(capabilities.notes))) return null;
+		if (capabilities.state !== null && capabilities.state.latestFingerprintId !== (identity.current?.id ?? null))
+			return null;
 		if (identity.source.watermark !== null) keyIds.add(identity.source.watermark.keyId);
 		// The records presented by the two views of one registry are distinct records: no two share an id.
 		const shown: ({ ref: EndoCockpitRefV0; id: string } | null)[] = [

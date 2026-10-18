@@ -806,8 +806,20 @@ describe("a state naming a fingerprint that cannot exist requires its limit (P2)
 			);
 		});
 		expect(validateEndoCockpitCapabilityStateV0(dropped)).not.toBeNull();
-		const nullNamed = project({ ...base, fingerprint: [], state: [{ ...base.state[0]!, fingerprintId: null }] });
-		expect(limitCodes(nullNamed.capabilities[admittedAt]!)).not.toContain("state-fingerprint-not-recorded");
+		// (A null fingerprint with an admitted capability is not a state the durable contract allows; the round-14 tests refuse it.)
+		const unverifiedOnly = {
+			...base.state[0]!,
+			fingerprintId: null,
+			capabilities: base.state[0]!.capabilities.map((c) => ({
+				...c,
+				status: "unverified",
+				classification: null,
+				evidenceId: null,
+			})),
+		};
+		const nullNamed = project({ ...base, fingerprint: [], state: [unverifiedOnly] });
+		for (const view of nullNamed.capabilities)
+			expect(limitCodes(view)).not.toContain("state-fingerprint-not-recorded");
 		expect(validateEndoCockpitCapabilityStateV0(nullNamed)).not.toBeNull();
 		for (const view of empty.capabilities.filter((c) => c.status === "unverified")) expect(view.limits).toEqual([]);
 	});

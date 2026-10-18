@@ -320,6 +320,21 @@ describe("absent, empty, degraded and unopenable sources", () => {
 		expect(projected.capabilities.notes.map((n) => n.code)).toEqual(["source-not-projectable"]);
 	});
 
+	it("a durable state admitting a capability with no fingerprint makes the registry unopenable; the snapshot degrades, it does not throw", () => {
+		const root = tempRoot();
+		const hostile = { ...specimen().state, fingerprintId: null };
+		expect(hostile.capabilities.some((c) => c.status !== "unverified")).toBe(true);
+		appendFrame(registryLog(root), { kind: "state", record: hostile });
+		const before = treeHash(root);
+		const read = readEndoCockpitRegistryV0(root, ATTACHMENT);
+		expect(read.source.condition.state).toBe("unopenable");
+		expect(read.records).toBeNull();
+		expect(treeHash(root)).toBe(before);
+		const projected = readEndoCockpitSnapshotV0(root, { attachments: [ATTACHMENT] }).runtimes[0]!;
+		expect(projected.capabilities.state).toBeNull();
+		expect(projected.capabilities.notes.map((n) => n.code)).toEqual(["source-not-projectable"]);
+	});
+
 	it("reports a torn event-log tail as degraded, leaves it in place, and still serves the valid prefix", () => {
 		const { root, events } = seeded();
 		const tail = endoFrameBytesV0(new TextEncoder().encode(JSON.stringify(event("tool.started")))).subarray(0, 21);

@@ -420,7 +420,18 @@ const SENSITIVE_TEXT: readonly RegExp[] = [
 	/(?:^|[\s"'`([{=:,;<])(?:\/|~\/|\.{1,2}\/)[^\s]/,
 	/\b[A-Za-z]:[\\/]/,
 	/\\\\[^\s\\]+\\/,
-	/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S/,
+	// A scheme, then `://` and something: a run of scheme characters that holds a letter, ending at `://`. The run is anchored at
+	// its own start so each is scanned once; unanchored (`[A-Za-z][A-Za-z0-9+.-]*://`) it rescans a long token from every letter
+	// and costs the square of the token's length.
+	/(?<![A-Za-z0-9+.-])[0-9+.-]*[A-Za-z][A-Za-z0-9+.-]*:\/\/\S/,
+	// A dotted-quad IPv4 address (octets 0-255 in canonical decimal), with or without a port. A dot or digit on either side makes
+	// it part of a longer number or name instead (a five-part version, a dotted id), so those do not match.
+	/(?<![0-9A-Za-z_.])(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}(?![0-9A-Za-z_]|\.\d)/,
+	// `localhost` or a dotted DNS name whose last label starts with a letter, then a port (1-65535, no leading zero): the port is
+	// the evidence that it is an endpoint. A name with no port is a kind, a package or a version and is not matched here; the
+	// letter rule keeps a model tag such as `llama3.1:8b` or `qwen2.5:7` out. Port 0 is not evidence (nothing listens there, and
+	// `meta.llama3-70b-instruct-v1:0` is a model id), so a name before `:0` is presented; an IPv4 address is withheld whatever follows.
+	/(?<![0-9A-Za-z_.-])(?:localhost|(?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)+[A-Za-z](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?):(?:6553[0-5]|655[0-2]\d|65[0-4]\d\d|6[0-4]\d{3}|[1-5]\d{4}|[1-9]\d{0,3})(?![0-9A-Za-z_])/i,
 	/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/,
 	/\bgh[pousr]_[A-Za-z0-9]{20,}/,
 	/\bgithub_pat_[A-Za-z0-9_]{20,}/,
@@ -438,10 +449,35 @@ const INVISIBLE_CLASS =
 const CONTROL_OR_INVISIBLE = new RegExp(INVISIBLE_CLASS);
 const CONTROL_OR_INVISIBLE_ALL = new RegExp(INVISIBLE_CLASS, "g");
 
+/**
+ * Whether the text holds an IPv6 literal, bracketed or not, with a port or a zone or without: any run of letters, digits and
+ * colons that is a complete IPv6 address (eight groups of one to four hex digits, or fewer with one `::`). Brackets, `%zone`,
+ * dots and a trailing `:port` are delimiters, so `[::1]:8080`, `fe80::1%eth0` and `::ffff:10.0.0.5` each reduce to a token. A
+ * run with no decimal digit (`a::b`) or too long or short to be an address is skipped, so `std::vector`, a clock time and a
+ * MAC address are not matched. One pass over the text, constant work per run: no backtracking.
+ */
+function holdsIpv6Literal(text: string): boolean {
+	if (!/:[0-9A-Fa-f]*:/.test(text)) return false;
+	for (const [run] of text.matchAll(/[0-9A-Za-z:]+/g)) {
+		const token = run.endsWith(":") && !run.endsWith("::") ? run.slice(0, -1) : run;
+		if (token.length < 2 || token.length > 39 || !/[0-9]/.test(token)) continue;
+		const halves = token.split("::");
+		if (halves.length > 2) continue;
+		const groups = halves.flatMap((half) => (half === "" ? [] : half.split(":")));
+		if (!groups.every((group) => /^[0-9A-Fa-f]{1,4}$/.test(group))) continue;
+		if (halves.length === 2 ? groups.length <= 7 : groups.length === 8) return true;
+	}
+	return false;
+}
+
 export function endoCockpitTextUnsafeV0(text: string): boolean {
 	if (CONTROL_OR_INVISIBLE.test(text)) return true;
 	const folded = text.normalize("NFKC").replace(CONTROL_OR_INVISIBLE_ALL, "");
-	return SENSITIVE_TEXT.some((pattern) => pattern.test(text) || pattern.test(folded));
+	return (
+		SENSITIVE_TEXT.some((pattern) => pattern.test(text) || pattern.test(folded)) ||
+		holdsIpv6Literal(text) ||
+		(folded !== text && holdsIpv6Literal(folded))
+	);
 }
 
 /** Free text fit to present whole: non-empty, within `max`, and not unsafe. Tested on the whole value before any bound. */

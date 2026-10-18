@@ -164,18 +164,19 @@ describe("a runtime-disagreement note cites records with distinct ids (P2)", () 
 
 	it("refuses a repeated id among several references", () => {
 		// (Positions 2 and 3 are presented views whose ids the older one-position-one-id rule already fixes; 0, 1 and change 0 are not.)
+		// (The change comes last: the projector cites every fingerprint before any change, so the note below is one it could make.)
 		const forged = withRefs([
 			at("fingerprint", 0, a0),
 			at("fingerprint", 1, aliasOf(fb.id)),
-			at("change", 0, aliasOf(fb.id)),
 			current,
+			at("change", 0, aliasOf(fb.id)),
 		]);
 		expect(validateEndoCockpitRuntimeIdentityV0(forged)).toBeNull();
 		const distinct = withRefs([
 			at("fingerprint", 0, a0),
 			at("fingerprint", 1, aliasOf(fb.id)),
-			at("change", 0, "endo.evidence.test-change.1"),
 			current,
+			at("change", 0, "endo.evidence.test-change.1"),
 		]);
 		expect(validateEndoCockpitRuntimeIdentityV0(distinct)).not.toBeNull();
 	});
@@ -206,11 +207,19 @@ describe("a runtime-disagreement note cites records with distinct ids (P2)", () 
 		const s = snapshotOf(recordsWith);
 		const forged = mutated(s, (x) => {
 			const n = x.runtimes[0].identity.notes.find((m: { code: string }) => m.code === "runtime-disagreement");
-			n.refs = [n.refs[0], at("change", 0, aliasOf(cited)), n.refs[1]];
+			// (The change comes after both fingerprints: the projector cites every fingerprint before any change.)
+			n.refs = [n.refs[0], n.refs[1], at("change", 0, aliasOf(cited))];
 		});
 		expect(validateEndoCockpitRuntimeIdentityV0(forged.runtimes[0]!.identity)).not.toBeNull();
 		expect(validateEndoCockpitSnapshotV0(s)).not.toBeNull();
 		expect(validateEndoCockpitSnapshotV0(forged)).toBeNull();
+		// The same note with the change's own id (not an evidence record a capability cites) is accepted: the refusal above is the
+		// cross-view evidence-id rule, not the note's order.
+		const own = mutated(forged, (x) => {
+			const n = x.runtimes[0].identity.notes.find((m: { code: string }) => m.code === "runtime-disagreement");
+			n.refs[2] = at("change", 0, "endo.evidence.test-change.1");
+		});
+		expect(validateEndoCockpitSnapshotV0(own)).not.toBeNull();
 	});
 });
 

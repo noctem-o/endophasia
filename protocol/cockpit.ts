@@ -1651,15 +1651,23 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	if (current !== null && disagreement.some((note) => !note.refs.some((ref) => sameRef(ref, current.ref))))
 		return false;
 	// The projector cites one representative per distinct runtime family, so one record cited again establishes no disagreement.
-	// (That the families differ is the source's to show, not the wire's.)
+	// (That the families differ is the source's to show, not the wire's.) Its families are one map, in insertion order: every
+	// kept fingerprint first (a repeated family keeps its first position and cites its latest fingerprint, so their indices need
+	// not rise), then each kept change whose family is new, in index order and never overwritten. So the references are the
+	// fingerprints', then the changes' in strictly rising index: a fingerprint after a change, or changes out of order, is no
+	// projection's.
 	if (
 		disagreement.some((note) => {
 			const cited = new Set<string>();
+			let lastChange: number | null = null;
 			return note.refs.some((ref) => {
 				if (ref.domain !== "harness-registry") return true;
 				const position = `${ref.kind}:${ref.index}`;
 				if (cited.has(position)) return true;
 				cited.add(position);
+				if (ref.kind !== "change") return lastChange !== null;
+				if (lastChange !== null && ref.index <= lastChange) return true;
+				lastChange = ref.index;
 				return false;
 			});
 		})

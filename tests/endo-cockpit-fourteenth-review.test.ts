@@ -403,10 +403,12 @@ describe("a runtime-disagreement note cites distinct records (P2)", () => {
 	const c = identity.lastChange!.ref;
 
 	it("accepts two or three distinct references, to fingerprints and/or changes", () => {
+		// (The fingerprints come in the order of their families' first appearance, so the earlier one (`b`) is cited first: the
+		// projector cannot cite the later fingerprint, at index 1, before the one at index 0.)
 		for (const refs of [
-			[a, b],
+			[b, a],
 			[a, c],
-			[a, b, c],
+			[b, a, c],
 		])
 			expect(validateEndoCockpitRuntimeIdentityV0(withNote(refs)), String(refs.length)).not.toBeNull();
 		// The latest kept fingerprint is always a family's representative: a note without it is not the projector's.

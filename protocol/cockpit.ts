@@ -1655,17 +1655,25 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// kept fingerprint first (a repeated family keeps its first position and cites its latest fingerprint, so their indices need
 	// not rise), then each kept change whose family is new, in index order and never overwritten. So the references are the
 	// fingerprints', then the changes' in strictly rising index: a fingerprint after a change, or changes out of order, is no
-	// projection's.
+	// projection's. The family inserted j-th is first seen at the j-th kept position or later, its representative is its latest
+	// kept record, and a kept record's index is at least its position (a set-aside record only widens the gap): so the j-th
+	// fingerprint reference has an index of at least j. Necessary, not sufficient: it cannot tell [f3, f2] (a family seen at 0 and
+	// 3, another at 1 and 2) from an impossible order, and with set-aside records the j-th KEPT index is a tighter bound.
 	if (
 		disagreement.some((note) => {
 			const cited = new Set<string>();
 			let lastChange: number | null = null;
+			let fingerprints = 0;
 			return note.refs.some((ref) => {
 				if (ref.domain !== "harness-registry") return true;
 				const position = `${ref.kind}:${ref.index}`;
 				if (cited.has(position)) return true;
 				cited.add(position);
-				if (ref.kind !== "change") return lastChange !== null;
+				if (ref.kind !== "change") {
+					if (lastChange !== null || ref.index < fingerprints) return true;
+					fingerprints += 1;
+					return false;
+				}
 				if (lastChange !== null && ref.index <= lastChange) return true;
 				lastChange = ref.index;
 				return false;

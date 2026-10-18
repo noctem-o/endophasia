@@ -3,7 +3,7 @@
 // The projector's families are one Map: every kept fingerprint first (a repeated family keeps its FIRST position and cites its
 // LATEST fingerprint), then each kept change whose family is new, in index order, never overwritten. So the note is the
 // fingerprints' references, then the changes' in strictly rising index. The order WITHIN the fingerprints is the first
-// occurrence of each family and is not enforced (its indices need not rise: A0 B1 A2 cites [2, 1]).
+// occurrence of each family; only the ordinal bound of round 25 is enforced, and its indices need not rise (A0 B1 A2 cites [2, 1]).
 
 import { describe, expect, it } from "vitest";
 import { validateEndoCockpitRuntimeIdentityV0, validateEndoCockpitSnapshotV0 } from "../protocol/cockpit.ts";
@@ -155,7 +155,7 @@ describe("what the projector makes is still accepted", () => {
 						for (let at = 0; at + 1 < refs.length; at += 1) {
 							const a = refs[at]!;
 							const b = refs[at + 1]!;
-							if (a.kind === "fingerprint" && b.kind === "fingerprint") continue; // (their order is not enforced)
+							if (a.kind === "fingerprint" && b.kind === "fingerprint") continue; // (the sweep does not assert their order: see round 25)
 							const swapped = reordered(identity, (list) => {
 								[list[at], list[at + 1]] = [list[at + 1], list[at]];
 								return list;

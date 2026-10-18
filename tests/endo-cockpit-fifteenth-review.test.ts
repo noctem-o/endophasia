@@ -233,8 +233,8 @@ describe("a state naming an unkept fingerprint requires its limit, for zero or o
 	const codes = (v: { limits: { code: string }[] }) => v.limits.map((l) => l.code);
 	const dropped = (p: ReturnType<typeof capabilitiesOf>) =>
 		mutated(p, (x) => {
-			const view = x.capabilities[admittedAt(p)];
-			view.limits = view.limits.filter((l: { code: string }) => l.code !== "state-fingerprint-not-recorded");
+			for (const view of x.capabilities)
+				view.limits = view.limits.filter((l: { code: string }) => l.code !== "state-fingerprint-not-recorded");
 		});
 	const project = (fingerprint: unknown[]) => capabilitiesOf({ ...base, fingerprint });
 
@@ -526,10 +526,8 @@ describe("evidence limits reconcile with the embedded fingerprint (P2)", () => {
 		s.runtimes[0]!.capabilities.capabilities[admittedIndex(s)]!.limits.map((l) => l.code);
 	const removeLimit = (s: unknown, code: string) =>
 		mutated(s, (x) => {
-			const view = x.runtimes[0].capabilities.capabilities.find((c: any) =>
-				c.limits.some((l: any) => l.code === code),
-			);
-			view.limits = view.limits.filter((l: any) => l.code !== code);
+			for (const view of x.runtimes[0].capabilities.capabilities)
+				view.limits = view.limits.filter((l: any) => l.code !== code);
 		});
 	const addLimit = (s: ReturnType<typeof snapshotOf>, code: string) =>
 		mutated(s, (x) => {

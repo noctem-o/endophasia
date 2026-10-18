@@ -793,10 +793,10 @@ describe("a state naming a fingerprint that cannot exist requires its limit (P2)
 	it("does not require it for a nonempty history (an older record may exist), for a null fingerprint, or unverified capabilities", () => {
 		const nonEmpty = project({ ...base, fingerprint: [fingerprintAt("/opt/pi"), fingerprintAt("/opt/pi2")] });
 		expect(limitCodes(nonEmpty.capabilities[admittedAt]!)).toContain("state-fingerprint-not-recorded");
+		// (Dropped from every admitted capability: the limit is the state's, uniform across them.)
 		const dropped = mutated(nonEmpty, (c) => {
-			c.capabilities[admittedAt].limits = c.capabilities[admittedAt].limits.filter(
-				(l: { code: string }) => l.code !== "state-fingerprint-not-recorded",
-			);
+			for (const view of c.capabilities)
+				view.limits = view.limits.filter((l: { code: string }) => l.code !== "state-fingerprint-not-recorded");
 		});
 		expect(validateEndoCockpitCapabilityStateV0(dropped)).not.toBeNull();
 		// (A null fingerprint with an admitted capability is not a state the durable contract allows; the round-14 tests refuse it.)

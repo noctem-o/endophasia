@@ -1495,6 +1495,20 @@ function capabilityExposure(projection: EndoCockpitCapabilityStateV0, ctx: RefCo
 	];
 }
 
+function discardedByKind(notes: EndoCockpitNoteV0[], cleaned: readonly EndoCockpitRegistryKindV0[]) {
+	return new Map(cleaned.map((kind) => [kind, discardedPositions(notes, kind)] as const));
+}
+
+/** The kept records' ids a view presents or pins, by `kind:index` (see exposedIds). */
+function pinnedIds(
+	ctx: RefContext,
+	notes: EndoCockpitNoteV0[],
+	cleaned: readonly EndoCockpitRegistryKindV0[],
+	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
+): ReadonlyMap<string, string> {
+	return exposedIds(ctx, discardedByKind(notes, cleaned), cleaned, views);
+}
+
 /** The ids of kept records a view presents, by position; plus the watermark's tail of each cleaned kind, when kept. */
 function exposedIds(
 	ctx: RefContext,
@@ -1527,7 +1541,7 @@ function duplicateNotesFollowLedger(
 	views: readonly ({ ref: EndoCockpitRefV0; id: string } | null)[],
 ): boolean {
 	// A kind this set of notes does not clean may hold records of any disposition: nothing is known to be discarded in it.
-	const discarded = new Map(cleaned.map((kind) => [kind, discardedPositions(notes, kind)] as const));
+	const discarded = discardedByKind(notes, cleaned);
 	const exposed = exposedIds(ctx, discarded, cleaned, views);
 	return notes.every(
 		(note) =>
@@ -1698,6 +1712,100 @@ function positionsKeepIds(...values: unknown[]): boolean {
 }
 
 /**
+ * The converse of the above: registry ids are unique across all kinds, so within what a projection (or both views of one
+ * snapshot attachment) presents, one non-null id is one position (`pinned` are positions known from the watermark's tails
+ * and the cleaning notes). Every reference outside the cleaning notes points at a KEPT
+ * record (views, claims, derived notes, limit references); a cleaning note may legitimately carry an earlier record's id, or
+ * a foreign record's, and is left out.
+ */
+function idsKeepPositions(
+	attachment: string,
+	pinned: ReadonlyMap<string, string>,
+	...values: { notes: EndoCockpitNoteV0[] }[]
+): boolean {
+	const positions = new Map<string, string>();
+	// Kept records whose position is known without a view naming them (the latest kept fingerprint, the tails of cleaned kinds).
+	for (const [position, id] of pinned) positions.set(id, `${attachment}|${position.replace(":", "|")}`);
+	for (const value of values) {
+		const kept = { ...value, notes: value.notes.filter((note) => !FOREIGN_OR_DUPLICATE.includes(note.code)) };
+		for (const ref of registryRefsIn(kept)) {
+			if (ref.id === null) continue;
+			const position = `${ref.attachment}|${ref.kind}|${ref.index}`;
+			const seen = positions.get(ref.id);
+			if (seen !== undefined && seen !== position) return false;
+			positions.set(ref.id, position);
+		}
+	}
+	return true;
+}
+
+/**
+ * Limits that follow from the state and its retained fingerprint history alone are the same for every admitted capability:
+ * whether the state's named fingerprint is recorded (`state-fingerprint-not-recorded`) and which fingerprints differ in
+ * runtime family (the fingerprint references of `runtime-differs`). A state whose named fingerprint is unrecorded cannot also
+ * cite it. Unverified entries carry no limits and are not counted.
+ */
+function stateLimitsAreUniform(
+	admitted: readonly EndoCockpitCapabilityViewV0[],
+	state: NonNullable<EndoCockpitCapabilityStateV0["state"]>,
+): boolean {
+	const signature = (view: EndoCockpitCapabilityViewV0) => [
+		view.limits.some((limit) => limit.code === "state-fingerprint-not-recorded"),
+		view.limits
+			.filter((limit) => limit.code === "runtime-differs")
+			.flatMap((limit) =>
+				limit.refs.filter((ref) => ref.domain === "harness-registry" && ref.kind === "fingerprint"),
+			),
+	];
+	const first = admitted[0];
+	if (first === undefined) return true;
+	if (!admitted.every((view) => sameJson(signature(view), signature(first)))) return false;
+	const unrecorded = first.limits.some((limit) => limit.code === "state-fingerprint-not-recorded");
+	if (!unrecorded || state.fingerprintId === null) return true;
+	return !admitted.some((view) =>
+		view.limits.some((limit) =>
+			limit.refs.some(
+				(ref) => ref.domain === "harness-registry" && ref.kind === "fingerprint" && ref.id === state.fingerprintId,
+			),
+		),
+	);
+}
+
+/**
+ * Admitted capabilities citing one evidence record. The record names exactly one capability, so at most one of them can
+ * match it (which one, the view does not say): at most one may omit `evidence-capability-differs`, though all may carry it.
+ * The limits that follow from the record and the state alone are the same for each; entry-specific ones (the entry's
+ * `requires`, classification, status) may differ.
+ */
+function sharedEvidenceAgrees(admitted: readonly EndoCockpitCapabilityViewV0[]): boolean {
+	const groups = new Map<number, EndoCockpitCapabilityViewV0[]>();
+	for (const view of admitted) {
+		const ref = view.evidence?.ref;
+		if (ref === undefined || ref.domain !== "harness-registry") continue;
+		groups.set(ref.index, [...(groups.get(ref.index) ?? []), view]);
+	}
+	const common = (view: EndoCockpitCapabilityViewV0) =>
+		view.limits.filter((limit) =>
+			(
+				[
+					"evidence-identity-differs",
+					"evidence-confidence-differs",
+					"evidence-reduced-identity",
+					"runtime-differs",
+				] as const
+			).includes(limit.code as never),
+		);
+	for (const group of groups.values()) {
+		const omitting = group.filter(
+			(view) => !view.limits.some((limit) => limit.code === "evidence-capability-differs"),
+		);
+		if (omitting.length > 1) return false;
+		if (!group.every((view) => sameJson(common(view), common(group[0]!)))) return false;
+	}
+	return true;
+}
+
+/**
  * The evidence limits an embedded fingerprint decides. When the state names a fingerprint the identity view presents (its
  * current one, or the latest one with another identity), the snapshot holds both sides of each comparison - the evidence's
  * dependencies and the fingerprint's identity - so the limits that follow from them are required, and those they disprove
@@ -1796,6 +1904,14 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 	)
 		return false;
 	if (!identityNotesAreTrue(identity)) return false;
+	if (
+		!idsKeepPositions(
+			ctx.attachment,
+			pinnedIds(ctx, identity.notes, NOTE_POLICY.runtimeIdentity.cleaned, identityExposure(identity)),
+			identity,
+		)
+	)
+		return false;
 	if (
 		!duplicateNotesFollowLedger(identity.notes, ctx, NOTE_POLICY.runtimeIdentity.cleaned, identityExposure(identity))
 	)
@@ -2043,6 +2159,14 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		return false;
 	if (!capabilityNotesAreTrue(projection)) return false;
 	if (
+		!idsKeepPositions(
+			ctx.attachment,
+			pinnedIds(ctx, projection.notes, NOTE_POLICY.capabilityState.cleaned, capabilityExposure(projection, ctx)),
+			projection,
+		)
+	)
+		return false;
+	if (
 		!duplicateNotesFollowLedger(
 			projection.notes,
 			ctx,
@@ -2102,7 +2226,7 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 	for (const capability of projection.capabilities) {
 		if (!sameRef(capability.ref, state.ref)) return false;
 		// One evidence record is one view: capabilities citing the same record agree on everything about it. (Their `limits`
-		// are about the capability, not the record, and may differ.)
+		// are checked as a group after the loop: the record's and the state's agree, the entry-specific ones may differ.)
 		if (capability.evidence !== null) {
 			const same = cited.find((other) => sameRef(other.evidence!.ref, capability.evidence!.ref));
 			if (
@@ -2117,7 +2241,8 @@ function capabilityPointsInto(projection: EndoCockpitCapabilityStateV0, ctx: Ref
 		if (evidence !== null && !sameJson(evidence.withheld, ENDO_COCKPIT_WITHHELD_EVIDENCE_FIELDS_V0)) return false;
 		if (!limitsAreSound(capability, state, evidence, ctx, retained, namedIsEvidence)) return false;
 	}
-	return true;
+	const admitted = projection.capabilities.filter((c) => c.status !== "unverified");
+	return stateLimitsAreUniform(admitted, state) && sharedEvidenceAgrees(admitted);
 }
 
 /** Validates a capability state projection. Returns the value unchanged, or null. */
@@ -2296,6 +2421,19 @@ export function validateEndoCockpitSnapshotV0(value: unknown): EndoCockpitSnapsh
 		if (!sameJson(identity.source, capabilities.source)) return null;
 		// Where the two views name one position they name one record.
 		if (!positionsKeepIds(identity, capabilities)) return null;
+		const attachmentCtx = contextOf(identity.source);
+		if (
+			!idsKeepPositions(
+				attachmentCtx.attachment,
+				pinnedIds(attachmentCtx, [...identity.notes, ...capabilities.notes], ENDO_COCKPIT_REGISTRY_KINDS_V0, [
+					...identityExposure(identity),
+					...capabilityExposure(capabilities, attachmentCtx),
+				]),
+				identity,
+				capabilities,
+			)
+		)
+			return null;
 		// ... so they set aside the same fingerprint records, for the same reasons, and the state's latest fingerprint is the
 		// identity's current one (neither is derivable from the watermark alone). Other diagnostics are each view's own.
 		if (!sameJson(fingerprintCleaning(identity.notes), fingerprintCleaning(capabilities.notes))) return null;

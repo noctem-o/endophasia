@@ -12,6 +12,7 @@
 import {
 	type EndoIdentifierKindV0,
 	isEndoIdentifierV0,
+	isWellFormedEventKindV0,
 	isWellFormedKindV0,
 	parseEndoIdentifierV0,
 } from "./identity.ts";
@@ -471,36 +472,68 @@ export function isEndoCockpitContentAddressedIdV0(value: string): boolean {
 const SAFE_ID_SEGMENT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /**
- * Whether an identifier may be presented as it is: a well-formed Endophasia identifier whose opaque local part is
- * lowercase letters, digits and hyphens in dot-separated segments of at most 64 characters. Real identifiers are of that
- * shape (digests, counters, attachment-derived names). A credential has no reason to be, but a lowercase hex token is
- * indistinguishable from the digests identifiers legitimately carry; that residual is stated, not claimed away. An
- * identifier of another shape is presented as a deterministic alias (cockpit/projections/common.ts), which is of this shape.
- */
-export function isEndoCockpitPublicIdV0(value: string, kind?: EndoIdentifierKindV0): boolean {
-	const parsed = parseEndoIdentifierV0(value);
-	if (parsed === null || (kind !== undefined && parsed.kind !== kind)) return false;
-	if (isEndoCockpitContentAddressedIdV0(value)) return false;
-	if (!parsed.local.split(".").every((segment) => segment.length <= 64 && SAFE_ID_SEGMENT.test(segment))) return false;
-	// Admitted by shape AND by content: what the text policy flags is admitted nowhere.
-	return !endoCockpitTextUnsafeV0(value);
-}
-
-/**
  * The generated-alias namespace. A segment that begins `withheld-` is RESERVED for the placeholders the cockpit generates
  * (an identifier's alias, a withheld capability or event kind): no source identifier or kind in it is ever presented as it
  * is, so a generated alias can never be equal to anything a source wrote, and two distinct sources cannot collapse into
- * one public value. Source admission and public validation are distinct on purpose: the first is what a SOURCE value must
- * be to pass through unchanged (shape, content, not reserved); the second is what a wire record may CARRY (the same, or a
- * generated alias).
+ * one public value. Two sets share the shapes below and are disjoint by construction: what a SOURCE value must be to pass
+ * through unchanged (shape, content, NOT reserved), and what the generator emits in its place (a reserved segment of one
+ * exact form). A wire record may carry either, and nothing else in the namespace.
  */
 const RESERVED_SEGMENT = /^withheld-/;
 
-/** Whether a source identifier may be presented as it is: a public-shaped identifier that is not in the reserved namespace. */
-export function isEndoCockpitSourceIdAdmittedV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+/**
+ * The one segment a generated alias is: `withheld-` and the first 32 lowercase hex digits of a keyed token
+ * (cockpitAliasesV0 in cockpit/projections/common.ts). Whether the digits ARE the token of anything is not decidable
+ * without the key and is not claimed; what the wire can and does enforce is the exact shape.
+ */
+const GENERATED_ALIAS_SEGMENT = /^withheld-[0-9a-f]{32}$/;
+
+/** A dotted string (an identifier's local part, a kind) with a segment in the reserved namespace. */
+const hasReservedSegment = (dotted: string): boolean =>
+	dotted.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
+
+/** The identifier of a shape and content a record may carry, before the reserved namespace is considered. */
+function publicIdShapeV0(
+	value: string,
+	kind?: EndoIdentifierKindV0,
+): { kind: EndoIdentifierKindV0; local: string } | null {
 	const parsed = parseEndoIdentifierV0(value);
-	if (parsed === null || !isEndoCockpitPublicIdV0(value, kind)) return false;
-	return !parsed.local.split(".").some((segment) => RESERVED_SEGMENT.test(segment));
+	if (parsed === null || (kind !== undefined && parsed.kind !== kind)) return null;
+	if (isEndoCockpitContentAddressedIdV0(value)) return null;
+	if (!parsed.local.split(".").every((segment) => segment.length <= 64 && SAFE_ID_SEGMENT.test(segment))) return null;
+	// Admitted by shape AND by content: what the text policy flags is admitted nowhere.
+	return endoCockpitTextUnsafeV0(value) ? null : parsed;
+}
+
+/**
+ * Whether an identifier is a source identifier that may be presented as it is: a well-formed Endophasia identifier whose
+ * opaque local part is lowercase letters, digits and hyphens in dot-separated segments of at most 64 characters, outside the
+ * reserved namespace. Real identifiers are of that shape (digests, counters, attachment-derived names). A credential has no
+ * reason to be, but a lowercase hex token is indistinguishable from the digests identifiers legitimately carry; that
+ * residual is stated, not claimed away. An identifier of another shape is presented as a deterministic alias.
+ */
+export function isEndoCockpitSourceIdAdmittedV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+	const parsed = publicIdShapeV0(value, kind);
+	return parsed !== null && !hasReservedSegment(parsed.local);
+}
+
+/**
+ * Whether an identifier is exactly what `cockpitAliasesV0.id` generates: `endo.<namespace>.withheld-<32 lowercase hex>`, the
+ * local part ONE reserved segment and nothing around it. (The namespace is the source identifier's own; one that is not an
+ * identifier is aliased in `evidence`.)
+ */
+export function isEndoCockpitGeneratedIdAliasV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+	const parsed = publicIdShapeV0(value, kind);
+	return parsed !== null && GENERATED_ALIAS_SEGMENT.test(parsed.local);
+}
+
+/**
+ * Whether an identifier may be carried on the wire: a source identifier admitted as it is, or a generated alias in its exact
+ * form. A reserved segment of any other form (`withheld-not-a-token`, a token of another length or case, a segment beside
+ * others) is no source value and no generator output, so it is refused.
+ */
+export function isEndoCockpitPublicIdV0(value: string, kind?: EndoIdentifierKindV0): boolean {
+	return isEndoCockpitSourceIdAdmittedV0(value, kind) || isEndoCockpitGeneratedIdAliasV0(value, kind);
 }
 
 /**
@@ -508,10 +541,35 @@ export function isEndoCockpitSourceIdAdmittedV0(value: string, kind?: EndoIdenti
  * grammar, not flagged, not in the reserved namespace. A value of another shape is not a kind and is withheld or aliased.
  */
 export function isEndoCockpitSourceKindAdmittedV0(kind: string): boolean {
+	return isWellFormedKindV0(kind) && !endoCockpitTextUnsafeV0(kind) && !hasReservedSegment(kind);
+}
+
+/**
+ * Whether a kind is exactly what `cockpitAliasesV0.kind` generates: `withheld-<32 lowercase hex>`, one segment. This is the
+ * form of a runtime family or a capability name that was withheld; a timeline event kind carries it wrapped (below).
+ */
+export function isEndoCockpitGeneratedKindAliasV0(kind: string): boolean {
+	return GENERATED_ALIAS_SEGMENT.test(kind);
+}
+
+/** A runtime family or capability name (a bare label) as the wire carries it: admitted as written, or the bare alias. */
+export function isEndoCockpitPublicKindV0(kind: string): boolean {
+	return isEndoCockpitSourceKindAdmittedV0(kind) || isEndoCockpitGeneratedKindAliasV0(kind);
+}
+
+const EVENT_KIND_ALIAS_PREFIX = "other.";
+
+/**
+ * An event kind as a timeline entry carries it: a dotted kind of two or more segments admitted as written, or the alias of
+ * one that is not, wrapped as `other.<alias>` (the category "other" holds it; the producer's `presentedKind`). The bare alias
+ * is not an event kind, and the wrapper is not a bare label's: the two contexts differ and are checked apart.
+ */
+export function isEndoCockpitPublicEventKindV0(kind: string): boolean {
+	if (!isWellFormedEventKindV0(kind) || endoCockpitTextUnsafeV0(kind)) return false;
 	return (
-		isWellFormedKindV0(kind) &&
-		!endoCockpitTextUnsafeV0(kind) &&
-		!kind.split(".").some((segment) => RESERVED_SEGMENT.test(segment))
+		!hasReservedSegment(kind) ||
+		(kind.startsWith(EVENT_KIND_ALIAS_PREFIX) &&
+			isEndoCockpitGeneratedKindAliasV0(kind.slice(EVENT_KIND_ALIAS_PREFIX.length)))
 	);
 }
 

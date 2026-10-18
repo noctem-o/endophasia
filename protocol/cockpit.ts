@@ -64,7 +64,9 @@ import {
 	endoCockpitUnavailableAdmittedV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 	endoCockpitWithheldLowerBoundV0,
+	isEndoCockpitPublicEventKindV0,
 	isEndoCockpitPublicIdV0,
+	isEndoCockpitPublicKindV0,
 	isEndoCockpitSourceKindAdmittedV0,
 } from "./cockpit-fields.ts";
 import { type EndoCockpitLedgerV0, endoCockpitLedgerV0, scanEndoCockpitDuplicateV0 } from "./cockpit-ledger.ts";
@@ -89,7 +91,7 @@ import {
 	type EndoHarnessVersionOrderV0,
 	endoCapabilityStatusForV0,
 } from "./harness.ts";
-import { type EndoIdentifierKindV0, isWellFormedEventKindV0, isWellFormedKindV0 } from "./identity.ts";
+import type { EndoIdentifierKindV0 } from "./identity.ts";
 import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "./keyed-digest-shape.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
 import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
@@ -591,9 +593,17 @@ function isEvidenceId(value: unknown): value is string {
 	return isPublicId(value, "evidence");
 }
 
-/** A dotted kind (a runtime family, an attachment, a capability) that is also not text the policy flags. */
+/**
+ * A bare kind label as the wire carries it (a runtime family, a capability name): admitted as written or the bare generated
+ * alias (`withheld-` and 32 lowercase hex digits). A timeline event kind and an attachment are other contexts, checked apart.
+ */
 function isKindLabel(value: unknown): value is string {
-	return typeof value === "string" && isWellFormedKindV0(value) && !endoCockpitTextUnsafeV0(value);
+	return typeof value === "string" && isEndoCockpitPublicKindV0(value);
+}
+
+/** An attachment name: never aliased, so only a name a source may be presented under (no segment in the reserved namespace). */
+function isAttachmentName(value: unknown): value is string {
+	return typeof value === "string" && isEndoCockpitSourceKindAdmittedV0(value);
 }
 
 /** A free-text label (a name, a version, a title, a reason): bounded and not unsafe. Withheld text is not unsafe. */
@@ -627,8 +637,7 @@ function isRef(value: unknown): value is EndoCockpitRefV0 {
 	if (value.domain === "harness-registry") {
 		return (
 			exactKeys(value, ["domain", "attachment", "kind", "index", "id"]) &&
-			typeof value.attachment === "string" &&
-			isKindLabel(value.attachment) &&
+			isAttachmentName(value.attachment) &&
 			oneOf(ENDO_COCKPIT_REGISTRY_KINDS_V0, value.kind) &&
 			isCount(value.index) &&
 			(value.id === null || isEvidenceId(value.id))
@@ -735,9 +744,8 @@ const EMPTY_REGISTRY_DIGEST = "de9bc43d669ccacd726cb1594bcf67f047f7c4daacdae8e78
 function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 {
 	if (!isPlain(value) || !exactKeys(value, ["domain", "attachment", "condition", "watermark"])) return false;
 	if (value.domain !== "harness-registry" || typeof value.attachment !== "string") return false;
-	if (!isKindLabel(value.attachment) || !isCondition(value.condition)) return false;
 	// An attachment is never aliased on the wire: a reserved segment in its name was written by the source.
-	if (!isEndoCockpitSourceKindAdmittedV0(value.attachment)) return false;
+	if (!isAttachmentName(value.attachment) || !isCondition(value.condition)) return false;
 	if (value.condition.state === "unopenable") return value.watermark === null;
 	const mark = value.watermark;
 	if (
@@ -1119,8 +1127,9 @@ function isTimelineEntry(value: unknown): value is EndoCockpitTimelineEntryV0 {
 		return false;
 	if (!isCount(value.storageSequence) || value.storageSequence < 1) return false;
 	if (typeof value.eventId !== "string" || !isPublicId(value.eventId, "event")) return false;
-	if (typeof value.kind !== "string" || !isWellFormedEventKindV0(value.kind) || endoCockpitTextUnsafeV0(value.kind))
-		return false;
+	// The kind is admitted as written, or is the `other.` form of a generated alias: a reserved segment of any other form is
+	// no source's and no generator's.
+	if (typeof value.kind !== "string" || !isEndoCockpitPublicEventKindV0(value.kind)) return false;
 	if (!oneOf(ENDO_COCKPIT_CATEGORIES_V0, value.category)) return false;
 	// The category is defined by the kind; a record may not file an event under another.
 	if (value.category !== endoCockpitCategoryOfV0(value.kind)) return false;

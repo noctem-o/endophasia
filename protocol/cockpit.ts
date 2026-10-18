@@ -1443,6 +1443,29 @@ function retainedCount(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKind
 	return count - [...discardedPositions(notes, kind)].filter((at) => at < count).length;
 }
 
+/**
+ * The kept positions of a kind that the references of these values expose, each with the id its reference carries: every
+ * position of the kind among their references outside the cleaning notes, below the declared count and not discarded, so a
+ * forged reference cannot enlarge the set. It holds only kept positions, so `complete` (as many as the retained count) means it
+ * IS every kept position of the kind, and the ids say which records carry which id and which carry none. Null when the source
+ * has no position to count from. One pass over the references and the discards: nothing is sized by the declared count.
+ */
+function exposedKeptPositions(
+	kind: EndoCockpitRegistryKindV0,
+	ctx: RefContext,
+	notes: EndoCockpitNoteV0[],
+	...values: { notes: EndoCockpitNoteV0[] }[]
+): { ids: ReadonlyMap<number, string | null>; complete: boolean } | null {
+	const retained = retainedCount(notes, kind, ctx);
+	if (ctx.counts === null || retained === null) return null;
+	const discarded = discardedPositions(notes, kind);
+	const ids = new Map<number, string | null>();
+	for (const value of values)
+		for (const ref of keptRefsOf(value))
+			if (ref.kind === kind && ref.index < ctx.counts[kind] && !discarded.has(ref.index)) ids.set(ref.index, ref.id);
+	return { ids, complete: ids.size === retained };
+}
+
 /** The positions of a kind that the cleaning notes (foreign or repeated records) discard. */
 function discardedPositions(notes: EndoCockpitNoteV0[], kind: EndoCockpitRegistryKindV0): Set<number> {
 	const discarded = new Set<number>();
@@ -1620,16 +1643,15 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// the notice's change cannot be among them: the note is required, not just allowed.
 	if (lastNotification !== null && identity.source.watermark !== null && lastChange === null && missing.length !== 1)
 		return false;
-	// With exactly one change kept, the notice's change is that one or nothing: a different id requires the note. (With
-	// several kept, an earlier one may be the notice's: undecidable from the wire.)
-	if (
-		lastNotification !== null &&
-		lastChange !== null &&
-		retainedCount(notes, "change", ctx) === 1 &&
-		lastChange.id !== lastNotification.changeId &&
-		missing.length !== 1
-	)
-		return false;
+	// The projector emits the note exactly when no KEPT change carries the notice's id. When the references the view shows (the
+	// last change, the changes a `runtime-disagreement` note cites) are every kept change, their ids are every kept change's id,
+	// so an id none of them carries is no kept change's and the note is required. (One kept change, the last, is the simplest
+	// case. With some kept change not shown, it may be the notice's: undecidable from the wire.) Only the ids a reference
+	// carries decide this: what an id is inferred to own (`keptOwners`) only ever adds an obligation, and discharges none.
+	if (lastNotification !== null && missing.length !== 1) {
+		const changes = exposedKeptPositions("change", ctx, notes, identity);
+		if (changes?.complete && ![...changes.ids.values()].includes(lastNotification.changeId)) return false;
+	}
 	// Ids are unique across all kinds of a registry: a notice naming the id of a kept record of another kind names no change,
 	// however many changes are kept; one naming a kept change's id names one.
 	const owner =
@@ -1902,20 +1924,30 @@ function evidenceLimitsAgreeWithFingerprint(
 	if (state === null || state.fingerprintId === null) return true;
 	const embedded = [identity.current, identity.previousDifferent].filter((view) => view !== null);
 	const named = embedded.find((view) => view.id === state.fingerprintId);
-	// The state names a fingerprint the identity embeds: it is recorded. Naming none, when every kept fingerprint is embedded
-	// (their count is the retained count), it is not. Otherwise an older kept record may be the one: undecidable.
+	// The state names a fingerprint the identity embeds: it is recorded. Naming none, when every kept fingerprint is shown, it is
+	// not. Otherwise an older kept record may be the one: undecidable. A kept fingerprint is shown by an embedded view or by any
+	// reference of either view (a `runtime-disagreement` note cites one per runtime family, by complete reference but without
+	// the fingerprint): a reference proves that a kept record of that id exists, and nothing of its attributes. Both views read
+	// one registry (the same source, the same cleaning), so their references are positions of the same records.
 	// An id a kept record of another kind owns, in either view, is no fingerprint's (ids are unique across kinds); one a kept
 	// fingerprint owns names a recorded fingerprint, though nothing of it is embedded.
 	const ownerKind = owners.get(state.fingerprintId);
 	const namedByOtherKind = ownerKind !== undefined && ownerKind !== "fingerprint";
 	const recordedUnembedded = named === undefined && ownerKind === "fingerprint";
-	const everyKeptEmbedded =
-		retainedCount(capabilities.notes, "fingerprint", contextOf(capabilities.source)) === embedded.length;
+	const shown = exposedKeptPositions(
+		"fingerprint",
+		contextOf(capabilities.source),
+		capabilities.notes,
+		identity,
+		capabilities,
+	);
+	// Every kept fingerprint shown, and none carries the named id: only the ids the references carry decide it.
+	const everyKeptShownAbsent = shown?.complete && ![...shown.ids.values()].includes(state.fingerprintId);
 	for (const capability of capabilities.capabilities) {
 		if (capability.status === "unverified") continue;
 		const unrecorded = capability.limits.some((limit) => limit.code === "state-fingerprint-not-recorded");
 		if ((named !== undefined || recordedUnembedded) && unrecorded) return false;
-		if (named === undefined && (everyKeptEmbedded || namedByOtherKind) && !unrecorded) return false;
+		if (named === undefined && (everyKeptShownAbsent || namedByOtherKind) && !unrecorded) return false;
 	}
 	if (recordedUnembedded) {
 		// Existence is established, its attributes are not: only carried evidence on a reduced identity is decided (by the

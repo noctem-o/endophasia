@@ -453,19 +453,26 @@ const CONTROL_OR_INVISIBLE_ALL = new RegExp(INVISIBLE_CLASS, "g");
  * Whether the text holds an IPv6 literal, bracketed or not, with a port or a zone or without: any run of letters, digits and
  * colons that is a complete IPv6 address (eight groups of one to four hex digits, or fewer with one `::`). Brackets, `%zone`,
  * dots and a trailing `:port` are delimiters, so `[::1]:8080`, `fe80::1%eth0` and `::ffff:10.0.0.5` each reduce to a token. A
- * run with no decimal digit (`a::b`) or too long or short to be an address is skipped, so `std::vector`, a clock time and a
- * MAC address are not matched. One pass over the text, constant work per run: no backtracking.
+ * run too long or short to be an address, or with a group that is not hex, is skipped, so `std::vector`, a clock time and a
+ * MAC address are not matched. A run with no decimal digit is code notation as often as an address (`a::b`, `abc::def`), so it
+ * counts only with at least three groups (every complete eight-group literal does, `dead:beef::cafe` does, `dead::beef` does
+ * not), or when it stands in brackets before a port (`[dead::beef]:443`: the port is the evidence, as for a host name; a
+ * bracket with no port is a slice, `x[a::b]`). One pass over the text, constant work per run: no backtracking.
  */
 function holdsIpv6Literal(text: string): boolean {
 	if (!/:[0-9A-Fa-f]*:/.test(text)) return false;
-	for (const [run] of text.matchAll(/[0-9A-Za-z:]+/g)) {
+	for (const match of text.matchAll(/[0-9A-Za-z:]+/g)) {
+		const run = match[0];
 		const token = run.endsWith(":") && !run.endsWith("::") ? run.slice(0, -1) : run;
-		if (token.length < 2 || token.length > 39 || !/[0-9]/.test(token)) continue;
+		if (token.length < 2 || token.length > 39 || !token.includes(":")) continue;
 		const halves = token.split("::");
 		if (halves.length > 2) continue;
 		const groups = halves.flatMap((half) => (half === "" ? [] : half.split(":")));
 		if (!groups.every((group) => /^[0-9A-Fa-f]{1,4}$/.test(group))) continue;
-		if (halves.length === 2 ? groups.length <= 7 : groups.length === 8) return true;
+		if (!(halves.length === 2 ? groups.length <= 7 : groups.length === 8)) continue;
+		if (groups.length >= 3 || /[0-9]/.test(token)) return true;
+		const at = match.index!;
+		if (text[at - 1] === "[" && /^\]:[0-9]/.test(text.slice(at + run.length, at + run.length + 3))) return true;
 	}
 	return false;
 }

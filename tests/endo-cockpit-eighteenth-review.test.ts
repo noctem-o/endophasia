@@ -516,7 +516,22 @@ describe("a kept record cited in a runtime-disagreement note owns its id (P2)", 
 			notification: [notice(fa.id)],
 		});
 		expect(missing(i)).toHaveLength(1);
-		expect(validateEndoCockpitRuntimeIdentityV0(withoutNote(i))).not.toBeNull();
+		// Round 28: here both kept changes are shown (the disagreement note cites c1, the last change is c2), so no kept change can
+		// carry the notice's id and the note is required: the stripped value is refused on that ground, not on any owner the
+		// discarded fingerprint could be taken to be. (It was accepted before, when coverage of the kept changes was not decided.)
+		expect(validateEndoCockpitRuntimeIdentityV0(withoutNote(i))).toBeNull();
+		// With a kept change shown by nothing the wire cannot tell, and the discarded fingerprint establishes no owner: the note
+		// stays optional, which is what this test is about.
+		const c3 = changeRecord({ id: "endo.evidence.test-change.3" });
+		const hidden = identityOf({
+			...base,
+			fingerprint: [foreign(fa), ...fps.slice(1)],
+			change: [c1, c2, c3],
+			notification: [notice(fa.id)],
+		});
+		expect(missing(hidden)).toHaveLength(1);
+		expect(validateEndoCockpitRuntimeIdentityV0(hidden)).not.toBeNull();
+		expect(validateEndoCockpitRuntimeIdentityV0(withoutNote(hidden))).not.toBeNull();
 	});
 
 	// Changes: c1 (runtime "other") then c2; fingerprints all pi. The note cites the current fingerprint and the change c1,

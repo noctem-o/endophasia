@@ -77,7 +77,7 @@ export function readEndoCockpitRuntimeV0(
 }
 
 export interface EndoCockpitSnapshotOptionsV0 extends EndoCockpitEventLogReadOptionsV0 {
-	/** The attachments to include. Default: every registry directory found under the root. */
+	/** The attachments to include. Default: every name `listEndoCockpitAttachmentsV0` finds under the root. */
 	attachments?: readonly string[];
 }
 

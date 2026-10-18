@@ -323,7 +323,11 @@ export function readEndoCockpitEventLogV0(
 	return observeEventLog(root, options, null).read;
 }
 
-/** The attachments with a registry directory under `root`, in code-unit order. Reading creates nothing. */
+/**
+ * The attachments under `root` that are not proven to be something other than a registry directory, in code-unit order.
+ * Reading creates nothing. A listed name is a name the harness directory held when it was listed, not a claim that the
+ * attachment can be opened: the registry reader makes its own observation, later, and reports the condition it finds.
+ */
 export function listEndoCockpitAttachmentsV0(root: string): string[] {
 	let names: string[];
 	try {
@@ -337,10 +341,13 @@ export function listEndoCockpitAttachmentsV0(root: string): string[] {
 			// A name the source-admission policy refuses (flagged text, or a segment in the reserved alias namespace) cannot be
 			// presented as written, so it is not listed (reading it by name is refused).
 			if (!isWellFormedKindV0(name) || !isEndoCockpitSourceKindAdmittedV0(name)) return false;
+			// Only a name proven not to be a directory (a file, or a link to one) is left out. A name that was listed but whose
+			// metadata cannot be read (a dangling or looping link, no search permission) is kept: failing to look is not
+			// evidence that the attachment is not there, and the registry reader reports what it finds when it reads it.
 			try {
 				return statSync(`${root}/harness/${name}`).isDirectory();
 			} catch {
-				return false;
+				return true;
 			}
 		})
 		.sort(compareCodeUnitsV0);

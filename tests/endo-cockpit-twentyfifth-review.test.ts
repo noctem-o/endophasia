@@ -3,7 +3,7 @@
 // Why it is true of every projection: the family inserted j-th is first seen at the j-th kept fingerprint or later, its cited
 // representative is its LATEST kept record, and a kept record's index is at least its position among the kept (a set-aside
 // record only widens the gap). It is necessary, not sufficient: it cannot tell `[f3, f2]` (one family seen at 0 and 3, another
-// at 1 and 2) from an impossible order, and with set-aside records the j-th kept index is a tighter bound. Descending indices
+// at 1 and 2) from an impossible order; with set-aside records round 26 makes it the j-th KEPT index. Descending indices
 // are legitimate (a family seen again cites its newest record but keeps its first position), so no ascending rule is placed.
 
 import { describe, expect, it } from "vitest";

@@ -69,7 +69,12 @@ import {
 	isEndoCockpitPublicKindV0,
 	isEndoCockpitSourceKindAdmittedV0,
 } from "./cockpit-fields.ts";
-import { type EndoCockpitLedgerV0, endoCockpitLedgerV0, scanEndoCockpitDuplicateV0 } from "./cockpit-ledger.ts";
+import {
+	type EndoCockpitLedgerV0,
+	endoCockpitBelowV0,
+	endoCockpitLedgerV0,
+	scanEndoCockpitDuplicateV0,
+} from "./cockpit-ledger.ts";
 
 export { ENDO_COCKPIT_WITHHELD_TEXT_V0 } from "./cockpit-fields.ts";
 
@@ -1655,10 +1660,13 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 	// kept fingerprint first (a repeated family keeps its first position and cites its latest fingerprint, so their indices need
 	// not rise), then each kept change whose family is new, in index order and never overwritten. So the references are the
 	// fingerprints', then the changes' in strictly rising index: a fingerprint after a change, or changes out of order, is no
-	// projection's. The family inserted j-th is first seen at the j-th kept position or later, its representative is its latest
-	// kept record, and a kept record's index is at least its position (a set-aside record only widens the gap): so the j-th
-	// fingerprint reference has an index of at least j. Necessary, not sufficient: it cannot tell [f3, f2] (a family seen at 0 and
-	// 3, another at 1 and 2) from an impossible order, and with set-aside records the j-th KEPT index is a tighter bound.
+	// projection's. The family inserted j-th is first seen at the j-th kept fingerprint or later and its representative is its
+	// latest kept record, so the j-th fingerprint reference is a kept record of rank at least j (its position less the discarded
+	// fingerprints below it: a binary search over the discards the cleaning notes name, never a walk over the positions
+	// between). Necessary, not sufficient: it cannot tell [f3, f2] (a family seen at 0 and 3, another at 1 and 2) from an
+	// impossible order, and which family a reference belongs to is not on the wire.
+	const discardedFingerprints =
+		disagreement.length === 0 ? [] : [...discardedPositions(notes, "fingerprint")].sort((a, b) => a - b);
 	if (
 		disagreement.some((note) => {
 			const cited = new Set<string>();
@@ -1670,7 +1678,11 @@ function identityNotesAreTrue(identity: EndoCockpitRuntimeIdentityV0): boolean {
 				if (cited.has(position)) return true;
 				cited.add(position);
 				if (ref.kind !== "change") {
-					if (lastChange !== null || ref.index < fingerprints) return true;
+					if (
+						lastChange !== null ||
+						ref.index - endoCockpitBelowV0(discardedFingerprints, ref.index) < fingerprints
+					)
+						return true;
 					fingerprints += 1;
 					return false;
 				}

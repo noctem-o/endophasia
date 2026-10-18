@@ -34,8 +34,11 @@ export interface EndoCockpitLedgerV0<K extends string> {
 
 const ascending = (a: number, b: number): number => a - b;
 
-/** How many entries of the sorted list are below `bound`: a binary search. */
-function below(sorted: readonly number[], bound: number): number {
+/**
+ * How many entries of the sorted list are below `bound`: a binary search. Also how the identity validator ranks a position among
+ * the KEPT records of a kind (`index - below(discarded, index)`), without walking the positions between.
+ */
+export function endoCockpitBelowV0(sorted: readonly number[], bound: number): number {
 	let low = 0;
 	let high = sorted.length;
 	while (low < high) {
@@ -104,7 +107,10 @@ export function scanEndoCockpitDuplicateV0<K extends string>(
 	for (const kind of ledger.kinds) {
 		const bound = kind === ref.kind ? ref.index : ledger.counts[kind];
 		upto.set(kind, bound);
-		const unknown = bound - below(ledger.discarded.get(kind)!, bound) - below(ledger.shown.get(kind)!, bound);
+		const unknown =
+			bound -
+			endoCockpitBelowV0(ledger.discarded.get(kind)!, bound) -
+			endoCockpitBelowV0(ledger.shown.get(kind)!, bound);
 		const low = held?.get(kind)?.low ?? null;
 		if (unknown > 0 || (low !== null && low < bound)) kinds.add(kind);
 		if (kind === ref.kind) break;

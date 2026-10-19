@@ -57,6 +57,7 @@ import {
 	usageView,
 } from "../cockpit-ui/src/model.ts";
 import { classifyReply, shownVersion } from "../cockpit-ui/src/reply.ts";
+import { type AppState, controlsLocked, pacedNow, pauseRemaining } from "../cockpit-ui/src/state.ts";
 import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0 } from "../protocol/evaluation.ts";
 import { ENDO_EVENT_SOURCES_V0 } from "../protocol/event.ts";
 import {
@@ -176,46 +177,85 @@ describe("the response classifier", () => {
 			expect(classifyReply(200, null, type, body).kind, `${type} ${body.slice(0, 12)}`).toBe("malformed");
 	});
 
-	it("names a contract version it does not read, at the top level and in every nested projection", () => {
-		const cases: [string, (copy: any) => void, string, string][] = [
-			["schema", (c) => (c.schemaVersion = "endo.cockpit-snapshot.v1"), "schema", "endo.cockpit-snapshot.v1"],
-			["projection", (c) => (c.projectionVersion = "cockpit-snapshot.4"), "projection", "cockpit-snapshot.4"],
-			["consistency", (c) => (c.consistency = "one-snapshot"), "consistency", "one-snapshot"],
+	it("names a contract version it does not read, which record declared it, and what this build reads for that record", () => {
+		const P = SUPPORTED_PROJECTIONS;
+		const cases: [string, (copy: any) => void, string, string, string, string][] = [
+			[
+				"schema",
+				(c) => (c.schemaVersion = "endo.cockpit-snapshot.v1"),
+				"snapshot",
+				"schema",
+				"endo.cockpit-snapshot.v1",
+				"endo.cockpit-snapshot.v0",
+			],
+			[
+				"projection",
+				(c) => (c.projectionVersion = "cockpit-snapshot.4"),
+				"snapshot",
+				"projection",
+				"cockpit-snapshot.4",
+				P.snapshot,
+			],
+			[
+				"consistency",
+				(c) => (c.consistency = "one-snapshot"),
+				"snapshot",
+				"consistency",
+				"one-snapshot",
+				"independent-sources",
+			],
 			[
 				"timeline schema",
 				(c) => (c.timeline.schemaVersion = "endo.cockpit-session-timeline.v9"),
+				"timeline",
 				"schema",
 				"endo.cockpit-session-timeline.v9",
+				"endo.cockpit-session-timeline.v0",
 			],
 			[
 				"timeline projection",
 				(c) => (c.timeline.projectionVersion = "cockpit-session-timeline.9"),
+				"timeline",
 				"projection",
 				"cockpit-session-timeline.9",
+				P.sessionTimeline,
 			],
-			["identity schema", (c) => (c.runtimes[0].identity.schemaVersion = "x.v1"), "schema", "x.v1"],
+			[
+				"identity schema",
+				(c) => (c.runtimes[0].identity.schemaVersion = "x.v1"),
+				"runtime identity",
+				"schema",
+				"x.v1",
+				"endo.cockpit-runtime-identity.v0",
+			],
 			[
 				"identity projection",
 				(c) => (c.runtimes[0].identity.projectionVersion = "cockpit-runtime-identity.9"),
+				"runtime identity",
 				"projection",
 				"cockpit-runtime-identity.9",
+				P.runtimeIdentity,
 			],
 			[
 				"capability schema",
 				(c) => (c.runtimes[0].capabilities.schemaVersion = "endo.cockpit-capability-state.v2"),
+				"capability state",
 				"schema",
 				"endo.cockpit-capability-state.v2",
+				"endo.cockpit-capability-state.v0",
 			],
 			[
 				"capability projection",
 				(c) => (c.runtimes[0].capabilities.projectionVersion = "cockpit-capability-state.2"),
+				"capability state",
 				"projection",
 				"cockpit-capability-state.2",
+				P.capabilityState,
 			],
 		];
-		for (const [name, edit, what, declared] of cases) {
+		for (const [name, edit, record, what, declared, expected] of cases) {
 			const reply = ok(mutated(snapshot, edit));
-			expect(reply, name).toEqual({ kind: "unsupported", what, declared });
+			expect(reply, name).toEqual({ kind: "unsupported", record, what, declared, expected });
 		}
 	});
 
@@ -237,7 +277,13 @@ describe("the response classifier", () => {
 		expect(shownVersion(7)).toBe("not a string");
 		expect(shownVersion(null)).toBe("not a string");
 		const reply = ok(mutated(snapshot, (c) => (c.projectionVersion = "p".repeat(500))));
-		expect(reply).toEqual({ kind: "unsupported", what: "projection", declared: "unreadable" });
+		expect(reply).toEqual({
+			kind: "unsupported",
+			record: "snapshot",
+			what: "projection",
+			declared: "unreadable",
+			expected: SUPPORTED_PROJECTIONS.snapshot,
+		});
 	});
 
 	it("refuses a snapshot whose structure the renderers could not index", () => {
@@ -536,5 +582,44 @@ describe("the timeline window", () => {
 		expect(duration(42.4)).toBe("42 ms");
 		expect(duration(1349)).toBe("1.3 s");
 		void dirname;
+	});
+});
+
+describe("the pause the server asks for", () => {
+	/** A state after a 429: `retryAt` is the banner's wall-clock date, `holdUntil` the monotonic deadline the page decides by. */
+	const after429 = (retryAt: Date | null, holdUntil: number | null): AppState =>
+		({
+			busy: false,
+			problem: { reply: { kind: "paced", retryAfterSeconds: 5 }, at: new Date(), retryAt, holdUntil },
+		}) as unknown as AppState;
+
+	it("is decided on the monotonic clock: setting the wall clock back or forward changes nothing", () => {
+		// The wall clock was set a year back, so the banner's date is far in the future; the wait still ends at its deadline.
+		const wallBack = after429(new Date(Date.now() + 365 * 24 * 3600 * 1000), 10_000);
+		expect(pacedNow(wallBack, 9_999)).toBe(true);
+		expect(pauseRemaining(wallBack, 9_000)).toBe(1_000);
+		expect(pacedNow(wallBack, 10_000)).toBe(false);
+		expect(pauseRemaining(wallBack, 10_001)).toBe(0);
+		expect(controlsLocked(wallBack)).toBe(pacedNow(wallBack));
+		// Set a year forward, the banner's date is long past; the wait has not ended.
+		const wallForward = after429(new Date(0), 10_000);
+		expect(pacedNow(wallForward, 5_000)).toBe(true);
+	});
+
+	it("is no pause at all when the server gave no time, however the banner's date reads", () => {
+		expect(pacedNow(after429(null, null), 0)).toBe(false);
+		expect(pacedNow(after429(new Date(Date.now() + 60_000), null), 0)).toBe(false);
+		expect(pacedNow({ busy: false, problem: null } as unknown as AppState, 0)).toBe(false);
+	});
+
+	it("defaults to the monotonic clock, not the wall clock", () => {
+		expect(pacedNow(after429(new Date(0), performance.now() + 60_000))).toBe(true);
+		expect(pacedNow(after429(new Date(Date.now() + 60_000), performance.now() - 1))).toBe(false);
+	});
+
+	it("reads a figure of up to six digits, which a timer holds, and refuses a longer one rather than hold a timer that cannot", () => {
+		expect(classifyReply(429, "3600", null, "")).toEqual({ kind: "paced", retryAfterSeconds: 3600 });
+		expect(classifyReply(429, "999999", null, "")).toEqual({ kind: "paced", retryAfterSeconds: 999999 });
+		expect(classifyReply(429, "1000000", null, "")).toEqual({ kind: "paced", retryAfterSeconds: null });
 	});
 });

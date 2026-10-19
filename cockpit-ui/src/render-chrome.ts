@@ -1,13 +1,18 @@
 // The top bar's read status and the banner for a read that did not produce a snapshot. Plain sentences, each saying what happened
 // and what is still on screen; the browser's clock is always named as the browser's, apart from any recorded time.
 import { show } from "./dom.ts";
-import { SUPPORTED_PROJECTIONS } from "./labels.ts";
 import { duration } from "./model.ts";
 import { shownVersion } from "./reply.ts";
 import { type AppState, controlsLocked, type Problem } from "./state.ts";
 import { note } from "./widgets.ts";
 
 const clock = (date: Date) => date.toLocaleTimeString("en-GB");
+
+const DECLARED = {
+	schema: "the schema version",
+	projection: "the projection version",
+	consistency: "the consistency mode",
+} as const;
 
 export function readStatusText(state: AppState): string {
 	if (state.busy)
@@ -37,7 +42,7 @@ function problemText(problem: Problem): string {
 		case "server-error":
 			return `The server reported an internal error (status ${reply.status}). Nothing was read.`;
 		case "unsupported":
-			return `This page cannot read the response: it declares a ${reply.what} version of “${shownVersion(reply.declared)}”, and this build reads ${SUPPORTED_PROJECTIONS.snapshot}. Nothing from it is shown.`;
+			return `This page cannot read the response: its ${reply.record} declares ${DECLARED[reply.what]} “${shownVersion(reply.declared)}”, and this build reads “${reply.expected}” there. Nothing from it is shown.`;
 		case "malformed":
 			return `The response did not have the shape this page reads (${reply.reason}). Nothing from it is shown.`;
 	}

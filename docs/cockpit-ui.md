@@ -86,13 +86,13 @@ so the page does not offer "latest on open" (that would be two reads) but a **La
 | Reply | The page |
 | :--- | :--- |
 | 200, a snapshot of a version it reads | shows it, with the browser time and how long it took |
-| 429 | "The server is pacing reads", the time from `Retry-After`, controls off until then (one timeout), the last read stays on screen marked not current, no retry |
+| 429 | "The server is pacing reads", the time from `Retry-After` (the server sends at most 3,600 s, so the figure is always a plain number a timer can hold), controls off until then (one timeout, set from the same `performance.now()` deadline the lock reads, so a wall clock set back or forward during the wait changes neither), the last read stays on screen marked not current, no retry |
 | network failure, timeout (60 s) | says the server did not answer or the read was abandoned; the last read stays, marked not current |
 | 404, 421, 403 | says the address or the request was refused (404: the access address changes on every launch) |
 | 5xx | says the server reported an internal error |
-| 200 of an unknown schema, projection or consistency | names the declared version as text and shows nothing from it |
+| 200 of an unknown schema, projection or consistency | names the record that declared it (snapshot, timeline, runtime identity or capability state), the declared version as text, and the version this build reads for that record; shows nothing from it |
 | 200 that is not JSON or not the expected shape | says so and shows nothing from it |
-| 200 the classifier passes but the panels cannot draw | the snapshot is drawn once into detached containers before it replaces anything; if that throws, it is a failed read (the previous read stays, marked not current) |
+| 200 the classifier passes but a view cannot be drawn | before a snapshot replaces anything, every view the operator can reach from it without a further read is drawn once into detached containers: the timeline (under the current filters and under none), the sources, every event's detail, and for every attachment its runtime panel, capability list and every capability's detail. If any of that throws it is a failed read (the previous read stays, marked not current), so a malformed event field or evidence record cannot wait behind a click. This costs about 40 to 50 ms on a 500-row read, measured in headless Chromium with the GPU off, and only happens on a read the operator asked for |
 
 ## Tokens
 
@@ -143,8 +143,9 @@ map of name to content; the server serves exactly those names from memory.
 may not contain: HTML sinks, dynamic code, storage, the page's own address, polling, absolute URLs, inline script or style),
 `tests/endo-cockpit-http-ui.test.ts` (the page routes, headers, guards, budget, the unchanged JSON API) and
 `tests/endo-cockpit-ui-browser.test.ts`: the real page in headless Chromium with the GPU off (Trusted Types enforced, no console or
-policy violation, populated, empty, absent, degraded and unopenable sources, paging, filtering, single-flight refresh, a real 429, a stopped
-server, replies a server never sends). The browser is found on PATH or by `CHROME_BIN`; without one those tests skip, saying so.
+policy violation, populated, empty, absent, degraded and unopenable sources, paging, filtering, single-flight refresh, a real 429, a pause
+under a wall clock set back, a stopped server, replies a server never sends, among them snapshots holding a view that cannot be drawn
+until it is opened: an event's fields, a capability's evidence, a second attachment, a row a filter hides). The browser is found on PATH or by `CHROME_BIN`; without one those tests skip, saying so.
 
 ## Intentionally deferred
 

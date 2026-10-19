@@ -405,7 +405,7 @@ own predicate (well-formed kind, presentable, no reserved segment). (6) **Query*
 non-negative integers (`^(0|[1-9][0-9]{0,15})$`, safe-integer, `limit` 1 to `ENDO_COCKPIT_PAGE_MAX_LIMIT_V0`), at most 96 characters.
 (7) **Read budget**: a budget of read milliseconds that accrues at a duty cycle (default 0.25, with a 1,000 ms burst) from the
 monotonic clock, lazily (no timer), and is **charged the time each authenticated read actually took**, so it can go negative; while
-it is not positive the next read is `429` with `Retry-After` (the seconds until it recovers). It is charged by time and not by
+it is not positive the next read is `429` with `Retry-After` (the seconds until it recovers, at most 3,600: a budget with a tiny duty can owe far longer, and the answer is then "ask again in an hour", so every client can read the figure as a plain number and hold it in a timer). It is charged by time and not by
 request because a request count does not bound a read that outlasts the refill: a 10 requests-per-second bucket never fired against
 a 10,000-event store, whose reads take 0.3 s (measured: 30 back-to-back requests, 0 refused), where the time budget refused 25 of 30
 and held the server to about a quarter of a core. Small stores are unaffected (30 back-to-back timeline requests on 1,000 events,

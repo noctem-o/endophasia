@@ -22,7 +22,7 @@ import { basisBadge, facts, note, stateBadge, textValue, unavailable } from "./w
 
 const none = (text: string) => h("span", { class: "dim" }, text);
 
-function eventDetail(entry: EndoCockpitTimelineEntryV0): HTMLElement {
+export function eventDetail(entry: EndoCockpitTimelineEntryV0): HTMLElement {
 	const usage = usageView(entry.usage);
 	const fieldRows = Object.entries(entry.fields);
 	return h(
@@ -165,7 +165,7 @@ function eventDetail(entry: EndoCockpitTimelineEntryV0): HTMLElement {
 	);
 }
 
-function capabilityDetail(capability: EndoCockpitCapabilityViewV0): HTMLElement {
+export function capabilityDetail(capability: EndoCockpitCapabilityViewV0): HTMLElement {
 	const evidence = capability.evidence;
 	return h(
 		"div",

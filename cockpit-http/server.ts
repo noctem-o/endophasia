@@ -42,6 +42,12 @@ const API = "api/v0";
 const MAX_PATH_CHARS = 512;
 const MAX_QUERY_CHARS = 96;
 const MAX_CONNECTIONS = 32;
+/**
+ * The longest `Retry-After` the server sends. A read budget with a very small duty could owe far more; the answer is then "an hour
+ * from now, ask again", and a client that asks then gets the remainder. It keeps the figure short enough for any client to hold in
+ * a timer (a browser timer holds about 24 days) and to read as a plain number.
+ */
+const MAX_RETRY_AFTER_SECONDS = 3600;
 const MAX_HEADER_BYTES = 8 * 1024;
 /** How long a refused connection may linger for its peer to read the refusal and close. */
 const REFUSAL_LINGER_MS = 2000;
@@ -118,7 +124,7 @@ export interface EndoCockpitServerOptionsV0 {
 	/**
 	 * How much of its wall time the server may spend reading, as a duty cycle: `duty` milliseconds of read time accrue per
 	 * millisecond of wall time, up to `burstMs`, and each authenticated read is charged the time it actually took (so the balance
-	 * can go negative, and the next read waits until it is positive again: a 429 with Retry-After). Default `{ duty: 0.25,
+	 * can go negative, and the next read waits until it is positive again: a 429 with Retry-After, which is at most an hour). Default `{ duty: 0.25,
 	 * burstMs: 1000 }`: about sixteen prompt refreshes of a small store, or one of a very long one, then at most a quarter of
 	 * a core on average.
 	 */
@@ -342,7 +348,13 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 			"Content-Length": Buffer.byteLength(body),
 			...(status === 405 ? { Allow: "GET" } : {}),
 			...(status === 400 || status === 500 ? { Connection: "close" } : {}),
-			...(status === 429 ? { "Retry-After": String(Math.max(1, Math.ceil(-balance / duty / 1000))) } : {}),
+			...(status === 429
+				? {
+						"Retry-After": String(
+							Math.min(MAX_RETRY_AFTER_SECONDS, Math.max(1, Math.ceil(-balance / duty / 1000))),
+						),
+					}
+				: {}),
 		});
 		response.end(body);
 	};

@@ -696,10 +696,23 @@ suite("replies the page must not trust", () => {
 		);
 		const page = await open(url);
 		const banner = await text(page, "#banner");
-		expect(banner).toContain("projection version of “cockpit-snapshot.9<img src=x onerror=1>”");
+		expect(banner).toContain(
+			"its snapshot declares the projection version “cockpit-snapshot.9<img src=x onerror=1>”, and this build reads “cockpit-snapshot.3” there",
+		);
 		expect(await count(page, "#banner img")).toBe(0);
 		expect(await count(page, "#timeline tr[data-seq]")).toBe(0);
 		expect(page.seen.problems).toEqual([]);
+	});
+
+	it("an unknown version in a nested record names that record and the version this build reads for it", async () => {
+		const snapshot = JSON.parse(JSON.stringify(realSnapshot()));
+		snapshot.timeline.projectionVersion = "cockpit-session-timeline.9";
+		const url = await pretend((res) => json(res, 200, JSON.stringify(snapshot)));
+		const banner = await text(await open(url), "#banner");
+		expect(banner).toContain(
+			"its timeline declares the projection version “cockpit-session-timeline.9”, and this build reads “cockpit-session-timeline.3” there",
+		);
+		expect(banner).not.toContain("cockpit-snapshot.3");
 	});
 
 	/** A real snapshot, as JSON, for a stand-in server to hand out. */
@@ -815,6 +828,94 @@ suite("replies the page must not trust", () => {
 			await stopFake();
 		}
 	});
+
+	/** A real snapshot with something one view of it cannot draw, for the checks that a view the operator could open later is tried now. */
+	const copy = () => JSON.parse(JSON.stringify(realSnapshot()));
+
+	it("refuses at once a snapshot holding a view the operator could only open later: an event's fields, a capability's evidence, another attachment", async () => {
+		const withField = copy();
+		withField.timeline.entries[0].fields = { x: null };
+		const withEvidence = copy();
+		const capabilities = withEvidence.runtimes[0].capabilities.capabilities;
+		expect(capabilities.length).toBeGreaterThan(0);
+		capabilities[0].evidence = {};
+		const withSecond = copy();
+		const current = withSecond.runtimes[0].identity.current;
+		expect(current).not.toBeNull();
+		const second = JSON.parse(JSON.stringify(withSecond.runtimes[0]));
+		second.identity.source.attachment = "other.attachment";
+		second.identity.current.version = null;
+		withSecond.runtimes.push(second);
+		for (const [name, snapshot] of [
+			["fields", withField],
+			["evidence", withEvidence],
+			["a second attachment", withSecond],
+		] as const) {
+			const url = await pretend((res) => json(res, 200, JSON.stringify(snapshot)));
+			const page = await open(url);
+			expect(await text(page, "#banner"), name).toMatch(/could not be displayed/);
+			expect(await page.eval("document.body.dataset.state"), name).toBe("error");
+			expect(await count(page, "#timeline tr[data-seq]"), name).toBe(0);
+			expect(await page.eval("document.querySelector('#refresh').disabled"), name).toBe(false);
+			expect(page.seen.problems, name).toEqual([]);
+			await stopFake();
+		}
+	});
+
+	it("refuses a snapshot whose unreadable row the current filter happens to hide, because clearing the filter would draw it", async () => {
+		const good = copy();
+		const entries = good.timeline.entries as { kind: string; producer: string; eventId: string; usage: unknown }[];
+		const needleEntry = entries.find((e) => e.usage === null);
+		expect(needleEntry).toBeDefined();
+		const needle = needleEntry!.kind.toLowerCase();
+		const hides = (e: { kind: string; producer: string; eventId: string }) =>
+			![e.kind, e.producer, e.eventId].some((value) => value.toLowerCase().includes(needle));
+		const hidden = JSON.parse(JSON.stringify(good));
+		const victim = (hidden.timeline.entries as typeof entries).find((e) => e.usage !== null && hides(e));
+		expect(victim).toBeDefined();
+		victim!.usage = { basis: "reported", value: null };
+		let reads = 0;
+		const url = await pretend((res) => json(res, 200, JSON.stringify(++reads === 1 ? good : hidden)));
+		const page = await open(url);
+		const rows = await count(page, "#timeline tr[data-seq]");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); i.value = ${JSON.stringify(needle)}; i.dispatchEvent(new Event("input")); })()`,
+		);
+		const filtered = await count(page, "#timeline tr[data-seq]");
+		expect(filtered).toBeGreaterThan(0);
+		expect(filtered).toBeLessThan(rows);
+		await page.click("#refresh");
+		await page.settled(2);
+		expect(await page.eval("document.body.dataset.state")).toBe("error");
+		expect(await text(page, "#banner")).toMatch(/could not be displayed.*is still shown and is not current/);
+		await page.click("#timeline .btn.quiet"); // clear the filter: the last good read draws in full
+		expect(await count(page, "#timeline tr[data-seq]")).toBe(rows);
+		expect(await text(page, "#timeline")).not.toContain("could not be displayed.");
+	});
+
+	it("lifts a pause by the monotonic clock: a wall clock set back during the wait does not keep the controls locked", async () => {
+		const body = JSON.stringify(realSnapshot());
+		let reads = 0;
+		const url = await pretend((res) => {
+			reads += 1;
+			if (reads === 2)
+				return void res
+					.writeHead(429, { "Content-Type": "application/json", "Retry-After": "2" })
+					.end('{"error":"too-many-requests"}');
+			return json(res, 200, body);
+		});
+		const page = await open(url);
+		await page.click("#refresh"); // the second read, answered 429 with Retry-After: 2
+		await page.settled(2);
+		expect(await page.eval("document.querySelector('#refresh').disabled")).toBe(true);
+		// The clock is set back an hour while the wait runs: by the wall clock the wait would end an hour from now.
+		await page.eval(`(() => { const real = Date.now.bind(Date); Date.now = () => real() - 3600000; })()`);
+		await page.waitFor("document.querySelector('#refresh').disabled === false", 8000);
+		await page.click("#refresh");
+		await page.settled(3);
+		expect(await page.eval("document.body.dataset.state")).toBe("ready");
+		expect(reads).toBe(3);
+	}, 30_000);
 
 	it("a 429 with no Retry-After is shown as pacing without inventing a time, and the controls stay usable", async () => {
 		const url = await pretend((res) => json(res, 429, '{"error":"too-many-requests"}'));

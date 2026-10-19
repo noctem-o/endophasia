@@ -14,8 +14,17 @@ export type Reply =
 	/** The server refused the request (4xx other than 429). `code` is its fixed refusal code when the body had one. */
 	| { kind: "refused"; status: number; code: string | null }
 	| { kind: "server-error"; status: number }
-	/** A well-formed response of a contract version this build does not read. `declared` is bounded printable text. */
-	| { kind: "unsupported"; what: "schema" | "projection" | "consistency"; declared: string }
+	/**
+	 * A well-formed response of a contract version this build does not read: which record declared it, what was declared (`declared`,
+	 * bounded printable text) and what this build reads for that record (`expected`, from this build's own constants).
+	 */
+	| {
+			kind: "unsupported";
+			record: "snapshot" | "timeline" | "runtime identity" | "capability state";
+			what: "schema" | "projection" | "consistency";
+			declared: string;
+			expected: string;
+	  }
 	| { kind: "malformed"; reason: string }
 	| { kind: "unreachable"; reason: "network" | "timeout" };
 
@@ -32,17 +41,37 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const malformed = (reason: string): Reply => ({ kind: "malformed", reason });
 
+type RecordName = Extract<Reply, { kind: "unsupported" }>["record"];
+
 /**
  * Check a declared schema and projection version against this build's; null when both are read. A record that declares no version
- * is malformed (nothing says which contract it is); one that declares another is a contract this build does not read.
+ * is malformed (nothing says which contract it is); one that declares another is a contract this build does not read, and the
+ * reply says which record and which version this build reads for it.
  */
-function versionProblem(record: Record<string, unknown>, schema: string, projection: string): Reply | null {
+function versionProblem(
+	record: Record<string, unknown>,
+	name: RecordName,
+	schema: string,
+	projection: string,
+): Reply | null {
 	if (typeof record.schemaVersion !== "string" || typeof record.projectionVersion !== "string")
 		return malformed("a record declares no version");
 	if (record.schemaVersion !== schema)
-		return { kind: "unsupported", what: "schema", declared: shownVersion(record.schemaVersion) };
+		return {
+			kind: "unsupported",
+			record: name,
+			what: "schema",
+			declared: shownVersion(record.schemaVersion),
+			expected: schema,
+		};
 	if (record.projectionVersion !== projection)
-		return { kind: "unsupported", what: "projection", declared: shownVersion(record.projectionVersion) };
+		return {
+			kind: "unsupported",
+			record: name,
+			what: "projection",
+			declared: shownVersion(record.projectionVersion),
+			expected: projection,
+		};
 	return null;
 }
 
@@ -82,7 +111,12 @@ function entryShape(entry: unknown): boolean {
 
 function timelineProblem(timeline: unknown): Reply | null {
 	if (!isObject(timeline)) return malformed("the timeline is missing");
-	const version = versionProblem(timeline, "endo.cockpit-session-timeline.v0", SUPPORTED_PROJECTIONS.sessionTimeline);
+	const version = versionProblem(
+		timeline,
+		"timeline",
+		"endo.cockpit-session-timeline.v0",
+		SUPPORTED_PROJECTIONS.sessionTimeline,
+	);
 	if (version !== null) return version;
 	const span = timeline.window;
 	if (
@@ -107,12 +141,14 @@ function runtimeProblem(runtime: unknown): Reply | null {
 	if (!isObject(identity) || !isObject(capabilities)) return malformed("a runtime view is incomplete");
 	const idVersion = versionProblem(
 		identity,
+		"runtime identity",
 		"endo.cockpit-runtime-identity.v0",
 		SUPPORTED_PROJECTIONS.runtimeIdentity,
 	);
 	if (idVersion !== null) return idVersion;
 	const capVersion = versionProblem(
 		capabilities,
+		"capability state",
 		"endo.cockpit-capability-state.v0",
 		SUPPORTED_PROJECTIONS.capabilityState,
 	);
@@ -168,10 +204,16 @@ export function classifyReply(
 		return malformed("the response is not valid JSON");
 	}
 	if (!isObject(parsed)) return malformed("the response is not a snapshot");
-	const version = versionProblem(parsed, "endo.cockpit-snapshot.v0", SUPPORTED_PROJECTIONS.snapshot);
+	const version = versionProblem(parsed, "snapshot", "endo.cockpit-snapshot.v0", SUPPORTED_PROJECTIONS.snapshot);
 	if (version !== null) return version;
 	if (parsed.consistency !== "independent-sources")
-		return { kind: "unsupported", what: "consistency", declared: shownVersion(parsed.consistency) };
+		return {
+			kind: "unsupported",
+			record: "snapshot",
+			what: "consistency",
+			declared: shownVersion(parsed.consistency),
+			expected: "independent-sources",
+		};
 	const timeline = timelineProblem(parsed.timeline);
 	if (timeline !== null) return timeline;
 	if (!Array.isArray(parsed.runtimes)) return malformed("the snapshot lists no runtimes array");

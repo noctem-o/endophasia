@@ -5,14 +5,22 @@
 
 import type { EndoCockpitSnapshotV0 } from "../../protocol/cockpit.ts";
 import { fetchSnapshot } from "./api.ts";
-import { NO_FILTERS, selectRuntime } from "./model.ts";
+import { filtersActive, NO_FILTERS, selectRuntime } from "./model.ts";
 import { renderCapabilities } from "./render-capabilities.ts";
 import { renderBanner, renderTopbar } from "./render-chrome.ts";
-import { renderInspector } from "./render-inspector.ts";
+import { capabilityDetail, eventDetail, renderInspector } from "./render-inspector.ts";
 import { renderRuntime } from "./render-runtime.ts";
 import { renderSources } from "./render-sources.ts";
 import { renderTimeline } from "./render-timeline.ts";
-import { type Actions, type AppState, controlsLocked, PAGE_SIZES, pacedNow, type Selection } from "./state.ts";
+import {
+	type Actions,
+	type AppState,
+	controlsLocked,
+	PAGE_SIZES,
+	pacedNow,
+	pauseRemaining,
+	type Selection,
+} from "./state.ts";
 import { note, panel } from "./widgets.ts";
 
 const state: AppState = {
@@ -124,22 +132,35 @@ function render(): void {
 	restore();
 }
 
-/** Whether every panel can draw this snapshot: a dry run into detached containers, so nothing on screen changes. */
+/**
+ * Whether the page can draw everything this snapshot lets the operator reach, without a further read: a dry run into detached
+ * containers, so nothing on screen changes. Selecting an event or a capability, switching attachment and clearing a filter all draw
+ * from the snapshot already held, so each of those views is drawn here, for every event, every attachment and every capability. A
+ * snapshot that any of them cannot draw is a failed read now, not a broken panel later.
+ */
 function displayable(snapshot: EndoCockpitSnapshotV0): boolean {
 	const request = state.loaded?.request ?? { afterSequence: 0, limit: state.pageSize };
-	const candidate: AppState = {
+	const view = (patch: Partial<AppState>): AppState => ({
 		...state,
 		busy: false,
 		problem: null,
 		loaded: { snapshot, fetchedAt: new Date(), durationMs: 0, request },
-	};
+		...patch,
+	});
 	const scratch = () => ({ body: document.createElement("div"), tools: document.createElement("div") });
 	try {
-		renderRuntime(scratch(), candidate, actions);
-		renderCapabilities(scratch(), candidate, actions);
-		renderTimeline(scratch(), candidate, actions);
-		renderSources(scratch(), candidate);
-		renderInspector(scratch(), candidate);
+		// The timeline under the filters now set and under none (which draws every row of the window, whatever a filter later hides).
+		for (const filters of filtersActive(state.filters) ? [state.filters, NO_FILTERS] : [NO_FILTERS])
+			renderTimeline(scratch(), view({ filters }), actions);
+		renderSources(scratch(), view({}));
+		renderInspector(scratch(), view({}));
+		for (const entry of snapshot.timeline.entries) eventDetail(entry);
+		for (const runtime of snapshot.runtimes) {
+			const shown = view({ attachment: runtime.identity.source.attachment });
+			renderRuntime(scratch(), shown, actions);
+			renderCapabilities(scratch(), shown, actions);
+			for (const capability of runtime.capabilities.capabilities) capabilityDetail(capability);
+		}
 		return true;
 	} catch {
 		return false;
@@ -147,6 +168,21 @@ function displayable(snapshot: EndoCockpitSnapshotV0): boolean {
 }
 
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * The one timeout: it fires when the server's requested pause is over and the controls come back. It is set from the same monotonic
+ * deadline the lock reads, and sets itself again if it fires early, so the two never disagree. (The server sends at most 3,600 s; the
+ * classifier reads at most six digits, 999,999 s or about 11.6 days, which a browser timer, limited to about 24.8 days, holds.)
+ */
+function armResume(): void {
+	clearTimeout(resumeTimer);
+	const wait = pauseRemaining(state);
+	if (wait <= 0) return;
+	resumeTimer = setTimeout(() => {
+		render();
+		armResume();
+	}, wait + 50);
+}
 
 async function load(request: { afterSequence: number; limit: number }): Promise<void> {
 	if (state.busy || pacedNow(state)) return;
@@ -166,6 +202,7 @@ async function load(request: { afterSequence: number; limit: number }): Promise<
 				reply: { kind: "malformed", reason: "the snapshot could not be displayed" },
 				at: new Date(),
 				retryAt: null,
+				holdUntil: null,
 			};
 		} else if (reply.kind === "snapshot") {
 			const moved =
@@ -189,13 +226,15 @@ async function load(request: { afterSequence: number; limit: number }): Promise<
 			)
 				state.filters = { ...state.filters, session: null };
 		} else {
-			const retryAt =
-				reply.kind === "paced" && reply.retryAfterSeconds !== null
-					? new Date(Date.now() + reply.retryAfterSeconds * 1000)
-					: null;
-			state.problem = { reply, at: new Date(), retryAt };
-			clearTimeout(resumeTimer);
-			if (retryAt !== null) resumeTimer = setTimeout(render, Math.max(0, retryAt.getTime() - Date.now()) + 50);
+			const pause =
+				reply.kind === "paced" && reply.retryAfterSeconds !== null ? reply.retryAfterSeconds * 1000 : null;
+			state.problem = {
+				reply,
+				at: new Date(),
+				retryAt: pause === null ? null : new Date(Date.now() + pause),
+				holdUntil: pause === null ? null : performance.now() + pause,
+			};
+			armResume();
 		}
 	} catch {
 		// A reply that passed the classifier but could not be used is a failed read like any other: said so, never a page stuck
@@ -204,6 +243,7 @@ async function load(request: { afterSequence: number; limit: number }): Promise<
 			reply: { kind: "malformed", reason: "the snapshot could not be used" },
 			at: new Date(),
 			retryAt: null,
+			holdUntil: null,
 		};
 	} finally {
 		render();

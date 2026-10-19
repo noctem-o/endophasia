@@ -309,6 +309,11 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		handle,
 	);
 	server.maxConnections = MAX_CONNECTIONS;
+	// Node answers an `Expect` header itself (an interim 100 or a bare 417) before `handle` runs; routing both events through it
+	// gives them the same guards, fixed bodies and headers as every other request. No 100 Continue is ever sent: a request that
+	// announces a body is refused as one.
+	server.on("checkContinue", handle);
+	server.on("checkExpectation", handle);
 	server.on("clientError", (_error, socket) => answerEndoCockpitClientErrorV0(socket as Socket)); // a TCP server's clients are net sockets
 
 	await new Promise<void>((resolve, reject) => {

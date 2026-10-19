@@ -522,6 +522,39 @@ describe("the parser's own refusals and the default port", () => {
 	});
 });
 
+describe("Expect headers take the guarded path (P2 on PR #58)", () => {
+	it("every Expect value gets the same guards, fixed bodies and headers, and never an interim 100 or a bare 417", async () => {
+		const { server, before } = await started();
+		const target = `${capabilityOf(server)}/api/v0/timeline?limit=1`;
+		for (const expect_ of ["100-continue", "unsupported-thing", "100-CONTINUE"]) {
+			const own = `Host: 127.0.0.1:${server.port}`;
+			const served = await raw(
+				server,
+				`GET ${target} HTTP/1.1\r\n${own}\r\nExpect: ${expect_}\r\nConnection: close\r\n\r\n`,
+			);
+			expect(served, expect_).not.toContain("100 Continue");
+			expect(served, expect_).not.toContain("417");
+			expect(served, expect_).toMatch(/^HTTP\/1\.1 200 /);
+			for (const header of ["Cache-Control: no-store", "Referrer-Policy: no-referrer", "Content-Security-Policy:"])
+				expect(served, expect_).toContain(header);
+			const rebinding = await raw(
+				server,
+				`GET ${target} HTTP/1.1\r\nHost: evil.example\r\nExpect: ${expect_}\r\nConnection: close\r\n\r\n`,
+			);
+			expect(rebinding, expect_).toMatch(/^HTTP\/1\.1 421 /);
+			expect(rebinding).toContain('{"error":"misdirected-request"}');
+			expect(rebinding).toContain("Content-Security-Policy:");
+			const post = await raw(
+				server,
+				`POST ${target} HTTP/1.1\r\n${own}\r\nExpect: ${expect_}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n`,
+			);
+			expect(post, expect_).toMatch(/^HTTP\/1\.1 405 /);
+			expect(post).not.toContain("100 Continue");
+		}
+		expect(treeHash(root)).toBe(before);
+	});
+});
+
 describe("what a failure may say", () => {
 	it("an internal failure is a generic 500 that reveals neither the error nor the path, and goes only to the host's hook", async () => {
 		const errors: unknown[] = [];

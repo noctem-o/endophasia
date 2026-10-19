@@ -59,7 +59,7 @@ export class Browser {
 				`--user-data-dir=${profile}`,
 				"about:blank",
 			],
-			{ stdio: ["ignore", "ignore", "pipe"] },
+			{ stdio: ["ignore", "ignore", "pipe"], detached: true }, // its own process group, so close() can end every helper
 		);
 		const browser = new Browser(child, profile);
 		const url = await new Promise<string>((resolve, reject) => {
@@ -149,9 +149,19 @@ export class Browser {
 		} catch {
 			// already closed
 		}
-		this.child.kill("SIGKILL");
+		// A browser is several processes (zygote, renderers, utility): end the whole group, then wait for the main one.
+		try {
+			process.kill(-this.child.pid!, "SIGKILL");
+		} catch {
+			this.child.kill("SIGKILL");
+		}
 		await new Promise((resolve) => (this.child.exitCode === null ? this.child.once("exit", resolve) : resolve(null)));
-		rmSync(this.profile, { recursive: true, force: true });
+		// The profile is scratch in the temporary directory: a helper that was still writing is retried, and a leftover is not a test failure.
+		try {
+			rmSync(this.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+		} catch {
+			// left for the operating system's temporary-file cleanup
+		}
 	}
 }
 

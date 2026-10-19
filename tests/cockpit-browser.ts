@@ -31,7 +31,7 @@ export interface Seen {
 
 export class Browser {
 	private child: ChildProcess;
-	private socket!: WebSocket;
+	private socket: WebSocket | undefined;
 	private next = 1;
 	private pending = new Map<number, Pending>();
 	private listeners: ((method: string, params: Record<string, unknown>, sessionId: string | undefined) => void)[] = [];
@@ -42,7 +42,11 @@ export class Browser {
 		this.profile = profile;
 	}
 
-	static async launch(executable: string): Promise<Browser> {
+	/**
+	 * Start the browser and connect to it. `startupMs` bounds the wait for it to announce its DevTools address. A launch that fails at
+	 * either step ends the whole process group and removes the profile before it throws: the caller has no `Browser` to close then.
+	 */
+	static async launch(executable: string, startupMs = 30_000): Promise<Browser> {
 		const profile = mkdtempSync(join(tmpdir(), "endo-cockpit-chrome-"));
 		const child = spawn(
 			executable,
@@ -62,25 +66,36 @@ export class Browser {
 			{ stdio: ["ignore", "ignore", "pipe"], detached: true }, // its own process group, so close() can end every helper
 		);
 		const browser = new Browser(child, profile);
-		const url = await new Promise<string>((resolve, reject) => {
-			let text = "";
-			const timer = setTimeout(() => reject(new Error("the browser did not start")), 30_000);
-			child.stderr!.on("data", (chunk: Buffer) => {
-				text += chunk.toString();
-				const match = /DevTools listening on (ws:\/\/\S+)/.exec(text);
-				if (match) {
+		try {
+			const url = await new Promise<string>((resolve, reject) => {
+				let text = "";
+				const fail = (message: string): void => {
 					clearTimeout(timer);
-					resolve(match[1]!);
-				}
+					reject(new Error(message));
+				};
+				const timer = setTimeout(() => fail("the browser did not start"), startupMs);
+				child.stderr!.on("data", (chunk: Buffer) => {
+					text += chunk.toString();
+					const match = /DevTools listening on (ws:\/\/\S+)/.exec(text);
+					if (match) {
+						clearTimeout(timer);
+						resolve(match[1]!);
+					}
+				});
+				child.once("exit", () => fail("the browser exited at startup"));
+				child.once("error", () => fail("the browser could not be started"));
 			});
-			child.once("exit", () => reject(new Error("the browser exited at startup")));
-		});
-		await new Promise<void>((resolve, reject) => {
-			browser.socket = new WebSocket(url);
-			browser.socket.addEventListener("open", () => resolve());
-			browser.socket.addEventListener("error", () => reject(new Error("cannot reach the browser")));
-			browser.socket.addEventListener("message", (event) => browser.dispatch(String(event.data)));
-		});
+			await new Promise<void>((resolve, reject) => {
+				const socket = new WebSocket(url);
+				browser.socket = socket;
+				socket.addEventListener("open", () => resolve());
+				socket.addEventListener("error", () => reject(new Error("cannot reach the browser")));
+				socket.addEventListener("message", (event) => browser.dispatch(String(event.data)));
+			});
+		} catch (error) {
+			await browser.close();
+			throw error;
+		}
 		return browser;
 	}
 
@@ -105,6 +120,7 @@ export class Browser {
 	send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<Record<string, unknown>> {
 		const id = this.next++;
 		return new Promise((resolve, reject) => {
+			if (this.socket === undefined) return reject(new Error("the browser is not connected"));
 			this.pending.set(id, { resolve, reject });
 			this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
 		});
@@ -145,17 +161,23 @@ export class Browser {
 
 	async close(): Promise<void> {
 		try {
-			this.socket.close();
+			this.socket?.close();
 		} catch {
 			// already closed
 		}
-		// A browser is several processes (zygote, renderers, utility): end the whole group, then wait for the main one.
-		try {
-			process.kill(-this.child.pid!, "SIGKILL");
-		} catch {
-			this.child.kill("SIGKILL");
+		// A browser is several processes (zygote, renderers, utility): end the whole group, then wait for the main one. A browser that
+		// never started has no process to end or wait for.
+		const pid = this.child.pid;
+		if (pid !== undefined) {
+			try {
+				process.kill(-pid, "SIGKILL");
+			} catch {
+				this.child.kill("SIGKILL");
+			}
+			// A child that died of a signal has no exit code but has already emitted its exit: waiting for it again would never end.
+			const over = this.child.exitCode !== null || this.child.signalCode !== null;
+			await new Promise((resolve) => (over ? resolve(null) : this.child.once("exit", resolve)));
 		}
-		await new Promise((resolve) => (this.child.exitCode === null ? this.child.once("exit", resolve) : resolve(null)));
 		// The profile is scratch in the temporary directory: a helper that was still writing is retried, and a leftover is not a test failure.
 		try {
 			rmSync(this.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

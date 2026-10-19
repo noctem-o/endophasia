@@ -440,18 +440,22 @@ export type EndoCockpitFreshnessV0 =
  * Compare a source the consumer holds with the store now, read-only. This is the supported way to learn that a fresh
  * snapshot is needed: the event log offers a prefix check over the events' complete contents (it is append-only), the
  * registry only equality (it has no cursor). The event log is opened once, so the length, the held prefix and the
- * condition are one observation. The sources are independent: this says nothing about any other.
+ * condition are one observation. The sources are independent: this says nothing about any other. The key is checked before the
+ * source is opened: none (with a held position) or another admitted key is `digest-context-differs`; a supplied key a cockpit
+ * read does not admit is a TypeError.
  */
 export function checkEndoCockpitSourceFreshnessV0(
 	root: string,
 	previous: EndoCockpitEventLogSourceV0 | EndoCockpitRegistrySourceV0,
 	digestKey: EndoDigestKeyV0,
 ): EndoCockpitFreshnessV0 {
-	// The context comes first: a key that is not the one the held source was read under can say nothing about the source.
+	// No key at all, beside a held position, is no context to compare in: the held source was read under another one. A key that
+	// IS supplied is admitted first, like every read's (an unadmitted one, whatever its label, is a usage error and never a
+	// different context), and only then compared with the context the held source was read under.
 	const held = previous.watermark;
-	if (held !== null && (digestKey?.keyId !== held.keyId || typeof digestKey.digest !== "function"))
-		return "digest-context-differs";
+	if (held !== null && digestKey == null) return "digest-context-differs";
 	const key = requireKey(digestKey);
+	if (held !== null && key.keyId !== held.keyId) return "digest-context-differs";
 	if (previous.domain === "harness-registry") {
 		const now = readEndoCockpitRegistryV0(root, previous.attachment, key).source;
 		if (now.condition.state === "unopenable") return "unavailable";

@@ -765,10 +765,14 @@ exercised only against fake Pi ([research/README.md](research/README.md#fake-onl
 The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
 limitations accepted for now.
 
-**Not yet built:** the Endophasia-native cockpit over its own store ([target](docs/cockpit.md); the fork-era cockpit
-spoke Pi's private services and was removed, and the operator view today is `endo harness status`; its read-only
-observation bridge, `cockpit/`, exists as a library of versioned projections and a read-only store reader, with no
-server or page yet), model-internal
+**Endophasia Studio** (`endo studio`, [docs/studio.md](docs/studio.md)) is the first Endophasia-native cockpit: a read-only
+browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
+read-only server (`cockpit-http/`) ([design](docs/cockpit.md), [the page](docs/cockpit-ui.md)). It shows one observation page: the
+recorded runtime identity, capability state with its limits, the session timeline in storage order and each source's condition. It
+writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below.
+
+**Not yet built:** the other Studio modes (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
+model-internal
 observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
 control, model-originated steering proposals and an external authority provider, any live provider integration wired
 into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
@@ -782,14 +786,14 @@ Endophasia is ready for architecture experiments. It is not a stable multi-runti
 
 The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
 shorter and more product-shaped**. Evidence closure and the installable Operator Alpha are complete; the next delivery
-priority is the first Endophasia-native read-only cockpit, followed by checkpoints and deeper EVOLVE work.
+priority was the first Endophasia-native read-only cockpit (built: `endo studio`), followed by checkpoints and deeper EVOLVE work.
 
 ~~~text
 evidence closure (done)
       ↓
 installable operator alpha (released: 0.1.0-alpha.1)
       ↓
-native read-only cockpit (next)
+native read-only cockpit (built: endo studio)
       ↓
 forkable checkpoints
       ↓
@@ -826,8 +830,9 @@ counterfactual / evolution / training work
 3. **First Endophasia-native operator surface.**
    - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
      [docs/cockpit.md](docs/cockpit.md): runtime identity/change state, capability state with reasons and a live session
-     timeline, all projected from Endophasia records without depending on Pi private services. The projection and
-     read-only reader layer is built (`cockpit/`); the local HTTP server and the page are not.
+     timeline, all projected from Endophasia records without depending on Pi private services. Built: the projection and
+     read-only reader layer (`cockpit/`), the local read-only HTTP server (`cockpit-http/`), the first page (`cockpit-ui/`) and
+     the installed `endo studio` command ([docs/studio.md](docs/studio.md)).
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
      model-observation scenes as separate typed projections even if they later share one renderer.
@@ -862,7 +867,7 @@ counterfactual / evolution / training work
 
 ### Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the next delivery priority: the first native read-only cockpit.
+These are valid directions, but they should **not** displace the delivery sequence above (the first native read-only cockpit is built; checkpoints are next).
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
@@ -913,8 +918,8 @@ They describe **capability dependencies**, not the immediate shipping order abov
   ([policy and inventory](docs/schema-compatibility.md)).
 
 #### Partly done
-3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed; the cognition graph
-   and a cockpit over that store are not wired yet.
+3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed, and a read-only Studio page
+   shows it (`endo studio`); the cognition graph is not wired yet.
    - *Graph semantics:* the graph will be a derived projection, never a second source of truth. Each edge has a
      *kind* (causal, provenance, authority) and, separately, an *epistemic status*: observed (established by runtime or
      wire evidence), reported (the runtime says so), derived (a deterministic transformation of evidence) or inferred
@@ -1182,7 +1187,12 @@ endo harness attach --prompt "..."            # optional: calls your configured 
 endo harness status                          # read-only identity and capability status
 endo harness overview                        # read-only session lifecycle
 endo trajectory show <pi-session-id>         # use the id printed by attach
+endo studio                                  # read-only browser interface over the store; prints one private address
 ~~~
+
+`endo studio` serves the page packaged in the install, on `127.0.0.1` only, behind a private address printed once; it never writes the
+store, and its first launch creates its own digest key ([docs/studio.md](docs/studio.md)). From a checkout the same server runs with
+`npm run cockpit -- <store-root>`.
 
 A local install also works: `npm install endophasia@0.1.0-alpha.1` followed by `npx --no-install endo doctor`.
 See [docs/install.md](docs/install.md) for the complete first-run guide and [release verification](docs/release-alpha.md)

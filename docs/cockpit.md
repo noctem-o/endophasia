@@ -1,8 +1,8 @@
 # The Endophasia-native cockpit
 
-Status: **the observation bridge, a local read-only HTTP server and a first browser page are implemented** (a library, a
-transport and one screen: [below](#the-observation-bridge-implemented), [the server](#the-local-http-server-implemented),
-[the page](cockpit-ui.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
+Status: **the observation bridge, a local read-only HTTP server, a first browser page and the installed `endo studio` command are
+implemented** (a library, a transport, one screen and a launcher: [below](#the-observation-bridge-implemented),
+[the server](#the-local-http-server-implemented), [the page](cockpit-ui.md), [Studio](studio.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
 Session-worker services over a fork-only listener and cannot run against a user-installed Pi
 ([pi-attach-inventory.md](pi-attach-inventory.md) §5). Its replacement is not a port. It is a cockpit over
 Endophasia's own records, for any attached harness.
@@ -40,8 +40,8 @@ A read-mostly operator view served by Endophasia, whose only sources are Endopha
 The bridge, the server and the page exist (below, and [cockpit-ui.md](cockpit-ui.md)); the page's refresh is explicit, as the
 server's cost requires (item 2).
 
-1. `endo cockpit <root>` serves a static page and a read-only JSON API over the store and registry. (The page and the JSON API are served by
-   `npm run cockpit -- <root>` from a checkout; the `endo cockpit` command is a later stage, with packaging.)
+1. `endo studio [<root>]` serves a static page and a read-only JSON API over the store and registry ([studio.md](studio.md)). (From a
+   checkout, `npm run cockpit -- <root>` serves the same page and API through the same host module.)
 2. The page shows identity, the last change notice, capability state with reasons, and a session timeline. It updates when
    the operator asks (Refresh, a page of the timeline), not as events are appended: every read re-validates the whole log
    (see the measured cost below), so there is no polling, and a push channel is a separate design.
@@ -371,7 +371,8 @@ loads a key). `cockpit/` itself still imports no network API.
 
 **Architecture decision.** (1) A new top-level directory, because the bridge's boundary test forbids `node:http` under `cockpit/`
 and the CLI build deliberately compiles only the `cli/index.ts` closure, so the library and the server stay out of `dist/`
-(packaging is a later stage). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
+(packaging is a later stage; since PR D the closure reaches them through `endo studio`, which loads the host lazily, and the page is
+built into `dist/cockpit-ui/`, see [studio.md](studio.md)). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
 (`canonicalEndoJsonV0`, `endoCockpitDigestKeyAdmittedV0`, `isEndoCockpitSourceKindAdmittedV0`, `isWellFormedKindV0`), so the
 server refuses exactly the keys and attachment names the reader would throw on, as client errors before any read. (4) **Freshness
 is deferred.** `checkEndoCockpitSourceFreshnessV0` needs a client-held source descriptor, which means a POST body and the
@@ -445,6 +446,15 @@ npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]
 curl -s 'http://127.0.0.1:<port>/<capability>/api/v0/timeline?limit=20'
 ```
 
+**Installed launch: `endo studio`.** `endo studio [<root>] [--root dir] [--port n] [--key-file path]` starts this same server on the page
+packaged in the installed `dist/cockpit-ui/`; it is documented in [studio.md](studio.md). `cli/studio.ts` is a thin command: it
+parses its arguments (an invalid invocation is exit 2, decided before anything is created), finds the page beside itself, and calls
+the shared host, `cockpit-http/host.ts`, which checks the page is whole, loads or creates the dedicated key (the one write a launch
+can cause; never the observed store) and calls `startEndoCockpitServerV0` unchanged. `cockpit-http/launch.ts`, the development entry
+above, is a second thin caller of the same host. The server gained nothing for this: its routes, guards, headers, read budget and
+asset allowlist are as before. The command prints the access address once on stdout (a human line, an exception to the canonical-JSON convention) and keeps running
+until SIGINT or SIGTERM closes the server and ends the process by itself, with status 0.
+
 **Cost and the event loop (measured, `scripts/bench-cockpit-http.ts`).** A request is **not** cheap and is not made cheaper by a small page: the bridge reopens and validates the whole history on every
 read (`cockpit/reader.ts`), the read is synchronous, and the transport adds nothing to it (no cache, index or worker; PR B does not
 change this). One run on the development machine (Linux, Node 26, one registry, synthetic events of about 360 bytes, the server in its
@@ -487,6 +497,6 @@ script or style, nothing remote, and any HTML sink throws), plus `X-Frame-Option
 by the browser's address and never appears in a query string, a script or a log. See [cockpit-ui.md](cockpit-ui.md).
 
 **Not in this stage.** A freshness endpoint (above), an evidence-inspection endpoint, SSE or any push, a watcher, an incremental
-index, a cache, authentication beyond the capability, TLS (the traffic never leaves the loopback interface), and the `endo cockpit`
-command and packaging. The server is not a general file server: it serves the files the host handed it by exact name and reads none
+index, a cache, authentication beyond the capability, and TLS (the traffic never leaves the loopback interface). The installed command is `endo studio`
+(above); an `--open` option, a daemon and any non-loopback listener are not offered. The server is not a general file server: it serves the files the host handed it by exact name and reads none
 itself, opens nothing the bridge does not open, and refuses to name a path.

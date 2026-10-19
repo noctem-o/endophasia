@@ -6,11 +6,12 @@ from the observations. The page is a **projection of records, not an observation
 and shows what comes back. It invents no capability, status, confidence, activity or internal state.
 
 ```text
-npm run cockpit -- <store-root>        # builds the page, starts the server, prints the access URL once
+endo studio [<root>]                   # the installed command (docs/studio.md): serves the page packaged in dist/cockpit-ui/
+npm run cockpit -- <store-root>        # from a checkout: builds the page, starts the server, prints the access URL once
 node scripts/seed-cockpit-demo.ts <empty-directory>   # a demo store from the committed Pi recordings (3 sessions, the 1.0.0 specimen)
 ```
 
-![The cockpit page over the demo store: runtime and capabilities on the left, the timeline in the middle, sources and the inspector on the right](images/cockpit-ui.png)
+![The installed Studio page over the demo store: runtime and capabilities on the left, the timeline in the middle, sources and the inspector on the right](images/studio.png)
 
 _The real page at 1440 x 900 in headless Chromium with the GPU off, over a store seeded by `scripts/seed-cockpit-demo.ts` (event 14 selected). Nothing on it is a mock-up._
 
@@ -135,7 +136,8 @@ browser, and a protocol change breaks the typecheck (the label tables are `Recor
 
 The build (`npm run build:cockpit-ui`, run by `npm run cockpit`) compiles `cockpit-ui/src` with `tsc` to ordinary ES modules in
 `cockpit-ui/dist/` (ignored). Nothing is bundled and no dependency was added. The launcher reads that directory once and hands the server a
-map of name to content; the server serves exactly those names from memory.
+map of name to content; the server serves exactly those names from memory. `npm run build` builds the same page into `dist/cockpit-ui/`
+with the same builder, after it has emptied `dist/`, and the installed `endo studio` reads it from there ([studio.md](studio.md)).
 
 ## Tests
 
@@ -153,4 +155,5 @@ DEVELOP, EVOLVE, WORK, DREAM, OBSERVE and VERIFY as separate applications; any p
 steering, queueing or stopping a run; attachment management; evidence promotion; spatial renderings (the DREAM reference); and any
 interpretability view (the OBSERVE reference), which needs a real measurement source and a contract for it first. A freshness check
 (`checkEndoCockpitSourceFreshnessV0`) and an evidence-inspection endpoint are PR B's deferred items and are not needed by one screen.
-Packaging and the installed `endo cockpit` command are PR D.
+The installed command is `endo studio` ([studio.md](studio.md)); the page's visible name is Studio (title and heading), while the
+directories keep the names `cockpit-ui` and `cockpit-http`.

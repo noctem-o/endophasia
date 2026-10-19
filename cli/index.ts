@@ -7,12 +7,14 @@
  *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
  *   node cli/index.ts digest-key id
+ *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
  *   node cli/index.ts proxy <record|replay> ...
  *   node cli/index.ts experiment <run|report> ...
  *   node cli/index.ts replay <store> <session> --pi <path> --timing <as-recorded|immediate> ...
  *
  * The command functions print one canonical-JSON document on success; any throw becomes a one-line error on stderr
- * and exit code 1. The store commands (cli/commands.ts) touch only the host storage layer; the harness commands
+ * and exit code 1. The exception is `studio` (cli/studio.ts): a long-running command that prints one human line (the access
+ * address) and returns, with status 0, when interrupted; it is loaded only when it is asked for. The store commands (cli/commands.ts) touch only the host storage layer; the harness commands
  * (cli/harness.ts) attach to a user-installed runtime through its adapter. The trajectory commands
  * (cli/trajectory.ts) read stores only.
  */
@@ -49,6 +51,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	artifacts: artifactsCommand,
 	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
 	"digest-key": digestKeyCommand,
+	studio: (argv) => import("./studio.ts").then((module) => module.studioCommand(argv)),
 	doctor: doctorCommand,
 	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),
 	replay: replayCommand,

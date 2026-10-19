@@ -454,7 +454,7 @@ default budget would answer `429` to back-to-back reads of the longer histories)
 | 50,000 | 18 MB | 1,351 / 1,339 / 1,455 ms | 1,341 / 1,268 / 1,424 ms | 137 / 380 | 433 MB |
 
 Reading the table: (1) cost is linear in the **history**, about 25 to 27 microseconds of CPU per event, whatever the page size; a
-100-event page costs about what a 200-event snapshot does, and "warm" is cheaper than "cold" only by the process's own warm-up (at most about 20 ms on a 1,000-event store, under 20% at 10,000 and about 6% at 50,000), because no source data is kept
+100-event page costs about what a 200-event snapshot does, and "warm" is cheaper than "cold" only by the process's own warm-up (a fixed cost of about 20 to 70 ms: 63 ms of the 121 ms cold `snapshot` at 1,000 events, about half, and 19 ms of the cold `timeline`; at 10,000 events 70 ms (20%) and 48 ms (15%); at 50,000 under 1% and about 5%), because no source data is kept
 (the server holds no source data between requests and the code keeps none; resident memory was 108 to 110 MB idle and 160 to 433 MB after the workloads, and whether that growth is reclaimable heap or retained was not measured).
 (2) **While a read runs the server serves nothing else**: a cheap request made 20 ms after a read started waited 11 ms (1,000
 events), 231 to 268 ms (10,000) and 1.2 to 1.3 s (50,000), the rest of the read. Concurrent requests therefore queue rather than

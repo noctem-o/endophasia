@@ -1,6 +1,12 @@
 // The cockpit observation bridge's public surface: harness-neutral, read-only, deterministic. A transport or a renderer
 // imports this module and the contracts in protocol/cockpit.ts; it needs nothing from storage/ or an adapter.
 export * from "../protocol/cockpit.ts";
+// What a transport needs to answer exactly as the reader would, with nothing from storage/ or runtime/: the canonical JSON the
+// contracts are serialized with, the predicates the reader applies to a digest key and to an attachment name (so a server
+// refuses what the reader would throw on, as a client error, before reading), and the grammar the name is first checked against.
+export { endoCockpitDigestKeyAdmittedV0, isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts";
+export { isWellFormedKindV0 } from "../protocol/identity.ts";
+export { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 // The type of the explicit digest key every read and projection takes (the bridge neither creates nor loads one).
 export type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 export { projectEndoCockpitCapabilityStateV0 } from "./projections/capability-state.ts";

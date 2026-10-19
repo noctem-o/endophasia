@@ -27,6 +27,7 @@
 		"includes": [
 			"protocol/**/*.ts",
 			"cockpit/**/*.ts",
+			"cockpit-http/**/*.ts",
 			"graph/**/*.ts",
 			"visualization/**/*.ts",
 			"lab/**/*.ts",

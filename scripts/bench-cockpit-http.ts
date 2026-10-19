@@ -92,24 +92,22 @@ for (const size of sizes) {
 	console.error(
 		`seeded ${size} events (${(logBytes / 1e6).toFixed(1)} MB) in ${((performance.now() - seedStart) / 1000).toFixed(1)}s`,
 	);
-	const { child, base } = await launch(store, join(work, "key"));
-	const pid = child.pid!;
-	await sleep(500);
-	const idleStart = cpuMs(pid);
-	await sleep(3000);
-	const idleBefore = (cpuMs(pid) - idleStart) / 3;
-	const rssIdle = status(pid, "VmRSS");
-	const row: Record<string, unknown> = {
-		events: size,
-		logMB: +(logBytes / 1e6).toFixed(2),
-		idleCpuMsPerSecBefore: +idleBefore.toFixed(2),
-		rssIdleMB: +rssIdle.toFixed(1),
-	};
+	const row: Record<string, unknown> = { events: size, logMB: +(logBytes / 1e6).toFixed(2) };
+	let peakRss = 0;
+	// Each route is measured on a FRESH server process, so its cold request is the first this process has served. (The operating
+	// system's page cache is warm: the store was just written. That is the state of a cockpit opened beside a recent session.)
 	for (const [name, route] of [
 		["snapshot", "/api/v0/snapshot"],
 		["timeline100", "/api/v0/timeline?limit=100"],
 	] as const) {
-		const cold = await request(`${base}${route}`); // the first request this server has served for this route
+		const { child, base } = await launch(store, join(work, "key"));
+		const pid = child.pid!;
+		await sleep(500);
+		const idleStart = cpuMs(pid);
+		await sleep(3000);
+		row[`${name}IdleCpuMsPerSecBefore`] = +((cpuMs(pid) - idleStart) / 3).toFixed(2);
+		row[`${name}RssIdleMB`] = +status(pid, "VmRSS").toFixed(1);
+		const cold = await request(`${base}${route}`);
 		if (cold.status !== 200) throw new Error(`${route} answered ${cold.status} (cold)`);
 		const cpuBefore = cpuMs(pid);
 		const times: number[] = [];
@@ -126,6 +124,8 @@ for (const size of sizes) {
 		await sleep(20);
 		const cheap = await request(`${base}/not-the-capability`);
 		await heavy;
+		const afterStart = cpuMs(pid);
+		await sleep(3000);
 		row[name] = {
 			coldMs: +cold.ms.toFixed(1),
 			warmMedianMs: +median(times).toFixed(1),
@@ -134,15 +134,14 @@ for (const size of sizes) {
 			responseKB: +(bytes / 1024).toFixed(1),
 			amplification: +(logBytes / bytes).toFixed(1),
 			cheapWaitedMs: +cheap.ms.toFixed(1),
+			idleCpuMsPerSecAfter: +((cpuMs(pid) - afterStart) / 3).toFixed(2),
+			rssAfterMB: +status(pid, "VmRSS").toFixed(1),
 		};
+		peakRss = Math.max(peakRss, status(pid, "VmHWM"));
+		child.kill("SIGINT");
+		await new Promise((resolve) => child.once("exit", resolve));
 	}
-	const afterStart = cpuMs(pid);
-	await sleep(3000);
-	row.idleCpuMsPerSecAfter = +((cpuMs(pid) - afterStart) / 3).toFixed(2);
-	row.rssAfterMB = +status(pid, "VmRSS").toFixed(1);
-	row.peakRssMB = +status(pid, "VmHWM").toFixed(1);
-	child.kill("SIGINT");
-	await new Promise((resolve) => child.once("exit", resolve));
+	row.peakRssMB = +peakRss.toFixed(1);
 	results.push(row);
 	console.log(JSON.stringify(row));
 }

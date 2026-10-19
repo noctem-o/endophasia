@@ -244,18 +244,30 @@ describe("methods and bodies", () => {
 		expect(treeHash(root)).toBe(before);
 	});
 
-	it("CONNECT and an upgrade request get no tunnel and no protocol switch", async () => {
+	it("CONNECT and an upgrade request get no tunnel or protocol switch, and the fixed refusal with the security headers (P2 on PR #58)", async () => {
 		const { server } = await started();
-		const connect = await raw(
-			server,
-			`CONNECT 127.0.0.1:${server.port} HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n\r\n`,
-		);
-		expect(connect).not.toMatch(/^HTTP\/1\.1 (101|200) /);
+		const own = `Host: 127.0.0.1:${server.port}`;
+		const connect = await raw(server, `CONNECT 127.0.0.1:${server.port} HTTP/1.1\r\n${own}\r\n\r\n`);
+		expect(connect).toMatch(/^HTTP\/1\.1 405 Method Not Allowed\r\n/);
+		expect(connect).toContain("Allow: GET");
+		expect(connect.endsWith('{"error":"method-not-allowed"}\n')).toBe(true);
 		const upgrade = await raw(
 			server,
-			`GET ${capabilityOf(server)}/api/v0/snapshot HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
+			`GET ${capabilityOf(server)}/api/v0/snapshot HTTP/1.1\r\n${own}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`,
 		);
-		expect(upgrade).not.toMatch(/^HTTP\/1\.1 101 /);
+		expect(upgrade).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/);
+		expect(upgrade.endsWith('{"error":"bad-request"}\n')).toBe(true);
+		for (const reply of [connect, upgrade]) {
+			expect(reply).not.toMatch(/^HTTP\/1\.1 (101|200) /);
+			for (const header of [
+				"Cache-Control: no-store",
+				"X-Content-Type-Options: nosniff",
+				"Referrer-Policy: no-referrer",
+				"Content-Security-Policy: default-src 'none'; frame-ancestors 'none'",
+			])
+				expect(reply).toContain(header);
+			expect(reply).not.toContain('"entries"');
+		}
 	});
 
 	it("a GET with a body is refused, however it is framed, and the connection is closed", async () => {

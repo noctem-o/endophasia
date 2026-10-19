@@ -444,18 +444,18 @@ curl -s 'http://127.0.0.1:<port>/<capability>/api/v0/timeline?limit=20'
 **Cost and the event loop (measured, `scripts/bench-cockpit-http.ts`).** A request is **not** cheap and is not made cheaper by a small page: the bridge reopens and validates the whole history on every
 read (`cockpit/reader.ts`), the read is synchronous, and the transport adds nothing to it (no cache, index or worker; PR B does not
 change this). One run on the development machine (Linux, Node 26, one registry, synthetic events of about 360 bytes, the server in its
-own process with a read budget that never throttles, 10 repeated requests per cell; `node scripts/bench-cockpit-http.ts --work <dir>`; the
+own process with a read budget that never throttles, a **fresh server process per route** so "cold" is that process's first request (the operating system's page cache is warm: the store was just written), 10 repeated requests per cell; `node scripts/bench-cockpit-http.ts --work <dir>`; the
 default budget would answer `429` to back-to-back reads of the longer histories):
 
 | Events in the log | Log size | `snapshot` (200 events): cold / warm median / server CPU per request | `timeline?limit=100`: cold / warm median / CPU | Bytes of log validated per byte returned (snapshot / timeline) | Peak RSS |
 | ---: | ---: | :--- | :--- | :--- | ---: |
-| 1,000 | 0.35 MB | 120 / 58 / 72 ms | 30 / 32 / 39 ms | 3 / 8 | 188 MB |
-| 10,000 | 3.6 MB | 344 / 297 / 335 ms | 263 / 251 / 277 ms | 27 / 76 | 270 MB |
-| 50,000 | 18 MB | 1,355 / 1,286 / 1,404 ms | 1,269 / 1,235 / 1,362 ms | 137 / 380 | 435 MB |
+| 1,000 | 0.35 MB | 121 / 58 / 71 ms | 53 / 34 / 47 ms | 3 / 8 | 160 MB |
+| 10,000 | 3.6 MB | 347 / 277 / 317 ms | 310 / 262 / 296 ms | 27 / 76 | 266 MB |
+| 50,000 | 18 MB | 1,351 / 1,339 / 1,455 ms | 1,341 / 1,268 / 1,424 ms | 137 / 380 | 433 MB |
 
 Reading the table: (1) cost is linear in the **history**, about 25 to 27 microseconds of CPU per event, whatever the page size; a
-100-event page costs about what a 200-event snapshot does, and "warm" is no cheaper than "cold" because nothing is kept
-(the server holds no source data between requests and the code keeps none; resident memory was 108 MB idle and 188 to 435 MB after the workloads, and whether that growth is reclaimable heap or retained was not measured).
+100-event page costs about what a 200-event snapshot does, and "warm" is cheaper than "cold" only by the process's own warm-up (at most about 20 ms on a 1,000-event store, under 20% at 10,000 and about 6% at 50,000), because no source data is kept
+(the server holds no source data between requests and the code keeps none; resident memory was 108 to 110 MB idle and 160 to 433 MB after the workloads, and whether that growth is reclaimable heap or retained was not measured).
 (2) **While a read runs the server serves nothing else**: a cheap request made 20 ms after a read started waited 11 ms (1,000
 events), 231 to 268 ms (10,000) and 1.2 to 1.3 s (50,000), the rest of the read. Concurrent requests therefore queue rather than
 run together, which is also the concurrency bound on expensive reads (the read budget above is the bound on how much of the time they may use). (3) **Idle is

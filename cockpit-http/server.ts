@@ -55,6 +55,15 @@ const REFUSALS = {
 	"internal-error": 500,
 } as const;
 type Refusal = keyof typeof REFUSALS;
+const REASONS: Record<Refusal, string> = {
+	"bad-request": "Bad Request",
+	forbidden: "Forbidden",
+	"not-found": "Not Found",
+	"method-not-allowed": "Method Not Allowed",
+	"misdirected-request": "Misdirected Request",
+	"too-many-requests": "Too Many Requests",
+	"internal-error": "Internal Server Error",
+};
 
 const SECURITY_HEADERS = {
 	"Cache-Control": "no-store",
@@ -160,16 +169,21 @@ export interface EndoCockpitClientSocketV0 {
 }
 
 /**
- * Answer a request the HTTP parser refused (malformed, oversized, timed out) before any handler ran: the same fixed body and
+ * Answer a request that never reaches `handle` (the parser refused it: malformed, oversized, timed out; or Node routes it to a
+ * special event: CONNECT, an upgrade): the same fixed body and
  * headers as every other refusal, then close. The write is best effort and never waits on the peer: a client that does not read
  * cannot hold a connection (and so the connection limit) open, because anything still queued after the write is dropped.
  */
-export function answerEndoCockpitClientErrorV0(socket: EndoCockpitClientSocketV0): void {
+export function answerEndoCockpitClientErrorV0(
+	socket: EndoCockpitClientSocketV0,
+	refusal: Refusal = "bad-request",
+): void {
 	if (!socket.writable) return void socket.destroy();
-	const body = `{"error":"bad-request"}\n`;
+	const body = `{"error":"${refusal}"}\n`;
 	const headers = Object.entries(SECURITY_HEADERS).map(([name, value]) => `${name}: ${value}\r\n`);
+	const allow = refusal === "method-not-allowed" ? "Allow: GET\r\n" : "";
 	socket.end(
-		`HTTP/1.1 400 Bad Request\r\n${headers.join("")}Content-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`,
+		`HTTP/1.1 ${REFUSALS[refusal]} ${REASONS[refusal]}\r\n${headers.join("")}${allow}Content-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`,
 	);
 	// A peer that does not read (so never sees the close) gets a short deadline and then the socket is destroyed: it cannot hold
 	// one of the connection slots, and no timer exists unless a refusal was just written to that socket.
@@ -314,6 +328,10 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 	// announces a body is refused as one.
 	server.on("checkContinue", handle);
 	server.on("checkExpectation", handle);
+	// CONNECT and upgrade requests are special events too (not `request`): a tunnel and a protocol switch are never offered, and
+	// the refusal is the fixed one, not a silently closed socket.
+	server.on("connect", (_request, socket) => answerEndoCockpitClientErrorV0(socket as Socket, "method-not-allowed"));
+	server.on("upgrade", (_request, socket) => answerEndoCockpitClientErrorV0(socket as Socket, "bad-request"));
 	server.on("clientError", (_error, socket) => answerEndoCockpitClientErrorV0(socket as Socket)); // a TCP server's clients are net sockets
 
 	await new Promise<void>((resolve, reject) => {

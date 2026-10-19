@@ -1,7 +1,7 @@
 # The Endophasia-native cockpit
 
-Status: **the observation bridge is implemented** (a library: [below](#the-observation-bridge-implemented)); the local
-server and the page are planned. The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
+Status: **the observation bridge and a local read-only HTTP server are implemented** (a library and a transport:
+[below](#the-observation-bridge-implemented), [the server](#the-local-http-server-implemented)); the page is planned. The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
 Session-worker services over a fork-only listener and cannot run against a user-installed Pi
 ([pi-attach-inventory.md](pi-attach-inventory.md) §5). Its replacement is not a port. It is a cockpit over
 Endophasia's own records, for any attached harness.
@@ -39,7 +39,8 @@ A read-mostly operator view served by Endophasia, whose only sources are Endopha
 The projection and store-reader halves of items 2 and 3 exist as a library in the bridge below; the server, the page and the
 API-level replay test follow in the next stages.
 
-1. `endo cockpit <root>` serves a static page and a read-only JSON API over the store and registry.
+1. `endo cockpit <root>` serves a static page and a read-only JSON API over the store and registry. (The JSON API exists as
+   `npm run cockpit -- <root>` from a checkout; the `endo cockpit` command and the page are later stages, with packaging.)
 2. The page shows identity, the last change notice, capability state with reasons, and a session timeline that updates
    as events are appended.
 3. A test replays a recorded store (`research/pi-conformance/1.0.0` can seed one) and checks that the API output equals
@@ -356,3 +357,123 @@ or internal defect, not a client error: a read without a usable key throws one b
 under another key than its source's throws one, and the projectors throw one for input that breaks their contract or
 results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` with another admitted key, or none, answers
 `digest-context-differs` for a source that holds a position instead of throwing; a supplied key that is not admitted throws.
+
+## The local HTTP server (implemented)
+
+A transport over the bridge, not another observation system: it reconstructs no evidence, infers no fact, manages no harness
+and writes nothing. Every body is a contract the bridge returned, read back under the version it declares and serialized in
+canonical JSON (`canonicalEndoJsonV0`, re-exported by `cockpit/index.ts`). The code is `cockpit-http/server.ts` (the transport:
+`node:http`, `node:crypto` and `cockpit/index.ts` only) and `cockpit-http/launch.ts` (the development launcher, the only file that
+loads a key). `cockpit/` itself still imports no network API.
+
+**Architecture decision.** (1) A new top-level directory, because the bridge's boundary test forbids `node:http` under `cockpit/`
+and the CLI build deliberately compiles only the `cli/index.ts` closure, so the library and the server stay out of `dist/`
+(packaging is a later stage). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
+(`canonicalEndoJsonV0`, `endoCockpitDigestKeyAdmittedV0`, `isEndoCockpitSourceKindAdmittedV0`, `isWellFormedKindV0`), so the
+server refuses exactly the keys and attachment names the reader would throw on, as client errors before any read. (4) **Freshness
+is deferred.** `checkEndoCockpitSourceFreshnessV0` needs a client-held source descriptor, which means a POST body and the
+content-type and CSRF surface that comes with it; it costs about one full re-read anyway, and a client can compare the watermarks
+of two GETs. Every route is therefore a body-less GET and one rule (reject any body) covers them all. (5) No polling, SSE, watcher,
+cache, worker or timer.
+
+**Routes** (the access capability `<cap>` is part of every URL; `baseUrl` is `http://127.0.0.1:<port>/<cap>`):
+
+| Route | Body | Query |
+| :--- | :--- | :--- |
+| `GET /<cap>/api/v0/snapshot` | `EndoCockpitSnapshotV0` (`readEndoCockpitSnapshotV0`, every attachment found) | `afterSequence`, `limit` |
+| `GET /<cap>/api/v0/timeline` | `EndoCockpitSessionTimelineV0` (`readEndoCockpitTimelineV0`) | `afterSequence`, `limit` |
+| `GET /<cap>/api/v0/runtime/<attachment>` | `{ identity, capabilities }`, the shape of a snapshot's `runtimes[]` element | none |
+
+Pagination is the timeline's storage-order cursor: pass `window.nextAfterSequence` as `afterSequence` while `window.hasMore`.
+Absent, empty, degraded and unopenable sources are `200` observation data (an attachment with no registry is `200` with condition
+`absent`, never `404`). Any other `/api/vN` is `404`: there is no negotiation and no downgrade.
+
+**Request pipeline, in order, each step before any read.** (1) **Host** must be exactly `127.0.0.1:<bound port>` or
+`localhost:<bound port>` (case-insensitive), once: a rebound hostname carries its own name here and is `421`. (2) **Origin**, if
+present, must be this server's own origin (`null` and every foreign one is `403`); **Sec-Fetch-Site** other than `same-origin`
+or `none` is `403`. No CORS header is ever sent, so a cross-origin page can neither read a response nor pass a preflight.
+(3) **Method** GET only; `HEAD` too is `405` (it would still run the read), with `Allow: GET`. (4) **No body**: a
+`Content-Length` above zero or any `Transfer-Encoding` is `400` and closes the connection. (5) **Path**: the raw target is
+checked by hand (never resolved by a URL parser) and must be at most 512 characters of `[A-Za-z0-9._-/]` after the first `/`, so
+no `%`, no encoded separator, no dot-segment trick and no non-ASCII reaches a route (this alphabet check is defence in depth: exact
+route matching and the reader's attachment predicate refuse the same targets, so no test can tell the layers apart); the first segment must equal the capability
+(constant-time comparison). A wrong capability and an unknown path give the same `404`. The attachment must satisfy the reader's
+own predicate (well-formed kind, presentable, no reserved segment). (6) **Query**: exact names, at most once each, canonical
+non-negative integers (`^(0|[1-9][0-9]{0,15})$`, safe-integer, `limit` 1 to `ENDO_COCKPIT_PAGE_MAX_LIMIT_V0`), at most 96 characters.
+(7) **Read budget**: a budget of read milliseconds that accrues at a duty cycle (default 0.25, with a 1,000 ms burst) from the
+monotonic clock, lazily (no timer), and is **charged the time each authenticated read actually took**, so it can go negative; while
+it is not positive the next read is `429` with `Retry-After` (the seconds until it recovers). It is charged by time and not by
+request because a request count does not bound a read that outlasts the refill: a 10 requests-per-second bucket never fired against
+a 10,000-event store, whose reads take 0.3 s (measured: 30 back-to-back requests, 0 refused), where the time budget refused 25 of 30
+and held the server to about a quarter of a core. Small stores are unaffected (30 back-to-back timeline requests on 1,000 events,
+about 30 ms each: none refused). Unauthenticated and malformed traffic spends none of it. Every response, error or not, carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and a JSON content type.
+A refusal body is exactly `{"error":"<code>"}` from a closed set (`bad-request`, `forbidden`, `not-found`, `method-not-allowed`,
+`misdirected-request`, `too-many-requests`, `internal-error`): never a path, an echo of the request, a message, a stack, a key or
+the capability. An internal failure is a generic `500` that closes the connection; the host's optional `onError` hook receives the
+error, the client never does.
+
+**Network exposure.** The server listens on `127.0.0.1` only (an operating-system port by default, asserted after `listen`), with at
+most 32 connections, an 8 KB header limit and header and request timeouts. A request the HTTP parser itself refuses (malformed, oversized,
+timed out) gets the same fixed `400` and a two-second deadline to be read, after which the socket is destroyed, so a peer that never reads
+cannot hold one of the 32 slots; on port 80 (where clients omit the port) the bare loopback names are accepted as the same authority. Loopback binding is not treated as authentication: the
+Host check answers DNS rebinding, the Origin and fetch-metadata checks answer a hostile page the operator visits, and the capability
+answers any other local process that does not know it. The capability is 256 random bits per launch (base64url), unrelated to the
+digest key, never written into a response, a header or a source record. It is the **only** secret that guards the data: anyone on this
+machine who learns the URL can read it, so it is shown once by the launcher and not logged (a shell history, a terminal log or a
+screen share that captures it captures the access). It does not protect against another process running as the same user reading
+this process's arguments or memory, and a query string is never used for it.
+
+**Keys.** The library transport takes `digestKey` from its host, checks at startup that it is admitted (the round-29 rule, so a bad
+key fails at launch, not per request), and reads no environment and creates no key. The launcher loads a **dedicated, persistent
+cockpit key** with the existing `loadOrCreateEndoDigestKeyV0`, by default the file `cockpit-digest-key` beside the installation key
+(`endoDigestKeyPathV0`'s directory; created once, mode 0600), or `--key-file <path>`. A refresh, restart or new launch needs no new key
+and the same key gives the same ids and tokens, so a client's held watermarks stay comparable across launches. The installation key
+would also be admitted and works (`--key-file <installation key path>`), but it is the key every recorded store shares, and the
+cockpit key's only job is the comparison domain of what the cockpit shows; a dedicated one keeps the two separable. A public fixture
+key is for synthetic data only and is never a default. Global key storage is unchanged.
+
+**Local launch.**
+
+```text
+npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]
+# cockpit (read-only, loopback only): http://127.0.0.1:<port>/<capability>/api/v0/snapshot
+curl -s 'http://127.0.0.1:<port>/<capability>/api/v0/timeline?limit=20'
+```
+
+**Cost and the event loop (measured, `scripts/bench-cockpit-http.ts`).** A request is **not** cheap and is not made cheaper by a small page: the bridge reopens and validates the whole history on every
+read (`cockpit/reader.ts`), the read is synchronous, and the transport adds nothing to it (no cache, index or worker; PR B does not
+change this). One run on the development machine (Linux, Node 26, one registry, synthetic events of about 360 bytes, the server in its
+own process with a read budget that never throttles, a **fresh server process per route** so "cold" is that process's first request (the operating system's page cache is warm: the store was just written), 10 repeated requests per cell; `node scripts/bench-cockpit-http.ts --work <dir>`; the
+default budget would answer `429` to back-to-back reads of the longer histories):
+
+| Events in the log | Log size | `snapshot` (200 events): cold / warm median / server CPU per request | `timeline?limit=100`: cold / warm median / CPU | Bytes of log validated per byte returned (snapshot / timeline) | Peak RSS |
+| ---: | ---: | :--- | :--- | :--- | ---: |
+| 1,000 | 0.35 MB | 121 / 58 / 71 ms | 53 / 34 / 47 ms | 3 / 8 | 160 MB |
+| 10,000 | 3.6 MB | 347 / 277 / 317 ms | 310 / 262 / 296 ms | 27 / 76 | 266 MB |
+| 50,000 | 18 MB | 1,351 / 1,339 / 1,455 ms | 1,341 / 1,268 / 1,424 ms | 137 / 380 | 433 MB |
+
+Reading the table: (1) cost is linear in the **history**, about 25 to 27 microseconds of CPU per event, whatever the page size; a
+100-event page costs about what a 200-event snapshot does, and "warm" is cheaper than "cold" only by the process's own warm-up (a fixed cost of about 20 to 70 ms: 63 ms of the 121 ms cold `snapshot` at 1,000 events, about half, and 19 ms of the cold `timeline`; at 10,000 events 70 ms (20%) and 48 ms (15%); at 50,000 under 1% and about 5%), because no source data is kept
+(the server holds no source data between requests and the code keeps none; resident memory was 108 to 110 MB idle and 160 to 433 MB after the workloads, and whether that growth is reclaimable heap or retained was not measured).
+(2) **While a read runs the server serves nothing else**: a cheap request made 20 ms after a read started waited 11 ms (1,000
+events), 231 to 268 ms (10,000) and 1.2 to 1.3 s (50,000), the rest of the read. Concurrent requests therefore queue rather than
+run together, which is also the concurrency bound on expensive reads (the read budget above is the bound on how much of the time they may use). (3) **Idle is
+idle**: no CPU was measured over 3 s windows before every workload and after all but one (a 3 ms per second reading, at the 10 ms
+resolution of the process clock tick, was seen once just after a workload, in an earlier run); no timer, poll, watcher or worker
+exists in the transport, and the process holds one listening socket (Node's own connection-checking timer aside). (4) Request amplification is one read of each source per request: `snapshot` opens the event log
+once and each attachment's registry once, `timeline` and `runtime` one source; no source is read twice within a request.
+
+**What this does and does not show about inference.** Nothing here ran an inference workload, and no claim is made about its
+throughput. The measured input to a budget is CPU time per request on the process that serves it: about 0.03 s at 1,000 events,
+0.3 s at 10,000 and 1.3 s at 50,000. A cockpit that refreshes a 50,000-event store every 10 seconds would keep one core about 13%
+busy on the server's process; against the eventual target of under 1 to 2% inference-throughput regression during normal use,
+**the current design fits short histories and an operator-driven refresh, and does not fit a long history refreshed on a timer**.
+The server never refreshes by itself, and the rest is the bridge's cost (reads that validate the whole log), which an incremental
+read position or an index would remove; that is deliberately not built here. If the cockpit runs beside inference, run it as a
+separate process at lower priority (`nice`), and keep the page size small only to bound the response, not the cost.
+
+**Not in this stage.** A freshness endpoint (above), an evidence-inspection endpoint, a page, SSE or any push, a watcher, an
+incremental index, a cache, authentication beyond the capability, TLS (the traffic never leaves the loopback interface), and the
+`endo cockpit` command and packaging. The server is not a general file server: it opens nothing the bridge does not open, and it
+refuses to name a path.

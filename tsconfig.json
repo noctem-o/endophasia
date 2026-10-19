@@ -8,6 +8,7 @@
 	"include": [
 		"protocol/**/*",
 		"cockpit/**/*",
+		"cockpit-http/**/*",
 		"graph/**/*",
 		"visualization/**/*",
 		"lab/**/*",

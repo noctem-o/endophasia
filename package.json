@@ -25,6 +25,7 @@
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "biome check .",
 		"endo": "node cli/index.ts",
+		"cockpit": "node cockpit-http/launch.ts",
 		"check:prime-conformance": "node research/prime-conformance/cli.ts",
 		"check:prime-conformance:097": "node research/prime-conformance/cli-097.ts",
 		"check:prime-conformance:097:offline": "node research/prime-conformance/offline-097.ts",

@@ -1,12 +1,14 @@
 // The cockpit's local HTTP transport: a read-only window onto the observation bridge (cockpit/index.ts), nothing more. It
-// reconstructs no evidence, infers no fact, manages no harness and writes nothing: every response body is a contract the bridge
-// returned, serialized in canonical JSON after it was read under the version it declares.
+// reconstructs no evidence, infers no fact, manages no harness and writes nothing: every API response body is a contract the
+// bridge returned, serialized in canonical JSON after it was read under the version it declares. A host may also pass the files of a
+// browser page, which the server holds in memory and serves at `/<capability>/` and `/<capability>/assets/<name>` through the same
+// guards, under a page policy of its own; it reads no file to do so.
 //
 // Threat model. The operator's browser may visit a hostile page while this server runs, so loopback binding is not treated as
 // authentication. A request is answered only if, in this order: its Host is exactly this server's loopback host and port (DNS
 // rebinding), its Origin and Sec-Fetch-Site are not foreign (cross-site requests), its method is GET, it has no body, its path is
-// `/<per-launch capability>/api/v0/...` made only of the characters a route can contain (no `%`, so no encoded traversal), and
-// its query holds only the two bounded integers a route accepts. Every refusal is a fixed, bounded JSON code that names no path,
+// `/<per-launch capability>/api/v0/...` (or the page's `/` and `/assets/<name>`) made only of the characters a route can contain
+// (no `%`, so no encoded traversal), and its query holds only the two bounded integers a route accepts (none for the page). Every refusal is a fixed, bounded JSON code that names no path,
 // source content, key or capability. No CORS header is ever sent. The capability is a random 256-bit value generated per
 // server instance, unrelated to the digest key, compared in constant time and never written into a response or a source record.
 //
@@ -65,6 +67,26 @@ const REASONS: Record<Refusal, string> = {
 	"internal-error": "Internal Server Error",
 };
 
+/**
+ * The policy of the page and its assets, narrower than the API's: the page's own scripts, styles, images and requests, nothing
+ * remote, no inline script or style, no plugin, no form, no frame. Trusted Types are required and none is allowed, so a script
+ * that reaches an HTML sink throws instead of parsing markup.
+ */
+const PAGE_CSP =
+	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
+const UI_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const UI_TYPES: Readonly<Record<string, string>> = {
+	html: "text/html; charset=utf-8",
+	js: "text/javascript; charset=utf-8",
+	css: "text/css; charset=utf-8",
+	svg: "image/svg+xml",
+};
+const MAX_UI_BYTES = 4 * 1024 * 1024;
+interface UiFile {
+	type: string;
+	bytes: Buffer;
+}
+
 const SECURITY_HEADERS = {
 	"Cache-Control": "no-store",
 	"X-Content-Type-Options": "nosniff",
@@ -72,6 +94,13 @@ const SECURITY_HEADERS = {
 	"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
 	"Content-Type": "application/json; charset=utf-8",
 } as const;
+
+/**
+ * The browser page a host serves with the API: file name to content, held in memory (the server reads no file). `index.html` is
+ * the page, served at `/<capability>/`; every other entry is served at `/<capability>/assets/<name>`. Names are
+ * `[A-Za-z0-9][A-Za-z0-9._-]*` ending `.html`, `.js`, `.css` or `.svg`, and the server picks each content type from the name.
+ */
+export type EndoCockpitUiFilesV0 = Readonly<Record<string, string | Uint8Array>>;
 
 export interface EndoCockpitServerOptionsV0 {
 	/** The store root the bridge reads. Read-only: the server never writes under it. */
@@ -82,6 +111,8 @@ export interface EndoCockpitServerOptionsV0 {
 	 * Use a private key for real data; a public fixture key is for synthetic data only.
 	 */
 	digestKey: EndoDigestKeyV0;
+	/** The browser page and its assets (see `EndoCockpitUiFilesV0`). Without it the server is API-only. */
+	ui?: EndoCockpitUiFilesV0;
 	/** The loopback port. Default 0: the operating system picks a free one. */
 	port?: number;
 	/**
@@ -205,6 +236,19 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 	if (!(duty > 0 && duty <= 1) || !(burstMs > 0))
 		throw new TypeError("readBudget needs a duty in (0, 1] and a positive burstMs");
 
+	const files = new Map<string, UiFile>();
+	if (options.ui !== undefined) {
+		for (const [name, content] of Object.entries(options.ui)) {
+			const type = UI_TYPES[name.slice(name.lastIndexOf(".") + 1)];
+			if (!UI_NAME.test(name) || type === undefined || !name.includes("."))
+				throw new TypeError("a UI file name is a short plain name ending .html, .js, .css or .svg");
+			const bytes = Buffer.from(content);
+			if (bytes.length > MAX_UI_BYTES) throw new TypeError("a UI file is at most 4 MiB");
+			files.set(name, { type, bytes });
+		}
+		if (!files.has("index.html")) throw new TypeError("the UI needs an index.html");
+	}
+
 	const capability = randomBytes(32).toString("base64url");
 	const capabilityBytes = Buffer.from(capability);
 	let balance = burstMs;
@@ -255,8 +299,20 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		return { segments: segments.slice(1), rawQuery };
 	};
 
-	/** Route a guarded request to one read: the records to check under their declared versions, and the body to send. */
-	const route = (segments: string[], rawQuery: string): { records: unknown[]; body: unknown } => {
+	/**
+	 * Route a guarded request to a UI file, or to one read: the records to check under their declared versions, and the body to
+	 * send. A file is served from memory and spends none of the read budget.
+	 */
+	const route = (segments: string[], rawQuery: string): { records: unknown[]; body: unknown } | { file: UiFile } => {
+		if (files.size > 0) {
+			const page = segments.length === 1 && segments[0] === "";
+			const asset = segments.length === 2 && segments[0] === "assets" && segments[1] !== "index.html";
+			if (page || asset) {
+				parseQuery(rawQuery, []);
+				const file = files.get(page ? "index.html" : segments[1]!);
+				return file === undefined ? refuse("not-found") : { file };
+			}
+		}
 		const [api, version, name, attachment, ...extra] = segments;
 		if (`${api}/${version}` !== API || extra.length > 0) return refuse("not-found");
 		if (name === "snapshot" || name === "timeline") {
@@ -290,13 +346,34 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		});
 		response.end(body);
 	};
+	/** A page or asset: the page policy and isolation headers, and the content's own type. */
+	const sendFile = (response: ServerResponse, file: UiFile): void => {
+		response.writeHead(200, {
+			"Cache-Control": SECURITY_HEADERS["Cache-Control"],
+			"X-Content-Type-Options": SECURITY_HEADERS["X-Content-Type-Options"],
+			"Referrer-Policy": SECURITY_HEADERS["Referrer-Policy"],
+			"Content-Security-Policy": PAGE_CSP,
+			"Cross-Origin-Opener-Policy": "same-origin",
+			"Cross-Origin-Resource-Policy": "same-origin",
+			"X-Frame-Options": "DENY",
+			"Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=()",
+			"Content-Type": file.type,
+			"Content-Length": file.bytes.length,
+		});
+		response.end(file.bytes);
+	};
 	const sendRefusal = (response: ServerResponse, refusal: Refusal): void =>
 		send(response, REFUSALS[refusal], `{"error":"${refusal}"}\n`);
 
 	const handle = (request: IncomingMessage, response: ServerResponse): void => {
 		try {
 			const { segments, rawQuery } = guard(request);
-			const { records, body } = route(segments, rawQuery);
+			const routed = route(segments, rawQuery);
+			if ("file" in routed) {
+				sendFile(response, routed.file);
+				return;
+			}
+			const { records, body } = routed;
 			// Each record must read under the version it declares, or nothing is sent: no downgrade, no partial answer.
 			for (const record of records) if (!readEndoCockpitRecordV0(record).ok) throw new TypeError("contract");
 			send(response, 200, canonicalEndoJsonV0(body as never));

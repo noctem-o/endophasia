@@ -34,6 +34,7 @@ const SOURCE_DIRS = [
 	"protocol",
 	"cockpit",
 	"cockpit-http",
+	"cockpit-ui",
 	"graph",
 	"visualization",
 	"lab",

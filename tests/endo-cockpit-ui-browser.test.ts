@@ -958,6 +958,138 @@ suite("replies the page must not trust", () => {
 		expect(await text(page, "#banner")).toMatch(/gave no time/);
 		expect(await page.eval("document.querySelector('#refresh').disabled")).toBe(false);
 	});
+
+	// A note's references are the records it was drawn from. Each panel shows them beside the note, as the model describes them, in
+	// the order given; a note without any shows no empty brackets.
+	function withNotes(registryState: "recorded" | "none"): string {
+		const snapshot = JSON.parse(JSON.stringify(realSnapshot())) as ReturnType<typeof realSnapshot>;
+		const runtime = snapshot.runtimes[0]!;
+		const attachment = runtime.identity.source.attachment;
+		const eventRef = (n: number) => ({ domain: "event-log", storageSequence: n, eventId: `endo.event.test.${n}` });
+		const registryRef = (kind: string, index: number) => ({
+			domain: "harness-registry",
+			attachment,
+			kind,
+			index,
+			id: null,
+		});
+		const notes = (label: string) => [
+			{
+				code: `${label}.many`,
+				refs: [eventRef(9), eventRef(2), registryRef("state", 0), registryRef("fingerprint", 3)],
+			},
+			{ code: `${label}.none`, refs: [] },
+			{ code: `${label}.one`, refs: [eventRef(5)] },
+		];
+		snapshot.timeline.notes = notes("timeline") as never;
+		runtime.identity.notes = notes("runtime") as never;
+		runtime.capabilities.notes = notes("capability") as never;
+		if (registryState === "none") runtime.capabilities.state = null as never;
+		return JSON.stringify(snapshot);
+	}
+	const shownNotes = (page: Page, panel: string) =>
+		page.eval<string[]>(`[...document.querySelectorAll("${panel} .notes li")].map((li) => li.textContent)`);
+	const expectedNotes = (label: string, attachment = "omp.default") => [
+		`${label}.many (event log \u00b7 position 9; event log \u00b7 position 2; registry ${attachment} \u00b7 state #1; registry ${attachment} \u00b7 fingerprint #4)`,
+		`${label}.none`,
+		`${label}.one (event log \u00b7 position 5)`,
+	];
+
+	it("shows the records a capability, timeline or runtime note was drawn from beside it, in order, and nothing for a note with none", async () => {
+		const body = withNotes("recorded");
+		const attachment = (JSON.parse(body) as ReturnType<typeof realSnapshot>).runtimes[0]!.identity.source.attachment;
+		const page = await open(await pretend((res) => json(res, 200, body)));
+		expect(await page.eval("document.body.dataset.state")).toBe("ready");
+		expect(await shownNotes(page, "#capabilities")).toEqual(expectedNotes("capability", attachment));
+		expect(await shownNotes(page, "#sources")).toEqual(expectedNotes("timeline", attachment));
+		expect(await shownNotes(page, "#runtime")).toEqual(expectedNotes("runtime", attachment));
+	});
+
+	it("shows them as well beside the notes of a registry that records no capability state", async () => {
+		const body = withNotes("none");
+		const attachment = (JSON.parse(body) as ReturnType<typeof realSnapshot>).runtimes[0]!.identity.source.attachment;
+		const page = await open(await pretend((res) => json(res, 200, body)));
+		expect(await page.eval("document.body.dataset.state")).toBe("ready");
+		expect(await text(page, "#capabilities")).toContain("This is not a statement that nothing is supported.");
+		expect(await shownNotes(page, "#capabilities")).toEqual(expectedNotes("capability", attachment));
+	});
+
+	// A control that starts a read loses focus while a pause holds it disabled. The page remembers which control it was and puts focus
+	// back when the one timeout lifts the pause, unless the operator has moved on by then.
+	const pausedOnce =
+		(reads: { n: number }, body: string, pausedRead = 2) =>
+		(res: import("node:http").ServerResponse) => {
+			reads.n += 1;
+			if (reads.n === pausedRead)
+				return void res
+					.writeHead(429, { "Content-Type": "application/json", "Retry-After": "1" })
+					.end('{"error":"too-many-requests"}');
+			return json(res, 200, body);
+		};
+	const focusedName = (page: Page) =>
+		page.eval<string | null>("document.activeElement && document.activeElement.getAttribute('data-focus')");
+
+	it("puts keyboard focus back on the control that started a read the server paced, once the pause ends and it is enabled", async () => {
+		const reads = { n: 0 };
+		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
+		// The rows-per-page choice: it is drawn again with each render, so focus is lost while it is disabled.
+		await page.eval(
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+		);
+		await page.settled(2);
+		expect(reads.n).toBe(2); // the paced read
+		expect(await page.eval("document.body.dataset.state")).toBe("error");
+		await page.waitFor(
+			"document.querySelector(\"#timeline select[aria-label='Rows per page']\").disabled === false",
+			8000,
+		);
+		await page.waitFor(
+			"document.activeElement && document.activeElement.getAttribute('data-focus') === 'pagesize'",
+			2000,
+		);
+		expect(await focusedName(page)).toBe("pagesize");
+		expect(await page.eval(`document.querySelector("#timeline select[aria-label='Rows per page']").value`)).toBe(
+			"100",
+		); // still the window it has
+		expect(reads.n).toBe(2); // restoring focus is not a read
+	}, 30_000);
+
+	it("does the same for Refresh", async () => {
+		const reads = { n: 0 };
+		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
+		await page.eval(`document.querySelector("#refresh").focus()`);
+		await page.click("#refresh");
+		await page.settled(2);
+		expect(await page.eval("document.querySelector('#refresh').disabled")).toBe(true);
+		await page.waitFor("document.querySelector('#refresh').disabled === false", 8000);
+		await page.waitFor("document.activeElement && document.activeElement.id === 'refresh'", 2000);
+		expect(await focusedName(page)).toBe("refresh");
+	}, 30_000);
+
+	it("leaves focus where the operator put it during the pause", async () => {
+		const reads = { n: 0 };
+		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
+		await page.eval(
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+		);
+		await page.settled(2);
+		expect(await page.eval("document.querySelector('#refresh').disabled")).toBe(true);
+		await page.eval(`document.querySelector("#timeline-search").focus()`); // the search box is not locked by the pause
+		await page.waitFor("document.querySelector('#refresh').disabled === false", 8000);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(await page.eval("document.activeElement && document.activeElement.id")).toBe("timeline-search");
+	}, 30_000);
+
+	it("does not take focus back for a control it could not have: nothing was focused, so nothing is moved", async () => {
+		const reads = { n: 0 };
+		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
+		await page.eval(`document.activeElement.blur()`);
+		await page.click("#refresh"); // a script click: no control holds focus
+		await page.settled(2);
+		await page.waitFor("document.querySelector('#refresh').disabled === false", 8000);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(await page.eval("document.activeElement === document.body")).toBe(true);
+	}, 30_000);
 });
 
 suite("the whole path", () => {

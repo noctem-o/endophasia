@@ -3,7 +3,7 @@ import type { EndoCockpitBasisV0 } from "../../protocol/cockpit.ts";
 import { type Child, h } from "./dom.ts";
 import { sourceStateIcon } from "./icons.ts";
 import { ALIAS_PATTERN, BASIS, known, SOURCE_STATE, WITHHELD_TEXT } from "./labels.ts";
-import { abbreviated, presentText } from "./model.ts";
+import { abbreviated, type NoteView, presentText } from "./model.ts";
 
 /** How a value is known: observed, reported, derived, or unavailable. Text as well as colour, with the meaning on hover. */
 export function basisBadge(basis: EndoCockpitBasisV0 | "unavailable"): HTMLElement {
@@ -101,6 +101,16 @@ export function panel(
 		body,
 	);
 	return { root, body, tools };
+}
+
+/** A note as a list item: its sentence (or its raw code when this build has none), then, subdued, the records it was drawn from as the model describes them, in the order given. */
+export function noteItem(view: NoteView): HTMLElement {
+	return h(
+		"li",
+		{},
+		view.text ?? h("code", {}, view.code),
+		view.refs.length === 0 ? null : h("span", { class: "dim" }, ` (${view.refs.join("; ")})`),
+	);
 }
 
 export function note(text: string, kind: "info" | "warn" | "error" = "info"): HTMLElement {

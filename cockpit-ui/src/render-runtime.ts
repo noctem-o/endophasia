@@ -10,7 +10,7 @@ import { h, show } from "./dom.ts";
 import { CHANGE_KIND, CONFIDENCE, DIFFERENCE, known, NOTIFICATION_KIND, VERSION_ORDER } from "./labels.ts";
 import { abbreviated, attachmentChoices, grouped, noteViews, selectRuntime } from "./model.ts";
 import type { Actions, AppState } from "./state.ts";
-import { claim, facts, note, stateBadge, textValue } from "./widgets.ts";
+import { claim, facts, note, noteItem, stateBadge, textValue } from "./widgets.ts";
 
 function fingerprint(view: EndoCockpitFingerprintViewV0): HTMLElement {
 	return facts([
@@ -193,19 +193,6 @@ export function renderRuntime(
 		identity.previousDifferent === null
 			? null
 			: section("Latest earlier observation with a different identity", fingerprint(identity.previousDifferent)),
-		notes.length === 0
-			? null
-			: h(
-					"ul",
-					{ class: "notes" },
-					...notes.map((n) =>
-						h(
-							"li",
-							{},
-							n.text ?? h("code", {}, n.code),
-							n.refs.length === 0 ? null : h("span", { class: "dim" }, ` (${n.refs.join("; ")})`),
-						),
-					),
-				),
+		notes.length === 0 ? null : h("ul", { class: "notes" }, ...notes.map(noteItem)),
 	);
 }

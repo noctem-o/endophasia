@@ -6,7 +6,7 @@ import { capabilityStatusIcon } from "./icons.ts";
 import { CLASSIFICATION, known, STATUS } from "./labels.ts";
 import { capabilityRows, noteViews, selectRuntime, statusCounts } from "./model.ts";
 import type { Actions, AppState } from "./state.ts";
-import { note, textValue } from "./widgets.ts";
+import { note, noteItem, textValue } from "./widgets.ts";
 
 const CURRENCY = {
 	current: ["current", "The state was recorded for the latest recorded fingerprint."],
@@ -44,9 +44,7 @@ export function renderCapabilities(
 					: "No capability state is recorded. This is not a statement that nothing is supported.",
 				capabilities.source.condition.state === "unopenable" ? "error" : "info",
 			),
-			notes.length === 0
-				? null
-				: h("ul", { class: "notes" }, ...notes.map((n) => h("li", {}, n.text ?? h("code", {}, n.code)))),
+			notes.length === 0 ? null : h("ul", { class: "notes" }, ...notes.map(noteItem)),
 		);
 		return;
 	}
@@ -134,8 +132,6 @@ export function renderCapabilities(
 				);
 			}),
 		),
-		notes.length === 0
-			? null
-			: h("ul", { class: "notes" }, ...notes.map((n) => h("li", {}, n.text ?? h("code", {}, n.code)))),
+		notes.length === 0 ? null : h("ul", { class: "notes" }, ...notes.map(noteItem)),
 	);
 }

@@ -11,7 +11,7 @@ import {
 	selectRuntime,
 } from "./model.ts";
 import type { AppState } from "./state.ts";
-import { facts, note, stateBadge, textValue } from "./widgets.ts";
+import { facts, note, noteItem, stateBadge, textValue } from "./widgets.ts";
 
 function card(view: SourceView, selected: boolean): HTMLElement {
 	return h(
@@ -78,7 +78,7 @@ export function renderSources(panel: { body: HTMLElement; tools: HTMLElement }, 
 					"section",
 					{ class: "block" },
 					h("h3", {}, "Timeline notes"),
-					h("ul", { class: "notes" }, ...timelineNotes.map((n) => h("li", {}, n.text ?? h("code", {}, n.code)))),
+					h("ul", { class: "notes" }, ...timelineNotes.map(noteItem)),
 				),
 		h(
 			"p",

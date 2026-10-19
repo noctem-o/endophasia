@@ -77,6 +77,42 @@ Marks never rely on colour alone. Source conditions: readable a solid disc, empt
 unopenable a crossed box. Capability status: admitted a disc, admitted-partial a half disc, unavailable a slashed ring, mismatch a diamond,
 unverified a dotted ring. Basis: **OBS**, **REP**, **DER**, **N/A**, each with its meaning on hover and in the legend.
 
+## Who decides what may be shown
+
+The page is not a second admission authority. The policy for which source fields are presented, and in what form, belongs to the
+projections and nowhere else:
+
+| Stage | Owns | What it does |
+| :--- | :--- | :--- |
+| Projection (PR A: `protocol/cockpit-fields.ts`, `cockpit/projections/`) | the policy | copies an allowlist of payload fields per event kind with the basis and type of each, withholds text that looks like a path, address or credential, replaces opaque identifiers with their public form or alias, and counts what it left out (`withheldFields`). A kind with no approved field is shown by its envelope only; an unlisted key of any kind is not copied |
+| Bridge (PR B: `cockpit/snapshot.ts`) | the check that the policy was applied | validates every projection against the same policy module (`validateEndoCockpit...V0` rejects an entry carrying a field, basis, type or opaque value the policy does not allow) and throws rather than return one that fails |
+| Server (`cockpit-http/server.ts`) | the last gate and the wire | reads each record again under the version it declares (`readEndoCockpitRecordV0`) and sends nothing otherwise; serializes the validated record, canonically |
+| Page (this document) | rendering | checks that the versions are ones it reads and that the shapes are ones it can draw (`reply.ts`, and the dry run that draws every reachable view before a read is accepted), then shows each value as text |
+
+The page therefore checks a reply's versions and shapes, never *which* fields an event may carry. It does not repeat the allowlist:
+a second copy would have to be kept equal to the first, and the day they differed the page would either hide something the policy
+presents or give the appearance of a check it cannot make. It trusts the same-origin, capability-protected API to have served only
+what the policy admitted.
+
+**What the page does itself.** Whatever it is given, it draws as text: `h()` and `svg()` build text nodes and a short list of
+attributes, with no HTML sink (`tests/endo-cockpit-ui-source.test.ts` holds that for the source), and the served page requires Trusted
+Types with none allowed, so an attempt to parse markup throws (`tests/endo-cockpit-ui-browser.test.ts`: "has Trusted Types on", and
+"shows text from the API as text", which passes hostile strings through the widgets). A hostile string cannot become markup or script.
+It can still be shown as text.
+
+**Residual risk.** A compromised or nonconforming server on the capability URL, or a different server behind it, could send a
+snapshot that is well formed and carries a field the policy would not have presented; the page would show it. Browser-side shape
+validation is not independent proof that the presentation policy was applied, and the page does not claim to be. The control for
+that case is the capability URL and the loopback-only server (`tests/endo-cockpit-http-security.test.ts`), not the page. If the page
+ever needs to stand on its own against an untrusted source, that is a different design: it would take the policy as a shared
+artifact the browser imports, not a copy.
+
+**Where the producer's side is tested.** `tests/endo-cockpit-projections.test.ts` (a field the policy does not present for an
+entry's kind is rejected; an envelope-only kind withholds its whole payload; a field relabelled with another basis or type is
+rejected), `tests/endo-cockpit-http-routes.test.ts` (a canary, a path and a credential never reach a body; an unlisted key and its
+plain value, in a kind with approved fields and in one with none, are absent from every response and counted as withheld), and the
+adversarial suite (`tests/endo-cockpit-adversarial.test.ts`).
+
 ## Reading, refreshing and failing
 
 One snapshot request per user action (`?afterSequence=&limit=`), at most one in flight. The page reads once when it opens; after that it
@@ -86,7 +122,7 @@ so the page does not offer "latest on open" (that would be two reads) but a **La
 | Reply | The page |
 | :--- | :--- |
 | 200, a snapshot of a version it reads | shows it, with the browser time and how long it took |
-| 429 | "The server is pacing reads", the time from `Retry-After` (the server sends at most 3,600 s, so the figure is always a plain number a timer can hold), controls off until then (one timeout, set from the same `performance.now()` deadline the lock reads, so a wall clock set back or forward during the wait changes neither), the last read stays on screen marked not current, no retry |
+| 429 | "The server is pacing reads", the time from `Retry-After` (the server sends at most 3,600 s, so the figure is always a plain number a timer can hold), controls off until then (one timeout, set from the same `performance.now()` deadline the lock reads, so a wall clock set back or forward during the wait changes neither), the last read stays on screen marked not current, no retry. The control that started the read lost focus when it was disabled; when that same timeout lifts the pause, focus goes back to it, unless the operator has taken focus elsewhere or started a read in the meantime |
 | network failure, timeout (60 s) | says the server did not answer or the read was abandoned; the last read stays, marked not current |
 | 404, 421, 403 | says the address or the request was refused (404: the access address changes on every launch) |
 | 5xx | says the server reported an internal error |
@@ -146,6 +182,12 @@ may not contain: HTML sinks, dynamic code, storage, the page's own address, poll
 policy violation, populated, empty, absent, degraded and unopenable sources, paging, filtering, single-flight refresh, a real 429, a pause
 under a wall clock set back, a stopped server, replies a server never sends, among them snapshots holding a view that cannot be drawn
 until it is opened: an event's fields, a capability's evidence, a second attachment, a row a filter hides). The browser is found on PATH or by `CHROME_BIN`; without one those tests skip, saying so.
+
+`tests/cockpit-browser.ts` is the test browser driver, and `tests/cockpit-browser-launch.test.ts` holds its failure paths with stand-in
+executables and a local WebSocket endpoint, so they run without Chromium: a launch that fails leaves nothing behind; a connection lost
+after launch rejects every command still waiting and every later one at once (an unexpected close or error and an intentional `close()`
+take the same single transition, and `close()` can be called again); and browser discovery gives each candidate a bounded time to
+answer `--version` (10 s by default), so a stalled wrapper cannot hold up the test run.
 
 ## Intentionally deferred
 

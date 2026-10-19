@@ -170,6 +170,24 @@ function displayable(snapshot: EndoCockpitSnapshotV0): boolean {
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
+ * The `data-focus` name of a control that started a read the server then paced: it is disabled for the pause, so focus could not go
+ * back to it when the read ended. The timeout that lifts the pause gives it focus then, if the operator has not moved on: any focus
+ * the operator takes (and any read they start) forgets it.
+ */
+let focusAfterPause: string | null = null;
+document.addEventListener("focusin", () => {
+	focusAfterPause = null;
+});
+
+/** Focus the control with this `data-focus` name if it is there and usable. Whether it took is returned. */
+function focusNamed(name: string): boolean {
+	const target = document.querySelector<HTMLElement>(`[data-focus="${CSS.escape(name)}"]`);
+	if (target === null || (target as HTMLButtonElement).disabled) return false;
+	target.focus({ preventScroll: true });
+	return document.activeElement === target;
+}
+
+/**
  * The one timeout: it fires when the server's requested pause is over and the controls come back. It is set from the same monotonic
  * deadline the lock reads, and sets itself again if it fires early, so the two never disagree. (The server sends at most 3,600 s; the
  * classifier reads at most six digits, 999,999 s or about 11.6 days, which a browser timer, limited to about 24.8 days, holds.)
@@ -180,12 +198,18 @@ function armResume(): void {
 	if (wait <= 0) return;
 	resumeTimer = setTimeout(() => {
 		render();
+		if (focusAfterPause !== null && !pacedNow(state)) {
+			const name = focusAfterPause;
+			focusAfterPause = null;
+			if (document.activeElement === null || document.activeElement === document.body) focusNamed(name);
+		}
 		armResume();
 	}, wait + 50);
 }
 
 async function load(request: { afterSequence: number; limit: number }): Promise<void> {
 	if (state.busy || pacedNow(state)) return;
+	focusAfterPause = null;
 	// A control that starts a read is disabled while it runs, which takes focus away; focus goes back to it when the read ends.
 	const returnTo =
 		document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute("data-focus") : null;
@@ -247,8 +271,10 @@ async function load(request: { afterSequence: number; limit: number }): Promise<
 		};
 	} finally {
 		render();
-		if (returnTo !== null && (document.activeElement === null || document.activeElement === document.body))
-			document.querySelector<HTMLElement>(`[data-focus="${CSS.escape(returnTo)}"]`)?.focus({ preventScroll: true });
+		if (returnTo !== null && (document.activeElement === null || document.activeElement === document.body)) {
+			// A pause leaves the control disabled: the timeout that lifts it gives the control focus then.
+			if (!focusNamed(returnTo) && pacedNow(state)) focusAfterPause = returnTo;
+		}
 	}
 }
 

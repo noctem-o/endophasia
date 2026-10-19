@@ -7,11 +7,31 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export function findBrowser(): string | null {
-	const candidates = [process.env.CHROME_BIN, "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"];
+/** How long a candidate gets to answer `--version`. A browser that is merely cold answers well inside it; one that stalls does not hold up discovery. */
+const PROBE_MS = 10_000;
+
+/**
+ * The first candidate that answers `--version` with success, in order, or null. A candidate that fails, is missing or does not answer
+ * within `probeMs` is passed over. The probe's output is not read (the exit status is all it needs): with no pipe to wait on, a wrapper
+ * script whose helper keeps running cannot hold the probe past its timeout.
+ */
+export function findBrowser(
+	options: { candidates?: readonly (string | undefined)[]; probeMs?: number } = {},
+): string | null {
+	const candidates = options.candidates ?? [
+		process.env.CHROME_BIN,
+		"chromium",
+		"chromium-browser",
+		"google-chrome",
+		"google-chrome-stable",
+	];
 	for (const name of candidates) {
 		if (!name) continue;
-		const probe = spawnSync(name, ["--version"], { encoding: "utf8" });
+		const probe = spawnSync(name, ["--version"], {
+			stdio: "ignore",
+			timeout: options.probeMs ?? PROBE_MS,
+			killSignal: "SIGKILL",
+		});
 		if (probe.status === 0) return name;
 	}
 	return null;
@@ -34,6 +54,9 @@ export class Browser {
 	private socket: WebSocket | undefined;
 	private next = 1;
 	private pending = new Map<number, Pending>();
+	/** Set once, by `lose`: why no command can be sent or answered any more. */
+	private lost: Error | undefined;
+	private closing: Promise<void> | undefined;
 	private listeners: ((method: string, params: Record<string, unknown>, sessionId: string | undefined) => void)[] = [];
 	private profile: string;
 
@@ -98,7 +121,7 @@ export class Browser {
 					clearTimeout(timer);
 					reject(new Error("cannot reach the browser"));
 				});
-				socket.addEventListener("message", (event) => browser.dispatch(String(event.data)));
+				browser.watch(socket);
 			});
 		} catch (error) {
 			await browser.close();
@@ -107,8 +130,36 @@ export class Browser {
 		return browser;
 	}
 
+	/** Every way the connection can end leads to `lose`; a message that cannot be used is dropped, not thrown from the socket. */
+	private watch(socket: WebSocket): void {
+		socket.addEventListener("message", (event) => {
+			if (this.lost === undefined) this.dispatch(String(event.data));
+		});
+		socket.addEventListener("close", (event) =>
+			this.lose(`the connection to the browser was lost (close code ${event.code})`),
+		);
+		socket.addEventListener("error", () => this.lose("the connection to the browser was lost (socket error)"));
+	}
+
+	/**
+	 * The one transition out of "connected": nothing can be sent or answered afterwards. Every command still waiting is rejected with
+	 * `reason`, and the list is emptied first so that nothing can settle twice. Later calls change nothing (the first reason stands).
+	 */
+	private lose(reason: string): void {
+		if (this.lost !== undefined) return;
+		this.lost = new Error(reason);
+		const waiting = [...this.pending.values()];
+		this.pending.clear();
+		for (const command of waiting) command.reject(this.lost);
+	}
+
+	/** Whether the connection has ended, so polling for a page state is pointless. */
+	get isLost(): boolean {
+		return this.lost !== undefined;
+	}
+
 	private dispatch(text: string): void {
-		const message = JSON.parse(text) as {
+		let message: {
 			id?: number;
 			result?: Record<string, unknown>;
 			error?: { message: string };
@@ -116,6 +167,11 @@ export class Browser {
 			params?: Record<string, unknown>;
 			sessionId?: string;
 		};
+		try {
+			message = JSON.parse(text);
+		} catch {
+			return; // not a DevTools message; nothing waits for it
+		}
 		if (message.id !== undefined) {
 			const pending = this.pending.get(message.id);
 			this.pending.delete(message.id);
@@ -128,9 +184,15 @@ export class Browser {
 	send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<Record<string, unknown>> {
 		const id = this.next++;
 		return new Promise((resolve, reject) => {
+			if (this.lost !== undefined) return reject(this.lost);
 			if (this.socket === undefined) return reject(new Error("the browser is not connected"));
 			this.pending.set(id, { resolve, reject });
-			this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+			try {
+				this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+			} catch (error) {
+				this.pending.delete(id);
+				reject(error instanceof Error ? error : new Error(String(error)));
+			}
 		});
 	}
 
@@ -167,7 +229,14 @@ export class Browser {
 		return new Page(this, sessionId, targetId, seen);
 	}
 
-	async close(): Promise<void> {
+	/** End the browser. Safe to call more than once, and while commands are waiting: they are rejected as closed. */
+	close(): Promise<void> {
+		this.closing ??= this.shutdown();
+		return this.closing;
+	}
+
+	private async shutdown(): Promise<void> {
+		this.lose("the browser was closed");
 		try {
 			this.socket?.close();
 		} catch {
@@ -237,8 +306,9 @@ export class Page {
 		for (;;) {
 			try {
 				if (await this.eval<boolean>(`Boolean(${predicate})`)) return;
-			} catch {
-				// the page may be between documents
+			} catch (error) {
+				// the page may be between documents; a lost connection is not that, and polling it would only wait out the timeout
+				if (this.browser.isLost) throw error;
 			}
 			if (Date.now() > deadline) throw new Error(`timed out waiting for: ${predicate}`);
 			await new Promise((resolve) => setTimeout(resolve, 40));

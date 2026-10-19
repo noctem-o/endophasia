@@ -136,6 +136,41 @@ describe("text the privacy policy withholds never reaches a body", () => {
 	});
 });
 
+// The page does not enforce which source fields are presented: the producer does, and the API serves only what passed. This is that
+// producer-side fact, seen from the wire. The probe values are plain text the text policy would let through, so that their absence
+// can only be the field policy's doing; the policy itself is not copied here.
+describe("a source field the presentation policy does not present never reaches a body", () => {
+	it("an unlisted key, in a kind with approved fields and in one with none, is absent from every response and counted as withheld", async () => {
+		const root = tempRoot();
+		ingestAll(root, [
+			event("tool.started", {
+				toolName: "read_file",
+				unlistedProbe: "plain-probe-value",
+				nested: { deeper: "plain-nested-value" },
+			}),
+			event("agent.prompt-accepted", { unlistedProbe: "plain-probe-value" }),
+		]);
+		const stored = readFileSync(join(root, "events", "events.log"), "utf8");
+		for (const text of ["unlistedProbe", "plain-probe-value", "plain-nested-value"])
+			expect(stored.includes(text), text).toBe(true);
+
+		const server = await serve(root);
+		const replies = await Promise.all(["/api/v0/snapshot", "/api/v0/timeline"].map((route) => get(server, route)));
+		for (const { body } of replies) {
+			for (const text of ["unlistedProbe", "plain-probe-value", "nested", "plain-nested-value"])
+				expect(body.includes(text), text).toBe(false);
+			expect(body).toContain("read_file"); // an approved field of the same event is presented
+		}
+		const entries = (
+			JSON.parse(replies[1]!.body) as { entries: { fields: Record<string, unknown>; withheldFields: number }[] }
+		).entries;
+		expect(Object.keys(entries[0]!.fields)).toContain("toolName");
+		expect(entries[0]!.withheldFields).toBe(2); // the unlisted key and the nested one, counted and not shown
+		expect(entries[1]!.fields).toEqual({});
+		expect(entries[1]!.withheldFields).toBe(1);
+	});
+});
+
 describe("pagination is the bridge's storage-order cursor and window", () => {
 	it("pages cover the log once, in order, and each page equals the direct read of the same window", async () => {
 		const root = seeded(7);

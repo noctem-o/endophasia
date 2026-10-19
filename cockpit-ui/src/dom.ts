@@ -3,7 +3,8 @@
 // innerHTML, no outerHTML and no insertAdjacentHTML anywhere in the page (tests/endo-cockpit-ui-source.test.ts holds that, and the
 // page's Trusted Types policy would make any such sink throw).
 
-export type Child = Node | string | number | null | undefined | false;
+/** What may stand as a child: nothing (`null`, `false`) is skipped; `undefined` is not a child but a value that is missing (see `append`). */
+export type Child = Node | string | number | null | false;
 
 export interface Props {
 	class?: string;
@@ -53,8 +54,11 @@ const ATTRIBUTES = [
 ] as const;
 
 function append(parent: Node, children: readonly Child[]): void {
-	for (const child of children) {
-		if (child === null || child === undefined || child === false) continue;
+	for (const child of children as readonly (Child | undefined)[]) {
+		// A value a record should hold and does not arrives as `undefined`. Skipping it would draw a blank where a value belongs, and
+		// "missing" must never look like "empty": it is an error here, which the dry run of a snapshot turns into a refused read.
+		if (child === undefined) throw new TypeError("a value the record should hold is missing");
+		if (child === null || child === false) continue;
 		parent.appendChild(
 			typeof child === "string" || typeof child === "number" ? document.createTextNode(String(child)) : child,
 		);

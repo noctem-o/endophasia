@@ -41,6 +41,8 @@ export function abbreviated(value: string, keep = 12): string {
 
 /** A whole number as `1,234,567` in the fixed en-US form so a page reads the same on every machine; any other number as written. */
 export function grouped(value: number): string {
+	// A count that is not there is an error, not the text "undefined".
+	if (typeof value !== "number") throw new TypeError("a number the record should hold is missing");
 	// Only whole numbers are grouped: the locale formatter would round a fraction to three places, and a recorded cost must read as recorded.
 	return Number.isInteger(value) ? value.toLocaleString("en-US") : String(value);
 }

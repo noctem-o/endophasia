@@ -119,7 +119,7 @@ export function renderCapabilities(
 							"span",
 							{
 								class: row.classification === null ? "cap-class none" : "cap-class",
-								title: "the classification of the cited evidence",
+								title: "the classification this capability state records (the cited evidence records its own: see the inspector)",
 							},
 							classification ?? "unclassified",
 						),

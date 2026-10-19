@@ -88,8 +88,16 @@ export class Browser {
 			await new Promise<void>((resolve, reject) => {
 				const socket = new WebSocket(url);
 				browser.socket = socket;
-				socket.addEventListener("open", () => resolve());
-				socket.addEventListener("error", () => reject(new Error("cannot reach the browser")));
+				// A browser that accepts the connection and never completes the handshake neither opens nor fails it: bound the wait too.
+				const timer = setTimeout(() => reject(new Error("the browser did not complete the connection")), startupMs);
+				socket.addEventListener("open", () => {
+					clearTimeout(timer);
+					resolve();
+				});
+				socket.addEventListener("error", () => {
+					clearTimeout(timer);
+					reject(new Error("cannot reach the browser"));
+				});
 				socket.addEventListener("message", (event) => browser.dispatch(String(event.data)));
 			});
 		} catch (error) {

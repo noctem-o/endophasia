@@ -1,7 +1,9 @@
 // The browser driver's failure paths. A launch that fails has no `Browser` for the caller to close, so it must end the browser's
 // process group and remove its profile itself, or the suite leaves a running process (and its pipe, which can keep CI waiting).
 // These use stand-in executables, so they need no Chromium.
+
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -93,6 +95,26 @@ describe("a browser that fails to start leaves nothing behind", () => {
 		await expect(Browser.launch(browser.path, 5_000)).rejects.toThrow(/exited at startup/);
 		expect(await gone(await pidIn(browser.childFile))).toBe(true);
 		expect(existsSync(await profileOf(browser.argsFile))).toBe(false);
+	}, 15_000);
+
+	it("one that announces an address whose server accepts the connection and never completes the handshake: the wait is bounded and cleaned up", async () => {
+		const held: Socket[] = [];
+		const silent = createServer((socket) => held.push(socket)); // accepts, says nothing, never closes
+		await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+		const { port } = silent.address() as { port: number };
+		try {
+			const browser = stand(
+				"stalled",
+				`while [ ! -s @CHILD@ ]; do sleep 0.05; done\necho "DevTools listening on ws://127.0.0.1:${port}/devtools/browser/none" >&2\nsleep 120`,
+			);
+			await expect(Browser.launch(browser.path, 600)).rejects.toThrow(/did not complete the connection/);
+			expect(await gone(await pidIn(browser.pidFile))).toBe(true);
+			expect(await gone(await pidIn(browser.childFile))).toBe(true);
+			expect(existsSync(await profileOf(browser.argsFile))).toBe(false);
+		} finally {
+			for (const socket of held) socket.destroy();
+			await new Promise<void>((resolve) => silent.close(() => resolve()));
+		}
 	}, 15_000);
 
 	it("one that cannot be run at all: the launch fails and nothing is left or waited on", async () => {

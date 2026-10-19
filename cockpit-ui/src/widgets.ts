@@ -83,7 +83,7 @@ export function panel(
 	options: { subtitle?: string; tools?: Child; className?: string } = {},
 ): { root: HTMLElement; body: HTMLElement; tools: HTMLElement } {
 	const body = h("div", { class: "panel-body" });
-	const tools = h("div", { class: "panel-tools" }, options.tools);
+	const tools = h("div", { class: "panel-tools" }, options.tools ?? null);
 	const root = h(
 		"section",
 		{ class: `panel ${options.className ?? ""}`.trim(), id, attrs: { "aria-labelledby": `${id}-title` } },

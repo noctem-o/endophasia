@@ -862,6 +862,41 @@ suite("replies the page must not trust", () => {
 		}
 	});
 
+	it("a value a record should hold and does not is a refused read, never a blank or the word undefined", async () => {
+		const noObservedAt = copy();
+		delete noObservedAt.runtimes[0].identity.current.observedAt;
+		const noProducerSequence = copy();
+		delete noProducerSequence.timeline.entries[0].producerSequence;
+		const noReason = copy();
+		delete noReason.runtimes[0].capabilities.capabilities[0].reason;
+		for (const [name, snapshot] of [
+			["identity.current.observedAt", noObservedAt],
+			["an event's producerSequence", noProducerSequence],
+			["a capability's reason", noReason],
+		] as const) {
+			const url = await pretend((res) => json(res, 200, JSON.stringify(snapshot)));
+			const page = await open(url);
+			expect(await text(page, "#banner"), name).toMatch(/could not be displayed/);
+			expect(await page.eval("document.body.dataset.state"), name).toBe("error");
+			expect(await count(page, "#timeline tr[data-seq]"), name).toBe(0);
+			expect(await page.eval("document.body.innerText.includes('undefined')"), name).toBe(false);
+			await stopFake();
+		}
+	});
+
+	it("labels a capability row's classification as the state's own, not the evidence's", async () => {
+		const url = await pretend((res) => json(res, 200, JSON.stringify(copy())));
+		const page = await open(url);
+		const titles = await page.eval<string[]>(
+			`[...document.querySelectorAll("#capabilities .cap-class")].map((el) => el.title)`,
+		);
+		expect(titles.length).toBeGreaterThan(0);
+		for (const title of titles) {
+			expect(title).toMatch(/classification this capability state records/);
+			expect(title).not.toMatch(/of the cited evidence/);
+		}
+	});
+
 	it("refuses a snapshot whose unreadable row the current filter happens to hide, because clearing the filter would draw it", async () => {
 		const good = copy();
 		const entries = good.timeline.entries as { kind: string; producer: string; eventId: string; usage: unknown }[];

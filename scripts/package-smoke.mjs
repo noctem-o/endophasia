@@ -1,15 +1,29 @@
 // Package smoke: build the tarball with `npm pack`, audit its inventory, install it (not a link, not the checkout)
 // into a scratch directory with an isolated HOME/XDG, and run the installed `endo` under plain Node with TypeScript
-// stripping disabled. Nothing here imports repository sources or calls a model provider. Exit status 1 on any failure.
+// stripping disabled, including `endo studio` as a long-running child (started, fetched from, signalled and checked for what it
+// leaves). The installed code never reads this checkout; the test helpers imported below only drive and observe it. Nothing here
+// calls a model provider. Exit status 1 on any failure.
 //
 //   node scripts/package-smoke.mjs        (npm run test:package)
 //
 // Scratch lives under $TMPDIR (or the OS temp directory) and is removed at the end.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Node spells "do not strip TypeScript types" differently across versions; use the first spelling this Node accepts.
@@ -44,6 +58,13 @@ const tree = (dir) => {
 	walk(dir);
 	return out.sort();
 };
+
+/** Every entry under a directory with the sha256 of each file: what "byte-for-byte unchanged" is compared on. Empty if absent. */
+const fingerprint = (dir) =>
+	existsSync(dir)
+		? tree(dir).map((p) => (statSync(p).isDirectory() ? `${relative(dir, p)}/` : `${relative(dir, p)} ${createHash("sha256").update(readFileSync(p)).digest("hex")}`))
+		: [];
+const studios = []; // every Studio child started below: ended in the finally, whatever happens, before the scratch directory goes
 
 try {
 	const home = join(scratch, "home");
@@ -85,8 +106,24 @@ try {
 	check(!paths.some((p) => p.includes("node_modules") || p.includes("tests/") || p.includes(".map")), "no node_modules, tests or source maps");
 	check(
 		paths.filter((p) => p.startsWith("dist/") && !p.endsWith(".js")).sort().join() ===
-			"dist/research/fixture-keys/fixture-public-alt.json,dist/research/fixture-keys/fixture-public.json",
-		"the only non-JavaScript runtime assets are the two public synthetic fixture keys",
+			[
+				"dist/cockpit-ui/cockpit.css",
+				"dist/cockpit-ui/icon.svg",
+				"dist/cockpit-ui/index.html",
+				"dist/research/fixture-keys/fixture-public-alt.json",
+				"dist/research/fixture-keys/fixture-public.json",
+			].join(),
+		"the only non-JavaScript runtime assets are the page's index.html, style sheet and icon and the two public synthetic fixture keys",
+	);
+	const uiModules = readdirSync(join(repo, "cockpit-ui", "src")).filter((name) => name.endsWith(".ts")).map((name) => name.replace(/\.ts$/, ".js"));
+	const expectedUi = [...uiModules, "index.html", "cockpit.css", "icon.svg"].map((name) => `dist/cockpit-ui/${name}`).sort();
+	check(
+		paths.filter((p) => p.startsWith("dist/cockpit-ui/")).sort().join() === expectedUi.join(),
+		`dist/cockpit-ui holds exactly the page: index.html, cockpit.css, icon.svg and the ${uiModules.length} modules of cockpit-ui/src compiled, flat`,
+	);
+	check(
+		["dist/cli/studio.js", "dist/cockpit-http/host.js", "dist/cockpit-http/server.js", "dist/cockpit/index.js", "dist/cockpit-ui/main.js", "dist/cockpit-ui/index.html"].every((p) => paths.includes(p)),
+		"the Studio command, the shared host, the server, the cockpit library and the page's entry files are packed",
 	);
 	check(!paths.some((p) => /digest-key$|capture|cassette\.json/.test(p) && !p.endsWith(".js")), "no private keys or captures");
 
@@ -116,9 +153,17 @@ try {
 	}
 	check(unresolved.length === 0, `all ${jsFiles.length} installed modules' relative imports resolve to packaged .js files${unresolved.length ? `: ${unresolved.join("; ")}` : ""}`);
 
+	const mapped = jsFiles.filter((file) => /sourceMappingURL/.test(readFileSync(file, "utf8")));
+	check(mapped.length === 0, `no installed JavaScript points at a source map${mapped.length ? `: ${mapped.map((f) => relative(pkgDir, f)).join(", ")}` : ""}`);
+	const uiDir = join(pkgDir, "dist", "cockpit-ui");
+	const entry = readFileSync(join(uiDir, "index.html"), "utf8");
+	const referenced = [...entry.matchAll(/(?:src|href)="\.\/assets\/([^"/?#]+)"/g)].map((m) => m[1]);
+	check(referenced.length >= 3 && referenced.every((name) => existsSync(join(uiDir, name))), `the installed page's index.html finds all ${referenced.length} files it references beside it`);
+
 	// 5. Run the installed binary. Plain Node, TypeScript stripping off, outside the repository.
+	// A bounded wait: a command that should have refused and started a server instead must fail here, not hang the job.
 	const run = (args, cwd = cwdA) =>
-		spawnSync(process.execPath, [...noStripFlags, bin, ...args], { cwd, env, encoding: "utf8" });
+		spawnSync(process.execPath, [...noStripFlags, bin, ...args], { cwd, env, encoding: "utf8", timeout: 60_000 });
 	const before = tree(scratch).filter((p) => !p.startsWith(join(scratch, "install")) && !p.startsWith(join(scratch, "pack")) && !p.startsWith(join(scratch, "npm-cache")));
 
 	const help = run(["--help"]);
@@ -151,6 +196,22 @@ try {
 	check(run(["doctor"]).stdout.includes("doctor (read-only"), "endo doctor prints a human report by default");
 	const keyId = run(["digest-key", "id"]);
 	check(keyId.status === 1 && !existsSync(join(xdgData, "endophasia")), "digest-key id does not create a key when none exists");
+	check(/\bstudio\b/.test(help.stdout) && /Interactive, read-only with respect to the store/.test(help.stdout) && /human line, not a JSON document/.test(help.stdout), "endo --help lists Studio as an interactive command with its output exception");
+	const studioHelp = run(["studio", "--help"]);
+	const studioShort = run(["studio", "-h"]);
+	check(
+		studioHelp.status === 0 && studioHelp.stderr === "" && /Endophasia Studio/.test(studioHelp.stdout) && /127\.0\.0\.1 only/.test(studioHelp.stdout) && studioShort.stdout === studioHelp.stdout,
+		"endo studio --help (and -h) exits 0, prints the loopback-only description and creates nothing",
+	);
+	const invalid = [
+		["--port", "65536"], ["--port", "08085"], ["--port", ""], ["--port"], ["--port", "1", "--port", "2"], ["--bogus"], ["-x"], ["--host", "0.0.0.0"], ["--open"],
+		["a", "b"], ["a", "--root", "b"], ["--root", "a", "--root", "b"], ["--root"], ["--key-file"], ["--key-file", "k", "--key-file", "l"],
+	];
+	const accepted = invalid.filter((args) => {
+		const result = run(["studio", ...args]);
+		return !(result.status === 2 && result.stdout === "" && /usage: endo studio/.test(result.stderr));
+	});
+	check(accepted.length === 0, `${invalid.length} invalid studio invocations are each refused (exit 2, nothing on stdout, a usage line)${accepted.length ? `; not refused: ${accepted.map((a) => a.join(" ")).join(" | ")}` : ""}`);
 
 	// 6. The packaged public fixture keys resolve from the installed layout (the file-relative lookup in storage/digest-key).
 	const probe = spawnSync(
@@ -168,6 +229,72 @@ try {
 	// 7. Nothing durable appeared in HOME, XDG, or the working directories.
 	const after = tree(scratch).filter((p) => !p.startsWith(join(scratch, "install")) && !p.startsWith(join(scratch, "pack")) && !p.startsWith(join(scratch, "npm-cache")));
 	check(JSON.stringify(before) === JSON.stringify(after), "no state was created in HOME, XDG, the stores or the working directories");
+
+	// 7b. Studio, from the installed package. The first launch uses an explicit root that does not exist (nor does its parent), before
+	// anything has recorded a store, so it shows what Studio alone does: it creates its own key and nothing else.
+	const { startStudio, listening } = await import("../tests/studio-child.ts");
+	const launch = async (args, cwd = cwdA, environment = env) => {
+		const child = await startStudio([...noStripFlags, bin, "studio", ...args], { cwd, env: environment });
+		studios.push(child);
+		return child;
+	};
+	const studioKey = join(xdgData, "endophasia", "cockpit-digest-key");
+	const installKey = join(xdgData, "endophasia", "digest-key");
+	const permissions = (path) => statSync(path).mode & 0o777;
+	const absentRoot = join(scratch, "studio-absent", "store");
+	const uiFiles = readdirSync(uiDir);
+
+	// A damaged install fails at startup, plainly, before a key or a listener exists.
+	const brokenEnv = { ...env, XDG_DATA_HOME: join(scratch, "xdg-broken") };
+	const attempt = () =>
+		spawnSync(process.execPath, [...noStripFlags, bin, "studio", "--root", absentRoot], { cwd: cwdA, env: brokenEnv, encoding: "utf8", timeout: 30_000 });
+	renameSync(join(uiDir, "reply.js"), join(uiDir, "reply.js.moved"));
+	const noModule = attempt();
+	renameSync(join(uiDir, "reply.js.moved"), join(uiDir, "reply.js"));
+	renameSync(uiDir, `${uiDir}.moved`);
+	const noPage = attempt();
+	renameSync(`${uiDir}.moved`, uiDir);
+	check(noModule.status === 1 && noModule.stdout === "" && /reply\.js is missing/.test(noModule.stderr), "a page missing a module fails at startup: exit 1, the missing file named, nothing printed to stdout");
+	check(noPage.status === 1 && noPage.stdout === "" && /page's files were not found/.test(noPage.stderr), "a missing page directory fails at startup: exit 1 and a plain sentence");
+	check(!existsSync(join(scratch, "xdg-broken")) && !existsSync(dirname(absentRoot)), "neither failure created a key, a store or a directory");
+
+	// Proof that the page comes from the install and not from a checkout: the installed style sheet carries a marker only it has.
+	appendFileSync(join(uiDir, "cockpit.css"), "\n/* installed-copy marker */\n");
+	check(!existsSync(studioKey) && !existsSync(installKey), "before the first launch, neither Studio's key nor the installation key exists");
+	const one = await launch(["--root", absentRoot]);
+	check(
+		/^Endophasia Studio \(read-only, loopback only\): http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]{43}\/$/m.test(one.stdout()) && one.stdout().match(/http:\/\//g)?.length === 1,
+		"startup prints exactly one capability-protected address on stdout",
+	);
+	check(!one.stderr().includes(one.capability) && /private to this launch/.test(one.stderr()) && /created Studio's own digest key/.test(one.stderr()), "stderr says the address is private and that Studio's own key was created, and does not repeat the address");
+	const installed = (name) => readFileSync(join(uiDir, name), "utf8");
+	const page = await one.get("/");
+	check(page.status === 200 && page.body === installed("index.html") && /require-trusted-types-for 'script'/.test(String(page.headers["content-security-policy"])), "the page is served behind the capability, byte-for-byte as installed, under its policy");
+	const assets = await Promise.all(uiFiles.filter((name) => name !== "index.html").map(async (name) => [name, await one.get(`/assets/${name}`)]));
+	check(assets.length >= 15 && assets.every(([name, reply]) => reply.status === 200 && reply.body === installed(name)), `all ${assets.length} browser assets are served byte-for-byte from the installed package`);
+	check(assets.find(([name]) => name === "cockpit.css")?.[1].body.includes("installed-copy marker") === true, "the assets served are the installed copy's (a marker only the installed style sheet has), not a checkout's");
+	const absentSnapshot = await one.get("/api/v0/snapshot");
+	check(absentSnapshot.status === 200 && JSON.parse(absentSnapshot.body).timeline.source.condition.state === "absent", "the snapshot API answers, and reports the absent store as absent");
+	const refusals = [
+		["another capability", await one.send(`/${"x".repeat(43)}/api/v0/snapshot`), 404],
+		["no capability", await one.send("/api/v0/snapshot"), 404],
+		["a foreign Origin", await one.get("/api/v0/snapshot", { Origin: "http://evil.example" }), 403],
+		["a cross-site fetch", await one.get("/api/v0/snapshot", { "Sec-Fetch-Site": "cross-site" }), 403],
+		["another Host", await one.get("/api/v0/snapshot", { Host: "evil.example" }), 421],
+		["a POST", await one.send(`/${one.capability}/api/v0/snapshot`, { method: "POST" }), 405],
+	];
+	const unrefused = refusals.filter(([, reply, status]) => reply.status !== status).map(([what, reply]) => `${what}: ${reply.status}`);
+	check(unrefused.length === 0, `wrong capability, no capability, foreign origin, cross-site fetch, wrong host and wrong method are refused as before${unrefused.length ? ` (${unrefused.join("; ")})` : ""}`);
+	check(
+		existsSync(studioKey) && permissions(studioKey) === 0o600 && permissions(dirname(studioKey)) === 0o700 && !existsSync(installKey),
+		"Studio created its own key, owner-only in an owner-only directory, and not the installation key",
+	);
+	check(!existsSync(absentRoot) && !existsSync(dirname(absentRoot)), "the absent store is still absent, and so is its parent");
+	const studioKeyBytes = readFileSync(studioKey);
+	const stopped = await one.stop("SIGTERM");
+	check(stopped.code === 0 && stopped.signal === null, "SIGTERM stops Studio by itself with exit status 0");
+	check(!(await listening(one.port)), "the port is released when Studio exits");
+	check(one.stdout().split(one.capability).length === 2 && !one.stderr().includes(one.capability), "the capability appears once in everything Studio printed, and only on stdout");
 
 	// 8. The installed Pi loop, against a prepared (fake, clearly not real) Pi and a local fake model endpoint: no credentials,
 	// no provider. Runs after the no-state check above because it creates the default store. The harness helpers are test
@@ -241,13 +368,54 @@ try {
 		const projected = trajectory?.status === 0 ? JSON.parse(trajectory.stdout) : null;
 		check(projected !== null, `loop 6: trajectory show projects the recorded session from the default store${trajectory?.status === 0 ? "" : `: ${trajectory?.stderr}`}`);
 		check(projected !== null && JSON.stringify(projected).includes(session.piSessionId), "loop 6: the trajectory names the Pi session id attach reported");
+
+		// 9. Studio over the store that loop just recorded, with no root named: the default store, and its own key reused.
+		const storeBefore = fingerprint(defaultStore);
+		const two = await launch([], cwdB, piEnv);
+		check(storeBefore.length > 0, "the default store holds the recorded session Studio will read");
+		check(two.stderr().includes(`using the default store ${defaultStore} (XDG_DATA_HOME)`), "with no root named, Studio reads the default store and says which on stderr");
+		check(readFileSync(studioKey).equals(studioKeyBytes) && !/created Studio's own digest key/.test(two.stderr()), "Studio's key is reused as it was, byte for byte");
+		const recorded = JSON.parse((await two.get("/api/v0/snapshot")).body);
+		check(
+			recorded.timeline.source.condition.state === "readable" && recorded.timeline.entries.length > 0 && recorded.runtimes.length >= 1,
+			`the snapshot API serves the recorded observations (${recorded.timeline.entries.length} events, ${recorded.runtimes.length} attachment${recorded.runtimes.length === 1 ? "" : "s"})`,
+		);
+		// A real browser, when this machine has one: the installed page loads, reads, and draws what was recorded, requesting nothing
+		// outside the server that served it.
+		const { Browser, findBrowser } = await import("../tests/cockpit-browser.ts");
+		const chrome = findBrowser();
+		if (chrome === null) console.log("skip  the installed page in a real browser: no Chromium found (set CHROME_BIN to run it)");
+		else {
+			const browser = await Browser.launch(chrome);
+			try {
+				const tab = await browser.open(1440, 900);
+				await tab.goto(two.address);
+				await tab.waitFor("document.body.dataset.state === 'ready'", 30_000);
+				const rows = await tab.eval(`document.querySelectorAll("#timeline tr[data-seq]").length`);
+				const title = await tab.eval("document.title");
+				const outside = tab.seen.requests.filter((url) => !url.startsWith(two.origin) && !url.startsWith("about:") && !url.startsWith("data:"));
+				check(title === "Endophasia Studio" && rows > 0, `the installed page, in a real browser, reads the store and draws its ${rows} recorded events`);
+				check(tab.seen.problems.length === 0 && outside.length === 0, `no console error, policy violation or request outside the server (${tab.seen.problems.length} problems, ${outside.length} outside requests)`);
+				await tab.close();
+			} finally {
+				await browser.close();
+			}
+		}
+		for (const name of ["SIGINT", "SIGINT"]) two.signal(name); // a repeat while it closes is absorbed
+		const second = await two.exited;
+		check(second.code === 0 && second.signal === null && !(await listening(two.port)), "SIGINT (sent twice) stops Studio with exit status 0 and releases the port");
+		check(fingerprint(defaultStore).join("\n") === storeBefore.join("\n"), "the recorded store is byte-for-byte unchanged after Studio read it");
+		check(two.stdout().split(two.capability).length === 2 && !two.stderr().includes(two.capability), "the second launch printed its address once, on stdout only");
 	} finally {
 		await model.close();
 		fakePi.remove();
 	}
 } catch (error) {
-	check(false, `smoke aborted: ${error instanceof Error ? error.message : String(error)}`);
+	// A failure after a launch can carry what a child printed, and a failed CI log is a test artifact: the address is removed first.
+	const raw = error instanceof Error ? error.message : String(error);
+	check(false, `smoke aborted: ${studios.reduce((text, child) => child.redact(text), raw)}`);
 } finally {
+	for (const child of studios) child.kill(); // nothing outlives the run, and nothing holds the scratch directory open
 	rmSync(scratch, { recursive: true, force: true });
 }
 if (failures.length > 0) {

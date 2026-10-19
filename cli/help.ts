@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|proxy|replay|experiment|steer> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|studio|proxy|replay|experiment|steer> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -48,6 +48,12 @@ Read-only inspection (create no store, directory or key):
   trajectory diff ...                compare recorded trajectories
   digest-key id                      show which comparison-domain key would be used
 
+Interactive, read-only with respect to the store (long-running; stop it with Ctrl-C):
+  studio [<root>] [--root dir] [--port n] [--key-file path]
+                                     Endophasia Studio: a read-only browser interface on 127.0.0.1, behind a private address
+                                     printed once. Writes nothing to the store; the first launch creates its own digest key.
+                                     Prints a human line, not a JSON document. "endo studio --help" for details.
+
 Commands that write to a store:
   ingest <root> <file>               append records from a file
   harness identify|check <root> ...  observe a Pi executable (local protocol checks; no model call)
@@ -63,7 +69,8 @@ Commands that run a prompted agent session or an experiment:
 
 Run a command family without arguments (for example "endo harness") to see its usage. Each command that succeeds
 prints one canonical-JSON document on stdout (except "doctor", which prints a human report unless given --json); errors are one line on stderr with exit status 1. Exit status 2 means
-the invocation itself was invalid (unknown or missing command).
+the invocation itself was invalid (unknown or missing command; for "studio", also invalid arguments, which it refuses before
+creating or starting anything, where other commands report their argument errors with status 1).
 
 The store: every command that takes <root> also takes --root dir, or neither (the default store). Naming it both ways is an
 error. Default store (reported by doctor): $ENDO_STORE_ROOT, else $XDG_DATA_HOME/endophasia/store, else
@@ -80,5 +87,41 @@ independent of the store):
 Acceptance of a prompt is not completion: attach reports whether Pi accepted it and whether the run was seen to settle.
 
 Requires Node >= 22.19.0.
+`;
+}
+
+/** `endo studio --help`: pure, like `endo --help`. */
+export function endoStudioHelpV0(): string {
+	return `endo studio — Endophasia Studio: a read-only browser interface over a recorded store.
+
+Usage: endo studio [<root>] [--root dir] [--port n] [--key-file path]
+       endo studio --help | -h
+
+Starts a server on 127.0.0.1 only and prints one private access address for this launch; open it in a browser on this machine.
+Studio currently shows a single read-only observation page: runtime identity, capability state, the session timeline and the
+state of each source, exactly as recorded. It does not yet implement the other modes Endophasia is meant to host. It writes
+nothing to the store, attaches to no harness, runs no model, calls no provider, loads nothing from the network and does not poll:
+it reads the store when the page opens and when you press Refresh.
+
+Arguments:
+  <root> | --root dir    the store to read; naming it both ways is an error. Default: the default store ($ENDO_STORE_ROOT, else
+                         $XDG_DATA_HOME/endophasia/store, else ~/.local/share/endophasia/store), reported on stderr. A store
+                         that does not exist is shown as absent and is never created.
+  --port n               the loopback port, 0 to 65535, written without leading zeros. Default 0: the operating system picks
+                         a free port, so the address differs on every launch.
+  --key-file path        the comparison key Studio reads under. Default: cockpit-digest-key beside the installation digest key
+                         (see "endo digest-key id"). It may not be the installation key, under any name, nor lie inside the store.
+
+Side effects: Studio is read-only with respect to the observed store. The first launch creates its dedicated key file if it
+does not exist (32 random bytes, mode 0600, in a 0700 directory) and says so on stderr; that is the only thing it writes. Help,
+invalid arguments and a page that is missing files create nothing.
+
+The access address printed on stdout is a secret for this launch: anyone who can read it can read what the store records, and it
+stops working when Studio stops. It is printed once, never logged and never part of an error. Share it with no one.
+
+Output: unlike the other commands, Studio prints one human line on stdout (the address) and its notes on stderr, not a
+canonical-JSON document. It runs until interrupted: SIGINT (Ctrl-C) or SIGTERM closes the server, releases the port and exits.
+Exit status: 0 stopped that way (or help); 1 Studio could not start (page files missing, key unusable, port in use); 2 the
+invocation was invalid (nothing was created or started).
 `;
 }

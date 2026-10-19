@@ -23,6 +23,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ENDO_FIXTURE_DIGEST_KEYS_V0 } from "../protocol/keyed-digest-shape.ts";
 import {
 	defineEndoVersionTableV0,
 	EndoSchemaVersionErrorV0,
@@ -36,13 +37,9 @@ export const ENDO_DIGEST_KEY_FILE_SCHEMA_V0 = "endo.digest-key.v0";
 /** The cross-machine section of the docs, named by warnings and comparison hints. */
 export const ENDO_DIGEST_KEY_DOC_V0 = "docs/trajectory.md#comparing-across-machines";
 
-/** The committed public fixture keys: name to the fingerprint of the bytes the name stands for. */
-export const ENDO_FIXTURE_DIGEST_KEYS_V0: Readonly<Record<string, string>> = Object.freeze({
-	/** Every fixture recording. */
-	"fixture-public": "bb5fa3907b81f81a32258c8a3c454adc",
-	/** A second public domain, only for the hostile fixture that exercises a digest-domain difference. */
-	"fixture-public-alt": "3728013ff5edfbb1f980f0629d642e43",
-});
+// The committed public fixture keys (name to the fingerprint of the bytes the name stands for) live in protocol/ so the
+// cockpit's validators can read them too; they are re-exported here unchanged.
+export { ENDO_FIXTURE_DIGEST_KEYS_V0 };
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Warn = (message: string) => void;

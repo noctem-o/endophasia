@@ -32,6 +32,7 @@ function specifiers(file: string): string[] {
 
 const SOURCE_DIRS = [
 	"protocol",
+	"cockpit",
 	"graph",
 	"visualization",
 	"lab",

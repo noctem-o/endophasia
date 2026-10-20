@@ -1,8 +1,12 @@
 # What is implemented, in detail
 
-The README's [Current state](../README.md#current-state) summarizes this. This page keeps the detail, including every
+The README's [What works today](../README.md#what-works-today) summarizes this. This page keeps the detail, including every
 limitation, as it stood when the summary was shortened. The real recordings and studies, with what each establishes and
 does not, are in [research/README.md](../research/README.md).
+
+The sections from "Studio" to the end were moved here from the README's "Current state". They are unchanged except that the Studio paragraph
+says Studio is unreleased, the library paragraph now mentions the unwired `visualization/` scene state and says what the CLI can
+read of the evidence ledger (evaluation records are written by `endo experiment`), and "listed above" now links to `research/README.md`.
 
 **Implemented and tested here:**
 
@@ -93,3 +97,45 @@ does not, are in [research/README.md](../research/README.md).
 - Tests: a deterministic suite with a fake Pi child process and a fake OpenAI-compatible endpoint, plus an opt-in
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   [`research/pi-conformance/1.0.0/`](../research/pi-conformance/1.0.0/).
+
+## Studio
+
+**Endophasia Studio** (`endo studio`, [docs/studio.md](studio.md)) is the first Endophasia-native cockpit: a read-only
+browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
+read-only server (`cockpit-http/`) ([design](cockpit.md), [the page](cockpit-ui.md)). It shows one observation page: the
+recorded runtime identity, capability state with its limits, the session timeline in storage order and each source's condition. It
+writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below. It is unreleased: the published `0.1.0-alpha.1` does not contain it.
+
+## Library-only and planned surfaces
+
+**Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
+typed cognition graph; the unwired scene state in `visualization/`; evolution and promotion records (the CLI can read an evidence ledger, but no command writes one; evaluation records are written by `endo experiment`) with a baseline selection policy and RRSI- and
+GEPA-inspired rule sets (not ports of RRSI or GEPA; see `evolution/policies/rrsi-inspired.ts`); trust-record mappings
+for Cogitator, Magpie and Deadbolt; model orchestration, routing and collaboration records; record mappings for Codex,
+Prime and REEF; and an OpenAI-compatible provider adapter (whole SSE bodies are buffered, no incremental streaming).
+Three protocol schemas (`protocol/{continuity,control,runtime-profile}.ts`) and the fork-era lane overview in
+`protocol/session-overview.ts` are planned surfaces with no producer at all. Their fork-era producers were removed;
+they are kept for the steering and replay work and the sealed Prime study.
+
+## Simulation and real-runtime boundaries
+
+**Simulation and real-runtime boundaries:** the deterministic suites' Pi is a fake speaking Pi 1.0.0's documented
+records; those tests alone say nothing about a real Pi release. Separately, the installed-package `acceptance` job
+exercises a **real Pi 1.0.0** on Ubuntu with Node 22 and a local fake model endpoint; no real model provider is called.
+This is a packaging/operator-path acceptance baseline, distinct from the **Pi 1.0.1 + qwen3.8-27b** research studies
+listed in [research/README.md](../research/README.md). Hostile trajectory cases and the lifecycle's failure, retry, compaction and unknown-record paths are
+exercised only against fake Pi ([research/README.md](../research/README.md#fake-only-paths)).
+
+The boundary and the evidence rules were audited adversarially ([audit](pi-attach-audit.md)), including the
+limitations accepted for now.
+
+## Not yet built
+
+**Not yet built:** the other Studio modes (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
+model-internal
+observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
+control, model-originated steering proposals and an external authority provider, any live provider integration wired
+into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
+integration, and attachments for other harnesses.
+
+Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.

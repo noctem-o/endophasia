@@ -4,7 +4,13 @@ Status: **experimental alpha, published** on [npm](https://www.npmjs.com/package
 
 ## What the tarball is
 
-`npm pack` produces `endophasia-<version>.tgz`: the compiled JavaScript of the `endo` command's import closure
+> **The published alpha is older than the source tree.** `endophasia@0.1.0-alpha.1` on the registry (published 2026-10-08)
+> contains the compiled CLI only: no `endo studio` and no `dist/cockpit-ui/`. The source tree reports the same version string but
+> has since gained Studio, and a tarball packed from it contains the browser page described below. The two are different
+> artifacts; do not read the version number as saying which one you have (`endo studio` printing `unknown command: studio` means
+> the registry alpha).
+
+`npm pack` from a current checkout produces `endophasia-<version>.tgz`: the compiled JavaScript of the `endo` command's import closure
 (`dist/`), `package.json`, `README.md`, `CHANGELOG.md` and `LICENSE`. It has **no runtime npm dependencies** and
 ships no TypeScript, tests, source maps, declarations, private keys, captures or research data.
 
@@ -30,7 +36,7 @@ endo --version
 endo doctor                          # read-only first-run diagnosis; Pi is installed separately
 ~~~
 
-Or install in a project with `npm install endophasia@0.1.0-alpha.1`, then run
+This installs the published alpha, which does not include Studio. Or install in a project with `npm install endophasia@0.1.0-alpha.1`, then run
 `npx --no-install endo doctor` from that project. To uninstall the global CLI:
 `npm uninstall -g endophasia`.
 
@@ -106,7 +112,8 @@ never do.
 ## The installed Pi loop
 
 Pi is installed and managed separately (`pi` on `PATH`, or `--pi /path/to/pi`). Endophasia only attaches to it. The
-working directory Pi runs in is independent of the store: `--cwd dir`.
+working directory Pi runs in is independent of the store: `--cwd dir`. Use `--pi /path/to/pi` to select a non-default
+executable and `--attachment name` to track several installations separately.
 
 ```sh
 endo doctor                                  # 1. diagnose: Node, Pi, store/key locations, recorded evidence
@@ -128,6 +135,9 @@ runs one, and `doctor` never starts a session.
 
 ## Endophasia Studio
 
+Studio is **not in the published `0.1.0-alpha.1`**. It runs from a source build (`npm ci && npm run build`, then
+`node dist/cli/index.js studio`) or from a tarball packed from one, where the installed binary is `endo`:
+
 ```sh
 endo studio                           # the default store; prints one private address, then runs until Ctrl-C
 endo studio --root ./recordings --port 8085
@@ -139,6 +149,23 @@ built). It needs only what is installed: no checkout, TypeScript, build step, ne
 store (a store that does not exist is shown as absent and stays absent); the first launch creates its own digest key
 (`cockpit-digest-key`, mode 0600, beside the installation key) and says so. The address it prints is a secret for that launch.
 Arguments, the key, the address, exit statuses and limits: [studio.md](studio.md).
+
+## Running the tests
+
+From a source checkout, `npm ci`, `npm test` and `node cli/index.ts ...` develop and run the deterministic suite.
+`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real` is an opt-in test against your installed Pi.
+
+`npm test` needs only Node and git; it reads no network, no API key and no git history. Two kinds of checks depend on
+the host and say so instead of failing (the Studio browser tests also skip when no Chromium is found, set `CHROME_BIN` to run
+them; the raw-data tests skip without the out-of-repository research data, see [../research/DATA.md](../research/DATA.md); and the
+`ENDO_PI_EXECUTABLE` and `ENDO_OMP_EXECUTABLE` suites are opt-in):
+
+- Replacing a published conformance reference needs `mv --exchange` (GNU coreutils 9.5 or later on Linux). Where `mv`
+  lacks it, the replacement tests are skipped and a test checks that replacement is refused before anything is
+  touched. CI runs the exchange tests in a container that has it.
+- The Prime 0.9.7 specimen records the donor-repository commit that measured it. Checking the recorded source digest
+  against that commit's tree is opt-in: `ENDO_HISTORICAL_PROVENANCE=1 npm test` in a clone that carries the commit
+  (this repository does not).
 
 ## Release and verification
 

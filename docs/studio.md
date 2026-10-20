@@ -11,11 +11,13 @@ server `cockpit-http/`, the page `cockpit-ui/` (see [cockpit.md](cockpit.md) and
 
 ## Run it
 
-After installing the package ([install.md](install.md)); nothing else is needed (no Git checkout, TypeScript, build step, network,
-model provider or running agent):
+Once a release includes Studio, nothing else is needed (no Git checkout, TypeScript, build step, network, model provider or
+running agent). **The published `endophasia@0.1.0-alpha.1` is not such a build.** It was published before Studio, has no
+`studio` command and no `dist/cockpit-ui/`, and `package.json` still carries that version number. Until a release that includes
+`endo studio` is published, build a tarball from a checkout ([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and
+install it; `endo` below is then the installed binary:
 
 ```sh
-npm install -g endophasia@0.1.0-alpha.1
 endo studio                                   # the default store
 endo studio --root ./recordings               # a store you name (or: endo studio ./recordings)
 endo studio --port 8085                       # a fixed loopback port (default 0: the system picks a free one)
@@ -31,7 +33,8 @@ Endophasia Studio (read-only, loopback only): http://127.0.0.1:<port>/<capabilit
 
 Open that address in a browser on the same machine. Nothing opens a browser for you.
 
-From a **checkout** (development), the same server and page start with:
+From a **checkout** (development), the same server and page start with the following; `node dist/cli/index.js` is the same
+command after `npm run build`:
 
 ```sh
 npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]     # builds the page, then starts it (a thin development entry)

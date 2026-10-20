@@ -6,7 +6,7 @@ WORK / DREAM). It describes direction and vocabulary, not what is implemented. W
 [status.md](status.md); the detail behind each mode is in [attachment.md](attachment.md), [observe.md](observe.md),
 [evolve.md](evolve.md) and [roadmap.md](roadmap.md).
 
-The text of each section was moved here from the README unchanged, except where a statement had gone stale.
+The text of each section was moved here from the README unchanged.
 
 ## What Endophasia is for
 

@@ -1,9 +1,11 @@
 # EVOLVE: provider seams, experiment identity and evolution records
 
-Status: **contracts, records and policies; no operator interface.** The evolution records, the baseline and RRSI- and
-GEPA-inspired selection policies, and the experiment runner's identity coordinates are implemented as libraries and exercised by
-unit tests (and, for experiments, by the real studies in [research/README.md](../research/README.md)). No `endo` command or
-Studio page runs an evolution loop, and nothing here amounts to a working autonomous self-improvement system. The providers in
+Status: **contracts, records and policies; no evolution loop and no operator interface for one.** Two things here are
+real. `endo experiment run|report` is a working command: it records an experiment's identity coordinates and writes evaluation
+records, and the real studies in [research/README.md](../research/README.md) were run with it. Everything else (the evolution and
+promotion records, the baseline and RRSI- and GEPA-inspired selection policies, the provider seams) is implemented as libraries
+and exercised by unit tests only; the CLI can read an evidence ledger but no command writes one. No `endo` command or Studio page
+runs an evolution loop, and nothing here amounts to a working autonomous self-improvement system. The providers in
 the table are candidates for future adapters, not dependencies. See [status.md](status.md#library-only-and-planned-surfaces).
 
 The text of this page was moved from the README's EVOLVE sections unchanged.

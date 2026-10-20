@@ -4,7 +4,7 @@ Status: **plans and research directions, not implemented capabilities.** Items m
 (linked); everything else is intent. The item numbers below (1-27) are cited by research notes and design documents and are kept.
 What runs today is in [status.md](status.md) and the [README](../README.md#what-works-today).
 
-The text of this page was moved from the README's "Roadmap" section unchanged, except where a statement had gone stale.
+The text of this page was moved from the README's "Roadmap" section unchanged.
 
 ## Delivery sequence — current priority
 

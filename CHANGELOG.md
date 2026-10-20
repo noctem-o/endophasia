@@ -5,7 +5,7 @@
 ### Documentation
 - The README is now an introduction (what Endophasia is, Studio, a quick start, what works today with the evidence behind each row,
   one architecture diagram, the research direction and an index). The long design and research material it carried moved,
-  unchanged except where stated on each page, to [docs/vision.md](docs/vision.md), [docs/attachment.md](docs/attachment.md),
+  unchanged except for relative links, heading levels, a status banner and the corrections each page states (`docs/status.md` lists its own), to [docs/vision.md](docs/vision.md), [docs/attachment.md](docs/attachment.md),
   [docs/observe.md](docs/observe.md), [docs/evolve.md](docs/evolve.md), [docs/roadmap.md](docs/roadmap.md) and
   [research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).
 - Corrected: the install instructions no longer imply that the published `0.1.0-alpha.1` contains `endo studio`. It does not; the

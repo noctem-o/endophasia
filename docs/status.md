@@ -4,6 +4,10 @@ The README's [What works today](../README.md#what-works-today) summarizes this. 
 limitation, as it stood when the summary was shortened. The real recordings and studies, with what each establishes and
 does not, are in [research/README.md](../research/README.md).
 
+The sections from "Studio" to the end were moved here from the README's "Current state". They are unchanged except that the Studio paragraph
+says Studio is unreleased, the library paragraph now mentions the unwired `visualization/` scene state and says what the CLI can
+read of the evidence ledger (evaluation records are written by `endo experiment`), and "listed above" now links to `research/README.md`.
+
 **Implemented and tested here:**
 
 - The runtime-neutral protocol layer: versioned `endo.*` events and identities, an evidence store with replay,

@@ -1,7 +1,8 @@
 # Attaching to a harness: identity, evidence and admission
 
 Status: **implemented for Pi** (over `pi --mode rpc`, in `adapters/pi`). The ACP adapters and the research records for other
-runtimes are listed in the table below with the evidence each has; none admits a capability yet. The summary and the maturity
+runtimes are listed in the table below with the evidence each has. The ACP adapters admit no capability, and the sealed Prime 0.9.7
+study admitted no *exact* capability. The summary and the maturity
 labels are in the [README](../README.md#what-works-today) and [status.md](status.md).
 
 The text of this page was moved from the README's "How it attaches" section unchanged, except the diagram: it no longer shows a

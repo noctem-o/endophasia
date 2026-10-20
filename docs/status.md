@@ -104,7 +104,7 @@ read of the evidence ledger (evaluation records are written by `endo experiment`
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
 read-only server (`cockpit-http/`) ([design](cockpit.md), [the page](cockpit-ui.md)). It shows one observation page: the
 recorded runtime identity, capability state with its limits, the session timeline in storage order and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below. It is unreleased: the published `0.1.0-alpha.1` does not contain it.
+writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below. It is unpublished: the published `0.1.0-alpha.1` does not contain it, and `0.1.0-alpha.2`, which does, is [prepared but not published](release-0.1.0-alpha.2.md).
 
 ## Library-only and planned surfaces
 

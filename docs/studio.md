@@ -12,10 +12,10 @@ server `cockpit-http/`, the page `cockpit-ui/` (see [cockpit.md](cockpit.md) and
 ## Run it
 
 Once a release includes Studio, nothing else is needed (no Git checkout, TypeScript, build step, network, model provider or
-running agent). **The published `endophasia@0.1.0-alpha.1` is not such a build.** It was published before Studio, has no
-`studio` command and no `dist/cockpit-ui/`, and `package.json` still carries that version number. Until a release that includes
-`endo studio` is published, build a tarball from a checkout ([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and
-install it; `endo` below is then the installed binary:
+running agent). **The published `endophasia@0.1.0-alpha.1` is not such a build.** It was published before Studio and has no
+`studio` command and no `dist/cockpit-ui/`. `0.1.0-alpha.2` is the first version that includes Studio and is
+[prepared but not published](release-0.1.0-alpha.2.md). Until it is, build a tarball from a checkout
+([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and install it; `endo` below is then the installed binary:
 
 ```sh
 endo studio                                   # the default store
@@ -126,6 +126,8 @@ compiled or downloaded when you run it.
   when you press Refresh. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).
-- Verified on the CI platform (Ubuntu, Node 22) by the installed-tarball smoke test (`npm run test:package`), which runs the installed
-  `endo studio`, fetches its page, assets and API, refuses foreign origins and hosts, stops it with SIGINT and SIGTERM, and checks the
-  store is byte-for-byte unchanged; where Chromium exists it also loads the installed page in a real browser.
+- Verified on the CI platform (Ubuntu 24.04, Node 22.19.0 and the newest 22.x) by the installed-tarball smoke test
+  (`npm run test:package`), which runs the installed `endo studio`, fetches its page, assets and API, refuses foreign origins and
+  hosts, fails to start on a taken port or a damaged page, stops it with SIGINT and SIGTERM, survives SIGKILL with the store and key
+  untouched, and checks the store is byte-for-byte unchanged; it also loads the installed page in Chromium (required in CI, skipped
+  locally when there is none). The evidence and its limits: [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).

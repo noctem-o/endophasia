@@ -42,7 +42,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # The browser is part of the release gate: a runner without Chromium fails here instead of skipping the page's acceptance.
       - run: npm run test:package
+        env:
+          ENDO_REQUIRE_BROWSER: "1"
+
+  package-floor:
+    name: Packaged CLI on the supported Node floor (22.19.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # package.json engines: ">=22.19.0". The `package` job runs the newest 22.x; this one builds, packs and installs on the lowest.
+          node-version: "22.19.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:package
+        env:
+          ENDO_REQUIRE_BROWSER: "1"
 
   acceptance:
     name: Clean-install acceptance (real Pi, fake model endpoint)
@@ -68,6 +88,8 @@ jobs:
       # Packs and installs the tarball in a scratch prefix, then runs doctor, check, attach, status, overview and
       # trajectory show from the installed bin, with an isolated HOME/XDG, the real Pi and a local fake OpenAI endpoint.
       - run: npm run test:acceptance
+        env:
+          ENDO_REQUIRE_BROWSER: "1"
 
   exchange:
     name: Reference exchange (coreutils with mv --exchange)

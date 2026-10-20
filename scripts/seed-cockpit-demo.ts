@@ -2,7 +2,8 @@
 // sessions) and the Pi 1.0.0 conformance specimen (fingerprint, evidence and capability state) as the `pi.default` registry.
 //
 //   node scripts/seed-cockpit-demo.ts <empty-directory>
-//   npm run cockpit -- <empty-directory>
+//   npm run cockpit -- <empty-directory>        (from a checkout)
+//   endo studio <empty-directory>               (from an installed package; the directory is just a store)
 //
 // Nothing here is invented: every record is read from a committed file. The directory must not exist or must be empty.
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";

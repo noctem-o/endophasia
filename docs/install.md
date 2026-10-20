@@ -8,9 +8,11 @@ Status: **experimental alpha, published** on [npm](https://www.npmjs.com/package
 (`dist/`), `package.json`, `README.md`, `CHANGELOG.md` and `LICENSE`. It has **no runtime npm dependencies** and
 ships no TypeScript, tests, source maps, declarations, private keys, captures or research data.
 
-The one non-JavaScript runtime asset is the pair of public synthetic fixture keys (`dist/research/fixture-keys/`),
-which `storage/digest-key.js` resolves relative to itself (`../research/fixture-keys/`) for the fixture recorders. They
-are public by design and are never accepted as an installation key. `scripts/build-cli.mjs` copies them there.
+The non-JavaScript runtime assets are the pair of public synthetic fixture keys (`dist/research/fixture-keys/`), which
+`storage/digest-key.js` resolves relative to itself (`../research/fixture-keys/`) for the fixture recorders (they are public by
+design and are never accepted as an installation key; `scripts/build-cli.mjs` copies them there), and the three files of the
+browser page `endo studio` serves: `dist/cockpit-ui/index.html`, `cockpit.css` and `icon.svg`, beside its compiled JavaScript
+modules. The page is built into the package, never at run time, and nothing else is served.
 
 ## Why no TypeScript at runtime
 
@@ -54,7 +56,9 @@ in the `package` job.
 ## Exit codes
 
 `0` success (including `--help`/`--version`); `1` a command ran and failed, or printed its own usage error (unchanged);
-`2` an invalid invocation (unknown or missing command).
+`2` an invalid invocation (unknown or missing command; and, for `endo studio` only, invalid arguments, which it refuses before
+creating or starting anything). For `endo studio`, `0` also means it was stopped by SIGINT or SIGTERM and `1` that it could not
+start ([studio.md](studio.md#output-and-exit-status)).
 
 ## Pi is installed separately
 
@@ -121,6 +125,20 @@ id, none is named. Everything after `attach` reads the store only, so it works a
 
 The live study (`harness study --authorize-live-study`) remains a separate, explicit authorisation; nothing in this loop
 runs one, and `doctor` never starts a session.
+
+## Endophasia Studio
+
+```sh
+endo studio                           # the default store; prints one private address, then runs until Ctrl-C
+endo studio --root ./recordings --port 8085
+endo studio --help
+```
+
+Studio is a read-only browser interface on `127.0.0.1` over a recorded store (today one observation page; the other modes are not
+built). It needs only what is installed: no checkout, TypeScript, build step, network or model provider. It never writes the
+store (a store that does not exist is shown as absent and stays absent); the first launch creates its own digest key
+(`cockpit-digest-key`, mode 0600, beside the installation key) and says so. The address it prints is a secret for that launch.
+Arguments, the key, the address, exit statuses and limits: [studio.md](studio.md).
 
 ## Release and verification
 

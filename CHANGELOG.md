@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `endo studio [<root>] [--root dir] [--port n] [--key-file path]`: Endophasia Studio, a read-only browser interface over a recorded
+  store, served by the installed package on `127.0.0.1` only behind a private per-launch address printed once. Today it shows one
+  observation page (recorded runtime identity, capability state, session timeline, source conditions); it writes nothing to the store
+  and does not poll. The page is built into the package (`dist/cockpit-ui/`), so no checkout, build step or network is needed. The
+  first launch creates its own digest key (`cockpit-digest-key`, mode 0600, beside the installation key) and says so. Stop it with
+  Ctrl-C (SIGINT) or SIGTERM: exit 0. Exit 1 means it could not start; exit 2 an invalid invocation, which it refuses before
+  creating or starting anything. See [docs/studio.md](docs/studio.md).
+- The package smoke test runs the installed `endo studio` (page, assets and API from the tarball, refusals, shutdown, the store
+  unchanged) and now lists the package's non-JavaScript files exactly.
+
 ## [0.1.0-alpha.1](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) (released 2026-10-08)
 
 The first alpha of Endophasia: an **experimental research instrument**, not a stable product. It attaches to a

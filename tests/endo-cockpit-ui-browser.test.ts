@@ -225,7 +225,7 @@ suite("the page enforces its own policy", () => {
 		expect(result.alias).toBe("alias");
 		expect(result.na).toContain("N/A");
 		expect(result.na).toContain("the producer gave none");
-		expect(await page.eval("document.title")).toBe("Endophasia Cockpit");
+		expect(await page.eval("document.title")).toBe("Endophasia Studio");
 		// Free text that merely contains an alias token is shown whole, as the text it is.
 		const sentence = "see endo.event.withheld-0123456789abcdef0123456789abcdef for the reason";
 		expect(

@@ -1,37 +1,18 @@
-// The development launcher: the one place that loads a key and prints the access URL.
+// The development launcher: a thin entry over cockpit-http/host.ts, for a checkout.
 //
 //   npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]
 //
-// The key is a dedicated, persistent cockpit key (storage/digest-key.ts: created on first use, mode 0600) beside the installation
-// key, so a refresh never needs a new one and the installation key is not reused. `--key-file` selects another file. The URL it
-// prints is the per-launch access capability: it is written to stdout once and never logged or stored.
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+// It builds nothing itself (`npm run cockpit` builds the page first) and reads the built page from cockpit-ui/dist/. The installed
+// command is `endo studio` (cli/studio.ts), which serves the page packaged in dist/cockpit-ui/. Both start the same server through
+// the same host module, and the key is the same dedicated cockpit key. The URL printed is the per-launch access capability: it is
+// written to stdout once and never logged or stored.
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
-import { startEndoCockpitServerV0 } from "./server.ts";
-
-/** The built page (npm run cockpit builds it): every regular file the server accepts, read once into memory. */
-function loadUi(): Record<string, string> {
-	const directory = fileURLToPath(new URL("../cockpit-ui/dist/", import.meta.url));
-	let names: string[];
-	try {
-		names = readdirSync(directory);
-	} catch {
-		throw new TypeError(
-			"the browser page is not built: run it with `npm run cockpit -- <store-root>`, which builds it first",
-		);
-	}
-	return Object.fromEntries(
-		names
-			.filter((name) => /\.(html|js|css|svg)$/.test(name))
-			.map((name) => [name, readFileSync(join(directory, name), "utf8")]),
-	);
-}
+import { launchEndoCockpitV0, serveUntilSignalV0 } from "./host.ts";
 
 const USAGE = "usage: npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]";
 
-function parse(argv: readonly string[]): { root: string; keyFile: string; port: number } {
+function parse(argv: readonly string[]): { root: string; keyFile: string | undefined; port: number } {
 	let root: string | undefined;
 	let keyFile: string | undefined;
 	let port = 0;
@@ -48,25 +29,22 @@ function parse(argv: readonly string[]): { root: string; keyFile: string; port: 
 		else throw new TypeError(USAGE);
 	}
 	if (root === undefined) throw new TypeError(USAGE);
-	return { root, keyFile: keyFile ?? join(dirname(endoDigestKeyPathV0()), "cockpit-digest-key"), port };
+	return { root, keyFile, port };
 }
 
 try {
 	const { root, keyFile, port } = parse(process.argv.slice(2));
-	const server = await startEndoCockpitServerV0({
+	const { server } = await launchEndoCockpitV0({
 		root,
-		digestKey: loadOrCreateEndoDigestKeyV0(keyFile),
-		ui: loadUi(),
 		port,
+		...(keyFile === undefined ? {} : { keyFile }),
+		uiDirectory: join(fileURLToPath(new URL("../cockpit-ui/", import.meta.url)), "dist"),
 		onError: () => process.stderr.write("cockpit: an internal error occurred (the request was refused)\n"),
 	});
+	const stopped = serveUntilSignalV0(server);
 	process.stdout.write(`cockpit (read-only, loopback only): ${server.baseUrl}/\n`);
 	process.stderr.write("the URL above is the access capability for this launch; Ctrl-C stops the server\n");
-	const stop = (): void => {
-		void server.close().then(() => process.exit(0));
-	};
-	process.once("SIGINT", stop);
-	process.once("SIGTERM", stop);
+	await stopped;
 } catch (error) {
 	process.stderr.write(`${error instanceof TypeError ? error.message : "the cockpit server did not start"}\n`);
 	process.exitCode = 1;

@@ -181,7 +181,7 @@ describe("source boundary", () => {
 
 	it("the launcher is the only file that reaches the key files, and it reads no environment itself", () => {
 		expect(specifiers(read("cockpit-http/launch.ts")).sort()).toEqual(
-			["../storage/digest-key.ts", "./server.ts", "node:path"].sort(),
+			["../storage/digest-key.ts", "./server.ts", "node:fs", "node:path", "node:url"].sort(),
 		);
 		expect(code(read("cockpit-http/launch.ts"))).not.toMatch(/process\.env/);
 	});

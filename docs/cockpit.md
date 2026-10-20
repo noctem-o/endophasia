@@ -1,7 +1,8 @@
 # The Endophasia-native cockpit
 
-Status: **the observation bridge and a local read-only HTTP server are implemented** (a library and a transport:
-[below](#the-observation-bridge-implemented), [the server](#the-local-http-server-implemented)); the page is planned. The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
+Status: **the observation bridge, a local read-only HTTP server and a first browser page are implemented** (a library, a
+transport and one screen: [below](#the-observation-bridge-implemented), [the server](#the-local-http-server-implemented),
+[the page](cockpit-ui.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
 Session-worker services over a fork-only listener and cannot run against a user-installed Pi
 ([pi-attach-inventory.md](pi-attach-inventory.md) §5). Its replacement is not a port. It is a cockpit over
 Endophasia's own records, for any attached harness.
@@ -36,13 +37,14 @@ A read-mostly operator view served by Endophasia, whose only sources are Endopha
 
 ## First slice (acceptance)
 
-The projection and store-reader halves of items 2 and 3 exist as a library in the bridge below; the server, the page and the
-API-level replay test follow in the next stages.
+The bridge, the server and the page exist (below, and [cockpit-ui.md](cockpit-ui.md)); the page's refresh is explicit, as the
+server's cost requires (item 2).
 
-1. `endo cockpit <root>` serves a static page and a read-only JSON API over the store and registry. (The JSON API exists as
-   `npm run cockpit -- <root>` from a checkout; the `endo cockpit` command and the page are later stages, with packaging.)
-2. The page shows identity, the last change notice, capability state with reasons, and a session timeline that updates
-   as events are appended.
+1. `endo cockpit <root>` serves a static page and a read-only JSON API over the store and registry. (The page and the JSON API are served by
+   `npm run cockpit -- <root>` from a checkout; the `endo cockpit` command is a later stage, with packaging.)
+2. The page shows identity, the last change notice, capability state with reasons, and a session timeline. It updates when
+   the operator asks (Refresh, a page of the timeline), not as events are appended: every read re-validates the whole log
+   (see the measured cost below), so there is no polling, and a push channel is a separate design.
 3. A test replays a recorded store (`research/pi-conformance/1.0.0` can seed one) and checks that the API output equals
    a projection computed directly from the records.
 4. No import of any harness package; the boundary guards cover the new directory.
@@ -361,8 +363,9 @@ results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` wi
 ## The local HTTP server (implemented)
 
 A transport over the bridge, not another observation system: it reconstructs no evidence, infers no fact, manages no harness
-and writes nothing. Every body is a contract the bridge returned, read back under the version it declares and serialized in
-canonical JSON (`canonicalEndoJsonV0`, re-exported by `cockpit/index.ts`). The code is `cockpit-http/server.ts` (the transport:
+and writes nothing. Every API body is a contract the bridge returned, read back under the version it declares and serialized in
+canonical JSON (`canonicalEndoJsonV0`, re-exported by `cockpit/index.ts`); the only other bodies are the host's own page files,
+served from memory. The code is `cockpit-http/server.ts` (the transport:
 `node:http`, `node:crypto` and `cockpit/index.ts` only) and `cockpit-http/launch.ts` (the development launcher, the only file that
 loads a key). `cockpit/` itself still imports no network API.
 
@@ -402,12 +405,13 @@ own predicate (well-formed kind, presentable, no reserved segment). (6) **Query*
 non-negative integers (`^(0|[1-9][0-9]{0,15})$`, safe-integer, `limit` 1 to `ENDO_COCKPIT_PAGE_MAX_LIMIT_V0`), at most 96 characters.
 (7) **Read budget**: a budget of read milliseconds that accrues at a duty cycle (default 0.25, with a 1,000 ms burst) from the
 monotonic clock, lazily (no timer), and is **charged the time each authenticated read actually took**, so it can go negative; while
-it is not positive the next read is `429` with `Retry-After` (the seconds until it recovers). It is charged by time and not by
+it is not positive the next read is `429` with `Retry-After` (the seconds until it recovers, at most 3,600: a budget with a tiny duty can owe far longer, and the answer is then "ask again in an hour", so every client can read the figure as a plain number and hold it in a timer). It is charged by time and not by
 request because a request count does not bound a read that outlasts the refill: a 10 requests-per-second bucket never fired against
 a 10,000-event store, whose reads take 0.3 s (measured: 30 back-to-back requests, 0 refused), where the time budget refused 25 of 30
 and held the server to about a quarter of a core. Small stores are unaffected (30 back-to-back timeline requests on 1,000 events,
-about 30 ms each: none refused). Unauthenticated and malformed traffic spends none of it. Every response, error or not, carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
+about 30 ms each: none refused). Unauthenticated and malformed traffic spends none of it. Every JSON response, error or not, carries `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and a JSON content type.
+The page and its assets (below) carry their own, narrower-for-script and wider-for-assets policy.
 A refusal body is exactly `{"error":"<code>"}` from a closed set (`bad-request`, `forbidden`, `not-found`, `method-not-allowed`,
 `misdirected-request`, `too-many-requests`, `internal-error`): never a path, an echo of the request, a message, a stack, a key or
 the capability. An internal failure is a generic `500` that closes the connection; the host's optional `onError` hook receives the
@@ -473,7 +477,16 @@ The server never refreshes by itself, and the rest is the bridge's cost (reads t
 read position or an index would remove; that is deliberately not built here. If the cockpit runs beside inference, run it as a
 separate process at lower priority (`nice`), and keep the page size small only to bound the response, not the cost.
 
-**Not in this stage.** A freshness endpoint (above), an evidence-inspection endpoint, a page, SSE or any push, a watcher, an
-incremental index, a cache, authentication beyond the capability, TLS (the traffic never leaves the loopback interface), and the
-`endo cockpit` command and packaging. The server is not a general file server: it opens nothing the bridge does not open, and it
-refuses to name a path.
+**The page's routes.** When the host passes the built page (`ui`, a map of file name to content held in memory; the server reads no
+file), `GET /<cap>/` is the page and `GET /<cap>/assets/<name>` serves each other file, by exact name, with no query string; `/<cap>`
+without the slash stays a `404` (a redirect would put the capability in a header). Both go through every guard above, spend none of the
+read budget, and carry `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src
+'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'` (no inline
+script or style, nothing remote, and any HTML sink throws), plus `X-Frame-Options: DENY`, same-origin opener and resource policies and a
+`Permissions-Policy` that turns the powerful features off. The page's own requests are relative (`./api/...`), so the capability is carried
+by the browser's address and never appears in a query string, a script or a log. See [cockpit-ui.md](cockpit-ui.md).
+
+**Not in this stage.** A freshness endpoint (above), an evidence-inspection endpoint, SSE or any push, a watcher, an incremental
+index, a cache, authentication beyond the capability, TLS (the traffic never leaves the loopback interface), and the `endo cockpit`
+command and packaging. The server is not a general file server: it serves the files the host handed it by exact name and reads none
+itself, opens nothing the bridge does not open, and refuses to name a path.

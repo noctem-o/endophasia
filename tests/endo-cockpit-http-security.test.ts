@@ -471,6 +471,22 @@ describe("request cost: reads are charged the time they take", () => {
 		}
 	});
 
+	it("never asks a client to wait longer than an hour: a budget that owes more is answered with the cap, as a plain number", async () => {
+		// duty 1e-12: the debt of one read would be about 10^10 seconds. A browser timer cannot hold that (it fires at once above
+		// about 24 days), so the figure is capped; asking again after the hour is answered with the remainder.
+		const server = await serve(root, { readBudget: { duty: 1e-12, burstMs: 1 } });
+		expect((await get(server, "/api/v0/snapshot")).status).toBe(200);
+		const limited = await get(server, "/api/v0/snapshot");
+		expect(expectRefusal(limited, 429)).toBe("too-many-requests");
+		expect(limited.headers["retry-after"]).toBe("3600");
+		// A debt that is owed in a few seconds is still stated exactly, not rounded up to the cap.
+		const brief = await serve(root, { readBudget: { duty: 0.5, burstMs: 1 } });
+		expect((await get(brief, "/api/v0/snapshot")).status).toBe(200);
+		const short = await get(brief, "/api/v0/snapshot");
+		expect(expectRefusal(short, 429)).toBe("too-many-requests");
+		expect(Number(short.headers["retry-after"])).toBeLessThan(3600);
+	});
+
 	it("the default budget lets an operator refresh a small store promptly, many times in a row", async () => {
 		const server = await serve(root);
 		for (let i = 0; i < 8; i += 1) expect((await get(server, "/api/v0/snapshot")).status).toBe(200);

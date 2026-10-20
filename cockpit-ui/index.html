@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<title>Endophasia Cockpit</title>
+<link rel="stylesheet" href="./assets/cockpit.css">
+<link rel="icon" type="image/svg+xml" href="./assets/icon.svg">
+<script type="module" src="./assets/main.js"></script>
+</head>
+<body data-state="idle" data-busy="false" data-attempts="0">
+<a class="skip" href="#timeline">Skip to the timeline</a>
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 28 20" width="28" height="20" aria-hidden="true" focusable="false"><circle cx="9.5" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="18.5" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+    <span class="wordmark">ENDOPHASIA</span>
+  </div>
+  <div class="page-id"><span class="page-name">Cockpit</span><span class="page-sub">Observation</span></div>
+  <span class="chip-fixed" title="This page only reads. It cannot change a store, steer a runtime or start anything.">Read-only</span>
+  <span class="chip-fixed" title="The event log and each attachment's registry are read separately and share no sequence or moment.">Independent sources</span>
+  <div class="spacer"></div>
+  <p class="read-status" id="read-status" role="status" aria-live="polite">Nothing read yet</p>
+  <button type="button" class="btn primary" id="refresh" data-focus="refresh" title="Read the stores again (R)">Refresh</button>
+</header>
+<div id="banner" class="banner" aria-live="polite"></div>
+<noscript><p class="note note-error">This page needs JavaScript to read the cockpit API. It loads only its own files and nothing from elsewhere.</p></noscript>
+<main class="grid" id="app">
+  <div class="col col-left" id="col-left"></div>
+  <div class="col col-center" id="col-center"></div>
+  <div class="col col-right" id="col-right"></div>
+</main>
+</body>
+</html>

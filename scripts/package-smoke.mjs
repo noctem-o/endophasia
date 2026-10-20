@@ -518,7 +518,7 @@ try {
 	check(false, `smoke aborted: ${studios.reduce((text, child) => child.redact(text), raw)}`);
 } finally {
 	for (const child of studios) child.kill(); // nothing outlives the run, and nothing holds the scratch directory open
-	rmSync(join(repo, "dist", "zz-stale-output.js"), { force: true }); // the marker of the stale-output check, if the run ended before the build removed it
+	if (packageSpec === null) rmSync(join(repo, "dist", "zz-stale-output.js"), { force: true }); // the marker of the stale-output check, if the run ended before the build removed it; an artifact run never wrote it, so it never touches the checkout
 	rmSync(scratch, { recursive: true, force: true });
 }
 if (failures.length > 0) {

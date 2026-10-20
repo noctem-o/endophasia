@@ -27,7 +27,12 @@ function card(view: SourceView, selected: boolean): HTMLElement {
 					view.described === null ? "A condition this build does not know." : view.described.meaning,
 				),
 		view.positioned
-			? facts(view.facts.map((f) => [f.label, textValue(f.value, { mono: true })]))
+			? facts(
+					view.facts.map((f) => [
+						f.label,
+						textValue(f.value, { mono: true, ...(f.keep === undefined ? {} : { keep: f.keep }) }),
+					]),
+				)
 			: note(
 					"This source has no position: nothing was read from it, which is not the same as a log of length zero.",
 				),

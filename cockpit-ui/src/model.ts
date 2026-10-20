@@ -69,7 +69,8 @@ export interface SourceView {
 	state: string;
 	/** The state's name and meaning, or null for a state this build does not know (shown as its raw text). */
 	described: { label: string; meaning: string } | null;
-	facts: { label: string; value: string }[];
+	/** The whole value; `keep`, where set, is how much of it the card shows (the rest is on hover), so that what it is can still be told. */
+	facts: { label: string; value: string; keep?: number }[];
 	tornTailBytes: number | null;
 	sealedAt: number | null;
 	error: string | null;
@@ -93,13 +94,15 @@ export function eventLogSourceView(source: EndoCockpitEventLogSourceV0): SourceV
 						{ label: "events read", value: grouped(mark.length) },
 						{
 							label: "last event",
-							value: mark.lastEventId === null ? "none" : abbreviated(mark.lastEventId, 22),
+							value: mark.lastEventId === null ? "none" : mark.lastEventId,
+							keep: 22,
 						},
 						{
 							label: "prefix digest",
-							value: mark.prefixDigest === null ? "none (empty log)" : abbreviated(mark.prefixDigest, 16),
+							value: mark.prefixDigest === null ? "none (empty log)" : mark.prefixDigest,
+							keep: 16,
 						},
-						{ label: "digest key", value: abbreviated(mark.keyId, 22) },
+						{ label: "digest key", value: mark.keyId, keep: 22 },
 					],
 		tornTailBytes: source.condition.tornTail?.bytes ?? null,
 		sealedAt: source.condition.sealedAt,
@@ -123,8 +126,8 @@ export function registrySourceView(source: EndoCockpitRegistrySourceV0): SourceV
 							label: "records",
 							value: COUNT_KINDS.map((kind) => `${kind} ${grouped(mark.counts[kind])}`).join(" · "),
 						},
-						{ label: "content digest", value: abbreviated(mark.contentDigest, 16) },
-						{ label: "digest key", value: abbreviated(mark.keyId, 22) },
+						{ label: "content digest", value: mark.contentDigest, keep: 16 },
+						{ label: "digest key", value: mark.keyId, keep: 22 },
 					],
 		tornTailBytes: source.condition.tornTail?.bytes ?? null,
 		sealedAt: source.condition.sealedAt,

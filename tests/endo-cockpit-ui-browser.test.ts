@@ -1014,6 +1014,71 @@ suite("replies the page must not trust", () => {
 		expect(await shownNotes(page, "#capabilities")).toEqual(expectedNotes("capability", attachment));
 	});
 
+	// A capability the operator opened belongs to the registry they opened it in. When a refresh removes that registry the page falls
+	// back to another, which the operator did not choose: the selection is dropped, though that registry has a capability of the same name.
+	it("drops an open capability when a refresh removes its registry, rather than showing a same-named one from another", async () => {
+		const first = JSON.parse(JSON.stringify(realSnapshot())) as ReturnType<typeof realSnapshot>;
+		const second = JSON.parse(JSON.stringify(first)) as ReturnType<typeof realSnapshot>;
+		const clone = JSON.parse(JSON.stringify(first.runtimes[0])) as (typeof first.runtimes)[number];
+		clone.identity.source.attachment = "zz.other";
+		clone.capabilities.source.attachment = "zz.other";
+		first.runtimes.push(clone); // the first read lists two registries with the same capability names; the second lists only the first
+		const bodies = [JSON.stringify(first), JSON.stringify(second)];
+		let reads = 0;
+		const page = await open(await pretend((res) => json(res, 200, bodies[Math.min(reads++, 1)]!)));
+		await page.eval(
+			`(() => { const s = document.querySelector("#runtime select"); s.value = "zz.other"; s.dispatchEvent(new Event("change")); })()`,
+		);
+		await page.click("#capabilities button.caprow[data-key='session.overview']");
+		expect(await text(page, "#inspector")).toMatch(/recorded status/); // open, so the check below is not vacuous
+		await page.click("#refresh");
+		await page.settled(2);
+		expect(await text(page, "#runtime")).toContain(second.runtimes[0]!.identity.source.attachment); // fell back to the one left
+		expect(
+			await page.eval(
+				`document.querySelector("button.caprow[data-key='session.overview']").getAttribute("aria-pressed")`,
+			),
+		).toBe("false");
+		expect(await text(page, "#inspector")).not.toMatch(/recorded status/);
+	});
+
+	// A generated alias is a stand-in and must never read as a recorded id, wherever the page shows one: in text, on a card, in a list.
+	it("marks a generated alias wherever it is shown, and keeps the whole value on hover", async () => {
+		const snapshot = JSON.parse(JSON.stringify(realSnapshot())) as ReturnType<typeof realSnapshot>;
+		const token = (n: number) => `withheld-${n.toString(16).padStart(32, "0")}`;
+		snapshot.timeline.source.watermark!.lastEventId = `endo.event.${token(1)}`;
+		snapshot.timeline.sessions = [
+			{ ...snapshot.timeline.sessions[0]!, sessionId: `endo.session.${token(2)}` },
+			{ ...snapshot.timeline.sessions[0]!, sessionId: "endo.session.plain" },
+		];
+		snapshot.timeline.entries[0]!.eventId = `endo.event.${token(3)}`;
+		const page = await open(await pretend((res) => json(res, 200, JSON.stringify(snapshot))));
+		expect(await page.eval("document.body.dataset.state")).toBe("ready");
+		// Every text that carries an alias sits in an alias mark, or is an option that begins with the word alias.
+		const unmarked = await page.eval<string[]>(`(() => {
+			const found = [];
+			const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+			for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+				if (!n.textContent.includes("withheld-")) continue;
+				const parent = n.parentElement;
+				if (parent.closest(".alias")) continue;
+				if (parent.tagName === "OPTION" && n.textContent.startsWith("alias ")) continue;
+				found.push(n.textContent);
+			}
+			return found;
+		})()`);
+		expect(unmarked).toEqual([]);
+		expect(
+			await page.eval(
+				`[...document.querySelectorAll("#timeline select[aria-label='Session'] option")].map((o) => o.textContent)`,
+			),
+		).toEqual(["all sessions", "alias withheld-00000000\u2026", "endo.session.plain"]);
+		// The card shows the alias as one, with the whole value on hover.
+		expect(
+			await page.eval(`[...document.querySelectorAll("#sources .alias")].map((e) => e.title.split("\\n")[0])`),
+		).toContain(`endo.event.${token(1)}`);
+	});
+
 	// A control that starts a read loses focus while a pause holds it disabled. The page remembers which control it was and puts focus
 	// back when the one timeout lifts the pause, unless the operator has moved on by then.
 	const pausedOnce =

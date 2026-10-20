@@ -51,6 +51,14 @@ export function textValue(value: string, options: { mono?: boolean; keep?: numbe
 	return h("span", { class: options.mono === true ? "mono" : "", title: value }, shown);
 }
 
+/** A contract string as plain text, for where an element cannot go (an option): the withheld marker and a generated alias are named as such. */
+export function labelText(value: string): string {
+	const presented = presentText(value);
+	if (presented.kind === "withheld") return "withheld";
+	if (presented.kind === "alias") return `alias ${(ALIAS_PATTERN.exec(value)?.[0] ?? value).slice(0, 17)}\u2026`;
+	return value;
+}
+
 /** A value that is not there, with the reason the record gives. Never a blank and never a zero. */
 export function unavailable(reason: string): HTMLElement {
 	return h(

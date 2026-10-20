@@ -10,7 +10,7 @@ import { h, show } from "./dom.ts";
 import { CHANGE_KIND, CONFIDENCE, DIFFERENCE, known, NOTIFICATION_KIND, VERSION_ORDER } from "./labels.ts";
 import { abbreviated, attachmentChoices, grouped, noteViews, selectRuntime } from "./model.ts";
 import type { Actions, AppState } from "./state.ts";
-import { claim, facts, note, noteItem, stateBadge, textValue } from "./widgets.ts";
+import { claim, facts, labelText, note, noteItem, stateBadge, textValue } from "./widgets.ts";
 
 function fingerprint(view: EndoCockpitFingerprintViewV0): HTMLElement {
 	return facts([
@@ -140,7 +140,7 @@ export function renderRuntime(
 										...(c.attachment === runtime?.identity.source.attachment ? { selected: "selected" } : {}),
 									},
 								},
-								`${c.attachment} · ${c.state}`,
+								`${labelText(c.attachment)} · ${c.state}`,
 							),
 						),
 					),

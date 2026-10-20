@@ -6,7 +6,7 @@ import { h, show } from "./dom.ts";
 import { CATEGORY, FLAG, known, SOURCE_STATE } from "./labels.ts";
 import { categoryCounts, filterEntries, filtersActive, grouped, NO_FILTERS, pagerView, usageView } from "./model.ts";
 import { type Actions, type AppState, controlsLocked, PAGE_SIZES } from "./state.ts";
-import { note, stateBadge, textValue } from "./widgets.ts";
+import { labelText, note, stateBadge, textValue } from "./widgets.ts";
 
 /** The producer-clock string as written, split at the `T`: the date shows once above the rows it covers, the time in each row. */
 function splitClock(recordedAt: string): { date: string | null; time: string } {
@@ -260,7 +260,7 @@ export function renderTimeline(
 						h(
 							"option",
 							{ attrs: { value: id, ...(state.filters.session === id ? { selected: "selected" } : {}) } },
-							id,
+							labelText(id),
 						),
 					),
 				),

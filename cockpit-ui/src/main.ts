@@ -238,8 +238,13 @@ async function load(request: { afterSequence: number; limit: number }): Promise<
 			state.pageSize = request.limit;
 			resetTimelineScroll = moved;
 			const attachments = reply.snapshot.runtimes.map((r) => r.identity.source.attachment);
-			if (state.attachment === null || !attachments.includes(state.attachment))
-				state.attachment = attachments[0] ?? null;
+			if (state.attachment === null || !attachments.includes(state.attachment)) {
+				const fallback = attachments[0] ?? null;
+				// The operator did not choose this registry: a capability they had open is not carried over to a same-named one in it.
+				if (state.attachment !== null && fallback !== state.attachment && state.selection?.kind === "capability")
+					state.selection = null;
+				state.attachment = fallback;
+			}
 			if (state.selection?.kind === "event") {
 				const sequence = state.selection.sequence;
 				if (!reply.snapshot.timeline.entries.some((e) => e.storageSequence === sequence)) state.selection = null;

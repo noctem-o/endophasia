@@ -29,6 +29,9 @@ they can be attached, and earn capability admission through the same local check
 - Anything about a live model provider: automated acceptance never calls one. A live study stays behind
   `--authorize-live-study` and may incur provider cost.
 - Model-internal observation, a cockpit, new adapters, or schema migrations.
+- **`endo studio`.** The published `0.1.0-alpha.1` was cut before Studio and does not contain it (no `studio` command, no
+  `dist/cockpit-ui/`), although the source tree's `package.json` carries the same version string. Studio is in the source tree, verified by
+  the same `package` and `acceptance` jobs, and is unreleased ([studio.md](studio.md)).
 
 ## Checklist for subsequent releases
 

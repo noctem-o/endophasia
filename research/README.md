@@ -1,7 +1,7 @@
 # Real recordings and studies
 
 What has been run against a real Pi and a real model, what each run establishes, and what it does not. The README's
-[Current state](../README.md#current-state) links here instead of inlining the detail. The text of each section was
+[research summary](../README.md#research-direction) links here instead of inlining the detail. The text of each section was
 moved here unchanged.
 
 Every entry below is one Pi release (1.0.1 unless stated), one model (qwen3.8-27b, Q4_K_M, on llama.cpp's
@@ -176,6 +176,7 @@ The studies' raw run directories are not in this repository (about 1 GB of track
 
 The documents in this section are research contracts or preregistration drafts. They are **not** entries in the real-run table above and do not establish empirical results.
 
+- [Epistemic alignment experiment: Magpie as a shadow ledger](epistemic-alignment-experiment.md) — a deliberately gameable post-training environment with a separate epistemic measurement surface, a reward/measurement firewall, a staged sequence (reproduce, positive controls, reward interventions, monitor pressure) and predeclared power and comparison families. Moved here from the project README; not run.
 - [Developmental epistemic training v0](developmental-epistemic-training-v0.md) — separates epistemic-content effects from developmental-timing effects in a small synthetic microworld, with matched metadata controls, a plain anchor, learning-rate-controlled timing, downstream conflict-dose stress tests and a whole-generator-family holdout.
 
 ## Fake-only paths

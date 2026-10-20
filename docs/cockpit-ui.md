@@ -8,7 +8,7 @@ and shows what comes back. It invents no capability, status, confidence, activit
 ```text
 endo studio [<root>]                   # the installed command (docs/studio.md): serves the page packaged in dist/cockpit-ui/
 npm run cockpit -- <store-root>        # from a checkout: builds the page, starts the server, prints the access URL once
-node scripts/seed-cockpit-demo.ts <empty-directory>   # a demo store from the committed Pi recordings (3 sessions, the 1.0.0 specimen)
+node scripts/seed-cockpit-demo.ts <empty-directory>   # a demo store from the committed fake-Pi lifecycle fixtures (3 sessions) and the real Pi 1.0.0 specimen
 ```
 
 ![The installed Studio page over the demo store: runtime and capabilities on the left, the timeline in the middle, sources and the inspector on the right](images/studio.png)

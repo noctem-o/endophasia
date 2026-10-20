@@ -2,50 +2,72 @@
 
 <div align="center">
 
-<p><sub>DEVELOP / EVOLVE &nbsp; · &nbsp; WORK / DREAM &nbsp; · &nbsp; OBSERVE / VERIFY</sub></p>
-
 <h1>endophasia</h1>
 
 <p><strong>Instrumented cognition for coding agents.</strong></p>
 
 <p>
-Observe harness behaviour, steer current work, compare experiments,<br>
-and keep measurement, evidence and permission separate.
+An experimental instrument for asking defensible questions about coding-agent behaviour:<br>
+it records what a harness actually does, and keeps observation, evidence, interpretation and permission apart.
 </p>
 
 <p>
-  <a href="#current-state"><img src="https://img.shields.io/badge/status-experimental-637d69?style=flat-square" alt="Status: experimental"></a>
+  <a href="#what-works-today"><img src="https://img.shields.io/badge/status-experimental-637d69?style=flat-square" alt="Status: experimental"></a>
   <a href="https://github.com/earendil-works/pi"><img src="https://img.shields.io/badge/reference%20runtime-Pi-536c85?style=flat-square" alt="Reference runtime: Pi"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-94765e?style=flat-square" alt="License: MIT"></a>
 </p>
 
 <p>
-  <a href="#why-endophasia">Why</a> &nbsp; · &nbsp;
-  <a href="#how-it-attaches">Attach</a> &nbsp; · &nbsp;
-  <a href="#develop-and-evolve">Develop / Evolve</a> &nbsp; · &nbsp;
-  <a href="#work-and-dream">Work / Dream</a> &nbsp; · &nbsp;
-  <a href="#observe-and-verify">Observe / Verify</a> &nbsp; · &nbsp;
-  <a href="#evidence-and-authority">Evidence</a> &nbsp; · &nbsp;
-  <a href="#current-state">Status</a> &nbsp; · &nbsp;
-  <a href="#roadmap">Roadmap</a>
+  <a href="#studio">Studio</a> &nbsp; · &nbsp;
+  <a href="#quick-start">Quick start</a> &nbsp; · &nbsp;
+  <a href="#what-works-today">What works today</a> &nbsp; · &nbsp;
+  <a href="#architecture">Architecture</a> &nbsp; · &nbsp;
+  <a href="#research-direction">Research</a> &nbsp; · &nbsp;
+  <a href="#documentation">Documentation</a>
 </p>
 
 </div>
 
 ---
 
-**Installable alpha:** [Endophasia 0.1.0-alpha.1](https://www.npmjs.com/package/endophasia) is published. Install with `npm install -g endophasia@0.1.0-alpha.1`, then run `endo doctor`. Pi is installed separately; Node >= 22.19.0 is required. See the [first-run guide](docs/install.md) and [release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1).
+Endophasia attaches to a coding-agent harness you already run, through an explicit adapter, and records what the harness
+actually does into a durable store. Everything else is built from those records: what runtime was attached and what it can
+be shown to do, a comparison of two runs, a replay, an experiment, and a read-only view of the store called Studio.
 
-Endophasia is a harness-neutral experimental substrate for observing, steering, comparing and evolving coding-agent
-systems without replacing their native execution loops.
+It is harness-neutral by design and does not replace the harness's execution loop. It is not an agent runtime, a model
+provider, a benchmark or a deployment system. Today the harness is [Pi](https://github.com/earendil-works/pi).
 
-It records what a harness actually does, evaluates capabilities against explicit evidence, and keeps recorded
-observation, derived analysis, experimentation and authority as separate layers.
+*Endophasia* is an old term for inner speech. The project is built on the opposite discipline: it records the outside of an
+agent (what it requested, what it was told, what it reported and what it did), and it does not claim to read what a model
+"thought".
 
-It is not an agent runtime, model provider, benchmark or deployment system.
+> [!IMPORTANT]
+> Experimental, and honest about it. The published npm alpha (`0.1.0-alpha.1`) **predates Studio** and does not contain
+> `endo studio`; Studio runs from a source build until a release includes it ([quick start](#quick-start)). The earlier
+> Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at
+> [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 
-It is an experimental instrument for asking defensible questions about agent behaviour. It keeps three properties
-apart, because they are different claims:
+### Why you might use it
+
+- To know which harness build and configuration produced a result, and to be told when that has changed.
+- To replay a recorded session and learn whether it reproduces, with any divergence classified.
+- To compare two runs layer by layer: lifecycle, tool calls, tool results, outcome.
+- To steer a running session through an explicit, authorised intervention, and to see separately whether the runtime accepted
+  it, whether a later model request captured by the recording proxy carried it, and what the agent then did.
+- To run pre-registered experiments in which the harness and its configuration are treated as variables, not as plumbing.
+
+### What it keeps apart
+
+~~~text
+observation  != inference
+acceptance   != execution
+evidence     != standing
+proposal     != permission
+~~~
+
+An observed event is shown as an observation. A reported value says who reported it. A derived value names its derivation.
+A capability a runtime cannot be shown to meet stays `UNAVAILABLE`; Endophasia does not fill the gap. And it keeps three
+properties of reproducibility apart, because they are different claims:
 
 ~~~text
 exact replay               did the recorded session reproduce under its recorded responses?
@@ -53,1166 +75,248 @@ fixed-condition repeat     do repeated live runs under the same declared conditi
 perturbation invariance    does behaviour hold when an input that should not matter changes?
 ~~~
 
-Coding agents do more than send a prompt to a model. They select context, compact history, call tools, branch, retry, verify work, spend tokens, accept steering, and sometimes propose actions with real effects.
+The fuller statement of these distinctions, and the projects Endophasia stays separate from, is in [docs/vision.md](docs/vision.md).
 
-Endophasia gives those parts explicit contracts and one place to inspect them.
+## Studio
 
-It does not expose private chain of thought or relabel model activations as thoughts. It does not treat every runtime
-feature as equivalent. It does not turn a benchmark score into truth, or a model's proposal into permission.
+<p align="center">
+  <img src="docs/images/studio.png" alt="Endophasia Studio's observation page: runtime and capabilities on the left, a storage-ordered event timeline in the middle, source conditions and an inspector on the right" width="920">
+</p>
 
-> [!IMPORTANT]
-> Endophasia is experimental. This repository is the standalone home of the project; the earlier Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated). See [Current state](#current-state) for exactly what runs today, and [Try it](#try-it) to attach to your own Pi.
+<p align="center"><sub><strong>A real, read-only view of recorded observations.</strong> The page as served by the installed
+command, captured in headless Chromium over a demo store seeded from the repository's committed records (fake-Pi lifecycle
+fixtures and the real Pi 1.0.0 conformance specimen, by <code>scripts/seed-cockpit-demo.ts</code>). It is not a mock-up, a
+simulation, a model-brain visualisation or a live display of internal activations.</sub></p>
 
-## Why Endophasia
+Studio (`endo studio`) is the first Endophasia-native interface. Today it is **one read-only observation page**, served from
+the installed package on `127.0.0.1` behind a private per-launch address. It shows, as recorded:
 
-The project keeps these distinctions explicit:
+- the **runtime identity**: which harness installation the registry recorded, its fingerprint, and what changed;
+- the **capability state**, each capability with its status, classification and the limits that qualify it;
+- a **timeline in storage order**, filterable, with a per-event inspector for the recorded fields and where each came from;
+- the **condition of each source**: the event log and each registry are read independently, and each says whether it was
+  readable, empty, absent, degraded or unopenable.
 
-~~~text
-observation  != inference
-acceptance   != execution
-evidence     != standing
-proposal     != permission
-history      != active context
-configured   != in-flight
-simulation   != real execution
-evaluation   != promotion
-~~~
+Each claim carries its basis (observed, reported or derived) or the N/A mark with the record's own reason; a value that was
+never recorded is shown as not recorded, never as zero. The page does not poll, draws no live activity or scores, and has no controls other
+than refresh, paging, filtering and selection. It does not start, attach to or steer an agent, and it does not write to the
+store it reads.
 
-For any adaptation loop, the chain is longer and every link is its own record:
+Studio is meant to grow into more modes. **DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view do not exist yet**;
+they are future work, not tabs, and the page has no navigation for them. Details: [docs/studio.md](docs/studio.md) and
+the page's [design reference](docs/cockpit-ui.md).
 
-~~~text
-grader evidence != reward
-reward          != selection
-selection       != promotion
-promotion       != authority
-~~~
+## Quick start
 
-An observed event is shown as an observation. A derived value says how it was derived. A capability stays unavailable when a runtime cannot meet the contract — Endophasia reports `UNAVAILABLE` rather than filling the gap.
+Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
 
-Related projects have separate jobs, and none grants another authority:
-
-| Project | Job |
-| :--- | :--- |
-| **Endophasia** | Observes, steers, and compares agent runs |
-| [Magpie](https://github.com/noctem-o/magpie) | Records claims and evidence; derives standing under explicit policy |
-| [Deadbolt](https://github.com/noctem-o/deadbolt) | Decides whether a consequential action is authorised |
-| [Cogitator](https://github.com/noctem-o/cogitator) | Seals run records with verifiable witness roots |
-| [Buzz](https://github.com/noctem-o/buzz-prime) | Shared workspace where humans and agents coordinate around runs |
-
-Independent architectural context for this direction: [*Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents*](https://arxiv.org/abs/2609.00006) (arXiv 2609.00006, a source-code study of eleven systems) separates a harness from a meta-harness, describes the shift from harness-as-tool to harness-as-platform, identifies minimal-core / extension-host designs (Pi among them), and treats memory, verification, extension surfaces and harness evolution as first-class concerns. It also notes ACP increasingly serving as a harness-hosting and interoperability boundary. It does not evaluate Endophasia; it is cited as context for the design, which attaches around a harness's own execution loop instead of replacing it.
-
-## How it attaches
-
-Endophasia is a substrate, not a runtime. It attaches to agent harnesses you already run, through explicit adapters.
-
-~~~mermaid
-flowchart TB
-    R["Harness you install<br/>Pi · Codex · Prime"] --> A["Endophasia adapter"]
-    A --> S["Endophasia services<br/>events · evidence · graph"]
-    S --> C["Operator CLI · planned cockpit"]
-~~~
-
-**You install and update harnesses with your normal method. Endophasia never installs, updates, downgrades, patches or
-rebuilds one.** It finds the executable you selected (`--pi /path`, or `pi` on `PATH`), records its identity, launches
-it in its documented RPC mode when you ask, and records what it does.
-
-Each attachment records a fingerprint: facts from your installation (resolved and real path, a SHA-256 of the
-entrypoint file, the package manifest) kept apart from what the runtime reports (`pi --version`), with every missing
-fact listed rather than guessed. When the fingerprint differs from the last one for that attachment, Endophasia
-records the change, marks the evidence that depended on it unverified, and tells you, for example:
-
-~~~text
-Pi runtime changed
-
-  Previously observed: 1.0.0 / fingerprint 0d1bcf47a86d (strong identity) at …/dist/bundle/cli.js
-  Currently detected: 1.0.1 / fingerprint 7c2e91a0b4f3 (strong identity) at …/dist/bundle/cli.js
-  Differences: package, version; version order: higher; version standing: unverified-release
-  Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.
-  Endophasia will not install, update, downgrade or replace Pi. If you want a different version, use your normal installation method.
-~~~
-
-A changed fingerprint says the runtime differs. It does not say an update is available, and it does not say the new
-runtime is incompatible. A capability can be unverified even when the runtime starts and answers.
-
-Capabilities are admitted only on current evidence, in this order:
-
-~~~text
-transport  →  identity  →  local protocol checks  →  live study (on request)  →  capability admission
-~~~
-
-- **Local protocol checks** run automatically: an ephemeral, offline Pi with no tools answering state, cursor and
-  configuration commands. No prompt, no provider call, nothing persisted.
-- **The live study** sends prompts, runs a read-only tool in a scratch workspace and calls your configured model
-  provider, so it may cost money. It runs only when you pass `--authorize-live-study`.
-
-Evidence also depends on your Pi configuration (settings, model endpoints, MCP servers, system prompts, extensions;
-never credentials), the adapter and suite versions, and the definition of the check that produced it. When any of
-these change, the evidence that depended on it stops counting. When several checks speak to one capability, the most
-conservative result decides; a check replaces another only where it is declared to re-test the same property more
-broadly.
-
-Every recorded run carries the fingerprint that produced it, so results from before and after a change are never
-silently treated as comparable.
-
-| Runtime | Role |
-| :--- | :--- |
-| Pi | Reference runtime, attached over `pi --mode rpc`. Current real-study baseline: Pi 1.0.1; the Pi 1.0.0 conformance recording below is retained as a historical specimen. Other installations and releases earn admission on their own evidence |
-| Prime | Research subject. The sealed 0.9.7 study admitted no exact capability. |
-| Codex | Future candidate, pending its own pinned study |
-| ACP v1 agents | A protocol-level adapter (`adapters/acp`) launches any ACP v1 agent command: the PR #37 slice, then semantic coverage with schema-validated updates, capability-gated `session/list`/`resume`/`close`, and explicit EXACT / QUALIFIED / LOSSY / UNREPRESENTABLE loss accounting, pinned to one SDK and schema revision. Tested against a deterministic fake agent; real OMP (`omp acp`) is an opt-in smoke. See [docs/acp-v1-slice.md](docs/acp-v1-slice.md). No capability is admitted from it yet |
-| ACP v2 agents | An **experimental**, version-pinned conformance study of the Draft v2 baseline (`adapters/acp/client-v2.ts`, kept apart from v1): explicit negotiation (an agent that answers v1 is refused, with an opt-in relaunch fallback), the baseline session surface, prompt acceptance kept distinct from run completion, `session/resume` with replay judged by reconstructed state, and fail-closed permission subjects. Deterministic fake-agent evidence only, no real v2 agent yet; ACP v2 is Draft, not stable. See [docs/acp-v2-study.md](docs/acp-v2-study.md). No capability is admitted from it |
-
-What the evidence recorded against one Pi 1.0.0 installation establishes, with Pi's provider pointed at a local fake
-endpoint ([recording and its scope](research/pi-conformance/1.0.0/README.md), [mapping](docs/pi-attach-inventory.md)).
-That recording was made under mapping `pi-rpc-mapping.1` and is kept unchanged as a historical specimen. The current
-mapping is `pi-rpc-mapping.2`, so its evidence no longer applies to a current attachment, which re-earns its own.
-It is evidence for that installation and configuration, not a promise about yours: your Pi starts unverified and is
-checked on its own.
-
-| Capability | Status | Why not exact |
-| :--- | :--- | :--- |
-| Session identity, entry cursor, per-entry usage, tool activity, model control | admitted (exact), within the recording's scope | model control exercised by re-selecting the configured model only |
-| Active path / continuity, thinking control | admitted (qualified) | context boundary derived from compaction entries; only one thinking level was available to exercise |
-| Lifecycle trace, session overview, metrics | admitted (partial) | no run or turn ids; one session, no lanes; total cost only |
-| Steer, follow-up, stop | admitted (partial) | no receipt ids; abort cannot target a specific run |
-| Active-tool control, run identity, operation outcomes | unavailable | not exposed over RPC |
-
-"Nothing matched exactly" is a valid research result.
-
-## Develop and Evolve
-
-DEVELOP and EVOLVE describe what the user is doing, not which software runs.
-
-**DEVELOP** is the current session: what the agent is doing now, what the runtime actually reported, what context was used, and whether to intervene. Steering is explicit:
-
-~~~text
-STEER  change the active trajectory
-QUEUE  deliver work at the next follow-up boundary
-STOP   request an abort of the observed run
-~~~
-
-A receipt records that the runtime accepted the request. It does not claim the effect happened.
-
-**EVOLVE** is the system-level improvement loop. It treats prompts, cognition policies, harness components, tools, memory, models, environments, and execution strategies as explicit candidate changes rather than hidden self-modification.
-
-It follows a visible sequence:
-
-~~~text
-observe → propose → isolate → evaluate → compare → admit → promote
-~~~
-
-Promotion is deliberately last. A candidate can win an evaluation and still lack permission to replace anything.
-
-EVOLVE is intentionally broader than reinforcement learning. RL can be one adaptation mechanism; RSI is a broader research direction covering repeated improvement of the model, harness, cognition policy, tools, memory, scaffolding, or execution strategy. Endophasia provides the substrate around these mechanisms: trajectories become evidence, evidence becomes evaluation input, and promotion remains gated.
-
-The intended loop is:
-
-~~~text
-cognitive state
-      ↓
-what is uncertain?
-      ↓
-what evidence is missing?
-      ↓
-what experiment is useful?
-      ↓
-what should we spend?
-      ↓
-trajectory / experience
-      ↓
-evidence
-      ↓
-evaluation
-      ↓
-adaptation
-      ↓
-new cognition
-      └───────────────────────↺
-~~~
-
-### Observe and Verify
-
-OBSERVE and VERIFY cut across DEVELOP and EVOLVE: they describe what is measured and what the evidence justifies, not
-another adaptation stage.
-
-**OBSERVE** is the measurement surface. It shows what Endophasia actually recorded and what can be derived reproducibly
-from those records.
-
-At the harness level this includes lifecycle, context, tools, usage, evidence and trajectories. Where a local-model
-provider exposes model internals, OBSERVE may also record model-level signals such as residual-stream activations,
-logits, probes and layer/token traces. Model-internal observation is capability-gated: a provider that does not expose
-a signal remains `UNAVAILABLE`.
-
-Model-internal capabilities are backend-specific. Endophasia records what the serving implementation actually exposes
-rather than normalising unavailable signals into fictitious equivalence. The preferred reference architecture, where
-the model family is supported, is [TransformerLens 4.0](https://transformerlensorg.github.io/TransformerLens/content/news/release-4.0.html):
-one `TransformerBridge` hook vocabulary over different Drivers, with each backend declaring its
-`supported_hook_points` and `non_fireable_hook_points`. Its compiled vLLM Driver keeps `torch.compile` and CUDA
-graphs for high-throughput capture and declarative steering; its Hugging Face `transformers` Driver provides the
-full hook tree, gradients and explicit attention patterns for deeper inspection.
-
-[vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) remains a specialist provider rather than the default common
-surface: it is useful when an experiment specifically needs Q/K capture and attention reconstruction, Jacobian/R-lens
-readout, persistent hooks, arbitrary Python hooks, or its broader distributed execution paths. Those are additional
-capabilities, not grounds to erase backend differences. For a recorded run, the backend that actually executed it is
-the primary observation; a reference backend supplies comparison evidence.
-
-Model internals stay separate from the cognition graph. An activation is not a thought, an activation region is not a
-hypothesis, and a geometric projection is not evidence merely because it is visually coherent.
-
-~~~text
-recorded model state
-        ↓
-declared analysis
-PCA · MFA · SAE · lens · probe
-        ↓
-typed Observe scene
-        ↓
-browser renderer
-~~~
-
-Every model-internal artifact must identify enough execution provenance to say what was actually measured: model
-family and checkpoint or weight digest; weight dtype or quantisation; quantiser and revision where applicable; serving
-backend and version; execution driver; relevant compute or attention kernel; compute dtype; capture point and layer;
-analysis method and revision; and the evidence or artifact from which it was produced. Quantised and full-precision
-variants are therefore distinct experimental subjects, not silently interchangeable representations of one model.
-
-Weight-processing semantics are part of that identity. A raw Hugging Face bridge and a
-[TransformerLens compatibility-mode](https://transformerlensorg.github.io/TransformerLens/content/compatibility_mode.html)
-bridge may generate equivalent outputs while exposing different residual norms, logit-lens values and processed
-weights. Record whether the bridge used raw HF weights or compatibility mode and, when enabled, the exact processing
-flags such as LayerNorm folding and weight centring. Compatibility-mode processing is one-shot and mutates the bridge
-in place, so a raw-vs-processed comparison must use separately identified executions.
-
-Tensor shape is provenance too. Under grouped-query attention, TransformerLens 4.0 keeps Q at the query-head count but
-K/V at the native key/value-head count rather than expanding them to one copy per query head. OBSERVE therefore records
-both query-head and KV-head counts plus the tensor's head semantics; a renderer or reconstruction must never infer
-per-query-head K/V that the backend did not expose. See the
-[TransformerBridge model-structure contract](https://transformerlensorg.github.io/TransformerLens/content/model_structure.html).
-
-The same recorded observation can be re-projected without changing the underlying evidence. Deeper inspection may also
-**reference-replay** the exact recorded token sequence through another backend, for example teacher-forcing a live vLLM
-run through a Hugging Face backend with fuller hooks:
-
-~~~text
-live serving observation
-        ↓
-recorded token sequence
-        ↓
-reference replay
-        ↓
-comparison
-~~~
-
-Replay is separately identified comparison evidence. It does not overwrite the serving-backend observation or claim
-that replay activations produced the original answer.
-
-Recorded and derived model signals remain distinct as well. TransformerLens's vLLM Driver does not expose attention
-patterns or scores because that path is fused in the serving kernel; the capability remains `UNAVAILABLE` there.
-An eager Hugging Face reference execution can record an explicit attention pattern for that replay backend. A
-vLLM-Lens run can instead record Q/K tensors and reconstruct the pattern afterward; in Endophasia the Q/K tensors are
-recorded evidence and the reconstructed pattern is `DERIVED`. Both can be useful; neither is relabelled as the other.
-
-Arbitrary executable hooks are a separate high-trust capability. vLLM-Lens documents that Python hook functions sent
-over HTTP are serialized with `cloudpickle`, which is arbitrary code execution on the serving process. Endophasia
-should therefore leave generic remote Python hooks `UNAVAILABLE` by default and admit them only in an explicitly
-trusted-local research configuration. Declarative TransformerLens vLLM interventions (`suppress`, `scale`, `add`,
-`set`) are the preferred default mutation surface when they are sufficient.
-
-The planned browser cockpit can render these scenes through
-[WebGPU](https://www.w3.org/TR/webgpu/). Rendering remains downstream of the evidence: positions, trajectories,
-regions, connections and quantitative visual encodings must correspond to recorded values or declared deterministic
-transforms of them. Presentation effects such as lighting, bloom and camera motion may improve readability, but never
-manufacture structure.
-
-DREAM and OBSERVE can share a rendering engine without sharing semantics:
-
-~~~text
-cognition graph ───── → Dream scene ────┐
-                                        ├── → WebGPU
-model observations ─ → Observe scene ───┘
-~~~
-
-DREAM presents a coherent projection of recorded cognition state. OBSERVE exposes the measurements and declared
-analyses underneath it.
-
-**VERIFY** asks a different question: what do those observations justify? Replay, fixed-condition repetition,
-perturbation invariance, causal interventions and comparison remain evidence procedures rather than properties of the
-rendered scene.
-
-### Evolve providers
-
-EVOLVE must not require one benchmark runner, adaptation framework, sandbox, or trainer. Provider contracts should let users install only the parts they need; the runtime-neutral core defines the seams and experiment records, not a preferred stack.
-
-~~~mermaid
-flowchart TB
-    E["Endophasia EVOLVE"] --> R["Runtime"]
-    E --> N["Environment"]
-    E --> V["Evaluation"]
-    E --> A["Adaptation"]
-    E --> T["Training, optional"]
-    N --> S["Sandbox"]
-    V --> O["Experiment record"]
-    A --> O
-    T --> O
-~~~
-
-These projects are reference points for future adapters, not dependencies or bundled components. Names indicate candidate roles, not a commitment to support every project.
-
-Evaluation itself can also be an adaptation target. Endophasia treats **evaluator adaptation** as a separate capability from evaluator execution: proposed rubrics, critics, judge programs, or metric expressions are versioned candidates, tested against fixed anchors and held-out evidence, and cannot promote themselves.
-
-| Job | Candidate provider |
-| :--- | :--- |
-| Run reusable task / solver / scorer evaluations | [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) |
-| Run packaged agent benchmarks | [Harbor](https://github.com/harbor-framework/harbor), or an Inspect-native evaluation pack where its task contract fits |
-| Run control, sabotage and monitor experiments | [ControlArena](https://github.com/UKGovernmentBEIS/control-arena), built as a thin layer over Inspect AI |
-| Turn an unmodified harness into trainable rollouts | [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-style capture, or an equivalent provider |
-| Large optional agent-environment pack | [MiMo-V2.6-RL-oss](https://github.com/XiaomiMiMo/MiMo-V2.6-RL-oss) |
-| Connect existing agents to rollout and training infrastructure | [Uni-Agent](https://github.com/verl-project/uni-agent) and [mimoagent](https://github.com/XiaomiMiMo/mimoagent) |
-| Co-evolve skills and policy during RL | [ReSkill](https://github.com/amazon-science/reskill) as an optional adaptation/training provider over veRL; skill versions and bundle tests remain experiment coordinates |
-| Run isolated environments | Local Docker, CubeSandbox, or Inspect sandbox providers such as [Kubernetes](https://github.com/UKGovernmentBEIS/inspect_k8s_sandbox), [EC2](https://github.com/UKGovernmentBEIS/inspect_ec2_sandbox), and [Proxmox](https://github.com/UKGovernmentBEIS/inspect_proxmox_sandbox) |
-| Stop repeated evaluation sampling adaptively | [optstop](https://github.com/UKGovernmentBEIS/optstop), through Inspect's early-stopping seam |
-| Preferred compiled local-model capture and declarative intervention | [TransformerLens 4.0](https://transformerlensorg.github.io/TransformerLens/content/news/release-4.0.html) on its vLLM Driver, where the model/engine combination is supported |
-| Specialist vLLM interpretability | [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) when an experiment needs Q/K reconstruction, Jacobian/R-lens readout, persistent/custom hooks, or capabilities outside the TransformerLens vLLM surface |
-| Deep local inspection and reference replay | [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens) on its Hugging Face `transformers` Driver; [NNsight](https://github.com/ndif-team/nnsight) where direct HF tracing is preferable |
-| Simulate agent environments | [Qwen-AgentWorld](https://github.com/QwenLM/Qwen-AgentWorld) |
-| Generate and select harness candidates | [REEF](https://github.com/Human-Agent-Society/reef), [RRSI](https://github.com/google-research/rrsi), or another adaptation provider |
-| Train model weights | [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) when Inspect owns rollout and reward while TRL/GRPO owns optimisation; [verl](https://github.com/volcengine/verl), [ROLL](https://github.com/alibaba/ROLL), [Molt](https://github.com/NVIDIA-NeMo/labs-molt), or another training provider |
-
-The Inspect projects are especially useful as an **adapter family**, not as one dependency. Inspect defines reusable task,
-solver, scorer, model-provider, sandbox and early-stopping seams; ControlArena layers serialisable policies, monitors
-and control protocols over them; Inspect RL reuses complete Inspect rollouts as training trajectories; optstop plugs
-into the early-stopping interface; vLLM-Lens registers as an Inspect model provider; and the sandbox packages provide
-replaceable execution environments. A future Endophasia integration should admit these capabilities separately and
-record each provider's version and configuration rather than flattening them into a single "Inspect" capability.
-Observation through a TransformerLens Driver or vLLM-Lens does not imply an EVOLVE action: activation capture can feed
-OBSERVE without changing the model, while steering or intervention remains a separately admitted capability.
-
-TransformerLens 4.0's Driver contract is the preferred reference for observation-provider design: each execution
-backend declares which hook points it can and cannot serve rather than promising false parity across engines, and the
-same canonical names can be reused when a hook is genuinely equivalent. Endophasia should import that capability truth
-rather than maintain a hand-written fiction of backend parity. TransformerLens also ships backend-parity scripts that
-compare vLLM/Inspect execution against `boot_transformers`; equivalent Endophasia studies should establish and record
-a backend-specific numerical noise floor before treating small live-vs-reference differences as meaningful.
-
-The trade-off is deliberate: current vLLM-Lens
-[forces eager execution so its hooks can fire](https://github.com/UKGovernmentBEIS/vllm-lens#disabling-the-plugin),
-while TransformerLens installs its vLLM capture hooks before compilation and can retain the compiled/CUDA-graph path.
-That performance distinction is provider provenance, not an invisible implementation detail.
-
-For broad local compatibility, [llama.cpp](https://github.com/ggml-org/llama.cpp) may support a lower-fidelity native
-adapter through its evaluation callback, but stock `llama-server` does not expose intermediate activations as a stable
-server API. Any such integration should therefore identify itself as native/callback instrumentation rather than
-ordinary OpenAI-compatible serving.
-
-Large datasets, container images, local models, and training stacks are optional downloads. Selecting a MiMo experiment should fetch a pinned pack or only the required subset; installing Endophasia must not fetch the pack implicitly. Providers should expose their own setup and resource requirements rather than making them hidden core dependencies.
-
-A stored experiment should identify the exact inputs needed to interpret and reproduce its result:
-
-- candidate revision;
-- runtime and model identity;
-- cognition policy;
-- environment pack and revision;
-- sandbox image or template identity;
-- evaluator and grader identity;
-- seeds and run count;
-- usage and wall-clock time;
-- result-bundle digest.
-
-An experiment's identity is a set of declared coordinates, each either recorded or explicitly UNAVAILABLE: model and
-checkpoint (for local weights, a digest of the weights file and its quantisation), harness, harness version, effective
-harness surface, invocation mode, tool surface, wire dialect, cognition policy, sampling policy, resource budget,
-environment and task. No runtime is expected to supply all of them. Comparisons check comparability coordinate by
-coordinate and flag every mismatch. A train/evaluation budget mismatch is one such mismatch, never mixed silently.
-
-**The harness is an experimental variable, not plumbing.** In any study or adaptation run that spans harnesses, the
-harness is a blocking factor: trials compared within a group (for example one GRPO group) share a harness, so a
-within-group difference measures the policy rather than the harness. Generalisation is then compared between blocks.
-That the harness can matter as much as the model is a hypothesis Endophasia can test directly (same model, task and
-environment behind different harnesses), not an assumption to build on.
-
-A simulated environment must be labelled as simulated. A world-model result must never be presented as a real execution result. The record should preserve which provider produced each observation and which evaluator judged it; neither a successful simulation nor an evaluator score is, by itself, proof of real-world performance or permission to promote a candidate.
-
-Adaptation methods, including GEPA-style selection, RL training, self-play, and bounded recursive self-improvement, can share these provider seams when their inputs and outputs can be represented honestly. They remain optional and must be evaluated against the same explicit experiment and evidence contracts.
-
-### Evolution evidence
-
-The evolution substrate is designed around explicit records rather than an opaque optimizer:
-
-| Concept | Endophasia role |
-| :--- | :--- |
-| **EnvironmentPack** | Versioned task/environment definition and evaluation conditions |
-| **Episode / Trajectory** | Recorded interaction between a harness, model, tools, and environment |
-| **ExperienceStore** | Durable collection of trajectories and derived evidence |
-| **Candidate / Mutation** | Proposed change to a policy, prompt, harness, tool, model, or execution strategy |
-| **Evaluator / Grader** | Explicit source of outcome evidence. A learned grader or judge produces evidence; deterministic adjudication (schema checks, target binding, deduplication, promotion rules) decides what it counts for. A judge never becomes an authority |
-| **Evaluator candidate** | Proposed rubric, critic, judge program, metric expression, or evaluator configuration. It is versioned and compared against fixed anchors and held-out evidence before it can replace an evaluator; its own score never authorises that replacement |
-| **Reward definition** | A versioned record naming the reward source(s), transformation, weights, bounds, missing-evidence policy and provenance. Several grader scores are never combined by an implicit weighting. A verifier that failed to run yields UNAVAILABLE, never a reward of 0: an environment failure is not a wrong answer |
-| **Selection policy** | Deterministic decision over candidate evidence; the in-tree policies are a baseline and RRSI- and GEPA-inspired rule sets, not ports of either method |
-| **Validation and promotion holdout** | Selection may read validation results; the promotion holdout is never given to a selection policy, so a promotion can be checked against data the search never saw |
-| **Promotion gate** | Explicit authority boundary after evaluation; evaluation does not imply execution |
-
-### Capture tiers
-
-Trajectory capture has two tiers, with different contracts:
-
-| Tier | Holds | Used for |
-| :--- | :--- | :--- |
-| **Evidence-grade** | Byte-exact requests and responses, tool calls and results, lifecycle, usage, environment identity | DEVELOP, replay, evaluation, comparison |
-| **Training-grade** | Everything above, plus exact prompt and sampled token IDs, per-token behaviour log-probabilities, loss masks, the sampling policy and the model checkpoint identity | On-policy training providers |
-
-- Training-grade data cannot be reconstructed from text. Harnesses repair, reformat and compact what passes through
-  them, and the chat template is applied by the server, so token IDs come from the inference engine, with its
-  tokenizer and template identity. They are never re-tokenised by the client.
-- [Inspect RL's rollout boundary](https://github.com/UKGovernmentBEIS/inspect_rl/blob/main/docs/03_internals.md) is a
-  useful concrete reference: it returns exact prompt IDs, sampled completion IDs and behaviour log-probabilities from
-  the serving path, and checks multi-turn prefix continuity rather than round-tripping through text and re-tokenising.
-- Training-grade capture is not passive. Requesting log-probabilities changes the request, so it is a declared
-  condition with its own manipulation check, never a silent add-on to evidence capture.
-- The byte-faithful recording proxy keeps its contract. A token-faithful capture provider is a separate component,
-  even if they later share infrastructure.
-- A provider that cannot supply training-grade data is still valid for everything in the first tier. Asking it for
-  training data fails as UNAVAILABLE, never with a degraded substitute.
-- Every recording made so far is evidence-grade, and stays so.
-
-Trajectories are not assumed to be linear. A derived rollout structure treats retries as siblings, a subagent as a
-new root and a compaction as the start of a new prefix, and it is the substrate for replay, forks and training
-sequences alike.
-
-Resource use is evidence too. Token usage, model calls, tool calls, branches, retrieval, tests, critics, retries, wall-clock time, and cost can be recorded as part of the trajectory. This makes **Compute Appetite** a bridge between DEVELOP and EVOLVE: a cognition policy can decide how much computation to spend, while EVOLVE can test whether that expenditure actually improves outcomes.
-
-The goal is not autonomous rewriting for its own sake. The goal is **bounded, reproducible, evidence-backed improvement**.
-
-
-### Epistemic alignment experiment: Magpie as a shadow ledger
-
-One concrete EVOLVE study is a deliberately gameable post-training environment: optimize a policy against an imperfect
-proxy while a separate epistemic measurement surface records what changes before, during and after reward hacking.
-The aim is not to encode a complete value system or claim a solution to alignment. It is to test a narrower,
-falsifiable question:
-
-> **Do training-independent epistemic traces forecast proxy exploitation, and can a narrow calibration reward reduce
-> that transition without destroying the monitors used to detect it?**
-
-This design is motivated by several recent results: [reward-hacking RL can produce broader emergent
-misalignment](https://arxiv.org/abs/2511.18397), [open-weight RL reproductions make the phenomenon accessible at
-research scale](https://arxiv.org/abs/2605.31328), [optimizing directly against a useful monitor can make the monitor
-lose recall](https://arxiv.org/abs/2503.11926), [PRIME-style direct probes can precede visible reward
-hacking](https://arxiv.org/abs/2606.09711), and [rubric dropout can reduce over-optimization of a fixed reward
-proxy](https://arxiv.org/abs/2608.11669). The public
-[EMA_RL](https://github.com/lasseruttert/EMA_RL) pipeline is a useful reproduction reference. These sources motivate
-the experiment; they do not validate Endophasia or Magpie.
-
-> [!IMPORTANT]
-> **Reward / measurement firewall.** A feature used as reward is no longer a clean monitor of the policy trained
-> against it. The first tranche therefore keeps Magpie-derived measurements, PRIME probes, contradiction behaviour,
-> evidence acquisition and provenance/origin structure outside the training reward. Magpie is a shadow epistemic
-> ledger, not a reward oracle, truth oracle or promotion authority.
-
-~~~mermaid
-flowchart LR
-    P["Policy checkpoint"] --> T["Training surface<br/>proxy · optional dropout · calibration"]
-    P --> S["Shadow surface<br/>Magpie · PRIME · delayed outcomes"]
-    T --> O["Optimizer"]
-    O --> P
-    S --> H["Training-independent evaluation"]
-    P --> H
-    H --> X["Experiment record"]
-    S --> X
-~~~
-
-#### Experimental sequence
-
-The study is staged so a new mitigation is never interpreted before the underlying failure mode and known controls
-have been reproduced.
-
-| Stage | Question | Planned treatment |
-| :--- | :--- | :--- |
-| **0 · reproduce** | Does proxy optimization produce reward hacking and broader misalignment in the selected local model? | Start from the published warmup → GRPO structure. A ~4B model is a cheap scout; failure there is not a negative result. Repeat at ~8B before concluding the phenomenon is absent |
-| **1 · positive controls** | Can the setup reproduce already-reported mitigation directions? | Inoculation prompting and on-policy safety-data interleaving, each as its own declared condition |
-| **2 · reward interventions** | Do less-stable proxies or calibrated outcome rewards change hacking onset and generalization? | Fixed proxy, proxy dropout, calibration reward, and the combination |
-| **3 · monitor pressure** | Does a useful shadow indicator survive once optimization can see it? | Only after a shadow metric has shown predictive value, expose one previously held-out signal to reward and measure whether its usefulness degrades |
-
-The primary Stage-2 arms are:
-
-| Arm | Training signal |
-| :--- | :--- |
-| **A · proxy** | Fixed exploitable task proxy / rubric |
-| **B · dropout** | The same proxy, but a declared fraction of reward criteria is randomly omitted per rollout group; evaluation always restores the full criterion set |
-| **C · calibration** | The same proxy plus a proper scoring rule on explicitly forecastable outcomes; initially use a Brier-style term such as `-(p - y)^2`, not rewards for hedging words or other linguistic markers |
-| **D · combined** | Proxy dropout plus the same calibration term |
-| **E · inoculation** | Positive-control training prompt that explicitly recontextualizes the exploitable behaviour; this arm intentionally changes the prompt |
-| **I · interleaving** | Positive-control on-policy safety-data interleaving |
-
-System prompts, harness, model checkpoint, sampling policy, task distribution and budgets stay byte-identical across
-A–D. Any manipulation of exploit discoverability, hint strength or proxy quality is a predeclared blocking factor,
-not an unrecorded prompt change. The reference implementation and dependency set used for reproduction should be
-pinned rather than silently upgraded.
-
-#### Budget, power and comparison families
-
-Before any arm is run, predeclare the budget and what it can detect; otherwise a null result is uninterpretable.
-
-- **Run budget and power.** Fix the number of independent seeds per arm, the checkpoint cadence and the smallest
-  difference in hacking onset or hack rate the design could detect, together with the significance threshold, target
-  power, statistical test and censoring assumptions that define "detect". Onset is a time-to-event outcome with censoring
-  (runs that never hack), so plan the analysis for that. A comparison the budget cannot power is reported as
-  exploratory, not as evidence of no effect.
-- **Stage 0 is a gate with a compute cap.** State the maximum runs and compute at the ~4B scout and at ~8B, and the
-  outcome that ends the programme if hacking is still absent at ~8B. Stages 1-3 are not funded from an unbounded
-  Stage 0.
-- **A-D is one comparison family.** Arms E and I each change exactly one coordinate on purpose (E the training
-  prompt, I the interleaved safety data), so the byte-identical guarantee above is lifted for that coordinate only.
-  Model checkpoint, harness, sampling policy, task distribution and total budgets stay matched to A, otherwise a
-  difference cannot be attributed to the control. Treat them as positive controls against A, in a separate family:
-  never pool them into A-D comparisons or the same multiplicity correction, and do not read them as competing
-  mitigations.
-
-#### What is rewarded and what stays shadow-only
-
-The first calibration treatment rewards only a narrow quantity whose outcome can be independently resolved. It does
-not reward the model for *looking* epistemically virtuous. The outcome must be resolved independently of the
-policy and of the training proxy, named before training, never by the policy's own grading or by the proxy being
-optimized. Two further rules keep the term honest. First, calibration outcomes come from a **training-outcome set that is
-disjoint from every held-out and shadow evaluation set**: an outcome the optimizer's reward is computed from is no
-longer a clean evaluation surface. Second, the forecast must be about something **the policy cannot influence**
-(a fixed external quantity or a held-fixed resolution), not about whether its own answer will be judged correct: a
-proper scoring rule only rewards honest forecasts when the forecast does not change the outcome. A design that must
-score a policy-influenced outcome has to declare a scoring mechanism built for that case, or treat the arm as
-exploratory.
-
-| Surface | Examples | Optimizer may read it? |
-| :--- | :--- | :---: |
-| **Training** | task proxy, declared rubric mask, Brier/calibration term | yes |
-| **Shadow epistemic** | unsupported assertions, evidence requests, contradiction response, confidence/evidence divergence, later refutation, delayed downstream outcomes | no |
-| **Provenance / origin** | evidence lineage, repeated-origin multiplicity, exact producing coordinates, policy used to derive standing | no |
-| **PRIME-style probes** | correctness self-assessment, proxy recognition, exploit reasoning on fixed diagnostic inputs | no |
-| **Held-out outcome** | gold tests, hidden task checks, rubric-free or cross-family evaluation where deterministic adjudication is unavailable | no |
-
-For Magpie specifically, the experiment must preserve its existing boundaries. A signed history establishes what was
-recorded under the supplied verification context, not truth, freshness, global completeness, key ownership or
-permission to act. Distinct origin groups are not automatically proof of statistical, causal or organisational
-independence. Current broader contradiction policy, currentness/supersession, authority-bound origin admission and
-`EpistemicGate` work remain separate from this experiment.
-
-#### Leading-indicator test
-
-A signal does not count as an early warning merely because it trends with training. The experiment should deliberately
-create variation in **when** hacking appears — for example by varying declared exploit discoverability across otherwise
-matched blocks — and ask whether checkpoint measurements forecast future onset.
-
-At each checkpoint, compare increasingly informative predictors:
-
-~~~text
-current hack rate
-    vs
-current hack rate + PRIME-style direct probes
-    vs
-current hack rate + PRIME + Magpie shadow features
-~~~
-
-The primary analysis should use held-out runs or leave-one-run-out validation. Candidate shadow features include
-changes in evidence acquisition, unsupported-claim rate, confidence relative to later verification, repeated-origin
-use, response to counterevidence and the rate at which later evidence undermines previously rewarded claims. A
-Magpie feature earns scientific value here only if it predicts future behaviour beyond the current hack rate and the
-stronger existing baseline.
-
-#### Suppression is not erasure
-
-A low final hacking rate is insufficient evidence that the exploit capability is gone. After a mitigation suppresses
-visible hacking, one evaluation branch should switch temporarily to a robust/gold reward and later re-expose the same
-checkpoint lineage to the original hackable proxy. Record the time to renewed sustained hacking and whether PRIME or
-shadow epistemic signals persisted while behaviour looked aligned.
-
-This distinguishes:
-
-~~~text
-behaviour suppressed     != exploit capability erased
-monitor quiet            != policy safe
-proxy reward improved    != intended objective improved
-~~~
-
-#### Evaluation and reporting
-
-Every comparison should predeclare the checkpoint cadence, hacking-onset rule, primary outcomes and stopping
-conditions; run multiple seeds where compute permits; preserve null and negative results; and evaluate with mechanisms
-that were not optimized during training. At minimum, report proxy reward, held-out/gold task success, hack rate,
-out-of-distribution misalignment, calibration, resource use and the shadow-monitor measurements above. Later studies
-can add cross-harness blocks, but a GRPO rollout group must not mix harnesses.
-
-The [Magpie](https://github.com/noctem-o/magpie) integration should initially be observational. Endophasia owns the
-experiment coordinates and trajectories; Magpie can retain replayable claims/evidence/provenance and derive
-policy-scoped standing over the supplied record. Until a governed writer / `EpistemicGate` path exists, an adapter
-must not pretend that simply recording an event admits it into an epistemic process.
-
-A strong result is not "the rewarded score went up." It is a reproducible change that survives training-independent
-evaluation, held-out runs and re-exposure tests while its evidence trail remains inspectable. A null result or a
-mitigation that backfires is still useful evidence.
-
-
-## Work and Dream
-
-WORK and DREAM are planned cognition policies, separate from DEVELOP and EVOLVE.
-
-**WORK** keeps one main trajectory, bounds exploration, and runs deterministic checks early.
-
-**DREAM** allows broader search, more retained hypotheses, counterfactual branches, and stronger falsification.
-
-~~~text
-more cognition != more authority
-more branches  != more truth
-more agreement != more permission
-~~~
-
-Visualisations of either mode are projections of recorded cognition state. They remain separate from the OBSERVE
-measurement surface above: if a signal is unavailable, the view says so rather than inventing cognition to make the
-scene look interesting.
-
-## Evidence and authority
-
-These are four different statements, and Endophasia keeps them as four different records:
-
-~~~text
-candidate c17 passed 43 of 50 trials          evaluation result
-candidate c17's result bundle has digest X    mechanically checkable
-candidate c17 is supported under policy P     epistemic conclusion  (Magpie)
-candidate c17 may replace the current version authority decision    (Deadbolt)
-~~~
-
-Plans are not effects:
-
-~~~mermaid
-flowchart TB
-    I["Model intent"] --> P["Structured proposal"]
-    P --> R["Review and policy"]
-    R --> A["Authority check"]
-    A --> E["Real effect"]
-    E --> C["Receipt"]
-~~~
-
-A valid proposal does not widen the model's permission.
-
-## Current state
-
-A summary. The detail of what is implemented, with every limitation, is in [docs/status.md](docs/status.md). What
-each real recording and study establishes, and what it does not, is in [research/README.md](research/README.md).
-
-**What runs, implemented and tested here:**
-- **Installable Operator Alpha.** The experimental `0.1.0-alpha.1` CLI is published on [npm](https://www.npmjs.com/package/endophasia) and [GitHub](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1). It includes `endo doctor`, default store selection, Pi attach guidance and read-only inspection of recorded sessions; Pi remains independently installed.
-- **Protocol, store and CLI.** Versioned `endo.*` events and identities, an evidence store with replay, durable storage
-  with validated recovery, and the `endo` CLI. The reporting commands open stores read-only.
-- **The Pi attachment** (`endo harness …`), over Pi's documented RPC mode. It covers fingerprints and change records,
-  evidence-validity rules, local checks, an authorization-gated live study, and session recording with crash
-  recovery. Controls are offered only for admitted capabilities.
-- **Session lifecycle.** Pi's records fold into canonical `lifecycle.*` events, and `endo harness overview` gives a
-  read-only session overview. What Pi does not report is UNAVAILABLE with a reason.
-- **Trajectory comparison** ([rules](docs/trajectory.md)). `endo trajectory show|diff` judges lifecycle, tool calls,
-  tool results and outcome by keyed digests, never comparing across digest domains.
-- **Capture and cassette replay** ([how it works](docs/replay.md)). `endo proxy record|replay` and `endo replay`
-  replay a recorded session against its cassette, including STOP, kill and steering interventions, and classify any miss as environment or
-  control flow.
-- **Experiments** ([how they run](docs/experiments.md)). `endo experiment run|report` runs pre-registered specs with
-  blocked randomization, manipulation checks and pinned environments. Every trial is also a cassette.
-- **Steering** ([how it works](docs/steering.md)). STEER, QUEUE and STOP as explicit, authorized, verified
-  interventions through Pi's documented RPC: a proposal, an authorization bound to its exact digest, the request,
-  Pi's acceptance, the consumption the recording proxy shows, and the consequence, each its own record.
-  `endo harness attach --control` and `endo steer propose|authorize|apply|status` operate it. v0 proposals come only
-  from the operator, and an external authority provider is a documented seam, not wired.
-- **Installed-package verification:** `npm run test:package` exercises the installed tarball with a fake Pi and local fake model endpoint; CI `acceptance` runs the same operator loop against a separately installed, pinned **real Pi 1.0.0** and a local fake endpoint (no provider credentials or cost). Other Pi releases and platforms are not established by those tests.
-
-**Real evidence so far** ([research/README.md](research/README.md)). All of it comes from Pi 1.0.1, qwen3.8-27b on
-llama.cpp, and one machine:
-- [Session lifecycle](research/README.md#session-lifecycle): completes, STOP mid-turn, killed and resumed.
-- [Cassette replays](research/README.md#cassette-replays): 40 replays EXACT, and a negative control that diverged as
-  it should.
-- [Variance study (E2)](research/README.md#variance-study-e2): "unstable" under every arm, from sampling and then
-  from tool output that carried wall-clock values.
-- [Pinned-environment study (E3)](research/README.md#pinned-environment-study-e3): "stable" with the environment
-  pinned, deterministic sampling and the cache off. That is no observed variation under that declared condition at
-  N = 20 per task, not a claim that the system's intrinsic noise is zero.
-- [Steering study](research/README.md#steering-study): in that deterministic condition, a STEER and a QUEUE were
-  consumed where Pi documents (80 of 80 steered trials). What the agent did with them differed by task and arm, and
-  on one task between two runs whose requests differ only in the working-directory path (a post-hoc replication
-  reproduced each exactly).
-- [Path-sensitivity study](research/README.md#path-sensitivity-study): the steering results over 30 working-directory
-  paths. A QUEUE was followed at every path, a STEER on one task at 27 of 30 and on the other at 6 of 30, and the
-  baseline itself varied with the path on that second task.
-- [Discriminating-task study](research/README.md#discriminating-task-study): of 12 small coding tasks, two discriminate
-  for this model (13 of 20 and 7 of 20) and most are saturated. 21 of the 25 failures were a response cut off at Pi's
-  default completion cap of 16,384 tokens, so the discrimination is largely truncation; it is not yet a measure of
-  task difficulty.
-- [Completion-cap study](research/README.md#completion-cap-study): raising the completion cap from 16,384 to 32,768 tokens raised
-  success on the two discriminating tasks from 10 of 24 to 19 of 23 (cluster interval +0.09 to +0.73, a gain at every path); a
-  brief-reasoning sentence and switching thinking off are cheaper but less reliable, and the trials showed that without a sandbox an agent can reach
-  the repository's hidden checks.
-
-**Implemented as libraries, exercised only by unit tests:** nothing in the CLI or the Pi attachment calls these yet. A
-typed cognition graph; evaluation, evolution and promotion records with a baseline selection policy and RRSI- and
-GEPA-inspired rule sets (not ports of RRSI or GEPA; see `evolution/policies/rrsi-inspired.ts`); trust-record mappings
-for Cogitator, Magpie and Deadbolt; model orchestration, routing and collaboration records; record mappings for Codex,
-Prime and REEF; and an OpenAI-compatible provider adapter (whole SSE bodies are buffered, no incremental streaming).
-Three protocol schemas (`protocol/{continuity,control,runtime-profile}.ts`) and the fork-era lane overview in
-`protocol/session-overview.ts` are planned surfaces with no producer at all. Their fork-era producers were removed;
-they are kept for the steering and replay work and the sealed Prime study.
-
-**Simulation and real-runtime boundaries:** the deterministic suites' Pi is a fake speaking Pi 1.0.0's documented
-records; those tests alone say nothing about a real Pi release. Separately, the installed-package `acceptance` job
-exercises a **real Pi 1.0.0** on Ubuntu with Node 22 and a local fake model endpoint; no real model provider is called.
-This is a packaging/operator-path acceptance baseline, distinct from the **Pi 1.0.1 + qwen3.8-27b** research studies
-listed above. Hostile trajectory cases and the lifecycle's failure, retry, compaction and unknown-record paths are
-exercised only against fake Pi ([research/README.md](research/README.md#fake-only-paths)).
-
-The boundary and the evidence rules were audited adversarially ([audit](docs/pi-attach-audit.md)), including the
-limitations accepted for now.
-
-**Endophasia Studio** (`endo studio`, [docs/studio.md](docs/studio.md)) is the first Endophasia-native cockpit: a read-only
-browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
-read-only server (`cockpit-http/`) ([design](docs/cockpit.md), [the page](docs/cockpit-ui.md)). It shows one observation page: the
-recorded runtime identity, capability state with its limits, the session timeline in storage order and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below.
-
-**Not yet built:** the other Studio modes (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
-model-internal
-observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
-control, model-originated steering proposals and an external authority provider, any live provider integration wired
-into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
-integration, and attachments for other harnesses.
-
-Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.
-
-## Roadmap
-
-### Delivery sequence — current priority
-
-The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
-shorter and more product-shaped**. Evidence closure and the installable Operator Alpha are complete; the next delivery
-priority was the first Endophasia-native read-only cockpit (built: `endo studio`), followed by checkpoints and deeper EVOLVE work.
-
-~~~text
-evidence closure (done)
-      ↓
-installable operator alpha (released: 0.1.0-alpha.1)
-      ↓
-native read-only cockpit (built: endo studio)
-      ↓
-forkable checkpoints
-      ↓
-counterfactual / evolution / training work
-~~~
-
-1. **Evidence closure before the first alpha.**
-   - **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
-     server closing an idle connection while the client reuses it cannot produce transport errors (2 in 622 requests in
-     the steering study). Classify any remaining transport retries apart from agent behaviour. *Status: done.* Each
-     exchange now has its own upstream connection (`docs/replay.md`, "Connections"), and a genuine upstream failure
-     is recorded with its kind; the steering study's result stands as recorded.
-   - **Effective harness surface** (items 2, 6 and 9). Record what the model actually experiences, not only which
-     executable ran: component digests observed on the wire for system instructions, the tool-definition set and
-     effective request parameters, alongside invocation mode, model identity and wire dialect. Variable contributions
-     such as the working directory remain separate observed fields; no prompt "template" is reconstructed by
-     heuristics. Raw prompts are never canonical evidence, and a field a runtime hides is UNAVAILABLE. The
-     path-sensitivity study is why: a working-directory path alone changed behaviour. *Status: done.* Each experiment trial
-     (`endo.experiment-trial.v1`) now carries the keyed digests of the system and developer instructions, the tool
-     definitions (ordered and as a set) and the request parameters the model server received, with the observed model and
-     the stream flag, derived from the recorded requests; the report states, per cell, whether the trials showed one
-     surface (`docs/experiments.md`, "The effective harness surface"). Historical `v0` trials still read as they were
-     and report their surface as UNAVAILABLE. Not recorded: the server's defaults, and the model's internals.
-
-2. **Operator Alpha — installable first-run Pi workflow (complete).**
-   - *Status: released.* Tranches [1](https://github.com/noctem-o/endophasia/pull/52), [2](https://github.com/noctem-o/endophasia/pull/53), [3](https://github.com/noctem-o/endophasia/pull/54) and [4](https://github.com/noctem-o/endophasia/pull/55) are merged. [`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) is published on [npm](https://www.npmjs.com/package/endophasia); see [installation](docs/install.md) and [release verification](docs/release-alpha.md).
-   - Compiled JavaScript CLI with an `endo` executable, `--help`/`--version`, read-only `endo doctor`, runtime discovery,
-     default store root, capability/evidence reporting and operator guidance. No TypeScript execution from `node_modules`.
-   - The installed-tarball path exercises diagnose → local checks → attach → status/overview → trajectory against a
-     fake Pi and, separately in CI, a real pinned Pi 1.0.0 with a local fake model endpoint.
-   - Scope is intentionally narrow: a user-installed Pi on the CI-verified platform, not stable multi-runtime support.
-     Live-provider behaviour and other platforms still require their own evidence.
-
-3. **First Endophasia-native operator surface.**
-   - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
-     [docs/cockpit.md](docs/cockpit.md): runtime identity/change state, capability state with reasons and a live session
-     timeline, all projected from Endophasia records without depending on Pi private services. Built: the projection and
-     read-only reader layer (`cockpit/`), the local read-only HTTP server (`cockpit-http/`), the first page (`cockpit-ui/`) and
-     the installed `endo studio` command ([docs/studio.md](docs/studio.md)).
-   - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
-     it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
-     model-observation scenes as separate typed projections even if they later share one renderer.
-   - Follow with capability-gated model-internal observation. Prefer TransformerLens 4.0's Driver model as the common
-     hook/capability vocabulary where supported: compiled vLLM for the live capture tier and Hugging Face for deep
-     reference replay. Keep vLLM-Lens as an optional specialist provider for Q/K-derived attention, Jacobian/R-lens,
-     persistent/custom hooks or other capabilities that justify its eager-mode trade-off. Preserve raw observations
-     apart from derived PCA/MFA/SAE/lens artifacts, and make every missing signal explicit.
-   - A later WebGPU renderer may consume both Dream and Observe scenes. WebGPU is a presentation backend, never a
-     source of truth; scene geometry must remain reproducible from recorded state and declared transforms.
-   - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
-     recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
-
-4. **Forkable checkpoints** (item 10).
-   - Land the substrate primitive beneath search, counterfactual evaluation and training: reconstructable checkpoints,
-     restore/fork lineage and cassette-then-live continuation.
-   - Once this exists, use it to support controlled continuation experiments rather than adding another large
-     protocol-only migration.
-
-5. **Return to the broader research loop.**
-   - Resume the compute-frontier follow-up (item 13): where success saturates above 32,768 tokens, whether retry after
-     cut-off beats a larger cap, and whether failures merely move. Pre-register the comparison, pin everything else,
-     and use several predefined fixed seeds as the replication unit, with the same seed set across compared arms.
-   - Write the consolidated research note for the variance, pinned-environment, steering, path-sensitivity,
-     discriminating-task and completion-cap studies.
-   - Then feed real experiment bundles and forked trajectories into the evolution, counterfactual and adaptation tracks
-     below, with the same holdout and authority rules already defined. Baseline and candidate comparisons must use a
-     matched declared inference envelope for the coordinate being compared, verified rather than assumed. Output-token
-     caps are mandatory matched coordinates for the current studies; model calls, tool/verifier calls, retries,
-     branches, wall-clock limits and cost must likewise be held fixed when they are part of the claimed comparison, or
-     recorded as separate experimental coordinates rather than silently folded into an adaptation gain.
-
-### Parked or upstream-gated
-
-These are valid directions, but they should **not** displace the delivery sequence above (the first native read-only cockpit is built; checkpoints are next).
-
-- **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
-  guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
-  it when the published baseline materially moves and at least one useful real agent negotiates v2 without relying on a
-  development-only path. Keep ACP v1 working beside it.
-- **ACP v1 unstable per-turn usage:** real OMP sends unstable `PromptResponse.usage`, but consuming it still needs an
-  explicit source-stability and loss-accounting decision. It is not required for the first alpha.
-- **Windows descendant containment:** this belongs in the shared `ProcessGroupV0`, not an ACP adapter. It should land
-  when Windows becomes an acceptance target rather than growing one adapter around it.
-- **Further protocol breadth:** new adapters and large protocol-only migrations wait until the current contracts have
-  survived the installable operator path and produced evidence there.
-
-### Capability map
-
-The entries below keep their existing numbers because research notes and design documents already refer to them.
-They describe **capability dependencies**, not the immediate shipping order above.
-
-#### Done
-1. **Attach model.** Pi attached over its documented RPC mode; the vendored fork removed
-   ([inventory and decisions](docs/pi-attach-inventory.md)).
-2. **Harness version tracking.** Fingerprints, change records, evidence invalidation and re-checking, audited
-   adversarially ([audit](docs/pi-attach-audit.md)).
-5. **Replay first-class.** Make deterministic replay and differential replay part of the core research workflow,
-   including explicit divergence between two runs.
-   - *Status:* cassette replay with STOP and kill at the recorded chunk (#21); differential replay via the trajectory
-     comparison (#20), with tool calls and tool results judged separately (#25); misses classified as environment or
-     control flow (#25). The wall-clock limit is documented ([replay](docs/replay.md)).
-- **Research data out of git** (#35). The studies' raw run directories live outside the repository; canonical evidence
-  (designs, results, analyses, small per-trial files, cassettes) stays. The policy stands: small, durable,
-  digest-and-provenance records may live in git; large or private replay material does not
-  ([where it lives](research/DATA.md)).
-- **Completion-cap study** (#35). Raising the completion cap from 16,384 to 32,768 tokens raised success on the two
-  discriminating tasks from 10 of 24 to 19 of 23 ([results](research/README.md#completion-cap-study)).
-- **ACP v1 adapter** (#37, #39, and the closure tranche). A pinned-SDK, schema-validated v1 adapter with capability-gated
-  session operations and explicit loss accounting, smoke-tested against real OMP ([ACP v1 adapter](docs/acp-v1-slice.md)).
-- **ACP v2 experimental study** (this tranche). A Draft, version-pinned study of the v2 *baseline*: vendored baseline
-  schema pinned to an upstream commit and the SDK's layered schema, separate v2 client and loss accounting, prompt
-  acceptance versus completion, resume/replay equivalence by reconstructed state, fail-closed permission subjects,
-  deterministic fake-agent suite with mutation checks ([ACP v2 study](docs/acp-v2-study.md)). ACP v1 is unchanged.
-- **Schema compatibility rules** (#41). For the covered durable and imported records (events, the 25 evidence record
-  kinds with the ledger and its meta/snapshot, evaluation profiles, workspace archives, the digest-key file and the
-  harness-registry records), the declared `schemaVersion` selects exactly one validator; each known version is parsed
-  exactly and unknown fields are rejected; an unknown version is rejected as unsupported, never partially read; and
-  every committed version is read under its original contract, proved by permanent fixtures. The experiment runner's
-  spec, run record, plan and trial results follow the same rule (the pre-versioning `plan.json` has one narrow legacy
-  reader). Not covered: runtime-local, derived and unwired schemas, the experiment report, the rest of the run
-  directory, automatic migration, and arbitrary future versions
-  ([policy and inventory](docs/schema-compatibility.md)).
-
-#### Partly done
-3. **First end-to-end slice.** A real Pi session is recorded into the durable store and replayed, and a read-only Studio page
-   shows it (`endo studio`); the cognition graph is not wired yet.
-   - *Graph semantics:* the graph will be a derived projection, never a second source of truth. Each edge has a
-     *kind* (causal, provenance, authority) and, separately, an *epistemic status*: observed (established by runtime or
-     wire evidence), reported (the runtime says so), derived (a deterministic transformation of evidence) or inferred
-     (a rule or model concluded it). A derived or inferred edge names its rule, the rule's version and its input
-     evidence, and is never written back as an observation. A visualisation draws only what the graph holds.
-4. **Real Pi path.** Make the first vertical slice boring: observe a real session, record canonical evidence,
-   steer where the runtime supports it, interrupt, recover, and preserve explicit permission boundaries.
-   - *Status:* observe, record, interrupt and recover are real on Pi 1.0.1 (#19). STEER, QUEUE and STOP are
-     authorized interventions (8).
-6. **Evaluation laboratory.** Define reproducible experiment bundles containing runtime/model/configuration, task,
-   initial state, evidence, outcome, evaluator identity, seeds, usage, and analysis. Every research claim should
-   point back to evidence.
-   - *Status:* experiment specs, the runner, reports and bundles (#22, #23), pinned environments (#26), and
-     pre-registered studies: variance (#24), pinned environment (#26, #27), steering (#29), path sensitivity (#31) and
-     discriminating tasks (#34). Not yet: experiment bundles feeding the evolution policies (11). The effective harness
-     surface is in every new trial's provenance (delivery sequence 1).
-   - [StaminaBench](https://github.com/amazon-science/StaminaBench) is a candidate long-horizon evaluation pack:
-     evolving software specifications and test feedback across up to 100 interaction turns can expose context
-     accumulation, recovery, regression and resource drift. Integrate it behind an evaluation provider rather than
-     making the benchmark a core dependency.
-8. **Steering protocol.** Separate observation → interpretation → proposal → authorization → steering → observed
-   consequence. A proposal never becomes permission implicitly.
-   - *Status:* STEER, QUEUE and STOP are explicit, authorized, verified interventions through Pi's documented RPC
-     ([steering](docs/steering.md)): the proposal, an authorization bound to its digest, the request, acceptance,
-     consumption (shown by the recording proxy) and the consequence are separate records; steered sessions replay
-     EXACT; and a [pre-registered study](research/steering/1.0.1/RESULTS.md) measured the effect. Not yet: proposals
-     that do not come from the operator, an external authority provider (a [contract proposal](docs/deadbolt-intervention-contract.md)
-     for Deadbolt exists; Deadbolt has no matching lease template), and observation and interpretation records created by a
-     command.
-
-#### Next
-7. **Cognition controls.** Bring the runtime-neutral DEVELOP controls into the substrate: Reasoning, Epistemic
-   Rigour, Explore, Verify, Compute Appetite, Tool Initiative, Dream Mode, Latent Deliberation, and honest
-   J-space profiles where the underlying model can expose them. WORK / DREAM remain policies over these controls,
-   not hidden model state.
-   - [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) is a candidate local provider for per-request residual
-     activation capture and steering when vLLM is already the serving boundary. Raw activations are observations;
-     probes, labels and "what this activation means" remain derived or inferred claims. A steering vector is a recorded
-     experimental intervention, not evidence that a natural internal state existed.
-9. **Cross-runtime conformance.** Study Pi, Codex, Prime, and other adapters against the same evidence contracts,
-   with capability admission based on current evidence rather than names or assumptions.
-   - The recording proxy is the common *model-serving* boundary, not a common runtime boundary: each adapter reports
-     what its own runtime guarantees, hides or only reports.
-   - The strongest design holds one agent and model fixed behind two surfaces (for example Pi RPC and ACP v2), so
-     differences belong to the surface rather than the agent.
-   - Every conversion between record formats states its lossiness: EXACT, QUALIFIED, LOSSY or UNREPRESENTABLE.
-   - Trace export (for example to the OpenTelemetry GenAI conventions, still marked Development) is deferred until it
-     has a consumer. It would be an optional exporter using the same lossiness vocabulary, never the internal protocol.
-
-#### EVOLVE / research loop
-10. **Trajectory and experience substrate.** Make EnvironmentPack, Episode, Trajectory, ExperienceStore,
-    candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
-    - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,
-      #25); the others do not yet.
-    - **Forkable trajectory state.** Capability-gated checkpoint, restore, fork and branch-lineage records over states
-      that can actually be reconstructed. A checkpoint is derived from evidence, never declared: a prefix that cassette
-      replay reproduces EXACT, together with the restored environment identity. A fork names its parent checkpoint, the
-      variable it changed and its new trajectory, and descendants are ordinary trajectories. The first mechanism is
-      cassette-then-live: replay the recorded prefix, then switch the proxy to a live model (or a different one) at the
-      checkpoint. Search, counterfactual evaluation and training may consume forks; they are not part of the primitive.
-11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
-    experiment bundles, including validation, an untouched promotion holdout, noise/leakage checks, and deterministic selection. A faithful
-    RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy
-    context does not carry yet.
-12. **Adaptation providers.** Add provider seams for RL training and other adaptation methods without making any one
-    algorithm part of the Endophasia core.
-    - A concrete first study is an [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) evaluation provider
-      paired with [Inspect RL](https://github.com/UKGovernmentBEIS/inspect_rl) as an optional training provider:
-      Inspect owns the multi-turn/tool/sandbox rollout and scoring, while TRL/GRPO owns optimisation. Training tasks
-      stay distinct from held-out evaluation tasks, and the provider must preserve exact sampled token IDs and
-      behaviour log-probabilities rather than reconstructing them later.
-13. **Resource-aware cognition / test-time compute.** Treat Compute Appetite as an explicit inference budget and policy,
-    not a generic "think harder" control. Record ceilings and consumption for tokens, model calls, tool calls,
-    verifier calls, branches, tests, retries, wall-clock time, and cost; compare fixed against adaptive allocation and
-    test whether extra compute buys reliable outcome improvements rather than longer traces alone. Start with simple,
-    falsifiable arms before learned allocation. For local inference, measure wall time and memory/attention pressure as
-    well as token counts rather than assuming tokens are a complete compute proxy. Research leads:
-    [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314) and
-    [Kinetics](https://arxiv.org/abs/2506.05333).
-    - **Evaluation-level stopping:** [optstop](https://github.com/UKGovernmentBEIS/optstop) is a candidate for repeated
-      evaluation cells through Inspect's early-stopping protocol. Treat its rule, thresholds and every stopped sample
-      as experiment provenance, first validate it post-hoc or in shadow mode, and keep it separate from an agent's own
-      trajectory-level STOP decision.
-    - *First study:* the completion-cap study (done), motivated by the discriminating-task study, where most failures
-      were truncation at the completion cap. The follow-up is delivery sequence 5.
-14. **Adversarial / co-evolution experiments.** Support bounded self-play or attack/control loops where monitors,
-    evaluators, or environments can improve alongside the agent, while promotion-holdout evidence remains outside the
-    adaptation loop. [ControlArena](https://github.com/UKGovernmentBEIS/control-arena) is a useful provider reference
-    for explicit honest/attack modes, policies, monitors and main-task/side-task settings.
-    [Async Control](https://github.com/UKGovernmentBEIS/async-control) is a separate research lead for effects that are
-    reviewed after the initiating action: synchronous prevention, asynchronous detection, and later harmful
-    consequences must remain different events and claims.
-15. **Bounded recursive improvement.** Allow model ↔ harness ↔ cognition-policy improvement cycles only through
-    explicit candidates, evidence, comparison, admission, and promotion gates. No implicit self-replacement.
-
-
-
-Hardening and artifact:
-
-16. **Adversarial audit.** Test identity, evidence provenance, stale or forged evidence, duplicate/out-of-order
-    events, replay divergence, unauthorized execution, false verification claims, and stale evidence inheritance.
-    Use dedicated adversarial environments where they answer a specific boundary question; for example,
-    [sandbox_escape_bench](https://github.com/UKGovernmentBEIS/sandbox_escape_bench) can test sandbox
-    misconfiguration/escape capability inside an outer VM boundary. Such a benchmark is evidence about that declared
-    environment, not proof that an arbitrary deployment sandbox is safe.
-    [JAWS-Bench](https://github.com/amazon-science/JAWS-Bench) is another candidate external pack for defensive
-    code-agent safety under prompt-only, single-file and multi-file workspace conditions; preserve the exact
-    workspace/attack regime and do not generalise a result beyond that declared environment.
-17. **Research artifact.** Produce a complete baseline → observation → failure → evidence → candidate → evaluation →
-    comparison → promotion decision trail that another researcher can replay.
-
-### Experimental research tracks (deferred; not commitments)
-
-These are candidates for a separate EVOLVE experiment mode, not features to build before the core
-runtime → replay → evaluation loop is reliable. Each track should use the same candidate, trajectory,
-evaluation, resource-accounting, and promotion contracts. Start with small, falsifiable experiments;
-do not import a framework merely because its paper reports a benchmark gain.
-
-18. **Experience-derived skill evolution.** Compare a versioned skill bank against no skills, static
-    skills, and simple trajectory retrieval. Extract, merge, retire, and select procedural skills from
-    successful *and failed* episodes. Record provenance, applicability conditions, counterexamples,
-    and the tasks used to validate each skill. Useful starting points: [CODESKILL](https://arxiv.org/abs/2605.25430),
-    [Socratic-SWE](https://arxiv.org/abs/2606.07412), [MUSE-Autoskill](https://arxiv.org/abs/2605.27366), and
-    [Ratchet](https://github.com/amazon-science/Self-Evolving-Agents-Ratchet); Ratchet's bounded active bank,
-    contribution-driven retirement, retained evidence and rollback are useful lifecycle references.
-    [ReSkill](https://github.com/amazon-science/reskill) is a heavier follow-on when an experiment intentionally
-    couples skill evolution to policy optimisation through RL; keep those two adaptation axes separately attributable.
-
-19. **Episodic + semantic memory.** Test retrieval of similar past cases alongside compact, reusable
-    lessons, with ablations for each channel and no-memory baselines. Also test temporal, multiresolution context
-    construction inspired by [OptChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449)
-    and [OptMem](https://github.com/VictorTaelin/OptMem): retain an append-only source history, derive a bounded,
-    progressively compressed view, and permit deterministic expansion back toward source records. Compare this
-    temporal channel independently and in combination with semantic retrieval rather than treating either as the
-    canonical memory architecture. Measure retrieval precision, stale advice, context and cache cost, source recovery,
-    and transfer to unseen repositories. Candidate references also include
-    [ExpeRepair](https://github.com/ExpeRepair/ExpeRepair) and
-    [Memento](https://arxiv.org/abs/2508.16153). Keep stored observations distinct from inferred lessons, and make
-    every derived memory item traceable to its source episodes. Magpie-style epistemic standing remains a separate
-    layer: retrieval or inclusion in active context does not make a claim true.
-
-20. **Compute-aware search-time planning and branching.** Compare one main trajectory with retry/refinement,
-    Best-of-N, bounded alternatives, beam/tree search, or provider-defined search such as MCTS. Treat the search
-    algorithm as a replaceable policy, not a core protocol primitive. Every retained or pruned branch should keep its
-    parent/reason, allocated and consumed resource budget, verifier evidence, and termination reason. Keep branch
-    contexts isolated unless an explicit, recorded transfer imports verified state.
-    - **Allocation:** compare uniform budgets with per-task adaptive budgets; test whether cheap difficulty/uncertainty
-      signals predict the marginal value of another sample, branch, or verification step. Start with
-      [compute-optimal test-time scaling](https://arxiv.org/abs/2408.03314), then more complex allocators only if the
-      simple arms establish a compute→outcome frontier.
-    - **Verification:** keep deterministic execution checks (tests, compiler, type checker, invariants), learned
-      outcome/process reward models, model judges/critics, simulation, and human review as distinct evidence sources.
-      A PRM or judge score is not executable proof. Record verifier identity, granularity, cost, and the evidence it
-      actually establishes. Research leads: [Let's Verify Step by Step](https://arxiv.org/abs/2305.20050),
-      [VG-Search](https://arxiv.org/abs/2505.11730), and
-      [Pareto Optimal Code Generation](https://arxiv.org/abs/2506.10056).
-    - **Pruning and stopping:** make hard cutoffs, dominance/pruning, budget exhaustion, verified success, and operator
-      stop explicit termination reasons; preserve pruned evidence so search decisions remain auditable. Do not assume
-      "all tests pass" means general correctness unless that is the declared task criterion.
-    - **Reasoning-budget controls:** mechanisms such as budget forcing, native effort levels, continuation prompts, or
-      temperature changes are capability-gated, model/provider-specific interventions. Test them rather than treating
-      them as universal controls; [s1](https://arxiv.org/abs/2501.19393) is a starting point for budget forcing.
-    Start with [SWE-Search](https://arxiv.org/abs/2410.20285) for repository-level branching, but compare MCTS against
-    simpler baselines before adopting it.
-
-21. **Agent architecture and workflow search.** Explore candidate combinations of planner, memory,
-    tool-use, verification, and orchestration components. Maintain an archive of variants and their
-    evidence rather than retaining only the latest winner. References: [AgentSquare](https://arxiv.org/abs/2410.03992),
-    [A Self-Improving Coding Agent (SICA)](https://arxiv.org/abs/2504.15228), and the
-    [Darwin Gödel Machine](https://arxiv.org/abs/2505.22954). Run candidate edits in disposable,
-    isolated worktrees; never let an unvalidated candidate rewrite the active installation.
-
-22. **Evaluator and task-set co-evolution.** Investigate agents that propose new tasks, edge cases,
-    tests, or adversarial environments as well as changes to the agent itself. Treat generated tests as
-    hypotheses, not trusted ground truth: independently validate them, test for evaluator gaming, and
-    keep a sealed promotion holdout outside both candidate search and evaluator tuning.
-    [Double Ratchet](https://github.com/amazon-science/Self-Evolving-Agents-Double-Ratchet) is a direct reference for
-    co-evolving an inspectable metric and a governed skill library. Preserve the separation Endophasia already
-    requires: evaluator candidates need lineage, fixed anchors or shadow evaluation, and an untouched promotion
-    holdout; an evaluator must not grade its own promotion unchallenged.
-
-23. **Writable procedural memory.** Test whether versioned scripts, repository maps, and executable
-    skills outperform prose-only memory. Begin with small, reviewable artifacts and explicit execution
-    permissions; do not reproduce a complex writable-memory architecture until simpler approaches show
-    a measurable limitation. A research lead is [Spotlight: Memory](https://www.percepta.ai/blog/spotlight-memory).
-
-24. **Model adaptation / training providers.** Once runtime experiments have enough clean data, compare
-    prompt and policy changes, memory/skill changes, and optional training methods on the same tasks.
-    [Finetuning with Sampling](https://arxiv.org/abs/2610.02140) is one candidate for a separate
-    training provider, not a dependency of the runtime core.
-    [PROF-GRPO](https://github.com/amazon-science/PROF-GRPO) is a useful reward-design reference because it uses
-    process-reward scores as a consistency/data-curation signal rather than directly blending them into the optimisation
-    reward; preserve that distinction as an experimentable policy rather than assuming it universally wins. Track data
-    provenance, training cost, held-out transfer, and regressions on previously solved tasks.
-
-25. **Evidence lineage and epistemic lifecycle (Magpie integration).** Test whether experiment
-    records can support inspectable claims without collapsing measured outcomes, evidence standing,
-    and permission into one verdict. Bind claims to exact run manifests, artifacts, evaluator versions,
-    and source episodes; track dependencies so changed or invalidated evidence cannot silently support
-    downstream conclusions. Compare a minimal evidence ledger with richer lineage and policy-governed
-    standing, measuring auditability, invalidation correctness, and unsupported-promotion rate. Keep
-    Magpie optional and its current capabilities honest: this track begins with a read-only vertical
-    slice, not an assumed complete claim-writing or epistemic-gate implementation. A valid policy
-    result establishes only the predicate it actually checks, not general truth or authority.
-
-26. **Metamorphic robustness and causal sensitivity.** Test agents on paired repository variants where
-    semantics-preserving changes should not materially alter outcomes, causal evidence changes should
-    change the repair, and irrelevant distractors should not redirect it. Validate transformations
-    independently; report paired outcome differences, regressions, tool use, latency, and cost, not just
-    pass rate. Keep transformation generation separate from trusted checking and adjudication, and
-    test transfer across repositories, model families, and harnesses. Research leads include
-    [A Jagged Frontier](https://arxiv.org/abs/2608.18389) and the
-    [MetaProbe project](https://github.com/huyuelin/MetaProbe); treat submitted or unreviewed work as
-    research leads, not established guarantees.
-    - Each transformation (working-directory identifier, equivalent renaming, an irrelevant file added, file order,
-      whitespace) is a separately registered relation, analysed on its own rather than in one omnibus study.
-    - Once forkable checkpoints exist, extend this from repository variants to trajectory interventions at a checkpoint:
-      an alternative action, an altered tool observation, a different model or policy, a restricted tool surface, or a
-      resample. Because continuations can be stochastic, one fork is not causal evidence; sensitivity is estimated from
-      repeated continuations, with uncertainty. A recent lead is
-      [Counterfactual Rollout Replay](https://arxiv.org/html/2609.33875).
-
-27. **Contrastive weight-space steering and training-drift monitoring.** Test whether behavioural
-    directions derived from matched positive/negative fine-tunes can support controlled model steering,
-    and whether the same directions provide useful signals for monitoring later weight updates for
-    behavioural drift. Compare against activation steering, ordinary fine-tuning, and simple weight-delta
-    baselines; measure target behaviour, collateral regressions, calibration, transfer across tasks and
-    model families, and false positives/negatives. Treat this as a research hypothesis, not a general
-    alignment detector: the reported evidence is preliminary and does not establish reliable detection
-    of arbitrary misalignment. Keep steering experiments isolated and promotion gated. Use
-    [vLLM-Lens](https://github.com/UKGovernmentBEIS/vllm-lens) as one possible activation-steering/instrumentation
-    baseline, not as an interpretation oracle. Starting point:
-    [Steering Language Models with Weight Arithmetic](https://arxiv.org/abs/2511.05408).
-
-**Common acceptance criteria for every track:** pre-register the hypothesis and baseline; separate
-exploration/validation data from an untouched promotion holdout; include repeated fresh trials and
-uncertainty; test transfer across tasks and repositories (and, where practical, models or runtimes);
-report regressions, tool/token/cost budgets, and safety-check results; preserve failed candidates and
-their evidence. Cassette replay tests reproducibility under recorded responses; claims of improvement
-must also survive fresh model executions. A benchmark score alone never grants promotion.
-
-**Research index:** [survey of self-evolving coding agents](https://arxiv.org/html/2608.03392v1) for
-additional methods and comparisons. Treat reported gains as hypotheses to reproduce, not guarantees
-that a method will transfer to Endophasia's runtime-neutral setting.
-
-The ordering is deliberate:
-
-~~~text
-runtime truth → replay → verified checkpoint / fork → evaluation → counterfactual comparison → evolution
-~~~
-
-Runtime truth includes the effective harness surface, not only the executable. The project should not grow another
-large protocol-only migration before these contracts have survived a real agent and produced evidence.
-
-## Try it
-
-The published alpha requires **Node >= 22.19.0** and a separately installed Pi runtime for attachment. `endo doctor`
-is read-only; it does not start a session or contact a model provider.
+**The published alpha** contains the CLI, not Studio:
 
 ~~~sh
 npm install -g endophasia@0.1.0-alpha.1
-endo doctor                                  # diagnose Pi, Node, store locations and recorded evidence
-endo harness check                           # local Pi checks, no model call; records evidence
-endo harness attach --prompt "..."            # optional: calls your configured model provider and may incur cost
-endo harness status                          # read-only identity and capability status
-endo harness overview                        # read-only session lifecycle
-endo trajectory show <pi-session-id>         # use the id printed by attach
-endo studio                                  # read-only browser interface over the store; prints one private address
+endo doctor                          # read-only: Node, Pi, store locations, recorded evidence
+endo harness check                   # local Pi checks, no model call; records evidence
+endo harness attach --prompt "..."   # calls the model provider Pi is configured with, and may cost money
+endo harness status                  # recorded identity and capability state
+endo harness overview                # the recorded session lifecycle
+endo trajectory show <session-id>    # the id attach prints
 ~~~
 
-`endo studio` serves the page packaged in the install, on `127.0.0.1` only, behind a private address printed once; it never writes the
-store, and its first launch creates its own digest key ([docs/studio.md](docs/studio.md)). From a checkout the same server runs with
-`npm run cockpit -- <store-root>`.
+**Studio, from a source build** (a release that includes `endo studio` has not been published):
 
-A local install also works: `npm install endophasia@0.1.0-alpha.1` followed by `npx --no-install endo doctor`.
-See [docs/install.md](docs/install.md) for the complete first-run guide and [release verification](docs/release-alpha.md)
-for the precise Pi/platform acceptance boundary.
+~~~sh
+git clone https://github.com/noctem-o/endophasia.git && cd endophasia
+npm ci && npm run build
+node scripts/seed-cockpit-demo.ts ./demo-store    # optional: a demo store from committed fixtures and the Pi 1.0.0 specimen; no Pi needed
+node dist/cli/index.js studio ./demo-store        # prints one private address on stdout; open it in a browser
+~~~
 
-From a source checkout, use `npm ci`, `npm test` and `node cli/index.ts ...` to develop or run the deterministic suite.
-`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real` remains an opt-in test against your installed Pi.
+Omit the store to read the default one that `endo harness attach` writes. Studio listens on loopback only and prints its
+address once; anyone who can read that address can read the store, so treat it as a secret. It never writes the store it
+reads. The one thing it creates is its own comparison key, on first launch, and it says so. Complete first-run guide:
+[docs/install.md](docs/install.md). Studio arguments, key handling and limits: [docs/studio.md](docs/studio.md).
 
-Use `--pi /path/to/pi` to select a non-default executable and `--attachment name` to track several installations
-separately.
+## What works today
 
-`npm test` needs only Node and git; it reads no network, no API key and no git history. Two kinds of checks depend on
-the host and say so instead of failing:
+Maturity is stated by the **evidence** behind each row, because that is what differs:
 
-- Replacing a published conformance reference needs `mv --exchange` (GNU coreutils 9.5 or later on Linux). Where `mv`
-  lacks it, the replacement tests are skipped and a test checks that replacement is refused before anything is
-  touched. CI runs the exchange tests in a container that has it.
-- The Prime 0.9.7 specimen records the donor-repository commit that measured it. Checking the recorded source digest
-  against that commit's tree is opt-in: `ENDO_HISTORICAL_PROVENANCE=1 npm test` in a clone that carries the commit
-  (this repository does not).
+- **Real runtime:** exercised against a real Pi. The CI `acceptance` job runs the installed package against a separately
+  installed **Pi 1.0.0** and a local fake model endpoint (no credentials, no provider cost). The research studies used
+  **Pi 1.0.1** with one local model on one machine.
+- **Deterministic:** exercised only against a fake Pi, a fake agent or committed fixtures.
+- **Library:** implemented and unit-tested, but not reachable from any command or from Studio.
+- **Not built:** designed or planned, with no implementation.
+
+| Capability | Reached through | Evidence |
+| :--- | :--- | :--- |
+| Pi attachment: runtime identity, change records, evidence invalidation, capability admission | `endo doctor`, `endo harness check\|attach\|status` | Real runtime (Pi 1.0.0 acceptance; Pi 1.0.1 studies) and deterministic suites |
+| Recorded sessions: durable store with validated recovery, lifecycle events, session overview | `endo harness overview`; `endo status\|events\|ledger` | `harness overview`: real runtime. The others: deterministic (no command writes a ledger yet) |
+| Trajectory show and diff, layer by layer | `endo trajectory show\|diff` | Real recordings; hostile cases against the fake Pi only |
+| Capture and cassette replay | `endo proxy record\|replay`, `endo replay` | Real runtime: 40 replays EXACT, plus a negative control that diverged as it should |
+| Experiments: specs, blocked randomisation, manipulation checks, pinned environments (the studies pre-registered their designs; the CLI does not enforce that) | `endo experiment run\|report` | Real runtime: the studies below. Also writes evaluation records |
+| Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
+| **Studio**: one read-only observation page | `endo studio` (source build) | Real Pi 1.0.0 acceptance (fake model endpoint) serves a real-Pi store and, where Chromium exists (it does in CI), loads it in a real browser; the page's own tests |
+| ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
+| ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
+| Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
+| Studio modes beyond the first page; model-internal observation; WebGPU rendering; WORK and DREAM policies; an EVOLVE operator interface; forkable checkpoints | none | Not built |
+
+Some of the distinctions that matter when reading the table:
+
+- **Replay.** Exact cassette replay reproduces a session under its *recorded* responses. It says nothing about whether a live
+  run would repeat, or whether behaviour survives an irrelevant change. Those are separate measurements.
+- **Steering.** An intervention is a chain of separate records: a proposal, an authorisation bound to its exact digest, the
+  request, the runtime's acceptance, the consumption the recording proxy shows, and the consequence. Acceptance is not
+  execution, and an effect is only what the trajectory afterwards shows.
+- **OBSERVE.** What exists is harness-level observation: lifecycle, context, tools, usage and trajectories. That is not
+  model-internal interpretability. Residual-stream capture, logits and probes would be provider-specific and capability-gated, and
+  none is implemented.
+- **EVOLVE.** Records, selection policies and promotion gates exist as libraries. Nothing in this repository is a working
+  autonomous self-improvement system.
+
+The implementation detail, limits included, is in [docs/status.md](docs/status.md).
+
+## Architecture
+
+~~~mermaid
+flowchart TB
+    subgraph native["Native harness, installed and run by you"]
+        H["Pi<br/>its own execution loop"]
+    end
+    subgraph record["Recording"]
+        A["Adapter<br/>identity · lifecycle events"]
+        X["Recording proxy<br/>optional, in front of the model"]
+    end
+    M["Model endpoint<br/>provider or local server"]
+    S[("Durable store<br/>events · evidence · registry · cassettes")]
+    V["Evidence and projections, read-only<br/>capability state · trajectories · replay · experiment reports<br/>the observation bridge"]
+    C["endo CLI"]
+    N["Local HTTP boundary<br/>127.0.0.1 · private address · GET only"]
+    U["Studio<br/>one read-only page"]
+
+    H -->|"documented RPC"| A
+    H -.->|"model requests"| X
+    X -.-> M
+    A --> S
+    X --> S
+    S --> V
+    V --> C
+    V --> N
+    N --> U
+    C -.->|"authorised STEER · QUEUE · STOP"| A
+~~~
+
+The harness keeps its own execution loop. The commands that record (attach, check, the proxy, steering, experiments) write to
+the store; the reporting commands and the observation bridge open it read-only. The only data the HTTP boundary serves is the
+bridge's projection, so Studio can show nothing that projection does not carry. Apart from starting sessions (attach, replay,
+experiments), Endophasia acts on a running session only through an authorised STEER, QUEUE or STOP at the intervention desk,
+reached from `endo steer` (the dotted path) or from an experiment's declared condition, and never through Studio.
+
+Capabilities are admitted only on current evidence, in order: transport, then identity, then local protocol checks, then a
+live study if you ask for one, then admission. When the installed runtime or its configuration changes, the evidence that
+depended on it stops counting and says so. How that works, with the Pi conformance table: [docs/attachment.md](docs/attachment.md).
+
+## Research direction
+
+The long-term ambition is a reproducible way to study coding agents as systems: what the harness and the model contribute,
+how to observe both without confusing measurement with interpretation, and how to change them under explicit, evidence-backed
+gates. These six words name the directions. Where each stands today:
+
+<a id="roadmap"></a>
+
+| Word | What it names | Today |
+| :--- | :--- | :--- |
+| **DEVELOP** | The current session: what the agent is doing, what the runtime reported, whether to intervene | Observation and authorised steering from the CLI. Studio's read-only page shows recorded sessions but is not a DEVELOP mode |
+| **OBSERVE** | The measurement surface: what was recorded and what can be derived reproducibly | Harness level: implemented. Model-internal signals: design only ([docs/observe.md](docs/observe.md)) |
+| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Replay, trajectory comparison and experiments implemented; causal interventions at a checkpoint need forkable checkpoints, not built |
+| **EVOLVE** | Explicit candidate, evaluation, admission and promotion, never silent self-modification | Records and policies as libraries; no operator interface ([docs/evolve.md](docs/evolve.md)) |
+| **WORK** | A cognition policy: one bounded main trajectory | Planned |
+| **DREAM** | A cognition policy: wider search with counterfactual branches | Planned |
+
+The chain for any adaptation loop is longer than "the score went up", and every link is its own record:
+grader evidence is not reward, reward is not selection, selection is not promotion, and promotion is not authority.
+
+**What the studies have found so far.** All of it comes from Pi 1.0.1, one local model (qwen3.8-27b on llama.cpp) and one
+machine, so none of it is a statement about other runtimes or models. The full designs, results and caveats are in
+[research/README.md](research/README.md).
+
+- [Variance](research/README.md#variance-study-e2) and [pinned environment](research/README.md#pinned-environment-study-e3):
+  runs were "unstable" under every arm, from sampling and then from tool output that carried wall-clock values; with the
+  environment pinned, sampling deterministic and the cache off, every judged layer and every request was identical across the
+  20 trials of each of three small tasks. That is an observation under a declared condition, not a claim that intrinsic noise
+  is zero.
+- [Steering](research/README.md#steering-study) and [path sensitivity](research/README.md#path-sensitivity-study): in the
+  deterministic condition a STEER and a QUEUE were consumed where Pi documents (80 of 80 steered trials). A QUEUE was followed at
+  every path; whether a STEER was followed varied by task and with the working-directory path (27 of 30 paths on one task, 6 of
+  30 on the other), and on one task the path changed the baseline too. Two tasks, one message each, one point.
+- [Discriminating tasks](research/README.md#discriminating-task-study) and the [completion cap](research/README.md#completion-cap-study):
+  of 12 small tasks only two discriminate for this model (13 of 20 and 7 of 20), and, in a post-hoc reading that was not
+  pre-registered, 21 of the 25 failures on the advancing tasks were responses cut off at Pi's default completion cap. Raising
+  the cap from 16,384 to 32,768 tokens raised success on those two tasks from 10 of 24 to 19 of 23 (pooled over four paths at
+  3 trials per cell; the interval excludes 0 only with all four paths included).
+
+The next delivery step is forkable checkpoints, beneath counterfactual comparison and evolution work. The full sequence, the
+numbered capability map and the deferred research tracks are in [docs/roadmap.md](docs/roadmap.md). One proposed, not yet run
+study (a shadow epistemic ledger beside a deliberately gameable post-training environment) is in
+[research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).
+
+## Documentation
+
+<a id="current-state"></a>
+<a id="try-it"></a>
+
+**Using it**
+[Install and first run](docs/install.md) ·
+[Studio](docs/studio.md) ·
+[Alpha release scope and verification](docs/release-alpha.md) ·
+[v0.1.0-alpha.1 release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) ·
+[Changelog](CHANGELOG.md)
+
+**What is implemented, and how it works**
+[Status, in detail](docs/status.md) ·
+[Attaching and evidence admission](docs/attachment.md) ·
+[Capture and replay](docs/replay.md) ·
+[Trajectories](docs/trajectory.md) ·
+[Experiments](docs/experiments.md) ·
+[Steering](docs/steering.md) ·
+[Schema compatibility](docs/schema-compatibility.md)
+
+**Studio and the observation bridge**
+[Observation bridge and local server](docs/cockpit.md) ·
+[Page design reference](docs/cockpit-ui.md) ·
+[Sequencing after the first slice](docs/cockpit-next-stages.md)
+
+**Adapters and boundaries**
+[Pi attach inventory](docs/pi-attach-inventory.md) ·
+[Pi attach audit](docs/pi-attach-audit.md) ·
+[ACP v1 adapter](docs/acp-v1-slice.md) ·
+[ACP v2 study](docs/acp-v2-study.md) ·
+[Deadbolt intervention contract](docs/deadbolt-intervention-contract.md)
+
+**Vision and design** (intent, not implementation)
+[Vision and distinctions](docs/vision.md) ·
+[OBSERVE and VERIFY](docs/observe.md) ·
+[EVOLVE](docs/evolve.md) ·
+[Roadmap](docs/roadmap.md)
+
+**Research**
+[Real recordings and studies](research/README.md) ·
+[Where the raw run data lives](research/DATA.md) ·
+[Epistemic alignment experiment (proposed)](research/epistemic-alignment-experiment.md) ·
+[Developmental epistemic training v0 (proposed)](research/developmental-epistemic-training-v0.md) ·
+[Migration ledger](docs/migration-ledger.md)
+
+**Neighbouring projects**, each with its own job, none granting another authority:
+[Magpie](https://github.com/noctem-o/magpie) (claims, evidence and derived standing) ·
+[Deadbolt](https://github.com/noctem-o/deadbolt) (authorising consequential actions) ·
+[Cogitator](https://github.com/noctem-o/cogitator) (sealed run records) ·
+[Buzz](https://github.com/noctem-o/buzz-prime) (a shared workspace for people and agents).
+
+## Development
+
+`npm ci`, then `npm test` (needs only Node and git; no network, no API key) and `npm run typecheck`. The opt-in checks against
+your own Pi (`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real`) and the host-dependent tests are described in
+[docs/install.md](docs/install.md#running-the-tests).
 
 ## License
 

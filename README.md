@@ -264,6 +264,36 @@ numbered capability map and the deferred research tracks are in [docs/roadmap.md
 study (a shadow epistemic ledger beside a deliberately gameable post-training environment) is in
 [research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).
 
+
+### Candidate study: durable execution compatibility (not implemented)
+
+[Vercel's `durable-harness`](https://github.com/vercel-labs/durable-harness)
+([design explanation](https://vercel.com/blog/making-every-harness-durable)) is a candidate *external execution layer*
+to investigate, starting with its Pi/`pi-durable` integration. It records model/tool-call intents and outcomes in a
+Workflow SDK World and can resume interrupted turns. This is **not** Endophasia's durable observation store or cassette
+replay: those can reconstruct and compare *recorded behaviour*, but do not themselves provide automatic mid-turn
+continuation. No compatibility, adapter support or execution durability is currently claimed.
+
+A bounded, opt-in compatibility study should:
+
+1. Pin the experimental `durable-harness` and Pi versions; use a local World, a fake model endpoint and a synthetic
+   workspace, without adding a required runtime dependency or changing Endophasia's harness-owned execution loop.
+2. Check whether the existing Pi attachment can observe the durable runtime with authentic identity, lifecycle and
+   capability evidence. If the interface or evidence is absent, record `UNAVAILABLE` rather than asserting support.
+3. Inject process death before a call, during a tool call, after an external effect but before its outcome is recorded,
+   and during recovery. Compare World records, Endophasia's observed trajectory and the actual external effects.
+4. Distinguish completed, not-started and *outcome-unknown* operations; test declared safe retries versus never-retry
+   operations, reconciliation/idempotency where available, and possible duplicate side effects. Neither a retry policy
+   nor a durable intent alone proves exactly-once execution.
+5. Verify ordering, session continuity, provenance of reconstructed events, interruption/recovery attribution and
+   divergence classifications. Keep **execution resumption**, **exact cassette replay**, **live repeatability** and
+   **perturbation invariance** as separate claims.
+
+Only consider a private, self-hosted Postgres World after the local test demonstrates a useful observable boundary.
+This is a research candidate, not the next delivery milestone: forkable checkpoints remain next, and Endophasia
+remains the observer rather than becoming the execution engine. The upstream package is currently experimental
+(`0.0.x`); revisit its interfaces and security properties before any integration.
+
 ## Documentation
 
 <a id="current-state"></a>

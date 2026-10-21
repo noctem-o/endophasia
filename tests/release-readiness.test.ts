@@ -64,13 +64,29 @@ describe("publishing cannot move `latest` by accident", () => {
 		const doc = read(`docs/release-${version}.md`);
 		const tag = version.includes("-") ? "--tag alpha" : "--tag latest";
 		expect(doc).toContain(`npm publish ./endophasia-${version}.tgz ${tag}`);
-		// Every command written out (`npm publish <args>`, in a code span or on a code line) names the tarball and the tag; prose that
-		// merely mentions `npm publish` (a backtick follows) is not a command.
-		const commands = [...doc.matchAll(/npm publish[ \t]+[^`\n]*/g)].map((m) => m[0]);
+		// Every command written out names the tarball and the tag: `npm publish` followed by arguments (in a code span or on a code
+		// line), or `npm publish` alone as a line of its own (a bare command in a fenced block). A bare `npm publish` inside a sentence's
+		// code span is prose and cannot be told apart from a command there, so the document keeps its commands on their own lines.
+		const commands = [
+			...doc.matchAll(/npm publish[ \t]+[^`\n]*/g),
+			...doc.matchAll(/^[ \t]*(?:\$[ \t]+)?npm publish[ \t]*$/gm),
+		].map((m) => m[0].trim());
 		expect(commands.length).toBeGreaterThan(0);
 		for (const command of commands) {
 			expect(command, command).toContain(`./endophasia-${version}.tgz`);
 			expect(command, command).toContain(tag);
+		}
+	});
+
+	it("the release document's `gh release create` reads its notes from a real file that an earlier line writes", () => {
+		const doc = read(`docs/release-${version}.md`);
+		const files = [...doc.matchAll(/--notes-file[ \t]+(\S+)/g)].map((m) => m[1]!);
+		expect(files.length).toBeGreaterThan(0);
+		for (const file of files) {
+			expect(file, "a file name, not a placeholder the shell would parse").toMatch(/^[A-Za-z0-9._/-]+$/);
+			expect(doc, `a line that writes ${file}`).toMatch(
+				new RegExp(`>[ \\t]*${file.replace(/[.]/g, "\\.")}[ \\t]*$`, "m"),
+			);
 		}
 	});
 });

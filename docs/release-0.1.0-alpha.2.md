@@ -184,7 +184,7 @@ the tarball file does not.
    npm, as CI does**: the unpacked content is identical under npm 12, but the archive bytes (and so the integrity) are not. The
    `integrity` must equal the `sha512 ...` line in the CI `package`, `package-floor` and `acceptance` logs for `C`. If it differs,
    stop and find out why (compare `inventory.txt` and `tar -xzf` contents) before publishing anything.
-4. **Smoke that exact file.**
+4. **Smoke that exact file.** A file whose integrity is not the recorded one stops the run before anything from it is installed or run.
    ```sh
    ENDO_REQUIRE_BROWSER=1 node scripts/package-smoke.mjs --package ./endophasia-0.1.0-alpha.2.tgz --expect-integrity <integrity>
    ENDO_REQUIRE_BROWSER=1 ENDO_ACCEPT_PI=<pi> ENDO_ACCEPT_PI_VERSION=1.0.0 \
@@ -198,10 +198,17 @@ the tarball file does not.
    npm view endophasia dist-tags                      # alpha: 0.1.0-alpha.2; latest: 0.1.0-alpha.1 (unchanged)
    npm view endophasia@0.1.0-alpha.2 dist.integrity dist.shasum    # equal to step 3
    ```
-8. **Tag and release.** Only after step 7: `git tag -a v0.1.0-alpha.2 C -m "Endophasia 0.1.0-alpha.2"`,
-   `git push origin v0.1.0-alpha.2`, then
-   `gh release create v0.1.0-alpha.2 --prerelease --verify-tag --title "Endophasia 0.1.0-alpha.2 (Studio)" --notes-file <the release notes above> endophasia-0.1.0-alpha.2.tgz`.
-   The tag comes after the publish because a version number, once published, cannot be reused, while a premature tag can mislead.
+8. **Tag and release.** Only after step 7, from the clone at `C`:
+   ```sh
+   # the proposed release notes above (the blockquote under that heading), written to a file; read it before using it
+   sed -n '/^## Proposed release notes/,/^## /{/^> /s/^> \{0,1\}//p;}' docs/release-0.1.0-alpha.2.md > release-notes.md
+   git tag -a v0.1.0-alpha.2 C -m "Endophasia 0.1.0-alpha.2"
+   git push origin v0.1.0-alpha.2
+   gh release create v0.1.0-alpha.2 --prerelease --verify-tag --title "Endophasia 0.1.0-alpha.2 (Studio)" \
+     --notes-file release-notes.md endophasia-0.1.0-alpha.2.tgz
+   ```
+   (`C` is the commit from step 1.) The tag comes after the publish because a version number, once published, cannot be reused, while a
+   premature tag can mislead.
 9. **Fresh install from the registry.**
    `ENDO_REQUIRE_BROWSER=1 node scripts/package-smoke.mjs --package endophasia@0.1.0-alpha.2 --expect-integrity <integrity>` installs the
    published version into an isolated prefix, checks the registry's `dist.integrity` against the fetched file, and runs the whole

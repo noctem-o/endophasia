@@ -135,15 +135,21 @@ try {
 	console.log(`tarball ${packed.filename}: ${packed.files.length} files, ${packed.size} bytes packed, ${packed.unpackedSize} unpacked`);
 	console.log(`sha512 ${packed.integrity}`);
 	console.log(`sha1   ${packed.shasum}`);
-	check(integrity === packed.integrity, "the integrity npm reports is the sha512 of the tarball file");
-	if (expectedIntegrity !== null) check(packed.integrity === expectedIntegrity, `the tarball has the integrity that was recorded for it (${expectedIntegrity})`);
+	// The pin is a safety boundary: an artifact that is not the recorded one is never installed, and none of its code runs. (`npm pack` of a
+	// file or a registry spec only fetches and re-reports it.)
+	const mustMatch = (ok, name) => {
+		check(ok, name);
+		if (!ok) throw new Error(`stopped before installing or running anything from the artifact: ${name}`);
+	};
+	mustMatch(integrity === packed.integrity, "the integrity npm reports is the sha512 of the tarball file");
+	if (expectedIntegrity !== null) mustMatch(packed.integrity === expectedIntegrity, `the tarball has the integrity that was recorded for it (${expectedIntegrity})`);
 	if (subject === null) {
 		check(!paths.includes("dist/zz-stale-output.js") && !existsSync(staleMarker), "the build empties dist/ first: a file left there before packing is not in the tarball");
 		const again = npmPack(join(scratch, "pack-again"));
 		check(again.integrity === packed.integrity, "a second pack of the same checkout (a second build) gives the identical tarball");
 	} else if (!existsSync(subject)) {
 		const view = spawnSync("npm", ["view", subject, "dist.integrity"], { cwd: scratch, env: { ...env, HOME: process.env.HOME }, encoding: "utf8" });
-		check(view.status === 0 && view.stdout.trim() === packed.integrity, `the registry's recorded dist.integrity for ${subject} is the integrity of what was fetched`);
+		mustMatch(view.status === 0 && view.stdout.trim() === packed.integrity, `the registry's recorded dist.integrity for ${subject} is the integrity of what was fetched`);
 	}
 
 	// 2. Inventory.

@@ -42,23 +42,45 @@ const noStripFlags =
 console.log(`node ${process.version}; TypeScript stripping disabled with: ${noStripFlags[0] ?? "(no flag accepted; relying on the .ts-free inventory check)"}`);
 // --real-pi: the loop runs against a real Pi installed by the caller (ENDO_ACCEPT_PI = its executable) instead of the fake,
 // and must be exactly ENDO_ACCEPT_PI_VERSION. Endophasia never installs Pi; the CI job does, from a pinned version.
-const realPi = process.argv.includes("--real-pi");
+// Strict arguments: the two options that choose and pin the artifact must never be silently dropped, or the run would test something else
+// and still report success. `--flag value` and `--flag=value` are accepted; anything unrecognised, repeated or valueless is an error.
+const usage = () => {
+	console.error("usage: node scripts/package-smoke.mjs [--real-pi] [--package <tarball file | endophasia@<version or tag>>] [--expect-integrity <sha512-...>]");
+	process.exit(1);
+};
+const options = new Map();
+for (let i = 2; i < process.argv.length; i++) {
+	const [flag, inline] = process.argv[i].split(/=(.*)/s, 2);
+	if (flag === "--real-pi" && inline === undefined) {
+		options.set(flag, true);
+	} else if (flag === "--package" || flag === "--expect-integrity") {
+		const value = inline ?? process.argv[++i];
+		if (value === undefined || value === "" || value.startsWith("--")) {
+			console.error(`${flag} needs a value`);
+			usage();
+		}
+		if (options.has(flag)) {
+			console.error(`${flag} was given twice`);
+			usage();
+		}
+		options.set(flag, value);
+	} else {
+		console.error(`unrecognised argument: ${process.argv[i]}`);
+		usage();
+	}
+}
+const realPi = options.has("--real-pi");
 if (realPi && (!process.env.ENDO_ACCEPT_PI || !process.env.ENDO_ACCEPT_PI_VERSION)) {
 	console.error("--real-pi needs ENDO_ACCEPT_PI (the Pi executable) and ENDO_ACCEPT_PI_VERSION (the exact version expected)");
 	process.exit(1);
 }
-const valueOf = (flag) => {
-	const at = process.argv.indexOf(flag);
-	if (at === -1) return null;
-	const value = process.argv[at + 1];
-	if (value === undefined || value.startsWith("--")) {
-		console.error(`${flag} needs a value`);
-		process.exit(1);
-	}
-	return value;
-};
+const valueOf = (flag) => options.get(flag) ?? null;
 const packageSpec = valueOf("--package");
 const expectedIntegrity = valueOf("--expect-integrity");
+if (expectedIntegrity !== null && !/^sha512-[A-Za-z0-9+/]{86}==$/.test(expectedIntegrity)) {
+	console.error("--expect-integrity takes the sha512 integrity (sha512-<88 base64 characters>) that npm pack reports");
+	process.exit(1);
+}
 const requireBrowser = process.env.ENDO_REQUIRE_BROWSER === "1";
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), "endo-package-smoke-"));
@@ -108,7 +130,14 @@ try {
 	// 1. Pack: this checkout's tarball, or (--package) exactly the file or registry spec named. `npm pack` also fetches and re-reports a
 	// tarball, so the same inventory and integrity come from the artifact itself in every mode.
 	const subject = packageSpec === null ? null : existsSync(resolve(packageSpec)) ? resolve(packageSpec) : packageSpec;
-	if (subject !== null && existsSync(subject) && statSync(subject).isDirectory()) throw new Error("--package takes a tarball file or a registry spec, not a directory");
+	// Only a tarball file or this package's own registry spec reaches npm. A directory, a Git URL or shorthand, a `file:`/`npm:` alias or
+	// another package would let `npm pack` run lifecycle scripts (prepare, prepack) or fetch something else before the integrity pin is checked.
+	if (subject !== null) {
+		const name = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).name;
+		const registrySpec = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&")}@[A-Za-z0-9][A-Za-z0-9._+-]*$`);
+		const isFile = existsSync(subject) && statSync(subject).isFile() && /\.(tgz|tar\.gz)$/.test(subject);
+		if (!isFile && !registrySpec.test(subject)) throw new Error(`--package takes an existing .tgz file or ${name}@<version or tag>; refusing "${packageSpec}"`);
+	}
 	const npmPack = (destination) => {
 		// prepack (the build) must run for a checkout, whatever the user's npm configuration says about scripts.
 		const pack = spawnSync("npm", ["pack", subject ?? ".", "--json", "--pack-destination", destination, ...(subject === null ? ["--ignore-scripts=false"] : [])], {
@@ -471,9 +500,14 @@ try {
 		// An abrupt end (SIGKILL: no handler runs) must leave the store and the key as they were and the port free.
 		const killed = await launch([], cwdB, piEnv);
 		check((await killed.get("/api/v0/snapshot")).status === 200, "the Studio about to be killed has just read the store");
-		const inFlight = killed.get("/api/v0/snapshot").catch(() => null); // a second read is under way when the process is killed
+		// A burst of reads, and the kill as soon as the first of them has been answered, so that the process ends while it is serving. There
+		// is no way to see inside a read from outside the process (and the server has no test hook), so how many requests were still
+		// unanswered is reported, not asserted: it depends on timing.
+		const burst = Array.from({ length: 24 }, () => killed.get("/api/v0/snapshot").then((r) => r.status, () => null));
+		await Promise.race([...burst.map((request) => request.then((status) => (status === null ? new Promise(() => {}) : status))), Promise.all(burst)]);
 		killed.kill();
-		await inFlight;
+		const outcomes = await Promise.all(burst);
+		console.log(`info SIGKILL landed after the first of ${burst.length} concurrent reads was answered: ${outcomes.filter((o) => o === 200).length} answered, ${outcomes.filter((o) => o === null).length} cut off`);
 		const killedExit = await killed.exited;
 		check(killedExit.signal === "SIGKILL" && !(await listening(killed.port)), "a Studio killed outright (SIGKILL) releases its port");
 		check(fingerprint(defaultStore).join("\n") === storeBefore.join("\n") && readFileSync(studioKey).equals(keyBefore), "and leaves the recorded store and Studio's key byte-for-byte as they were");

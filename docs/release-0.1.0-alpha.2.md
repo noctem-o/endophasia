@@ -72,7 +72,7 @@ is `npm run test:acceptance`. The **Subject** column says what the claim was obs
 | A missing page directory or module fails at startup (exit 1, a plain sentence, no key, no listener); a taken port is a failed start (exit 1, no address) | smoke | installed binary |
 | The page, in Chromium, reads the recorded session through the API and draws its events with no console error, policy violation or request outside the server | smoke, browser step (fails, not skips, with `ENDO_REQUIRE_BROWSER=1`, which CI sets); the smoke asserts at least one event is drawn | recorded by the **fake Pi** (25 events in the last run) and by **real Pi 1.0.0** (28) |
 | Studio never modifies the store (byte-for-byte), including after SIGKILL; an absent store stays absent and its parent is not created | smoke | installed binary |
-| SIGINT and SIGTERM stop Studio with exit 0 and release the port; SIGKILL, with a read in flight, leaves the port free and the store and key as they were | smoke (a repeated signal while it closes: source tests) | installed binary |
+| SIGINT and SIGTERM stop Studio with exit 0 and release the port; SIGKILL, sent as soon as the first of a burst of concurrent reads is answered, leaves the port free and the store and key as they were (how many of the burst were still unanswered is printed, not asserted: a read cannot be observed from outside the process) | smoke (a repeated signal while it closes: source tests) | installed binary |
 | Studio's own key (`cockpit-digest-key`) is created `0600` in a `0700` directory, reused byte for byte, distinct from the installation key, which is never created by Studio | smoke; source tests | installed binary |
 | The address appears once, on stdout only | smoke; source tests | installed binary |
 | `doctor` -> `harness check` -> `harness attach` -> `harness status`/`overview` -> `trajectory show` from the installed binary, then Studio over the recorded store after the session exits | smoke loop | **fake Pi** (`package`); **real Pi 1.0.0 + fake model endpoint** (`acceptance`) |
@@ -184,7 +184,7 @@ the tarball file does not.
    npm, as CI does**: the unpacked content is identical under npm 12, but the archive bytes (and so the integrity) are not. The
    `integrity` must equal the `sha512 ...` line in the CI `package`, `package-floor` and `acceptance` logs for `C`. If it differs,
    stop and find out why (compare `inventory.txt` and `tar -xzf` contents) before publishing anything.
-4. **Smoke that exact file.** A file whose integrity is not the recorded one stops the run before anything from it is installed or run.
+4. **Smoke that exact file.** A file whose integrity is not the recorded one stops the run before anything from it is installed or run; an unrecognised, repeated or valueless argument, and a subject that is not an existing `.tgz` file or `endophasia@<version or tag>` (a directory, a Git URL), are refused before `npm` is called.
    ```sh
    ENDO_REQUIRE_BROWSER=1 node scripts/package-smoke.mjs --package ./endophasia-0.1.0-alpha.2.tgz --expect-integrity <integrity>
    ENDO_REQUIRE_BROWSER=1 ENDO_ACCEPT_PI=<pi> ENDO_ACCEPT_PI_VERSION=1.0.0 \

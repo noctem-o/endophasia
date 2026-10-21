@@ -1,7 +1,7 @@
 # The Endophasia-native cockpit
 
-Status: **the observation bridge, a local read-only HTTP server, a first browser page and the installed `endo studio` command are
-implemented** (a library, a transport, one screen and a launcher: [below](#the-observation-bridge-implemented),
+Status: **the observation bridge, a local read-only HTTP server, a first browser page and the `endo studio` command are
+implemented** (`endo studio` is in the source tree and in the prepared, unpublished `0.1.0-alpha.2`, not in the published `0.1.0-alpha.1`) (a library, a transport, one screen and a launcher: [below](#the-observation-bridge-implemented),
 [the server](#the-local-http-server-implemented), [the page](cockpit-ui.md), [Studio](studio.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
 Session-worker services over a fork-only listener and cannot run against a user-installed Pi
 ([pi-attach-inventory.md](pi-attach-inventory.md) §5). Its replacement is not a port. It is a cockpit over

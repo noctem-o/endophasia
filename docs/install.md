@@ -1,14 +1,21 @@
-# Installing the `endo` CLI and first run (Operator Alpha 0.1.0-alpha.1)
+# Installing the `endo` CLI and first run
 
-Status: **experimental alpha, published** on [npm](https://www.npmjs.com/package/endophasia) and as a [GitHub prerelease](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1). Node >= 22.19.0 is required; Pi is installed separately.
+Status: **experimental alpha.** Node >= 22.19.0 is required; Pi is installed separately. Three states are easy to confuse:
+
+| | Version | `endo studio` | State |
+| :--- | :--- | :--- | :--- |
+| Published alpha | `0.1.0-alpha.1` | no | published on [npm](https://www.npmjs.com/package/endophasia) (`latest` and `alpha`) and as a [GitHub prerelease](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) |
+| Studio alpha | `0.1.0-alpha.2` | yes | **prepared, not published**: [release preparation](release-0.1.0-alpha.2.md) |
+| Source tree | the version in `package.json` | yes | a checkout of `main`; build it as below |
 
 ## What the tarball is
 
 > **The published alpha is older than the source tree.** `endophasia@0.1.0-alpha.1` on the registry (published 2026-10-08)
-> contains the compiled CLI only: no `endo studio` and no `dist/cockpit-ui/`. The source tree reports the same version string but
-> has since gained Studio, and a tarball packed from it contains the browser page described below. The two are different
-> artifacts; do not read the version number as saying which one you have (`endo studio` printing `unknown command: studio` means
-> the registry alpha).
+> contains the compiled CLI only: no `endo studio` and no `dist/cockpit-ui/`. The source tree has since gained Studio, and a tarball
+> packed from it contains the browser page described below. Before `0.1.0-alpha.2` was prepared the source tree carried the same
+> version string as the registry alpha, so an older checkout's tarball is a different artifact from the registry's under one name
+> (`endo studio` printing `unknown command: studio` means the registry alpha). A tarball packed from this tree is labelled
+> `0.1.0-alpha.2`, but that version is **not published**.
 
 `npm pack` from a current checkout produces `endophasia-<version>.tgz`: the compiled JavaScript of the `endo` command's import closure
 (`dist/`), `package.json`, `README.md`, `CHANGELOG.md` and `LICENSE`. It has **no runtime npm dependencies** and
@@ -40,13 +47,17 @@ This installs the published alpha, which does not include Studio. Or install in 
 `npx --no-install endo doctor` from that project. To uninstall the global CLI:
 `npm uninstall -g endophasia`.
 
+`0.1.0-alpha.2` (Studio) is not on the registry yet; `npm install endophasia@0.1.0-alpha.2` fails with "No matching version" until
+the owner publishes it. When it is, it will be published under the `alpha` dist-tag, not `latest`, so `npm install endophasia` with no
+version will still give `0.1.0-alpha.1`; name the version (or `@alpha`).
+
 ## Build and test a tarball from a checkout (contributors)
 
 ~~~sh
 npm ci
 npm run build                      # tsc -p tsconfig.cli.json + fixture keys -> dist/
-npm pack                           # endophasia-0.1.0-alpha.1.tgz (prepack rebuilds dist/)
-npm install --prefix ~/endo-try --ignore-scripts --omit=dev ./endophasia-0.1.0-alpha.1.tgz
+npm pack                           # endophasia-<version>.tgz (prepack rebuilds dist/)
+npm install --prefix ~/endo-try --ignore-scripts --omit=dev ./endophasia-0.1.0-alpha.2.tgz
 ~/endo-try/node_modules/.bin/endo --help
 ~/endo-try/node_modules/.bin/endo --version
 ~/endo-try/node_modules/.bin/endo harness overview ./some-store   # read-only; missing store creates nothing
@@ -57,7 +68,10 @@ This tarball test uses a clean prefix instead of the registry package. To remove
 `npm run test:package` (`scripts/package-smoke.mjs`) does this in a scratch directory with an isolated `HOME` and
 `XDG_*`, runs the installed binary under `node --no-strip-types` from two other working directories, audits the
 inventory and every relative import, and checks that help, version and read-only inspection created no state. CI runs it
-in the `package` job.
+in the `package` job (and, on Node 22.19.0, in `package-floor`). It can be pointed at an exact artifact:
+`node scripts/package-smoke.mjs --package ./endophasia-<version>.tgz --expect-integrity <sha512>` tests that file, and
+`--package endophasia@<version>` tests what the registry serves; the release procedure uses both
+([release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md)).
 
 ## Exit codes
 
@@ -135,7 +149,8 @@ runs one, and `doctor` never starts a session.
 
 ## Endophasia Studio
 
-Studio is **not in the published `0.1.0-alpha.1`**. It runs from a source build (`npm ci && npm run build`, then
+Studio is **not in the published `0.1.0-alpha.1`**; `0.1.0-alpha.2` is the first version that carries it, and that is prepared
+but not published. Until it is, Studio runs from a source build (`npm ci && npm run build`, then
 `node dist/cli/index.js studio`) or from a tarball packed from one, where the installed binary is `endo`:
 
 ```sh
@@ -157,7 +172,8 @@ From a source checkout, `npm ci`, `npm test` and `node cli/index.ts ...` develop
 
 `npm test` needs only Node and git; it reads no network, no API key and no git history. Two kinds of checks depend on
 the host and say so instead of failing (the Studio browser tests also skip when no Chromium is found, set `CHROME_BIN` to run
-them; the raw-data tests skip without the out-of-repository research data, see [../research/DATA.md](../research/DATA.md); and the
+them; the CI jobs that gate a release set `ENDO_REQUIRE_BROWSER=1`, which makes the installed-page browser step of the package smoke
+fail instead of skip; the raw-data tests skip without the out-of-repository research data, see [../research/DATA.md](../research/DATA.md); and the
 `ENDO_PI_EXECUTABLE` and `ENDO_OMP_EXECUTABLE` suites are opt-in):
 
 - Replacing a published conformance reference needs `mv --exchange` (GNU coreutils 9.5 or later on Linux). Where `mv`
@@ -170,10 +186,11 @@ them; the raw-data tests skip without the out-of-repository research data, see [
 ## Release and verification
 
 [`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) is published on
-[npm](https://www.npmjs.com/package/endophasia). The installed-tarball package smoke (`npm run test:package`, CI
+[npm](https://www.npmjs.com/package/endophasia); `0.1.0-alpha.2` is prepared and not published. The installed-tarball package smoke (`npm run test:package`, CI
 `package`) exercises this loop with a **fake** Pi and a local fake OpenAI-compatible endpoint, without real credentials
 or provider cost. The separate `npm run test:acceptance` CI job installs a pinned **real Pi 1.0.0** independently and
 runs the same operator loop against a local fake model endpoint; it does not contact a live provider.
 
 These checks establish the packaged CLI on the CI image (Ubuntu, Node 22), not other platforms or Pi versions.
-For the exact evidence and limits, see [release-alpha.md](release-alpha.md).
+For the exact evidence and limits, see [release-alpha.md](release-alpha.md) (alpha.1) and
+[release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md) (the Studio alpha, with the owner's publication procedure).

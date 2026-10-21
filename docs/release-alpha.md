@@ -1,5 +1,8 @@
 # First alpha: published status, verified scope and release procedure
 
+> This page records `0.1.0-alpha.1`, as published. The next alpha, `0.1.0-alpha.2` (Studio), is prepared and not published; its
+> scope, evidence and publication procedure are in [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).
+
 ## What the alpha is
 
 An experimental research instrument. It attaches to a user-installed agent harness (Pi), records what it observes in a
@@ -30,13 +33,14 @@ they can be attached, and earn capability admission through the same local check
   `--authorize-live-study` and may incur provider cost.
 - Model-internal observation, a cockpit, new adapters, or schema migrations.
 - **`endo studio`.** The published `0.1.0-alpha.1` was cut before Studio and does not contain it (no `studio` command, no
-  `dist/cockpit-ui/`), although the source tree's `package.json` carries the same version string. Studio is in the source tree, verified by
-  the same `package` and `acceptance` jobs, and is unreleased ([studio.md](studio.md)).
+  `dist/cockpit-ui/`). Studio is in the source tree, verified by the same `package` and `acceptance` jobs, and is in the
+  prepared, unpublished `0.1.0-alpha.2` ([studio.md](studio.md)).
 
 ## Checklist for subsequent releases
 
 The first alpha is already published; these are **future** owner-operated release checks, not pending steps for
-`0.1.0-alpha.1`.
+`0.1.0-alpha.1`. The concrete procedure for the next one, which tightens several of these (the published file is the tested
+file; `package-floor` joins the required jobs), is [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).
 
 1. Confirm `main` is green: `check`, `package`, `acceptance`, `exchange`.
 2. Choose the next version, update `CHANGELOG.md`, and confirm the package manifest permits publishing.

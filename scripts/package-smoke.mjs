@@ -5,6 +5,13 @@
 // calls a model provider. Exit status 1 on any failure.
 //
 //   node scripts/package-smoke.mjs        (npm run test:package)
+//   node scripts/package-smoke.mjs --package ./endophasia-<version>.tgz [--expect-integrity sha512-...]
+//   node scripts/package-smoke.mjs --package endophasia@<version>      (the published artifact, after publication)
+//
+// By default the subject is the tarball `npm pack` makes from this checkout. With --package it is exactly that tarball file, or exactly
+// what the registry serves for that spec, so the file an owner publishes can be the file this ran against; --expect-integrity pins the
+// sha512 the owner recorded (or read from CI). ENDO_REQUIRE_BROWSER=1 turns a missing Chromium from a skip into a failure: the CI jobs
+// that gate a release set it.
 //
 // Scratch lives under $TMPDIR (or the OS temp directory) and is removed at the end.
 
@@ -22,6 +29,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,11 +42,46 @@ const noStripFlags =
 console.log(`node ${process.version}; TypeScript stripping disabled with: ${noStripFlags[0] ?? "(no flag accepted; relying on the .ts-free inventory check)"}`);
 // --real-pi: the loop runs against a real Pi installed by the caller (ENDO_ACCEPT_PI = its executable) instead of the fake,
 // and must be exactly ENDO_ACCEPT_PI_VERSION. Endophasia never installs Pi; the CI job does, from a pinned version.
-const realPi = process.argv.includes("--real-pi");
+// Strict arguments: the two options that choose and pin the artifact must never be silently dropped, or the run would test something else
+// and still report success. `--flag value` and `--flag=value` are accepted; anything unrecognised, repeated or valueless is an error.
+const usage = () => {
+	console.error("usage: node scripts/package-smoke.mjs [--real-pi] [--package <tarball file | endophasia@<version or tag>>] [--expect-integrity <sha512-...>]");
+	process.exit(1);
+};
+const options = new Map();
+for (let i = 2; i < process.argv.length; i++) {
+	const [flag, inline] = process.argv[i].split(/=(.*)/s, 2);
+	if (flag === "--real-pi" && inline === undefined) {
+		options.set(flag, true);
+	} else if (flag === "--package" || flag === "--expect-integrity") {
+		const value = inline ?? process.argv[++i];
+		if (value === undefined || value === "" || value.startsWith("--")) {
+			console.error(`${flag} needs a value`);
+			usage();
+		}
+		if (options.has(flag)) {
+			console.error(`${flag} was given twice`);
+			usage();
+		}
+		options.set(flag, value);
+	} else {
+		console.error(`unrecognised argument: ${process.argv[i]}`);
+		usage();
+	}
+}
+const realPi = options.has("--real-pi");
 if (realPi && (!process.env.ENDO_ACCEPT_PI || !process.env.ENDO_ACCEPT_PI_VERSION)) {
 	console.error("--real-pi needs ENDO_ACCEPT_PI (the Pi executable) and ENDO_ACCEPT_PI_VERSION (the exact version expected)");
 	process.exit(1);
 }
+const valueOf = (flag) => options.get(flag) ?? null;
+const packageSpec = valueOf("--package");
+const expectedIntegrity = valueOf("--expect-integrity");
+if (expectedIntegrity !== null && !/^sha512-[A-Za-z0-9+/]{86}==$/.test(expectedIntegrity)) {
+	console.error("--expect-integrity takes the sha512 integrity (sha512-<88 base64 characters>) that npm pack reports");
+	process.exit(1);
+}
+const requireBrowser = process.env.ENDO_REQUIRE_BROWSER === "1";
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), "endo-package-smoke-"));
 const failures = [];
@@ -73,7 +116,7 @@ try {
 	const cwdA = join(scratch, "cwd-a");
 	const cwdB = join(scratch, "cwd-b");
 	const emptyStore = join(scratch, "empty-store");
-	for (const d of [home, xdgData, xdgConfig, cwdA, cwdB, emptyStore, join(scratch, "pack"), join(scratch, "install")])
+	for (const d of [home, xdgData, xdgConfig, cwdA, cwdB, emptyStore, join(scratch, "pack"), join(scratch, "pack-again"), join(scratch, "install")])
 		mkdirSync(d, { recursive: true });
 	const env = {
 		PATH: process.env.PATH,
@@ -84,20 +127,59 @@ try {
 		npm_config_update_notifier: "false",
 	};
 
-	// 1. Pack.
-	const pack = spawnSync("npm", ["pack", "--json", "--pack-destination", join(scratch, "pack")], {
-		cwd: repo,
-		env: { ...env, HOME: process.env.HOME },
-		encoding: "utf8",
-	});
-	if (pack.status !== 0) throw new Error(`npm pack failed:\n${pack.stderr}`);
-	// npm prints an array of packages; newer npm keys the same records by package name.
-	const parsed = JSON.parse(pack.stdout);
-	const packed = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+	// 1. Pack: this checkout's tarball, or (--package) exactly the file or registry spec named. `npm pack` also fetches and re-reports a
+	// tarball, so the same inventory and integrity come from the artifact itself in every mode.
+	const subject = packageSpec === null ? null : existsSync(resolve(packageSpec)) ? resolve(packageSpec) : packageSpec;
+	// Only a tarball file or this package's own registry spec reaches npm. A directory, a Git URL or shorthand, a `file:`/`npm:` alias or
+	// another package would let `npm pack` run lifecycle scripts (prepare, prepack) or fetch something else before the integrity pin is checked.
+	if (subject !== null) {
+		const name = JSON.parse(readFileSync(join(repo, "package.json"), "utf8")).name;
+		const registrySpec = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&")}@[A-Za-z0-9][A-Za-z0-9._+-]*$`);
+		const isFile = existsSync(subject) && statSync(subject).isFile() && /\.(tgz|tar\.gz)$/.test(subject);
+		if (!isFile && !registrySpec.test(subject)) throw new Error(`--package takes an existing .tgz file or ${name}@<version or tag>; refusing "${packageSpec}"`);
+	}
+	const npmPack = (destination) => {
+		// prepack (the build) must run for a checkout, whatever the user's npm configuration says about scripts.
+		const pack = spawnSync("npm", ["pack", subject ?? ".", "--json", "--pack-destination", destination, ...(subject === null ? ["--ignore-scripts=false"] : [])], {
+			cwd: subject === null ? repo : scratch,
+			env: { ...env, HOME: process.env.HOME },
+			encoding: "utf8",
+		});
+		if (pack.status !== 0) throw new Error(`npm pack failed:\n${pack.stderr}`);
+		// npm prints an array of packages; newer npm keys the same records by package name.
+		const parsed = JSON.parse(pack.stdout);
+		return Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+	};
+	// A file `dist/` should never keep: the build empties it first, so one left behind would mean a stale output could be packed.
+	const staleMarker = join(repo, "dist", "zz-stale-output.js");
+	if (subject === null) {
+		mkdirSync(join(repo, "dist"), { recursive: true });
+		writeFileSync(staleMarker, "// left by package-smoke to prove the build empties dist/\n");
+	}
+	const packed = npmPack(join(scratch, "pack"));
 	const tarball = join(scratch, "pack", packed.filename);
 	const paths = packed.files.map((f) => f.path);
+	const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
+	console.log(`subject: ${subject === null ? "the tarball packed from this checkout" : existsSync(subject) ? `the tarball file ${subject}` : `the registry package ${subject}`}`);
 	console.log(`tarball ${packed.filename}: ${packed.files.length} files, ${packed.size} bytes packed, ${packed.unpackedSize} unpacked`);
 	console.log(`sha512 ${packed.integrity}`);
+	console.log(`sha1   ${packed.shasum}`);
+	// The pin is a safety boundary: an artifact that is not the recorded one is never installed, and none of its code runs. (`npm pack` of a
+	// file or a registry spec only fetches and re-reports it.)
+	const mustMatch = (ok, name) => {
+		check(ok, name);
+		if (!ok) throw new Error(`stopped before installing or running anything from the artifact: ${name}`);
+	};
+	mustMatch(integrity === packed.integrity, "the integrity npm reports is the sha512 of the tarball file");
+	if (expectedIntegrity !== null) mustMatch(packed.integrity === expectedIntegrity, `the tarball has the integrity that was recorded for it (${expectedIntegrity})`);
+	if (subject === null) {
+		check(!paths.includes("dist/zz-stale-output.js") && !existsSync(staleMarker), "the build empties dist/ first: a file left there before packing is not in the tarball");
+		const again = npmPack(join(scratch, "pack-again"));
+		check(again.integrity === packed.integrity, "a second pack of the same checkout (a second build) gives the identical tarball");
+	} else if (!existsSync(subject)) {
+		const view = spawnSync("npm", ["view", subject, "dist.integrity"], { cwd: scratch, env: { ...env, HOME: process.env.HOME }, encoding: "utf8" });
+		mustMatch(view.status === 0 && view.stdout.trim() === packed.integrity, `the registry's recorded dist.integrity for ${subject} is the integrity of what was fetched`);
+	}
 
 	// 2. Inventory.
 	const allowedTop = new Set(["package.json", "README.md", "CHANGELOG.md", "LICENSE"]);
@@ -126,6 +208,7 @@ try {
 		"the Studio command, the shared host, the server, the cockpit library and the page's entry files are packed",
 	);
 	check(!paths.some((p) => /digest-key$|capture|cassette\.json/.test(p) && !p.endsWith(".js")), "no private keys or captures");
+	check(paths.includes("dist/cli/cassette-child.js"), "the second compiled entry point, which replay starts as a child process, is packed beside the first");
 
 	// 3. Install the tarball only: no dev dependencies, no install scripts.
 	const install = spawnSync(
@@ -140,6 +223,8 @@ try {
 	check(existsSync(join(pkgDir, manifest.bin.endo)), "the manifest's bin target exists in the installed package");
 	check(existsSync(bin), "the endo executable is linked into node_modules/.bin");
 	check(!Object.keys(manifest.dependencies ?? {}).length, "the package declares no runtime dependencies");
+	check(manifest.engines?.node === ">=22.19.0" && Object.keys(manifest.bin).join() === "endo", "the manifest keeps the endo binary and the Node >=22.19.0 floor");
+	check(manifest.publishConfig?.tag === "alpha", "the manifest publishes under the alpha dist-tag by default, never silently under latest");
 	check(!existsSync(join(pkgDir, "node_modules")), "no nested node_modules in the installed package");
 
 	// 4. Every relative import in the installed JavaScript resolves to an installed file.
@@ -152,6 +237,22 @@ try {
 		}
 	}
 	check(unresolved.length === 0, `all ${jsFiles.length} installed modules' relative imports resolve to packaged .js files${unresolved.length ? `: ${unresolved.join("; ")}` : ""}`);
+
+	// Nothing the builder's machine or the repository's secrets could leave in the files: a private key block, or the absolute path of
+	// the checkout or the builder's home (a compiler or bundler setting can embed one).
+	const builderPaths = [repo.replace(/\/+$/, ""), process.env.HOME].filter((path) => typeof path === "string" && path.length > 1);
+	// The path must end there: HOME=/root must not match "./root-args.js".
+	const mentions = (text, path) => new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9_.-])`).test(text);
+	const leaks = tree(pkgDir)
+		.filter((path) => statSync(path).isFile())
+		.flatMap((path) => {
+			const text = readFileSync(path, "utf8");
+			return [
+				...(/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text) ? [`${relative(pkgDir, path)}: a private key block`] : []),
+				...builderPaths.filter((builder) => mentions(text, builder)).map((builder) => `${relative(pkgDir, path)}: the builder path ${builder}`),
+			];
+		});
+	check(leaks.length === 0, `no installed file holds a private key block or the builder's checkout or home path${leaks.length ? `: ${leaks.join("; ")}` : ""}`);
 
 	const mapped = jsFiles.filter((file) => /sourceMappingURL/.test(readFileSync(file, "utf8")));
 	check(mapped.length === 0, `no installed JavaScript points at a source map${mapped.length ? `: ${mapped.map((f) => relative(pkgDir, f)).join(", ")}` : ""}`);
@@ -183,6 +284,10 @@ try {
 	check(bare.status === 2 && /missing command/.test(bare.stderr), "no command exits 2");
 	const misuse = run(["harness", "nonsense"]);
 	check(misuse.status === 1 && /usage: endo harness/.test(misuse.stderr), "a family-level usage error keeps its existing exit 1");
+	// replay and proxy are separate branches of the command table; their usage errors prove their module graphs load from the install.
+	const replayUsage = run(["replay"]);
+	const proxyUsage = run(["proxy"]);
+	check(replayUsage.status === 1 && /usage: endo replay/.test(replayUsage.stderr) && proxyUsage.status === 1 && /usage: endo proxy/.test(proxyUsage.stderr), "endo replay and endo proxy report their usage from the install (their round trip is covered from source only)");
 	const doctor = run(["doctor", "--json"]);
 	const doctored = doctor.status === 0 ? JSON.parse(doctor.stdout) : null;
 	check(
@@ -296,6 +401,18 @@ try {
 	check(!(await listening(one.port)), "the port is released when Studio exits");
 	check(one.stdout().split(one.capability).length === 2 && !one.stderr().includes(one.capability), "the capability appears once in everything Studio printed, and only on stdout");
 
+	// A taken port is a failed start: exit 1, no address, no key rewritten, and the store still absent.
+	const holder = createServer();
+	await new Promise((ready) => holder.listen(0, "127.0.0.1", ready));
+	const takenPort = holder.address().port;
+	const clash = spawnSync(process.execPath, [...noStripFlags, bin, "studio", "--root", absentRoot, "--port", String(takenPort)], { cwd: cwdA, env, encoding: "utf8", timeout: 30_000 });
+	await new Promise((closed) => holder.close(closed));
+	check(
+		clash.status === 1 && clash.stdout === "" && clash.stderr.includes(`port ${takenPort} is already in use`) && !/[A-Za-z0-9_-]{43}/.test(clash.stderr),
+		"a taken port is a failed start: exit 1, nothing on stdout, a plain sentence, no address",
+	);
+	check(readFileSync(studioKey).equals(studioKeyBytes) && !existsSync(absentRoot) && !existsSync(dirname(absentRoot)), "the failed start left Studio's key as it was and the absent store absent");
+
 	// 8. The installed Pi loop, against a prepared (fake, clearly not real) Pi and a local fake model endpoint: no credentials,
 	// no provider. Runs after the no-state check above because it creates the default store. The harness helpers are test
 	// fixtures read through this script's own Node (type stripping on); the installed endo still runs with stripping off.
@@ -368,9 +485,32 @@ try {
 		const projected = trajectory?.status === 0 ? JSON.parse(trajectory.stdout) : null;
 		check(projected !== null, `loop 6: trajectory show projects the recorded session from the default store${trajectory?.status === 0 ? "" : `: ${trajectory?.stderr}`}`);
 		check(projected !== null && JSON.stringify(projected).includes(session.piSessionId), "loop 6: the trajectory names the Pi session id attach reported");
+		const compared = session === null ? null : await loop(["trajectory", "diff", defaultStore, session.piSessionId, defaultStore, session.piSessionId]);
+		const diff = compared?.status === 0 ? JSON.parse(compared.stdout) : null;
+		const verdicts = diff === null ? null : Object.fromEntries(["lifecycle", "toolCalls", "toolResults", "outcome"].map((layer) => [layer, diff.layers?.[layer]?.status]));
+		// A layer the recording does not carry is UNAVAILABLE on both sides; what it must never say against itself is DIVERGED.
+		check(
+			verdicts !== null && verdicts.lifecycle === "EXACT" && !Object.values(verdicts).includes("DIVERGED") && !Object.values(verdicts).includes(undefined),
+			`loop 7: trajectory diff of the recorded session against itself: lifecycle EXACT, nothing diverged (${verdicts === null ? compared?.stderr : JSON.stringify(verdicts)})`,
+		);
 
 		// 9. Studio over the store that loop just recorded, with no root named: the default store, and its own key reused.
 		const storeBefore = fingerprint(defaultStore);
+		const keyBefore = readFileSync(studioKey);
+		// An abrupt end (SIGKILL: no handler runs) must leave the store and the key as they were and the port free.
+		const killed = await launch([], cwdB, piEnv);
+		check((await killed.get("/api/v0/snapshot")).status === 200, "the Studio about to be killed has just read the store");
+		// A burst of reads, and the kill as soon as the first of them has been answered, so that the process ends while it is serving. There
+		// is no way to see inside a read from outside the process (and the server has no test hook), so how many requests were still
+		// unanswered is reported, not asserted: it depends on timing.
+		const burst = Array.from({ length: 24 }, () => killed.get("/api/v0/snapshot").then((r) => r.status, () => null));
+		await Promise.race([...burst.map((request) => request.then((status) => (status === null ? new Promise(() => {}) : status))), Promise.all(burst)]);
+		killed.kill();
+		const outcomes = await Promise.all(burst);
+		console.log(`info SIGKILL landed after the first of ${burst.length} concurrent reads was answered: ${outcomes.filter((o) => o === 200).length} answered, ${outcomes.filter((o) => o === null).length} cut off`);
+		const killedExit = await killed.exited;
+		check(killedExit.signal === "SIGKILL" && !(await listening(killed.port)), "a Studio killed outright (SIGKILL) releases its port");
+		check(fingerprint(defaultStore).join("\n") === storeBefore.join("\n") && readFileSync(studioKey).equals(keyBefore), "and leaves the recorded store and Studio's key byte-for-byte as they were");
 		const two = await launch([], cwdB, piEnv);
 		check(storeBefore.length > 0, "the default store holds the recorded session Studio will read");
 		check(two.stderr().includes(`using the default store ${defaultStore} (XDG_DATA_HOME)`), "with no root named, Studio reads the default store and says which on stderr");
@@ -384,8 +524,10 @@ try {
 		// outside the server that served it.
 		const { Browser, findBrowser } = await import("../tests/cockpit-browser.ts");
 		const chrome = findBrowser();
-		if (chrome === null) console.log("skip  the installed page in a real browser: no Chromium found (set CHROME_BIN to run it)");
+		if (chrome === null && requireBrowser) check(false, "the installed page in a real browser: ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
+		else if (chrome === null) console.log("skip  the installed page in a real browser: no Chromium found (set CHROME_BIN to run it)");
 		else {
+			console.log(`browser: ${chrome} ${spawnSync(chrome, ["--version"], { encoding: "utf8", timeout: 10_000 }).stdout.trim()}`);
 			const browser = await Browser.launch(chrome);
 			try {
 				const tab = await browser.open(1440, 900);
@@ -416,6 +558,7 @@ try {
 	check(false, `smoke aborted: ${studios.reduce((text, child) => child.redact(text), raw)}`);
 } finally {
 	for (const child of studios) child.kill(); // nothing outlives the run, and nothing holds the scratch directory open
+	if (packageSpec === null) rmSync(join(repo, "dist", "zz-stale-output.js"), { force: true }); // the marker of the stale-output check, if the run ended before the build removed it; an artifact run never wrote it, so it never touches the checkout
 	rmSync(scratch, { recursive: true, force: true });
 }
 if (failures.length > 0) {

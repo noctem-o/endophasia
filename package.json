@@ -1,6 +1,6 @@
 {
 	"name": "endophasia",
-	"version": "0.1.0-alpha.1",
+	"version": "0.1.0-alpha.2",
 	"description": "Endophasia: an experimental research instrument that attaches to an existing agent harness and records what it observes.",
 	"license": "MIT",
 	"repository": {
@@ -44,5 +44,8 @@
 	},
 	"engines": {
 		"node": ">=22.19.0"
+	},
+	"publishConfig": {
+		"tag": "alpha"
 	}
 }

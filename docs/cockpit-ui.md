@@ -173,7 +173,7 @@ browser, and a protocol change breaks the typecheck (the label tables are `Recor
 The build (`npm run build:cockpit-ui`, run by `npm run cockpit`) compiles `cockpit-ui/src` with `tsc` to ordinary ES modules in
 `cockpit-ui/dist/` (ignored). Nothing is bundled and no dependency was added. The launcher reads that directory once and hands the server a
 map of name to content; the server serves exactly those names from memory. `npm run build` builds the same page into `dist/cockpit-ui/`
-with the same builder, after it has emptied `dist/`, and the installed `endo studio` reads it from there ([studio.md](studio.md)).
+with the same builder, after it has emptied `dist/`, and `endo studio` reads it from there once installed from a tarball packed from this tree ([studio.md](studio.md); the published `0.1.0-alpha.1` has no Studio).
 
 ## Tests
 

@@ -42,8 +42,10 @@ agent (what it requested, what it was told, what it reported and what it did), a
 "thought".
 
 > [!IMPORTANT]
-> Experimental, and honest about it. The published npm alpha (`0.1.0-alpha.1`) **predates Studio** and does not contain
-> `endo studio`; Studio runs from a source build until a release includes it ([quick start](#quick-start)). The earlier
+> Experimental, and honest about it. The first published alpha, `0.1.0-alpha.1`, **predates Studio** and has no `endo studio`.
+> Studio ships in `0.1.0-alpha.2` and later; the source tree has it today ([quick start](#quick-start)). A README cannot say
+> which versions the registry holds: `npm view endophasia versions` does, and the release status and procedure for
+> `0.1.0-alpha.2` are in [docs/release-0.1.0-alpha.2.md](docs/release-0.1.0-alpha.2.md). The earlier
 > Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at
 > [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 
@@ -110,7 +112,7 @@ the page's [design reference](docs/cockpit-ui.md).
 
 Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
 
-**The published alpha** contains the CLI, not Studio:
+**The first published alpha, `0.1.0-alpha.1`,** contains the CLI, not Studio:
 
 ~~~sh
 npm install -g endophasia@0.1.0-alpha.1
@@ -122,7 +124,9 @@ endo harness overview                # the recorded session lifecycle
 endo trajectory show <session-id>    # the id attach prints
 ~~~
 
-**Studio, from a source build** (a release that includes `endo studio` has not been published):
+**Studio.** `endo studio` is in `0.1.0-alpha.2` and later. If `npm view endophasia versions` lists such a version,
+`npm install -g endophasia@<that version>` provides it (name the version: the `latest` tag can point at an older alpha). Otherwise
+build from source:
 
 ~~~sh
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia
@@ -155,7 +159,7 @@ Maturity is stated by the **evidence** behind each row, because that is what dif
 | Capture and cassette replay | `endo proxy record\|replay`, `endo replay` | Real runtime: 40 replays EXACT, plus a negative control that diverged as it should |
 | Experiments: specs, blocked randomisation, manipulation checks, pinned environments (the studies pre-registered their designs; the CLI does not enforce that) | `endo experiment run\|report` | Real runtime: the studies below. Also writes evaluation records |
 | Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
-| **Studio**: one read-only observation page | `endo studio` (source build) | Real Pi 1.0.0 acceptance (fake model endpoint) serves a real-Pi store and, where Chromium exists (it does in CI), loads it in a real browser; the page's own tests |
+| **Studio**: one read-only observation page | `endo studio` (`0.1.0-alpha.2` and later, or a source build) | Real Pi 1.0.0 acceptance (fake model endpoint) serves a real-Pi store and, where Chromium exists (it does in CI), loads it in a real browser; the page's own tests |
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
@@ -268,6 +272,7 @@ study (a shadow epistemic ledger beside a deliberately gameable post-training en
 **Using it**
 [Install and first run](docs/install.md) ·
 [Studio](docs/studio.md) ·
+[Release notes and procedure: 0.1.0-alpha.2, Studio](docs/release-0.1.0-alpha.2.md) ·
 [Alpha release scope and verification](docs/release-alpha.md) ·
 [v0.1.0-alpha.1 release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) ·
 [Changelog](CHANGELOG.md)

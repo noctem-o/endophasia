@@ -49,6 +49,16 @@ describe("one version, everywhere it is written", () => {
 		expect(headings[own + 1], "the previous release's section is kept").toMatch(/^\[?\d+\.\d+\.\d+/);
 	});
 
+	it("keeps the prose that ships in the tarball true both before and after publication", () => {
+		// README.md and CHANGELOG.md are packed. A phrase that is true only until the next publish ("the published alpha" once there are
+		// two, "prepared, not published") would be wrong in the very artifact that makes it so; those statements live in docs/, which is
+		// not packed, and are flipped after publication.
+		const timeRelative =
+			/\bthe (?:only |current |latest |newest )?published (?:alpha|release|version)\b|\bunpublished\b|\bnot (?:yet )?published\b|\bprepared\b[^.\n]*\bnot published\b/i;
+		for (const file of ["README.md", "CHANGELOG.md"])
+			expect(read(file).match(timeRelative)?.[0], `${file} is packed`).toBeUndefined();
+	});
+
 	it("has a release document that names it", () => {
 		const doc = read(`docs/release-${version}.md`);
 		expect(doc.split("\n")[0]).toContain(version);

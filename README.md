@@ -112,7 +112,7 @@ the page's [design reference](docs/cockpit-ui.md).
 
 Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
 
-**The published alpha** contains the CLI, not Studio:
+**The first published alpha, `0.1.0-alpha.1`,** contains the CLI, not Studio:
 
 ~~~sh
 npm install -g endophasia@0.1.0-alpha.1

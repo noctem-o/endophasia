@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- The trajectory-comparison presentation, `endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`) and its pure
+  projection `projectEndoCockpitTrajectoryComparisonV0` (`cockpit/projections/trajectory-comparison.ts`): the existing comparator's
+  verdicts for two recorded trajectories in a browser-safe shape, with `EXACT` / `DIVERGED` / `UNAVAILABLE` kept apart per layer, tool
+  calls apart from tool results, no cross-layer divergence or event pairing, unavailable deltas never 0, and store paths and
+  content-committing digests withheld as keyed tokens. It is not yet served or registered in the cockpit version table; see
+  [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-not-yet-served).
 - The Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed files and a manifest
   that the host checks, file for file and byte for byte, before anything starts), served through the same hardened server. Its
   **Observe workspace** reads the one recorded snapshot and shows an overview of the recorded window, the runtime, the capability state

@@ -100,6 +100,7 @@ describe("cockpit purity and read-only operation", () => {
 			...PROJECTIONS,
 			join(packageRoot, "protocol", "cockpit.ts"),
 			join(packageRoot, "protocol", "cockpit-ledger.ts"),
+			join(packageRoot, "protocol", "cockpit-comparison.ts"),
 		];
 		expect(pure.length).toBeGreaterThanOrEqual(6);
 		for (const file of pure) {

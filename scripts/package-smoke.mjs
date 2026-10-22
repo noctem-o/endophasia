@@ -186,8 +186,15 @@ try {
 	check(paths.every((p) => p.startsWith("dist/") || allowedTop.has(p)), "only dist/, package.json, README.md, CHANGELOG.md and LICENSE are packed");
 	check(!paths.some((p) => /\.(ts|mts|cts|tsx)$/.test(p)), "no TypeScript source or declaration files in the tarball");
 	check(!paths.some((p) => p.includes("node_modules") || p.includes("tests/") || p.includes(".map")), "no node_modules, tests or source maps");
+	// The bundled Studio frontend (dist/studio-ui, with its licence notices in dist/licenses) is checked by itself below, against its own
+	// manifest. A package published before it existed has neither: that is stated, not failed, for a named artifact; a build from this
+	// checkout must have it.
+	const hasStudioUi = paths.some((p) => p.startsWith("dist/studio-ui/"));
+	if (subject === null) check(hasStudioUi, "the build from this checkout packs the Studio frontend (dist/studio-ui)");
+	else if (!hasStudioUi) console.log("skip  the Studio frontend checks: this package predates dist/studio-ui");
+	const outsideFrontend = paths.filter((p) => !(hasStudioUi && (p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/"))));
 	check(
-		paths.filter((p) => p.startsWith("dist/") && !p.endsWith(".js")).sort().join() ===
+		outsideFrontend.filter((p) => p.startsWith("dist/") && !p.endsWith(".js")).sort().join() ===
 			[
 				"dist/cockpit-ui/cockpit.css",
 				"dist/cockpit-ui/icon.svg",
@@ -548,6 +555,89 @@ try {
 		check(second.code === 0 && second.signal === null && !(await listening(two.port)), "SIGINT (sent twice) stops Studio with exit status 0 and releases the port");
 		check(fingerprint(defaultStore).join("\n") === storeBefore.join("\n"), "the recorded store is byte-for-byte unchanged after Studio read it");
 		check(two.stdout().split(two.capability).length === 2 && !two.stderr().includes(two.capability), "the second launch printed its address once, on stdout only");
+
+	// 6b. The bundled Studio frontend, from the installed package alone: the installed directory is exactly its manifest, and the
+	// installed host (the same code `endo studio` runs) serves it through the real server, in a real browser. The package has no React,
+	// no bundler and no source here (it declares no dependency and holds no node_modules); the build's output is all there is.
+	if (hasStudioUi) {
+		const studioDir = join(pkgDir, "dist", "studio-ui");
+		const manifestName = "studio-ui.manifest.json";
+		const studioManifest = JSON.parse(readFileSync(join(studioDir, manifestName), "utf8"));
+		const listed = studioManifest.files.map((f) => f.name).sort();
+		check(
+			readdirSync(studioDir).sort().join() === [...listed, manifestName].sort().join() &&
+				studioManifest.files.every((f) => createHash("sha256").update(readFileSync(join(studioDir, f.name))).digest("hex") === f.sha256),
+			`dist/studio-ui holds exactly the ${listed.length} files its manifest lists, each with the recorded sha256`,
+		);
+		check(
+			paths.filter((p) => p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/")).every((p) => /^dist\/(studio-ui\/[A-Za-z0-9][A-Za-z0-9._-]*\.(html|js|css|svg|woff2|json)|licenses\/studio-ui-third-party\.txt)$/.test(p)),
+			"the tarball holds there only the manifest, the page, scripts, style sheet, icon, font and licence notices: no source map and no source",
+		);
+		const notices = readFileSync(join(pkgDir, "dist", "licenses", "studio-ui-third-party.txt"), "utf8");
+		check(/\nreact@18\.3\.1\n/.test(notices) && /\nreact-dom@18\.3\.1\n/.test(notices) && /@fontsource\/ibm-plex-sans@/.test(notices) && /SIL OPEN FONT LICENSE/i.test(notices), "the licence notices of the bundled React and font are packed");
+		check(!existsSync(join(scratch, "install", "node_modules", "react")) && !existsSync(join(scratch, "install", "node_modules", "esbuild")), "the install holds no React and no bundler: the frontend runs from its built files only");
+
+		const launcher = join(scratch, "launch-studio-ui.mjs");
+		writeFileSync(launcher, [
+			`const host = await import(process.argv[2]);`,
+			`const launched = await host.launchEndoCockpitV0({ root: process.argv[3], keyFile: process.argv[4], uiDirectory: process.argv[5], uiFormat: "studio" });`,
+			`process.stdout.write(launched.server.baseUrl + "/\\n");`,
+			`await host.serveUntilSignalV0(launched.server);`,
+		].join("\n"));
+		const host = join(pkgDir, "dist", "cockpit-http", "host.js");
+		const startUi = (directory, key) =>
+			new Promise((resolveStart) => {
+				const child = spawn(process.execPath, [...noStripFlags, launcher, host, join(scratch, "studio-ui-absent-store"), key, directory], { cwd: cwdA, env, stdio: ["ignore", "pipe", "pipe"] });
+				let out = "";
+				let err = "";
+				child.stdout.on("data", (d) => { out += d; });
+				child.stderr.on("data", (d) => { err += d; });
+				const exited = new Promise((r) => child.once("close", (code, signal) => r({ code, signal })));
+				const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+				const line = () => /^(http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)\n/.exec(out)?.[1] ?? null;
+				const poll = setInterval(() => { if (line() !== null) { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), err: () => err }); } }, 20);
+				exited.then((status) => { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), status, out, err: () => err }); });
+			});
+		const damaged = join(scratch, "studio-ui-damaged");
+		mkdirSync(damaged);
+		for (const name of readdirSync(studioDir)) writeFileSync(join(damaged, name), readFileSync(join(studioDir, name)));
+		const font = readdirSync(damaged).find((name) => name.endsWith(".woff2"));
+		writeFileSync(join(damaged, font), Buffer.concat([readFileSync(join(damaged, font)).subarray(0, 100), Buffer.from("tampered")]));
+		const broken = await startUi(damaged, join(scratch, "studio-ui-key-broken", "cockpit-digest-key"));
+		check(
+			broken.address === null && broken.status.code !== 0 && broken.status.code !== null && broken.out === "" && /incomplete or damaged/.test(broken.err()) && !existsSync(join(scratch, "studio-ui-key-broken")),
+			"the installed host refuses a frontend that does not match its manifest: non-zero exit before any address, no key made",
+		);
+		const chromeForUi = (await import("../tests/cockpit-browser.ts")).findBrowser();
+		const served = await startUi(studioDir, join(scratch, "studio-ui-key", "cockpit-digest-key"));
+		check(served.address !== null, "the installed host starts the frontend through the real server and prints one address");
+		if (served.address !== null) {
+			try {
+				const origin = new URL(served.address).origin;
+				const fetched = await fetch(served.address);
+				const page = await fetched.text();
+				check(fetched.status === 200 && /Integration proof|integration proof/.test(page) && fetched.headers.get("content-security-policy")?.includes("font-src 'self'") === true && fetched.headers.get("content-security-policy")?.includes("trusted-types 'none'") === true, "the installed frontend is served at the capability address under the strict page policy");
+				check((await fetch(`${origin}/${"A".repeat(43)}/`)).status === 404 && (await fetch(`${origin}/`)).status === 404, "and nothing is served outside the capability");
+				if (chromeForUi === null && requireBrowser) check(false, "the installed frontend in a real browser: ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
+				else if (chromeForUi === null) console.log("skip  the installed frontend in a real browser: no Chromium found (set CHROME_BIN to run it)");
+				else {
+					const { Browser } = await import("../tests/cockpit-browser.ts");
+					const { exerciseStudioUi } = await import("../tests/studio-ui-acceptance.ts");
+					const browser = await Browser.launch(chromeForUi);
+					try {
+						const { failures, facts } = await exerciseStudioUi(browser, served.address, origin);
+						check(failures.length === 0, `the installed frontend renders in a real browser, loads its script, style sheet, lazy module, font and icon, requests nothing outside the server and breaks no policy (${facts.requests.length} requests)${failures.length ? `: ${failures.join("; ")}` : ""}`);
+					} finally {
+						await browser.close();
+					}
+				}
+			} finally {
+				served.child.kill("SIGINT");
+			}
+			const ended = await served.exited;
+			check(ended.code === 0 && !served.err().includes(served.address.split("/")[3]), "SIGINT stops the installed frontend's server with exit 0, and its stderr never carries the capability");
+		}
+	}
 	} finally {
 		await model.close();
 		fakePi.remove();

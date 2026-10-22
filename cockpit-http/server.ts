@@ -76,16 +76,18 @@ const REASONS: Record<Refusal, string> = {
 /**
  * The policy of the page and its assets, narrower than the API's: the page's own scripts, styles, images and requests, nothing
  * remote, no inline script or style, no plugin, no form, no frame. Trusted Types are required and none is allowed, so a script
- * that reaches an HTML sink throws instead of parsing markup.
+ * that reaches an HTML sink throws instead of parsing markup. Fonts are the page's own (`font-src 'self'`): no `data:` font, no
+ * remote one, and only `.woff2` is a servable font type below.
  */
 const PAGE_CSP =
-	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
+	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
 const UI_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const UI_TYPES: Readonly<Record<string, string>> = {
 	html: "text/html; charset=utf-8",
 	js: "text/javascript; charset=utf-8",
 	css: "text/css; charset=utf-8",
 	svg: "image/svg+xml",
+	woff2: "font/woff2",
 };
 const MAX_UI_BYTES = 4 * 1024 * 1024;
 interface UiFile {
@@ -104,7 +106,7 @@ const SECURITY_HEADERS = {
 /**
  * The browser page a host serves with the API: file name to content, held in memory (the server reads no file). `index.html` is
  * the page, served at `/<capability>/`; every other entry is served at `/<capability>/assets/<name>`. Names are
- * `[A-Za-z0-9][A-Za-z0-9._-]*` ending `.html`, `.js`, `.css` or `.svg`, and the server picks each content type from the name.
+ * `[A-Za-z0-9][A-Za-z0-9._-]*` ending `.html`, `.js`, `.css`, `.svg` or `.woff2`, and the server picks each content type from the name.
  */
 export type EndoCockpitUiFilesV0 = Readonly<Record<string, string | Uint8Array>>;
 
@@ -247,7 +249,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		for (const [name, content] of Object.entries(options.ui)) {
 			const type = UI_TYPES[name.slice(name.lastIndexOf(".") + 1)];
 			if (!UI_NAME.test(name) || type === undefined || !name.includes("."))
-				throw new TypeError("a UI file name is a short plain name ending .html, .js, .css or .svg");
+				throw new TypeError("a UI file name is a short plain name ending .html, .js, .css, .svg or .woff2");
 			const bytes = Buffer.from(content);
 			if (bytes.length > MAX_UI_BYTES) throw new TypeError("a UI file is at most 4 MiB");
 			files.set(name, { type, bytes });

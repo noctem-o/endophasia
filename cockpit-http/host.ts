@@ -5,6 +5,7 @@
 //
 //   loadEndoCockpitUiFilesV0   read a built page from a directory and check it is complete, so a damaged install fails at start
 //                              instead of serving a page that cannot load
+//   (studio-ui.ts)             the same check for the bundled React frontend (scripts/build-studio-ui.mjs), chosen with `uiFormat`
 //   launchEndoCockpitV0        the page, then the dedicated comparison key, then the server, in that order, so a missing asset or an
 //                              unusable key is reported before anything listens
 //   serveUntilSignalV0         close the server once when asked to stop, and let the process end by itself afterwards
@@ -17,6 +18,7 @@ import { lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "no
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { type EndoCockpitServerV0, startEndoCockpitServerV0 } from "./server.ts";
+import { loadEndoStudioUiFilesV0 } from "./studio-ui.ts";
 
 /** The files of a page the server accepts (it also checks each name and size): HTML, modules, style and icon. */
 const PAGE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(html|js|css|svg)$/;
@@ -71,6 +73,11 @@ export interface EndoCockpitLaunchOptionsV0 {
 	keyFile?: string;
 	/** The built page: a directory holding `index.html` and what it needs. The caller says where; this module never guesses. */
 	uiDirectory: string;
+	/**
+	 * What `uiDirectory` holds: `page` (default), the existing page `endo studio` serves, or `studio`, the bundled React frontend,
+	 * which must match its manifest exactly (`loadEndoStudioUiFilesV0`). Either way the same server answers with the same guards.
+	 */
+	uiFormat?: "page" | "studio";
 	/** Called once the key is loaded (or created), before anything listens, so a launch that fails afterwards still reports the write. */
 	onKey?: (key: { path: string; created: boolean }) => void;
 	/** Called with an internal failure's error for the host's own diagnostics. The server never sends it to a client. */
@@ -167,7 +174,13 @@ const exists = (path: string): boolean => {
  * failure of the last step, which the server guarantees leaves none either, leaves at most the key file).
  */
 export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): Promise<EndoCockpitLaunchedV0> {
-	const ui = loadEndoCockpitUiFilesV0(options.uiDirectory);
+	// Callable from untyped JavaScript: anything but the two known formats is refused, never read as the legacy page.
+	if (options.uiFormat !== undefined && options.uiFormat !== "page" && options.uiFormat !== "studio")
+		throw new TypeError('uiFormat must be "page" or "studio"');
+	const ui =
+		options.uiFormat === "studio"
+			? loadEndoStudioUiFilesV0(options.uiDirectory)
+			: loadEndoCockpitUiFilesV0(options.uiDirectory);
 	const keyFile = resolve(options.keyFile ?? defaultEndoCockpitKeyFileV0());
 	// Where each lies. A place that cannot be established (a link that loops) is refused: the checks below are what keep Studio from
 	// writing the store it reads or using the installation key, and they are not skipped for a path they cannot judge.

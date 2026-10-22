@@ -9,6 +9,9 @@ attach to anything.
 Studio is the public name of the command. The implementation keeps its development names: the observation bridge is `cockpit/`, the
 server `cockpit-http/`, the page `cockpit-ui/` (see [cockpit.md](cockpit.md) and [cockpit-ui.md](cockpit-ui.md)).
 
+> **Frontend foundation.** A React/TypeScript frontend is built into the package (`dist/studio-ui/`) and proven through this same
+> server, but `endo studio` does not serve it yet. See [studio-ui-architecture.md](studio-ui-architecture.md).
+
 ## Run it
 
 Once a release includes Studio, nothing else is needed (no Git checkout, TypeScript, build step, network, model provider or

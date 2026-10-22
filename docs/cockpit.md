@@ -491,7 +491,7 @@ separate process at lower priority (`nice`), and keep the page size small only t
 file), `GET /<cap>/` is the page and `GET /<cap>/assets/<name>` serves each other file, by exact name, with no query string; `/<cap>`
 without the slash stays a `404` (a redirect would put the capability in a header). Both go through every guard above, spend none of the
 read budget, and carry `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src
-'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'` (no inline
+'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'` (no inline
 script or style, nothing remote, and any HTML sink throws), plus `X-Frame-Options: DENY`, same-origin opener and resource policies and a
 `Permissions-Policy` that turns the powerful features off. The page's own requests are relative (`./api/...`), so the capability is carried
 by the browser's address and never appears in a query string, a script or a log. See [cockpit-ui.md](cockpit-ui.md).

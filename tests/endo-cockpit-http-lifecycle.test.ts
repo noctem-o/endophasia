@@ -181,9 +181,18 @@ describe("source boundary", () => {
 
 	it("the host module is the only file that reaches the key files, and it reads no environment itself", () => {
 		expect(specifiers(read("cockpit-http/host.ts")).sort()).toEqual(
-			["../storage/digest-key.ts", "./server.ts", "node:fs", "node:path"].sort(),
+			["../storage/digest-key.ts", "./server.ts", "./studio-ui.ts", "node:fs", "node:path"].sort(),
 		);
 		expect(code(read("cockpit-http/host.ts"))).not.toMatch(/process\.env/);
+	});
+
+	it("the frontend check reads one directory and nothing else: no environment, no key, no write, no network, no process", () => {
+		expect(specifiers(read("cockpit-http/studio-ui.ts")).sort()).toEqual(
+			["node:crypto", "node:fs", "node:path"].sort(),
+		);
+		expect(code(read("cockpit-http/studio-ui.ts"))).not.toMatch(
+			/process\.|writeFile|appendFile|unlink|\brm\(|mkdir|rename|symlink|child_process|node:http|node:net|fetch\(/,
+		);
 	});
 
 	it("the development launcher is thin: the host module, and node's path and url helpers", () => {

@@ -342,7 +342,7 @@ main {
 
 .observe-grid {
 	display: grid;
-	grid-template-columns: 290px minmax(0, 1fr) 350px;
+	grid-template-columns: clamp(290px, 21vw, 380px) minmax(0, 1fr) clamp(350px, 25vw, 480px);
 	grid-template-areas: "left center right";
 	gap: 12px;
 	align-items: start;
@@ -368,6 +368,7 @@ main {
 }
 
 .panel {
+	container-type: inline-size;
 	position: relative;
 	background: var(--surface-1);
 	border: 1px solid var(--line);
@@ -431,7 +432,7 @@ main {
 	overflow: auto;
 }
 
-@media (max-width: 1279.98px) {
+@media (max-width: 1359.98px) {
 	.observe-grid {
 		grid-template-columns: minmax(0, 1fr) 360px;
 		grid-template-areas:
@@ -558,9 +559,11 @@ main {
 	transition: opacity 0.12s;
 }
 
-.omark-wrap.dim {
+.omark-wrap.dim > :not(.ring-selected) {
 	opacity: 0.2;
 }
+
+/* A selected event the filters hide stays plainly visible on the map: only its shape dims, never the ring that says it is open. */
 
 .omark-wrap.hovered {
 	filter: brightness(1.4);
@@ -819,6 +822,8 @@ tbody tr.hovered {
 tbody tr.selected {
 	background: var(--surface-3);
 	box-shadow: inset 3px 0 0 var(--select);
+	outline: 1px solid var(--line-strong);
+	outline-offset: -1px;
 }
 
 tr.date-row th {
@@ -1030,6 +1035,59 @@ button.seq {
 	color: var(--fg-2);
 }
 
+/* --- the selection bar, and the reasons beside the pager --------------------------------------------------------------------- */
+
+.selection-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 30px;
+	margin: 4px 0;
+	font-size: 12px;
+	color: var(--fg-2);
+}
+
+.selection-none {
+	color: var(--fg-3);
+}
+
+.selection-hidden {
+	color: var(--fg-1);
+	border-left: 3px solid var(--attention);
+	padding-left: 8px;
+}
+
+.selection-text {
+	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.stale-chip {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	border: 1px solid var(--attention);
+	border-radius: var(--radius);
+	padding: 0 6px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	font-weight: 600;
+	color: var(--attention);
+	white-space: nowrap;
+}
+
+.small-btn {
+	padding: 1px 8px;
+	font-size: 11.5px;
+	white-space: nowrap;
+}
+
+.pager-reasons {
+	min-height: 1.5em;
+	margin-top: 4px;
+}
+
 .tag {
 	border: 1px dashed var(--na);
 	border-radius: 2px;
@@ -1048,7 +1106,7 @@ button.seq {
 
 .fact {
 	display: grid;
-	grid-template-columns: minmax(7rem, 36%) minmax(0, 1fr);
+	grid-template-columns: minmax(5.5rem, 32%) minmax(0, 1fr);
 	gap: 8px;
 	padding: 2px 0;
 	border-bottom: 1px solid var(--line-subtle);
@@ -1336,4 +1394,81 @@ table.fields thead th {
 	.omark-wrap {
 		transition: none;
 	}
+}
+
+/* --- readable fact rows: facts stack only where the panel itself is narrow --------------------------------------------------- */
+
+.fact .mono,
+.fact code {
+	font-size: 11.5px;
+}
+
+@container (max-width: 240px) {
+	.fact {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+	}
+}
+
+.fact-text {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 6px;
+	max-width: 100%;
+}
+
+.expand {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	text-align: left;
+	cursor: pointer;
+	color: inherit;
+	overflow-wrap: anywhere;
+	text-decoration: underline dotted var(--fg-3);
+	text-underline-offset: 3px;
+}
+
+.copy {
+	background: none;
+	border: 1px solid var(--line-strong);
+	border-radius: 2px;
+	padding: 0 5px;
+	font-size: 10.5px;
+	line-height: 1.5;
+	color: var(--fg-3);
+	cursor: pointer;
+}
+
+.copy:hover {
+	color: var(--fg-1);
+}
+
+/* --- the inspector's reference, one disclosure at a time -------------------------------------------------------------------- */
+
+.ref,
+.guide {
+	border-top: 1px solid var(--line-subtle);
+	padding: 4px 0;
+}
+
+.ref summary,
+.guide summary {
+	cursor: pointer;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fg-2);
+	padding: 3px 0;
+}
+
+.guide {
+	margin-top: 14px;
+}
+
+.ref ul {
+	margin-top: 4px;
 }

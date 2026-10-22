@@ -24,7 +24,6 @@ import {
 	unavailableCell,
 } from "./cells.ts";
 import {
-	abbreviated,
 	attachmentChoices,
 	CATEGORY,
 	CHANGE_KIND,
@@ -99,7 +98,7 @@ export function eventDetail(entry: EndoCockpitTimelineEntryV0): EventDetail {
 		facts: [
 			{ label: "kind", cell: textCell(entry.kind, { mono: true }) },
 			{ label: "category", cell: plain(known(CATEGORY, entry.category) ?? entry.category) },
-			{ label: "event id", cell: textCell(entry.eventId, { mono: true }) },
+			{ label: "event id", cell: textCell(entry.eventId, { mono: true, copy: "event id" }) },
 			{ label: "source class", cell: plain(known(EVENT_SOURCE, entry.source) ?? entry.source) },
 			{ label: "producer", cell: textCell(entry.producer, { mono: true }) },
 			{
@@ -109,19 +108,31 @@ export function eventDetail(entry: EndoCockpitTimelineEntryV0): EventDetail {
 			{ label: "producer clock", cell: mono(entry.recordedAt) },
 			{
 				label: "session",
-				cell: entry.sessionId === null ? none("none recorded") : textCell(entry.sessionId, { mono: true }),
+				cell:
+					entry.sessionId === null
+						? none("none recorded")
+						: textCell(entry.sessionId, { mono: true, copy: "session id" }),
 			},
-			{ label: "run", cell: entry.runId === null ? none("none recorded") : textCell(entry.runId, { mono: true }) },
+			{
+				label: "run",
+				cell: entry.runId === null ? none("none recorded") : textCell(entry.runId, { mono: true, copy: "run id" }),
+			},
 			{
 				label: "experiment",
-				cell: entry.experimentId === null ? none("none recorded") : textCell(entry.experimentId, { mono: true }),
+				cell:
+					entry.experimentId === null
+						? none("none recorded")
+						: textCell(entry.experimentId, { mono: true, copy: "experiment id" }),
 			},
 			{
 				label: "derived from",
 				cell:
 					entry.derivedFrom.length === 0
 						? none("nothing")
-						: { k: "list", items: entry.derivedFrom.map((id) => textCell(id, { mono: true, keep: 36 })) },
+						: {
+								k: "list",
+								items: entry.derivedFrom.map((id) => textCell(id, { mono: true, copy: "derived-from id" })),
+							},
 			},
 		],
 		flags: entry.flags.map(flagModel),
@@ -224,18 +235,22 @@ export function capabilityDetail(capability: EndoCockpitCapabilityViewV0): Capab
 							label: "classification (evidence)",
 							cell: plain(known(CLASSIFICATION, evidence.classification) ?? evidence.classification),
 						},
-						{ label: "evidence record", cell: textCell(evidence.id, { mono: true, keep: 30 }) },
+						{
+							label: "evidence record",
+							cell: textCell(evidence.id, { mono: true, keep: 30, copy: "evidence record id" }),
+						},
 						{
 							label: "recorded against",
-							cell: textCell(evidence.dependencies.fingerprintId, { mono: true, keep: 30 }),
+							cell: textCell(evidence.dependencies.fingerprintId, {
+								mono: true,
+								keep: 30,
+								copy: "fingerprint id",
+							}),
 						},
 						{
 							label: "identity",
 							cell: parts(
-								mono(
-									abbreviated(evidence.dependencies.identityDigest, 16),
-									evidence.dependencies.identityDigest,
-								),
+								textCell(evidence.dependencies.identityDigest, { mono: true, keep: 16 }),
 								plain(
 									` · ${known(CONFIDENCE, evidence.dependencies.confidence) ?? evidence.dependencies.confidence}`,
 								),
@@ -292,7 +307,7 @@ const notes = (list: Parameters<typeof noteViews>[0]): NoteModel[] =>
 
 function fingerprintFacts(view: EndoCockpitFingerprintViewV0): Fact[] {
 	return [
-		{ label: "fingerprint", cell: textCell(view.id, { mono: true, keep: 28 }) },
+		{ label: "fingerprint", cell: textCell(view.id, { mono: true, keep: 28, copy: "fingerprint id" }) },
 		{
 			label: "observed at",
 			cell: mono(view.observedAt, "the time the attachment recorded for this observation"),
@@ -302,7 +317,7 @@ function fingerprintFacts(view: EndoCockpitFingerprintViewV0): Fact[] {
 			label: "identity",
 			cell: claimCell(view.identity, (v) =>
 				parts(
-					mono(abbreviated(v.digest, 16), v.digest),
+					textCell(v.digest, { mono: true, keep: 16 }),
 					plain(` · ${known(CONFIDENCE, v.confidence) ?? v.confidence}`),
 				),
 			),
@@ -310,7 +325,7 @@ function fingerprintFacts(view: EndoCockpitFingerprintViewV0): Fact[] {
 		{
 			label: "entrypoint",
 			cell: claimCell(view.entrypoint, (v) =>
-				parts(mono(abbreviated(v.sha256, 16), v.sha256), plain(` · ${grouped(v.bytes)} bytes`)),
+				parts(textCell(v.sha256, { mono: true, keep: 16 }), plain(` · ${grouped(v.bytes)} bytes`)),
 			),
 		},
 		{

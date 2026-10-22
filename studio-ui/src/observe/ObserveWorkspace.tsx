@@ -184,11 +184,21 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 						subtitle="storage order"
 						className="grow"
 						tools={
-							<ConditionTag
-								state={model.timeline.state.state}
-								label={model.timeline.state.label}
-								meaning={model.timeline.state.meaning}
-							/>
+							<>
+								{state.problem === null ? null : (
+									<span
+										className="stale-chip"
+										title="The latest attempt to read failed: this is the last read that succeeded."
+									>
+										not current
+									</span>
+								)}
+								<ConditionTag
+									state={model.timeline.state.state}
+									label={model.timeline.state.label}
+									meaning={model.timeline.state.meaning}
+								/>
+							</>
 						}
 					>
 						<EventTable

@@ -120,7 +120,7 @@ function inspectorModel(
 			: {
 					kind: "event",
 					detail: eventDetail(entry),
-					hiddenByFilters: !timeline.rows.some((row) => row.sequence === entry.storageSequence),
+					hiddenByFilters: timeline.selection.kind === "hidden",
 				};
 	}
 	const runtime =

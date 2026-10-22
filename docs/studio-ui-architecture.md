@@ -253,6 +253,10 @@ agree). Consequences, each tested:
 - A filter that hides the open event does not close it; the inspector says the filters hide it and that it is still in the window.
 - A "session" is only a filter on the sessions *seen in this window* (position range and entry count). The projection records no
   outcome, scenario, task or duration for a session, so none is shown; a session's events outside the window are not counted.
+- "Where is the open event in the table" is **derived**, not stored: `selectionStatus` (in `model/timeline.ts`) says shown, hidden (with
+  *which* filters hide it) or none, from the selection, the window and the filters, and both the table's selection bar and the inspector's
+  note read it, so they cannot disagree. Showing the row is a DOM action on the table's scroller (and focus), not state; clearing is the one
+  filter action, restricted to the filters that exclude the row. No jump issues a read, and none crosses a window.
 - The modal inspector at narrow widths is **derived**: open when the viewport is narrow and a selection exists. Closing it is the
   one action that clears the selection. There is no open flag to disagree with it.
 - Reads: one at open and one per explicit action (Refresh, a page of the timeline, another page size), never two at once (a ref guard,

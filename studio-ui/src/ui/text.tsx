@@ -1,6 +1,6 @@
 // Drawing the small models: text told apart by what it is, a basis, a cell, a list of facts. These switch over data and format
 // nothing; a string reaches the page only as a React text child, which the browser takes as text and never as markup.
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import type { BasisMark, Cell, Fact, TextModel } from "../model/cells.ts";
 import { ConditionGlyph, ProvGlyph } from "./marks.tsx";
 
@@ -35,6 +35,63 @@ export function TextView({ text }: { text: TextModel }): ReactElement {
 	);
 }
 
+/** A copy button for one displayed identifier. It copies the string as shown in full, and says so; nothing withheld reaches it. */
+function CopyButton({ label, value }: { label: string; value: string }): ReactElement | null {
+	const [done, setDone] = useState<"idle" | "copied" | "failed">("idle");
+	if (typeof navigator === "undefined" || navigator.clipboard === undefined) return null;
+	const reset = () => setDone("idle");
+	return (
+		<>
+			<button
+				type="button"
+				className="copy"
+				aria-label={`Copy ${label}`}
+				onClick={() => {
+					navigator.clipboard.writeText(value).then(
+						() => setDone("copied"),
+						() => setDone("failed"),
+					);
+				}}
+				onBlur={reset}
+				onMouseLeave={reset}
+			>
+				{done === "copied" ? "copied" : done === "failed" ? "not copied" : "copy"}
+			</button>
+			<output className="sr-only">
+				{done === "idle" ? "" : done === "copied" ? `Copied ${label}` : `Could not copy ${label}`}
+			</output>
+		</>
+	);
+}
+
+/**
+ * A string in a fact row. If it is cut for the row it can be opened in place to its whole value, and an identifier shown in full can be
+ * copied. This is for fact rows only: the same text inside a button (a capability row) is plain text, because a button holds no button.
+ */
+function FactText({ cell }: { cell: Extract<Cell, { k: "text" }> }): ReactElement {
+	const [open, setOpen] = useState(false);
+	const text = cell.text;
+	const cut = text.kind === "text" && text.shown !== text.full;
+	return (
+		<span className="fact-text">
+			{cut ? (
+				<button
+					type="button"
+					className={`expand${text.mono ? " mono" : ""}`}
+					aria-expanded={open}
+					title={open ? "Show less" : "Show the whole value"}
+					onClick={() => setOpen(!open)}
+				>
+					{open ? text.full : text.shown}
+				</button>
+			) : (
+				<TextView text={text} />
+			)}
+			{cell.copy === undefined ? null : <CopyButton label={cell.copy} value={text.full} />}
+		</span>
+	);
+}
+
 export function CellView({ cell }: { cell: Cell }): ReactElement {
 	switch (cell.k) {
 		case "plain":
@@ -52,7 +109,7 @@ export function CellView({ cell }: { cell: Cell }): ReactElement {
 				</span>
 			);
 		case "text":
-			return <TextView text={cell.text} />;
+			return <FactText cell={cell} />;
 		case "unavailable":
 			return (
 				<span className="unavailable">

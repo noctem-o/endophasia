@@ -596,7 +596,7 @@ try {
 				const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
 				const line = () => /^(http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)\n/.exec(out)?.[1] ?? null;
 				const poll = setInterval(() => { if (line() !== null) { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), err: () => err }); } }, 20);
-				exited.then((status) => { clearInterval(poll); clearTimeout(timer); if (line() === null) resolveStart({ child, exited, address: null, status, out, err: () => err }); });
+				exited.then((status) => { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), status, out, err: () => err }); });
 			});
 		const damaged = join(scratch, "studio-ui-damaged");
 		mkdirSync(damaged);

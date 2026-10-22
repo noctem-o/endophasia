@@ -324,6 +324,27 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		expect(existsSync(keyFile) || existsSync(join(scratch, "launch-key"))).toBe(false);
 		expect(existsSync(join(scratch, "absent"))).toBe(false);
 	});
+
+	it("refuses a UI format it does not know rather than reading it as the legacy page, before the key is made", async () => {
+		const keyFile = join(scratch, "format-key", "cockpit-digest-key");
+		for (const uiFormat of ["stduio", "Studio", "", null, 1])
+			await expect(
+				launchEndoCockpitV0({ root: join(scratch, "absent"), keyFile, uiDirectory: first, uiFormat } as never),
+			).rejects.toThrow(/uiFormat must be/);
+		expect(existsSync(join(scratch, "format-key"))).toBe(false);
+	});
+
+	it("holds a listed name to the server's 64-character limit for the whole name, before the key is made", () => {
+		const dir = copy();
+		const long = `${"a".repeat(62)}.js`;
+		expect(long).toHaveLength(65);
+		writeFileSync(join(dir, long), "export {};\n");
+		const manifest = JSON.parse(text(dir, MANIFEST));
+		const bytes = readFileSync(join(dir, long));
+		manifest.files.push({ name: long, bytes: bytes.length, sha256: sha(bytes) });
+		writeFileSync(join(dir, MANIFEST), JSON.stringify(manifest));
+		refused(dir, /incomplete or damaged/);
+	});
 });
 
 describe("the production server serves it under the same guards", () => {

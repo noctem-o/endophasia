@@ -77,6 +77,8 @@ export function loadEndoStudioUiFilesV0(directory: string): Record<string, Uint8
 		const { name, bytes, sha256 } = entry;
 		if (
 			typeof name !== "string" ||
+			// The server admits at most 64 characters for the whole name, extension included.
+			name.length > 64 ||
 			!STUDIO_FILE.test(name) ||
 			typeof bytes !== "number" ||
 			!Number.isSafeInteger(bytes) ||

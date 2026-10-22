@@ -174,6 +174,9 @@ const exists = (path: string): boolean => {
  * failure of the last step, which the server guarantees leaves none either, leaves at most the key file).
  */
 export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): Promise<EndoCockpitLaunchedV0> {
+	// Callable from untyped JavaScript: anything but the two known formats is refused, never read as the legacy page.
+	if (options.uiFormat !== undefined && options.uiFormat !== "page" && options.uiFormat !== "studio")
+		throw new TypeError('uiFormat must be "page" or "studio"');
 	const ui =
 		options.uiFormat === "studio"
 			? loadEndoStudioUiFilesV0(options.uiDirectory)

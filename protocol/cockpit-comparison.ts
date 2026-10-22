@@ -14,7 +14,7 @@
 // - Tool calls (what the agent chose) and tool results (what the world answered) stay two layers. `toolCallsAgainstInputs` is
 //   an ordering of positions, not a cause: a different result before a different call does not show the result caused it.
 // - Usage is what the runtime reported and timing is what the observer measured; both are b minus a, neither is a verdict.
-// - Mixed sources are listed in `flags`; an empty list means no RECORDED difference, not a controlled experiment.
+// - Mixed sources are listed in `flags`; an empty list means no difference among the listed facets; a value neither side recorded is not compared, so it is not a controlled experiment.
 //
 // What it withholds (the cockpit presentation boundary, protocol/cockpit-fields.ts):
 // - Store paths (`provenance`) are not carried. Session ids are presented as the cockpit presents any id (itself when admitted,
@@ -64,7 +64,8 @@ export type EndoCockpitComparisonReportedV0<T> =
 /** A keyed digest of tool arguments or results: as recorded, withheld when its key id is not one the cockpit admits, or not recorded. */
 export type EndoCockpitComparisonDigestV0 =
 	| { status: "reported"; keyId: string; value: string }
-	| { status: "withheld" }
+	/** The key id is not one the cockpit admits: the pair is not shown, and a keyed token of it keeps differing digests apart. */
+	| { status: "withheld"; token: string }
 	| { status: "UNAVAILABLE"; reason: EndoCockpitComparisonTextV0 };
 
 export type EndoCockpitComparisonFactValueV0 = null | boolean | number | EndoCockpitComparisonTextV0;
@@ -73,6 +74,8 @@ export type EndoCockpitComparisonFactValueV0 = null | boolean | number | EndoCoc
 export interface EndoCockpitComparisonFactsV0 {
 	items: { path: string; value: EndoCockpitComparisonFactValueV0 }[];
 	omitted: number;
+	/** A keyed token of what was left out (null when nothing was), so entries that differ only there still read as different. */
+	omittedToken: string | null;
 }
 
 export interface EndoCockpitComparisonLifecycleEntryV0 {
@@ -165,8 +168,9 @@ export interface EndoCockpitComparisonPositionV0 {
 }
 
 /**
- * An ordering of positions in two layers, not a cause. `true` means no call differed before the first differing input could
- * have been seen; it does not say the input explains a later difference, and `false`/`null` do not say it does not.
+ * An ordering of positions in two layers, not a cause. `true` means either the calls were identical throughout, or no call
+ * differed before the first differing input could have been seen; it does not say the input explains a later difference, and
+ * `false`/`null` do not say it does not.
  */
 export interface EndoCockpitComparisonAgainstInputsV0 {
 	firstDivergentResult: EndoCockpitComparisonPositionV0 | null;
@@ -312,19 +316,23 @@ function isDigest(value: unknown): boolean {
 			typeof value.value === "string" &&
 			ENDO_KEYED_DIGEST_VALUE_PATTERN_V0.test(value.value)
 		);
-	if (value.status === "withheld") return closed(value, ["status"]);
+	if (value.status === "withheld") return closed(value, ["status", "token"]) && isToken(value.token);
 	if (value.status === "UNAVAILABLE") return closed(value, ["status", "reason"]) && isText(value.reason);
 	return false;
 }
 
 function isFacts(value: unknown): boolean {
-	if (!isRecord(value) || !closed(value, ["items", "omitted"]) || !isCount(value.omitted)) return false;
+	if (!isRecord(value) || !closed(value, ["items", "omitted", "omittedToken"]) || !isCount(value.omitted))
+		return false;
+	if (value.omitted === 0 ? value.omittedToken !== null : !isToken(value.omittedToken)) return false;
 	const items = value.items;
 	if (!Array.isArray(items) || items.length > ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0) return false;
 	let previous: string | null = null;
 	for (const item of items) {
 		if (!isRecord(item) || !closed(item, ["path", "value"]) || typeof item.path !== "string") return false;
 		if (!FACT_PATH.test(item.path) || (previous !== null && !(previous < item.path))) return false;
+		// A name is text a producer chose: held to the same policy as a value, and never a digest or secret in disguise.
+		if (!endoCockpitTextPresentableV0(item.path) || /[0-9a-fA-F]{16,}/.test(item.path)) return false;
 		previous = item.path;
 		const v = item.value;
 		const scalar = v === null || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v));
@@ -431,6 +439,13 @@ function isVerdict(value: unknown, isEntry: (entry: unknown) => boolean): boolea
 			)
 				return false;
 			const missing = value.sides.a !== null || value.sides.b !== null;
+			// Unverified positions are distinct, ascending, and inside both sides.
+			let last = -1;
+			for (const item of unverified as { index: number }[]) {
+				if (item.index <= last) return false;
+				last = item.index;
+			}
+			if (!missing && isLengths(value.lengths) && last >= Math.min(value.lengths.a, value.lengths.b)) return false;
 			// Either a side did not report the layer (no lengths, nothing to verify), or both did and some position is unverified.
 			return missing
 				? value.lengths === null && unverified.length === 0
@@ -463,6 +478,7 @@ const isTokenDeltas = (value: unknown): boolean => {
 		value.status === "DELTAS" &&
 		closed(value, ["status", "fields"]) &&
 		isRecord(value.fields) &&
+		Object.keys(value.fields).length > 0 &&
 		Object.entries(value.fields).every(
 			([field, quantity]) =>
 				(ENDO_COCKPIT_COMPARISON_TOKEN_FIELDS_V0 as readonly string[]).includes(field) && isQuantity(quantity),
@@ -481,6 +497,8 @@ function isDeltaRuns(value: unknown, field: string, isDelta: (item: unknown) => 
 			closed(item, ["run", "present", field]) &&
 			item.run === index + 1 &&
 			isPresent(item.present) &&
+			// A run a side has not got is still a run the other has: at least one side is present.
+			((item.present as { a: boolean; b: boolean }).a || (item.present as { a: boolean; b: boolean }).b) &&
 			isDelta(item[field]),
 	);
 }
@@ -530,7 +548,7 @@ function isFlagSide(value: unknown, facets: readonly string[]): boolean {
 		closed(value, facets) &&
 		facets.every((facet) => {
 			const items = value[facet];
-			return Array.isArray(items) && items.every((item) => item === null || isText(item));
+			return Array.isArray(items) && items.length <= 16 && items.every((item) => item === null || isText(item));
 		})
 	);
 }
@@ -539,7 +557,19 @@ function isFlag(value: unknown): boolean {
 	if (!isRecord(value) || !closed(value, ["kind", "a", "b"])) return false;
 	if (!(ENDO_COCKPIT_COMPARISON_FLAG_KINDS_V0 as readonly unknown[]).includes(value.kind)) return false;
 	const facets = value.kind === "configuration-differs" ? ["user", "project"] : ["values"];
-	return isFlagSide(value.a, facets) && isFlagSide(value.b, facets);
+	// A flag lists a difference: the two sides differ.
+	return isFlagSide(value.a, facets) && isFlagSide(value.b, facets) && stable(value.a) !== stable(value.b);
+}
+
+/** A value's JSON with object keys in code-unit order, so two equal values compare equal as text. */
+function stable(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
+	if (isRecord(value))
+		return `{${Object.keys(value)
+			.sort()
+			.map((key) => `${JSON.stringify(key)}:${stable(value[key])}`)
+			.join(",")}}`;
+	return JSON.stringify(value);
 }
 
 const isSide = (value: unknown): boolean =>
@@ -563,6 +593,42 @@ function isAgainstInputs(value: unknown): boolean {
 			typeof value.callsIdenticalUpToFirstDivergentInput === "boolean") &&
 		(ENDO_COCKPIT_COMPARISON_AGAINST_INPUTS_REASONS_V0 as readonly unknown[]).includes(value.reason)
 	);
+}
+
+/** What each ordering reason says about the calls flag and which of the two layers' first differences it names. */
+const AGAINST_INPUTS_SHAPE: Readonly<
+	Record<string, { identical: boolean | null; call: "none" | "some"; result: "none" | "some" | "any"; calls: string }>
+> = {
+	"calls-unavailable": { identical: null, call: "none", result: "any", calls: "UNAVAILABLE-missing" },
+	"calls-identical": { identical: true, call: "none", result: "any", calls: "EXACT" },
+	"calls-unverified": { identical: null, call: "none", result: "any", calls: "UNAVAILABLE-unverified" },
+	"results-unavailable-or-unverified": { identical: null, call: "some", result: "none", calls: "DIVERGED" },
+	"calls-diverged-results-identical": { identical: false, call: "some", result: "none", calls: "DIVERGED" },
+	"order-unknown": { identical: null, call: "some", result: "some", calls: "DIVERGED" },
+	"call-in-later-turn-than-divergent-result": { identical: true, call: "some", result: "some", calls: "DIVERGED" },
+	"call-not-after-divergent-result": { identical: false, call: "some", result: "some", calls: "DIVERGED" },
+};
+
+/** The ordering block must agree with the two layers it is read from: positions only where a layer diverged, at its index. */
+function againstInputsAgrees(against: R, layers: R): boolean {
+	const shape = AGAINST_INPUTS_SHAPE[against.reason as string];
+	if (shape === undefined || against.callsIdenticalUpToFirstDivergentInput !== shape.identical) return false;
+	const calls = layers.toolCalls as R;
+	const results = layers.toolResults as R;
+	const state =
+		calls.status === "UNAVAILABLE"
+			? calls.lengths === null
+				? "UNAVAILABLE-missing"
+				: "UNAVAILABLE-unverified"
+			: calls.status;
+	if (state !== shape.calls) return false;
+	const at = (position: unknown, layer: R): boolean =>
+		position === null
+			? layer.status !== "DIVERGED"
+			: layer.status === "DIVERGED" && (position as R).index === layer.index;
+	if (!at(against.firstDivergentCall, calls) || !at(against.firstDivergentResult, results)) return false;
+	if ((against.firstDivergentCall === null) !== (shape.call === "none")) return false;
+	return shape.result === "any" || (against.firstDivergentResult === null) === (shape.result === "none");
 }
 
 /**
@@ -609,5 +675,6 @@ export function validateEndoCockpitTrajectoryComparisonV0(value: unknown): EndoC
 		!isTiming(layers.timing)
 	)
 		return null;
+	if (!againstInputsAgrees(value.toolCallsAgainstInputs as R, layers)) return null;
 	return value as unknown as EndoCockpitTrajectoryComparisonV0;
 }

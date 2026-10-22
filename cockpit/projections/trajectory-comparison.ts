@@ -85,6 +85,14 @@ const NOT_RECORDED = /^no (?:argument|result) digest was recorded on (either sid
 const DOMAINS_DIFFER =
 	/^different digest domains \(([^ ()]+) and ([^ ()]+)\); to compare across machines, share one key: docs\/trajectory\.md#comparing-across-machines$/;
 
+/**
+ * A string that reads as a digest in any common spelling (hex of any case and length from 128 bits, an algorithm prefix,
+ * base64): it commits to content the cockpit may withhold, so it is only ever shown as a keyed token of itself.
+ */
+const DIGEST_LIKE = /^(?:sha(?:1|224|256|384|512)[:-])?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{43,}={0,2})$/i;
+/** A run of hex long enough to be a digest or a secret, anywhere in a name. */
+const HEX_RUN = /[0-9a-fA-F]{16,}/;
+
 class Presenter {
 	readonly alias: EndoCockpitAliasesV0;
 	constructor(key: EndoDigestKeyV0) {
@@ -105,7 +113,8 @@ class Presenter {
 
 	/** A string that is itself a digest, as a keyed token; anything else as text. */
 	digestOrText(purpose: "identity" | "configuration", value: string): EndoCockpitComparisonTextV0 {
-		return HEX64.test(value) ? { kind: "token", token: this.alias.digest(purpose, value) } : this.text(value);
+		if (HEX64.test(value)) return { kind: "token", token: this.alias.digest(purpose, value) };
+		return DIGEST_LIKE.test(value) ? { kind: "token", token: this.supporting(sha256HexV0(value)) } : this.text(value);
 	}
 
 	/** A digest key id: shown when it is one the cockpit admits, else withheld by token. */
@@ -119,7 +128,8 @@ class Presenter {
 		if (value === null || typeof value === "boolean") return value;
 		if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
 		if (typeof value !== "string") return undefined;
-		return HEX64.test(value) ? { kind: "token", token: this.supporting(value) } : this.text(value);
+		if (HEX64.test(value)) return { kind: "token", token: this.supporting(value) };
+		return DIGEST_LIKE.test(value) ? { kind: "token", token: this.supporting(sha256HexV0(value)) } : this.text(value);
 	}
 
 	/**
@@ -128,11 +138,16 @@ class Presenter {
 	 */
 	facts(value: unknown): EndoCockpitComparisonFactsV0 {
 		const items: { path: string; value: EndoCockpitComparisonFactValueV0 }[] = [];
-		let omitted = 0;
+		// What is not carried, with where it was: its count is shown, and a keyed token of it, so two entries that differ only in
+		// what is left out still read as different.
+		const left: { path: string; value: unknown }[] = [];
+		const omit = (path: string[], what: unknown): void => {
+			left.push({ path: path.join("."), value: what });
+		};
 		const walk = (current: unknown, path: string[]): void => {
 			if (Array.isArray(current) || isRecord(current)) {
 				if (path.length >= ENDO_COCKPIT_COMPARISON_MAX_FACT_DEPTH_V0) {
-					omitted += 1;
+					omit(path, current);
 					return;
 				}
 				const entries: [string, unknown][] = Array.isArray(current)
@@ -141,23 +156,31 @@ class Presenter {
 							.sort(compareCodeUnitsV0)
 							.map((key) => [key, current[key]]);
 				for (const [key, child] of entries) {
+					// A name is carried only when it is plain, passes the text policy and is not a digest or secret in disguise: a name
+					// is text a producer chose, as much as a value is.
 					const plain = Array.isArray(current)
 						? /^[0-9]{1,3}$/.test(key)
-						: /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(key);
+						: /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(key) &&
+							endoCockpitTextPresentableV0(key) &&
+							!HEX_RUN.test(key);
 					// A path starts with a name, never an array index.
-					if (!plain || (path.length === 0 && Array.isArray(current))) omitted += 1;
+					if (!plain || (path.length === 0 && Array.isArray(current))) omit([...path, key], child);
 					else walk(child, [...path, key]);
 				}
 				return;
 			}
 			const shown = this.scalar(current);
-			if (shown === undefined || path.length === 0) omitted += 1;
-			else if (items.length >= ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0) omitted += 1;
+			if (shown === undefined || path.length === 0 || items.length >= ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0)
+				omit(path, current);
 			else items.push({ path: path.join("."), value: shown });
 		};
 		walk(value, []);
 		items.sort((x, y) => compareCodeUnitsV0(x.path, y.path));
-		return { items, omitted };
+		return {
+			items,
+			omitted: left.length,
+			omittedToken: left.length === 0 ? null : this.supporting(sha256HexV0(canonicalEndoJsonV0(left))),
+		};
 	}
 }
 
@@ -192,7 +215,8 @@ function digestView(p: Presenter, value: unknown, what: string): EndoCockpitComp
 	// The digest and its key id are shown together or not at all.
 	return isEndoCockpitDigestKeyIdV0(keyId) && endoCockpitTextPresentableV0(keyId)
 		? { status: "reported", keyId, value: digest }
-		: { status: "withheld" };
+		: // Withheld, but a token of the pair keeps two different digests from reading as one.
+			{ status: "withheld", token: p.supporting(sha256HexV0(`${keyId}:${digest}`)) };
 }
 
 const position = (value: unknown, what: string): number | null =>

@@ -643,7 +643,9 @@ describe("what the projection withholds", () => {
 		);
 		const call = (same.layers.toolCalls as any).a.entry;
 		expect(same.layers.toolCalls.status).toBe("DIVERGED");
-		expect(call.args).toEqual({ status: "withheld" });
+		expect(call.args).toEqual({ status: "withheld", token: expect.stringMatching(/^[0-9a-f]{64}$/) });
+		// Two different digests under the withheld key id still read as different.
+		expect((same.layers.toolCalls as any).b.entry.args.token).not.toBe(call.args.token);
 	});
 
 	it("bounds a free-form fact list and counts what it leaves out", () => {
@@ -687,6 +689,74 @@ describe("what the projection withholds", () => {
 		expect(source).not.toMatch(
 			/from "node:(?:fs|os|child_process|net|http|https)|from "(?:\.\.\/)+(?:storage|adapters)\//,
 		);
+	});
+});
+
+describe("hostile producer text in names, digests and omitted facts", () => {
+	const base = () => baseline();
+	const lifecycleFacts = (facts: Record<string, unknown>): EndoTrajectoryV0 =>
+		altered(base(), (body) => {
+			body.layers.lifecycle.entries[1].facts = facts;
+		});
+
+	it("does not carry a credential-shaped or digest-shaped fact NAME, and counts it as omitted", () => {
+		const credential = "ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8";
+		const hexName = `h${"ab12".repeat(9)}`;
+		const t = lifecycleFacts({ [credential]: true, AKIAIOSFODNN7EXAMPLE: { secret: 1 }, [hexName]: 2, fine: 3 });
+		const result = project(base(), t);
+		const out = serialized(result);
+		for (const leak of [credential, "AKIAIOSFODNN7EXAMPLE", hexName]) expect(out, leak).not.toContain(leak);
+		const facts = (result.layers.lifecycle as any).b.entry.facts;
+		expect(facts.items.map((item: any) => item.path)).toEqual(["fine"]);
+		expect(facts.omitted).toBe(3);
+		expect(facts.omittedToken).toMatch(/^[0-9a-f]{64}$/);
+		expect(validateEndoCockpitTrajectoryComparisonV0(JSON.parse(out))).not.toBeNull();
+		// The validator itself refuses such a name arriving on the wire.
+		const wire = JSON.parse(out);
+		wire.layers.lifecycle.b.entry.facts.items.push({ path: credential, value: true });
+		expect(validateEndoCockpitTrajectoryComparisonV0(wire)).toBeNull();
+	});
+
+	it.each([
+		["uppercase hex", "AB".repeat(32)],
+		["a prefixed sha256", `sha256:${"cd".repeat(32)}`],
+		["a 40-hex digest", "ef".repeat(20)],
+		["a 128-hex digest", "01".repeat(64)],
+		["a base64 digest", "n4bQgYhMfWWaL+qgxVrQFaO/TxsrC4Is0V1sFbDwCgg="],
+	])("shows %s only as a keyed token, in a fact and in a fingerprint flag", (_name, digest) => {
+		const t = altered(base(), (body) => {
+			body.layers.outcome.entries[0].cause = { ref: digest };
+			body.environment.attachments[0].identityDigest = { status: "reported", value: digest };
+		});
+		const result = project(base(), t);
+		const out = serialized(result);
+		expect(out).not.toContain(digest);
+		const cause = (result.layers.outcome as any).b.entry.cause.items[0].value;
+		expect(cause.kind).toBe("token");
+		const flag = result.flags.find((item) => item.kind === "runtime-fingerprint-differs")!;
+		expect(flag.b.values[0]!.kind).toBe("token");
+	});
+
+	it("a DIVERGED result whose differences are all withheld still shows that the two sides differ", () => {
+		const one = lifecycleFacts({ "has space": 1 });
+		const two = lifecycleFacts({ "has space": 2 });
+		const result = project(one, two);
+		const lifecycle = result.layers.lifecycle as any;
+		expect(lifecycle.status).toBe("DIVERGED");
+		expect(lifecycle.a.entry.facts.omittedToken).not.toBe(lifecycle.b.entry.facts.omittedToken);
+		const odd = altered(base(), (body) => {
+			body.environment.attachments[0].digestKey = {
+				status: "reported",
+				value: { keyId: "installation-x", domain: "x" },
+			};
+			for (const entry of body.layers.toolCalls.entries) entry.argsDigest.value.keyId = "installation-x";
+		});
+		const other = altered(odd, (body) => {
+			body.layers.toolCalls.entries[0].argsDigest.value.value = "11".repeat(32);
+		});
+		const calls = project(odd, other).layers.toolCalls as any;
+		expect(calls.status).toBe("DIVERGED");
+		expect(calls.a.entry.args.token).not.toBe(calls.b.entry.args.token);
 	});
 });
 
@@ -867,5 +937,41 @@ describe("the contract validator", () => {
 			r.layers.timing.runs.push({ run: 99, present: { a: true, b: true }, wallMs: { status: "DELTA", value: 0 } }),
 		);
 		reject((r) => r.flags.push({ kind: "invented-flag", a: { values: [] }, b: { values: [] } }));
+	});
+	it("rejects fields that contradict each other across the record", () => {
+		reject((r) => {
+			r.toolCallsAgainstInputs.callsIdenticalUpToFirstDivergentInput = false;
+			r.toolCallsAgainstInputs.reason = "calls-identical";
+		});
+		reject((r) => {
+			r.toolCallsAgainstInputs.firstDivergentResult = { index: 9, run: 1, turn: 1 };
+		});
+		reject((r) => {
+			r.layers.toolCalls = {
+				status: "UNAVAILABLE",
+				sides: { a: null, b: null },
+				unverified: [
+					{ index: 999, reason: { code: "digest-not-recorded", sides: "one" } },
+					{ index: 999, reason: { code: "digest-not-recorded", sides: "one" } },
+				],
+				lengths: { a: 0, b: 0 },
+			};
+		});
+		reject((r) => {
+			r.layers.timing.runs.push({
+				run: r.layers.timing.runs.length + 1,
+				present: { a: false, b: false },
+				wallMs: { status: "UNAVAILABLE" },
+			});
+		});
+		reject((r) => {
+			r.layers.usage.totals = { status: "DELTAS", fields: {} };
+		});
+		reject((r) => {
+			r.flags.push({ kind: "mapping-differs", a: { values: [] }, b: { values: [] } });
+		});
+		reject((r) => {
+			r.layers.lifecycle.a.entry.facts.omittedToken = "00".repeat(32);
+		});
 	});
 });

@@ -386,7 +386,7 @@ could not be verified, as a code: `digest-not-recorded` or `digest-domains-diffe
 results (what the world answered) are separate layers. `toolCallsAgainstInputs` is an *ordering of positions* with a reason code, not
 a cause. Usage is runtime-reported and timing is observer-measured; both are `b minus a`, per run and in total, and a delta that
 cannot be established is `UNAVAILABLE`, never 0. `flags` lists runtime fingerprint, version, mapping, digest domain, configuration,
-model and projection differences; an empty list means no *recorded* difference, not a controlled experiment.
+model and projection differences; an empty list means no difference among those listed facets (a value neither side recorded is not compared), not a controlled experiment.
 
 **What it cannot establish, and does not claim.** Alignment is by position within each layer, so there is no single "first point
 where the runs diverged" across layers and no event-by-event correspondence between the two sessions; the record has neither. It
@@ -398,11 +398,11 @@ a failure cause) is replaced by a keyed token under `keyId`: equal values give e
 and nothing else. They are therefore not the digests `endo trajectory diff` prints; a local cross-reference is a CLI concern.
 The keyed argument and result digests are already HMACs and are shown as recorded with their key id, together or (when the key id is
 not one the cockpit admits) not at all. Free text goes through the text policy and, when withheld, becomes a token of itself so two
-withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar).
+withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar): a name is held to the same text policy as a value, a digest in any common spelling is a token, and what is left out is counted with a keyed token so entries that differ only there still read as different. The validator also checks the ordering block against the layers it is read from.
 
 **Compatibility.** `comparisonRules` carries the comparator's rules version (`trajectory-comparison.3`) and the validator accepts that
-version only; a rules change is a projection version change, and the projection refuses a comparator sentence it has no code for
-instead of guessing (a test pins every sentence). The record is deliberately **not** registered in `ENDO_COCKPIT_VERSIONS_V0`, the
+version only; a rules change is a projection version change, and the projection refuses an ordering sentence it has no code for
+instead of guessing (a test pins every sentence), and carries an unrecognised unverified-position reason only as policy-checked text. The record is deliberately **not** registered in `ENDO_COCKPIT_VERSIONS_V0`, the
 `EndoCockpitRecordV0` union, `ENDO_COCKPIT_PROJECTION_VERSIONS_V0` or Studio's supported projections: the version table is the
 server's wire gate, so registration belongs with the transport that serves it.
 

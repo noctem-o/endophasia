@@ -20,6 +20,8 @@
   move is not available; the inspector is a short invitation with the reference as collapsible sections (a closed *Reading guide* beside a
   selected event); long identifiers open in place and displayed identifiers can be copied; the left rail and right panel are more readable
   and the three-column layout starts at 1360 px.
+- The licence is now the **Apache License 2.0** (it was MIT). `0.1.0-alpha.1` and `0.1.0-alpha.2` were published under MIT and remain available under it; the
+  Apache License applies from this change onward.
 - `endo studio` now serves the Studio frontend. The earlier page (`cockpit-ui/`, `dist/cockpit-ui/`) is retired in the same change, with
   its browser, source and model tests moved onto the new frontend and not dropped. The command's arguments, address line, exit codes
   and key handling are unchanged. `npm run cockpit` serves the same frontend; `build:cockpit-ui` is replaced by `build:studio-ui`.

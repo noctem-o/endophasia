@@ -14,7 +14,7 @@ it records what a harness actually does, and keeps observation, evidence, interp
 <p>
   <a href="#what-works-today"><img src="https://img.shields.io/badge/status-experimental-637d69?style=flat-square" alt="Status: experimental"></a>
   <a href="https://github.com/earendil-works/pi"><img src="https://img.shields.io/badge/reference%20runtime-Pi-536c85?style=flat-square" alt="Reference runtime: Pi"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-94765e?style=flat-square" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-94765e?style=flat-square" alt="License: Apache 2.0"></a>
 </p>
 
 <p>
@@ -355,4 +355,6 @@ your own Pi (`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real`) and the
 
 ## License
 
-MIT. Upstream components such as Pi remain under their own licenses.
+Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 George Gallagher. Upstream components such as Pi remain under their own licenses.
+
+Versions published before this change (`0.1.0-alpha.1` and `0.1.0-alpha.2`) were released under the MIT License, and that grant stays with those versions; the Apache License applies to this source from the commit that changed it onward.

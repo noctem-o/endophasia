@@ -2,7 +2,7 @@
 	"name": "endophasia",
 	"version": "0.1.0-alpha.2",
 	"description": "Endophasia: an experimental research instrument that attaches to an existing agent harness and records what it observes.",
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/noctem-o/endophasia.git"

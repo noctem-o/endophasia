@@ -30,7 +30,7 @@
 			"partial",
 			"none"
 		],
-		"note": "verdict is the fidelity of the NATIVE record into Endophasia's EXISTING representation (the vocabulary of adapters/acp/loss.ts); acp.fidelityVsNative is the same vocabulary applied to DSH's ACP surface against the native record."
+		"note": "verdict is the fidelity of the NATIVE record into Endophasia's EXISTING representation (the vocabulary of adapters/acp/loss.ts); acp.fidelityVsNative is the same vocabulary applied to DSH's ACP surface against the native record. `basis` is per row: it lists every kind of evidence the row's claims draw on, not one kind for every claim in it; the per-claim distinction is in the study document and the tests."
 	},
 	"rows": [
 		{
@@ -66,7 +66,8 @@
 			"hazards": [
 				"Naming collision: a DSH 'turn' is an Endophasia 'run'; mapping it to lifecycle.turn-* would shift every count by one level.",
 				"reason 'interrupted' and 'forked' are written by DSH after the fact (resume, fork seed), not observed ending; they must never become lifecycle.interrupted, which Endophasia reserves for its own observation.",
-				"'blocked' and 'max-tokens' have no Endophasia outcome; they map to run-unclassified, never to a failure DSH did not report."
+				"'blocked' and 'max-tokens' have no Endophasia outcome. The Pi adapter sends reported non-error, non-abort stop reasons to run-completed with the reported reason (adapters/pi/lifecycle.ts); PR 2 must decide the DSH mapping explicitly rather than default to run-unclassified.",
+				"A DSH turn is not exactly an Endophasia run: queued follow-ups and goal rounds open new DSH turns where a Pi run spans continuations. The mapping is QUALIFIED, not EXACT."
 			],
 			"unavailable": []
 		},
@@ -328,11 +329,10 @@
 				"status": "partial"
 			},
 			"verdict": "QUALIFIED",
-			"preserved": "The authority envelope the session ran under, and the audit of each ask and its outcome, paired by id.",
+			"preserved": "The authority envelope the session ran under, and the audit of each ask and its outcome, paired by id. Runtime-observed here: only the three policy records at seq 0-2; approval asks and decisions were NOT provoked and rest on source.",
 			"lost": "Who answered (human, policy, client) beyond the outcome is not recorded in these events.",
 			"basis": [
 				"runtime-observed",
-				"upstream-fixture",
 				"source-derived"
 			],
 			"confidence": "medium",
@@ -617,7 +617,7 @@
 			"native": {
 				"stability": "pre-stable-api",
 				"persistedLog": "none of these are stored",
-				"liveFeed": "agent/assistant-stream frames (process-local, transient), agent/error (not durable), agent/status, agent/inbox/*, and the waterfall hooks agent/request, agent/request-error, tools/*, approval/request"
+				"liveFeed": "agent/assistant-stream frames (process-local, transient), agent/error (not durable), agent/status, agent/inbox/inserted|claimed|discarded (agent/inbox/spliced IS persisted), and the waterfall hooks agent/request, agent/request-error, tools/*, approval/request"
 			},
 			"acp": {
 				"v1": "Some become ACP updates (message chunks) but arrive already aggregated.",
@@ -630,7 +630,7 @@
 			},
 			"verdict": "LOSSY",
 			"preserved": "Streaming granularity (the committed stream keeps chunk times), agent/error before the turn/end that records it.",
-			"lost": "A fatal error that never reaches a turn/end (crash) leaves no trace at all.",
+			"lost": "A fatal error that never reaches a turn/end (crash) leaves no trace at all; this crash window (partial stream, live agent/error) is the one thing only a live observer can capture.",
 			"basis": [
 				"runtime-observed",
 				"source-derived"

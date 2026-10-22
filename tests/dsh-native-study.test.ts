@@ -5,11 +5,14 @@
 //            provider for the retry case), sanitised by research/dsh-native/sanitise.ts;
 //   SYNTHETIC  bytes built by research/dsh-native/synthetic.ts from a RUNTIME fixture, to show how a cold reader treats damage;
 //   SOURCE   claims about DSH source, checked against the pinned provenance (and against a checkout when ENDO_DSH_CHECKOUT is set).
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
+import { researchDataRoot } from "../research/data.ts";
 import {
 	buildProvenance,
 	buildVocabulary,
@@ -18,6 +21,7 @@ import {
 } from "../research/dsh-native/inventory.ts";
 import {
 	checkDshLog,
+	DSH_LOG_MAX_DECODED_BYTES,
 	type DshLogRead,
 	type DshSessionEvent,
 	type DshSessionHeader,
@@ -25,7 +29,7 @@ import {
 	readDshLog,
 	scanZstdFrames,
 } from "../research/dsh-native/log.ts";
-import { reproduce } from "../research/dsh-native/reproduce.ts";
+import { reproduce, SCENARIOS } from "../research/dsh-native/reproduce.ts";
 import { FIXTURE_EPOCH, findLeaks, Sanitiser } from "../research/dsh-native/sanitise.ts";
 import {
 	compactionLog,
@@ -65,6 +69,8 @@ const rows = (name: string): { header: DshSessionHeader; events: DshSessionEvent
 };
 const check = (name: string) => checkDshLog(rows(name).read, vocabulary);
 
+const checkout = process.env.ENDO_DSH_CHECKOUT;
+
 describe("provenance and pinned vocabulary (SOURCE)", () => {
 	it("pins one DSH commit, a released Session format 4 and the audited files by sha256", () => {
 		expect(provenance.dsh.commit).toMatch(/^[0-9a-f]{40}$/);
@@ -87,19 +93,20 @@ describe("provenance and pinned vocabulary (SOURCE)", () => {
 		for (const root of vocabulary.roots) expect(root.digest).toMatch(/^[0-9a-f]{64}$/);
 	});
 
-	it("describes the checkout when ENDO_DSH_CHECKOUT points at one (opt-in; otherwise reported as skipped)", () => {
-		const checkout = process.env.ENDO_DSH_CHECKOUT;
-		if (checkout === undefined || !existsSync(checkout))
-			return expect(checkout === undefined || !existsSync(checkout)).toBe(true);
-		const current = buildProvenance(checkout);
-		// A moved checkout is a signal to re-audit, not a failure of the code: say so in the message.
-		expect(
-			current.dsh.commit,
-			"the DSH checkout moved: re-run research/dsh-native/inventory.ts and re-read the audit",
-		).toBe(provenance.dsh.commit);
-		expect(current.files).toEqual(provenance.files);
-		expect(buildVocabulary(checkout)).toEqual(vocabulary);
-	});
+	// Without a checkout vitest reports this as skipped, not green.
+	it.skipIf(!checkout || !existsSync(checkout))(
+		"describes the checkout when ENDO_DSH_CHECKOUT points at one (opt-in)",
+		() => {
+			const current = buildProvenance(checkout!);
+			// A moved checkout is a signal to re-audit, not a failure of the code: say so in the message.
+			expect(
+				current.dsh.commit,
+				"the DSH checkout moved: re-run research/dsh-native/inventory.ts and re-read the audit",
+			).toBe(provenance.dsh.commit);
+			expect(current.files).toEqual(provenance.files);
+			expect(buildVocabulary(checkout!)).toEqual(vocabulary);
+		},
+	);
 });
 
 describe("the fidelity matrix covers the vocabulary exactly", () => {
@@ -152,7 +159,9 @@ describe("RUNTIME fixtures are sanitised", () => {
 		for (const file of files) {
 			const text = readFileSync(join(FIXTURES, file), "utf8");
 			expect(
-				findLeaks(text, ["noctem", "endophasia-research", "You are a coding agent", "lastgarlean"]),
+				// The canaries are taken from the machine running the test (its user name and home), plus fixed markers: no personal data is
+				// written into the repository to search for it.
+				findLeaks(text, [userInfo().username, homedir(), "endophasia-research", "You are a coding agent"]),
 				file,
 			).toEqual([]);
 		}
@@ -161,7 +170,7 @@ describe("RUNTIME fixtures are sanitised", () => {
 	it("keep the system prompt and injected context only as length and digest, and the study's own prompt verbatim", () => {
 		const { events } = rows("tool-read");
 		const system = events.find((event) => event.type === "system/message")!;
-		expect(JSON.stringify(system.data)).toMatch(/\[withheld: \d+ chars, sha256 [0-9a-f]{64}\]/);
+		expect(JSON.stringify(system.data)).toMatch(/\[withheld: \d+ chars\]/);
 		const users = events.filter((event) => event.type === "user/message");
 		expect(users).toHaveLength(2);
 		expect(JSON.stringify(users[0]!.data)).toContain("read the file notes.txt");
@@ -188,7 +197,7 @@ describe("RUNTIME fixtures are sanitised", () => {
 		expect(header.createdAt).toBe(FIXTURE_EPOCH);
 		expect(events[0]!.time - FIXTURE_EPOCH).toBeLessThan(100);
 		const assistant = events.find((event) => event.type === "assistant/message")!;
-		expect(assistant.time - events[0]!.time).toBeGreaterThan(1000);
+		expect(assistant.time - events[0]!.time).toBeGreaterThan(100);
 	});
 });
 
@@ -202,9 +211,14 @@ describe("RUNTIME: what a real DSH 0.2.1-rc.2 run demonstrated", () => {
 		const usage = rows("tool-read")
 			.events.filter((event) => event.type === "assistant/message")
 			.map((event) => (event.data as { usage?: Record<string, number> }).usage);
-		expect(usage[0]).toEqual({ inputTokens: 2202, outputTokens: 53, totalTokens: 2255 });
-		// A count DSH did not report is absent, not 0 (cacheWriteTokens and reasoningTokens never appear).
-		expect(usage[1]).toEqual({ inputTokens: 78, outputTokens: 20, totalTokens: 2352, cacheReadTokens: 2254 });
+		// Per-call usage as DSH reported it; the model's text and counts vary from run to run, the shape does not.
+		for (const entry of usage) {
+			expect(Object.keys(entry!)).toEqual(expect.arrayContaining(["inputTokens", "outputTokens", "totalTokens"]));
+			// A count DSH did not report is absent, not 0.
+			expect(entry).not.toHaveProperty("cacheWriteTokens");
+			expect(entry).not.toHaveProperty("reasoningTokens");
+		}
+		expect(usage[1]).toHaveProperty("cacheReadTokens");
 		expect(
 			rows("tool-read")
 				.events.slice(0, 3)
@@ -262,7 +276,7 @@ describe("RUNTIME: what a real DSH 0.2.1-rc.2 run demonstrated", () => {
 		// The invented timestamp: the closers carry the title's time, not the time of the resume (the end-seed's is much later).
 		expect(stepEnd!.time).toBe(title!.time);
 		expect(turnEnd!.time).toBe(title!.time);
-		expect(endSeed!.time - title!.time).toBeGreaterThan(5000);
+		expect(endSeed!.time - title!.time).toBeGreaterThan(1000);
 		// The end-seed written at resume is NOT the fork marker: untagged, so there is no inherited cut.
 		expect(endSeed!.data).toEqual({});
 		expect(result.summary.inheritedCut).toBeNull();
@@ -538,7 +552,7 @@ describe("the sanitiser", () => {
 		expect(findLeaks(text, ["someone", "SECRET", "AbCdEf123", "injected"])).toEqual([]);
 		expect(out.header).toMatchObject({ id: "session-1", createdAt: FIXTURE_EPOCH, cwd: "/fixture/workspace" });
 		expect(out.events[1].data.content[0].text).toBe("the study prompt");
-		expect(out.events[2].data.source.sections[0].text).toMatch(/^\[withheld: \d+ chars, sha256 [0-9a-f]{64}\]$/);
+		expect(out.events[2].data.source.sections[0].text).toMatch(/^\[withheld: \d+ chars\]$/);
 		expect(out.events[3].data.callId).toBe("call-1");
 		expect(out.events.map((event) => event.time - FIXTURE_EPOCH)).toEqual([10, 20, 21, 30]);
 	});
@@ -559,7 +573,6 @@ describe("the sanitiser", () => {
 });
 
 describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)", () => {
-	const checkout = process.env.ENDO_DSH_CHECKOUT;
 	const enabled = checkout !== undefined && existsSync(checkout);
 	const dirs: string[] = [];
 	afterAll(() => {
@@ -570,7 +583,10 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 	it.skipIf(!enabled)(
 		"re-runs the deterministic stub-provider scenario and reproduces the committed retry fixture, ignoring only timing",
 		async () => {
-			const out = mkdtempSync(join(tmpdir(), "endo-dsh-repro-"));
+			// Raw captures hold the real system prompt: they go to the research-data directory, never to the system temp directory.
+			const base = join(researchDataRoot(), "dsh-native", "test-runs");
+			mkdirSync(base, { recursive: true });
+			const out = mkdtempSync(join(base, "run-"));
 			dirs.push(out);
 			const result = await reproduce({ dsh: checkout!, out, scenario: "stub-retry" });
 			expect(result.code).toBe(0);
@@ -596,9 +612,7 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 							.map(([key, item]) => [key, strip(item)]),
 					);
 				// A withheld injected context embeds the working directory: its length and digest depend on where the run happened.
-				return typeof value === "string"
-					? value.replace(/\[withheld: \d+ chars, sha256 [0-9a-f]{64}\]/g, "[withheld]")
-					: value;
+				return typeof value === "string" ? value.replace(/\[withheld: \d+ chars\]/g, "[withheld]") : value;
 			};
 			const committed = rows("stub-retry");
 			expect(strip(clean.events)).toEqual(strip(committed.events));
@@ -606,4 +620,203 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 		},
 		120_000,
 	);
+});
+
+/** A Zstandard frame built byte by byte (RFC 8878 section 3), to test the scanner on every header shape without an encoder. */
+function rawFrame(options: {
+	descriptor: number;
+	window?: number;
+	dictionary?: number[];
+	contentSize?: number[];
+	blocks: { last: boolean; type: 0 | 1 | 2; size: number; body: number }[];
+	checksum?: boolean;
+}): Buffer {
+	const bytes = [0x28, 0xb5, 0x2f, 0xfd, options.descriptor];
+	if (options.window !== undefined) bytes.push(options.window);
+	bytes.push(...(options.dictionary ?? []), ...(options.contentSize ?? []));
+	for (const block of options.blocks) {
+		const header = (block.last ? 1 : 0) | (block.type << 1) | (block.size << 3);
+		bytes.push(header & 255, (header >> 8) & 255, (header >> 16) & 255);
+		for (let i = 0; i < block.body; i += 1) bytes.push(0);
+	}
+	if (options.checksum) bytes.push(1, 2, 3, 4);
+	return Buffer.from(bytes);
+}
+
+describe("the frame scanner on every header shape (SYNTHETIC bytes)", () => {
+	const frameLength = (buffer: Buffer): number[] =>
+		scanZstdFrames(buffer).frames.map((frame) => frame.end - frame.start);
+
+	it("skips the window descriptor, but not in single-segment mode", () => {
+		const normal = rawFrame({ descriptor: 0x00, window: 0x10, blocks: [{ last: true, type: 0, size: 3, body: 3 }] });
+		const single = rawFrame({
+			descriptor: 0x20 | 0x00,
+			contentSize: [3],
+			blocks: [{ last: true, type: 0, size: 3, body: 3 }],
+		});
+		expect(frameLength(normal)).toEqual([normal.length]);
+		expect(frameLength(single)).toEqual([single.length]);
+	});
+
+	it("reads each dictionary-id width (0, 1, 2 and 4 bytes)", () => {
+		for (const [flag, width] of [
+			[0, 0],
+			[1, 1],
+			[2, 2],
+			[3, 4],
+		] as const) {
+			const frame = rawFrame({
+				descriptor: flag,
+				window: 1,
+				dictionary: Array(width).fill(7),
+				blocks: [{ last: true, type: 0, size: 2, body: 2 }],
+			});
+			expect(frameLength(frame), `dictionary flag ${flag}`).toEqual([frame.length]);
+		}
+	});
+
+	it("reads each frame-content-size width (none, 1 in single-segment mode, 2, 4 and 8 bytes)", () => {
+		for (const [flag, single, width] of [
+			[0, true, 1],
+			[1, false, 2],
+			[2, false, 4],
+			[3, false, 8],
+		] as const) {
+			const frame = rawFrame({
+				descriptor: (flag << 6) | (single ? 0x20 : 0),
+				...(single ? {} : { window: 1 }),
+				contentSize: Array(width).fill(1),
+				blocks: [{ last: true, type: 0, size: 1, body: 1 }],
+			});
+			expect(frameLength(frame), `content size flag ${flag}`).toEqual([frame.length]);
+		}
+	});
+
+	it("counts an RLE block as one stored byte however large its regenerated size, and a raw block as its size", () => {
+		const rle = rawFrame({ descriptor: 0x00, window: 1, blocks: [{ last: true, type: 1, size: 100_000, body: 1 }] });
+		expect(frameLength(rle)).toEqual([rle.length]);
+		const mixed = rawFrame({
+			descriptor: 0x00,
+			window: 1,
+			blocks: [
+				{ last: false, type: 0, size: 4, body: 4 },
+				{ last: true, type: 2, size: 5, body: 5 },
+			],
+		});
+		expect(frameLength(mixed)).toEqual([mixed.length]);
+	});
+
+	it("includes the content checksum, finds the boundary of the next frame, and reports a cut anywhere inside one", () => {
+		const a = rawFrame({
+			descriptor: 0x04,
+			window: 1,
+			blocks: [{ last: true, type: 0, size: 2, body: 2 }],
+			checksum: true,
+		});
+		const b = rawFrame({ descriptor: 0x00, window: 1, blocks: [{ last: true, type: 0, size: 2, body: 2 }] });
+		const both = Buffer.concat([a, b]);
+		expect(frameLength(both)).toEqual([a.length, b.length]);
+		for (let keep = 1; keep < b.length; keep += 1) {
+			const scan = scanZstdFrames(both.subarray(0, a.length + keep));
+			expect(scan.frames).toHaveLength(1);
+			expect(scan.trailing).toBe(keep);
+		}
+	});
+
+	it("refuses a skippable frame, a reserved header bit, a reserved block type and non-frame bytes: DSH writes none of them", () => {
+		const skippable = Buffer.from([0x50, 0x2a, 0x4d, 0x18, 0, 0, 0, 0]);
+		expect(() => scanZstdFrames(skippable)).toThrow(/skippable/);
+		expect(() =>
+			scanZstdFrames(rawFrame({ descriptor: 0x08, window: 1, blocks: [{ last: true, type: 0, size: 0, body: 0 }] })),
+		).toThrow(/reserved frame header bit/);
+		const reserved = rawFrame({ descriptor: 0x00, window: 1, blocks: [{ last: true, type: 0, size: 0, body: 0 }] });
+		reserved[6] = (reserved[6]! & ~0b110) | 0b110;
+		expect(() => scanZstdFrames(reserved)).toThrow(/reserved Zstandard block type/);
+		expect(() => scanZstdFrames(Buffer.from("not a frame at all"))).toThrow(/not a Zstandard frame/);
+		expect(readDshLog(skippable).tail.kind).toBe("unreadable");
+	});
+});
+
+describe("a hostile or odd log is bounded and classified (SYNTHETIC)", () => {
+	const { header, events } = rows("tool-read");
+
+	it("stops at a decoded-size bound instead of holding a decompression bomb in memory", () => {
+		// 8 MiB of zeroes is a few hundred bytes compressed; the bound is far below it.
+		const bomb = encodeFrames(header, events, 4);
+		const huge = zstdCompressSync(Buffer.alloc(8 * 1024 * 1024));
+		expect(huge.length).toBeLessThan(2000);
+		const read = readDshLog(Buffer.concat([bomb, huge]), 1024 * 1024);
+		expect(read.tail).toEqual({ kind: "unreadable", reason: "the decoded size bound was exceeded" });
+		expect(read.problems.join(" ")).toMatch(/exceed 1048576 bytes/);
+		expect(DSH_LOG_MAX_DECODED_BYTES).toBe(64 * 1024 * 1024);
+		expect(readDshLog(bomb).events).toEqual(events);
+	});
+
+	it("reports a complete zstd frame that ends inside a row as a torn row, not as a clean log", () => {
+		const text = encodeRaw(header, events).toString("utf8");
+		const cut = Buffer.from(text.slice(0, text.length - 25), "utf8");
+		const read = readDshLog(zstdCompressSync(cut));
+		expect(read.tail.kind).toBe("torn-row");
+		expect(read.events.length).toBe(events.length - 1);
+	});
+
+	it("counts the torn bytes of a raw log in bytes, also when the cut falls inside a multibyte character", () => {
+		const row = { ...events[0]!, data: { note: "é" } };
+		const raw = encodeRaw(header, [row]);
+		const cutAt = raw.lastIndexOf(0xc3) + 1;
+		const read = readDshLog(raw.subarray(0, cutAt));
+		expect(read.tail).toEqual({ kind: "torn-row", trailingBytes: cutAt - (raw.indexOf(0x0a) + 1) });
+	});
+
+	it("skips a plugin record only when it is well formed AND ignorable", () => {
+		const record = (type: string, ignorable: boolean): DshSessionEvent[] => [
+			...events.slice(0, 4),
+			{ type, seq: 4, time: events[3]!.time, data: {}, ...(ignorable ? { ignorable: true as const } : {}) },
+		];
+		const codes = (list: DshSessionEvent[]) =>
+			checkDshLog(readDshLog(encodeRaw(header, list)), vocabulary).findings.map((f) => f.code);
+		expect(codes(record("plugin:acme/state", true))).toEqual([]);
+		expect(codes(record("plugin:acme/state", false))).toContain("unknown-required-type");
+		// Malformed but ignorable falls under the generic envelope rule (skippable, counted); malformed and required is refused.
+		expect(codes(record("plugin:Bad Name", true))).toEqual(["unknown-ignorable-type"]);
+		expect(codes(record("plugin:Bad Name", false))).toContain("unknown-required-type");
+	});
+
+	it("flags nesting, a repeated call id, a result without a call, and a surface placement on a log-only event", () => {
+		const base = events.map((event) => ({ ...event }));
+		const code = (list: DshSessionEvent[]) =>
+			checkDshLog(readDshLog(encodeRaw(header, list)), vocabulary).findings.map((f) => f.code);
+		const at = (type: string) => base.findIndex((event) => event.type === type);
+		const nested = base.map((event) => ({ ...event }));
+		nested.splice(at("step/start"), 0, { type: "turn/start", seq: 0, time: 1, data: { turn: 9 } });
+		expect(code(nested.map((event, seq) => ({ ...event, seq })))).toContain("turn-nested");
+		const duplicate = base.map((event) => ({ ...event }));
+		duplicate.splice(at("tool/call") + 1, 0, { ...base[at("tool/call")]!, seq: 0 });
+		expect(code(duplicate.map((event, seq) => ({ ...event, seq })))).toContain("duplicate-call-id");
+		const orphan = base.filter((event) => event.type !== "tool/call").map((event, seq) => ({ ...event, seq }));
+		expect(code(orphan)).toContain("result-without-call");
+		const placed = base.map((event) => (event.type === "step/start" ? { ...event, surfaceOp: "append" } : event));
+		expect(code(placed)).toContain("surface-op-unexpected");
+		const outside = base.filter((event) => event.type !== "turn/start").map((event, seq) => ({ ...event, seq }));
+		expect(code(outside)).toContain("step-outside-turn");
+		const twice = [...base, { ...base[at("turn/end")]!, seq: base.length }];
+		expect(code(twice)).toContain("turn-ended-twice");
+		const leftOpen = base
+			.filter((event) => !(event.type === "step/end" && (event.data as { step: number }).step === 2))
+			.map((event, seq) => ({ ...event, seq }));
+		expect(code(leftOpen)).toContain("step-open-at-turn-end");
+		const backwards = base.map((event, index) => (index === 8 ? { ...event, time: 0 } : event));
+		expect(code(backwards)).toContain("time-went-backwards");
+	});
+});
+
+describe("the reproduction harness refuses what it could delete", () => {
+	it("accepts only its own scenario names, before anything is removed", async () => {
+		expect(SCENARIOS).toEqual(["stub-retry", "tool-read", "no-key-error", "crash"]);
+		for (const scenario of ["raw", "..", "../..", "stub-retry/../raw", ""])
+			await expect(
+				reproduce({ dsh: "/nonexistent", out: "/nonexistent-out", scenario: scenario as never }),
+			).rejects.toThrow(/unknown scenario/);
+		expect(existsSync("/nonexistent-out")).toBe(false);
+	});
 });

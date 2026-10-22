@@ -8,10 +8,9 @@
 		"liveIsExactlyThePersistedSuffixFromThere": true,
 		"persistedEventsNeverAnnouncedLive": [],
 		"liveOnlyTypes": [],
-		"sessionFlushCallbacks": 8,
 		"transientAssistantStreamFrames": {
 			"start": 2,
-			"chunk": 60,
+			"chunk": 39,
 			"end": 2
 		},
 		"jsonStreamLines": 13,
@@ -37,7 +36,6 @@
 		"liveIsExactlyThePersistedSuffixFromThere": true,
 		"persistedEventsNeverAnnouncedLive": [],
 		"liveOnlyTypes": [],
-		"sessionFlushCallbacks": 5,
 		"transientAssistantStreamFrames": {
 			"start": 1,
 			"chunk": 2,
@@ -62,10 +60,9 @@
 		"liveIsExactlyThePersistedSuffixFromThere": true,
 		"persistedEventsNeverAnnouncedLive": [],
 		"liveOnlyTypes": [],
-		"sessionFlushCallbacks": 3,
 		"transientAssistantStreamFrames": {
 			"start": 1,
-			"chunk": 64
+			"chunk": 56
 		},
 		"jsonStreamLines": 3,
 		"jsonStreamTypes": [
@@ -100,10 +97,9 @@
 			"15:session/end-seed"
 		],
 		"liveOnlyTypes": [],
-		"sessionFlushCallbacks": 5,
 		"transientAssistantStreamFrames": {
 			"start": 1,
-			"chunk": 104,
+			"chunk": 2321,
 			"end": 1
 		},
 		"jsonStreamLines": 8,
@@ -127,7 +123,6 @@
 		"liveIsExactlyThePersistedSuffixFromThere": true,
 		"persistedEventsNeverAnnouncedLive": [],
 		"liveOnlyTypes": [],
-		"sessionFlushCallbacks": 6,
 		"transientAssistantStreamFrames": {
 			"start": 2,
 			"chunk": 6,

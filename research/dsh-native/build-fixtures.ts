@@ -8,12 +8,12 @@
 // sanitised log, the sanitised stream, and `comparison.json`: the measured relationship between the three, which is the evidence.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir, userInfo } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { researchDataRoot } from "../data.ts";
 import { encodeDshJsonl, readDshLog } from "./log.ts";
-import { Sanitiser } from "./sanitise.ts";
+import { findLeaks, Sanitiser } from "./sanitise.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 export const FIXTURES = join(HERE, "fixtures", "real");
@@ -40,7 +40,6 @@ const lines = (text: string): unknown[] =>
 function compare(raw: string, name: string, events: { type: string }[]): Record<string, unknown> {
 	let live: { type: string }[] | null = null;
 	let frames: Record<string, number> = {};
-	let flushes = 0;
 	try {
 		const observed = lines(readFileSync(join(raw, name, "observer.ndjson"), "utf8")) as {
 			feed: string;
@@ -48,7 +47,6 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 			kind?: string;
 		}[];
 		live = observed.filter((o) => o.feed === "session/event").map((o) => o.event!);
-		flushes = observed.filter((o) => o.feed === "session/flush").length;
 		for (const o of observed.filter((x) => x.feed === "agent/assistant-stream"))
 			frames[o.kind ?? "?"] = (frames[o.kind ?? "?"] ?? 0) + 1;
 	} catch {
@@ -79,38 +77,53 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 		liveIsExactlyThePersistedSuffixFromThere: suffix,
 		persistedEventsNeverAnnouncedLive: unannounced,
 		liveOnlyTypes: live === null ? null : live.slice(events.length).map((e) => e.type),
-		sessionFlushCallbacks: flushes,
 		transientAssistantStreamFrames: frames,
 		jsonStreamLines: stream.length,
 		jsonStreamTypes: [...new Set(stream.map((l) => (l.type === "status" ? `status:${l.phase}` : l.type)))],
 	};
 }
 
-export function buildFixtures(raw: string, out = FIXTURES): void {
-	mkdirSync(out, { recursive: true });
+export function buildFixtures(raw: string, destination = FIXTURES): void {
+	mkdirSync(destination, { recursive: true });
 	const home = homedir();
 	const comparison: Record<string, unknown> = {};
 	for (const name of CASES) {
+		// reproduce.ts lays a run out as <out>/<scenario>/{home,ws} beside <out>/raw/<case>/ (both crash cases share "crash").
+		const runDir = dirname(raw);
+		const scenarioDir = name.startsWith("crash") ? "crash" : name;
 		const sanitiser = new Sanitiser({
 			paths: [
-				{ prefix: join(researchDataRoot(), "dsh-native", "ws"), label: "workspace" },
+				{ prefix: join(runDir, scenarioDir, "ws"), label: "workspace" },
+				{ prefix: runDir, label: "study" },
 				{ prefix: join(researchDataRoot(), "dsh-native"), label: "study" },
 				{ prefix: home, label: "home" },
 			],
-			keepUserTexts: [STUDY_PROMPTS[name]],
+			keepUserTexts:
+				name === "crash-resumed" ? [STUDY_PROMPTS[name], STUDY_PROMPTS["crash-killed"]] : [STUDY_PROMPTS[name]],
 			canaries: [],
 		});
 		const read = readDshLog(readFileSync(join(raw, name, "session.v4.jsonl.zstd")));
 		if (read.header === null) throw new Error(`${name}: no header`);
 		comparison[name] = compare(raw, name, read.events);
 		const clean = sanitiser.sanitiseLog(read.header, read.events);
-		writeFileSync(join(out, `${name}.events.jsonl`), encodeDshJsonl(clean.header, clean.events));
+		const eventsText = encodeDshJsonl(clean.header, clean.events);
+		const canaries = [userInfo().username, home, researchDataRoot(), "You are a coding agent"];
 		const stream = lines(readFileSync(join(raw, name, "stream.ndjson"), "utf8")).map((line) =>
 			sanitiser.sanitiseStreamLine(line),
 		);
-		writeFileSync(join(out, `${name}.stream.ndjson`), `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`);
+		const streamText = `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
+		// Fail the build, not the review: nothing is written for a case that still leaks.
+		for (const [file, text] of [
+			[`${name}.events.jsonl`, eventsText],
+			[`${name}.stream.ndjson`, streamText],
+		] as const) {
+			const leaks = findLeaks(text, canaries);
+			if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
+		}
+		writeFileSync(join(destination, `${name}.events.jsonl`), eventsText);
+		writeFileSync(join(destination, `${name}.stream.ndjson`), streamText);
 	}
-	writeFileSync(join(out, "comparison.json"), `${JSON.stringify(comparison, null, "\t")}\n`);
+	writeFileSync(join(destination, "comparison.json"), `${JSON.stringify(comparison, null, "\t")}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))

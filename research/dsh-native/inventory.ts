@@ -59,7 +59,7 @@ export interface DshVocabularyFile {
 const sha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 
 function git(root: string, ...args: string[]): string {
-	return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+	return execFileSync("git", ["--no-optional-locks", "-C", root, ...args], { encoding: "utf8" }).trim();
 }
 
 export function buildProvenance(root: string): DshProvenance {

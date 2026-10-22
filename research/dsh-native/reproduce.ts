@@ -15,7 +15,7 @@
 // The scenarios that call a model need that server to be running; `stub-retry` needs no model and is the one the opt-in test runs.
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,7 +30,7 @@ export const DISABLED_ROWS = [
 	"otel",
 	"llm-deepseek",
 	"llm-deepseek-account",
-	"deepseek-account-platform",
+	"deepseek-account",
 	"web",
 	"web-search-deepseek",
 	"web-deepseek-api",
@@ -43,12 +43,22 @@ export const DISABLED_ROWS = [
 	"tool-subagent-control",
 	"tool-subagent-list-agents",
 	"tool-subagent",
+	"tool-subagent-fork",
+	"subagent",
+	"subagent-spawn-in-process",
+	"subagent-fork-in-process",
+	// Surfaces that can fetch code, accept connections or reach other servers; the run needs none of them.
+	"plugin-manager",
+	"typert-gateway",
+	"remote-access",
+	"mcp-resources",
 	"tool-workflow",
 	"tool-todo",
 	"tool-goal",
 ] as const;
 
-export type Scenario = "stub-retry" | "tool-read" | "no-key-error" | "crash";
+export const SCENARIOS = ["stub-retry", "tool-read", "no-key-error", "crash"] as const;
+export type Scenario = (typeof SCENARIOS)[number];
 
 export interface ReproduceOptions {
 	dsh: string;
@@ -136,6 +146,9 @@ function sessionFile(home: string): string | null {
 
 /** Run one scenario into `<out>/raw/<scenario>/`. Returns the process outcome. */
 export async function reproduce(options: ReproduceOptions): Promise<{ code: number | null; dir: string }> {
+	// The scenario names a directory that is deleted below: it must be one of ours, never a path.
+	if (!(SCENARIOS as readonly string[]).includes(options.scenario))
+		throw new Error(`unknown scenario ${JSON.stringify(options.scenario)}`);
 	const stub = options.scenario === "stub-retry";
 	const base = join(options.out, options.scenario);
 	const home = join(base, "home");
@@ -190,12 +203,28 @@ export async function reproduce(options: ReproduceOptions): Promise<{ code: numb
 	writeFileSync(join(dir, "stderr.txt"), result.stderr);
 	const log = sessionFile(home);
 	if (log !== null) cpSync(log, join(dir, "session.v4.jsonl.zstd"));
-	if (options.scenario === "crash" && !killed)
-		throw new Error("the model finished before the kill point; use a longer generation");
+	if (options.scenario === "crash") {
+		if (!killed) throw new Error("the model finished before the kill point; use a longer generation");
+		// Resume the killed session in a second process: the upstream recovery path, observed from outside.
+		const sessionId = (JSON.parse(result.stdout.split("\n")[0] ?? "{}") as { sessionId?: string }).sessionId;
+		if (sessionId === undefined) throw new Error("the killed run reported no session id");
+		const resumedDir = join(options.out, "raw", "crash-resumed");
+		mkdirSync(resumedDir, { recursive: true });
+		const after = await wait(
+			runDsh(
+				options,
+				["--profile", "headless", "--json", "--session-id", sessionId, "Reply with the single word: ok"],
+				{ ...env, DSH_OBS_OUT: join(resumedDir, "observer.ndjson") },
+				workspace,
+			),
+		);
+		writeFileSync(join(resumedDir, "stream.ndjson"), after.stdout);
+		writeFileSync(join(resumedDir, "stderr.txt"), after.stderr);
+		const resumedLog = sessionFile(home);
+		if (resumedLog !== null) cpSync(resumedLog, join(resumedDir, "session.v4.jsonl.zstd"));
+	}
 	return { code: result.code, dir };
 }
-
-import { readFileSync } from "node:fs";
 
 function readFileSyncSafe(path: string): string {
 	return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -210,7 +239,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	const out = arg("out");
 	if (dsh === undefined || out === undefined)
 		throw new Error("usage: reproduce.ts --dsh <checkout> --out <dir> [--scenario ...]");
-	const scenario = (arg("scenario") ?? "stub-retry") as Scenario;
+	const requested = arg("scenario") ?? "stub-retry";
+	if (!(SCENARIOS as readonly string[]).includes(requested))
+		throw new Error(`--scenario must be one of ${SCENARIOS.join(", ")}`);
+	const scenario = requested as Scenario;
 	const modelUrl = arg("model-url");
 	const result = await reproduce({ dsh, out, scenario, ...(modelUrl === undefined ? {} : { modelUrl }) });
 	process.stdout.write(`${scenario}: exit ${result.code}, captures in ${result.dir}\n`);

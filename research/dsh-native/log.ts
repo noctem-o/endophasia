@@ -58,6 +58,8 @@ export interface DshLogRead {
 const ZSTD_MAGIC = 0xfd2fb528;
 const SKIPPABLE_MASK = 0xfffffff0;
 const SKIPPABLE_MAGIC = 0x184d2a50;
+/** The most decoded bytes a read will hold. A hostile frame can declare an enormous output from a few KiB. */
+export const DSH_LOG_MAX_DECODED_BYTES = 64 * 1024 * 1024;
 
 /**
  * Walk the frame structure of a Zstandard stream WITHOUT decompressing it (RFC 8878 section 3): magic, frame header descriptor,
@@ -72,19 +74,16 @@ export function scanZstdFrames(bytes: Uint8Array): { frames: { start: number; en
 		const start = at;
 		if (bytes.length - at < 4) return { frames, trailing: bytes.length - start };
 		const magic = view.getUint32(at, true);
-		if ((magic & SKIPPABLE_MASK) >>> 0 === SKIPPABLE_MAGIC) {
-			if (bytes.length - at < 8) return { frames, trailing: bytes.length - start };
-			const end = at + 8 + view.getUint32(at + 4, true);
-			if (end > bytes.length) return { frames, trailing: bytes.length - start };
-			frames.push({ start, end });
-			at = end;
-			continue;
-		}
+		// DSH's own decoder rejects skippable frames (zstd.ts); a log containing one was not written by DSH.
+		if ((magic & SKIPPABLE_MASK) >>> 0 === SKIPPABLE_MAGIC)
+			throw new RangeError(`byte ${at} is a skippable frame, which DSH does not write`);
 		if (magic !== ZSTD_MAGIC) throw new RangeError(`byte ${at} is not a Zstandard frame`);
 		at += 4;
 		if (at >= bytes.length) return { frames, trailing: bytes.length - start };
 		const descriptor = bytes[at]!;
 		at += 1;
+		// Bit 3 is reserved and must be zero (RFC 8878 section 3.1.1.1.1).
+		if ((descriptor & 0x08) !== 0) throw new RangeError(`byte ${at - 1} sets a reserved frame header bit`);
 		const contentSizeFlag = descriptor >> 6;
 		const singleSegment = (descriptor & 0x20) !== 0;
 		const checksum = (descriptor & 0x04) !== 0;
@@ -113,7 +112,7 @@ export function scanZstdFrames(bytes: Uint8Array): { frames: { start: number; en
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-function parseRows(text: string, problems: string[]): { rows: unknown[]; trailing: number } {
+function parseRows(text: string, problems: string[]): { rows: unknown[]; unterminated: string } {
 	const rows: unknown[] = [];
 	const lines = text.split("\n");
 	// A final element without a newline after it is an incomplete row.
@@ -127,7 +126,7 @@ function parseRows(text: string, problems: string[]): { rows: unknown[]; trailin
 			break;
 		}
 	}
-	return { rows, trailing: Buffer.byteLength(unterminated) };
+	return { rows, unterminated };
 }
 
 /**
@@ -135,13 +134,14 @@ function parseRows(text: string, problems: string[]): { rows: unknown[]; trailin
  * Complete rows before a torn tail are returned; a torn tail is reported, not repaired. Throws nothing for damaged input: damage
  * is a `problems` entry or an `unreadable` tail, because "the log could not be read to the end" is a finding, not a crash.
  */
-export function readDshLog(bytes: Uint8Array): DshLogRead {
+export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECODED_BYTES): DshLogRead {
 	const problems: string[] = [];
-	const zstd = bytes.length >= 4 && new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) === ZSTD_MAGIC;
+	const magic = bytes.length >= 4 ? new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) : 0;
+	// A skippable-frame magic is a Zstandard stream too (the scanner then refuses it), never raw text.
+	const zstd = magic === ZSTD_MAGIC || (magic & SKIPPABLE_MASK) >>> 0 === SKIPPABLE_MAGIC;
 	let text = "";
 	let frames = 0;
 	let tail: DshTail = { kind: "clean" };
-	let trailingRow = 0;
 	if (zstd) {
 		let scan: ReturnType<typeof scanZstdFrames>;
 		try {
@@ -158,18 +158,32 @@ export function readDshLog(bytes: Uint8Array): DshLogRead {
 		}
 		frames = scan.frames.length;
 		const parts: string[] = [];
+		let decoded = 0;
 		for (const { start, end } of scan.frames) {
 			try {
-				parts.push(zstdDecompressSync(bytes.subarray(start, end)).toString("utf8"));
+				// The bound is per read, not per frame: each frame may only use what the earlier ones left.
+				const part = zstdDecompressSync(bytes.subarray(start, end), {
+					maxOutputLength: Math.max(1, maxDecodedBytes - decoded),
+				});
+				decoded += part.length;
+				parts.push(part.toString("utf8"));
 			} catch (error) {
 				// A complete frame that does not decode (checksum, structure) is corruption, not a torn tail.
-				problems.push(`a complete frame at byte ${start} failed to decode: ${(error as Error).message}`);
+				const over = (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE";
+				problems.push(
+					over
+						? `decoded output would exceed ${maxDecodedBytes} bytes (frame at byte ${start})`
+						: `a complete frame at byte ${start} failed to decode: ${(error as Error).message}`,
+				);
 				return {
 					physical: "zstd",
 					frames: parts.length,
 					header: null,
 					events: [],
-					tail: { kind: "unreadable", reason: "a complete frame failed to decode" },
+					tail: {
+						kind: "unreadable",
+						reason: over ? "the decoded size bound was exceeded" : "a complete frame failed to decode",
+					},
 					problems,
 				};
 			}
@@ -183,8 +197,14 @@ export function readDshLog(bytes: Uint8Array): DshLogRead {
 		text = Buffer.from(bytes).toString("utf8");
 	}
 	const parsed = parseRows(text, problems);
-	trailingRow = parsed.trailing;
-	if (!zstd && trailingRow > 0) tail = { kind: "torn-row", trailingBytes: trailingRow };
+	if (parsed.unterminated !== "") {
+		// A row with no newline after it. In a raw log that is a cut-off write; in a zstd log a COMPLETE frame ended inside a row,
+		// which DSH's writer never produces. Either way the complete rows before it are kept and the cut is reported.
+		const trailing = zstd
+			? Buffer.byteLength(parsed.unterminated)
+			: bytes.length - (Buffer.from(bytes).lastIndexOf(0x0a) + 1);
+		if (tail.kind === "clean") tail = { kind: "torn-row", trailingBytes: trailing };
+	}
 	const [first, ...rest] = parsed.rows;
 	const header = isRecord(first) && first.type === "session" ? (first as unknown as DshSessionHeader) : null;
 	if (parsed.rows.length > 0 && header === null) problems.push("the first row is not a session header");
@@ -214,6 +234,8 @@ export interface DshFinding {
 }
 
 /** DSH event types whose events produce model messages (and so carry `surfaceOp`). packages/core/session/src/types.ts. */
+const PLUGIN_RECORD = /^plugin:[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*$/;
+
 const SURFACE_TYPES = new Set([
 	"system/message",
 	"developer/message",
@@ -280,7 +302,9 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 		const data = isRecord(event.data) ? event.data : {};
 		summary.byType[event.type] = (summary.byType[event.type] ?? 0) + 1;
 		if (event.seq !== index) add("seq-not-contiguous", "error", `expected ${index}, found ${event.seq}`, event.seq);
-		if (!known.has(event.type) && !event.type.startsWith("plugin:")) {
+		// A `plugin:` record is skippable only when it is BOTH well formed and stamped ignorable (DSH's envelope rule).
+		const pluginRecord = PLUGIN_RECORD.test(event.type) && event.ignorable === true;
+		if (!known.has(event.type) && !pluginRecord) {
 			if (event.ignorable === true)
 				add("unknown-ignorable-type", "info", `${event.type} is unknown and marked ignorable`, event.seq);
 			else
@@ -317,12 +341,25 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 				if (entry === undefined)
 					add("turn-end-without-start", "error", `turn ${turn} ended without a start`, event.seq);
 				else {
+					if (entry.end !== null)
+						add("turn-ended-twice", "error", `turn ${turn} has more than one turn/end`, event.seq);
 					entry.end = reason;
 					// `interrupted` and `forked` are written by DSH after the fact (a resumed crash, a fork seed), not by the live turn.
 					entry.endSynthesised = reason === "interrupted" || reason === "forked";
 				}
 				const at = openTurns.indexOf(turn);
 				if (at >= 0) openTurns.splice(at, 1);
+				for (const key of [...openSteps]) {
+					if (key.startsWith(`${turn}:`)) {
+						add(
+							"step-open-at-turn-end",
+							"warning",
+							`step ${key} was still open when turn ${turn} ended`,
+							event.seq,
+						);
+						openSteps.delete(key);
+					}
+				}
 				if (reason === "interrupted" || reason === "forked")
 					add(
 						"closer-synthesised-by-dsh",

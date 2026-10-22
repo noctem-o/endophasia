@@ -277,6 +277,15 @@ export class Page {
 		this.seen = seen;
 	}
 
+	/** Change the viewport of this tab, as a window resize does. */
+	async resize(width: number, height: number): Promise<void> {
+		await this.browser.send(
+			"Emulation.setDeviceMetricsOverride",
+			{ width, height, deviceScaleFactor: 1, mobile: false },
+			this.sessionId,
+		);
+	}
+
 	/** Close the tab, so a long suite does not hold every page it opened. */
 	async close(): Promise<void> {
 		await this.browser.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);

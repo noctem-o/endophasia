@@ -1710,6 +1710,72 @@ suite("finding the selected event in a long session, and reading the inspector",
 		expect(await count(aliased, `#inspector button.copy[aria-label="Copy session id"]`)).toBe(1);
 	});
 
+	it("in the narrow dialog the actions are reachable: the note that filters hide the open event carries Clear, and Show in table closes the dialog and shows the row", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		await page.resize(420, 800); // the window is made narrow with the event open and hidden: the table is now behind a modal dialog
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		const reads = snapshotRequests(page);
+		expect(await text(page, "dialog#inspector [data-testid=event-detail]")).toMatch(
+			/hide this event from the table \(the text filter\)/,
+		);
+		await page.eval(`document.querySelector("dialog#inspector [data-focus=inspector-clear]").focus()`);
+		await page.press("Enter");
+		await page.waitFor(`!document.querySelector("dialog#inspector [data-focus=inspector-clear]")`, 3000);
+		expect(await page.eval<boolean>(`document.querySelector("dialog#inspector").open`)).toBe(true); // still open, selection intact
+		expect(await text(page, "dialog#inspector")).toContain("Event at position 5");
+		await page.click("dialog#inspector [data-focus=inspector-show]");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(
+			await page.eval(`document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq`),
+		).toBe("5");
+		expect(
+			await page.eval<boolean>(
+				`(() => { const r = document.querySelector("#timeline tr[data-seq='5']").getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`,
+			),
+		).toBe(true);
+		expect(snapshotRequests(page)).toBe(reads);
+	});
+
+	it("never moves the table when the selection bar changes state, whatever the width and however many filters hide the event", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		for (const [width, height] of [
+			[1440, 900],
+			[1100, 800],
+		] as const) {
+			const page = await open(`${server.baseUrl}/`, width, height);
+			// What the bar itself adds to the page: its height, and where it sits against the window line above it. (The filter row above it can wrap when a
+			// filter is set; that is the filters' doing, not the bar's.)
+			const geometry = () =>
+				page.eval<[number, number]>(
+					`(() => { const b = document.querySelector("[data-testid=selection-bar]"); return [b.getBoundingClientRect().height, b.getBoundingClientRect().top - document.querySelector("#timeline .window-line").getBoundingClientRect().top]; })()`,
+				);
+			page.eval<[number, number]>(
+				`[document.querySelector("[data-testid=selection-bar]").getBoundingClientRect().height, document.querySelector("[data-testid=selection-bar]").nextElementSibling.getBoundingClientRect().top]`,
+			);
+			await page.eval("document.fonts.ready.then(() => true)"); // a late font swap is not the bar's doing
+			const none = await geometry();
+			await page.click("#timeline tr[data-seq='5'] button.seq");
+			const shown = await geometry();
+			// Every filter at once, so the sentence is as long as it gets.
+			await page.eval(
+				`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+			);
+			await page.click("#timeline .check input");
+			await page.click("#timeline button.chip.cat-control");
+			await page.eval(
+				`(() => { const s = document.querySelector("#timeline select[aria-label^='Session']"); if (s) { s.value = s.options[1].value; s.dispatchEvent(new Event("change", { bubbles: true })); } })()`,
+			);
+			const hidden = await geometry();
+			expect(shown, `${width}px`).toEqual(none);
+			expect(hidden, `${width}px`).toEqual(none);
+		}
+	});
+
 	it("keeps a fact's label and value side by side in the left rail at the common laptop widths (stacking is only for a genuinely narrow panel)", async () => {
 		const server = await serve(populated(), { ui });
 		for (const [width, height] of [

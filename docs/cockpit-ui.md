@@ -53,7 +53,7 @@ overview, and three columns of panels (two columns below 1360 px; one column and
   open event, the bar says so and names them, and the same button, now **Clear filters that hide it**, clears only the filters that exclude
   it (a filter that did not hide it keeps its meaning); the selection is never changed by a filter. An event outside the loaded window is not a
   case: a read that moves the window closes a selection the new window does not hold, and says so once, without claiming whether the event is
-  still in the log. The pager says beside its buttons why a move is not available, and the Timeline panel says when the latest read failed.
+  still in the log. The bar's height is fixed (its sentence is held to two lines, with the whole of it in its title and in its button's description), so no state of it moves the table. Below 1024 px the table is behind the modal inspector, so the actions move into the dialog: **Show in table** closes it (which clears the selection, as closing always does) and shows and focuses the row, and the note that filters hide the open event carries **Clear filters that hide it**. The pager says beside its buttons why a move is not available, and the Timeline panel says when the latest read failed.
 - **Timeline** (centre): the event log's window in **storage order**. Columns: position, producer clock (the date is shown once above
   the rows it covers), category, kind and producer, how the fields are known, and usage and flags. Filters (text over ids, kind, producer,
   session and presented text; category chips; flagged only; session) act on the loaded window only and say "k of n in this window".

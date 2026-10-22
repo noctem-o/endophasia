@@ -67,6 +67,8 @@
 
 html {
 	background: var(--surface-0);
+	/* The page's scrollbar appearing (an inspector taller than the screen) must not reflow the columns: that would move the table under the pointer. */
+	scrollbar-gutter: stable;
 }
 
 body {
@@ -1041,9 +1043,13 @@ button.seq {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	min-height: 30px;
+	/* Fixed, not a minimum: the text is held to two lines and the button never wraps, so no state of the bar can move the table. The whole
+	   sentence is in the element's title and in the description of its button. */
+	height: 44px;
+	overflow: hidden;
 	margin: 4px 0;
 	font-size: 12px;
+	line-height: 1.5;
 	color: var(--fg-2);
 }
 
@@ -1061,6 +1067,14 @@ button.seq {
 	flex: 1;
 	min-width: 0;
 	overflow-wrap: anywhere;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.small-btn {
+	flex: none;
 }
 
 .stale-chip {

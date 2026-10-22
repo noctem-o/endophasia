@@ -146,14 +146,16 @@ function SelectionBar({
 	onShow(): void;
 	onClear(): void;
 }): ReactElement {
+	const sentence =
+		status.kind === "none"
+			? "No event selected."
+			: status.kind === "shown"
+				? `Selected: position ${status.sequence.toLocaleString("en-US")}.`
+				: `Position ${status.sequence.toLocaleString("en-US")} is open in the inspector and hidden by ${status.clearing}.`;
 	return (
 		<div className={`selection-bar selection-${status.kind}`} data-testid="selection-bar">
-			<span className="selection-text" id="selection-text" aria-live="polite">
-				{status.kind === "none"
-					? "No event selected."
-					: status.kind === "shown"
-						? `Selected: position ${status.sequence.toLocaleString("en-US")}.`
-						: `Position ${status.sequence.toLocaleString("en-US")} is open in the inspector and hidden by ${status.clearing}.`}
+			<span className="selection-text" id="selection-text" aria-live="polite" title={sentence}>
+				{sentence}
 			</span>
 			{status.kind === "none" ? null : (
 				<button
@@ -175,7 +177,7 @@ function SelectionBar({
  * does not move). The page is moved only if the row is still off the screen after that, and focus goes to the row's own button. It reads
  * nothing: the row is one the window already holds.
  */
-function revealRow(scroller: HTMLElement, sequence: number): void {
+export function revealRow(scroller: HTMLElement, sequence: number): void {
 	const row = scroller.querySelector<HTMLElement>(`tr[data-seq="${sequence}"]`);
 	if (row === null) return;
 	const head = scroller.querySelector("thead")?.getBoundingClientRect().height ?? 0;

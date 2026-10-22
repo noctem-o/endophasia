@@ -14,12 +14,38 @@ const Block = ({ title, children }: { title: string; children: ReactNode }): Rea
 	</section>
 );
 
-function EventView({ detail, hidden }: { detail: EventDetail; hidden: boolean }): ReactElement {
+function EventView({
+	detail,
+	hidden,
+	clearing,
+	onClearHidden,
+}: {
+	detail: EventDetail;
+	hidden: boolean;
+	clearing: string;
+	/** Given only where the table is out of reach (the narrow dialog): the one action that clears the filters hiding this event. */
+	onClearHidden?: () => void;
+}): ReactElement {
 	return (
 		<div className="detail" data-testid="event-detail">
 			<h3 className="detail-title">{detail.title}</h3>
 			{hidden ? (
-				<Note tone="info">The filters now set hide this event from the table. It is still in the window.</Note>
+				<Note tone="info">
+					The filters now set hide this event from the table ({clearing}). It is still in the window.
+					{onClearHidden === undefined ? null : (
+						<>
+							{" "}
+							<button
+								type="button"
+								className="btn small-btn"
+								data-focus="inspector-clear"
+								onClick={onClearHidden}
+							>
+								Clear filters that hide it
+							</button>
+						</>
+					)}
+				</Note>
 			) : null}
 			<FactsView facts={detail.facts} label="Recorded identity" />
 			<p className="dim small">
@@ -247,9 +273,11 @@ const LEGEND = legendModel();
 export function InspectorBody({
 	model,
 	clearedNote,
+	onClearHidden,
 }: {
 	model: InspectorModel;
 	clearedNote: string | null;
+	onClearHidden?: () => void;
 }): ReactElement {
 	switch (model.kind) {
 		case "legend":
@@ -266,7 +294,12 @@ export function InspectorBody({
 		case "event":
 			return (
 				<>
-					<EventView detail={model.detail} hidden={model.hiddenByFilters} />
+					<EventView
+						detail={model.detail}
+						hidden={model.hiddenByFilters}
+						clearing={model.hiddenClearing}
+						onClearHidden={onClearHidden}
+					/>
 					<ReadingGuide />
 				</>
 			);

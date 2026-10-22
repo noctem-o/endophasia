@@ -12,13 +12,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
-import { researchDataRoot } from "../research/data.ts";
-import {
-	buildProvenance,
-	buildVocabulary,
-	type DshProvenance,
-	type DshVocabularyFile,
-} from "../research/dsh-native/inventory.ts";
 import {
 	checkDshLog,
 	DSH_LOG_MAX_DECODED_BYTES,
@@ -28,7 +21,14 @@ import {
 	dshLogAcceptable,
 	readDshLog,
 	scanZstdFrames,
-} from "../research/dsh-native/log.ts";
+} from "../adapters/dsh-native/log.ts";
+import { researchDataRoot } from "../research/data.ts";
+import {
+	buildProvenance,
+	buildVocabulary,
+	type DshProvenance,
+	type DshVocabularyFile,
+} from "../research/dsh-native/inventory.ts";
 import { reproduce, SCENARIOS } from "../research/dsh-native/reproduce.ts";
 import { FIXTURE_EPOCH, findLeaks, Sanitiser } from "../research/dsh-native/sanitise.ts";
 import {
@@ -450,7 +450,7 @@ describe("SYNTHETIC: a cold reader's behaviour on damaged or unfamiliar bytes", 
 
 describe("the study utility is read-only by construction", () => {
 	it("imports nothing but node:zlib, opens no file, spawns nothing and holds no write path", () => {
-		const source = readFileSync(join(STUDY, "log.ts"), "utf8");
+		const source = readFileSync(join(STUDY, "..", "..", "adapters", "dsh-native", "log.ts"), "utf8");
 		const code = source.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
 		expect([...code.matchAll(/^import [^;]*? from "([^"]+)";/gm)].map((match) => match[1])).toEqual(["node:zlib"]);
 		expect(code).not.toMatch(
@@ -466,7 +466,7 @@ describe("the study utility is read-only by construction", () => {
 	});
 
 	it("keeps harness-neutral code free of DSH: nothing outside research/ and the study's tests names it", () => {
-		for (const dir of ["protocol", "runtime", "storage", "cockpit", "cockpit-http", "studio-ui/src", "adapters"]) {
+		for (const dir of ["protocol", "runtime", "storage", "cockpit", "cockpit-http", "studio-ui/src"]) {
 			const root = fileURLToPath(new URL(`../${dir}/`, import.meta.url));
 			const walk = (path: string): string[] =>
 				readdirSync(path, { withFileTypes: true }).flatMap((entry) =>

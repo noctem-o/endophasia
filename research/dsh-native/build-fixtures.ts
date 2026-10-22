@@ -11,8 +11,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { encodeDshJsonl, readDshLog } from "../../adapters/dsh-native/log.ts";
 import { researchDataRoot } from "../data.ts";
-import { encodeDshJsonl, readDshLog } from "./log.ts";
 import { findLeaks, Sanitiser } from "./sanitise.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));

@@ -98,8 +98,8 @@ These are valid directions, but they should **not** displace the delivery sequen
   it when the published baseline materially moves and at least one useful real agent negotiates v2 without relying on a
   development-only path. Keep ACP v1 working beside it.
 - **DeepSeek Harness native attachment:** the study ([docs/dsh-native-attachment.md](dsh-native-attachment.md)) chose a read-only cold
-  importer of DSH's persisted Session log (format 4) over a live Cordis observer or the SDK; the importer is the next DSH step
-  and is not started. ACP stays the interoperability path.
+  importer of DSH's persisted Session log (format 4) over a live Cordis observer or the SDK; the importer is implemented
+  ([docs/dsh-native-importer.md](dsh-native-importer.md)) but not wired into the CLI or Studio. ACP stays the interoperability path.
 - **ACP v1 unstable per-turn usage:** real OMP sends unstable `PromptResponse.usage`, but consuming it still needs an
   explicit source-stability and loss-accounting decision. It is not required for the first alpha.
 - **Windows descendant containment:** this belongs in the shared `ProcessGroupV0`, not an ACP adapter. It should land

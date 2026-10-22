@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- `adapters/dsh-native/`: a read-only cold importer of DeepSeek Harness Session format 4 logs into the event store, with an idempotent,
+  verified, append-only re-import, privacy by keyed digests, qualified lifecycle and tool mapping (a DSH tool call is a request, never
+  `tool.started`; DSH-written crash closers are never `lifecycle.interrupted`), a projector to the existing `endo.trajectory.v1`, and
+  `endo.dsh-native-loss-accounting.v0`. See [docs/dsh-native-importer.md](docs/dsh-native-importer.md). It does not drive, resume or
+  attach to DSH, and is not wired into the CLI.
 - A study of attaching to DeepSeek Harness natively (docs/dsh-native-attachment.md, research/dsh-native/): the audited observation
   surfaces, a native-versus-ACP fidelity matrix over all 62 persisted event types, sanitised fixtures from a real runtime (tool call,
   failed turn, retry, SIGKILL crash and resume), a read-only log inspector with deterministic tests, and the architecture decision for

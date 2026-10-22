@@ -69,7 +69,7 @@ function InspectorDialog({
 							type="button"
 							className="btn"
 							data-focus="inspector-show"
-							title="Closes the inspector (which clears the selection) and shows the row in the table"
+							title="Closes the inspector (which clears the selection) and shows the row in the table, clearing the filters that hide it if any do"
 							onClick={onShowInTable}
 						>
 							Show in table
@@ -270,6 +270,13 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 									state.selection?.kind === "event"
 										? () => {
 												revealOnClose.current = true;
+												// A row the filters hide cannot be shown: the filters that hide it are cleared with the same action, so the
+												// event the reader was inspecting is not lost to a reveal that finds nothing.
+												if (hiddenSelection.kind === "hidden")
+													dispatch({
+														type: "set-filters",
+														filters: filtersWithout(state.filters, hiddenSelection.reasons),
+													});
 												dispatch({ type: "close-inspector" });
 											}
 										: undefined

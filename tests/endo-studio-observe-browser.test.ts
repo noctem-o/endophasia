@@ -1741,6 +1741,42 @@ suite("finding the selected event in a long session, and reading the inspector",
 		expect(snapshotRequests(page)).toBe(reads);
 	});
 
+	it("in the dialog, Show in table with the row hidden by filters clears the filters that hide it and shows the row, so the event is not lost", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		await page.resize(420, 800);
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		await page.click("dialog#inspector [data-focus=inspector-show]"); // the filter still hides the row
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(await page.eval<string>(`document.querySelector("#timeline-search").value`)).toBe("");
+		expect(
+			await page.eval(`document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq`),
+		).toBe("5");
+	});
+
+	it("shows and focuses the row's button when the table is scrolled sideways (a narrow table is wider than its scroller)", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`, 420, 800);
+		await page.eval(`document.querySelector("#timeline .table-scroll").scrollLeft = 300`);
+		expect(await page.eval<number>(`document.querySelector("#timeline .table-scroll").scrollLeft`)).toBeGreaterThan(
+			100,
+		);
+		await page.eval(`document.querySelector("#timeline tr[data-seq='5'] button.seq").click()`); // a script click: the button is offscreen, as it may be to a keyboard user
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		await page.click("dialog#inspector [data-focus=inspector-show]");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		const visible = await page.eval<boolean>(`(() => {
+			const box = document.querySelector("#timeline .table-scroll").getBoundingClientRect();
+			const b = document.activeElement.getBoundingClientRect();
+			return document.activeElement.classList.contains("seq") && b.left >= box.left && b.right <= box.right;
+		})()`);
+		expect(visible).toBe(true);
+	});
+
 	it("never moves the table when the selection bar changes state, whatever the width and however many filters hide the event", async () => {
 		const server = await serve(populated(), { ui, readBudget: budget });
 		for (const [width, height] of [

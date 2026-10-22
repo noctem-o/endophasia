@@ -188,7 +188,14 @@ export function revealRow(scroller: HTMLElement, sequence: number): void {
 	const after = row.getBoundingClientRect();
 	if (after.top < 0) window.scrollBy(0, after.top - 8);
 	else if (after.bottom > window.innerHeight) window.scrollBy(0, after.bottom - window.innerHeight + 8);
-	row.querySelector<HTMLElement>("button.seq")?.focus({ preventScroll: true });
+	// The row's button is in the first column: a table scrolled sideways (it is at least 640 px wide) is brought back far enough to show it.
+	const button = row.querySelector<HTMLElement>("button.seq");
+	if (button !== null) {
+		const edge = button.getBoundingClientRect();
+		if (edge.left < box.left) scroller.scrollLeft -= box.left - edge.left + 4;
+		else if (edge.right > box.right) scroller.scrollLeft += edge.right - box.right + 4;
+		button.focus({ preventScroll: true });
+	}
 }
 
 export function EventTable({

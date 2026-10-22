@@ -104,9 +104,12 @@ never recorded is shown as not recorded, never as zero. The page does not poll, 
 run or a store: only ones that change what it shows. It does not start, attach to or steer an agent, and it does not write to the
 store it reads.
 
-Studio is meant to grow into more modes. **DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view do not exist yet**;
-they are future work. The shell names Compare, Capabilities and Evolve as workspaces marked "later"; each says what it would need and shows
-nothing. Details: [docs/studio.md](docs/studio.md) and the frontend's [design reference](docs/cockpit-ui.md).
+Studio is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
+Studio workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
+within a possible COGNITION workspace, not separate top-level tabs. Further profiles could be added without creating
+new workspaces. The current shell names Compare, Capabilities and Evolve as workspaces marked "later"; each says what it
+would need and shows nothing. Details: [docs/studio.md](docs/studio.md) and the frontend's
+[design reference](docs/cockpit-ui.md).
 
 ## Quick start
 
@@ -163,7 +166,7 @@ Maturity is stated by the **evidence** behind each row, because that is what dif
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| Studio modes beyond the first page; model-internal observation; WebGPU rendering; WORK and DREAM policies; an EVOLVE operator interface; forkable checkpoints | none | Not built |
+| Studio workspaces beyond the first page (including a proposed COGNITION workspace); model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:
 
@@ -224,18 +227,35 @@ depended on it stops counting and says so. How that works, with the Pi conforman
 
 The long-term ambition is a reproducible way to study coding agents as systems: what the harness and the model contribute,
 how to observe both without confusing measurement with interpretation, and how to change them under explicit, evidence-backed
-gates. These six words name the directions. Where each stands today:
+gates. These directions name distinct responsibilities, not a fixed set of Studio tabs. Where each stands today:
 
 <a id="roadmap"></a>
 
-| Word | What it names | Today |
+| Direction | What it names | Today |
 | :--- | :--- | :--- |
 | **DEVELOP** | The current session: what the agent is doing, what the runtime reported, whether to intervene | Observation and authorised steering from the CLI. Studio's read-only page shows recorded sessions but is not a DEVELOP mode |
 | **OBSERVE** | The measurement surface: what was recorded and what can be derived reproducibly | Harness level: implemented. Model-internal signals: design only ([docs/observe.md](docs/observe.md)) |
-| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Replay, trajectory comparison and experiments implemented; causal interventions at a checkpoint need forkable checkpoints, not built |
+| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Replay, trajectory comparison and experiments implemented; no dedicated Studio workspace. Causal interventions at a checkpoint need forkable checkpoints, not built |
 | **EVOLVE** | Explicit candidate, evaluation, admission and promotion, never silent self-modification | Records and policies as libraries; no operator interface ([docs/evolve.md](docs/evolve.md)) |
-| **WORK** | A cognition policy: one bounded main trajectory | Planned |
-| **DREAM** | A cognition policy: wider search with counterfactual branches | Planned |
+| **COGNITION** | A possible Studio workspace for declared cognition policies and externally represented plans, hypotheses and branches | Not built. **WORK** (one bounded main trajectory) and **DREAM** (wider search with counterfactual branches) are proposed profiles, not separate tabs ([docs/vision.md](docs/vision.md#work-and-dream)) |
+
+COGNITION would accommodate additional or custom profiles as they are developed, rather than hard-code navigation around
+WORK and DREAM. A declared profile would describe intended policy; recorded actions and outcomes would establish what
+actually happened. Model-internal measurements would remain capability-gated observations, not a claim that Studio can
+see private reasoning. No profile selector, policy compiler or cognition workspace exists today.
+
+### Exploratory horizon: physical-world systems (not implemented)
+
+Coding agents are the current research scope, but these evidence and authority boundaries could eventually be useful
+when agents work with physical systems. A possible application-specific **HARDWARE** workspace might bring together
+electronic and mechanical designs, firmware changes, sensor-network events, instrument measurements and robotics
+experiments. It would distinguish proposals from authorised operations, simulations from real measurements, and
+reported actions from observed physical effects.
+
+External projects such as [Backplane](https://github.com/i2cjak/Backplane) (agentic KiCad/FreeCAD development) and
+[LeRobot](https://github.com/huggingface/lerobot) (robotics datasets and policies) are examples of potential research
+interfaces, **not** supported integrations or dependencies. No hardware workspace, device adapter, robot control or
+physical-world evaluation capability is implemented or committed to the delivery roadmap.
 
 The chain for any adaptation loop is longer than "the score went up", and every link is its own record:
 grader evidence is not reward, reward is not selection, selection is not promotion, and promotion is not authority.

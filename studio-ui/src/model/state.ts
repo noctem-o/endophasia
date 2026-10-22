@@ -107,7 +107,8 @@ const malformed = (state: AppState, reason: string, at: Date): AppState => ({
 
 function afterSnapshot(state: AppState, snapshot: EndoCockpitSnapshotV0): AppState {
 	let { attachment, selection, filters } = state;
-	let clearedNote: string | null = state.clearedNote;
+	// What a read says about the open selection is recomputed by every successful read: a note from an earlier read is not carried over.
+	let clearedNote: string | null = null;
 	const attachments = snapshot.runtimes.map((r) => r.identity.source.attachment);
 	if (attachment === null || !attachments.includes(attachment)) {
 		const fallback = attachments[0] ?? null;
@@ -120,9 +121,16 @@ function afterSnapshot(state: AppState, snapshot: EndoCockpitSnapshotV0): AppSta
 	}
 	if (selection?.kind === "event") {
 		const open = selection;
-		if (!snapshot.timeline.entries.some((e) => e.storageSequence === open.sequence && e.eventId === open.eventId)) {
+		const there = snapshot.timeline.entries.find((e) => e.storageSequence === open.sequence);
+		if (there === undefined || there.eventId !== open.eventId) {
 			selection = null;
-			clearedNote = `The event at position ${open.sequence.toLocaleString("en-US")} is not in the window now loaded, so it is closed. It is still in the log.`;
+			const position = open.sequence.toLocaleString("en-US");
+			// Only what this snapshot establishes: it holds no such event in its window, or holds a different one at that position. It does not
+			// say whether the closed event exists anywhere else.
+			clearedNote =
+				there === undefined
+					? `The event at position ${position} is not in the window now loaded, so it is closed.`
+					: `The window now loaded holds a different event at position ${position} than the one that was open, so it is closed.`;
 		}
 	}
 	if (filters.session !== null && !snapshot.timeline.sessions.some((s) => s.sessionId === filters.session))

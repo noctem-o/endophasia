@@ -28,7 +28,7 @@ export default function Unavailable({ workspace, label }: { workspace: string; l
 			<p>{text?.what}</p>
 			<p>{text?.needs}</p>
 			<p className="dim">
-				Nothing on this page was read from a store, and nothing here is a placeholder for a record.
+				This workspace shows nothing read from a store, and nothing in it is a placeholder for a record.
 			</p>
 		</section>
 	);

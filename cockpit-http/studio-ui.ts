@@ -48,7 +48,7 @@ type Token = { k: "str"; v: string } | { k: "word"; v: string } | { k: "punct"; 
  * string is a string, not an import. A script it cannot make sense of yields what it could, and the digest in the manifest, not this
  * scan, is what vouches for the bytes.
  */
-function* tokens(source: string): Generator<Token> {
+function* tokens(source: string, ambiguousIsRegex: boolean): Generator<Token> {
 	const length = source.length;
 	// An open template literal's `${` expressions: each entry is the brace depth that closes it.
 	const templates: number[] = [];
@@ -92,10 +92,14 @@ function* tokens(source: string): Generator<Token> {
 			yield emit({ k: "str", v: "`" });
 		} else if (c === "/") {
 			const before = seen.last;
+			// After a word or a number a slash divides; after most punctuation it opens a regular expression; after `)`, `]`, `}` and a
+			// `+` or `-` (which may end a postfix operator) it may do either, and the caller reads the script once each way.
+			const ambiguous = before !== null && before.k === "punct" && [")", "]", "}", "+", "-"].includes(before.v);
 			const regexAllowed =
 				before === null ||
-				(before.k === "punct" && ![")", "]", "}"].includes(before.v)) ||
-				(before.k === "word" && REGEX_AFTER_WORD.has(before.v));
+				(before.k === "punct" && !ambiguous) ||
+				(before.k === "word" && REGEX_AFTER_WORD.has(before.v)) ||
+				(ambiguous && ambiguousIsRegex);
 			if (!regexAllowed) {
 				yield emit({ k: "punct", v: "/" });
 				at += 1;
@@ -140,21 +144,26 @@ function* tokens(source: string): Generator<Token> {
  * which is never a file beside the page, so it is refused like any other reference elsewhere.
  */
 export function moduleSpecifiers(source: string): string[] {
-	const found: string[] = [];
-	const stream = [...tokens(source)];
-	for (let index = 0; index < stream.length; index += 1) {
-		const token = stream[index]!;
-		const next = stream[index + 1];
-		const before = stream[index - 1];
-		if (token.k !== "word" || (before?.k === "punct" && before.v === ".")) continue;
-		if (token.v === "import" && next?.k === "str") found.push(next.v);
-		else if (token.v === "from" && next?.k === "str") found.push(next.v);
-		else if (token.v === "import" && next?.k === "punct" && next.v === "(") {
-			const argument = stream[index + 2];
-			found.push(argument?.k === "str" && argument.v !== "`" ? argument.v : "(computed)");
+	// A slash that may divide or may open a regular expression cannot always be told apart without a parser, so the script is read twice,
+	// once each way, and what either reading finds counts. A division taken for a regular expression cannot hide an import from the
+	// reading that takes it for a division, and a regular expression that looks like an import is refused: fail closed, at build time.
+	const found = new Set<string>();
+	for (const ambiguousIsRegex of [false, true]) {
+		const stream = [...tokens(source, ambiguousIsRegex)];
+		for (let index = 0; index < stream.length; index += 1) {
+			const token = stream[index]!;
+			const next = stream[index + 1];
+			const before = stream[index - 1];
+			if (token.k !== "word" || (before?.k === "punct" && before.v === ".")) continue;
+			if (token.v === "import" && next?.k === "str") found.add(next.v);
+			else if (token.v === "from" && next?.k === "str") found.add(next.v);
+			else if (token.v === "import" && next?.k === "punct" && next.v === "(") {
+				const argument = stream[index + 2];
+				found.add(argument?.k === "str" && argument.v !== "`" ? argument.v : "(computed)");
+			}
 		}
 	}
-	return found;
+	return [...found];
 }
 
 const incomplete = (what: string): never => {

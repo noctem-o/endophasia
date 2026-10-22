@@ -213,7 +213,7 @@ export function EventTable({
 					/>
 					flagged only
 				</label>
-				{model.sessions.length < 2 ? null : (
+				{model.sessions.length === 0 ? null : (
 					<select
 						aria-label="Session (seen in this window)"
 						data-focus="session"

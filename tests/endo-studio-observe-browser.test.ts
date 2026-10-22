@@ -1399,7 +1399,7 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
 			const said = await text(page, `[data-testid=unavailable-${name}]`);
 			expect(said).toMatch(/is not available yet/);
-			expect(said).toMatch(/Nothing on this page was read from a store/);
+			expect(said).toMatch(/This workspace shows nothing read from a store/);
 			expect(await count(page, "tr[data-seq]")).toBe(0);
 			expect(
 				await page.eval(`document.querySelector("button[data-workspace=${name}]").getAttribute("aria-current")`),

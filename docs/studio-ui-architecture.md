@@ -68,7 +68,7 @@ cockpit-http/server.ts                   unchanged guards, routes, budget, heade
 - `index.html` refers only to `./assets/<name>`, a style sheet only to `./<name>` by `url()` (no `@import`, no `data:`, no remote, no
   parent path), and a script only imports `./<name>` modules, each of them listed. A script is read with a small lexer
   (`moduleSpecifiers`), not a pattern: the specifier after `import`, in `import(...)` and after `from` is read where it is code, never
-  from a string, a comment, a template literal or a regular expression. (A first version of this check was a pattern, and a label
+  from a string, a comment, a template literal or a regular expression. A slash that may divide or may open a regular expression (after `)`, `]`, `}`, `+` or `-`) is read both ways: the script is lexed twice and what either reading finds counts, so a division taken for an expression cannot hide an import, and an expression that looks like an import is refused (fail closed, at build time). (A first version of this check was a pattern, and a label
   such as "derived from" in the real bundle was read as an import. The lexer fixed that, and its negative tests keep every way of
   naming something that is not a file beside the page refused.)
 
@@ -249,7 +249,7 @@ agree). Consequences, each tested:
 
 - A selection is **one thing**: an event named by its storage position *and* its event id together, or a capability. It is kept
   across a read only where the same record is still in the window, and is closed, with a sentence, where it is not ("not in the
-  window now loaded ... it is still in the log"). A different record at the same position is not the same selection.
+  window now loaded", or "a different event at that position"; a window cannot say whether the closed event exists elsewhere, so the note does not). A different record at the same position is not the same selection.
 - A filter that hides the open event does not close it; the inspector says the filters hide it and that it is still in the window.
 - A "session" is only a filter on the sessions *seen in this window* (position range and entry count). The projection records no
   outcome, scenario, task or duration for a session, so none is shown; a session's events outside the window are not counted.

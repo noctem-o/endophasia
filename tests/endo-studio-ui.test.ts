@@ -314,6 +314,11 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		// A regular expression holding a quote does not swallow the code after it: the import that follows is still found.
 		expect(moduleSpecifiers('const r=/"/g;const s=a/b/c;import"./after.js"')).toEqual(["./after.js"]);
 		expect(moduleSpecifiers('x=y.replace(/[\'"]/g,"");import{a}from"./b.js"')).toEqual(["./b.js"]);
+		// A slash that divides cannot hide an import from the scan, whatever the lexer took it for (here a postfix operator before it)...
+		expect(moduleSpecifiers('x++ / import("./missing.js") / y')).toEqual(["./missing.js"]);
+		expect(moduleSpecifiers('(a+b) / import"./m.js" / 2')).toEqual(["./m.js"]);
+		// ... and a regular expression after `)` that looks like an import is refused, not trusted (fail closed).
+		expect(moduleSpecifiers('if(x) /from "./a.js"/.test(y)')).toEqual(["./a.js"]);
 		// A property named like a keyword is not an import.
 		expect(moduleSpecifiers('o.import("./no.js");o.from("./no2.js")')).toEqual([]);
 		// An import whose specifier is computed is reported as such, and a template literal is not a file name.

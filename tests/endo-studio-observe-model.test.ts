@@ -579,11 +579,16 @@ describe("the reducer is the one owner of the state", () => {
 		shifted.timeline.entries = shifted.timeline.entries.slice(10);
 		const gone = finished(open, { reply: { kind: "snapshot", snapshot: shifted } });
 		expect(gone.selection).toBeNull();
-		expect(gone.clearedNote).toMatch(/not in the window now loaded.*still in the log/);
+		expect(gone.clearedNote).toMatch(/not in the window now loaded, so it is closed\.$/);
+		expect(gone.clearedNote).not.toMatch(/still in the log/); // a window cannot say that
+		// The note belongs to the read that closed the selection: the next successful read does not repeat it.
+		expect(finished(gone).clearedNote).toBeNull();
 		// The same position held by a different record is not the same selection.
 		const replaced = structuredClone(snapshot);
 		replaced.timeline.entries[3]!.eventId = "endo.event.a-different-record";
-		expect(finished(open, { reply: { kind: "snapshot", snapshot: replaced } }).selection).toBeNull();
+		const swapped = finished(open, { reply: { kind: "snapshot", snapshot: replaced } });
+		expect(swapped.selection).toBeNull();
+		expect(swapped.clearedNote).toMatch(/holds a different event at position 4/);
 		// Selecting something else clears the note.
 		expect(reduce(gone, { type: "select", selection: null }).clearedNote).toBeNull();
 	});

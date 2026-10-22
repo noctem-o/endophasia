@@ -15,6 +15,8 @@
 - `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (build-time only; their licence notices are packed in `dist/licenses/`).
 
 ### Changed
+- The licence is now the **Apache License 2.0** (it was MIT). `0.1.0-alpha.1` and `0.1.0-alpha.2` were published under MIT and remain available under it; the
+  Apache License applies from this change onward.
 - `endo studio` now serves the Studio frontend. The earlier page (`cockpit-ui/`, `dist/cockpit-ui/`) is retired in the same change, with
   its browser, source and model tests moved onto the new frontend and not dropped. The command's arguments, address line, exit codes
   and key handling are unchanged. `npm run cockpit` serves the same frontend; `build:cockpit-ui` is replaced by `build:studio-ui`.

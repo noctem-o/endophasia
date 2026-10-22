@@ -89,30 +89,86 @@ function usageCell(entry: EndoCockpitTimelineEntryV0): UsageCell {
 	return { kind: "tokens", text: `in ${part("input tokens")} · out ${part("output tokens")}` };
 }
 
-/** Whether an entry passes the filters. Search reads only what the projection presents: ids, kind, producer and presentable field text. */
-export function entryMatches(entry: EndoCockpitTimelineEntryV0, filters: Filters): boolean {
-	if (filters.categories.size > 0 && !filters.categories.has(entry.category)) return false;
-	if (filters.flaggedOnly && entry.flags.length === 0) return false;
-	if (filters.session !== null && entry.sessionId !== filters.session) return false;
+/** The filters that exclude an entry from the table, by name. Empty: it passes them all. */
+export type FilterReason = "text" | "category" | "flagged" | "session";
+
+export function excludedBy(entry: EndoCockpitTimelineEntryV0, filters: Filters): FilterReason[] {
+	const out: FilterReason[] = [];
+	if (filters.categories.size > 0 && !filters.categories.has(entry.category)) out.push("category");
+	if (filters.flaggedOnly && entry.flags.length === 0) out.push("flagged");
+	if (filters.session !== null && entry.sessionId !== filters.session) out.push("session");
 	const needle = filters.text.trim().toLowerCase();
-	if (needle === "") return true;
-	const haystack = [
-		entry.kind,
-		entry.producer,
-		entry.eventId,
-		entry.sessionId,
-		entry.runId,
-		entry.experimentId,
-		...Object.values(entry.fields).map((field) =>
-			field.basis === "unavailable" || typeof field.value !== "string" || field.value === WITHHELD_TEXT
-				? null
-				: field.value,
-		),
-	];
-	return haystack.some((value) => value?.toLowerCase().includes(needle));
+	if (needle !== "") {
+		const haystack = [
+			entry.kind,
+			entry.producer,
+			entry.eventId,
+			entry.sessionId,
+			entry.runId,
+			entry.experimentId,
+			...Object.values(entry.fields).map((field) =>
+				field.basis === "unavailable" || typeof field.value !== "string" || field.value === WITHHELD_TEXT
+					? null
+					: field.value,
+			),
+		];
+		if (!haystack.some((value) => value?.toLowerCase().includes(needle))) out.push("text");
+	}
+	return out;
+}
+
+/** Whether an entry passes the filters. Search reads only what the projection presents: ids, kind, producer and presentable field text. */
+export const entryMatches = (entry: EndoCockpitTimelineEntryV0, filters: Filters): boolean =>
+	excludedBy(entry, filters).length === 0;
+
+/** The filters with only the ones that exclude this entry cleared: the rest keep meaning what they meant. */
+export function filtersWithout(filters: Filters, reasons: readonly FilterReason[]): Filters {
+	return {
+		categories: reasons.includes("category") ? new Set() : filters.categories,
+		text: reasons.includes("text") ? "" : filters.text,
+		flaggedOnly: reasons.includes("flagged") ? false : filters.flaggedOnly,
+		session: reasons.includes("session") ? null : filters.session,
+	};
+}
+
+const REASON_WORDS: Record<FilterReason, string> = {
+	text: "the text filter",
+	category: "the category filter",
+	flagged: "flagged only",
+	session: "the session filter",
+};
+export const describeReasons = (reasons: readonly FilterReason[]): string => {
+	const words = reasons.map((r) => REASON_WORDS[r]);
+	return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+};
+
+/**
+ * What the table says about the open event. Derived once, here: the table's selection bar and the inspector's note both read it, so they
+ * cannot disagree. An event outside the loaded window is not a case: a read that leaves the window closes the selection (state.ts).
+ */
+export type SelectionStatus =
+	| { kind: "none" }
+	| { kind: "shown"; sequence: number }
+	| { kind: "hidden"; sequence: number; reasons: FilterReason[]; clearing: string };
+
+export function selectionStatus(
+	entries: readonly EndoCockpitTimelineEntryV0[],
+	selection: Selection,
+	filters: Filters,
+): SelectionStatus {
+	if (selection?.kind !== "event") return { kind: "none" };
+	const open = selection;
+	const entry = entries.find((e) => e.storageSequence === open.sequence && e.eventId === open.eventId);
+	if (entry === undefined) return { kind: "none" };
+	const reasons = excludedBy(entry, filters);
+	return reasons.length === 0
+		? { kind: "shown", sequence: entry.storageSequence }
+		: { kind: "hidden", sequence: entry.storageSequence, reasons, clearing: describeReasons(reasons) };
 }
 
 export interface PagerModel {
+	/** Why each move that is not available is not, in words: said beside the buttons, not only in a tooltip. */
+	reasons: { first: string | null; previous: string | null; next: string | null; latest: string | null };
 	range: string;
 	of: string;
 	more: string;
@@ -165,6 +221,7 @@ export interface TimelineModel {
 	degradedText: string | null;
 	filtersActive: boolean;
 	filters: Filters;
+	selection: SelectionStatus;
 	categories: { category: string; label: string; count: number; on: boolean }[];
 	sessions: { id: string; label: string; first: string; last: string; entries: string }[];
 	sessionNote: string;
@@ -237,6 +294,7 @@ export function timelineModel(
 				: null,
 		filtersActive: active,
 		filters: input.filters,
+		selection: selectionStatus(timeline.entries, input.selection, input.filters),
 		categories: categoryCounts(timeline.entries).map(({ category, count }) => ({
 			category,
 			label: known(CATEGORY, category) ?? category,
@@ -253,6 +311,7 @@ export function timelineModel(
 		sessionNote:
 			"Sessions are those seen in this window. A session's events outside the window are not counted, and no outcome or duration is recorded here.",
 		pager: {
+			reasons: pagerReasons(pager, input.limit),
 			range,
 			of,
 			more,
@@ -265,7 +324,7 @@ export function timelineModel(
 			shown: rows.length,
 			inWindow: timeline.entries.length,
 			text: active
-				? `${grouped(rows.length)} of ${grouped(timeline.entries.length)} in this window match`
+				? `${grouped(rows.length)} of ${grouped(timeline.entries.length)} in this window match · filters act on this window only`
 				: `${grouped(timeline.entries.length)} in this window`,
 		},
 		rows,
@@ -273,6 +332,36 @@ export function timelineModel(
 			? "No event in this window matches the filters. Other windows are not searched."
 			: "This window holds no events.",
 		overview: overviewModel(snapshot, matched, selectedSequence),
+	};
+}
+
+function pagerReasons(pager: ReturnType<typeof pagerView>, limit: number): PagerModel["reasons"] {
+	const atStart = pager.firstAfter === null;
+	// An empty window is past the end of the log (it became shorter): the log ended before it, not in it.
+	const ends =
+		pager.firstPosition === null
+			? atStart
+				? "The log holds no events."
+				: "The log ends before this window."
+			: "The log ends in this window.";
+	const unknown = pager.total === null;
+	return {
+		first: atStart ? "This window starts at the beginning of the log." : null,
+		previous: atStart ? "There is nothing before this window." : null,
+		next:
+			pager.nextAfter !== null
+				? null
+				: pager.hasMore === null
+					? "The log has no position, so no next window is known."
+					: ends,
+		latest:
+			pager.latestAfter !== null
+				? null
+				: unknown
+					? "The log has no position, so its last page is not known."
+					: pager.hasMore === true
+						? `This is already the last ${limit.toLocaleString("en-US")} events.`
+						: ends,
 	};
 }
 

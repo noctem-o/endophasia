@@ -4,7 +4,7 @@ import { type ChangeEvent, type KeyboardEvent, memo, type ReactElement, useEffec
 import { NO_FILTERS } from "../model/contract.ts";
 import type { Action } from "../model/state.ts";
 import { PAGE_SIZES } from "../model/state.ts";
-import type { RowModel, TimelineModel } from "../model/timeline.ts";
+import { filtersWithout, type RowModel, type SelectionStatus, type TimelineModel } from "../model/timeline.ts";
 import type { EventKey } from "../model/types.ts";
 import { ProvGlyph } from "../ui/marks.tsx";
 import { BasisBadge, ConditionTag, Note, TextView } from "../ui/text.tsx";
@@ -133,6 +133,71 @@ function walk(event: KeyboardEvent<HTMLElement>): void {
 	next.focus();
 }
 
+/**
+ * One line, always the same height, so that selecting never moves the table under the pointer. It is one button in one place: its label
+ * and action change (Show in table / Clear the filters that hide it) but the node does not, so focus survives the change.
+ */
+function SelectionBar({
+	status,
+	onShow,
+	onClear,
+}: {
+	status: SelectionStatus;
+	onShow(): void;
+	onClear(): void;
+}): ReactElement {
+	const sentence =
+		status.kind === "none"
+			? "No event selected."
+			: status.kind === "shown"
+				? `Selected: position ${status.sequence.toLocaleString("en-US")}.`
+				: `Position ${status.sequence.toLocaleString("en-US")} is open in the inspector and hidden by ${status.clearing}.`;
+	return (
+		<div className={`selection-bar selection-${status.kind}`} data-testid="selection-bar">
+			<span className="selection-text" id="selection-text" aria-live="polite" title={sentence}>
+				{sentence}
+			</span>
+			{status.kind === "none" ? null : (
+				<button
+					type="button"
+					className="btn small-btn"
+					data-focus="selection-action"
+					aria-describedby="selection-text"
+					onClick={status.kind === "shown" ? onShow : onClear}
+				>
+					{status.kind === "shown" ? "Show in table" : "Clear filters that hide it"}
+				</button>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Bring one row of the table into view, inside the table's own scroller and with no more movement than it takes (a row already in view
+ * does not move). The page is moved only if the row is still off the screen after that, and focus goes to the row's own button. It reads
+ * nothing: the row is one the window already holds.
+ */
+export function revealRow(scroller: HTMLElement, sequence: number): void {
+	const row = scroller.querySelector<HTMLElement>(`tr[data-seq="${sequence}"]`);
+	if (row === null) return;
+	const head = scroller.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+	const box = scroller.getBoundingClientRect();
+	const at = row.getBoundingClientRect();
+	if (at.top < box.top + head) scroller.scrollTop -= box.top + head - at.top + 4;
+	else if (at.bottom > box.bottom) scroller.scrollTop += at.bottom - box.bottom + 4;
+	const after = row.getBoundingClientRect();
+	if (after.top < 0) window.scrollBy(0, after.top - 8);
+	else if (after.bottom > window.innerHeight) window.scrollBy(0, after.bottom - window.innerHeight + 8);
+	// The row's button is in the first column: a table scrolled sideways (it is at least 640 px wide) is brought back far enough to show it.
+	const button = row.querySelector<HTMLElement>("button.seq");
+	if (button !== null) {
+		const edge = button.getBoundingClientRect();
+		if (edge.left < box.left) scroller.scrollLeft -= box.left - edge.left + 4;
+		else if (edge.right > box.right) scroller.scrollLeft += edge.right - box.right + 4;
+		button.focus({ preventScroll: true });
+	}
+}
+
 export function EventTable({
 	model,
 	dispatch,
@@ -166,11 +231,20 @@ export function EventTable({
 	if (model.empty !== null) return <Note tone={model.empty.tone}>{model.empty.text}</Note>;
 	const set = (patch: Partial<typeof model.filters>) =>
 		dispatch({ type: "set-filters", filters: { ...model.filters, ...patch } });
+	const reasonFor: Record<string, string | null> = {
+		First: model.pager.reasons.first,
+		Previous: model.pager.reasons.previous,
+		Next: model.pager.reasons.next,
+		Latest: model.pager.reasons.latest,
+	};
+	const unavailable = (["First", "Previous", "Next", "Latest"] as const).filter((label) => reasonFor[label] !== null);
 	const pager = (label: string, after: number | null) => (
 		<button
 			type="button"
 			className="btn"
 			data-focus={`pager:${label}`}
+			aria-describedby={after === null || locked ? "pager-reasons" : undefined}
+			title={reasonFor[label] ?? undefined}
 			disabled={after === null || locked}
 			onClick={() => after !== null && goTo(after)}
 		>
@@ -245,6 +319,18 @@ export function EventTable({
 				{" · "}
 				<span className="dim">{model.window.text}</span>
 			</p>
+			<SelectionBar
+				status={model.selection}
+				onShow={() =>
+					scroller.current !== null &&
+					model.selection.kind === "shown" &&
+					revealRow(scroller.current, model.selection.sequence)
+				}
+				onClear={() =>
+					model.selection.kind === "hidden" &&
+					dispatch({ type: "set-filters", filters: filtersWithout(model.filters, model.selection.reasons) })
+				}
+			/>
 			{model.rows.length === 0 ? (
 				<Note>{model.noRowsText}</Note>
 			) : (
@@ -324,6 +410,10 @@ export function EventTable({
 				</label>
 				<span className="dim small">Each page is a new read of the whole log.</span>
 			</nav>
+			<p className="pager-reasons dim small" id="pager-reasons">
+				{locked ? "Reads are paused: one is running, or the server asked for a pause. " : ""}
+				{unavailable.map((label) => `${label}: ${reasonFor[label]} `).join("")}
+			</p>
 		</div>
 	);
 }

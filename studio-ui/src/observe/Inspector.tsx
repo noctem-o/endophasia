@@ -14,12 +14,38 @@ const Block = ({ title, children }: { title: string; children: ReactNode }): Rea
 	</section>
 );
 
-function EventView({ detail, hidden }: { detail: EventDetail; hidden: boolean }): ReactElement {
+function EventView({
+	detail,
+	hidden,
+	clearing,
+	onClearHidden,
+}: {
+	detail: EventDetail;
+	hidden: boolean;
+	clearing: string;
+	/** Given only where the table is out of reach (the narrow dialog): the one action that clears the filters hiding this event. */
+	onClearHidden?: () => void;
+}): ReactElement {
 	return (
 		<div className="detail" data-testid="event-detail">
 			<h3 className="detail-title">{detail.title}</h3>
 			{hidden ? (
-				<Note tone="info">The filters now set hide this event from the table. It is still in the window.</Note>
+				<Note tone="info">
+					The filters now set hide this event from the table ({clearing}). It is still in the window.
+					{onClearHidden === undefined ? null : (
+						<>
+							{" "}
+							<button
+								type="button"
+								className="btn small-btn"
+								data-focus="inspector-clear"
+								onClick={onClearHidden}
+							>
+								Clear filters that hide it
+							</button>
+						</>
+					)}
+				</Note>
 			) : null}
 			<FactsView facts={detail.facts} label="Recorded identity" />
 			<p className="dim small">
@@ -154,57 +180,91 @@ function CapabilityView({ detail }: { detail: CapabilityDetail }): ReactElement 
 	);
 }
 
-function Legend({ legend }: { legend: LegendModel }): ReactElement {
+/**
+ * The reference for every mark on the page, as native disclosures: nothing is dropped from it, and nothing is repeated. In the empty
+ * inspector the first section (how a value is known) is open; in a populated inspector all are closed, inside one "Reading guide".
+ */
+function ReferenceSections({ legend, openFirst }: { legend: LegendModel; openFirst: boolean }): ReactElement {
 	return (
-		<div className="legend" data-testid="legend">
-			<p className="lead">Select an event or a capability to see exactly what was recorded, and where.</p>
-			<h3>How a value is known</h3>
-			<ul className="plain">
-				{legend.bases.map((mark) => (
-					<li key={mark.basis}>
-						<BasisBadge mark={mark} /> <span className="dim">{mark.meaning}</span>
-					</li>
-				))}
-			</ul>
-			<h3>What a mark on the overview stands for</h3>
-			<ul className="plain">
-				{legend.marks.map((mark) => (
-					<li key={mark.markClass}>
-						<ProvGlyph kind={mark.markClass} size={11} /> {mark.label} <span className="dim">{mark.meaning}</span>
-					</li>
-				))}
-			</ul>
-			<h3>Flags on an event</h3>
-			<ul className="plain">
-				{legend.flags.map((flag) => (
-					<li key={flag.flag}>
-						<span className={`flag flag-${flag.flag}`}>{flag.label}</span>{" "}
-						<span className="dim">{flag.meaning}</span>
-					</li>
-				))}
-			</ul>
-			<h3>Source conditions</h3>
-			<ul className="plain">
-				{legend.conditions.map((c) => (
-					<li key={c.state}>
-						<ConditionTag state={c.state} label={c.label} meaning={c.meaning} />{" "}
-						<span className="dim">{c.meaning}</span>
-					</li>
-				))}
-			</ul>
-			<h3>Recorded capability status</h3>
-			<ul className="plain">
-				{legend.statuses.map((s) => (
-					<li key={s.status} data-status={s.status}>
-						<StatusGlyph status={s.status} /> {s.label} <span className="dim">{s.meaning}</span>
-					</li>
-				))}
-			</ul>
+		<>
+			<details className="ref" open={openFirst}>
+				<summary>Evidence and provenance</summary>
+				<ul className="plain">
+					{legend.bases.map((mark) => (
+						<li key={mark.basis}>
+							<BasisBadge mark={mark} /> <span className="dim">{mark.meaning}</span>
+						</li>
+					))}
+				</ul>
+			</details>
+			<details className="ref">
+				<summary>Overview marks</summary>
+				<ul className="plain">
+					{legend.marks.map((mark) => (
+						<li key={mark.markClass}>
+							<ProvGlyph kind={mark.markClass} size={11} /> {mark.label}{" "}
+							<span className="dim">{mark.meaning}</span>
+						</li>
+					))}
+				</ul>
+			</details>
+			<details className="ref">
+				<summary>Event flags</summary>
+				<ul className="plain">
+					{legend.flags.map((flag) => (
+						<li key={flag.flag}>
+							<span className={`flag flag-${flag.flag}`}>{flag.label}</span>{" "}
+							<span className="dim">{flag.meaning}</span>
+						</li>
+					))}
+				</ul>
+			</details>
+			<details className="ref">
+				<summary>Source conditions</summary>
+				<ul className="plain">
+					{legend.conditions.map((c) => (
+						<li key={c.state}>
+							<ConditionTag state={c.state} label={c.label} meaning={c.meaning} />{" "}
+							<span className="dim">{c.meaning}</span>
+						</li>
+					))}
+				</ul>
+			</details>
+			<details className="ref">
+				<summary>Capability statuses</summary>
+				<ul className="plain">
+					{legend.statuses.map((s) => (
+						<li key={s.status} data-status={s.status}>
+							<StatusGlyph status={s.status} /> {s.label} <span className="dim">{s.meaning}</span>
+						</li>
+					))}
+				</ul>
+			</details>
 			<p className="dim small">
 				The timeline is in storage order. Recorded times are the producers' own clocks. A projection of records is
 				not evidence in itself.
 			</p>
+		</>
+	);
+}
+
+/** Nothing selected: an invitation, and the reference one disclosure at a time. */
+function Legend({ legend }: { legend: LegendModel }): ReactElement {
+	return (
+		<div className="legend" data-testid="legend">
+			<p className="lead">Select an event or capability to inspect its recorded evidence.</p>
+			<ReferenceSections legend={legend} openFirst />
 		</div>
+	);
+}
+
+/** In a populated inspector: the same reference, folded away until it is wanted. */
+function ReadingGuide(): ReactElement {
+	return (
+		<details className="guide" data-testid="reference">
+			<summary>Reading guide</summary>
+			<ReferenceSections legend={LEGEND} openFirst={false} />
+		</details>
 	);
 }
 
@@ -213,9 +273,11 @@ const LEGEND = legendModel();
 export function InspectorBody({
 	model,
 	clearedNote,
+	onClearHidden,
 }: {
 	model: InspectorModel;
 	clearedNote: string | null;
+	onClearHidden?: () => void;
 }): ReactElement {
 	switch (model.kind) {
 		case "legend":
@@ -230,9 +292,24 @@ export function InspectorBody({
 				</>
 			);
 		case "event":
-			return <EventView detail={model.detail} hidden={model.hiddenByFilters} />;
+			return (
+				<>
+					<EventView
+						detail={model.detail}
+						hidden={model.hiddenByFilters}
+						clearing={model.hiddenClearing}
+						onClearHidden={onClearHidden}
+					/>
+					<ReadingGuide />
+				</>
+			);
 		case "capability":
-			return <CapabilityView detail={model.detail} />;
+			return (
+				<>
+					<CapabilityView detail={model.detail} />
+					<ReadingGuide />
+				</>
+			);
 		case "gone":
 			return <Note tone="warn">{model.text}</Note>;
 	}

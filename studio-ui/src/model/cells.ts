@@ -64,7 +64,11 @@ export type Cell =
 	| { k: "plain"; text: string }
 	| { k: "mono"; text: string; title?: string }
 	| { k: "dim"; text: string; title?: string }
-	| { k: "text"; text: TextModel }
+	| {
+			k: "text";
+			text: TextModel /** What a copy button would copy, named, for an identifier shown in full: never for a withheld value or an alias. */;
+			copy?: string;
+	  }
 	| { k: "unavailable"; reason: TextModel }
 	| { k: "claim"; basis: BasisMark; inner: Cell }
 	| { k: "parts"; parts: Cell[] }
@@ -90,10 +94,13 @@ export const mono = (text: string, title?: string): Cell =>
 	title === undefined ? { k: "mono", text: str(text) } : { k: "mono", text: str(text), title };
 export const dim = (text: string, title?: string): Cell =>
 	title === undefined ? { k: "dim", text: str(text) } : { k: "dim", text: str(text), title };
-export const textCell = (value: string, options: { mono?: boolean; keep?: number } = {}): Cell => ({
-	k: "text",
-	text: textModel(value, options),
-});
+export const textCell = (value: string, options: { mono?: boolean; keep?: number; copy?: string } = {}): Cell => {
+	const text = textModel(value, options);
+	// Only an ordinary string, as it is presented, can be copied: a withheld sentinel and a generated alias stand in for what is not shown.
+	return options.copy !== undefined && text.kind === "text"
+		? { k: "text", text, copy: options.copy }
+		: { k: "text", text };
+};
 export const parts = (...items: Cell[]): Cell => ({ k: "parts", parts: items });
 
 /** A value that is not there, with the reason the record gives. Never a blank and never a zero. */

@@ -2,13 +2,14 @@
 // and source context beside them. It is a reader of the one state in use-observe.ts and draws only what toObserveViewModel returns.
 import { type ReactElement, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toObserveViewModel } from "../model/observe.ts";
+import { filtersWithout } from "../model/timeline.ts";
 import type { EventKey } from "../model/types.ts";
 import { Panel, PanelBoundary } from "../ui/Panel.tsx";
 import { ConditionTag, Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
 import type { Observe } from "../use-observe.ts";
 import { Attention } from "./Attention.tsx";
-import { EventTable } from "./EventTable.tsx";
+import { EventTable, revealRow } from "./EventTable.tsx";
 import { InspectorBody } from "./Inspector.tsx";
 import { Overview } from "./Overview.tsx";
 import { CapabilitiesPanel, RuntimePanel, RuntimeTools, SourcesPanel } from "./Side.tsx";
@@ -17,11 +18,14 @@ function InspectorDialog({
 	open,
 	onClose,
 	onClosed,
+	onShowInTable,
 	attention,
 	children,
 }: {
 	open: boolean;
 	onClose(): void;
+	/** Given for an open event: close the dialog and show that event's row in the table (the table is out of reach while the dialog is open). */
+	onShowInTable?: () => void;
 	/** Called after the dialog has closed, so the opener can be given focus back whatever the browser does. */
 	onClosed(): void;
 	attention: ReactNode;
@@ -59,9 +63,22 @@ function InspectorDialog({
 					<h2 id="inspector-title">Inspector</h2>
 					<p className="panel-sub">what was recorded, and where</p>
 				</div>
-				<button type="button" className="btn" data-focus="inspector-close" onClick={onClose}>
-					Close
-				</button>
+				<div className="panel-tools">
+					{onShowInTable === undefined ? null : (
+						<button
+							type="button"
+							className="btn"
+							data-focus="inspector-show"
+							title="Closes the inspector (which clears the selection) and shows the row in the table, clearing the filters that hide it if any do"
+							onClick={onShowInTable}
+						>
+							Show in table
+						</button>
+					)}
+					<button type="button" className="btn" data-focus="inspector-close" onClick={onClose}>
+						Close
+					</button>
+				</div>
 			</header>
 			{attention}
 			<div className="panel-body">
@@ -98,6 +115,8 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 
 	// Where the dialog was opened from, so that closing it puts focus back there. A browser restores focus to the element that had it when
 	// the dialog opened, but not every browser focuses a button when it is clicked, so this does not depend on that.
+	// Set by the dialog's Show in table: when it has closed, the opener's row is revealed in the table and not only focused.
+	const revealOnClose = useRef(false);
 	const opener = useRef<NonNullable<typeof state.selection> | null>(null);
 	if (state.selection !== null) opener.current = state.selection;
 
@@ -121,9 +140,34 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 
 	const selectedSequence = state.selection?.kind === "event" ? state.selection.sequence : null;
 	const inspector = <InspectorBody model={model.inspector} clearedNote={state.clearedNote} />;
+	const hiddenSelection = model.timeline.selection;
+	// In the dialog the table is out of reach: the note that says filters hide the open event carries the one action that clears them.
+	const inspectorInDialog = (
+		<InspectorBody
+			model={model.inspector}
+			clearedNote={state.clearedNote}
+			onClearHidden={
+				hiddenSelection.kind === "hidden"
+					? () =>
+							dispatch({
+								type: "set-filters",
+								filters: filtersWithout(state.filters, hiddenSelection.reasons),
+							})
+					: undefined
+			}
+		/>
+	);
 	const modalOpen = narrow && state.selection !== null;
 	const restoreOpener = () => {
 		const opened = opener.current;
+		if (revealOnClose.current) {
+			revealOnClose.current = false;
+			const scroller = document.querySelector<HTMLElement>("#timeline .table-scroll");
+			if (opened?.kind === "event" && scroller !== null) {
+				revealRow(scroller, opened.sequence);
+				return;
+			}
+		}
 		const active = document.activeElement;
 		if (
 			opened === null ||
@@ -184,11 +228,21 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 						subtitle="storage order"
 						className="grow"
 						tools={
-							<ConditionTag
-								state={model.timeline.state.state}
-								label={model.timeline.state.label}
-								meaning={model.timeline.state.meaning}
-							/>
+							<>
+								{state.problem === null ? null : (
+									<span
+										className="stale-chip"
+										title="The latest attempt to read failed: this is the last read that succeeded."
+									>
+										not current
+									</span>
+								)}
+								<ConditionTag
+									state={model.timeline.state.state}
+									label={model.timeline.state.label}
+									meaning={model.timeline.state.meaning}
+								/>
+							</>
 						}
 					>
 						<EventTable
@@ -212,9 +266,24 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 								open={modalOpen}
 								onClose={() => dispatch({ type: "close-inspector" })}
 								onClosed={restoreOpener}
+								onShowInTable={
+									state.selection?.kind === "event"
+										? () => {
+												revealOnClose.current = true;
+												// A row the filters hide cannot be shown: the filters that hide it are cleared with the same action, so the
+												// event the reader was inspecting is not lost to a reveal that finds nothing.
+												if (hiddenSelection.kind === "hidden")
+													dispatch({
+														type: "set-filters",
+														filters: filtersWithout(state.filters, hiddenSelection.reasons),
+													});
+												dispatch({ type: "close-inspector" });
+											}
+										: undefined
+								}
 								attention={<Attention items={model.attention} testid="dialog-attention" />}
 							>
-								{inspector}
+								{inspectorInDialog}
 							</InspectorDialog>
 							{state.selection === null ? (
 								<details className="legend-fold">

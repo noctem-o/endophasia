@@ -17,12 +17,18 @@ node scripts/seed-cockpit-demo.ts <empty-directory>   # a demo store from the co
 
 _The real frontend at 1440 x 900 in headless Chromium with the GPU off, over a store seeded by `scripts/seed-cockpit-demo.ts` (an event selected). Nothing on it is a mock-up._
 
+![The filters hide the open event: the selection bar names them and offers to clear only those; the event stays open in the inspector and the overview keeps its ring](images/studio-pr-c-hidden.png)
+
+![At 420 px the inspector is a modal dialog](images/studio-pr-c-narrow.png)
+
+_Above: a text filter hides the open event (the selection bar and the inspector both say so, and the overview dims the shape but keeps the ring). Below: the same store at 420 px, the inspector as a dialog._
+
 The printed address ends in `/`; it is the access capability for that launch, so it is shown once and never logged.
 
 ## Layout
 
 A top bar (the wordmark, the four workspaces, the read-only state, the read status and Refresh), the sources that need attention, the
-overview, and three columns of panels (two columns below 1280 px; one column and a modal inspector below 1024 px).
+overview, and three columns of panels (two columns below 1360 px; one column and a modal inspector below 1024 px).
 
 - **Workspaces.** Observe is the one built. Compare, Capabilities and Evolve are named as "later", load on demand, say what each would
   need (a projection that does not exist yet) and show no record and no number.
@@ -41,6 +47,13 @@ overview, and three columns of panels (two columns below 1280 px; one column and
 - **Capabilities** (left): the latest recorded state, whether it is `current`, `stale` or `unknown` for the latest fingerprint, a count of
   records per recorded status, and one row per capability: status (shape and word), classification (or "unclassified"), and how many
   limits apply. Selecting a row opens it in the inspector.
+- **Selection bar** (above the table, one line, always the same height so selecting never moves the table): it says which event is open.
+  **Show in table** reveals that row inside the table's own scroller (no movement if it is already in view, the page moves only if the row
+  is still off the screen, focus goes to the row) and reads nothing: the row is one the loaded window already holds. If the filters hide the
+  open event, the bar says so and names them, and the same button, now **Clear filters that hide it**, clears only the filters that exclude
+  it (a filter that did not hide it keeps its meaning); the selection is never changed by a filter. An event outside the loaded window is not a
+  case: a read that moves the window closes a selection the new window does not hold, and says so once, without claiming whether the event is
+  still in the log. The bar's height is fixed (its sentence is held to two lines, with the whole of it in its title and in its button's description), so no state of it moves the table. Below 1024 px the table is behind the modal inspector, so the actions move into the dialog: **Show in table** closes it (which clears the selection, as closing always does) and shows and focuses the row, and the note that filters hide the open event carries **Clear filters that hide it**. The pager says beside its buttons why a move is not available, and the Timeline panel says when the latest read failed.
 - **Timeline** (centre): the event log's window in **storage order**. Columns: position, producer clock (the date is shown once above
   the rows it covers), category, kind and producer, how the fields are known, and usage and flags. Filters (text over ids, kind, producer,
   session and presented text; category chips; flagged only; session) act on the loaded window only and say "k of n in this window".
@@ -48,7 +61,10 @@ overview, and three columns of panels (two columns below 1280 px; one column and
 - **Inspector** (right, pinned): one selected event or capability, evidence first: the recorded identity and position, flags with what
   each means, the presented payload fields each with a basis, usage, how many payload keys were withheld, and the projection JSON of that
   one entry. A capability shows its recorded status, the limits on it, the cited evidence and the limitations it states. With nothing
-  selected it is the legend for every mark. Below 1024 px it is a modal dialog: focus moves in, Escape or Close ends it and clears the
+  selected it is a short invitation and the reference for every mark as native disclosures (how a value is known open, the rest closed:
+  overview marks, event flags, source conditions, capability statuses); beside a selected event the same reference is folded into a
+  closed *Reading guide*. A displayed identifier, cut or whole, has a **copy** button (it copies the string the record presents, in full; a withheld value or generated
+  alias has none), and a value cut for its row opens in place to the whole. Below 1024 px it is a modal dialog: focus moves in, Escape or Close ends it and clears the
   one selection, focus returns to the row it came from.
 - **Sources & provenance** (right): the event log and every registry, each with its own condition and position, and a fixed statement
   that they are independent. A card explains its condition in words only when it is not simply readable or empty.

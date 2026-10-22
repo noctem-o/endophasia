@@ -108,6 +108,17 @@ export async function exerciseStudioUi(
 			expect(/Event at position 2/.test(await text("#inspector")), "selecting an event opens its inspector");
 			expect(/Presented fields/.test(await text("#inspector")), "the inspector shows the presented fields");
 			expect(
+				/Selected: position 2\./.test(await text("[data-testid=selection-bar]")),
+				"the table says which event is selected",
+			);
+			await tab.click("[data-focus=selection-action]");
+			expect(
+				await tab.eval<boolean>(
+					`document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq === "2"`,
+				),
+				"Show in table puts focus on the selected row, with no further read",
+			);
+			expect(
 				(await tab.eval<string>(`document.querySelector("#overview .omark-wrap.selected").dataset.seq`)) === "2",
 				"the overview marks the same event",
 			);

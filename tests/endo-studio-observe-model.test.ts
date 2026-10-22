@@ -24,7 +24,14 @@ import {
 	pauseRemaining,
 	reduce,
 } from "../studio-ui/src/model/state.ts";
-import { basesOf, markClassOf, splitClock } from "../studio-ui/src/model/timeline.ts";
+import {
+	basesOf,
+	describeReasons,
+	excludedBy,
+	filtersWithout,
+	markClassOf,
+	splitClock,
+} from "../studio-ui/src/model/timeline.ts";
 import { event, ingestAll, lifecycleEvents, removeTempRoots, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 
@@ -371,6 +378,8 @@ describe("a window is a window", () => {
 		expect(past.timeline.rows).toEqual([]);
 		expect(past.timeline.noRowsText).toBe("This window holds no events.");
 		expect(past.timeline.pager).toMatchObject({ firstAfter: 0, previousAfter: 20, nextAfter: null });
+		// The log ended before this window, not in it.
+		expect(past.timeline.pager.reasons.next).toBe("The log ends before this window.");
 		expect(past.timeline.overview.emptyText).toMatch(/starts after position 50/);
 	});
 
@@ -388,10 +397,96 @@ describe("a window is a window", () => {
 		expect(model.timeline.noRowsText).toBe(
 			"No event in this window matches the filters. Other windows are not searched.",
 		);
-		expect(model.timeline.window.text).toBe("0 of 10 in this window match");
+		expect(model.timeline.window.text).toBe("0 of 10 in this window match · filters act on this window only");
 		expect(model.timeline.overview.marks).toHaveLength(10);
 		expect(model.timeline.overview.marks.every((m) => m.dim)).toBe(true);
 		expect(model.timeline.categories.reduce((n, c) => n + c.count, 0)).toBe(10);
+	});
+
+	it("says which filters hide the open event, clears only those, and agrees with the inspector about it", () => {
+		const snapshot = read(populated());
+		const entry = snapshot.timeline.entries.find((e) => e.category === "session")!;
+		const selection = { kind: "event" as const, sequence: entry.storageSequence, eventId: entry.eventId };
+		const only = (patch: Partial<typeof NO_FILTERS>) => ({ ...NO_FILTERS, ...patch });
+		const status = (filters: typeof NO_FILTERS) => view(snapshot, { selection, filters }).timeline.selection;
+		expect(view(snapshot).timeline.selection).toEqual({ kind: "none" });
+		expect(status(NO_FILTERS)).toEqual({ kind: "shown", sequence: entry.storageSequence });
+		// A text filter and a category filter that keeps the event's own category: only the text hides it.
+		const mixed = only({ text: "no-such-thing", categories: new Set(["session"]) });
+		const hidden = status(mixed);
+		expect(hidden).toMatchObject({ kind: "hidden", reasons: ["text"], clearing: "the text filter" });
+		if (hidden.kind !== "hidden") throw new Error("unreachable");
+		const cleared = filtersWithout(mixed, hidden.reasons);
+		expect(cleared.text).toBe("");
+		expect([...cleared.categories]).toEqual(["session"]); // a filter that did not hide it keeps its meaning
+		expect(status(cleared)).toEqual({ kind: "shown", sequence: entry.storageSequence });
+		// Several at once, in words.
+		const many = only({
+			text: "no-such-thing",
+			categories: new Set(["tool"]),
+			flaggedOnly: true,
+			session: "endo.session.other",
+		});
+		expect(excludedBy(entry, many).sort()).toEqual(["category", "flagged", "session", "text"]);
+		expect(describeReasons(["text", "category", "session"])).toBe(
+			"the text filter, the category filter and the session filter",
+		);
+		// The inspector's note and the table's bar come from the same derivation.
+		for (const filters of [NO_FILTERS, mixed, many]) {
+			const model = view(snapshot, { selection, filters });
+			expect(model.inspector).toMatchObject({
+				kind: "event",
+				hiddenByFilters: model.timeline.selection.kind === "hidden",
+			});
+		}
+		// A selection that names another record at the position is no selection of this window.
+		expect(view(snapshot, { selection: { ...selection, eventId: "endo.event.other" } }).timeline.selection).toEqual({
+			kind: "none",
+		});
+	});
+
+	it("says why a move is not available, and nothing where it is", () => {
+		const events = Array.from({ length: 30 }, (_, i) => event("tool.started", {}, { sequence: i + 1 }));
+		const r = tempRoot();
+		ingestAll(r, events);
+		const reasons = (opts: { limit: number; afterSequence?: number }) =>
+			view(read(r, opts), { limit: opts.limit }).timeline.pager.reasons;
+		expect(reasons({ limit: 10 })).toMatchObject({
+			first: expect.stringMatching(/beginning/),
+			previous: expect.stringMatching(/nothing before/),
+			next: null,
+			latest: null,
+		});
+		expect(reasons({ limit: 10, afterSequence: 10 })).toEqual({
+			first: null,
+			previous: null,
+			next: null,
+			latest: null,
+		});
+		expect(reasons({ limit: 10, afterSequence: 20 })).toMatchObject({
+			first: null,
+			next: expect.stringMatching(/The log ends/),
+			latest: expect.stringMatching(/The log ends/),
+		});
+		expect(reasons({ limit: 100 }).next).toMatch(/The log ends/);
+		const absent = view(read(tempRoot())).timeline.pager.reasons;
+		expect(absent.next).toMatch(/holds no events|no position/);
+	});
+
+	it("offers a copy only for an identifier shown in full, never for a withheld value or an alias", () => {
+		const snapshot = read(populated());
+		const entry = snapshot.timeline.entries[3]!;
+		const cell = (label: string, e = entry) => eventDetail(e).facts.find((f) => f.label === label)!.cell;
+		expect(cell("event id")).toMatchObject({ k: "text", copy: "event id" });
+		expect(cell("session")).toMatchObject({ k: "text", copy: "session id" });
+		expect(cell("producer")).not.toHaveProperty("copy"); // not an identifier a reader would carry elsewhere
+		const aliased = {
+			...entry,
+			eventId: "endo.event.withheld-0123456789abcdef0123456789abcdef",
+			sessionId: "withheld: looks like a path, address or credential",
+		};
+		expect(cell("event id", aliased)).not.toHaveProperty("copy");
+		expect(cell("session", aliased)).not.toHaveProperty("copy");
 	});
 
 	it("searches ids, kind, producer, session and presented text, but never a withheld sentinel", () => {

@@ -51,7 +51,7 @@ export interface LegendModel {
 
 export type InspectorModel =
 	| { kind: "legend" }
-	| { kind: "event"; detail: EventDetail; hiddenByFilters: boolean }
+	| { kind: "event"; detail: EventDetail; hiddenByFilters: boolean; hiddenClearing: string }
 	| { kind: "capability"; detail: CapabilityDetail }
 	| { kind: "gone"; text: string };
 
@@ -120,7 +120,8 @@ function inspectorModel(
 			: {
 					kind: "event",
 					detail: eventDetail(entry),
-					hiddenByFilters: !timeline.rows.some((row) => row.sequence === entry.storageSequence),
+					hiddenByFilters: timeline.selection.kind === "hidden",
+					hiddenClearing: timeline.selection.kind === "hidden" ? timeline.selection.clearing : "",
 				};
 	}
 	const runtime =

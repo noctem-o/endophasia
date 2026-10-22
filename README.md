@@ -100,8 +100,8 @@ the installed package on `127.0.0.1` behind a private per-launch address. It sho
   readable, empty, absent, degraded or unopenable.
 
 Each claim carries its basis (observed, reported or derived) or the N/A mark with the record's own reason; a value that was
-never recorded is shown as not recorded, never as zero. The page does not poll, draws no live activity or scores, and has no controls other
-than refresh, paging, filtering, selection and switching workspace. It does not start, attach to or steer an agent, and it does not write to the
+never recorded is shown as not recorded, never as zero. The page does not poll, draws no live activity or scores, and has no controls that act on a
+run or a store: only ones that change what it shows. It does not start, attach to or steer an agent, and it does not write to the
 store it reads.
 
 Studio is meant to grow into more modes. **DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view do not exist yet**;

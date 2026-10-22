@@ -15,6 +15,11 @@
 - `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (build-time only; their licence notices are packed in `dist/licenses/`).
 
 ### Changed
+- Studio, Observe: a selection bar above the table with **Show in table** (reveals the open event's row in the table's own scroller, with no
+  read) and, when filters hide the open event, **Clear filters that hide it** (clears only the filters that exclude it); the pager says why a
+  move is not available; the inspector is a short invitation with the reference as collapsible sections (a closed *Reading guide* beside a
+  selected event); long identifiers open in place and displayed identifiers can be copied; the left rail and right panel are more readable
+  and the three-column layout starts at 1360 px.
 - `endo studio` now serves the Studio frontend. The earlier page (`cockpit-ui/`, `dist/cockpit-ui/`) is retired in the same change, with
   its browser, source and model tests moved onto the new frontend and not dropped. The command's arguments, address line, exit codes
   and key handling are unchanged. `npm run cockpit` serves the same frontend; `build:cockpit-ui` is replaced by `build:studio-ui`.

@@ -217,6 +217,8 @@ suite("a populated store", () => {
 			[640, 900],
 			[420, 900],
 			[360, 800],
+			[768, 900],
+			[1366, 768],
 		] as const) {
 			const page = await open(`${server.baseUrl}/`, width, height);
 			expect(
@@ -632,7 +634,7 @@ suite("inspecting", () => {
 	it("opens an event or a capability in the inspector with its provenance, and keeps the selection across a refresh", async () => {
 		const server = await serve(populated(), { ui, readBudget: { duty: 1, burstMs: 1e9 } });
 		const page = await open(`${server.baseUrl}/`);
-		expect(await text(page, "#inspector")).toContain("How a value is known");
+		expect(await text(page, "#inspector")).toContain("Evidence and provenance");
 		await page.click("#timeline tr[data-seq='5'] button.seq");
 		const event = await text(page, "#inspector");
 		expect(event).toContain("Event at position 5");
@@ -1441,5 +1443,424 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const allowed = /\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100)$|\/$/;
 		for (const url of mine) expect(url.replace(server.baseUrl, "/"), url).toMatch(allowed);
 		expect(snapshotRequests(page)).toBe(1);
+	});
+});
+
+suite("finding the selected event in a long session, and reading the inspector", () => {
+	const long = (n = 230) => {
+		const root = tempRoot();
+		ingestAll(
+			root,
+			Array.from({ length: n }, (_, i) => event(i % 3 === 0 ? "tool.started" : "agent.prompt-accepted")),
+		);
+		seedRegistry(root);
+		return root;
+	};
+	const budget = { duty: 1, burstMs: 1e9 };
+	const rowVisible = (page: Page, seq: number) =>
+		page.eval<boolean>(`(() => {
+			const box = document.querySelector("#timeline .table-scroll").getBoundingClientRect();
+			const head = document.querySelector("#timeline thead").getBoundingClientRect().height;
+			const r = document.querySelector("#timeline tr[data-seq='${seq}']").getBoundingClientRect();
+			return r.top >= box.top + head - 1 && r.bottom <= box.bottom + 1;
+		})()`);
+	const markClick = (page: Page, seq: number) =>
+		page.eval(
+			`document.querySelector("#overview g[data-seq='${seq}']").dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+		);
+	const bar = (page: Page) => text(page, "[data-testid=selection-bar]");
+	const scrollTop = (page: Page) => page.eval<number>(`document.querySelector("#timeline .table-scroll").scrollTop`);
+
+	it("selecting a mark opens the inspector but does not move the table; Show in table reveals the row, inside the table, with no read", async () => {
+		const server = await serve(long(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await page.eval(
+			`document.querySelector("#timeline select[aria-label='Rows per page']").value = "200"; document.querySelector("#timeline select[aria-label='Rows per page']").dispatchEvent(new Event("change", { bubbles: true }))`,
+		);
+		await page.settled(2);
+		const reads = snapshotRequests(page);
+		const before = await scrollTop(page);
+		expect(await bar(page)).toBe("No event selected.");
+		await markClick(page, 150);
+		expect(await text(page, "#inspector")).toContain("Event at position 150");
+		expect(await bar(page)).toMatch(/Selected: position 150\./);
+		expect(await scrollTop(page)).toBe(before); // selecting does not scroll the table by itself
+		expect(await rowVisible(page, 150)).toBe(false); // it is offscreen in the table
+		await page.click("[data-focus=selection-action]");
+		expect(await rowVisible(page, 150)).toBe(true);
+		expect(await page.eval(`document.activeElement.closest("tr").dataset.seq`)).toBe("150");
+		expect(
+			await page.eval(`document.querySelector("#timeline tr[data-seq='150']").getAttribute("aria-selected")`),
+		).toBe("true");
+		expect(await text(page, "#inspector")).toContain("Event at position 150"); // the selection is intact
+		// The row is on the screen, not only inside its scroller (the page moved as far as that took, and no farther).
+		expect(
+			await page.eval<boolean>(
+				`(() => { const r = document.querySelector("#timeline tr[data-seq='150']").getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`,
+			),
+		).toBe(true);
+		// A row already in view does not move.
+		const settledAt = await scrollTop(page);
+		const pageAt = await page.eval<number>("window.scrollY");
+		await page.click("[data-focus=selection-action]");
+		expect(await scrollTop(page)).toBe(settledAt);
+		expect(await page.eval<number>("window.scrollY")).toBe(pageAt);
+		expect(snapshotRequests(page)).toBe(reads); // never a read for a row the window already holds
+	});
+
+	it("a filter can hide the selected event without selecting another, says which filter, and one button clears only that and keeps focus", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		const reads = snapshotRequests(page);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		const category = await page.eval<string>(
+			`document.querySelector("#timeline tr[data-seq='5'] .cat").className.split(" ").find((c) => c.startsWith("cat-")).slice(4)`,
+		);
+		await page.click(`#timeline button.chip.cat-${category}`); // keeps the event's own category
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); i.focus(); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		expect(await bar(page)).toMatch(/Position 5 is open in the inspector and hidden by the text filter\./);
+		expect(await text(page, "#inspector")).toContain("Event at position 5"); // no other event was selected
+		expect(await text(page, "#inspector")).toMatch(/hide this event from the table/);
+		expect(await count(page, "#timeline tr[data-seq]")).toBe(0);
+		// The one button: focus it, press Enter as a keyboard user would.
+		await page.eval(`document.querySelector("[data-focus=selection-action]").focus()`);
+		// The name is the visible words (it must be speakable as they read); the position and the filters are its description.
+		expect(
+			await page.eval(`document.querySelector("[data-focus=selection-action]").hasAttribute("aria-label")`),
+		).toBe(false);
+		expect(await page.eval(`document.querySelector("[data-focus=selection-action]").textContent`)).toBe(
+			"Clear filters that hide it",
+		);
+		expect(
+			await page.eval(
+				`document.getElementById(document.querySelector("[data-focus=selection-action]").getAttribute("aria-describedby")).textContent`,
+			),
+		).toMatch(/Position 5 .* hidden by the text filter/);
+		await page.press("Enter");
+		expect(await bar(page)).toMatch(/Selected: position 5\./);
+		expect(await page.eval(`document.activeElement.getAttribute("data-focus")`)).toBe("selection-action"); // the same button, still focused
+		await page.waitFor(`document.querySelector("#timeline-search").value === ""`, 3000);
+		expect(await page.eval<string>(`document.querySelector("#timeline-search").value`)).toBe("");
+		expect(
+			await page.eval(
+				`document.querySelector("#timeline button.chip.cat-${category}").getAttribute("aria-pressed")`,
+			),
+		).toBe("true"); // the category filter was not the cause, so it stays
+		expect(await count(page, "#timeline tr[data-seq]")).toBeGreaterThan(0);
+		expect(
+			await page.eval(`document.querySelector("#timeline tr[data-seq='5']").getAttribute("aria-selected")`),
+		).toBe("true");
+		expect(snapshotRequests(page)).toBe(reads);
+	});
+
+	it("keeps a selected event's ring at full strength on the overview while the filters dim its shape", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		const opacity = await page.eval<[string, string]>(`(() => {
+			const g = document.querySelector("#overview g[data-seq='5']");
+			return [getComputedStyle(g.querySelector(".ring-selected")).opacity, getComputedStyle(g.querySelector(".omark")).opacity];
+		})()`);
+		expect(opacity[0]).toBe("1");
+		expect(Number(opacity[1])).toBeLessThan(0.5);
+	});
+
+	it("a read that moves the window closes a selection the new window does not hold, says so once, and the bar returns to no selection", async () => {
+		const server = await serve(long(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await markClick(page, 10);
+		await page.eval(
+			`[...document.querySelectorAll("#timeline .pager button")].find((b) => b.textContent === "Next").click()`,
+		);
+		await page.settled(2);
+		expect(await bar(page)).toBe("No event selected.");
+		expect(await text(page, "#inspector")).toMatch(
+			/The event at position 10 is not in the window now loaded, so it is closed\./,
+		);
+		expect(await text(page, "#inspector")).not.toMatch(/still in the log/);
+		expect(await scrollTop(page)).toBe(0);
+		// Selecting in the new window works as before, and the note is gone once something is open.
+		await markClick(page, 120);
+		expect(await bar(page)).toMatch(/Selected: position 120\./);
+		expect(await text(page, "#inspector")).not.toMatch(/is not in the window now loaded/);
+	});
+
+	it("says why a move is not available beside the pager, reachable without a mouse, and says when the last read failed", async () => {
+		const server = await serve(long(), { ui, readBudget: { duty: 0.0001, burstMs: 1 } });
+		const page = await open(`${server.baseUrl}/`);
+		expect(
+			await page.eval(`document.querySelector("[data-focus='pager:First']").getAttribute("aria-describedby")`),
+		).toBe("pager-reasons");
+		expect(await text(page, "#pager-reasons")).toMatch(/First: This window starts at the beginning of the log\./);
+		expect(await text(page, "#pager-reasons")).toMatch(/Previous: There is nothing before this window\./);
+		expect(
+			await page.eval(`document.querySelector("[data-focus='pager:Next']").getAttribute("aria-describedby")`),
+		).toBeNull(); // Next works
+		expect(await text(page, "#timeline .panel-tools")).not.toMatch(/not current/);
+		await page.click("#refresh"); // a budget this small paces the second read
+		await page.settled(2);
+		expect(await text(page, "#timeline .panel-tools")).toMatch(/not current/);
+		expect(await text(page, "#pager-reasons")).toMatch(/Reads are paused/);
+	});
+
+	it("opens the reference one disclosure at a time with the keyboard, and keeps it available beside a selected event", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		const reads = snapshotRequests(page);
+		const open_ = () =>
+			page.eval<boolean[]>(
+				`[...document.querySelectorAll("#inspector [data-testid=legend] details")].map((d) => d.open)`,
+			);
+		expect(await text(page, "#inspector [data-testid=legend] .lead")).toBe(
+			"Select an event or capability to inspect its recorded evidence.",
+		);
+		expect(await open_()).toEqual([true, false, false, false, false]); // only how a value is known is open
+		expect(
+			await page.eval<string[]>(
+				`[...document.querySelectorAll("#inspector [data-testid=legend] summary")].map((s) => s.textContent)`,
+			),
+		).toEqual([
+			"Evidence and provenance",
+			"Overview marks",
+			"Event flags",
+			"Source conditions",
+			"Capability statuses",
+		]);
+		await page.eval(`document.querySelectorAll("#inspector [data-testid=legend] summary")[2].focus()`);
+		await page.press("Enter");
+		expect(await open_()).toEqual([true, false, true, false, false]);
+		expect(
+			await page.eval(
+				`(() => { const f = document.querySelectorAll("#inspector [data-testid=legend] details")[2]; return getComputedStyle(f.querySelector("ul")).display !== "none" && f.querySelector("ul").offsetHeight > 0; })()`,
+			),
+		).toBe(true);
+		// Nothing was dropped: every wording the earlier legend had is still in the page.
+		const all = await page.eval<string>(`document.querySelector("#inspector [data-testid=legend]").textContent`);
+		for (const phrase of [
+			"Observed directly by Endophasia",
+			"Reported by the runtime",
+			"Computed from other recorded values",
+			"no value, for the reason shown",
+			"envelope only",
+			"Its kind records a fault",
+			"A torn tail can be a write in progress",
+			"Not offered, whatever earlier evidence said",
+		])
+			expect(all, phrase).toContain(phrase);
+		// A selected event: the details are there, folded in a reading guide, and the one legend is gone.
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		expect(await count(page, "[data-testid=legend]")).toBe(0);
+		expect(await page.eval<boolean>(`document.querySelector("#inspector [data-testid=reference]").open`)).toBe(false);
+		await page.eval(`document.querySelector("#inspector [data-testid=reference] summary").focus()`);
+		await page.press("Enter");
+		expect(await page.eval<boolean>(`document.querySelector("#inspector [data-testid=reference]").open`)).toBe(true);
+		expect(snapshotRequests(page)).toBe(reads);
+	});
+
+	it("opens a cut identifier in place to its whole value, and copies only a displayed identifier, as shown", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		const reads = snapshotRequests(page);
+		// A value the runtime panel cuts: its button opens it to the whole.
+		const cut: { before: string; after: string; expanded: string } = {
+			after: "",
+			expanded: "",
+			...(await page.eval<{ before: string }>(`(() => {
+			const b = [...document.querySelectorAll("#runtime button.expand")][0];
+			const before = b.textContent; b.click();
+			return { before };
+		})()`)),
+		};
+		await page.waitFor(
+			`document.querySelector("#runtime button.expand").getAttribute("aria-expanded") === "true"`,
+			3000,
+		);
+		cut.after = await page.eval<string>(`document.querySelector("#runtime button.expand").textContent`);
+		cut.expanded = "true";
+		expect(cut.before.endsWith("…")).toBe(true);
+		expect(cut.after.length).toBeGreaterThan(cut.before.length);
+		expect(cut.after.startsWith(cut.before.slice(0, -1))).toBe(true);
+		expect(cut.expanded).toBe("true");
+		// Copy: the page's clipboard is replaced by a recorder, so what would be copied is what is read back.
+		await page.eval(
+			`window.__copied = []; Object.defineProperty(navigator, "clipboard", { value: { writeText: (t) => { window.__copied.push(t); return Promise.resolve(); } }, configurable: true })`,
+		);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		const shown = await page.eval<string>(
+			`[...document.querySelectorAll("#inspector dl.facts .fact")].find((f) => f.querySelector("dt").textContent === "event id").querySelector("dd .mono").textContent`,
+		);
+		await page.click(`#inspector button.copy[aria-label="Copy event id"]`);
+		await page.waitFor(`window.__copied.length === 1`, 3000);
+		expect(await page.eval<string[]>("window.__copied")).toEqual([shown]);
+		expect(await text(page, `#inspector button.copy[aria-label="Copy event id"]`)).toBe("copied");
+		expect(snapshotRequests(page)).toBe(reads);
+		// A generated alias has no copy button: it stands in for what is not shown.
+		const snapshot = JSON.parse(
+			JSON.stringify(readEndoCockpitSnapshotV0(populated(), { digestKey: OTHER_KEY, limit: 100 })),
+		);
+		snapshot.timeline.entries[4].eventId = "endo.event.withheld-0123456789abcdef0123456789abcdef";
+		const aliased = await open(await pretendFor(snapshot));
+		await aliased.click("#timeline tr[data-seq='5'] button.seq");
+		expect(await count(aliased, `#inspector button.copy[aria-label="Copy event id"]`)).toBe(0);
+		expect(await count(aliased, `#inspector button.copy[aria-label="Copy session id"]`)).toBe(1);
+	});
+
+	it("in the narrow dialog the actions are reachable: the note that filters hide the open event carries Clear, and Show in table closes the dialog and shows the row", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		await page.resize(420, 800); // the window is made narrow with the event open and hidden: the table is now behind a modal dialog
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		const reads = snapshotRequests(page);
+		expect(await text(page, "dialog#inspector [data-testid=event-detail]")).toMatch(
+			/hide this event from the table \(the text filter\)/,
+		);
+		await page.eval(`document.querySelector("dialog#inspector [data-focus=inspector-clear]").focus()`);
+		await page.press("Enter");
+		await page.waitFor(`!document.querySelector("dialog#inspector [data-focus=inspector-clear]")`, 3000);
+		expect(await page.eval<boolean>(`document.querySelector("dialog#inspector").open`)).toBe(true); // still open, selection intact
+		expect(await text(page, "dialog#inspector")).toContain("Event at position 5");
+		await page.click("dialog#inspector [data-focus=inspector-show]");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(
+			await page.eval(`document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq`),
+		).toBe("5");
+		expect(
+			await page.eval<boolean>(
+				`(() => { const r = document.querySelector("#timeline tr[data-seq='5']").getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; })()`,
+			),
+		).toBe(true);
+		expect(snapshotRequests(page)).toBe(reads);
+	});
+
+	it("in the dialog, Show in table with the row hidden by filters clears the filters that hide it and shows the row, so the event is not lost", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.eval(
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+		);
+		await page.resize(420, 800);
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		await page.click("dialog#inspector [data-focus=inspector-show]"); // the filter still hides the row
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(await page.eval<string>(`document.querySelector("#timeline-search").value`)).toBe("");
+		expect(
+			await page.eval(`document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq`),
+		).toBe("5");
+	});
+
+	it("shows and focuses the row's button when the table is scrolled sideways (a narrow table is wider than its scroller)", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		const page = await open(`${server.baseUrl}/`, 420, 800);
+		await page.eval(`document.querySelector("#timeline .table-scroll").scrollLeft = 300`);
+		expect(await page.eval<number>(`document.querySelector("#timeline .table-scroll").scrollLeft`)).toBeGreaterThan(
+			100,
+		);
+		await page.eval(`document.querySelector("#timeline tr[data-seq='5'] button.seq").click()`); // a script click: the button is offscreen, as it may be to a keyboard user
+		await page.waitFor(`document.querySelector("dialog#inspector").open`, 5000);
+		await page.click("dialog#inspector [data-focus=inspector-show]");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		const visible = await page.eval<boolean>(`(() => {
+			const box = document.querySelector("#timeline .table-scroll").getBoundingClientRect();
+			const b = document.activeElement.getBoundingClientRect();
+			return document.activeElement.classList.contains("seq") && b.left >= box.left && b.right <= box.right;
+		})()`);
+		expect(visible).toBe(true);
+	});
+
+	it("never moves the table when the selection bar changes state, whatever the width and however many filters hide the event", async () => {
+		const server = await serve(populated(), { ui, readBudget: budget });
+		for (const [width, height] of [
+			[1440, 900],
+			[1100, 800],
+		] as const) {
+			const page = await open(`${server.baseUrl}/`, width, height);
+			// What the bar itself adds to the page: its height, and where it sits against the window line above it. (The filter row above it can wrap when a
+			// filter is set; that is the filters' doing, not the bar's.)
+			const geometry = () =>
+				page.eval<[number, number]>(
+					`(() => { const b = document.querySelector("[data-testid=selection-bar]"); return [b.getBoundingClientRect().height, b.getBoundingClientRect().top - document.querySelector("#timeline .window-line").getBoundingClientRect().top]; })()`,
+				);
+			page.eval<[number, number]>(
+				`[document.querySelector("[data-testid=selection-bar]").getBoundingClientRect().height, document.querySelector("[data-testid=selection-bar]").nextElementSibling.getBoundingClientRect().top]`,
+			);
+			await page.eval("document.fonts.ready.then(() => true)"); // a late font swap is not the bar's doing
+			const none = await geometry();
+			await page.click("#timeline tr[data-seq='5'] button.seq");
+			const shown = await geometry();
+			// Every filter at once, so the sentence is as long as it gets.
+			await page.eval(
+				`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-thing"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
+			);
+			await page.click("#timeline .check input");
+			await page.click("#timeline button.chip.cat-control");
+			await page.eval(
+				`(() => { const s = document.querySelector("#timeline select[aria-label^='Session']"); if (s) { s.value = s.options[1].value; s.dispatchEvent(new Event("change", { bubbles: true })); } })()`,
+			);
+			const hidden = await geometry();
+			expect(shown, `${width}px`).toEqual(none);
+			expect(hidden, `${width}px`).toEqual(none);
+		}
+	});
+
+	it("keeps a fact's label and value side by side in the left rail at the common laptop widths (stacking is only for a genuinely narrow panel)", async () => {
+		const server = await serve(populated(), { ui });
+		for (const [width, height] of [
+			[1440, 900],
+			[1366, 768],
+		] as const) {
+			const page = await open(`${server.baseUrl}/`, width, height);
+			const sameRow = await page.eval<boolean>(`(() => {
+				const f = document.querySelector("#runtime .fact");
+				return Math.abs(f.querySelector("dt").getBoundingClientRect().top - f.querySelector("dd").getBoundingClientRect().top) < 6;
+			})()`);
+			expect(sameRow, `${width}px`).toBe(true);
+		}
+	});
+
+	it("keeps the page free of sideways scrolling and the source warnings in view at the representative widths", async () => {
+		const root = populated();
+		appendFileSync(
+			join(root, "events", "events.log"),
+			endoFrameBytesV0(new TextEncoder().encode(JSON.stringify(event("tool.started")))).subarray(0, 21),
+		);
+		const server = await serve(root, { ui });
+		for (const [width, height] of [
+			[1440, 900],
+			[1280, 720],
+			[1100, 800],
+			[768, 900],
+			[420, 800],
+		] as const) {
+			const page = await open(`${server.baseUrl}/`, width, height);
+			expect(
+				await page.eval<boolean>("document.documentElement.scrollWidth <= window.innerWidth + 1"),
+				`${width}px`,
+			).toBe(true);
+			expect(await text(page, "[data-testid=attention]"), `${width}px`).toMatch(/degraded/);
+			expect(await count(page, "#timeline tr[data-seq]"), `${width}px`).toBeGreaterThan(0);
+			await page.click("#timeline tr[data-seq='5'] button.seq");
+			expect(
+				await page.eval<boolean>("document.documentElement.scrollWidth <= window.innerWidth + 1"),
+				`${width}px, inspector open`,
+			).toBe(true);
+			const modal = width < 1024;
+			expect(await count(page, "dialog[open]"), `${width}px`).toBe(modal ? 1 : 0);
+			if (modal)
+				expect(await text(page, "dialog#inspector [data-testid=dialog-attention]"), `${width}px`).toMatch(
+					/degraded/,
+				);
+			else expect(await text(page, "#inspector"), `${width}px`).toContain("Event at position 5");
+			expect(page.seen.problems, `${width}px`).toEqual([]);
+		}
 	});
 });

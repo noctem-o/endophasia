@@ -209,9 +209,10 @@ describe("lifecycle semantics (REAL crash fixtures)", () => {
 		expect(
 			(t.layers.outcome as { entries: { outcome: string; cause: unknown }[] }).entries.map((entry) => entry.outcome),
 		).toEqual(["unclassified", "completed"]);
-		expect((t.layers.outcome as { entries: { cause: unknown }[] }).entries[0]!.cause).toEqual({
+		expect((t.layers.outcome as { entries: { cause: unknown }[] }).entries[0]!.cause).toMatchObject({
 			reportedReason: "interrupted",
 			provenance: "dsh-written-closer",
+			finalStep: { turn: 1, output: "none", stepEndWritten: true },
 		});
 	});
 

@@ -86,6 +86,9 @@ function compact(fields: Fields): Record<string, JsonValueV0> {
 
 const bytes = (text: string): number => Buffer.byteLength(text, "utf8");
 
+/** The codes DSH recovery writes on a tool result it synthesised (packages/core/session/src/repair.ts). */
+export const RECOVERY_CODES: ReadonlySet<string> = new Set(["TOOL_NOT_STARTED", "TOOL_OUTCOME_UNKNOWN"]);
+
 /** What recording needs besides the row. */
 export interface DshRecordingContextV0 {
 	dshSessionId: string;
@@ -276,12 +279,17 @@ export function recordDshRow(row: DshSessionEvent, key: EndoDigestKeyV0): DshRec
 			const message = isRecord(data.message) ? data.message : {};
 			const stats = contentStats(message.content);
 			const error = isRecord(data.error) ? data.error : undefined;
+			// DSH's own recovery writes an error result for a call whose outcome it never saw (TOOL_NOT_STARTED / TOOL_OUTCOME_UNKNOWN).
+			// That is DSH speaking after the fact, not a tool outcome anyone observed: it is flagged, and not offered as a result.
+			const recovery = RECOVERY_CODES.has(String(error?.code)) ? String(error?.code) : undefined;
 			return make("dsh.tool-result-recorded", {
 				...where,
+				dshRecovery: recovery,
 				callId: dshToken(message.toolCallId, 128),
 				isError: typeof message.isError === "boolean" ? message.isError : undefined,
 				// The digest is over the model-facing content, as `piToolResultDigestV0` does; `meta` (tool-private) is never read.
-				resultDigest: Array.isArray(message.content) ? dshKeyedV0(key, message.content) : undefined,
+				resultDigest:
+					recovery === undefined && Array.isArray(message.content) ? dshKeyedV0(key, message.content) : undefined,
 				resultParts: stats.parts,
 				errorName: error === undefined ? undefined : dshToken(error.name, 64),
 				errorCode: error === undefined ? undefined : dshToken(error.code, 64),
@@ -348,10 +356,11 @@ export function recordDshRow(row: DshSessionEvent, key: EndoDigestKeyV0): DshRec
 	}
 }
 
-/** The header without its working directory, which is a path and is never digested into an event. */
+/** The header as committed to by its keyed digest: all fields except the format generation. */
 function headerWithoutCwd(header: DshSessionHeader): Record<string, unknown> {
-	// Neither the working directory (a path) nor the format version (a generation is metadata, not identity).
-	const { cwd: _cwd, version: _version, ...rest } = header;
+	// The format version is left out (a generation is metadata, not identity). The working directory is NOT: it is committed to by the
+	// keyed digest, so a changed cwd is a changed header, while its plaintext is never stored (the payload below has no cwd).
+	const { version: _version, ...rest } = header;
 	return rest;
 }
 

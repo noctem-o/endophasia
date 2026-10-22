@@ -23,7 +23,26 @@ export interface DshLifecycleStateV0 {
 	started: boolean;
 	runs: number;
 	run: { index: number; steps: number; lastStop: string | null; dshTurn: number | null } | null;
-	step: { n: number; stop: string | null; modelOutput: boolean } | null;
+	step: DshStepStateV0 | null;
+	/** The step that last ended (or is still open at a turn end), kept so a recovery closer can say what it closed. */
+	lastStep: (DshStepStateV0 & { endWritten: boolean }) | null;
+}
+
+/**
+ * What a step's log committed. NONE of these says the step completed:
+ * - "none": no assistant message or attempt;
+ * - "attempt-only": a failed or cancelled attempt that committed no message;
+ * - "committed": an assistant message (it may still have tool calls whose results never came);
+ * - "cancelled-prefix": an assistant message DSH finalised from a cancelled stream (`interrupted: true`).
+ */
+export type DshStepOutputV0 = "none" | "attempt-only" | "committed" | "cancelled-prefix";
+
+export interface DshStepStateV0 {
+	n: number;
+	stop: string | null;
+	output: DshStepOutputV0;
+	/** Tool results DSH wrote itself during recovery (TOOL_NOT_STARTED / TOOL_OUTCOME_UNKNOWN) inside this step. */
+	recoveredResults: number;
 }
 
 export const INITIAL_DSH_LIFECYCLE_STATE_V0: DshLifecycleStateV0 = Object.freeze({
@@ -32,6 +51,7 @@ export const INITIAL_DSH_LIFECYCLE_STATE_V0: DshLifecycleStateV0 = Object.freeze
 	runs: 0,
 	run: null,
 	step: null,
+	lastStep: null,
 });
 
 export interface DshLifecycleOutV0 {
@@ -84,6 +104,7 @@ export function foldDshLifecycleV0(
 				runs: index,
 				run: { index, steps: 0, lastStop: null, dshTurn: count(data.turn) ?? null },
 				step: null,
+				lastStep: null,
 			};
 			emit("lifecycle.run-started", { dshTurn: count(data.turn) ?? null, qualification: QUALIFIED_RUN });
 			break;
@@ -97,45 +118,63 @@ export function foldDshLifecycleV0(
 			next = {
 				...next,
 				run: { ...next.run, steps: next.run.steps + 1 },
-				step: { n, stop: null, modelOutput: false },
+				step: { n, stop: null, output: "none", recoveredResults: 0 },
+				lastStep: null,
 			};
 			emit("lifecycle.turn-started", { turn: n, qualification: QUALIFIED_TURN });
 			break;
 		}
+		case "assistant/attempt":
+			// An attempt that committed no message. It is output only when nothing better was committed.
+			if (next.step !== null && next.step.output === "none")
+				next = { ...next, step: { ...next.step, output: "attempt-only" } };
+			break;
 		case "assistant/message": {
+			if (next.step === null) break;
+			// A message says the model produced something, not that the step finished: `interrupted: true` marks a prefix DSH
+			// finalised from a cancelled stream, and the message may carry tool calls that were never answered.
 			const stop = dshStopReason(data);
-			if (next.step !== null && stop !== undefined) {
-				next = {
-					...next,
-					step: { ...next.step, stop },
-					run: next.run === null ? null : { ...next.run, lastStop: stop },
-				};
-			}
+			next = {
+				...next,
+				step: {
+					...next.step,
+					output: data.interrupted === true ? "cancelled-prefix" : "committed",
+					stop: stop ?? next.step.stop,
+				},
+				run: stop !== undefined && next.run !== null ? { ...next.run, lastStop: stop } : next.run,
+			};
 			break;
 		}
+		case "tool/result":
+			if (next.step !== null && typeof recorded.payload.dshRecovery === "string")
+				next = { ...next, step: { ...next.step, recoveredResults: next.step.recoveredResults + 1 } };
+			break;
 		case "step/end": {
 			if (next.step === null) {
 				anomaly("a step ended that was not open");
 				break;
 			}
-			const { n, stop, modelOutput } = next.step;
-			next = { ...next, step: null };
+			const closing = next.step;
+			next = { ...next, step: null, lastStep: { ...closing, endWritten: true } };
 			// A step's end is decided ONE ROW LATE, which keeps the fold append-stable and honest:
 			// - the last row of the log so far: nothing is emitted yet (the next import, which sees the next row, emits it);
-			// - a step with no model output that DSH closes with an `interrupted` or `forked` turn end was closed by DSH after the
-			//   fact (a resume, a fork seed): DSH did not say the step completed, so no turn-completed is emitted at all.
+			// - a step/end directly followed by a turn/end of reason `interrupted` or `forked` may have been WRITTEN BY DSH during
+			//   recovery (an open step is closed that way, whatever it committed, and the closer reuses the last event's time).
+			//   A genuine step end followed by a recovery turn end looks identical, so no completion is claimed either way; the
+			//   closing turn event records what the step had committed (`finalStep`).
 			if (following === undefined) break;
 			const followingReason =
 				following.type === "turn/end" && isRecord(following.data) && isRecord(following.data.reason)
 					? following.data.reason.kind
 					: null;
-			if (!modelOutput && (followingReason === "interrupted" || followingReason === "forked")) break;
+			if (followingReason === "interrupted" || followingReason === "forked") break;
 			emit("lifecycle.turn-completed", {
-				turn: n,
+				turn: closing.n,
+				output: closing.output,
 				stopReason:
-					stop === null
+					closing.stop === null
 						? endoUnavailableV0("no assistant message with a stop reason was committed in this step")
-						: endoReportedV0(stop),
+						: endoReportedV0(closing.stop),
 				qualification: QUALIFIED_TURN,
 			});
 			break;
@@ -146,7 +185,9 @@ export function foldDshLifecycleV0(
 				break;
 			}
 			const run = next.run;
-			next = { ...next, run: null, step: null };
+			// What the turn's last step had committed, whether DSH wrote its end or it is still open.
+			const last = next.step !== null ? { ...next.step, endWritten: false } : next.lastStep;
+			next = { ...next, run: null, step: null, lastStep: null };
 			const reported = typeof recorded.payload.reason === "string" ? recorded.payload.reason : "unrecognised";
 			const turns = run.steps;
 			const closed = { turns, qualification: QUALIFIED_RUN };
@@ -180,6 +221,16 @@ export function foldDshLifecycleV0(
 					reason: `DSH closed this turn after the fact with reason '${reported}'; no end of it was observed`,
 					reportedReason: reported,
 					provenance: "dsh-written-closer",
+					...(last === null
+						? {}
+						: {
+								finalStep: {
+									turn: last.n,
+									output: last.output,
+									recoveredToolResults: last.recoveredResults,
+									stepEndWritten: last.endWritten,
+								},
+							}),
 				});
 			} else {
 				emit("lifecycle.run-unclassified", {

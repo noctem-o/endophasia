@@ -45,9 +45,10 @@ confirmation oracles) unless a test or fixture explicitly allows it.
 | DSH semantic | Becomes | Fidelity (loss accounting) |
 | --- | --- | --- |
 | turn | `lifecycle.run-*`; `completed`→run-completed, `aborted`→run-aborted (cause kept; `stopRequested` only for a user cause), `error`→run-failed (code, status, keyed message digest), `blocked`/`max-tokens`→run-unclassified naming the reported kind | QUALIFIED: a DSH turn is an Endophasia **run**, not the same thing |
-| turn closed by DSH on resume (`interrupted`) or by a fork seed (`forked`) | `run-unclassified`, `provenance: "dsh-written-closer"`; the trajectory outcome is `unclassified` | Never `lifecycle.interrupted` (Endophasia's own observation) and never `session-resumed` |
-| step | `lifecycle.turn-started` / `turn-completed` (stop reason of its assistant message, else UNAVAILABLE) | QUALIFIED: a DSH step is an Endophasia **turn**. A step DSH closed on resume with no model output gets **no** turn-completed |
+| turn closed by DSH on resume (`interrupted`) or by a fork seed (`forked`) | `run-unclassified`, `provenance: "dsh-written-closer"`, `finalStep`; the trajectory outcome is `unclassified` | Never `lifecycle.interrupted` (Endophasia's own observation) and never `session-resumed` |
+| step | `lifecycle.turn-started` / `turn-completed` (stop reason of its assistant message, else UNAVAILABLE; `output`: `none`, `attempt-only`, `committed` or `cancelled-prefix`) | QUALIFIED: a DSH step is an Endophasia **turn**. An assistant message says the model produced output, not that the step finished (`interrupted: true` is a cancelled stream's prefix). A `step/end` directly followed by a `turn/end` of reason `interrupted` or `forked` may be DSH's own recovery closer (recovery closes an open step whatever it had committed, with the last event's time): **no `turn-completed` is claimed**, and the closing event records `finalStep` (output kind, recovered tool results, whether a step end was written) |
 | `tool/call`, `tool/result` | `dsh.tool-requested`, `dsh.tool-result-recorded`; trajectory `toolCalls` (the model's requests) and `toolResults` (paired by the call id in the result message) | QUALIFIED: **never** `tool.started`/`tool.finished`. No start time, duration or "executed" claim exists |
+| tool result DSH wrote itself during recovery (`TOOL_NOT_STARTED`, `TOOL_OUTCOME_UNKNOWN`) | `dsh.tool-result-recorded` flagged `dshRecovery`, no result digest; trajectory status and digest UNAVAILABLE | DSH speaking after the fact, never a tool outcome |
 | failed attempts, retries | `dsh.attempt-recorded`, `dsh.retry-recorded`, `dsh.retry-started` | QUALIFIED: DSH-specific kinds on purpose (Pi's `retry.*` carry Pi's semantics) |
 | usage | recorded per assistant message under Endophasia's names; absent categories are **absent**, never 0. The trajectory reports a run's tokens only if all five required categories are present on every message, else UNAVAILABLE naming what is missing | Real DSH usage lacks `cacheWrite`, so the usage layer is UNAVAILABLE on real data |
 | permission, sandbox, approval records | `dsh.authority-recorded`, source class `runtime-fact` | Observations of **DSH's** authority state; never an Endophasia decision |
@@ -66,22 +67,27 @@ matrix, covering each of the 62 pinned DSH event types exactly once, tested agai
 1. **`blocked` and `max-tokens` become `run-unclassified`, not `run-completed`.** The study pointed at Pi's rule (other stop reasons
    to `run-completed`). DSH's reasons are turn-end reasons, not provider stop reasons, and `run-completed` would claim the run
    finished. ACP maps `max_tokens` and `refusal` the same conservative way.
-2. **A step DSH closed on resume gets no `turn-completed`.** The study accepted `turn-completed` with an UNAVAILABLE stop reason. A
-   one-row lookahead keeps the fold append-stable and honest: an unfinished final step waits for the next import, and a step that
-   DSH closed with an `interrupted` or `forked` turn end and that had no model output is left open.
+2. **No `turn-completed` before a DSH recovery turn end.** The study accepted `turn-completed` with an UNAVAILABLE stop reason. A
+   one-row lookahead keeps the fold append-stable and honest: an unfinished final step waits for the next import, and a `step/end`
+   directly followed by an `interrupted` or `forked` turn end is not claimed complete whatever the step had committed, because DSH
+   recovery writes such a step end itself. The cost is an under-claim: a genuine last step followed by a recovery turn end also gets
+   no `turn-completed`.
 3. **Retries use `dsh.*` kinds**, not Pi's `retry.*`.
 4. **Compaction is recorded, not mapped to `lifecycle.compacted`.**
 5. **An import checkpoint** (`dsh.import-checkpoint`, its own producer) records how far the evidence reaches (DSH seq, tail state),
    under which key and mapping. It replaces nothing in the study; it makes "evidence up to seq N, tail torn" a stored fact.
 6. **The trajectory outcome of a DSH-written closer is `unclassified`**, not `interrupted`, so a DSH crash and a Pi crash compare as
    different outcomes. That is the honest result: they are different claims.
-7. **Reader promoted, not copied.** `research/dsh-native/log.ts` moved to `adapters/dsh-native/log.ts`; the study and its tests import it from there.
+7. **Mapping version 2.** The header digest now commits to the working directory (keyed; the path is never stored) and excludes only the
+   format generation; lifecycle payloads carry the step output kind; recovery-written tool results are not outcomes. A store imported
+   under mapping 1 is refused on re-import (`mapping-changed`) and never reinterpreted; no release carried mapping 1.
+8. **Reader promoted, not copied.** `research/dsh-native/log.ts` moved to `adapters/dsh-native/log.ts`; the study and its tests import it from there.
 
 ## Known limitations
 
 * **Single writer per store root.** The durable event store has no writer lock, and deterministic ids turn two racing importers (or an
   importer racing a recorder on the same root) into a duplicate id the next open rejects. Run one writer per store root.
-* A DSH `step/end` that DSH itself synthesised on resume *with* model output cannot be told apart from a real one.
+* A genuine last `step/end` followed by a DSH recovery turn end is indistinguishable from DSH's own closer and is not claimed complete.
 * Usage is UNAVAILABLE on real DSH data until DSH reports `cacheWrite` (the partial counts are in the recorded events).
 * The session overview (`runtime/contracts/session-overview.ts`) will show an open imported run as "running"; a cold import cannot know
   the process is gone. Use the checkpoint's `tail` and `highWaterDshSeq` for coverage.

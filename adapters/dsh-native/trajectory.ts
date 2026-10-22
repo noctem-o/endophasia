@@ -187,6 +187,7 @@ export function projectDshTrajectoryV0(
 					{
 						reportedReason: typeof payload.reportedReason === "string" ? payload.reportedReason : null,
 						provenance: typeof payload.provenance === "string" ? payload.provenance : null,
+						finalStep: (payload.finalStep ?? null) as JsonValueV0,
 					},
 				);
 				break;
@@ -251,6 +252,7 @@ export function projectDshTrajectoryV0(
 			case "dsh.tool-result-recorded": {
 				const callId = text(payload.callId);
 				const digest = keyed(payload.resultDigest);
+				const recovered = typeof payload.dshRecovery === "string";
 				const index = tools.findIndex(
 					(tool) => tool.result === null && tool.callId !== null && tool.callId === callId,
 				);
@@ -259,12 +261,17 @@ export function projectDshTrajectoryV0(
 					turn: num(payload.step) ?? null,
 					name:
 						index >= 0 ? tools[index]!.call.name : endoUnavailableV0("no request was recorded for this result"),
-					status:
-						typeof payload.isError === "boolean"
+					// A result DSH wrote itself during recovery is not an outcome of the tool: UNAVAILABLE, with the reason.
+					status: recovered
+						? endoUnavailableV0("DSH wrote this result itself during recovery; the tool's outcome is unknown")
+						: typeof payload.isError === "boolean"
 							? endoReportedV0(payload.isError ? "error" : "ok")
 							: endoUnavailableV0("the result carried no isError"),
-					resultDigest:
-						digest === null ? endoUnavailableV0("the import recorded no result digest") : endoReportedV0(digest),
+					resultDigest: recovered
+						? endoUnavailableV0("DSH wrote this result itself during recovery; it is not the tool's output")
+						: digest === null
+							? endoUnavailableV0("the import recorded no result digest")
+							: endoReportedV0(digest),
 				};
 				if (index >= 0) tools[index]!.result = result;
 				else orphanResults.push(result);

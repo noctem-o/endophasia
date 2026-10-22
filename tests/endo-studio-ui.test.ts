@@ -334,6 +334,17 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		expect(existsSync(join(scratch, "format-key"))).toBe(false);
 	});
 
+	it("refuses an oversized manifest or file by its size, without reading it", () => {
+		const big = copy();
+		writeFileSync(join(big, MANIFEST), Buffer.alloc(64 * 1024 + 1, 0x20));
+		refused(big, /manifest is too large/);
+		const lied = copy();
+		const manifest = JSON.parse(text(lied, MANIFEST));
+		manifest.files[0].bytes += 1;
+		writeFileSync(join(lied, MANIFEST), JSON.stringify(manifest));
+		refused(lied, /does not match its manifest entry/);
+	});
+
 	it("holds a listed name to the server's 64-character limit for the whole name, before the key is made", () => {
 		const dir = copy();
 		const long = `${"a".repeat(62)}.js`;

@@ -49,8 +49,11 @@ export function loadEndoStudioUiFilesV0(directory: string): Record<string, Uint8
 	};
 	if (!names.includes(ENDO_STUDIO_UI_MANIFEST_NAME_V0) || !regular(ENDO_STUDIO_UI_MANIFEST_NAME_V0))
 		return incomplete(`${ENDO_STUDIO_UI_MANIFEST_NAME_V0} is missing`);
+	// A file's size is read from its inode before its content is read, so an oversized file is refused, not allocated.
+	const sizeOf = (name: string): number => lstatSync(join(directory, name)).size;
+	if (sizeOf(ENDO_STUDIO_UI_MANIFEST_NAME_V0) > STUDIO_MAX_MANIFEST_BYTES)
+		return incomplete("the manifest is too large");
 	const manifestBytes = readFileSync(join(directory, ENDO_STUDIO_UI_MANIFEST_NAME_V0));
-	if (manifestBytes.length > STUDIO_MAX_MANIFEST_BYTES) return incomplete("the manifest is too large");
 	let manifest: unknown;
 	try {
 		manifest = JSON.parse(manifestBytes.toString("utf8"));
@@ -97,6 +100,7 @@ export function loadEndoStudioUiFilesV0(directory: string): Record<string, Uint8
 	const files: Record<string, Uint8Array> = {};
 	for (const [name, { bytes, sha256 }] of [...expected].sort(([a], [b]) => (a < b ? -1 : 1))) {
 		if (!present.includes(name) || !regular(name)) return incomplete(`${name} is missing or not a regular file`);
+		if (sizeOf(name) !== bytes) return incomplete(`${name} does not match its manifest entry`);
 		const content = readFileSync(join(directory, name));
 		if (content.length !== bytes || createHash("sha256").update(content).digest("hex") !== sha256)
 			return incomplete(`${name} does not match its manifest entry`);

@@ -192,7 +192,7 @@ try {
 	const hasStudioUi = paths.some((p) => p.startsWith("dist/studio-ui/"));
 	if (subject === null) check(hasStudioUi, "the build from this checkout packs the Studio frontend (dist/studio-ui)");
 	else if (!hasStudioUi) console.log("skip  the Studio frontend checks: this package predates dist/studio-ui");
-	const outsideFrontend = paths.filter((p) => !p.startsWith("dist/studio-ui/") && !p.startsWith("dist/licenses/"));
+	const outsideFrontend = paths.filter((p) => !(hasStudioUi && (p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/"))));
 	check(
 		outsideFrontend.filter((p) => p.startsWith("dist/") && !p.endsWith(".js")).sort().join() ===
 			[
@@ -592,7 +592,7 @@ try {
 				let err = "";
 				child.stdout.on("data", (d) => { out += d; });
 				child.stderr.on("data", (d) => { err += d; });
-				const exited = new Promise((r) => child.once("exit", (code, signal) => r({ code, signal })));
+				const exited = new Promise((r) => child.once("close", (code, signal) => r({ code, signal })));
 				const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
 				const line = () => /^(http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)\n/.exec(out)?.[1] ?? null;
 				const poll = setInterval(() => { if (line() !== null) { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), err: () => err }); } }, 20);

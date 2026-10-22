@@ -329,6 +329,38 @@ export class Page {
 		);
 	}
 
+	/** A real key press (down and up) as the browser's input pipeline sees it, so default actions run (Escape closes a dialog, Enter presses a button). */
+	async press(key: string): Promise<void> {
+		const codes: Record<string, { code: string; vk: number; text?: string }> = {
+			Escape: { code: "Escape", vk: 27 },
+			Enter: { code: "Enter", vk: 13, text: "\r" },
+			ArrowDown: { code: "ArrowDown", vk: 40 },
+			ArrowUp: { code: "ArrowUp", vk: 38 },
+			Tab: { code: "Tab", vk: 9 },
+			r: { code: "KeyR", vk: 82, text: "r" },
+		};
+		const spec = codes[key] ?? { code: key, vk: key.toUpperCase().charCodeAt(0), text: key };
+		const base = { key, code: spec.code, windowsVirtualKeyCode: spec.vk, nativeVirtualKeyCode: spec.vk };
+		await this.browser.send(
+			"Input.dispatchKeyEvent",
+			{
+				type: spec.text === undefined ? "rawKeyDown" : "keyDown",
+				...base,
+				...(spec.text === undefined ? {} : { text: spec.text }),
+			},
+			this.sessionId,
+		);
+		await this.browser.send("Input.dispatchKeyEvent", { type: "keyUp", ...base }, this.sessionId);
+	}
+
+	/** Move the real pointer over the centre of an element. */
+	async hover(selector: string): Promise<void> {
+		const at = await this.eval<{ x: number; y: number }>(
+			`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+		);
+		await this.browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y }, this.sessionId);
+	}
+
 	async text(selector: string): Promise<string> {
 		return this.eval<string>(
 			`(document.querySelector(${JSON.stringify(selector)}) ?? {textContent: ""}).textContent`,

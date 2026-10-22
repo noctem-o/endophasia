@@ -1,7 +1,7 @@
 // The page's wording for every closed vocabulary of the contract, and the contract versions it can read.
 //
 // The types come from protocol/ (`import type` only: nothing of the protocol runs in the browser). Each table is a `Record` over
-// the protocol's own union, so a vocabulary that grows breaks the typecheck here, and tests/endo-cockpit-ui-vocabulary.test.ts
+// the protocol's own union, so a vocabulary that grows breaks the typecheck here, and tests/endo-studio-ui-contract.test.ts
 // pins the runtime copies (versions, the withheld sentinel) against the protocol's exports. A value this build does not know is
 // shown as what it is, in code type, and never given a meaning (see `known`).
 import type {
@@ -11,9 +11,9 @@ import type {
 	EndoCockpitLimitCodeV0,
 	EndoCockpitNoteCodeV0,
 	EndoCockpitSourceStateV0,
-} from "../../protocol/cockpit.ts";
-import type { EndoConformanceClassificationV0 } from "../../protocol/evaluation.ts";
-import type { EndoEventSourceV0 } from "../../protocol/event.ts";
+} from "../../../protocol/cockpit.ts";
+import type { EndoConformanceClassificationV0 } from "../../../protocol/evaluation.ts";
+import type { EndoEventSourceV0 } from "../../../protocol/event.ts";
 import type {
 	EndoCapabilityCheckKindV0,
 	EndoCapabilityStatusV0,
@@ -22,7 +22,7 @@ import type {
 	EndoHarnessIdentityConfidenceV0,
 	EndoHarnessNotificationKindV0,
 	EndoHarnessVersionOrderV0,
-} from "../../protocol/harness.ts";
+} from "../../../protocol/harness.ts";
 
 /** The projection versions this page can read. A response declaring another is refused, never read as this one. */
 export const SUPPORTED_PROJECTIONS = {

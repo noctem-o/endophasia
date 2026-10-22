@@ -1,22 +1,24 @@
 # Endophasia Studio (`endo studio`)
 
-Status: **implemented, read-only, one page.** Studio is the browser interface Endophasia will grow into: DEVELOP, WORK, DREAM,
-EVOLVE and OBSERVE modes are intended to live here. Today it hosts a single read-only **observation page**: the runtime a Pi
-attachment recorded, the capability state with its reasons and limits, the session timeline in storage order, and the condition of
-each source, all as recorded and none of it inferred. It does not yet implement any other mode, and it does not start, steer or
-attach to anything.
+Status: **implemented, read-only, one workspace.** Studio is the browser interface Endophasia will grow into: Compare, Capabilities and
+Evolve workspaces (and DEVELOP, WORK, DREAM and a model-internal OBSERVE view) are intended to live here. Today it hosts one read-only
+**Observe workspace**: an overview of the recorded window, the runtime a Pi attachment recorded, the capability state with its reasons
+and limits, the session timeline in storage order with an evidence-first inspector, and the condition of each source, all as recorded and
+none of it inferred. The other workspaces appear in the shell as "later", say what they would need and show nothing. It does not start,
+steer or attach to anything.
 
 Studio is the public name of the command. The implementation keeps its development names: the observation bridge is `cockpit/`, the
-server `cockpit-http/`, the page `cockpit-ui/` (see [cockpit.md](cockpit.md) and [cockpit-ui.md](cockpit-ui.md)).
+server `cockpit-http/`, the frontend `studio-ui/` (see [cockpit.md](cockpit.md), [cockpit-ui.md](cockpit-ui.md) and
+[studio-ui-architecture.md](studio-ui-architecture.md)).
 
-> **Frontend foundation.** A React/TypeScript frontend is built into the package (`dist/studio-ui/`) and proven through this same
-> server, but `endo studio` does not serve it yet. See [studio-ui-architecture.md](studio-ui-architecture.md).
+> **The frontend.** `endo studio` serves a React/TypeScript frontend, bundled at build time into the package (`dist/studio-ui/`) and
+> checked against its manifest before anything starts. It replaced the earlier page (`dist/cockpit-ui/`), which `0.1.0-alpha.2` carries.
 
 ## Run it
 
 Once a release includes Studio, nothing else is needed (no Git checkout, TypeScript, build step, network, model provider or
 running agent). **The published `endophasia@0.1.0-alpha.1` is not such a build.** It was published before Studio and has no
-`studio` command and no `dist/cockpit-ui/`. `0.1.0-alpha.2` is the first version that includes Studio and is
+`studio` command and no `dist/cockpit-ui/`. `0.1.0-alpha.2` is the first version that includes Studio (with the earlier page) and is
 [prepared but not published](release-0.1.0-alpha.2.md). Until it is, build a tarball from a checkout
 ([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and install it; `endo` below is then the installed binary:
 
@@ -36,12 +38,12 @@ Endophasia Studio (read-only, loopback only): http://127.0.0.1:<port>/<capabilit
 
 Open that address in a browser on the same machine. Nothing opens a browser for you.
 
-From a **checkout** (development), the same server and page start with the following; `node dist/cli/index.js` is the same
+From a **checkout** (development), the same server and frontend start with the following; `node dist/cli/index.js` is the same
 command after `npm run build`:
 
 ```sh
-npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]     # builds the page, then starts it (a thin development entry)
-npm run build:cockpit-ui && node cli/index.ts studio [<root>] ...    # the command itself, over the page just built
+npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]     # builds the frontend, then starts it (a thin development entry)
+npm run build:studio-ui && node cli/index.ts studio [<root>] ...     # the command itself, over the frontend just built
 node scripts/seed-cockpit-demo.ts <empty-directory>                  # a demo store from the committed Pi recordings
 ```
 
@@ -98,7 +100,7 @@ stdout and its notes on stderr. This is a deliberate exception for a long-runnin
 | Status | Meaning |
 | :--- | :--- |
 | `0` | Stopped by SIGINT or SIGTERM (the server closed and released its port; the process ended by itself), or `--help`. |
-| `1` | Studio could not start: a page file missing from the installation, an unusable key, the port in use. No address was printed. |
+| `1` | Studio could not start: a frontend file missing from or altered in the installation, an unusable key, the port in use. No address was printed. |
 | `2` | The invocation was invalid. Nothing was created or started. (Other `endo` commands report their own argument errors with status 1; Studio separates the two so a script can tell them apart.) |
 
 Shutdown: the first SIGINT or SIGTERM closes the server once (open connections end, the listening socket is released) and the command
@@ -107,30 +109,33 @@ timer or promise would keep the process alive and show up in the tests.
 
 ## What is in the package
 
-`npm run build` compiles the command's import closure to `dist/` and builds the page into a flat `dist/cockpit-ui/` with the same
-builder the development launcher uses (`scripts/build-cockpit-ui.mjs`), after emptying `dist/`:
+`npm run build` compiles the command's import closure to `dist/` and bundles the frontend into a flat `dist/studio-ui/` with the same
+builder the development launcher uses (`scripts/build-studio-ui.mjs`), after emptying `dist/`:
 
 ```text
 dist/cli/index.js, studio.js, ...         the endo command; studio.js is loaded only for `endo studio`
-dist/cockpit-http/host.js, server.js      the shared launcher and the unchanged server
+dist/cockpit-http/host.js, server.js      the shared launcher and the server
 dist/cockpit/**                           the observation bridge (a library)
-dist/cockpit-ui/index.html, cockpit.css, icon.svg, main.js, ...   the page: ordinary ES modules, no bundler, no source maps
+dist/studio-ui/index.html, main-<hash>.js, main-<hash>.css, chunk-*.js, <lazy>.js, three .woff2 fonts, icon.svg,
+               studio-ui.manifest.json    the frontend: bundled React, content-hashed, no source maps, and the manifest of every file's size and sha256
+dist/licenses/studio-ui-third-party.txt   the licence notices of the bundled React and the two typefaces (outside the directory the server reads)
 dist/research/fixture-keys/*.json         the two public synthetic fixture keys (unchanged)
 ```
 
-The command finds the page relative to its own module (`../cockpit-ui/` from `dist/cli/`), never the working directory or the
-environment, reads it into memory once and checks it is whole (every file `index.html` and the modules name is present) before it
-touches a key or a socket. The server serves exactly those files by name from memory; it is not a file server. Nothing is built,
-compiled or downloaded when you run it.
+The command finds the frontend relative to its own module (`../studio-ui/` from `dist/cli/`), never the working directory or the
+environment, reads it into memory once and checks it is **exactly its manifest**, file for file and byte for byte, and that every
+reference its files make is to a listed file beside it, before it touches a key or a socket. The server serves exactly those files by
+name from memory; it is not a file server. Nothing is built, compiled or downloaded when you run it, and the installed package holds no
+React and no bundler.
 
 ## Limits
 
-- One read-only page. No other mode, no steering, no attachment management, no push or live view: the page reads when it opens and
+- One read-only workspace. No other workspace, no steering, no attachment management, no push or live view: the frontend reads when it opens and
   when you press Refresh. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).
 - Verified on the CI platform (Ubuntu 24.04, Node 22.19.0 and the newest 22.x) by the installed-tarball smoke test
   (`npm run test:package`), which runs the installed `endo studio`, fetches its page, assets and API, refuses foreign origins and
   hosts, fails to start on a taken port or a damaged page, stops it with SIGINT and SIGTERM, survives SIGKILL with the store and key
-  untouched, and checks the store is byte-for-byte unchanged; it also loads the installed page in Chromium (required in CI, skipped
-  locally when there is none). The evidence and its limits: [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).
+  untouched, and checks the store is byte-for-byte unchanged; it also drives the installed frontend in Chromium over a populated, an absent
+  and a torn-tail store, at desktop and narrow widths (required in CI, skipped locally when there is none). The evidence and its limits: [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).

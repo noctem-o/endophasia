@@ -3,61 +3,22 @@
 // `endo studio` (cli/studio.ts). It adds no route, header, policy or reader of its own: `startEndoCockpitServerV0` is the one place a
 // request is answered, and this module only prepares what that function is given.
 //
-//   loadEndoCockpitUiFilesV0   read a built page from a directory and check it is complete, so a damaged install fails at start
-//                              instead of serving a page that cannot load
-//   (studio-ui.ts)             the same check for the bundled React frontend (scripts/build-studio-ui.mjs), chosen with `uiFormat`
-//   launchEndoCockpitV0        the page, then the dedicated comparison key, then the server, in that order, so a missing asset or an
-//                              unusable key is reported before anything listens
+//   (studio-ui.ts)             read the bundled Studio frontend (scripts/build-studio-ui.mjs) from a directory and check it against its
+//                              manifest, so a damaged, partial or tampered install fails at start instead of serving a page that
+//                              cannot load
+//   launchEndoCockpitV0        the frontend, then the dedicated comparison key, then the server, in that order, so a missing or altered
+//                              asset or an unusable key is reported before anything listens
 //   serveUntilSignalV0         close the server once when asked to stop, and let the process end by itself afterwards
 //
 // The key is a dedicated, persistent cockpit key (storage/digest-key.ts: created on first use, mode 0600, in a 0700 directory) beside
 // the installation key, so a refresh never needs a new one and the installation key is not reused. The one write this module can
 // cause is that first creation; the observed store is never written.
 
-import { lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { type EndoCockpitServerV0, startEndoCockpitServerV0 } from "./server.ts";
 import { loadEndoStudioUiFilesV0 } from "./studio-ui.ts";
-
-/** The files of a page the server accepts (it also checks each name and size): HTML, modules, style and icon. */
-const PAGE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(html|js|css|svg)$/;
-
-/** A page reference the page's own files make: `./assets/<name>` in the HTML, `./<name>.js` between modules. */
-const ASSET_REFERENCE = /(?:src|href)="\.\/assets\/([^"/?#]+)"/g;
-const MODULE_REFERENCE = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']\.\/([^"'/]+)["']/g;
-
-/**
- * Read a built page from `directory` into memory (the server holds it there and reads no file itself) and check that it is whole:
- * `index.html` exists, every asset it names exists, and every module imports only modules that exist. A page that fails the check is
- * a `TypeError` naming the missing file; nothing is started from it.
- */
-export function loadEndoCockpitUiFilesV0(directory: string): Record<string, string> {
-	let names: string[];
-	try {
-		names = readdirSync(directory);
-	} catch {
-		throw new TypeError(`the browser page was not found in ${directory}`);
-	}
-	const files: Record<string, string> = {};
-	for (const name of names.sort()) {
-		if (!PAGE_FILE.test(name)) continue;
-		const path = join(directory, name);
-		if (!statSync(path).isFile()) continue;
-		files[name] = readFileSync(path, "utf8");
-	}
-	const index = files["index.html"];
-	if (index === undefined)
-		throw new TypeError(`the browser page is incomplete: index.html is missing from ${directory}`);
-	const missing = (name: string, from: string): never => {
-		throw new TypeError(`the browser page is incomplete: ${name} is missing (${from} needs it)`);
-	};
-	for (const [, name] of index.matchAll(ASSET_REFERENCE)) if (files[name!] === undefined) missing(name!, "index.html");
-	for (const [file, text] of Object.entries(files))
-		if (file.endsWith(".js"))
-			for (const [, name] of text.matchAll(MODULE_REFERENCE)) if (files[name!] === undefined) missing(name!, file);
-	return files;
-}
 
 /** The dedicated cockpit key file: beside the installation key, so it follows the same location rules. */
 export function defaultEndoCockpitKeyFileV0(): string {
@@ -71,13 +32,11 @@ export interface EndoCockpitLaunchOptionsV0 {
 	port?: number;
 	/** The cockpit key file. Default: `defaultEndoCockpitKeyFileV0()`. It may not be the installation key. */
 	keyFile?: string;
-	/** The built page: a directory holding `index.html` and what it needs. The caller says where; this module never guesses. */
-	uiDirectory: string;
 	/**
-	 * What `uiDirectory` holds: `page` (default), the existing page `endo studio` serves, or `studio`, the bundled React frontend,
-	 * which must match its manifest exactly (`loadEndoStudioUiFilesV0`). Either way the same server answers with the same guards.
+	 * The built Studio frontend: a directory that must match its manifest exactly (`loadEndoStudioUiFilesV0`). The caller says where;
+	 * this module never guesses.
 	 */
-	uiFormat?: "page" | "studio";
+	uiDirectory: string;
 	/** Called once the key is loaded (or created), before anything listens, so a launch that fails afterwards still reports the write. */
 	onKey?: (key: { path: string; created: boolean }) => void;
 	/** Called with an internal failure's error for the host's own diagnostics. The server never sends it to a client. */
@@ -174,13 +133,7 @@ const exists = (path: string): boolean => {
  * failure of the last step, which the server guarantees leaves none either, leaves at most the key file).
  */
 export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): Promise<EndoCockpitLaunchedV0> {
-	// Callable from untyped JavaScript: anything but the two known formats is refused, never read as the legacy page.
-	if (options.uiFormat !== undefined && options.uiFormat !== "page" && options.uiFormat !== "studio")
-		throw new TypeError('uiFormat must be "page" or "studio"');
-	const ui =
-		options.uiFormat === "studio"
-			? loadEndoStudioUiFilesV0(options.uiDirectory)
-			: loadEndoCockpitUiFilesV0(options.uiDirectory);
+	const ui = loadEndoStudioUiFilesV0(options.uiDirectory);
 	const keyFile = resolve(options.keyFile ?? defaultEndoCockpitKeyFileV0());
 	// Where each lies. A place that cannot be established (a link that loops) is refused: the checks below are what keep Studio from
 	// writing the store it reads or using the installation key, and they are not skipped for a path they cannot judge.

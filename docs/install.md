@@ -12,7 +12,7 @@ Status: **experimental alpha.** Node >= 22.19.0 is required; Pi is installed sep
 
 > **The published alpha is older than the source tree.** `endophasia@0.1.0-alpha.1` on the registry (published 2026-10-08)
 > contains the compiled CLI only: no `endo studio` and no `dist/cockpit-ui/`. The source tree has since gained Studio, and a tarball
-> packed from it contains the browser page described below. Before `0.1.0-alpha.2` was prepared the source tree carried the same
+> packed from it contains the browser frontend described below. Before `0.1.0-alpha.2` was prepared the source tree carried the same
 > version string as the registry alpha, so an older checkout's tarball is a different artifact from the registry's under one name
 > (`endo studio` printing `unknown command: studio` means the registry alpha). A tarball packed from this tree is labelled
 > `0.1.0-alpha.2`, but that version is **not published**.
@@ -24,8 +24,10 @@ ships no TypeScript, tests, source maps, declarations, private keys, captures or
 The non-JavaScript runtime assets are the pair of public synthetic fixture keys (`dist/research/fixture-keys/`), which
 `storage/digest-key.js` resolves relative to itself (`../research/fixture-keys/`) for the fixture recorders (they are public by
 design and are never accepted as an installation key; `scripts/build-cli.mjs` copies them there), and the three files of the
-browser page `endo studio` serves: `dist/cockpit-ui/index.html`, `cockpit.css` and `icon.svg`, beside its compiled JavaScript
-modules. The page is built into the package, never at run time, and nothing else is served.
+browser frontend `endo studio` serves: `dist/studio-ui/`, a flat directory of the page, its bundled and content-hashed scripts and style
+sheet, three `woff2` fonts and an icon, with a manifest of each file's size and sha256 (the licence notices of the bundled React and fonts
+are beside it in `dist/licenses/`). It is built into the package, never at run time, and the server serves exactly those files and
+nothing else. (The `0.1.0-alpha.2` tarball carries the earlier, three-file page in `dist/cockpit-ui/` instead.)
 
 ## Why no TypeScript at runtime
 

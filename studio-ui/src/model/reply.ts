@@ -4,7 +4,7 @@
 // should do about it. A body is never trusted by its status alone: it is parsed, its schema and projection versions are checked
 // against the versions this build reads (nested projections included) and its structure against what the renderers index.
 // A response this build cannot read is reported as such and nothing is shown from it.
-import type { EndoCockpitSnapshotV0 } from "../../protocol/cockpit.ts";
+import type { EndoCockpitSnapshotV0 } from "../../../protocol/cockpit.ts";
 import { SUPPORTED_PROJECTIONS } from "./labels.ts";
 
 export type Reply =

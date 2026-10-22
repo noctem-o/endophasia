@@ -1,6 +1,5 @@
 // The host of the cockpit server (cockpit-http/host.ts): the page's completeness check, the order of a launch, the dedicated key and
 // the stop handling, with nothing but explicit inputs: the development launcher and `endo studio` are thin callers of it.
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	existsSync,
@@ -19,12 +18,8 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import {
-	type EndoCockpitLaunchedV0,
-	launchEndoCockpitV0,
-	loadEndoCockpitUiFilesV0,
-	serveUntilSignalV0,
-} from "../cockpit-http/host.ts";
+import { type EndoCockpitLaunchedV0, launchEndoCockpitV0, serveUntilSignalV0 } from "../cockpit-http/host.ts";
+import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { ingestAll, lifecycleEvents, removeTempRoots, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { get, send } from "./cockpit-http-fixtures.ts";
 
@@ -33,10 +28,12 @@ const scratch = mkdtempSync(join(tmpdir(), "endo-studio-host-"));
 let ui = "";
 const launched: EndoCockpitLaunchedV0[] = [];
 
-beforeAll(() => {
+beforeAll(async () => {
 	ui = join(scratch, "ui");
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-cockpit-ui.mjs"), ui], { encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
+	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
+		buildStudioUi(outDir: string): Promise<unknown>;
+	};
+	await buildStudioUi(ui);
 }, 90_000);
 afterEach(async () => {
 	vi.unstubAllEnvs();
@@ -63,7 +60,7 @@ const hashes = (dir: string): string[] => {
 	return out;
 };
 
-/** A copy of the built page in a fresh directory, without the named files. */
+/** A copy of the built frontend in a fresh directory, without the named files (its manifest still lists them). */
 function pageWithout(...omit: string[]): string {
 	const dir = mkdtempSync(join(scratch, "page-"));
 	for (const name of readdirSync(ui))
@@ -84,77 +81,58 @@ function populated(): string {
 	return root;
 }
 
-describe("the page is read whole, and an incomplete one is refused by name", () => {
-	it("loads the built page: the entry, its modules, the style and the icon, as text", () => {
-		const files = loadEndoCockpitUiFilesV0(ui);
-		expect(Object.keys(files)).toEqual(
-			expect.arrayContaining(["index.html", "main.js", "cockpit.css", "icon.svg", "reply.js"]),
-		);
-		expect(Object.keys(files)).toEqual([...Object.keys(files)].sort());
-		for (const [name, text] of Object.entries(files)) {
-			expect(typeof text, name).toBe("string");
-			expect(text, name).toBe(readFileSync(join(ui, name), "utf8"));
-		}
+describe("the frontend is read whole, and one that is not exactly its manifest is refused by name", () => {
+	it("loads the built frontend: the page, its scripts, style, fonts and icon, byte for byte", () => {
+		const files = loadEndoStudioUiFilesV0(ui);
+		expect(Object.keys(files)).toEqual(expect.arrayContaining(["index.html", "icon.svg"]));
+		expect(Object.keys(files).some((name) => /^main-.*\.js$/.test(name))).toBe(true);
+		expect(Object.keys(files).some((name) => name.endsWith(".woff2"))).toBe(true);
+		expect(Object.keys(files)).not.toContain("studio-ui.manifest.json"); // the manifest vouches for the files; it is not served
+		for (const [name, bytes] of Object.entries(files))
+			expect(Buffer.from(bytes).equals(readFileSync(join(ui, name))), name).toBe(true);
 	});
 
-	it("refuses a page missing any one of its files, and says which: the entry, an asset, or a module another imports", () => {
-		const names = readdirSync(ui);
-		expect(names.length).toBeGreaterThan(10);
+	it("refuses a frontend missing any one of its files, and says which: the entry, a script, a font", () => {
+		const names = readdirSync(ui).filter((name) => name !== "studio-ui.manifest.json");
+		expect(names.length).toBeGreaterThan(5);
 		for (const name of names) {
 			const dir = pageWithout(name);
-			// Every file of the page is needed by index.html or by a module that is, so none can be missing without a refusal.
-			expect(() => loadEndoCockpitUiFilesV0(dir), name).toThrow(
-				name === "index.html" ? /index\.html is missing/ : new RegExp(`${name.replace(/\./g, "\\.")} is missing`),
+			expect(() => loadEndoStudioUiFilesV0(dir), name).toThrow(
+				new RegExp(`${name.replace(/\./g, "\\.")} is missing or not a regular file`),
 			);
 		}
 	});
 
-	it("refuses a directory that is not there, an empty one and a checkout's source directory (no built entry module)", () => {
-		expect(() => loadEndoCockpitUiFilesV0(join(scratch, "no-such-dir"))).toThrow(/was not found/);
+	it("refuses a directory that is not there, an empty one and a checkout's source directory (no manifest)", () => {
+		expect(() => loadEndoStudioUiFilesV0(join(scratch, "no-such-dir"))).toThrow(/was not found/);
 		const empty = mkdtempSync(join(scratch, "empty-"));
-		expect(() => loadEndoCockpitUiFilesV0(empty)).toThrow(/index\.html is missing/);
-		expect(() => loadEndoCockpitUiFilesV0(join(repo, "cockpit-ui"))).toThrow(
-			/main\.js is missing \(index\.html needs it\)/,
-		);
+		expect(() => loadEndoStudioUiFilesV0(empty)).toThrow(/studio-ui\.manifest\.json is missing/);
+		expect(() => loadEndoStudioUiFilesV0(join(repo, "studio-ui"))).toThrow(/studio-ui\.manifest\.json is missing/);
 	});
 
-	it("takes only the files a page is made of: others, and a directory named like a module, are ignored", () => {
-		const dir = pageWithout();
-		writeFileSync(join(dir, "notes.txt"), "x");
-		writeFileSync(join(dir, "main.js.map"), "{}");
-		writeFileSync(join(dir, ".hidden.js"), "x");
-		mkdirSync(join(dir, "folder.js"));
-		writeFileSync(join(dir, "folder.js", "inner.js"), "x");
-		expect(Object.keys(loadEndoCockpitUiFilesV0(dir))).toEqual(Object.keys(loadEndoCockpitUiFilesV0(ui)));
-	});
-
-	it("follows what the files really say: a reference to a module that is not there fails, however it is spelled", () => {
-		for (const [edit, missing] of [
-			[(t: string) => `${t}\nimport { x } from "./ghost.js";\n`, "ghost.js"],
-			[(t: string) => `${t}\nawait import("./phantom.js");\n`, "phantom.js"],
-			[(t: string) => `${t}\nimport "./side-effect.js";\n`, "side-effect.js"],
+	it("takes nothing the manifest does not list: another file, a source map, a directory named like a script", () => {
+		for (const [name, make] of [
+			["notes.txt", (path: string) => writeFileSync(path, "x")],
+			["main.js.map", (path: string) => writeFileSync(path, "{}")],
+			["folder.js", (path: string) => mkdirSync(path)],
 		] as const) {
 			const dir = pageWithout();
-			writeFileSync(join(dir, "main.js"), edit(readFileSync(join(ui, "main.js"), "utf8")));
-			expect(() => loadEndoCockpitUiFilesV0(dir)).toThrow(
-				new RegExp(`${missing.replace(".", "\\.")} is missing \\(main\\.js needs it\\)`),
+			make(join(dir, name));
+			expect(() => loadEndoStudioUiFilesV0(dir), name).toThrow(
+				new RegExp(`${name.replace(/\./g, "\\.")} is present but not listed`),
 			);
 		}
-		const html = pageWithout();
-		writeFileSync(
-			join(html, "index.html"),
-			readFileSync(join(ui, "index.html"), "utf8").replace("./assets/icon.svg", "./assets/other.svg"),
-		);
-		expect(() => loadEndoCockpitUiFilesV0(html)).toThrow(/other\.svg is missing \(index\.html needs it\)/);
 	});
 });
 
+const mainScript = (): string => readdirSync(ui).find((name) => /^main-.*\.js$/.test(name))!;
+
 describe("a launch, in order", () => {
-	it("checks the page before it touches the key: an incomplete page leaves no key and nothing listening", async () => {
+	it("checks the page before it touches the key: a damaged frontend leaves no key and nothing listening", async () => {
 		const keyFile = join(scratch, "k-incomplete", "studio.key");
 		await expect(
-			launchEndoCockpitV0({ root: tempRoot(), keyFile, uiDirectory: pageWithout("main.js") }),
-		).rejects.toThrow(/main\.js is missing/);
+			launchEndoCockpitV0({ root: tempRoot(), keyFile, uiDirectory: pageWithout(mainScript()) }),
+		).rejects.toThrow(/is missing or not a regular file/);
 		expect(existsSync(keyFile)).toBe(false);
 		expect(existsSync(join(scratch, "k-incomplete"))).toBe(false);
 	});
@@ -434,8 +412,9 @@ describe("a launch, in order", () => {
 		expect(page.status).toBe(200);
 		expect(page.body).toBe(readFileSync(join(ui, "index.html"), "utf8"));
 		expect(page.headers["content-security-policy"]).toMatch(/require-trusted-types-for 'script'/);
-		const asset = await get(one.server, "/assets/main.js");
-		expect(asset.body).toBe(readFileSync(join(ui, "main.js"), "utf8"));
+		const script = mainScript();
+		const asset = await get(one.server, `/assets/${script}`);
+		expect(asset.body).toBe(readFileSync(join(ui, script), "utf8"));
 		expect(JSON.parse((await get(one.server, "/api/v0/snapshot")).body).timeline.entries.length).toBeGreaterThan(0);
 		expect((await send(one.server, "/")).status).toBe(404);
 		expect((await send(one.server, `/${"y".repeat(43)}/`)).status).toBe(404);

@@ -17,7 +17,7 @@ import type {
 	EndoCockpitSnapshotV0,
 	EndoCockpitTimelineEntryV0,
 	EndoCockpitUsageV0,
-} from "../../protocol/cockpit.ts";
+} from "../../../protocol/cockpit.ts";
 import { ALIAS_FORMS, CATEGORY, known, LIMIT_TEXT, NOTE_TEXT, SOURCE_STATE, STATUS, WITHHELD_TEXT } from "./labels.ts";
 
 // --- text ----------------------------------------------------------------------------------------------------------------
@@ -164,30 +164,6 @@ export const NO_FILTERS: Filters = { categories: new Set(), text: "", flaggedOnl
 
 export function filtersActive(filters: Filters): boolean {
 	return filters.categories.size > 0 || filters.text.trim() !== "" || filters.flaggedOnly || filters.session !== null;
-}
-
-export interface FilteredEntries {
-	rows: EndoCockpitTimelineEntryV0[];
-	/** Entries that pass the filters, and entries in the loaded window. Filters never reach beyond the window. */
-	shown: number;
-	inWindow: number;
-}
-
-/** Filter the loaded window only. An empty category set means every category. Order is the window's own. */
-export function filterEntries(entries: readonly EndoCockpitTimelineEntryV0[], filters: Filters): FilteredEntries {
-	const needle = filters.text.trim().toLowerCase();
-	const rows = entries.filter((entry) => {
-		if (filters.categories.size > 0 && !filters.categories.has(entry.category)) return false;
-		if (filters.flaggedOnly && entry.flags.length === 0) return false;
-		if (filters.session !== null && entry.sessionId !== filters.session) return false;
-		if (needle === "") return true;
-		return (
-			entry.kind.toLowerCase().includes(needle) ||
-			entry.producer.toLowerCase().includes(needle) ||
-			entry.eventId.toLowerCase().includes(needle)
-		);
-	});
-	return { rows, shown: rows.length, inWindow: entries.length };
 }
 
 /** How many entries of the window fall in each category, in the order the contract lists them. */

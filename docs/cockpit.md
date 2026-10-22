@@ -2,7 +2,7 @@
 
 Status: **the observation bridge, a local read-only HTTP server, a first browser page and the `endo studio` command are
 implemented** (`endo studio` is in the source tree and in the prepared, unpublished `0.1.0-alpha.2`, not in the published `0.1.0-alpha.1`) (a library, a transport, one screen and a launcher: [below](#the-observation-bridge-implemented),
-[the server](#the-local-http-server-implemented), [the page](cockpit-ui.md), [Studio](studio.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
+[the server](#the-local-http-server-implemented), [the frontend](cockpit-ui.md), [Studio](studio.md)). The fork-era browser cockpit was removed with the vendored Pi fork: it was a client of Pi's private
 Session-worker services over a fork-only listener and cannot run against a user-installed Pi
 ([pi-attach-inventory.md](pi-attach-inventory.md) §5). Its replacement is not a port. It is a cockpit over
 Endophasia's own records, for any attached harness.
@@ -37,7 +37,7 @@ A read-mostly operator view served by Endophasia, whose only sources are Endopha
 
 ## First slice (acceptance)
 
-The bridge, the server and the page exist (below, and [cockpit-ui.md](cockpit-ui.md)); the page's refresh is explicit, as the
+The bridge, the server and the frontend exist (below, and [cockpit-ui.md](cockpit-ui.md)); the frontend's refresh is explicit, as the
 server's cost requires (item 2).
 
 1. `endo studio [<root>]` serves a static page and a read-only JSON API over the store and registry ([studio.md](studio.md)). (From a
@@ -372,7 +372,7 @@ loads a key). `cockpit/` itself still imports no network API.
 **Architecture decision.** (1) A new top-level directory, because the bridge's boundary test forbids `node:http` under `cockpit/`
 and the CLI build deliberately compiles only the `cli/index.ts` closure, so the library and the server stay out of `dist/`
 (packaging is a later stage; since PR D the closure reaches them through `endo studio`, which loads the host lazily, and the page is
-built into `dist/cockpit-ui/`, see [studio.md](studio.md)). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
+built into `dist/studio-ui/`, see [studio.md](studio.md)). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
 (`canonicalEndoJsonV0`, `endoCockpitDigestKeyAdmittedV0`, `isEndoCockpitSourceKindAdmittedV0`, `isWellFormedKindV0`), so the
 server refuses exactly the keys and attachment names the reader would throw on, as client errors before any read. (4) **Freshness
 is deferred.** `checkEndoCockpitSourceFreshnessV0` needs a client-held source descriptor, which means a POST body and the
@@ -446,10 +446,10 @@ npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]
 curl -s 'http://127.0.0.1:<port>/<capability>/api/v0/timeline?limit=20'
 ```
 
-**Installed launch: `endo studio`.** `endo studio [<root>] [--root dir] [--port n] [--key-file path]` starts this same server on the page
-packaged in the installed `dist/cockpit-ui/`; it is documented in [studio.md](studio.md). `cli/studio.ts` is a thin command: it
-parses its arguments (an invalid invocation is exit 2, decided before anything is created), finds the page beside itself, and calls
-the shared host, `cockpit-http/host.ts`, which checks the page is whole, loads or creates the dedicated key (the one write a launch
+**Installed launch: `endo studio`.** `endo studio [<root>] [--root dir] [--port n] [--key-file path]` starts this same server on the frontend
+packaged in the installed `dist/studio-ui/`; it is documented in [studio.md](studio.md). `cli/studio.ts` is a thin command: it
+parses its arguments (an invalid invocation is exit 2, decided before anything is created), finds the frontend beside itself, and calls
+the shared host, `cockpit-http/host.ts`, which checks the frontend is exactly its manifest, loads or creates the dedicated key (the one write a launch
 can cause; never the observed store) and calls `startEndoCockpitServerV0` unchanged. `cockpit-http/launch.ts`, the development entry
 above, is a second thin caller of the same host. The server gained nothing for this: its routes, guards, headers, read budget and
 asset allowlist are as before. The command prints the access address once on stdout (a human line, an exception to the canonical-JSON convention) and keeps running
@@ -493,7 +493,7 @@ without the slash stays a `404` (a redirect would put the capability in a header
 read budget, and carry `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src
 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'` (no inline
 script or style, nothing remote, and any HTML sink throws), plus `X-Frame-Options: DENY`, same-origin opener and resource policies and a
-`Permissions-Policy` that turns the powerful features off. The page's own requests are relative (`./api/...`), so the capability is carried
+`Permissions-Policy` that turns the powerful features off. The frontend's own requests are relative (`./api/...`), so the capability is carried
 by the browser's address and never appears in a query string, a script or a log. See [cockpit-ui.md](cockpit-ui.md).
 
 **Not in this stage.** A freshness endpoint (above), an evidence-inspection endpoint, SSE or any push, a watcher, an incremental

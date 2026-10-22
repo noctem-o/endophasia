@@ -79,15 +79,16 @@ export function parseEndoStudioArgsV0(
 }
 
 /**
- * The directory holding the page built for this command, found relative to this module and nowhere else (not the working directory,
- * not the environment): `dist/cockpit-ui/` beside `dist/cli/` in an installed package, `cockpit-ui/dist/` after
- * `npm run build:cockpit-ui` in a checkout. A directory counts only if it holds the built entry module, which the checkout's source
- * directory of the same name does not. Null when there is none.
+ * The directory holding the Studio frontend built for this command, found relative to this module and nowhere else (not the working
+ * directory, not the environment): `dist/studio-ui/` beside `dist/cli/` in an installed package, `studio-ui/dist/` after
+ * `npm run build:studio-ui` in a checkout. A directory counts only if it holds the build's manifest, which the checkout's source
+ * directory (`studio-ui/`, which holds the page template) does not. Null when there is none. What the directory holds is checked
+ * whole, against that manifest, by the host before anything starts.
  */
 export function endoStudioUiDirectoryV0(moduleUrl: string = import.meta.url): string | null {
-	for (const relative of ["../cockpit-ui/", "../cockpit-ui/dist/"]) {
+	for (const relative of ["../studio-ui/", "../studio-ui/dist/"]) {
 		const directory = fileURLToPath(new URL(relative, moduleUrl));
-		if (existsSync(join(directory, "main.js"))) return directory;
+		if (existsSync(join(directory, "studio-ui.manifest.json"))) return directory;
 	}
 	return null;
 }
@@ -120,7 +121,7 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 	const uiDirectory = endoStudioUiDirectoryV0();
 	if (uiDirectory === null)
 		throw new Error(
-			"studio: the page's files were not found next to this command. An installed package carries them in dist/cockpit-ui (reinstall it); in a checkout run `npm run build:cockpit-ui` first",
+			"studio: the Studio frontend's files were not found next to this command. An installed package carries them in dist/studio-ui (reinstall it); in a checkout run `npm run build:studio-ui` first",
 		);
 	const { launchEndoCockpitV0, serveUntilSignalV0 } = await import("../cockpit-http/host.ts");
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;

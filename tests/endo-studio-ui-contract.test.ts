@@ -18,6 +18,17 @@ import {
 	type EndoCockpitTimelineEntryV0,
 	readEndoCockpitSnapshotV0,
 } from "../cockpit/index.ts";
+import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0 } from "../protocol/evaluation.ts";
+import { ENDO_EVENT_SOURCES_V0 } from "../protocol/event.ts";
+import {
+	ENDO_CAPABILITY_CHECK_KINDS_V0,
+	ENDO_CAPABILITY_STATUSES_V0,
+	ENDO_HARNESS_CHANGE_KINDS_V0,
+	ENDO_HARNESS_DIFFERENCES_V0,
+	ENDO_HARNESS_NOTIFICATION_KINDS_V0,
+	ENDO_HARNESS_VERSION_ORDERS_V0,
+} from "../protocol/harness.ts";
+import { createEndoFrameLogV0, endoFrameBytesV0 } from "../storage/log.ts";
 import {
 	ALIAS_PATTERN,
 	BASIS,
@@ -36,7 +47,10 @@ import {
 	SUPPORTED_PROJECTIONS,
 	VERSION_ORDER,
 	WITHHELD_TEXT,
-} from "../cockpit-ui/src/labels.ts";
+} from "../studio-ui/src/model/labels.ts";
+import { classifyReply, shownVersion } from "../studio-ui/src/model/reply.ts";
+import { type AppState, controlsLocked, initialState, pacedNow, pauseRemaining } from "../studio-ui/src/model/state.ts";
+import { entryMatches } from "../studio-ui/src/model/timeline.ts";
 import {
 	abbreviated,
 	attachmentChoices,
@@ -44,7 +58,6 @@ import {
 	categoryCounts,
 	duration,
 	eventLogSourceView,
-	filterEntries,
 	filtersActive,
 	limitText,
 	NO_FILTERS,
@@ -55,20 +68,7 @@ import {
 	selectRuntime,
 	statusCounts,
 	usageView,
-} from "../cockpit-ui/src/model.ts";
-import { classifyReply, shownVersion } from "../cockpit-ui/src/reply.ts";
-import { type AppState, controlsLocked, pacedNow, pauseRemaining } from "../cockpit-ui/src/state.ts";
-import { ENDO_CONFORMANCE_CLASSIFICATIONS_V0 } from "../protocol/evaluation.ts";
-import { ENDO_EVENT_SOURCES_V0 } from "../protocol/event.ts";
-import {
-	ENDO_CAPABILITY_CHECK_KINDS_V0,
-	ENDO_CAPABILITY_STATUSES_V0,
-	ENDO_HARNESS_CHANGE_KINDS_V0,
-	ENDO_HARNESS_DIFFERENCES_V0,
-	ENDO_HARNESS_NOTIFICATION_KINDS_V0,
-	ENDO_HARNESS_VERSION_ORDERS_V0,
-} from "../protocol/harness.ts";
-import { createEndoFrameLogV0, endoFrameBytesV0 } from "../storage/log.ts";
+} from "../studio-ui/src/model/views.ts";
 import { ATTACHMENT, event, ingestAll, removeTempRoots, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { OTHER_KEY, publicIdV0 } from "./cockpit-keyed.ts";
 
@@ -398,7 +398,7 @@ describe("how a missing value is shown", () => {
 		if (view.kind !== "reported") throw new Error("expected reported usage");
 		expect(view.parts.map((p) => p.label)).toContain("total tokens (this event)");
 		expect(view.parts.filter((p) => /total/i.test(p.label)).length).toBe(1);
-		const source = usageView.toString() + filterEntries.toString() + pagerView.toString();
+		const source = usageView.toString() + entryMatches.toString() + pagerView.toString();
 		expect(source).not.toMatch(/reduce\(|\+= *\w*usage|sum\(/i);
 	});
 
@@ -547,23 +547,18 @@ describe("the timeline window", () => {
 	it("filters the loaded window only, keeps its order, and says how many of how many", () => {
 		const { snapshot } = seeded(6);
 		const entries = snapshot.timeline.entries;
+		const pass = (filters: Parameters<typeof entryMatches>[1]) => entries.filter((e) => entryMatches(e, filters));
 		expect(filtersActive(NO_FILTERS)).toBe(false);
-		const all = filterEntries(entries, NO_FILTERS);
-		expect(all).toMatchObject({ shown: entries.length, inWindow: entries.length });
-		const tools = filterEntries(entries, { ...NO_FILTERS, categories: new Set(["tool"]) });
-		expect(tools.rows.every((e) => e.category === "tool")).toBe(true);
-		expect(tools.inWindow).toBe(entries.length);
-		const seqs = tools.rows.map((e) => e.storageSequence);
+		expect(pass(NO_FILTERS)).toHaveLength(entries.length);
+		const tools = pass({ ...NO_FILTERS, categories: new Set(["tool"]) });
+		expect(tools.every((e) => e.category === "tool")).toBe(true);
+		const seqs = tools.map((e) => e.storageSequence);
 		expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
-		expect(filterEntries(entries, { ...NO_FILTERS, text: " TOOL.STARTED " }).shown).toBe(tools.shown);
-		expect(filterEntries(entries, { ...NO_FILTERS, text: "no-such-kind" }).shown).toBe(0);
-		expect(filterEntries(entries, { ...NO_FILTERS, flaggedOnly: true }).shown).toBe(
-			entries.filter((e) => e.flags.length > 0).length,
-		);
+		expect(pass({ ...NO_FILTERS, text: " TOOL.STARTED " })).toHaveLength(tools.length);
+		expect(pass({ ...NO_FILTERS, text: "no-such-kind" })).toHaveLength(0);
+		expect(pass({ ...NO_FILTERS, flaggedOnly: true })).toHaveLength(entries.filter((e) => e.flags.length > 0).length);
 		expect(
-			filterEntries(entries, { ...NO_FILTERS, session: "endo.session.one" }).rows.every(
-				(e) => e.sessionId === "endo.session.one",
-			),
+			pass({ ...NO_FILTERS, session: "endo.session.one" }).every((e) => e.sessionId === "endo.session.one"),
 		).toBe(true);
 		expect(filtersActive({ ...NO_FILTERS, text: "x" })).toBe(true);
 	});
@@ -600,7 +595,7 @@ describe("the pause the server asks for", () => {
 		expect(pauseRemaining(wallBack, 9_000)).toBe(1_000);
 		expect(pacedNow(wallBack, 10_000)).toBe(false);
 		expect(pauseRemaining(wallBack, 10_001)).toBe(0);
-		expect(controlsLocked(wallBack)).toBe(pacedNow(wallBack));
+		expect(controlsLocked(wallBack, 9_999)).toBe(pacedNow(wallBack, 9_999));
 		// Set a year forward, the banner's date is long past; the wait has not ended.
 		const wallForward = after429(new Date(0), 10_000);
 		expect(pacedNow(wallForward, 5_000)).toBe(true);
@@ -612,9 +607,11 @@ describe("the pause the server asks for", () => {
 		expect(pacedNow({ busy: false, problem: null } as unknown as AppState, 0)).toBe(false);
 	});
 
-	it("defaults to the monotonic clock, not the wall clock", () => {
-		expect(pacedNow(after429(new Date(0), performance.now() + 60_000))).toBe(true);
-		expect(pacedNow(after429(new Date(Date.now() + 60_000), performance.now() - 1))).toBe(false);
+	it("is a function of the clock it is given: the reducer reads none, and the hook passes the monotonic one", () => {
+		expect(pacedNow.length).toBe(2);
+		expect(pauseRemaining.length).toBe(2);
+		expect(controlsLocked.length).toBe(2);
+		expect(initialState().problem).toBeNull();
 	});
 
 	it("reads a figure of up to six digits, which a timer holds, and refuses a longer one rather than hold a timer that cannot", () => {

@@ -1,7 +1,7 @@
 // Rules on the source of the Studio command and its packaging, held where a regression would otherwise pass every behavioural test:
 // that ordinary commands never load HTTP or the browser page, that the command's modules import only what they should, that the access
 // address has exactly one place it can be printed, that nothing here ends the process before it has cleaned up, and that the package
-// keeps its conventions (one binary, `dist/`, no runtime dependency, the page built after the build empties `dist/`).
+// keeps its conventions (one binary, `dist/`, no runtime dependency, the frontend built after the build empties `dist/`).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -128,9 +128,8 @@ describe("what the user is told", () => {
 		const visible = (text: string) => text.replaceAll("cockpit-digest-key", "");
 		expect(visible(endoHelpV0())).not.toMatch(/cockpit/i);
 		expect(visible(endoStudioHelpV0())).not.toMatch(/cockpit/i);
-		const page = read("cockpit-ui/index.html");
+		const page = read("studio-ui/index.html");
 		expect(page).toMatch(/<title>Endophasia Studio<\/title>/);
-		expect(page).toMatch(/<span class="page-name">Studio<\/span>/);
 		const text = page.replace(/<[^>]*>/g, " ").replace(/\.\/assets\/\S+/g, "");
 		expect(text).not.toMatch(/cockpit/i);
 	});
@@ -148,33 +147,35 @@ describe("the package keeps its conventions", () => {
 		expect(manifest.bin).toEqual({ endo: "dist/cli/index.js" });
 		expect(manifest.files).toEqual(["dist/", "README.md", "CHANGELOG.md", "LICENSE"]);
 		expect(manifest.dependencies).toBeUndefined();
-		expect(manifest.scripts.cockpit).toBe("node scripts/build-cockpit-ui.mjs && node cockpit-http/launch.ts");
+		expect(manifest.scripts.cockpit).toBe("node scripts/build-studio-ui.mjs && node cockpit-http/launch.ts");
+		expect(manifest.scripts["build:studio-ui"]).toBe("node scripts/build-studio-ui.mjs");
 		expect(manifest.scripts.prepack).toBe("npm run build");
 	});
 
-	it("the page is built into dist/ by the existing builder, after the build has emptied dist/", () => {
+	it("the frontend is built into dist/ by the one builder, after the build has emptied dist/, with its licence notices beside it", () => {
 		const build = read("scripts/build-cli.mjs");
-		expect(build).toMatch(/import \{ buildCockpitUi \} from "\.\/build-cockpit-ui\.mjs"/);
+		expect(build).toMatch(/import \{ buildStudioUi, studioUiNotices \} from "\.\/build-studio-ui\.mjs"/);
+		expect(build).not.toMatch(/cockpit-ui/);
 		expect(build.indexOf("rmSync(")).toBeGreaterThan(-1);
-		const page = build.search(/buildCockpitUi\(`\$\{root\}dist\/cockpit-ui`\)/);
+		const page = build.search(/buildStudioUi\(`\$\{root\}dist\/studio-ui`\)/);
 		expect(page).toBeGreaterThan(build.indexOf("rmSync("));
-		expect(build.indexOf("buildCockpitUi(")).toBeGreaterThan(build.indexOf("tsc"));
+		expect(build.indexOf("buildStudioUi(")).toBeGreaterThan(build.indexOf("tsc"));
+		expect(build).toMatch(/dist\/licenses\/studio-ui-third-party\.txt/);
 		expect(read("tsconfig.cli.json")).toMatch(/"files": \["cli\/index\.ts", "cli\/cassette-child\.ts"\]/);
 	});
 
-	it("the package-smoke inventory allows exactly the page's three non-JavaScript files and compares whole sets, not a pattern", () => {
+	it("the package-smoke inventory allows exactly the non-JavaScript files the package carries and compares whole sets, not a pattern", () => {
 		const smoke = read("scripts/package-smoke.mjs");
 		for (const file of [
-			"dist/cockpit-ui/index.html",
-			"dist/cockpit-ui/cockpit.css",
-			"dist/cockpit-ui/icon.svg",
 			"dist/research/fixture-keys/fixture-public.json",
 			"dist/research/fixture-keys/fixture-public-alt.json",
 		])
 			expect(smoke, file).toContain(`"${file}"`);
-		// The non-JavaScript files are compared as one sorted list, and the page's files as one set derived from cockpit-ui/src.
+		// The earlier page is named only to hold an older artifact to what it carried (a build from this checkout must carry none).
+		expect(smoke).toMatch(/the build from this checkout carries no earlier page \(dist\/cockpit-ui\)/);
+		// The non-JavaScript files are compared as one sorted list; the frontend's are compared against its own manifest.
 		expect(smoke).toMatch(/!p\.endsWith\("\.js"\)\)\.sort\(\)\.join\(\) ===\s*\[/);
-		expect(smoke).toMatch(/startsWith\("dist\/cockpit-ui\/"\)\)\.sort\(\)\.join\(\) === expectedUi\.join\(\)/);
+		expect(smoke).toMatch(/dist\/studio-ui holds exactly the \$\{listed\.length\} files its manifest lists/);
 		expect(smoke).toMatch(/no installed JavaScript points at a source map/);
 	});
 });

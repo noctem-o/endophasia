@@ -1,44 +1,138 @@
-import { lazy, Suspense } from "react";
+// The Studio shell: the instrument's frame. Branding, workspace navigation, a visibly read-only state, the read status and Refresh, the
+// sources that need attention (at every width), and the workspace. Observe is the one implemented workspace; the others name what they
+// would need and show nothing.
+import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
+import { sourcesModel } from "./model/detail.ts";
+import { attentionOf } from "./model/observe.ts";
+import { Attention } from "./observe/Attention.tsx";
+import { Banner, readStatusText } from "./observe/Chrome.tsx";
+import { ObserveWorkspace } from "./observe/ObserveWorkspace.tsx";
+import { PanelBoundary } from "./ui/Panel.tsx";
+import { useObserve } from "./use-observe.ts";
 
-// A module loaded on demand, so the build's handling of a dynamic import (a separate file under the same capability-prefixed
-// assets path) is exercised by every build and every browser run, not first met in a later change.
-const LazyProof = lazy(() => import("./LazyProof.tsx"));
+// The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
+// capability-prefixed assets path) is exercised by every browser run.
+const Unavailable = lazy(() => import("./observe/Unavailable.tsx"));
 
-export function App() {
+const WORKSPACES = [
+	{ id: "observe", label: "Observe", ready: true },
+	{ id: "compare", label: "Compare", ready: false },
+	{ id: "capabilities", label: "Capabilities", ready: false },
+	{ id: "evolve", label: "Evolve", ready: false },
+] as const;
+
+export function App(): ReactElement {
+	const observe = useObserve();
+	const { state } = observe;
+	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
+
+	// The page's state, for a test that must know a read finished, and for the style sheet.
+	useEffect(() => {
+		document.body.dataset.state = state.busy
+			? "loading"
+			: state.problem !== null
+				? "error"
+				: state.loaded !== null
+					? "ready"
+					: "idle";
+		document.body.dataset.attempts = String(state.attempts);
+		document.body.dataset.busy = String(state.busy);
+	}, [state.busy, state.problem, state.loaded, state.attempts]);
+
+	// `r` reads again, unless the operator is typing.
+	useEffect(() => {
+		const key = (event: KeyboardEvent) => {
+			// Not while the inspector dialog is open: the page behind it is inert, and so are its shortcuts.
+			if (document.querySelector("dialog[open]") !== null) return;
+			if (event.key !== "r" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+			const target = event.target as HTMLElement | null;
+			if (target !== null && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+			observe.refresh();
+		};
+		document.addEventListener("keydown", key);
+		return () => document.removeEventListener("keydown", key);
+	}, [observe.refresh]);
+
+	const attention = (() => {
+		if (state.loaded === null) return [];
+		try {
+			return attentionOf(sourcesModel(state.loaded.snapshot, state.attachment));
+		} catch {
+			return [];
+		}
+	})();
+
 	return (
 		<>
 			<a className="skip" href="#main">
 				Skip to the content
 			</a>
 			<header className="topbar">
-				<span className="wordmark">ENDOPHASIA</span>
+				<span className="wordmark">Endophasia</span>
+				<nav className="workspaces" aria-label="Workspaces">
+					{WORKSPACES.map((w) => (
+						<button
+							key={w.id}
+							type="button"
+							className="workspace"
+							aria-current={workspace === w.id ? "page" : undefined}
+							data-workspace={w.id}
+							onClick={() => setWorkspace(w.id)}
+						>
+							{w.label}
+							{w.ready ? null : <span className="later"> · later</span>}
+						</button>
+					))}
+				</nav>
+				<span className="spacer" />
 				<span
-					className="chip"
+					className="readonly"
 					title="This page only reads. It cannot change a store, steer a runtime or start anything."
 				>
+					<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+						<rect
+							x="2.4"
+							y="5.4"
+							width="7.2"
+							height="5"
+							rx="1"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.2"
+						/>
+						<path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
+					</svg>
 					Read-only
 				</span>
+				<span id="read-status" className="read-status" aria-live="polite">
+					{readStatusText(state)}
+				</span>
+				<button
+					type="button"
+					id="refresh"
+					className="btn"
+					data-focus="refresh"
+					disabled={observe.locked}
+					onClick={observe.refresh}
+				>
+					{state.busy ? "Reading…" : "Refresh"}
+				</button>
 			</header>
-			<main id="main" className="proof" data-studio-ui="ready">
-				<p className="banner" role="note" data-testid="integration-proof">
-					Integration proof. This is not an observation: no store is read and nothing on this page was recorded.
-				</p>
-				<h1>Studio frontend foundation</h1>
-				<p>
-					This page shows that the compiled frontend is served by the Endophasia server under its per-launch
-					address, with the same policy as the existing page. Nothing here is evidence.
-				</p>
-				{/* An inline style set through the style object is applied by the CSS object model, which the page policy allows. */}
-				<p className="meter" style={{ ["--proof-level" as string]: "3" }} data-testid="style-prop">
-					Style set from script
-				</p>
-				<p className="plex" data-testid="font-sample">
-					Bundled typeface sample
-				</p>
-				<img className="mark" src="./assets/icon.svg" width="28" height="20" alt="" data-testid="icon-image" />
-				<Suspense fallback={<p data-testid="lazy-pending">Loading a deferred module</p>}>
-					<LazyProof />
-				</Suspense>
+			<Banner state={state} />
+			<Attention items={attention} testid="attention" />
+			<main id="main" data-studio-ui="ready">
+				<PanelBoundary resetKey={`${workspace}:${state.attempts}`}>
+					{workspace === "observe" ? (
+						<ObserveWorkspace observe={observe} />
+					) : (
+						<Suspense fallback={<output>Loading…</output>}>
+							<Unavailable
+								workspace={workspace}
+								label={WORKSPACES.find((w) => w.id === workspace)?.label ?? ""}
+							/>
+						</Suspense>
+					)}
+				</PanelBoundary>
 			</main>
 		</>
 	);

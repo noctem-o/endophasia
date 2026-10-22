@@ -31,8 +31,8 @@ const scratch = mkdtempSync(join(tmpdir(), "endo-studio-test-"));
 const started: StudioChild[] = [];
 
 beforeAll(() => {
-	// A checkout serves the page built into cockpit-ui/dist (ignored by git), as `npm run cockpit` does.
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-cockpit-ui.mjs")], { encoding: "utf8" });
+	// A checkout serves the frontend built into studio-ui/dist (ignored by git), as `npm run cockpit` does.
+	const built = spawnSync(process.execPath, [join(repo, "scripts/build-studio-ui.mjs")], { encoding: "utf8" });
 	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
 }, 90_000);
 afterEach(() => {
@@ -166,28 +166,28 @@ describe("the arguments", () => {
 	});
 });
 
-describe("where the page is found", () => {
+describe("where the frontend is found", () => {
 	it("resolves it from the module location only: the installed layout first, a checkout's build second, nothing otherwise", () => {
 		const layout = join(scratch, "layout");
 		mkdirSync(join(layout, "dist/cli"), { recursive: true });
-		mkdirSync(join(layout, "dist/cockpit-ui"), { recursive: true });
+		mkdirSync(join(layout, "dist/studio-ui"), { recursive: true });
 		const installed = new URL(`file://${join(layout, "dist/cli/studio.js")}`).href;
-		expect(endoStudioUiDirectoryV0(installed)).toBeNull(); // the directory exists but holds no built entry module
-		writeMarker(join(layout, "dist/cockpit-ui/main.js"));
-		expect(endoStudioUiDirectoryV0(installed)).toBe(`${join(layout, "dist/cockpit-ui")}/`);
+		expect(endoStudioUiDirectoryV0(installed)).toBeNull(); // the directory exists but holds no build manifest
+		writeMarker(join(layout, "dist/studio-ui/studio-ui.manifest.json"));
+		expect(endoStudioUiDirectoryV0(installed)).toBe(`${join(layout, "dist/studio-ui")}/`);
 		const checkout = join(layout, "checkout");
 		mkdirSync(join(checkout, "cli"), { recursive: true });
-		mkdirSync(join(checkout, "cockpit-ui/src"), { recursive: true });
-		writeMarker(join(checkout, "cockpit-ui/src/main.ts")); // the source directory is not a built page
+		mkdirSync(join(checkout, "studio-ui/src"), { recursive: true });
+		writeMarker(join(checkout, "studio-ui/index.html")); // the source directory holds the page template, which is not a build
 		const dev = new URL(`file://${join(checkout, "cli/studio.ts")}`).href;
 		expect(endoStudioUiDirectoryV0(dev)).toBeNull();
-		mkdirSync(join(checkout, "cockpit-ui/dist"), { recursive: true });
-		writeMarker(join(checkout, "cockpit-ui/dist/main.js"));
-		expect(endoStudioUiDirectoryV0(dev)).toBe(`${join(checkout, "cockpit-ui/dist")}/`);
+		mkdirSync(join(checkout, "studio-ui/dist"), { recursive: true });
+		writeMarker(join(checkout, "studio-ui/dist/studio-ui.manifest.json"));
+		expect(endoStudioUiDirectoryV0(dev)).toBe(`${join(checkout, "studio-ui/dist")}/`);
 	});
 
-	it("this checkout's own command finds the page built for the tests", () => {
-		expect(endoStudioUiDirectoryV0()).toBe(`${join(repo, "cockpit-ui/dist")}/`);
+	it("this checkout's own command finds the frontend built for the tests", () => {
+		expect(endoStudioUiDirectoryV0()).toBe(`${join(repo, "studio-ui/dist")}/`);
 	});
 });
 
@@ -271,9 +271,10 @@ describe("a launch from a checkout", () => {
 		expect(page.body).toContain("<title>Endophasia Studio</title>");
 		expect(page.headers["content-security-policy"]).toMatch(/default-src 'none'/);
 		expect(page.headers["cache-control"]).toBe("no-store");
-		const main = await studio.get("/assets/main.js");
+		const script = readdirSync(join(repo, "studio-ui/dist")).find((name) => /^main-.*\.js$/.test(name))!;
+		const main = await studio.get(`/assets/${script}`);
 		expect(main.status).toBe(200);
-		expect(main.body).toBe(readFileSync(join(repo, "cockpit-ui/dist/main.js"), "utf8"));
+		expect(main.body).toBe(readFileSync(join(repo, "studio-ui/dist", script), "utf8"));
 		const snapshot = await studio.get("/api/v0/snapshot");
 		expect(snapshot.status).toBe(200);
 		const parsed = JSON.parse(snapshot.body);

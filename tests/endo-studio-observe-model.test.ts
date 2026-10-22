@@ -365,6 +365,15 @@ describe("a window is a window", () => {
 		expect(end.of).toBe("of 30 read");
 	});
 
+	it("keeps paging available from a window past the end of the log (the log became shorter), and Previous reaches its last page", () => {
+		const past = view(read(root, { limit: 10, afterSequence: 50 }), { limit: 10 });
+		expect(past.timeline.empty).toBeNull(); // a readable log: the window is empty, the table and its pager are not replaced
+		expect(past.timeline.rows).toEqual([]);
+		expect(past.timeline.noRowsText).toBe("This window holds no events.");
+		expect(past.timeline.pager).toMatchObject({ firstAfter: 0, previousAfter: 20, nextAfter: null });
+		expect(past.timeline.overview.emptyText).toMatch(/starts after position 50/);
+	});
+
 	it("places marks by storage position, so a gap in the positions stays a gap", () => {
 		const snapshot = structuredClone(read(root, { limit: 10 }));
 		snapshot.timeline.entries.splice(3, 2); // positions 4 and 5 are not in the window (say, repeats that were not presented)

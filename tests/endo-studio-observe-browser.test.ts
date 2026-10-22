@@ -1379,6 +1379,23 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		expect(coverage).not.toMatch(/whole log as read/);
 	});
 
+	it("sizes the overview to its host when the log appears after the first read found none (the host was not there to follow)", async () => {
+		const root = tempRoot();
+		const server = await serve(root, { ui });
+		const page = await open(`${server.baseUrl}/`, 420, 900);
+		expect(await count(page, "#overview svg")).toBe(0);
+		ingestAll(root, lifecycleEvents("completes"));
+		await page.click("#refresh");
+		await page.settled(2);
+		await page.waitFor(`document.querySelector("#overview svg")`, 5000);
+		await new Promise((resolve) => setTimeout(resolve, 500)); // the observer reports after layout
+		const [svg, host] = await page.eval<number[]>(
+			`[document.querySelector("#overview svg.overview-svg").getBoundingClientRect().width, document.querySelector(".overview-host").clientWidth]`,
+		);
+		expect(svg).toBeLessThanOrEqual(host! + 1);
+		expect(await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1")).toBe(true);
+	});
+
 	it("an absent store draws no lanes: it says there is nothing to draw, and why", async () => {
 		const server = await serve(tempRoot(), { ui });
 		const page = await open(`${server.baseUrl}/`);

@@ -4,7 +4,7 @@
 // context. A mark's shape says how the event's presented fields are known; a ring around it says what the projection flagged. Selection
 // is neutral ivory and changes nothing else about a mark. The table is the keyboard path to the same events; the marks are a pointer
 // convenience, so they are not in the tab order.
-import { type ReactElement, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useState } from "react";
 import type { OverviewMark, OverviewModel } from "../model/timeline.ts";
 import { ProvGlyph } from "../ui/marks.tsx";
 
@@ -101,18 +101,18 @@ const FLAG_RING: Record<string, { className: string; dash?: string; r: number }>
 	unrecognized: { className: "ring-unrecognized", dash: "5 2 1 2", r: 7.4 },
 };
 
-function useWidth(): [RefObject<HTMLDivElement>, number] {
-	const ref = useRef<HTMLDivElement>(null);
+/** The width of the element it is given, followed from the moment the element exists: the host is not drawn for every read (an absent log has no map), so it can appear later. */
+function useWidth(): [(element: HTMLDivElement | null) => void, number] {
+	const [element, setElement] = useState<HTMLDivElement | null>(null);
 	const [width, setWidth] = useState(900);
 	useEffect(() => {
-		const element = ref.current;
 		if (element === null || typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(() => setWidth(Math.max(320, element.clientWidth)));
 		observer.observe(element);
 		setWidth(Math.max(320, element.clientWidth));
 		return () => observer.disconnect();
-	}, []);
-	return [ref, width];
+	}, [element]);
+	return [setElement, width];
 }
 
 export function Overview({

@@ -201,7 +201,11 @@ export function pagerView(timeline: EndoCockpitSessionTimelineV0, pageSize: numb
 		total,
 		hasMore,
 		firstAfter: afterSequence > 0 ? 0 : null,
-		previousAfter: afterSequence > 0 ? Math.max(0, afterSequence - pageSize) : null,
+		// Previous never lands beyond the end of the log: from a window past it (the log became shorter), it reaches the last page.
+		previousAfter:
+			afterSequence > 0
+				? Math.max(0, Math.min(afterSequence - pageSize, total === null ? Infinity : Math.max(0, total - pageSize)))
+				: null,
 		nextAfter: hasMore === true ? nextAfterSequence : null,
 		latestAfter: latest !== null && latest !== afterSequence && hasMore === true ? latest : null,
 	};

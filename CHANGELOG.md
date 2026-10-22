@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- A study of attaching to DeepSeek Harness natively (docs/dsh-native-attachment.md, research/dsh-native/): the audited observation
+  surfaces, a native-versus-ACP fidelity matrix over all 62 persisted event types, sanitised fixtures from a real runtime (tool call,
+  failed turn, retry, SIGKILL crash and resume), a read-only log inspector with deterministic tests, and the architecture decision for
+  the follow-up. It changes no adapter, protocol, store or Studio behaviour.
 - The Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed files and a manifest
   that the host checks, file for file and byte for byte, before anything starts), served through the same hardened server. Its
   **Observe workspace** reads the one recorded snapshot and shows an overview of the recorded window, the runtime, the capability state

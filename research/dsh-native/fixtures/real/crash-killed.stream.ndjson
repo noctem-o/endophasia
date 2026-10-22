@@ -1,0 +1,3 @@
+{"type":"session","sessionId":"session-1","cwd":"/fixture/workspace"}
+{"type":"status","phase":"turn_start","turn":1}
+{"type":"status","phase":"step_start","turn":1,"step":1}

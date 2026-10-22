@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- A foundation for the next Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed
+  files and a manifest), served through the same hardened server, and exercised by tests and the package smoke test. It is a
+  proof shell that reads no store; `endo studio` still serves the existing page. See
+  [docs/studio-ui-architecture.md](docs/studio-ui-architecture.md).
+
+### Changed
+- The page policy gains `font-src 'self'` and the server can serve `.woff2` files, so a bundled typeface can load; no remote or
+  `data:` font is admitted.
+
 ## 0.1.0-alpha.2
 
 The **Studio alpha**. It adds a read-only browser interface, `endo studio`, to the operator alpha, together with the observation

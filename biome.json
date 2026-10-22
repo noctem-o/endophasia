@@ -29,6 +29,8 @@
 			"cockpit/**/*.ts",
 			"cockpit-http/**/*.ts",
 			"cockpit-ui/**/*.ts",
+			"studio-ui/**/*.ts",
+			"studio-ui/**/*.tsx",
 			"graph/**/*.ts",
 			"visualization/**/*.ts",
 			"lab/**/*.ts",

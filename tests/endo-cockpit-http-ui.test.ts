@@ -31,7 +31,7 @@ beforeAll(() => {
 afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
 const PAGE_CSP =
-	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
+	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";
 const TYPES: Record<string, string> = {
 	html: "text/html; charset=utf-8",
 	js: "text/javascript; charset=utf-8",

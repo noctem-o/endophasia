@@ -82,7 +82,7 @@ The fuller statement of these distinctions, and the projects Endophasia stays se
 ## Studio
 
 <p align="center">
-  <img src="docs/images/studio.png" alt="Endophasia Studio's observation page: runtime and capabilities on the left, a storage-ordered event timeline in the middle, source conditions and an inspector on the right" width="920">
+  <img src="docs/images/Screenshot_20261022_075029.png" alt="Endophasia Studio's observation page: runtime and capabilities on the left, a storage-ordered event timeline in the middle, source conditions and an inspector on the right" width="920">
 </p>
 
 <p align="center"><sub><strong>A real, read-only view of recorded observations.</strong> The page as served by the installed

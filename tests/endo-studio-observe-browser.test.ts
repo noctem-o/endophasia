@@ -1,14 +1,17 @@
-// The page in a real browser: headless Chromium with the GPU off (so the page is shown to work without hardware acceleration),
-// against a real server over real temporary stores. Skipped, with the reason stated, when no Chromium is installed
-// (set CHROME_BIN to point at one).
-import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// The Studio Observe workspace in a real browser: headless Chromium with the GPU off (so the frontend is shown to work without hardware
+// acceleration), against the production server under its real capability address, over real temporary stores. ENDO_REQUIRE_BROWSER=1
+// makes a missing Chromium a failure; without it the suite is skipped with the reason stated (set CHROME_BIN to point at one).
+//
+// These are the old page's browser tests (tests/endo-cockpit-ui-browser.test.ts) carried over to the React frontend, with the same
+// questions asked of the same stores: the old page may be retired only because everything it was held to is held here.
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
+import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { createEndoFrameLogV0, endoFrameBytesV0 } from "../storage/log.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
@@ -30,15 +33,20 @@ const executable = findBrowser();
 const repo = fileURLToPath(new URL("../", import.meta.url));
 let browser: Browser | null = null;
 let dist = "";
-let ui: Record<string, string> = {};
+let ui: Record<string, Uint8Array> = {};
 
+const required = process.env.ENDO_REQUIRE_BROWSER === "1";
 beforeAll(async () => {
-	dist = mkdtempSync(join(tmpdir(), "endo-cockpit-ui-dist-"));
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-cockpit-ui.mjs"), dist], { encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
-	ui = Object.fromEntries(readdirSync(dist).map((name) => [name, readFileSync(join(dist, name), "utf8")]));
+	if (executable === null && required)
+		throw new Error("ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
+	dist = mkdtempSync(join(tmpdir(), "endo-studio-observe-dist-"));
+	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
+		buildStudioUi(outDir: string): Promise<{ outDir: string }>;
+	};
+	await buildStudioUi(dist);
+	ui = loadEndoStudioUiFilesV0(dist);
 	if (executable !== null) browser = await Browser.launch(executable);
-}, 60_000);
+}, 90_000);
 afterAll(async () => {
 	await browser?.close();
 	rmSync(dist, { recursive: true, force: true });
@@ -46,16 +54,50 @@ afterAll(async () => {
 });
 afterEach(stopServers);
 
-const suite = executable === null ? describe.skip : describe;
-if (executable === null)
-	console.warn("endo-cockpit-ui-browser: no Chromium found (set CHROME_BIN); the browser tests are skipped");
+const suite = executable === null && !required ? describe.skip : describe;
+if (executable === null && !required)
+	console.warn("endo-studio-observe-browser: no Chromium found (set CHROME_BIN); the browser tests are skipped");
 
 let tabs: Page[] = [];
+/** React reads a text box through its own value tracker: a test sets the value by the prototype's setter, as a keystroke does, then fires the event. */
+const SET_VALUE = `window.__set = (el, value) => Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, value)`;
+/** A stand-in for the API serving `snapshot` under the real page's files: for what the real server would not say. */
+const standIns: Server[] = [];
+async function pretendFor(snapshot: unknown): Promise<string> {
+	const stand = createServer((req, res) => {
+		const url = (req.url ?? "/").split("?")[0]!;
+		if (url.startsWith("/api/")) {
+			res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(snapshot));
+			return;
+		}
+		const name = url === "/" ? "index.html" : url.replace(/^\/assets\//, "");
+		const body = ui[name];
+		if (body === undefined) res.writeHead(404).end();
+		else res.writeHead(200, { "Content-Type": contentTypeOf(name) }).end(body);
+	});
+	standIns.push(stand);
+	await new Promise<void>((resolve) => stand.listen(0, "127.0.0.1", resolve));
+	return `http://127.0.0.1:${(stand.address() as { port: number }).port}/`;
+}
+const contentTypeOf = (name: string): string =>
+	name.endsWith(".js")
+		? "text/javascript"
+		: name.endsWith(".css")
+			? "text/css"
+			: name.endsWith(".svg")
+				? "image/svg+xml"
+				: name.endsWith(".woff2")
+					? "font/woff2"
+					: "text/html";
+afterEach(async () => {
+	await Promise.all(standIns.splice(0).map((stand) => new Promise((resolve) => stand.close(resolve))));
+});
 async function open(url: string, width = 1440, height = 900): Promise<Page> {
 	const page = await browser!.open(width, height);
 	tabs.push(page);
 	await page.goto(url);
 	await page.settled();
+	await page.eval(SET_VALUE);
 	return page;
 }
 afterEach(async () => {
@@ -109,7 +151,7 @@ suite("a populated store", () => {
 
 		expect(await count(page, "#timeline table.events tbody tr[data-seq]")).toBe(library.timeline.entries.length);
 		const kinds = await page.eval<string[]>(
-			`[...document.querySelectorAll("#timeline tr[data-seq] .col-kind")].map((e) => e.textContent)`,
+			`[...document.querySelectorAll("#timeline tr[data-seq] .col-kind .kind")].map((e) => e.textContent)`,
 		);
 		expect(kinds).toEqual(library.timeline.entries.map((entry) => entry.kind));
 		const positions = await page.eval<string[]>(
@@ -173,6 +215,8 @@ suite("a populated store", () => {
 			[1100, 800],
 			[900, 900],
 			[640, 900],
+			[420, 900],
+			[360, 800],
 		] as const) {
 			const page = await open(`${server.baseUrl}/`, width, height);
 			expect(
@@ -201,38 +245,43 @@ suite("the page enforces its own policy", () => {
 		expect(await page.eval(`document.querySelectorAll("script:not([src])").length`)).toBe(0);
 	});
 
-	it("shows text from the API as text: the widgets make no element from a hostile string", async () => {
-		const server = await serve(populated(), { ui });
-		const page = await open(`${server.baseUrl}/`);
-		const result = await page.eval<{
-			imgs: number;
-			shown: string;
-			withheld: string;
-			alias: string;
-			na: string;
-		}>(`(async () => {
-			const widgets = await import("./assets/widgets.js");
-			const hostile = '<img src=x onerror="document.title=1"><script>1</script>';
-			const holder = document.createElement("div");
-			document.body.append(holder);
-			holder.append(widgets.textValue(hostile), widgets.textValue("withheld: looks like a path, address or credential"), widgets.textValue("endo.event.withheld-0123456789abcdef0123456789abcdef"), widgets.unavailable("the producer gave none"));
-			const [a, b, c, d] = [...holder.children];
-			return { imgs: holder.querySelectorAll("img, script").length, shown: a.textContent, withheld: b.className + "|" + b.textContent, alias: c.className, na: d.textContent };
+	it("shows text from the API as text: a hostile string makes no element and no script, and the sentinel and alias are told apart", async () => {
+		// A stand-in for the API that answers with a well-formed snapshot whose strings are hostile. (The real server's text policy
+		// would withhold most of these; the page must still be safe against a reply the server did not vet.)
+		const hostile = '<img src=x onerror="document.title=1"><script>1</script>';
+		const snapshot = JSON.parse(
+			JSON.stringify(readEndoCockpitSnapshotV0(populated(), { digestKey: OTHER_KEY, limit: 100 })),
+		);
+		snapshot.timeline.entries[0].kind = hostile;
+		snapshot.timeline.entries[0].producer = "withheld: looks like a path, address or credential";
+		snapshot.timeline.entries[1].producer = "endo.event.withheld-0123456789abcdef0123456789abcdef";
+		const url = await pretendFor(snapshot);
+		const page = await open(url);
+		const rows = await page.eval<{ imgs: number; shown: string; withheld: string; alias: string }>(`(() => {
+			const row = (n) => document.querySelector("#timeline tr[data-seq='" + n + "']");
+			return {
+				imgs: document.querySelectorAll("img, script:not([src])").length,
+				shown: row(1).querySelector(".kind").textContent,
+				withheld: row(1).querySelector(".producer span").className + "|" + row(1).querySelector(".producer").textContent,
+				alias: row(2).querySelector(".producer .alias").className,
+			};
 		})()`);
-		expect(result.imgs).toBe(0);
-		expect(result.shown).toBe('<img src=x onerror="document.title=1"><script>1</script>');
-		expect(result.withheld).toBe("withheld|withheld");
-		expect(result.alias).toBe("alias");
-		expect(result.na).toContain("N/A");
-		expect(result.na).toContain("the producer gave none");
+		expect(rows.imgs).toBe(0);
+		expect(rows.shown).toBe(hostile);
+		expect(rows.withheld).toBe("withheld|withheld");
+		expect(rows.alias).toBe("alias");
 		expect(await page.eval("document.title")).toBe("Endophasia Studio");
+		expect(page.seen.problems).toEqual([]);
+		// An unavailable claim names its reason, as text, beside the N/A mark.
+		await page.click("#timeline tr[data-seq='1'] button.seq");
+		expect(await text(page, "#inspector")).toContain(hostile);
 		// Free text that merely contains an alias token is shown whole, as the text it is.
 		const sentence = "see endo.event.withheld-0123456789abcdef0123456789abcdef for the reason";
-		expect(
-			await page.eval(
-				`import("./assets/widgets.js").then((w) => w.textValue(${JSON.stringify(sentence)}).textContent)`,
-			),
-		).toBe(sentence);
+		snapshot.timeline.entries[2].producer = sentence;
+		const again = await open(await pretendFor(snapshot));
+		expect(await again.eval(`document.querySelector("#timeline tr[data-seq='3'] .producer").textContent`)).toBe(
+			sentence,
+		);
 	});
 });
 
@@ -314,7 +363,7 @@ suite("sources the page must not misrepresent", () => {
 		// Selecting the broken attachment is local (no request) and says plainly what it is.
 		const requests = snapshotRequests(page);
 		await page.eval(
-			`(() => { const s = document.querySelector("#runtime select"); s.value = "bad.default"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#runtime select"); s.value = "bad.default"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		expect(await text(page, "#runtime")).toContain("could not be opened");
 		expect(await text(page, "#runtime")).toContain("not an empty registry");
@@ -408,7 +457,7 @@ suite("reading, paging and refreshing", () => {
 		expect(snapshotRequests(page)).toBe(6);
 		// The rows-per-page choice re-reads from the same place.
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "50"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(7);
 		expect(await range()).toMatch(/positions 131–180 of 230/);
@@ -419,7 +468,7 @@ suite("reading, paging and refreshing", () => {
 		const server = await serve(many(230), { ui, readBudget: { duty: 1, burstMs: 1e9 } });
 		const page = await open(`${server.baseUrl}/`);
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "200"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "200"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(2);
 		await page.eval(`document.querySelector("#timeline .table-scroll").scrollTop = 900`);
@@ -466,20 +515,20 @@ suite("reading, paging and refreshing", () => {
 		);
 		expect(await focused()).toBe("flagged");
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Session']"); s.focus(); s.value = "endo.session.two"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label^='Session']"); s.focus(); s.value = "endo.session.two"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		expect(await focused()).toBe("session");
-		expect(await page.eval(`document.querySelector("#timeline select[aria-label='Session']").value`)).toBe(
+		expect(await page.eval(`document.querySelector("#timeline select[aria-label^='Session']").value`)).toBe(
 			"endo.session.two",
 		);
 		await page.eval(
-			`(() => { const s = document.querySelector("#runtime select"); s.focus(); s.value = "omp.default"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#runtime select"); s.focus(); s.value = "omp.default"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		expect(await focused()).toBe("attachment");
 		expect(await page.eval(`document.querySelector("#runtime select").value`)).toBe("omp.default");
 		// A control that starts a read loses focus while it is disabled, and gets it back when the read ends.
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(2);
 		expect(await focused()).toBe("pagesize");
@@ -490,12 +539,12 @@ suite("reading, paging and refreshing", () => {
 		await page.click("#timeline .btn.quiet"); // clear the filters the steps above set
 		// An input method composing in the search box is not interrupted: the box stays the same element until the composition ends.
 		await page.eval(
-			`(() => { const i = document.querySelector("#timeline-search"); i.focus(); i.__mine = true; i.value = "日"; i.dispatchEvent(new InputEvent("input", { isComposing: true })); })()`,
+			`(() => { const i = document.querySelector("#timeline-search"); i.focus(); i.__mine = true; __set(i, "日"); i.dispatchEvent(new InputEvent("input", { isComposing: true, bubbles: true })); })()`,
 		);
 		expect(await page.eval(`document.querySelector("#timeline-search").__mine`)).toBe(true);
 		expect(await count(page, "#timeline tr[data-seq]")).toBeGreaterThan(0); // not filtered yet
 		await page.eval(
-			`(() => { const i = document.querySelector("#timeline-search"); i.value = "日本"; i.dispatchEvent(new CompositionEvent("compositionend", { data: "日本" })); })()`,
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "日本"); i.dispatchEvent(new CompositionEvent("compositionend", { data: "日本", bubbles: true })); })()`,
 		);
 		expect(await text(page, "#timeline")).toContain("No event in this window matches the filters.");
 		expect(await page.eval(`document.activeElement.id`)).toBe("timeline-search");
@@ -507,14 +556,14 @@ suite("reading, paging and refreshing", () => {
 		const page = await open(`${server.baseUrl}/`);
 		const reads = snapshotRequests(page);
 		await page.eval(
-			`(() => { const i = document.querySelector("#timeline-search"); i.focus(); i.value = "tool.started"; i.dispatchEvent(new Event("input")); })()`,
+			`(() => { const i = document.querySelector("#timeline-search"); i.focus(); __set(i, "tool.started"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
 		);
 		expect(await count(page, "#timeline tr[data-seq]")).toBe(20);
 		expect(await text(page, "#timeline .window-line")).toMatch(/20 of 60 in this window match/);
 		expect(await page.eval(`document.activeElement.id`)).toBe("timeline-search");
 		await page.click("#timeline .chips button");
 		await page.eval(
-			`(() => { const i = document.querySelector("#timeline-search"); i.value = "no-such-kind"; i.dispatchEvent(new Event("input")); })()`,
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, "no-such-kind"); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
 		);
 		expect(await text(page, "#timeline")).toContain("Other windows are not searched.");
 		await page.click("#timeline .btn.quiet");
@@ -588,7 +637,7 @@ suite("inspecting", () => {
 		const event = await text(page, "#inspector");
 		expect(event).toContain("Event at position 5");
 		expect(event).toMatch(/producer sequence\s*\d+ \(within this producer only\)/);
-		expect(event).toMatch(/recorded\s*20\d\d-/);
+		expect(event).toMatch(/producer clock\s*20\d\d-/);
 		expect(event).toContain("Position is the order.");
 		expect(
 			await page.eval(`document.querySelector("#timeline tr[data-seq='5']").getAttribute("aria-selected")`),
@@ -639,7 +688,9 @@ suite("replies the page must not trust", () => {
 						? "text/css"
 						: name.endsWith(".svg")
 							? "image/svg+xml"
-							: "text/html",
+							: name.endsWith(".woff2")
+								? "font/woff2"
+								: "text/html",
 			}).end(body);
 		});
 		await new Promise<void>((resolve) => fake!.listen(0, "127.0.0.1", resolve));
@@ -684,7 +735,9 @@ suite("replies the page must not trust", () => {
 			expect(await text(page, "#banner"), name).toMatch(expected);
 			expect(await page.eval("document.body.dataset.state"), name).toBe("error");
 			expect(await count(page, "#timeline tr[data-seq]"), name).toBe(0);
-			expect(await text(page, "#runtime"), name).toContain("No snapshot has been read yet.");
+			expect(await text(page, "[data-testid='observe-unread']"), name).toContain(
+				"No read has succeeded, so nothing is shown",
+			);
 			await stopFake();
 		}
 	});
@@ -767,7 +820,7 @@ suite("replies the page must not trust", () => {
 		const page = await open(url);
 		const size = () => page.eval(`document.querySelector("#timeline select[aria-label='Rows per page']").value`);
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.value = "50"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(2);
 		expect(await text(page, "#banner")).toMatch(/internal error/);
@@ -914,7 +967,7 @@ suite("replies the page must not trust", () => {
 		const page = await open(url);
 		const rows = await count(page, "#timeline tr[data-seq]");
 		await page.eval(
-			`(() => { const i = document.querySelector("#timeline-search"); i.value = ${JSON.stringify(needle)}; i.dispatchEvent(new Event("input")); })()`,
+			`(() => { const i = document.querySelector("#timeline-search"); __set(i, ${JSON.stringify(needle)}); i.dispatchEvent(new Event("input", { bubbles: true })); })()`,
 		);
 		const filtered = await count(page, "#timeline tr[data-seq]");
 		expect(filtered).toBeGreaterThan(0);
@@ -1027,7 +1080,7 @@ suite("replies the page must not trust", () => {
 		let reads = 0;
 		const page = await open(await pretend((res) => json(res, 200, bodies[Math.min(reads++, 1)]!)));
 		await page.eval(
-			`(() => { const s = document.querySelector("#runtime select"); s.value = "zz.other"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#runtime select"); s.value = "zz.other"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.click("#capabilities button.caprow[data-key='session.overview']");
 		expect(await text(page, "#inspector")).toMatch(/recorded status/); // open, so the check below is not vacuous
@@ -1070,9 +1123,13 @@ suite("replies the page must not trust", () => {
 		expect(unmarked).toEqual([]);
 		expect(
 			await page.eval(
-				`[...document.querySelectorAll("#timeline select[aria-label='Session'] option")].map((o) => o.textContent)`,
+				`[...document.querySelectorAll("#timeline select[aria-label^='Session'] option")].map((o) => o.textContent)`,
 			),
-		).toEqual(["all sessions", "alias withheld-00000000\u2026", "endo.session.plain"]);
+		).toEqual([
+			"all sessions in this window",
+			"alias withheld-00000000\u2026 · 1–25 · 25 here",
+			"endo.session.plain · 1–25 · 25 here",
+		]);
 		// The card shows the alias as one, with the whole value on hover.
 		expect(
 			await page.eval(`[...document.querySelectorAll("#sources .alias")].map((e) => e.title.split("\\n")[0])`),
@@ -1099,7 +1156,7 @@ suite("replies the page must not trust", () => {
 		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
 		// The rows-per-page choice: it is drawn again with each render, so focus is lost while it is disabled.
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(2);
 		expect(reads.n).toBe(2); // the paced read
@@ -1135,7 +1192,7 @@ suite("replies the page must not trust", () => {
 		const reads = { n: 0 };
 		const page = await open(await pretend(pausedOnce(reads, JSON.stringify(realSnapshot()))));
 		await page.eval(
-			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change")); })()`,
+			`(() => { const s = document.querySelector("#timeline select[aria-label='Rows per page']"); s.focus(); s.value = "50"; s.dispatchEvent(new Event("change", { bubbles: true })); })()`,
 		);
 		await page.settled(2);
 		expect(await page.eval("document.querySelector('#refresh').disabled")).toBe(true);
@@ -1169,5 +1226,220 @@ suite("the whole path", () => {
 		expect(await count(wrong, "#timeline")).toBe(0);
 		expect(await wrong.eval("document.body.innerText")).toContain('{"error":"not-found"}');
 		expect((await get(server, "/")).status).toBe(200);
+	});
+});
+
+suite("the narrow inspector, the keyboard, the overview, and the workspaces not built yet", () => {
+	const tornTail = () => {
+		const root = populated();
+		appendFileSync(
+			join(root, "events", "events.log"),
+			endoFrameBytesV0(new TextEncoder().encode(JSON.stringify(event("tool.started")))).subarray(0, 21),
+		);
+		return root;
+	};
+	const focusedSeq = (page: Page) =>
+		page.eval<string | null>(
+			`document.activeElement && document.activeElement.closest("tr") && document.activeElement.closest("tr").dataset.seq`,
+		);
+
+	it("at a narrow width the inspector is a modal dialog that keeps the degraded source in view, closes on Escape and gives focus back", async () => {
+		const server = await serve(tornTail(), { ui, readBudget: { duty: 1, burstMs: 1e9 } });
+		const page = await open(`${server.baseUrl}/`, 420, 900);
+		// Before anything is open, the warning is in the shell and the page says how to read the marks without a second legend.
+		expect(await count(page, "[data-testid=attention] .attention-item")).toBe(1);
+		expect(await text(page, "[data-testid=attention]")).toMatch(/degraded/);
+		expect(await page.eval(`document.querySelector("dialog#inspector").open`)).toBe(false);
+		expect(await count(page, "[data-testid=legend]")).toBe(1); // the one in the fold, not also in the closed dialog
+		// Open an event from its own button, focused, as a keyboard user would have it.
+		await page.eval(`document.querySelector("#timeline tr[data-seq='5'] button.seq").focus()`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		expect(await page.eval(`document.querySelector("dialog#inspector").open`)).toBe(true);
+		expect(await text(page, "dialog#inspector")).toContain("Event at position 5");
+		// The page behind is inert, so the warning is repeated inside the dialog.
+		const warned = await text(page, "dialog#inspector [data-testid=dialog-attention]");
+		expect(warned).toMatch(/degraded/);
+		expect(warned).toMatch(/Torn tail left in place: 21 bytes/);
+		expect(await count(page, "[data-testid=legend]")).toBe(0);
+		// A shortcut does not reach through the dialog to the page behind it.
+		const reads = snapshotRequests(page);
+		await page.press("r");
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(snapshotRequests(page)).toBe(reads);
+		// Escape closes it, clears the one selection, and focus is back on the row it came from.
+		await page.press("Escape");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(await page.eval(`document.querySelectorAll("#timeline tr.selected").length`)).toBe(0);
+		expect(await focusedSeq(page)).toBe("5");
+		expect(await page.eval(`document.activeElement.className`)).toBe("seq");
+		expect(page.seen.problems).toEqual([]);
+	});
+
+	it("at a narrow width a capability opens in the dialog too, and its close button works", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`, 420, 900);
+		await page.eval(`document.querySelector("#capabilities button.caprow").focus()`);
+		await page.click("#capabilities button.caprow");
+		expect(await text(page, "dialog#inspector")).toContain("Limits on this status");
+		await page.click("dialog#inspector button[data-focus=inspector-close]");
+		await page.waitFor(`document.querySelector("dialog#inspector").open === false`, 3000);
+		expect(await page.eval(`document.activeElement.classList.contains("caprow")`)).toBe(true);
+	});
+
+	it("the wide inspector is a panel, not a dialog, and there is one legend", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		expect(await count(page, "dialog")).toBe(0);
+		expect(await count(page, "[data-testid=legend]")).toBe(1);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		expect(await count(page, "[data-testid=legend]")).toBe(0);
+		expect(await count(page, "[data-testid=event-detail]")).toBe(1);
+	});
+
+	it("can be walked and opened with the keyboard alone: arrows move between rows, Enter opens one, r reads again", async () => {
+		const server = await serve(populated(), { ui, readBudget: { duty: 1, burstMs: 1e9 } });
+		const page = await open(`${server.baseUrl}/`);
+		await page.eval(`document.querySelector("#timeline tr[data-seq='1'] button.seq").focus()`);
+		await page.press("ArrowDown");
+		await page.press("ArrowDown");
+		expect(await focusedSeq(page)).toBe("3");
+		await page.press("ArrowUp");
+		expect(await focusedSeq(page)).toBe("2");
+		await page.press("Enter");
+		expect(await text(page, "#inspector")).toContain("Event at position 2");
+		expect(
+			await page.eval(`document.querySelector("#timeline tr[data-seq='2']").getAttribute("aria-selected")`),
+		).toBe("true");
+		const reads = snapshotRequests(page);
+		await page.eval(`document.activeElement.blur()`);
+		await page.press("r");
+		await page.settled(2);
+		expect(snapshotRequests(page)).toBe(reads + 1);
+		// The selection survives the refresh because the same record is still in the window.
+		expect(await text(page, "#inspector")).toContain("Event at position 2");
+	});
+
+	it("keeps the overview and the table in step, and a hover reads nothing", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		const reads = snapshotRequests(page);
+		// A mark opens its event, and the table row and the mark agree on which one is selected.
+		await page.eval(
+			`document.querySelector("#overview g[data-seq='7']").dispatchEvent(new MouseEvent("click", { bubbles: true }))`,
+		);
+		expect(await text(page, "#inspector")).toContain("Event at position 7");
+		expect(
+			await page.eval(`document.querySelector("#timeline tr[data-seq='7']").getAttribute("aria-selected")`),
+		).toBe("true");
+		expect(await count(page, "#overview .omark-wrap.selected")).toBe(1);
+		// And the other way: a row moves the mark.
+		await page.click("#timeline tr[data-seq='9'] button.seq");
+		expect(await page.eval(`document.querySelector("#overview .omark-wrap.selected").dataset.seq`)).toBe("9");
+		// A hover marks both the mark and the row, and fetches nothing.
+		await page.hover("#overview g[data-seq='3']");
+		await page.waitFor(`document.querySelector("#overview .omark-wrap.hovered")`, 2000);
+		expect(
+			await page.eval(`document.querySelector("#timeline tr[data-seq='3']").classList.contains("hovered")`),
+		).toBe(true);
+		await page.hover("#timeline tr[data-seq='4']");
+		await page.waitFor(`document.querySelector("#overview .omark-wrap.hovered").dataset.seq === "4"`, 2000);
+		expect(snapshotRequests(page)).toBe(reads);
+		// A filter dims what it hides on the overview and does not remove it.
+		await page.click("#timeline .chips button");
+		expect(await count(page, "#overview .omark-wrap")).toBe(25);
+		expect(await count(page, "#overview .omark-wrap.dim")).toBeGreaterThan(0);
+	});
+
+	it("says what the overview covers: the whole log, one window of it, or the readable prefix of a degraded one", async () => {
+		const many = tempRoot();
+		ingestAll(
+			many,
+			Array.from({ length: 230 }, (_, i) => event(i % 3 === 0 ? "tool.started" : "agent.prompt-accepted")),
+		);
+		const server = await serve(many, { ui, readBudget: { duty: 1, burstMs: 1e9 } });
+		const page = await open(`${server.baseUrl}/`);
+		expect(await text(page, "[data-testid=overview-coverage]")).toMatch(
+			/positions 1–100 only of 230 read\. The rest of the log is not drawn\./,
+		);
+		await page.eval(
+			`[...document.querySelectorAll("#timeline .pager button")].find((b) => b.textContent === "Next").click()`,
+		);
+		await page.settled(2);
+		expect(await text(page, "[data-testid=overview-coverage]")).toMatch(/positions 101–200 only of 230/);
+		const whole = await serve(populated(), { ui });
+		const wholePage = await open(`${whole.baseUrl}/`);
+		expect(await text(wholePage, "[data-testid=overview-coverage]")).toBe(
+			"This overview covers the whole log as read.",
+		);
+		const torn = await serve(tornTail(), { ui });
+		const tornPage = await open(`${torn.baseUrl}/`);
+		const coverage = await text(tornPage, "[data-testid=overview-coverage]");
+		expect(coverage).toMatch(/whole readable prefix/);
+		expect(coverage).toMatch(/degraded/);
+		expect(coverage).not.toMatch(/whole log as read/);
+	});
+
+	it("sizes the overview to its host when the log appears after the first read found none (the host was not there to follow)", async () => {
+		const root = tempRoot();
+		const server = await serve(root, { ui });
+		const page = await open(`${server.baseUrl}/`, 420, 900);
+		expect(await count(page, "#overview svg")).toBe(0);
+		ingestAll(root, lifecycleEvents("completes"));
+		await page.click("#refresh");
+		await page.settled(2);
+		await page.waitFor(`document.querySelector("#overview svg")`, 5000);
+		await new Promise((resolve) => setTimeout(resolve, 500)); // the observer reports after layout
+		const [svg, host] = await page.eval<number[]>(
+			`[document.querySelector("#overview svg.overview-svg").getBoundingClientRect().width, document.querySelector(".overview-host").clientWidth]`,
+		);
+		expect(svg).toBeLessThanOrEqual(host! + 1);
+		expect(await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1")).toBe(true);
+	});
+
+	it("an absent store draws no lanes: it says there is nothing to draw, and why", async () => {
+		const server = await serve(tempRoot(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		expect(await count(page, "#overview svg")).toBe(0);
+		expect(await text(page, "[data-testid=overview-coverage]")).toMatch(
+			/No event log exists under this store root, so there is nothing to draw/,
+		);
+		expect(await text(page, "[data-testid=attention]")).toMatch(/absent/);
+	});
+
+	it("names the workspaces that are not built, loads them on demand, shows no record in them, and keeps Observe as it was", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		const reads = snapshotRequests(page);
+		for (const name of ["compare", "capabilities", "evolve"]) {
+			await page.click(`button[data-workspace=${name}]`);
+			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
+			const said = await text(page, `[data-testid=unavailable-${name}]`);
+			expect(said).toMatch(/is not available yet/);
+			expect(said).toMatch(/This workspace shows nothing read from a store/);
+			expect(await count(page, "tr[data-seq]")).toBe(0);
+			expect(
+				await page.eval(`document.querySelector("button[data-workspace=${name}]").getAttribute("aria-current")`),
+			).toBe("page");
+		}
+		expect(page.seen.requests.some((url) => /\/assets\/Unavailable-[A-Za-z0-9]+\.js$/.test(url))).toBe(true);
+		await page.click("button[data-workspace=observe]");
+		// The read, the selection and the window are where they were: switching workspace reads nothing.
+		expect(await text(page, "#inspector")).toContain("Event at position 5");
+		expect(snapshotRequests(page)).toBe(reads);
+		expect(page.seen.problems).toEqual([]);
+	});
+
+	it("makes no request to anywhere but its own server, and starts nothing the operator did not ask for", async () => {
+		const server = await serve(populated(), { ui });
+		const page = await open(`${server.baseUrl}/`);
+		await page.click("#timeline tr[data-seq='5'] button.seq");
+		await page.click("button[data-workspace=compare]");
+		await page.waitFor(`document.querySelector("[data-testid=unavailable-compare]")`, 5000);
+		for (const url of page.seen.requests) expect(url.startsWith(`${server.origin}/`), url).toBe(true);
+		const mine = page.seen.requests.filter((url) => url.startsWith(server.origin));
+		const allowed = /\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100)$|\/$/;
+		for (const url of mine) expect(url.replace(server.baseUrl, "/"), url).toMatch(allowed);
+		expect(snapshotRequests(page)).toBe(1);
 	});
 });

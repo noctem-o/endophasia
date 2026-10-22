@@ -101,12 +101,12 @@ the installed package on `127.0.0.1` behind a private per-launch address. It sho
 
 Each claim carries its basis (observed, reported or derived) or the N/A mark with the record's own reason; a value that was
 never recorded is shown as not recorded, never as zero. The page does not poll, draws no live activity or scores, and has no controls other
-than refresh, paging, filtering and selection. It does not start, attach to or steer an agent, and it does not write to the
+than refresh, paging, filtering, selection and switching workspace. It does not start, attach to or steer an agent, and it does not write to the
 store it reads.
 
 Studio is meant to grow into more modes. **DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view do not exist yet**;
-they are future work, not tabs, and the page has no navigation for them. Details: [docs/studio.md](docs/studio.md) and
-the page's [design reference](docs/cockpit-ui.md).
+they are future work. The shell names Compare, Capabilities and Evolve as workspaces marked "later"; each says what it would need and shows
+nothing. Details: [docs/studio.md](docs/studio.md) and the frontend's [design reference](docs/cockpit-ui.md).
 
 ## Quick start
 
@@ -318,7 +318,7 @@ remains the observer rather than becoming the execution engine. The upstream pac
 
 **Studio and the observation bridge**
 [Observation bridge and local server](docs/cockpit.md) ·
-[Page design reference](docs/cockpit-ui.md) ·
+[Frontend design reference](docs/cockpit-ui.md) ·
 [Sequencing after the first slice](docs/cockpit-next-stages.md)
 
 **Adapters and boundaries**

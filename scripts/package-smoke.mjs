@@ -192,27 +192,26 @@ try {
 	const hasStudioUi = paths.some((p) => p.startsWith("dist/studio-ui/"));
 	if (subject === null) check(hasStudioUi, "the build from this checkout packs the Studio frontend (dist/studio-ui)");
 	else if (!hasStudioUi) console.log("skip  the Studio frontend checks: this package predates dist/studio-ui");
+	// A package published before this frontend (0.1.0-alpha.2 and earlier) carries the page it replaced in dist/cockpit-ui: that is stated
+	// and held to its own three files, for a named artifact. A build from this checkout carries no such page.
+	const legacyPage = paths.some((p) => p.startsWith("dist/cockpit-ui/"));
+	if (subject === null) check(!legacyPage, "the build from this checkout carries no earlier page (dist/cockpit-ui): the Studio frontend replaced it");
+	else if (legacyPage) console.log("note  this package carries the earlier page (dist/cockpit-ui), which the Studio frontend replaced");
 	const outsideFrontend = paths.filter((p) => !(hasStudioUi && (p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/"))));
 	check(
 		outsideFrontend.filter((p) => p.startsWith("dist/") && !p.endsWith(".js")).sort().join() ===
 			[
-				"dist/cockpit-ui/cockpit.css",
-				"dist/cockpit-ui/icon.svg",
-				"dist/cockpit-ui/index.html",
+				...(legacyPage ? ["dist/cockpit-ui/cockpit.css", "dist/cockpit-ui/icon.svg", "dist/cockpit-ui/index.html"] : []),
 				"dist/research/fixture-keys/fixture-public-alt.json",
 				"dist/research/fixture-keys/fixture-public.json",
 			].join(),
-		"the only non-JavaScript runtime assets are the page's index.html, style sheet and icon and the two public synthetic fixture keys",
-	);
-	const uiModules = readdirSync(join(repo, "cockpit-ui", "src")).filter((name) => name.endsWith(".ts")).map((name) => name.replace(/\.ts$/, ".js"));
-	const expectedUi = [...uiModules, "index.html", "cockpit.css", "icon.svg"].map((name) => `dist/cockpit-ui/${name}`).sort();
-	check(
-		paths.filter((p) => p.startsWith("dist/cockpit-ui/")).sort().join() === expectedUi.join(),
-		`dist/cockpit-ui holds exactly the page: index.html, cockpit.css, icon.svg and the ${uiModules.length} modules of cockpit-ui/src compiled, flat`,
+		legacyPage
+			? "the only non-JavaScript runtime assets are the earlier page's index.html, style sheet and icon and the two public synthetic fixture keys"
+			: "the only non-JavaScript runtime assets outside the Studio frontend and its licence notices are the two public synthetic fixture keys",
 	);
 	check(
-		["dist/cli/studio.js", "dist/cockpit-http/host.js", "dist/cockpit-http/server.js", "dist/cockpit/index.js", "dist/cockpit-ui/main.js", "dist/cockpit-ui/index.html"].every((p) => paths.includes(p)),
-		"the Studio command, the shared host, the server, the cockpit library and the page's entry files are packed",
+		["dist/cli/studio.js", "dist/cockpit-http/host.js", "dist/cockpit-http/server.js", "dist/cockpit/index.js", ...(hasStudioUi ? ["dist/studio-ui/index.html", "dist/studio-ui/studio-ui.manifest.json"] : ["dist/cockpit-ui/main.js", "dist/cockpit-ui/index.html"])].every((p) => paths.includes(p)),
+		"the Studio command, the shared host, the server, the cockpit library and the frontend's entry files are packed",
 	);
 	check(!paths.some((p) => /digest-key$|capture|cassette\.json/.test(p) && !p.endsWith(".js")), "no private keys or captures");
 	check(paths.includes("dist/cli/cassette-child.js"), "the second compiled entry point, which replay starts as a child process, is packed beside the first");
@@ -263,10 +262,33 @@ try {
 
 	const mapped = jsFiles.filter((file) => /sourceMappingURL/.test(readFileSync(file, "utf8")));
 	check(mapped.length === 0, `no installed JavaScript points at a source map${mapped.length ? `: ${mapped.map((f) => relative(pkgDir, f)).join(", ")}` : ""}`);
-	const uiDir = join(pkgDir, "dist", "cockpit-ui");
+	const uiDir = join(pkgDir, "dist", hasStudioUi ? "studio-ui" : "cockpit-ui");
 	const entry = readFileSync(join(uiDir, "index.html"), "utf8");
 	const referenced = [...entry.matchAll(/(?:src|href)="\.\/assets\/([^"/?#]+)"/g)].map((m) => m[1]);
 	check(referenced.length >= 3 && referenced.every((name) => existsSync(join(uiDir, name))), `the installed page's index.html finds all ${referenced.length} files it references beside it`);
+
+	if (hasStudioUi) {
+		// The frontend, from the installed package alone: the installed directory is exactly its manifest, file for file and byte for byte.
+		// (Checked before anything below edits the installed copy.) The package has no React, no bundler and no source here: it declares no
+		// dependency and holds no node_modules; the build's output is all there is.
+		const studioManifest = JSON.parse(readFileSync(join(uiDir, "studio-ui.manifest.json"), "utf8"));
+		const listed = studioManifest.files.map((f) => f.name).sort();
+		check(
+			readdirSync(uiDir).sort().join() === [...listed, "studio-ui.manifest.json"].sort().join() &&
+				studioManifest.files.every((f) => createHash("sha256").update(readFileSync(join(uiDir, f.name))).digest("hex") === f.sha256),
+			`dist/studio-ui holds exactly the ${listed.length} files its manifest lists, each with the recorded sha256`,
+		);
+		check(
+			paths.filter((p) => p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/")).every((p) => /^dist\/(studio-ui\/[A-Za-z0-9][A-Za-z0-9._-]*\.(html|js|css|svg|woff2|json)|licenses\/studio-ui-third-party\.txt)$/.test(p)),
+			"the tarball holds there only the manifest, the page, scripts, style sheet, icon, fonts and licence notices: no source map and no source",
+		);
+		const notices = readFileSync(join(pkgDir, "dist", "licenses", "studio-ui-third-party.txt"), "utf8");
+		check(
+			/\nreact@18\.3\.1\n/.test(notices) && /\nreact-dom@18\.3\.1\n/.test(notices) && /@fontsource\/ibm-plex-sans@/.test(notices) && /@fontsource\/ibm-plex-mono@/.test(notices) && /SIL OPEN FONT LICENSE/i.test(notices),
+			"the licence notices of the bundled React and both fonts (IBM Plex Sans and Mono) are packed",
+		);
+		check(!existsSync(join(scratch, "install", "node_modules", "react")) && !existsSync(join(scratch, "install", "node_modules", "esbuild")), "the install holds no React and no bundler: the frontend runs from its built files only");
+	}
 
 	// 5. Run the installed binary. Plain Node, TypeScript stripping off, outside the repository.
 	// A bounded wait: a command that should have refused and started a server instead must fail here, not hang the job.
@@ -354,24 +376,40 @@ try {
 	const installKey = join(xdgData, "endophasia", "digest-key");
 	const permissions = (path) => statSync(path).mode & 0o777;
 	const absentRoot = join(scratch, "studio-absent", "store");
-	const uiFiles = readdirSync(uiDir);
+	// The files the server serves (the manifest of the Studio frontend vouches for them and is not one of them), and which of them is the
+	// entry script and the style sheet: a package from before the Studio frontend (see above) names them differently.
+	const uiFiles = readdirSync(uiDir).filter((name) => name !== "studio-ui.manifest.json");
+	const scriptName = hasStudioUi ? uiFiles.find((name) => /^main-.*\.js$/.test(name)) : "reply.js";
+	const styleName = hasStudioUi ? uiFiles.find((name) => /^main-.*\.css$/.test(name)) : "cockpit.css";
 
 	// A damaged install fails at startup, plainly, before a key or a listener exists.
 	const brokenEnv = { ...env, XDG_DATA_HOME: join(scratch, "xdg-broken") };
 	const attempt = () =>
 		spawnSync(process.execPath, [...noStripFlags, bin, "studio", "--root", absentRoot], { cwd: cwdA, env: brokenEnv, encoding: "utf8", timeout: 30_000 });
-	renameSync(join(uiDir, "reply.js"), join(uiDir, "reply.js.moved"));
+	// (Moved out of the directory, not renamed within it: a stray file beside the page is refused too, by another sentence.)
+	renameSync(join(uiDir, scriptName), join(scratch, "moved-script"));
 	const noModule = attempt();
-	renameSync(join(uiDir, "reply.js.moved"), join(uiDir, "reply.js"));
+	renameSync(join(scratch, "moved-script"), join(uiDir, scriptName));
 	renameSync(uiDir, `${uiDir}.moved`);
 	const noPage = attempt();
 	renameSync(`${uiDir}.moved`, uiDir);
-	check(noModule.status === 1 && noModule.stdout === "" && /reply\.js is missing/.test(noModule.stderr), "a page missing a module fails at startup: exit 1, the missing file named, nothing printed to stdout");
-	check(noPage.status === 1 && noPage.stdout === "" && /page's files were not found/.test(noPage.stderr), "a missing page directory fails at startup: exit 1 and a plain sentence");
+	check(noModule.status === 1 && noModule.stdout === "" && /is missing/.test(noModule.stderr) && noModule.stderr.includes(scriptName), "a frontend missing its script fails at startup: exit 1, the missing file named, nothing printed to stdout");
+	check(noPage.status === 1 && noPage.stdout === "" && /files were not found/.test(noPage.stderr), "a missing frontend directory fails at startup: exit 1 and a plain sentence");
 	check(!existsSync(join(scratch, "xdg-broken")) && !existsSync(dirname(absentRoot)), "neither failure created a key, a store or a directory");
 
-	// Proof that the page comes from the install and not from a checkout: the installed style sheet carries a marker only it has.
-	appendFileSync(join(uiDir, "cockpit.css"), "\n/* installed-copy marker */\n");
+	// Proof that the page comes from the install and not from a checkout: the installed style sheet carries a marker only it has. (The
+	// Studio frontend's manifest vouches for each file's bytes, so the copy's manifest entry is brought into line with the marker: what
+	// is being proved is where the served bytes come from, and the edit that is not vouched for is refused above.)
+	appendFileSync(join(uiDir, styleName), "\n/* installed-copy marker */\n");
+	if (hasStudioUi) {
+		const manifestPath = join(uiDir, "studio-ui.manifest.json");
+		const manifestCopy = JSON.parse(readFileSync(manifestPath, "utf8"));
+		const marked = readFileSync(join(uiDir, styleName));
+		const entryOfStyle = manifestCopy.files.find((file) => file.name === styleName);
+		entryOfStyle.bytes = marked.length;
+		entryOfStyle.sha256 = createHash("sha256").update(marked).digest("hex");
+		writeFileSync(manifestPath, `${JSON.stringify(manifestCopy, null, "\t")}\n`);
+	}
 	check(!existsSync(studioKey) && !existsSync(installKey), "before the first launch, neither Studio's key nor the installation key exists");
 	const one = await launch(["--root", absentRoot]);
 	check(
@@ -380,11 +418,16 @@ try {
 	);
 	check(!one.stderr().includes(one.capability) && /private to this launch/.test(one.stderr()) && /created Studio's own digest key/.test(one.stderr()), "stderr says the address is private and that Studio's own key was created, and does not repeat the address");
 	const installed = (name) => readFileSync(join(uiDir, name), "utf8");
+	const binaryFile = (name) => name.endsWith(".woff2");
 	const page = await one.get("/");
 	check(page.status === 200 && page.body === installed("index.html") && /require-trusted-types-for 'script'/.test(String(page.headers["content-security-policy"])), "the page is served behind the capability, byte-for-byte as installed, under its policy");
 	const assets = await Promise.all(uiFiles.filter((name) => name !== "index.html").map(async (name) => [name, await one.get(`/assets/${name}`)]));
-	check(assets.length >= 15 && assets.every(([name, reply]) => reply.status === 200 && reply.body === installed(name)), `all ${assets.length} browser assets are served byte-for-byte from the installed package`);
-	check(assets.find(([name]) => name === "cockpit.css")?.[1].body.includes("installed-copy marker") === true, "the assets served are the installed copy's (a marker only the installed style sheet has), not a checkout's");
+	check(
+		assets.length >= (hasStudioUi ? 5 : 15) &&
+			assets.every(([name, reply]) => reply.status === 200 && (binaryFile(name) ? Number(reply.headers["content-length"]) === statSync(join(uiDir, name)).size : reply.body === installed(name))),
+		`all ${assets.length} browser assets are served byte-for-byte from the installed package (a font by its length)`,
+	);
+	check(assets.find(([name]) => name === styleName)?.[1].body.includes("installed-copy marker") === true, "the assets served are the installed copy's (a marker only the installed style sheet has), not a checkout's");
 	const absentSnapshot = await one.get("/api/v0/snapshot");
 	check(absentSnapshot.status === 200 && JSON.parse(absentSnapshot.body).timeline.source.condition.state === "absent", "the snapshot API answers, and reports the absent store as absent");
 	const refusals = [
@@ -556,86 +599,47 @@ try {
 		check(fingerprint(defaultStore).join("\n") === storeBefore.join("\n"), "the recorded store is byte-for-byte unchanged after Studio read it");
 		check(two.stdout().split(two.capability).length === 2 && !two.stderr().includes(two.capability), "the second launch printed its address once, on stdout only");
 
-	// 6b. The bundled Studio frontend, from the installed package alone: the installed directory is exactly its manifest, and the
-	// installed host (the same code `endo studio` runs) serves it through the real server, in a real browser. The package has no React,
-	// no bundler and no source here (it declares no dependency and holds no node_modules); the build's output is all there is.
+	// 6b. The Studio frontend through the installed `endo studio`, in a real browser, over stores seeded for it (the helpers that seed them
+	// are this checkout's test fixtures; the installed command only reads what they wrote): a populated store, an absent one, and one
+	// whose log has a torn tail, which is what the narrow-width dialog must carry a warning about. Each is held to the same questions as
+	// the checkout's own browser suite (tests/studio-ui-acceptance.ts).
 	if (hasStudioUi) {
-		const studioDir = join(pkgDir, "dist", "studio-ui");
-		const manifestName = "studio-ui.manifest.json";
-		const studioManifest = JSON.parse(readFileSync(join(studioDir, manifestName), "utf8"));
-		const listed = studioManifest.files.map((f) => f.name).sort();
-		check(
-			readdirSync(studioDir).sort().join() === [...listed, manifestName].sort().join() &&
-				studioManifest.files.every((f) => createHash("sha256").update(readFileSync(join(studioDir, f.name))).digest("hex") === f.sha256),
-			`dist/studio-ui holds exactly the ${listed.length} files its manifest lists, each with the recorded sha256`,
-		);
-		check(
-			paths.filter((p) => p.startsWith("dist/studio-ui/") || p.startsWith("dist/licenses/")).every((p) => /^dist\/(studio-ui\/[A-Za-z0-9][A-Za-z0-9._-]*\.(html|js|css|svg|woff2|json)|licenses\/studio-ui-third-party\.txt)$/.test(p)),
-			"the tarball holds there only the manifest, the page, scripts, style sheet, icon, font and licence notices: no source map and no source",
-		);
-		const notices = readFileSync(join(pkgDir, "dist", "licenses", "studio-ui-third-party.txt"), "utf8");
-		check(/\nreact@18\.3\.1\n/.test(notices) && /\nreact-dom@18\.3\.1\n/.test(notices) && /@fontsource\/ibm-plex-sans@/.test(notices) && /SIL OPEN FONT LICENSE/i.test(notices), "the licence notices of the bundled React and font are packed");
-		check(!existsSync(join(scratch, "install", "node_modules", "react")) && !existsSync(join(scratch, "install", "node_modules", "esbuild")), "the install holds no React and no bundler: the frontend runs from its built files only");
-
-		const launcher = join(scratch, "launch-studio-ui.mjs");
-		writeFileSync(launcher, [
-			`const host = await import(process.argv[2]);`,
-			`const launched = await host.launchEndoCockpitV0({ root: process.argv[3], keyFile: process.argv[4], uiDirectory: process.argv[5], uiFormat: "studio" });`,
-			`process.stdout.write(launched.server.baseUrl + "/\\n");`,
-			`await host.serveUntilSignalV0(launched.server);`,
-		].join("\n"));
-		const host = join(pkgDir, "dist", "cockpit-http", "host.js");
-		const startUi = (directory, key) =>
-			new Promise((resolveStart) => {
-				const child = spawn(process.execPath, [...noStripFlags, launcher, host, join(scratch, "studio-ui-absent-store"), key, directory], { cwd: cwdA, env, stdio: ["ignore", "pipe", "pipe"] });
-				let out = "";
-				let err = "";
-				child.stdout.on("data", (d) => { out += d; });
-				child.stderr.on("data", (d) => { err += d; });
-				const exited = new Promise((r) => child.once("close", (code, signal) => r({ code, signal })));
-				const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
-				const line = () => /^(http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)\n/.exec(out)?.[1] ?? null;
-				const poll = setInterval(() => { if (line() !== null) { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), err: () => err }); } }, 20);
-				exited.then((status) => { clearInterval(poll); clearTimeout(timer); resolveStart({ child, exited, address: line(), status, out, err: () => err }); });
-			});
-		const damaged = join(scratch, "studio-ui-damaged");
-		mkdirSync(damaged);
-		for (const name of readdirSync(studioDir)) writeFileSync(join(damaged, name), readFileSync(join(studioDir, name)));
-		const font = readdirSync(damaged).find((name) => name.endsWith(".woff2"));
-		writeFileSync(join(damaged, font), Buffer.concat([readFileSync(join(damaged, font)).subarray(0, 100), Buffer.from("tampered")]));
-		const broken = await startUi(damaged, join(scratch, "studio-ui-key-broken", "cockpit-digest-key"));
-		check(
-			broken.address === null && broken.status.code !== 0 && broken.status.code !== null && broken.out === "" && /incomplete or damaged/.test(broken.err()) && !existsSync(join(scratch, "studio-ui-key-broken")),
-			"the installed host refuses a frontend that does not match its manifest: non-zero exit before any address, no key made",
-		);
-		const chromeForUi = (await import("../tests/cockpit-browser.ts")).findBrowser();
-		const served = await startUi(studioDir, join(scratch, "studio-ui-key", "cockpit-digest-key"));
-		check(served.address !== null, "the installed host starts the frontend through the real server and prints one address");
-		if (served.address !== null) {
+		const { Browser, findBrowser } = await import("../tests/cockpit-browser.ts");
+		const { exerciseStudioUi, exerciseStudioUiNarrow } = await import("../tests/studio-ui-acceptance.ts");
+		const { ingestAll, lifecycleEvents, seedRegistry } = await import("../tests/cockpit-fixtures.ts");
+		const { endoFrameBytesV0 } = await import("../storage/log.ts");
+		const seeded = (name, { torn = false } = {}) => {
+			const root = join(scratch, name);
+			ingestAll(root, lifecycleEvents("completes"));
+			seedRegistry(root);
+			if (torn) appendFileSync(join(root, "events", "events.log"), endoFrameBytesV0(new TextEncoder().encode(JSON.stringify({ kind: "tool.started" }))).subarray(0, 21));
+			return root;
+		};
+		const events = lifecycleEvents("completes");
+		const chromeForUi = findBrowser();
+		if (chromeForUi === null && requireBrowser) check(false, "the installed frontend in a real browser: ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
+		else if (chromeForUi === null) console.log("skip  the installed frontend in a real browser: no Chromium found (set CHROME_BIN to run it)");
+		else {
+			const browser = await Browser.launch(chromeForUi);
 			try {
-				const origin = new URL(served.address).origin;
-				const fetched = await fetch(served.address);
-				const page = await fetched.text();
-				check(fetched.status === 200 && /Integration proof|integration proof/.test(page) && fetched.headers.get("content-security-policy")?.includes("font-src 'self'") === true && fetched.headers.get("content-security-policy")?.includes("trusted-types 'none'") === true, "the installed frontend is served at the capability address under the strict page policy");
-				check((await fetch(`${origin}/${"A".repeat(43)}/`)).status === 404 && (await fetch(`${origin}/`)).status === 404, "and nothing is served outside the capability");
-				if (chromeForUi === null && requireBrowser) check(false, "the installed frontend in a real browser: ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
-				else if (chromeForUi === null) console.log("skip  the installed frontend in a real browser: no Chromium found (set CHROME_BIN to run it)");
-				else {
-					const { Browser } = await import("../tests/cockpit-browser.ts");
-					const { exerciseStudioUi } = await import("../tests/studio-ui-acceptance.ts");
-					const browser = await Browser.launch(chromeForUi);
-					try {
-						const { failures, facts } = await exerciseStudioUi(browser, served.address, origin);
-						check(failures.length === 0, `the installed frontend renders in a real browser, loads its script, style sheet, lazy module, font and icon, requests nothing outside the server and breaks no policy (${facts.requests.length} requests)${failures.length ? `: ${failures.join("; ")}` : ""}`);
-					} finally {
-						await browser.close();
-					}
-				}
+				const populated = await launch(["--root", seeded("studio-populated")]);
+				const results = await exerciseStudioUi(browser, populated.address, populated.origin, { store: "populated", events: events.length, firstKind: "harness.store-opened" });
+				check(results.failures.length === 0, `the installed frontend, over a populated store, in a real browser: renders the shell, the overview, the table, the runtime and the inspector from the recorded events, loads its script, style sheet, lazy module and fonts, requests nothing outside the server and breaks no policy (${results.facts.requests.length} requests)${results.failures.length ? `: ${results.failures.join("; ")}` : ""}`);
+				const gone = await populated.stop("SIGINT");
+				check(gone.code === 0 && !populated.stderr().includes(populated.capability), "SIGINT stops the populated launch with exit 0, and its stderr never carries the capability");
+
+				const absent = await launch(["--root", join(scratch, "studio-absent-browser", "store")]);
+				const absence = await exerciseStudioUi(browser, absent.address, absent.origin, { store: "absent" });
+				check(absence.failures.length === 0, `the installed frontend, over an absent store, shows absence as absence${absence.failures.length ? `: ${absence.failures.join("; ")}` : ""}`);
+				await absent.stop("SIGINT");
+
+				const torn = await launch(["--root", seeded("studio-torn", { torn: true })]);
+				const narrow = await exerciseStudioUiNarrow(browser, torn.address);
+				check(narrow.length === 0, `at 420px the installed frontend carries a degraded source into its inspector dialog, closes it on Escape and returns focus${narrow.length ? `: ${narrow.join("; ")}` : ""}`);
+				await torn.stop("SIGINT");
 			} finally {
-				served.child.kill("SIGINT");
+				await browser.close();
 			}
-			const ended = await served.exited;
-			check(ended.code === 0 && !served.err().includes(served.address.split("/")[3]), "SIGINT stops the installed frontend's server with exit 0, and its stderr never carries the capability");
 		}
 	}
 	} finally {

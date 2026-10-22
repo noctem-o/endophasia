@@ -55,7 +55,7 @@ counterfactual / evolution / training work
    - Wire a thin, read-only cockpit to the real durable store, following the first-slice contract in
      [docs/cockpit.md](cockpit.md): runtime identity/change state, capability state with reasons and a live session
      timeline, all projected from Endophasia records without depending on Pi private services. Built: the projection and
-     read-only reader layer (`cockpit/`), the local read-only HTTP server (`cockpit-http/`), the first page (`cockpit-ui/`) and
+     read-only reader layer (`cockpit/`), the local read-only HTTP server (`cockpit-http/`), the Studio frontend (`studio-ui/`, its Observe workspace) and
      the installed `endo studio` command ([docs/studio.md](studio.md)).
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and

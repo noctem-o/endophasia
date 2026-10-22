@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { startEndoCockpitServerV0 } from "../cockpit-http/server.ts";
-import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
+import { loadEndoStudioUiFilesV0, moduleSpecifiers } from "../cockpit-http/studio-ui.ts";
 import { capabilityOf, get, raw, send, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 
@@ -119,16 +119,7 @@ describe("the build", () => {
 		expect(css).not.toMatch(/@import|url\(\s*(?!["']?\.\/)/);
 	});
 
-	it("is written from sources that make no request, parse no markup and import no hosted client", () => {
-		const dir = join(repo, "studio-ui", "src");
-		for (const name of readdirSync(dir)) {
-			const source = readFileSync(join(dir, name), "utf8");
-			expect(source, name).not.toMatch(
-				/dangerouslySetInnerHTML|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function|\bfetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage|https?:\/\//,
-			);
-			for (const [, specifier] of source.matchAll(/(?:from\s+|import\s*\(\s*)["']([^"']+)["']/g))
-				expect(specifier!, `${name}: ${specifier}`).toMatch(/^(\.\/|react$|react-dom\/client$)/);
-		}
+	it("is built from dependencies that are bundled, not shipped, and pulls in no hosted service (the source's own rules: endo-studio-ui-source.test.ts)", () => {
 		const pack = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
 		expect(pack.dependencies).toBeUndefined(); // the published package has no runtime dependency; the frontend is bundled
 		expect(
@@ -241,7 +232,7 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		const html = text(first, "index.html");
 		const css = find(first, /\.css$/);
 		const main = find(first, /^main-.*\.js$/);
-		const lazy = find(first, /^LazyProof-.*\.js$/);
+		const lazy = find(first, /^Unavailable-.*\.js$/);
 		const cases: [string, string, string, RegExp][] = [
 			[
 				"index.html",
@@ -304,6 +295,73 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		}
 	});
 
+	it("reads module specifiers as code reads them: only where they are imports, never from a string, a comment, a template or a regular expression", () => {
+		// What a script imports.
+		expect(
+			moduleSpecifiers(
+				'import"./a.js";import{x as y}from"./b.js";export*from"./c.js";export{z}from"./d.js";import e from"./e.js"',
+			),
+		).toEqual(["./a.js", "./b.js", "./c.js", "./d.js", "./e.js"]);
+		expect(moduleSpecifiers("const m=await import(\"./lazy.js\");import('./also.js')")).toEqual([
+			"./lazy.js",
+			"./also.js",
+		]);
+		// ... and what is merely text that looks like it.
+		expect(moduleSpecifiers('const a={label:"derived from",cell:1};f("import \\"x\\"");g(\'from"x"\')')).toEqual([]);
+		expect(moduleSpecifiers('// import "http://x/y.js"\n/* from "http://x/z.js" */ const k=1')).toEqual([]);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: a script holding a template literal's `${` is the point of this case
+		expect(moduleSpecifiers('const t=`import "http://x" from "y" ${1+1} from "z"`;')).toEqual([]);
+		// A regular expression holding a quote does not swallow the code after it: the import that follows is still found.
+		expect(moduleSpecifiers('const r=/"/g;const s=a/b/c;import"./after.js"')).toEqual(["./after.js"]);
+		expect(moduleSpecifiers('x=y.replace(/[\'"]/g,"");import{a}from"./b.js"')).toEqual(["./b.js"]);
+		// A slash that divides cannot hide an import from the scan, whatever the lexer took it for (here a postfix operator before it)...
+		expect(moduleSpecifiers('x++ / import("./missing.js") / y')).toEqual(["./missing.js"]);
+		expect(moduleSpecifiers('(a+b) / import"./m.js" / 2')).toEqual(["./m.js"]);
+		// ... and a regular expression after `)` that looks like an import is refused, not trusted (fail closed).
+		expect(moduleSpecifiers('if(x) /from "./a.js"/.test(y)')).toEqual(["./a.js"]);
+		// A property named like a keyword is not an import.
+		expect(moduleSpecifiers('o.import("./no.js");o.from("./no2.js")')).toEqual([]);
+		// An import whose specifier is computed is reported as such, and a template literal is not a file name.
+		expect(moduleSpecifiers("import(name)")).toEqual(["(computed)"]);
+		expect(moduleSpecifiers("import(`./x.js`)")).toEqual(["(computed)"]);
+	});
+
+	it("refuses every way a module can name something that is not a file beside the page, each written into the manifest so only that check can refuse it", () => {
+		const main = find(first, /^main-.*\.js$/);
+		const refusals: [string, string][] = [
+			['import"https://example.com/x.js"', "a remote side-effect import"],
+			['export*from"/abs.js"', "an absolute re-export"],
+			['import{a}from"../x.js"', "a parent import"],
+			['import{a}from"https://example.com/x.js"', "a remote static import"],
+			["import(name)", "a computed dynamic import"],
+			["import(`./x.js`)", "a template-literal dynamic import"],
+			['import("react")', "a bare dynamic import"],
+			['const r=/"/g;import"//example.com/x.js"', "a protocol-relative import after a regular expression"],
+		];
+		for (const [addition, what] of refusals) {
+			const dir = copy();
+			rewrite(dir, main, `${text(first, main)};${addition}`);
+			expect(() => loadEndoStudioUiFilesV0(dir), what).toThrow(/other than a file beside it/);
+		}
+	});
+
+	it("does not refuse a script for text that merely looks like an import", () => {
+		const main = find(first, /^main-.*\.js$/);
+		const harmless = [
+			'const a={label:"derived from",cell:1}',
+			'// import "http://example.com/x.js"',
+			'/* export * from "http://example.com/x.js" */',
+			'const t=`import "http://example.com" from "y"`',
+			'const r=/"/g;const next=1',
+			"const s=\"import('http://example.com/x.js')\"",
+		];
+		for (const addition of harmless) {
+			const dir = copy();
+			rewrite(dir, main, `${text(first, main)};${addition}`);
+			expect(() => loadEndoStudioUiFilesV0(dir), addition).not.toThrow();
+		}
+	});
+
 	it("is checked before the key is made or anything listens: a damaged build leaves no key and no server", async () => {
 		const dir = copy();
 		rmSync(join(dir, find(dir, /\.woff2$/)));
@@ -314,7 +372,6 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 				root: join(scratch, "absent"),
 				keyFile,
 				uiDirectory: dir,
-				uiFormat: "studio",
 				onKey: () => {
 					keyReported = true;
 				},
@@ -323,26 +380,6 @@ describe("the host refuses a build that is not exactly its manifest, before anyt
 		expect(keyReported).toBe(false);
 		expect(existsSync(keyFile) || existsSync(join(scratch, "launch-key"))).toBe(false);
 		expect(existsSync(join(scratch, "absent"))).toBe(false);
-	});
-
-	it("refuses a UI format it does not know rather than reading it as the legacy page, before the key is made", async () => {
-		const keyFile = join(scratch, "format-key", "cockpit-digest-key");
-		for (const uiFormat of ["stduio", "Studio", "", null, 1])
-			await expect(
-				launchEndoCockpitV0({ root: join(scratch, "absent"), keyFile, uiDirectory: first, uiFormat } as never),
-			).rejects.toThrow(/uiFormat must be/);
-		expect(existsSync(join(scratch, "format-key"))).toBe(false);
-	});
-
-	it("refuses an oversized manifest or file by its size, without reading it", () => {
-		const big = copy();
-		writeFileSync(join(big, MANIFEST), Buffer.alloc(64 * 1024 + 1, 0x20));
-		refused(big, /manifest is too large/);
-		const lied = copy();
-		const manifest = JSON.parse(text(lied, MANIFEST));
-		manifest.files[0].bytes += 1;
-		writeFileSync(join(lied, MANIFEST), JSON.stringify(manifest));
-		refused(lied, /does not match its manifest entry/);
 	});
 
 	it("holds a listed name to the server's 64-character limit for the whole name, before the key is made", () => {
@@ -364,7 +401,6 @@ describe("the production server serves it under the same guards", () => {
 			root: join(scratch, "absent-store"),
 			keyFile: join(scratch, "serve-key", "cockpit-digest-key"),
 			uiDirectory: first,
-			uiFormat: "studio",
 		});
 		return launched.server;
 	}

@@ -1,13 +1,13 @@
 // The browser page as the HTTP transport serves it: explicit routes only, every PR B guard in front of them, a narrow policy of
 // their own, nothing read from disk per request, and the JSON API untouched beside them.
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { canonicalEndoJsonV0, readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
 import { startEndoCockpitServerV0 } from "../cockpit-http/server.ts";
+import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { event, ingestAll, removeTempRoots, seedRegistry, tempRoot, treeHash } from "./cockpit-fixtures.ts";
 import { capabilityOf, get, raw, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
@@ -17,17 +17,30 @@ afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: tr
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 let dist = "";
-let ui: Record<string, string> = {};
+/** The built Studio frontend as the server is given it (bytes), and as text for comparison (a font is binary and is left out of it). */
+let ui: Record<string, Uint8Array> = {};
+let text: Record<string, string> = {};
+let MAIN = "";
+let CSS = "";
 let root = "";
-beforeAll(() => {
-	dist = mkdtempSync(join(tmpdir(), "endo-cockpit-ui-dist-"));
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-cockpit-ui.mjs"), dist], { encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
-	ui = Object.fromEntries(readdirSync(dist).map((name) => [name, readFileSync(join(dist, name), "utf8")]));
+beforeAll(async () => {
+	dist = mkdtempSync(join(tmpdir(), "endo-studio-ui-dist-"));
+	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
+		buildStudioUi(outDir: string): Promise<unknown>;
+	};
+	await buildStudioUi(dist);
+	ui = loadEndoStudioUiFilesV0(dist);
+	text = Object.fromEntries(
+		Object.entries(ui)
+			.filter(([name]) => !name.endsWith(".woff2"))
+			.map(([name, bytes]) => [name, Buffer.from(bytes).toString("utf8")]),
+	);
+	MAIN = Object.keys(ui).find((name) => /^main-.*\.js$/.test(name))!;
+	CSS = Object.keys(ui).find((name) => /^main-.*\.css$/.test(name))!;
 	root = tempRoot();
 	ingestAll(root, [event("agent.prompt-accepted"), event("tool.started")]);
 	seedRegistry(root);
-});
+}, 90_000);
 afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
 const PAGE_CSP =
@@ -37,6 +50,7 @@ const TYPES: Record<string, string> = {
 	js: "text/javascript; charset=utf-8",
 	css: "text/css; charset=utf-8",
 	svg: "image/svg+xml",
+	woff2: "font/woff2",
 };
 
 describe("the page and its assets", () => {
@@ -45,21 +59,21 @@ describe("the page and its assets", () => {
 		const page = await get(server, "/");
 		expect(page.status).toBe(200);
 		expect(page.headers["content-type"]).toBe(TYPES.html);
-		expect(page.body).toBe(ui["index.html"]);
-		expect(page.body).toContain('src="./assets/main.js"');
+		expect(page.body).toBe(text["index.html"]);
+		expect(page.body).toContain(`src="./assets/${MAIN}"`);
 		const names = Object.keys(ui).filter((name) => name !== "index.html");
-		expect(names.length).toBeGreaterThan(10);
+		expect(names.length).toBeGreaterThan(5);
 		for (const name of names) {
 			const reply = await get(server, `/assets/${name}`);
 			expect(reply.status, name).toBe(200);
 			expect(reply.headers["content-type"], name).toBe(TYPES[name.slice(name.lastIndexOf(".") + 1)]);
-			expect(reply.body, name).toBe(ui[name]);
+			if (text[name] !== undefined) expect(reply.body, name).toBe(text[name]); // a font is binary: its bytes are compared in endo-studio-ui.test.ts
 		}
 	});
 
 	it("carries the page's own narrow policy and isolation headers, and the PR B headers too", async () => {
 		const server = await serve(root, { ui });
-		for (const route of ["/", "/assets/main.js", "/assets/cockpit.css", "/assets/icon.svg"]) {
+		for (const route of ["/", `/assets/${MAIN}`, `/assets/${CSS}`, "/assets/icon.svg"]) {
 			const { headers } = await get(server, route);
 			expect(headers["content-security-policy"], route).toBe(PAGE_CSP);
 			expect(headers["cache-control"]).toBe("no-store");
@@ -84,20 +98,20 @@ describe("the page and its assets", () => {
 			"/assets/index.html",
 			"/assets/nothing.js",
 			"/assets/Main.js",
-			"/assets/main.js/",
-			"/assets/main.js.map",
+			`/assets/${MAIN}/`,
+			`/assets/${MAIN}.map`,
 			"/assets/",
 			"/assets",
-			"/assets//main.js",
+			`/assets//${MAIN}`,
 			"/assets/../index.html",
-			"/assets/./main.js",
+			`/assets/./${MAIN}`,
 			"/assets/%2e%2e/index.html",
 			"/assets/..%2findex.html",
 			"/assets/main%2ejs",
 			"/assets/package.json",
 			"/assets/server.ts",
 			"/assets/launch.ts",
-			"/assets/main.js%00.css",
+			`/assets/${MAIN}%00.css`,
 			"/assets/a/b.js",
 			"//",
 			"/index.html",
@@ -121,22 +135,40 @@ describe("the page and its assets", () => {
 	it("without a page the server is API-only, as before", async () => {
 		const server = await serve(root);
 		expect((await get(server, "/")).status).toBe(404);
-		expect((await get(server, "/assets/main.js")).status).toBe(404);
+		expect((await get(server, `/assets/${MAIN}`)).status).toBe(404);
 		expect((await get(server, "/api/v0/timeline")).status).toBe(200);
 	});
 
-	it("keeps no capability and no absolute address in anything it serves", async () => {
+	/**
+	 * The only absolute addresses in what is served, and what each is: the XML namespace identifiers React's DOM code names (a name, never
+	 * a request), and the address React's production build puts in the text of an error it throws (never fetched, and the page policy
+	 * would refuse it). Nothing else, and nothing in the page, style sheet or icon beyond the SVG namespace.
+	 */
+	const NAMES_NOT_REQUESTS = [
+		"https://reactjs.org/docs/error-decoder.html?invariant=",
+		"http://www.w3.org/1998/Math/MathML",
+		"http://www.w3.org/1999/xhtml",
+		"http://www.w3.org/1999/xlink",
+		"http://www.w3.org/2000/svg",
+		"http://www.w3.org/XML/1998/namespace",
+	];
+
+	it("keeps no capability and no absolute address in anything it serves, but the names a library holds", async () => {
 		const server = await serve(root, { ui });
 		const capability = capabilityOf(server).slice(1);
 		for (const name of Object.keys(ui)) {
 			const reply = await get(server, name === "index.html" ? "/" : `/assets/${name}`);
-			expect(reply.body.includes(capability), name).toBe(false);
 			expect(JSON.stringify(reply.headers).includes(capability), name).toBe(false);
-			// The one absolute address in the page is the SVG namespace identifier, a name and not a request.
-			if (!name.endsWith(".svg"))
-				expect(reply.body.replaceAll("http://www.w3.org/2000/svg", ""), name).not.toMatch(
-					/https?:\/\/|\/\/[a-z0-9.-]+\.[a-z]{2,}/i,
-				);
+			if (name.endsWith(".woff2")) continue; // binary: a font's bytes hold no text to read
+			expect(reply.body.includes(capability), name).toBe(false);
+			const addresses = [...new Set(reply.body.match(/https?:\/\/[^\s"'`)\\]+/g) ?? [])];
+			if (name.endsWith(".js"))
+				for (const address of addresses) expect(NAMES_NOT_REQUESTS, `${name}: ${address}`).toContain(address);
+			else if (name.endsWith(".svg")) expect(addresses, name).toEqual(["http://www.w3.org/2000/svg"]);
+			else expect(addresses, name).toEqual([]);
+			// No protocol-relative address either, in the page or the style sheet.
+			if (name.endsWith(".html") || name.endsWith(".css"))
+				expect(reply.body, name).not.toMatch(/(["'(=\s])\/\/[a-z0-9.-]+\.[a-z]{2,}/i);
 		}
 	});
 });
@@ -145,7 +177,7 @@ describe("every guard of the API applies to the page", () => {
 	it("answers the same refusals for the page and an asset as for a route", async () => {
 		const server = await serve(root, { ui });
 		const cap = capabilityOf(server);
-		for (const target of [`${cap}/`, `${cap}/assets/main.js`]) {
+		for (const target of [`${cap}/`, `${cap}/assets/${MAIN}`]) {
 			expect((await send(server, target, { headers: { Host: "evil.example" } })).status, target).toBe(421);
 			expect((await send(server, target, { headers: { Host: `127.0.0.1:${server.port + 1}` } })).status).toBe(421);
 			expect((await send(server, target, { headers: { Origin: "http://evil.example" } })).status).toBe(403);
@@ -160,7 +192,7 @@ describe("every guard of the API applies to the page", () => {
 		expect((await send(server, `${cap}/`, { headers: { "Sec-Fetch-Site": "none" } })).status).toBe(200);
 		expect(
 			(
-				await send(server, `${cap}/assets/main.js`, {
+				await send(server, `${cap}/assets/${MAIN}`, {
 					headers: { "Sec-Fetch-Site": "same-origin", Origin: server.origin },
 				})
 			).status,
@@ -175,7 +207,7 @@ describe("every guard of the API applies to the page", () => {
 	it("a wrong capability gets the same 404 as any unknown path, for the page too", async () => {
 		const server = await serve(root, { ui });
 		const unknown = await send(server, "/nothing/here");
-		for (const target of ["/wrongwrongwrongwrongwrongwrongwrongwrongwro/", "/x/assets/main.js", "/"]) {
+		for (const target of ["/wrongwrongwrongwrongwrongwrongwrongwrongwro/", `/x/assets/${MAIN}`, "/"]) {
 			const reply = await send(server, target);
 			expect(reply.status, target).toBe(404);
 			expect(reply.body).toBe(unknown.body);

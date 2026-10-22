@@ -1,12 +1,12 @@
-// Fetching. Nothing here touches the page, and nothing here reads or prints the address the page was loaded from: requests are
-// relative to it (`./api/...`), so the access capability in its path is carried by the browser and never appears in code, query
-// strings, logs or messages. What comes back is classified by reply.ts; a failure of any kind is a `Reply`, never a throw.
-import { classifyReply, type Reply } from "./reply.ts";
-
-export interface SnapshotRequest {
-	afterSequence: number;
-	limit: number;
-}
+// Fetching. Nothing here touches the page, and nothing here reads or prints the address the page was loaded from: the request is
+// relative to it (`./api/v0/snapshot`), so the access capability in its path is carried by the browser and never appears in code,
+// query strings, logs or messages. What comes back is classified by reply.ts; a failure of any kind is a `Reply`, never a throw.
+//
+// This is the only `fetch` in the frontend, and the only endpoint it reads: the snapshot, which already holds the timeline window and
+// every attachment's runtime in one read. (Reading the timeline and each runtime separately would be several full reads of the history
+// for what one read returns.)
+import { classifyReply, type Reply } from "./model/contract.ts";
+import type { ReadRequest } from "./model/state.ts";
 
 export interface Fetched {
 	reply: Reply;
@@ -17,10 +17,9 @@ export interface Fetched {
 const REQUEST_TIMEOUT_MS = 60_000;
 
 /** Request one snapshot, relative to the page's own address. Never throws: a failure is a `Reply`. */
-export async function fetchSnapshot(request: SnapshotRequest, signal?: AbortSignal): Promise<Fetched> {
+export async function fetchSnapshot(request: ReadRequest): Promise<Fetched> {
 	const started = performance.now();
 	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-	const both = signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
 	try {
 		const url = new URL(
 			`./api/v0/snapshot?afterSequence=${request.afterSequence}&limit=${request.limit}`,
@@ -32,7 +31,7 @@ export async function fetchSnapshot(request: SnapshotRequest, signal?: AbortSign
 			credentials: "omit",
 			redirect: "error",
 			referrerPolicy: "no-referrer",
-			signal: both,
+			signal: timeout,
 		});
 		const body = await response.text();
 		return {

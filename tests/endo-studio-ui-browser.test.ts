@@ -4,7 +4,7 @@
 //
 // This suite does not skip when no Chromium is found if ENDO_REQUIRE_BROWSER=1 (CI sets it): it fails, like the package smoke test.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,9 +12,11 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { startEndoCockpitServerV0 } from "../cockpit-http/server.ts";
+import { endoFrameBytesV0 } from "../storage/log.ts";
 import { Browser, findBrowser } from "./cockpit-browser.ts";
+import { event, ingestAll, lifecycleEvents, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
-import { exerciseStudioUi } from "./studio-ui-acceptance.ts";
+import { exerciseStudioUi, exerciseStudioUiNarrow } from "./studio-ui-acceptance.ts";
 
 const required = process.env.ENDO_REQUIRE_BROWSER === "1";
 const executable = findBrowser();
@@ -39,29 +41,68 @@ afterAll(async () => {
 });
 
 const suite = executable === null && !required ? describe.skip : describe;
-if (executable === null)
+if (executable === null && !required)
 	console.warn("endo-studio-ui-browser: no Chromium found (set CHROME_BIN); the browser tests are skipped");
 
 suite("the bundled Studio frontend through the production server", () => {
-	it("renders at the capability address with every asset loaded, nothing outside the server, and no policy violation", async () => {
-		const launched = await launchEndoCockpitV0({
-			root: join(scratch, "absent-store"),
-			keyFile: join(scratch, "key", "cockpit-digest-key"),
+	const launch = async (root: string, tag: string) =>
+		launchEndoCockpitV0({
+			root,
+			keyFile: join(scratch, `key-${tag}`, "cockpit-digest-key"),
 			uiDirectory: built,
-			uiFormat: "studio",
 		});
+
+	it("populates Observe from a real store at the capability address, with every asset loaded, nothing outside the server and no policy violation", async () => {
+		const root = tempRoot();
+		const events = lifecycleEvents("completes");
+		ingestAll(root, events);
+		seedRegistry(root);
+		const launched = await launch(root, "populated");
 		try {
 			const { failures, facts } = await exerciseStudioUi(
 				browser!,
 				`${launched.server.baseUrl}/`,
 				launched.server.origin,
+				{
+					store: "populated",
+					events: events.length,
+					firstKind: "harness.store-opened",
+				},
 			);
 			expect(failures).toEqual([]);
-			expect(facts.title).toBe("Endophasia Studio (integration proof)");
+			expect(facts.title).toBe("Endophasia Studio");
 		} finally {
 			await launched.server.close();
 		}
-	}, 60_000);
+	}, 90_000);
+
+	it("shows an absent store as absent, with the same shell, assets and policy", async () => {
+		const launched = await launch(join(scratch, "absent-store"), "absent");
+		try {
+			const { failures } = await exerciseStudioUi(browser!, `${launched.server.baseUrl}/`, launched.server.origin, {
+				store: "absent",
+			});
+			expect(failures).toEqual([]);
+		} finally {
+			await launched.server.close();
+		}
+	}, 90_000);
+
+	it("at 420px carries a degraded source into the inspector dialog, closes it on Escape and returns focus", async () => {
+		const root = tempRoot();
+		ingestAll(root, lifecycleEvents("completes"));
+		seedRegistry(root);
+		appendFileSync(
+			join(root, "events", "events.log"),
+			endoFrameBytesV0(new TextEncoder().encode(JSON.stringify(event("tool.started")))).subarray(0, 21),
+		);
+		const launched = await launch(root, "narrow");
+		try {
+			expect(await exerciseStudioUiNarrow(browser!, `${launched.server.baseUrl}/`)).toEqual([]);
+		} finally {
+			await launched.server.close();
+		}
+	}, 90_000);
 
 	it("a font from anywhere but the server is not loaded: a data: font and a remote font are each blocked by the page policy", async () => {
 		const hits: string[] = [];

@@ -20,7 +20,151 @@ const LOCAL_REFERENCE = /^\.\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})$/;
 const HTML_REFERENCE = /\b(?:src|href|action|data|poster|srcset|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi;
 const CSS_IMPORT = /@import\b/i;
-const JS_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)(["'])([^"']*)\1/g;
+
+/** Words after which a `/` begins a regular expression rather than dividing. */
+const REGEX_AFTER_WORD = new Set([
+	"return",
+	"typeof",
+	"instanceof",
+	"in",
+	"of",
+	"new",
+	"delete",
+	"void",
+	"throw",
+	"case",
+	"do",
+	"else",
+	"yield",
+	"await",
+]);
+
+type Token = { k: "str"; v: string } | { k: "word"; v: string } | { k: "punct"; v: string };
+
+/**
+ * The tokens of a script, enough to tell code from text: strings (kept, without their quotes), words and single punctuation marks, with
+ * comments, template text and regular expressions skipped. It is not a parser. It exists so that the module specifiers a script names
+ * (a side-effect import, a dynamic import, and the string after `from`) are read only where they are code: a label such as "derived from" in a
+ * string is a string, not an import. A script it cannot make sense of yields what it could, and the digest in the manifest, not this
+ * scan, is what vouches for the bytes.
+ */
+function* tokens(source: string, ambiguousIsRegex: boolean): Generator<Token> {
+	const length = source.length;
+	// An open template literal's `${` expressions: each entry is the brace depth that closes it.
+	const templates: number[] = [];
+	let braces = 0;
+	const seen: { last: Token | null } = { last: null };
+	const emit = (token: Token): Token => {
+		seen.last = token;
+		return token;
+	};
+	const template = (from: number): number => {
+		let at = from;
+		while (at < length) {
+			const c = source[at];
+			if (c === "\\") at += 2;
+			else if (c === "`") return at + 1;
+			else if (c === "$" && source[at + 1] === "{") {
+				templates.push(braces);
+				braces += 1;
+				return at + 2;
+			} else at += 1;
+		}
+		return at;
+	};
+	let at = 0;
+	while (at < length) {
+		const c = source[at]!;
+		if (c === " " || c === "\t" || c === "\n" || c === "\r") at += 1;
+		else if (c === "/" && source[at + 1] === "/") {
+			const end = source.indexOf("\n", at);
+			at = end === -1 ? length : end;
+		} else if (c === "/" && source[at + 1] === "*") {
+			const end = source.indexOf("*/", at + 2);
+			at = end === -1 ? length : end + 2;
+		} else if (c === '"' || c === "'") {
+			let end = at + 1;
+			while (end < length && source[end] !== c && source[end] !== "\n") end += source[end] === "\\" ? 2 : 1;
+			yield emit({ k: "str", v: source.slice(at + 1, end) });
+			at = end + 1;
+		} else if (c === "`") {
+			at = template(at + 1);
+			yield emit({ k: "str", v: "`" });
+		} else if (c === "/") {
+			const before = seen.last;
+			// After a word or a number a slash divides; after most punctuation it opens a regular expression; after `)`, `]`, `}` and a
+			// `+` or `-` (which may end a postfix operator) it may do either, and the caller reads the script once each way.
+			const ambiguous = before !== null && before.k === "punct" && [")", "]", "}", "+", "-"].includes(before.v);
+			const regexAllowed =
+				before === null ||
+				(before.k === "punct" && !ambiguous) ||
+				(before.k === "word" && REGEX_AFTER_WORD.has(before.v)) ||
+				(ambiguous && ambiguousIsRegex);
+			if (!regexAllowed) {
+				yield emit({ k: "punct", v: "/" });
+				at += 1;
+			} else {
+				let end = at + 1;
+				let inClass = false;
+				while (end < length && source[end] !== "\n" && (inClass || source[end] !== "/")) {
+					if (source[end] === "\\") end += 1;
+					else if (source[end] === "[") inClass = true;
+					else if (source[end] === "]") inClass = false;
+					end += 1;
+				}
+				at = end + 1;
+				while (at < length && /[A-Za-z]/.test(source[at]!)) at += 1;
+				yield emit({ k: "str", v: "/" });
+			}
+		} else if (/[A-Za-z0-9_$]/.test(c)) {
+			let end = at + 1;
+			while (end < length && /[A-Za-z0-9_$]/.test(source[end]!)) end += 1;
+			yield emit({ k: "word", v: source.slice(at, end) });
+			at = end;
+		} else {
+			if (c === "{") braces += 1;
+			if (c === "}") {
+				braces -= 1;
+				if (templates.length > 0 && templates[templates.length - 1] === braces) {
+					templates.pop();
+					at = template(at + 1);
+					yield emit({ k: "str", v: "`" });
+					continue;
+				}
+			}
+			yield emit({ k: "punct", v: c });
+			at += 1;
+		}
+	}
+}
+
+/**
+ * Every module specifier the script names in code: the string after `import` (a side-effect import), the string in `import(...)`, and
+ * the string after `from` (static imports and re-exports). An `import(` whose argument is not a string is reported as "(computed)",
+ * which is never a file beside the page, so it is refused like any other reference elsewhere.
+ */
+export function moduleSpecifiers(source: string): string[] {
+	// A slash that may divide or may open a regular expression cannot always be told apart without a parser, so the script is read twice,
+	// once each way, and what either reading finds counts. A division taken for a regular expression cannot hide an import from the
+	// reading that takes it for a division, and a regular expression that looks like an import is refused: fail closed, at build time.
+	const found = new Set<string>();
+	for (const ambiguousIsRegex of [false, true]) {
+		const stream = [...tokens(source, ambiguousIsRegex)];
+		for (let index = 0; index < stream.length; index += 1) {
+			const token = stream[index]!;
+			const next = stream[index + 1];
+			const before = stream[index - 1];
+			if (token.k !== "word" || (before?.k === "punct" && before.v === ".")) continue;
+			if (token.v === "import" && next?.k === "str") found.add(next.v);
+			else if (token.v === "from" && next?.k === "str") found.add(next.v);
+			else if (token.v === "import" && next?.k === "punct" && next.v === "(") {
+				const argument = stream[index + 2];
+				found.add(argument?.k === "str" && argument.v !== "`" ? argument.v : "(computed)");
+			}
+		}
+	}
+	return [...found];
+}
 
 const incomplete = (what: string): never => {
 	throw new TypeError(`the Studio frontend is incomplete or damaged: ${what}`);
@@ -127,7 +271,7 @@ export function loadEndoStudioUiFilesV0(directory: string): Record<string, Uint8
 			for (const [, ...captured] of css.matchAll(CSS_URL))
 				check(captured.find((part) => part !== undefined) ?? "", name);
 		} else if (name.endsWith(".js")) {
-			for (const [, , specifier] of text(name).matchAll(JS_SPECIFIER)) check(specifier!, name);
+			for (const specifier of moduleSpecifiers(text(name))) check(specifier, name);
 		}
 	}
 	return files;

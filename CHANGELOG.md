@@ -3,14 +3,25 @@
 ## Unreleased
 
 ### Added
-- A foundation for the next Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed
-  files and a manifest), served through the same hardened server, and exercised by tests and the package smoke test. It is a
-  proof shell that reads no store; `endo studio` still serves the existing page. See
-  [docs/studio-ui-architecture.md](docs/studio-ui-architecture.md).
+- The Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed files and a manifest
+  that the host checks, file for file and byte for byte, before anything starts), served through the same hardened server. Its
+  **Observe workspace** reads the one recorded snapshot and shows an overview of the recorded window, the runtime, the capability state
+  with its limits, the timeline in storage order with an evidence-first inspector, and the condition of each source, each on its own;
+  loading, empty, absent, degraded, unopenable, withheld, unsupported-version, failed and paced reads are each said differently, and a
+  window is never presented as the whole log. It makes one read at open and one per explicit action, and polls nothing. Responsive, with a
+  modal inspector below 1024 px that carries the source warnings with it. Compare, Capabilities and Evolve appear in the shell as not yet
+  available and show nothing. See [docs/studio-ui-architecture.md](docs/studio-ui-architecture.md) and
+  [docs/cockpit-ui.md](docs/cockpit-ui.md).
+- `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (build-time only; their licence notices are packed in `dist/licenses/`).
 
 ### Changed
+- `endo studio` now serves the Studio frontend. The earlier page (`cockpit-ui/`, `dist/cockpit-ui/`) is retired in the same change, with
+  its browser, source and model tests moved onto the new frontend and not dropped. The command's arguments, address line, exit codes
+  and key handling are unchanged. `npm run cockpit` serves the same frontend; `build:cockpit-ui` is replaced by `build:studio-ui`.
 - The page policy gains `font-src 'self'` and the server can serve `.woff2` files, so a bundled typeface can load; no remote or
   `data:` font is admitted.
+- The host reads one kind of frontend and checks it against its manifest; names are held to the server's 64-character limit and sizes
+  are checked before a file is read.
 
 ## 0.1.0-alpha.2
 

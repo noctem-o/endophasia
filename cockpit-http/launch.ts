@@ -2,8 +2,8 @@
 //
 //   npm run cockpit -- <store-root> [--key-file <path>] [--port <n>]
 //
-// It builds nothing itself (`npm run cockpit` builds the page first) and reads the built page from cockpit-ui/dist/. The installed
-// command is `endo studio` (cli/studio.ts), which serves the page packaged in dist/cockpit-ui/. Both start the same server through
+// It builds nothing itself (`npm run cockpit` builds the frontend first) and reads it from studio-ui/dist/. The installed
+// command is `endo studio` (cli/studio.ts), which serves the frontend packaged in dist/studio-ui/. Both start the same server through
 // the same host module, and the key is the same dedicated cockpit key. The URL printed is the per-launch access capability: it is
 // written to stdout once and never logged or stored.
 import { join } from "node:path";
@@ -38,7 +38,7 @@ try {
 		root,
 		port,
 		...(keyFile === undefined ? {} : { keyFile }),
-		uiDirectory: join(fileURLToPath(new URL("../cockpit-ui/", import.meta.url)), "dist"),
+		uiDirectory: join(fileURLToPath(new URL("../studio-ui/", import.meta.url)), "dist"),
 		onError: () => process.stderr.write("cockpit: an internal error occurred (the request was refused)\n"),
 	});
 	const stopped = serveUntilSignalV0(server);

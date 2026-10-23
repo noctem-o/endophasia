@@ -1,0 +1,108 @@
+{
+	"schemaVersion": "endo.dsh-native-study-provenance.v0",
+	"dsh": {
+		"commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+		"describe": "dsh-v0.2.1-rc.2",
+		"version": "0.2.1-rc.2",
+		"workingTreeClean": true,
+		"license": "MIT"
+	},
+	"files": {
+		"packages/core/session/src/types.ts": {
+			"sha256": "515cba50f366b06dc3caaab45e8ce98c48c80fc07684437aba014df13ce04f2f",
+			"bytes": 24681
+		},
+		"packages/core/session/src/index.ts": {
+			"sha256": "c1f08f7dcf4075eeebb13e6ea06b3f348bfeb85b8a5d4e4bfd1c3b93c1959332",
+			"bytes": 65812
+		},
+		"packages/core/session/src/known-event-types.ts": {
+			"sha256": "862acc917dc2dd5e185640640c0747735e8b84c3fa65939738bac9a1d45e106b",
+			"bytes": 2794
+		},
+		"packages/core/session/src/repair.ts": {
+			"sha256": "c2835c920aba203c709e44686e55f43bb4d357ea59cfef3561c371b8ff115540",
+			"bytes": 9428
+		},
+		"packages/core/session/src/fork.ts": {
+			"sha256": "de80ecbf0e6a7961c096a2d7f0304bc6f6c83f897268304e28352357da06bfb0",
+			"bytes": 1397
+		},
+		"packages/core/agent/src/runtime-types.ts": {
+			"sha256": "1ae0003c6968dc4af86e596d3ea08f6e517da0808e08089af2ed1818ab0651fc",
+			"bytes": 19197
+		},
+		"packages/session/session-persistence-jsonl/src/storage.ts": {
+			"sha256": "57d5fa1d7efd17789d6a223f6aa5e06b79092665bea13f8a23d3bab644d066c3",
+			"bytes": 24212
+		},
+		"packages/session/session-persistence-jsonl/src/format.ts": {
+			"sha256": "87d536ead041fb953f866e0191a79b4dbbbc510aee1461706f9cdc2e4c46a038",
+			"bytes": 21586
+		},
+		"packages/session/session-persistence-jsonl/src/lease.ts": {
+			"sha256": "377f24b1446382d703d5f1346f44e15a25368a0e7967e5bd41db700a919d7ad8",
+			"bytes": 6374
+		},
+		"packages/bundle/headless/src/json-stream.ts": {
+			"sha256": "55e70ef802c57de0659fa769c94ebea447e1604aac2dabf73e7181fd0c9699b6",
+			"bytes": 13685
+		},
+		"packages/session-query/session-log-export/src/archive.ts": {
+			"sha256": "258cf53c50cfec9995fca90f98300c8f23860e3ade7774bd39bbf1c3aabc65d7",
+			"bytes": 25284
+		},
+		"packages/sdk/server/src/server.ts": {
+			"sha256": "3dd846373e346f7547e97a73c3eae0f243e7aa77bd34950c540046c73d628479",
+			"bytes": 18650
+		},
+		"packages/sdk/protocol/src/types.ts": {
+			"sha256": "67c20951b975462a71e0cdbbd8b61bd0c9cdf9abff4ac4a52f70795411751cd2",
+			"bytes": 6322
+		},
+		"packages/acp/acp/src/updates.ts": {
+			"sha256": "b4c48504777ad309b3b461d92275a39add79914f9202f9d94ff1c29e9e561d0d",
+			"bytes": 3708
+		},
+		"docs/persistence-schema.json": {
+			"sha256": "80983484fe957b42092789f6203b92836b0d2bf235fc54bf557775bd0578561f",
+			"bytes": 635996
+		},
+		"docs/persistence-catalog.md": {
+			"sha256": "f5cac1e8b15c9fddce43eaedb30f10f0d73cef0e28bf3e6a6761a66958a3045b",
+			"bytes": 355082
+		},
+		"docs/session-format-status.md": {
+			"sha256": "8cd3dcfbdfec3a5333e15f1edaf2136b7d27007ff571d15d8095289d46ffe863",
+			"bytes": 5482
+		},
+		"docs/event-producer-consumer.md": {
+			"sha256": "d9c072884a46f3fbeb1f5d1c8d7a5750101aa244ff1aeb4f603c01639af8b7c5",
+			"bytes": 27223
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/headless-profile/session.expected.jsonl": {
+			"sha256": "3c0fca9d644a3c97b3fd76683c804f443507e9c7f8d9de76c5bd749f2c92080b",
+			"bytes": 7578
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/provider-retry/stream-json.expected.jsonl": {
+			"sha256": "4cc8554be34d21d7e20e6a1706789023c96aac0963e50a37c5c1240cc3b79898",
+			"bytes": 6276
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/semantic-checkpoint/session.expected.jsonl": {
+			"sha256": "264640935df23ece90fb26c94d21917e9ac9ed814d3da662a86780077a37d690",
+			"bytes": 5557
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/subagent-inheritance/child.expected.jsonl": {
+			"sha256": "103cf26392c3c1edebe3740aa121209a92fd1495f006b4c9b600eb1af642a1a6",
+			"bytes": 8866
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/subagent-inheritance/parent.expected.jsonl": {
+			"sha256": "be420a5964259965e8faf11cf4178b1646e6a5bb6c9413126103cb80addfe99d",
+			"bytes": 10543
+		},
+		"apps/cli/tests/profiles/headless/tests/expected/subagent-inheritance/child.replay.v3.jsonl": {
+			"sha256": "53f9ae4a129aabdf9f194ee0ced4c31ba8899467429659026e600d5070263846",
+			"bytes": 3529
+		}
+	}
+}

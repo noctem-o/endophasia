@@ -44,7 +44,7 @@ agent (what it requested, what it was told, what it reported and what it did), a
 > [!IMPORTANT]
 > **Release and naming status (23 October 2026):** `0.1.0-alpha.1` is CLI-only. Published `0.1.0-alpha.2` adds the original
 > read-only browser page (`endo studio`); `alpha` points to it on npm, while `latest` still points to `0.1.0-alpha.1`.
-> The current source tree has a newer React/TypeScript observation page **not yet published in an npm release**. The intended
+> Compared with `0.1.0-alpha.2`, the source snapshot described here has a newer React/TypeScript observation page. The intended
 > interface names are **Endophasia Web** (browser) and **Endophasia** (proposed native desktop binary), but the existing CLI
 > remains `endo studio`: `endo web`, the native application and its installers **do not exist yet**. See
 > [release history](docs/release-0.1.0-alpha.2.md), [current browser interface](docs/studio.md) and [quick start](#quick-start).
@@ -120,7 +120,7 @@ would need and shows nothing. Details: [docs/studio.md](docs/studio.md) and the 
 Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
 
 **Install the published browser alpha.** Explicitly select `0.1.0-alpha.2`: npm's `latest` tag still points
-at the CLI-only `0.1.0-alpha.1`. The published alpha has the **earlier browser page**, not the newer React frontend on `main`.
+at the CLI-only `0.1.0-alpha.1`. `0.1.0-alpha.2` has the **earlier browser page**, not the newer React frontend on `main`.
 
 ~~~sh
 npm install -g endophasia@0.1.0-alpha.2
@@ -133,7 +133,7 @@ endo trajectory show <session-id>    # the id attach prints
 endo studio                          # serves the published read-only browser page
 ~~~
 
-**Try the newer Endophasia Web frontend from the source tree** (not yet published):
+**Try the Endophasia Web frontend from the source tree:**
 
 ~~~sh
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia

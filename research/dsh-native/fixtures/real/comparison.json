@@ -1,0 +1,142 @@
+{
+	"tool-read": {
+		"persistedEvents": 21,
+		"liveEvents": 21,
+		"liveEqualsPersisted": true,
+		"persistedIsPrefixOfLive": true,
+		"liveFirstSeq": 0,
+		"liveIsExactlyThePersistedSuffixFromThere": true,
+		"persistedEventsNeverAnnouncedLive": [],
+		"liveOnlyTypes": [],
+		"transientAssistantStreamFrames": {
+			"start": 2,
+			"chunk": 39,
+			"end": 2
+		},
+		"jsonStreamLines": 13,
+		"jsonStreamTypes": [
+			"session",
+			"status:turn_start",
+			"status:step_start",
+			"thinking",
+			"tool_call",
+			"tool_result",
+			"status:step_end",
+			"text",
+			"status:turn_end",
+			"final"
+		]
+	},
+	"no-key-error": {
+		"persistedEvents": 16,
+		"liveEvents": 16,
+		"liveEqualsPersisted": true,
+		"persistedIsPrefixOfLive": true,
+		"liveFirstSeq": 0,
+		"liveIsExactlyThePersistedSuffixFromThere": true,
+		"persistedEventsNeverAnnouncedLive": [],
+		"liveOnlyTypes": [],
+		"transientAssistantStreamFrames": {
+			"start": 1,
+			"chunk": 2,
+			"end": 1
+		},
+		"jsonStreamLines": 6,
+		"jsonStreamTypes": [
+			"session",
+			"status:turn_start",
+			"status:step_start",
+			"status:step_end",
+			"status:turn_end",
+			"final"
+		]
+	},
+	"crash-killed": {
+		"persistedEvents": 13,
+		"liveEvents": 13,
+		"liveEqualsPersisted": true,
+		"persistedIsPrefixOfLive": true,
+		"liveFirstSeq": 0,
+		"liveIsExactlyThePersistedSuffixFromThere": true,
+		"persistedEventsNeverAnnouncedLive": [],
+		"liveOnlyTypes": [],
+		"transientAssistantStreamFrames": {
+			"start": 1,
+			"chunk": 56
+		},
+		"jsonStreamLines": 3,
+		"jsonStreamTypes": [
+			"session",
+			"status:turn_start",
+			"status:step_start"
+		]
+	},
+	"crash-resumed": {
+		"persistedEvents": 25,
+		"liveEvents": 9,
+		"liveEqualsPersisted": false,
+		"persistedIsPrefixOfLive": false,
+		"liveFirstSeq": 16,
+		"liveIsExactlyThePersistedSuffixFromThere": true,
+		"persistedEventsNeverAnnouncedLive": [
+			"0:permission/preset",
+			"1:sandbox/mode",
+			"2:approval/policy",
+			"3:agent/inbox/spliced",
+			"4:turn/start",
+			"5:agent/inbox/spliced",
+			"6:step/start",
+			"7:system/message",
+			"8:user/message",
+			"9:user/message",
+			"10:request/header",
+			"11:request/context",
+			"12:session/title",
+			"13:step/end",
+			"14:turn/end",
+			"15:session/end-seed"
+		],
+		"liveOnlyTypes": [],
+		"transientAssistantStreamFrames": {
+			"start": 1,
+			"chunk": 2321,
+			"end": 1
+		},
+		"jsonStreamLines": 8,
+		"jsonStreamTypes": [
+			"session",
+			"status:turn_start",
+			"status:step_start",
+			"thinking",
+			"text",
+			"status:step_end",
+			"status:turn_end",
+			"final"
+		]
+	},
+	"stub-retry": {
+		"persistedEvents": 19,
+		"liveEvents": 19,
+		"liveEqualsPersisted": true,
+		"persistedIsPrefixOfLive": true,
+		"liveFirstSeq": 0,
+		"liveIsExactlyThePersistedSuffixFromThere": true,
+		"persistedEventsNeverAnnouncedLive": [],
+		"liveOnlyTypes": [],
+		"transientAssistantStreamFrames": {
+			"start": 2,
+			"chunk": 6,
+			"end": 2
+		},
+		"jsonStreamLines": 7,
+		"jsonStreamTypes": [
+			"session",
+			"status:turn_start",
+			"status:step_start",
+			"text",
+			"status:step_end",
+			"status:turn_end",
+			"final"
+		]
+	}
+}

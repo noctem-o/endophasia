@@ -657,6 +657,7 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 			"CANARY-ERRORREASON",
 			"CANARY-SUMMARY",
 			"CANARY-SESSION-ID",
+			"CANARY-CALL-ID/with-path",
 		];
 		const { header, events } = fixture("tool-read");
 		const text = (value: string) => [{ type: "text", text: value }];
@@ -676,13 +677,18 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 				case "assistant/message":
 					for (const part of data.message.content) {
 						if (part.type === "reasoning") part.text = "CANARY-REASONING";
-						if (part.type === "tool-call") part.arguments = '{"path":"CANARY-ARGS"}';
+						if (part.type === "tool-call") {
+							part.arguments = '{"path":"CANARY-ARGS"}';
+							part.id = "CANARY-CALL-ID/with-path";
+						}
 					}
 					break;
 				case "tool/call":
+					data.callId = "CANARY-CALL-ID/with-path";
 					data.arguments = '{"file_path":"CANARY-ARGS"}';
 					break;
 				case "tool/result":
+					data.message.toolCallId = "CANARY-CALL-ID/with-path";
 					data.message.content = text("CANARY-RESULT");
 					data.meta = { diff: "CANARY-META" };
 					data.error = { name: "E", code: "E_CODE", reason: "CANARY-ERRORREASON" };
@@ -701,7 +707,7 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 			type: "approval/asked",
 			seq: dirty.length,
 			time: dirty.at(-1)!.time,
-			data: { id: "ap-1", toolName: "read", callId: "call-1", reason: "CANARY-APPROVAL" },
+			data: { id: "ap-1", toolName: "read", callId: "CANARY-CALL-ID/with-path", reason: "CANARY-APPROVAL" },
 		});
 		dirty.push({
 			type: "compaction/summary",

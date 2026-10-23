@@ -216,3 +216,123 @@ describe("content kind counts are safe for arbitrary classification tokens", () 
 		}
 	});
 });
+
+describe("tool identity survives privacy filtering", () => {
+	const withCallId = (id: unknown) =>
+		rows.map((row) => {
+			const data = row.data as Record<string, unknown>;
+			if (row.type === "assistant/message") {
+				const message = data.message as { content: { type: string; id?: unknown }[] };
+				return {
+					...row,
+					data: {
+						...data,
+						message: {
+							...message,
+							content: message.content.map((part) => (part.type === "tool-call" ? { ...part, id } : part)),
+						},
+					},
+				};
+			}
+			if (row.type === "tool/call") return { ...row, data: { ...data, callId: id } };
+			if (row.type === "tool/result")
+				return { ...row, data: { ...data, message: { ...(data.message as object), toolCallId: id } } };
+			return row;
+		});
+	it("preserves keyed pairing across partial import and repeated import", () => {
+		const changed = withCallId("PRIVATE-CALL/path");
+		const target = store();
+		const beforeResult = changed.findIndex((row) => row.type === "tool/result");
+		expect(importBytes(target, encodeRaw(header, changed.slice(0, beforeResult))).status).toBe("imported");
+		expect(importBytes(target, encodeRaw(header, changed)).status).toBe("imported");
+		expect(importBytes(target, encodeRaw(header, changed)).status).toBe("unchanged");
+		const t = projectDshTrajectoryV0(all(target), { session: header.id, store: "test" });
+		expect(t.layers.toolResults).toMatchObject({
+			status: "reported",
+			entries: [{ status: { status: "reported", value: "ok" } }],
+		});
+		if (t.layers.toolResults.status !== "reported") throw Error("result layer");
+		expect(t.layers.toolResults.entries).toHaveLength(1);
+	});
+	it("pairs a recovery-written result without claiming a tool outcome", () => {
+		const changed = withCallId("PRIVATE-CALL/recovered").map((row) =>
+			row.type === "tool/result"
+				? {
+						...row,
+						data: { ...(row.data as object), error: { code: "TOOL_OUTCOME_UNKNOWN" } },
+					}
+				: row,
+		);
+		const target = store();
+		expect(importBytes(target, encodeRaw(header, changed)).status).toBe("imported");
+		const t = projectDshTrajectoryV0(all(target), { session: header.id, store: "test" });
+		if (t.layers.toolResults.status !== "reported") throw Error("result layer");
+		expect(t.layers.toolResults.entries).toHaveLength(1);
+		expect(t.layers.toolResults.entries[0]).toMatchObject({
+			name: { status: "reported", value: "read" },
+			status: { status: "UNAVAILABLE" },
+			resultDigest: { status: "UNAVAILABLE" },
+		});
+	});
+	it("does not alias a raw ID that looks like another ID's keyed digest", () => {
+		const first = "PRIVATE-CALL/one";
+		const second = options.digestKey.digest(["dsh-tool-call-id.v1", first]).value;
+		const a = withCallId(first),
+			b = withCallId(second);
+		const changed = a
+			.flatMap((row, index) =>
+				row.type === "tool/call" ? [row, b[index]!] : row.type === "tool/result" ? [b[index]!, row] : [row],
+			)
+			.map((row, seq) => ({ ...row, seq }));
+		const target = store();
+		expect(importBytes(target, encodeRaw(header, changed)).status).toBe("imported");
+		const requests = all(target)
+			.filter((row) => row.kind === "dsh.tool-requested")
+			.map((row) => (row.payload as Record<string, unknown>).callIdDigest);
+		expect(requests[0]).not.toEqual(requests[1]);
+		const t = projectDshTrajectoryV0(all(target), { session: header.id, store: "test" });
+		if (t.layers.toolResults.status !== "reported") throw Error("result layer");
+		expect(t.layers.toolResults.entries).toHaveLength(2);
+		for (const result of t.layers.toolResults.entries)
+			expect(result.status).toEqual({ status: "reported", value: "ok" });
+	});
+	it.each(["call/1", "PRIVATE-CALL-".repeat(30), "call/🍉", ""])(
+		"pairs arbitrary string ID %j without disclosing it",
+		(id) => {
+			const target = store();
+			expect(importBytes(target, encodeRaw(header, withCallId(id))).status).toBe("imported");
+			const events = all(target);
+			const request = events.find((row) => row.kind === "dsh.tool-requested")!.payload as Record<string, unknown>;
+			const result = events.find((row) => row.kind === "dsh.tool-result-recorded")!.payload as Record<
+				string,
+				unknown
+			>;
+			expect(request.callIdDigest).toEqual(result.callIdDigest);
+			expect(request.callIdDigest).toMatchObject({ algorithm: "hmac-sha256", keyId: options.digestKey.keyId });
+			expect(request).not.toHaveProperty("callId");
+			expect(result).not.toHaveProperty("callId");
+			const t = projectDshTrajectoryV0(events, { session: header.id, store: "test" });
+			expect(t.layers.toolResults).toMatchObject({
+				status: "reported",
+				entries: [
+					{
+						name: { status: "reported", value: "read" },
+						status: { status: "reported", value: "ok" },
+						resultDigest: { status: "reported" },
+					},
+				],
+			});
+			if (t.layers.toolResults.status !== "reported") throw Error("result layer");
+			expect(t.layers.toolResults.entries).toHaveLength(1);
+			if (id !== "") expect(JSON.stringify(events)).not.toContain(id);
+		},
+	);
+	it.each([undefined, null, 1, {}])("refuses non-string tool identity %j before appending", (id) => {
+		const target = store();
+		const before = canonicalEndoJsonV0(all(target));
+		const report = importBytes(target, encodeRaw(header, withCallId(id)));
+		expect(report.status).toBe("refused");
+		expect(report.refusals.map((item) => item.code)).toContain("invalid-log");
+		expect(canonicalEndoJsonV0(all(target))).toBe(before);
+	});
+});

@@ -196,6 +196,19 @@ export function importDshSessionBytesV0(
 		return refused([{ code: "invalid-log", detail: "the session header does not match the pinned format-4 shape" }], {
 			tail: read.tail,
 		});
+	// The shared reader checks pairing structurally; mapping needs strings, never String(undefined/objects).
+	if (
+		read.events.some((row) => {
+			if (row.type !== "tool/call" && row.type !== "tool/result") return false;
+			const data = isRecord(row.data) ? row.data : {};
+			return row.type === "tool/call"
+				? typeof data.callId !== "string"
+				: !isRecord(data.message) || typeof data.message.toolCallId !== "string";
+		})
+	)
+		return refused([{ code: "invalid-log", detail: "tool calls and results require string call identities" }], {
+			tail: read.tail,
+		});
 	const check = checkDshLog(read, { knownEventTypes: DSH_NATIVE_KNOWN_EVENT_TYPES_V0 });
 	const errors = check.findings.filter((finding) => finding.severity === "error");
 	if (read.tail.kind === "unreadable" || errors.length > 0)

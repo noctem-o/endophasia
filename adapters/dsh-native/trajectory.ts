@@ -41,7 +41,7 @@ import {
 	isRecord,
 } from "./mapping.ts";
 
-export const DSH_NATIVE_TRAJECTORY_PROJECTION_V0 = "dsh-native-trajectory.2";
+export const DSH_NATIVE_TRAJECTORY_PROJECTION_V0 = "dsh-native-trajectory.3";
 
 export interface DshTrajectoryOptionsV0 {
 	/** Raw DSH ID by default; use sessionKind to explicitly select an Endophasia coordinate. */
@@ -234,7 +234,7 @@ export function projectDshTrajectoryV0(
 	// Tool layers and usage, from the recorded rows in producer order.
 	const tools: {
 		call: EndoTrajectoryToolCallEntryV0;
-		callId: string | null;
+		callIdDigest: EndoTrajectoryKeyedDigestV0 | null;
 		result: EndoTrajectoryToolResultEntryV0 | null;
 	}[] = [];
 	const orphanResults: EndoTrajectoryToolResultEntryV0[] = [];
@@ -254,7 +254,7 @@ export function projectDshTrajectoryV0(
 				const digest = keyed(payload.argsDigest);
 				const name = text(payload.name);
 				tools.push({
-					callId: text(payload.callId),
+					callIdDigest: keyed(payload.callIdDigest),
 					result: null,
 					call: {
 						run: currentRun === 0 ? null : currentRun,
@@ -276,11 +276,16 @@ export function projectDshTrajectoryV0(
 				break;
 			}
 			case "dsh.tool-result-recorded": {
-				const callId = text(payload.callId);
+				const callIdDigest = keyed(payload.callIdDigest);
 				const digest = keyed(payload.resultDigest);
 				const recovered = typeof payload.dshRecovery === "string";
 				const index = tools.findIndex(
-					(tool) => tool.result === null && tool.callId !== null && tool.callId === callId,
+					(tool) =>
+						tool.result === null &&
+						tool.callIdDigest !== null &&
+						callIdDigest !== null &&
+						tool.callIdDigest.keyId === callIdDigest.keyId &&
+						tool.callIdDigest.value === callIdDigest.value,
 				);
 				const result: EndoTrajectoryToolResultEntryV0 = {
 					run: currentRun === 0 ? null : currentRun,

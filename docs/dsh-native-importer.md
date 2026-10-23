@@ -17,7 +17,7 @@ const trajectory = projectDshTrajectoryV0(store.page({ limit: 10_000 }).events, 
 
 The projector treats `session` as a **raw DSH ID** by default, even if it starts with `endo.session.`. Select a coordinate
 explicitly with `sessionKind: "endo-coordinate"`; prefixes are never used to guess between two possible sessions. Call the
-projector only after a successful import. The projection is `dsh-native-trajectory.2`; open outcomes count the turn-started
+projector only after a successful import. The projection is `dsh-native-trajectory.3`; open outcomes count the turn-started
 events observed in that run, including zero when no step started.
 
 ## Guarantees
@@ -55,7 +55,10 @@ directory and failure messages are never stored. A **public** digest key is refu
 confirmation oracles) unless a test or fixture explicitly allows it. Raw runtime IDs are retained only when they match the
 plain identifier grammar `[A-Za-z0-9._-]{1,200}`. Other IDs, including paths, remain usable through their stable coordinate but
 are explicitly UNAVAILABLE as runtime IDs, with a withholding reason; the coordinate is never substituted as the runtime ID.
-Plain identifiers and classification tokens remain metadata; this grammar is not a general detector of private text.
+Tool-call references are always domain-separated keyed `callIdDigest` values, including ordinary IDs, and the projector pairs
+by digest key ID and value. Raw call IDs are not retained; missing/non-string required call IDs are refused before append. Empty
+string IDs remain identities, distinct from missing IDs. Plain runtime identifiers and classification tokens remain metadata;
+their grammar is not a general detector of private text.
 
 ## What is implemented, and what stays unavailable
 
@@ -64,7 +67,7 @@ Plain identifiers and classification tokens remain metadata; this grammar is not
 | turn | `lifecycle.run-*`; `completed`→run-completed, `aborted`→run-aborted (cause kept; `stopRequested` only for a user cause), `error`→run-failed (code, status, keyed message digest), `blocked`/`max-tokens`→run-unclassified naming the reported kind | QUALIFIED: a DSH turn is an Endophasia **run**, not the same thing |
 | turn closed by DSH on resume (`interrupted`) or by a fork seed (`forked`) | `run-unclassified`, `provenance: "dsh-written-closer"`, `finalStep`; the trajectory outcome is `unclassified` | Never `lifecycle.interrupted` (Endophasia's own observation) and never `session-resumed` |
 | step | `lifecycle.turn-started` / `turn-completed` (stop reason of its assistant message, else UNAVAILABLE; `output`: `none`, `attempt-only`, `committed` or `cancelled-prefix`) | QUALIFIED: a DSH step is an Endophasia **turn**. An assistant message says the model produced output, not that the step finished (`interrupted: true` is a cancelled stream's prefix). A `step/end` directly followed by a `turn/end` of reason `interrupted` or `forked` may be DSH's own recovery closer (recovery closes an open step whatever it had committed, with the last event's time): **no `turn-completed` is claimed**, and the closing event records `finalStep` (output kind, recovered tool results, whether a step end was written) |
-| `tool/call`, `tool/result` | `dsh.tool-requested`, `dsh.tool-result-recorded`; trajectory `toolCalls` (the model's requests) and `toolResults` (paired by the call id in the result message) | QUALIFIED: **never** `tool.started`/`tool.finished`. No start time, duration or "executed" claim exists |
+| `tool/call`, `tool/result` | `dsh.tool-requested`, `dsh.tool-result-recorded`; trajectory `toolCalls` (the model's requests) and `toolResults` (paired by the keyed identity of the call id in the result message) | QUALIFIED: **never** `tool.started`/`tool.finished`. No start time, duration or "executed" claim exists |
 | tool result DSH wrote itself during recovery (`TOOL_NOT_STARTED`, `TOOL_OUTCOME_UNKNOWN`) | `dsh.tool-result-recorded` flagged `dshRecovery`, no result digest; trajectory status and digest UNAVAILABLE | DSH speaking after the fact, never a tool outcome |
 | failed attempts, retries | `dsh.attempt-recorded`, `dsh.retry-recorded`, `dsh.retry-started` | QUALIFIED: DSH-specific kinds on purpose (Pi's `retry.*` carry Pi's semantics) |
 | usage | recorded per assistant message under Endophasia's names; absent categories are **absent**, never 0. The trajectory reports a run's tokens only if all five required categories are present on every message, else UNAVAILABLE naming what is missing | Real DSH usage lacks `cacheWrite`, so the usage layer is UNAVAILABLE on real data |
@@ -95,10 +98,10 @@ matrix, covering each of the 62 pinned DSH event types exactly once, tested agai
    under which key and mapping. It replaces nothing in the study; it makes "evidence up to seq N, tail torn" a stored fact.
 6. **The trajectory outcome of a DSH-written closer is `unclassified`**, not `interrupted`, so a DSH crash and a Pi crash compare as
    different outcomes. That is the honest result: they are different claims.
-7. **Mapping version 3.** This retains mapping 2's keyed commitment to cwd, qualified step output and recovery-result handling,
-   and corrects arbitrary content-kind counts and unsafe raw runtime-ID disclosure. Stores imported under mappings 1 or 2 are
-   refused on re-import (`mapping-changed`); use a fresh store rather than reinterpreting or overwriting previous records. No
-   released package carried these candidate mappings. The derived fork cut is compared independently of the header digest.
+7. **Mapping version 4.** This retains the earlier keyed cwd commitment, qualified recovery handling, safe content counts and
+   runtime-ID withholding, and gives every tool-call reference a domain-separated keyed identity. Stores imported under mappings
+   1, 2 or 3 refuse re-import (`mapping-changed`); use a fresh store rather than reinterpreting previous records. No released
+   package carried these candidate mappings. The derived fork cut is compared independently of the header digest.
 8. **Reader promoted, not copied.** `research/dsh-native/log.ts` moved to `adapters/dsh-native/log.ts`; the study and its tests import it from there.
 
 ## Known limitations

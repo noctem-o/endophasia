@@ -65,7 +65,7 @@ npm run build
 npm run test:package
 ```
 
-The targeted run passes **244 tests**, including the isolated pinned-source stub reproduction and all inherited regressions.
+The final targeted run passes **255 tests**, including the isolated pinned-source stub reproduction and all inherited regressions. The first repair run passed 244 before the additional pairing tests.
 Full-suite/build/package results and exact CI identity are reported in the final PR verification comment. Runtime nondeterminism,
 single-writer stores, incomplete source evidence, conservative recovery interpretation and unverified Windows/live-write cases
 retain the limits in the importer documentation. Parent source provenance remains pinned and clean.
@@ -75,3 +75,24 @@ retain the limits in the importer documentation. Parent source provenance remain
 Keep #71 based on #70 until the owner merges #70. Then retarget to `main` and rerun CI against that actual base. If the owner
 squash-merges or rebases #70, restack the importer onto the resulting main commit first. Earlier fixture bytes and mapping-2
 imports are historical inputs; use fresh validation stores and retain normal changed-history/mapping refusal for old stores.
+
+## Additional fresh-review finding: tool-call pairing
+
+The fresh review of `e2346122e` found that token-filtering a valid tool-call ID such as `call/1` or an ID longer than 128
+characters erased the request/result correspondence. Eight initial regressions failed before repair. The mapper now records a
+`callIdDigest` for every string ID using HMAC over `["dsh-tool-call-id.v1", rawId]`, on requests, results and optional approval
+call references. No raw call ID or raw-ID fallback is retained. The projector pairs validated digest key IDs and values, avoiding
+both loss of identity and collisions between a raw token and an encoded/hash-looking token.
+
+Known tool calls and results must carry string IDs before any append, including inherited source rows. Empty strings remain
+valid string identities rather than being treated as missing. Regressions cover slash, long, Unicode and empty IDs, malformed or
+missing IDs, partial and repeated imports, recovery-written results, and a raw ID resembling another ID's digest. The durable
+privacy test now has 16 canaries, including an unsafe call ID. Recovery results still expose no claimed tool outcome or result
+digest, even when their call identity pairs correctly.
+
+The final representation is mapping 4 and projection 3; mapping-3 imports are refused instead of keeping their old dropped
+pairing keys. Earlier mapping-3/projection-2 results above describe the first repair commit, not the final representation.
+The first repair commit passed 4,751 tests with 47 skips and all five CI jobs. Final-head checks and fresh review are reported in
+the PR verification comment; the parent reader, fixtures and source provenance remain unchanged.
+
+The focused advisor reviewed the final pairing implementation without concrete blockers and independently passed 120 importer/review/recovery tests. The maker repeated all five private retained-capture imports under mapping 4: privacy/idempotence/source-hash checks passed, real tool-read remained one request paired to one result, and incremental recovery still matched one-shot import. No new model run or active-state access was added.

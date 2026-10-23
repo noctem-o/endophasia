@@ -108,6 +108,11 @@ export function dshKeyedV0(key: EndoDigestKeyV0, value: unknown): JsonValueV0 {
 	return key.digest(value) as unknown as JsonValueV0;
 }
 
+/** One private, domain-separated identity for every call reference; no raw-token/digest aliasing branch. */
+function callIdentity(key: EndoDigestKeyV0, value: unknown): JsonValueV0 | undefined {
+	return typeof value === "string" ? dshKeyedV0(key, ["dsh-tool-call-id.v1", value]) : undefined;
+}
+
 /** A failure as DSH structures it (`LlmFailure`): its code and status are kept; its message only by keyed digest and length. */
 function failureOf(key: EndoDigestKeyV0, value: unknown): JsonValueV0 | undefined {
 	if (!isRecord(value)) return undefined;
@@ -267,7 +272,7 @@ export function recordDshRow(row: DshSessionEvent, key: EndoDigestKeyV0): DshRec
 			const parsed = dshParseArguments(data.arguments);
 			return make("dsh.tool-requested", {
 				...where,
-				callId: dshToken(data.callId, 128),
+				callIdDigest: callIdentity(key, data.callId),
 				name: dshToken(data.name, 128),
 				argumentsBytes: typeof data.arguments === "string" ? bytes(data.arguments) : undefined,
 				// The digest is over the parsed arguments (canonical JSON), the scheme the Pi adapter uses; raw text that is not JSON has none.
@@ -285,7 +290,7 @@ export function recordDshRow(row: DshSessionEvent, key: EndoDigestKeyV0): DshRec
 			return make("dsh.tool-result-recorded", {
 				...where,
 				dshRecovery: recovery,
-				callId: dshToken(message.toolCallId, 128),
+				callIdDigest: callIdentity(key, message.toolCallId),
 				isError: typeof message.isError === "boolean" ? message.isError : undefined,
 				// The digest is over the model-facing content, as `piToolResultDigestV0` does; `meta` (tool-private) is never read.
 				resultDigest:
@@ -332,7 +337,7 @@ export function recordDshRow(row: DshSessionEvent, key: EndoDigestKeyV0): DshRec
 				record: row.type,
 				approvalId: dshToken(data.id, 128),
 				toolName: dshToken(data.toolName, 128),
-				callId: dshToken(data.callId, 128),
+				callIdDigest: callIdentity(key, data.callId),
 				reasonBytes: typeof data.reason === "string" ? bytes(data.reason) : undefined,
 			});
 		case "approval/decided":

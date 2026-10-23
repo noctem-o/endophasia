@@ -1,22 +1,21 @@
-# Release preparation: 0.1.0-alpha.2 (Studio alpha)
+# Release record: 0.1.0-alpha.2 (first browser alpha)
 
-Status: **prepared, not published.** Nothing in this document has been done on the registry or on GitHub: no `npm publish`, no
-`v0.1.0-alpha.2` tag, no GitHub release. The only published alpha is [`0.1.0-alpha.1`](release-alpha.md), which does **not**
-contain Studio. This page is the record of what `0.1.0-alpha.2` would be, what was verified, and the owner-operated procedure that
-publishes it. It is concise on purpose; the evidence is in the cited tests and CI runs, not here.
+Status (checked 2026-10-23): **published** on [npm](https://www.npmjs.com/package/endophasia) under the `alpha`
+dist-tag and as [GitHub prerelease `v0.1.0-alpha.2`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.2)
+(published 2026-10-22). `latest` on npm remains `0.1.0-alpha.1`.
+This page preserves the **historical release-candidate evidence and owner publication procedure** below; its
+pre-publication commands are retained for audit, **not as actions still awaiting execution**. It describes the
+original browser page in `dist/cockpit-ui/`, not the newer React source-tree interface.
 
 | | Version | Contains `endo studio` | Where |
 | :--- | :--- | :--- | :--- |
-| Published alpha | `0.1.0-alpha.1` | no | npm (`latest` and `alpha`), GitHub prerelease `v0.1.0-alpha.1` |
-| This release candidate | `0.1.0-alpha.2` | yes | this source tree, once merged; **not on npm, no tag, no release** |
-| Source tree | whatever `package.json` says on `main` | yes | GitHub; moves on after the candidate |
-
-After publication a small documentation commit flips the statements above (step 11 below). Until then the README and install guide
-say "prepared, not published".
+| Published CLI alpha | `0.1.0-alpha.1` | no | npm `latest`, GitHub prerelease `v0.1.0-alpha.1` |
+| Published first browser alpha | `0.1.0-alpha.2` | yes, early browser page | npm `alpha`, GitHub prerelease `v0.1.0-alpha.2` |
+| Source tree | whatever `package.json` says on `main` | yes, newer React page | not yet released to npm in that form |
 
 ## Version
 
-`0.1.0-alpha.2` is the next version after `0.1.0-alpha.1`. Inspected on 2026-10-20 before choosing it:
+Before publication, `0.1.0-alpha.2` was the next version after `0.1.0-alpha.1`. The following observations were made on 2026-10-20 before choosing it (historical, no longer current):
 
 - The registry lists only `0.0.0-stage` and `0.1.0-alpha.1`. `0.1.0-alpha.2` is unused.
 - Dist-tags: `latest` and `alpha` both point at `0.1.0-alpha.1`.
@@ -27,7 +26,7 @@ say "prepared, not published".
 A prerelease number is right: the surface is new (a browser interface and a local server), the evidence is bounded (below), and an
 alpha says so. Nothing in the version changes any protocol, schema or storage version.
 
-**`latest` stays on `0.1.0-alpha.1`** under this procedure. The manifest's `publishConfig.tag` is `alpha`, and every publish command
+**`latest` remained on `0.1.0-alpha.1`** when this procedure was followed. The manifest's `publishConfig.tag` is `alpha`, and every publish command
 below names `--tag alpha`, so publishing `0.1.0-alpha.2` does not move `latest`. A bare `npm install endophasia` will therefore still
 install the pre-Studio alpha; install with `endophasia@0.1.0-alpha.2` or `endophasia@alpha`. Moving `latest` is a separate decision
 (`npm dist-tag add endophasia@0.1.0-alpha.2 latest`) that this procedure does not make.
@@ -163,7 +162,7 @@ compares them with the CI log for that commit; the published artifact is the one
 
 ## Owner-operated publication procedure
 
-Do this only after the pull request is reviewed and merged by the owner. Nothing here is automated: no workflow publishes, and no
+Historical procedure used for the published alpha; **do not repeat its publication steps**. Nothing here is automated: no workflow publishes, and no
 publish credential is stored in the repository or in CI.
 
 The order matters: **the tested file is the published file.** `npm publish` in a directory runs `prepack` and rebuilds; publishing
@@ -217,7 +216,7 @@ the tarball file does not.
    `./try/node_modules/.bin/endo --version` (prints `0.1.0-alpha.2`), `./try/node_modules/.bin/endo doctor`,
    `./try/node_modules/.bin/endo studio --help`.
 10. **Record** the outcome and the integrity in the release (the notes or a comment) so a later reader can check the artifact.
-11. **Flip the documentation** in a follow-up documentation-only commit: `install.md`, `studio.md`, `status.md`, `cockpit.md`,
+11. **Flip the documentation** (performed in a follow-up documentation-only commit): `install.md`, `studio.md`, `status.md`, `cockpit.md`,
     `cockpit-ui.md`, this page's status table and the pointer in `release-alpha.md` all say "prepared, not published" and become
     "published". The `README.md` and `CHANGELOG.md` that ship in the tarball are worded to be true both before and after
     publication (a published tarball cannot change), so they need no flip; add the release date and link to the changelog

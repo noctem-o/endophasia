@@ -82,10 +82,8 @@ can independently change their own state; process continuity and our child trace
   supported Node 22.19.0. Without the checkout the two opt-in tests remain explicitly skipped.
 - Typecheck: passed. Lint: passed with the existing unused-parameter warning in `endo-cockpit-eighteenth-review.test.ts`.
 - Build and package smoke (isolated install and real browser checks): passed.
-- Full repository suite with `ENDO_REQUIRE_BROWSER=1`: 166 files passed, 3 skipped; 4591 tests passed, 49 skipped
-  (248.73 s). Two additional stream/observer UTF-8 regressions were added afterward; the final 77-test targeted run passed.
-  The full run included the repair implementation, with a later removal of redundant duplicate privacy scans covered by the
-  final targeted run and typecheck/lint.
+- Final repair full suite with `ENDO_REQUIRE_BROWSER=1`: 166 files passed, 3 skipped; **4593 passed, 49 skipped** (248.35 s).
+  The targeted suite also passed on Node 22.19.0.
 - Independent advisor reviewed evidence integrity, privacy, parser/process safety and #71 compatibility; no remaining blocking
   findings after the comparison-output fix. Advisor tests and review are independent of the maker's runtime observations, not
   approval of all experiment claims.
@@ -110,3 +108,16 @@ reader. Keep the fixture bytes unchanged.
 The four currently unresolved #71 findings remain downstream: complete header-shape validation (especially boolean `isSeeded`),
 unambiguous raw-ID versus Endophasia-coordinate selection, actual observed turn count in an open run, and commitment to the
 stored fork cut when resuming a header-only partial import. They were inspected for dependency impact but not modified here.
+
+## Current-main integration and CI
+
+Repair commit `133c8f9e5e450af538eb8874b78e5f0aa4fb070e` passed the complete local suite above. CI run 39921301890 tested
+GitHub's merge `a0592db0a87cbb049def1c5372847729062b1ae0` against newly advanced main
+`6a8c85feb64e741ea94068dbbc359756bc78d34a`. Four jobs passed (both package jobs, clean-install acceptance, reference exchange).
+The test job had exactly one failure: release-readiness rejected “not yet published” in README text introduced by that new main.
+This was reproduced from the CI merge contents; neither phrase existed in the repair branch's README. The DSH suites passed.
+
+The branch then integrated those two existing main documentation commits, retaining their changes and correcting only three
+README release-status phrases to version-relative source wording. No runtime or Studio implementation changed. This is a branch
+integration, not a merge of either pull request. The release-readiness test remains strict and unchanged. Post-integration
+verification and final CI status are posted in the PR conversation so results remain tied to the actual tested head.

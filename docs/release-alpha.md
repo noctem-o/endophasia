@@ -1,7 +1,7 @@
 # First alpha: published status, verified scope and release procedure
 
-> This page records `0.1.0-alpha.1`, as published. The next alpha, `0.1.0-alpha.2` (Studio), is prepared and not published; its
-> scope, evidence and publication procedure are in [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).
+> This page records `0.1.0-alpha.1`, as published. The next alpha, `0.1.0-alpha.2` (the first browser interface), has since been published; its
+> scope, evidence and historical publication procedure are in [release-0.1.0-alpha.2.md](release-0.1.0-alpha.2.md).
 
 ## What the alpha is
 
@@ -33,8 +33,8 @@ they can be attached, and earn capability admission through the same local check
   `--authorize-live-study` and may incur provider cost.
 - Model-internal observation, a cockpit, new adapters, or schema migrations.
 - **`endo studio`.** The published `0.1.0-alpha.1` was cut before Studio and does not contain it (no `studio` command, no
-  `dist/cockpit-ui/`). Studio is in the source tree, verified by the same `package` and `acceptance` jobs, and is in the
-  prepared, unpublished `0.1.0-alpha.2` ([studio.md](studio.md)).
+  `dist/cockpit-ui/`). The first browser page is in the
+  published `0.1.0-alpha.2`; a newer React frontend is in the source tree ([studio.md](studio.md)).
 
 ## Checklist for subsequent releases
 

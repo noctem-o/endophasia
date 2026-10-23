@@ -331,7 +331,7 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 		expect(
 			findLeaks(
 				JSON.stringify({
-					text: "<path>/fixture/workspace/file</path> https://example.test/v1/foo user/message notes.txt",
+					text: "<path>/fixture/workspace/file</path> https://example.test/v1/foo user/message file: notes.txt",
 				}),
 				[],
 			),

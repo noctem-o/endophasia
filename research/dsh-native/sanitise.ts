@@ -223,7 +223,7 @@ export function findLeaks(text: string, canaries: readonly string[]): string[] {
 	for (const value of texts) {
 		// Relative event names and web URLs are not local paths. XML closing tags are not paths either.
 		// File URIs carry local paths too; refuse them outright rather than guess at host/percent-encoding semantics.
-		if (/\bfile:/i.test(value)) leaks.push("absolute file URI");
+		if (/\bfile:\S/i.test(value)) leaks.push("absolute file URI");
 		const local = value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`<>]+/gi, " ");
 		for (const match of local.matchAll(/(?<![A-Za-z0-9_./~<-])\/+[^/\s"'`<>()[\]{},;*?\\][^\s"'`<>()[\]{},;]*/g)) {
 			const path = posix.normalize(match[0]);

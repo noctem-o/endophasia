@@ -201,3 +201,10 @@ service operations were needed for these fixes. Original runtime evidence and it
 For #71, incorporate this parent branch and reconcile the moved reader's checksum requirement, physical frame counts and
 prototype-safe `byType` dictionary along with the earlier parser repairs. Reader exports and signatures are unchanged; compressed
 inputs without the pinned writer's checksum flag are now deliberately refused. Keep importer-specific findings in #71.
+
+The independent final review confirmed both additional edge cases were fixed and found no further concrete blocker (119 tests
+passed, two opt-in checks skipped in that independent run). Its prose false-positive qualification prompted a final narrow
+adjustment: require a non-whitespace character after `file:` before treating it as URI-shaped text. The positive regression now
+also permits ordinary `file: notes.txt` prose; all actual file-URI host and traversal regressions remain refused. The full local
+suite at the main repair commit passed 4,639 tests with 47 skips; typecheck, build and package smoke passed, and lint retained only
+the existing unused-variable warning. Final targeted checks after that narrow adjustment still pass 132 tests.

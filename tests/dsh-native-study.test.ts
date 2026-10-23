@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zstdCompressSync } from "node:zlib";
+import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { endoSecretScanV0 } from "../cli/secret-scan.ts";
 import { researchDataRoot } from "../research/data.ts";
@@ -589,7 +589,7 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 			// Raw captures hold the real system prompt: they go to the research-data directory, never to the system temp directory.
 			const base = join(researchDataRoot(), "dsh-native", "test-runs");
 			mkdirSync(base, { recursive: true });
-			const out = mkdtempSync(join(base, "run-"));
+			const out = mkdtempSync(join(base, 'run- # " [quoted]-'));
 			dirs.push(out);
 			const result = await reproduce({ dsh: checkout!, out, scenario: "stub-retry" });
 			expect(result.code).toBe(0);
@@ -746,7 +746,7 @@ describe("a hostile or odd log is bounded and classified (SYNTHETIC)", () => {
 	it("stops at a decoded-size bound instead of holding a decompression bomb in memory", () => {
 		// 8 MiB of zeroes is a few hundred bytes compressed; the bound is far below it.
 		const bomb = encodeFrames(header, events, 4);
-		const huge = zstdCompressSync(Buffer.alloc(8 * 1024 * 1024));
+		const huge = zstdCompressSync(Buffer.alloc(8 * 1024 * 1024), { params: { [constants.ZSTD_c_checksumFlag]: 1 } });
 		expect(huge.length).toBeLessThan(2000);
 		const read = readDshLog(Buffer.concat([bomb, huge]), 1024 * 1024);
 		expect(read.tail).toEqual({ kind: "unreadable", reason: "the decoded size bound was exceeded" });
@@ -758,7 +758,7 @@ describe("a hostile or odd log is bounded and classified (SYNTHETIC)", () => {
 	it("reports a complete zstd frame that ends inside a row as a torn row, not as a clean log", () => {
 		const text = encodeRaw(header, events).toString("utf8");
 		const cut = Buffer.from(text.slice(0, text.length - 25), "utf8");
-		const read = readDshLog(zstdCompressSync(cut));
+		const read = readDshLog(zstdCompressSync(cut, { params: { [constants.ZSTD_c_checksumFlag]: 1 } }));
 		expect(read.tail.kind).toBe("torn-row");
 		expect(read.events.length).toBe(events.length - 1);
 	});

@@ -178,6 +178,8 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 		let decoded = 0;
 		for (const { start, end } of scan.frames) {
 			try {
+				// The pinned writer always enables checksums, even though upstream's decoder accepts frames without them.
+				if ((bytes[start + 4]! & 0x04) === 0) throw new RangeError("DSH frames must carry a checksum");
 				// The bound is per read, not per frame: each frame may only use what the earlier ones left.
 				const part = zstdDecompressSync(bytes.subarray(start, end), {
 					maxOutputLength: Math.max(1, maxDecodedBytes - decoded),
@@ -200,7 +202,7 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 				);
 				return {
 					physical: "zstd",
-					frames: parts.length,
+					frames,
 					header: null,
 					events: [],
 					tail: {
@@ -308,7 +310,7 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 	const known = new Set(vocabulary.knownEventTypes);
 	const summary: DshLogSummary = {
 		events: read.events.length,
-		byType: {},
+		byType: Object.create(null),
 		turns: [],
 		toolCalls: [],
 		assistantAttempts: 0,

@@ -16,6 +16,7 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import {
+	chmodSync,
 	cpSync,
 	existsSync,
 	lstatSync,
@@ -105,7 +106,7 @@ export function profilePatch(options: { home: string; stub: boolean; modelUrl: s
       local:
         displayName: Local model (study scratch)
         api: openai-completions
-        baseURL: ${options.modelUrl}
+        baseURL: ${JSON.stringify(options.modelUrl)}
 ${options.keyed ? "        apiKeyEnv: STUDY_PLACEHOLDER_KEY\n" : ""}        models:
           - id: qwen38-local
             name: qwen38-local
@@ -114,14 +115,18 @@ ${options.keyed ? "        apiKeyEnv: STUDY_PLACEHOLDER_KEY\n" : ""}        mode
   config:
     provider: local
     model: qwen38-local`;
-	const inserts = [`    - id: endo-study-observer\n      name: ${join(HERE, "instruments", "observer.mjs")}`];
+	const inserts = [
+		`    - id: endo-study-observer\n      name: ${JSON.stringify(join(HERE, "instruments", "observer.mjs"))}`,
+	];
 	if (options.stub)
-		inserts.push(`    - id: endo-study-stub-provider\n      name: ${join(HERE, "instruments", "stub-provider.mjs")}`);
+		inserts.push(
+			`    - id: endo-study-stub-provider\n      name: ${JSON.stringify(join(HERE, "instruments", "stub-provider.mjs"))}`,
+		);
 	return `${model}
 - id: session-persistence-jsonl
   name: "@deepseek-ai/dsh-session-persistence-jsonl"
   config:
-    root: ${join(options.home, "sessions")}
+    root: ${JSON.stringify(join(options.home, "sessions"))}
     compression: zstd
 ${rows}
 - insert:
@@ -185,15 +190,20 @@ export function prepareScratch(out: string, scenario: Scenario): { root: string;
 		throw new Error(`unknown scenario ${JSON.stringify(scenario)}`);
 	const root = resolve(out);
 	if (root === dirname(root) || root === resolve(process.env.HOME ?? "/")) throw new Error("unsafe scratch root");
-	mkdirSync(root, { recursive: true });
+	mkdirSync(root, { recursive: true, mode: 0o700 });
 	if (realpathSync(root) !== root) throw new Error("scratch root must not contain symlinks");
+	if (process.getuid === undefined || statSync(root).uid !== process.getuid())
+		throw new Error("scratch root must be owned by the current user");
 	const marker = join(root, ".endo-dsh-scratch");
 	if (!existsSync(marker)) {
 		if (readdirSync(root).length !== 0) throw new Error("scratch root must be empty or owned by this harness");
+		chmodSync(root, 0o700);
 		writeFileSync(marker, root, { flag: "wx", mode: 0o600 });
 	}
 	if (lstatSync(marker).isSymbolicLink() || readFileSync(marker, "utf8") !== root)
 		throw new Error("invalid scratch marker");
+	// All raw artifacts, including files the DSH child creates, are inaccessible to other users beneath this root.
+	chmodSync(root, 0o700);
 	const names = scenario === "crash" ? ["crash-killed", "crash-resumed"] : [scenario];
 	const base = join(root, scenario);
 	const targets = [base, ...names.map((name) => join(root, "raw", name))];

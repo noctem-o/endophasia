@@ -57,17 +57,26 @@ const lines = (text: string): unknown[] => {
 };
 
 /** The measured relationship between the persisted log, the live feed and the `--json` stream of one case. */
-function compare(raw: string, name: string, events: { type: string; seq: number }[]): Record<string, unknown> {
+function compare(
+	raw: string,
+	name: string,
+	sessionId: string,
+	events: { type: string; seq: number }[],
+): Record<string, unknown> {
 	let live: { type: string; seq: number }[] | null = null;
 	let frames: Record<string, number> | null = null;
 	try {
 		const observed = lines(readUtf8(join(raw, name, "observer.ndjson"))) as {
 			feed: string;
+			sessionId?: string;
 			event?: { type: string; seq: number };
 			kind?: string;
 		}[];
-		frames = {};
-		live = observed.filter((o) => o.feed === "session/event").map((o) => o.event!);
+		const sessionRows = observed.filter((o) => o.feed === "session/event");
+		if (sessionRows.some((row) => row.sessionId !== sessionId))
+			throw new Error(`${name}: observer session identity is missing or differs from the captured header`);
+		frames = Object.create(null) as Record<string, number>;
+		live = sessionRows.map((o) => o.event!);
 		for (const o of observed.filter((x) => x.feed === "agent/assistant-stream"))
 			frames[o.kind ?? "?"] = (frames[o.kind ?? "?"] ?? 0) + 1;
 	} catch (error) {
@@ -172,13 +181,15 @@ export function buildFixtures(raw: string, destination = FIXTURES): void {
 		const read = readDshLog(readFileSync(join(raw, name, "session.v4.jsonl.zstd")));
 		if (
 			read.header === null ||
+			typeof read.header.id !== "string" ||
+			read.header.id.trim() === "" ||
 			read.tail.kind !== "clean" ||
 			read.problems.length > 0 ||
 			!dshLogAcceptable(checkDshLog(read, vocabulary))
 		)
 			throw new Error(`${name}: capture is not clean valid evidence (${read.tail.kind}); raw bytes left untouched`);
 		// Comparison includes raw type labels; pass it through the same path/id sanitiser and final privacy gate.
-		comparison[name] = sanitiser.sanitiseStreamLine(compare(raw, name, read.events));
+		comparison[name] = sanitiser.sanitiseStreamLine(compare(raw, name, read.header.id, read.events));
 		const clean = sanitiser.sanitiseLog(read.header, read.events);
 		const eventsText = encodeDshJsonl(clean.header, clean.events);
 		const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))).map((line) =>

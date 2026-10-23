@@ -175,3 +175,29 @@ The pinned-checkout study, repair and release-readiness suites pass 112 tests. A
 byte-for-byte through the privacy-gated builder into a separate directory. No new model experiment was needed for this
 comparison-only change; the runtime observations above retain their original scope. An independent advisor found no concrete
 defect or reader/#71 compatibility impact (99 targeted tests passed, two opt-in checks skipped in that independent run).
+
+### Seven further Codex findings
+
+| Finding | Correction and regression evidence |
+| --- | --- |
+| Checksum-less compressed frames accepted | Require the checksum flag on each complete frame before decode. This is a pinned writer invariant, not a claim that upstream's decoder refuses those frames. Tests cover a checksum-less first frame and one after valid data. Other compression adversaries now carry checksums so they still exercise UTF-8, row and size checks. The structural scanner remains a frame-boundary scanner. |
+| Observer identity discarded | Compare every session-event envelope's session ID to the raw header before projection. Missing, foreign or mixed IDs refuse the entire build and preserve prior publication; no foreign rows are silently filtered. A minimal nonempty header ID check prevents two missing IDs comparing equal. Tests include foreign events with zero durable overlap and both IDs missing. |
+| Interpolated YAML paths unquoted | JSON-quote persistence root, model URL and instrument paths as YAML scalars. Deterministic tests round-trip special characters, including a newline; pinned runtime stub runs exercise the actual generated patch in a path containing YAML-significant characters. |
+| Residual absolute paths missed | Add a study-local gate over decoded JSON strings and keys; unexpected Unix roots, Windows drive/UNC paths, fixture traversal and file URIs fail publication. File URIs are refused outright rather than interpreted as safe from host/percent-encoded syntax. Preserve relative event names, web URLs and normalised fixture paths. Tests cover escaped slashes, Unicode roots and late publication failure; the shared cassette scanner is unchanged. |
+| Decode failures undercount complete frames | Return the scanner's complete frame count, not successfully decoded parts. Tests use three structurally complete frames with a checksum or size failure in the middle; the reported count remains three, while evidence remains unreadable. |
+| Raw root permissions too broad | Create roots with mode `0700`, require current-user ownership and restrict validated reusable roots before writing or running children. The root protects all artifacts beneath it even when the child uses ordinary file modes. Tests cover creation and narrowing a harness-owned `0755` root; unclaimed nonempty roots remain refused. This harness now requires Unix ownership checks. |
+| Prototype names corrupt event counts | Use null-prototype dictionaries for event types and observer stream kinds. Preserve arbitrary own JSON keys through the sanitiser too. Repeated `constructor`, `toString` and `__proto__` tests require integer counts and JSON/publication round-trips. |
+
+The initial seventeen added regression instances failed against the previous implementation. Final targeted release/study/repair
+verification passes 132 tests with the clean pinned checkout enabled. The advisor independently reproduced two additional edge
+cases (both identities missing, file-URI host/encoded traversal); both were fixed with regressions before final verification.
+All eleven historical fixture files still reproduce byte-for-byte through the publication/privacy gates into a separate directory.
+
+Two additional pinned-source stub runs used the same newly created private scratch root, whose name contained spaces, `#`,
+quotes, brackets and a literal newline. Each exited 0, produced 19 clean persisted events and exactly 19 equal observer events
+carrying that run's session ID. The IDs differed between runs and the root remained `0700`. No local-model requests or active
+service operations were needed for these fixes. Original runtime evidence and its limitations above remain unchanged.
+
+For #71, incorporate this parent branch and reconcile the moved reader's checksum requirement, physical frame counts and
+prototype-safe `byType` dictionary along with the earlier parser repairs. Reader exports and signatures are unchanged; compressed
+inputs without the pinned writer's checksum flag are now deliberately refused. Keep importer-specific findings in #71.

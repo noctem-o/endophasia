@@ -35,6 +35,8 @@ paths and are never committed.
 * Execution requires the exact clean provenance pin, including a clean entire working tree. Scratch roots must be new and empty
   or carry this harness's ownership marker; symlinked roots/cleanup ancestors are refused. Repeated runs replace only that
   scenario's scratch home/workspace and raw outputs (both crash outputs), never other scenarios or historical raw data.
+* Scratch roots must belong to the current user and are restricted to `0700` before captures are written or reused. This root
+  protects child-created raw artifacts regardless of their file modes. Dynamic paths and model URLs are quoted YAML scalars.
 * Each child has a 120-second deadline. `no-key-error` deliberately requires CLI exit 1 plus a persisted failed turn; other
   ordinary cases require exit 0. Model reads remain permission-mode read-only, not an OS filesystem sandbox; fixed benign prompts
   are used, never user-supplied tasks.
@@ -46,8 +48,14 @@ valid recovered prefixes remain useful to the reader but cannot be published as 
 `null`, including transient frame counts and `persistedEventsNeverAnnouncedLive`. An existing empty observer capture measures zero
 live events and lists every persisted row as absent. That absence field describes the supplied capture, including rows before
 attachment or after capture stopped; it makes no claim about unobserved execution. Mismatched correspondence is unknown (`null`).
-Malformed observer JSON or UTF-8 fails the build. All output, including `comparison.json`, passes
-sanitisation and privacy scanning. The builder prepares the entire set before writing a sibling staging directory and publishes
+Malformed observer JSON or UTF-8 fails the build. Every observed session-event envelope must identify the captured header's
+nonempty session ID; missing or mixed identities fail before publication, rather than filtering evidence. The cold reader requires
+the pinned writer's checksum flag on every complete compressed frame (the upstream decoder itself is more permissive). Its
+`frames` count describes structurally complete frames found, including frames that cannot decode.
+
+All output, including `comparison.json`, passes sanitisation and privacy scanning. The study's residual path gate examines decoded
+JSON strings and keys, refuses unexpected absolute paths (including unlisted Unix roots, Windows paths and file URIs), and permits
+only normalised `/fixture` paths. Relative event names and web URLs are not local paths. The builder prepares the entire set before writing a sibling staging directory and publishes
 with directory renames and rollback on synchronous failure. It is not crash-atomic across the two renames: after abrupt process or
 host death, a `.real-stage-*` sibling may hold `previous/` for manual recovery. Do not run concurrent builders for one destination.
 

@@ -13,6 +13,8 @@
 // Model output (reasoning, text) and the study's own prompt and tool output are kept: they are the benign result of a task this
 // study chose. `findLeaks` is the check that nothing slipped through; the tests run it over every committed fixture.
 
+import { posix } from "node:path";
+
 export const FIXTURE_EPOCH = 1_700_000_000_000;
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -79,7 +81,7 @@ export class Sanitiser {
 	private value(key: string | null, value: Json): Json {
 		if (Array.isArray(value)) return value.map((item) => this.value(key, item));
 		if (value !== null && typeof value === "object") {
-			const out: { [key: string]: Json } = {};
+			const out: { [key: string]: Json } = Object.create(null);
 			// A tool-call content part names its call by `id`; the event's own `callId` must map to the same ordinal.
 			const isToolCall =
 				(value.type === "tool-call" || value.type === "tool-call-chunks") && typeof value.id === "string";
@@ -190,14 +192,45 @@ export function findLeaks(text: string, canaries: readonly string[]): string[] {
 		const at = text.indexOf(canary);
 		if (at >= 0) leaks.push(`${JSON.stringify(canary)} at ${at}`);
 	}
-	// A real absolute home path of any user, a uuid-shaped id that was not mapped, and a provider response id.
+	// A uuid-shaped id that was not mapped, and a provider response id.
 	for (const [name, pattern] of [
-		["home path", /(?:\/home\/|\/Users\/)[A-Za-z0-9._-]+(?:\/|(?=["\s]|$))/],
 		["uuid", /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/],
 		["provider response id", /chatcmpl-[A-Za-z0-9]+/],
 	] as const) {
 		const match = pattern.exec(text);
 		if (match !== null) leaks.push(`${name}: ${match[0]}`);
+	}
+	// Inspect decoded JSON strings and keys: escaped slashes/backslashes must not bypass the publication gate.
+	const strings = (value: unknown): string[] => {
+		if (typeof value === "string") return [value];
+		if (Array.isArray(value)) return value.flatMap(strings);
+		if (value !== null && typeof value === "object")
+			return Object.entries(value).flatMap(([key, entry]) => [key, ...strings(entry)]);
+		return [];
+	};
+	let texts: string[];
+	try {
+		texts = strings(JSON.parse(text));
+	} catch {
+		texts = text.split("\n").flatMap((line) => {
+			try {
+				return strings(JSON.parse(line));
+			} catch {
+				return [line];
+			}
+		});
+	}
+	for (const value of texts) {
+		// Relative event names and web URLs are not local paths. XML closing tags are not paths either.
+		// File URIs carry local paths too; refuse them outright rather than guess at host/percent-encoding semantics.
+		if (/\bfile:/i.test(value)) leaks.push("absolute file URI");
+		const local = value.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`<>]+/gi, " ");
+		for (const match of local.matchAll(/(?<![A-Za-z0-9_./~<-])\/+[^/\s"'`<>()[\]{},;*?\\][^\s"'`<>()[\]{},;]*/g)) {
+			const path = posix.normalize(match[0]);
+			if (path !== "/fixture" && !path.startsWith("/fixture/"))
+				leaks.push(`${/^\/(?:home|Users)\//.test(path) ? "home path" : "absolute path"}: ${match[0]}`);
+		}
+		if (/(?<![A-Za-z0-9_])[A-Za-z]:[\\/]|\\\\[^\\\s]+\\/.test(value)) leaks.push("absolute Windows path");
 	}
 	return leaks;
 }

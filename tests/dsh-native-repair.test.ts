@@ -2,12 +2,14 @@
 import { type ChildProcess, execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -15,12 +17,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { zstdCompressSync } from "node:zlib";
+import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildFixtures, CASES } from "../research/dsh-native/build-fixtures.ts";
 import { assertDshProvenance, buildProvenance, DSH_AUDITED_FILES } from "../research/dsh-native/inventory.ts";
 import { checkDshLog, dshLogAcceptable, readDshLog } from "../research/dsh-native/log.ts";
-import { assertKilled, assertRecovery, prepareScratch, waitForProcess } from "../research/dsh-native/reproduce.ts";
+import {
+	assertKilled,
+	assertRecovery,
+	prepareScratch,
+	profilePatch,
+	waitForProcess,
+} from "../research/dsh-native/reproduce.ts";
 import { findLeaks } from "../research/dsh-native/sanitise.ts";
 import { encodeFrames, encodeRaw } from "../research/dsh-native/synthetic.ts";
 
@@ -32,9 +40,43 @@ const header = tool.header!;
 const events = tool.events;
 const temp = mkdtempSync(join(tmpdir(), "endo-dsh-repair-"));
 afterAll(() => rmSync(temp, { recursive: true, force: true }));
+const checkedFrame = (bytes: Uint8Array) => zstdCompressSync(bytes, { params: { [constants.ZSTD_c_checksumFlag]: 1 } });
 const check = (bytes: Uint8Array) => checkDshLog(readDshLog(bytes), vocabulary);
 
 describe("reader integrity regressions (SYNTHETIC)", () => {
+	it("requires the pinned writer's checksum flag on every compressed frame", () => {
+		const raw = encodeRaw(header, events);
+		for (const bytes of [
+			zstdCompressSync(raw),
+			Buffer.concat([checkedFrame(raw), zstdCompressSync(Buffer.alloc(0))]),
+		]) {
+			const read = readDshLog(bytes);
+			expect(read.tail.kind).toBe("unreadable");
+			expect(read.problems.join(" ")).toMatch(/checksum/);
+			expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
+		}
+		expect(readDshLog(checkedFrame(raw)).tail.kind).toBe("clean");
+	});
+	it.each(["checksum", "size"])("retains structurally complete frame counts on %s failure", (kind) => {
+		const first = checkedFrame(encodeRaw(header, []));
+		const second = checkedFrame(Buffer.from("{}\n"));
+		if (kind === "checksum") second[second.length - 1] ^= 0xff;
+		const read = readDshLog(
+			Buffer.concat([first, second, checkedFrame(Buffer.from("{}\n"))]),
+			kind === "size" ? encodeRaw(header, []).length : undefined,
+		);
+		expect(read.frames).toBe(3);
+		expect(read.tail.kind).toBe("unreadable");
+	});
+	it.each(["constructor", "toString", "__proto__"])("counts ignorable %s events numerically", (type) => {
+		const extra = { type, seq: events.length, time: events.at(-1)!.time, data: {}, ignorable: true as const };
+		const result = check(encodeRaw(header, [...events, extra, { ...extra, seq: extra.seq + 1 }]));
+		expect(dshLogAcceptable(result)).toBe(true);
+		expect(Object.hasOwn(result.summary.byType, type)).toBe(true);
+		expect(result.summary.byType[type]).toBe(2);
+		expect(JSON.parse(JSON.stringify(result.summary.byType))[type]).toBe(2);
+	});
+
 	it.each([1, 2, 3])("classifies a %i-byte Zstandard magic as a torn frame", (length) => {
 		const read = readDshLog(Buffer.from([0x28, 0xb5, 0x2f, 0xfd]).subarray(0, length));
 		expect(read.physical).toBe("zstd");
@@ -47,7 +89,7 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 			Buffer.from([0xff]),
 			Buffer.from('"}\n'),
 		]);
-		const read = readDshLog(compressed ? zstdCompressSync(raw) : raw);
+		const read = readDshLog(compressed ? checkedFrame(raw) : raw);
 		expect(read.tail.kind).toBe("unreadable");
 		expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
 	});
@@ -57,9 +99,9 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 			const raw = encodeRaw(header, events);
 			const cut = raw.indexOf(0x0a) + 12;
 			const parts = [
-				zstdCompressSync(raw.subarray(0, cut)),
-				...(emptyBetween ? [zstdCompressSync(Buffer.alloc(0))] : []),
-				zstdCompressSync(raw.subarray(cut)),
+				checkedFrame(raw.subarray(0, cut)),
+				...(emptyBetween ? [checkedFrame(Buffer.alloc(0))] : []),
+				checkedFrame(raw.subarray(cut)),
 			];
 			const read = readDshLog(Buffer.concat(parts));
 			expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
@@ -70,7 +112,7 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 		const raw = encodeRaw(header, events);
 		for (const at of [0, raw.indexOf(0x0a) + 1, raw.length]) {
 			const damaged = Buffer.concat([raw.subarray(0, at), Buffer.from("\n"), raw.subarray(at)]);
-			const read = readDshLog(compressed ? zstdCompressSync(damaged) : damaged);
+			const read = readDshLog(compressed ? checkedFrame(damaged) : damaged);
 			expect(read.problems).toEqual(expect.arrayContaining([expect.stringMatching(/empty.*row|row.*empty/)]));
 			expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
 		}
@@ -97,9 +139,9 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 	});
 	it("enforces cumulative capacity, including zero, while allowing empty frames", () => {
 		const raw = encodeRaw(header, events);
-		const full = zstdCompressSync(raw);
-		const empty = zstdCompressSync(Buffer.alloc(0));
-		const byte = zstdCompressSync(Buffer.from("\n"));
+		const full = checkedFrame(raw);
+		const empty = checkedFrame(Buffer.alloc(0));
+		const byte = checkedFrame(Buffer.from("\n"));
 		expect(readDshLog(Buffer.concat([full, empty]), raw.length).tail.kind).toBe("clean");
 		for (const bytes of [Buffer.concat([full, byte, byte]), byte]) {
 			const read = readDshLog(bytes, bytes === byte ? 0 : raw.length);
@@ -198,7 +240,7 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 			const records =
 				kind === "status-only"
 					? [{ feed: "agent/status", status: "idle" }]
-					: observed.map((event) => ({ feed: "session/event", event }));
+					: observed.map((event) => ({ feed: "session/event", sessionId: header.id, event }));
 			const text = records.length === 0 ? "" : `${records.map((row) => JSON.stringify(row)).join("\n")}\n`;
 			for (const name of CASES) writeFileSync(join(raw, name, "observer.ndjson"), text);
 			buildFixtures(raw, destination);
@@ -215,6 +257,86 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 			}
 		},
 	);
+
+	it.each(["foreign-overlap", "foreign-no-overlap", "missing-id", "mixed-id"])(
+		"refuses %s observer session identity before publication",
+		(kind) => {
+			const { raw, destination } = inputs(`identity-${kind}`);
+			const observed = kind === "foreign-no-overlap" ? [{ ...events[0]!, seq: events.length }] : events.slice(0, 2);
+			const records = observed.map((event, index) => ({
+				feed: "session/event",
+				event,
+				...(kind === "missing-id"
+					? {}
+					: { sessionId: kind === "mixed-id" && index === 0 ? header.id : "other-session" }),
+			}));
+			writeFileSync(
+				join(raw, CASES.at(-1)!, "observer.ndjson"),
+				`${records.map((row) => JSON.stringify(row)).join("\n")}\n`,
+			);
+			expect(() => buildFixtures(raw, destination)).toThrow(/observer.*session/i);
+			expect(readFileSync(join(destination, "previous"), "utf8")).toBe("valid previous evidence");
+		},
+	);
+	it.each([
+		"/workspace/private/log",
+		"/unlisted-root/private/log",
+		"C:\\Private\\log",
+		"\\\\server\\private\\log",
+		"/fixture/../../private/log",
+	])("refuses residual path %s before publication", (path) => {
+		const { raw, destination } = inputs(`residual-path-${Buffer.from(path).toString("hex")}`);
+		writeFileSync(
+			join(raw, CASES.at(-1)!, "stream.ndjson"),
+			`${JSON.stringify({ type: "synthetic", text: `stack (${path}:12:3)` })}\n`,
+		);
+		expect(() => buildFixtures(raw, destination)).toThrow(/leak/);
+		expect(readFileSync(join(destination, "previous"), "utf8")).toBe("valid previous evidence");
+	});
+
+	it("refuses a missing persisted session identity even when the observer identity is also missing", () => {
+		const { raw, destination } = inputs("missing-both-identities");
+		const { id: _id, ...withoutId } = header;
+		writeFileSync(
+			join(raw, CASES.at(-1)!, "session.v4.jsonl.zstd"),
+			encodeFrames(withoutId as typeof header, events),
+		);
+		writeFileSync(
+			join(raw, CASES.at(-1)!, "observer.ndjson"),
+			`${JSON.stringify({ feed: "session/event", event: events[0] })}\n`,
+		);
+		expect(() => buildFixtures(raw, destination)).toThrow(/capture is not clean valid evidence/);
+		expect(readFileSync(join(destination, "previous"), "utf8")).toBe("valid previous evidence");
+	});
+
+	it("preserves prototype-named observer frame counters through sanitisation and publication", () => {
+		const { raw, destination } = inputs("observer-kind-counters");
+		const kinds = ["constructor", "toString", "__proto__"];
+		const records = [...kinds, ...kinds].map((kind) => ({ feed: "agent/assistant-stream", kind }));
+		for (const name of CASES)
+			writeFileSync(join(raw, name, "observer.ndjson"), `${records.map((row) => JSON.stringify(row)).join("\n")}\n`);
+		buildFixtures(raw, destination);
+		const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
+		for (const name of CASES)
+			for (const kind of kinds) expect(comparison[name].transientAssistantStreamFrames[kind]).toBe(2);
+	});
+	it("scans decoded escaped paths and permits fixture paths, URLs and relative event names", () => {
+		expect(findLeaks('{"text":"\\u002fworkspace\\u002fprivate"}', [])).not.toEqual([]);
+		expect(findLeaks("at:/unlisted/private", [])).not.toEqual([]);
+		expect(findLeaks(JSON.stringify({ text: "file:///unlisted/private" }), [])).not.toEqual([]);
+		expect(findLeaks(JSON.stringify({ text: "file:///fixture/%2e%2e/%2e%2e/private" }), [])).not.toEqual([]);
+		expect(findLeaks(JSON.stringify({ text: "file://private-host/share/private.txt" }), [])).not.toEqual([]);
+		expect(findLeaks(JSON.stringify({ text: "//unlisted/private" }), [])).not.toEqual([]);
+		expect(findLeaks(JSON.stringify({ text: "/非公開/private" }), [])).not.toEqual([]);
+		expect(
+			findLeaks(
+				JSON.stringify({
+					text: "<path>/fixture/workspace/file</path> https://example.test/v1/foo user/message notes.txt",
+				}),
+				[],
+			),
+		).toEqual([]);
+	});
 
 	it("preserves a measured empty headless capture without inventing a blank record", () => {
 		const { raw, destination } = inputs("empty-stream");
@@ -293,7 +415,7 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 				writeFileSync(
 					join(raw, name, "observer.ndjson"),
 					`${[...events.slice(offset), extra]
-						.map((event) => JSON.stringify({ feed: "session/event", event }))
+						.map((event) => JSON.stringify({ feed: "session/event", sessionId: header.id, event }))
 						.join("\n")}\n`,
 				);
 			buildFixtures(raw, destination);
@@ -310,7 +432,7 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 		for (const name of CASES)
 			writeFileSync(
 				join(raw, name, "observer.ndjson"),
-				`${live.map((event) => JSON.stringify({ feed: "session/event", event })).join("\n")}\n`,
+				`${live.map((event) => JSON.stringify({ feed: "session/event", sessionId: header.id, event })).join("\n")}\n`,
 			);
 		buildFixtures(raw, destination);
 		const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
@@ -349,6 +471,36 @@ describe("scratch and process boundaries", () => {
 		expect(() => prepareScratch(root, "crash")).toThrow(/symlink/);
 		expect(readFileSync(join(outside, "keep"), "utf8")).toBe("untouched");
 	});
+	it("quotes every dynamic YAML scalar without changing its value", () => {
+		const home = join(temp, 'yaml # " [scratch]\nnew: value');
+		const modelUrl = 'http://127.0.0.1:8080/v1?x=1 # "\nnew: value';
+		const patch = profilePatch({ home, modelUrl, stub: false, keyed: true });
+		const scalar = (key: string) =>
+			JSON.parse(
+				patch
+					.split("\n")
+					.find((line) => line.trimStart().startsWith(`${key}: `))!
+					.trimStart()
+					.slice(key.length + 2),
+			);
+		expect(scalar("root")).toBe(join(home, "sessions"));
+		expect(scalar("baseURL")).toBe(modelUrl);
+		const observer = patch
+			.split("\n")
+			.find((line) => line.includes("observer.mjs"))!
+			.trimStart()
+			.slice(6);
+		expect(JSON.parse(observer)).toBe(join(study, "instruments", "observer.mjs"));
+	});
+	it("makes a new scratch root private and narrows an owned root before reuse", () => {
+		const root = join(temp, "private-root");
+		prepareScratch(root, "stub-retry");
+		expect(statSync(root).mode & 0o777).toBe(0o700);
+		chmodSync(root, 0o755);
+		prepareScratch(root, "stub-retry");
+		expect(statSync(root).mode & 0o777).toBe(0o700);
+	});
+
 	it("captures original pipe bytes across split UTF-8 and retains corrupt bytes for strict validation", async () => {
 		const child = Object.assign(new EventEmitter(), {
 			stdout: new PassThrough(),

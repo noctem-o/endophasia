@@ -138,7 +138,21 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 	const problems: string[] = [];
 	const magic = bytes.length >= 4 ? new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true) : 0;
 	// A skippable-frame magic is a Zstandard stream too (the scanner then refuses it), never raw text.
-	const zstd = magic === ZSTD_MAGIC || (magic & SKIPPABLE_MASK) >>> 0 === SKIPPABLE_MAGIC;
+	const shortMagic =
+		bytes.length > 0 && bytes.length < 4 && bytes.every((byte, index) => byte === [0x28, 0xb5, 0x2f, 0xfd][index]);
+	const zstd = shortMagic || magic === ZSTD_MAGIC || (magic & SKIPPABLE_MASK) >>> 0 === SKIPPABLE_MAGIC;
+	const unreadable = (reason: string): DshLogRead => ({
+		physical: zstd ? "zstd" : "jsonl",
+		frames: 0,
+		header: null,
+		events: [],
+		tail: { kind: "unreadable", reason },
+		problems,
+	});
+	if (!Number.isSafeInteger(maxDecodedBytes) || maxDecodedBytes < 0) {
+		problems.push("invalid decoded byte limit");
+		return unreadable("invalid decoded byte limit");
+	}
 	let text = "";
 	let frames = 0;
 	let tail: DshTail = { kind: "clean" };
@@ -165,8 +179,10 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 				const part = zstdDecompressSync(bytes.subarray(start, end), {
 					maxOutputLength: Math.max(1, maxDecodedBytes - decoded),
 				});
+				if (part.length > maxDecodedBytes - decoded)
+					throw Object.assign(new RangeError("decoded size bound"), { code: "ERR_BUFFER_TOO_LARGE" });
 				decoded += part.length;
-				parts.push(part.toString("utf8"));
+				parts.push(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(part));
 			} catch (error) {
 				// A complete frame that does not decode (checksum, structure) is corruption, not a torn tail.
 				const over = (error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE";
@@ -194,7 +210,19 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 			tail = { kind: "torn-frame", completeBytes, trailingBytes: scan.trailing };
 		}
 	} else {
-		text = Buffer.from(bytes).toString("utf8");
+		if (bytes.length > maxDecodedBytes) {
+			problems.push(`decoded output would exceed ${maxDecodedBytes} bytes`);
+			return unreadable("the decoded size bound was exceeded");
+		}
+		// Only newline-terminated rows are evidence. A cut inside a UTF-8 codepoint in the unfinished row stays a torn tail.
+		const end = Buffer.from(bytes).lastIndexOf(0x0a) + 1;
+		try {
+			text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, end));
+		} catch {
+			problems.push("raw JSONL contains invalid UTF-8");
+			return unreadable("invalid UTF-8");
+		}
+		if (end < bytes.length) tail = { kind: "torn-row", trailingBytes: bytes.length - end };
 	}
 	const parsed = parseRows(text, problems);
 	if (parsed.unterminated !== "") {
@@ -318,7 +346,7 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 		const surface = SURFACE_TYPES.has(event.type);
 		if (surface && event.surfaceOp === undefined)
 			add("surface-op-missing", "error", `${event.type} is a surface event without surfaceOp`, event.seq);
-		if (!surface && event.surfaceOp !== undefined)
+		if (known.has(event.type) && !surface && event.surfaceOp !== undefined)
 			add("surface-op-unexpected", "error", `${event.type} is a log-only event carrying surfaceOp`, event.seq);
 		if (previousTime !== null && event.time < previousTime)
 			add("time-went-backwards", "info", "event time is earlier than the previous event's", event.seq);
@@ -396,6 +424,8 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 				const call = calls.get(callId);
 				if (call === undefined)
 					add("result-without-call", "error", "a tool result names no recorded call", event.seq);
+				else if (call.resultSeq !== null)
+					add("duplicate-tool-result", "error", "a tool call already has a recorded result", event.seq);
 				else {
 					call.resultSeq = event.seq;
 					call.isError = message.isError === true;

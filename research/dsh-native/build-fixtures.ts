@@ -1,21 +1,23 @@
-// Turns the raw captures of the study (kept OUTSIDE the repository, `<research-data>/dsh-native/raw/<case>/`) into the sanitised,
+// Turns the raw captures of the study (kept OUTSIDE the repository, `<research-data>/dsh-native/run-final/raw/<case>/`) into the sanitised,
 // committed fixtures under research/dsh-native/fixtures/real/. Deterministic: the same raw capture gives the same bytes.
 //
-//   node research/dsh-native/build-fixtures.ts [<raw-dir>]
+//   node research/dsh-native/build-fixtures.ts [<raw-dir> [<destination>]]
 //
 // Each case holds `session.v4.jsonl.zstd` (the log DSH persisted), `stream.ndjson` (the headless `--json` stream) and, where an
 // observer ran, `observer.ndjson` (the live `session/event` feed a passive Cordis plugin saw). The fixtures are the decoded and
 // sanitised log, the sanitised stream, and `comparison.json`: the measured relationship between the three, which is the evidence.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { endoSecretScanV0 } from "../../cli/secret-scan.ts";
 import { researchDataRoot } from "../data.ts";
-import { encodeDshJsonl, readDshLog } from "./log.ts";
+import { checkDshLog, dshLogAcceptable, encodeDshJsonl, readDshLog } from "./log.ts";
 import { findLeaks, Sanitiser } from "./sanitise.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
+export const DEFAULT_RAW = join(researchDataRoot(), "dsh-native", "run-final", "raw");
 export const FIXTURES = join(HERE, "fixtures", "real");
 
 export const STUDY_PROMPTS = {
@@ -30,6 +32,9 @@ export const STUDY_PROMPTS = {
 
 export const CASES = Object.keys(STUDY_PROMPTS) as (keyof typeof STUDY_PROMPTS)[];
 
+const readUtf8 = (path: string): string =>
+	new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(readFileSync(path));
+
 const lines = (text: string): unknown[] =>
 	text
 		.split("\n")
@@ -39,18 +44,20 @@ const lines = (text: string): unknown[] =>
 /** The measured relationship between the persisted log, the live feed and the `--json` stream of one case. */
 function compare(raw: string, name: string, events: { type: string }[]): Record<string, unknown> {
 	let live: { type: string }[] | null = null;
-	let frames: Record<string, number> = {};
+	let frames: Record<string, number> | null = null;
 	try {
-		const observed = lines(readFileSync(join(raw, name, "observer.ndjson"), "utf8")) as {
+		const observed = lines(readUtf8(join(raw, name, "observer.ndjson"))) as {
 			feed: string;
 			event?: { type: string };
 			kind?: string;
 		}[];
+		frames = {};
 		live = observed.filter((o) => o.feed === "session/event").map((o) => o.event!);
 		for (const o of observed.filter((x) => x.feed === "agent/assistant-stream"))
 			frames[o.kind ?? "?"] = (frames[o.kind ?? "?"] ?? 0) + 1;
-	} catch {
-		frames = {};
+	} catch (error) {
+		// Missing observation is unknown, not zero. Malformed observation must not be disguised as missing.
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 	const json = (value: unknown): string => JSON.stringify(value);
 	const same = live === null ? null : live.length === events.length && json(live) === json(events);
@@ -67,7 +74,7 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 		live === null || offset === null || offset === 0
 			? []
 			: events.slice(0, offset).map((e) => `${(e as { seq?: number }).seq}:${e.type}`);
-	const stream = lines(readFileSync(join(raw, name, "stream.ndjson"), "utf8")) as { type: string; phase?: string }[];
+	const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))) as { type: string; phase?: string }[];
 	return {
 		persistedEvents: events.length,
 		liveEvents: live?.length ?? null,
@@ -84,7 +91,9 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 }
 
 export function buildFixtures(raw: string, destination = FIXTURES): void {
-	mkdirSync(destination, { recursive: true });
+	// Prepare every byte before opening the destination for mutation.
+	const output = new Map<string, string>();
+	const vocabulary = JSON.parse(readFileSync(join(HERE, "vocabulary.json"), "utf8"));
 	const home = homedir();
 	const comparison: Record<string, unknown> = {};
 	for (const name of CASES) {
@@ -103,28 +112,54 @@ export function buildFixtures(raw: string, destination = FIXTURES): void {
 			canaries: [],
 		});
 		const read = readDshLog(readFileSync(join(raw, name, "session.v4.jsonl.zstd")));
-		if (read.header === null) throw new Error(`${name}: no header`);
-		comparison[name] = compare(raw, name, read.events);
+		if (
+			read.header === null ||
+			read.tail.kind !== "clean" ||
+			read.problems.length > 0 ||
+			!dshLogAcceptable(checkDshLog(read, vocabulary))
+		)
+			throw new Error(`${name}: capture is not clean valid evidence (${read.tail.kind}); raw bytes left untouched`);
+		// Comparison includes raw type labels; pass it through the same path/id sanitiser and final privacy gate.
+		comparison[name] = sanitiser.sanitiseStreamLine(compare(raw, name, read.events));
 		const clean = sanitiser.sanitiseLog(read.header, read.events);
 		const eventsText = encodeDshJsonl(clean.header, clean.events);
-		const canaries = [userInfo().username, home, researchDataRoot(), "You are a coding agent"];
-		const stream = lines(readFileSync(join(raw, name, "stream.ndjson"), "utf8")).map((line) =>
+		const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))).map((line) =>
 			sanitiser.sanitiseStreamLine(line),
 		);
 		const streamText = `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
-		// Fail the build, not the review: nothing is written for a case that still leaks.
-		for (const [file, text] of [
-			[`${name}.events.jsonl`, eventsText],
-			[`${name}.stream.ndjson`, streamText],
-		] as const) {
-			const leaks = findLeaks(text, canaries);
-			if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
-		}
-		writeFileSync(join(destination, `${name}.events.jsonl`), eventsText);
-		writeFileSync(join(destination, `${name}.stream.ndjson`), streamText);
+		output.set(`${name}.events.jsonl`, eventsText);
+		output.set(`${name}.stream.ndjson`, streamText);
 	}
-	writeFileSync(join(destination, "comparison.json"), `${JSON.stringify(comparison, null, "\t")}\n`);
+	output.set("comparison.json", `${JSON.stringify(comparison, null, "\t")}\n`);
+	for (const [file, text] of output) {
+		const leaks = [
+			...findLeaks(text, [home, researchDataRoot(), "You are a coding agent"]),
+			...endoSecretScanV0([{ where: file, text }], ["/fixture"]).findings.map((f) => f.kind),
+		];
+		if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
+	}
+	// Sibling staging keeps rename on one filesystem. On a publication error restore the previous complete directory.
+	const target = resolve(destination);
+	mkdirSync(dirname(target), { recursive: true });
+	const staging = mkdtempSync(join(dirname(target), `.${basename(target)}-stage-`));
+	const backup = join(staging, "previous");
+	const ready = join(staging, "ready");
+	try {
+		mkdirSync(ready);
+		for (const [file, text] of output) writeFileSync(join(ready, file), text);
+		const hadPrevious = existsSync(target);
+		if (hadPrevious) renameSync(target, backup);
+		try {
+			renameSync(ready, target);
+		} catch (error) {
+			if (hadPrevious) renameSync(backup, target);
+			throw error;
+		}
+	} finally {
+		// If rollback itself failed, retain the backup for recovery.
+		if (!existsSync(backup) || existsSync(target)) rmSync(staging, { recursive: true, force: true });
+	}
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))
-	buildFixtures(process.argv[2] ?? join(researchDataRoot(), "dsh-native", "raw"));
+	buildFixtures(process.argv[2] ?? DEFAULT_RAW, process.argv[3] ?? FIXTURES);

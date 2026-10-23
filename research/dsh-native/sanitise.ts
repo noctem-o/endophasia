@@ -22,7 +22,7 @@ export interface SanitiseOptions {
 	paths: { prefix: string; label: string }[];
 	/** User prompt texts the study itself chose; every other user/developer text is withheld. */
 	keepUserTexts: readonly string[];
-	/** Strings that must not survive (the user's name, the machine's home): `findLeaks` input, also used to fail fast. */
+	/** Strings that must not survive (unambiguous capture markers, absolute home paths): `findLeaks` input, also used to fail fast. */
 	canaries: readonly string[];
 }
 
@@ -192,7 +192,7 @@ export function findLeaks(text: string, canaries: readonly string[]): string[] {
 	}
 	// A real absolute home path of any user, a uuid-shaped id that was not mapped, and a provider response id.
 	for (const [name, pattern] of [
-		["home path", /\/home\/[A-Za-z0-9._-]+\//],
+		["home path", /(?:\/home\/|\/Users\/)[A-Za-z0-9._-]+(?:\/|(?=["\s]|$))/],
 		["uuid", /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/],
 		["provider response id", /chatcmpl-[A-Za-z0-9]+/],
 	] as const) {

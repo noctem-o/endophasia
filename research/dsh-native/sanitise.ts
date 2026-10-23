@@ -161,7 +161,9 @@ export class Sanitiser {
 			const data = copy.data as { [key: string]: Json } | undefined;
 			// Every user message wherever it sits (the inbox splice restates the prompt, as `inserted[]`); a user/message EVENT is one
 			// whatever its fields say.
-			if (row.type === "user/message" && data !== undefined) this.scrubUser(data);
+			// The recursive visitor handles normal role/source-shaped messages. Only force the event-shaped exception here,
+			// otherwise a second pass would withhold the placeholder's length instead of the original text's length.
+			if (row.type === "user/message" && data !== undefined && !this.userMessage(data)) this.scrubUser(data);
 			this.visitUserMessages(copy);
 			// A derived title is DSH's rewording of the first prompt: kept only when that prompt was kept.
 			if (row.type === "session/title" && data !== undefined && typeof data.title === "string") {

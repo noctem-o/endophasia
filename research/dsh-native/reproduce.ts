@@ -260,6 +260,8 @@ export function assertRecovery(
 
 /** Run one scenario into `<out>/raw/<scenario>/`. Returns the process outcome. */
 export async function reproduce(options: ReproduceOptions): Promise<{ code: number | null; dir: string }> {
+	// Provenance is checked in the caller's cwd; children run in the scratch workspace. Keep all checkout paths absolute.
+	options = { ...options, dsh: resolve(options.dsh) };
 	// The scenario names a directory that is deleted below: it must be one of ours, never a path.
 	if (!(SCENARIOS as readonly string[]).includes(options.scenario))
 		throw new Error(`unknown scenario ${JSON.stringify(options.scenario)}`);

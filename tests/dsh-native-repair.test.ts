@@ -29,7 +29,7 @@ import {
 	profilePatch,
 	waitForProcess,
 } from "../research/dsh-native/reproduce.ts";
-import { findLeaks } from "../research/dsh-native/sanitise.ts";
+import { findLeaks, Sanitiser } from "../research/dsh-native/sanitise.ts";
 import { encodeFrames, encodeRaw } from "../research/dsh-native/synthetic.ts";
 
 const study = fileURLToPath(new URL("../research/dsh-native/", import.meta.url));
@@ -166,6 +166,33 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 		expect(result.findings.map((f) => f.code)).toContain("duplicate-tool-result");
 		expect(result.summary.toolCalls[0]).toMatchObject({ resultSeq: first.seq, isError: false });
 		expect(dshLogAcceptable(result)).toBe(false);
+	});
+});
+
+describe("withheld lengths describe the original text (SYNTHETIC)", () => {
+	it.each(["top-normal", "top-no-role", "nested"])("scrubs %s messages once", (shape) => {
+		const text = "x".repeat(400);
+		const section = "y".repeat(317);
+		const message = {
+			...(shape === "top-no-role" ? {} : { role: "user" }),
+			content: [{ type: "text", text }],
+			source: { kind: "runtime-context", sections: [{ text: section }] },
+		};
+		const row = {
+			type: shape === "nested" ? "agent/inbox/spliced" : "user/message",
+			seq: 0,
+			time: 1,
+			data: shape === "nested" ? { inserted: [message] } : message,
+		};
+		const before = JSON.stringify(row);
+		const clean = new Sanitiser({ paths: [], keepUserTexts: [], canaries: [] }).sanitiseLog(header, [row]) as {
+			events: any[];
+		};
+		const data = clean.events[0].data;
+		const result = shape === "nested" ? data.inserted[0] : data;
+		expect(result.content[0].text).toBe("[withheld: 400 chars]");
+		expect(result.source.sections[0].text).toBe("[withheld: 317 chars]");
+		expect(JSON.stringify(row)).toBe(before);
 	});
 });
 

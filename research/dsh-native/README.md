@@ -35,6 +35,7 @@ paths and are never committed.
 * Execution requires the exact clean provenance pin, including a clean entire working tree. Scratch roots must be new and empty
   or carry this harness's ownership marker; symlinked roots/cleanup ancestors are refused. Repeated runs replace only that
   scenario's scratch home/workspace and raw outputs (both crash outputs), never other scenarios or historical raw data.
+  Relative checkout paths are resolved against the caller's directory before children change to the scratch workspace.
 * Scratch roots must belong to the current user and are restricted to `0700` before captures are written or reused. This root
   protects child-created raw artifacts regardless of their file modes. Dynamic paths and model URLs are quoted YAML scalars.
 * Each child has a 120-second deadline. `no-key-error` deliberately requires CLI exit 1 plus a persisted failed turn; other
@@ -58,6 +59,10 @@ JSON strings and keys, refuses unexpected absolute paths (including unlisted Uni
 only normalised `/fixture` paths. Relative event names and web URLs are not local paths. The builder prepares the entire set before writing a sibling staging directory and publishes
 with directory renames and rollback on synchronous failure. It is not crash-atomic across the two renames: after abrupt process or
 host death, a `.real-stage-*` sibling may hold `previous/` for manual recovery. Do not run concurrent builders for one destination.
+
+Withheld lengths describe the original captured text's JavaScript string length. Each user message is scrubbed once, including
+nested inbox copies. A later audit corrected 20 formerly double-scrubbed length placeholders in the five event fixtures against
+the retained clean raw captures; no private text, event structure, stream or comparison changed. See `VALIDATION.md` for the audit.
 
 For new experiments, use a new empty output root; retain historical evidence. The optional second positional builder argument
 selects a separate destination. Destinations must be disjoint from the canonical raw root and source case/file targets, including

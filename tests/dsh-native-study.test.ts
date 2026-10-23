@@ -8,7 +8,7 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
@@ -591,7 +591,7 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 			mkdirSync(base, { recursive: true });
 			const out = mkdtempSync(join(base, 'run- # " [quoted]-'));
 			dirs.push(out);
-			const result = await reproduce({ dsh: checkout!, out, scenario: "stub-retry" });
+			const result = await reproduce({ dsh: relative(process.cwd(), checkout!), out, scenario: "stub-retry" });
 			expect(result.code).toBe(0);
 			const read = readDshLog(readFileSync(join(result.dir, "session.v4.jsonl.zstd")));
 			const sanitiser = new Sanitiser({

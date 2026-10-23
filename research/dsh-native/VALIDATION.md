@@ -208,3 +208,34 @@ adjustment: require a non-whitespace character after `file:` before treating it 
 also permits ordinary `file: notes.txt` prose; all actual file-URI host and traversal regressions remain refused. The full local
 suite at the main repair commit passed 4,639 tests with 47 skips; typecheck, build and package smoke passed, and lint retained only
 the existing unused-variable warning. Final targeted checks after that narrow adjustment still pass 132 tests.
+
+### Two additional findings received during final validation
+
+Two later review threads arrived while the preceding checks were running. Both reproduced before repair: a relative source
+checkout failed to bootstrap after the child changed directory, and a normal top-level user message's 400-character private
+text was reported as the 21-character placeholder. The reader/study run showed those two failures before the fixes.
+
+`reproduce` now resolves the checkout against the caller's directory once, before provenance, preload/CLI path and environment
+construction. The opt-in pinned-source stub regression now deliberately supplies a relative checkout path while retaining its
+YAML-significant output path. It passes with the same isolation safeguards and no model request.
+
+The sanitiser now lets the recursive visitor handle normal role/source-shaped user messages exactly once; the explicit
+user-event fallback handles only other shapes. Three regressions cover normal top-level, role-less top-level and nested inbox
+messages, asserting the original content and section lengths separately and verifying the input was not modified. It does not
+recognise placeholder-looking private text as already sanitised or skip source sections.
+
+This finding intentionally supersedes the earlier byte-identical-fixture observations. The original `run-final/raw` captures
+are available and pass the stricter clean-read, structural, session-identity and privacy gates. A separate staged rebuild was
+compared recursively with the committed output. A machine check allowed only old/new withheld-length strings, and required
+each new string to equal the corresponding original raw string's JavaScript length. Exactly 20 fields changed: four fields in
+one runtime-context event in each of the five event fixtures. All formerly said 21; content lengths are now 629/636/634/633 as
+appropriate, and section lengths are 101/108/106/105, 285 and 153. Crash-resumed retains the same corrected inherited event as
+crash-killed. Every other value is unchanged; all five stream files and comparison.json are byte-identical. The complete set
+was then published through the builder, verified byte-for-byte against the audited staging output, and all 15 raw source files
+were hash-checked unchanged before and after publication. No raw text or new observation was published. Prior fixture bytes
+remain in Git history; the private audit manifest stays beside the staged research data.
+
+Final targeted release/study/repair verification after fixture publication passes 135 tests with the pinned checkout enabled.
+For #71, the corrected fixture metadata changes fixture bytes: rerun importer tests using fresh stores. A store that already
+imported the older sanitised fixture should retain its normal changed-history refusal; do not bypass its digest checks. These
+are fixture corrections, not changes to the original runtime logs or new importer semantics.

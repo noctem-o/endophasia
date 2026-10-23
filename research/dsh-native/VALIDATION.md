@@ -158,3 +158,6 @@ record parsing there too: empty complete records or a final JSON record lacking 
 prior output. Two parameterised regressions each exercise blank and unterminated records in these two capture streams. Original
 historical streams and comparisons still reproduce identically. This extends the physical-row finding across capture inputs;
 it does not claim full semantic schema validation of observer/headless rows.
+
+An existing empty headless capture remains a measured zero-record input and is now also emitted as an empty output file,
+rather than fabricating one blank record. A regression checks both byte-empty output and `jsonStreamLines: 0`.

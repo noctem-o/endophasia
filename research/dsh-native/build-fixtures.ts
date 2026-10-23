@@ -181,7 +181,7 @@ export function buildFixtures(raw: string, destination = FIXTURES): void {
 		const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))).map((line) =>
 			sanitiser.sanitiseStreamLine(line),
 		);
-		const streamText = `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
+		const streamText = stream.length === 0 ? "" : `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
 		output.set(`${name}.events.jsonl`, eventsText);
 		output.set(`${name}.stream.ndjson`, streamText);
 	}

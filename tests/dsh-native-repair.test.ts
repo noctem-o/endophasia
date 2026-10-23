@@ -188,6 +188,17 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 			expect(comparison[name].liveEvents).toBeNull();
 		}
 	});
+	it("preserves a measured empty headless capture without inventing a blank record", () => {
+		const { raw, destination } = inputs("empty-stream");
+		for (const name of CASES) writeFileSync(join(raw, name, "stream.ndjson"), "");
+		buildFixtures(raw, destination);
+		const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
+		for (const name of CASES) {
+			expect(readFileSync(join(destination, `${name}.stream.ndjson`), "utf8")).toBe("");
+			expect(comparison[name].jsonStreamLines).toBe(0);
+		}
+	});
+
 	it("sanitises comparison type/phase labels and scans comparison-only secret content", () => {
 		const { raw, destination } = inputs("comparison-privacy");
 		for (const name of CASES)

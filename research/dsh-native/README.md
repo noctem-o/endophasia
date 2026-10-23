@@ -49,5 +49,7 @@ with directory renames and rollback on synchronous failure. It is not crash-atom
 host death, a `.real-stage-*` sibling may hold `previous/` for manual recovery. Do not run concurrent builders for one destination.
 
 For new experiments, use a new empty output root; retain historical evidence. The optional second positional builder argument
-selects a separate destination. See the complete commands in [the reproduction section](../../docs/dsh-native-attachment.md#9-reproduce)
+selects a separate destination. Destinations must be disjoint from the canonical raw root and source case/file targets, including
+symlink aliases; publication inside raw evidence is also refused. Live-only event types are computed after a verified durable
+suffix; mismatched correspondence is unknown (`null`). See the complete commands in [the reproduction section](../../docs/dsh-native-attachment.md#9-reproduce)
 and the [repair validation record](VALIDATION.md).

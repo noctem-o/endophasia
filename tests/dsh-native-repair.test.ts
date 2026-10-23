@@ -1,7 +1,16 @@
 // Adversarial inputs below are SYNTHETIC, never runtime evidence.
 import { type ChildProcess, execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -42,6 +51,42 @@ describe("reader integrity regressions (SYNTHETIC)", () => {
 		expect(read.tail.kind).toBe("unreadable");
 		expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
 	});
+	it.each([false, true])(
+		"refuses a row continued in another complete frame (empty frame between=%s)",
+		(emptyBetween) => {
+			const raw = encodeRaw(header, events);
+			const cut = raw.indexOf(0x0a) + 12;
+			const parts = [
+				zstdCompressSync(raw.subarray(0, cut)),
+				...(emptyBetween ? [zstdCompressSync(Buffer.alloc(0))] : []),
+				zstdCompressSync(raw.subarray(cut)),
+			];
+			const read = readDshLog(Buffer.concat(parts));
+			expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
+			expect(read.tail.kind).not.toBe("clean");
+		},
+	);
+	it.each([false, true])("refuses empty complete physical rows (compressed=%s)", (compressed) => {
+		const raw = encodeRaw(header, events);
+		for (const at of [0, raw.indexOf(0x0a) + 1, raw.length]) {
+			const damaged = Buffer.concat([raw.subarray(0, at), Buffer.from("\n"), raw.subarray(at)]);
+			const read = readDshLog(compressed ? zstdCompressSync(damaged) : damaged);
+			expect(read.problems).toEqual(expect.arrayContaining([expect.stringMatching(/empty.*row|row.*empty/)]));
+			expect(dshLogAcceptable(checkDshLog(read, vocabulary))).toBe(false);
+		}
+	});
+	it("refuses duplicate open step starts without inflating the observed step count", () => {
+		const at = events.findIndex((e) => e.type === "step/start");
+		const duplicate = [...events.slice(0, at + 1), events[at]!, ...events.slice(at + 1)].map((e, seq) => ({
+			...e,
+			seq,
+		}));
+		const result = check(encodeRaw(header, duplicate));
+		expect(result.findings.map((f) => f.code)).toContain("step-started-twice");
+		expect(result.summary.turns[0]!.steps).toBe(2);
+		expect(dshLogAcceptable(result)).toBe(false);
+	});
+
 	it("enforces the raw byte limit at and immediately beyond the boundary", () => {
 		const raw = encodeRaw(header, events);
 		expect(readDshLog(raw, raw.length).tail.kind).toBe("clean");
@@ -144,6 +189,83 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 		const text = readFileSync(join(destination, "comparison.json"), "utf8");
 		expect(text).not.toContain(temp);
 		expect(text).toContain("/fixture/study");
+	});
+
+	it.each(["raw", "ancestor", "symlink-alias", "symlink-parent", "raw-child"])(
+		"refuses publication overlapping raw evidence: %s",
+		(kind) => {
+			const { raw } = inputs(`overlap-${kind}`);
+			const before = CASES.map((name) => readFileSync(join(raw, name, "session.v4.jsonl.zstd")));
+			let destination =
+				kind === "ancestor" ? join(raw, "..") : kind === "raw-child" ? join(raw, "nested", "output") : raw;
+			if (kind === "symlink-alias") {
+				destination = `${raw}-alias`;
+				symlinkSync(raw, destination);
+			}
+			if (kind === "symlink-parent") {
+				const alias = `${raw}-parent`;
+				symlinkSync(join(raw, ".."), alias);
+				destination = join(alias, "raw");
+			}
+			expect(() => buildFixtures(raw, destination)).toThrow(/overlap/);
+			for (const [index, name] of CASES.entries())
+				expect(readFileSync(join(raw, name, "session.v4.jsonl.zstd"))).toEqual(before[index]);
+		},
+	);
+	it.each(["directory", "file"])("protects source evidence reached through a raw-case %s symlink", (kind) => {
+		const { raw } = inputs(`source-link-${kind}`);
+		const source = join(raw, CASES[0]!, "session.v4.jsonl.zstd");
+		const before = readFileSync(source);
+		const external = join(temp, `external-source-${kind}`);
+		if (kind === "directory") {
+			renameSync(join(raw, CASES[0]!), external);
+			symlinkSync(external, join(raw, CASES[0]!));
+		} else {
+			mkdirSync(external);
+			renameSync(source, join(external, "original"));
+			symlinkSync(join(external, "original"), source);
+		}
+		expect(() => buildFixtures(raw, external)).toThrow(/overlap/);
+		expect(readFileSync(source)).toEqual(before);
+	});
+
+	it.each([0, 4, events.length])(
+		"retains live-only types after a matching durable suffix beginning at seq %i",
+		(offset) => {
+			const { raw, destination } = inputs(`late-observer-${offset}`);
+			const extra = {
+				type: "future/volatile",
+				seq: events.length,
+				time: events.at(-1)!.time,
+				data: {},
+				ignorable: true,
+			};
+			for (const name of CASES)
+				writeFileSync(
+					join(raw, name, "observer.ndjson"),
+					`${[...events.slice(offset), extra]
+						.map((event) => JSON.stringify({ feed: "session/event", event }))
+						.join("\n")}\n`,
+				);
+			buildFixtures(raw, destination);
+			const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
+			for (const name of CASES) expect(comparison[name].liveOnlyTypes).toEqual(["future/volatile"]);
+		},
+	);
+	it("does not infer live-only events when the observed overlap differs from the persisted log", () => {
+		const { raw, destination } = inputs("mismatched-observer");
+		const live = [
+			...events.slice(4).map((e, i) => (i === 0 ? { ...e, time: -1 } : e)),
+			{ type: "future/volatile", seq: events.length, time: 1, data: {} },
+		];
+		for (const name of CASES)
+			writeFileSync(
+				join(raw, name, "observer.ndjson"),
+				`${live.map((event) => JSON.stringify({ feed: "session/event", event })).join("\n")}\n`,
+			);
+		buildFixtures(raw, destination);
+		const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
+		for (const name of CASES) expect(comparison[name].liveOnlyTypes).toBeNull();
 	});
 
 	it.each(["user", "app", "read", "tool"])("does not mistake ordinary vocabulary for the account %s", (username) => {

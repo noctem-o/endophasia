@@ -118,7 +118,10 @@ function parseRows(text: string, problems: string[]): { rows: unknown[]; untermi
 	// A final element without a newline after it is an incomplete row.
 	const unterminated = lines.pop() ?? "";
 	for (const [index, line] of lines.entries()) {
-		if (line === "") continue;
+		if (line === "") {
+			problems.push(`row ${index + 1} is an empty physical row`);
+			break;
+		}
 		try {
 			rows.push(JSON.parse(line));
 		} catch {
@@ -181,6 +184,10 @@ export function readDshLog(bytes: Uint8Array, maxDecodedBytes = DSH_LOG_MAX_DECO
 				});
 				if (part.length > maxDecodedBytes - decoded)
 					throw Object.assign(new RangeError("decoded size bound"), { code: "ERR_BUFFER_TOO_LARGE" });
+				// Never reconstruct one row by joining independent frames. A final unfinished row retains the existing
+				// torn-row/prefix report below; an unfinished non-final frame is invalid framing.
+				if (part.length > 0 && part[part.length - 1] !== 0x0a && end !== scan.frames.at(-1)!.end)
+					throw new RangeError("a non-final Zstandard frame ends inside a row");
 				decoded += part.length;
 				parts.push(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(part));
 			} catch (error) {
@@ -401,6 +408,10 @@ export function checkDshLog(read: DshLogRead, vocabulary: DshVocabulary): DshLog
 				const key = `${data.turn}:${data.step}`;
 				if (!openTurns.includes(data.turn as number))
 					add("step-outside-turn", "error", `step ${key} has no open turn`, event.seq);
+				if (openSteps.has(key)) {
+					add("step-started-twice", "error", `step ${key} started while already open`, event.seq);
+					break;
+				}
 				openSteps.add(key);
 				const entry = turnIndex.get(data.turn as number);
 				if (entry !== undefined) entry.steps += 1;

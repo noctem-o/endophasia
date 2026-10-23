@@ -7,9 +7,18 @@
 // observer ran, `observer.ndjson` (the live `session/event` feed a passive Cordis plugin saw). The fixtures are the decoded and
 // sanitised log, the sanitised stream, and `comparison.json`: the measured relationship between the three, which is the evidence.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { endoSecretScanV0 } from "../../cli/secret-scan.ts";
 import { researchDataRoot } from "../data.ts";
@@ -42,13 +51,13 @@ const lines = (text: string): unknown[] =>
 		.map((line) => JSON.parse(line));
 
 /** The measured relationship between the persisted log, the live feed and the `--json` stream of one case. */
-function compare(raw: string, name: string, events: { type: string }[]): Record<string, unknown> {
-	let live: { type: string }[] | null = null;
+function compare(raw: string, name: string, events: { type: string; seq: number }[]): Record<string, unknown> {
+	let live: { type: string; seq: number }[] | null = null;
 	let frames: Record<string, number> | null = null;
 	try {
 		const observed = lines(readUtf8(join(raw, name, "observer.ndjson"))) as {
 			feed: string;
-			event?: { type: string };
+			event?: { type: string; seq: number };
 			kind?: string;
 		}[];
 		frames = {};
@@ -65,7 +74,7 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 	// The live feed carries only what was appended after the observer attached. When it starts later than seq 0, say where, and
 	// whether it is exactly the rest of the persisted log; the persisted events before it were never announced.
 	const first = live === null || live.length === 0 ? null : (live[0] as { seq?: number }).seq;
-	const offset = typeof first === "number" ? first : null;
+	const offset = typeof first === "number" && Number.isSafeInteger(first) && first >= 0 ? first : null;
 	const suffix =
 		live === null || offset === null
 			? null
@@ -74,6 +83,18 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 		live === null || offset === null || offset === 0
 			? []
 			: events.slice(0, offset).map((e) => `${(e as { seq?: number }).seq}:${e.type}`);
+	// Only name events beyond a verified overlapping persisted suffix. A mismatched overlap is unknown correspondence.
+	const overlap =
+		live !== null && offset !== null && Number.isSafeInteger(offset) && offset >= 0 && offset <= events.length
+			? Math.min(live.length, events.length - offset)
+			: null;
+	const matched =
+		live !== null &&
+		overlap !== null &&
+		live.every((event, index) => event.seq === offset! + index) &&
+		live.slice(0, overlap).every((event, index) => json(event) === json(events[offset! + index]));
+	const liveOnlyTypes =
+		live === null ? null : live.length === 0 ? [] : matched ? live.slice(overlap!).map((event) => event.type) : null;
 	const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))) as { type: string; phase?: string }[];
 	return {
 		persistedEvents: events.length,
@@ -83,20 +104,48 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 		liveFirstSeq: offset,
 		liveIsExactlyThePersistedSuffixFromThere: suffix,
 		persistedEventsNeverAnnouncedLive: unannounced,
-		liveOnlyTypes: live === null ? null : live.slice(events.length).map((e) => e.type),
+		liveOnlyTypes,
 		transientAssistantStreamFrames: frames,
 		jsonStreamLines: stream.length,
 		jsonStreamTypes: [...new Set(stream.map((l) => (l.type === "status" ? `status:${l.phase}` : l.type)))],
 	};
 }
 
+/** Resolve aliases even for a destination whose last path components do not exist yet. */
+function canonicalPath(path: string): string {
+	const absolute = resolve(path);
+	if (existsSync(absolute)) return realpathSync(absolute);
+	const parent = dirname(absolute);
+	return join(canonicalPath(parent), basename(absolute));
+}
+
+const containsPath = (parent: string, child: string): boolean => {
+	const rest = relative(parent, child);
+	return rest === "" || (!isAbsolute(rest) && rest !== ".." && !rest.startsWith(`..${sep}`));
+};
+
 export function buildFixtures(raw: string, destination = FIXTURES): void {
+	// Protect source evidence before staging or publication. Resolve symlink aliases and future child destinations too.
+	raw = realpathSync(raw);
+	const target = resolve(destination);
+	const canonicalTarget = canonicalPath(target);
+	const protectSource = (source: string): void => {
+		if (containsPath(canonicalTarget, source) || containsPath(source, canonicalTarget))
+			throw new Error("fixture destination must not overlap the raw capture tree or resolved source inputs");
+	};
+	protectSource(raw);
 	// Prepare every byte before opening the destination for mutation.
 	const output = new Map<string, string>();
 	const vocabulary = JSON.parse(readFileSync(join(HERE, "vocabulary.json"), "utf8"));
 	const home = homedir();
 	const comparison: Record<string, unknown> = {};
 	for (const name of CASES) {
+		// Source cases and individual files may themselves be aliases. Publication must preserve their actual targets too.
+		protectSource(realpathSync(join(raw, name)));
+		for (const file of ["session.v4.jsonl.zstd", "stream.ndjson", "observer.ndjson"]) {
+			const path = join(raw, name, file);
+			if (existsSync(path)) protectSource(realpathSync(path));
+		}
 		// reproduce.ts lays a run out as <out>/<scenario>/{home,ws} beside <out>/raw/<case>/ (both crash cases share "crash").
 		const runDir = dirname(raw);
 		const scenarioDir = name.startsWith("crash") ? "crash" : name;
@@ -139,7 +188,6 @@ export function buildFixtures(raw: string, destination = FIXTURES): void {
 		if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
 	}
 	// Sibling staging keeps rename on one filesystem. On a publication error restore the previous complete directory.
-	const target = resolve(destination);
 	mkdirSync(dirname(target), { recursive: true });
 	const staging = mkdtempSync(join(dirname(target), `.${basename(target)}-stage-`));
 	const backup = join(staging, "previous");

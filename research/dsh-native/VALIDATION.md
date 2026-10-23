@@ -131,3 +131,24 @@ After main integration, the full Node 22.19.0 run with `ENDO_DSH_CHECKOUT` and `
 47 skipped** (246.48 s). After the capture-byte fix, release/study/repair tests passed **89/89** on Node 22.19.0; typecheck and lint
 passed. Real pinned-source stub retry and crash/resume were rerun in a separate disposable output root with byte-preserving
 capture and passed. Original raw captures, committed fixtures and the previous fresh observations were retained.
+
+## Fresh Codex review — five further findings
+
+The next review of `bedf02704eaee2a1df5c0ad5b219b569e711fef3` reported five additional P2 findings. All five reproduced on
+isolated synthetic inputs: thirteen new cases failed before repair (with one zero-offset control already passing), and two
+further failing cases exposed source-symlink variants of the publication hazard. No historical capture was used as a mutation
+target. Sixteen regression cases were added in total.
+
+| Finding | Repair and evidence |
+| --- | --- |
+| A JSON row spanning valid zstd frames became clean | Refuse a non-final, nonempty complete frame that does not end with a newline, before concatenation. Tests split a row into independently valid frames, with and without an empty intervening frame. The existing final unfinished-row case still returns complete prefix rows with explicit torn-row status; it is never clean fixture evidence. |
+| Empty physical rows disappeared | Empty complete rows now stop parsing with a read problem. Tests cover before the header, between rows and after the final event, raw and compressed. The expected empty split element after a single terminating newline is not a physical row and remains valid. |
+| Duplicate open step starts inflated counts | A second start for the already-open turn/step emits `step-started-twice` and does not increment the summary again. Regression duplicates a real fixture's step start while keeping contiguous sequence numbers. |
+| Output overlapping raw evidence could delete it | Before staging, canonical overlap checks protect the raw root, each case directory and actual source-file targets, including source symlinks and destination aliases/ancestors. Reject overlap in either direction, including a future destination inside raw. Seven synthetic overlap cases preserve source bytes. Raw paths are canonicalised, also making the documented relative input path sanitise consistently. |
+| Late attachment hid live-only events | Determine the observed overlap using the first DSH seq, verify byte-equivalent JSON correspondence and contiguous observed seqs, then report the trailing live-only types. Mismatch means `null` (unknown), not an empty list. Tests cover seq 0, a mid-log attach, attachment exactly at the persisted end, and a mismatched overlap. |
+
+All eleven original fixture outputs still reproduce byte-for-byte into a separate directory, including comparison.json. No
+committed runtime fixture, provenance pin or #71 code changed. No new model behaviour is claimed: this round exercises malformed
+inputs synthetically and the pinned real-runtime stub through the opt-in tests. Full local results and fresh CI are recorded in
+the PR conversation after completion. Public reader types/exports are unchanged; #71 must carry these further reader fixes
+through its move along with the earlier repairs. Publication still assumes no concurrent adversarial path replacement.

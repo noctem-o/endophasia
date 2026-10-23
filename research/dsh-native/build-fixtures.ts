@@ -44,11 +44,17 @@ export const CASES = Object.keys(STUDY_PROMPTS) as (keyof typeof STUDY_PROMPTS)[
 const readUtf8 = (path: string): string =>
 	new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(readFileSync(path));
 
-const lines = (text: string): unknown[] =>
-	text
+const lines = (text: string): unknown[] => {
+	if (text === "") return [];
+	if (!text.endsWith("\n")) throw new Error("capture ends with an unterminated JSON record");
+	return text
+		.slice(0, -1)
 		.split("\n")
-		.filter(Boolean)
-		.map((line) => JSON.parse(line));
+		.map((line, index) => {
+			if (line === "") throw new Error(`capture row ${index + 1} is empty`);
+			return JSON.parse(line);
+		});
+};
 
 /** The measured relationship between the persisted log, the live feed and the `--json` stream of one case. */
 function compare(raw: string, name: string, events: { type: string; seq: number }[]): Record<string, unknown> {

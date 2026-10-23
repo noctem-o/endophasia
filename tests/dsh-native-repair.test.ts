@@ -168,6 +168,16 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 		expect(readdirSync(destination)).toEqual(["previous"]);
 		expect(readFileSync(join(destination, "previous"), "utf8")).toBe("valid previous evidence");
 	});
+	it.each(["stream.ndjson", "observer.ndjson"])("refuses blank or unterminated physical records in %s", (file) => {
+		for (const damage of ["blank", "unterminated"]) {
+			const { raw, destination } = inputs(`capture-rows-${file}-${damage}`);
+			const record = file === "stream.ndjson" ? '{"type":"synthetic"}' : '{"feed":"agent/status","status":"idle"}';
+			writeFileSync(join(raw, CASES.at(-1)!, file), damage === "blank" ? `${record}\n\n` : record);
+			expect(() => buildFixtures(raw, destination)).toThrow(/row|record/);
+			expect(readdirSync(destination)).toEqual(["previous"]);
+		}
+	});
+
 	it("publishes a complete set and reports missing observer counts as unknown", () => {
 		const { raw, destination } = inputs("success");
 		buildFixtures(raw, destination);

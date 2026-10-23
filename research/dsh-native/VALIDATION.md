@@ -152,3 +152,9 @@ committed runtime fixture, provenance pin or #71 code changed. No new model beha
 inputs synthetically and the pinned real-runtime stub through the opt-in tests. Full local results and fresh CI are recorded in
 the PR conversation after completion. Public reader types/exports are unchanged; #71 must carry these further reader fixes
 through its move along with the earlier repairs. Publication still assumes no concurrent adversarial path replacement.
+
+The same blank-row normalisation was present in the observer/headless capture line helper. A follow-up applies strict complete
+record parsing there too: empty complete records or a final JSON record lacking its newline fail the builder, preserving the
+prior output. Two parameterised regressions each exercise blank and unterminated records in these two capture streams. Original
+historical streams and comparisons still reproduce identically. This extends the physical-row finding across capture inputs;
+it does not claim full semantic schema validation of observer/headless rows.

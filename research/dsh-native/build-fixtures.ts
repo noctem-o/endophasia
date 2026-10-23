@@ -1,21 +1,32 @@
-// Turns the raw captures of the study (kept OUTSIDE the repository, `<research-data>/dsh-native/raw/<case>/`) into the sanitised,
+// Turns the raw captures of the study (kept OUTSIDE the repository, `<research-data>/dsh-native/run-final/raw/<case>/`) into the sanitised,
 // committed fixtures under research/dsh-native/fixtures/real/. Deterministic: the same raw capture gives the same bytes.
 //
-//   node research/dsh-native/build-fixtures.ts [<raw-dir>]
+//   node research/dsh-native/build-fixtures.ts [<raw-dir> [<destination>]]
 //
 // Each case holds `session.v4.jsonl.zstd` (the log DSH persisted), `stream.ndjson` (the headless `--json` stream) and, where an
 // observer ran, `observer.ndjson` (the live `session/event` feed a passive Cordis plugin saw). The fixtures are the decoded and
 // sanitised log, the sanitised stream, and `comparison.json`: the measured relationship between the three, which is the evidence.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { encodeDshJsonl, readDshLog } from "../../adapters/dsh-native/log.ts";
+import { checkDshLog, dshLogAcceptable, encodeDshJsonl, readDshLog } from "../../adapters/dsh-native/log.ts";
+import { endoSecretScanV0 } from "../../cli/secret-scan.ts";
 import { researchDataRoot } from "../data.ts";
 import { findLeaks, Sanitiser } from "./sanitise.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
+export const DEFAULT_RAW = join(researchDataRoot(), "dsh-native", "run-final", "raw");
 export const FIXTURES = join(HERE, "fixtures", "real");
 
 export const STUDY_PROMPTS = {
@@ -30,44 +41,79 @@ export const STUDY_PROMPTS = {
 
 export const CASES = Object.keys(STUDY_PROMPTS) as (keyof typeof STUDY_PROMPTS)[];
 
-const lines = (text: string): unknown[] =>
-	text
+const readUtf8 = (path: string): string =>
+	new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(readFileSync(path));
+
+const lines = (text: string): unknown[] => {
+	if (text === "") return [];
+	if (!text.endsWith("\n")) throw new Error("capture ends with an unterminated JSON record");
+	return text
+		.slice(0, -1)
 		.split("\n")
-		.filter(Boolean)
-		.map((line) => JSON.parse(line));
+		.map((line, index) => {
+			if (line === "") throw new Error(`capture row ${index + 1} is empty`);
+			return JSON.parse(line);
+		});
+};
 
 /** The measured relationship between the persisted log, the live feed and the `--json` stream of one case. */
-function compare(raw: string, name: string, events: { type: string }[]): Record<string, unknown> {
-	let live: { type: string }[] | null = null;
-	let frames: Record<string, number> = {};
+function compare(
+	raw: string,
+	name: string,
+	sessionId: string,
+	events: { type: string; seq: number }[],
+): Record<string, unknown> {
+	let live: { type: string; seq: number }[] | null = null;
+	let frames: Record<string, number> | null = null;
 	try {
-		const observed = lines(readFileSync(join(raw, name, "observer.ndjson"), "utf8")) as {
+		const observed = lines(readUtf8(join(raw, name, "observer.ndjson"))) as {
 			feed: string;
-			event?: { type: string };
+			sessionId?: string;
+			event?: { type: string; seq: number };
 			kind?: string;
 		}[];
-		live = observed.filter((o) => o.feed === "session/event").map((o) => o.event!);
+		const sessionRows = observed.filter((o) => o.feed === "session/event");
+		if (sessionRows.some((row) => row.sessionId !== sessionId))
+			throw new Error(`${name}: observer session identity is missing or differs from the captured header`);
+		frames = Object.create(null) as Record<string, number>;
+		live = sessionRows.map((o) => o.event!);
 		for (const o of observed.filter((x) => x.feed === "agent/assistant-stream"))
 			frames[o.kind ?? "?"] = (frames[o.kind ?? "?"] ?? 0) + 1;
-	} catch {
-		frames = {};
+	} catch (error) {
+		// Missing observation is unknown, not zero. Malformed observation must not be disguised as missing.
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 	const json = (value: unknown): string => JSON.stringify(value);
 	const same = live === null ? null : live.length === events.length && json(live) === json(events);
 	const prefix = live === null ? null : events.every((e, i) => json(e) === json(live[i]));
 	// The live feed carries only what was appended after the observer attached. When it starts later than seq 0, say where, and
-	// whether it is exactly the rest of the persisted log; the persisted events before it were never announced.
+	// whether it is exactly the rest of the persisted log.
 	const first = live === null || live.length === 0 ? null : (live[0] as { seq?: number }).seq;
-	const offset = typeof first === "number" ? first : null;
+	const offset = typeof first === "number" && Number.isSafeInteger(first) && first >= 0 ? first : null;
 	const suffix =
 		live === null || offset === null
 			? null
 			: live.length === events.length - offset && live.every((e, i) => json(e) === json(events[offset + i]));
+	// Only name events beyond a verified overlapping persisted suffix. A mismatched overlap is unknown correspondence.
+	const overlap =
+		live !== null && offset !== null && Number.isSafeInteger(offset) && offset >= 0 && offset <= events.length
+			? Math.min(live.length, events.length - offset)
+			: null;
+	const matched =
+		live !== null &&
+		overlap !== null &&
+		live.every((event, index) => event.seq === offset! + index) &&
+		live.slice(0, overlap).every((event, index) => json(event) === json(events[offset! + index]));
+	// Absence is relative to this capture, including rows before attachment or after capture stopped.
+	// A missing feed or mismatched correspondence cannot establish which persisted rows were observed.
+	const captured = new Set(live?.map((event) => event.seq));
 	const unannounced =
-		live === null || offset === null || offset === 0
-			? []
-			: events.slice(0, offset).map((e) => `${(e as { seq?: number }).seq}:${e.type}`);
-	const stream = lines(readFileSync(join(raw, name, "stream.ndjson"), "utf8")) as { type: string; phase?: string }[];
+		live === null || (live.length > 0 && !matched)
+			? null
+			: events.filter((event) => !captured.has(event.seq)).map((event) => `${event.seq}:${event.type}`);
+	const liveOnlyTypes =
+		live === null ? null : live.length === 0 ? [] : matched ? live.slice(overlap!).map((event) => event.type) : null;
+	const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))) as { type: string; phase?: string }[];
 	return {
 		persistedEvents: events.length,
 		liveEvents: live?.length ?? null,
@@ -76,18 +122,48 @@ function compare(raw: string, name: string, events: { type: string }[]): Record<
 		liveFirstSeq: offset,
 		liveIsExactlyThePersistedSuffixFromThere: suffix,
 		persistedEventsNeverAnnouncedLive: unannounced,
-		liveOnlyTypes: live === null ? null : live.slice(events.length).map((e) => e.type),
+		liveOnlyTypes,
 		transientAssistantStreamFrames: frames,
 		jsonStreamLines: stream.length,
 		jsonStreamTypes: [...new Set(stream.map((l) => (l.type === "status" ? `status:${l.phase}` : l.type)))],
 	};
 }
 
+/** Resolve aliases even for a destination whose last path components do not exist yet. */
+function canonicalPath(path: string): string {
+	const absolute = resolve(path);
+	if (existsSync(absolute)) return realpathSync(absolute);
+	const parent = dirname(absolute);
+	return join(canonicalPath(parent), basename(absolute));
+}
+
+const containsPath = (parent: string, child: string): boolean => {
+	const rest = relative(parent, child);
+	return rest === "" || (!isAbsolute(rest) && rest !== ".." && !rest.startsWith(`..${sep}`));
+};
+
 export function buildFixtures(raw: string, destination = FIXTURES): void {
-	mkdirSync(destination, { recursive: true });
+	// Protect source evidence before staging or publication. Resolve symlink aliases and future child destinations too.
+	raw = realpathSync(raw);
+	const target = resolve(destination);
+	const canonicalTarget = canonicalPath(target);
+	const protectSource = (source: string): void => {
+		if (containsPath(canonicalTarget, source) || containsPath(source, canonicalTarget))
+			throw new Error("fixture destination must not overlap the raw capture tree or resolved source inputs");
+	};
+	protectSource(raw);
+	// Prepare every byte before opening the destination for mutation.
+	const output = new Map<string, string>();
+	const vocabulary = JSON.parse(readFileSync(join(HERE, "vocabulary.json"), "utf8"));
 	const home = homedir();
 	const comparison: Record<string, unknown> = {};
 	for (const name of CASES) {
+		// Source cases and individual files may themselves be aliases. Publication must preserve their actual targets too.
+		protectSource(realpathSync(join(raw, name)));
+		for (const file of ["session.v4.jsonl.zstd", "stream.ndjson", "observer.ndjson"]) {
+			const path = join(raw, name, file);
+			if (existsSync(path)) protectSource(realpathSync(path));
+		}
 		// reproduce.ts lays a run out as <out>/<scenario>/{home,ws} beside <out>/raw/<case>/ (both crash cases share "crash").
 		const runDir = dirname(raw);
 		const scenarioDir = name.startsWith("crash") ? "crash" : name;
@@ -103,28 +179,55 @@ export function buildFixtures(raw: string, destination = FIXTURES): void {
 			canaries: [],
 		});
 		const read = readDshLog(readFileSync(join(raw, name, "session.v4.jsonl.zstd")));
-		if (read.header === null) throw new Error(`${name}: no header`);
-		comparison[name] = compare(raw, name, read.events);
+		if (
+			read.header === null ||
+			typeof read.header.id !== "string" ||
+			read.header.id.trim() === "" ||
+			read.tail.kind !== "clean" ||
+			read.problems.length > 0 ||
+			!dshLogAcceptable(checkDshLog(read, vocabulary))
+		)
+			throw new Error(`${name}: capture is not clean valid evidence (${read.tail.kind}); raw bytes left untouched`);
+		// Comparison includes raw type labels; pass it through the same path/id sanitiser and final privacy gate.
+		comparison[name] = sanitiser.sanitiseStreamLine(compare(raw, name, read.header.id, read.events));
 		const clean = sanitiser.sanitiseLog(read.header, read.events);
 		const eventsText = encodeDshJsonl(clean.header, clean.events);
-		const canaries = [userInfo().username, home, researchDataRoot(), "You are a coding agent"];
-		const stream = lines(readFileSync(join(raw, name, "stream.ndjson"), "utf8")).map((line) =>
+		const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))).map((line) =>
 			sanitiser.sanitiseStreamLine(line),
 		);
-		const streamText = `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
-		// Fail the build, not the review: nothing is written for a case that still leaks.
-		for (const [file, text] of [
-			[`${name}.events.jsonl`, eventsText],
-			[`${name}.stream.ndjson`, streamText],
-		] as const) {
-			const leaks = findLeaks(text, canaries);
-			if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
-		}
-		writeFileSync(join(destination, `${name}.events.jsonl`), eventsText);
-		writeFileSync(join(destination, `${name}.stream.ndjson`), streamText);
+		const streamText = stream.length === 0 ? "" : `${stream.map((line) => JSON.stringify(line)).join("\n")}\n`;
+		output.set(`${name}.events.jsonl`, eventsText);
+		output.set(`${name}.stream.ndjson`, streamText);
 	}
-	writeFileSync(join(destination, "comparison.json"), `${JSON.stringify(comparison, null, "\t")}\n`);
+	output.set("comparison.json", `${JSON.stringify(comparison, null, "\t")}\n`);
+	for (const [file, text] of output) {
+		const leaks = [
+			...findLeaks(text, [home, researchDataRoot(), "You are a coding agent"]),
+			...endoSecretScanV0([{ where: file, text }], ["/fixture"]).findings.map((f) => f.kind),
+		];
+		if (leaks.length > 0) throw new Error(`${file} still leaks: ${leaks.join("; ")}`);
+	}
+	// Sibling staging keeps rename on one filesystem. On a publication error restore the previous complete directory.
+	mkdirSync(dirname(target), { recursive: true });
+	const staging = mkdtempSync(join(dirname(target), `.${basename(target)}-stage-`));
+	const backup = join(staging, "previous");
+	const ready = join(staging, "ready");
+	try {
+		mkdirSync(ready);
+		for (const [file, text] of output) writeFileSync(join(ready, file), text);
+		const hadPrevious = existsSync(target);
+		if (hadPrevious) renameSync(target, backup);
+		try {
+			renameSync(ready, target);
+		} catch (error) {
+			if (hadPrevious) renameSync(backup, target);
+			throw error;
+		}
+	} finally {
+		// If rollback itself failed, retain the backup for recovery.
+		if (!existsSync(backup) || existsSync(target)) rmSync(staging, { recursive: true, force: true });
+	}
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url))
-	buildFixtures(process.argv[2] ?? join(researchDataRoot(), "dsh-native", "raw"));
+	buildFixtures(process.argv[2] ?? DEFAULT_RAW, process.argv[3] ?? FIXTURES);

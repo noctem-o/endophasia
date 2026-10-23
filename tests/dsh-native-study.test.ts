@@ -7,10 +7,10 @@
 //   SOURCE   claims about DSH source, checked against the pinned provenance (and against a checkout when ENDO_DSH_CHECKOUT is set).
 
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { homedir, userInfo } from "node:os";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zstdCompressSync } from "node:zlib";
+import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import {
 	checkDshLog,
@@ -22,6 +22,7 @@ import {
 	readDshLog,
 	scanZstdFrames,
 } from "../adapters/dsh-native/log.ts";
+import { endoSecretScanV0 } from "../cli/secret-scan.ts";
 import { researchDataRoot } from "../research/data.ts";
 import {
 	buildProvenance,
@@ -103,6 +104,7 @@ describe("provenance and pinned vocabulary (SOURCE)", () => {
 				current.dsh.commit,
 				"the DSH checkout moved: re-run research/dsh-native/inventory.ts and re-read the audit",
 			).toBe(provenance.dsh.commit);
+			expect(current.dsh).toEqual(provenance.dsh);
 			expect(current.files).toEqual(provenance.files);
 			expect(buildVocabulary(checkout!)).toEqual(vocabulary);
 		},
@@ -159,15 +161,16 @@ describe("RUNTIME fixtures are sanitised", () => {
 		for (const file of files) {
 			const text = readFileSync(join(FIXTURES, file), "utf8");
 			expect(
-				// The canaries are taken from the machine running the test (its user name and home), plus fixed markers: no personal data is
+				// The canaries are taken from the machine running the test (its absolute home path), plus fixed markers: no personal data is
 				// written into the repository to search for it.
-				findLeaks(text, [userInfo().username, homedir(), "endophasia-research", "You are a coding agent"]),
+				findLeaks(text, [homedir(), "endophasia-research", "You are a coding agent"]),
 				file,
 			).toEqual([]);
+			expect(endoSecretScanV0([{ where: file, text }], ["/fixture"]).findings, file).toEqual([]);
 		}
 	});
 
-	it("keep the system prompt and injected context only as length and digest, and the study's own prompt verbatim", () => {
+	it("keep the system prompt and injected context only as length, and the study's own prompt verbatim", () => {
 		const { events } = rows("tool-read");
 		const system = events.find((event) => event.type === "system/message")!;
 		expect(JSON.stringify(system.data)).toMatch(/\[withheld: \d+ chars\]/);
@@ -586,9 +589,9 @@ describe("reproduction against a real DSH checkout (opt-in: ENDO_DSH_CHECKOUT)",
 			// Raw captures hold the real system prompt: they go to the research-data directory, never to the system temp directory.
 			const base = join(researchDataRoot(), "dsh-native", "test-runs");
 			mkdirSync(base, { recursive: true });
-			const out = mkdtempSync(join(base, "run-"));
+			const out = mkdtempSync(join(base, 'run- # " [quoted]-'));
 			dirs.push(out);
-			const result = await reproduce({ dsh: checkout!, out, scenario: "stub-retry" });
+			const result = await reproduce({ dsh: relative(process.cwd(), checkout!), out, scenario: "stub-retry" });
 			expect(result.code).toBe(0);
 			const read = readDshLog(readFileSync(join(result.dir, "session.v4.jsonl.zstd")));
 			const sanitiser = new Sanitiser({
@@ -743,7 +746,7 @@ describe("a hostile or odd log is bounded and classified (SYNTHETIC)", () => {
 	it("stops at a decoded-size bound instead of holding a decompression bomb in memory", () => {
 		// 8 MiB of zeroes is a few hundred bytes compressed; the bound is far below it.
 		const bomb = encodeFrames(header, events, 4);
-		const huge = zstdCompressSync(Buffer.alloc(8 * 1024 * 1024));
+		const huge = zstdCompressSync(Buffer.alloc(8 * 1024 * 1024), { params: { [constants.ZSTD_c_checksumFlag]: 1 } });
 		expect(huge.length).toBeLessThan(2000);
 		const read = readDshLog(Buffer.concat([bomb, huge]), 1024 * 1024);
 		expect(read.tail).toEqual({ kind: "unreadable", reason: "the decoded size bound was exceeded" });
@@ -755,7 +758,7 @@ describe("a hostile or odd log is bounded and classified (SYNTHETIC)", () => {
 	it("reports a complete zstd frame that ends inside a row as a torn row, not as a clean log", () => {
 		const text = encodeRaw(header, events).toString("utf8");
 		const cut = Buffer.from(text.slice(0, text.length - 25), "utf8");
-		const read = readDshLog(zstdCompressSync(cut));
+		const read = readDshLog(zstdCompressSync(cut, { params: { [constants.ZSTD_c_checksumFlag]: 1 } }));
 		expect(read.tail.kind).toBe("torn-row");
 		expect(read.events.length).toBe(events.length - 1);
 	});

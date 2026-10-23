@@ -4,18 +4,17 @@ Status: **experimental alpha.** Node >= 22.19.0 is required; Pi is installed sep
 
 | | Version | `endo studio` | State |
 | :--- | :--- | :--- | :--- |
-| Published alpha | `0.1.0-alpha.1` | no | published on [npm](https://www.npmjs.com/package/endophasia) (`latest` and `alpha`) and as a [GitHub prerelease](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) |
-| Studio alpha | `0.1.0-alpha.2` | yes | **prepared, not published**: [release preparation](release-0.1.0-alpha.2.md) |
-| Source tree | the version in `package.json` | yes | a checkout of `main`; build it as below |
+| CLI alpha | `0.1.0-alpha.1` | no | published on [npm](https://www.npmjs.com/package/endophasia) (`latest`) and [GitHub](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) |
+| First browser alpha | `0.1.0-alpha.2` | yes, earlier page | published on npm (`alpha`) and [GitHub](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.2); [release record](release-0.1.0-alpha.2.md) |
+| Current source tree | the version in `package.json` | yes, newer React frontend | checkout of `main`; this frontend is not yet an npm release |
 
 ## What the tarball is
 
-> **The published alpha is older than the source tree.** `endophasia@0.1.0-alpha.1` on the registry (published 2026-10-08)
-> contains the compiled CLI only: no `endo studio` and no `dist/cockpit-ui/`. The source tree has since gained Studio, and a tarball
-> packed from it contains the browser frontend described below. Before `0.1.0-alpha.2` was prepared the source tree carried the same
-> version string as the registry alpha, so an older checkout's tarball is a different artifact from the registry's under one name
-> (`endo studio` printing `unknown command: studio` means the registry alpha). A tarball packed from this tree is labelled
-> `0.1.0-alpha.2`, but that version is **not published**.
+> **Release boundary:** `0.1.0-alpha.1` contains the CLI only; `0.1.0-alpha.2` contains the first,
+> earlier browser page. The current `main` source tree has since replaced that page with a React/TypeScript frontend,
+> and has not published that replacement yet. Building `main` produces a local artifact labelled by its
+> `package.json` version; **do not assume a locally packed `0.1.0-alpha.2` is byte-identical to the published
+> `0.1.0-alpha.2` tarball.** For an installed published browser alpha, explicitly select `@0.1.0-alpha.2` or `@alpha`.
 
 `npm pack` from a current checkout produces `endophasia-<version>.tgz`: the compiled JavaScript of the `endo` command's import closure
 (`dist/`), `package.json`, `README.md`, `CHANGELOG.md` and `LICENSE`. It has **no runtime npm dependencies** and
@@ -45,13 +44,14 @@ endo --version
 endo doctor                          # read-only first-run diagnosis; Pi is installed separately
 ~~~
 
-This installs the published alpha, which does not include Studio. Or install in a project with `npm install endophasia@0.1.0-alpha.1`, then run
+This installs the CLI-only alpha. Or install in a project with `npm install endophasia@0.1.0-alpha.1`, then run
 `npx --no-install endo doctor` from that project. To uninstall the global CLI:
 `npm uninstall -g endophasia`.
 
-`0.1.0-alpha.2` (Studio) is not on the registry yet; `npm install endophasia@0.1.0-alpha.2` fails with "No matching version" until
-the owner publishes it. When it is, it will be published under the `alpha` dist-tag, not `latest`, so `npm install endophasia` with no
-version will still give `0.1.0-alpha.1`; name the version (or `@alpha`).
+`0.1.0-alpha.2` (the first browser page) **is published** on npm under `alpha` and on GitHub.
+Install it with `npm install -g endophasia@0.1.0-alpha.2`, or `@alpha` while that tag points at it.
+A bare `npm install endophasia` still follows `latest` to the CLI-only `0.1.0-alpha.1`.
+The React browser interface from current `main` is newer than this published alpha.
 
 ## Build and test a tarball from a checkout (contributors)
 
@@ -151,9 +151,10 @@ runs one, and `doctor` never starts a session.
 
 ## Endophasia Studio
 
-Studio is **not in the published `0.1.0-alpha.1`**; `0.1.0-alpha.2` is the first version that carries it, and that is prepared
-but not published. Until it is, Studio runs from a source build (`npm ci && npm run build`, then
-`node dist/cli/index.js studio`) or from a tarball packed from one, where the installed binary is `endo`:
+The browser interface is intended to be called **Endophasia Web**, but its implemented command is still
+`endo studio` (there is no `endo web` command yet). Published `0.1.0-alpha.2` carries its first, earlier page.
+For the newer React version, build the current source (`npm ci && npm run build`, then
+`node dist/cli/index.js studio`) or use a tarball packed from that checkout:
 
 ```sh
 endo studio                           # the default store; prints one private address, then runs until Ctrl-C
@@ -187,8 +188,9 @@ fail instead of skip; the raw-data tests skip without the out-of-repository rese
 
 ## Release and verification
 
-[`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) is published on
-[npm](https://www.npmjs.com/package/endophasia); `0.1.0-alpha.2` is prepared and not published. The installed-tarball package smoke (`npm run test:package`, CI
+[`v0.1.0-alpha.1`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) and
+[`v0.1.0-alpha.2`](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.2) are published on
+[npm](https://www.npmjs.com/package/endophasia) and GitHub (`latest` stays on alpha.1; `alpha` is alpha.2). The installed-tarball package smoke (`npm run test:package`, CI
 `package`) exercises this loop with a **fake** Pi and a local fake OpenAI-compatible endpoint, without real credentials
 or provider cost. The separate `npm run test:acceptance` CI job installs a pinned **real Pi 1.0.0** independently and
 runs the same operator loop against a local fake model endpoint; it does not contact a live provider.

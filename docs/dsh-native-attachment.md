@@ -8,10 +8,10 @@ no Studio code. Everything it adds lives in `research/dsh-native/`, `tests/dsh-n
 
 The question: *can Endophasia attach to DSH through a native, high-fidelity observation interface, preserving more than ACP v1/v2,
 while staying harness-neutral inside?* The answer, in one paragraph: **yes, through the durable Session log, read cold.** The log is
-an append-only, versioned, lossless JSON record that already contains what ACP drops (attempts, retries, per-call usage, the
-request configuration, the authority envelope, ancestry, structured failures, ordering). A live Cordis observer adds nothing the log
-does not hold, is *structurally incomplete* (it never sees restored history or resume markers) and would run code inside the host.
-The smallest defensible architecture is therefore a read-only **cold importer of closed sessions** (option B), with the live
+an append-only, versioned record of persisted events that contains what ACP drops (attempts, retries, per-call usage, the
+request configuration, the authority envelope, ancestry, structured failures, ordering). A live Cordis observer can additionally capture transient crash-window output, is *structurally incomplete* (it never sees restored
+history or resume markers) and would run code inside the host.
+The smallest defensible architecture is therefore a read-only **cold importer treating every session as potentially open** (option B), with the live
 observer (A) and the SDK (C2) deferred. ACP stays the interoperability path (C1) and is unchanged.
 
 ## 1. What was verified, and against what
@@ -264,17 +264,37 @@ the layers a reports; no DSH string appears in any harness-neutral module.
 ## 9. Reproduce
 
 ```sh
-# 1. Pin the audit: provenance and vocabulary from a DSH checkout (read-only on the checkout)
-node research/dsh-native/inventory.ts ~/deepseek-harness --write
+# 1. Verify the existing pin; do not regenerate provenance to fit another checkout.
+dsh_checkout="$HOME/deepseek-harness"
+ENDO_DSH_CHECKOUT="$dsh_checkout" npx vitest run tests/dsh-native-study.test.ts tests/dsh-native-repair.test.ts
 
-# 2. Re-run a scenario in a throwaway home (stub-retry needs no model; the others need the local model server)
-node research/dsh-native/reproduce.ts --dsh ~/deepseek-harness --out ~/projects/endophasia-research/dsh-native --scenario stub-retry
+# 2. New disposable root outside the repo. Never reuse the historical run-final directory.
+mkdir -p ../endophasia-research/dsh-native
+study_out=$(mktemp -d ../endophasia-research/dsh-native/new-run-XXXXXX)
+node research/dsh-native/reproduce.ts --dsh "$dsh_checkout" --out "$study_out" --scenario stub-retry
+# Repeat against exactly the same root to check stale capture cleanup.
+node research/dsh-native/reproduce.ts --dsh "$dsh_checkout" --out "$study_out" --scenario stub-retry
 
-# 3. Rebuild the sanitised fixtures from the raw captures (raw data stays outside the repository)
-node research/dsh-native/build-fixtures.ts
+# 3. Verify the local provider contract and endpoint first. This instance accepts base URL without /v1.
+curl --fail http://127.0.0.1:8080/v1/models
+# openai-completions passes baseURL to OpenAI's client; it appends /chat/completions.
+# The validation record includes a bounded successful POST to /chat/completions.
+for scenario in tool-read no-key-error crash; do
+  node research/dsh-native/reproduce.ts --dsh "$dsh_checkout" --out "$study_out" --scenario "$scenario" --model-url http://127.0.0.1:8080
+done
 
-# 4. The deterministic tests; add ENDO_DSH_CHECKOUT to include the opt-in reproduction
-npx vitest run tests/dsh-native-study.test.ts
+# 4. Build NEW evidence into a separate directory and compare; do not replace the established fixtures.
+node research/dsh-native/build-fixtures.ts "$study_out/raw" "$study_out/sanitised"
+diff -ru research/dsh-native/fixtures/real "$study_out/sanitised"
+# Differences in model text, usage, timing and withheld context lengths are expected; investigate structural differences.
+
+# Historical defaults: input ../endophasia-research/dsh-native/run-final/raw, output research/dsh-native/fixtures/real.
+# To verify those raw captures WITHOUT replacing committed evidence:
+node research/dsh-native/build-fixtures.ts ../endophasia-research/dsh-native/run-final/raw "$study_out/historical-check"
+diff -ru research/dsh-native/fixtures/real "$study_out/historical-check"
 ```
 
 See `research/dsh-native/README.md` for the layout and the safety rules of the harness.
+
+The [repair validation record](../research/dsh-native/VALIDATION.md) records the thirteen Codex findings, fresh runtime checks,
+fixture reproducibility and the downstream reader handoff. The original runtime fixtures are retained unchanged.

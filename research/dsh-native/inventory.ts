@@ -82,6 +82,11 @@ export function buildProvenance(root: string): DshProvenance {
 	};
 }
 
+export function assertDshProvenance(current: DshProvenance, pinned: DshProvenance): void {
+	if (!current.dsh.workingTreeClean || JSON.stringify(current) !== JSON.stringify(pinned))
+		throw new Error("DSH checkout must match the clean pinned provenance");
+}
+
 export function buildVocabulary(root: string): DshVocabularyFile {
 	const file = "packages/core/session/src/known-event-types.ts";
 	const source = readFileSync(join(root, file), "utf8");

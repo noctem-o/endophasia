@@ -5,7 +5,7 @@ limitation, as it stood when the summary was shortened. The real recordings and 
 does not, are in [research/README.md](../research/README.md).
 
 The sections from "Studio" to the end were moved here from the README's "Current state". They are unchanged except that the Studio paragraph
-says Studio is unreleased, the library paragraph now mentions the unwired `visualization/` scene state and says what the CLI can
+distinguishes the published older browser page from the newer, unreleased React source frontend, the library paragraph now mentions the unwired `visualization/` scene state and says what the CLI can
 read of the evidence ledger (evaluation records are written by `endo experiment`), and "listed above" now links to `research/README.md`.
 
 **Implemented and tested here:**
@@ -98,13 +98,15 @@ read of the evidence ledger (evaluation records are written by `endo experiment`
   acceptance suite against a real installed Pi. The real Pi 1.0.0 recording (mapping.1, a historical specimen pinned by digest) is in
   [`research/pi-conformance/1.0.0/`](../research/pi-conformance/1.0.0/).
 
-## Studio
+## Browser interface (Endophasia Web, currently `endo studio`)
 
-**Endophasia Studio** (`endo studio`, [docs/studio.md](studio.md)) is the first Endophasia-native cockpit: a read-only
+**Endophasia Web** is the proposed user-facing name for the existing read-only browser interface (`endo studio`, [docs/studio.md](studio.md)): a read-only
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
 read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows one Observe workspace: an overview of the recorded window, the
 recorded runtime identity, capability state with its limits, the session timeline in storage order with an evidence-first inspector and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. It is not yet the full Studio: the other modes are below. It is unpublished: the published `0.1.0-alpha.1` does not contain it, and `0.1.0-alpha.2`, which does, is [prepared but not published](release-0.1.0-alpha.2.md).
+writes nothing to the store, attaches to nothing and does not poll. The other modes are not built. Published `0.1.0-alpha.2` contains the first, earlier browser page; the newer React
+Observe workspace is in the source tree and has not yet shipped on npm. `endo web`, a native Endophasia binary and
+native packaging are proposed only; the implemented CLI remains `endo studio`.
 
 ## Library-only and planned surfaces
 
@@ -131,11 +133,11 @@ limitations accepted for now.
 
 ## Not yet built
 
-**Not yet built:** the other Studio modes (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
+**Not yet built:** the other browser workspaces (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
 model-internal
 observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
 control, model-originated steering proposals and an external authority provider, any live provider integration wired
 into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
-integration, and attachments for other harnesses.
+integration, attachments for other harnesses, and the proposed Rust/GPUI native Endophasia application. Compare projection and DSH native importer work are open PRs, not part of `main` or published capability claims.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.

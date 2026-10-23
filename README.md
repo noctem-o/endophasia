@@ -18,7 +18,7 @@ it records what a harness actually does, and keeps observation, evidence, interp
 </p>
 
 <p>
-  <a href="#studio">Studio</a> &nbsp; · &nbsp;
+  <a href="#endophasia-web">Endophasia Web</a> &nbsp; · &nbsp;
   <a href="#quick-start">Quick start</a> &nbsp; · &nbsp;
   <a href="#what-works-today">What works today</a> &nbsp; · &nbsp;
   <a href="#architecture">Architecture</a> &nbsp; · &nbsp;
@@ -32,7 +32,7 @@ it records what a harness actually does, and keeps observation, evidence, interp
 
 Endophasia attaches to a coding-agent harness you already run, through an explicit adapter, and records what the harness
 actually does into a durable store. Everything else is built from those records: what runtime was attached and what it can
-be shown to do, a comparison of two runs, a replay, an experiment, and a read-only view of the store called Studio.
+be shown to do, a comparison of two runs, a replay, an experiment, and a read-only browser view (currently launched with `endo studio`).
 
 It is harness-neutral by design and does not replace the harness's execution loop. It is not an agent runtime, a model
 provider, a benchmark or a deployment system. Today the harness is [Pi](https://github.com/earendil-works/pi).
@@ -42,10 +42,13 @@ agent (what it requested, what it was told, what it reported and what it did), a
 "thought".
 
 > [!IMPORTANT]
-> Experimental, and honest about it. The first published alpha, `0.1.0-alpha.1`, **predates Studio** and has no `endo studio`.
-> Studio ships in `0.1.0-alpha.2` and later; the source tree has it today ([quick start](#quick-start)). A README cannot say
-> which versions the registry holds: `npm view endophasia versions` does, and the release status and procedure for
-> `0.1.0-alpha.2` are in [docs/release-0.1.0-alpha.2.md](docs/release-0.1.0-alpha.2.md). The earlier
+> **Release and naming status (23 October 2026):** `0.1.0-alpha.1` is CLI-only. Published `0.1.0-alpha.2` adds the original
+> read-only browser page (`endo studio`); `alpha` points to it on npm, while `latest` still points to `0.1.0-alpha.1`.
+> The current source tree has a newer React/TypeScript observation page **not yet published in an npm release**. The intended
+> interface names are **Endophasia Web** (browser) and **Endophasia** (proposed native desktop binary), but the existing CLI
+> remains `endo studio`: `endo web`, the native application and its installers **do not exist yet**. See
+> [release history](docs/release-0.1.0-alpha.2.md), [current browser interface](docs/studio.md) and [quick start](#quick-start).
+> The earlier
 > Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at
 > [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 
@@ -79,18 +82,19 @@ perturbation invariance    does behaviour hold when an input that should not mat
 
 The fuller statement of these distinctions, and the projects Endophasia stays separate from, is in [docs/vision.md](docs/vision.md).
 
-## Studio
+<a id="studio"></a>
+## Endophasia Web
 
 <p align="center">
-  <img src="docs/images/Screenshot_20261022_075029.png" alt="Endophasia Studio's observation page: runtime and capabilities on the left, a storage-ordered event timeline in the middle, source conditions and an inspector on the right" width="920">
+  <img src="docs/images/Screenshot_20261022_075029.png" alt="Endophasia Web observation view: runtime and capabilities, storage-ordered event timeline, source conditions and inspector" width="920">
 </p>
 
-<p align="center"><sub><strong>A real, read-only view of recorded observations.</strong> The page as served by the installed
-command, captured in headless Chromium over a demo store seeded from the repository's committed records (fake-Pi lifecycle
-fixtures and the real Pi 1.0.0 conformance specimen, by <code>scripts/seed-cockpit-demo.ts</code>). It is not a mock-up, a
-simulation, a model-brain visualisation or a live display of internal activations.</sub></p>
+<p align="center"><sub><strong>A read-only inspection view of recorded events.</strong> The source-tree React interface is newer
+than the browser page in the published <code>0.1.0-alpha.2</code> package. This is a view of recorded evidence, not a live
+model-brain visualisation or an internal-activation trace.</sub></p>
 
-Studio (`endo studio`) is the first Endophasia-native interface. Today it is **one read-only observation page**, served from
+**Endophasia Web** (currently invoked as `endo studio`) is the existing browser interface. The source tree implements
+**one read-only Observe workspace**, served from
 the installed package on `127.0.0.1` behind a private per-launch address. It shows, as recorded:
 
 - the **runtime identity**: which harness installation the registry recorded, its fingerprint, and what changed;
@@ -104,8 +108,8 @@ never recorded is shown as not recorded, never as zero. The page does not poll, 
 run or a store: only ones that change what it shows. It does not start, attach to or steer an agent, and it does not write to the
 store it reads.
 
-Studio is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
-Studio workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
+Endophasia Web is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
+browser workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
 within a possible COGNITION workspace, not separate top-level tabs. Further profiles could be added without creating
 new workspaces. The current shell names Compare, Capabilities and Evolve as workspaces marked "later"; each says what it
 would need and shows nothing. Details: [docs/studio.md](docs/studio.md) and the frontend's
@@ -115,21 +119,21 @@ would need and shows nothing. Details: [docs/studio.md](docs/studio.md) and the 
 
 Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
 
-**The first published alpha, `0.1.0-alpha.1`,** contains the CLI, not Studio:
+**Install the published browser alpha.** Explicitly select `0.1.0-alpha.2`: npm's `latest` tag still points
+at the CLI-only `0.1.0-alpha.1`. The published alpha has the **earlier browser page**, not the newer React frontend on `main`.
 
 ~~~sh
-npm install -g endophasia@0.1.0-alpha.1
+npm install -g endophasia@0.1.0-alpha.2
 endo doctor                          # read-only: Node, Pi, store locations, recorded evidence
 endo harness check                   # local Pi checks, no model call; records evidence
-endo harness attach --prompt "..."   # calls the model provider Pi is configured with, and may cost money
+endo harness attach --prompt "..."   # uses your Pi model provider and may cost money
 endo harness status                  # recorded identity and capability state
-endo harness overview                # the recorded session lifecycle
+endo harness overview                # recorded session lifecycle
 endo trajectory show <session-id>    # the id attach prints
+endo studio                          # serves the published read-only browser page
 ~~~
 
-**Studio.** `endo studio` is in `0.1.0-alpha.2` and later. If `npm view endophasia versions` lists such a version,
-`npm install -g endophasia@<that version>` provides it (name the version: the `latest` tag can point at an older alpha). Otherwise
-build from source:
+**Try the newer Endophasia Web frontend from the source tree** (not yet published):
 
 ~~~sh
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia
@@ -141,7 +145,7 @@ node dist/cli/index.js studio ./demo-store        # prints one private address o
 Omit the store to read the default one that `endo harness attach` writes. Studio listens on loopback only and prints its
 address once; anyone who can read that address can read the store, so treat it as a secret. It never writes the store it
 reads. The one thing it creates is its own comparison key, on first launch, and it says so. Complete first-run guide:
-[docs/install.md](docs/install.md). Studio arguments, key handling and limits: [docs/studio.md](docs/studio.md).
+[docs/install.md](docs/install.md). Browser-interface arguments, key handling and limits: [docs/studio.md](docs/studio.md).
 
 ## What works today
 
@@ -162,11 +166,11 @@ Maturity is stated by the **evidence** behind each row, because that is what dif
 | Capture and cassette replay | `endo proxy record\|replay`, `endo replay` | Real runtime: 40 replays EXACT, plus a negative control that diverged as it should |
 | Experiments: specs, blocked randomisation, manipulation checks, pinned environments (the studies pre-registered their designs; the CLI does not enforce that) | `endo experiment run\|report` | Real runtime: the studies below. Also writes evaluation records |
 | Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
-| **Studio**: one read-only observation page | `endo studio` (`0.1.0-alpha.2` and later, or a source build) | Real Pi 1.0.0 acceptance (fake model endpoint) serves a real-Pi store and, where Chromium exists (it does in CI), loads it in a real browser; the page's own tests |
+| **Endophasia Web**: one read-only observation page | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe workspace) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| Studio workspaces beyond the first page (including a proposed COGNITION workspace); model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
+| Browser workspaces beyond the first Observe page; native Endophasia binary; `endo web` alias; model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:
 
@@ -199,7 +203,7 @@ flowchart TB
     V["Evidence and projections, read-only<br/>capability state · trajectories · replay · experiment reports<br/>the observation bridge"]
     C["endo CLI"]
     N["Local HTTP boundary<br/>127.0.0.1 · private address · GET only"]
-    U["Studio<br/>one read-only page"]
+    U["Endophasia Web<br/>one read-only page"]
 
     H -->|"documented RPC"| A
     H -.->|"model requests"| X
@@ -215,9 +219,9 @@ flowchart TB
 
 The harness keeps its own execution loop. The commands that record (attach, check, the proxy, steering, experiments) write to
 the store; the reporting commands and the observation bridge open it read-only. The only data the HTTP boundary serves is the
-bridge's projection, so Studio can show nothing that projection does not carry. Apart from starting sessions (attach, replay,
+bridge's projection, so Endophasia Web can show nothing that projection does not carry. Apart from starting sessions (attach, replay,
 experiments), Endophasia acts on a running session only through an authorised STEER, QUEUE or STOP at the intervention desk,
-reached from `endo steer` (the dotted path) or from an experiment's declared condition, and never through Studio.
+reached from `endo steer` (the dotted path) or from an experiment's declared condition, and never through the browser interface.
 
 Capabilities are admitted only on current evidence, in order: transport, then identity, then local protocol checks, then a
 live study if you ask for one, then admission. When the installed runtime or its configuration changes, the evidence that
@@ -243,6 +247,26 @@ COGNITION would accommodate additional or custom profiles as they are developed,
 WORK and DREAM. A declared profile would describe intended policy; recorded actions and outcomes would establish what
 actually happened. Model-internal measurements would remain capability-gated observations, not a claim that Studio can
 see private reasoning. No profile selector, policy compiler or cognition workspace exists today.
+
+### Interfaces and near-term delivery (planned)
+
+The intended product names are **Endophasia Web** for the browser and **Endophasia** for a future native desktop
+instrument. The headless CLI stays `endo`. **Today the only shipped browser command is `endo studio`; `endo web`
+is a proposed future alias, not an accepted CLI invocation.** The native binary, AppImage and Windows executable
+are also proposed, not built. Internal `studio-ui/` and `cockpit-http/` names need not change with the branding.
+
+The proposed native application would be a separate Rust/GPUI-based presentation client over validated, read-only
+Endophasia projections. A GPU renderer (`wgpu` / WGSL) would be optional and separately benchmarked; a native app must not
+interpret evidence differently, silently write the store or bypass authorization. The browser remains an independent
+interface, with WebGPU as a possible later renderer. GPU composition and portability require feasibility work before
+promising a particular backend or packaging format.
+
+**Sequencing:** finish the current [Compare projection PR #69](https://github.com/noctem-o/endophasia/pull/69)
+and [DSH native study/importer PRs #70–71](https://github.com/noctem-o/endophasia/pull/70) (the importer is
+[stacked](https://github.com/noctem-o/endophasia/pull/71)); make real recorded comparisons inspectable; run a bounded
+GPUI feasibility experiment; prioritise forkable checkpoints; then develop a useful native, read-only comparison/graph
+instrument **before** undertaking major EVOLVE research loops. DSH support on these open branches is **not a shipped
+attachment**, and the existing Pi acceptance baseline remains unchanged. See [roadmap](docs/roadmap.md).
 
 ### Exploratory horizon: physical-world systems (not implemented)
 
@@ -279,7 +303,7 @@ machine, so none of it is a statement about other runtimes or models. The full d
   the cap from 16,384 to 32,768 tokens raised success on those two tasks from 10 of 24 to 19 of 23 (pooled over four paths at
   3 trials per cell; the interval excludes 0 only with all four paths included).
 
-The next delivery step is forkable checkpoints, beneath counterfactual comparison and evolution work. The full sequence, the
+The next core substrate milestone remains forkable checkpoints, alongside the near-term Compare and native-interface feasibility work above. The full sequence, the
 numbered capability map and the deferred research tracks are in [docs/roadmap.md](docs/roadmap.md). One proposed, not yet run
 study (a shadow epistemic ledger beside a deliberately gameable post-training environment) is in
 [research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).
@@ -292,7 +316,9 @@ study (a shadow epistemic ledger beside a deliberately gameable post-training en
 to investigate, starting with its Pi/`pi-durable` integration. It records model/tool-call intents and outcomes in a
 Workflow SDK World and can resume interrupted turns. This is **not** Endophasia's durable observation store or cassette
 replay: those can reconstruct and compare *recorded behaviour*, but do not themselves provide automatic mid-turn
-continuation. No compatibility, adapter support or execution durability is currently claimed.
+continuation. No compatibility, adapter support or execution durability is currently claimed. Separately, [dquickts](https://github.com/stencil-hq/dquickts)
+is a candidate for evaluating in-process execution-state snapshots rather than reconstructing a harness from an intent log;
+neither approach captures external effects automatically or proves exactly-once execution.
 
 A bounded, opt-in compatibility study should:
 
@@ -321,8 +347,8 @@ remains the observer rather than becoming the execution engine. The upstream pac
 
 **Using it**
 [Install and first run](docs/install.md) ·
-[Studio](docs/studio.md) ·
-[Release notes and procedure: 0.1.0-alpha.2, Studio](docs/release-0.1.0-alpha.2.md) ·
+[Endophasia Web (currently `endo studio`)](docs/studio.md) ·
+[Published 0.1.0-alpha.2 release record](docs/release-0.1.0-alpha.2.md) ·
 [Alpha release scope and verification](docs/release-alpha.md) ·
 [v0.1.0-alpha.1 release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) ·
 [Changelog](CHANGELOG.md)
@@ -336,8 +362,9 @@ remains the observer rather than becoming the execution engine. The upstream pac
 [Steering](docs/steering.md) ·
 [Schema compatibility](docs/schema-compatibility.md)
 
-**Studio and the observation bridge**
+**Browser interface and the observation bridge**
 [Observation bridge and local server](docs/cockpit.md) ·
+[React frontend architecture](docs/studio-ui-architecture.md) ·
 [Frontend design reference](docs/cockpit-ui.md) ·
 [Sequencing after the first slice](docs/cockpit-next-stages.md)
 

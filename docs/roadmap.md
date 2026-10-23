@@ -10,16 +10,23 @@ The text of this page was moved from the README's "Roadmap" section unchanged.
 
 The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
 shorter and more product-shaped**. Evidence closure and the installable Operator Alpha are complete; the next delivery
-priority was the first Endophasia-native read-only cockpit (built: `endo studio`), followed by checkpoints and deeper EVOLVE work.
+priority was the first read-only browser interface (built: `endo studio`), followed by real comparison usability,
+forkable checkpoints and deeper EVOLVE work. The proposed native desktop binary is a distinct future interface.
 
 ~~~text
 evidence closure (done)
       ↓
 installable operator alpha (released: 0.1.0-alpha.1)
       ↓
-native read-only cockpit (built: endo studio)
+browser Observe (built: endo studio)
       ↓
-forkable checkpoints
+Compare over recorded sessions + existing review closeout
+      ↓
+native GPUI feasibility spike (independent, optional)
+      ↓
+forkable checkpoints (core milestone)
+      ↓
+native Endophasia read-only instrument v0 (conditional)
       ↓
 counterfactual / evolution / training work
 ~~~
@@ -56,7 +63,10 @@ counterfactual / evolution / training work
      [docs/cockpit.md](cockpit.md): runtime identity/change state, capability state with reasons and a live session
      timeline, all projected from Endophasia records without depending on Pi private services. Built: the projection and
      read-only reader layer (`cockpit/`), the local read-only HTTP server (`cockpit-http/`), the Studio frontend (`studio-ui/`, its Observe workspace) and
-     the installed `endo studio` command ([docs/studio.md](studio.md)).
+     the installed `endo studio` command ([docs/studio.md](studio.md)), currently branded Studio in the UI.
+     The intended product name is **Endophasia Web**; `endo web` is only a proposed compatibility alias, not an
+     implemented command. Published `0.1.0-alpha.2` carries the earlier page, whereas the source tree now contains
+     the newer React Observe frontend.
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
      model-observation scenes as separate typed projections even if they later share one renderer.
@@ -69,6 +79,23 @@ counterfactual / evolution / training work
      source of truth; scene geometry must remain reproducible from recorded state and declared transforms.
    - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
      recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
+
+**Near-term presentation and harness studies (not shipped capabilities).** [Compare PR #69](https://github.com/noctem-o/endophasia/pull/69)
+adds a pure evidence-backed comparison presentation projection on its open branch, not the Compare browser workspace.
+[DSH study PR #70](https://github.com/noctem-o/endophasia/pull/70) is a version-pinned conformance study;
+[DSH importer PR #71](https://github.com/noctem-o/endophasia/pull/71) is a stacked, read-only cold importer.
+Neither changes the support claims of the published Pi alpha until merged, tested and released. Native DSH fidelity is
+studied separately from ACP interoperability, with losses and unavailable signals explicit.
+
+**Optional native interface track (not implemented).** The future native desktop application would be called
+**Endophasia**, distinct from **Endophasia Web** (currently `endo studio`) and the `endo` CLI. A bounded Rust/GPUI Kit +
+`wgpu` feasibility spike may follow the initial Compare data/view work without blocking checkpoints. Build an actual
+native read-only instrument only after stable validated presentation contracts, real graph/trajectory comparisons and
+minimal forkable checkpoints. Its authority comes from existing TypeScript projections, not a second independent
+implementation of evidence semantics. Keep a read-only boundary, deterministic fixtures, explicit missing signals,
+GPU composition feasibility tests, and the browser frontend as an equal client. AppImage, Windows packaging, and
+`endo web` remain future options, not current deliverables. Do not displace core checkpoints, the installed Pi loop,
+or real-session usability with graphics work.
 
 4. **Forkable checkpoints** (item 10).
    - Land the substrate primitive beneath search, counterfactual evaluation and training: reconstructable checkpoints,
@@ -91,7 +118,7 @@ counterfactual / evolution / training work
 
 ## Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the delivery sequence above (the first native read-only cockpit is built; checkpoints are next).
+These are valid directions, but they should **not** displace the delivery sequence above (browser Observe is built; comparisons and checkpoints are the core priorities).
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study

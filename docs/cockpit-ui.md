@@ -211,5 +211,6 @@ Compare, Capabilities (declared versus observed) and Evolve, each of which needs
 watcher, incremental index); steering, queueing or stopping a run; attachment management; evidence promotion; spatial renderings
 (WebGL or WebGPU); and any interpretability view, which needs a real measurement source and a contract for it first. A freshness check
 (`checkEndoCockpitSourceFreshnessV0`) and an evidence-inspection endpoint are deferred items and are not needed by one screen.
-The installed command is `endo studio` ([studio.md](studio.md)); the frontend's visible name is Studio, while the directories keep the
-names `studio-ui` and `cockpit-http`.
+The installed command remains `endo studio` ([studio.md](studio.md)); the current frontend still visibly says Studio.
+The proposed product name is **Endophasia Web**, with a future `endo web` alias; neither is a shipped rename.
+The internal directories remain `studio-ui` and `cockpit-http`.

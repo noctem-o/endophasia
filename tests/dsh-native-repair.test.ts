@@ -1,15 +1,17 @@
 // Adversarial inputs below are SYNTHETIC, never runtime evidence.
-import { execFileSync } from "node:child_process";
+import { type ChildProcess, execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildFixtures, CASES } from "../research/dsh-native/build-fixtures.ts";
 import { assertDshProvenance, buildProvenance, DSH_AUDITED_FILES } from "../research/dsh-native/inventory.ts";
 import { checkDshLog, dshLogAcceptable, readDshLog } from "../research/dsh-native/log.ts";
-import { assertKilled, assertRecovery, prepareScratch } from "../research/dsh-native/reproduce.ts";
+import { assertKilled, assertRecovery, prepareScratch, waitForProcess } from "../research/dsh-native/reproduce.ts";
 import { findLeaks } from "../research/dsh-native/sanitise.ts";
 import { encodeFrames, encodeRaw } from "../research/dsh-native/synthetic.ts";
 
@@ -173,6 +175,22 @@ describe("scratch and process boundaries", () => {
 		expect(() => prepareScratch(root, "crash")).toThrow(/symlink/);
 		expect(readFileSync(join(outside, "keep"), "utf8")).toBe("untouched");
 	});
+	it("captures original pipe bytes across split UTF-8 and retains corrupt bytes for strict validation", async () => {
+		const child = Object.assign(new EventEmitter(), {
+			stdout: new PassThrough(),
+			stderr: new PassThrough(),
+			kill: () => true,
+		});
+		const outcome = waitForProcess(child as unknown as ChildProcess);
+		child.stdout.write(Buffer.from([0xc3]));
+		child.stdout.write(Buffer.from([0xa9, 0xff]));
+		child.stderr.write(Buffer.from([0xff]));
+		child.emit("close", 0, null);
+		const captured = await outcome;
+		expect(captured.stdout).toEqual(Buffer.from([0xc3, 0xa9, 0xff]));
+		expect(captured.stderr).toEqual(Buffer.from([0xff]));
+	});
+
 	it("rejects both unsuccessful delivery and natural completion racing successful delivery", () => {
 		expect(() => assertKilled(false, { code: 0, signal: null })).toThrow();
 		expect(() => assertKilled(true, { code: 0, signal: null })).toThrow();

@@ -138,27 +138,27 @@ function runDsh(options: ReproduceOptions, args: string[], env: Record<string, s
 export interface ProcessOutcome {
 	code: number | null;
 	signal: NodeJS.Signals | null;
-	stdout: string;
-	stderr: string;
+	stdout: Buffer;
+	stderr: Buffer;
 }
-const wait = (child: ChildProcess): Promise<ProcessOutcome> =>
+export const waitForProcess = (child: ChildProcess): Promise<ProcessOutcome> =>
 	new Promise((resolve, reject) => {
 		const timeout = setTimeout(() => child.kill("SIGKILL"), 120_000);
 		child.once("error", (error) => {
 			clearTimeout(timeout);
 			reject(error);
 		});
-		let stdout = "";
-		let stderr = "";
+		const stdout: Buffer[] = [];
+		const stderr: Buffer[] = [];
 		child.stdout?.on("data", (chunk) => {
-			stdout += chunk;
+			stdout.push(Buffer.from(chunk));
 		});
 		child.stderr?.on("data", (chunk) => {
-			stderr += chunk;
+			stderr.push(Buffer.from(chunk));
 		});
 		child.on("close", (code, signal) => {
 			clearTimeout(timeout);
-			resolve({ code, signal, stdout, stderr });
+			resolve({ code, signal, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
 		});
 	});
 
@@ -275,7 +275,7 @@ export async function reproduce(options: ReproduceOptions): Promise<{ code: numb
 		...(options.scenario === "no-key-error" ? {} : { STUDY_PLACEHOLDER_KEY: "not-a-secret" }),
 	};
 	// First boot creates profiles/headless; the patch then replaces its (empty) user layer.
-	const boot = await wait(runDsh(options, ["--profile", "headless", "--dump-config"], env, workspace));
+	const boot = await waitForProcess(runDsh(options, ["--profile", "headless", "--dump-config"], env, workspace));
 	if (boot.code !== 0) throw new Error("DSH profile bootstrap failed");
 	writeFileSync(
 		join(home, "profiles", "headless", "cordis.patch.yml"),
@@ -301,7 +301,7 @@ export async function reproduce(options: ReproduceOptions): Promise<{ code: numb
 		}, 100);
 		child.on("close", () => clearInterval(watch));
 	}
-	const result = await wait(child);
+	const result = await waitForProcess(child);
 	writeFileSync(join(dir, "stream.ndjson"), result.stdout);
 	writeFileSync(join(dir, "stderr.txt"), result.stderr);
 	const log = sessionFile(home);
@@ -309,11 +309,15 @@ export async function reproduce(options: ReproduceOptions): Promise<{ code: numb
 	if (options.scenario === "crash") {
 		assertKilled(killed, result);
 		// Resume the killed session in a second process: the upstream recovery path, observed from outside.
-		const sessionId = (JSON.parse(result.stdout.split("\n")[0] ?? "{}") as { sessionId?: string }).sessionId;
+		const newline = result.stdout.indexOf(0x0a);
+		const firstLine = result.stdout.subarray(0, newline < 0 ? result.stdout.length : newline);
+		const sessionId = (
+			JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(firstLine)) as { sessionId?: string }
+		).sessionId;
 		if (sessionId === undefined) throw new Error("the killed run reported no session id");
 		const resumedDir = join(root, "raw", "crash-resumed");
 		mkdirSync(resumedDir, { recursive: true });
-		const after = await wait(
+		const after = await waitForProcess(
 			runDsh(
 				options,
 				["--profile", "headless", "--json", "--session-id", sessionId, "Reply with the single word: ok"],

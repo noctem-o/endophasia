@@ -121,3 +121,13 @@ The branch then integrated those two existing main documentation commits, retain
 README release-status phrases to version-relative source wording. No runtime or Studio implementation changed. This is a branch
 integration, not a merge of either pull request. The release-readiness test remains strict and unchanged. Post-integration
 verification and final CI status are posted in the PR conversation so results remain tied to the actual tested head.
+
+A final capture-boundary check found that per-chunk Buffer-to-string concatenation could alter a multibyte character split
+across pipe chunks. Process capture now collects original Buffer bytes for stdout/stderr, preserving both valid split UTF-8
+and invalid bytes for the builder's strict decoder. A synthetic pipe regression proves byte identity; this is not a new runtime
+observation. Session-id parsing strictly decodes only the first JSON line after raw capture has been retained.
+
+After main integration, the full Node 22.19.0 run with `ENDO_DSH_CHECKOUT` and `ENDO_REQUIRE_BROWSER=1` passed **4595 tests,
+47 skipped** (246.48 s). After the capture-byte fix, release/study/repair tests passed **89/89** on Node 22.19.0; typecheck and lint
+passed. Real pinned-source stub retry and crash/resume were rerun in a separate disposable output root with byte-preserving
+capture and passed. Original raw captures, committed fixtures and the previous fresh observations were retained.

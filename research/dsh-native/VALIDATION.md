@@ -161,3 +161,17 @@ it does not claim full semantic schema validation of observer/headless rows.
 
 An existing empty headless capture remains a measured zero-record input and is now also emitted as an empty output file,
 rather than fabricating one blank record. A regression checks both byte-empty output and `jsonStreamLines: 0`.
+
+### Empty and partial observer coverage follow-up
+
+The next Codex finding identified a valid empty observer capture being reported as if no persisted rows were absent. The
+comparison now distinguishes missing observation (`null`) from an existing capture with zero session events (all persisted
+rows absent). Matching partial captures account for rows both before and after their coverage; mismatched correspondence
+remains unknown. `persistedEventsNeverAnnouncedLive` describes absence from the supplied capture, not a claim about events
+outside its observation window. Four new cases cover byte-empty, status-only, prefix-only and middle-only captures; existing
+missing/mismatch tests also assert unknown absence. These assertions fail before the fix and pass after it.
+
+The pinned-checkout study, repair and release-readiness suites pass 112 tests. All eleven historical fixture files reproduce
+byte-for-byte through the privacy-gated builder into a separate directory. No new model experiment was needed for this
+comparison-only change; the runtime observations above retain their original scope. An independent advisor found no concrete
+defect or reader/#71 compatibility impact (99 targeted tests passed, two opt-in checks skipped in that independent run).

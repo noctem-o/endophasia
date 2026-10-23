@@ -43,7 +43,10 @@ paths and are never committed.
 
 The builder's default input is the historical `run-final/raw/` above. It refuses torn tails, read problems and structural errors:
 valid recovered prefixes remain useful to the reader but cannot be published as clean runtime fixtures. Missing observer data is
-`null`, including transient frame counts; malformed observer JSON or UTF-8 fails the build. All output, including `comparison.json`, passes
+`null`, including transient frame counts and `persistedEventsNeverAnnouncedLive`. An existing empty observer capture measures zero
+live events and lists every persisted row as absent. That absence field describes the supplied capture, including rows before
+attachment or after capture stopped; it makes no claim about unobserved execution. Mismatched correspondence is unknown (`null`).
+Malformed observer JSON or UTF-8 fails the build. All output, including `comparison.json`, passes
 sanitisation and privacy scanning. The builder prepares the entire set before writing a sibling staging directory and publishes
 with directory renames and rollback on synchronous failure. It is not crash-atomic across the two renames: after abrupt process or
 host death, a `.real-stage-*` sibling may hold `previous/` for manual recovery. Do not run concurrent builders for one destination.

@@ -78,17 +78,13 @@ function compare(raw: string, name: string, events: { type: string; seq: number 
 	const same = live === null ? null : live.length === events.length && json(live) === json(events);
 	const prefix = live === null ? null : events.every((e, i) => json(e) === json(live[i]));
 	// The live feed carries only what was appended after the observer attached. When it starts later than seq 0, say where, and
-	// whether it is exactly the rest of the persisted log; the persisted events before it were never announced.
+	// whether it is exactly the rest of the persisted log.
 	const first = live === null || live.length === 0 ? null : (live[0] as { seq?: number }).seq;
 	const offset = typeof first === "number" && Number.isSafeInteger(first) && first >= 0 ? first : null;
 	const suffix =
 		live === null || offset === null
 			? null
 			: live.length === events.length - offset && live.every((e, i) => json(e) === json(events[offset + i]));
-	const unannounced =
-		live === null || offset === null || offset === 0
-			? []
-			: events.slice(0, offset).map((e) => `${(e as { seq?: number }).seq}:${e.type}`);
 	// Only name events beyond a verified overlapping persisted suffix. A mismatched overlap is unknown correspondence.
 	const overlap =
 		live !== null && offset !== null && Number.isSafeInteger(offset) && offset >= 0 && offset <= events.length
@@ -99,6 +95,13 @@ function compare(raw: string, name: string, events: { type: string; seq: number 
 		overlap !== null &&
 		live.every((event, index) => event.seq === offset! + index) &&
 		live.slice(0, overlap).every((event, index) => json(event) === json(events[offset! + index]));
+	// Absence is relative to this capture, including rows before attachment or after capture stopped.
+	// A missing feed or mismatched correspondence cannot establish which persisted rows were observed.
+	const captured = new Set(live?.map((event) => event.seq));
+	const unannounced =
+		live === null || (live.length > 0 && !matched)
+			? null
+			: events.filter((event) => !captured.has(event.seq)).map((event) => `${event.seq}:${event.type}`);
 	const liveOnlyTypes =
 		live === null ? null : live.length === 0 ? [] : matched ? live.slice(overlap!).map((event) => event.type) : null;
 	const stream = lines(readUtf8(join(raw, name, "stream.ndjson"))) as { type: string; phase?: string }[];

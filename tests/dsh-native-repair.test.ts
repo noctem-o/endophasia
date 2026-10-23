@@ -186,8 +186,36 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 		for (const name of CASES) {
 			expect(comparison[name].transientAssistantStreamFrames).toBeNull();
 			expect(comparison[name].liveEvents).toBeNull();
+			expect(comparison[name].persistedEventsNeverAnnouncedLive).toBeNull();
 		}
 	});
+	it.each(["empty-file", "status-only", "prefix-only", "middle-only"])(
+		"accounts for persisted rows absent from a valid %s observer capture",
+		(kind) => {
+			const { raw, destination } = inputs(`observer-coverage-${kind}`);
+			const observed =
+				kind === "prefix-only" ? events.slice(0, 4) : kind === "middle-only" ? events.slice(4, 8) : [];
+			const records =
+				kind === "status-only"
+					? [{ feed: "agent/status", status: "idle" }]
+					: observed.map((event) => ({ feed: "session/event", event }));
+			const text = records.length === 0 ? "" : `${records.map((row) => JSON.stringify(row)).join("\n")}\n`;
+			for (const name of CASES) writeFileSync(join(raw, name, "observer.ndjson"), text);
+			buildFixtures(raw, destination);
+			const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
+			const seen = new Set(observed.map((event) => event.seq));
+			const absent = events.filter((event) => !seen.has(event.seq)).map((event) => `${event.seq}:${event.type}`);
+			for (const name of CASES) {
+				expect(comparison[name].liveEvents).toBe(observed.length);
+				expect(comparison[name].persistedEventsNeverAnnouncedLive).toEqual(absent);
+				if (observed.length === 0) {
+					expect(comparison[name].liveFirstSeq).toBeNull();
+					expect(comparison[name].liveOnlyTypes).toEqual([]);
+				}
+			}
+		},
+	);
+
 	it("preserves a measured empty headless capture without inventing a blank record", () => {
 		const { raw, destination } = inputs("empty-stream");
 		for (const name of CASES) writeFileSync(join(raw, name, "stream.ndjson"), "");
@@ -286,7 +314,10 @@ describe("fixture publication integrity (SYNTHETIC inputs)", () => {
 			);
 		buildFixtures(raw, destination);
 		const comparison = JSON.parse(readFileSync(join(destination, "comparison.json"), "utf8"));
-		for (const name of CASES) expect(comparison[name].liveOnlyTypes).toBeNull();
+		for (const name of CASES) {
+			expect(comparison[name].liveOnlyTypes).toBeNull();
+			expect(comparison[name].persistedEventsNeverAnnouncedLive).toBeNull();
+		}
 	});
 
 	it.each(["user", "app", "read", "tool"])("does not mistake ordinary vocabulary for the account %s", (username) => {

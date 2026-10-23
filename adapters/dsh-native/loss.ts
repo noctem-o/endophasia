@@ -51,7 +51,7 @@ export const DSH_NATIVE_LOSS_ENTRIES_V0: readonly DshNativeLossEntryV0[] = Objec
 		verdict: "QUALIFIED",
 		status: "implemented",
 		unprojected:
-			"A DSH step is mapped to an Endophasia TURN. stopReason is the provider stop reason of the step's assistant message, else UNAVAILABLE. A step/end that DSH synthesised on resume is indistinguishable when it is read and also becomes turn-completed with stopReason UNAVAILABLE.",
+			"A DSH step is mapped to an Endophasia TURN. stopReason is the provider stop reason of the step's assistant message, else UNAVAILABLE. A final step/end waits for the next row; one followed by an interrupted/forked turn end may be recovery-written and produces no turn-completed. The closing run records the final step's committed output; a genuine end with the same shape is deliberately under-claimed.",
 	},
 	{
 		id: "user-system-messages",

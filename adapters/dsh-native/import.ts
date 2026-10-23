@@ -15,13 +15,13 @@
 // inherited prefix is not copied, and the parent is a reference (`parentSession`, a coordinate).
 
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { EndoEventRecordPageQueryV0, EndoEventRecordPageV0 } from "../../protocol/event-record.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { foldDshLifecycleV0, INITIAL_DSH_LIFECYCLE_STATE_V0 } from "./lifecycle.ts";
-import { checkDshLog, type DshFinding, type DshTail, readDshLog } from "./log.ts";
+import { checkDshLog, type DshFinding, type DshSessionHeader, type DshTail, readDshLog } from "./log.ts";
 import {
 	DSH_NATIVE_CHECKPOINT_PRODUCER_V0,
 	DSH_NATIVE_LIFECYCLE_PRODUCER_V0,
@@ -131,6 +131,31 @@ const digestOf = (payload: JsonValueV0, field: string): { keyId: string; value: 
 		: null;
 };
 
+const HEADER_REQUIRED = ["type", "version", "id", "createdAt", "isSeeded", "delegationDepth"] as const;
+const HEADER_KEYS = new Set<string>([...HEADER_REQUIRED, "cwd", "parentSession", "origin", "agentPreset"]);
+const headerCount = (value: unknown): boolean =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && !Object.is(value, -0);
+
+/** The pinned physical format.ts header guard, plus the importer's nonempty identity requirement. */
+function validHeader(value: unknown): value is DshSessionHeader {
+	if (!isRecord(value)) return false;
+	return (
+		HEADER_REQUIRED.every((key) => Object.hasOwn(value, key)) &&
+		Object.keys(value).every((key) => HEADER_KEYS.has(key)) &&
+		value.type === "session" &&
+		value.version === DSH_NATIVE_FORMAT_VERSION_V0 &&
+		typeof value.id === "string" &&
+		value.id.length > 0 &&
+		headerCount(value.createdAt) &&
+		headerCount(value.delegationDepth) &&
+		typeof value.isSeeded === "boolean" &&
+		(value.cwd === undefined || (typeof value.cwd === "string" && isAbsolute(value.cwd))) &&
+		(value.parentSession === undefined || typeof value.parentSession === "string") &&
+		(value.origin === undefined || value.origin === "subagent") &&
+		(value.agentPreset === undefined || typeof value.agentPreset === "string")
+	);
+}
+
 /** Import the bytes of one persisted DSH Session log. See the module comment for the guarantees. */
 export function importDshSessionBytesV0(
 	bytes: Uint8Array,
@@ -156,13 +181,7 @@ export function importDshSessionBytesV0(
 			{ tail: read.tail },
 		);
 	}
-	const check = checkDshLog(read, { knownEventTypes: DSH_NATIVE_KNOWN_EVENT_TYPES_V0 });
-	const errors = check.findings.filter((finding) => finding.severity === "error");
-	if (
-		read.header.version !== DSH_NATIVE_FORMAT_VERSION_V0 ||
-		typeof read.header.id !== "string" ||
-		read.header.id === ""
-	)
+	if (read.header.version !== DSH_NATIVE_FORMAT_VERSION_V0)
 		return refused(
 			[
 				{
@@ -172,6 +191,13 @@ export function importDshSessionBytesV0(
 			],
 			{ tail: read.tail },
 		);
+	// Validate before the structural checker or mapping can interpret truthy/ill-shaped metadata.
+	if (!validHeader(read.header))
+		return refused([{ code: "invalid-log", detail: "the session header does not match the pinned format-4 shape" }], {
+			tail: read.tail,
+		});
+	const check = checkDshLog(read, { knownEventTypes: DSH_NATIVE_KNOWN_EVENT_TYPES_V0 });
+	const errors = check.findings.filter((finding) => finding.severity === "error");
 	if (read.tail.kind === "unreadable" || errors.length > 0)
 		return refused(
 			(errors.length > 0 ? errors : [{ code: "unreadable", detail: "the log could not be read" }]).map(
@@ -230,6 +256,9 @@ export function importDshSessionBytesV0(
 		const verdict = differs(headerEvent.payload, headerPayload, "headerDigest");
 		if (verdict === "foreign-key") foreignDomain = true;
 		else if (verdict === "changed") headerChanged = true;
+		// The cut is derived from the rows, not the header digest. Verify it even after a header-only interrupted import.
+		if (!isRecord(headerEvent.payload) || headerEvent.payload.inheritedCut !== headerPayload.inheritedCut)
+			headerChanged = true;
 	}
 	const freshRecords = new Map(rows.map((row) => [row.seq, recordDshRow(row, key)] as const));
 	for (const [seq, event] of bySeq) {
@@ -254,7 +283,7 @@ export function importDshSessionBytesV0(
 		refusals.push({
 			code: "history-changed",
 			detail: headerChanged
-				? "the session header no longer matches what was imported (a different session under the same id?)"
+				? "the session header or inherited cut no longer matches what was imported"
 				: "rows imported before no longer match the log",
 			dshSeqs: changed.sort((x, y) => x - y),
 		});

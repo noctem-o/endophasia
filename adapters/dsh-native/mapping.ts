@@ -121,7 +121,7 @@ function failureOf(key: EndoDigestKeyV0, value: unknown): JsonValueV0 | undefine
 }
 
 function contentStats(content: unknown): { parts: number; textBytes: number; kinds: Record<string, number> } {
-	const kinds: Record<string, number> = {};
+	const kinds: Record<string, number> = Object.create(null);
 	let textBytes = 0;
 	const list = Array.isArray(content) ? content : [];
 	for (const part of list) {

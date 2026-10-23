@@ -15,6 +15,7 @@
 //   record means an interruption Endophasia observed.
 
 import type { EndoEventV0 } from "../../protocol/event.ts";
+import { isEndoIdentifierV0 } from "../../protocol/identity.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { type EndoReportedV0, endoReportedV0, endoUnavailableV0 } from "../../protocol/session-lifecycle.ts";
 import type {
@@ -40,11 +41,12 @@ import {
 	isRecord,
 } from "./mapping.ts";
 
-export const DSH_NATIVE_TRAJECTORY_PROJECTION_V0 = "dsh-native-trajectory.1";
+export const DSH_NATIVE_TRAJECTORY_PROJECTION_V0 = "dsh-native-trajectory.2";
 
 export interface DshTrajectoryOptionsV0 {
-	/** The DSH session id or its `endo.session.dsh.…` coordinate. */
+	/** Raw DSH ID by default; use sessionKind to explicitly select an Endophasia coordinate. */
 	session: string;
+	sessionKind?: "dsh-id" | "endo-coordinate";
 	/** Where the store is, for `provenance` only (not digested). */
 	store: string;
 }
@@ -75,7 +77,20 @@ export function projectDshTrajectoryV0(
 	events: readonly EndoEventV0[],
 	options: DshTrajectoryOptionsV0,
 ): EndoTrajectoryV0 {
-	const session = options.session.startsWith("endo.session.") ? options.session : dshEndoSessionIdV0(options.session);
+	if (
+		options.sessionKind !== undefined &&
+		options.sessionKind !== "dsh-id" &&
+		options.sessionKind !== "endo-coordinate"
+	)
+		throw new TypeError("unknown DSH session selector kind");
+	if (
+		options.sessionKind === "endo-coordinate" &&
+		(!options.session.startsWith("endo.session.dsh.") ||
+			options.session.length === "endo.session.dsh.".length ||
+			!isEndoIdentifierV0(options.session, "session"))
+	)
+		throw new TypeError("expected a DSH Endophasia session coordinate");
+	const session = options.sessionKind === "endo-coordinate" ? options.session : dshEndoSessionIdV0(options.session);
 	const seen = new Set<string>();
 	let duplicatesIgnored = 0;
 	const recording: EndoEventV0[] = [];
@@ -129,6 +144,7 @@ export function projectDshTrajectoryV0(
 	let runtimeSessionId: EndoReportedV0<string> = endoUnavailableV0("no session start was derived");
 	let runIndex = 0;
 	let openRun = false;
+	let openRunTurns = 0;
 	const closeOutcome = (
 		payload: Record<string, unknown>,
 		outcome: EndoTrajectoryOutcomeKindV0,
@@ -156,12 +172,22 @@ export function projectDshTrajectoryV0(
 		lifecycle.push({ kind: event.kind, recognized: true, facts: payload as { [key: string]: JsonValueV0 } });
 		switch (event.kind) {
 			case "lifecycle.session-started":
-				if (isRecord(payload.runtimeSessionId) && typeof payload.runtimeSessionId.value === "string")
+				if (
+					isRecord(payload.runtimeSessionId) &&
+					payload.runtimeSessionId.status === "reported" &&
+					typeof payload.runtimeSessionId.value === "string"
+				)
 					runtimeSessionId = endoReportedV0(payload.runtimeSessionId.value);
+				else if (isRecord(payload.runtimeSessionId) && typeof payload.runtimeSessionId.reason === "string")
+					runtimeSessionId = endoUnavailableV0(payload.runtimeSessionId.reason);
 				break;
 			case "lifecycle.run-started":
 				runIndex += 1;
 				openRun = true;
+				openRunTurns = 0;
+				break;
+			case "lifecycle.turn-started":
+				if (openRun) openRunTurns += 1;
 				break;
 			case "lifecycle.run-completed":
 				closeOutcome(payload, "completed", reportedStop(payload.stopReason), null);
@@ -198,7 +224,7 @@ export function projectDshTrajectoryV0(
 		outcomes.push({
 			run: runIndex,
 			outcome: "open",
-			turns: 0,
+			turns: openRunTurns,
 			stopReason: endoUnavailableV0("the imported log ends with this run open"),
 			stopRequested: false,
 			cause: null,

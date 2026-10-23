@@ -295,12 +295,12 @@ describe("the historical header is verified, including the working directory, wi
 		for (const event of all(store))
 			old.ingest(
 				event.kind === "dsh.session-imported"
-					? { ...event, payload: { ...(event.payload as object), mapping: "dsh-native-mapping.1" } }
+					? { ...event, payload: { ...(event.payload as object), mapping: "dsh-native-mapping.2" } }
 					: event,
 			);
 		const report = importBytes(old, encodeRaw(header, base));
 		expect(report.status).toBe("refused");
 		expect(report.refusals.map((refusal) => refusal.code)).toContain("mapping-changed");
-		expect(DSH_NATIVE_MAPPING_VERSION_V0).toBe("dsh-native-mapping.2");
+		expect(DSH_NATIVE_MAPPING_VERSION_V0).toBe("dsh-native-mapping.3");
 	});
 });

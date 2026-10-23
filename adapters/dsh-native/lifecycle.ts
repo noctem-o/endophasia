@@ -1,8 +1,8 @@
 // The lifecycle fold of the DSH native importer: canonical `lifecycle.*` events (protocol/session-lifecycle.ts) derived from the
 // recorded rows, by a deterministic rule, one row at a time.
 //
-// APPEND-STABLE: the events a row produces depend only on that row and the rows before it. A log that grows later therefore
-// produces the same earlier events, which is what makes re-import idempotent and an extended import append-only.
+// APPEND-STABLE: a step/end's completion verdict waits for one following row. All other outputs depend only on that row and the
+// prefix before it. A growing log adds the deferred verdict without revising any earlier event.
 //
 // The mapping is QUALIFIED, not identity: a DSH turn (open input to settlement) is the Endophasia RUN, and a DSH step (one model
 // call and the tools it requested) is the Endophasia TURN. Every event names the mapping in `qualification`.
@@ -88,7 +88,11 @@ export function foldDshLifecycleV0(
 		next = { ...next, started: true };
 		emit("lifecycle.session-started", {
 			runtime: "dsh",
-			runtimeSessionId: endoReportedV0(dshSessionId),
+			runtimeSessionId: /^[A-Za-z0-9._-]{1,200}$/.test(dshSessionId)
+				? endoReportedV0(dshSessionId)
+				: endoUnavailableV0(
+						"the raw DSH session ID is withheld because it is outside the plain identifier grammar",
+					),
 			unavailable: ["instance"],
 			mapping: DSH_NATIVE_MAPPING_VERSION_V0,
 			basis: "imported-from-persisted-log",

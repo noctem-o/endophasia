@@ -9,8 +9,16 @@ the stored events into the existing `endo.trajectory.v1`. It is the implementati
 import { importDshSessionDirectoryV0, projectDshTrajectoryV0 } from "./adapters/dsh-native/index.ts";
 
 const report = importDshSessionDirectoryV0(sessionDirectory, store, { digestKey, now: () => new Date().toISOString() });
-const trajectory = projectDshTrajectoryV0(store.page({ limit: 10_000 }).events, { session: "session-…", store: root });
+// This example fits one page; collect every page for larger sessions.
+const trajectory = projectDshTrajectoryV0(store.page({ limit: 10_000 }).events, {
+  session: report.session!, sessionKind: "endo-coordinate", store: root,
+});
 ```
+
+The projector treats `session` as a **raw DSH ID** by default, even if it starts with `endo.session.`. Select a coordinate
+explicitly with `sessionKind: "endo-coordinate"`; prefixes are never used to guess between two possible sessions. Call the
+projector only after a successful import. The projection is `dsh-native-trajectory.2`; open outcomes count the turn-started
+events observed in that run, including zero when no step started.
 
 ## Guarantees
 
@@ -19,15 +27,21 @@ const trajectory = projectDshTrajectoryV0(store.page({ limit: 10_000 }).events, 
 DSH has no reliable "closed" signal, so a log is read once, as a snapshot, up to its last complete frame, and the state of its end
 (`clean`, `torn-frame`, `torn-row`) is reported and recorded in an import checkpoint.
 
-**Strict input.** Only format 4 (an `.v5` file beside it is refused, not guessed). Unknown required event types, non-ignorable
-`plugin:` records, sequence gaps, a skippable zstd frame or reserved bit, and a decoded size above 64 MiB are refused with the
-reason. A complete frame that ends inside a row, a torn frame and a torn raw row import the complete prefix and report the tail.
+**Strict input.** Only format 4 (an `.v5` file beside it is refused, not guessed). The complete physical header is validated
+against the pinned format before structural checking or mapping: required keys, boolean `isSeeded`, safe nonnegative creation
+time and delegation depth (excluding negative zero), absolute optional cwd, optional field types and the exact key set. The
+importer additionally requires a nonempty ID. Unknown required event types, non-ignorable `plugin:` records, sequence gaps,
+invalid UTF-8 or JSON, blank complete rows, skippable/reserved framing, missing checksum flags and a decoded size above 64 MiB
+are refused. The checksum requirement matches the pinned writer; upstream's decoder is more permissive. Rows cannot span
+independent frames. A final complete frame ending inside a row, a torn frame and a torn raw row retain the complete prefix and
+report damage; an earlier incomplete row in a complete frame is corruption and is refused. The physical frame count includes
+all structurally complete frames found even when decoding fails.
 
 **Idempotent, append-only toward the store.** Event ids are deterministic functions of (DSH session id, seq). Re-importing the same
 log appends nothing (`unchanged`). An extended log appends only the new rows, and the stored result equals a single full import
 (tested at five cut points). Before appending, every previously imported row is verified by its keyed digest. A changed historical
 row (reported with its DSH seq), a changed header (another session under the same id), a log shorter than what was imported, another
-digest key, or another mapping version is `refused` and **nothing is appended or replaced**. A partial import resumes: each missing
+digest key, a changed inherited cut (even with only the header previously stored), or another mapping version is `refused` and **nothing is appended or replaced**. A partial import resumes: each missing
 event is appended by its id.
 
 **Three clocks, never merged.** `at` is the import time, from an injected clock. `payload.source.reportedTimeMs` is DSH's own time,
@@ -38,7 +52,10 @@ short classification tokens (provider, model, tool name, error code, only when t
 digests** (HMAC under the caller's comparison-domain key) of whole rows, tool arguments, tool results, failure messages, request
 configuration and the agent preset. Prompts, system and injected text, reasoning, tool text, titles, approval reasons, the working
 directory and failure messages are never stored. A **public** digest key is refused on real input (its digests would be
-confirmation oracles) unless a test or fixture explicitly allows it.
+confirmation oracles) unless a test or fixture explicitly allows it. Raw runtime IDs are retained only when they match the
+plain identifier grammar `[A-Za-z0-9._-]{1,200}`. Other IDs, including paths, remain usable through their stable coordinate but
+are explicitly UNAVAILABLE as runtime IDs, with a withholding reason; the coordinate is never substituted as the runtime ID.
+Plain identifiers and classification tokens remain metadata; this grammar is not a general detector of private text.
 
 ## What is implemented, and what stays unavailable
 
@@ -78,9 +95,10 @@ matrix, covering each of the 62 pinned DSH event types exactly once, tested agai
    under which key and mapping. It replaces nothing in the study; it makes "evidence up to seq N, tail torn" a stored fact.
 6. **The trajectory outcome of a DSH-written closer is `unclassified`**, not `interrupted`, so a DSH crash and a Pi crash compare as
    different outcomes. That is the honest result: they are different claims.
-7. **Mapping version 2.** The header digest now commits to the working directory (keyed; the path is never stored) and excludes only the
-   format generation; lifecycle payloads carry the step output kind; recovery-written tool results are not outcomes. A store imported
-   under mapping 1 is refused on re-import (`mapping-changed`) and never reinterpreted; no release carried mapping 1.
+7. **Mapping version 3.** This retains mapping 2's keyed commitment to cwd, qualified step output and recovery-result handling,
+   and corrects arbitrary content-kind counts and unsafe raw runtime-ID disclosure. Stores imported under mappings 1 or 2 are
+   refused on re-import (`mapping-changed`); use a fresh store rather than reinterpreting or overwriting previous records. No
+   released package carried these candidate mappings. The derived fork cut is compared independently of the header digest.
 8. **Reader promoted, not copied.** `research/dsh-native/log.ts` moved to `adapters/dsh-native/log.ts`; the study and its tests import it from there.
 
 ## Known limitations
@@ -95,3 +113,12 @@ matrix, covering each of the 62 pinned DSH event types exactly once, tested agai
 * Zstd frames that DSH could recover through a write handle (the complete rows of a torn frame) are dropped here and reported.
 * Not verified against a real torn write or a live-written file (only SYNTHETIC cuts and one clean SIGKILL); not exercised on Windows.
 * The fixtures all use the id `session-1`; importing two of them into one store is refused as a changed history (a feature).
+
+## Validation and stacked merge order
+
+The [importer validation record](dsh-native-importer-validation.md) covers parent integration, the four Codex findings, adjacent
+counter/privacy fixes, deterministic tests and cold imports of retained raw runtime evidence. No active DSH sessions are read.
+
+This PR remains based on `dsh-native-attachment-study` (#70). Merge #70 first, then retarget #71 to `main` and verify the resulting
+importer-only diff and CI. If #70 is squash-merged or rebased, restack #71 onto the resulting `main` commit before retargeting.
+Neither PR is merged by this repair work.

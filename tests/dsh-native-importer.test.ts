@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { zstdCompressSync } from "node:zlib";
+import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import {
 	DSH_NATIVE_KNOWN_EVENT_TYPES_V0,
@@ -532,11 +532,15 @@ describe("damaged, hostile and unsupported input", () => {
 	});
 
 	it("fails safely on a decompression bomb and on garbage", () => {
-		const bomb = Buffer.concat([framed, zstdCompressSync(Buffer.alloc(80 * 1024 * 1024))]);
+		const bomb = Buffer.concat([
+			framed,
+			zstdCompressSync(Buffer.alloc(80 * 1024 * 1024), { params: { [constants.ZSTD_c_checksumFlag]: 1 } }),
+		]);
 		expect(bomb.length).toBeLessThan(10_000_000);
 		const report = importInto(newStore(), bomb);
 		expect(report.status).toBe("refused");
 		expect(report.refusals[0]!.code).toBe("unreadable");
+		expect(report.refusals[0]!.detail).toMatch(/exceed/);
 		expect(importInto(newStore(), Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0xff, 0xff])).status).toBe("refused");
 		expect(importInto(newStore(), Buffer.from("not a session log")).status).toBe("refused");
 	});
@@ -652,6 +656,7 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 			"CANARY-META",
 			"CANARY-ERRORREASON",
 			"CANARY-SUMMARY",
+			"CANARY-SESSION-ID",
 		];
 		const { header, events } = fixture("tool-read");
 		const text = (value: string) => [{ type: "text", text: value }];
@@ -704,14 +709,14 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 			time: dirty.at(-1)!.time,
 			data: { summary: text("CANARY-SUMMARY") },
 		});
-		const dirtyHeader = { ...header, cwd: "/CANARY-CWD/ws", agentPreset: "CANARY-PRESET" };
+		const dirtyHeader = { ...header, id: "/CANARY-SESSION-ID", cwd: "/CANARY-CWD/ws", agentPreset: "CANARY-PRESET" };
 		// Through the durable store, to disk, and out again as a trajectory.
 		const root = scratch();
 		const store = createEndoDurableEventStoreV0(root);
 		const report = importDshSessionBytesV0(encodeFrames(dirtyHeader, dirty, 4), store, options);
 		expect(report.status, JSON.stringify(report.refusals)).toBe("imported");
 		const stored = store.page({ limit: 10000 }).events;
-		const t = projectDshTrajectoryV0(stored, { session: "session-1", store: root });
+		const t = projectDshTrajectoryV0(stored, { session: dirtyHeader.id, store: root });
 		const outputs = [
 			canonicalEndoJsonV0(stored),
 			canonicalEndoJsonV0(t),

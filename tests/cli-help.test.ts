@@ -43,7 +43,7 @@ describe("endo help and version", () => {
 		}
 	});
 	it("an inherited property name is a usage error in every command family, not a silent success", () => {
-		for (const family of ["harness", "proxy", "steer", "experiment", "trajectory"])
+		for (const family of ["harness", "dsh", "proxy", "steer", "experiment", "trajectory"])
 			for (const sub of ["constructor", "toString", "__proto__"]) {
 				const result = endo([family, sub], dir);
 				expect(result.status, `${family} ${sub}`).toBe(1);

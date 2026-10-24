@@ -646,6 +646,32 @@ try {
 		await model.close();
 		fakePi.remove();
 	}
+	// Native DSH is exercised from the installed JavaScript, with retained sanitised evidence supplied as data only.
+	// No source checkout or DSH installation is reachable through the child command's arguments/environment.
+	const dshScratch = join(scratch, "dsh-acceptance");
+	mkdirSync(dshScratch);
+	const dshEnv = { ...env, HOME: join(dshScratch, "home"), XDG_DATA_HOME: join(dshScratch, "data"), ENDO_DIGEST_KEY_FILE: join(dshScratch, "key") };
+	const runDsh = (args) => spawnSync(process.execPath, [...noStripFlags, bin, "dsh", ...args], { cwd: dshScratch, env: dshEnv, encoding: "utf8", timeout: 20_000 });
+	const { DSH_NATIVE_LOSS_ACCOUNTING_V0 } = await import("../adapters/dsh-native/loss.ts");
+	const { canonicalEndoJsonV0: dshCanonical } = await import("../runtime/contracts/canonical-json.ts");
+	const loss = runDsh(["loss-accounting"]);
+	check(loss.status === 0 && loss.stdout === dshCanonical(DSH_NATIVE_LOSS_ACCOUNTING_V0) && loss.stderr === "" && readdirSync(dshScratch).length === 0, "installed DSH loss-accounting is the exact static contract and creates no state");
+	const dshSource = join(dshScratch, "source"), dshStore = join(dshScratch, "store");
+	mkdirSync(dshSource);
+	const dshBytes = readFileSync(join(repo, "research/dsh-native/fixtures/real/tool-read.events.jsonl"));
+	const dshLog = join(dshSource, "session.v4.jsonl");
+	writeFileSync(dshLog, dshBytes);
+	const dshBefore = statSync(dshLog);
+	const dshImport = runDsh(["import", "--root", dshStore, dshSource]);
+	check(dshImport.status === 0 && JSON.parse(dshImport.stdout).status === "imported" && dshImport.stdout === dshCanonical(JSON.parse(dshImport.stdout)), "installed DSH CLI imports a retained format-4 session as canonical JSON");
+	const dshEvidence = readFileSync(join(dshStore, "events/events.log"));
+	const dshAgain = runDsh(["import", dshStore, dshSource]);
+	check(dshAgain.status === 0 && JSON.parse(dshAgain.stdout).status === "unchanged" && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed DSH re-import is unchanged with no append");
+	writeFileSync(join(dshSource, "session.v5.jsonl"), "unsupported generation");
+	const dshRefused = runDsh(["import", dshStore, dshSource]);
+	check(dshRefused.status === 1 && JSON.parse(dshRefused.stdout).status === "refused" && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed DSH refusal exits 1 with a report and preserves evidence");
+	const dshAfter = statSync(dshLog);
+	check(readFileSync(dshLog).equals(dshBytes) && dshAfter.mode === dshBefore.mode && dshAfter.mtimeMs === dshBefore.mtimeMs && dshAfter.ctimeMs === dshBefore.ctimeMs, "installed DSH imports preserve source bytes, permissions and modification/change times");
 } catch (error) {
 	// A failure after a launch can carry what a child printed, and a failed CI log is a test artifact: the address is removed first.
 	const raw = error instanceof Error ? error.message : String(error);

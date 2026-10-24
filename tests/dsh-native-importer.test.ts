@@ -797,8 +797,8 @@ describe("loss accounting is tied to the pinned study (vocabulary and matrix)", 
 	});
 });
 
-describe("DSH stays inside its adapter", () => {
-	it("no harness-neutral module and no other adapter names DSH or imports the DSH adapter", () => {
+describe("DSH stays inside its adapter and explicit CLI leaf", () => {
+	it("no neutral module or other adapter imports DSH; only the CLI entry and leaf opt in", () => {
 		const walk = (path: string): string[] =>
 			readdirSync(path, { withFileTypes: true }).flatMap((entry) =>
 				entry.isDirectory() ? walk(join(path, entry.name)) : [join(path, entry.name)],
@@ -816,13 +816,21 @@ describe("DSH stays inside its adapter", () => {
 			"cli",
 		]) {
 			for (const file of walk(join(ROOT, dir)).filter((name) => /\.(ts|tsx)$/.test(name))) {
-				const source = readFileSync(file, "utf8");
+				let source = readFileSync(file, "utf8");
+				if (file === join(ROOT, "cli", "dsh.ts")) {
+					expect(source).toContain('from "../adapters/dsh-native/import.ts"');
+					expect(source).not.toMatch(
+						/importDshSessionBytesV0|readDshLog|foldDshLifecycleV0|projectDshTrajectoryV0/,
+					);
+					continue;
+				}
+				if (file === join(ROOT, "cli", "index.ts")) source = source.replace('"./dsh.ts"', '"./chosen-harness.ts"');
 				expect(source, file).not.toMatch(/dsh-native|DeepSeek Harness|@deepseek-ai\/dsh|\bdsh\./i);
 			}
 		}
 	});
 
-	it("keeps harness-neutral bundles free of the importer: the CLI build entry does not reference it", () => {
+	it("uses the existing CLI closure build rather than a DSH-specific build path", () => {
 		const build = readFileSync(join(ROOT, "scripts", "build-cli.mjs"), "utf8");
 		expect(build).not.toMatch(/dsh-native/);
 		void [cpSync, clock];

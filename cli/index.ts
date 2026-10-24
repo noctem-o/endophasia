@@ -7,6 +7,7 @@
  *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
  *   node cli/index.ts digest-key id
+ *   node cli/index.ts dsh <import|loss-accounting> ...
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
  *   node cli/index.ts proxy <record|replay> ...
  *   node cli/index.ts experiment <run|report> ...
@@ -22,6 +23,7 @@
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { digestKeyCommand } from "./digest-key.ts";
 import { doctorCommand } from "./doctor.ts";
+import { DSH_COMMANDS_V0 } from "./dsh.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
@@ -51,6 +53,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	artifacts: artifactsCommand,
 	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
 	"digest-key": digestKeyCommand,
+	dsh: family(DSH_COMMANDS_V0, "usage: endo dsh <import|loss-accounting> ..."),
 	studio: (argv) => import("./studio.ts").then((module) => module.studioCommand(argv)),
 	doctor: doctorCommand,
 	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),

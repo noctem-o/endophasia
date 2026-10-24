@@ -1,13 +1,13 @@
-# Endophasia Studio (`endo studio`)
+# Endophasia Web (currently `endo studio`)
 
-Status: **implemented, read-only, one workspace.** Studio is the browser interface Endophasia will grow into: Compare, Capabilities and
+Status: **implemented in the source tree, read-only, one workspace.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; it is the interface Endophasia will grow into: Compare, Capabilities and
 Evolve workspaces (and DEVELOP, WORK, DREAM and a model-internal OBSERVE view) are intended to live here. Today it hosts one read-only
 **Observe workspace**: an overview of the recorded window, the runtime a Pi attachment recorded, the capability state with its reasons
 and limits, the session timeline in storage order with an evidence-first inspector, and the condition of each source, all as recorded and
 none of it inferred. The other workspaces appear in the shell as "later", say what they would need and show nothing. It does not start,
 steer or attach to anything.
 
-Studio is the public name of the command. The implementation keeps its development names: the observation bridge is `cockpit/`, the
+`endo studio` remains the actual command; `endo web` is a proposed alias and does not work yet. A separate future Rust/GPUI native application would use the **Endophasia** product name. The implementation keeps its development names: the observation bridge is `cockpit/`, the
 server `cockpit-http/`, the frontend `studio-ui/` (see [cockpit.md](cockpit.md), [cockpit-ui.md](cockpit-ui.md) and
 [studio-ui-architecture.md](studio-ui-architecture.md)).
 
@@ -17,10 +17,10 @@ server `cockpit-http/`, the frontend `studio-ui/` (see [cockpit.md](cockpit.md),
 ## Run it
 
 Once a release includes Studio, nothing else is needed (no Git checkout, TypeScript, build step, network, model provider or
-running agent). **The published `endophasia@0.1.0-alpha.1` is not such a build.** It was published before Studio and has no
-`studio` command and no `dist/cockpit-ui/`. `0.1.0-alpha.2` is the first version that includes Studio (with the earlier page) and is
-[prepared but not published](release-0.1.0-alpha.2.md). Until it is, build a tarball from a checkout
-([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and install it; `endo` below is then the installed binary:
+running agent). **`endophasia@0.1.0-alpha.1` is CLI-only.** Published `0.1.0-alpha.2` is the first version that includes
+`endo studio`, with the **earlier browser page** in `dist/cockpit-ui/`. The **newer React frontend described below** is in
+the source tree, not yet a published npm release. To try that version, build a tarball from a checkout
+([install.md](install.md#build-and-test-a-tarball-from-a-checkout-contributors)) and install it; `endo` below is then the installed CLI:
 
 ```sh
 endo studio                                   # the default store

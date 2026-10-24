@@ -1,0 +1,774 @@
+{
+	"schemaVersion": "endo.dsh-native-fidelity-matrix.v0",
+	"dshCommit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+	"vocabulary": {
+		"verdicts": [
+			"EXACT",
+			"QUALIFIED",
+			"LOSSY",
+			"UNREPRESENTABLE"
+		],
+		"bases": [
+			"runtime-observed",
+			"upstream-fixture",
+			"source-derived",
+			"simulated"
+		],
+		"confidence": [
+			"high",
+			"medium",
+			"low"
+		],
+		"stability": [
+			"released-format",
+			"pre-stable-api",
+			"experimental",
+			"internal"
+		],
+		"endophasiaStatus": [
+			"exists",
+			"partial",
+			"none"
+		],
+		"note": "verdict is the fidelity of the NATIVE record into Endophasia's EXISTING representation (the vocabulary of adapters/acp/loss.ts); acp.fidelityVsNative is the same vocabulary applied to DSH's ACP surface against the native record. `basis` is per row: it lists every kind of evidence the row's claims draw on, not one kind for every claim in it; the per-claim distinction is in the study document and the tests."
+	},
+	"rows": [
+		{
+			"id": "run-structure",
+			"title": "Turn boundaries (DSH turn = Endophasia run)",
+			"eventTypes": [
+				"turn/start",
+				"turn/end"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "turn/start {turn}; turn/end {turn, reason: completed | aborted{cause: user|parent|hook|disposed|legacy} | blocked | error{LlmFailure} | max-tokens | interrupted | forked}",
+				"liveFeed": "same events on session/event, post-commit, before flush"
+			},
+			"acp": {
+				"v1": "No turn events. The prompt response carries a stop reason; cancellation is a client request. Cause of an abort is not reported.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "lifecycle.run-started / run-completed / run-failed / run-aborted / run-unclassified (protocol/session-lifecycle.ts); the DSH turn maps to the Endophasia RUN",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Turn number, the closed reason vocabulary, the abort cause kind and the structured failure (code, message) per turn; ordering by seq.",
+			"lost": "Nothing in the log says when a turn was admitted versus when a user submitted the prompt (agent/inbox/spliced is the only trace).",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Naming collision: a DSH 'turn' is an Endophasia 'run'; mapping it to lifecycle.turn-* would shift every count by one level.",
+				"reason 'interrupted' and 'forked' are written by DSH after the fact (resume, fork seed), not observed ending; they must never become lifecycle.interrupted, which Endophasia reserves for its own observation.",
+				"'blocked' and 'max-tokens' have no Endophasia outcome. The Pi adapter sends reported non-error, non-abort stop reasons to run-completed with the reported reason (adapters/pi/lifecycle.ts); PR 2 must decide the DSH mapping explicitly rather than default to run-unclassified.",
+				"A DSH turn is not exactly an Endophasia run: queued follow-ups and goal rounds open new DSH turns where a Pi run spans continuations. The mapping is QUALIFIED, not EXACT."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "step-structure",
+			"title": "Steps (DSH step = Endophasia turn)",
+			"eventTypes": [
+				"step/start",
+				"step/end"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "step/start {turn, step}; step/end {turn, step}: one model call plus the tool executions it requested",
+				"liveFeed": "same events on session/event"
+			},
+			"acp": {
+				"v1": "None; steps are invisible to ACP.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "lifecycle.turn-started / turn-completed (a DSH step is one model call, as a Pi turn is)",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Step ordinals and bracketing; where tool calls fall relative to model calls.",
+			"lost": "A step/end carries no stop reason: the stop reason lives on the assistant message's replayState.response.stopReason (provider-shaped, pi-ai).",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture"
+			],
+			"confidence": "high",
+			"hazards": [
+				"A step may close with no assistant/message (error, cancellation): bracket without content is normal.",
+				"step/end of a crash-orphaned step is synthesised on resume with the previous event's timestamp (observed)."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "user-system-messages",
+			"title": "User, developer and system messages",
+			"eventTypes": [
+				"user/message",
+				"developer/message",
+				"system/message"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "user/message {content[], source{kind: user|runtime-context|...}, id}; system/message {turn, step, message}; developer/message {turn, step, message, headerSeq?}. All carry full verbatim text.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "User prompts are not echoed back; the system prompt is never exposed.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "none today: Endophasia records no prompt text (ACP and Pi adapters count or digest)",
+				"status": "none"
+			},
+			"verdict": "LOSSY",
+			"preserved": "Which messages entered the surface, their source kind (prompt versus injected context versus system) and order.",
+			"lost": "Text must be digested or dropped at the read boundary: the system prompt and injected environment sections are verbatim in the log and in source.sections[].text.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Privacy: the log is a full transcript; an importer that copies content breaks the no-content policy.",
+				"Injected context messages restate their text in source.sections; a sanitiser/digester must cover both places (found and fixed in this study's own sanitiser)."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "assistant-message",
+			"title": "Assistant message, usage and the committed stream",
+			"eventTypes": [
+				"assistant/message"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "assistant/message {turn, step, message{content: reasoning|text|tool-call, source{provider, model, replayState{response{responseId, stopReason}}}, id}, stream[], usage?, interrupted?}; the stream embeds per-chunk times (dt arrays) without joining delta boundaries.",
+				"liveFeed": "same event; plus transient agent/assistant-stream frames (start/chunk/end) that are never stored (observed: 60 chunk frames, 0 stored as frames)"
+			},
+			"acp": {
+				"v1": "agent_thought_chunk / agent_message_chunk per content block with messageId, and usage_update {used, size} = CONTEXT OCCUPANCY, not the call's token usage.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "message.completed (Pi) and the trajectory usage layer (EndoTrajectoryTokensV0: input, output, cacheRead, cacheWrite, totalTokens, reasoning?, costTotal?)",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Per-call usage (inputTokens, outputTokens, totalTokens?, cacheReadTokens?, cacheWriteTokens?, reasoningTokens?), the provider and model that answered each call, the provider's response id and stop reason, chunk timing, and an explicit interrupted marker for a cancelled prefix.",
+			"lost": "No cost field. No request start time (the event's time is the COMMIT of the finished stream; first chunk time is inside stream[]). HTTP headers and raw provider bodies are not logged.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"DSH usage fields are optional where EndoTrajectoryTokensV0 requires cacheRead/cacheWrite/totalTokens: an absent count is not 0. Without changing endo.trajectory.v1 the tokens entry must be UNAVAILABLE when a required count is absent.",
+				"A crash during streaming loses the partial output from BOTH the live feed and the log (observed: 64 chunk frames, none stored).",
+				"replayState is provider-adapter shaped (kind pi-ai, version 2): an adapter-private field, not a stable contract."
+			],
+			"unavailable": [
+				"cost",
+				"request-start time",
+				"HTTP request headers",
+				"raw provider request/response bodies"
+			]
+		},
+		{
+			"id": "attempts-retries",
+			"title": "Failed attempts and retries",
+			"eventTypes": [
+				"assistant/attempt",
+				"llm/retry",
+				"llm/retry-started"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "assistant/attempt {turn, step, stream[]} for an attempt that committed no message (finish.reason.kind error with failure code/status); llm/retry {retryId, turn, step, provider, mode, policyKey, retry, maxRetries, delayMs, failure}; llm/retry-started {retryId, retry}.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Nothing: a retried attempt never reaches ACP or the headless --json stream.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "retry.started / retry.finished (Pi mapping) exist; attempts have no representation",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Each failed attempt, its failure facts, the retry decision and delay, and the link by retryId.",
+			"lost": "Nothing known; usage of a failed attempt is not recorded (assistant/attempt has no usage field).",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Counting assistant messages is not counting model requests: attempts are separate events.",
+				"The --json stream hides retries by design (commit-point emission); a consumer of that stream under-counts requests."
+			],
+			"unavailable": [
+				"usage of a failed attempt"
+			]
+		},
+		{
+			"id": "tools",
+			"title": "Tool calls and results",
+			"eventTypes": [
+				"tool/call",
+				"tool/result",
+				"tool/ptc-dispatch",
+				"tool/ptc-dispatch-start"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "tool/call {turn, step, callId, name, arguments: RAW JSON STRING as the model produced it}; tool/result {message{toolCallId, content[], isError}, error?{name, code, reason?}, meta? (tool-private JSON, e.g. diffs)}; sourceEventSeqs on the result cites the call.",
+				"liveFeed": "same events; tool/call is committed with the assistant message (observed 2 ms after it), tool/result after execution (observed 11 ms later)"
+			},
+			"acp": {
+				"v1": "tool_call {toolCallId, title=name, kind other, rawInput parsed or raw string, status in_progress} and tool_call_update {status completed|failed, content}.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "tool.started / tool.finished with keyed argsDigest/resultDigest (HMAC under the comparison-domain key)",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Stable callId pairing, the exact raw argument string, an error name/code/reason distinct from the model-facing message, tool-private meta, and the explicit call-to-result citation.",
+			"lost": "No tool START event: the call time is the model's emission, so call-to-result time includes queueing and approval wait. ACP loses error code/reason, meta, and the raw-versus-parsed distinction.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Arguments are a raw string: Endophasia's argsDigest is over canonical JSON, so unparseable arguments cannot be digested comparably (UNAVAILABLE, not a digest of the raw text under the same domain).",
+				"tool/result.meta and content can hold file contents and diffs: digest only.",
+				"PTC dispatch events are experimental in shape; count them, do not interpret."
+			],
+			"unavailable": [
+				"tool start time",
+				"tool execution duration"
+			]
+		},
+		{
+			"id": "request-config",
+			"title": "Request header, route and model selection",
+			"eventTypes": [
+				"request/header",
+				"request/context",
+				"model/selection",
+				"agent-preset/selected",
+				"subagent/model-selection-policy"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "request/header {header{config{provider, model, ...}, tools[] schemas}, reason: initial|resume|change|series}: a FULL snapshot appended inside the step before dispatch; request/context {provider, model, contextWindow} only when the route changes; model/selection and agent-preset/selected record choices.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Model and reasoning_effort as session config options; no tool inventory.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "environment.attachments (configuredModel) and the Pi runtime fingerprint/registry evidence",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "The exact tool inventory and call configuration used for each request epoch, when it changed, and why (initial/resume/change/series).",
+			"lost": "'request header' here is the call CONFIG and tool schemas, not HTTP headers. HTTP request headers, authentication and endpoint are not logged.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Name collision with HTTP request headers: a requirement for 'model request headers' is NOT met by request/header.",
+				"request/context is logged only on change: its absence for a step means unchanged, not unknown."
+			],
+			"unavailable": [
+				"HTTP request headers",
+				"endpoint"
+			]
+		},
+		{
+			"id": "authority",
+			"title": "Approvals, permission and sandbox policy",
+			"eventTypes": [
+				"approval/asked",
+				"approval/decided",
+				"approval/policy",
+				"permission/preset",
+				"sandbox/mode"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "permission/preset, sandbox/mode and approval/policy are logged before the first turn (observed seq 0-2); approval/asked {id, toolName, callId?, reason?} is paired with exactly one approval/decided {id, outcome} (decision, cancellation or fail-closed 'unavailable').",
+				"liveFeed": "same events (plus a live approval/request waterfall that is a control point and must not be touched)"
+			},
+			"acp": {
+				"v1": "Live session/request_permission to the client (the client decides); no record of policy or sandbox.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "authority-decision / permission.requested / permission.decided (ACP adapter); no equivalent for sandbox mode",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "The authority envelope the session ran under, and the audit of each ask and its outcome, paired by id. Runtime-observed here: only the three policy records at seq 0-2; approval asks and decisions were NOT provoked and rest on source.",
+			"lost": "Who answered (human, policy, client) beyond the outcome is not recorded in these events.",
+			"basis": [
+				"runtime-observed",
+				"source-derived"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"Observation only: an Endophasia record of an approval outcome is evidence that DSH logged it, never that Endophasia authorised anything.",
+				"approval/request is a waterfall hook; subscribing to it would be a control path and is out of scope."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "ancestry",
+			"title": "Fork, seed and subagent ancestry",
+			"eventTypes": [
+				"session/end-seed",
+				"subagent/descriptor",
+				"subagent/catalog"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "Header: parentSession, isSeeded, origin 'subagent', delegationDepth. A seeded fork child physically contains the parent's prefix byte-identically; the cut is the LAST TAGGED session/end-seed {inherited: true}. A subagent child is a separate session with parentSession but isSeeded false. Untagged end-seed markers also appear on restore/resume (observed seq 15).",
+				"liveFeed": "child events arrive on the same session/event with the child's session; restored history and resume-time markers are NOT announced (observed)"
+			},
+			"acp": {
+				"v1": "Unsupported: no fork, replay or load; delegation is invisible.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "none: no ancestry concept in the event store or trajectory",
+				"status": "none"
+			},
+			"verdict": "LOSSY",
+			"preserved": "Exact inherited prefix length, parent id, depth, and whether a child is seeded.",
+			"lost": "Nothing is lost natively; everything is lost through ACP.",
+			"basis": [
+				"upstream-fixture",
+				"source-derived",
+				"simulated"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"Counting a fork child's events counts the parent's prefix twice unless the cut is applied; parentSession alone does NOT mean 'inherits history' (subagent children do not).",
+				"Header and last tagged marker must agree; if they disagree the cut is unestablished (UNAVAILABLE), not guessed.",
+				"No causal claim: parentSession is lineage, not that the parent's content influenced the child's choices."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "compaction",
+			"title": "Compaction and surface replacement",
+			"eventTypes": [
+				"compaction/start",
+				"compaction/summary",
+				"compaction/end",
+				"compaction/prune",
+				"image/offload"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "compaction/start {compactionId, turn|null} .. compaction/summary {summary, shadowedRange, shadowedSeqs, shadowedTokenCount, provider, model, usage?, rawOutput?} .. a user/message with surfaceOp {op: replace, startSeq, endSeq} .. compaction/end {error?}. Replaced events REMAIN in the log; the model-visible surface is a derived view.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Nothing about compaction; context occupancy via usage_update only.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "lifecycle.compacted (reason, firstKeptEntryId, tokensBefore) and Pi compaction.started/finished",
+				"status": "exists"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Which events were shadowed, by which compaction, which model wrote the summary and what it used.",
+			"lost": "Pi's firstKeptEntryId has no DSH counterpart; DSH's shadowedSeqs is richer and surface-position-ordered (start can exceed end).",
+			"basis": [
+				"source-derived",
+				"simulated"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"The log is a superset of the surface: treating shadowed events as deleted, or the summary as something the agent said, is wrong.",
+				"Real compaction was not provoked in the runtime experiment (needs a long context): the evidence is the source and a synthetic log."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "orchestration",
+			"title": "Subagent teams, workflows, jobs and hooks",
+			"eventTypes": [
+				"team/member",
+				"team/task",
+				"team/message/queued",
+				"team/message/delivered",
+				"tool-workflow/run-start",
+				"tool-workflow/run-end",
+				"tool-workflow/agent-start",
+				"tool-workflow/agent-end",
+				"job/registered",
+				"job/settled",
+				"hook/invoked",
+				"hook/result"
+			],
+			"native": {
+				"stability": "experimental",
+				"persistedLog": "Plugin-merged events from experimental packages (agent-team, hook-protocol, tool-workflow): versioned payloads of their own, ignorable only when stamped.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Not represented.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "none",
+				"status": "none"
+			},
+			"verdict": "LOSSY",
+			"preserved": "That orchestration occurred, in log order, with the owner's own ids.",
+			"lost": "Their semantics are the owning plugin's; Endophasia cannot interpret them without that plugin's contract.",
+			"basis": [
+				"source-derived"
+			],
+			"confidence": "low",
+			"hazards": [
+				"Experimental: payload shape may change without a Session format bump; count and name them, never interpret.",
+				"Hooks are user code that can change tool behaviour: a hook event is a report that a hook ran."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "interaction",
+			"title": "Commands, inbox, goals, plans, todos and feedback",
+			"eventTypes": [
+				"command/run",
+				"command/done",
+				"agent/inbox/spliced",
+				"goal/change",
+				"plan/mode",
+				"todo/write",
+				"schedule/change",
+				"feedback/message-put",
+				"feedback/message-delete",
+				"feedback/record"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "Session-level user interaction and agent-planning state records; agent/inbox/spliced brackets the queue handoff around turn/start (observed twice per turn).",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Not represented (the ACP server omits plans, commands and feedback).",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "none",
+				"status": "none"
+			},
+			"verdict": "LOSSY",
+			"preserved": "That the interaction happened and its place in the order.",
+			"lost": "Free text (goal, plan, todo, feedback) is user/agent content: digest only.",
+			"basis": [
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"feedback/* is user rating/notes about the session: personal; never import content.",
+				"plan/mode and goal/change change agent behaviour: record the change, do not infer intent."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "workspace",
+			"title": "Working directory, workspace changes and deliverables",
+			"eventTypes": [
+				"working-directory/change",
+				"workspace/changes",
+				"deliverables/presented"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "Records of cwd change, observed workspace file changes and presented deliverables.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "Not represented.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "UNREPRESENTABLE"
+			},
+			"endophasia": {
+				"target": "none",
+				"status": "none"
+			},
+			"verdict": "LOSSY",
+			"preserved": "That the workspace or cwd changed and when, in log order.",
+			"lost": "Paths and diffs are local and potentially sensitive: record counts and digests.",
+			"basis": [
+				"source-derived"
+			],
+			"confidence": "low",
+			"hazards": [
+				"Absolute paths must never reach a browser-facing contract."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "auxiliary",
+			"title": "Derived titles, auxiliary LLM calls and upload watermarks",
+			"eventTypes": [
+				"session/title",
+				"session/title-llm-request",
+				"web/deepseek-search-llm-request",
+				"session-log-deepseek/delivery-accepted"
+			],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "session/title {title, messageSeqs, source{kind: fallback|llm}} (observed seq 12); session/title-llm-request and web/deepseek-search-llm-request record auxiliary model calls; session-log-deepseek/delivery-accepted {throughSeq, sessionFormatVersion} records that a log suffix was uploaded to the official DeepSeek API.",
+				"liveFeed": "same events"
+			},
+			"acp": {
+				"v1": "The title may surface as session info; the rest is not represented.",
+				"v2": "not offered: dsh-acp serves ACP v1 only at this commit (packages/acp/acp/src/index.ts, PROTOCOL_VERSION from the v1 SDK)",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "Pi session.info-changed (title)",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "A derived title with the seqs it came from; that an auxiliary call was made; the upload watermark.",
+			"lost": "Auxiliary calls' request/response bodies are not in these events.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"delivery-accepted means DSH uploaded log content to a third party: the existence of the record is itself sensitive and must not be dropped silently.",
+				"A derived title is DSH's interpretation of the prompt, not evidence of the task."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "envelope",
+			"title": "Event envelope: sequence, time, ignorable",
+			"eventTypes": [],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "seq contiguous from 0 per session; time = Unix ms at append (the commit, not the start of the work); ignorable marks events a reader may skip",
+				"liveFeed": "identical envelope (byte-equal to the stored row in every runtime case where the observer was attached before the event)"
+			},
+			"acp": {
+				"v1": "No sequence numbers or timestamps.",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "storageSequence and recordedAt are Endophasia's OWN (event store): the DSH seq is a source reference, never reused as storageSequence",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "A total order within one session and a producer clock per event.",
+			"lost": "Cross-session order is not defined; a fork child reuses the parent's seqs for the prefix.",
+			"basis": [
+				"runtime-observed",
+				"upstream-fixture",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"time of a resume-synthesised closer is COPIED from the previous event, not the resume time (observed: 1792662792542 for the title and both closers; the resume's own end-seed is 14983 ms later). It is not an observation time.",
+				"Plugin records are 'plugin:'-prefixed and stamped ignorable; an unknown non-ignorable type means a newer harness and the log must be refused."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "live-only",
+			"title": "Signals that exist only live",
+			"eventTypes": [],
+			"native": {
+				"stability": "pre-stable-api",
+				"persistedLog": "none of these are stored",
+				"liveFeed": "agent/assistant-stream frames (process-local, transient), agent/error (not durable), agent/status, agent/inbox/inserted|claimed|discarded (agent/inbox/spliced IS persisted), and the waterfall hooks agent/request, agent/request-error, tools/*, approval/request"
+			},
+			"acp": {
+				"v1": "Some become ACP updates (message chunks) but arrive already aggregated.",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "none",
+				"status": "partial"
+			},
+			"verdict": "LOSSY",
+			"preserved": "Streaming granularity (the committed stream keeps chunk times), agent/error before the turn/end that records it.",
+			"lost": "A fatal error that never reaches a turn/end (crash) leaves no trace at all; this crash window (partial stream, live agent/error) is the one thing only a live observer can capture.",
+			"basis": [
+				"runtime-observed",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Waterfall events (agent/request, tools/pre-execute, ...) let a listener CHANGE behaviour: an observer must use only emit-mode events (session/event) and never register on them.",
+				"agent/error fired live in the no-key run and is also summarised in the stored turn/end reason: the durable record is the reason, not the event."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "restored-history",
+			"title": "Restored history and resume markers",
+			"eventTypes": [],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "everything appended before an observer attached is on disk but was never announced: in the resume case seqs 0-15 (13 restored events, seqs 0-12, then two synthesised closers, 13-14, and the resume end-seed, 15) were not on session/event",
+				"liveFeed": "session/event announces only appends after attach"
+			},
+			"acp": {
+				"v1": "session/resume restores a session without replaying updates (dsh-acp README).",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "none",
+				"status": "partial"
+			},
+			"verdict": "LOSSY",
+			"preserved": "Nothing is lost natively IF the log is read.",
+			"lost": "A live-only observer cannot reconstruct a session, cannot see resume-time closers, and cannot know that history existed.",
+			"basis": [
+				"runtime-observed"
+			],
+			"confidence": "high",
+			"hazards": [
+				"A live observer attached mid-session must backfill from the durable log to be complete; live-only attachment is structurally incomplete."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "durability",
+			"title": "Persistence, flush and crash recovery",
+			"eventTypes": [],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "per-session directory <root>/--<cwd>--/<id>/session.v4.jsonl[.zstd] plus an EMPTY session.lock; each batch is one checksummed zstd frame, fsynced; writes are lazy (nothing exists until the first append or an explicit flush); a torn tail is repaired only by the next WRITE handle",
+				"liveFeed": "session/flush is a parallel durability checkpoint the turn loop does not await at turn boundaries"
+			},
+			"acp": {
+				"v1": "session/list and session/resume across restarts through DSH's own store.",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "none (the Pi adapter records its own observations to the Endophasia store)",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Committed events survive a crash exactly; the last turn stays open; a resume appends interrupted closers.",
+			"lost": "Events committed in memory but not yet flushed are lost with the process; the live feed runs ahead of the disk (source: commit() notifies observers before the write is queued).",
+			"basis": [
+				"runtime-observed",
+				"source-derived"
+			],
+			"confidence": "high",
+			"hazards": [
+				"Reading a log while it is written: the sampled reader saw only complete frames (2 states over 936 ms); a torn final frame is possible after a crash and is reported, never repaired, by a cold reader.",
+				"A cold reader must never open a write handle or take session.lock (the lock is for writers).",
+				"SIGKILL mid-stream: 13 events persisted, turn open, partial assistant output absent from both feeds."
+			],
+			"unavailable": []
+		},
+		{
+			"id": "configuration-changes",
+			"title": "Plugin lifecycle and observable configuration changes",
+			"eventTypes": [],
+			"native": {
+				"stability": "pre-stable-api",
+				"persistedLog": "only through request/header snapshots (config + tool schemas) and model/selection/permission records",
+				"liveFeed": "Cordis events plugin-manager/changed, app-boot/config-reload, tools/change, llm/adapters-updated, system-prompt/change are live-only"
+			},
+			"acp": {
+				"v1": "config_option_update for model and reasoning effort.",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "runtime fingerprint/registry evidence (Pi)",
+				"status": "partial"
+			},
+			"verdict": "LOSSY",
+			"preserved": "The effective tool inventory and model at each request.",
+			"lost": "Plugin composition, versions and configuration are not in the log.",
+			"basis": [
+				"source-derived",
+				"runtime-observed"
+			],
+			"confidence": "medium",
+			"hazards": [
+				"The composition is knowable only by asking the host (profile files, dump-config) or by an opt-in observer; the log never states which plugins were loaded."
+			],
+			"unavailable": [
+				"plugin composition",
+				"plugin versions",
+				"profile configuration"
+			]
+		},
+		{
+			"id": "provider-identity",
+			"title": "Provider, model and response identity",
+			"eventTypes": [],
+			"native": {
+				"stability": "released-format",
+				"persistedLog": "per assistant message: source.provider, source.model, replayState.response.{kind, version, api, provider, model, responseId, stopReason}",
+				"liveFeed": "same"
+			},
+			"acp": {
+				"v1": "A session-level model config option; no per-message identity.",
+				"v2": "not offered by DSH at this commit",
+				"fidelityVsNative": "LOSSY"
+			},
+			"endophasia": {
+				"target": "environment.reportedModels and configuredModel (Pi)",
+				"status": "partial"
+			},
+			"verdict": "QUALIFIED",
+			"preserved": "Which route answered each step, and the provider's own response id.",
+			"lost": "The model's weights/quantisation: 'qwen38-local' is an alias the llama.cpp server accepted, not a verified identity.",
+			"basis": [
+				"runtime-observed"
+			],
+			"confidence": "high",
+			"hazards": [
+				"The same alias can be served by different weights: treat provider/model as reported, never verified."
+			],
+			"unavailable": []
+		}
+	]
+}

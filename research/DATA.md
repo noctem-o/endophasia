@@ -13,6 +13,9 @@ the raw data is the evidence behind them.
 | [Discriminating-task](discriminating-tasks/1.0.1/RESULTS.md) | `discriminating-tasks/1.0.1/raw/` | 3,701 | 614 MB | 20.3 MB |
 | [Completion-cap](completion-cap/1.0.1/RESULTS.md) | `completion-cap/1.0.1/raw/` (and `logs/`) | 10,170 | 1.5 GB | 48.0 MB |
 
+The DeepSeek Harness native-attachment study ([dsh-native/README.md](dsh-native/README.md)) keeps its raw captures in `../endophasia-research/dsh-native/` (`run-final/raw/<case>/`,
+a few MB, with the unsanitised system prompt and local paths; not archived or published). Only the sanitised fixtures under `dsh-native/fixtures/real/` are committed.
+
 ## Getting it
 
 The data is kept beside this checkout, in `../endophasia-research/` (laid out as `<study>/1.0.1/raw/`), and exists as one archive per study.

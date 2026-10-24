@@ -9,6 +9,15 @@
   calls apart from tool results, no cross-layer divergence or event pairing, unavailable deltas never 0, and store paths and
   content-committing digests withheld as keyed tokens. It is not yet served or registered in the cockpit version table; see
   [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-not-yet-served).
+- `adapters/dsh-native/`: a read-only cold importer of DeepSeek Harness Session format 4 logs into the event store, with an idempotent,
+  verified, append-only re-import, privacy by keyed digests, qualified lifecycle and tool mapping (a DSH tool call is a request, never
+  `tool.started`; DSH-written crash closers are never `lifecycle.interrupted`), a projector to the existing `endo.trajectory.v1`, and
+  `endo.dsh-native-loss-accounting.v0`. See [docs/dsh-native-importer.md](docs/dsh-native-importer.md). It does not drive, resume or
+  attach to DSH, and is not wired into the CLI.
+- A study of attaching to DeepSeek Harness natively (docs/dsh-native-attachment.md, research/dsh-native/): the audited observation
+  surfaces, a native-versus-ACP fidelity matrix over all 62 persisted event types, sanitised fixtures from a real runtime (tool call,
+  failed turn, retry, SIGKILL crash and resume), a read-only log inspector with deterministic tests, and the architecture decision for
+  the follow-up. It changes no adapter, protocol, store or Studio behaviour.
 - The Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed files and a manifest
   that the host checks, file for file and byte for byte, before anything starts), served through the same hardened server. Its
   **Observe workspace** reads the one recorded snapshot and shows an overview of the recorded window, the runtime, the capability state

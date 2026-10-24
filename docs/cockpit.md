@@ -362,7 +362,7 @@ results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` wi
 
 ## The trajectory-comparison presentation (implemented, not yet served)
 
-`endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.2`) is the shape
+`endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.3`) is the shape
 in which a future Studio **Compare** workspace is shown two recorded trajectories compared. It is a presentation of
 `endo.trajectory-comparison.v1` ([trajectory.md](trajectory.md)), not another comparison: `compareEndoTrajectoriesV0` stays the one
 authority on what the recordings establish, and the projection copies its verdicts and withholds what a browser must not receive.
@@ -400,7 +400,7 @@ The keyed argument and result digests are already HMACs and are shown as recorde
 not one the cockpit admits) not at all. Free text goes through the text policy and, when withheld, becomes a token of itself so two
 withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar): a name is held to the same text policy as a value, text containing a digest-shaped span (including `sha256=<hex>`) is tokenized whole, and what is left out is counted with a keyed token so entries that differ only there still read as different. This conservatively withholds long opaque words too; it is not a claim that the value is a hash. Empty containers also count as omissions with their path and type committed to that token. The source trajectory's `recognized` flag is preserved independently of this presenter's kind vocabulary. Arbitrary source session strings become session aliases; they are not treated as other identifier namespaces.
 
-Projection version `cockpit-trajectory-comparison.2` retains all distinct flag values rather than imposing a limit absent from the source contract. The fact-item and depth bounds remain in place. The validator rejects identical presented entries claiming a divergence, numerical run deltas with a missing side, and ordering reasons or coordinates that contradict the presented layers. It checks internal consistency, not whether a wire record matches real source evidence; the comparator remains authoritative.
+Projection version `cockpit-trajectory-comparison.3` commits omitted paths as segment arrays with each container's kind, so dotted keys cannot alias nested keys and array indices cannot alias object keys. Text, stored digests and omissions have separate token domains; text cannot alias a raw digest equal to its hash. All distinct flag values are retained rather than imposing a limit absent from the source contract. The fact-item and depth bounds remain in place. The validator rejects identical presented entries claiming a divergence, numerical run deltas with a missing side, and ordering reasons or coordinates that contradict the presented layers. It checks internal consistency, not whether a wire record matches real source evidence; the comparator remains authoritative.
 
 **Compatibility.** `comparisonRules` carries the comparator's rules version (`trajectory-comparison.3`) and the validator accepts that
 version only; a rules change is a projection version change, and the projection refuses an ordering sentence it has no code for

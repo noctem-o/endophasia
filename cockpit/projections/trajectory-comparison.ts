@@ -67,6 +67,7 @@ import {
 } from "./common.ts";
 
 type R = Record<string, unknown>;
+type FactPath = { container: "array" | "object"; key: string }[];
 const isRecord = (value: unknown): value is R => typeof value === "object" && value !== null && !Array.isArray(value);
 const HEX64 = /^[0-9a-f]{64}$/;
 
@@ -121,30 +122,35 @@ class Presenter {
 			: `endo.session.withheld-${cockpitTokenV0(this.#key, "endo.cockpit.comparison-session-alias.v0", { session: value }).slice(0, 32)}`;
 	}
 
-	/** A keyed token of a plain sha256 (or of any value, by its own sha256), equal for equal values under this key. */
+	/** A keyed token of a stored sha256, equal for equal stored digests under this key. Text uses a separate domain. */
 	supporting(hex: string): string {
 		return this.alias.digest("supporting", hex);
 	}
 
+	/** Text and stored digests are different input domains: HMAC(text) must not alias a raw digest equal to SHA256(text). */
+	textToken(text: string): string {
+		return cockpitTokenV0(this.#key, "endo.cockpit.comparison-text.v0", { text });
+	}
+
 	/** Free text whole when the policy admits it, else a keyed token of it: two withheld values that differ stay different. */
 	text(text: string): EndoCockpitComparisonTextV0 {
-		if (DIGEST_LIKE.test(text)) return { kind: "token", token: this.supporting(sha256HexV0(text)) };
+		if (DIGEST_LIKE.test(text)) return { kind: "token", token: this.textToken(text) };
 		return endoCockpitTextPresentableV0(text)
 			? { kind: "text", text }
-			: { kind: "withheld", token: this.supporting(sha256HexV0(text)) };
+			: { kind: "withheld", token: this.textToken(text) };
 	}
 
 	/** A string that is itself a digest, as a keyed token; anything else as text. */
 	digestOrText(purpose: "identity" | "configuration", value: string): EndoCockpitComparisonTextV0 {
 		if (HEX64.test(value)) return { kind: "token", token: this.alias.digest(purpose, value) };
-		return DIGEST_LIKE.test(value) ? { kind: "token", token: this.supporting(sha256HexV0(value)) } : this.text(value);
+		return this.text(value);
 	}
 
 	/** A digest key id: shown when it is one the cockpit admits, else withheld by token. */
 	keyId(value: string): EndoCockpitComparisonTextV0 {
 		return isEndoCockpitDigestKeyIdV0(value) && endoCockpitTextPresentableV0(value)
 			? { kind: "text", text: value }
-			: { kind: "withheld", token: this.supporting(sha256HexV0(value)) };
+			: { kind: "withheld", token: this.textToken(value) };
 	}
 
 	scalar(value: unknown): EndoCockpitComparisonFactValueV0 | undefined {
@@ -152,7 +158,7 @@ class Presenter {
 		if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
 		if (typeof value !== "string") return undefined;
 		if (HEX64.test(value)) return { kind: "token", token: this.supporting(value) };
-		return DIGEST_LIKE.test(value) ? { kind: "token", token: this.supporting(sha256HexV0(value)) } : this.text(value);
+		return this.text(value);
 	}
 
 	/**
@@ -163,11 +169,11 @@ class Presenter {
 		const items: { path: string; value: EndoCockpitComparisonFactValueV0 }[] = [];
 		// What is not carried, with where it was: its count is shown, and a keyed token of it, so two entries that differ only in
 		// what is left out still read as different.
-		const left: { path: string; value: unknown }[] = [];
-		const omit = (path: string[], what: unknown): void => {
-			left.push({ path: path.join("."), value: what });
+		const left: { path: FactPath; value: unknown }[] = [];
+		const omit = (path: FactPath, what: unknown): void => {
+			left.push({ path, value: what });
 		};
-		const walk = (current: unknown, path: string[]): void => {
+		const walk = (current: unknown, path: FactPath): void => {
 			if (Array.isArray(current) || isRecord(current)) {
 				if (path.length >= ENDO_COCKPIT_COMPARISON_MAX_FACT_DEPTH_V0) {
 					omit(path, current);
@@ -190,22 +196,26 @@ class Presenter {
 							endoCockpitTextPresentableV0(key) &&
 							!HEX_RUN.test(key);
 					// A path starts with a name, never an array index.
-					if (!plain || (path.length === 0 && Array.isArray(current))) omit([...path, key], child);
-					else walk(child, [...path, key]);
+					const childPath: FactPath = [...path, { container: Array.isArray(current) ? "array" : "object", key }];
+					if (!plain || (path.length === 0 && Array.isArray(current))) omit(childPath, child);
+					else walk(child, childPath);
 				}
 				return;
 			}
 			const shown = this.scalar(current);
 			if (shown === undefined || path.length === 0 || items.length >= ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0)
 				omit(path, current);
-			else items.push({ path: path.join("."), value: shown });
+			else items.push({ path: path.map((part) => part.key).join("."), value: shown });
 		};
 		walk(value, []);
 		items.sort((x, y) => compareCodeUnitsV0(x.path, y.path));
 		return {
 			items,
 			omitted: left.length,
-			omittedToken: left.length === 0 ? null : this.supporting(sha256HexV0(canonicalEndoJsonV0(left))),
+			omittedToken:
+				left.length === 0
+					? null
+					: cockpitTokenV0(this.#key, "endo.cockpit.comparison-omissions.v0", { omissions: left }),
 		};
 	}
 }

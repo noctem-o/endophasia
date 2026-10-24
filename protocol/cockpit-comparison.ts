@@ -43,7 +43,7 @@ import { ENDO_TRAJECTORY_COMPARISON_RULES_V0 } from "./trajectory.ts";
 
 export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0 = "endo.cockpit-trajectory-comparison.v0";
 /** Bumped when what the projection computes changes. It is tied to the comparator's rules version (`comparisonRules`). */
-export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0 = "cockpit-trajectory-comparison.2";
+export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0 = "cockpit-trajectory-comparison.3";
 
 /** The most (path, value) items of one entry's facts; the rest are counted in `omitted`. */
 export const ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0 = 32;

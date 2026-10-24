@@ -454,7 +454,7 @@ describe("the projection of a comparison", () => {
 	});
 
 	it("is tied to the comparator's rules version", () => {
-		expect(ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0).toBe("cockpit-trajectory-comparison.2");
+		expect(ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0).toBe("cockpit-trajectory-comparison.3");
 		expect(project(baseline(), baseline()).comparisonRules).toBe("trajectory-comparison.3");
 	});
 
@@ -859,6 +859,9 @@ describe("the contract validator", () => {
 			r.projectionVersion = "cockpit-trajectory-comparison.1";
 		});
 		reject((r) => {
+			r.projectionVersion = "cockpit-trajectory-comparison.2";
+		});
+		reject((r) => {
 			r.comparisonRules = "trajectory-comparison.4";
 		});
 		reject((r) => {
@@ -1212,4 +1215,58 @@ describe("comparison presentation of DSH cold-import trajectories", () => {
 		expect(otherDomain.layers.toolCalls.status).toBe("UNAVAILABLE");
 		expect(otherDomain.layers.toolResults.status).toBe("UNAVAILABLE");
 	});
+});
+
+describe("fresh-review omission identity regressions", () => {
+	it.each([
+		[{ "a.b!": 1 }, { a: { "b!": 1 } }],
+		[{ "a.b!": {} }, { a: { "b!": {} } }],
+		[{ "a.b!": [1] }, { a: { "b!": [1] } }],
+	])("preserves omitted path segment boundaries (%j / %j)", (left, right) => {
+		const base = baseline();
+		const make = (facts: unknown) =>
+			altered(base, (body) => {
+				body.layers.lifecycle.entries[0].facts = facts;
+				body.layers.outcome.entries[0].cause = facts;
+			});
+		const result = project(make(left), make(right));
+		for (const layer of ["lifecycle", "outcome"] as const) {
+			const verdict = result.layers[layer] as any;
+			expect(verdict.status).toBe("DIVERGED");
+			expect(verdict.a.entry).not.toEqual(verdict.b.entry);
+		}
+	});
+	it("preserves container kinds on omitted root paths, not only segment boundaries", () => {
+		const base = baseline();
+		const make = (cause: unknown) =>
+			altered(base, (body) => {
+				body.layers.outcome.entries[0].cause = cause;
+			});
+		const result = project(make([1]), make({ "0": 1 })).layers.outcome as any;
+		expect(result.status).toBe("DIVERGED");
+		expect(result.a.entry.cause.omittedToken).not.toBe(result.b.entry.cause.omittedToken);
+	});
+	it.each([`sha256=${"a".repeat(64)}`, `the hash is ${"b".repeat(64)}`, "/private/withheld-value"])(
+		"keeps raw digests distinct from text that hashes to them (%s)",
+		(value) => {
+			const base = baseline();
+			const make = (proof: string) =>
+				altered(base, (body) => {
+					body.layers.lifecycle.entries[0].facts = { proof };
+					body.layers.outcome.entries[0].cause = { proof };
+					body.environment.attachments[0].identityDigest = { status: "reported", value: proof };
+				});
+			const a = make(value),
+				b = make(sha256HexV0(value));
+			const result = project(a, b);
+			for (const layer of ["lifecycle", "outcome"] as const) {
+				const verdict = result.layers[layer] as any;
+				expect(verdict.status).toBe("DIVERGED");
+				expect(verdict.a.entry).not.toEqual(verdict.b.entry);
+			}
+			expect(result.flags.find((flag) => flag.kind === "runtime-fingerprint-differs")).toBeDefined();
+			expect(serialized(result)).not.toContain(value);
+			expect(serialized(result)).not.toContain(sha256HexV0(value));
+		},
+	);
 });

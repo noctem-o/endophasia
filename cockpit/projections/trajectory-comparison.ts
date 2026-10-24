@@ -96,10 +96,11 @@ const DOMAINS_DIFFER =
 	/^different digest domains \(([^ ()]+) and ([^ ()]+)\); to compare across machines, share one key: docs\/trajectory\.md#comparing-across-machines$/;
 
 /**
- * A string that reads as a digest in any common spelling (hex of any case and length from 128 bits, an algorithm prefix,
- * base64): it commits to content the cockpit may withhold, so it is only ever shown as a keyed token of itself.
+ * A digest-shaped span in text (hex of either case from 128 bits, an optional algorithm prefix, or base64).
+ * Tokenize the whole value, including surrounding prose: stripping or retaining just a prefix must not expose the digest.
+ * This conservatively includes long opaque words; it is a presentation policy, not proof a value is a hash.
  */
-const DIGEST_LIKE = /^(?:sha(?:1|224|256|384|512)\s*[:=-]\s*)?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{43,}={0,2})$/i;
+const DIGEST_LIKE = /(?:sha(?:1|224|256|384|512)\s*[:=-]\s*)?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{43,}={0,2})/i;
 /** A run of hex long enough to be a digest or a secret, anywhere in a name. */
 const HEX_RUN = /[0-9a-fA-F]{16,}/;
 

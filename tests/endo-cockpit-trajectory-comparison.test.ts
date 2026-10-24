@@ -981,7 +981,7 @@ describe("the contract validator", () => {
 // Review regressions: altered fixtures remain sealed valid trajectories; wire mutations test only what the
 // presentation can establish internally, without consulting a store or changing the comparator's verdicts.
 describe("comparison review regressions", () => {
-	it.each(["sha256=", "SHA256=", "sha256 = ", "sha256:", "sha256-"])(
+	it.each(["sha256=", "SHA256=", "sha256 = ", "sha256:", "sha256-", "evidence sha256=", "the recorded hash is "])(
 		"withholds %s digests in facts, identities, models, tool names and reasons",
 		(prefix) => {
 			const a = baseline();

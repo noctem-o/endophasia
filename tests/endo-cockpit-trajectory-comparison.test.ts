@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { importDshSessionBytesV0, projectDshTrajectoryV0 } from "../adapters/dsh-native/index.ts";
 import { projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
 import { trajectoryFromStoreV0 } from "../cli/trajectory.ts";
 import { ENDO_COCKPIT_AGAINST_INPUTS_REASON_CODES_V0 } from "../cockpit/projections/trajectory-comparison.ts";
@@ -24,6 +25,7 @@ import {
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { ENDO_TRAJECTORY_COMPARISON_RULES_V0, type EndoTrajectoryV0 } from "../protocol/trajectory.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { createEndoEventStoreV0 } from "../runtime/contracts/event-store.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0, sealEndoTrajectoryV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
@@ -452,7 +454,7 @@ describe("the projection of a comparison", () => {
 	});
 
 	it("is tied to the comparator's rules version", () => {
-		expect(ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0).toBe("cockpit-trajectory-comparison.1");
+		expect(ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0).toBe("cockpit-trajectory-comparison.2");
 		expect(project(baseline(), baseline()).comparisonRules).toBe("trajectory-comparison.3");
 	});
 
@@ -854,7 +856,7 @@ describe("the contract validator", () => {
 			r.schemaVersion = "endo.cockpit-trajectory-comparison.v1";
 		});
 		reject((r) => {
-			r.projectionVersion = "cockpit-trajectory-comparison.2";
+			r.projectionVersion = "cockpit-trajectory-comparison.1";
 		});
 		reject((r) => {
 			r.comparisonRules = "trajectory-comparison.4";
@@ -973,5 +975,241 @@ describe("the contract validator", () => {
 		reject((r) => {
 			r.layers.lifecycle.a.entry.facts.omittedToken = "00".repeat(32);
 		});
+	});
+});
+
+// Review regressions: altered fixtures remain sealed valid trajectories; wire mutations test only what the
+// presentation can establish internally, without consulting a store or changing the comparator's verdicts.
+describe("comparison review regressions", () => {
+	it.each(["sha256=", "SHA256=", "sha256 = ", "sha256:", "sha256-"])(
+		"withholds %s digests in facts, identities, models, tool names and reasons",
+		(prefix) => {
+			const a = baseline();
+			const marker = `${prefix}${"ab".repeat(32)}`;
+			const b = altered(a, (body) => {
+				body.layers.lifecycle.entries[0].facts = { proof: marker };
+				body.layers.outcome.entries[0].cause = { proof: marker };
+				body.layers.outcome.entries[0].stopReason = { status: "reported", value: marker };
+				body.layers.toolCalls.entries[0].name = { status: "reported", value: marker };
+				body.environment.reportedModels = [marker];
+				body.environment.attachments[0].identityDigest = { status: "reported", value: marker };
+				body.environment.attachments[0].userConfigurationDigest = { status: "reported", value: marker };
+			});
+			const result = project(a, b);
+			expect(serialized(result)).not.toContain(marker);
+			expect(serialized(result)).not.toContain("ab".repeat(32));
+			expect(project(a, b)).toEqual(result);
+		},
+	);
+
+	it.each([
+		[{}, []],
+		[{ details: {} }, {}],
+		[{ details: {} }, { details: [] }],
+		[{ details: [[], {}] }, { details: [{}, []] }],
+	])("keeps empty-container differences in lifecycle and outcome facts (%j / %j)", (left, right) => {
+		const base = baseline();
+		const withFacts = (facts: unknown) =>
+			altered(base, (body) => {
+				body.layers.lifecycle.entries[0].facts = { data: facts };
+				body.layers.outcome.entries[0].cause = facts;
+			});
+		const a = withFacts(left),
+			b = withFacts(right);
+		for (const layer of ["lifecycle", "outcome"] as const) {
+			const result = project(a, b).layers[layer] as any;
+			expect(result.status).toBe("DIVERGED");
+			expect(result.a.entry).not.toEqual(result.b.entry);
+		}
+	});
+
+	it.each([17, 40])("presents all %i distinct model and attachment flag values", (count) => {
+		const a = baseline();
+		const b = altered(a, (body) => {
+			body.environment.reportedModels = Array.from({ length: count }, (_, i) => `model-${i}`);
+			const attachment = body.environment.attachments[0];
+			body.environment.attachments = Array.from({ length: count }, (_, i) => ({
+				...attachment,
+				mapping: { status: "reported", value: `mapping-${i}` },
+			}));
+		});
+		const result = project(a, b);
+		for (const kind of ["reported-model-differs", "mapping-differs"]) {
+			const flag = result.flags.find((flag) => flag.kind === kind) as any;
+			expect(flag, kind).toBeDefined();
+			expect(flag.b.values).toHaveLength(count);
+		}
+	});
+
+	it.each(["lifecycle", "toolCalls", "toolResults", "outcome"] as const)(
+		"rejects identical presented slots claiming %s divergence, regardless of object-key order",
+		(layer) => {
+			const a = baseline();
+			const b = altered(a, (body) => {
+				body.layers.lifecycle.entries[0].facts = { changed: true };
+				body.layers.toolCalls.entries[0].name = { status: "reported", value: "other" };
+				body.layers.toolResults.entries[0].name = { status: "reported", value: "other" };
+				body.layers.outcome.entries[0].turns += 1;
+			});
+			const result = project(a, b) as any;
+			const entry = result.layers[layer].a.entry;
+			result.layers[layer].b.entry = Object.fromEntries(Object.entries(entry).reverse());
+			expect(validateEndoCockpitTrajectoryComparisonV0(result)).toBeNull();
+		},
+	);
+
+	it.each(["usage", "timing"] as const)("refuses numeric %s deltas for either missing side", (layer) => {
+		for (const missing of ["a", "b"] as const) {
+			const result = project(baseline(), baseline()) as any;
+			const run = result.layers[layer].runs[0];
+			run.present[missing] = false;
+			expect(validateEndoCockpitTrajectoryComparisonV0(result)).toBeNull();
+			run[layer === "usage" ? "tokens" : "wallMs"] = { status: "UNAVAILABLE" };
+			expect(validateEndoCockpitTrajectoryComparisonV0(result)).not.toBeNull();
+		}
+	});
+
+	function callsDiffer(resultsUnavailable: boolean) {
+		const a = baseline();
+		const b = altered(a, (body) => {
+			body.layers.toolCalls.entries[0].name = { status: "reported", value: "changed" };
+			if (resultsUnavailable) body.layers.toolResults = { status: "UNAVAILABLE", reason: "not observed" };
+		});
+		return project(a, b);
+	}
+	it.each([false, true])("binds the ordering reason to the actual result verdict (unavailable=%s)", (unavailable) => {
+		const result = callsDiffer(unavailable);
+		result.toolCallsAgainstInputs.reason = unavailable
+			? "calls-diverged-results-identical"
+			: "results-unavailable-or-unverified";
+		result.toolCallsAgainstInputs.callsIdenticalUpToFirstDivergentInput = unavailable ? false : null;
+		expect(validateEndoCockpitTrajectoryComparisonV0(result)).toBeNull();
+	});
+
+	function ordered(
+		callRun: number | null,
+		callTurn: number | null,
+		resultRun: number | null,
+		resultTurn: number | null,
+	) {
+		const source = baseline();
+		const a = altered(source, (body) => {
+			body.layers.toolCalls.entries[0].run = callRun;
+			body.layers.toolCalls.entries[0].turn = callTurn;
+			body.layers.toolResults.entries[0].run = resultRun;
+			body.layers.toolResults.entries[0].turn = resultTurn;
+		});
+		const b = altered(a, (body) => {
+			body.layers.toolCalls.entries[0].name = { status: "reported", value: "other" };
+			body.layers.toolResults.entries[0].name = { status: "reported", value: "other" };
+		});
+		return project(a, b);
+	}
+	it.each([
+		[2, 1, 1, 1, "call-in-later-turn-than-divergent-result"],
+		[1, 2, 1, 1, "call-in-later-turn-than-divergent-result"],
+		[1, 1, 1, 1, "call-not-after-divergent-result"],
+		[1, 1, 2, 1, "call-not-after-divergent-result"],
+		[null, 1, 1, 1, "order-unknown"],
+		[1, 1, 1, null, "order-unknown"],
+	] as const)("validates presented coordinates and ordering for %s/%s vs %s/%s", (cr, ct, rr, rt, reason) => {
+		const result = ordered(cr, ct, rr, rt);
+		expect(result.toolCallsAgainstInputs.reason).toBe(reason);
+		const changed = structuredClone(result);
+		changed.toolCallsAgainstInputs.firstDivergentCall!.run = 99;
+		expect(validateEndoCockpitTrajectoryComparisonV0(changed)).toBeNull();
+		const lie = structuredClone(result);
+		lie.toolCallsAgainstInputs.reason =
+			reason === "order-unknown" ? "call-not-after-divergent-result" : "order-unknown";
+		lie.toolCallsAgainstInputs.callsIdenticalUpToFirstDivergentInput = reason === "order-unknown" ? false : null;
+		expect(validateEndoCockpitTrajectoryComparisonV0(lie)).toBeNull();
+	});
+	it("refuses a coherent ordering lie even if the positions and both entries are changed together", () => {
+		const result = ordered(1, 2, 1, 1) as any;
+		result.toolCallsAgainstInputs.firstDivergentCall.turn = 1;
+		result.layers.toolCalls.a.entry.turn = 1;
+		result.layers.toolCalls.b.entry.turn = 1;
+		expect(validateEndoCockpitTrajectoryComparisonV0(result)).toBeNull();
+	});
+
+	it.each([
+		"not-an-endo-id",
+		"endo.event.x",
+		"endo.session.safe",
+		`endo.session.withheld-${"ab".repeat(16)}`,
+		"/private/session",
+	])("presents valid arbitrary source session %s in the session namespace", (session) => {
+		const a = altered(baseline(), (body) => {
+			body.source.session = session;
+		});
+		const result = project(a, a);
+		expect(result.a.session).toMatch(/^endo\.session\./);
+		expect(result.a.session).toBe(result.b.session);
+		expect(project(a, a)).toEqual(result);
+		if (session !== "endo.session.safe") expect(result.a.session).not.toBe(session);
+	});
+	it.each([
+		["lifecycle.session-started", false],
+		["lifecycle.future", true],
+	] as const)(
+		"preserves source recognition independently of the presenter's vocabulary: %s/%s",
+		(kind, recognized) => {
+			const base = baseline();
+			const a = altered(base, (body) => {
+				body.layers.lifecycle.entries[0] = { kind, recognized, facts: { value: 1 } };
+			});
+			const b = altered(a, (body) => {
+				body.layers.lifecycle.entries[0].facts.value = 2;
+			});
+			const result = project(a, b).layers.lifecycle as any;
+			expect(result.a.entry.recognized).toBe(recognized);
+			expect(result.b.entry.recognized).toBe(recognized);
+			expect(result.status).toBe("DIVERGED");
+		},
+	);
+});
+
+// The importer remains outside the bridge. Only these tests build shared trajectories from sanitised persisted evidence.
+describe("comparison presentation of DSH cold-import trajectories", () => {
+	const cases = ["tool-read", "no-key-error", "crash-killed", "crash-resumed", "stub-retry"] as const;
+	function dsh(name: string, key = OTHER_KEY) {
+		const store = createEndoEventStoreV0();
+		const bytes = readFileSync(join(REPO, `research/dsh-native/fixtures/real/${name}.events.jsonl`));
+		const report = importDshSessionBytesV0(bytes, store, { digestKey: key, now: () => "2026-10-24T00:00:00Z" });
+		expect(report.refusals).toEqual([]);
+		return projectDshTrajectoryV0(store.page({ limit: 10000 }).events, { session: "session-1", store: STORE_LABEL });
+	}
+	it.each(cases)("%s preserves comparator verdicts in every DSH pairing and mixed Pi pairing", (name) => {
+		const a = dsh(name);
+		for (const b of [...cases.map((other) => dsh(other)), baseline()]) {
+			const result = project(a, b);
+			const direct = compareEndoTrajectoriesV0(a, b);
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
+				expect(result.layers[layer].status).toBe(direct.layers[layer].status);
+			expect(result.flags.map((flag) => flag.kind)).toEqual(direct.flags.map((flag) => flag.kind));
+			expect(serialized(result)).not.toContain(STORE_LABEL);
+			for (const t of [a, b]) {
+				expect(serialized(result)).not.toContain(t.digest);
+				expect(serialized(result)).not.toContain(t.source.eventsSha256);
+			}
+		}
+	});
+	it("keeps absent DSH usage/timing, open turns and recovery-written outcomes distinct", () => {
+		const killed = dsh("crash-killed"),
+			resumed = dsh("crash-resumed");
+		const result = project(killed, resumed);
+		expect(result.layers.usage.status).toBe("UNAVAILABLE");
+		expect(result.layers.timing.status).toBe("UNAVAILABLE");
+		expect(result.layers.outcome).toMatchObject({
+			status: "DIVERGED",
+			a: { entry: { outcome: "open", turns: 1 } },
+			b: { entry: { outcome: "unclassified" } },
+		});
+		const otherDomain = project(
+			dsh("tool-read"),
+			dsh("tool-read", endoDigestKeyV0(Buffer.alloc(32, 77), "other-dsh-domain")),
+		);
+		expect(otherDomain.layers.toolCalls.status).toBe("UNAVAILABLE");
+		expect(otherDomain.layers.toolResults.status).toBe("UNAVAILABLE");
 	});
 });

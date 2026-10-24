@@ -17,8 +17,8 @@
 // - Mixed sources are listed in `flags`; an empty list means no difference among the listed facets; a value neither side recorded is not compared, so it is not a controlled experiment.
 //
 // What it withholds (the cockpit presentation boundary, protocol/cockpit-fields.ts):
-// - Store paths (`provenance`) are not carried. Session ids are presented as the cockpit presents any id (itself when admitted,
-//   else a keyed alias).
+// - Store paths (`provenance`) are not carried. Session ids are themselves when admitted; other session strings get a keyed
+//   alias in the session namespace, including a source string which looks like another namespace's identifier.
 // - A plain sha256 that commits to content the cockpit withholds (the recorded events, the trajectory, the comparison, a runtime
 //   fingerprint or configuration digest, an unrecognised lifecycle payload, a failure cause) is never published: a keyed token
 //   stands in, equal for equal values under one key (`keyId`). So tokens say "same" or "different" and nothing else, and are
@@ -43,7 +43,7 @@ import { ENDO_TRAJECTORY_COMPARISON_RULES_V0 } from "./trajectory.ts";
 
 export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0 = "endo.cockpit-trajectory-comparison.v0";
 /** Bumped when what the projection computes changes. It is tied to the comparator's rules version (`comparisonRules`). */
-export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0 = "cockpit-trajectory-comparison.1";
+export const ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0 = "cockpit-trajectory-comparison.2";
 
 /** The most (path, value) items of one entry's facts; the rest are counted in `omitted`. */
 export const ENDO_COCKPIT_COMPARISON_MAX_FACTS_V0 = 32;
@@ -79,8 +79,9 @@ export interface EndoCockpitComparisonFactsV0 {
 }
 
 export interface EndoCockpitComparisonLifecycleEntryV0 {
-	/** A lifecycle kind this version defines, else a keyed alias of the kind. */
+	/** A lifecycle kind this version defines, else the kind under the public-kind/alias policy. */
 	kind: string;
+	/** The source trajectory's recognition flag, independent of this presenter's current kind vocabulary. */
 	recognized: boolean;
 	facts: EndoCockpitComparisonFactsV0;
 }
@@ -346,10 +347,8 @@ const isLifecycleEntry = (value: unknown): boolean =>
 	closed(value, ["kind", "recognized", "facts"]) &&
 	typeof value.kind === "string" &&
 	typeof value.recognized === "boolean" &&
-	// A recognised entry names a kind this version defines; an unrecognised one only the alias of its kind.
-	(value.recognized
-		? isEndoLifecycleKindV0(value.kind)
-		: !isEndoLifecycleKindV0(value.kind) && isEndoCockpitPublicKindV0(value.kind)) &&
+	// Recognition belongs to the source; presentation knowledge only determines whether a kind needs an alias.
+	(isEndoLifecycleKindV0(value.kind) || isEndoCockpitPublicKindV0(value.kind)) &&
 	isFacts(value.facts);
 
 const isNameReported = (value: unknown): boolean => isReported(value, isText);
@@ -422,6 +421,9 @@ function isVerdict(value: unknown, isEntry: (entry: unknown) => boolean): boolea
 				return item.present ? closed(item, ["present", "entry"]) && isEntry(item.entry) : closed(item, ["present"]);
 			};
 			if (!slot(value.a, lengths.a) || !slot(value.b, lengths.b)) return false;
+			const a = value.a as R,
+				b = value.b as R;
+			if (a.present && b.present && stable(a.entry) === stable(b.entry)) return false;
 			return (value.index as number) < Math.max(lengths.a, lengths.b);
 		}
 		case "UNAVAILABLE": {
@@ -499,7 +501,10 @@ function isDeltaRuns(value: unknown, field: string, isDelta: (item: unknown) => 
 			isPresent(item.present) &&
 			// A run a side has not got is still a run the other has: at least one side is present.
 			((item.present as { a: boolean; b: boolean }).a || (item.present as { a: boolean; b: boolean }).b) &&
-			isDelta(item[field]),
+			isDelta(item[field]) &&
+			// A numeric delta needs both sides. An absent side is not a measured zero.
+			(((item.present as R).a && (item.present as R).b) ||
+				(isRecord(item[field]) && item[field].status === "UNAVAILABLE")),
 	);
 }
 
@@ -548,7 +553,7 @@ function isFlagSide(value: unknown, facets: readonly string[]): boolean {
 		closed(value, facets) &&
 		facets.every((facet) => {
 			const items = value[facet];
-			return Array.isArray(items) && items.length <= 16 && items.every((item) => item === null || isText(item));
+			return Array.isArray(items) && items.every((item) => item === null || isText(item));
 		})
 	);
 }
@@ -622,13 +627,35 @@ function againstInputsAgrees(against: R, layers: R): boolean {
 				: "UNAVAILABLE-unverified"
 			: calls.status;
 	if (state !== shape.calls) return false;
-	const at = (position: unknown, layer: R): boolean =>
-		position === null
-			? layer.status !== "DIVERGED"
-			: layer.status === "DIVERGED" && (position as R).index === layer.index;
+	// Both presented divergent slots retain their coordinates. The comparator selects the earlier known pair;
+	// if either of two present slots has an unknown coordinate, both coordinates of the selection are unknown.
+	// This checks the wire record's consistency, never recomputes a trajectory verdict.
+	const at = (position: unknown, layer: R): boolean => {
+		if (layer.status !== "DIVERGED") return position === null;
+		const entries = [layer.a, layer.b].filter((slot) => (slot as R).present).map((slot) => (slot as R).entry as R);
+		const selected = entries.reduce((a, b) => {
+			if (a.run === null || a.turn === null || b.run === null || b.turn === null) return { run: null, turn: null };
+			return (a.run as number) < (b.run as number) || (a.run === b.run && (a.turn as number) <= (b.turn as number))
+				? a
+				: b;
+		});
+		return stable(position) === stable({ index: layer.index, run: selected.run, turn: selected.turn });
+	};
 	if (!at(against.firstDivergentCall, calls) || !at(against.firstDivergentResult, results)) return false;
 	if ((against.firstDivergentCall === null) !== (shape.call === "none")) return false;
-	return shape.result === "any" || (against.firstDivergentResult === null) === (shape.result === "none");
+	if (shape.result !== "any" && (against.firstDivergentResult === null) !== (shape.result === "none")) return false;
+	if (against.reason === "results-unavailable-or-unverified") return results.status === "UNAVAILABLE";
+	if (against.reason === "calls-diverged-results-identical") return results.status === "EXACT";
+	if (shape.result !== "some") return true;
+	const call = against.firstDivergentCall as R,
+		result = against.firstDivergentResult as R;
+	const unknown = call.run === null || call.turn === null || result.run === null || result.turn === null;
+	if (against.reason === "order-unknown") return unknown;
+	if (unknown) return false;
+	const after =
+		(call.run as number) > (result.run as number) ||
+		(call.run === result.run && (call.turn as number) > (result.turn as number));
+	return against.reason === "call-in-later-turn-than-divergent-result" ? after : !after;
 }
 
 /**

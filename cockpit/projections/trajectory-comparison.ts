@@ -42,7 +42,11 @@ import {
 	type EndoCockpitTrajectoryComparisonV0,
 	validateEndoCockpitTrajectoryComparisonV0,
 } from "../../protocol/cockpit-comparison.ts";
-import { endoCockpitTextPresentableV0, isEndoCockpitDigestKeyIdV0 } from "../../protocol/cockpit-fields.ts";
+import {
+	endoCockpitTextPresentableV0,
+	isEndoCockpitDigestKeyIdV0,
+	isEndoCockpitPublicIdV0,
+} from "../../protocol/cockpit-fields.ts";
 import { isEndoKeyedDigestV0 } from "../../protocol/keyed-digest-shape.ts";
 import { isEndoLifecycleKindV0 } from "../../protocol/session-lifecycle.ts";
 import type {
@@ -54,7 +58,13 @@ import type {
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0 } from "../../runtime/contracts/trajectory.ts";
-import { cockpitAliasesV0, compareCodeUnitsV0, type EndoCockpitAliasesV0, requireAdmittedKeyV0 } from "./common.ts";
+import {
+	cockpitAliasesV0,
+	cockpitTokenV0,
+	compareCodeUnitsV0,
+	type EndoCockpitAliasesV0,
+	requireAdmittedKeyV0,
+} from "./common.ts";
 
 type R = Record<string, unknown>;
 const isRecord = (value: unknown): value is R => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -89,14 +99,25 @@ const DOMAINS_DIFFER =
  * A string that reads as a digest in any common spelling (hex of any case and length from 128 bits, an algorithm prefix,
  * base64): it commits to content the cockpit may withhold, so it is only ever shown as a keyed token of itself.
  */
-const DIGEST_LIKE = /^(?:sha(?:1|224|256|384|512)[:-])?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{43,}={0,2})$/i;
+const DIGEST_LIKE = /^(?:sha(?:1|224|256|384|512)\s*[:=-]\s*)?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{43,}={0,2})$/i;
 /** A run of hex long enough to be a digest or a secret, anywhere in a name. */
 const HEX_RUN = /[0-9a-fA-F]{16,}/;
 
 class Presenter {
 	readonly alias: EndoCockpitAliasesV0;
+	readonly #key: EndoDigestKeyV0;
 	constructor(key: EndoDigestKeyV0) {
+		this.#key = key;
 		this.alias = cockpitAliasesV0(key);
+	}
+
+	/** The trajectory contract permits arbitrary session strings. Preserve existing session aliases; other strings
+	 * need a separate session-domain alias, never an event/evidence alias or a reinterpreted source identifier. */
+	session(value: string): string {
+		const alias = this.alias.id(value);
+		return isEndoCockpitPublicIdV0(alias, "session")
+			? alias
+			: `endo.session.withheld-${cockpitTokenV0(this.#key, "endo.cockpit.comparison-session-alias.v0", { session: value }).slice(0, 32)}`;
 	}
 
 	/** A keyed token of a plain sha256 (or of any value, by its own sha256), equal for equal values under this key. */
@@ -106,6 +127,7 @@ class Presenter {
 
 	/** Free text whole when the policy admits it, else a keyed token of it: two withheld values that differ stay different. */
 	text(text: string): EndoCockpitComparisonTextV0 {
+		if (DIGEST_LIKE.test(text)) return { kind: "token", token: this.supporting(sha256HexV0(text)) };
 		return endoCockpitTextPresentableV0(text)
 			? { kind: "text", text }
 			: { kind: "withheld", token: this.supporting(sha256HexV0(text)) };
@@ -155,6 +177,9 @@ class Presenter {
 					: Object.keys(current)
 							.sort(compareCodeUnitsV0)
 							.map((key) => [key, current[key]]);
+				// No child scalar can carry an empty container's presence or type. Commit it as an omission,
+				// including its path, so {} / [] / absence never collapse to indistinguishable evidence.
+				if (entries.length === 0) omit(path, current);
 				for (const [key, child] of entries) {
 					// A name is carried only when it is plain, passes the text policy and is not a digest or secret in disguise: a name
 					// is text a producer chose, as much as a value is.
@@ -229,7 +254,8 @@ const count = (value: unknown, what: string): number =>
 function lifecycleEntry(p: Presenter, value: unknown): EndoCockpitComparisonLifecycleEntryV0 {
 	if (!isRecord(value) || typeof value.kind !== "string" || typeof value.recognized !== "boolean")
 		return malformed("lifecycle entry");
-	// A kind this version defines is shown; any other is only ever shown as the alias of its kind.
+	// Known lifecycle kinds are shown; other kinds use the existing public-kind/alias policy. The source's
+	// recognition flag is copied independently rather than rewritten to match this presenter's vocabulary.
 	const kind = isEndoLifecycleKindV0(value.kind) ? value.kind : p.alias.kind(value.kind);
 	return { kind, recognized: value.recognized, facts: p.facts(value.facts) };
 }
@@ -428,7 +454,7 @@ function flags(p: Presenter, source: EndoTrajectoryComparisonV0["flags"]): EndoC
 }
 
 const sideOf = (p: Presenter, side: EndoTrajectoryComparisonV0["a"]): EndoCockpitComparisonSideV0 => ({
-	session: p.alias.id(side.session),
+	session: p.session(side.session),
 	eventsToken: p.supporting(side.eventsSha256),
 	trajectoryToken: p.supporting(side.trajectoryDigest),
 });

@@ -362,7 +362,7 @@ results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` wi
 
 ## The trajectory-comparison presentation (implemented, not yet served)
 
-`endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.1`) is the shape
+`endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.2`) is the shape
 in which a future Studio **Compare** workspace is shown two recorded trajectories compared. It is a presentation of
 `endo.trajectory-comparison.v1` ([trajectory.md](trajectory.md)), not another comparison: `compareEndoTrajectoriesV0` stays the one
 authority on what the recordings establish, and the projection copies its verdicts and withholds what a browser must not receive.
@@ -398,7 +398,9 @@ a failure cause) is replaced by a keyed token under `keyId`: equal values give e
 and nothing else. They are therefore not the digests `endo trajectory diff` prints; a local cross-reference is a CLI concern.
 The keyed argument and result digests are already HMACs and are shown as recorded with their key id, together or (when the key id is
 not one the cockpit admits) not at all. Free text goes through the text policy and, when withheld, becomes a token of itself so two
-withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar): a name is held to the same text policy as a value, a digest in any common spelling is a token, and what is left out is counted with a keyed token so entries that differ only there still read as different. The validator also checks the ordering block against the layers it is read from.
+withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar): a name is held to the same text policy as a value, a digest-shaped value (including `sha256=<hex>`) is a token, and what is left out is counted with a keyed token so entries that differ only there still read as different. Empty containers also count as omissions with their path and type committed to that token. The source trajectory's `recognized` flag is preserved independently of this presenter's kind vocabulary. Arbitrary source session strings become session aliases; they are not treated as other identifier namespaces.
+
+Projection version `cockpit-trajectory-comparison.2` retains all distinct flag values rather than imposing a limit absent from the source contract. The fact-item and depth bounds remain in place. The validator rejects identical presented entries claiming a divergence, numerical run deltas with a missing side, and ordering reasons or coordinates that contradict the presented layers. It checks internal consistency, not whether a wire record matches real source evidence; the comparator remains authoritative.
 
 **Compatibility.** `comparisonRules` carries the comparator's rules version (`trajectory-comparison.3`) and the validator accepts that
 version only; a rules change is a projection version change, and the projection refuses an ordering sentence it has no code for
@@ -407,7 +409,10 @@ instead of guessing (a test pins every sentence), and carries an unrecognised un
 server's wire gate, so registration belongs with the transport that serves it.
 
 **Where the two inputs come from (decided later, not here).** The Studio server reads one configured store and its authority is not
-widened in this change. Building a trajectory needs the Pi adapter (`projectPiTrajectoryV0`), which the bridge does not import.
+widened in this change. Building a trajectory needs its source adapter (`projectPiTrajectoryV0` or `projectDshTrajectoryV0`),
+neither of which the bridge imports. DSH cold imports already project to the same shared trajectory contract; absent usage,
+observer timing and runtime identity stay unavailable, and DSH-written recovery closers remain unclassified. Mixed adapter,
+mapping and digest-domain differences remain visible under the existing comparator rules.
 The smallest safe route for the transport PR is a reader beside `snapshot.ts` that builds both trajectories from the one configured
 store (two sessions, or two attachments of it), with the projection called on them, fixed to GET, validated on the way out, with a
 projector `TypeError` answered as a server defect. Two different stores stay a CLI concern (`endo trajectory diff`) until a design

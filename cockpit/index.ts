@@ -20,6 +20,9 @@ export type {
 	EndoCockpitTimelineInputV0,
 } from "./projections/session-timeline.ts";
 export { projectEndoCockpitSessionTimelineV0 } from "./projections/session-timeline.ts";
+// The trajectory-comparison presentation: a pure projection of two validated trajectories (the comparator's own verdicts, with
+// paths and content-committing digests withheld). Not yet registered in the cockpit version table or served: see docs/cockpit.md.
+export { projectEndoCockpitTrajectoryComparisonV0 } from "./projections/trajectory-comparison.ts";
 export type { EndoCockpitEventLogReadOptionsV0, EndoCockpitEventLogReadV0, EndoCockpitFreshnessV0 } from "./reader.ts";
 export {
 	checkEndoCockpitSourceFreshnessV0,

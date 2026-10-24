@@ -360,6 +360,64 @@ under another key than its source's throws one, and the projectors throw one for
 results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` with another admitted key, or none, answers
 `digest-context-differs` for a source that holds a position instead of throwing; a supplied key that is not admitted throws.
 
+## The trajectory-comparison presentation (implemented, not yet served)
+
+`endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.3`) is the shape
+in which a future Studio **Compare** workspace is shown two recorded trajectories compared. It is a presentation of
+`endo.trajectory-comparison.v1` ([trajectory.md](trajectory.md)), not another comparison: `compareEndoTrajectoriesV0` stays the one
+authority on what the recordings establish, and the projection copies its verdicts and withholds what a browser must not receive.
+
+```ts
+import { projectEndoCockpitTrajectoryComparisonV0 } from "./cockpit/index.ts"; // a repository module; the package exports no library API
+
+const record = projectEndoCockpitTrajectoryComparisonV0(trajectoryA, trajectoryB, digestKey);
+```
+
+It takes the two **trajectories** (not a comparison) and an explicit digest key, as every other bridge function does. Making the
+comparison inside the projection means a comparison can never be attached to trajectories it was not made from. It reads no store,
+key file, clock, network or environment, and throws a `TypeError` for an invalid trajectory, a key a cockpit read does not admit, or
+a comparison it does not know how to present. Its own output is validated before it is returned
+(`validateEndoCockpitTrajectoryComparisonV0`).
+
+**What the record establishes**, per layer, exactly as the comparator does: lifecycle, tool calls, tool results and outcome are each
+`EXACT`, `DIVERGED` (the first differing position *within that layer*, both lengths, the common prefix, and both entries, a side
+without an entry there being `present: false`) or `UNAVAILABLE` (which side did not report the layer and why, or which positions
+could not be verified, as a code: `digest-not-recorded` or `digest-domains-differ`). Tool calls (what the agent chose) and tool
+results (what the world answered) are separate layers. `toolCallsAgainstInputs` is an *ordering of positions* with a reason code, not
+a cause. Usage is runtime-reported and timing is observer-measured; both are `b minus a`, per run and in total, and a delta that
+cannot be established is `UNAVAILABLE`, never 0. `flags` lists runtime fingerprint, version, mapping, digest domain, configuration,
+model and projection differences; an empty list means no difference among those listed facets (a value neither side recorded is not compared), not a controlled experiment.
+
+**What it cannot establish, and does not claim.** Alignment is by position within each layer, so there is no single "first point
+where the runs diverged" across layers and no event-by-event correspondence between the two sessions; the record has neither. It
+carries no overall verdict, no significance, no efficiency or success judgement and no cause. Absent evidence is never equivalence.
+
+**What it withholds.** Store paths (`provenance`) are not carried. A plain sha256 that commits to content the cockpit withholds
+(the recorded events, a trajectory, the comparison, a runtime fingerprint, configuration digests, an unrecognised lifecycle payload,
+a failure cause) is replaced by a keyed token under `keyId`: equal values give equal tokens, so the record says *same* or *different*
+and nothing else. They are therefore not the digests `endo trajectory diff` prints; a local cross-reference is a CLI concern.
+The keyed argument and result digests are already HMACs and are shown as recorded with their key id, together or (when the key id is
+not one the cockpit admits) not at all. Free text goes through the text policy and, when withheld, becomes a token of itself so two
+withheld values that differ still read as different. Lifecycle and outcome facts are a flat, bounded list of (path, scalar): a name is held to the same text policy as a value, text containing a digest-shaped span (including `sha256=<hex>`) is tokenized whole, and what is left out is counted with a keyed token so entries that differ only there still read as different. This conservatively withholds long opaque words too; it is not a claim that the value is a hash. Empty containers also count as omissions with their path and type committed to that token. The source trajectory's `recognized` flag is preserved independently of this presenter's kind vocabulary. Arbitrary source session strings become session aliases; they are not treated as other identifier namespaces.
+
+Projection version `cockpit-trajectory-comparison.3` commits omitted paths as segment arrays with each container's kind, so dotted keys cannot alias nested keys and array indices cannot alias object keys. Text, stored digests and omissions have separate token domains; text cannot alias a raw digest equal to its hash. All distinct flag values are retained rather than imposing a limit absent from the source contract. The fact-item and depth bounds remain in place. The validator rejects identical presented entries claiming a divergence, numerical run deltas with a missing side, and ordering reasons or coordinates that contradict the presented layers. It checks internal consistency, not whether a wire record matches real source evidence; the comparator remains authoritative.
+
+**Compatibility.** `comparisonRules` carries the comparator's rules version (`trajectory-comparison.3`) and the validator accepts that
+version only; a rules change is a projection version change, and the projection refuses an ordering sentence it has no code for
+instead of guessing (a test pins every sentence), and carries an unrecognised unverified-position reason only as policy-checked text. The record is deliberately **not** registered in `ENDO_COCKPIT_VERSIONS_V0`, the
+`EndoCockpitRecordV0` union, `ENDO_COCKPIT_PROJECTION_VERSIONS_V0` or Studio's supported projections: the version table is the
+server's wire gate, so registration belongs with the transport that serves it.
+
+**Where the two inputs come from (decided later, not here).** The Studio server reads one configured store and its authority is not
+widened in this change. Building a trajectory needs its source adapter (`projectPiTrajectoryV0` or `projectDshTrajectoryV0`),
+neither of which the bridge imports. DSH cold imports already project to the same shared trajectory contract; absent usage,
+observer timing and runtime identity stay unavailable, and DSH-written recovery closers remain unclassified. Mixed adapter,
+mapping and digest-domain differences remain visible under the existing comparator rules.
+The smallest safe route for the transport PR is a reader beside `snapshot.ts` that builds both trajectories from the one configured
+store (two sessions, or two attachments of it), with the projection called on them, fixed to GET, validated on the way out, with a
+projector `TypeError` answered as a server defect. Two different stores stay a CLI concern (`endo trajectory diff`) until a design
+for choosing stores that is not arbitrary filesystem access exists.
+
 ## The local HTTP server (implemented)
 
 A transport over the bridge, not another observation system: it reconstructs no evidence, infers no fact, manages no harness

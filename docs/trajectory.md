@@ -131,6 +131,12 @@ verbatim, so a rule change is a visible version change.
   under the public `fixture-public` key (and `fixture-public-alt` for the domain-difference case).
   `tests/trajectory.test.ts` pins every comparison's digest.
 
+## Presenting a comparison
+
+A comparison is shown to an operator through a separate, versioned presentation, `endo.cockpit-trajectory-comparison.v0`, which copies
+this page's verdicts without judging anything and withholds paths and content-committing digests. See
+[cockpit.md](cockpit.md#the-trajectory-comparison-presentation-implemented-not-yet-served).
+
 ## Limits
 
 - Whoever holds the installation key can confirm guessed arguments. The key file is the secret.

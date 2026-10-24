@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- The trajectory-comparison presentation, `endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`) and its pure
+  projection `projectEndoCockpitTrajectoryComparisonV0` (`cockpit/projections/trajectory-comparison.ts`): the existing comparator's
+  verdicts for two recorded trajectories in a browser-safe shape, with `EXACT` / `DIVERGED` / `UNAVAILABLE` kept apart per layer, tool
+  calls apart from tool results, no cross-layer divergence or event pairing, unavailable deltas never 0, and store paths and
+  content-committing digests withheld as keyed tokens. It is not yet served or registered in the cockpit version table; see
+  [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-not-yet-served).
 - `adapters/dsh-native/`: a read-only cold importer of DeepSeek Harness Session format 4 logs into the event store, with an idempotent,
   verified, append-only re-import, privacy by keyed digests, qualified lifecycle and tool mapping (a DSH tool call is a request, never
   `tool.started`; DSH-written crash closers are never `lifecycle.interrupted`), a projector to the existing `endo.trajectory.v1`, and

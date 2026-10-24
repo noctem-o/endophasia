@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|trajectory|digest-key|studio|proxy|replay|experiment|steer> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|proxy|replay|experiment|steer> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -47,6 +47,7 @@ Read-only inspection (create no store, directory or key):
   trajectory show <store> <session>  project a recorded trajectory
   trajectory diff ...                compare recorded trajectories
   digest-key id                      show which comparison-domain key would be used
+  dsh loss-accounting                static native DSH mapping/fidelity contract; no store or key needed
 
 Interactive, read-only with respect to the store (long-running; stop it with Ctrl-C):
   studio [<root>] [--root dir] [--port n] [--key-file path]
@@ -56,6 +57,11 @@ Interactive, read-only with respect to the store (long-running; stop it with Ctr
 
 Commands that write to a store:
   ingest <root> <file>               append records from a file
+  dsh import [<root> | --root dir] <session-directory>
+                                     cold-import one explicit DSH session directory; never starts or controls DSH
+                                     Prints a canonical-JSON import report: imported/unchanged exit 0; refused exit 1.
+                                     Operational/argument failures exit 1 on stderr with no report. Creates the installation
+                                     key if absent; writes the destination only when appending. One writer per store.
   harness identify|check <root> ...  observe a Pi executable (local protocol checks; no model call)
   steer <propose|authorize|apply|status|close> <root> ...
 

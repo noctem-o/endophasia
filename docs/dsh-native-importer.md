@@ -20,6 +20,54 @@ explicitly with `sessionKind: "endo-coordinate"`; prefixes are never used to gue
 projector only after a successful import. The projection is `dsh-native-trajectory.3`; open outcomes count the turn-started
 events observed in that run, including zero when no step started.
 
+## CLI: explicit cold import
+
+The installed `endo` uses this same importer; DSH does not need to be installed:
+
+```sh
+endo dsh import /path/to/session-directory
+endo dsh import --root ./recordings /path/to/session-directory
+endo dsh import ./recordings /path/to/session-directory
+endo dsh loss-accounting
+```
+
+The source must be one explicit session **directory**, never a DSH home, transcript file or process. The importer selects its
+highest-generation log. Preflight requires one newest readable regular log; symbolic-link log files are refused. No directory
+scanning outside that source, DSH lock access, session resume, model call or background import occurs.
+
+Store selection uses the existing positional/`--root`/default rules. Name a root only once; spell a path beginning with `-` as
+`./-name` to distinguish it from a flag. Defaults are `ENDO_STORE_ROOT`, then
+`$XDG_DATA_HOME/endophasia/store`, then `$HOME/.local/share/endophasia/store`; a default selection is announced on stderr.
+The private installation comparison key is loaded or created using `ENDO_DIGEST_KEY_FILE`, then
+`$XDG_DATA_HOME/endophasia/digest-key`, then `$HOME/.local/share/endophasia/digest-key`. Existing key format, permission warnings
+and public-fixture-key refusal apply; there is no DSH-specific key or domain.
+
+`import` prints one canonical-JSON `DshImportReportV0`. `imported` and `unchanged` exit **0**; `refused` exits **1** with its report
+on stdout and no evidence appended. Operational failures exit **1**, diagnose the failed phase on stderr and print no fabricated
+report. Malformed family/command arguments retain the CLI's existing exit **1** convention (unknown top-level commands exit 2).
+Report status, codes, counts, valid sequence references and physical tail classifications are preserved. Free-form finding,
+refusal and unreadable-tail descriptions are withheld: the API's diagnostic strings can echo source tool names, event types,
+malformed values or unaudited stored metadata. Unrepresentable sequence references are omitted, not converted into zero.
+Plain identifiers and classification tokens retain the privacy qualifications below; this is not a general secret detector.
+
+Arguments and source/destination locations are validated before acquiring resources. Source/store overlap, key files inside
+the source or destination, unresolved aliases and multiply linked destination logs are refused. Existing destination tails are
+inspected read-only; a torn, sealed or unopenable destination is left untouched, with no automatic recovery. Only the first
+actual append opens a writer. A valid preflight followed by a malformed/unsupported-source refusal can still create the
+installation key, but creates no destination store. A later I/O failure can leave a resumable partial import; retry with the same
+source and key. There is no rollback or new transaction mechanism. Acquired stores are closed on every path.
+
+DSH bytes, names, permissions and modification/change times are not changed. Filesystem reads may update access times; the CLI
+does not restore them through a metadata write. Import timestamps are separate from source timestamps. Incremental imports
+retain their additional checkpoints and individual import clocks: source evidence and derived layers agree with a one-shot
+import, while the two complete stores need not be byte-identical. Run one writer per store and do not replace source/destination
+aliases concurrently; preflight is not an isolation boundary against hostile concurrent filesystem changes.
+
+`loss-accounting` prints `DSH_NATIVE_LOSS_ACCOUNTING_V0` exactly as one canonical-JSON document and exits **0**. It takes no source,
+root or options, needs no key or DSH installation, and creates nothing. It is the **static mapping/fidelity contract**, not a
+measurement of which events occurred in a session. EXACT, QUALIFIED, LOSSY and UNREPRESENTABLE retain their existing meanings.
+DSH trajectory selection is not added to `endo trajectory show`; that command retains its Pi-specific behavior.
+
 ## Guarantees
 
 **Read-only toward DSH.** The file layer uses `readdirSync` and `readFileSync` only. It never opens a file for writing, never opens
@@ -117,11 +165,10 @@ matrix, covering each of the 62 pinned DSH event types exactly once, tested agai
 * Not verified against a real torn write or a live-written file (only SYNTHETIC cuts and one clean SIGKILL); not exercised on Windows.
 * The fixtures all use the id `session-1`; importing two of them into one store is refused as a changed history (a feature).
 
-## Validation and stacked merge order
+## Validation
 
 The [importer validation record](dsh-native-importer-validation.md) covers parent integration, the four Codex findings, adjacent
 counter/privacy fixes, deterministic tests and cold imports of retained raw runtime evidence. No active DSH sessions are read.
 
-This PR remains based on `dsh-native-attachment-study` (#70). Merge #70 first, then retarget #71 to `main` and verify the resulting
-importer-only diff and CI. If #70 is squash-merged or rebased, restack #71 onto the resulting `main` commit before retargeting.
-Neither PR is merged by this repair work.
+The study (#70) and importer (#71) are merged into `main`. CLI subprocess and installed-package tests use the retained sanitised
+fixtures and synthetic adversarial inputs; no fresh real transcripts or active DSH sessions are needed for CLI validation.

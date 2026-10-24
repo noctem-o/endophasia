@@ -1,6 +1,8 @@
 # DeepSeek Harness native attachment: conformance and architecture study
 
-**Status:** study (PR 1). It decides how a later PR should attach Endophasia to DeepSeek Harness (DSH) and states, with evidence,
+**Status:** study (PR 1); its option B is implemented by [docs/dsh-native-importer.md](dsh-native-importer.md), which also lists where the implementation deliberately differs from §6.
+
+**Status (original):** study (PR 1). It decides how a later PR should attach Endophasia to DeepSeek Harness (DSH) and states, with evidence,
 what that attachment can and cannot observe. It adds **no adapter**, changes no protocol, runtime, store, Pi or ACP behaviour and
 no Studio code. Everything it adds lives in `research/dsh-native/`, `tests/dsh-native-study.test.ts` and this page.
 
@@ -188,7 +190,7 @@ and could make a DSH resume fail. So every session must be treated as possibly o
 
 **Build** `adapters/dsh-native/` as an import adapter with **no DSH or Cordis dependency**:
 
-1. **Reader.** Promote `research/dsh-native/log.ts` after the review fixes recorded in §8 (frame scanner, torn-tail and torn-row
+1. **Reader.** Promote `adapters/dsh-native/log.ts` after the review fixes recorded in §8 (frame scanner, torn-tail and torn-row
    reporting, decoded-size bound, v4 only). Refuse any other format version and any unknown required type; count ignorable
    unknowns as loss. It must be demonstrably read-only: no write handle, no lock, no repair, bounded memory. **Decision for PR 2:** DSH
    itself recovers the complete rows of a torn final frame through a write handle; the study's reader is stricter and drops that

@@ -7,7 +7,7 @@
 // rows as DSH's writer does ("each subsequent batch appends one compressed frame"), but DSH's encoder level and parameters differ.
 
 import { constants, zstdCompressSync } from "node:zlib";
-import type { DshSessionEvent, DshSessionHeader } from "./log.ts";
+import type { DshSessionEvent, DshSessionHeader } from "../../adapters/dsh-native/log.ts";
 
 /** Marks a derived value so it cannot be mistaken for runtime output when read in a test or a report. */
 export const SYNTHETIC = "synthetic" as const;

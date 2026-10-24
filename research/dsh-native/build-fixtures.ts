@@ -20,9 +20,9 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkDshLog, dshLogAcceptable, encodeDshJsonl, readDshLog } from "../../adapters/dsh-native/log.ts";
 import { endoSecretScanV0 } from "../../cli/secret-scan.ts";
 import { researchDataRoot } from "../data.ts";
-import { checkDshLog, dshLogAcceptable, encodeDshJsonl, readDshLog } from "./log.ts";
 import { findLeaks, Sanitiser } from "./sanitise.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));

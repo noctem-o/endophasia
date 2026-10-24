@@ -8,7 +8,7 @@ Evidence for [docs/dsh-native-attachment.md](../../docs/dsh-native-attachment.md
 | `provenance.json` | DSH commit, version, licence and the sha256 of every DSH source file and upstream fixture the audit rests on |
 | `vocabulary.json` | DSH's 62 persisted event types and the 65 type-fingerprint roots (`docs/persistence-schema.json`), pinned |
 | `matrix.json` | The native-versus-ACP-versus-Endophasia fidelity matrix; every event type in exactly one row (a test enforces it) |
-| `log.ts` | Read-only inspector of a Session format 4 log: zstd frame scanner, torn-tail reporting, structural checks. Imports `node:zlib` only |
+| (moved) | The read-only reader, `log.ts`, now lives in `adapters/dsh-native/` and is imported from there; see [docs/dsh-native-importer.md](../../docs/dsh-native-importer.md) |
 | `sanitise.ts` | Deterministic sanitiser (system prompt, injected context, paths, ids, dates) and `findLeaks` |
 | `synthetic.ts` | SYNTHETIC cases built from a real fixture: torn frame, corrupt frame, unknown types, fork, compaction |
 | `inventory.ts` | Regenerates `provenance.json` and `vocabulary.json` from a DSH checkout (read-only on the checkout) |

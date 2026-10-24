@@ -30,9 +30,8 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { checkDshLog, type DshLogRead, dshLogAcceptable, readDshLog } from "../../adapters/dsh-native/log.ts";
 import { assertDshProvenance, buildProvenance } from "./inventory.ts";
-import { checkDshLog, type DshLogRead, dshLogAcceptable, readDshLog } from "./log.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 

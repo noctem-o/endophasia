@@ -19,9 +19,9 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { constants, zstdCompressSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
+import { checkDshLog, dshLogAcceptable, readDshLog } from "../adapters/dsh-native/log.ts";
 import { buildFixtures, CASES } from "../research/dsh-native/build-fixtures.ts";
 import { assertDshProvenance, buildProvenance, DSH_AUDITED_FILES } from "../research/dsh-native/inventory.ts";
-import { checkDshLog, dshLogAcceptable, readDshLog } from "../research/dsh-native/log.ts";
 import {
 	assertKilled,
 	assertRecovery,

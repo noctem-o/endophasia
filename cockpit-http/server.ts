@@ -8,7 +8,7 @@
 // authentication. A request is answered only if, in this order: its Host is exactly this server's loopback host and port (DNS
 // rebinding), its Origin and Sec-Fetch-Site are not foreign (cross-site requests), its method is GET, it has no body, its path is
 // `/<per-launch capability>/api/v0/...` (or the page's `/` and `/assets/<name>`) made only of the characters a route can contain
-// (no `%`, so no encoded traversal), and its query holds only the two bounded integers a route accepts (none for the page). Every refusal is a fixed, bounded JSON code that names no path,
+// (no `%`, so no encoded traversal), and its query holds only the bounded integers or candidate-cursor grammar a route accepts (none for the page). Every refusal is a fixed, bounded JSON code that names no path,
 // source content, key or capability. No CORS header is ever sent. The capability is a random 256-bit value generated per
 // server instance, unrelated to the digest key, compared in constant time and never written into a response or a source record.
 //
@@ -28,14 +28,17 @@ import {
 	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
 	type EndoDigestKeyV0,
 	endoCockpitDigestKeyAdmittedV0,
+	isEndoCockpitCandidateSelectorV0,
 	isEndoCockpitSourceKindAdmittedV0,
 	isWellFormedKindV0,
+	parseEndoCockpitCandidateCursorV0,
 	readEndoCockpitRecordV0,
 	readEndoCockpitRuntimeV0,
 	readEndoCockpitSnapshotV0,
 	readEndoCockpitTimelineV0,
 } from "../cockpit/index.ts";
 
+import { readEndoCockpitCompareCandidatesV0, readEndoCockpitSelectedComparisonV0 } from "./candidates.ts";
 import {
 	EndoCockpitComparisonRefusalV0,
 	endoCockpitComparisonSelectionV0,
@@ -71,6 +74,8 @@ const REFUSALS = {
 	"source-absent": 503,
 	"source-degraded": 503,
 	"source-unopenable": 503,
+	"continuation-invalid": 409,
+	"too-many-candidates": 503,
 } as const;
 type Refusal = keyof typeof REFUSALS;
 const REASONS: Record<Refusal, string> = {
@@ -85,6 +90,8 @@ const REASONS: Record<Refusal, string> = {
 	"source-absent": "Service Unavailable",
 	"source-degraded": "Service Unavailable",
 	"source-unopenable": "Service Unavailable",
+	"continuation-invalid": "Conflict",
+	"too-many-candidates": "Service Unavailable",
 };
 
 /**
@@ -337,14 +344,44 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		}
 		if (segments[0] !== "api" || segments[1] !== "v0") return refuse("not-found");
 		if (segments[2] === "compare") {
-			if (segments.length !== 7) return refuse("not-found");
-			const a = endoCockpitComparisonSelectionV0(segments[3], segments[4]);
-			const b = endoCockpitComparisonSelectionV0(segments[5], segments[6]);
-			if (a === null || b === null) return refuse("not-found");
-			parseQuery(rawQuery, []);
-			admit();
 			try {
-				const record = readEndoCockpitComparisonV0(root, a, b, digestKey);
+				let record: unknown;
+				if (segments.length === 4 && segments[3] === "candidates") {
+					let cursor: string | undefined;
+					if (rawQuery !== "") {
+						if (rawQuery.length > MAX_QUERY_CHARS || !rawQuery.startsWith("cursor="))
+							return refuse("bad-request");
+						cursor = rawQuery.slice(7);
+						if (parseEndoCockpitCandidateCursorV0(cursor) === null) return refuse("bad-request");
+					}
+					admit();
+					record = readEndoCockpitCompareCandidatesV0(root, digestKey, cursor);
+				} else if (segments.length === 8 && segments[3] === "selected") {
+					const [, , , , sourceA, tokenA, sourceB, tokenB] = segments;
+					if (
+						(sourceA !== "pi" && sourceA !== "dsh") ||
+						(sourceB !== "pi" && sourceB !== "dsh") ||
+						!isEndoCockpitCandidateSelectorV0(tokenA) ||
+						!isEndoCockpitCandidateSelectorV0(tokenB)
+					)
+						return refuse("not-found");
+					parseQuery(rawQuery, []);
+					admit();
+					record = readEndoCockpitSelectedComparisonV0(
+						root,
+						digestKey,
+						{ source: sourceA, selector: tokenA },
+						{ source: sourceB, selector: tokenB },
+					);
+				} else {
+					if (segments.length !== 7) return refuse("not-found");
+					const a = endoCockpitComparisonSelectionV0(segments[3], segments[4]);
+					const b = endoCockpitComparisonSelectionV0(segments[5], segments[6]);
+					if (a === null || b === null) return refuse("not-found");
+					parseQuery(rawQuery, []);
+					admit();
+					record = readEndoCockpitComparisonV0(root, a, b, digestKey);
+				}
 				return { records: [record], body: record };
 			} catch (error) {
 				if (error instanceof EndoCockpitComparisonRefusalV0) return refuse(error.refusal);

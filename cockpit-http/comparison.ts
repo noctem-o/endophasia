@@ -1,5 +1,5 @@
 // Source-specific assembly stays outside cockpit/: only the existing pure adapter projectors are reached here.
-// No adapter index, importer, attachment, harness, process, discovery, write, clock or key loader is used.
+// No adapter index, importer, attachment, harness, process, filesystem discovery, write, clock or key loader is used.
 import {
 	DSH_NATIVE_CHECKPOINT_PRODUCER_V0,
 	DSH_NATIVE_RECORDING_PRODUCER_V0,
@@ -33,7 +33,14 @@ export function endoCockpitComparisonSelectionV0(
 	return { source, session };
 }
 
-type Failure = "source-absent" | "source-degraded" | "source-unopenable" | "not-found" | "ambiguous-selection";
+type Failure =
+	| "source-absent"
+	| "source-degraded"
+	| "source-unopenable"
+	| "not-found"
+	| "ambiguous-selection"
+	| "continuation-invalid"
+	| "too-many-candidates";
 
 /** Expected refusals contain a closed code only: never a source exception, coordinate, path, identifier or cause. */
 export class EndoCockpitComparisonRefusalV0 extends Error {
@@ -44,8 +51,22 @@ export class EndoCockpitComparisonRefusalV0 extends Error {
 	}
 }
 
-function trajectory(events: EndoEventV0[], selection: EndoCockpitComparisonSelectionV0) {
+/** Recording evidence, not timeline membership or a coordinate prefix, establishes the candidate's source. */
+export function endoCockpitRecordingSourceV0(event: EndoEventV0): "pi" | "dsh" | null {
+	const session = event.coordinates.sessionId;
+	if (session === undefined || session === null) return null;
+	if (event.producer === DSH_NATIVE_RECORDING_PRODUCER_V0) return "dsh";
+	return piTrajectoryAttachmentsV0([event], session).length > 0 ? "pi" : null;
+}
+
+/** Shared admission and trajectory validation for raw comparison, discovery and opaque selection. */
+export function projectEndoCockpitRecordingV0(events: EndoEventV0[], selection: EndoCockpitComparisonSelectionV0) {
 	const { session, source } = selection;
+	if (
+		!isEndoIdentifierV0(session, "session") ||
+		(source === "dsh" && (!session.startsWith("endo.session.dsh.") || session === "endo.session.dsh."))
+	)
+		throw new EndoCockpitComparisonRefusalV0("source-degraded");
 	// A fixed provenance label is private to the trajectories: the presentation never carries it.
 	const store = "configured-store";
 	if (source === "pi") {
@@ -106,14 +127,25 @@ export function readEndoCockpitComparisonV0(
 		endoCockpitComparisonSelectionV0(b?.source, b?.session) === null
 	)
 		throw new TypeError("invalid comparison selection");
+	return withEndoCockpitComparisonEventsV0(root, digestKey, (events) =>
+		projectEndoCockpitTrajectoryComparisonV0(
+			projectEndoCockpitRecordingV0(events, a),
+			projectEndoCockpitRecordingV0(events, b),
+			digestKey,
+		),
+	);
+}
+
+/** A single verified read, closed before projection, with no source errors or causes exposed even to host diagnostics. */
+export function withEndoCockpitComparisonEventsV0<T>(
+	root: string,
+	digestKey: EndoDigestKeyV0,
+	use: (events: EndoEventV0[]) => T,
+): T {
 	try {
 		const read = readEndoCockpitVerifiedEventsV0(root, digestKey);
 		if (!read.ok) throw new EndoCockpitComparisonRefusalV0(`source-${read.condition}`);
-		return projectEndoCockpitTrajectoryComparisonV0(
-			trajectory(read.events, a),
-			trajectory(read.events, b),
-			digestKey,
-		);
+		return use(read.events);
 	} catch (error) {
 		if (error instanceof EndoCockpitComparisonRefusalV0) throw error;
 		// Unexpected adapter/projection failures are host defects (500), not a fabricated UNAVAILABLE layer. Even the host's

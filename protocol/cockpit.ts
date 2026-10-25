@@ -40,6 +40,15 @@
 // The protocol imports only the protocol.
 
 import {
+	ENDO_COCKPIT_COMPARE_CANDIDATES_PROJECTION_V0,
+	ENDO_COCKPIT_COMPARE_CANDIDATES_SCHEMA_V0,
+	type EndoCockpitCompareCandidatesV0,
+	validateEndoCockpitCompareCandidatesV0,
+} from "./cockpit-candidates.ts";
+
+export * from "./cockpit-candidates.ts";
+
+import {
 	ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0,
 	ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0,
 	type EndoCockpitTrajectoryComparisonV0,
@@ -122,6 +131,7 @@ export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
 	sessionTimeline: "cockpit-session-timeline.3",
 	snapshot: "cockpit-snapshot.3",
 	trajectoryComparison: ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0,
+	compareCandidates: ENDO_COCKPIT_COMPARE_CANDIDATES_PROJECTION_V0,
 } as const;
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
@@ -557,7 +567,8 @@ export type EndoCockpitRecordV0 =
 	| EndoCockpitCapabilityStateV0
 	| EndoCockpitSessionTimelineV0
 	| EndoCockpitSnapshotV0
-	| EndoCockpitTrajectoryComparisonV0;
+	| EndoCockpitTrajectoryComparisonV0
+	| EndoCockpitCompareCandidatesV0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validation helpers
@@ -2742,6 +2753,7 @@ export const ENDO_COCKPIT_VERSIONS_V0 = defineEndoVersionTableV0<EndoCockpitReco
 	["endo.cockpit-session-timeline.v0", validateEndoCockpitSessionTimelineV0],
 	["endo.cockpit-snapshot.v0", validateEndoCockpitSnapshotV0],
 	[ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0, validateEndoCockpitTrajectoryComparisonV0],
+	[ENDO_COCKPIT_COMPARE_CANDIDATES_SCHEMA_V0, validateEndoCockpitCompareCandidatesV0],
 ]);
 
 /** Read a cockpit record under the version it declares; an unknown version is `unsupported-version`, never accepted. */

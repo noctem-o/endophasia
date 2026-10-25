@@ -130,7 +130,7 @@ React and no bundler.
 
 ## Compare backend (React workspace still pending)
 
-Merged PRs #69–73 provide the authoritative comparison presentation, recorded DSH import evidence and the guarded
+Merged PRs #69–74 provide the authoritative comparison presentation, recorded DSH import evidence and the guarded
 raw-coordinate Compare API. The server also exposes candidate discovery for the next React Compare workspace:
 
 - `GET /<cap>/api/v0/compare/candidates` returns the versioned, validated candidate presentation. Follow its optional

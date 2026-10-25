@@ -1,12 +1,8 @@
 # What is implemented, in detail
 
-The README's [What works today](../README.md#what-works-today) summarizes this. This page keeps the detail, including every
-limitation, as it stood when the summary was shortened. The real recordings and studies, with what each establishes and
-does not, are in [research/README.md](../research/README.md).
-
-The sections from "Studio" to the end were moved here from the README's "Current state". They are unchanged except that the Studio paragraph
-distinguishes the published older browser page from the newer, unreleased React source frontend, the library paragraph now mentions the unwired `visualization/` scene state and says what the CLI can
-read of the evidence ledger (evaluation records are written by `endo experiment`), and "listed above" now links to `research/README.md`.
+The README's [What works today](../README.md#what-works-today) summarizes the current source-tree state. This page keeps the
+implementation detail and its limitations. The real recordings and studies, with what each establishes and does not, are in
+[research/README.md](../research/README.md).
 
 **Implemented and tested here:**
 
@@ -104,8 +100,9 @@ read of the evidence ledger (evaluation records are written by `endo experiment`
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
 read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows one Observe workspace: an overview of the recorded window, the
 recorded runtime identity, capability state with its limits, the session timeline in storage order with an evidence-first inspector and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. The other modes are not built. Published `0.1.0-alpha.2` contains the first, earlier browser page; the newer React
-Observe workspace is in the source tree and has not yet shipped on npm. `endo web`, a native Endophasia binary and
+writes nothing to the store, attaches to nothing and does not poll. The React Compare workspace and other modes are not built.
+Published `0.1.0-alpha.2` contains the first, earlier browser page; the newer React
+Observe workspace is in the source tree, as are the DSH CLI and Compare APIs described above. `endo web`, a native Endophasia binary and
 native packaging are proposed only; the implemented CLI remains `endo studio`.
 
 ## Library-only and planned surfaces
@@ -131,13 +128,49 @@ exercised only against fake Pi ([research/README.md](../research/README.md#fake-
 The boundary and the evidence rules were audited adversarially ([audit](pi-attach-audit.md)), including the
 limitations accepted for now.
 
+## DSH native cold import
+
+PRs #70–72 added an operational, explicit cold-import path on `main`: `endo dsh import <session-directory>` reads one
+persisted DeepSeek Harness Session format-4 directory and appends validated evidence to an Endophasia store. It reads the
+DSH source without changing it. The importer needs no DSH installation and does not inspect a DSH home, resume or control a
+process, attach live, or sync in the background. `endo dsh loss-accounting` prints the static mapping contract; it is not
+a measurement of one imported session. See [the importer contract](dsh-native-importer.md).
+
+The version-pinned study and importer were exercised against five retained captures from DSH `dsh-v0.2.1-rc.2`, including
+failure and resume cases, alongside deterministic and synthetic adversarial tests ([study](dsh-native-attachment.md),
+[validation](dsh-native-importer-validation.md)). This evidence does not establish live-attachment behavior or general
+conformance across DSH versions. Mapping remains qualified: a DSH turn maps to an Endophasia run and a DSH step to a turn;
+a tool request does not establish execution; DSH-written recovery closers are not observed interruptions. Runtime identity,
+timing and complete usage remain unavailable where the persisted log does not record them (`cacheWrite` is absent on the
+retained real data). `endo trajectory show` remains Pi-specific.
+
+## Compare projection and HTTP backend
+
+The source tree on `main` implements the deterministic trajectory-comparison presentation from PR #69 and the guarded,
+read-only comparison APIs from PRs #73–74. The registered cockpit projection preserves the existing comparator's
+`EXACT`, `DIVERGED` and `UNAVAILABLE` verdicts per layer and its privacy rules. The HTTP server exposes raw-coordinate
+comparison plus candidate discovery, with eligibility, bounded pagination and generation-bound opaque selectors. The
+routes use the configured store and do not open original DSH files;
+the detailed contracts and limits are in [cockpit.md](cockpit.md#the-trajectory-comparison-presentation-implemented-and-served)
+and [studio.md](studio.md#compare-backend-react-workspace-still-pending).
+
+The API and projection have deterministic coverage for Pi/Pi, DSH/DSH and mixed-source recordings. This does not make the
+React Compare workspace an implemented interface: that workspace is still pending. Comparison preserves unavailable and
+qualified evidence and does not establish causal equivalence.
+
+These additions, including the DSH CLI, comparison APIs and newer React Observe frontend, are implemented in source on `main`.
+The npm registry artifacts for `endophasia@0.1.0-alpha.1` and `endophasia@0.1.0-alpha.2` do not contain them; the alpha.2
+artifact contains the earlier browser page.
+
 ## Not yet built
 
-**Not yet built:** the other browser workspaces (DEVELOP, WORK, DREAM, EVOLVE and a model-internal OBSERVE view; the first page is built),
-model-internal
-observation providers and typed Observe scenes, the WebGPU browser renderer, an optional Pi extension for active-tool
-control, model-originated steering proposals and an external authority provider, any live provider integration wired
-into a command, WORK / DREAM policy compilation, the full trajectory / experience laboratory, RL training-provider
-integration, attachments for other harnesses, and the proposed Rust/GPUI native Endophasia application. Compare projection and DSH native importer work are open PRs, not part of `main` or published capability claims.
+**Not yet built:** the React Compare workspace; proposed DEVELOP, COGNITION, VERIFY and EVOLVE browser workspaces; a
+model-internal OBSERVE view, observation providers and typed Observe scenes; the WebGPU browser renderer; an optional Pi
+extension for active-tool control; model-originated steering proposals and an external authority provider; any live provider
+integration wired into a command; the full trajectory / experience laboratory; RL training-provider integration;
+attachments for other harnesses; and the proposed Rust/GPUI native Endophasia application. WORK and DREAM are proposed
+cognition profiles within a possible COGNITION workspace, not existing top-level workspaces; no profile selector or policy
+compiler exists. A dedicated Research workspace, skill benchmarking, agent-hierarchy experiments and hardware workflows
+also remain proposals, not implemented capabilities.
 
 Endophasia is ready for architecture experiments. It is not a stable multi-runtime product.

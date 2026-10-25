@@ -3,21 +3,28 @@
 ## Unreleased
 
 ### Added
-- The trajectory-comparison presentation, `endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`) and its pure
-  projection `projectEndoCockpitTrajectoryComparisonV0` (`cockpit/projections/trajectory-comparison.ts`): the existing comparator's
-  verdicts for two recorded trajectories in a browser-safe shape, with `EXACT` / `DIVERGED` / `UNAVAILABLE` kept apart per layer, tool
-  calls apart from tool results, no cross-layer divergence or event pairing, unavailable deltas never 0, and store paths and
-  content-committing digests withheld as keyed tokens. It is not yet served or registered in the cockpit version table; see
-  [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-not-yet-served).
-- `adapters/dsh-native/`: a read-only cold importer of DeepSeek Harness Session format 4 logs into the event store, with an idempotent,
-  verified, append-only re-import, privacy by keyed digests, qualified lifecycle and tool mapping (a DSH tool call is a request, never
-  `tool.started`; DSH-written crash closers are never `lifecycle.interrupted`), a projector to the existing `endo.trajectory.v1`, and
-  `endo.dsh-native-loss-accounting.v0`. See [docs/dsh-native-importer.md](docs/dsh-native-importer.md). It does not drive, resume or
-  attach to DSH, and is not wired into the CLI.
-- A study of attaching to DeepSeek Harness natively (docs/dsh-native-attachment.md, research/dsh-native/): the audited observation
-  surfaces, a native-versus-ACP fidelity matrix over all 62 persisted event types, sanitised fixtures from a real runtime (tool call,
-  failed turn, retry, SIGKILL crash and resume), a read-only log inspector with deterministic tests, and the architecture decision for
-  the follow-up. It changes no adapter, protocol, store or Studio behaviour.
+- **Merged Compare presentation and APIs (PRs #69 and #73):** `endo.cockpit-trajectory-comparison.v0`
+  (`protocol/cockpit-comparison.ts`) and `projectEndoCockpitTrajectoryComparisonV0` preserve the existing comparator's
+  `EXACT` / `DIVERGED` / `UNAVAILABLE` verdicts per layer, keep tool calls apart from tool results, avoid cross-layer
+  divergence or event pairing, leave unavailable deltas unset, and withhold store paths and content-committing digests as
+  keyed tokens. The projection is registered and served through guarded read-only comparison APIs. See
+  [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-and-served).
+- **Merged Compare candidate discovery (PR #74):** a validated, bounded and paginated candidate presentation reports eligibility
+  and supplies generation-bound opaque selectors for selected comparisons. Selectors become invalid when the verified
+  store generation changes; candidate rows use privacy-safe display identities. The React Compare workspace remains pending.
+  See [docs/cockpit.md](docs/cockpit.md#compare-candidate-discovery) and
+  [docs/studio.md](docs/studio.md#compare-backend-react-workspace-still-pending).
+- **Merged DSH study, importer and CLI (PRs #70–72):** the version-pinned native conformance study covers a fidelity matrix over
+  all 62 persisted event types and five retained sanitised captures from DSH `dsh-v0.2.1-rc.2`. This is version-pinned
+  evidence, not general-version conformance. `adapters/dsh-native/` reads one persisted Session format-4 directory into
+  the event store with verified append-only re-import, keyed digests, qualified lifecycle/tool mapping, an
+  `endo.trajectory.v1` projection and `endo.dsh-native-loss-accounting.v0`. PR #72 exposes this offline, read-only path as
+  `endo dsh import` and `endo dsh loss-accounting`. It does not drive, resume, attach to or sync DSH;
+  DSH tool requests do not establish execution, and DSH-written crash closers are not `lifecycle.interrupted`.
+  See [docs/dsh-native-attachment.md](docs/dsh-native-attachment.md) and
+  [docs/dsh-native-importer.md](docs/dsh-native-importer.md).
+- These source-tree additions, along with the newer React Observe frontend, are absent from the npm registry artifacts
+  for `endophasia@0.1.0-alpha.1` and `endophasia@0.1.0-alpha.2`; alpha.2 contains the earlier browser page.
 - The Studio frontend: a React/TypeScript application bundled by `esbuild` into `dist/studio-ui/` (content-hashed files and a manifest
   that the host checks, file for file and byte for byte, before anything starts), served through the same hardened server. Its
   **Observe workspace** reads the one recorded snapshot and shows an overview of the recorded window, the runtime, the capability state

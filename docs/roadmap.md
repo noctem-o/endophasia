@@ -4,32 +4,29 @@ Status: **plans and research directions, not implemented capabilities.** Items m
 (linked); everything else is intent. The item numbers below (1-27) are cited by research notes and design documents and are kept.
 What runs today is in [status.md](status.md) and the [README](../README.md#what-works-today).
 
-The text of this page was moved from the README's "Roadmap" section unchanged.
-
 ## Delivery sequence — current priority
 
-The numbered capability map below remains the long-term architecture. The **current delivery sequence is intentionally
-shorter and more product-shaped**. Evidence closure and the installable Operator Alpha are complete; the next delivery
-priority was the first read-only browser interface (built: `endo studio`), followed by real comparison usability,
-forkable checkpoints and deeper EVOLVE work. The proposed native desktop binary is a distinct future interface.
+The numbered capability map below remains the long-term architecture. The current source-tree priority is to make the
+merged Compare backend usable in the browser, then build the checkpoint substrate. The installed Pi workflow and the
+read-only Observe workspace are established foundations; the proposed native desktop binary is a separate future interface.
 
 ~~~text
 evidence closure (done)
       ↓
 installable operator alpha (released: 0.1.0-alpha.1)
       ↓
-browser Observe (built: endo studio)
+browser Observe (built in source; alpha.2 contains the earlier page)
       ↓
-Compare over recorded sessions + existing review closeout
-      ↓
-native GPUI feasibility spike (independent, optional)
+React Compare workspace (next; consumes the merged APIs)
       ↓
 forkable checkpoints (core milestone)
       ↓
-native Endophasia read-only instrument v0 (conditional)
-      ↓
-counterfactual / evolution / training work
+later native instrumentation and broader Research / Cognition / Evolve directions (proposals)
 ~~~
+
+A small, bounded Rust/GPUI feasibility study is optional and may run alongside Compare or checkpoint work; it must not
+delay the checkpoint milestone. A dedicated Research workspace, skill benchmarking, agent-hierarchy experiments and
+hardware workflows remain proposals, not promised functionality.
 
 1. **Evidence closure before the first alpha.**
    - **Transport closeout.** Decouple the recording proxy's upstream connections from the client's keep-alive, so a
@@ -70,8 +67,9 @@ counterfactual / evolution / training work
    - Add the semantic graph/visualisation projection after the derived cognition graph is wired to the durable store;
      it is a follow-on within this stage, not a first-slice acceptance requirement. Keep Dream scenes and
      model-observation scenes as separate typed projections even if they later share one renderer.
-   - Follow with capability-gated model-internal observation. Prefer TransformerLens 4.0's Driver model as the common
-     hook/capability vocabulary where supported: compiled vLLM for the live capture tier and Hugging Face for deep
+   - Later, after the Compare and checkpoint priorities, consider capability-gated model-internal observation. Prefer
+     TransformerLens 4.0's Driver model as the common hook/capability vocabulary where supported: compiled vLLM for the
+     live capture tier and Hugging Face for deep
      reference replay. Keep vLLM-Lens as an optional specialist provider for Q/K-derived attention, Jacobian/R-lens,
      persistent/custom hooks or other capabilities that justify its eager-mode trade-off. Preserve raw observations
      apart from derived PCA/MFA/SAE/lens artifacts, and make every missing signal explicit.
@@ -80,22 +78,16 @@ counterfactual / evolution / training work
    - Keep this intentionally smaller than the full Dream/visual-cognition vision. The goal is to make one real
      recorded session inspectable through Endophasia's own state model before adding richer rendering or control.
 
-**Near-term presentation and harness studies (not shipped capabilities).** [Compare PR #69](https://github.com/noctem-o/endophasia/pull/69)
-adds a pure evidence-backed comparison presentation projection on its open branch, not the Compare browser workspace.
-[DSH study PR #70](https://github.com/noctem-o/endophasia/pull/70) is a version-pinned conformance study;
-[DSH importer PR #71](https://github.com/noctem-o/endophasia/pull/71) is a stacked, read-only cold importer.
-Neither changes the support claims of the published Pi alpha until merged, tested and released. Native DSH fidelity is
-studied separately from ACP interoperability, with losses and unavailable signals explicit.
-
-**Optional native interface track (not implemented).** The future native desktop application would be called
-**Endophasia**, distinct from **Endophasia Web** (currently `endo studio`) and the `endo` CLI. A bounded Rust/GPUI Kit +
-`wgpu` feasibility spike may follow the initial Compare data/view work without blocking checkpoints. Build an actual
-native read-only instrument only after stable validated presentation contracts, real graph/trajectory comparisons and
-minimal forkable checkpoints. Its authority comes from existing TypeScript projections, not a second independent
-implementation of evidence semantics. Keep a read-only boundary, deterministic fixtures, explicit missing signals,
-GPU composition feasibility tests, and the browser frontend as an equal client. AppImage, Windows packaging, and
-`endo web` remain future options, not current deliverables. Do not displace core checkpoints, the installed Pi loop,
-or real-session usability with graphics work.
+**Merged source-tree work from PRs #69–74.** [PR #69](https://github.com/noctem-o/endophasia/pull/69) added the validated,
+evidence-backed comparison presentation; [PR #70](https://github.com/noctem-o/endophasia/pull/70) completed the
+version-pinned DSH conformance study; [PR #71](https://github.com/noctem-o/endophasia/pull/71) added the format-4 cold
+importer; [PR #72](https://github.com/noctem-o/endophasia/pull/72) exposed import and static loss accounting through the
+CLI; [PR #73](https://github.com/noctem-o/endophasia/pull/73) served guarded read-only comparison APIs; and
+[PR #74](https://github.com/noctem-o/endophasia/pull/74) added bounded candidate discovery and generation-bound opaque
+selectors. All six PRs are merged into `main`. These source-tree changes are absent from the npm registry artifacts for
+`endophasia@0.1.0-alpha.1` and `endophasia@0.1.0-alpha.2`; those versions retain their original contents. The React Compare
+workspace remains the next presentation task. DSH fidelity remains version-pinned and
+evidence-qualified, with unavailable signals and mapping losses explicit; native import is not live attachment or ACP parity.
 
 4. **Forkable checkpoints** (item 10).
    - Land the substrate primitive beneath search, counterfactual evaluation and training: reconstructable checkpoints,
@@ -103,7 +95,16 @@ or real-session usability with graphics work.
    - Once this exists, use it to support controlled continuation experiments rather than adding another large
      protocol-only migration.
 
-5. **Return to the broader research loop.**
+**Optional native interface track (not implemented).** The future native desktop application would be called
+**Endophasia**, distinct from **Endophasia Web** (currently `endo studio`) and the `endo` CLI. A bounded Rust/GPUI Kit +
+`wgpu` feasibility study may run independently after the initial Compare view work, including alongside checkpoint work,
+but must not delay checkpoints. Build an actual native read-only instrument only after stable validated presentation
+contracts, real graph/trajectory comparisons and minimal forkable checkpoints. Its authority comes from existing
+TypeScript projections, not a second independent implementation of evidence semantics. Keep a read-only boundary,
+deterministic fixtures, explicit missing signals, GPU composition feasibility tests, and the browser frontend as an equal
+client. AppImage, Windows packaging, and `endo web` remain future options, not current deliverables.
+
+5. **Later research loop (proposed, contingent on priorities and evidence).**
    - Resume the compute-frontier follow-up (item 13): where success saturates above 32,768 tokens, whether retry after
      cut-off beats a larger cap, and whether failures merely move. Pre-register the comparison, pin everything else,
      and use several predefined fixed seeds as the replication unit, with the same seed set across compared arms.
@@ -118,7 +119,7 @@ or real-session usability with graphics work.
 
 ## Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the delivery sequence above (browser Observe is built; comparisons and checkpoints are the core priorities).
+These are valid directions, but they should **not** displace the delivery sequence above (browser Observe is built; the React Compare workspace and checkpoints are the core priorities).
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
@@ -126,7 +127,10 @@ These are valid directions, but they should **not** displace the delivery sequen
   development-only path. Keep ACP v1 working beside it.
 - **DeepSeek Harness native attachment:** the study ([docs/dsh-native-attachment.md](dsh-native-attachment.md)) chose a read-only cold
   importer of DSH's persisted Session log (format 4) over a live Cordis observer or the SDK; the importer is implemented
-  ([docs/dsh-native-importer.md](dsh-native-importer.md)) but not wired into the CLI or Studio. ACP stays the interoperability path.
+  ([docs/dsh-native-importer.md](dsh-native-importer.md)) and wired into `endo dsh import` plus `endo dsh loss-accounting`.
+  It reads an explicitly named persisted session and writes validated evidence to the Endophasia store; it does not attach,
+  control or sync DSH. The pinned captures and mapping losses qualify its evidence; it is not general-version conformance.
+  The commands do not create a DSH view in Studio. ACP stays the interoperability path.
 - **ACP v1 unstable per-turn usage:** real OMP sends unstable `PromptResponse.usage`, but consuming it still needs an
   explicit source-stability and loss-accounting decision. It is not required for the first alpha.
 - **Windows descendant containment:** this belongs in the shared `ProcessGroupV0`, not an ACP adapter. It should land
@@ -291,6 +295,8 @@ These are candidates for a separate EVOLVE experiment mode, not features to buil
 runtime → replay → evaluation loop is reliable. Each track should use the same candidate, trajectory,
 evaluation, resource-accounting, and promotion contracts. Start with small, falsifiable experiments;
 do not import a framework merely because its paper reports a benchmark gain.
+The dedicated Research workspace, skill benchmarking and agent-hierarchy experiments are proposals; hardware workflows
+are also an exploratory proposal, not a scheduled capability.
 
 18. **Experience-derived skill evolution.** Compare a versioned skill bank against no skills, static
     skills, and simple trajectory retrieval. Extract, merge, retire, and select procedural skills from

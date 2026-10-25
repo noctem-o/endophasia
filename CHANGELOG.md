@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- **React Compare workspace (source builds and tested tarballs):** discover eligible Pi/DSH recordings, explicitly select
+  A/B through opaque generation-bound selectors, load bounded candidate pages, and inspect authoritative per-layer verdicts,
+  divergent entries, qualifications, ordering assessment and B-minus-A deltas. Unknown/malformed responses, invalid selections,
+  cancellation, pacing and stale request completions fail closed. Observe state and its single initial snapshot request are
+  preserved; navigation triggers no extra Observe read. Native keyboard controls, evidence disclosures and narrow layouts
+  retain the Studio security and accessibility model. No new comparator, backend API or runtime control is added.
 - **Merged Compare presentation and APIs (PRs #69 and #73):** `endo.cockpit-trajectory-comparison.v0`
   (`protocol/cockpit-comparison.ts`) and `projectEndoCockpitTrajectoryComparisonV0` preserve the existing comparator's
   `EXACT` / `DIVERGED` / `UNAVAILABLE` verdicts per layer, keep tool calls apart from tool results, avoid cross-layer
@@ -11,9 +17,9 @@
   [docs/cockpit.md](docs/cockpit.md#the-trajectory-comparison-presentation-implemented-and-served).
 - **Merged Compare candidate discovery (PR #74):** a validated, bounded and paginated candidate presentation reports eligibility
   and supplies generation-bound opaque selectors for selected comparisons. Selectors become invalid when the verified
-  store generation changes; candidate rows use privacy-safe display identities. The React Compare workspace remains pending.
+  store generation changes; candidate rows use privacy-safe display identities. The React Compare workspace consumes this contract.
   See [docs/cockpit.md](docs/cockpit.md#compare-candidate-discovery) and
-  [docs/studio.md](docs/studio.md#compare-backend-react-workspace-still-pending).
+  [docs/studio.md](docs/studio.md#compare-workspace).
 - **Merged DSH study, importer and CLI (PRs #70–72):** the version-pinned native conformance study covers a fidelity matrix over
   all 62 persisted event types and five retained sanitised captures from DSH `dsh-v0.2.1-rc.2`. This is version-pinned
   evidence, not general-version conformance. `adapters/dsh-native/` reads one persisted Session format-4 directory into
@@ -31,8 +37,7 @@
   with its limits, the timeline in storage order with an evidence-first inspector, and the condition of each source, each on its own;
   loading, empty, absent, degraded, unopenable, withheld, unsupported-version, failed and paced reads are each said differently, and a
   window is never presented as the whole log. It makes one read at open and one per explicit action, and polls nothing. Responsive, with a
-  modal inspector below 1024 px that carries the source warnings with it. Compare, Capabilities and Evolve appear in the shell as not yet
-  available and show nothing. See [docs/studio-ui-architecture.md](docs/studio-ui-architecture.md) and
+  modal inspector below 1024 px that carries the source warnings with it. Capabilities and Evolve remain marked as unavailable and show nothing. See [docs/studio-ui-architecture.md](docs/studio-ui-architecture.md) and
   [docs/cockpit-ui.md](docs/cockpit-ui.md).
 - `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono` (build-time only; their licence notices are packed in `dist/licenses/`).
 

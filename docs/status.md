@@ -98,11 +98,11 @@ implementation detail and its limitations. The real recordings and studies, with
 
 **Endophasia Web** is the proposed user-facing name for the existing read-only browser interface (`endo studio`, [docs/studio.md](studio.md)): a read-only
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
-read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows one Observe workspace: an overview of the recorded window, the
+read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows an Observe workspace: an overview of the recorded window, the
 recorded runtime identity, capability state with its limits, the session timeline in storage order with an evidence-first inspector and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. The React Compare workspace and other modes are not built.
+writes nothing to the store, attaches to nothing and does not poll. The React Compare workspace discovers recorded Pi/DSH candidates and presents authoritative comparisons; other modes remain unbuilt.
 Published `0.1.0-alpha.2` contains the first, earlier browser page; the newer React
-Observe workspace is in the source tree, as are the DSH CLI and Compare APIs described above. `endo web`, a native Endophasia binary and
+Observe and Compare workspaces are in the source tree, as are the DSH CLI and Compare APIs described above. `endo web`, a native Endophasia binary and
 native packaging are proposed only; the implemented CLI remains `endo studio`.
 
 ## Library-only and planned surfaces
@@ -152,19 +152,18 @@ read-only comparison APIs from PRs #73–74. The registered cockpit projection p
 comparison plus candidate discovery, with eligibility, bounded pagination and generation-bound opaque selectors. The
 routes use the configured store and do not open original DSH files;
 the detailed contracts and limits are in [cockpit.md](cockpit.md#the-trajectory-comparison-presentation-implemented-and-served)
-and [studio.md](studio.md#compare-backend-react-workspace-still-pending).
+and [studio.md](studio.md#compare-workspace).
 
-The API and projection have deterministic coverage for Pi/Pi, DSH/DSH and mixed-source recordings. This does not make the
-React Compare workspace an implemented interface: that workspace is still pending. Comparison preserves unavailable and
+The API and projection have deterministic coverage for Pi/Pi, DSH/DSH and mixed-source recordings. The React Compare workspace consumes these contracts, with explicit pagination, paired opaque selection and rediscovery on invalidation. Comparison preserves unavailable and
 qualified evidence and does not establish causal equivalence.
 
-These additions, including the DSH CLI, comparison APIs and newer React Observe frontend, are implemented in source on `main`.
+These additions, including the DSH CLI, comparison APIs and newer React Observe and Compare frontend, are implemented in source on `main`.
 The npm registry artifacts for `endophasia@0.1.0-alpha.1` and `endophasia@0.1.0-alpha.2` do not contain them; the alpha.2
 artifact contains the earlier browser page.
 
 ## Not yet built
 
-**Not yet built:** the React Compare workspace; proposed DEVELOP, COGNITION, VERIFY and EVOLVE browser workspaces; a
+**Not yet built:** proposed DEVELOP, COGNITION, VERIFY and EVOLVE browser workspaces; a
 model-internal OBSERVE view, observation providers and typed Observe scenes; the WebGPU browser renderer; an optional Pi
 extension for active-tool control; model-originated steering proposals and an external authority provider; any live provider
 integration wired into a command; the full trajectory / experience laboratory; RL training-provider integration;

@@ -635,6 +635,15 @@ try {
 				const gone = await populated.stop("SIGINT");
 				check(gone.code === 0 && !populated.stderr().includes(populated.capability), "SIGINT stops the populated launch with exit 0, and its stderr never carries the capability");
 
+				const { compareEvents } = await import("../tests/studio-compare-fixtures.ts");
+				const { exerciseStudioCompare } = await import("../tests/studio-compare-acceptance.ts");
+				const compareRoot = join(scratch, "studio-compare-mixed");
+				ingestAll(compareRoot, compareEvents());
+				const compareLaunch = await launch(["--root", compareRoot]);
+				const compareUi = await exerciseStudioCompare(browser, compareLaunch.address);
+				check(compareUi.failures.length === 0, `the installed React Compare workspace selects actual Pi/DSH recordings, renders authoritative layers, preserves Observe reads, keyboard focus, narrow layout and policy${compareUi.failures.length ? `: ${compareUi.failures.join("; ")}` : ""}`);
+				await compareLaunch.stop("SIGINT");
+
 				const absent = await launch(["--root", join(scratch, "studio-absent-browser", "store")]);
 				const absence = await exerciseStudioUi(browser, absent.address, absent.origin, { store: "absent" });
 				check(absence.failures.length === 0, `the installed frontend, over an absent store, shows absence as absence${absence.failures.length ? `: ${absence.failures.join("; ")}` : ""}`);

@@ -36,6 +36,11 @@ describe("the frontend's source", () => {
 				"assets.d.ts",
 				"main.tsx",
 				"model/cells.ts",
+				"model/compare.ts",
+				"model/compare-wire.ts",
+				"compare/CompareWorkspace.tsx",
+				"compare/Comparison.tsx",
+				"use-compare.ts",
 				"model/contract.ts",
 				"model/labels.ts",
 				"model/detail.ts",
@@ -134,7 +139,7 @@ describe("the frontend's source", () => {
 		expect(styled).toEqual(["observe/Overview.tsx"]);
 	});
 
-	it("uses fetch in exactly one place, relative to the page, the one endpoint, with no credentials, no referrer and no redirect", () => {
+	it("uses fetch in exactly one place, relative to the page, the exact Observe and Compare routes, with no credentials, no referrer and no redirect", () => {
 		const users = Object.entries(sources)
 			.filter(([, text]) => /\bfetch\(/.test(text))
 			.map(([name]) => name);
@@ -143,7 +148,13 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(1);
+		expect(api.match(/\/api\//g)?.length).toBe(3);
+		expect(api).toContain("./api/v0/compare/candidates");
+		expect(api).toContain("./api/v0/compare/selected/");
+		expect(api).not.toMatch(/request\.pair\.[ab]\.session/);
+		expect(api).toMatch(/opaqueSelector/);
+		expect(api).toMatch(/candidateCursor/);
+		expect(api).toMatch(/AbortSignal\.any/);
 		for (const pattern of [
 			/credentials: "omit"/,
 			/referrerPolicy: "no-referrer"/,
@@ -160,7 +171,13 @@ describe("the frontend's source", () => {
 		expect(hook).toMatch(/if \(running\.current \|\| pacedNow\(latest\.current, performance\.now\(\)\)\) return;/);
 		expect(hook.match(/load\(\{ afterSequence: 0/g)?.length).toBe(1); // the read at open
 		for (const [name, text] of Object.entries(sources))
-			if (name !== "use-observe.ts") expect(text, name).not.toMatch(/setTimeout|setInterval/);
+			if (name !== "use-observe.ts" && name !== "use-compare.ts")
+				expect(text, name).not.toMatch(/setTimeout|setInterval/);
+		expect(sources["use-compare.ts"]!.match(/setTimeout\(/g)?.length).toBe(1);
+		expect(sources["use-compare.ts"]).toContain("if (sequence.current !== id) return;");
+		expect(sources["use-compare.ts"]).toContain("if (active && !entered.current)");
+		for (const [name, text] of Object.entries(sources))
+			if (name !== "api.ts" && name !== "use-compare.ts") expect(text, name).not.toMatch(/fetchCompare/);
 		// Only the hook starts a read; a component calls what the hook returns.
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-observe.ts") expect(text, name).not.toMatch(/fetchSnapshot/);

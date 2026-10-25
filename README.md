@@ -35,8 +35,7 @@ Endophasia studies coding-agent systems through explicit, evidence-bounded adapt
 [DeepSeek Harness (DSH)](docs/dsh-native-attachment.md) Session format-4 records without operating DSH.
 Both paths produce durable evidence from which Endophasia can construct trajectories and read-only comparisons.
 The CLI also provides Pi recording, replay, controlled experiments and authorised intervention; the browser interface
-(currently `endo studio`) displays recorded observations. A read-only Compare backend exists, but its React workspace
-does not yet exist.
+(currently `endo studio`) displays recorded observations and compares two explicitly selected Pi/DSH recordings through the authoritative read-only APIs.
 
 It is harness-neutral by design, but **the two evidence sources do not have the same capabilities**: DSH import is
 offline, not a live attachment or a Pi-equivalent replay/control path. Endophasia does not replace a harness's execution
@@ -49,7 +48,7 @@ agent (what it requested, what it was told, what it reported and what it did), a
 > [!IMPORTANT]
 > **Release and naming status (25 October 2026):** `0.1.0-alpha.1` is CLI-only. Published `0.1.0-alpha.2` adds the original
 > read-only browser page (`endo studio`); `alpha` points to it on npm, while `latest` still points to `0.1.0-alpha.1`.
-> The newer React/TypeScript Observe page, DSH CLI import and Compare backend described below are **on `main`, not
+> The newer React/TypeScript Observe and Compare workspaces, DSH CLI import and Compare backend described below are **on `main`, not
 > in published `0.1.0-alpha.2`**. The intended
 > interface names are **Endophasia Web** (browser) and **Endophasia** (proposed native desktop binary), but the existing CLI
 > remains `endo studio`: `endo web`, the native application and its installers **do not exist yet**. See
@@ -101,8 +100,8 @@ than the browser page in the published <code>0.1.0-alpha.2</code> package. This 
 model-brain visualisation or an internal-activation trace.</sub></p>
 
 **Endophasia Web** (currently invoked as `endo studio`) is the existing browser interface. The source tree implements
-**one read-only Observe workspace**, served from
-the installed package on `127.0.0.1` behind a private per-launch address. It shows, as recorded:
+**read-only Observe and Compare workspaces**, served from
+the installed package on `127.0.0.1` behind a private per-launch address. Observe shows, as recorded:
 
 - the **runtime identity**: which harness installation the registry recorded, its fingerprint, and what changed;
 - the **capability state**, each capability with its status, classification and the limits that qualify it;
@@ -118,8 +117,8 @@ store it reads.
 Endophasia Web is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
 browser workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
 within a possible COGNITION workspace, not separate top-level tabs. Further profiles could be added without creating
-new workspaces. The current shell names Compare, Capabilities and Evolve as workspaces marked "later"; each says what it
-would need and shows nothing. **The Compare backend is implemented on `main`, but the React Compare workspace is not.**
+new workspaces. Source builds include the read-only React **Compare workspace** for discovering and selecting recorded Pi/DSH sessions.
+Capabilities and Evolve remain marked "later" and show no records.
 Its guarded read-only routes discover eligible Pi/DSH recordings and compare two selections from one configured store,
 using generation-bound opaque selectors rather than exposing raw source identities. It does not read active harnesses,
 import files or claim two sources are equivalent. Details: [docs/studio.md](docs/studio.md),
@@ -150,7 +149,7 @@ endo studio                          # serves the published read-only browser pa
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia
 npm ci && npm run build
 node scripts/seed-cockpit-demo.ts ./demo-store    # optional: committed fixtures and Pi 1.0.0 specimen; no Pi needed
-node dist/cli/index.js studio ./demo-store        # React Observe; prints a private local address
+node dist/cli/index.js studio ./demo-store        # React Observe and Compare; prints a private local address
 ~~~
 
 **Cold-import a DSH recording from the source build** (one explicit persisted Session format-4 directory,
@@ -159,13 +158,13 @@ not a DSH home, running process or transcript file):
 ~~~sh
 node dist/cli/index.js dsh import --root ./recordings /path/to/session-directory
 node dist/cli/index.js dsh loss-accounting       # static fidelity contract, not a measurement of this session
-node dist/cli/index.js studio ./recordings       # Observe page; Compare remains backend-only
+node dist/cli/index.js studio ./recordings       # React Observe and Compare
 ~~~
 
 Import reads DSH source bytes without modifying them, then writes validated evidence to the Endophasia store.
 It neither drives DSH nor watches for changes. A comparison requires eligible, recorded trajectories and a clean,
-complete DSH import checkpoint; the browser Compare interface is still pending. See
-[DSH importer usage](docs/dsh-native-importer.md) and [Compare backend details](docs/studio.md#compare-backend-react-workspace-still-pending).
+complete DSH import checkpoint. Select recordings in the browser Compare workspace. See
+[DSH importer usage](docs/dsh-native-importer.md) and [Compare backend details](docs/studio.md#compare-workspace).
 
 Omit the store to read the default one that `endo harness attach` writes. Studio listens on loopback only and prints its
 address once; anyone who can read that address can read the store, so treat it as a secret. It never writes the store it
@@ -196,12 +195,12 @@ The table distinguishes features on **source-tree `main`** from the older publis
 | Experiments: specs, blocked randomisation, manipulation checks, pinned environments (the studies pre-registered their designs; the CLI does not enforce that) | `endo experiment run\|report` | Real runtime: the studies below. Also writes evaluation records |
 | Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
 | **DSH native cold import**: verified append-only import, qualified trajectory projection, static loss accounting | `endo dsh import`, `endo dsh loss-accounting` on `main` | Five retained captures from a pinned real DSH runtime and importer/CLI tests. No live attach, DSH control, native DSH `trajectory show` CLI selection or published-alpha support |
-| **Compare backend**: privacy-preserving trajectory presentation, candidate discovery and selected comparison | Studio local GET APIs `/api/v0/compare/candidates` and `/api/v0/compare/selected/...` on `main` | Tested Pi/Pi, DSH/DSH and mixed-source recordings; bounded pages, eligibility and generation-bound selectors. No React Compare page, store writer, or inference of causal equivalence |
-| **Endophasia Web**: one read-only Observe workspace | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe workspace) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
+| **Compare backend**: privacy-preserving trajectory presentation, candidate discovery and selected comparison | Studio local GET APIs `/api/v0/compare/candidates` and `/api/v0/compare/selected/...` on `main` | Tested Pi/Pi, DSH/DSH and mixed-source recordings; bounded pages, eligibility and generation-bound selectors. No store writer or inference of causal equivalence |
+| **Endophasia Web**: read-only Observe and Compare workspaces | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe and Compare) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| React Compare workspace and other browser workspaces beyond Observe; native Endophasia binary; `endo web` alias; model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
+| Browser workspaces beyond Observe and Compare; native Endophasia binary; `endo web` alias; model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:
 
@@ -244,7 +243,7 @@ flowchart TB
     V["Read-only evidence projections<br/>capabilities · Pi/DSH trajectories · Compare · reports"]
     C["endo CLI<br/>record · import · replay · experiment · report"]
     N["Local read-only HTTP boundary<br/>127.0.0.1 · private address · GET only"]
-    U["Endophasia Web<br/>React Observe page; Compare UI pending"]
+    U["Endophasia Web<br/>React Observe and Compare"]
 
     H -->|"documented RPC"| A
     H -.->|"model requests"| X
@@ -268,8 +267,7 @@ validated evidence to the Endophasia store. It does not install, resume, control
 commands write Endophasia evidence; reporting and the Studio HTTP bridge read it without changing the store.
 
 The browser receives only validated presentation projections. Its Observe page reads recorded snapshots; the Compare
-APIs independently discover and compare eligible recordings from one configured store. There is no React Compare
-workspace yet, and browser requests cannot trigger a model call, import or intervention. Apart from starting Pi sessions
+APIs independently discover and compare eligible recordings from one configured store. The React Compare workspace consumes those APIs, and browser requests cannot trigger a model call, import or intervention. Apart from starting Pi sessions
 (attach, replay, experiments), Endophasia affects a running Pi session only through an authorised STEER, QUEUE or STOP
 at the intervention desk, never from the browser.
 
@@ -292,7 +290,7 @@ gates. These directions name distinct responsibilities, not a fixed set of Studi
 | :--- | :--- | :--- |
 | **DEVELOP** | The current session: what the agent is doing, what the runtime reported, whether to intervene | Observation and authorised steering from the CLI. Studio's read-only page shows recorded sessions but is not a DEVELOP mode |
 | **OBSERVE** | The measurement surface: what was recorded and what can be derived reproducibly | Harness level: implemented. Model-internal signals: design only ([docs/observe.md](docs/observe.md)) |
-| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Pi replay/experiments, trajectory comparison and Pi/DSH read-only Compare APIs on `main`; no React Compare workspace. Causal checkpoint interventions require forkable checkpoints, not built |
+| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Pi replay/experiments, trajectory comparison and Pi/DSH read-only Compare APIs on `main`, consumed by the React Compare workspace. Causal checkpoint interventions require forkable checkpoints, not built |
 | **EVOLVE** | Explicit candidate, evaluation, admission and promotion, never silent self-modification | Records and policies as libraries; no operator interface ([docs/evolve.md](docs/evolve.md)) |
 | **COGNITION** | A possible Studio workspace for declared cognition policies and externally represented plans, hypotheses and branches | Not built. **WORK** (one bounded main trajectory) and **DREAM** (wider search with counterfactual branches) are proposed profiles, not separate tabs ([docs/vision.md](docs/vision.md#work-and-dream)) |
 | **RESEARCH (proposed)** | Controlled comparisons of harnesses, agent hierarchies, skill policies, inference budgets and experimental methods | Pi experiment runner and studies exist; no dedicated Research workspace, cross-harness intervention experiment or general training integration |
@@ -323,8 +321,7 @@ promising a particular backend or packaging format.
 [DSH study and native importer (#70–71)](https://github.com/noctem-o/endophasia/pull/71),
 [DSH CLI entry point (#72)](https://github.com/noctem-o/endophasia/pull/72), and
 [Compare HTTP and candidate-discovery backend (#73–74)](https://github.com/noctem-o/endophasia/pull/74)
-are **merged into `main`** and absent from the `0.1.0-alpha.2` package. Next: make the existing comparison contracts
-usable in a React Compare workspace, without changing their evidence or privacy semantics; then prioritise
+are **merged into `main`** and absent from the `0.1.0-alpha.2` package. Source builds also expose those contracts in React Compare, without changing their evidence or privacy semantics. Next: prioritise
 forkable checkpoints for reproducible continuation and branching. A small, independently evaluated Rust/GPUI
 feasibility spike may run alongside this work but should not displace checkpoints or introduce a second
 authoritative implementation of evidence semantics. A useful native read-only instrument and deeper EVOLVE
@@ -366,7 +363,7 @@ machine, so none of it is a statement about other runtimes or models. The full d
   the cap from 16,384 to 32,768 tokens raised success on those two tasks from 10 of 24 to 19 of 23 (pooled over four paths at
   3 trials per cell; the interval excludes 0 only with all four paths included).
 
-The next core substrate milestone remains forkable checkpoints, after making the merged Compare backend useful in the browser; an optional native-interface feasibility experiment can run independently. The full sequence, the
+The next core substrate milestone remains forkable checkpoints, with the merged Compare backend exposed through the React workspace; an optional native-interface feasibility experiment can run independently. The full sequence, the
 numbered capability map and the deferred research tracks are in [docs/roadmap.md](docs/roadmap.md). One proposed, not yet run
 study (a shadow epistemic ledger beside a deliberately gameable post-training environment) is in
 [research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).

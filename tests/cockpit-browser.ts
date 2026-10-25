@@ -286,6 +286,15 @@ export class Page {
 		);
 	}
 
+	/** Emulate the operator's reduced-motion preference through the existing CDP session. */
+	async reducedMotion(): Promise<void> {
+		await this.browser.send(
+			"Emulation.setEmulatedMedia",
+			{ features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
+			this.sessionId,
+		);
+	}
+
 	/** Close the tab, so a long suite does not hold every page it opened. */
 	async close(): Promise<void> {
 		await this.browser.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);

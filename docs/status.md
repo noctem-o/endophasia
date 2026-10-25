@@ -67,6 +67,10 @@ implementation detail and its limitations. The real recordings and studies, with
     the recorded port. It drives a fresh Pi through the recorded prompts, STOP and kill (at the recorded chunk), then
     compares the result with the recording, layer by layer.
   - The proxy and the cassette server depend only on the OpenAI-compatible boundary, not on Pi.
+  - A qualifying Pi replay writes a separate [`endo.checkpoint-candidate.v0` receipt](checkpoint-candidate.md) under
+    the replay store's `replay-artifacts/`. It binds a verified v1 initial scratch archive to actual cassette counters and
+    four EXACT comparison layers. It is not a mid-run restore, live continuation or fork. This source-tree slice is
+    absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
     conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi

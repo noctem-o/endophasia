@@ -6,8 +6,8 @@ What runs today is in [status.md](status.md) and the [README](../README.md#what-
 
 ## Delivery sequence — current priority
 
-The numbered capability map below remains the long-term architecture. The current source-tree priority is to make the
-merged Compare backend usable in the browser, then build the checkpoint substrate. The installed Pi workflow and the
+The numbered capability map below remains the long-term architecture. React Compare is now on `main` (PR #76). The next
+source-tree priority is the checkpoint substrate. The installed Pi workflow and the
 read-only Observe workspace are established foundations; the proposed native desktop binary is a separate future interface.
 
 ~~~text
@@ -17,9 +17,11 @@ installable operator alpha (released: 0.1.0-alpha.1)
       ↓
 browser Observe (built in source; alpha.2 contains the earlier page)
       ↓
-React Compare workspace (next; consumes the merged APIs)
+React Compare workspace (done in source, PR #76)
       ↓
-forkable checkpoints (core milestone)
+verified initial-state candidate (PR A, source-tree slice)
+      ↓
+restore and fork lineage (future core milestone)
       ↓
 later native instrumentation and broader Research / Cognition / Evolve directions (proposals)
 ~~~
@@ -86,12 +88,14 @@ CLI; [PR #73](https://github.com/noctem-o/endophasia/pull/73) served guarded rea
 [PR #74](https://github.com/noctem-o/endophasia/pull/74) added bounded candidate discovery and generation-bound opaque
 selectors. All six PRs are merged into `main`. These source-tree changes are absent from the npm registry artifacts for
 `endophasia@0.1.0-alpha.1` and `endophasia@0.1.0-alpha.2`; those versions retain their original contents. The React Compare
-workspace remains the next presentation task. DSH fidelity remains version-pinned and
+workspace was merged in PR #76. DSH fidelity remains version-pinned and
 evidence-qualified, with unavailable signals and mapping losses explicit; native import is not live attachment or ACP parity.
 
 4. **Forkable checkpoints** (item 10).
-   - Land the substrate primitive beneath search, counterfactual evaluation and training: reconstructable checkpoints,
-     restore/fork lineage and cassette-then-live continuation.
+   - PR A adds a [verified initial-state candidate](checkpoint-candidate.md) for a Pi cassette replay's pre-execution
+     scratch boundary. It qualifies real replay evidence and a keyed v1 archive; it does not restore a mid-run process.
+   - Later slices need explicit continuation identity, isolated restored state, restore/fork lineage and a validated
+     cassette-then-live boundary.
    - Once this exists, use it to support controlled continuation experiments rather than adding another large
      protocol-only migration.
 
@@ -119,7 +123,7 @@ client. AppImage, Windows packaging, and `endo web` remain future options, not c
 
 ## Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the delivery sequence above (browser Observe is built; the React Compare workspace and checkpoints are the core priorities).
+These are valid directions, but they should **not** displace the delivery sequence above (browser Observe and React Compare are built in source; verified checkpoint work is the current priority).
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study
@@ -232,12 +236,11 @@ They describe **capability dependencies**, not the immediate shipping order abov
     candidate/mutation, evaluator, and result-bundle records first-class and reproducible.
     - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,
       #25); the others do not yet.
-    - **Forkable trajectory state.** Capability-gated checkpoint, restore, fork and branch-lineage records over states
-      that can actually be reconstructed. A checkpoint is derived from evidence, never declared: a prefix that cassette
-      replay reproduces EXACT, together with the restored environment identity. A fork names its parent checkpoint, the
-      variable it changed and its new trajectory, and descendants are ordinary trajectories. The first mechanism is
-      cassette-then-live: replay the recorded prefix, then switch the proxy to a live model (or a different one) at the
-      checkpoint. Search, counterfactual evaluation and training may consume forks; they are not part of the primitive.
+    - **Forkable trajectory state.** PR A qualifies only the recorded pre-execution Pi scratch boundary after an actual
+      cassette replay ([contract and limits](checkpoint-candidate.md)). A general mid-trajectory prefix cannot yet be
+      reconstructed. Future fork records must name a verified parent checkpoint, the changed variable, an isolated
+      environment and the child trajectory. Cassette-then-live switching, search, counterfactual evaluation and
+      training remain future work.
 11. **Reference evolution policies.** Exercise the baseline and the RRSI- and GEPA-inspired rule sets against real
     experiment bundles, including validation, an untouched promotion holdout, noise/leakage checks, and deterministic selection. A faithful
     RRSI policy needs a calibrated per-instance noise band and its cost rule, which need cost evidence the policy

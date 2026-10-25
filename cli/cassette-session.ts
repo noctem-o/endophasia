@@ -54,6 +54,7 @@ import {
 	pinEndoWorkspaceTimesV0,
 	restoreEndoWorkspaceV0,
 } from "../storage/workspace-snapshot.ts";
+import { captureGenerationV0, writeQualifiedCheckpointCandidateV0 } from "./checkpoint-candidate.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 
 export const PI_CASSETTE_DRIVER_VERSION_V0 = "pi-cassette-driver.1";
@@ -624,6 +625,8 @@ export interface PiCassetteReplayReportV0 {
 	environmentDivergedAt: number | null;
 	notes: string[];
 	comparison: EndoTrajectoryComparisonV0;
+	/** Separate artifact status; deliberately absent from endo.replay-report.v0 JSON. */
+	checkpointQualification?: { status: "qualified" | "refused"; reason?: string };
 }
 
 /** Restore the scratch root a cassette recorded, at its recorded path. */
@@ -667,8 +670,10 @@ function recordedSessionId(script: PiCassetteScriptV0): string {
 export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptionsV0): Promise<PiCassetteReplayReportV0> {
 	const key = piCassetteKeyV0(options.keySource);
 	const cassette = loadEndoCassetteV0(options.store, key);
+	const sourceGeneration = captureGenerationV0(cassette.events, key);
 	const script = piCassetteScriptV0(cassette.events);
 	const piSessionId = recordedSessionId(script);
+	const sourceTrajectoryDigest = storeTrajectory(options.store, `endo.session.pi.${piSessionId}`).digest;
 	if (cassette.listen === null) throw new TypeError("the cassette does not record where the proxy listened");
 	const port = Number(new URL(cassette.listen).port);
 	if (existsSync(options.out) && createEndoDurableEventStoreV0(options.out, { readOnly: true }).length > 0)
@@ -779,7 +784,8 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 						localOperatorAuthorityV0(proposal.proposalDigest, "scenario"),
 					);
 					await session!.prompt(text);
-					if (!(await (armed ?? Promise.resolve(true))))
+					const pointReached = await (armed ?? Promise.resolve(true));
+					if (!pointReached)
 						notes.push(
 							`the ${operation} point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`,
 						);
@@ -791,7 +797,14 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 					if (operation !== "stop") await applying;
 					cassetteServer.resume();
 					const result = await applying;
-					driver("intervene", { replayOf: recorded.step as number, operation, result: result.status });
+					driver("intervene", {
+						replayOf: recorded.step as number,
+						operation,
+						result: result.status,
+						pointReached,
+						proposalDigestMatches: proposal.proposalDigest === recorded.proposalDigest,
+						at: at as unknown as JsonValueV0,
+					});
 					interventions.push({
 						operation,
 						recordedAt: at,
@@ -812,10 +825,11 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			} else if (op === "stop") {
 				const at = entry.at as { exchange: number; chunks: number } | null;
 				const settled = session!.waitForSettled(options.timeoutMs);
-				if (!(await (armed ?? Promise.resolve(true))))
+				const pointReached = await (armed ?? Promise.resolve(true));
+				if (!pointReached)
 					notes.push(`the STOP point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`);
 				armed = null;
-				driver("stop", { replayOf: entry.step as number, at: at as unknown as JsonValueV0 });
+				driver("stop", { replayOf: entry.step as number, at: at as unknown as JsonValueV0, pointReached });
 				const accepted = session!.stop();
 				cassetteServer.resume();
 				await accepted.catch((error: unknown) => notes.push(`STOP failed: ${(error as Error).message}`));
@@ -832,10 +846,11 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 				child = await promptInChild(config, pendingPrompt!.text, options.timeoutMs);
 			} else if (op === "kill") {
 				const at = entry.at as { exchange: number; chunks: number } | null;
-				if (!(await (armed ?? Promise.resolve(true))))
+				const pointReached = await (armed ?? Promise.resolve(true));
+				if (!pointReached)
 					notes.push(`the kill point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`);
 				armed = null;
-				driver("kill", { replayOf: entry.step as number, at: at as unknown as JsonValueV0 });
+				driver("kill", { replayOf: entry.step as number, at: at as unknown as JsonValueV0, pointReached });
 				notes.push(...(await child!.kill()));
 				child = null;
 				cassetteServer.resume();
@@ -871,7 +886,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		storeTrajectory(options.store, coordinate),
 		storeTrajectory(options.out, coordinate),
 	);
-	return {
+	const report: PiCassetteReplayReportV0 = {
 		session: coordinate,
 		timing: options.timing,
 		served: server.served,
@@ -883,9 +898,22 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		notes,
 		comparison,
 	};
+	const qualification = writeQualifiedCheckpointCandidateV0(
+		options.store,
+		options.out,
+		key,
+		sourceGeneration,
+		report,
+		sourceTrajectoryDigest,
+	);
+	report.checkpointQualification =
+		qualification.status === "qualified"
+			? { status: "qualified" }
+			: { status: "refused", reason: qualification.reason };
+	return report;
 }
 
-function storeTrajectory(root: string, session: string) {
+export function storeTrajectory(root: string, session: string) {
 	const store = createEndoDurableEventStoreV0(root, { readOnly: true });
 	try {
 		const events: EndoEventV0[] = [];

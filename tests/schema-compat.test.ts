@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { readEndoExperimentRunRecordFileV0 } from "../cli/experiment-artifacts.ts";
 import { createEndoEvidenceLedgerV0, ENDO_EVIDENCE_RECORD_VERSIONS_V0 } from "../evolution/evidence.ts";
+import { ENDO_CHECKPOINT_CANDIDATE_VERSIONS_V0 } from "../protocol/checkpoint-candidate.ts";
 import {
 	ENDO_EVALUATION_PROFILE_VERSIONS_V0,
 	ENDO_EVALUATION_RESULT_PROFILE_VERSIONS_V0,
@@ -72,6 +73,7 @@ const TABLES: readonly EndoVersionTableV0<unknown>[] = [
 	ENDO_EVALUATION_PROFILE_VERSIONS_V0,
 	ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0,
 	ENDO_WORKSPACE_ARCHIVE_VERSIONS_V0,
+	ENDO_CHECKPOINT_CANDIDATE_VERSIONS_V0,
 	ENDO_DIGEST_KEY_FILE_VERSIONS_V0,
 	ENDO_EXPERIMENT_SPEC_VERSIONS_V0,
 	ENDO_EXPERIMENT_RUN_VERSIONS_V0,

@@ -163,6 +163,11 @@ export async function replayCommand(argv: readonly string[]): Promise<void> {
 		holdMs: integer(flags.get("--hold-ms"), "--hold-ms", 30_000),
 	});
 	const layers = report.comparison.layers;
+	process.stderr.write(
+		report.checkpointQualification?.status === "qualified"
+			? `verified initial-state candidate: ${join(out, "replay-artifacts", "checkpoint-candidate.json")}\n`
+			: `initial-state candidate refused: ${report.checkpointQualification?.reason ?? "unavailable"}\n`,
+	);
 	process.stdout.write(
 		canonicalEndoJsonV0({
 			schemaVersion: "endo.replay-report.v0",

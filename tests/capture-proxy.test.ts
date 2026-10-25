@@ -879,10 +879,25 @@ describe("the cassette server: recorded order, recorded bytes, explicit misses",
 		const { server } = await replaying(store);
 		const reached = server.pauseAt({ exchange: 1, chunks: 2 });
 		const pending = post(server.port, "/v1/chat/completions", BODY);
-		await reached;
+		expect(await reached).toBe(true);
 		await sleep(50);
 		server.resume();
 		expect((await pending).status).toBe(200);
+	});
+
+	it("does not report an unreached pause point as a delivered chunk", async () => {
+		const { store, proxy, log } = await recording([
+			fixed("200 OK", "Content-Type: application/json\r\n", '{"ok":1}'),
+		]);
+		await post(proxy.port, "/v1/chat/completions", BODY);
+		await proxy.flush();
+		log.close();
+		const { cassette, server, replayStore } = await replaying(store);
+		const delivered = cassette.exchanges[0]!.response!.chunks.length;
+		const reached = server.pauseAt({ exchange: 1, chunks: delivered + 1 });
+		expect((await post(server.port, "/v1/chat/completions", BODY)).status).toBe(200);
+		expect(await reached).toBe(false);
+		expect(kinds(replayStore, "capture.served")[0]).toMatchObject({ chunksDelivered: delivered });
 	});
 
 	it("a cassette from another digest domain is refused with the reason, never matched and silently missed", async () => {

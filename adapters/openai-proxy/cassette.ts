@@ -285,10 +285,10 @@ export interface EndoCassetteServerV0 {
 	/** The cassette's exchanges not yet served. */
 	readonly remaining: number;
 	/**
-	 * Pause after `chunks` chunks of replay exchange `exchange` were written: resolves when the pause point is reached
-	 * (or that exchange ends before it); serving continues only after `resume()`.
+	 * Pause after `chunks` chunks of replay exchange `exchange` were written: resolves true only when that chunk
+	 * was delivered, false if the exchange ended first. Serving continues after a hit only on `resume()`.
 	 */
-	pauseAt(point: EndoCassettePauseV0): Promise<void>;
+	pauseAt(point: EndoCassettePauseV0): Promise<boolean>;
 	resume(): void;
 	close(): Promise<void>;
 }
@@ -316,7 +316,9 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 	let counter = 0;
 	let served = 0;
 	let misses = 0;
-	let pause: (EndoCassettePauseV0 & { reached: () => void; release: Promise<void>; resume: () => void }) | null = null;
+	let pause:
+		| (EndoCassettePauseV0 & { reached: (hit: boolean) => void; release: Promise<void>; resume: () => void })
+		| null = null;
 	const sockets = new Set<Socket>();
 
 	const missed = (
@@ -417,7 +419,7 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 			const finish = (outcome: string) => {
 				served += 1;
 				// A pause point this exchange never reached is released, so a driver waiting on it is never left hanging.
-				if (pause !== null && pause.exchange === exchange) pause.reached();
+				if (pause !== null && pause.exchange === exchange) pause.reached(false);
 				log.record("capture.served", {
 					exchange,
 					cassetteExchange: next.exchange,
@@ -440,7 +442,7 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 				delivered += 1;
 				const point = pause;
 				if (point !== null && point.exchange === exchange && point.chunks === delivered) {
-					point.reached();
+					point.reached(true);
 					await point.release;
 				}
 			}
@@ -533,9 +535,9 @@ export async function startEndoCassetteServerV0(options: EndoCassetteServerOptio
 			return exchanges.length - position;
 		},
 		pauseAt(point) {
-			let reached!: () => void;
+			let reached!: (hit: boolean) => void;
 			let resume!: () => void;
-			const hit = new Promise<void>((done) => {
+			const hit = new Promise<boolean>((done) => {
 				reached = done;
 			});
 			const release = new Promise<void>((done) => {

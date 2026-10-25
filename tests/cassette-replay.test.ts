@@ -7,7 +7,18 @@
 // recorded chunk, the recorded session id, evidence carried over, the comparison), not anything about a real Pi.
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	cpSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,11 +33,21 @@ import {
 	replayPiCassetteSessionV0,
 	settlesWithin,
 } from "../cli/cassette-session.ts";
+import {
+	captureGenerationV0,
+	qualifyInitialCheckpointV0,
+	readVerifiedCheckpointCandidateV0,
+} from "../cli/checkpoint-candidate.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
-import { endoDigestKeyFromEnvironmentV0 } from "../storage/digest-key.ts";
+import {
+	endoDigestKeyFromEnvironmentV0,
+	endoFixtureDigestKeyPathV0,
+	loadEndoFixtureDigestKeyV0,
+} from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { endoFrameBytesV0 } from "../storage/log.ts";
 import { parseEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
@@ -208,6 +229,165 @@ async function replay(name: string, timing: "immediate" | "as-recorded" = "immed
 }
 
 describe("cassette sessions: record through the proxy, replay against the cassette (fake Pi, fake upstream)", () => {
+	it("qualifies a real simple, tool and STOP replay; a receipt reads deterministically", async () => {
+		for (const name of ["completes", "tool", "stop", "steer"]) {
+			const { report, out } = await replay(name);
+			expect(report.checkpointQualification).toEqual({ status: "qualified" });
+			const verified = readVerifiedCheckpointCandidateV0(recorded[name]!, out, endoDigestKeyFromEnvironmentV0());
+			expect(verified.status).toBe("qualified");
+			if (verified.status === "qualified") {
+				expect(verified.candidate.boundary).toBe("pre-execution-scratch");
+				expect(verified.candidate.archive.schemaVersion).toBe("endo.workspace-archive.v1");
+				expect(verified.candidate.evidence.comparison).toBe(report.comparison.digest);
+			}
+		}
+	});
+
+	it("refuses a claim without actual replay evidence and detects changed source or receipt", async () => {
+		const key = endoDigestKeyFromEnvironmentV0();
+		const source = recorded.completes!;
+		const generation = captureGenerationV0(readEndoCaptureEventsV0(source), key);
+		expect(qualifyInitialCheckpointV0(source, join(base, "no-replay"), key, generation).status).toBe("refused");
+		const { report, out } = await replay("completes");
+		expect(qualifyInitialCheckpointV0(source, join(base, "no-replay"), key, generation, report).status).toBe(
+			"refused",
+		);
+		expect(qualifyInitialCheckpointV0(source, out, key, key.digest(["changed"]))).toMatchObject({
+			status: "refused",
+			reason: "source-mutated",
+		});
+		expect(
+			readVerifiedCheckpointCandidateV0(source, out, loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0()))
+				.status,
+		).toBe("refused");
+		const promptCopy = join(base, "changed-prompt-source");
+		cpSync(source, promptCopy, { recursive: true });
+		const prompt = readEndoCaptureEventsV0(promptCopy).find(
+			(event) => event.kind === "capture.driver-step" && (event.payload as { op?: string }).op === "prompt",
+		)!;
+		const promptRef = (prompt.payload as unknown as { text: { digest: EndoKeyedDigestV0 } }).text.digest;
+		rmSync(join(promptCopy, "capture", "blobs", promptRef.keyId, promptRef.value));
+		expect(readVerifiedCheckpointCandidateV0(promptCopy, out, key).status).toBe("refused");
+		const copy = join(base, "changed-source");
+		cpSync(source, copy, { recursive: true });
+		const snapshot = readEndoCaptureEventsV0(copy).find((event) => event.kind === "capture.workspace-snapshot")!;
+		const ref = (snapshot.payload as unknown as { archive: { digest: EndoKeyedDigestV0 } }).archive.digest;
+		writeFileSync(join(copy, "capture", "blobs", ref.keyId, ref.value), "altered");
+		expect(readVerifiedCheckpointCandidateV0(copy, out, key).status).toBe("refused");
+		const file = join(out, "replay-artifacts", "checkpoint-candidate.json");
+		const receipt = JSON.parse(readFileSync(file, "utf8"));
+		writeFileSync(file, `${JSON.stringify(receipt)}\n`);
+		expect(readVerifiedCheckpointCandidateV0(source, out, key)).toMatchObject({
+			status: "refused",
+			reason: "candidate-schema",
+		});
+		writeFileSync(file, JSON.stringify({ ...receipt, boundary: "mid-run" }));
+		expect(readVerifiedCheckpointCandidateV0(source, out, key)).toMatchObject({
+			status: "refused",
+			reason: "candidate-schema",
+		});
+		writeFileSync(file, JSON.stringify({ ...receipt, schemaVersion: "endo.checkpoint-candidate.v9" }));
+		expect(readVerifiedCheckpointCandidateV0(source, out, key)).toMatchObject({
+			status: "refused",
+			reason: "candidate-schema",
+		});
+	});
+
+	it("refuses damaged source or replay logs even when their valid prefixes still qualify", async () => {
+		const key = endoDigestKeyFromEnvironmentV0();
+		const { out } = await replay("completes");
+		for (const store of ["source-capture", "source-session", "replay-capture", "replay-session"] as const) {
+			for (const damage of ["torn", "sealed"] as const) {
+				const sourceCopy = join(base, `log-${store}-${damage}-source`);
+				const replayCopy = join(base, `log-${store}-${damage}-replay`);
+				cpSync(recorded.completes!, sourceCopy, { recursive: true });
+				cpSync(out, replayCopy, { recursive: true });
+				expect(readVerifiedCheckpointCandidateV0(sourceCopy, replayCopy, key).status).toBe("qualified");
+				const root = store.startsWith("source") ? sourceCopy : replayCopy;
+				const eventRoot = store.endsWith("capture") ? endoCaptureRootV0(root) : root;
+				const logFile = join(eventRoot, "events", "events.log");
+				if (damage === "torn") appendFileSync(logFile, Buffer.from([0x01]));
+				else {
+					const frame = endoFrameBytesV0(Buffer.from("{}"));
+					frame[frame.length - 1] ^= 1;
+					appendFileSync(logFile, frame);
+				}
+				const generation = captureGenerationV0(readEndoCaptureEventsV0(sourceCopy), key);
+				expect(qualifyInitialCheckpointV0(sourceCopy, replayCopy, key, generation)).toMatchObject({
+					status: "refused",
+					reason: "evidence-log-damaged",
+				});
+				expect(readVerifiedCheckpointCandidateV0(sourceCopy, replayCopy, key).status).toBe("refused");
+			}
+		}
+	});
+
+	it("refuses a claimed STOP point beyond the replayed response even with matching driver records", async () => {
+		const key = endoDigestKeyFromEnvironmentV0();
+		const { out } = await replay("stop");
+		const sourceCopy = join(base, "unreached-stop-source");
+		const replayCopy = join(base, "unreached-stop-replay");
+		cpSync(recorded.stop!, sourceCopy, { recursive: true });
+		cpSync(out, replayCopy, { recursive: true });
+		for (const root of [sourceCopy, replayCopy]) {
+			const events = structuredClone(readEndoCaptureEventsV0(root));
+			const step = events.find(
+				(event) =>
+					event.producer === "capture:driver" &&
+					event.kind === "capture.driver-step" &&
+					(event.payload as { op?: string }).op === "stop",
+			)!;
+			(step.payload as { at: { chunks: number } }).at.chunks = 1000;
+			rmSync(join(endoCaptureRootV0(root), "events", "events.log"));
+			const store = createEndoDurableEventStoreV0(endoCaptureRootV0(root));
+			try {
+				for (const event of events) store.ingest(event);
+			} finally {
+				store.close();
+			}
+		}
+		const generation = captureGenerationV0(readEndoCaptureEventsV0(sourceCopy), key);
+		expect(qualifyInitialCheckpointV0(sourceCopy, replayCopy, key, generation)).toMatchObject({
+			status: "refused",
+			reason: "driver-point-unverified",
+		});
+	});
+
+	it("keeps the replay receipt separate from copied source artifacts", async () => {
+		const source = join(base, "source-with-stale-artifact");
+		cpSync(recorded.completes!, source, { recursive: true });
+		mkdirSync(join(source, "artifacts"), { recursive: true });
+		writeFileSync(join(source, "artifacts", "checkpoint-candidate.json"), "stale");
+		const out = join(base, "replay-with-stale-source-artifact");
+		const report = await replayPiCassetteSessionV0({
+			store: source,
+			out,
+			pi: install.bin,
+			timing: "immediate",
+			keySource: { kind: "installation" },
+			timeoutMs: 20_000,
+		});
+		expect(report.checkpointQualification).toEqual({ status: "qualified" });
+		expect(readFileSync(join(out, "artifacts", "checkpoint-candidate.json"), "utf8")).toBe("stale");
+		expect(readVerifiedCheckpointCandidateV0(source, out, endoDigestKeyFromEnvironmentV0()).status).toBe("qualified");
+	});
+	it("refuses an artifact directory symlink without writing outside the replay store", async () => {
+		const out = join(base, "replay-with-artifact-link");
+		const outside = join(base, "outside-artifacts");
+		mkdirSync(out);
+		mkdirSync(outside);
+		symlinkSync(outside, join(out, "replay-artifacts"));
+		const report = await replayPiCassetteSessionV0({
+			store: recorded.completes!,
+			out,
+			pi: install.bin,
+			timing: "immediate",
+			keySource: { kind: "installation" },
+			timeoutMs: 20_000,
+		});
+		expect(report.checkpointQualification).toMatchObject({ status: "refused", reason: "candidate-write-failed" });
+		expect(existsSync(join(outside, "checkpoint-candidate.json"))).toBe(false);
+	});
 	it("records each scenario's exchanges, the snapshot and the driver's steps; the scratch root is gone afterwards", () => {
 		expect(exchanges(recorded.completes!).map((entry) => entry.outcome)).toEqual(["complete"]);
 		expect(exchanges(recorded.stop!).map((entry) => entry.outcome)).toEqual(["client-disconnected"]);
@@ -271,10 +451,12 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		const other = installFakePi("1.0.0");
 		other.setScenario("model-endpoint,unknown-lifecycle");
 		try {
-			const { report } = await replay("completes", "immediate", other.bin);
+			const { report, out } = await replay("completes", "immediate", other.bin);
 			expect(report.misses).toBe(0);
 			expect(report.comparison.layers.lifecycle).toMatchObject({ status: "DIVERGED" });
 			expect(report.comparison.layers.outcome.status).toBe("EXACT");
+			expect(report.checkpointQualification).toMatchObject({ status: "refused", reason: "trajectory-not-exact" });
+			expect(existsSync(join(out, "replay-artifacts", "checkpoint-candidate.json"))).toBe(false);
 		} finally {
 			other.remove();
 		}
@@ -286,6 +468,8 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		try {
 			const { report, out } = await replay("completes", "immediate", other.bin);
 			expect(report.misses).toBeGreaterThan(0);
+			expect(report.checkpointQualification?.status).toBe("refused");
+			expect(existsSync(join(out, "replay-artifacts", "checkpoint-candidate.json"))).toBe(false);
 			expect(report.served).toBe(0);
 			const misses = readEndoCaptureEventsV0(out).filter((event) => event.kind === "capture.cassette-miss");
 			expect(misses[0]!.payload).toMatchObject({
@@ -446,6 +630,61 @@ describe("cassette sessions: record through the proxy, replay against the casset
 				expect(kinds).not.toContain("lifecycle.anomaly");
 			},
 		);
+
+		it("refuses a persisted STEER refusal even when replay and all comparison layers agree", async () => {
+			const source = join(base, "root-refused-steer");
+			const out = join(base, "replay-refused-steer");
+			const recordingProxy = await startEndoRecordingProxyV0({
+				upstream: new URL(upstream.baseUrl).origin,
+				log: null,
+			});
+			try {
+				await recordPiCassetteSessionV0({
+					scenario: SCENARIOS.steer!,
+					pi: install.bin,
+					provider: "fake",
+					model: "fake-1",
+					proxy: recordingProxy,
+					store: source,
+					scratchRoot: join(base, "scratch-refused-steer"),
+					keySource: { kind: "installation" },
+					evidenceFrom: null,
+					timeoutMs: 20_000,
+				});
+			} finally {
+				await recordingProxy.close();
+			}
+			const report = await replayPiCassetteSessionV0({
+				store: source,
+				out,
+				pi: install.bin,
+				timing: "immediate",
+				keySource: { kind: "installation" },
+				timeoutMs: 20_000,
+				holdMs: 5_000,
+			});
+			expect(report.misses).toBe(0);
+			expect(report.unserved).toBe(0);
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
+				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
+			for (const root of [source, out]) {
+				const step = readEndoCaptureEventsV0(root).find(
+					(event) =>
+						event.producer === "capture:driver" &&
+						event.kind === "capture.driver-step" &&
+						(event.payload as { op?: string }).op === "intervene",
+				);
+				expect(step?.payload).toMatchObject({ result: "refused" });
+			}
+			expect(report.checkpointQualification).toMatchObject({ status: "refused", reason: "intervention-unverified" });
+			const key = endoDigestKeyFromEnvironmentV0();
+			const generation = captureGenerationV0(readEndoCaptureEventsV0(source), key);
+			expect(qualifyInitialCheckpointV0(source, out, key, generation)).toMatchObject({
+				status: "refused",
+				reason: "intervention-unverified",
+			});
+			expect(existsSync(join(out, "replay-artifacts", "checkpoint-candidate.json"))).toBe(false);
+		});
 
 		it("a replayer meeting a driver step it does not know refuses, instead of skipping it", async () => {
 			const dir = join(base, "fixture-steer-unknown");

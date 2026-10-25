@@ -64,6 +64,13 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		fixtures: [{ file: "minimal.json", sha256: "684c0db368508b63decde48a3f5ffb290209a023d4908d2c41e65381991fc376" }],
 	},
 	{
+		family: "endo.checkpoint-candidate",
+		schemaVersion: "endo.checkpoint-candidate.v0",
+		status: "current",
+		boundary: "cli/checkpoint-candidate.ts (replay store's replay-artifacts/checkpoint-candidate.json)",
+		fixtures: [{ file: "minimal.json", sha256: "69790374cee2e41b135e6ab0010b22c4fade3180761f693c911df64048563567" }],
+	},
+	{
 		family: "endo.collab-approval-decision",
 		schemaVersion: "endo.collab-approval-decision.v0",
 		status: "current",

@@ -36,6 +36,12 @@ import {
 	readEndoCockpitTimelineV0,
 } from "../cockpit/index.ts";
 
+import {
+	EndoCockpitComparisonRefusalV0,
+	endoCockpitComparisonSelectionV0,
+	readEndoCockpitComparisonV0,
+} from "./comparison.ts";
+
 const LOOPBACK = "127.0.0.1";
 /** The only API version. An unknown version is a 404, never a downgrade to this one. */
 const API = "api/v0";
@@ -61,6 +67,10 @@ const REFUSALS = {
 	"misdirected-request": 421,
 	"too-many-requests": 429,
 	"internal-error": 500,
+	"ambiguous-selection": 409,
+	"source-absent": 503,
+	"source-degraded": 503,
+	"source-unopenable": 503,
 } as const;
 type Refusal = keyof typeof REFUSALS;
 const REASONS: Record<Refusal, string> = {
@@ -71,6 +81,10 @@ const REASONS: Record<Refusal, string> = {
 	"misdirected-request": "Misdirected Request",
 	"too-many-requests": "Too Many Requests",
 	"internal-error": "Internal Server Error",
+	"ambiguous-selection": "Conflict",
+	"source-absent": "Service Unavailable",
+	"source-degraded": "Service Unavailable",
+	"source-unopenable": "Service Unavailable",
 };
 
 /**
@@ -319,6 +333,22 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 				parseQuery(rawQuery, []);
 				const file = files.get(page ? "index.html" : segments[1]!);
 				return file === undefined ? refuse("not-found") : { file };
+			}
+		}
+		if (segments[0] !== "api" || segments[1] !== "v0") return refuse("not-found");
+		if (segments[2] === "compare") {
+			if (segments.length !== 7) return refuse("not-found");
+			const a = endoCockpitComparisonSelectionV0(segments[3], segments[4]);
+			const b = endoCockpitComparisonSelectionV0(segments[5], segments[6]);
+			if (a === null || b === null) return refuse("not-found");
+			parseQuery(rawQuery, []);
+			admit();
+			try {
+				const record = readEndoCockpitComparisonV0(root, a, b, digestKey);
+				return { records: [record], body: record };
+			} catch (error) {
+				if (error instanceof EndoCockpitComparisonRefusalV0) return refuse(error.refusal);
+				throw error;
 			}
 		}
 		const [api, version, name, attachment, ...extra] = segments;

@@ -468,7 +468,7 @@ describe("the study utility is read-only by construction", () => {
 		}
 	});
 
-	it("keeps harness-neutral code free of DSH: nothing outside research/ and the study's tests names it", () => {
+	it("keeps harness-neutral code free of DSH, with only the pure HTTP comparison leaf opting in", () => {
 		for (const dir of ["protocol", "runtime", "storage", "cockpit", "cockpit-http", "studio-ui/src"]) {
 			const root = fileURLToPath(new URL(`../${dir}/`, import.meta.url));
 			const walk = (path: string): string[] =>
@@ -477,6 +477,11 @@ describe("the study utility is read-only by construction", () => {
 				);
 			for (const file of walk(root).filter((name) => /\.(ts|tsx)$/.test(name))) {
 				const source = readFileSync(file, "utf8");
+				if (file === fileURLToPath(new URL("../cockpit-http/comparison.ts", import.meta.url))) {
+					expect(source).toContain('from "../adapters/dsh-native/trajectory.ts"');
+					expect(source).not.toMatch(/from "[^"]*dsh-native\/(?:index|import|lifecycle)\.ts"/);
+					continue;
+				}
 				expect(source, file).not.toMatch(/dsh-native|DeepSeek Harness|@deepseek-ai\/dsh/i);
 			}
 		}

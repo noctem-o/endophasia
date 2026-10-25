@@ -21,7 +21,7 @@ export type {
 } from "./projections/session-timeline.ts";
 export { projectEndoCockpitSessionTimelineV0 } from "./projections/session-timeline.ts";
 // The trajectory-comparison presentation: a pure projection of two validated trajectories (the comparator's own verdicts, with
-// paths and content-committing digests withheld). Not yet registered in the cockpit version table or served: see docs/cockpit.md.
+// paths and content-committing digests withheld), registered at the same wire gate as the other cockpit records.
 export { projectEndoCockpitTrajectoryComparisonV0 } from "./projections/trajectory-comparison.ts";
 export type { EndoCockpitEventLogReadOptionsV0, EndoCockpitEventLogReadV0, EndoCockpitFreshnessV0 } from "./reader.ts";
 export {
@@ -31,6 +31,7 @@ export {
 	listEndoCockpitAttachmentsV0,
 	readEndoCockpitEventLogV0,
 	readEndoCockpitRegistryV0,
+	readEndoCockpitVerifiedEventsV0,
 } from "./reader.ts";
 export type { EndoCockpitSnapshotOptionsV0 } from "./snapshot.ts";
 export { readEndoCockpitRuntimeV0, readEndoCockpitSnapshotV0, readEndoCockpitTimelineV0 } from "./snapshot.ts";

@@ -360,7 +360,7 @@ under another key than its source's throws one, and the projectors throw one for
 results that would fail their validators. `checkEndoCockpitSourceFreshnessV0` with another admitted key, or none, answers
 `digest-context-differs` for a source that holds a position instead of throwing; a supplied key that is not admitted throws.
 
-## The trajectory-comparison presentation (implemented, not yet served)
+## The trajectory-comparison presentation (implemented and served)
 
 `endo.cockpit-trajectory-comparison.v0` (`protocol/cockpit-comparison.ts`, projection `cockpit-trajectory-comparison.3`) is the shape
 in which a future Studio **Compare** workspace is shown two recorded trajectories compared. It is a presentation of
@@ -404,19 +404,34 @@ Projection version `cockpit-trajectory-comparison.3` commits omitted paths as se
 
 **Compatibility.** `comparisonRules` carries the comparator's rules version (`trajectory-comparison.3`) and the validator accepts that
 version only; a rules change is a projection version change, and the projection refuses an ordering sentence it has no code for
-instead of guessing (a test pins every sentence), and carries an unrecognised unverified-position reason only as policy-checked text. The record is deliberately **not** registered in `ENDO_COCKPIT_VERSIONS_V0`, the
-`EndoCockpitRecordV0` union, `ENDO_COCKPIT_PROJECTION_VERSIONS_V0` or Studio's supported projections: the version table is the
-server's wire gate, so registration belongs with the transport that serves it.
+instead of guessing (a test pins every sentence), and carries an unrecognised unverified-position reason only as policy-checked text. The record is registered in `ENDO_COCKPIT_VERSIONS_V0`, `EndoCockpitRecordV0` and
+`ENDO_COCKPIT_PROJECTION_VERSIONS_V0`; the HTTP server validates it through the same wire gate as every other response.
+Studio's frontend remains unchanged.
 
-**Where the two inputs come from (decided later, not here).** The Studio server reads one configured store and its authority is not
-widened in this change. Building a trajectory needs its source adapter (`projectPiTrajectoryV0` or `projectDshTrajectoryV0`),
-neither of which the bridge imports. DSH cold imports already project to the same shared trajectory contract; absent usage,
-observer timing and runtime identity stay unavailable, and DSH-written recovery closers remain unclassified. Mixed adapter,
-mapping and digest-domain differences remain visible under the existing comparator rules.
-The smallest safe route for the transport PR is a reader beside `snapshot.ts` that builds both trajectories from the one configured
-store (two sessions, or two attachments of it), with the projection called on them, fixed to GET, validated on the way out, with a
-projector `TypeError` answered as a server defect. Two different stores stay a CLI concern (`endo trajectory diff`) until a design
-for choosing stores that is not arbitrary filesystem access exists.
+**Comparison acquisition.** `cockpit-http/comparison.ts` assembles both trajectories from
+`readEndoCockpitVerifiedEventsV0`: one read-only open of the configured store, all validated event pages from that
+materialized snapshot, and guaranteed closure. A complete append after open appears only on the next request. A torn
+append or a corrupt suffix refuses the whole comparison, even if both sessions occur in the verified prefix; a later read
+may succeed when an append completes. No recovery, import, harness, model invocation, cache, watcher, source discovery or
+write occurs. The adapter-free `cockpit/` boundary is preserved: only the HTTP-side assembly imports the existing pure source
+projectors, never adapter indexes or attachment/control modules. The presentation projector invokes the authoritative
+comparator internally; the browser receives neither raw trajectories nor the comparison evidence record.
+
+The source kind is explicit (`pi` or `dsh`), with an Endophasia session coordinate, never a raw runtime id. Pi qualification
+uses recording producers and requires exactly one qualifying attachment; lifecycle-only evidence does not qualify and
+multiple attachments are refused. Pi's projector accepts a generic valid Endophasia coordinate; its prefix does not choose
+the source. DSH requires `endo.session.dsh.<local>` and always uses `sessionKind: "endo-coordinate"`. DSH also requires its latest recorded import checkpoint to report a clean
+source tail and to reference and cover the final recorded row; a missing, lagging, ambiguous or torn checkpoint is
+`source-degraded`. This is a completed import observation, not a claim about the original DSH file now. An identical
+clean checkpoint is deduplicated by the existing importer: after clean → torn → clean at the same high-water mark, the
+latest recorded checkpoint can remain torn and this API conservatively refuses it. An unchanged re-import need not
+clear that refusal. The API never opens the original source. Both are projected
+from the same events, preserving their recorded producers and digest domains. The host's dedicated cockpit key protects
+presentation tokens; it never rekeys recorded argument/result HMACs. Different domains cannot establish equality.
+DSH turns remain qualified runs, tool requests do not prove execution, recovery-written closers do not prove observed
+interruptions, and absent usage, observer timing and runtime identity remain unavailable. Mapping/coverage differences
+remain visible under the existing comparator rules. No server read time is substituted for a source timestamp or added to
+the deterministic presentation.
 
 ## The local HTTP server (implemented)
 
@@ -430,7 +445,7 @@ loads a key). `cockpit/` itself still imports no network API.
 **Architecture decision.** (1) A new top-level directory, because the bridge's boundary test forbids `node:http` under `cockpit/`
 and the CLI build deliberately compiles only the `cli/index.ts` closure, so the library and the server stay out of `dist/`
 (packaging is a later stage; since PR D the closure reaches them through `endo studio`, which loads the host lazily, and the page is
-built into `dist/studio-ui/`, see [studio.md](studio.md)). (2) Node's built-in `http`, no dependency. (3) The only change under `cockpit/` is four re-exports
+built into `dist/studio-ui/`, see [studio.md](studio.md)). (2) Node's built-in `http`, no dependency. (3) The original transport added four re-exports
 (`canonicalEndoJsonV0`, `endoCockpitDigestKeyAdmittedV0`, `isEndoCockpitSourceKindAdmittedV0`, `isWellFormedKindV0`), so the
 server refuses exactly the keys and attachment names the reader would throw on, as client errors before any read. (4) **Freshness
 is deferred.** `checkEndoCockpitSourceFreshnessV0` needs a client-held source descriptor, which means a POST body and the
@@ -444,7 +459,26 @@ cache, worker or timer.
 | :--- | :--- | :--- |
 | `GET /<cap>/api/v0/snapshot` | `EndoCockpitSnapshotV0` (`readEndoCockpitSnapshotV0`, every attachment found) | `afterSequence`, `limit` |
 | `GET /<cap>/api/v0/timeline` | `EndoCockpitSessionTimelineV0` (`readEndoCockpitTimelineV0`) | `afterSequence`, `limit` |
+| `GET /<cap>/api/v0/compare/<source-a>/<coordinate-a>/<source-b>/<coordinate-b>` | `EndoCockpitTrajectoryComparisonV0` | none |
 | `GET /<cap>/api/v0/runtime/<attachment>` | `{ identity, capabilities }`, the shape of a snapshot's `runtimes[]` element | none |
+
+Comparison example (use the capability shown at launch):
+
+```text
+GET /<cap>/api/v0/compare/pi/endo.session.pi.example-a/dsh/endo.session.dsh.example-b
+```
+
+Each coordinate is a validated `endo.session.*` identifier of at most **220 ASCII characters**, narrower than the general
+identity grammar so that both maximum-length selections fit the existing 512-character path bound. No query parameters,
+attachment selectors, root paths or extra segments are accepted; a repeated session (self-comparison) is valid.
+Malformed selectors are `404`, unexpected or duplicate query parameters are `400`, all before any evidence read.
+Missing selections in a verified (including empty) store are `404 not-found`; multiple qualifying Pi attachments are
+`409 ambiguous-selection`. Store absence, damage and an unopenable/unsupported store are respectively
+`503 source-absent`, `503 source-degraded` and `503 source-unopenable`; no comparison is returned. Unexpected projector
+failures are fixed `500 internal-error`, never an invented UNAVAILABLE verdict; the host diagnostic hook receives only a
+fixed sanitized error, without a source message or cause. These refusals carry no source details. All comparison work,
+including validation and canonical serialization, is charged to the existing read budget. Existing routes retain their
+source-condition responses below.
 
 Pagination is the timeline's storage-order cursor: pass `window.nextAfterSequence` as `afterSequence` while `window.hasMore`.
 Absent, empty, degraded and unopenable sources are `200` observation data (an attachment with no registry is `200` with condition
@@ -472,7 +506,8 @@ about 30 ms each: none refused). Unauthenticated and malformed traffic spends no
 `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` and a JSON content type.
 The page and its assets (below) carry their own, narrower-for-script and wider-for-assets policy.
 A refusal body is exactly `{"error":"<code>"}` from a closed set (`bad-request`, `forbidden`, `not-found`, `method-not-allowed`,
-`misdirected-request`, `too-many-requests`, `internal-error`): never a path, an echo of the request, a message, a stack, a key or
+`misdirected-request`, `too-many-requests`, `internal-error`, `ambiguous-selection`, `source-absent`, `source-degraded`,
+`source-unopenable`): never a path, an echo of the request, a message, a stack, a key or
 the capability. An internal failure is a generic `500` that closes the connection; the host's optional `onError` hook receives the
 error, the client never does.
 

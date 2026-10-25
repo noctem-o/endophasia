@@ -798,7 +798,7 @@ describe("loss accounting is tied to the pinned study (vocabulary and matrix)", 
 });
 
 describe("DSH stays inside its adapter and explicit CLI leaf", () => {
-	it("no neutral module or other adapter imports DSH; only the CLI entry and leaf opt in", () => {
+	it("no neutral module or other adapter imports DSH; only the CLI leaf and read-only HTTP comparison opt in", () => {
 		const walk = (path: string): string[] =>
 			readdirSync(path, { withFileTypes: true }).flatMap((entry) =>
 				entry.isDirectory() ? walk(join(path, entry.name)) : [join(path, entry.name)],
@@ -817,6 +817,16 @@ describe("DSH stays inside its adapter and explicit CLI leaf", () => {
 		]) {
 			for (const file of walk(join(ROOT, dir)).filter((name) => /\.(ts|tsx)$/.test(name))) {
 				let source = readFileSync(file, "utf8");
+				if (file === join(ROOT, "cockpit-http", "comparison.ts")) {
+					expect(source).toContain('from "../adapters/dsh-native/trajectory.ts"');
+					expect(source).not.toMatch(
+						/from "[^"]*(?:dsh-native\/(?:index|import|lifecycle)|pi\/(?:index|attachment|rpc))\.ts"/,
+					);
+					expect(source).not.toMatch(
+						/importDshSessionBytesV0|readDshLog|foldDshLifecycleV0|node:fs|node:child_process|process\.|setInterval/,
+					);
+					continue;
+				}
 				if (file === join(ROOT, "cli", "dsh.ts")) {
 					expect(source).toContain('from "../adapters/dsh-native/import.ts"');
 					expect(source).not.toMatch(

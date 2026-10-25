@@ -743,6 +743,7 @@ describe("contract validators", () => {
 			"endo.cockpit-capability-state.v0",
 			"endo.cockpit-session-timeline.v0",
 			"endo.cockpit-snapshot.v0",
+			"endo.cockpit-trajectory-comparison.v0",
 		]);
 	});
 

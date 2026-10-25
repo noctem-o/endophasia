@@ -6,11 +6,12 @@
 // catalogue (docs/schema-compatibility.md); they do follow its rule for the records they are read from: an unknown
 // version is rejected, never partially interpreted, and a closed record rejects unknown fields.
 //
-// Four top-level records, deliberately separate because their sources have independent histories:
+// Top-level records, deliberately separate because their source observations have independent histories:
 // - endo.cockpit-runtime-identity.v0: one attachment's recorded runtime identity, last change and last notice.
 // - endo.cockpit-capability-state.v0: the recorded capability state of that attachment, with its evidence dependencies.
 // - endo.cockpit-session-timeline.v0: a bounded window of the durable event log in storage order.
 // - endo.cockpit-snapshot.v0: the three above read together, WITHOUT any claim of a shared snapshot boundary.
+// - endo.cockpit-trajectory-comparison.v0: the existing comparison presentation (cockpit-comparison.ts).
 //
 // Every top-level record names its source (`domain`, how the source was found, and a watermark), and its projection
 // definition version (`projectionVersion`): the same validated inputs under the same projection version give the same
@@ -37,6 +38,15 @@
 // looked at the disk.
 //
 // The protocol imports only the protocol.
+
+import {
+	ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0,
+	ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0,
+	type EndoCockpitTrajectoryComparisonV0,
+	validateEndoCockpitTrajectoryComparisonV0,
+} from "./cockpit-comparison.ts";
+
+export * from "./cockpit-comparison.ts";
 
 import {
 	ENDO_COCKPIT_ANOMALY_KINDS_V0,
@@ -111,6 +121,7 @@ export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
 	capabilityState: "cockpit-capability-state.3",
 	sessionTimeline: "cockpit-session-timeline.3",
 	snapshot: "cockpit-snapshot.3",
+	trajectoryComparison: ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0,
 } as const;
 
 /** The epistemic bases a presented claim may carry (plus "unavailable", a claim without a value). */
@@ -545,7 +556,8 @@ export type EndoCockpitRecordV0 =
 	| EndoCockpitRuntimeIdentityV0
 	| EndoCockpitCapabilityStateV0
 	| EndoCockpitSessionTimelineV0
-	| EndoCockpitSnapshotV0;
+	| EndoCockpitSnapshotV0
+	| EndoCockpitTrajectoryComparisonV0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validation helpers
@@ -2729,6 +2741,7 @@ export const ENDO_COCKPIT_VERSIONS_V0 = defineEndoVersionTableV0<EndoCockpitReco
 	["endo.cockpit-capability-state.v0", validateEndoCockpitCapabilityStateV0],
 	["endo.cockpit-session-timeline.v0", validateEndoCockpitSessionTimelineV0],
 	["endo.cockpit-snapshot.v0", validateEndoCockpitSnapshotV0],
+	[ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0, validateEndoCockpitTrajectoryComparisonV0],
 ]);
 
 /** Read a cockpit record under the version it declares; an unknown version is `unsupported-version`, never accepted. */

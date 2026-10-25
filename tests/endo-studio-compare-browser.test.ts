@@ -342,6 +342,8 @@ suite("React Compare", () => {
 		expect(await page.text("#compare-workspace")).toContain("timed out");
 		expect(reads).toBe(1);
 		expect(await page.eval("document.querySelector('#recording-a').value.startsWith('pi:')")).toBe(true);
+		// Isolate the transport failure from the deliberately shortened timeout used above.
+		await page.eval("AbortSignal.timeout = () => new AbortController().signal");
 		await page.click("#compare-run");
 		await page.waitFor("document.querySelector('#compare-workspace').dataset.busy === 'false'");
 		expect(await page.text("#compare-workspace")).toContain("could not be reached");

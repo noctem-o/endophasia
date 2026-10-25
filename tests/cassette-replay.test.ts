@@ -631,6 +631,61 @@ describe("cassette sessions: record through the proxy, replay against the casset
 			},
 		);
 
+		it("refuses a persisted STEER refusal even when replay and all comparison layers agree", async () => {
+			const source = join(base, "root-refused-steer");
+			const out = join(base, "replay-refused-steer");
+			const recordingProxy = await startEndoRecordingProxyV0({
+				upstream: new URL(upstream.baseUrl).origin,
+				log: null,
+			});
+			try {
+				await recordPiCassetteSessionV0({
+					scenario: SCENARIOS.steer!,
+					pi: install.bin,
+					provider: "fake",
+					model: "fake-1",
+					proxy: recordingProxy,
+					store: source,
+					scratchRoot: join(base, "scratch-refused-steer"),
+					keySource: { kind: "installation" },
+					evidenceFrom: null,
+					timeoutMs: 20_000,
+				});
+			} finally {
+				await recordingProxy.close();
+			}
+			const report = await replayPiCassetteSessionV0({
+				store: source,
+				out,
+				pi: install.bin,
+				timing: "immediate",
+				keySource: { kind: "installation" },
+				timeoutMs: 20_000,
+				holdMs: 5_000,
+			});
+			expect(report.misses).toBe(0);
+			expect(report.unserved).toBe(0);
+			for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
+				expect(report.comparison.layers[layer].status, layer).toBe("EXACT");
+			for (const root of [source, out]) {
+				const step = readEndoCaptureEventsV0(root).find(
+					(event) =>
+						event.producer === "capture:driver" &&
+						event.kind === "capture.driver-step" &&
+						(event.payload as { op?: string }).op === "intervene",
+				);
+				expect(step?.payload).toMatchObject({ result: "refused" });
+			}
+			expect(report.checkpointQualification).toMatchObject({ status: "refused", reason: "intervention-unverified" });
+			const key = endoDigestKeyFromEnvironmentV0();
+			const generation = captureGenerationV0(readEndoCaptureEventsV0(source), key);
+			expect(qualifyInitialCheckpointV0(source, out, key, generation)).toMatchObject({
+				status: "refused",
+				reason: "intervention-unverified",
+			});
+			expect(existsSync(join(out, "replay-artifacts", "checkpoint-candidate.json"))).toBe(false);
+		});
+
 		it("a replayer meeting a driver step it does not know refuses, instead of skipping it", async () => {
 			const dir = join(base, "fixture-steer-unknown");
 			exportPiCassetteFixtureV0(recorded.steer!, dir);

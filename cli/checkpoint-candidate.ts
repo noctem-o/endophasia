@@ -281,8 +281,9 @@ export function qualifyInitialCheckpointV0(
 			interventions.length !== replayInterventions.length ||
 			replayInterventions.some(
 				(step, index) =>
+					interventions[index]!.result !== "accepted" ||
+					step.result !== "accepted" ||
 					step.proposalDigestMatches !== true ||
-					step.result !== interventions[index]!.result ||
 					step.operation !== interventions[index]!.operation ||
 					canonicalEndoJsonV0(step.at) !== canonicalEndoJsonV0(interventions[index]!.at),
 			)

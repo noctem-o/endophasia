@@ -1,10 +1,9 @@
 # Endophasia Web (currently `endo studio`)
 
-Status: **implemented in the source tree, read-only, one workspace.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; it is the interface Endophasia will grow into: Compare, Capabilities and
-Evolve workspaces (and DEVELOP, WORK, DREAM and a model-internal OBSERVE view) are intended to live here. Today it hosts one read-only
+Status: **implemented in the source tree, read-only, Observe and Compare workspaces.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; Capabilities and Evolve workspaces (and DEVELOP, WORK, DREAM and a model-internal OBSERVE view) remain future directions. Source builds include a read-only
 **Observe workspace**: an overview of the recorded window, the runtime a Pi attachment recorded, the capability state with its reasons
 and limits, the session timeline in storage order with an evidence-first inspector, and the condition of each source, all as recorded and
-none of it inferred. The other workspaces appear in the shell as "later", say what they would need and show nothing. It does not start,
+none of it inferred. Compare discovers and compares recorded Pi/DSH trajectories through the existing read-only APIs. Capabilities and Evolve remain marked "later" and show no records. It does not start,
 steer or attach to anything.
 
 `endo studio` remains the actual command; `endo web` is a proposed alias and does not work yet. A separate future Rust/GPUI native application would use the **Endophasia** product name. The implementation keeps its development names: the observation bridge is `cockpit/`, the
@@ -128,10 +127,10 @@ reference its files make is to a listed file beside it, before it touches a key 
 name from memory; it is not a file server. Nothing is built, compiled or downloaded when you run it, and the installed package holds no
 React and no bundler.
 
-## Compare backend (React workspace still pending)
+## Compare workspace
 
 Merged PRs #69–74 provide the authoritative comparison presentation, recorded DSH import evidence and the guarded
-raw-coordinate Compare API. The server also exposes candidate discovery for the next React Compare workspace:
+raw-coordinate Compare API. The React workspace consumes candidate discovery and opaque selected comparisons:
 
 - `GET /<cap>/api/v0/compare/candidates` returns the versioned, validated candidate presentation. Follow its optional
   `page.nextCursor` as `?cursor=<token>` while `page.hasMore`; pages are bounded to 100 rows, with a 10,000-candidate ceiling.
@@ -149,13 +148,34 @@ raw-coordinate Compare API. The server also exposes candidate discovery for the 
 Both routes are read-only and use the existing capability/Host/Origin/no-body guards and read-time budget. DSH checkpoint
 claims concern recorded imports, not the external file's current state; missing usage/timing and different digest domains
 retain their existing limitations. See [the detailed discovery contract](cockpit.md#compare-candidate-discovery).
-The next frontend PR should consume that contract and handle eligibility, pagination and rediscovery explicitly. This backend
-change adds no React Compare workspace and does not change Observe.
+Open **Compare** to discover the first page automatically. Select **Recording A** and **Recording B** explicitly, then press
+**Compare recordings**. Source labels distinguish Pi and DSH; ambiguous and insufficient candidates are disabled with their
+qualification explained. Self-comparison is allowed and identified as the same recording, not independent observations.
+**Load next candidate page** is explicit; the workspace states loaded and total counts and whether more remain. It never
+combines pages from different verified generations.
+
+Lifecycle, tool calls, tool results and outcome each show their own authoritative EXACT, DIVERGED or UNAVAILABLE verdict.
+Divergence includes the first index, common prefix, side lengths and A/B entries; an absent slot is distinct from a reported
+null. Expand withheld text, keyed tokens and evidence details in place. Qualifications, tool-calls-against-inputs ordering,
+runtime-reported usage and observer timing are separate sections. Deltas mean B minus A; unavailable values are never zero.
+There is no overall verdict, cross-layer first divergence, fabricated event pairing, controlled-equivalence claim or causal
+explanation. DSH requests and recovery-written closers retain their qualified meanings.
+
+A 404 selection or 409 continuation clears incompatible inventory, selections and results and offers **Rediscover recordings**;
+that refusal alone does not prove a mutation. Malformed or unsupported responses are refused by the frontend wire gate.
+Transient failures show fixed messages and clear the applicable result. A 429 disables read actions until the server's pause
+ends, then permits explicit retry; it never retries automatically. Cancel a pending request explicitly, or leave Compare to
+cancel it. Late responses cannot overwrite newer selections or generations. Completed state survives workspace navigation;
+returning to Observe makes no additional snapshot request. The Observe Refresh/keyboard shortcut operates only in Observe.
+Controls retain native keyboard behavior, labels and focus; the layout stacks at narrow widths and respects reduced motion.
+
+This is a source-build and tested-tarball capability. Registry artifacts `0.1.0-alpha.1` and `0.1.0-alpha.2` do not contain this
+React Compare workspace. No backend semantics, persistence, polling, runtime control or write API was added.
 
 ## Limits
 
-- One read-only workspace. No other workspace, no steering, no attachment management, no push or live view: the frontend reads when it opens and
-  when you press Refresh. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
+- Two read-only workspaces, Observe and Compare. Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+  on explicit Observe refresh or Compare discovery, pagination and comparison actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).
 - Verified on the CI platform (Ubuntu 24.04, Node 22.19.0 and the newest 22.x) by the installed-tarball smoke test

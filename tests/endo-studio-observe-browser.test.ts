@@ -1413,7 +1413,7 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
 		const reads = snapshotRequests(page);
-		for (const name of ["compare", "capabilities", "evolve"]) {
+		for (const name of ["capabilities", "evolve"]) {
 			await page.click(`button[data-workspace=${name}]`);
 			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
 			const said = await text(page, `[data-testid=unavailable-${name}]`);
@@ -1436,8 +1436,8 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const server = await serve(populated(), { ui });
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
-		await page.click("button[data-workspace=compare]");
-		await page.waitFor(`document.querySelector("[data-testid=unavailable-compare]")`, 5000);
+		await page.click("button[data-workspace=capabilities]");
+		await page.waitFor(`document.querySelector("[data-testid=unavailable-capabilities]")`, 5000);
 		for (const url of page.seen.requests) expect(url.startsWith(`${server.origin}/`), url).toBe(true);
 		const mine = page.seen.requests.filter((url) => url.startsWith(server.origin));
 		const allowed = /\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100)$|\/$/;

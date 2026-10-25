@@ -1,13 +1,14 @@
-// The Studio shell: the instrument's frame. Branding, workspace navigation, a visibly read-only state, the read status and Refresh, the
-// sources that need attention (at every width), and the workspace. Observe is the one implemented workspace; the others name what they
-// would need and show nothing.
+// Studio shell: read-only Observe and Compare workspaces with persistent, separate request state.
+// Capabilities and Evolve remain explicit placeholders.
 import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
+import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
 import { sourcesModel } from "./model/detail.ts";
 import { attentionOf } from "./model/observe.ts";
 import { Attention } from "./observe/Attention.tsx";
 import { Banner, readStatusText } from "./observe/Chrome.tsx";
 import { ObserveWorkspace } from "./observe/ObserveWorkspace.tsx";
 import { PanelBoundary } from "./ui/Panel.tsx";
+import { useCompare } from "./use-compare.ts";
 import { useObserve } from "./use-observe.ts";
 
 // The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
@@ -16,7 +17,7 @@ const Unavailable = lazy(() => import("./observe/Unavailable.tsx"));
 
 const WORKSPACES = [
 	{ id: "observe", label: "Observe", ready: true },
-	{ id: "compare", label: "Compare", ready: false },
+	{ id: "compare", label: "Compare", ready: true },
 	{ id: "capabilities", label: "Capabilities", ready: false },
 	{ id: "evolve", label: "Evolve", ready: false },
 ] as const;
@@ -25,6 +26,7 @@ export function App(): ReactElement {
 	const observe = useObserve();
 	const { state } = observe;
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
+	const compare = useCompare(workspace === "compare");
 
 	// The page's state, for a test that must know a read finished, and for the style sheet.
 	useEffect(() => {
@@ -44,6 +46,7 @@ export function App(): ReactElement {
 		const key = (event: KeyboardEvent) => {
 			// Not while the inspector dialog is open: the page behind it is inert, and so are its shortcuts.
 			if (document.querySelector("dialog[open]") !== null) return;
+			if (workspace !== "observe") return;
 			if (event.key !== "r" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
 			const target = event.target as HTMLElement | null;
 			if (target !== null && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -51,7 +54,7 @@ export function App(): ReactElement {
 		};
 		document.addEventListener("keydown", key);
 		return () => document.removeEventListener("keydown", key);
-	}, [observe.refresh]);
+	}, [observe.refresh, workspace]);
 
 	const attention = (() => {
 		if (state.loaded === null) return [];
@@ -105,25 +108,33 @@ export function App(): ReactElement {
 					Read-only
 				</span>
 				<span id="read-status" className="read-status" aria-live="polite">
-					{readStatusText(state)}
+					{workspace === "observe" ? readStatusText(state) : "Read-only workspace"}
 				</span>
-				<button
-					type="button"
-					id="refresh"
-					className="btn"
-					data-focus="refresh"
-					disabled={observe.locked}
-					onClick={observe.refresh}
-				>
-					{state.busy ? "Reading…" : "Refresh"}
-				</button>
+				{workspace === "observe" ? (
+					<button
+						type="button"
+						id="refresh"
+						className="btn"
+						data-focus="refresh"
+						disabled={observe.locked}
+						onClick={observe.refresh}
+					>
+						{state.busy ? "Reading…" : "Refresh"}
+					</button>
+				) : null}
 			</header>
-			<Banner state={state} />
-			<Attention items={attention} testid="attention" />
+			{workspace === "observe" ? (
+				<>
+					<Banner state={state} />
+					<Attention items={attention} testid="attention" />
+				</>
+			) : null}
 			<main id="main" data-studio-ui="ready">
 				<PanelBoundary resetKey={`${workspace}:${state.attempts}`}>
 					{workspace === "observe" ? (
 						<ObserveWorkspace observe={observe} />
+					) : workspace === "compare" ? (
+						<CompareWorkspace compare={compare} />
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>
 							<Unavailable

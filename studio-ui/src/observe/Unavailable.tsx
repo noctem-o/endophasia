@@ -2,10 +2,6 @@
 import type { ReactElement } from "react";
 
 const NEEDS: Record<string, { what: string; needs: string }> = {
-	compare: {
-		what: "Compare lines two recorded trajectories up against each other.",
-		needs: "It needs a projection that pairs events of two sessions and states how the correspondence was made. No such projection exists yet, so Studio cannot draw one without inventing it.",
-	},
 	capabilities: {
 		what: "Capabilities sets what a runtime declares against what has been observed of it.",
 		needs: "It needs a projection of the declared surface beside the observed evidence. The Observe workspace already shows each capability's recorded status and the limits on it; a declared-versus-observed matrix needs more than that.",

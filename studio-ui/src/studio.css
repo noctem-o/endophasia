@@ -1486,3 +1486,33 @@ table.fields thead th {
 .ref ul {
 	margin-top: 4px;
 }
+
+/* Compare uses the same specimen panels, words before colour, and text-only evidence disclosures as Observe. */
+#compare-workspace { display: grid; gap: 16px; min-width: 0; }
+#compare-workspace .panel, #compare-result, .compare-layers > *, .compare-sides > * { min-width: 0; }
+.compare-selection, .compare-layers, .compare-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.compare-selection { margin: 20px 0 12px; }
+.compare-selection label { display: block; font-weight: 600; margin-bottom: 8px; }
+.compare-selection select { width: 100%; max-width: 100%; padding: 10px; background: var(--surface-2); color: var(--fg-1); border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.compare-identity, .compare-result-pair { overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.compare-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.compare-verdict { display: inline-block; font-family: var(--mono); font-weight: 600; padding: 4px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+.verdict-EXACT { color: var(--fg-1); }
+.verdict-DIVERGED { color: var(--attention); }
+.verdict-UNAVAILABLE { color: var(--na); border-style: dashed; }
+#compare-result { display: grid; gap: 16px; }
+#compare-workspace details { border-top: 1px solid var(--line-subtle); padding: 8px 0; }
+#compare-workspace summary { cursor: pointer; overflow-wrap: anywhere; }
+#compare-workspace code, #compare-workspace dd, #compare-workspace p, #compare-workspace span { overflow-wrap: anywhere; }
+.compare-facts { margin: 0; }
+.compare-facts > div { padding: 7px 0; border-bottom: 1px solid var(--line-subtle); }
+.compare-facts dt { color: var(--fg-3); font-size: 12px; }
+.compare-facts dd { margin: 3px 0 0; min-width: 0; }
+.compare-list { padding-left: 20px; }
+.compare-list > li { margin-bottom: 8px; }
+.compare-sides > section { background: var(--surface-2); padding: 12px; border-radius: var(--radius); }
+@media (max-width: 760px) {
+ .compare-selection, .compare-layers, .compare-sides { grid-template-columns: minmax(0, 1fr); }
+ #compare-workspace .panel-head { flex-wrap: wrap; gap: 10px; }
+ #compare-workspace .panel-tools { width: 100%; }
+}

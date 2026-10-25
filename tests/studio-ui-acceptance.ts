@@ -141,10 +141,10 @@ export async function exerciseStudioUi(
 		}
 
 		// A workspace that is not built is loaded on demand, says so, and shows nothing of the store.
-		await tab.click("button[data-workspace=compare]");
-		await tab.waitFor(`document.querySelector("[data-testid=unavailable-compare]")`, 15_000);
+		await tab.click("button[data-workspace=capabilities]");
+		await tab.waitFor(`document.querySelector("[data-testid=unavailable-capabilities]")`, 15_000);
 		expect(
-			/is not available yet/.test(await text("[data-testid=unavailable-compare]")),
+			/is not available yet/.test(await text("[data-testid=unavailable-capabilities]")),
 			"an unbuilt workspace says it is not available",
 		);
 		expect((await count("tr[data-seq]")) === 0, "and draws no record");

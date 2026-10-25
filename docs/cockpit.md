@@ -436,8 +436,7 @@ the deterministic presentation.
 ## Compare candidate discovery
 
 The backend exposes a bounded `endo.cockpit-compare-candidates.v0` presentation (projection
-`cockpit-compare-candidates.1`), registered at the normal cockpit version gate. The React Compare workspace is still a
-separate follow-up; Observe remains unchanged. PRs #69–73 supply the existing authoritative comparison presentation,
+`cockpit-compare-candidates.1`), registered at the normal cockpit version gate. The source-build React Compare workspace consumes this contract; Observe remains unchanged. PRs #69–73 supply the existing authoritative comparison presentation,
 DSH cold-import evidence and guarded raw-coordinate comparison API. Discovery adds selection compatibility, not another
 comparator or source mapping.
 

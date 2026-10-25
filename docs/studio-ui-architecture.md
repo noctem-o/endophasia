@@ -7,8 +7,7 @@ establishes, and where it stops. **`endo studio` serves it**: the page it replac
 the default switched, with its tests moved, not dropped (section 10). There is no CLI flag and no route for it; the server, its
 guards and its page policy are the ones PR A hardened.
 
-Compare, Capabilities and Evolve are named in the shell as not yet available, say what they would need, and show nothing. They are
-not built, and nothing in them is synthetic.
+Compare is a read-only consumer of the merged discovery and comparison presentations. Capabilities and Evolve remain honest placeholders.
 
 ## 1. What the audit found
 
@@ -209,9 +208,9 @@ The frontend must not import the concept's synthetic sessions as data; must not 
 not invent provenance or capability state; must not compute an authoritative trajectory verdict from the fields a browser can see;
 must not infer permission from a recorded proposal or acceptance; and must not render a simulation as an execution.
 
-### One read, one adapter, one state
+### Observe: one read, one adapter, one state
 
-**One endpoint.** The frontend reads `./api/v0/snapshot?afterSequence=&limit=` and nothing else. The snapshot already carries the timeline
+**One Observe endpoint.** Observe reads `./api/v0/snapshot?afterSequence=&limit=`. Compare has its own explicit discovery and selection reads, described below. The snapshot already carries the timeline
 window and every attachment's runtime and capability state; reading `timeline` and each `runtime/<attachment>` separately would be
 several full reads of the history for what one read returns, and each read re-reads the whole log. The requests are relative to
 `document.baseURI`, so the capability stays in the address bar and never in code, a query string or a log. `studio-ui/src/api.ts` is
@@ -324,11 +323,12 @@ fidelity and an evidentiary claim conflicted, the claim won and the presentation
 | Six presentation states | Loading, healthy-empty, absent, degraded, unopenable, withheld, unsupported (named by record and version), request failure, pacing (with `Retry-After`), partial window: each says a different thing and none draws a placeholder | Production has more distinct conditions than the concept; every one has its own sentence and its own test. |
 | Modal inspector under 1024 px | A native `<dialog>`: focus moves in, the page behind is inert, Escape and a Close button close it and clear the one selection, focus returns to the opener. Carries the source warnings with it. | The concept's handoff admitted its degraded callout disappears below `lg`. |
 | WebGL/WebGPU scenes | Not taken. A restrained SVG overview, no GPU needed | Clarity, accessibility and determinism; the core UI runs with the GPU off, and the tests prove it. |
-| Compare, Capabilities, Evolve | Named in the shell, loaded on demand, say what each needs, show nothing | The projections they need do not exist (section 6, concept interfaces against production contracts). |
+| Compare | Discover two recorded sessions and inspect independent authoritative layers, qualifications and deltas | Uses the merged presentation; no browser comparator or event pairing. |
+| Capabilities, Evolve | Named in the shell, loaded on demand, say what each needs, show nothing | Their workspace contracts are not implemented. |
 
 ## 8. Explicit non-goals (still)
 
-The Compare, Capabilities and Evolve workspaces; the full declared-versus-observed capability matrix; any new data projection or HTTP
+The Capabilities and Evolve workspaces; the full declared-versus-observed capability matrix; any new data projection or HTTP
 route; any steering or mutation endpoint; trajectory verdicts in the browser; authentication, hosted backends, analytics or
 telemetry; WebGL or WebGPU; automatic monitoring or polling; any release, tag or version change (`0.1.0-alpha.2` is published and
 untouched); a second HTTP security implementation; a development-server proxy.
@@ -361,7 +361,7 @@ test that was run, not a claim:
 | What the earlier page was held to | Where it is held now |
 | :--- | :--- |
 | 44 browser tests on real stores (sources, paging, 429, focus, reply handling, aliases, ...) | the same 44, ported, in `tests/endo-studio-observe-browser.test.ts` (adapted, never weakened: the setup builds and loads the new frontend; events are dispatched so that React sees them (bubbling, and the native value setter for a text box); the kind column's selector gained `.kind` because the producer now shares the cell; wording follows the new labels ("Recorded" is "Producer clock", the unread-state sentence, the session options); and **one test is rewritten**, the hostile-text test, because the React frontend has no `widgets.js` to import: it now sends hostile strings through the real page from a stand-in API and asserts the same things) |
-| Source rules (no HTML sink, one `fetch`, one timer, pure modules) | `tests/endo-studio-ui-source.test.ts`, recursively, plus the new React-specific rules |
+| Source rules (no HTML sink, fetch only in api.ts, pacing-only timers, pure models) | `tests/endo-studio-ui-source.test.ts`, recursively, plus the new React-specific rules |
 | Model and classifier tests (31) | `tests/endo-studio-ui-contract.test.ts`, with the modules they test |
 | HTTP transport over the page (guards, policy, no capability in what is served) | `tests/endo-cockpit-http-ui.test.ts`, over the new build |
 | The loader's completeness check | `tests/endo-studio-host.test.ts` and `tests/endo-studio-ui.test.ts`, for the stricter loader that replaced it |
@@ -388,3 +388,28 @@ named older artifact to that layout and holds a build from the checkout to the n
 4. **The concept's licence.** State it before any component code is copied.
 5. **Keep the gate.** Extend `tests/studio-ui-acceptance.ts` rather than adding a second browser harness; keep `ENDO_REQUIRE_BROWSER=1`
    in CI.
+
+## React Compare vertical slice
+
+`compare/CompareWorkspace.tsx` and `compare/Comparison.tsx` render only server-presented fields using React text, semantic
+selection controls and evidence disclosures. `model/compare-wire.ts` pins the candidate and comparison schema/projection/rules
+versions, validates every renderer-accessed shape and rejects inconsistent displayed availability/deltas. It imports protocol
+**types only**; no protocol, storage, adapter or comparator implementation executes in the browser. Privacy and judgments stay
+at the authoritative server boundary. `model/compare.ts` is the pure request/inventory/selection reducer.
+
+`api.ts` remains the only fetch module. Alongside Observe's snapshot, its exact Compare routes are `./api/v0/compare/candidates`
+(with the validated server cursor) and `./api/v0/compare/selected/<source>/<selector>/<source>/<selector>`. Every request is
+relative to `document.baseURI`, GET, no-store, credentials omitted, no referrer, redirect refused, with timeout and explicit
+cancellation. No display identity becomes a URL argument and the raw-coordinate API is never called by Compare.
+
+`use-compare.ts` is owned by the shell, not the conditionally rendered workspace. First entry starts discovery once. Explicit
+reads capture a request sequence plus generation/pair; cancellation and reducer fences reject late completion. Pagination
+requires the same generation/total, exact next position, ordered distinct display identities and distinct selection identities
+across the full accumulated inventory. Changing either selection clears the applicable result. Invalid continuations or
+selections clear the incompatible state. Ordinary failures never leave an old result presented as current. A server-paced
+monotonic deadline lifts controls with one timer and never retries; that timer is the only additional scheduling allowance.
+Leaving Compare cancels pending work; returning preserves completed state and does not trigger an Observe read.
+
+The global CSP, source allowlists, type-only protocol boundary, no-storage/no-execution assertions and closed asset manifest
+are preserved. The exact new modules/routes are pinned in source tests. The shared Chromium/CDP acceptance also runs against
+the installed tarball with retained mixed Pi/DSH evidence; no second browser framework or runtime dependency was introduced.

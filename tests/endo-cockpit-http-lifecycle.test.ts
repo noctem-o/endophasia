@@ -175,7 +175,7 @@ describe("source boundary", () => {
 
 	it("the transport imports only its comparison bridge, cockpit/index.ts and HTTP infrastructure", () => {
 		expect(specifiers(read("cockpit-http/server.ts")).sort()).toEqual(
-			["./comparison.ts", "../cockpit/index.ts", "node:crypto", "node:http", "node:net"].sort(),
+			["./candidates.ts", "./comparison.ts", "../cockpit/index.ts", "node:crypto", "node:http", "node:net"].sort(),
 		);
 	});
 

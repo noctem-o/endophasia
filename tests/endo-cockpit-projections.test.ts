@@ -744,6 +744,7 @@ describe("contract validators", () => {
 			"endo.cockpit-session-timeline.v0",
 			"endo.cockpit-snapshot.v0",
 			"endo.cockpit-trajectory-comparison.v0",
+			"endo.cockpit-compare-candidates.v0",
 		]);
 	});
 

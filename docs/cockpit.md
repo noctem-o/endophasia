@@ -433,6 +433,86 @@ interruptions, and absent usage, observer timing and runtime identity remain una
 remain visible under the existing comparator rules. No server read time is substituted for a source timestamp or added to
 the deterministic presentation.
 
+## Compare candidate discovery
+
+The backend exposes a bounded `endo.cockpit-compare-candidates.v0` presentation (projection
+`cockpit-compare-candidates.1`), registered at the normal cockpit version gate. The React Compare workspace is still a
+separate follow-up; Observe remains unchanged. PRs #69–73 supply the existing authoritative comparison presentation,
+DSH cold-import evidence and guarded raw-coordinate comparison API. Discovery adds selection compatibility, not another
+comparator or source mapping.
+
+```text
+GET /<cap>/api/v0/compare/candidates
+GET /<cap>/api/v0/compare/candidates?cursor=<nextCursor>
+GET /<cap>/api/v0/compare/selected/pi/<selector-a>/dsh/<selector-b>
+```
+
+The original `/compare/<source>/<coordinate>/<source>/<coordinate>` route remains unchanged. A discovery result contains:
+
+```json
+{
+  "schemaVersion": "endo.cockpit-compare-candidates.v0",
+  "projectionVersion": "cockpit-compare-candidates.1",
+  "generation": "<64 lowercase hex keyed token>",
+  "candidates": [{
+    "source": "pi",
+    "session": "endo.session.pi.example",
+    "label": "Pi recording",
+    "eligibility": "selectable",
+    "selector": "c1-<64 lowercase hex keyed token>"
+  }],
+  "page": { "offset": 0, "total": 1, "hasMore": false, "nextCursor": null }
+}
+```
+
+The placeholders illustrate the shape, not valid tokens. Source kinds are exactly `pi` and `dsh`. Candidate sessions are
+public identifiers or the existing keyed aliases; labels are fixed `Pi recording` or `DSH recording`. No arbitrary attachment
+name, runtime ID, path, source payload, plain content hash or error message is returned.
+
+**Admission.** Candidates come from recording producers, never timeline membership or a guessed session prefix. The same
+helper admits and validates trajectories for discovery and both comparison routes. Pi requires exactly one attachment with
+recording producer evidence. Several attachments produce `ambiguous`; lifecycle-only events qualify no attachment. Native
+recording evidence requires an Endophasia coordinate and a latest clean, complete import checkpoint, exactly as above;
+missing, stale, ambiguous or torn checkpoint evidence produces `insufficient`. An invalid native coordinate is also
+`insufficient`, never interpreted as a raw runtime ID. Unrelated producers are omitted. Nonselectable rows have
+`selector: null`. Unexpected projection defects refuse the request with a sanitized 500 instead of inventing eligibility.
+`selectable` establishes admission and a valid trajectory for this observation, not run success or guaranteed success of every
+future pair presentation. Pair comparison still uses the authoritative comparator and its existing failure handling.
+
+**Identity.** Display aliases are not coordinates. Every selectable row, including one with an admitted public coordinate,
+gets a `c1-<64 hex>` opaque selector, under the dedicated host cockpit key and a separate purpose, binding the source kind,
+original coordinate and full verified log generation. `/selected` resolves each token uniquely against the currently verified
+inventory and reapplies admission. It never falls back to interpreting a token or display alias as a literal identifier.
+An alias-shaped source identifier is itself re-aliased by the existing policy; any alias or selector collision refuses the
+inventory rather than conflating recordings. Tokens for the two sources and different purposes are separated. This additive
+route avoids overloading the original coordinate route, which must continue treating coordinates literally. It also permits
+valid underlying coordinates beyond that route's 220-character transport bound without publishing them.
+
+**Pages and changes.** Each page contains at most 100 candidates in code-unit order of `(source, public session)`; `total`,
+`hasMore` and `nextCursor` state completeness explicitly. Above 10,000 candidates the request refuses with fixed
+`503 too-many-candidates`, never a truncated complete-looking list. Only optional `cursor` is accepted, once, within the
+existing 96-character query bound. Its syntax is `p1-<offset>-<64 hex MAC>`, with canonical positive multiples of 100 below
+10,000; offsets are authenticated against the full verified generation and checked against the observed inventory before
+use. Same-generation replay is deterministic and idempotent. A malformed cursor is 400 before any read. A well-shaped forged,
+wrong-key, out-of-range or stale cursor is `409 continuation-invalid`: the server cannot distinguish those causes and does
+not claim it observed a change. Restart discovery.
+
+Generation is a purpose-separated keyed token over the existing whole-event-log prefix token, including an explicit empty
+observation. Every append (even unrelated evidence), truncation, or content rewrite invalidates continuation and selection;
+replacing content under the same event count and last ID is still detected. Old, unknown and wrong-source selections are
+fixed 404s; rediscover instead of silently retargeting them. Restoring byte-identical evidence under the same key restores the
+same deterministic generation and tokens. There is no persistent alias database, cache, timer or index.
+
+**Read and privacy boundary.** Each request uses one fully validated read-only store open, closed before projection. Events
+are grouped once; only the returned page or selected pair is projected. Pagination bounds output, not the full-store
+verification cost. An absent store is `503 source-absent`, a valid empty log is an empty complete list, and damaged/torn or
+unopenable stores refuse as `source-degraded`/`source-unopenable`; no verified prefix masquerades as a complete inventory.
+All existing capability, Host, Origin, fetch-metadata, GET/no-body, security-header, no-CORS, connection and read-budget
+policies apply, including validation and canonical serialization costs. Diagnostics receive fixed sanitized errors without
+source causes. The original DSH files are never opened: checkpoints describe previously imported evidence, not those files
+now. DSH turn/run, tool-request/execution, recovery-closer/interruption and missing usage/timing distinctions remain intact;
+no server read time or cross-domain equality claim is introduced.
+
 ## The local HTTP server (implemented)
 
 A transport over the bridge, not another observation system: it reconstructs no evidence, infers no fact, manages no harness
@@ -459,6 +539,8 @@ cache, worker or timer.
 | :--- | :--- | :--- |
 | `GET /<cap>/api/v0/snapshot` | `EndoCockpitSnapshotV0` (`readEndoCockpitSnapshotV0`, every attachment found) | `afterSequence`, `limit` |
 | `GET /<cap>/api/v0/timeline` | `EndoCockpitSessionTimelineV0` (`readEndoCockpitTimelineV0`) | `afterSequence`, `limit` |
+| `GET /<cap>/api/v0/compare/candidates` | `EndoCockpitCompareCandidatesV0` | optional authenticated `cursor` |
+| `GET /<cap>/api/v0/compare/selected/<source-a>/<selector-a>/<source-b>/<selector-b>` | `EndoCockpitTrajectoryComparisonV0` | none |
 | `GET /<cap>/api/v0/compare/<source-a>/<coordinate-a>/<source-b>/<coordinate-b>` | `EndoCockpitTrajectoryComparisonV0` | none |
 | `GET /<cap>/api/v0/runtime/<attachment>` | `{ identity, capabilities }`, the shape of a snapshot's `runtimes[]` element | none |
 
@@ -507,7 +589,7 @@ about 30 ms each: none refused). Unauthenticated and malformed traffic spends no
 The page and its assets (below) carry their own, narrower-for-script and wider-for-assets policy.
 A refusal body is exactly `{"error":"<code>"}` from a closed set (`bad-request`, `forbidden`, `not-found`, `method-not-allowed`,
 `misdirected-request`, `too-many-requests`, `internal-error`, `ambiguous-selection`, `source-absent`, `source-degraded`,
-`source-unopenable`): never a path, an echo of the request, a message, a stack, a key or
+`source-unopenable`, `continuation-invalid`, `too-many-candidates`): never a path, an echo of the request, a message, a stack, a key or
 the capability. An internal failure is a generic `500` that closes the connection; the host's optional `onError` hook receives the
 error, the client never does.
 
@@ -526,9 +608,10 @@ this process's arguments or memory, and a query string is never used for it.
 key fails at launch, not per request), and reads no environment and creates no key. The launcher loads a **dedicated, persistent
 cockpit key** with the existing `loadOrCreateEndoDigestKeyV0`, by default the file `cockpit-digest-key` beside the installation key
 (`endoDigestKeyPathV0`'s directory; created once, mode 0600), or `--key-file <path>`. A refresh, restart or new launch needs no new key
-and the same key gives the same ids and tokens, so a client's held watermarks stay comparable across launches. The installation key
-would also be admitted and works (`--key-file <installation key path>`), but it is the key every recorded store shares, and the
-cockpit key's only job is the comparison domain of what the cockpit shows; a dedicated one keeps the two separable. A public fixture
+and the same key gives the same ids and tokens for unchanged evidence across launches. The library can admit a private key
+supplied by a trusted host, but the Studio host refuses the installation key file under any name and refuses a key path inside
+the observed store (see [studio.md](studio.md#what-it-reads-and-what-it-may-write)). The dedicated cockpit key protects presentation
+and selection tokens; recorded argument/result HMACs retain their original domains. A public fixture
 key is for synthetic data only and is never a default. Global key storage is unchanged.
 
 **Local launch.**

@@ -573,6 +573,10 @@ try {
 		const piComparison = projected === null ? null : await two.get(`/api/v0/compare/pi/${projected.source.session}/pi/${projected.source.session}`);
 		const piPresentation = piComparison?.status === 200 ? JSON.parse(piComparison.body) : null;
 		check(piPresentation?.schemaVersion === "endo.cockpit-trajectory-comparison.v0" && piPresentation.layers.lifecycle.status === "EXACT" && !piComparison.body.includes(defaultStore), "installed Studio compares the recorded Pi session through the presentation contract without its store path");
+		const piCandidates = await two.get("/api/v0/compare/candidates");
+		const piCandidate = piCandidates.status === 200 ? JSON.parse(piCandidates.body).candidates.find((c) => c.source === "pi" && c.eligibility === "selectable") : null;
+		const piSelected = piCandidate ? await two.get(`/api/v0/compare/selected/pi/${piCandidate.selector}/pi/${piCandidate.selector}`) : null;
+		check(piSelected?.status === 200 && JSON.parse(piSelected.body).layers.lifecycle.status === "EXACT" && !piCandidates.body.includes(defaultStore), "installed Studio discovers a Pi recording and its opaque selector compares that recording without a store path");
 		// A real browser, when this machine has one: the installed page loads, reads, and draws what was recorded, requesting nothing
 		// outside the server that served it.
 		const { Browser, findBrowser } = await import("../tests/cockpit-browser.ts");
@@ -673,6 +677,10 @@ try {
 	const dshComparison = await dshStudio.get(`/api/v0/compare/dsh/${dshCoordinate}/dsh/${dshCoordinate}`);
 	const dshPresentation = dshComparison.status === 200 ? JSON.parse(dshComparison.body) : null;
 	check(dshPresentation?.schemaVersion === "endo.cockpit-trajectory-comparison.v0" && dshPresentation.layers.lifecycle.status === "EXACT" && dshPresentation.layers.timing.status === "UNAVAILABLE" && !dshComparison.body.includes(dshStore) && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed Studio compares DSH coordinates read-only and preserves unavailable observer timing");
+	const dshCandidates = await dshStudio.get("/api/v0/compare/candidates");
+	const dshCandidate = dshCandidates.status === 200 ? JSON.parse(dshCandidates.body).candidates.find((c) => c.source === "dsh" && c.eligibility === "selectable") : null;
+	const dshSelected = dshCandidate ? await dshStudio.get(`/api/v0/compare/selected/dsh/${dshCandidate.selector}/dsh/${dshCandidate.selector}`) : null;
+	check(dshSelected?.status === 200 && JSON.parse(dshSelected.body).layers.timing.status === "UNAVAILABLE" && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed Studio discovers DSH evidence and resolves its opaque selector read-only with timing unavailable");
 	await dshStudio.stop();
 	const dshAgain = runDsh(["import", dshStore, dshSource]);
 	check(dshAgain.status === 0 && JSON.parse(dshAgain.stdout).status === "unchanged" && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed DSH re-import is unchanged with no append");

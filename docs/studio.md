@@ -128,6 +128,30 @@ reference its files make is to a listed file beside it, before it touches a key 
 name from memory; it is not a file server. Nothing is built, compiled or downloaded when you run it, and the installed package holds no
 React and no bundler.
 
+## Compare backend (React workspace still pending)
+
+Merged PRs #69–73 provide the authoritative comparison presentation, recorded DSH import evidence and the guarded
+raw-coordinate Compare API. The server also exposes candidate discovery for the next React Compare workspace:
+
+- `GET /<cap>/api/v0/compare/candidates` returns the versioned, validated candidate presentation. Follow its optional
+  `page.nextCursor` as `?cursor=<token>` while `page.hasMore`; pages are bounded to 100 rows, with a 10,000-candidate ceiling.
+- Each row has explicit `source`, a privacy-safe display `session`, fixed `label`, `eligibility`, and an opaque `selector`.
+  Use only `selectable` rows. `ambiguous` means multiple Pi recording attachments; `insufficient` includes incomplete or
+  degraded native import evidence. Unknown/non-recording producers are excluded. No runtime success is inferred.
+- Compare two selections with `GET /<cap>/api/v0/compare/selected/<source-a>/<selector-a>/<source-b>/<selector-b>`.
+  Display aliases are never selectable coordinates. The existing raw-coordinate comparison route remains available unchanged.
+- Selectors bind source kind, original identity and the full verified store generation under Studio's dedicated key. They
+  resolve only against current verified evidence. Any append or rewrite invalidates held cursors/selections: on fixed
+  `409 continuation-invalid` or a 404 selection, rediscover. An unchanged generation permits idempotent page replay.
+- Store absence, damage and unopenable evidence refuse discovery; a verified empty store returns a complete empty list.
+  No original DSH file, private path, arbitrary attachment name, raw runtime ID, source text or unsanitized exception is exposed.
+
+Both routes are read-only and use the existing capability/Host/Origin/no-body guards and read-time budget. DSH checkpoint
+claims concern recorded imports, not the external file's current state; missing usage/timing and different digest domains
+retain their existing limitations. See [the detailed discovery contract](cockpit.md#compare-candidate-discovery).
+The next frontend PR should consume that contract and handle eligibility, pagination and rediscovery explicitly. This backend
+change adds no React Compare workspace and does not change Observe.
+
 ## Limits
 
 - One read-only workspace. No other workspace, no steering, no attachment management, no push or live view: the frontend reads when it opens and

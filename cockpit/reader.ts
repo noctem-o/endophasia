@@ -37,6 +37,7 @@ import {
 	ENDO_COCKPIT_SOURCE_ERRORS_V0,
 } from "../protocol/cockpit.ts";
 import { endoCockpitDigestKeyAdmittedV0, isEndoCockpitSourceKindAdmittedV0 } from "../protocol/cockpit-fields.ts";
+import type { EndoEventV0 } from "../protocol/event.ts";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { EndoSchemaVersionErrorV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -233,6 +234,34 @@ function withEventStore<T>(
 	} finally {
 		store.close();
 	}
+}
+
+/** A whole, verified event snapshot for source-specific readers outside the adapter-free bridge. */
+export type EndoCockpitVerifiedEventsV0 =
+	| { ok: true; events: EndoEventV0[] }
+	| { ok: false; condition: "absent" | "degraded" | "unopenable" };
+
+/**
+ * Both comparison inputs must come from this ONE read-only open. Open materializes and validates the log; paging that
+ * materialized store cannot observe a later append. A torn append or corrupt suffix refuses the entire comparison,
+ * including when its verified prefix contains both selections. No raw source error escapes this boundary.
+ */
+export function readEndoCockpitVerifiedEventsV0(root: string, digestKey: EndoDigestKeyV0): EndoCockpitVerifiedEventsV0 {
+	requireKey(digestKey);
+	const opened = withEventStore(root, (store): EndoCockpitVerifiedEventsV0 => {
+		const recovery = store.recovery();
+		if (recovery.truncated || recovery.sealed) return { ok: false, condition: "degraded" };
+		const events: EndoEventV0[] = [];
+		const length = store.length;
+		while (events.length < length) {
+			const page = store.page({ afterSequence: events.length, limit: ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 });
+			if (page.events.length === 0) throw new Error("incomplete verified event snapshot");
+			for (const event of page.events) events.push(event);
+		}
+		return { ok: true, events };
+	});
+	if (opened.source !== "open") return { ok: false, condition: opened.source };
+	return opened.value;
 }
 
 /**

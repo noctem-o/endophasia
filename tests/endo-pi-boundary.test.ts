@@ -2,7 +2,7 @@
 // - no source imports a Pi package (@earendil-works/*) or a vendored Pi path (pi/packages/*), nothing declares one as a
 //   dependency, and there is no vendored Pi tree or submodule;
 // - protocol/ is zero-dependency: it imports only protocol/;
-// - the runtime-neutral layers never reach the Pi adapter; only the operator composition root (cli/) does;
+// - the runtime-neutral layers never reach the Pi adapter; the operator CLI and pure HTTP comparison leaf opt in;
 // - the Pi adapter reaches only node: builtins, the protocol, the core contracts, storage, the shared JSONL transport
 //   and its own modules;
 // - no adapter spawns through a shell, and nothing in Endophasia installs, updates or rebuilds a harness.
@@ -85,9 +85,15 @@ describe("layering", () => {
 		}
 	});
 
-	it("only the operator composition root reaches the Pi adapter", () => {
+	it("only operator composition and the pure comparison leaf reach the Pi adapter", () => {
+		expect(specifiers("cockpit-http/comparison.ts").filter((spec) => /adapters\/pi\//.test(spec))).toEqual([
+			"../adapters/pi/trajectory.ts",
+		]);
 		const allowed = (file: string) =>
-			file.startsWith("adapters/pi/") || file.startsWith("cli/") || file.startsWith("tests/");
+			file === "cockpit-http/comparison.ts" ||
+			file.startsWith("adapters/pi/") ||
+			file.startsWith("cli/") ||
+			file.startsWith("tests/");
 		const hits = ALL.filter((file) => !allowed(file)).flatMap((file) =>
 			specifiers(file)
 				.filter((spec) => /adapters\/pi\//.test(spec) || /^\.\.?\/pi\//.test(spec))

@@ -173,9 +173,9 @@ describe("source boundary", () => {
 		);
 	const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-	it("the transport imports only node:http, node:crypto, node:net types and cockpit/index.ts", () => {
+	it("the transport imports only its comparison bridge, cockpit/index.ts and HTTP infrastructure", () => {
 		expect(specifiers(read("cockpit-http/server.ts")).sort()).toEqual(
-			["../cockpit/index.ts", "node:crypto", "node:http", "node:net"].sort(),
+			["./comparison.ts", "../cockpit/index.ts", "node:crypto", "node:http", "node:net"].sort(),
 		);
 	});
 

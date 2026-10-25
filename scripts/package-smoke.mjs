@@ -570,6 +570,9 @@ try {
 			recorded.timeline.source.condition.state === "readable" && recorded.timeline.entries.length > 0 && recorded.runtimes.length >= 1,
 			`the snapshot API serves the recorded observations (${recorded.timeline.entries.length} events, ${recorded.runtimes.length} attachment${recorded.runtimes.length === 1 ? "" : "s"})`,
 		);
+		const piComparison = projected === null ? null : await two.get(`/api/v0/compare/pi/${projected.source.session}/pi/${projected.source.session}`);
+		const piPresentation = piComparison?.status === 200 ? JSON.parse(piComparison.body) : null;
+		check(piPresentation?.schemaVersion === "endo.cockpit-trajectory-comparison.v0" && piPresentation.layers.lifecycle.status === "EXACT" && !piComparison.body.includes(defaultStore), "installed Studio compares the recorded Pi session through the presentation contract without its store path");
 		// A real browser, when this machine has one: the installed page loads, reads, and draws what was recorded, requesting nothing
 		// outside the server that served it.
 		const { Browser, findBrowser } = await import("../tests/cockpit-browser.ts");
@@ -665,6 +668,12 @@ try {
 	const dshImport = runDsh(["import", "--root", dshStore, dshSource]);
 	check(dshImport.status === 0 && JSON.parse(dshImport.stdout).status === "imported" && dshImport.stdout === dshCanonical(JSON.parse(dshImport.stdout)), "installed DSH CLI imports a retained format-4 session as canonical JSON");
 	const dshEvidence = readFileSync(join(dshStore, "events/events.log"));
+	const dshStudio = await launch(["--root", dshStore]);
+	const dshCoordinate = JSON.parse(dshImport.stdout).session;
+	const dshComparison = await dshStudio.get(`/api/v0/compare/dsh/${dshCoordinate}/dsh/${dshCoordinate}`);
+	const dshPresentation = dshComparison.status === 200 ? JSON.parse(dshComparison.body) : null;
+	check(dshPresentation?.schemaVersion === "endo.cockpit-trajectory-comparison.v0" && dshPresentation.layers.lifecycle.status === "EXACT" && dshPresentation.layers.timing.status === "UNAVAILABLE" && !dshComparison.body.includes(dshStore) && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed Studio compares DSH coordinates read-only and preserves unavailable observer timing");
+	await dshStudio.stop();
 	const dshAgain = runDsh(["import", dshStore, dshSource]);
 	check(dshAgain.status === 0 && JSON.parse(dshAgain.stdout).status === "unchanged" && readFileSync(join(dshStore, "events/events.log")).equals(dshEvidence), "installed DSH re-import is unchanged with no append");
 	writeFileSync(join(dshSource, "session.v5.jsonl"), "unsupported generation");

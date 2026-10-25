@@ -72,7 +72,7 @@ control.on("close", end);
 control.on("error", end);
 `;
 
-/** How long release() waits for the keeper to end the group before SIGKILLing the keeper itself. */
+/** The total bound for release() to observe keeper exit and, where /proc is available, stopped group members. */
 const RELEASE_TIMEOUT_MS = 2_000;
 
 /**
@@ -236,12 +236,13 @@ export class ProcessGroupV0 {
 	}
 
 	/**
-	 * SIGKILL everything left in the group, the keeper included, and wait until the keeper is gone. Idempotent. On
-	 * Windows it SIGKILLs the command if it still runs.
+	 * SIGKILL everything left in the group, the keeper included, and wait for keeper exit and observable live members
+	 * to stop, within RELEASE_TIMEOUT_MS. No group is signalled after keeper exit. Idempotent. On Windows only the
+	 * command can be killed and awaited; without /proc, POSIX can observe only the keeper's exit.
 	 */
 	release(): Promise<void> {
 		this.#released ??= (async () => {
-			if (!this.#alive) return;
+			if (!this.#alive && !this.#keeper) return;
 			this.#ending = true;
 			if (!this.#keeper) {
 				// Windows: no group. The command is killed and its exit awaited (bounded), so nothing outlives the release.
@@ -259,6 +260,7 @@ export class ProcessGroupV0 {
 			// The whole group, keeper included, is SIGKILLed directly rather than by asking the keeper: the keeper could die
 			// or stall between being asked and acting. It is this process's unreaped child until #gone settles, so the
 			// group ID is still this group's at this kill.
+			const deadline = Date.now() + RELEASE_TIMEOUT_MS;
 			this.killGroup();
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
@@ -268,6 +270,13 @@ export class ProcessGroupV0 {
 				}),
 			]);
 			clearTimeout(timer);
+			// A group SIGKILL does not make every member exit at once. The keeper can be reaped before a command
+			// processes its fatal signal. Observe survivors (including after killGroup() already reaped the keeper),
+			// but never signal the now-reusable group ID again. Zombies are already stopped and do not delay release.
+			const group = this.groupId;
+			while (group !== undefined && Date.now() < deadline && liveGroupMembers(group) === true) {
+				await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10, Math.max(0, deadline - Date.now()))));
+			}
 		})();
 		return this.#released;
 	}

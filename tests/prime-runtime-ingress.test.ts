@@ -1068,6 +1068,57 @@ describe("Prime RPC connection: extension UI answers", () => {
 });
 
 describe.runIf(POSIX && existsSync("/proc/self/stat"))("Prime RPC connection: owned process group", () => {
+	it.each([false, true])(
+		"release waits for a surviving command without signalling the reaped group (keeper exited first: %s)",
+		async (keeperExitedFirst) => {
+			const pidFile = join(temporaryDirectory("prime-release-order-"), "command.pid");
+			const group = new PrimeProcessGroupV0(
+				process.execPath,
+				[
+					"-e",
+					`require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);`,
+				],
+				{ cwd: tmpdir(), env: { PATH: process.env.PATH ?? "" }, stderr: "ignore" },
+			);
+			const kill = process.kill.bind(process);
+			let command: number | undefined;
+			let restore: (() => void) | undefined;
+			try {
+				await vi.waitFor(() => expect(existsSync(pidFile)).toBe(true), { timeout: 5_000 });
+				command = Number(readFileSync(pidFile, "utf8"));
+				const keeper = group.groupId!;
+				// Force the scheduling order allowed by a real group SIGKILL: the keeper exits first,
+				// while the command has not processed its fatal signal. Only these fixture PIDs are touched.
+				const spy = vi
+					.spyOn(process, "kill")
+					.mockImplementation((pid, signal) =>
+						pid === -keeper && signal === "SIGKILL" ? kill(keeper, "SIGKILL") : kill(pid, signal),
+					);
+				restore = () => spy.mockRestore();
+				if (keeperExitedFirst) {
+					group.killGroup();
+					await group.exited;
+				}
+				let released = false;
+				const releasing = group.release().then(() => {
+					released = true;
+				});
+				await group.exited;
+				await new Promise<void>((resolve) => setImmediate(resolve));
+				expect(running({ pid: command })).toBe(true);
+				expect(released).toBe(false);
+				kill(command, "SIGKILL");
+				await releasing;
+				expect(running({ pid: command })).toBe(false);
+				expect(spy.mock.calls.filter(([pid]) => pid === -keeper)).toHaveLength(1);
+			} finally {
+				restore?.();
+				if (command !== undefined && running({ pid: command })) kill(command, "SIGKILL");
+				await group.release();
+			}
+		},
+	);
+
 	it("kills the whole group when the keeper cannot act on release", async () => {
 		const pidFile = join(temporaryDirectory("prime-stopped-keeper-"), "command.pid");
 		const group = new PrimeProcessGroupV0(

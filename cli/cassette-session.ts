@@ -742,8 +742,11 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 		};
 		let armed: Promise<boolean> | null = null;
 		const arm = (point: { exchange: number; chunks: number } | null) => {
-			armed =
-				point === null ? Promise.resolve(true) : settlesWithin(cassetteServer.pauseAt(point), options.timeoutMs);
+			if (point === null) armed = Promise.resolve(false);
+			else {
+				const hit = cassetteServer.pauseAt(point);
+				armed = settlesWithin(hit, options.timeoutMs).then(async (settled) => settled && (await hit));
+			}
 		};
 		let pendingPrompt: { text: string; mode: string } | null = null;
 		let child: { kill: () => Promise<string[]> } | null = null;
@@ -784,7 +787,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 						localOperatorAuthorityV0(proposal.proposalDigest, "scenario"),
 					);
 					await session!.prompt(text);
-					const pointReached = await (armed ?? Promise.resolve(true));
+					const pointReached = await (armed ?? Promise.resolve(false));
 					if (!pointReached)
 						notes.push(
 							`the ${operation} point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`,
@@ -825,7 +828,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			} else if (op === "stop") {
 				const at = entry.at as { exchange: number; chunks: number } | null;
 				const settled = session!.waitForSettled(options.timeoutMs);
-				const pointReached = await (armed ?? Promise.resolve(true));
+				const pointReached = await (armed ?? Promise.resolve(false));
 				if (!pointReached)
 					notes.push(`the STOP point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`);
 				armed = null;
@@ -846,7 +849,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 				child = await promptInChild(config, pendingPrompt!.text, options.timeoutMs);
 			} else if (op === "kill") {
 				const at = entry.at as { exchange: number; chunks: number } | null;
-				const pointReached = await (armed ?? Promise.resolve(true));
+				const pointReached = await (armed ?? Promise.resolve(false));
 				if (!pointReached)
 					notes.push(`the kill point (exchange ${at?.exchange}, chunk ${at?.chunks}) was never reached`);
 				armed = null;

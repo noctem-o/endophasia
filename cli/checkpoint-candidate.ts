@@ -22,6 +22,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { readEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
 import { type PiCassetteReplayReportV0, piCassetteScriptV0, storeTrajectory } from "./cassette-session.ts";
 
@@ -37,6 +38,24 @@ function refusal(reason: string): EndoCheckpointQualificationV0 {
 	return { status: "refused", reason };
 }
 
+/** A readable prefix is not a complete evidence log. Inspect it without recovering or changing the store. */
+function completeEvidenceStore(root: string): boolean {
+	const store = createEndoDurableEventStoreV0(root, { readOnly: true });
+	try {
+		const recovery = store.recovery();
+		return (
+			!recovery.truncated &&
+			!recovery.sealed &&
+			!recovery.recovered &&
+			recovery.corruptAt === null &&
+			recovery.tail === null &&
+			recovery.discarded === null
+		);
+	} finally {
+		store.close();
+	}
+}
+
 /** Rebuild the candidate from verified stores. The optional report is checked, never accepted as proof by itself. */
 export function qualifyInitialCheckpointV0(
 	source: string,
@@ -47,6 +66,8 @@ export function qualifyInitialCheckpointV0(
 	expectedSourceTrajectory?: string,
 ): EndoCheckpointQualificationV0 {
 	try {
+		const evidenceRoots = [endoCaptureRootV0(source), source, endoCaptureRootV0(replay), replay];
+		if (!evidenceRoots.every(completeEvidenceStore)) return refusal("evidence-log-damaged");
 		const cassette = loadEndoCassetteV0(source, key);
 		const currentGeneration = captureGenerationV0(cassette.events, key);
 		if (canonicalEndoJsonV0(sourceGeneration) !== canonicalEndoJsonV0(currentGeneration))
@@ -190,12 +211,16 @@ export function qualifyInitialCheckpointV0(
 					cassetteExchange?: number;
 					requestDigest?: EndoKeyedDigestV0;
 					recordedOutcome?: string;
+					outcome?: string;
+					chunksDelivered?: number;
 				};
 				const exchange = cassette.exchanges[index]!;
 				return (
 					fact.cassetteExchange !== index + 1 ||
 					canonicalEndoJsonV0(fact.requestDigest) !== canonicalEndoJsonV0(exchange.requestDigest) ||
-					fact.recordedOutcome !== exchange.response!.outcome
+					fact.recordedOutcome !== exchange.response!.outcome ||
+					fact.outcome !== exchange.response!.outcome ||
+					fact.chunksDelivered !== exchange.response!.chunks.length
 				);
 			})
 		)
@@ -206,6 +231,24 @@ export function qualifyInitialCheckpointV0(
 			.map((event) => event.payload as Record<string, unknown>);
 		const replaySteps = replayDriver.map((step) => step.op);
 		if (canonicalEndoJsonV0(recordedSteps) !== canonicalEndoJsonV0(replaySteps)) return refusal("driver-steps");
+		for (const [index, sourceStep] of script.steps.entries()) {
+			if (sourceStep.op !== "stop" && sourceStep.op !== "kill" && sourceStep.op !== "intervene") continue;
+			const replayStep = replayDriver[index]!;
+			const at = sourceStep.at as { exchange?: unknown; chunks?: unknown } | null;
+			if (
+				!at ||
+				!Number.isSafeInteger(at.exchange) ||
+				!Number.isSafeInteger(at.chunks) ||
+				(at.exchange as number) < 1 ||
+				(at.exchange as number) > served.length ||
+				(at.chunks as number) < 1 ||
+				canonicalEndoJsonV0(replayStep.at) !== canonicalEndoJsonV0(at) ||
+				((served[(at.exchange as number) - 1]!.payload as { chunksDelivered?: number }).chunksDelivered ?? -1) <
+					(at.chunks as number) ||
+				cassette.exchanges[(at.exchange as number) - 1]!.response!.chunks.length < (at.chunks as number)
+			)
+				return refusal("driver-point-unverified");
+		}
 		if (
 			[...script.steps, ...replayDriver].some((step) => step.op === "settled" && step.observed !== true) ||
 			replayDriver.some(
@@ -290,6 +333,7 @@ export function qualifyInitialCheckpointV0(
 			limitations: "no-live-state-mid-run-or-external-environment-restoration",
 		};
 		if (!readEndoCheckpointCandidateV0(candidate).ok) return refusal("candidate-invalid");
+		if (!evidenceRoots.every(completeEvidenceStore)) return refusal("evidence-log-damaged");
 		return { status: "qualified", candidate };
 	} catch {
 		return refusal("evidence-unverifiable");

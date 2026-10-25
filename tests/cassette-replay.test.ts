@@ -8,6 +8,7 @@
 
 import { createHash } from "node:crypto";
 import {
+	appendFileSync,
 	cpSync,
 	existsSync,
 	mkdirSync,
@@ -46,6 +47,7 @@ import {
 	loadEndoFixtureDigestKeyV0,
 } from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { endoFrameBytesV0 } from "../storage/log.ts";
 import { parseEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { type FakePiInstall, installFakePi } from "./fixtures/fake-pi/install.ts";
@@ -288,6 +290,66 @@ describe("cassette sessions: record through the proxy, replay against the casset
 		expect(readVerifiedCheckpointCandidateV0(source, out, key)).toMatchObject({
 			status: "refused",
 			reason: "candidate-schema",
+		});
+	});
+
+	it("refuses damaged source or replay logs even when their valid prefixes still qualify", async () => {
+		const key = endoDigestKeyFromEnvironmentV0();
+		const { out } = await replay("completes");
+		for (const store of ["source-capture", "source-session", "replay-capture", "replay-session"] as const) {
+			for (const damage of ["torn", "sealed"] as const) {
+				const sourceCopy = join(base, `log-${store}-${damage}-source`);
+				const replayCopy = join(base, `log-${store}-${damage}-replay`);
+				cpSync(recorded.completes!, sourceCopy, { recursive: true });
+				cpSync(out, replayCopy, { recursive: true });
+				expect(readVerifiedCheckpointCandidateV0(sourceCopy, replayCopy, key).status).toBe("qualified");
+				const root = store.startsWith("source") ? sourceCopy : replayCopy;
+				const eventRoot = store.endsWith("capture") ? endoCaptureRootV0(root) : root;
+				const logFile = join(eventRoot, "events", "events.log");
+				if (damage === "torn") appendFileSync(logFile, Buffer.from([0x01]));
+				else {
+					const frame = endoFrameBytesV0(Buffer.from("{}"));
+					frame[frame.length - 1] ^= 1;
+					appendFileSync(logFile, frame);
+				}
+				const generation = captureGenerationV0(readEndoCaptureEventsV0(sourceCopy), key);
+				expect(qualifyInitialCheckpointV0(sourceCopy, replayCopy, key, generation)).toMatchObject({
+					status: "refused",
+					reason: "evidence-log-damaged",
+				});
+				expect(readVerifiedCheckpointCandidateV0(sourceCopy, replayCopy, key).status).toBe("refused");
+			}
+		}
+	});
+
+	it("refuses a claimed STOP point beyond the replayed response even with matching driver records", async () => {
+		const key = endoDigestKeyFromEnvironmentV0();
+		const { out } = await replay("stop");
+		const sourceCopy = join(base, "unreached-stop-source");
+		const replayCopy = join(base, "unreached-stop-replay");
+		cpSync(recorded.stop!, sourceCopy, { recursive: true });
+		cpSync(out, replayCopy, { recursive: true });
+		for (const root of [sourceCopy, replayCopy]) {
+			const events = structuredClone(readEndoCaptureEventsV0(root));
+			const step = events.find(
+				(event) =>
+					event.producer === "capture:driver" &&
+					event.kind === "capture.driver-step" &&
+					(event.payload as { op?: string }).op === "stop",
+			)!;
+			(step.payload as { at: { chunks: number } }).at.chunks = 1000;
+			rmSync(join(endoCaptureRootV0(root), "events", "events.log"));
+			const store = createEndoDurableEventStoreV0(endoCaptureRootV0(root));
+			try {
+				for (const event of events) store.ingest(event);
+			} finally {
+				store.close();
+			}
+		}
+		const generation = captureGenerationV0(readEndoCaptureEventsV0(sourceCopy), key);
+		expect(qualifyInitialCheckpointV0(sourceCopy, replayCopy, key, generation)).toMatchObject({
+			status: "refused",
+			reason: "driver-point-unverified",
 		});
 	});
 

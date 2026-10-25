@@ -144,7 +144,7 @@ endo trajectory show <session-id>    # the id attach prints
 endo studio                          # serves the published read-only browser page
 ~~~
 
-**Try the newer source-tree capabilities (not included in the published alpha):**
+**Try the newer source-tree capabilities (absent from the `0.1.0-alpha.2` package):**
 
 ~~~sh
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia
@@ -323,7 +323,7 @@ promising a particular backend or packaging format.
 [DSH study and native importer (#70–71)](https://github.com/noctem-o/endophasia/pull/71),
 [DSH CLI entry point (#72)](https://github.com/noctem-o/endophasia/pull/72), and
 [Compare HTTP and candidate-discovery backend (#73–74)](https://github.com/noctem-o/endophasia/pull/74)
-are **merged into `main`**, not published in `0.1.0-alpha.2`. Next: make the existing comparison contracts
+are **merged into `main`** and absent from the `0.1.0-alpha.2` package. Next: make the existing comparison contracts
 usable in a React Compare workspace, without changing their evidence or privacy semantics; then prioritise
 forkable checkpoints for reproducible continuation and branching. A small, independently evaluated Rust/GPUI
 feasibility spike may run alongside this work but should not displace checkpoints or introduce a second

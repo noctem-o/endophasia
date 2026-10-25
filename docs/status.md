@@ -69,8 +69,10 @@ implementation detail and its limitations. The real recordings and studies, with
   - The proxy and the cassette server depend only on the OpenAI-compatible boundary, not on Pi.
   - A qualifying Pi replay writes a separate [`endo.checkpoint-candidate.v0` receipt](checkpoint-candidate.md) under
     the replay store's `replay-artifacts/`. It binds a verified v1 initial scratch archive to actual cassette counters and
-    four EXACT comparison layers. It is not a mid-run restore, live continuation or fork. This source-tree slice is
-    absent from the published npm alpha versions.
+    four EXACT comparison layers. The source-tree [programmatic materialization API](checkpoint-materialization.md)
+    independently revalidates that receipt and restores the recorded initial scratch tree into a new private directory,
+    accepting it only when rearchived bytes match. It does not launch Pi or provide mid-run restore, live continuation or
+    forking. Both checkpoint slices are absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
     conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi

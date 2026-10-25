@@ -9,3 +9,5 @@ The archive contains scratch file bytes, entry kinds, executable flags and modif
 General mid-run checkpoints remain unavailable: there is no capture of a paused Pi process, in-flight tool state, provider state, external effects or an executable continuation point. Cassette-then-live would need an explicit, validated switch boundary and a live model authority with configuration and request identity. Branching would additionally need isolated state per child, parent checkpoint identity, the changed variable, and lineage tying each continuation to its own trajectory and environment. DSH's import checkpoint marks an evidence boundary; it is not a restorable execution checkpoint.
 
 This is a source-tree implementation. Published npm `0.1.0-alpha.1` and `0.1.0-alpha.2` do not contain it.
+
+PR B adds a separate, programmatic [verified isolated materialization](checkpoint-materialization.md) that consumes this receipt and checks a fresh scratch tree against the keyed v1 archive. It does not change this candidate schema or its qualification rules.

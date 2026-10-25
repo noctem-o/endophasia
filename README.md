@@ -200,7 +200,7 @@ The table distinguishes features on **source-tree `main`** from the older publis
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| Verified initial Pi scratch-state candidate | Source-tree `endo replay` artifact (`endo.checkpoint-candidate.v0`) | Evidence-bound initial boundary only; absent from published npm alpha versions. See [limits](docs/checkpoint-candidate.md) |
+| Verified initial Pi scratch-state candidate and isolated materialization | Source-tree `endo replay` artifact (`endo.checkpoint-candidate.v0`) and programmatic API | Evidence-bound initial boundary; a fresh scratch tree is checked by canonical rearchive. No continuation or fork. Absent from published npm alpha versions. See [limits](docs/checkpoint-materialization.md) |
 | Browser workspaces beyond Observe and Compare; native Endophasia binary; `endo web` alias; model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:

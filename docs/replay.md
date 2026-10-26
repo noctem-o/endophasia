@@ -282,3 +282,13 @@ given. `result.details` is tool-specific and not sent to the model (`docs/messag
 The trajectory's tool results carry `resultDigest` (its own `toolResults` layer since `pi-trajectory.3`). Result digests
 compare by the same domain rule as argument digests (`trajectory-comparison.3`). A recording made before mapping.4 has none, which makes its tool
 entries UNAVAILABLE, never EXACT.
+
+## Opt-in governed single-turn source recording
+
+The programmatic `recordPiCassetteSessionV0({ governedToolFree: true, ... })` mode supports exactly one ordinary prompt, minimal models.json, and optional `settings: { thinkingLevel: "off" }`. Extensions, environment overrides, model-entry overrides and intervention/STOP/kill scripts refuse before recording. Startup must report the selected provider/model, zero messages and thinking off. This mode uses the existing Pi argument builder with `tools: "none"`, `governedToolFree: true` and offline startup; all ordinary cassette studies keep their existing launch behavior.
+
+Its steps use `pi-cassette-driver.3`. The source open step carries a purpose-separated keyed commitment to the observed `harness.attached` launch: exact arguments, requested/reported session ID, runtime identity/version, and user/project configuration digests. Only the store-local session-directory value is excluded from equality between source and replay; each side must independently have its exact expected directory. The capture generation already binds this open step. No checkpoint or receipt schema changes.
+
+Replay has no governed toggle. It validates the source declaration against its actual attachment evidence before restoring scratch, derives the profile from that evidence, and checks the replay attachment against it before prompting. Missing, mixed, downgraded or mismatched evidence refuses; legacy recordings remain ordinary and cannot be promoted to governed execution. Governed replay refuses environment overrides and scratch-alteration controls. Checkpoint qualification and its durable reader recheck both launches, including runtime/configuration equality, in addition to all existing capture and trajectory requirements. Runtime dependency files beyond the existing Pi fingerprint, external-world equality, process memory and KV cache remain outside this evidence.
+
+This is source-tree support. Real inference still requires the operator's separate recording approval and a later fresh approval for the exact initial-child execution plan. A production change must be merged before using it for real acceptance.

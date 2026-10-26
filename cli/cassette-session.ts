@@ -54,6 +54,13 @@ import {
 	pinEndoWorkspaceTimesV0,
 	restoreEndoWorkspaceV0,
 } from "../storage/workspace-snapshot.ts";
+import {
+	assertGovernedCassetteArchiveV0,
+	governedCassetteLaunchEvidenceV0,
+	governedCassetteSourceV0,
+	PI_CASSETTE_GOVERNED_DRIVER_V0,
+	verifyGovernedCassetteReplayV0,
+} from "./cassette-launch-policy.ts";
 import { captureGenerationV0, writeQualifiedCheckpointCandidateV0 } from "./checkpoint-candidate.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 
@@ -63,6 +70,7 @@ export const PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0 = "pi-cassette-driver.2"
 const PI_CASSETTE_DRIVER_VERSIONS_V0: readonly string[] = [
 	PI_CASSETTE_DRIVER_VERSION_V0,
 	PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0,
+	PI_CASSETTE_GOVERNED_DRIVER_V0,
 ];
 
 /** The producer the driver's steps are recorded under, in the session's capture log. */
@@ -219,6 +227,7 @@ export interface PiCassetteAttachmentConfigV0 {
 	readonly model: string;
 	readonly keySource: PiCassetteKeySourceV0;
 	readonly requestTimeoutMs: number;
+	readonly governedToolFree?: boolean;
 	/** Variables added to Pi's environment (a pinned environment's, `{root}` already replaced). */
 	readonly variables?: Readonly<Record<string, string>>;
 }
@@ -232,6 +241,7 @@ export function piCassetteAttachmentV0(config: PiCassetteAttachmentConfigV0): Pi
 		provider: config.provider,
 		model: config.model,
 		requestTimeoutMs: config.requestTimeoutMs,
+		...(config.governedToolFree === true ? { tools: "none" as const, governedToolFree: true } : {}),
 		digestKey: piCassetteKeyV0(config.keySource),
 		digestDomain: config.keySource.kind === "fixture" ? "fixture" : "private",
 	});
@@ -341,6 +351,8 @@ function copyEvidence(from: string, to: string): void {
 
 export interface PiCassetteRecordOptionsV0 {
 	readonly scenario: PiCassetteScenarioV0;
+	/** Explicit opt-in, single settled prompt; replay derives this profile only from bound source evidence. */
+	readonly governedToolFree?: boolean;
 	readonly pi: string;
 	readonly provider: string;
 	readonly model: string;
@@ -371,6 +383,34 @@ export interface PiCassetteRecordReportV0 {
 
 /** Record one scenario as a cassette session. */
 export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptionsV0): Promise<PiCassetteRecordReportV0> {
+	if (
+		options.governedToolFree === true &&
+		(options.scenario.steps.length !== 1 ||
+			options.scenario.steps[0]?.op !== "prompt" ||
+			options.extensions !== undefined ||
+			options.environment !== undefined ||
+			options.modelEntry !== undefined ||
+			(options.settings !== undefined && JSON.stringify(options.settings) !== '{"thinkingLevel":"off"}'))
+	)
+		throw new TypeError("governed cassette requires one prompt and minimal thinking-off configuration");
+	if (
+		options.governedToolFree === true &&
+		Object.keys(options.scenario.workspace).some(
+			(path) =>
+				path
+					.split("/")
+					.some(
+						(part) =>
+							part === "" ||
+							part === "." ||
+							part === ".." ||
+							/^(?:AGENTS\.md|\.pi|\.codex|\.agents|\.env|\.mcp\.json|package\.json)$/.test(part),
+					) ||
+				path.includes("\\") ||
+				path.includes("\0"),
+		)
+	)
+		throw new TypeError("unsupported governed workspace path");
 	const key = piCassetteKeyV0(options.keySource);
 	mkdirSync(options.store, { recursive: true });
 	if (options.evidenceFrom !== null) copyEvidence(options.evidenceFrom, options.store);
@@ -384,12 +424,25 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		...(options.extensions === undefined ? {} : { extensions: options.extensions }),
 		...(options.environment === undefined ? {} : { environment: options.environment }),
 	});
+	let governedArchive: ReturnType<typeof archiveEndoWorkspaceV0> | undefined;
+	if (options.governedToolFree === true) {
+		try {
+			governedArchive = archiveEndoWorkspaceV0(scratch.root);
+			assertGovernedCassetteArchiveV0(governedArchive.bytes, options.provider, options.model, options.proxy.origin);
+		} catch (error) {
+			rmSync(scratch.root, { recursive: true, force: true });
+			throw error;
+		}
+	}
 	const log = new EndoCaptureLogV0(options.store, key, "record", { async: true });
 	const notes: string[] = [];
 	let step = 0;
-	const driverVersion = options.scenario.steps.some((entry) => entry.op === "prompt-intervene")
-		? PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0
-		: PI_CASSETTE_DRIVER_VERSION_V0;
+	const driverVersion =
+		options.governedToolFree === true
+			? PI_CASSETTE_GOVERNED_DRIVER_V0
+			: options.scenario.steps.some((entry) => entry.op === "prompt-intervene")
+				? PI_CASSETTE_DRIVER_VERSION_INTERVENTION_V0
+				: PI_CASSETTE_DRIVER_VERSION_V0;
 	const driver = (op: string, payload: Record<string, JsonValueV0> = {}) => {
 		step += 1;
 		log.record(
@@ -418,7 +471,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 			},
 			PI_CASSETTE_DRIVER_PRODUCER_V0,
 		);
-	const archive = archiveEndoWorkspaceV0(scratch.root);
+	const archive = governedArchive ?? archiveEndoWorkspaceV0(scratch.root);
 	log.record(
 		"capture.workspace-snapshot",
 		{
@@ -439,6 +492,7 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		keySource: options.keySource,
 		requestTimeoutMs: Math.max(60_000, options.timeoutMs),
 		variables,
+		...(options.governedToolFree === true ? { governedToolFree: true } : {}),
 	};
 	let session: PiSessionAttachmentV0 | null = null;
 	let piSessionId: string | null = null;
@@ -447,7 +501,35 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		session = await attachment.openSession();
 		desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(options.store, key));
 		piSessionId = attachment.sessionConfig().sessionId;
-		driver(op, { attachment: attachment.attachment, provider: options.provider, model: options.model, piSessionId });
+		if (options.governedToolFree === true) {
+			const state = await session.rpcState();
+			if (
+				state.model?.provider !== options.provider ||
+				state.model?.id !== options.model ||
+				state.thinkingLevel !== "off" ||
+				state.messageCount !== 0
+			)
+				throw new TypeError("governed cassette startup mismatch");
+		}
+		const launchEvidence =
+			options.governedToolFree === true
+				? key.digest({
+						purpose: "endo.cassette-launch.v0",
+						evidence: governedCassetteLaunchEvidenceV0(
+							options.store,
+							options.provider,
+							options.model,
+							piSessionId,
+						),
+					})
+				: undefined;
+		driver(op, {
+			attachment: attachment.attachment,
+			provider: options.provider,
+			model: options.model,
+			piSessionId,
+			...(launchEvidence === undefined ? {} : { launchEvidence: { ...launchEvidence } }),
+		});
 	};
 	const prompted = (text: string, mode: string) =>
 		driver("prompt", { mode, text: { ...log.keep(Buffer.from(text, "utf8")) } as unknown as JsonValueV0 });
@@ -457,8 +539,9 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 			if (entry.op === "prompt") {
 				if (session === null) await open("open");
 				prompted(entry.text, "settle");
+				const settling = options.governedToolFree === true ? session!.waitForSettled(options.timeoutMs) : null;
 				await session!.prompt(entry.text);
-				const settled = await session!.waitForSettled(options.timeoutMs);
+				const settled = await (settling ?? session!.waitForSettled(options.timeoutMs));
 				driver("settled", { observed: settled });
 				if (!settled) notes.push(`agent_settled was not observed after step ${step}`);
 			} else if (entry.op === "prompt-intervene") {
@@ -542,6 +625,8 @@ export async function recordPiCassetteSessionV0(options: PiCassetteRecordOptions
 		log.close();
 		rmSync(scratch.root, { recursive: true, force: true });
 	}
+	if (options.governedToolFree === true)
+		governedCassetteSourceV0(options.store, readEndoCaptureEventsV0(options.store), key);
 	return { piSessionId, notes };
 }
 
@@ -672,6 +757,9 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 	const cassette = loadEndoCassetteV0(options.store, key);
 	const sourceGeneration = captureGenerationV0(cassette.events, key);
 	const script = piCassetteScriptV0(cassette.events);
+	const governedPolicy = governedCassetteSourceV0(options.store, cassette.events, key);
+	if (governedPolicy !== null && options.alterScratch !== undefined)
+		throw new TypeError("governed cassette scratch alterations are unsupported");
 	const piSessionId = recordedSessionId(script);
 	const sourceTrajectoryDigest = storeTrajectory(options.store, `endo.session.pi.${piSessionId}`).digest;
 	if (cassette.listen === null) throw new TypeError("the cassette does not record where the proxy listened");
@@ -716,6 +804,7 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			keySource: options.keySource,
 			requestTimeoutMs: Math.max(60_000, options.timeoutMs),
 			variables: script.environment?.variables ?? {},
+			...(governedPolicy === null ? {} : { governedToolFree: true }),
 		};
 		const blobs = createEndoBlobStoreV0(endoCaptureRootV0(options.store), key, { readOnly: true });
 		let replayStep = 0;
@@ -755,6 +844,17 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 			const op = String(entry.op);
 			if (op === "open" || op === "reopen") {
 				session = await piCassetteAttachmentV0(config).openSession();
+				if (governedPolicy !== null) {
+					verifyGovernedCassetteReplayV0(options.store, options.out, cassette.events, key);
+					const state = await session.rpcState();
+					if (
+						state.model?.provider !== governedPolicy.provider ||
+						state.model?.id !== governedPolicy.model ||
+						state.thinkingLevel !== "off" ||
+						state.messageCount !== 0
+					)
+						throw new TypeError("governed cassette replay startup mismatch");
+				}
 				desk = new PiInterventionDeskV0(session, key);
 				driver(op, { replayOf: entry.step as number });
 			} else if (op === "prompt") {
@@ -819,9 +919,13 @@ export async function replayPiCassetteSessionV0(options: PiCassetteReplayOptions
 					driver("settled", { replayOf: entry.step as number, observed: settled });
 					if (!settled) notes.push(`agent_settled was not observed after recorded step ${entry.step}`);
 				}
+				const settling =
+					governedPolicy !== null && pendingPrompt.mode === "settle"
+						? session!.waitForSettled(options.timeoutMs)
+						: null;
 				if (pendingPrompt.mode !== "kill" && pendingPrompt.mode !== "intervene") await session!.prompt(text);
 				if (pendingPrompt.mode === "settle") {
-					const settled = await session!.waitForSettled(options.timeoutMs);
+					const settled = await (settling ?? session!.waitForSettled(options.timeoutMs));
 					driver("settled", { replayOf: entry.step as number, observed: settled });
 					if (!settled) notes.push(`agent_settled was not observed after recorded step ${entry.step}`);
 				}

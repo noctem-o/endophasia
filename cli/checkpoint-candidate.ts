@@ -24,6 +24,7 @@ import { compareEndoTrajectoriesV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { readEndoWorkspaceArchiveV0 } from "../storage/workspace-snapshot.ts";
+import { verifyGovernedCassetteReplayV0 } from "./cassette-launch-policy.ts";
 import { type PiCassetteReplayReportV0, piCassetteScriptV0, storeTrajectory } from "./cassette-session.ts";
 
 export const ENDO_CHECKPOINT_CANDIDATE_FILE_V0 = "replay-artifacts/checkpoint-candidate.json";
@@ -79,6 +80,7 @@ export function qualifyInitialCheckpointV0(
 			return refusal("recording-incomplete");
 		if (cassette.events.some((event) => event.kind === "capture.unparsed")) return refusal("unparsed-source-stream");
 		const script = piCassetteScriptV0(cassette.events);
+		verifyGovernedCassetteReplayV0(source, replay, cassette.events, key);
 		const snapshots = cassette.events.filter(
 			(event) => event.producer === "capture:driver" && event.kind === "capture.workspace-snapshot",
 		);

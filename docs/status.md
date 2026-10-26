@@ -75,7 +75,11 @@ implementation detail and its limitations. The real recordings and studies, with
     forking. The source-tree [sibling preparation API and strict lineage reader](initial-branch-set.md) add two independently
     materialized children, one exact verified parent and private planned condition declarations (`endo.initial-branch-set.v0`).
     A later read distinguishes pristine, modified, missing and substituted children; no execution authority is granted.
-    These checkpoint slices are absent from the published npm alpha versions.
+    The source-tree [single-child execution API](initial-child-execution.md) adds a fresh exact-scope local approval,
+    a separate runtime derivation, one tool-free Pi turn and a strict `endo.initial-child-execution.v0` evidence reader.
+    Its fake-runtime test verifies one actual captured model exchange and unchanged prepared siblings. It does not
+    restore a historical Pi process or establish operating-system confinement. These checkpoint/execution slices are
+    absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
     conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi

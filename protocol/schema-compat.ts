@@ -314,6 +314,16 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		],
 	},
 	{
+		family: "endo.initial-child-execution",
+		schemaVersion: "endo.initial-child-execution.v0",
+		status: "current",
+		boundary: "cli/initial-child-execution.ts (private attempt area receipt.json)",
+		fixtures: [
+			{ file: "minimal.json", sha256: "f0376a171eb01086b9147d6c018baecb42c1237636ad44e33ac2dc74f83c6df5" },
+			{ file: "preflight-refused.json", sha256: "d4027717b69bce35e2b9c655c884af995b9ce6bb7f00c7ab1c002eac3e7d1ed1" },
+		],
+	},
+	{
 		family: "endo.lease",
 		schemaVersion: "endo.lease.v0",
 		status: "current",

@@ -13,6 +13,11 @@ A recording has three parts:
 A replay restores the snapshot, serves the captured responses from a cassette, drives a fresh Pi through the same
 steps, records into a new store and compares that store with the original.
 
+The source-tree [initial-child execution API](initial-child-execution.md) instead derives a new runtime from a
+verified pre-execution child, changes only its supported runtime configuration, and sends one fresh request to an
+explicitly approved upstream endpoint. Its observed request and outcome are new evidence; it does not replay the
+old cassette or resume the old Pi process.
+
 ```sh
 endo proxy record --upstream http://127.0.0.1:8080 --store <root> [--port n] [--fixture]
 endo proxy replay --store <root> --timing <as-recorded|immediate> --out <root> [--port n] [--fixture]

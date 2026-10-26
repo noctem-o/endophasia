@@ -103,8 +103,10 @@ evidence-qualified, with unavailable signals and mapping losses explicit; native
      model executes in this operation, and it does not make the new path executable as the original session.
    - PR C adds [verified sibling preparation and lineage](initial-branch-set.md): two isolated initial scratch trees
      share one complete verified parent identity, carry private planned conditions and have independently checked
-     current pristine states. Preparation applies no manipulation and grants no execution authority. Controlled
-     execution still needs current operator authority, an effect policy, path handling and child trajectory evidence.
+     current pristine states. Preparation applies no manipulation and grants no execution authority.
+   - PR D adds [governed initial-child execution](initial-child-execution.md): one fresh tool-free Pi turn from a
+     separately derived runtime, under exact local approval, with captured model request and trajectory evidence.
+     It is neither process continuation nor a general effect sandbox; real-server acceptance remains optional.
    - Later slices need explicit continuation identity, authority, path and external-effect isolation, restore/fork
      lineage and a validated cassette-then-live boundary.
    - Once this exists, use it to support controlled continuation experiments rather than adding another large
@@ -249,7 +251,8 @@ They describe **capability dependencies**, not the immediate shipping order abov
       #25); the others do not yet.
     - **Forkable trajectory state.** PR A qualifies the recorded pre-execution Pi scratch boundary after an actual
       cassette replay; PR B independently materializes that tree ([contract and limits](checkpoint-materialization.md));
-      PR C prepares two siblings with private verified lineage ([contract](initial-branch-set.md)). A general mid-trajectory prefix cannot yet be
+      PR C prepares two siblings with private verified lineage ([contract](initial-branch-set.md)); PR D executes one
+      fresh tool-free child ([contract](initial-child-execution.md)). A general mid-trajectory prefix cannot yet be
       reconstructed. Future fork records must name a verified parent checkpoint, the changed variable, an isolated
       environment and the child trajectory. Cassette-then-live switching, search, counterfactual evaluation and
       training remain future work.

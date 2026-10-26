@@ -4,6 +4,10 @@
 recorded through the capture proxy, so every trial is also a replayable cassette ([replay.md](replay.md)).
 `endo experiment report` aggregates the trials with the trajectory comparison ([trajectory.md](trajectory.md)).
 
+The source-tree [initial-child execution API](initial-child-execution.md) is a separate narrow path: one currently
+pristine prepared child, one exact local approval, one tool-free fresh Pi turn and its own evidence receipt. It does
+not run an experiment task set or apply arbitrary experiment conditions.
+
 ```sh
 endo experiment run <spec.json> --out <dir> [--max-trials n] [--fixture-experiment]
 endo experiment report <dir>

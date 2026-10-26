@@ -82,10 +82,12 @@ export interface PiAttachmentOptionsV0 {
 	readonly provider?: string;
 	readonly model?: string;
 	readonly tools?: "default" | "none" | readonly string[];
+	readonly governedToolFree?: boolean;
 	/** Where the attachment's persistent Pi session is stored. Default: `<root>/pi-sessions/<attachment>`. */
 	readonly sessionDir?: string;
 	readonly now?: () => Date;
 	readonly requestTimeoutMs?: number;
+	readonly maxRpcOutputBytes?: number;
 	/**
 	 * The comparison-domain key tool arguments are digested under (runtime/contracts/keyed-digest.ts). Default: the key
 	 * this process's environment selects (storage/digest-key.ts), created on first use; never Pi's environment.
@@ -352,12 +354,35 @@ export class PiAttachmentV0 {
 	}
 
 	/** Open the operator's persistent Pi session and record it. identify() runs first when it has not. */
-	async openSession(): Promise<PiSessionAttachmentV0> {
+	async openSession(signal?: AbortSignal): Promise<PiSessionAttachmentV0> {
+		if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		if (!this.#identified) await this.identify();
+		if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		const fingerprint = this.#fingerprint;
 		if (fingerprint === null) throw new TypeError("the Pi runtime could not be identified; no session is opened");
 		const session = new PiSessionAttachmentV0(this, fingerprint, this.state());
-		await session.connect();
+		let stopping: Promise<void> | null = null;
+		const abort = () => {
+			stopping ??= session.terminate();
+			void stopping.catch(() => {}); // The startup owner awaits and propagates cleanup failure below.
+		};
+		signal?.addEventListener("abort", abort, { once: true });
+		try {
+			if (signal?.aborted) abort();
+			await session.connect();
+			if (signal?.aborted) throw new Error("Pi session startup cancelled");
+		} catch (error) {
+			try {
+				stopping ??= session.terminate();
+				await stopping;
+			} catch (cleanupError) {
+				throw new AggregateError([error, cleanupError], "Pi startup failed and owned session cleanup failed");
+			}
+			if (signal?.aborted) throw new Error("Pi session startup cancelled");
+			throw error;
+		} finally {
+			signal?.removeEventListener("abort", abort);
+		}
 		return session;
 	}
 
@@ -512,11 +537,15 @@ export class PiSessionAttachmentV0 {
 	readonly #leaf = new Map<string, string | null>();
 	#sequence = 0;
 	#client: PiRpcClientV0 | null = null;
+	// Retain shutdown ownership after the leader exits: its stdout and owned descendants may still be draining.
+	#ownedClient: PiRpcClientV0 | null = null;
 	#context: PiMappingContextV0 | null = null;
 	#piSessionId: string | null = null;
 	#work: Promise<void> = Promise.resolve();
 	#closed = false;
+	#closing: Promise<void> | null = null;
 	#storeClosed = false;
+	#outputLimitExceeded = false;
 	#lastExit: RpcExitV0 | null = null;
 	readonly #exitWaiters = new Set<() => void>();
 
@@ -584,6 +613,17 @@ export class PiSessionAttachmentV0 {
 
 	get piSessionId(): string | null {
 		return this.#piSessionId;
+	}
+
+	/** Sticky even after process shutdown: discarded stdout prevents a complete observation. */
+	get outputLimitExceeded(): boolean {
+		return this.#outputLimitExceeded;
+	}
+
+	/** Live state used for a governed startup check before dispatch. */
+	async rpcState() {
+		if (this.#client === null) throw new TypeError("Pi is not running");
+		return this.#client.getState();
 	}
 
 	/** The fingerprint of the runtime the current (or last) process was launched from. */
@@ -683,6 +723,7 @@ export class PiSessionAttachmentV0 {
 		// Events and diagnostics are accepted only from the process this attachment currently owns: a superseded
 		// process may still flush buffered records after a reconnect, and those belong to no current instance.
 		let owned: PiRpcClientV0 | null = null;
+		const instance = randomBytes(8).toString("hex");
 		const client = new PiRpcClientV0({
 			executable: this.owner.launchPath(this.#fingerprint),
 			cwd: options.cwd ?? process.cwd(),
@@ -691,13 +732,17 @@ export class PiSessionAttachmentV0 {
 			...(options.provider === undefined ? {} : { provider: options.provider }),
 			...(options.model === undefined ? {} : { model: options.model }),
 			...(options.tools === undefined ? {} : { tools: options.tools }),
+			...(options.governedToolFree === undefined ? {} : { governedToolFree: options.governedToolFree }),
+			...(options.governedToolFree === true ? { offline: true } : {}),
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
+			...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
 			onDiagnostic: (diagnostic) => {
-				if (owned !== null && this.#client === owned) this.#diagnostic(diagnostic);
+				// Exit can be observed before stdout drains. Keep diagnostics from that instance until it is
+				// superseded or its store closes, including a limit breach in the remaining stdout bytes.
+				if (owned !== null && this.#context?.instance === instance) this.#diagnostic(diagnostic);
 			},
 		});
 		owned = client;
-		const instance = randomBytes(8).toString("hex");
 		let live = 0;
 		const self = this;
 		const context: PiMappingContextV0 = {
@@ -719,6 +764,7 @@ export class PiSessionAttachmentV0 {
 			digestKey: this.owner.digestKey(),
 		};
 		this.#client = client;
+		this.#ownedClient = client;
 		this.#context = context;
 		client.subscribe((event) => {
 			if (this.#client === client) this.#onEvent(event);
@@ -829,6 +875,11 @@ export class PiSessionAttachmentV0 {
 	}
 
 	#diagnostic(diagnostic: RpcDiagnosticV0): void {
+		if (diagnostic.kind === "output-limit-exceeded") {
+			this.#outputLimitExceeded = true;
+			this.#attachmentEvent("harness.output-limit-exceeded", { bytes: diagnostic.bytes });
+			return;
+		}
 		if (diagnostic.kind !== "protocol-fault") return;
 		this.counters.protocolFaults += 1;
 		this.#attachmentEvent("harness.protocol-fault", { fault: diagnostic.fault });
@@ -1003,41 +1054,67 @@ export class PiSessionAttachmentV0 {
 	}
 
 	/** Wait until Pi reports agent_settled (or the timeout), then catch up. */
-	async waitForSettled(timeoutMs: number): Promise<boolean> {
+	async waitForSettled(timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
 		const client = this.#client;
 		if (client === null) return false;
 		const settled = await new Promise<boolean>((resolve) => {
-			const timer = setTimeout(() => {
-				stop();
-				resolve(false);
-			}, timeoutMs);
-			const stop = client.subscribe((event) => {
-				if (event.type !== "agent_settled") return;
+			let finished = false;
+			const finish = (value: boolean) => {
+				if (finished) return;
+				finished = true;
 				clearTimeout(timer);
 				stop();
-				resolve(true);
+				signal?.removeEventListener("abort", aborted);
+				resolve(value);
+			};
+			const aborted = () => finish(false);
+			const timer = setTimeout(() => finish(false), timeoutMs);
+			const stop = client.subscribe((event) => {
+				if (event.type === "agent_settled") finish(true);
 			});
+			signal?.addEventListener("abort", aborted, { once: true });
+			if (signal?.aborted) aborted();
 		});
-		await this.catchUp();
+		if (settled) await this.catchUp();
 		return settled;
 	}
 
 	/** Catch up once more, end Pi's input (orderly shutdown) and close the store. */
-	async close(): Promise<void> {
-		if (this.#closed) return;
-		try {
-			await this.catchUp();
-		} catch {
-			// A failing final read is recorded by the exit event; closing proceeds.
+	close(): Promise<void> {
+		this.#closing ??= this.#close(false);
+		return this.#closing;
+	}
+
+	/** Stop the owned process now, including during an ordinary close blocked on a final RPC read. */
+	terminate(): Promise<void> {
+		this.#closed = true;
+		const stopped = this.#ownedClient?.terminate() ?? Promise.resolve();
+		this.#closing ??= this.#close(true);
+		return Promise.all([stopped, this.#closing]).then(() => {});
+	}
+
+	async #close(skipCatchUp: boolean): Promise<void> {
+		if (!skipCatchUp) {
+			try {
+				await this.catchUp();
+			} catch {
+				// A failing final read is recorded by the exit event; closing proceeds.
+			}
 		}
 		this.#closed = true;
-		const client = this.#client;
-		if (client !== null) {
-			await client.close();
-			await this.#work;
+		const client = this.#ownedClient;
+		try {
+			if (client !== null) {
+				await client.close();
+				await this.#work;
+			}
+		} finally {
+			this.#storeClosed = true;
+			try {
+				this.store.close();
+			} finally {
+				this.#releaseLock();
+			}
 		}
-		this.#storeClosed = true;
-		this.store.close();
-		this.#releaseLock();
 	}
 }

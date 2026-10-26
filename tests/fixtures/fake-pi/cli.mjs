@@ -28,6 +28,7 @@
 //                       calls, in order, before a second turn ends the run (any tool name; nothing is executed;
 //                       resultText replaces the fixed result text)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
+import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
@@ -77,6 +78,12 @@ if (argv.includes("--version")) {
 	process.stdout.write(has("version-garbage") ? "pi build from source (dirty)\n" : `${nearestVersion()}\n`);
 	process.exit(0);
 }
+if (argv.includes("--help")) {
+	process.stdout.write("--mode --session-dir --session-id --provider --model --no-tools --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-approve --offline\n");
+	process.exit(0);
+}
+const allowedFlags = new Set(["--mode", "--session-dir", "--session-id", "--provider", "--model", "--no-tools", "--no-extensions", "--no-mcp", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-approve", "--offline", "--no-session", "--tools"]);
+if (argv.some((arg) => arg.startsWith("--") && !allowedFlags.has(arg))) process.exit(2);
 if (argv[0] !== "--mode" || argv[1] !== "rpc") {
 	process.stderr.write("fake pi supports only --version and --mode rpc\n");
 	process.exit(2);
@@ -86,10 +93,12 @@ const flag = (name) => {
 	const index = argv.indexOf(name);
 	return index === -1 ? undefined : argv[index + 1];
 };
-const tools = argv.includes("--no-tools") ? [] : (flag("--tools")?.split(",") ?? ["read", "bash", "edit", "write"]);
+const tools = argv.includes("--no-tools") && !has("ignore-no-tools") ? [] : (flag("--tools")?.split(",") ?? ["read", "bash", "edit", "write"]);
 const ephemeral = argv.includes("--no-session");
 const sessionDir = flag("--session-dir");
 const requestedId = flag("--session-id");
+if (has("record-rpc-pid") && packageDirectory !== undefined)
+	writeFileSync(join(packageDirectory, "rpc-pid"), String(process.pid));
 const sessionId = requestedId ?? `fake-${Math.random().toString(16).slice(2, 10)}`;
 const sessionFile = !ephemeral && sessionDir !== undefined ? join(sessionDir, `${sessionId}.json`) : undefined;
 const provider = flag("--provider") ?? "fake";
@@ -143,7 +152,8 @@ function emit(record) {
 	pending.push(`${JSON.stringify(record)}\n`);
 	if (!flushing) {
 		flushing = true;
-		setImmediate(flush);
+		if (has("batch-output-100ms")) setTimeout(flush, 100);
+		else setImmediate(flush);
 	}
 }
 function flush() {
@@ -163,6 +173,7 @@ const refuse = (id, command, error) =>
 
 // --- runs ---
 let running = null;
+let hasSettled = false;
 const steering = [];
 const followUps = [];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -185,7 +196,15 @@ function modelMessages() {
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const message = entry.message;
-		if (message.role === "user") out.push({ role: "user", content: textOf(message) });
+		if (message.role === "user") {
+			const text = textOf(message);
+			const parts = has("split-text-parts")
+				? [{ type: "text", text: text.slice(0, 3) }, { type: "text", text: text.slice(3) }]
+				: [{ type: "text", text: has("altered-text-part") ? `${text}!` : text }];
+			if (has("image-prompt-part")) parts.push({ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } });
+			if (has("unknown-prompt-part-field")) parts[0].extra = "unapproved";
+			out.push({ role: "user", content: has("prompt-text-parts") ? parts : text });
+		}
 		else if (message.role === "assistant")
 			out.push({ role: "assistant", content: textOf(message), ...(message.toolCalls ? { tool_calls: message.toolCalls } : {}) });
 		else if (message.role === "toolResult") out.push({ role: "tool", tool_call_id: message.toolCallId, content: textOf(message) });
@@ -195,7 +214,7 @@ function modelMessages() {
 /** One streamed chat completion; resolves with the text, the tool calls, or the error. Abort drops the request. */
 function modelCall(run) {
 	const body = JSON.stringify({
-		model: modelId,
+		model: has("wrong-request-model") ? "substituted-model" : modelId,
 		stream: true,
 		messages: modelMessages(),
 		...(tools.includes("read") ? { tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }] } : {}),
@@ -282,6 +301,7 @@ async function modelTurn(run) {
 	emit({ type: "message_end", message: assistant });
 	append({ type: "message", message: assistant });
 	const toolResults = [];
+	if (has("spurious-tool-event")) emit({ type: "tool_execution_start", toolCallId: "unasked", toolName: "read", args: { path: "endophasia-study.txt" } });
 	for (const call of calls) {
 		let args = {};
 		try {
@@ -412,6 +432,7 @@ async function startRun(text) {
 		await startRun(follow);
 		return;
 	}
+	hasSettled = true;
 	emit({ type: "agent_settled" });
 }
 
@@ -456,15 +477,39 @@ async function handle(command) {
 		const manifest = join(packageDirectory, "package.json");
 		writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version: "9.9.9" }));
 	}
-	if (option("hang-on:") === type) return;
+	if (option("hang-on:") === type) {
+		if (has("record-rpc-pid") && packageDirectory !== undefined)
+			writeFileSync(join(packageDirectory, "rpc-hung"), type);
+		return;
+	}
 	switch (type) {
 		case "get_state":
+			if (has("delay-startup-state")) {
+				setTimeout(() => respond(id, type, state()), 2000);
+				return;
+			}
 			if (has("reorder") && id !== undefined) {
 				held.push(() => respond(id, type, state()));
 				return;
 			}
 			return respond(id, type, state());
 		case "get_entries": {
+			if (has("hang-entries-after-prompt") && entries.some((entry) => entry.message?.role === "user")) return;
+			if (has("stdout-overflow-after-exit") && hasSettled) {
+				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
+				flush();
+				// A descendant in the owned group holds stdout after the Pi leader has exited.
+				spawn(process.execPath, ["-e", "setTimeout(() => process.stdout.write(Buffer.alloc(3 * 1024 * 1024, 32)), 250)"],
+					{ stdio: ["ignore", 1, "ignore"] });
+				process.stdout.write("", () => process.exit(0));
+				return;
+			}
+			if (has("stdout-overflow-after-settled") && hasSettled) {
+				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
+				flush();
+				process.stdout.write(Buffer.alloc(3 * 1024 * 1024, 32));
+				return;
+			}
 			if (command.since !== undefined) {
 				const index = entries.findIndex((entry) => entry.id === command.since);
 				if (index === -1) return refuse(id, type, `Entry not found: ${command.since}`);

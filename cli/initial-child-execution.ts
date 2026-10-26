@@ -78,6 +78,26 @@ const receiptDigest = (key: EndoDigestKeyV0, receipt: Omit<EndoInitialChildExecu
 	key.digest({ purpose: "endo.initial-child-execution.receipt.v0", receipt });
 const promptDigest = (key: EndoDigestKeyV0, prompt: string) =>
 	key.digest({ purpose: "endo.initial-child-execution.prompt.v0", prompt });
+
+/** OpenAI text content as observed from Pi: preserve every text byte and refuse other content. */
+function promptText(content: unknown): string | null {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content) || content.length === 0) return null;
+	const parts: string[] = [];
+	for (const part of content) {
+		if (
+			part === null ||
+			typeof part !== "object" ||
+			Array.isArray(part) ||
+			Object.keys(part).some((key) => key !== "type" && key !== "text") ||
+			part.type !== "text" ||
+			typeof part.text !== "string"
+		)
+			return null;
+		parts.push(part.text);
+	}
+	return parts.join("");
+}
 const ATTEMPT_PREFIX = "endo.initial-child-attempt.";
 const REQUIRED_FLAGS = [
 	"--no-tools",
@@ -598,6 +618,7 @@ export async function executeInitialChildV0(
 		if (!(await withinDeadline(session.waitForSettled(Math.max(1, deadline - Date.now())), deadline, signal)))
 			throw new Error("timeout");
 		await session.close();
+		if (session.outputLimitExceeded) throw new Error("runtime stdout limit exceeded");
 		session = null;
 		await proxy.flush();
 		if (proxy.recordingFailures > 0 || proxy.transferLimitExceeded)
@@ -775,6 +796,8 @@ function verifyCandidate(
 		)
 			throw new Error("runtime adaptations mismatch");
 		const events = readEndoCaptureEventsV0(r.runtime.store);
+		if (readEndoStoreEventsV0(r.runtime.store).some((event) => event.kind === "harness.output-limit-exceeded"))
+			throw new Error("runtime stdout limit exceeded");
 		if (!completeEvidenceStore(endoCaptureRootV0(r.runtime.store)) || !completeEvidenceStore(r.runtime.store))
 			throw new Error("capture or Pi evidence log damaged");
 		if (!same(captureGenerationV0(events, key), r.observed.captureGeneration))
@@ -838,12 +861,10 @@ function verifyCandidate(
 			requestBody.messages.some(
 				(message: { role?: string }) => !["system", "developer", "user"].includes(message.role ?? ""),
 			) ||
-			!requestBody.messages.some(
-				(message: { role?: string; content?: unknown }) =>
-					message.role === "user" &&
-					typeof message.content === "string" &&
-					same(promptDigest(key, message.content), r.plan.promptCommitment),
-			)
+			!requestBody.messages.some((message: { role?: string; content?: unknown }) => {
+				const text = promptText(message.content);
+				return message.role === "user" && text !== null && same(promptDigest(key, text), r.plan.promptCommitment);
+			})
 		)
 			throw new Error("single approved prompt not observed in model request");
 		const trajectory = trajectoryFromStoreV0(r.runtime.store, `endo.session.pi.${r.runtime.sessionId}`);

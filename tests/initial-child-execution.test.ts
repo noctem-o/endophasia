@@ -1,5 +1,5 @@
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { prepareVerifiedInitialBranchPairV0, readVerifiedInitialBranchSetV0 } from "../cli/initial-branch-set.ts";
@@ -10,7 +10,9 @@ import {
 	recordInitialChildPreflightRefusalV0,
 	verifyInitialChildExecutionEvidenceV0,
 } from "../cli/initial-child-execution.ts";
+import { readEndoStoreEventsV0 } from "../cli/trajectory.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { archiveEndoWorkspaceV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./fixtures/verified-initial-checkpoint.ts";
@@ -258,5 +260,141 @@ describe("governed initial child execution", () => {
 		} finally {
 			await broken.close();
 		}
+	}, 120_000);
+	it.each(["get_state", "get_entries"])(
+		"stops owned Pi and releases its store when startup %s times out",
+		async (command) => {
+			fixture.pi.setScenario(`model-endpoint,record-rpc-pid,hang-on:${command}`);
+			let pid: number | undefined;
+			try {
+				const count = upstream.requests.length;
+				const { options } = setup();
+				const plan = await ready({ ...options, wallTimeoutMs: 1000 });
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+				expect(result.status).toBe("failed");
+				pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
+				expect(() => process.kill(pid!, 0)).toThrow();
+				if ("area" in result)
+					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
+				expect(upstream.requests.length).toBe(count);
+			} finally {
+				if (pid !== undefined) {
+					try {
+						process.kill(pid, "SIGKILL");
+					} catch {
+						/* Already reaped by the attachment. */
+					}
+				}
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
+	it.each(["stdout-overflow-after-settled", "stdout-overflow-after-exit"])(
+		"rejects %s",
+		async (scenario) => {
+			fixture.pi.setScenario(`model-endpoint,${scenario}`);
+			try {
+				const { options } = setup();
+				const plan = await ready(options);
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+				expect(result.status, JSON.stringify(result)).toBe("outcome-unknown");
+				if ("area" in result) {
+					const violations = readEndoStoreEventsV0(join(result.area, "evidence")).filter(
+						(event) => event.kind === "harness.output-limit-exceeded",
+					);
+					expect(violations).toHaveLength(1);
+					expect((violations[0]!.payload as { bytes: number }).bytes).toBeGreaterThan(2 * 1024 * 1024);
+					expect(
+						verifyInitialChildExecutionEvidenceV0(
+							fixture.source,
+							fixture.replay,
+							fixture.key,
+							join(result.area, "receipt.json"),
+						).status,
+					).toBe("unverified");
+				}
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
+	it.each(["", ",split-text-parts"])(
+		"verifies Pi text-part array%s against the exact approved prompt",
+		async (extra) => {
+			fixture.pi.setScenario(`model-endpoint,prompt-text-parts${extra}`);
+			try {
+				const { options } = setup();
+				const plan = await ready(options);
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+				expect(result.status, JSON.stringify(result)).toBe("completed");
+				if (result.status === "completed")
+					expect(
+						verifyInitialChildExecutionEvidenceV0(
+							fixture.source,
+							fixture.replay,
+							fixture.key,
+							join(result.area, "receipt.json"),
+						),
+					).toEqual({ status: "verified", attemptId: plan.attemptId });
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
+	it.each(["altered-text-part", "image-prompt-part", "unknown-prompt-part-field"])(
+		"refuses unapproved prompt content in text arrays: %s",
+		async (scenario) => {
+			fixture.pi.setScenario(`model-endpoint,prompt-text-parts,${scenario}`);
+			try {
+				const { options } = setup();
+				const plan = await ready(options);
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+				expect(result.status).toBe("outcome-unknown");
+				expect(result).toMatchObject({
+					reason: "final evidence single approved prompt not observed in model request",
+				});
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
+	it("independently refuses a durable stdout violation despite a completed receipt", async () => {
+		const { options } = setup();
+		const plan = await ready(options);
+		const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+		const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+		expect(result.status).toBe("completed");
+		if (result.status !== "completed") return;
+		const root = join(result.area, "evidence");
+		const events = readEndoStoreEventsV0(root);
+		const last = events.at(-1)!;
+		const store = createEndoDurableEventStoreV0(root);
+		try {
+			store.ingest({
+				...last,
+				id: "endo.event.test.stdout-limit",
+				sequence: last.sequence + 1,
+				kind: "harness.output-limit-exceeded",
+				payload: { bytes: 3 * 1024 * 1024 },
+			});
+		} finally {
+			store.close();
+		}
+		expect(
+			verifyInitialChildExecutionEvidenceV0(
+				fixture.source,
+				fixture.replay,
+				fixture.key,
+				join(result.area, "receipt.json"),
+			),
+		).toMatchObject({ status: "unverified", reason: "runtime stdout limit exceeded" });
 	}, 120_000);
 });

@@ -359,7 +359,16 @@ export class PiAttachmentV0 {
 		const fingerprint = this.#fingerprint;
 		if (fingerprint === null) throw new TypeError("the Pi runtime could not be identified; no session is opened");
 		const session = new PiSessionAttachmentV0(this, fingerprint, this.state());
-		await session.connect();
+		try {
+			await session.connect();
+		} catch (error) {
+			try {
+				await session.close();
+			} catch (cleanupError) {
+				throw new AggregateError([error, cleanupError], "Pi startup failed and owned session cleanup failed");
+			}
+			throw error;
+		}
 		return session;
 	}
 
@@ -514,11 +523,14 @@ export class PiSessionAttachmentV0 {
 	readonly #leaf = new Map<string, string | null>();
 	#sequence = 0;
 	#client: PiRpcClientV0 | null = null;
+	// Retain shutdown ownership after the leader exits: its stdout and owned descendants may still be draining.
+	#ownedClient: PiRpcClientV0 | null = null;
 	#context: PiMappingContextV0 | null = null;
 	#piSessionId: string | null = null;
 	#work: Promise<void> = Promise.resolve();
 	#closed = false;
 	#storeClosed = false;
+	#outputLimitExceeded = false;
 	#lastExit: RpcExitV0 | null = null;
 	readonly #exitWaiters = new Set<() => void>();
 
@@ -586,6 +598,11 @@ export class PiSessionAttachmentV0 {
 
 	get piSessionId(): string | null {
 		return this.#piSessionId;
+	}
+
+	/** Sticky even after process shutdown: discarded stdout prevents a complete observation. */
+	get outputLimitExceeded(): boolean {
+		return this.#outputLimitExceeded;
 	}
 
 	/** Live state used for a governed startup check before dispatch. */
@@ -691,6 +708,7 @@ export class PiSessionAttachmentV0 {
 		// Events and diagnostics are accepted only from the process this attachment currently owns: a superseded
 		// process may still flush buffered records after a reconnect, and those belong to no current instance.
 		let owned: PiRpcClientV0 | null = null;
+		const instance = randomBytes(8).toString("hex");
 		const client = new PiRpcClientV0({
 			executable: this.owner.launchPath(this.#fingerprint),
 			cwd: options.cwd ?? process.cwd(),
@@ -704,11 +722,12 @@ export class PiSessionAttachmentV0 {
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
 			...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
 			onDiagnostic: (diagnostic) => {
-				if (owned !== null && this.#client === owned) this.#diagnostic(diagnostic);
+				// Exit can be observed before stdout drains. Keep diagnostics from that instance until it is
+				// superseded or its store closes, including a limit breach in the remaining stdout bytes.
+				if (owned !== null && this.#context?.instance === instance) this.#diagnostic(diagnostic);
 			},
 		});
 		owned = client;
-		const instance = randomBytes(8).toString("hex");
 		let live = 0;
 		const self = this;
 		const context: PiMappingContextV0 = {
@@ -730,6 +749,7 @@ export class PiSessionAttachmentV0 {
 			digestKey: this.owner.digestKey(),
 		};
 		this.#client = client;
+		this.#ownedClient = client;
 		this.#context = context;
 		client.subscribe((event) => {
 			if (this.#client === client) this.#onEvent(event);
@@ -840,6 +860,11 @@ export class PiSessionAttachmentV0 {
 	}
 
 	#diagnostic(diagnostic: RpcDiagnosticV0): void {
+		if (diagnostic.kind === "output-limit-exceeded") {
+			this.#outputLimitExceeded = true;
+			this.#attachmentEvent("harness.output-limit-exceeded", { bytes: diagnostic.bytes });
+			return;
+		}
 		if (diagnostic.kind !== "protocol-fault") return;
 		this.counters.protocolFaults += 1;
 		this.#attachmentEvent("harness.protocol-fault", { fault: diagnostic.fault });
@@ -1042,13 +1067,19 @@ export class PiSessionAttachmentV0 {
 			// A failing final read is recorded by the exit event; closing proceeds.
 		}
 		this.#closed = true;
-		const client = this.#client;
-		if (client !== null) {
-			await client.close();
-			await this.#work;
+		const client = this.#ownedClient;
+		try {
+			if (client !== null) {
+				await client.close();
+				await this.#work;
+			}
+		} finally {
+			this.#storeClosed = true;
+			try {
+				this.store.close();
+			} finally {
+				this.#releaseLock();
+			}
 		}
-		this.#storeClosed = true;
-		this.store.close();
-		this.#releaseLock();
 	}
 }

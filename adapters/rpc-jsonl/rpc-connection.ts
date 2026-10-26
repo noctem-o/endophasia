@@ -195,6 +195,7 @@ export class RpcConnectionV0 {
 	readonly #maxInputBacklogBytes: number;
 	readonly #maxOutputBytes: number | undefined;
 	#outputBytes = 0;
+	#outputLimitExceeded = false;
 	readonly #onDiagnostic: ((diagnostic: RpcDiagnosticV0) => void) | undefined;
 	readonly #label: string;
 	readonly #maxStderrBytes: number;
@@ -281,8 +282,10 @@ export class RpcConnectionV0 {
 			this.#group.stderr?.on("error", () => {});
 		}
 		stdout?.on("data", (chunk: Buffer) => {
+			if (this.#outputLimitExceeded) return;
 			this.#outputBytes += chunk.length;
 			if (this.#maxOutputBytes !== undefined && this.#outputBytes > this.#maxOutputBytes) {
+				this.#outputLimitExceeded = true;
 				this.#diagnose({ kind: "output-limit-exceeded", bytes: this.#outputBytes });
 				this.#group.killGroup();
 				return;

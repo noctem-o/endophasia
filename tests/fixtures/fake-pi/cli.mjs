@@ -28,6 +28,7 @@
 //                       calls, in order, before a second turn ends the run (any tool name; nothing is executed;
 //                       resultText replaces the fixed result text)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
+import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
@@ -96,6 +97,8 @@ const tools = argv.includes("--no-tools") && !has("ignore-no-tools") ? [] : (fla
 const ephemeral = argv.includes("--no-session");
 const sessionDir = flag("--session-dir");
 const requestedId = flag("--session-id");
+if (has("record-rpc-pid") && packageDirectory !== undefined)
+	writeFileSync(join(packageDirectory, "rpc-pid"), String(process.pid));
 const sessionId = requestedId ?? `fake-${Math.random().toString(16).slice(2, 10)}`;
 const sessionFile = !ephemeral && sessionDir !== undefined ? join(sessionDir, `${sessionId}.json`) : undefined;
 const provider = flag("--provider") ?? "fake";
@@ -169,6 +172,7 @@ const refuse = (id, command, error) =>
 
 // --- runs ---
 let running = null;
+let hasSettled = false;
 const steering = [];
 const followUps = [];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -191,7 +195,15 @@ function modelMessages() {
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const message = entry.message;
-		if (message.role === "user") out.push({ role: "user", content: textOf(message) });
+		if (message.role === "user") {
+			const text = textOf(message);
+			const parts = has("split-text-parts")
+				? [{ type: "text", text: text.slice(0, 3) }, { type: "text", text: text.slice(3) }]
+				: [{ type: "text", text: has("altered-text-part") ? `${text}!` : text }];
+			if (has("image-prompt-part")) parts.push({ type: "image_url", image_url: { url: "data:image/png;base64,AA==" } });
+			if (has("unknown-prompt-part-field")) parts[0].extra = "unapproved";
+			out.push({ role: "user", content: has("prompt-text-parts") ? parts : text });
+		}
 		else if (message.role === "assistant")
 			out.push({ role: "assistant", content: textOf(message), ...(message.toolCalls ? { tool_calls: message.toolCalls } : {}) });
 		else if (message.role === "toolResult") out.push({ role: "tool", tool_call_id: message.toolCallId, content: textOf(message) });
@@ -419,6 +431,7 @@ async function startRun(text) {
 		await startRun(follow);
 		return;
 	}
+	hasSettled = true;
 	emit({ type: "agent_settled" });
 }
 
@@ -472,6 +485,21 @@ async function handle(command) {
 			}
 			return respond(id, type, state());
 		case "get_entries": {
+			if (has("stdout-overflow-after-exit") && hasSettled) {
+				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
+				flush();
+				// A descendant in the owned group holds stdout after the Pi leader has exited.
+				spawn(process.execPath, ["-e", "setTimeout(() => process.stdout.write(Buffer.alloc(3 * 1024 * 1024, 32)), 250)"],
+					{ stdio: ["ignore", 1, "ignore"] });
+				process.stdout.write("", () => process.exit(0));
+				return;
+			}
+			if (has("stdout-overflow-after-settled") && hasSettled) {
+				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
+				flush();
+				process.stdout.write(Buffer.alloc(3 * 1024 * 1024, 32));
+				return;
+			}
 			if (command.since !== undefined) {
 				const index = entries.findIndex((entry) => entry.id === command.since);
 				if (index === -1) return refuse(id, type, `Entry not found: ${command.since}`);

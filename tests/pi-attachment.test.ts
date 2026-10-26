@@ -304,6 +304,22 @@ describe("session attachment", () => {
 		return { install, root, cwd, pi };
 	}
 
+	it("drains an exited owned runtime before closing its store and retains a late stdout limit breach", async () => {
+		const { install, root, cwd } = setup("1.0.0", "stdout-overflow-after-exit");
+		const pi = attachment(install, root, cwd, { tools: "none", maxRpcOutputBytes: 2 * 1024 * 1024 });
+		const session = await pi.openSession();
+		try {
+			await session.prompt("ready");
+			await session.exited();
+			expect(session.connection).toBe("disconnected");
+			await session.close();
+			expect(session.outputLimitExceeded).toBe(true);
+			expect(allEvents(root).filter((event) => event.kind === "harness.output-limit-exceeded")).toHaveLength(1);
+		} finally {
+			await session.close();
+		}
+	});
+
 	it("records a prompted run: lifecycle events, entries with opaque source refs, and no payload text", async () => {
 		const { root, pi } = await ready();
 		const session = await pi.openSession();

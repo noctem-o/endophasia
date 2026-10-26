@@ -477,9 +477,17 @@ async function handle(command) {
 		const manifest = join(packageDirectory, "package.json");
 		writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version: "9.9.9" }));
 	}
-	if (option("hang-on:") === type) return;
+	if (option("hang-on:") === type) {
+		if (has("record-rpc-pid") && packageDirectory !== undefined)
+			writeFileSync(join(packageDirectory, "rpc-hung"), type);
+		return;
+	}
 	switch (type) {
 		case "get_state":
+			if (has("delay-startup-state")) {
+				setTimeout(() => respond(id, type, state()), 2000);
+				return;
+			}
 			if (has("reorder") && id !== undefined) {
 				held.push(() => respond(id, type, state()));
 				return;

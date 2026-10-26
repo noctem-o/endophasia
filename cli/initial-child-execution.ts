@@ -579,13 +579,28 @@ export async function executeInitialChildV0(
 			attachment: "pi.initial-child",
 			sessionDir,
 		});
-		session = await attachment.openSession();
+		const startupAbort = new AbortController();
+		const cancelStartup = () => startupAbort.abort();
+		const startupTimer = setTimeout(cancelStartup, Math.max(0, deadline - Date.now()));
+		signal?.addEventListener("abort", cancelStartup, { once: true });
+		try {
+			if (signal?.aborted) cancelStartup();
+			session = await attachment.openSession(startupAbort.signal);
+		} catch (error) {
+			// An aggregate means owned-process cleanup itself failed; preserve that failure rather than claiming cancellation.
+			if (startupAbort.signal.aborted && !(error instanceof AggregateError))
+				throw new Error(signal?.aborted ? "cancelled" : "timeout");
+			throw error;
+		} finally {
+			clearTimeout(startupTimer);
+			signal?.removeEventListener("abort", cancelStartup);
+		}
 		if (
 			session.fingerprint.identity.digest !== plan.piIdentity ||
 			session.fingerprint.reported.version !== plan.piVersion
 		)
 			throw new Error("Pi runtime changed before dispatch");
-		const state = await session.rpcState();
+		const state = await withinDeadline(session.rpcState(), deadline, signal);
 		if (
 			state.model?.provider !== plan.provider ||
 			state.model.id !== plan.model ||
@@ -662,7 +677,7 @@ export async function executeInitialChildV0(
 		} catch {
 			stopped = false;
 		}
-		const status = !dispatched ? "failed" : reason === "cancelled" && stopped ? "cancelled" : "outcome-unknown";
+		const status = reason === "cancelled" && stopped ? "cancelled" : !dispatched ? "failed" : "outcome-unknown";
 		try {
 			publish(area, seal({ ...receipt, status, observed: null, reason }, key), owned);
 		} catch {

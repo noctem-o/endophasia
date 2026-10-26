@@ -354,20 +354,34 @@ export class PiAttachmentV0 {
 	}
 
 	/** Open the operator's persistent Pi session and record it. identify() runs first when it has not. */
-	async openSession(): Promise<PiSessionAttachmentV0> {
+	async openSession(signal?: AbortSignal): Promise<PiSessionAttachmentV0> {
+		if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		if (!this.#identified) await this.identify();
+		if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		const fingerprint = this.#fingerprint;
 		if (fingerprint === null) throw new TypeError("the Pi runtime could not be identified; no session is opened");
 		const session = new PiSessionAttachmentV0(this, fingerprint, this.state());
+		let stopping: Promise<void> | null = null;
+		const abort = () => {
+			stopping ??= session.terminate();
+			void stopping.catch(() => {}); // The startup owner awaits and propagates cleanup failure below.
+		};
+		signal?.addEventListener("abort", abort, { once: true });
 		try {
+			if (signal?.aborted) abort();
 			await session.connect();
+			if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		} catch (error) {
 			try {
-				await session.terminate();
+				stopping ??= session.terminate();
+				await stopping;
 			} catch (cleanupError) {
 				throw new AggregateError([error, cleanupError], "Pi startup failed and owned session cleanup failed");
 			}
+			if (signal?.aborted) throw new Error("Pi session startup cancelled");
 			throw error;
+		} finally {
+			signal?.removeEventListener("abort", abort);
 		}
 		return session;
 	}

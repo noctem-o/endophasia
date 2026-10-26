@@ -67,6 +67,65 @@ async function ready(options: ReturnType<typeof setup>["options"]) {
 }
 
 describe("governed initial child execution", () => {
+	it("uses the remaining startup deadline instead of restarting the RPC timeout after a slow state read", async () => {
+		fixture.pi.setScenario("model-endpoint,record-rpc-pid,delay-startup-state,hang-on:get_entries");
+		const pidFile = join(dirname(fixture.pi.packageJson), "rpc-pid");
+		rmSync(pidFile, { force: true });
+		try {
+			const { options } = setup();
+			const plan = await ready({ ...options, wallTimeoutMs: 3000 });
+			const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+			const count = upstream.requests.length;
+			const running = executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+			await expect.poll(() => existsSync(pidFile), { timeout: 3000 }).toBe(true);
+			const spawnedAt = Date.now();
+			const result = await running;
+			expect(result).toMatchObject({ status: "failed", reason: "timeout" });
+			expect(Date.now() - spawnedAt).toBeLessThan(4000);
+			const pid = Number(readFileSync(pidFile, "utf8"));
+			expect(() => process.kill(pid, 0)).toThrow();
+			expect(upstream.requests.length).toBe(count);
+			if ("area" in result)
+				expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	}, 120_000);
+	it.each(["get_state", "get_entries"])(
+		"interrupts startup %s on cancellation",
+		async (command) => {
+			fixture.pi.setScenario(`model-endpoint,record-rpc-pid,hang-on:${command}`);
+			const marker = join(dirname(fixture.pi.packageJson), "rpc-hung");
+			rmSync(marker, { force: true });
+			const abort = new AbortController();
+			let running: ReturnType<typeof executeInitialChildV0> | undefined;
+			try {
+				const { options } = setup();
+				const plan = await ready({ ...options, wallTimeoutMs: 5000 });
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const count = upstream.requests.length;
+				running = executeInitialChildV0(plan, approval, options.prompt, fixture.key, abort.signal);
+				await expect
+					.poll(() => (existsSync(marker) ? readFileSync(marker, "utf8") : null), { timeout: 3000 })
+					.toBe(command);
+				const cancelledAt = Date.now();
+				abort.abort();
+				const result = await running;
+				expect(Date.now() - cancelledAt).toBeLessThan(2000);
+				expect(result.status).toBe("cancelled");
+				const pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
+				expect(() => process.kill(pid, 0)).toThrow();
+				if ("area" in result)
+					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
+				expect(upstream.requests.length).toBe(count);
+			} finally {
+				abort.abort();
+				await running;
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
 	it("observes settlement batched with the prompt acknowledgement", async () => {
 		fixture.pi.setScenario("model-endpoint,batch-output-100ms");
 		try {

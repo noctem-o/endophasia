@@ -74,6 +74,20 @@ export type InitialChildApprovalV0 = {
 	method: "local-explicit";
 };
 const same = (a: unknown, b: unknown) => canonicalEndoJsonV0(a) === canonicalEndoJsonV0(b);
+// Pi may create and remove a lock in the agent directory during startup. Compare every
+// archived field except that directory's mtime; file contents and mtimes remain bound.
+function sameStartupRuntime(before: Uint8Array, after: Uint8Array): boolean {
+	const a = readEndoWorkspaceArchiveV0(before);
+	const b = readEndoWorkspaceArchiveV0(after);
+	if (!a.ok || !b.ok) return false;
+	const normalize = (archive: typeof a.value) => ({
+		...archive,
+		entries: archive.entries.map((entry) =>
+			entry.path === "agent" && entry.type === "directory" ? { ...entry, mtimeMs: 0 } : entry,
+		),
+	});
+	return same(normalize(a.value), normalize(b.value));
+}
 const planDigest = (key: EndoDigestKeyV0, plan: Omit<EndoInitialChildExecutionPlanV0, "commitment">) =>
 	key.digest({ purpose: "endo.initial-child-execution.plan.v0", plan });
 const receiptDigest = (key: EndoDigestKeyV0, receipt: Omit<EndoInitialChildExecutionV0, "commitment">) =>
@@ -500,6 +514,8 @@ export async function executeInitialChildV0(
 		const condition = manifest.children[plan.childRole].condition.specification;
 		if (condition.settings)
 			writeFileSync(join(runtime, "agent", "settings.json"), JSON.stringify(condition.settings));
+		for (const file of ["auth.json", "models-store.json"])
+			writeFileSync(join(runtime, "agent", file), "{}", { flag: "wx", mode: 0o600 });
 		const adaptedBytes = archiveEndoWorkspaceV0(runtime).bytes;
 		const adapted = createEndoBlobStoreV0(store, key).put(adaptedBytes);
 		const sessionId = `endo-initial-${randomUUID()}`;
@@ -522,6 +538,7 @@ export async function executeInitialChildV0(
 					adaptations: [
 						"fresh-home-and-agent-directory",
 						"recording-proxy-models-json",
+						"empty-pi-runtime-stores",
 						...(condition.settings ? ["condition-thinking-off"] : []),
 					],
 					proxyOrigin: proxy.origin,
@@ -590,7 +607,7 @@ export async function executeInitialChildV0(
 			plan.preparation,
 		);
 		if (current.status !== "verified-pristine") throw new Error("prepared child changed before dispatch");
-		if (!Buffer.from(archiveEndoWorkspaceV0(runtime).bytes).equals(Buffer.from(adaptedBytes)))
+		if (!sameStartupRuntime(adaptedBytes, archiveEndoWorkspaceV0(runtime).bytes))
 			throw new Error("adapted runtime changed before dispatch");
 		if (signal?.aborted) throw new Error("cancelled before dispatch");
 		if (Date.now() >= deadline) throw new Error("timeout before dispatch");
@@ -760,9 +777,22 @@ function verifyCandidate(
 			throw new Error("adapted model configuration mismatch");
 		const original = readEndoWorkspaceArchiveV0(before);
 		if (!original.ok) throw new Error("source archive unreadable");
+		const hasRuntimeStores = r.runtime.adaptations.includes("empty-pi-runtime-stores");
+		if (hasRuntimeStores) {
+			for (const path of ["agent/auth.json", "agent/models-store.json"]) {
+				const entry = parsed.value.entries.find((e) => e.path === path);
+				if (entry?.type !== "file" || entry.executable || Buffer.from(entry.base64, "base64").toString() !== "{}")
+					throw new Error("invalid empty Pi runtime store");
+			}
+		}
 		const nonAdapted = (entries: typeof parsed.value.entries) =>
 			entries
-				.filter((e) => e.path !== "agent/models.json" && e.path !== "agent/settings.json")
+				.filter(
+					(e) =>
+						e.path !== "agent/models.json" &&
+						e.path !== "agent/settings.json" &&
+						!(hasRuntimeStores && ["agent/auth.json", "agent/models-store.json"].includes(e.path)),
+				)
 				.map((e) => ({
 					path: e.path,
 					type: e.type,
@@ -782,6 +812,7 @@ function verifyCandidate(
 			!same(r.runtime.adaptations, [
 				"fresh-home-and-agent-directory",
 				"recording-proxy-models-json",
+				...(hasRuntimeStores ? ["empty-pi-runtime-stores"] : []),
 				...(conditionSettings ? ["condition-thinking-off"] : []),
 			])
 		)

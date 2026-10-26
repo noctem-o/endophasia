@@ -296,6 +296,22 @@ describe("live study", () => {
 });
 
 describe("session attachment", () => {
+	it("can terminate an ordinary close blocked on entry catch-up", async () => {
+		const { install, root, cwd } = setup("1.0.0", "hang-entries-after-prompt,ignore-eof");
+		const pi = attachment(install, root, cwd);
+		const session = await pi.openSession();
+		const pid = session.pid!;
+		try {
+			await session.prompt("ready");
+			const closing = session.close();
+			const startedAt = Date.now();
+			await Promise.all([closing, session.terminate()]);
+			expect(Date.now() - startedAt).toBeLessThan(3000);
+			expect(() => process.kill(pid, 0)).toThrow();
+		} finally {
+			await session.terminate();
+		}
+	});
 	async function ready(scenario = "") {
 		const { install, root, cwd } = setup("1.0.0", scenario);
 		const pi = attachment(install, root, cwd);

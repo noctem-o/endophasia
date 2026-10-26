@@ -610,14 +610,21 @@ export async function executeInitialChildV0(
 			throw new Error("adapted runtime changed before dispatch");
 		if (signal?.aborted) throw new Error("cancelled before dispatch");
 		if (Date.now() >= deadline) throw new Error("timeout before dispatch");
-		receipt = seal({ ...receipt, status: "dispatched" }, key);
-		publish(area, receipt, owned);
-		dispatched = true;
-		const disposition = await withinDeadline(session.prompt(prompt), deadline, signal);
-		if (disposition !== "started") throw new Error("Pi did not start one prompt");
-		if (!(await withinDeadline(session.waitForSettled(Math.max(1, deadline - Date.now())), deadline, signal)))
-			throw new Error("timeout");
-		await session.close();
+		const settlementAbort = new AbortController();
+		// Subscribe before any prompt bytes: acknowledgement and settlement may arrive in one stdout chunk.
+		const settled = session.waitForSettled(Math.max(1, deadline - Date.now()), settlementAbort.signal);
+		void settled.catch(() => {}); // Dispatch can fail before this already-observing waiter is awaited.
+		try {
+			receipt = seal({ ...receipt, status: "dispatched" }, key);
+			publish(area, receipt, owned);
+			dispatched = true;
+			const disposition = await withinDeadline(session.prompt(prompt), deadline, signal);
+			if (disposition !== "started") throw new Error("Pi did not start one prompt");
+			if (!(await withinDeadline(settled, deadline, signal))) throw new Error("timeout");
+		} finally {
+			settlementAbort.abort();
+		}
+		await withinDeadline(session.close(), deadline, signal);
 		if (session.outputLimitExceeded) throw new Error("runtime stdout limit exceeded");
 		session = null;
 		await proxy.flush();
@@ -641,7 +648,7 @@ export async function executeInitialChildV0(
 		const reason = (error as Error).message.slice(0, 128);
 		let stopped = true;
 		try {
-			await session?.close();
+			await session?.terminate();
 		} catch {
 			stopped = false;
 		}

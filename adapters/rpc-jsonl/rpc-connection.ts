@@ -196,6 +196,7 @@ export class RpcConnectionV0 {
 	readonly #maxOutputBytes: number | undefined;
 	#outputBytes = 0;
 	#outputLimitExceeded = false;
+	#terminationRequested = false;
 	readonly #onDiagnostic: ((diagnostic: RpcDiagnosticV0) => void) | undefined;
 	readonly #label: string;
 	readonly #maxStderrBytes: number;
@@ -517,6 +518,17 @@ export class RpcConnectionV0 {
 		} finally {
 			this.#announcing = false;
 		}
+	}
+
+	/** Stop this connection's owned process group immediately, then drain and reap it. No RPC response is required. */
+	terminate(): Promise<RpcTerminationV0> {
+		if (!this.#terminationRequested) {
+			this.#terminationRequested = true;
+			this.#sigkillAt = Date.now();
+			this.#diagnose({ kind: "forced-termination", signal: "SIGKILL" });
+			this.#group.killGroup();
+		}
+		return this.close();
 	}
 
 	/**

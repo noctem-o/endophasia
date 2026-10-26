@@ -152,7 +152,8 @@ function emit(record) {
 	pending.push(`${JSON.stringify(record)}\n`);
 	if (!flushing) {
 		flushing = true;
-		setImmediate(flush);
+		if (has("batch-output-100ms")) setTimeout(flush, 100);
+		else setImmediate(flush);
 	}
 }
 function flush() {
@@ -485,6 +486,7 @@ async function handle(command) {
 			}
 			return respond(id, type, state());
 		case "get_entries": {
+			if (has("hang-entries-after-prompt") && entries.some((entry) => entry.message?.role === "user")) return;
 			if (has("stdout-overflow-after-exit") && hasSettled) {
 				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
 				flush();

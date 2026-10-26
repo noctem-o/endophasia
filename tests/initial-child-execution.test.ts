@@ -67,7 +67,70 @@ async function ready(options: ReturnType<typeof setup>["options"]) {
 }
 
 describe("governed initial child execution", () => {
+	it("observes settlement batched with the prompt acknowledgement", async () => {
+		fixture.pi.setScenario("model-endpoint,batch-output-100ms");
+		try {
+			const { options } = setup();
+			const plan = await ready({ ...options, wallTimeoutMs: 3000 });
+			const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+			const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+			expect(result.status, JSON.stringify(result)).toBe("completed");
+			if (result.status === "completed")
+				expect(
+					verifyInitialChildExecutionEvidenceV0(
+						fixture.source,
+						fixture.replay,
+						fixture.key,
+						join(result.area, "receipt.json"),
+					).status,
+				).toBe("verified");
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	}, 120_000);
+	it.each(["cancel", "timeout"])(
+		"stops promptly on %s while a post-dispatch entry read hangs",
+		async (mode) => {
+			fixture.pi.setScenario("model-endpoint,record-rpc-pid,hang-entries-after-prompt,ignore-eof");
+			const abort = new AbortController();
+			try {
+				const { options } = setup();
+				const plan = await ready({
+					...options,
+					prompt: "Count to forty",
+					wallTimeoutMs: mode === "timeout" ? 1000 : 10000,
+				});
+				const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+				const count = upstream.requests.length;
+				const startedAt = Date.now();
+				const running = executeInitialChildV0(plan, approval, "Count to forty", fixture.key, abort.signal);
+				await expect.poll(() => upstream.requests.length, { timeout: 5000 }).toBeGreaterThan(count);
+				if (mode === "cancel") abort.abort();
+				const result = await running;
+				expect(result.status).toBe(mode === "cancel" ? "cancelled" : "outcome-unknown");
+				expect(Date.now() - startedAt).toBeLessThan(4000);
+				const pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
+				expect(() => process.kill(pid, 0)).toThrow();
+				if ("area" in result) {
+					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
+					expect(
+						verifyInitialChildExecutionEvidenceV0(
+							fixture.source,
+							fixture.replay,
+							fixture.key,
+							join(result.area, "receipt.json"),
+						).status,
+					).toBe("unverified");
+				}
+			} finally {
+				abort.abort();
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120_000,
+	);
 	it("records one fresh tool-free model exchange and verifies unchanged siblings and provenance", async () => {
+		const requestsBefore = upstream.requests.filter((r) => r.url === "/v1/chat/completions").length;
 		for (const layer of ["lifecycle", "toolCalls", "toolResults", "outcome"] as const)
 			expect(fixture.report.comparison.layers[layer].status).toBe("EXACT");
 		const { options, preparation } = setup();
@@ -92,7 +155,7 @@ describe("governed initial child execution", () => {
 				join(result.area, "receipt.json"),
 			),
 		).toEqual({ status: "verified", attemptId: plan.attemptId });
-		expect(upstream.requests.filter((r) => r.url === "/v1/chat/completions")).toHaveLength(1);
+		expect(upstream.requests.filter((r) => r.url === "/v1/chat/completions")).toHaveLength(requestsBefore + 1);
 		expect(
 			readVerifiedInitialBranchSetV0(
 				fixture.source,

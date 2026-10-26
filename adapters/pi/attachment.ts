@@ -363,7 +363,7 @@ export class PiAttachmentV0 {
 			await session.connect();
 		} catch (error) {
 			try {
-				await session.close();
+				await session.terminate();
 			} catch (cleanupError) {
 				throw new AggregateError([error, cleanupError], "Pi startup failed and owned session cleanup failed");
 			}
@@ -529,6 +529,7 @@ export class PiSessionAttachmentV0 {
 	#piSessionId: string | null = null;
 	#work: Promise<void> = Promise.resolve();
 	#closed = false;
+	#closing: Promise<void> | null = null;
 	#storeClosed = false;
 	#outputLimitExceeded = false;
 	#lastExit: RpcExitV0 | null = null;
@@ -1039,32 +1040,52 @@ export class PiSessionAttachmentV0 {
 	}
 
 	/** Wait until Pi reports agent_settled (or the timeout), then catch up. */
-	async waitForSettled(timeoutMs: number): Promise<boolean> {
+	async waitForSettled(timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
 		const client = this.#client;
 		if (client === null) return false;
 		const settled = await new Promise<boolean>((resolve) => {
-			const timer = setTimeout(() => {
-				stop();
-				resolve(false);
-			}, timeoutMs);
-			const stop = client.subscribe((event) => {
-				if (event.type !== "agent_settled") return;
+			let finished = false;
+			const finish = (value: boolean) => {
+				if (finished) return;
+				finished = true;
 				clearTimeout(timer);
 				stop();
-				resolve(true);
+				signal?.removeEventListener("abort", aborted);
+				resolve(value);
+			};
+			const aborted = () => finish(false);
+			const timer = setTimeout(() => finish(false), timeoutMs);
+			const stop = client.subscribe((event) => {
+				if (event.type === "agent_settled") finish(true);
 			});
+			signal?.addEventListener("abort", aborted, { once: true });
+			if (signal?.aborted) aborted();
 		});
-		await this.catchUp();
+		if (settled) await this.catchUp();
 		return settled;
 	}
 
 	/** Catch up once more, end Pi's input (orderly shutdown) and close the store. */
-	async close(): Promise<void> {
-		if (this.#closed) return;
-		try {
-			await this.catchUp();
-		} catch {
-			// A failing final read is recorded by the exit event; closing proceeds.
+	close(): Promise<void> {
+		this.#closing ??= this.#close(false);
+		return this.#closing;
+	}
+
+	/** Stop the owned process now, including during an ordinary close blocked on a final RPC read. */
+	terminate(): Promise<void> {
+		this.#closed = true;
+		const stopped = this.#ownedClient?.terminate() ?? Promise.resolve();
+		this.#closing ??= this.#close(true);
+		return Promise.all([stopped, this.#closing]).then(() => {});
+	}
+
+	async #close(skipCatchUp: boolean): Promise<void> {
+		if (!skipCatchUp) {
+			try {
+				await this.catchUp();
+			} catch {
+				// A failing final read is recorded by the exit event; closing proceeds.
+			}
 		}
 		this.#closed = true;
 		const client = this.#ownedClient;

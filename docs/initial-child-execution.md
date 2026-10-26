@@ -35,6 +35,8 @@ The launch flags remove Pi's agent tools and startup resources within this teste
 
 A failed session startup closes the partially connected Pi process and its evidence store before returning failure. A stdout limit breach is sticky for that session and retained as `harness.output-limit-exceeded`; it prevents completion even when Pi reported `agent_settled` before exceeding the limit. The durable reader also refuses evidence containing that event.
 
+The settlement observer is registered before prompt dispatch, so a prompt acknowledgement and settlement in the same RPC output batch are both observed. Dispatch failure removes that observer. Cancellation, timeout and other failed attempts terminate only the owned process group immediately, without waiting for a final `get_entries` read or voluntary Pi shutdown; bounded output draining and store closure follow. Cancellation also interrupts an ordinary finalisation close already waiting on RPC. Stopping Pi does not establish whether an upstream service completed or billed a request.
+
 ## Receipt and independent reader
 
 The private canonical `endo.initial-child-execution.v0` receipt is written under `<output-parent>/<attempt-id>/receipt.json`. It transitions through `approved-not-dispatched`, optionally with staged runtime data, then durable `dispatched` **before** the prompt write. It ends `completed`, `failed`, `cancelled` or `outcome-unknown`; a separate no-inference refusal receipt uses `preflight-refused`. A crash after dispatch leaves `dispatched`, which must be treated as unknown. A disconnected or interrupted external request is never retried automatically. Receipt commitments use separate keyed plan and receipt purposes, not signatures.

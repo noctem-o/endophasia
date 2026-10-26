@@ -356,4 +356,9 @@ export class PiRpcClientV0 {
 	close(): Promise<RpcTerminationV0> {
 		return this.connection.close();
 	}
+
+	/** Cancel the owned runtime without waiting for an RPC read or voluntary shutdown. */
+	terminate(): Promise<RpcTerminationV0> {
+		return this.connection.terminate();
+	}
 }

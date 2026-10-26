@@ -233,6 +233,42 @@ function relativePath(path: string): boolean {
 	);
 }
 
+/** Shared condition declaration rules. Without a task set, intervention task references must be slugs. */
+export function endoExperimentConditionProblemV0(condition: unknown, taskIds?: ReadonlySet<string>): string | null {
+	if (!plain(condition)) return "a condition is not an object";
+	const c = condition as Record<string, unknown>;
+	for (const key of Object.keys(c))
+		if (!["id", "description", "modelEntry", "settings", "extensions", "environment", "interventions"].includes(key))
+			return `unknown condition field ${key}`;
+	if (typeof c.id !== "string" || !SLUG.test(c.id)) return "a condition id must be a slug ([a-z0-9-], at most 64)";
+	if (!text(c.description)) return `condition ${c.id}: description is required`;
+	if (c.modelEntry !== undefined && !plain(c.modelEntry)) return `condition ${c.id}: modelEntry must be an object`;
+	if (c.modelEntry !== undefined && "id" in (c.modelEntry as object))
+		return `condition ${c.id}: modelEntry may not change the model id`;
+	if (c.settings !== undefined && !plain(c.settings)) return `condition ${c.id}: settings must be an object`;
+	if (c.environment !== undefined) {
+		const problem = endoExperimentEnvironmentProblemV0(c.environment);
+		if (problem !== null) return `condition ${c.id}: ${problem}`;
+	}
+	if (c.interventions !== undefined) {
+		if (!plain(c.interventions))
+			return `condition ${c.id}: interventions must be an object of task id to intervention`;
+		for (const [taskId, intervention] of Object.entries(c.interventions)) {
+			if (taskIds ? !taskIds.has(taskId) : !isEndoExperimentSlugV0(taskId))
+				return `condition ${c.id}: interventions names an unknown task ${taskId}`;
+			const problem = endoExperimentInterventionProblemV0(intervention);
+			if (problem !== null) return `condition ${c.id}: interventions.${taskId}: ${problem}`;
+		}
+	}
+	if (c.extensions !== undefined) {
+		if (!plain(c.extensions)) return `condition ${c.id}: extensions must be an object of file name to source`;
+		for (const [file, source] of Object.entries(c.extensions))
+			if (!/^[a-z0-9][a-z0-9-]{0,63}\.ts$/.test(file) || typeof source !== "string" || source.length === 0)
+				return `condition ${c.id}: bad extension ${file}`;
+	}
+	return null;
+}
+
 /** Why `value` is not a valid spec, or null when it is. */
 export function endoExperimentSpecProblemV0(value: unknown): string | null {
 	if (!plain(value)) return "the spec is not a JSON object";
@@ -294,40 +330,11 @@ export function endoExperimentSpecProblemV0(value: unknown): string | null {
 	if (!Array.isArray(v.conditions) || v.conditions.length === 0) return "conditions must be a non-empty list";
 	const conditionIds = new Set<string>();
 	for (const condition of v.conditions) {
-		if (!plain(condition)) return "a condition is not an object";
-		const c = condition as Record<string, unknown>;
-		for (const key of Object.keys(c))
-			if (
-				!["id", "description", "modelEntry", "settings", "extensions", "environment", "interventions"].includes(key)
-			)
-				return `unknown condition field ${key}`;
-		if (typeof c.id !== "string" || !SLUG.test(c.id)) return "a condition id must be a slug ([a-z0-9-], at most 64)";
-		if (conditionIds.has(c.id)) return `duplicate condition ${c.id}`;
-		conditionIds.add(c.id);
-		if (!text(c.description)) return `condition ${c.id}: description is required`;
-		if (c.modelEntry !== undefined && !plain(c.modelEntry)) return `condition ${c.id}: modelEntry must be an object`;
-		if (c.modelEntry !== undefined && "id" in (c.modelEntry as object))
-			return `condition ${c.id}: modelEntry may not change the model id`;
-		if (c.settings !== undefined && !plain(c.settings)) return `condition ${c.id}: settings must be an object`;
-		if (c.environment !== undefined) {
-			const problem = endoExperimentEnvironmentProblemV0(c.environment);
-			if (problem !== null) return `condition ${c.id}: ${problem}`;
-		}
-		if (c.interventions !== undefined) {
-			if (!plain(c.interventions))
-				return `condition ${c.id}: interventions must be an object of task id to intervention`;
-			for (const [taskId, intervention] of Object.entries(c.interventions)) {
-				if (!taskIds.has(taskId)) return `condition ${c.id}: interventions names an unknown task ${taskId}`;
-				const problem = endoExperimentInterventionProblemV0(intervention);
-				if (problem !== null) return `condition ${c.id}: interventions.${taskId}: ${problem}`;
-			}
-		}
-		if (c.extensions !== undefined) {
-			if (!plain(c.extensions)) return `condition ${c.id}: extensions must be an object of file name to source`;
-			for (const [file, source] of Object.entries(c.extensions))
-				if (!/^[a-z0-9][a-z0-9-]{0,63}\.ts$/.test(file) || typeof source !== "string" || source.length === 0)
-					return `condition ${c.id}: bad extension ${file}`;
-		}
+		const problem = endoExperimentConditionProblemV0(condition, taskIds);
+		if (problem !== null) return problem;
+		const id = (condition as unknown as EndoExperimentConditionV0).id;
+		if (conditionIds.has(id)) return `duplicate condition ${id}`;
+		conditionIds.add(id);
 	}
 	if (v.manipulation !== undefined) {
 		if (!plain(v.manipulation)) return "manipulation must be an object";

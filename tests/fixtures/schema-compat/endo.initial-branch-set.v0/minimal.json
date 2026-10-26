@@ -1,0 +1,185 @@
+{
+	"area": {
+		"directory": "endo-initial-branches-set000",
+		"filesystem": {
+			"birthtimeNs": "1704067200000000000",
+			"dev": 1,
+			"ino": 2
+		},
+		"outputParent": {
+			"birthtimeNs": "1704067200000000000",
+			"dev": 1,
+			"ino": 1
+		}
+	},
+	"changeCategory": "settings",
+	"children": {
+		"alternative": {
+			"condition": {
+				"commitment": {
+					"algorithm": "hmac-sha256",
+					"keyId": "fixture-public",
+					"value": "5c403fe5321f8227b59eb72f13e5f0803ac08a45d3acf27325e825f6d65e477f"
+				},
+				"specification": {
+					"description": "Synthetic declared alternative",
+					"environment": {
+						"fileTime": "2024-01-01T00:00:00Z",
+						"files": {
+							"note.txt": "synthetic"
+						},
+						"variables": {
+							"TZ": "UTC"
+						}
+					},
+					"extensions": {
+						"noop.ts": "export default function () {}"
+					},
+					"id": "alternative",
+					"interventions": {
+						"task": {
+							"after": {
+								"chunks": 1,
+								"exchange": 1
+							},
+							"operation": "stop"
+						}
+					},
+					"modelEntry": {
+						"temperature": 0
+					},
+					"settings": {
+						"thinkingLevel": "high"
+					}
+				}
+			},
+			"directory": "endo-initial-scratch-child2",
+			"filesystem": {
+				"birthtimeNs": "1704067200000000000",
+				"dev": 1,
+				"ino": 4
+			},
+			"id": "endo.prepared-child.00000000-0000-4000-8000-000000000002",
+			"manipulation": "planned-not-applied",
+			"parent": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "eaf68e06de3cdef4f728343235fe97afbadb0ecb6e2c91c443acf680b0307e08"
+			}
+		},
+		"baseline": {
+			"condition": {
+				"commitment": {
+					"algorithm": "hmac-sha256",
+					"keyId": "fixture-public",
+					"value": "9393ef5344f52f27721bb65b41112896c382f9b46659b6d906f2672a546a4d43"
+				},
+				"specification": {
+					"description": "Synthetic baseline",
+					"environment": {
+						"fileTime": "2024-01-01T00:00:00Z",
+						"files": {
+							"note.txt": "synthetic"
+						},
+						"variables": {
+							"TZ": "UTC"
+						}
+					},
+					"extensions": {
+						"noop.ts": "export default function () {}"
+					},
+					"id": "baseline",
+					"interventions": {
+						"task": {
+							"after": {
+								"chunks": 1,
+								"exchange": 1
+							},
+							"operation": "stop"
+						}
+					},
+					"modelEntry": {
+						"temperature": 0
+					},
+					"settings": {
+						"thinkingLevel": "off"
+					}
+				}
+			},
+			"directory": "endo-initial-scratch-child1",
+			"filesystem": {
+				"birthtimeNs": "1704067200000000000",
+				"dev": 1,
+				"ino": 3
+			},
+			"id": "endo.prepared-child.00000000-0000-4000-8000-000000000001",
+			"manipulation": "planned-not-applied",
+			"parent": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "eaf68e06de3cdef4f728343235fe97afbadb0ecb6e2c91c443acf680b0307e08"
+			}
+		}
+	},
+	"commitment": {
+		"algorithm": "hmac-sha256",
+		"keyId": "fixture-public",
+		"value": "d7edeed6057dab60c4c9973d36c48dc74449c1af7f64eabd8c126490cf4cb616"
+	},
+	"continuationAuthority": "none",
+	"execution": "not-started",
+	"id": "endo.initial-branch-set.00000000-0000-4000-8000-000000000000",
+	"outcomes": "not-observed",
+	"parent": {
+		"archive": {
+			"bytes": 123,
+			"digest": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			},
+			"schemaVersion": "endo.workspace-archive.v1"
+		},
+		"boundary": "pre-execution-scratch",
+		"checkpointClass": "pi-cassette-session",
+		"environment": {
+			"replay": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "2222222222222222222222222222222222222222222222222222222222222222"
+			},
+			"source": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "1111111111111111111111111111111111111111111111111111111111111111"
+			}
+		},
+		"evidence": {
+			"comparison": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			"replayCapture": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+			},
+			"replayTrajectory": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+			"sourceCapture": {
+				"algorithm": "hmac-sha256",
+				"keyId": "fixture-public",
+				"value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			},
+			"sourceTrajectory": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+		},
+		"limitations": "no-live-state-mid-run-or-external-environment-restoration",
+		"qualification": "completed-cassette-zero-misses-four-exact-layers",
+		"schemaVersion": "endo.checkpoint-candidate.v0",
+		"scope": "recorded-scratch-and-observed-cassette-equivalence",
+		"session": "endo.session.pi.fixture"
+	},
+	"parentReference": {
+		"algorithm": "hmac-sha256",
+		"keyId": "fixture-public",
+		"value": "eaf68e06de3cdef4f728343235fe97afbadb0ecb6e2c91c443acf680b0307e08"
+	},
+	"preparation": "completed",
+	"schemaVersion": "endo.initial-branch-set.v0"
+}

@@ -48,6 +48,7 @@ import {
 } from "../protocol/experiment-spec.ts";
 import { ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0 } from "../protocol/harness.ts";
 import { ENDO_HARNESS_SURFACE_VERSIONS_V0 } from "../protocol/harness-surface.ts";
+import { ENDO_INITIAL_BRANCH_SET_VERSIONS_V0 } from "../protocol/initial-branch-set.ts";
 import { ENDO_DURABLE_SCHEMAS_V0 } from "../protocol/schema-compat.ts";
 import { EndoSchemaVersionErrorV0, type EndoVersionTableV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
@@ -74,6 +75,7 @@ const TABLES: readonly EndoVersionTableV0<unknown>[] = [
 	ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0,
 	ENDO_WORKSPACE_ARCHIVE_VERSIONS_V0,
 	ENDO_CHECKPOINT_CANDIDATE_VERSIONS_V0,
+	ENDO_INITIAL_BRANCH_SET_VERSIONS_V0,
 	ENDO_DIGEST_KEY_FILE_VERSIONS_V0,
 	ENDO_EXPERIMENT_SPEC_VERSIONS_V0,
 	ENDO_EXPERIMENT_RUN_VERSIONS_V0,

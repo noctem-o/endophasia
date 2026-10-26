@@ -72,7 +72,10 @@ implementation detail and its limitations. The real recordings and studies, with
     four EXACT comparison layers. The source-tree [programmatic materialization API](checkpoint-materialization.md)
     independently revalidates that receipt and restores the recorded initial scratch tree into a new private directory,
     accepting it only when rearchived bytes match. It does not launch Pi or provide mid-run restore, live continuation or
-    forking. Both checkpoint slices are absent from the published npm alpha versions.
+    forking. The source-tree [sibling preparation API and strict lineage reader](initial-branch-set.md) add two independently
+    materialized children, one exact verified parent and private planned condition declarations (`endo.initial-branch-set.v0`).
+    A later read distinguishes pristine, modified, missing and substituted children; no execution authority is granted.
+    These checkpoint slices are absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
     conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi

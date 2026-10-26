@@ -220,6 +220,39 @@ function supportedCondition(manifest: EndoInitialBranchSetV0, role: "baseline" |
 		return "unsupported condition settings";
 	return null;
 }
+/** Recognise Pi's Options section, not flag mentions in prose, usage or examples. */
+export function piHelpAdvertisesRequiredFlagsV0(output: string): boolean {
+	// A final newline, valid text and the bounded invocation are necessary, not proof of complete runtime semantics.
+	const text = output.replaceAll("\r\n", "\n");
+	if (!text.endsWith("\n") || /[\u0000-\u0008\u000B-\u001F\u007F\uFFFD]/.test(text)) return false;
+	const lines = text.split("\n");
+	const sections = lines.flatMap((line, index) => (line.trim() === "Options:" ? [index] : []));
+	if (sections.length !== 1) return false;
+	if (lines.slice(0, sections[0]).some((line) => /^Examples?:$/i.test(line.trim()))) return false;
+	const advertised = new Set<string>();
+	for (const line of lines.slice(sections[0]! + 1)) {
+		if (line.trim() === "") continue;
+		// Pi separates sections with an unindented heading or explanatory paragraph.
+		if ((/^\S/.test(line) || line.trimEnd().endsWith(":")) && !line.trimStart().startsWith("-")) break;
+		if (!/^[ \t]*-/.test(line)) continue;
+		if (/^[ \t]*--(?:[ \t]{2,}|\t|$)/.test(line)) continue; // Pi's end-of-options delimiter.
+		// Deliberately small grammar: comma-separated names, optional <argument> or [argument], then a help column.
+		const declaration = line.match(
+			/^[ \t]*((?:--[a-z][a-z0-9-]*|-[A-Za-z][A-Za-z0-9]*)(?:[ \t]*,[ \t]*(?:--[a-z][a-z0-9-]*|-[A-Za-z][A-Za-z0-9]*))*)(?:[ \t]+(?:<[^<>\s]+>|\[[^[\]\s]+\]))?(?:[ \t]*|(?: {2,}|\t)[^\n]*)$/,
+		);
+		if (!declaration) return false;
+		// Do not let the help-column alternative swallow malformed arguments or misplaced aliases.
+		const suffix = line.trimStart().slice(declaration[1]!.length).trimStart();
+		const description = suffix.replace(/^(?:<[^<>\s]+>|\[[^[\]\s]+\])(?:[ \t]+|$)/, "").trimStart();
+		if (/^[<>[\],-]/.test(description)) return false;
+		for (const option of declaration[1]!.split(",").map((part) => part.trim())) {
+			if (advertised.has(option)) return false;
+			advertised.add(option);
+		}
+	}
+	return REQUIRED_FLAGS.every((flag) => advertised.has(flag));
+}
+
 function helpFlags(executable: string, outputParent: string): Promise<boolean> {
 	return new Promise((resolve) =>
 		execFile(
@@ -238,11 +271,7 @@ function helpFlags(executable: string, outputParent: string): Promise<boolean> {
 				maxBuffer: 64 * 1024,
 				shell: false,
 			},
-			(error, stdout) =>
-				resolve(
-					error === null &&
-						REQUIRED_FLAGS.every((flag) => new RegExp(`(^|\\s)${flag}(\\s|$)`).test(String(stdout))),
-				),
+			(error, stdout) => resolve(error === null && piHelpAdvertisesRequiredFlagsV0(String(stdout))),
 		),
 	);
 }

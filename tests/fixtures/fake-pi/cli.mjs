@@ -79,7 +79,13 @@ if (argv.includes("--version")) {
 	process.exit(0);
 }
 if (argv.includes("--help")) {
-	process.stdout.write("--mode --session-dir --session-id --provider --model --no-tools --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-approve --offline\n");
+	const flags = ["--mode", "--session-dir", "--session-id", "--provider", "--model", "--no-tools", "--no-extensions", "--no-mcp", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-approve", "--offline"];
+	const declarations = flags.filter((flag) => flag !== option("help-missing:")).map((flag) => {
+		if (has("help-aliases") && flag === "--no-tools") return "  -nt, --no-tools  Disable tools";
+		if (has("help-aliases") && flag === "--no-extensions") return "  --no-extensions, -ne  Disable extensions";
+		return `  ${flag}`;
+	});
+	process.stdout.write(`Options:\n${declarations.join("\n")}\n`);
 	process.exit(0);
 }
 const allowedFlags = new Set(["--mode", "--session-dir", "--session-id", "--provider", "--model", "--no-tools", "--no-extensions", "--no-mcp", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-approve", "--offline", "--no-session", "--tools"]);

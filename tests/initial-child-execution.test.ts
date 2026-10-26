@@ -76,6 +76,33 @@ async function ready(options: ReturnType<typeof setup>["options"]) {
 }
 
 describe("governed initial child execution", () => {
+	it.each([
+		["startup-lock", "completed", 1],
+		["startup-auth-change", "failed", 0],
+	] as const)("handles Pi %s before dispatch", async (scenario, expected, requestCount) => {
+		const before = upstream.requests.length;
+		const { options } = setup();
+		try {
+			fixture.pi.setScenario(`model-endpoint,${scenario}`);
+			const plan = await ready(options);
+			const approval = approveInitialChildExecutionV0(plan, plan.commitment, "approve one tool-free turn");
+			const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
+			expect(result.status).toBe(expected);
+			expect(upstream.requests.length - before).toBe(requestCount);
+			if (result.status === "completed")
+				expect(
+					verifyInitialChildExecutionEvidenceV0(
+						fixture.source,
+						fixture.replay,
+						fixture.key,
+						join(result.area, "receipt.json"),
+					).status,
+				).toBe("verified");
+			else expect(result).toMatchObject({ reason: "adapted runtime changed before dispatch" });
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	});
 	it("preflights aliased help but refuses missing --no-mcp without requests, approval or receipts", async () => {
 		const { options } = setup();
 		const before = readdirSync(options.outputParent).sort();

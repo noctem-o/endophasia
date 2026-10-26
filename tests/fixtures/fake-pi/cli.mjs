@@ -29,7 +29,7 @@
 //                       resultText replaces the fixed result text)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -490,6 +490,13 @@ async function handle(command) {
 	}
 	switch (type) {
 		case "get_state":
+			if (has("startup-lock")) {
+				const lock = join(process.env.PI_CODING_AGENT_DIR, "temporary.lock");
+				writeFileSync(lock, "");
+				unlinkSync(lock);
+			}
+			if (has("startup-auth-change"))
+				writeFileSync(join(process.env.PI_CODING_AGENT_DIR, "auth.json"), '{"unexpected":true}');
 			if (has("delay-startup-state")) {
 				setTimeout(() => respond(id, type, state()), 2000);
 				return;

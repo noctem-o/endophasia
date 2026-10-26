@@ -1,4 +1,13 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
@@ -67,6 +76,34 @@ async function ready(options: ReturnType<typeof setup>["options"]) {
 }
 
 describe("governed initial child execution", () => {
+	it("preflights aliased help but refuses missing --no-mcp without requests, approval or receipts", async () => {
+		const { options } = setup();
+		const before = readdirSync(options.outputParent).sort();
+		const requests = upstream.requests.length;
+		const pidFile = join(dirname(fixture.pi.packageJson), "rpc-pid");
+		rmSync(pidFile, { force: true });
+		try {
+			fixture.pi.setScenario("model-endpoint,record-rpc-pid,help-aliases");
+			const checked = await preflightInitialChildExecutionV0(options, fixture.key);
+			expect(checked.status).toBe("ready");
+			// A successful preflight grants no approval and writes no attempt area either.
+			expect(checked).not.toHaveProperty("approval");
+			fixture.pi.setScenario("model-endpoint,record-rpc-pid,help-aliases,help-missing:--no-mcp");
+			const refused = await preflightInitialChildExecutionV0(options, fixture.key);
+			expect(refused).toEqual({
+				status: "refused",
+				reason: "Pi executable or required resource-disabling flags unverified",
+			});
+			expect(refused).not.toHaveProperty("plan");
+			expect(refused).not.toHaveProperty("approval");
+			expect(refused).not.toHaveProperty("receipt");
+			expect(readdirSync(options.outputParent).sort()).toEqual(before);
+			expect(upstream.requests.length).toBe(requests);
+			expect(existsSync(pidFile)).toBe(false);
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	}, 120_000);
 	it("uses the remaining startup deadline instead of restarting the RPC timeout after a slow state read", async () => {
 		fixture.pi.setScenario("model-endpoint,record-rpc-pid,delay-startup-state,hang-on:get_entries");
 		const pidFile = join(dirname(fixture.pi.packageJson), "rpc-pid");

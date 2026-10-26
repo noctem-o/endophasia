@@ -44,6 +44,8 @@ export interface EndoRecordingProxyOptionsV0 {
 	readonly ca?: string | Buffer;
 	/** How long an upstream may sit on request bytes it will not read, after it has answered, before the exchange is dropped. */
 	readonly hopDrainMs?: number;
+	/** Optional hard aggregate byte bound for one governed recording. Exceeding it drops owned sockets. */
+	readonly maxTransferredBytes?: number;
 }
 
 /** The exchange most recently started, and how many response chunks have been relayed to its client. */
@@ -68,6 +70,7 @@ export interface EndoRecordingProxyV0 {
 	flush(): Promise<void>;
 	/** Recording jobs that threw (the relay itself is never interrupted by a recording failure). */
 	readonly recordingFailures: number;
+	readonly transferLimitExceeded: boolean;
 	/** Flushes, then stops listening and drops every connection. */
 	close(): Promise<void>;
 }
@@ -197,6 +200,15 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	let latest: Exchange | null = null;
 	let open = 0;
 	const sockets = new Set<Socket>();
+	let transferredBytes = 0;
+	let transferLimitExceeded = false;
+	const countTransfer = (bytes: number): boolean => {
+		transferredBytes += bytes;
+		if (options.maxTransferredBytes === undefined || transferredBytes <= options.maxTransferredBytes) return true;
+		transferLimitExceeded = true;
+		for (const socket of sockets) socket.destroy();
+		return false;
+	};
 	let origin = "";
 	// Recording never runs ahead of the byte path: it is queued in event order and drained after the relay has done its
 	// work, and the capture log (opened `async`) appends and fsyncs each event on libuv's threadpool, so no fsync ever
@@ -536,6 +548,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			};
 
 			socket.on("data", (data: Buffer) => {
+				if (!countTransfer(data.length)) {
+					client.destroy();
+					return;
+				}
 				if (slot.retired) return;
 				// The request stream stopped being HTTP/1.1 after this hop opened: from here the relay delimits nothing.
 				if (slot.raw) hopParsing = false;
@@ -790,6 +806,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		};
 
 		client.on("data", (data: Buffer) => {
+			if (!countTransfer(data.length)) {
+				client.destroy();
+				return;
+			}
 			if (ending) return;
 			if (upgraded !== null) {
 				forward(upgraded, data);
@@ -884,6 +904,9 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		},
 		get recordingFailures() {
 			return recordingFailures + (log?.writeFailures ?? 0);
+		},
+		get transferLimitExceeded() {
+			return transferLimitExceeded;
 		},
 		flush,
 		async close() {

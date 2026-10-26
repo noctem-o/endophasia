@@ -1,0 +1,71 @@
+{
+  "approval": {
+    "attemptId": "endo.initial-child-attempt.00000000-0000-4000-8000-000000000001",
+    "confirmedAt": "2026-01-01T00:00:00.000Z",
+    "method": "local-explicit",
+    "planCommitment": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  },
+  "commitment": {
+    "algorithm": "hmac-sha256",
+    "keyId": "fixture-public",
+    "value": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "observed": null,
+  "plan": {
+    "archiveDigest": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "attemptId": "endo.initial-child-attempt.00000000-0000-4000-8000-000000000001",
+    "branchCommitment": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "branchId": "endo.initial-branch-set.00000000-0000-4000-8000-000000000002",
+    "childId": "endo.prepared-child.00000000-0000-4000-8000-000000000003",
+    "childRole": "baseline",
+    "commitment": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "conditionCommitment": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "maxTransferredBytes": 1048576,
+    "model": "fake-1",
+    "outputParent": "/private/output",
+    "parentReference": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "piExecutable": "/private/pi",
+    "piIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "piVersion": "1.0.0",
+    "preparation": "endo-initial-branches-ABC123",
+    "promptCommitment": {
+      "algorithm": "hmac-sha256",
+      "keyId": "fixture-public",
+      "value": "5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    "provider": "fake",
+    "replay": "/private/replay",
+    "source": "/private/source",
+    "toolPolicy": "none",
+    "upstream": "http://127.0.0.1:9999",
+    "wallTimeoutMs": 10000
+  },
+  "reason": null,
+  "runtime": null,
+  "schemaVersion": "endo.initial-child-execution.v0",
+  "status": "approved-not-dispatched"
+}

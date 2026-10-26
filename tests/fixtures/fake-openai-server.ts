@@ -20,6 +20,8 @@ export interface FakeOpenAiOptions {
 	readonly omitUsage?: boolean;
 	/** Write each SSE event split across several TCP writes. */
 	readonly splitWrites?: boolean;
+	/** Close the upstream connection after one streamed model chunk. */
+	readonly disconnectAfterFirstChunk?: boolean;
 }
 
 export interface FakeOpenAiRequestLog {
@@ -159,6 +161,10 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 			for (const [index, piece] of pieces.entries()) {
 				if (response.destroyed) return;
 				await write(chunk(index === 0 ? { role: "assistant", content: piece } : { content: piece }, null));
+				if (index === 0 && options.disconnectAfterFirstChunk) {
+					response.destroy();
+					return;
+				}
 				await sleep(delay);
 			}
 			await write(chunk({}, "stop"));

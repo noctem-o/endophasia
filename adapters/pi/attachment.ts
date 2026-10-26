@@ -82,10 +82,12 @@ export interface PiAttachmentOptionsV0 {
 	readonly provider?: string;
 	readonly model?: string;
 	readonly tools?: "default" | "none" | readonly string[];
+	readonly governedToolFree?: boolean;
 	/** Where the attachment's persistent Pi session is stored. Default: `<root>/pi-sessions/<attachment>`. */
 	readonly sessionDir?: string;
 	readonly now?: () => Date;
 	readonly requestTimeoutMs?: number;
+	readonly maxRpcOutputBytes?: number;
 	/**
 	 * The comparison-domain key tool arguments are digested under (runtime/contracts/keyed-digest.ts). Default: the key
 	 * this process's environment selects (storage/digest-key.ts), created on first use; never Pi's environment.
@@ -586,6 +588,12 @@ export class PiSessionAttachmentV0 {
 		return this.#piSessionId;
 	}
 
+	/** Live state used for a governed startup check before dispatch. */
+	async rpcState() {
+		if (this.#client === null) throw new TypeError("Pi is not running");
+		return this.#client.getState();
+	}
+
 	/** The fingerprint of the runtime the current (or last) process was launched from. */
 	get fingerprint(): EndoHarnessFingerprintV0 {
 		return this.#fingerprint;
@@ -691,7 +699,10 @@ export class PiSessionAttachmentV0 {
 			...(options.provider === undefined ? {} : { provider: options.provider }),
 			...(options.model === undefined ? {} : { model: options.model }),
 			...(options.tools === undefined ? {} : { tools: options.tools }),
+			...(options.governedToolFree === undefined ? {} : { governedToolFree: options.governedToolFree }),
+			...(options.governedToolFree === true ? { offline: true } : {}),
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
+			...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
 			onDiagnostic: (diagnostic) => {
 				if (owned !== null && this.#client === owned) this.#diagnostic(diagnostic);
 			},

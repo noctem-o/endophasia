@@ -39,7 +39,7 @@ function refusal(reason: string): EndoCheckpointQualificationV0 {
 }
 
 /** A readable prefix is not a complete evidence log. Inspect it without recovering or changing the store. */
-function completeEvidenceStore(root: string): boolean {
+export function completeEvidenceStore(root: string): boolean {
 	const store = createEndoDurableEventStoreV0(root, { readOnly: true });
 	try {
 		const recovery = store.recovery();

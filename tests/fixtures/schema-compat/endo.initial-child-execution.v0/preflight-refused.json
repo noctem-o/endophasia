@@ -1,0 +1,15 @@
+{
+  "approval": null,
+  "attemptId": "endo.initial-child-attempt.00000000-0000-4000-8000-000000000004",
+  "commitment": {
+    "algorithm": "hmac-sha256",
+    "keyId": "fixture-public",
+    "value": "8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "observed": null,
+  "plan": null,
+  "reason": "unsupported condition",
+  "runtime": null,
+  "schemaVersion": "endo.initial-child-execution.v0",
+  "status": "preflight-refused"
+}

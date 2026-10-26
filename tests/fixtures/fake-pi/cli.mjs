@@ -77,6 +77,12 @@ if (argv.includes("--version")) {
 	process.stdout.write(has("version-garbage") ? "pi build from source (dirty)\n" : `${nearestVersion()}\n`);
 	process.exit(0);
 }
+if (argv.includes("--help")) {
+	process.stdout.write("--mode --session-dir --session-id --provider --model --no-tools --no-extensions --no-mcp --no-skills --no-context-files --no-prompt-templates --no-approve --offline\n");
+	process.exit(0);
+}
+const allowedFlags = new Set(["--mode", "--session-dir", "--session-id", "--provider", "--model", "--no-tools", "--no-extensions", "--no-mcp", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-approve", "--offline", "--no-session", "--tools"]);
+if (argv.some((arg) => arg.startsWith("--") && !allowedFlags.has(arg))) process.exit(2);
 if (argv[0] !== "--mode" || argv[1] !== "rpc") {
 	process.stderr.write("fake pi supports only --version and --mode rpc\n");
 	process.exit(2);
@@ -86,7 +92,7 @@ const flag = (name) => {
 	const index = argv.indexOf(name);
 	return index === -1 ? undefined : argv[index + 1];
 };
-const tools = argv.includes("--no-tools") ? [] : (flag("--tools")?.split(",") ?? ["read", "bash", "edit", "write"]);
+const tools = argv.includes("--no-tools") && !has("ignore-no-tools") ? [] : (flag("--tools")?.split(",") ?? ["read", "bash", "edit", "write"]);
 const ephemeral = argv.includes("--no-session");
 const sessionDir = flag("--session-dir");
 const requestedId = flag("--session-id");
@@ -195,7 +201,7 @@ function modelMessages() {
 /** One streamed chat completion; resolves with the text, the tool calls, or the error. Abort drops the request. */
 function modelCall(run) {
 	const body = JSON.stringify({
-		model: modelId,
+		model: has("wrong-request-model") ? "substituted-model" : modelId,
 		stream: true,
 		messages: modelMessages(),
 		...(tools.includes("read") ? { tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }] } : {}),
@@ -282,6 +288,7 @@ async function modelTurn(run) {
 	emit({ type: "message_end", message: assistant });
 	append({ type: "message", message: assistant });
 	const toolResults = [];
+	if (has("spurious-tool-event")) emit({ type: "tool_execution_start", toolCallId: "unasked", toolName: "read", args: { path: "endophasia-study.txt" } });
 	for (const call of calls) {
 		let args = {};
 		try {

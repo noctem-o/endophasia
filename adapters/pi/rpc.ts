@@ -90,8 +90,11 @@ export interface PiRpcLaunchOptionsV0 {
 	readonly tools?: "default" | "none" | readonly string[];
 	/** Pass `--offline` (no startup network activity). */
 	readonly offline?: boolean;
+	/** Fixed resource-disabling profile for governed fresh execution. */
+	readonly governedToolFree?: boolean;
 	readonly requestTimeoutMs?: number;
 	readonly closeTimeoutMs?: number;
+	readonly maxOutputBytes?: number;
 	readonly onDiagnostic?: (diagnostic: RpcDiagnosticV0) => void;
 }
 
@@ -119,6 +122,17 @@ export function piRpcArgumentsV0(options: PiRpcLaunchOptionsV0): string[] {
 		args.push("--tools", tools.join(","));
 	}
 	if (options.offline === true) args.push("--offline");
+	if (options.governedToolFree === true) {
+		if (tools !== "none") throw new TypeError("governed Pi execution requires no tools");
+		args.push(
+			"--no-extensions",
+			"--no-mcp",
+			"--no-skills",
+			"--no-context-files",
+			"--no-prompt-templates",
+			"--no-approve",
+		);
+	}
 	if (args.some((value) => value.includes("\0"))) throw new TypeError("a Pi argument contains a NUL byte");
 	return args;
 }
@@ -240,6 +254,7 @@ export class PiRpcClientV0 {
 			stderr: "capture",
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
 			...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
+			...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
 			...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
 		});
 	}

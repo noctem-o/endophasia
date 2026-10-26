@@ -67,6 +67,7 @@ export type RpcListenerErrorNameV0 =
  */
 export type RpcDiagnosticV0 =
 	| { readonly kind: "protocol-fault"; readonly fault: RpcProtocolFaultV0; readonly byteLength?: number }
+	| { readonly kind: "output-limit-exceeded"; readonly bytes: number }
 	| {
 			readonly kind: "listener-failure";
 			readonly listener: "event" | "command";
@@ -129,6 +130,8 @@ export interface RpcConnectionOptionsV0 {
 	 * unsent, so a stalled reader cannot grow the queue without bound. Default 16 MiB.
 	 */
 	readonly maxInputBacklogBytes?: number;
+	/** Optional hard bound on all stdout bytes from this owned runtime process. */
+	readonly maxOutputBytes?: number;
 	readonly onDiagnostic?: (diagnostic: RpcDiagnosticV0) => void;
 }
 
@@ -190,6 +193,8 @@ export class RpcConnectionV0 {
 	readonly #drainGraceMs: number;
 	readonly #closeTimeoutMs: number;
 	readonly #maxInputBacklogBytes: number;
+	readonly #maxOutputBytes: number | undefined;
+	#outputBytes = 0;
 	readonly #onDiagnostic: ((diagnostic: RpcDiagnosticV0) => void) | undefined;
 	readonly #label: string;
 	readonly #maxStderrBytes: number;
@@ -219,6 +224,8 @@ export class RpcConnectionV0 {
 		this.#drainGraceMs = options.drainGraceMs ?? DEFAULT_DRAIN_GRACE_MS;
 		this.#closeTimeoutMs = options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS;
 		this.#maxInputBacklogBytes = options.maxInputBacklogBytes ?? DEFAULT_MAX_INPUT_BACKLOG_BYTES;
+		this.#maxOutputBytes = options.maxOutputBytes;
+		if (this.#maxOutputBytes !== undefined) checkSize("maxOutputBytes", this.#maxOutputBytes);
 		checkTimeout("requestTimeoutMs", this.#requestTimeoutMs);
 		checkTimeout("drainGraceMs", this.#drainGraceMs);
 		checkTimeout("closeTimeoutMs", this.#closeTimeoutMs);
@@ -273,7 +280,15 @@ export class RpcConnectionV0 {
 			});
 			this.#group.stderr?.on("error", () => {});
 		}
-		stdout?.on("data", (chunk: Buffer) => this.#receive(this.#decoder.push(chunk)));
+		stdout?.on("data", (chunk: Buffer) => {
+			this.#outputBytes += chunk.length;
+			if (this.#maxOutputBytes !== undefined && this.#outputBytes > this.#maxOutputBytes) {
+				this.#diagnose({ kind: "output-limit-exceeded", bytes: this.#outputBytes });
+				this.#group.killGroup();
+				return;
+			}
+			this.#receive(this.#decoder.push(chunk));
+		});
 		stdout?.on("end", () => this.#receive(this.#decoder.end()));
 		stdout?.on("close", () => {
 			this.#stdoutOpen = false;

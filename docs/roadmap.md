@@ -23,7 +23,9 @@ verified initial-state candidate (PR A, source-tree slice)
       ↓
 verified isolated initial-scratch materialization (PR B, source-tree slice)
       ↓
-controlled continuation identity and fork lineage (future core milestone)
+verified sibling preparation and private parent/child lineage (PR C, source-tree slice)
+      ↓
+controlled continuation identity and execution lineage (future core milestone)
       ↓
 later native instrumentation and broader Research / Cognition / Evolve directions (proposals)
 ~~~
@@ -99,6 +101,10 @@ evidence-qualified, with unavailable signals and mapping losses explicit; native
    - PR B adds [isolated materialization](checkpoint-materialization.md): a currently verified candidate can reconstruct
      that archived scratch tree in a new private directory, with canonical byte equality after rearchiving. No Pi or
      model executes in this operation, and it does not make the new path executable as the original session.
+   - PR C adds [verified sibling preparation and lineage](initial-branch-set.md): two isolated initial scratch trees
+     share one complete verified parent identity, carry private planned conditions and have independently checked
+     current pristine states. Preparation applies no manipulation and grants no execution authority. Controlled
+     execution still needs current operator authority, an effect policy, path handling and child trajectory evidence.
    - Later slices need explicit continuation identity, authority, path and external-effect isolation, restore/fork
      lineage and a validated cassette-then-live boundary.
    - Once this exists, use it to support controlled continuation experiments rather than adding another large
@@ -242,7 +248,8 @@ They describe **capability dependencies**, not the immediate shipping order abov
     - *Status:* partly done. Trajectory (`endo.trajectory.v1`) and experiment result bundles exist (#20, #22,
       #25); the others do not yet.
     - **Forkable trajectory state.** PR A qualifies the recorded pre-execution Pi scratch boundary after an actual
-      cassette replay; PR B independently materializes that tree ([contract and limits](checkpoint-materialization.md)). A general mid-trajectory prefix cannot yet be
+      cassette replay; PR B independently materializes that tree ([contract and limits](checkpoint-materialization.md));
+      PR C prepares two siblings with private verified lineage ([contract](initial-branch-set.md)). A general mid-trajectory prefix cannot yet be
       reconstructed. Future fork records must name a verified parent checkpoint, the changed variable, an isolated
       environment and the child trajectory. Cassette-then-live switching, search, counterfactual evaluation and
       training remain future work.

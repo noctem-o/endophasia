@@ -1,7 +1,7 @@
 // Consume a currently verified Pi cassette candidate as filesystem state only. This never launches Pi or a model.
-import { lstatSync, mkdtempSync, realpathSync, rmSync, type Stats } from "node:fs";
-import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
-import { endoCaptureRootV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { endoCaptureRootV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../storage/blob-store.ts";
@@ -11,8 +11,8 @@ import {
 	readEndoWorkspaceArchiveV0,
 	restoreEndoWorkspaceV0,
 } from "../storage/workspace-snapshot.ts";
-import { piCassetteScriptV0 } from "./cassette-session.ts";
 import { readVerifiedCheckpointCandidateV0 } from "./checkpoint-candidate.ts";
+import { checkpointOutputParent, identity, sameIdentity } from "./checkpoint-filesystem.ts";
 
 /** Additional resource bounds for this filesystem materialization, beyond the archive writer's file-byte limit. */
 export const ENDO_INITIAL_MATERIALIZATION_MAX_ARCHIVE_BYTES_V0 = 128 * 1024 * 1024;
@@ -60,79 +60,6 @@ const refused = (reason: EndoInitialCheckpointRefusalReasonV0): EndoInitialCheck
 	reason,
 });
 
-type DirectoryIdentity = { dev: number; ino: number };
-const identity = (path: string): DirectoryIdentity | null => {
-	try {
-		const info = lstatSync(path);
-		return info.isDirectory() && !info.isSymbolicLink() ? { dev: info.dev, ino: info.ino } : null;
-	} catch {
-		return null;
-	}
-};
-const sameIdentity = (path: string, expected: DirectoryIdentity): boolean => {
-	const current = identity(path);
-	return current !== null && current.dev === expected.dev && current.ino === expected.ino;
-};
-const within = (parent: string, path: string): boolean => path === parent || path.startsWith(`${parent}${sep}`);
-
-/** Resolve even a missing recorded root through its nearest existing ancestor; refuse broken links. */
-function physicalProspectivePath(path: string): string | null {
-	let ancestor = resolve(path);
-	const missing: string[] = [];
-	for (;;) {
-		try {
-			lstatSync(ancestor);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
-			const upper = dirname(ancestor);
-			if (upper === ancestor) return null;
-			missing.unshift(basename(ancestor));
-			ancestor = upper;
-			continue;
-		}
-		try {
-			return resolve(realpathSync(ancestor), ...missing);
-		} catch {
-			return null;
-		}
-	}
-}
-
-/** Refuse path aliases and symlinked/shared-writable parents before allocating a private child. */
-function safeOutputParent(path: string): { path: string; identity: DirectoryIdentity } | null {
-	const uid = process.getuid?.();
-	if (uid === undefined || !isAbsolute(path) || path.includes("\0")) return null;
-	const normalized = resolve(path);
-	if (normalized !== path || path.split(sep).some((part) => part === "." || part === "..")) return null;
-	const root = parse(path).root;
-	let current = root;
-	const parts = path.slice(root.length).split(sep).filter(Boolean);
-	for (const [index, part] of parts.entries()) {
-		current = join(current, part);
-		let info: Stats;
-		try {
-			info = lstatSync(current);
-		} catch {
-			return null;
-		}
-		if (!info.isDirectory() || info.isSymbolicLink() || (info.uid !== uid && info.uid !== 0)) return null;
-		if (index === parts.length - 1) {
-			// The archived scratch may contain sensitive files; the selected parent must be private and operator-owned.
-			if (info.uid !== uid || (info.mode & 0o077) !== 0 || (info.mode & 0o300) !== 0o300) return null;
-		} else if ((info.mode & 0o022) !== 0 && !(info.uid === 0 && (info.mode & 0o1000) !== 0)) {
-			return null;
-		}
-	}
-	if (parts.length === 0) return null;
-	try {
-		if (realpathSync(path) !== path) return null;
-	} catch {
-		return null;
-	}
-	const found = identity(path);
-	return found === null ? null : { path, identity: found };
-}
-
 /**
  * Materialize only the verified pre-execution scratch archive into a new private child of `outputParent`.
  * A result is filesystem equivalence, not a process restore, executable replay, continuation, or fork.
@@ -153,22 +80,9 @@ export function materializeVerifiedInitialCheckpointV0(
 		candidate.archive.schemaVersion !== "endo.workspace-archive.v1"
 	)
 		return refused("unsupported-boundary");
-	const parent = safeOutputParent(outputParent);
-	if (parent === null) return refused("unsafe-output-parent");
-	let recordedScratch: string;
-	let physicalRecordedScratch: string;
-	try {
-		recordedScratch = resolve(piCassetteScriptV0(readEndoCaptureEventsV0(source)).snapshot.scratchRoot);
-		const physical = physicalProspectivePath(recordedScratch);
-		if (physical === null) return refused("unsafe-recorded-path");
-		physicalRecordedScratch = physical;
-		for (const protectedPath of [source, replay])
-			if (within(realpathSync(protectedPath), parent.path)) return refused("unsafe-output-parent");
-		if (within(recordedScratch, parent.path) || within(physicalRecordedScratch, parent.path))
-			return refused("unsafe-output-parent");
-	} catch {
-		return refused("unsafe-output-parent");
-	}
+	const parent = checkpointOutputParent(source, replay, outputParent);
+	if (!parent.ok) return refused(parent.reason);
+	const { recordedScratch, physicalRecordedScratch } = parent;
 	if (
 		!Number.isSafeInteger(candidate.archive.bytes) ||
 		candidate.archive.bytes <= 0 ||

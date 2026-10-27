@@ -4,8 +4,8 @@ What has been run against a real Pi and a real model, what each run establishes,
 [research summary](../README.md#research-direction) links here instead of inlining the detail. The text of each section was
 moved here unchanged.
 
-Every entry below is one Pi release (1.0.1 unless stated), one model (qwen3.8-27b, Q4_K_M, on llama.cpp's
-OpenAI-compatible server) and one machine.
+Unless stated otherwise, each entry below uses Pi 1.0.1 and qwen3.8-27b (Q4_K_M) on one machine with a llama.cpp
+OpenAI-compatible server. The governed initial-child acceptance uses Pi 1.0.4 and Nanbeige4.3-33B instead.
 
 | Entry | Where | Summary |
 | :--- | :--- | :--- |
@@ -17,6 +17,7 @@ OpenAI-compatible server) and one machine.
 | [Path-sensitivity study](#path-sensitivity-study) | [design](path-sensitivity/1.0.1/DESIGN.md), [results](path-sensitivity/1.0.1/RESULTS.md) | the steering results across 30 working-directory paths: QUEUE followed at every path, STEER at most paths on one task and few on the other |
 | [Discriminating-task study](#discriminating-task-study) | [design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md) | 12 small coding tasks screened and confirmed: two discriminate (13/20 and 7/20), most are saturated, and most failures are a response cut off at the completion cap |
 | [Completion-cap study](#completion-cap-study) | [design](completion-cap/1.0.1/DESIGN.md), [results](completion-cap/1.0.1/RESULTS.md) | raising Pi's completion cap from 16,384 to 32,768 raised success on the two discriminating tasks from 10/24 to 19/23; thinking-off and a brief-reasoning sentence are cheaper but less reliable |
+| [Governed initial-child acceptance and A/A pilot](governed-initial-child/1.0.4/RESULTS.md) | [results](governed-initial-child/1.0.4/RESULTS.md) | qualified source checkpoint and four approved child turns; cwd-adjusted requests and final answers matched, complete responses differed |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle

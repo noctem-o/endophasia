@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import math
@@ -10,9 +11,11 @@ import os
 from pathlib import Path
 import platform
 import re
+import signal
 import struct
 import subprocess
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -20,6 +23,33 @@ REVISION = "1f8fa52318b594b373e7447a3c2bb36cdba9515f"
 VERSION = "e4eg.v1"
 DEFAULT_ORDER = ("A1", "B1", "B2", "A2")
 RELATIVE_FLOOR = 1e-12
+
+
+def numerical_environment(environ: dict) -> dict:
+    """Default-deny environment capture; accept only a bounded thread count."""
+    value = environ.get("OMP_NUM_THREADS")
+    if isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,3}", value) and int(value) <= 1024:
+        return {"OMP_NUM_THREADS": value}
+    return {}
+
+
+def enable_child_subreaper() -> None:
+    """Adopt orphaned native descendants so the owning controller can reap them."""
+    if sys.platform != "linux" or ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise RuntimeError("cannot enable Linux child subreaper")
+
+
+def reap_owned_group(pgid: int) -> None:
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            pid, _status = os.waitpid(-pgid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid == 0:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("owned native process group could not be reaped")
+            time.sleep(0.01)
 
 
 def sha(data: bytes) -> str:
@@ -100,10 +130,12 @@ def validate_config(tokens: tuple[int, ...], config: dict, order: tuple[str, ...
         raise ValueError("unsupported context, batch or thread settings")
 
 
-def save_manifest(directory: Path, manifest: dict) -> None:
+def save_manifest(directory: Path, manifest: dict, checkpoint=None) -> None:
     temp = directory / "manifest.json.tmp"
     temp.write_text(json.dumps(manifest, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     os.replace(temp, directory / "manifest.json")
+    if checkpoint is not None:
+        checkpoint(directory)
 
 
 def analyse_run(directory: Path, manifest: dict) -> dict:
@@ -154,8 +186,10 @@ def analyse_run(directory: Path, manifest: dict) -> dict:
 
 
 class NativeBackend:
-    def __init__(self, executable: Path, model: Path, timeout: int):
+    def __init__(self, executable: Path, model: Path, timeout: int, deadline=None):
         self.executable, self.model, self.timeout = executable.resolve(strict=True), model.resolve(strict=True), timeout
+        self.deadline = deadline
+        self.last_observation = None
         self.model_sha = sha_file(self.model)
         self.binary_sha = sha_file(self.executable)
 
@@ -164,25 +198,62 @@ class NativeBackend:
                 "timeout_seconds_per_repetition": self.timeout}
 
     def evaluate(self, label: str, tokens: tuple[int, ...], config: dict, output: Path) -> dict:
+        self.last_observation = None
         if sha_file(self.model) != self.model_sha or sha_file(self.executable) != self.binary_sha:
             raise ValueError("model or executable changed before repetition")
         command = [str(self.executable), "--execute-real-model", "--model", str(self.model), "--path", label[0],
                    "--tokens", ",".join(map(str, tokens)), "--output", str(output),
                    "--ctx", str(config["context"]), "--batch", str(config["batch"]),
                    "--ubatch", str(config["ubatch"]), "--threads", str(config["threads"])]
+        remaining = self.timeout if self.deadline is None else min(self.timeout, self.deadline - time.monotonic())
+        if remaining <= 0:
+            raise RuntimeError("total experiment deadline reached before repetition")
+        # The process owns a new group, so cleanup never targets an unrelated job.
+        # Do not expose credentials, paths or unrecorded runtime settings to it.
+        env = {"LC_ALL": "C", **numerical_environment(os.environ)}
+        start = time.monotonic()
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env=env, start_new_session=True)
         try:
-            p = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                               timeout=self.timeout, check=False)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"native repetition timed out after {self.timeout}s") from exc
+            stdout, _stderr = p.communicate(timeout=remaining)
+        except BaseException as exc:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            p.communicate()  # close pipes and reap the owned direct child
+            reap_owned_group(p.pid)
+            self.last_observation = {"elapsed_seconds": time.monotonic() - start,
+                                     "termination": "timeout" if isinstance(exc, subprocess.TimeoutExpired) else "interrupted",
+                                     "returncode": p.returncode}
+            if isinstance(exc, subprocess.TimeoutExpired):
+                raise RuntimeError("native repetition timed out or total deadline reached") from exc
+            raise
+        self.last_observation = {"elapsed_seconds": time.monotonic() - start,
+                                 "termination": "exited", "returncode": p.returncode}
+        try:
+            descendant, _status = os.waitpid(-p.pid, os.WNOHANG)
+        except ChildProcessError:
+            descendant = None
+        if descendant is not None:
+            # The bounded launcher is a subreaper. An unexpected surviving or
+            # orphaned descendant makes this repetition invalid.
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            reap_owned_group(p.pid)
+            raise RuntimeError("native repetition left descendant processes")
         if p.returncode != 0:
-            raise RuntimeError(f"native repetition failed ({p.returncode}): {p.stderr[-4000:]}")
+            # Runtime stderr can contain private paths or arbitrary environment data.
+            raise RuntimeError(f"native repetition failed (exit status {p.returncode})")
         if sha_file(self.model) != self.model_sha or sha_file(self.executable) != self.binary_sha:
             raise ValueError("model or executable changed during repetition")
-        return json.loads(p.stdout)
+        return json.loads(stdout)
 
 
-def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order: tuple[str, ...], backend) -> dict:
+def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order: tuple[str, ...], backend,
+                   checkpoint=None, resource_limits=None) -> dict:
     tokens, order = tuple(tokens), tuple(order)  # freeze caller-owned inputs
     validate_config(tokens, config, order)
     directory.mkdir(mode=0o700)  # fail if any prior evidence exists
@@ -197,11 +268,13 @@ def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order
                       "physical_microbatches": "not observed; ubatch is a limit"},
         "host": {"platform": platform.platform(), "machine": platform.machine(), "processor": platform.processor(),
                  "cpu_affinity": sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None,
-                 "relevant_environment": {k: v for k, v in os.environ.items() if k.startswith(("GGML_", "LLAMA_", "OMP_"))}},
+                 "relevant_environment": numerical_environment(os.environ)},
         "token_ids": list(tokens), "token_sha256": sha(token_bytes(tokens)),
         "compared_position": len(tokens) - 1, "order": list(order), "runs": {}, "analysis": None,
     }
-    save_manifest(directory, manifest)
+    if resource_limits is not None:
+        manifest["resource_limits"] = resource_limits
+    save_manifest(directory, manifest, checkpoint)
     try:
         build_info = None
         vocab_size = None
@@ -209,8 +282,10 @@ def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order
             vector_file = f"{label}.f32le"
             rec = {"path": label[0], "repetition": int(label[1]), "status": "running", "vector_file": vector_file}
             manifest["runs"][label] = rec
-            save_manifest(directory, manifest)
+            save_manifest(directory, manifest, checkpoint)
             info = backend.evaluate(label, tokens, config, directory / vector_file)
+            if getattr(backend, "last_observation", None) is not None:
+                rec["runtime"] = backend.last_observation
             expected = expected_schedule(label[0], len(tokens))
             if (info.get("revision") != REVISION or info.get("initial_state") != "fresh-empty" or
                 info.get("schedule") != expected or info.get("architecture") != "llama" or
@@ -232,7 +307,7 @@ def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order
             vector_values(raw)  # reject invalid numbers; retain the vector and its commitment
             rec["status"] = "complete"
             manifest["build"] = build_info
-            save_manifest(directory, manifest)
+            save_manifest(directory, manifest, checkpoint)
         manifest["status"] = "complete"
         manifest["analysis"] = analyse_run(directory, manifest)
     except Exception as exc:
@@ -240,9 +315,11 @@ def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order
         manifest["errors"].append(f"{type(exc).__name__}: {exc}")
         if "rec" in locals() and rec["status"] == "running":
             rec["status"] = "failed"
-        save_manifest(directory, manifest)
+            if getattr(backend, "last_observation", None) is not None:
+                rec["runtime"] = backend.last_observation
+        save_manifest(directory, manifest, checkpoint)
         raise
-    save_manifest(directory, manifest)
+    save_manifest(directory, manifest, checkpoint)
     return manifest
 
 

@@ -25,3 +25,11 @@ coverage/
 todo.md
 plans/
 *.tgz
+
+# Numerical probe: model weights, native builds and raw evidence stay private.
+*.gguf
+*.f32le
+__pycache__/
+research/numerical-execution-probe/e4eg-native
+research/numerical-execution-probe/e4eg-core-test
+research/numerical-execution-probe/evidence/

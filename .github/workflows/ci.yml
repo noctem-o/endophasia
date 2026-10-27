@@ -26,6 +26,11 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: Numerical probe offline tests
+        run: |
+          python3 -m unittest discover -s research/numerical-execution-probe/tests -p 'test_*.py' -v
+          c++ -std=c++17 -O2 research/numerical-execution-probe/tests/core_test.cpp -o "$RUNNER_TEMP/e4eg-core-test"
+          "$RUNNER_TEMP/e4eg-core-test"
       # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
       # up-front refusal, and the exchange job below checks the exchange itself.
       # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.

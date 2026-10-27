@@ -290,6 +290,7 @@ function modelCall(run) {
 }
 async function modelTurn(run) {
 	emit({ type: "message_start", message: { role: "assistant", content: [], stopReason: "pending" } });
+	if (has("delay-second-model-request") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1) await sleep(1500);
 	const reply = await modelCall(run);
 	const failed = reply.error !== undefined && !run.aborted;
 	const calls = run.aborted || failed ? [] : reply.calls;
@@ -448,20 +449,22 @@ const log = (line) => {
 };
 const held = [];
 function state() {
+	if (hasSettled) settledStateReads += 1;
 	return {
-		model: { ...model, name: model.id, api: "openai-completions", baseUrl: "http://127.0.0.1/fake", reasoning: false },
+		model: { ...model, ...(has("wrong-model-after-boundary") && settledStateReads > 1 ? { id: "changed-model" } : {}), name: model.id, api: "openai-completions", baseUrl: "http://127.0.0.1/fake", reasoning: false },
 		thinkingLevel,
 		isStreaming: running !== null,
 		isCompacting: false,
 		steeringMode: "all",
 		followUpMode: "one-at-a-time",
 		...(ephemeral ? {} : { sessionFile: sessionFile ?? "/tmp/fake.jsonl" }),
-		sessionId,
+		sessionId: (has("wrong-session-after-settlement") && hasSettled) || (has("wrong-session-after-boundary") && settledStateReads > 1) ? `${sessionId}-changed` : sessionId,
 		autoCompactionEnabled: true,
 		messageCount: entries.filter((entry) => entry.type === "message").length,
 		pendingMessageCount: steering.length + followUps.length,
 	};
 }
+let settledStateReads = 0;
 let dialogOpen = has("dialog-on-start");
 const blocked = [];
 async function handle(command) {

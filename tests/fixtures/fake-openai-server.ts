@@ -16,12 +16,16 @@ export interface FakeOpenAiOptions {
 	readonly failWith?: { status: number; body: string };
 	/** Send a 200 SSE body containing a malformed data line. */
 	readonly malformedStream?: boolean;
+	/** Optional malformed line, for checking that failure records do not copy response text. */
+	readonly malformedStreamPayload?: string;
 	/** Omit the usage chunk. */
 	readonly omitUsage?: boolean;
 	/** Write each SSE event split across several TCP writes. */
 	readonly splitWrites?: boolean;
 	/** Close the upstream connection after one streamed model chunk. */
 	readonly disconnectAfterFirstChunk?: boolean;
+	/** Return a tool call even when the client did not offer tools. */
+	readonly forceToolCall?: boolean;
 }
 
 export interface FakeOpenAiRequestLog {
@@ -91,7 +95,8 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 		const hasToolResult =
 			Array.isArray(parsed.messages) && parsed.messages.some((m) => (m as { role?: unknown }).role === "tool");
 		const callTool =
-			/read tool/.test(text) && Array.isArray(parsed.tools) && parsed.tools.length > 0 && !hasToolResult;
+			options.forceToolCall === true ||
+			(/read tool/.test(text) && Array.isArray(parsed.tools) && parsed.tools.length > 0 && !hasToolResult);
 		const slow = /forty/.test(text);
 		const pieces = slow
 			? Array.from({ length: 40 }, (_, index) => `${index + 1}. word\n`)
@@ -132,7 +137,7 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 		const delay = slow ? (options.slowChunkMs ?? 60) : (options.chunkMs ?? 5);
 		if (options.malformedStream) {
 			await write(chunk({ role: "assistant", content: "ok" }, null));
-			await write("{not json");
+			await write(options.malformedStreamPayload ?? "{not json");
 			response.end();
 			return;
 		}

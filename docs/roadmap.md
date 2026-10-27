@@ -25,7 +25,7 @@ verified isolated initial-scratch materialization (PR B, source-tree slice)
       ↓
 verified sibling preparation and private parent/child lineage (PR C, source-tree slice)
       ↓
-controlled continuation identity and execution lineage (future core milestone)
+bounded same-session initial continuation and execution lineage (source-tree slice)
       ↓
 later native instrumentation and broader Research / Cognition / Evolve directions (proposals)
 ~~~
@@ -107,8 +107,11 @@ evidence-qualified, with unavailable signals and mapping losses explicit; native
    - PR D adds [governed initial-child execution](initial-child-execution.md): one fresh tool-free Pi turn from a
      separately derived runtime, under exact local approval, with captured model request and trajectory evidence.
      It is neither process continuation nor a general effect sandbox; real-server acceptance remains optional.
-   - Later slices need explicit continuation identity, authority, path and external-effect isolation, restore/fork
-     lineage and a validated cassette-then-live boundary.
+   - The [initial-continuation slice](initial-continuation.md) adds one separately approved second turn in the same
+     newly launched Pi session, with a provisional first-turn boundary, one-shot request admission and an independently
+     checked two-turn lineage receipt. It does not restore a historical process or provide general fork execution.
+   - Later slices need broader continuation and external-effect isolation, restore/fork lineage and a validated
+     cassette-then-live boundary.
    - Once this exists, use it to support controlled continuation experiments rather than adding another large
      protocol-only migration.
 

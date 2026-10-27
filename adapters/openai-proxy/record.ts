@@ -3,11 +3,13 @@
 // Pi is pointed at it through its normal model-provider configuration (models.json `baseUrl`); it relays every byte to
 // the upstream and every byte back, and records each exchange into a capture log (capture-log.ts).
 //
-// Never alters a byte in either direction: it is a TCP relay, with one upstream connection per exchange (a hop), not per
+// By default it never alters a byte in either direction: it is a TCP relay, with one upstream connection per exchange (a hop), not per
 // client connection: the client's keep-alive does not decide which upstream socket a request is written to, so an upstream
 // closing a finished connection cannot meet the next request. What the client writes is written to the upstream as read,
 // and what the upstream writes is written to the client as read: the
-// request line, headers (names, case, order, values; Host included), transfer framing and body bytes, both ways. A copy
+// request line, headers (names, case, order, values; Host included), transfer framing and body bytes, both ways. The
+// optional governed admission profile buffers each complete request and response before relaying; it preserves accepted
+// bytes but not the upstream's streaming delivery timing or chunk boundaries. A copy
 // of each direction is parsed (http1.ts) only to delimit exchanges and record them; nothing is re-serialized.
 //
 // Per exchange it records: the request (method, path, the keyed request digest a cassette matches it by, the decoded
@@ -46,6 +48,14 @@ export interface EndoRecordingProxyOptionsV0 {
 	readonly hopDrainMs?: number;
 	/** Optional hard aggregate byte bound for one governed recording. Exceeding it drops owned sockets. */
 	readonly maxTransferredBytes?: number;
+	/**
+	 * Optional fail-closed admission for a bounded recording. When supplied, a complete HTTP request is buffered
+	 * before any upstream connection is opened. Returning false, throwing, or an unparseable request refuses it.
+	 * The callback must consume its own one-shot authority synchronously; it is not a remote approval mechanism.
+	 */
+	readonly admitRequest?: (request: { method: string; path: string; body: Uint8Array }) => boolean;
+	/** Optional bounded, fail-closed response admission; no response bytes reach the client until it accepts. */
+	readonly admitResponse?: (response: { status: number; wire: Uint8Array }) => boolean;
 }
 
 /** The exchange most recently started, and how many response chunks have been relayed to its client. */
@@ -71,6 +81,11 @@ export interface EndoRecordingProxyV0 {
 	/** Recording jobs that threw (the relay itself is never interrupted by a recording failure). */
 	readonly recordingFailures: number;
 	readonly transferLimitExceeded: boolean;
+	/** Aggregate bytes observed at the proxy, including refused client requests and relayed responses. */
+	readonly transferredBytes: number;
+	/** Requests refused by the optional admission callback, including unparseable streams. */
+	readonly refusedRequests: number;
+	readonly refusedResponses: number;
 	/** Flushes, then stops listening and drops every connection. */
 	close(): Promise<void>;
 }
@@ -132,6 +147,8 @@ interface Exchange {
 	requestOpen: boolean;
 	/** The request asked for `Expect: 100-continue`: its body may never be sent if the upstream answers finally first. */
 	expectContinue: boolean;
+	/** The guarded profile accepts only an unambiguous fixed-length request. */
+	admissionLength: number | null;
 	/** Recording jobs of an exchange that ended before its request did, released right after the request is recorded. */
 	deferred: (() => void)[];
 }
@@ -187,6 +204,11 @@ const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 const HOP_DRAIN_MS = 5000;
 
 export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptionsV0): Promise<EndoRecordingProxyV0> {
+	if (
+		(options.admitRequest !== undefined || options.admitResponse !== undefined) &&
+		(!Number.isSafeInteger(options.maxTransferredBytes) || options.maxTransferredBytes! < 1)
+	)
+		throw new TypeError("governed admission requires a finite transfer bound");
 	const host = options.host ?? "127.0.0.1";
 	requireLoopbackBindV0(host);
 	const upstream = endoUpstreamOriginV0(options.upstream);
@@ -202,6 +224,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	const sockets = new Set<Socket>();
 	let transferredBytes = 0;
 	let transferLimitExceeded = false;
+	let refusedRequests = 0;
+	let refusedResponses = 0;
 	const countTransfer = (bytes: number): boolean => {
 		transferredBytes += bytes;
 		if (options.maxTransferredBytes === undefined || transferredBytes <= options.maxTransferredBytes) return true;
@@ -546,6 +570,38 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				entry.relayed += 1;
 				progress(entry);
 			};
+			const heldResponse: Buffer[] = [];
+			const refuseResponse = () => {
+				if (hop.done) return;
+				refusedResponses += 1;
+				hop.done = true;
+				if (entry !== null)
+					finish(entry, "upstream-error", "governed response refused before delivery", {
+						phase: "mid-response",
+						forwarded: hop.connected && hop.written > 0,
+					});
+				markEndedByUpstream();
+				client.destroy();
+				failQueued("governed response refused before delivery");
+				socket.destroy();
+			};
+			const deliverResponse = (): boolean => {
+				if (options.admitResponse === undefined) return true;
+				const wire = Buffer.concat(heldResponse);
+				let accepted = false;
+				try {
+					accepted = options.admitResponse({ status: entry?.responseHead?.status ?? 0, wire }) === true;
+				} catch {
+					/* A broken policy is a refusal. */
+				}
+				if (!accepted) {
+					refuseResponse();
+					return false;
+				}
+				client.write(wire);
+				segment(wire);
+				return true;
+			};
 
 			socket.on("data", (data: Buffer) => {
 				if (!countTransfer(data.length)) {
@@ -558,6 +614,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				else if (hop.done) return; // Bytes after this exchange's response belong to no exchange: dropped.
 				hop.gotBytes = true;
 				if (!hopParsing) {
+					if (options.admitResponse !== undefined) {
+						refuseResponse();
+						return;
+					}
 					client.write(data);
 					return;
 				}
@@ -568,6 +628,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					// A complete response found before the bytes that failed is still the response: it ends there, and what
 					// follows belongs to no exchange. Only a failure inside the response itself leaves the stream unparsed.
 					if (ends[0] === undefined) {
+						if (options.admitResponse !== undefined) {
+							refuseResponse();
+							return;
+						}
 						hopParsing = false;
 						const target = current();
 						if (target !== null)
@@ -579,9 +643,19 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					}
 				}
 				const end = ends[0];
-				client.write(end === undefined ? data : data.subarray(0, end));
-				segment(end === undefined ? data : data.subarray(0, end));
+				if (switched && (options.admitRequest !== undefined || options.admitResponse !== undefined)) {
+					// A protocol switch would turn the admitted request into an unrestricted bidirectional tunnel.
+					refuseResponse();
+					return;
+				}
+				const part = end === undefined ? data : data.subarray(0, end);
+				if (options.admitResponse !== undefined) heldResponse.push(Buffer.from(part));
+				else {
+					client.write(part);
+					segment(part);
+				}
 				if (end !== undefined) {
+					if (!deliverResponse()) return;
 					if (switched) {
 						// The exchange ends at the 101 head; the connection becomes a tunnel on this hop, both ways.
 						slot.raw = true;
@@ -639,6 +713,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				}
 				if (closedBody) {
 					// A response framed by the close is complete, and the close is the client's too.
+					if (!deliverResponse()) return;
 					complete(true);
 					return;
 				}
@@ -665,6 +740,34 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			const front = slots[0];
 			if (front === undefined || front.hop !== null || front.retired) return;
 			if (front.entry === null && !front.raw) return;
+			if (options.admitRequest !== undefined) {
+				// Unlike the ordinary transparent relay, this profile never forwards a partial or opaque request.
+				if (!front.raw && !front.requestDone) return;
+				let admitted = false;
+				try {
+					if (
+						!front.raw &&
+						front.entry !== null &&
+						front.entry.admissionLength !== null &&
+						front.entry.bodyParts.reduce((size, part) => size + part.length, 0) === front.entry.admissionLength
+					)
+						admitted =
+							options.admitRequest({
+								method: front.entry.method,
+								path: front.entry.path,
+								body: Buffer.concat(front.entry.bodyParts),
+							}) === true;
+				} catch {
+					// A broken policy is a refusal, never a reason to forward.
+				}
+				if (!admitted) {
+					refusedRequests += 1;
+					ending = true;
+					failQueued("governed request refused before forwarding");
+					client.destroy();
+					return;
+				}
+			}
 			openHop(front);
 			const hop = front.hop as Hop | null;
 			if (hop === null) return;
@@ -721,6 +824,19 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 							.split(",")
 							.map((token) => token.trim()),
 					);
+				const lengths = head.headers
+					.filter(([name]) => name.toLowerCase() === "content-length")
+					.map(([, value]) => value);
+				const unsafeFraming =
+					head.headers.some(([name]) => ["transfer-encoding", "expect", "upgrade"].includes(name.toLowerCase())) ||
+					connection.includes("upgrade");
+				const admissionLength =
+					!unsafeFraming &&
+					lengths.length === 1 &&
+					/^(0|[1-9][0-9]*)$/.test(lengths[0]!) &&
+					Number.isSafeInteger(Number(lengths[0]))
+						? Number(lengths[0])
+						: null;
 				const entry: Exchange = {
 					exchange: counter,
 					start: performance.now(),
@@ -739,6 +855,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					expectContinue: head.headers.some(
 						([name, value]) => name.toLowerCase() === "expect" && /(^|,)\s*100-continue\s*(,|$)/i.test(value),
 					),
+					admissionLength,
 					deferred: [],
 					requestClose:
 						connection.includes("close") ||
@@ -907,6 +1024,15 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		},
 		get transferLimitExceeded() {
 			return transferLimitExceeded;
+		},
+		get transferredBytes() {
+			return transferredBytes;
+		},
+		get refusedRequests() {
+			return refusedRequests;
+		},
+		get refusedResponses() {
+			return refusedResponses;
 		},
 		flush,
 		async close() {

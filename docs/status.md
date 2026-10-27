@@ -135,7 +135,10 @@ they are kept for the steering and replay work and the sealed Prime study.
 records; those tests alone say nothing about a real Pi release. Separately, the installed-package `acceptance` job
 exercises a **real Pi 1.0.0** on Ubuntu with Node 22 and a local fake model endpoint; no real model provider is called.
 This is a packaging/operator-path acceptance baseline, distinct from the **Pi 1.0.1 + qwen3.8-27b** research studies
-listed in [research/README.md](../research/README.md). Hostile trajectory cases and the lifecycle's failure, retry, compaction and unknown-record paths are
+listed in [research/README.md](../research/README.md). A separate [Pi 1.0.4 / Nanbeige initial-child acceptance and
+A/A pilot](../research/governed-initial-child/1.0.4/RESULTS.md) exercised the source-tree governed API with private
+evidence; it is not a package acceptance or general fork claim. Hostile trajectory cases and the lifecycle's failure,
+retry, compaction and unknown-record paths are
 exercised only against fake Pi ([research/README.md](../research/README.md#fake-only-paths)).
 
 The boundary and the evidence rules were audited adversarially ([audit](pi-attach-audit.md)), including the

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("probe", ROOT / "probe.py")
@@ -178,6 +179,48 @@ class OrchestrationTests(unittest.TestCase):
             self.assertIn("execution requires", result.stderr)
             self.assertFalse(missing.exists())
             self.assertFalse(output.exists())
+
+
+class EnvironmentCaptureTests(unittest.TestCase):
+    def test_allowlist_validates_type_length_and_range(self):
+        for value in (None, "", "0", "1025", "0001", "1 " , "1,2", "1" * 10000, 1):
+            with self.subTest(value=value):
+                self.assertEqual(p.numerical_environment({"OMP_NUM_THREADS": value}), {})
+        for value in ("1", "1024"):
+            self.assertEqual(p.numerical_environment({"OMP_NUM_THREADS": value}), {"OMP_NUM_THREADS": value})
+
+    def test_secret_and_unknown_prefixes_never_reach_evidence_or_errors(self):
+        sentinel = "E4EH_TEST_SECRET_DO_NOT_LEAK"
+        injected = {"LLAMA_API_KEY": sentinel, "GGML_UNKNOWN": sentinel,
+                    "OMP_UNKNOWN": sentinel, "OMP_NUM_THREADS": "1"}
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, injected):
+            root = Path(d)
+            output = root / "complete"
+            manifest = p.run_experiment(output, (5, 6),
+                                        {"context": 512, "batch": 32, "ubatch": 32, "threads": 1},
+                                        p.DEFAULT_ORDER, FakeBackend())
+            self.assertEqual(manifest["host"]["relevant_environment"], {"OMP_NUM_THREADS": "1"})
+            report = subprocess.run([sys.executable, str(ROOT / "probe.py"), "analyze-run", str(output)],
+                                    capture_output=True, check=True)
+            self.assertNotIn(sentinel.encode(), report.stdout + report.stderr)
+
+            # A fake native process dumps its entire environment and exits with
+            # an error. Neither inherited secrets nor raw stderr may be retained.
+            native = root / "fake-native"
+            native.write_text("#!/usr/bin/python3\nimport os, sys\nprint(dict(os.environ), file=sys.stderr)\n"
+                              "print('E4EH_TEST_SECRET_' + 'DO_NOT_LEAK', file=sys.stderr)\nsys.exit(7)\n")
+            native.chmod(0o700)
+            model = root / "model"
+            model.write_bytes(b"not a model")
+            backend = p.NativeBackend(native, model, 5)
+            with self.assertRaises(RuntimeError) as error:
+                p.run_experiment(root / "failed", (5, 6),
+                                 {"context": 512, "batch": 32, "ubatch": 32, "threads": 1},
+                                 p.DEFAULT_ORDER, backend)
+            self.assertNotIn(sentinel, str(error.exception))
+            for path in root.rglob("*"):
+                if path.is_file():
+                    self.assertNotIn(sentinel.encode(), path.read_bytes(), str(path))
 
 
 if __name__ == "__main__":

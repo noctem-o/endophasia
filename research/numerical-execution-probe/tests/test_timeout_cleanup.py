@@ -50,6 +50,11 @@ class TimeoutCleanupTests(unittest.TestCase):
         # Adopt any escaped synthetic descendants after their controller exits.
         probe.enable_child_subreaper()
 
+    @staticmethod
+    def child_ids():
+        # This serial test process creates no other children during a fixture.
+        return {int(pid) for pid in Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()}
+
     def run_fixture(self, mode):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -77,6 +82,7 @@ else:
     time.sleep(30)
 ''' % mode)
             native.chmod(0o700)
+            before = self.child_ids()
             controller = subprocess.Popen([sys.executable, '-c', CONTROLLER, str(ROOT), str(root), mode],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             start = time.monotonic()
@@ -91,27 +97,24 @@ else:
                 if controller.poll() is None:
                     controller.kill()
                     controller.wait(timeout=2)
-                if (root / 'pids').exists():
-                    # Only signal a still-waitable child adopted by this test's
-                    # subreaper. Never signal an unverified or recycled PID.
-                    for pid in json.loads((root / 'pids').read_text()).values():
+                # Sweep newly adopted children even if the controller was killed
+                # between spawning a descendant and writing its PID ledger.
+                deadline = time.monotonic() + 2
+                while self.child_ids() - before:
+                    for pid in self.child_ids() - before:
                         try:
                             state = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
                         except ChildProcessError:
                             continue
                         if state is None:
                             os.kill(pid, signal.SIGKILL)
-                        deadline = time.monotonic() + 2
-                        while True:
-                            try:
-                                reaped, _ = os.waitpid(pid, os.WNOHANG)
-                            except ChildProcessError:
-                                break
-                            if reaped:
-                                break
-                            if time.monotonic() >= deadline:
-                                self.fail('synthetic child could not be reaped')
-                            time.sleep(0.01)
+                        try:
+                            os.waitpid(pid, os.WNOHANG)
+                        except ChildProcessError:
+                            pass
+                    if time.monotonic() >= deadline:
+                        self.fail('synthetic children could not be reaped')
+                    time.sleep(0.01)
 
     def test_immediate_success(self):
         result, _ = self.run_fixture('success')

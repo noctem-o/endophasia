@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- **Terminal-governed A/A operator (research; fakes only):** `research/governed-initial-continuation/aa/operate.ts --inspect|--run <config>` (a research script, not an `endo` subcommand) connects the
+  task-owned server lifecycle, a bounded read-only `GET /health` readiness gate, the governed two-turn A/A study with real
+  procfs admission, and fresh-process verification behind typed terminal approvals (one for the server, one per turn). `--run`
+  refuses unless stdin and stdout are the controlling terminal; there is no approval flag, environment variable or unattended
+  path. SIGINT/SIGTERM/SIGHUP, EOF and every failure path stop the owned server exactly once and report `cleanup-unconfirmed`
+  rather than success when that cannot be confirmed. Exercised only with a fake relay, Pi and endpoint through a real
+  pseudo-terminal; no llama.cpp server or real inference. See
+  [research/governed-initial-continuation/aa/OPERATOR.md](research/governed-initial-continuation/aa/OPERATOR.md).
 - **Task-owned server provenance v0 (research; plumbing only):** a keyed `endo.research.aa.task-owned-provenance.0` record,
   an approval-gated launch/stop lifecycle function for a loopback server the launcher owns, a real-observation continuation
   admission hook with per-turn sidecars bound to the request-body digest and dispatch marker, and an offline fresh-process

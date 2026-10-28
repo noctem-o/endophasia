@@ -305,14 +305,51 @@ describe.runIf(process.platform === "linux")("task-owned launch refusals", () =>
 		},
 		60000,
 	);
-	it("has no unattended entry point: nothing in the CLI, scripts or package imports the launcher", () => {
+	it("has exactly one sanctioned caller chain, a research script gated on a controlling terminal", () => {
 		const text = (path: string) => readFileSync(path, "utf8");
-		const roots = ["package.json", ...["cli", "scripts"].flatMap((d) => readdirSync(d).map((f) => join(d, f)))];
-		for (const path of roots.filter((p) => /\.(json|ts|mjs|js)$/.test(p)))
-			expect(text(path), path).not.toMatch(/task-owned-server/);
-		const source = text("research/governed-initial-continuation/aa/task-owned-server.ts");
+		const walk = (dir: string): string[] =>
+			readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+				const path = join(dir, entry.name);
+				if (entry.isDirectory())
+					return ["node_modules", "dist", "tests", ".git", "studio-ui"].includes(entry.name) ? [] : walk(path);
+				return /\.(ts|mjs|js|json)$/.test(entry.name) ? [path] : [];
+			});
+		const files = walk(".");
+		const importing = (needle: RegExp) => files.filter((path) => needle.test(text(path))).sort();
+		const aa = "research/governed-initial-continuation/aa";
+		// The launcher is imported by the operator only; the operator is imported by the one terminal script only.
+		expect(importing(/from "\.\/task-owned-server\.ts"|task-owned-server\.(ts|js)"/)).toEqual([`${aa}/operator.ts`]);
+		expect(importing(/from "\.\/operator\.ts"|aa\/operator\.ts"/)).toEqual([`${aa}/operate.ts`]);
+		expect(importing(/\blaunchTaskOwnedServerV0\b/).filter((p) => !p.endsWith("task-owned-server.ts"))).toEqual([
+			`${aa}/operator.ts`,
+		]);
+		// Nothing imports the script, and production code, scripts and the package do not know any of them: the
+		// repository's rule that cli/ never reaches research/ is untouched.
+		expect(importing(/operate\.(ts|js)"/)).toEqual([]);
+		for (const path of files.filter(
+			(p) => /^(cli|scripts)\//.test(p) || p === "package.json" || p.startsWith("tsconfig"),
+		))
+			expect(text(path), path).not.toMatch(/task-owned|aa\/operat|experiment-aa/);
+		// The script verifies the terminal before it can run, reads no environment variable, and has no approval flag.
+		const script = text(`${aa}/operate.ts`);
+		expect(script.indexOf("requireControllingTerminal();")).toBeGreaterThan(0);
+		expect(script.indexOf("requireControllingTerminal();")).toBeLessThan(script.indexOf("runAaOperatorV0("));
+		expect(script).not.toMatch(/process\.env|--yes|--approve|--auto|--assume|--non-?interactive/);
+		const operator = text(`${aa}/operator.ts`);
+		expect([...operator.matchAll(/process\.env\.?\w*/g)].map((m) => m[0])).toEqual(["process.env.PATH"]);
+		expect(operator).not.toMatch(/process\.stdin|process\.argv|createInterface/);
+		// The launcher itself still has no terminal, no argument parsing and no HTTP client.
+		const source = text(`${aa}/task-owned-server.ts`);
 		expect(source).not.toMatch(/process\.argv|process\.stdin|\.catch\(\(\) => \{\}\)\s*$/m);
 		expect(source).not.toMatch(/\bfetch\(|node:http|node:https/);
+		// The readiness gate sends a GET and nothing else.
+		const readiness = text(`${aa}/task-owned-readiness.ts`)
+			.split("\n")
+			.filter(
+				(line) => !line.trim().startsWith("//") && !line.trim().startsWith("*") && !line.trim().startsWith("/**"),
+			)
+			.join("\n");
+		expect(readiness).not.toMatch(/method: "(?!GET")|\.write\(|fetch\(|node:https|\bPOST\b|\/v1\//);
 	});
 });
 

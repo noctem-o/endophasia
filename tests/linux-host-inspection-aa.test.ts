@@ -195,8 +195,12 @@ describe.runIf(process.platform === "linux")("partial Linux host inspection", ()
 					);
 					expect(result.checks.launchConfiguration).toBe(variant.expected);
 					expect(JSON.stringify(result)).not.toContain("private-synthetic-value");
-					if (variant.mode === "empty") expect(result.checks.reusePort).toBe("UNAVAILABLE");
-					else expect(result.observation).toBeNull();
+					if (variant.mode === "empty") {
+						// Descriptor access depends on the host's ptrace policy: MATCH is legitimate, a hidden value is not.
+						expect(["MATCH", "UNAVAILABLE"]).toContain(result.checks.reusePort);
+						if (result.checks.reusePort === "UNAVAILABLE")
+							expect(result.blockingReasons).toContain("REUSEPORT_UNVERIFIED");
+					} else expect(result.observation).toBeNull();
 				} finally {
 					if (child.pid && child.exitCode === null && child.signalCode === null) {
 						const exited = once(child, "exit");

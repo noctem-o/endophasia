@@ -57,7 +57,8 @@ const optionKeys = [
 	"maxApprovalIdleMs",
 	"maxTransferredBytes",
 ];
-function validInputs(options: Options, expectedAnswer: string): boolean {
+/** The one definition of an acceptable study input set, shared with the operator's pre-launch checks. */
+export function validInputs(options: Options, expectedAnswer: string): boolean {
 	if (!options || !same(Object.keys(options).sort(), [...optionKeys].sort())) return false;
 	const match = /^Compute ([0-9]) plus ([0-9])\. Return only the decimal result\.$/.exec(options.prompt);
 	return (

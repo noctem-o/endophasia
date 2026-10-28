@@ -1,4 +1,4 @@
-// Research building block. Not an operator-facing command: a real server observer is not yet supplied.
+// Research building block, driven by the terminal-governed operator (aa/operator.ts). Its hooks are trusted callers, not approvals.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {

@@ -52,6 +52,7 @@ export interface AaRig {
 	newConfig(
 		overrides?: Partial<AaOperatorConfigV0>,
 		server?: Partial<AaOperatorConfigV0["server"]>,
+		alternative?: { id: string; description: string; settings?: { thinkingLevel: "off" } },
 	): Promise<AaOperatorConfigV0>;
 	/** Writes `config` as the private owner-only file the command reads. */
 	writeConfig(config: unknown, mode?: number): string;
@@ -83,7 +84,11 @@ export async function createAaRig(backendOptions: FakeOpenAiOptions = { chunkMs:
 		hang,
 		model,
 		keyFile,
-		async newConfig(overrides = {}, server = {}) {
+		async newConfig(
+			overrides = {},
+			server = {},
+			alternative = { id: "arm-b", description: "matched", settings: { thinkingLevel: "off" as const } },
+		) {
 			const id = ++counter;
 			const outputParent = mkdtempSync(join(fixture.base, `aa-study-${id}-`));
 			const prep = prepareVerifiedInitialBranchPairV0(
@@ -92,7 +97,7 @@ export async function createAaRig(backendOptions: FakeOpenAiOptions = { chunkMs:
 				fixture.key,
 				outputParent,
 				{ id: "arm-a", description: "matched", settings: { thinkingLevel: "off" } },
-				{ id: "arm-b", description: "matched", settings: { thinkingLevel: "off" } },
+				alternative,
 			);
 			if (prep.status !== "prepared") throw new Error(prep.reason);
 			const workingDirectory = mkdtempSync(join(fixture.base, `aa-work-${id}-`));

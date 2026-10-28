@@ -1,10 +1,12 @@
 # AA-LIVE-001: pre-registration and live go/no-go (Phase A, read-only)
 
-Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96). **No server was started, no model request was sent and `--run` was never invoked.** The checks below are read-only observations of one machine (Arch Linux, RTX 4090). Private paths, the comparison key and local evidence are not published; paths are shown relative to `~`.
+Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96). **No server was started, no model request was sent and `--run` was never invoked.** The checks below are read-only observations of one machine (Arch Linux, RTX 4090). The comparison key, private prompts and evidence contents are not published. Hardware and software identifiers (digests, versions) are published on purpose: they are the experiment's declared environment. Paths are shown relative to `~`.
 
 **Status: PREFLIGHT BLOCKED / NO REAL EXECUTION.** One prerequisite is unavailable (the pinned llama.cpp build) and one needs an operator decision. Everything else that can be checked without running the server is verified.
 
-## 1. Pre-registered design (fixed before execution)
+## 1. Pre-registered design
+
+**Binding rule.** This is a DRAFT until the executable decision in §5 is recorded by an amendment commit. The live run must name that commit, which must be earlier than the run; the git history is the tamper-evident record of when each choice was made. Every other field below is fixed now and may not change after any real execution.
 
 Purpose: harness validation. It establishes operational repeatability and capture integrity of the governed matched A/A protocol. It is not a statistical study and says nothing about general capability.
 
@@ -21,19 +23,23 @@ Purpose: harness validation. It establishes operational repeatability and captur
 | Endpoint | loopback `127.0.0.1:18181`, task-owned, unused, separate from any user server |
 | Server profile | `llama.cpp-11518-explicit-fit-off-v0`: ctx 65536, 1 slot, batch 512, ubatch 128, q4_0 K/V, flash attention, `--fit off`, `--n-gpu-layers 46`, `--cache-ram 0`, `--ctx-checkpoints 0`, `--reasoning-format deepseek`, `--jinja`, `--no-context-shift`, `--no-cache-idle-slots` |
 
-**Executable: decision required before the run (see §3).** Either the pinned build (SHA-256 `2c4c7139…18af68`) is restored, or the local build below is accepted as a declared deviation. The choice must be recorded by amending this document before execution; the configuration's `serverDeclaration` already states the deviation.
+**Executable: the one open field (see §5).** Either the pinned build (SHA-256 `2c4c7139…18af68`) is restored, or the local build below is accepted as a declared deviation. The choice must be recorded by amending this document before execution; the configuration's `serverDeclaration` already states the deviation.
 
 ### Result categories (never one boolean)
 
-| Category | Meaning | Operator output |
-| --- | --- | --- |
-| PASS | four verified sessions, eight independently authorised and captured requests, valid admissions, consistent process evidence, intact siblings, confirmed owned cleanup | verdict `complete-under-declared-assumptions` |
-| PARTIAL | some work completed, the committed study did not | verdict `partial` |
-| REFUSED | a prerequisite, approval, admission or identity check rejected execution | verdict `refused` |
-| UNKNOWN | dispatch or response outcome could not be established | verdict `partial` **with** a slot status `outcome-unknown` |
-| CLEANUP UNCONFIRMED | owned process or listener not proven gone | verdict `cleanup-unconfirmed` |
+Applied mechanically to the printed outcome, in this precedence (first match wins):
 
-A correct answer is a separate dimension from admission: a PASS may have wrong answers, and correct answers do not make a study PASS. The printed outcome also states the server-binary status (`MATCH` or `UNSUPPORTED`); a PASS with an unpinned binary is reported as such. Receipts never establish sole socket ownership, full runtime parity, GPU-resident weights or deterministic reasoning. Analysis is descriptive: per-trial exact-answer scores, request-body digest equality and response agreement as the readers report them; no significance tests, and no stopping or seed change after seeing results.
+| Category | Applies when | Printed as |
+| --- | --- | --- |
+| CLEANUP UNCONFIRMED | the owned process or listener was not proven gone | verdict `cleanup-unconfirmed` |
+| UNKNOWN | any slot status is `outcome-unknown` (dispatch or response outcome not established) | verdict `partial`, slot status `outcome-unknown` |
+| PASS | four verified sessions, eight independently authorised and captured requests, valid admissions, consistent process evidence, intact siblings, confirmed cleanup | verdict `complete-under-declared-assumptions` |
+| REFUSED | a prerequisite, approval, admission or identity check rejected execution and no model request was sent | verdict `refused`, or verdict `partial` where every started slot ended `no-request-*` (a declined or rejected turn approval spends its slot) |
+| PARTIAL | some work completed but the committed study did not | verdict `partial` with at least one slot that sent a request |
+
+PASS is qualified by two printed facts. If the server binary is not the pinned digest, the result is reported as **PASS (UNSUPPORTED BINARY)** and is never described as a pinned-build result. PASS also does not include a verified readiness record: readiness is an operator-side note of a server-reported observation (see §4).
+
+A correct answer is a separate dimension from admission: a PASS may have wrong answers, and correct answers do not make a study PASS. The printed headline and a detail line state the server-binary status. Receipts never establish sole socket ownership, full runtime parity, GPU-resident weights or deterministic reasoning. Analysis is descriptive: per-trial exact-answer scores, request-body digest equality and response agreement as the readers report them; no significance tests, and no stopping or seed change after seeing results.
 
 ## 2. Qualification results
 
@@ -76,9 +82,9 @@ So full offload cannot load with `--fit off` on this GPU; a partial offload is r
 
 ## 4. Evidence-integrity findings
 
-- **Readiness record (`*.readiness.json`) not read by the fresh-process reader: not material to the acceptance claim.** None of the PASS conditions depends on it. Each request is independently bound to a keyed admission that re-observes the process and listener, receipts and captures are verified by the unchanged readers, and a server that was not actually serving would fail those requests. The record is an operator-side note of a server-reported observation. No code change was made; extending the reader to check it is optional hardening, not a blocker.
-- **Fixed in this PR (reproducible): the printed outcome hid an unpinned binary.** A non-pinned executable is recorded as `supportedBinary: UNSUPPORTED` but the study still runs, and the operator's outcome did not mention it, so a study with an unpinned server could print `COMPLETE-UNDER-DECLARED-ASSUMPTIONS` with no hint. The outcome now prints the binary status and blocking reasons. Verdict rules are unchanged. Covered by the existing full-rehearsal tests.
-- `--inspect` does not check that the pair is a matched `declared-noop` pair (that is checked after the server launches, in `createStudyPlan`). Verified directly for the real pair, so it is not a blocker here; not changed.
+- **Readiness record (`*.readiness.json`) not read by the fresh-process reader: not material to the PASS conditions, and stated as a limitation of PASS (§1).** None of the PASS conditions depends on it. Each request is independently bound to a keyed admission that re-observes the process and listener, receipts and captures are verified by the unchanged readers, and a server that was not actually serving would fail those requests. The record is an operator-side note of a server-reported observation. No code change was made; extending the reader to check it is optional hardening, not a blocker.
+- **Fixed in this PR (reproducible): the printed outcome hid an unpinned binary.** A non-pinned executable is recorded as `supportedBinary: UNSUPPORTED` but the study still runs, and the outcome did not mention it, so a study with an unpinned server printed `COMPLETE-UNDER-DECLARED-ASSUMPTIONS` with no hint. The headline now carries the binary status, a detail line names only binary-related blocking reasons, and tests cover the matching, unsupported and unavailable renderings. Verdict rules are unchanged, so programmatic consumers must read `independentRead.report.hostFacts.supportedBinary` as well as the verdict.
+- `--inspect` does not itself check that the pair is a matched `declared-noop` pair (`createStudyPlan` does, after launch). A review raised this as a late-failure risk; it is **not reproducible**: the pre-launch Pi preflight already refuses every pair the preparer can build whose conditions differ (a test now pins this: refusal in preparation, no launch prompt). The real pair was also checked directly. Not changed.
 - Preflight (inside `--run`) runs Pi's `--help` with `HOME` set to the evidence directory, which writes `.pi/agent/*` there. This predates the operator and was true of the earlier acceptance.
 
 ## 5. Go / no-go

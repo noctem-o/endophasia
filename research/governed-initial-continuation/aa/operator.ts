@@ -711,10 +711,15 @@ function renderTurnApproval(
 /** A complete study with an unpinned binary must never read as a pinned one. */
 function binaryLine(report: TaskOwnedStudyReportV0): string {
 	const { supportedBinary, blockingReasons } = report.hostFacts;
-	return supportedBinary === "MATCH"
-		? "MATCH (digest equals the historically accepted build; file identity only, not build provenance)"
-		: `${supportedBinary} — NOT the historically accepted build (blocking reasons: ${blockingReasons.join(", ") || "none"})`;
+	if (supportedBinary === "MATCH")
+		return "MATCH (digest equals the historically accepted build; file identity only, not build provenance)";
+	const reasons = blockingReasons.filter((reason) => reason.includes("BINARY"));
+	return `${supportedBinary} (NOT the historically accepted build${reasons.length ? `; reasons: ${reasons.join(", ")}` : ""})`;
 }
+const headlineNote = (outcome: AaOperatorOutcomeV0) => {
+	const binary = outcome.independentRead.report?.hostFacts.supportedBinary;
+	return binary !== undefined && binary !== "MATCH" ? ` (server binary ${binary}, not the accepted build)` : "";
+};
 
 /** Plain, secret-free rendering of an outcome for the operator. It never contains responses or reasoning. */
 export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
@@ -728,7 +733,7 @@ export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 				: `refused: ${outcome.readiness.reason}`;
 	const lines = [
 		"",
-		`A/A operator outcome: ${outcome.verdict.toUpperCase()}`,
+		`A/A operator outcome: ${outcome.verdict.toUpperCase()}${headlineNote(outcome)}`,
 		`  stopped at stage        ${outcome.stage}${outcome.interrupted ? " (interrupted)" : ""}`,
 		`  server readiness        ${readiness} — a server-reported observation, not proof of inference`,
 		`  slots started           ${outcome.slots.length} of 4 — ${outcome.slots.map((s) => `${s.position}:${s.arm ?? "?"}:${s.status}`).join(", ") || "none"} (runner statuses, unverified)`,

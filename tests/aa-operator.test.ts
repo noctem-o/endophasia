@@ -122,9 +122,14 @@ describe.runIf(process.platform === "linux")("terminal-governed A/A operator, fa
 			const text = renderAaOutcomeV0(outcome);
 			expect(text).toContain("COMPLETE-UNDER-DECLARED-ASSUMPTIONS");
 			expect(text).toContain("not server attestation");
-			// The relay is not the historically accepted llama.cpp digest, and a complete study must still say so.
-			expect(text).toMatch(/server binary\s+UNSUPPORTED — NOT the historically accepted build/);
-			expect(text).toContain("UNSUPPORTED_BINARY");
+			// The relay is not the historically accepted llama.cpp digest, and a complete study must still say so,
+			// in the headline as well as in the detail line.
+			expect(text).toMatch(/outcome: COMPLETE-UNDER-DECLARED-ASSUMPTIONS \(server binary UNSUPPORTED/);
+			expect(text).toMatch(
+				/server binary\s+UNSUPPORTED \(NOT the historically accepted build; reasons: UNSUPPORTED_BINARY\)/,
+			);
+			// Only binary reasons are attributed to the binary.
+			expect(text).not.toMatch(/reasons:[^)]*OWNERSHIP_UNVERIFIED/);
 		},
 		300000,
 	);
@@ -561,4 +566,65 @@ describe.runIf(process.platform === "linux")("operator interruptions and cleanup
 		expect(existsSync(provenanceEndPathV0(config.studyFile))).toBe(true);
 		expect(outcome.interrupted).toBe(true);
 	}, 120000);
+});
+
+describe.runIf(process.platform === "linux")("operator pre-launch pair check and binary rendering", () => {
+	it("refuses a sibling pair whose conditions differ before any launch prompt", async () => {
+		// Verified-pristine, but the alternative differs from the baseline. Pre-launch preflight must already refuse it.
+		const config = await rig.newConfig(
+			{},
+			{},
+			{ id: "arm-b", description: "differs", settings: { thinkingLevel: "high" } as never },
+		);
+		const terminal = new ScriptedTerminal();
+		const outcome = await run(config, terminal);
+		expect(outcome).toMatchObject({ verdict: "refused", stage: "preparation", server: { launched: false } });
+		expect(outcome.reasons.join()).toMatch(/preflight refused|not matched/);
+		expect(terminal.asked).toEqual([]);
+		await nothingStarted(config);
+	}, 60000);
+	const base = (report: AaOperatorOutcomeV0["independentRead"]["report"]): AaOperatorOutcomeV0 => ({
+		verdict: "partial",
+		stage: "done",
+		interrupted: false,
+		reasons: [],
+		server: { launched: true, cleanup: "confirmed", stop: null },
+		readiness: { status: "not-attempted" },
+		slots: [],
+		independentRead: { performed: true, status: report ? "valid" : "reader-refused", report, answers: null },
+	});
+	const report = (supportedBinary: string, blockingReasons: string[]) =>
+		({
+			studyStatus: "four-receipts",
+			records: "valid",
+			admissionSidecars: 8,
+			observedProcessIdentity: "consistent",
+			identityDifferences: [],
+			declaredTrustAssumptions: ["a"],
+			hostFacts: {
+				ownership: "OWNERSHIP_UNVERIFIED",
+				checks: {},
+				supportedBinary,
+				unavailable: [],
+				blockingReasons,
+			},
+			lifecycle: "cleaned",
+			studyAdmission: "complete",
+			observationIds: [],
+		}) as unknown as NonNullable<AaOperatorOutcomeV0["independentRead"]["report"]>;
+	it("states the binary as matching, unsupported, or unavailable, and never blames unrelated reasons", () => {
+		const matched = renderAaOutcomeV0(base(report("MATCH", ["OWNERSHIP_UNVERIFIED"])));
+		expect(matched).toMatch(/server binary\s+MATCH \(digest equals the historically accepted build/);
+		expect(matched).not.toContain("server binary UNSUPPORTED");
+		expect(matched).not.toContain("not the accepted build");
+		const unsupported = renderAaOutcomeV0(
+			base(report("UNSUPPORTED", ["OWNERSHIP_UNVERIFIED", "REUSEPORT_UNVERIFIED", "UNSUPPORTED_BINARY"])),
+		);
+		expect(unsupported).toContain("(server binary UNSUPPORTED, not the accepted build)");
+		expect(unsupported).toContain("reasons: UNSUPPORTED_BINARY)");
+		expect(unsupported).not.toMatch(/reasons:[^)]*(OWNERSHIP|REUSEPORT)/);
+		const odd = renderAaOutcomeV0(base(report("UNAVAILABLE", [])));
+		expect(odd).toMatch(/server binary\s+UNAVAILABLE \(NOT the historically accepted build\)/);
+		expect(renderAaOutcomeV0(base(null))).toMatch(/server binary\s+unavailable/);
+	});
 });

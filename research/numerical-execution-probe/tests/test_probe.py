@@ -160,6 +160,20 @@ class OrchestrationTests(unittest.TestCase):
                 p.run_experiment(self.root / "must-not-exist", tokens, config, order, FakeBackend())
         self.assertFalse((self.root / "must-not-exist").exists())
 
+    def test_interruption_records_failed_repetition_and_cleanup_observation(self):
+        class InterruptedBackend(FakeBackend):
+            last_observation = {"termination": "interrupted", "direct_child_reaped": True,
+                                "descendant_containment": "uncertain"}
+            def evaluate(self, *args):
+                raise KeyboardInterrupt()
+        output = self.root / "interrupted"
+        with self.assertRaises(KeyboardInterrupt):
+            p.run_experiment(output, self.tokens, self.config, p.DEFAULT_ORDER, InterruptedBackend())
+        manifest = json.loads((output / "manifest.json").read_text())
+        self.assertEqual(manifest["status"], "failed")
+        self.assertEqual(manifest["runs"]["A1"]["status"], "failed")
+        self.assertEqual(manifest["runs"]["A1"]["runtime"]["descendant_containment"], "uncertain")
+
     def test_gate_and_default_do_not_touch_model(self):
         missing = self.root / "no-model.gguf"
         output = self.root / "out"

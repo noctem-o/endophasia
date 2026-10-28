@@ -23,6 +23,8 @@ REVISION = "1f8fa52318b594b373e7447a3c2bb36cdba9515f"
 VERSION = "e4eg.v1"
 DEFAULT_ORDER = ("A1", "B1", "B2", "A2")
 RELATIVE_FLOOR = 1e-12
+# Additional time to close pipes and reap after an execution deadline or interruption.
+CLEANUP_GRACE_SECONDS = 0.5
 
 
 def numerical_environment(environ: dict) -> dict:
@@ -39,17 +41,74 @@ def enable_child_subreaper() -> None:
         raise RuntimeError("cannot enable Linux child subreaper")
 
 
-def reap_owned_group(pgid: int) -> None:
-    deadline = time.monotonic() + 5
+def reap_owned_group(pgid: int, deadline: float) -> None:
     while True:
+        if time.monotonic() >= deadline:
+            raise RuntimeError("owned native process group could not be reaped")
         try:
             pid, _status = os.waitpid(-pgid, os.WNOHANG)
         except ChildProcessError:
             return
         if pid == 0:
-            if time.monotonic() >= deadline:
-                raise RuntimeError("owned native process group could not be reaped")
-            time.sleep(0.01)
+            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+
+
+def no_adopted_children() -> bool:
+    """After enabling the subreaper, no remaining children means no surviving descendants.
+
+    This deliberately does not reap or signal children outside the native group. A
+    concurrently created unrelated child makes the result uncertain, not successful.
+    """
+    try:
+        os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return True
+    return False
+
+
+def cleanup_native(p: subprocess.Popen) -> dict:
+    """Bound cleanup; only signal the group while its leader remains unreaped."""
+    deadline = time.monotonic() + CLEANUP_GRACE_SECONDS
+    group_signalled = False
+    cleanup_fault = False
+    if p.returncode is None:
+        try:
+            # Do not target a numeric group ID after the child ceased to be
+            # waitable (for example, if another waiter reaped it).
+            os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            os.killpg(p.pid, signal.SIGKILL)
+            group_signalled = True
+        except ProcessLookupError:
+            pass
+        except BaseException:
+            cleanup_fault = True  # Do not expose cleanup or runtime details.
+    # communicate() cannot be used here: an escaped descendant may retain a pipe.
+    for stream in (p.stdout, p.stderr):
+        if stream is not None:
+            try:
+                stream.close()
+            except BaseException:
+                cleanup_fault = True
+    pipes_closed = all(stream is None or stream.closed for stream in (p.stdout, p.stderr))
+    try:
+        p.wait(timeout=max(0, deadline - time.monotonic()))
+    except BaseException:
+        cleanup_fault = True
+    group_reaped = False
+    if p.returncode is not None:
+        try:
+            reap_owned_group(p.pid, deadline)
+            group_reaped = True
+        except BaseException:
+            cleanup_fault = True
+    try:
+        contained = not cleanup_fault and pipes_closed and group_reaped and no_adopted_children()
+    except BaseException:
+        contained = False
+    return {"direct_child_reaped": p.returncode is not None,
+            "parent_pipes_closed": pipes_closed,
+            "owned_group_signalled": group_signalled,
+            "descendant_containment": "established" if contained else "uncertain"}
 
 
 def sha(data: bytes) -> str:
@@ -205,45 +264,48 @@ class NativeBackend:
                    "--tokens", ",".join(map(str, tokens)), "--output", str(output),
                    "--ctx", str(config["context"]), "--batch", str(config["batch"]),
                    "--ubatch", str(config["ubatch"]), "--threads", str(config["threads"])]
-        remaining = self.timeout if self.deadline is None else min(self.timeout, self.deadline - time.monotonic())
-        if remaining <= 0:
+        start = time.monotonic()
+        execution_deadline = start + self.timeout
+        if self.deadline is not None:
+            execution_deadline = min(execution_deadline, self.deadline)
+        if execution_deadline <= start:
             raise RuntimeError("total experiment deadline reached before repetition")
+        # A private cgroup is the stronger launcher boundary. For the direct
+        # command, Linux subreaping lets us fail closed if any child remains,
+        # including one which left the native process group.
+        enable_child_subreaper()
         # The process owns a new group, so cleanup never targets an unrelated job.
         # Do not expose credentials, paths or unrecorded runtime settings to it.
         env = {"LC_ALL": "C", **numerical_environment(os.environ)}
-        start = time.monotonic()
         p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                              env=env, start_new_session=True)
         try:
-            stdout, _stderr = p.communicate(timeout=remaining)
+            stdout, _stderr = p.communicate(timeout=max(0, execution_deadline - time.monotonic()))
         except BaseException as exc:
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            p.communicate()  # close pipes and reap the owned direct child
-            reap_owned_group(p.pid)
+            cleanup = cleanup_native(p)
             self.last_observation = {"elapsed_seconds": time.monotonic() - start,
                                      "termination": "timeout" if isinstance(exc, subprocess.TimeoutExpired) else "interrupted",
-                                     "returncode": p.returncode}
+                                     "returncode": p.returncode, **cleanup}
             if isinstance(exc, subprocess.TimeoutExpired):
                 raise RuntimeError("native repetition timed out or total deadline reached") from exc
             raise
-        self.last_observation = {"elapsed_seconds": time.monotonic() - start,
-                                 "termination": "exited", "returncode": p.returncode}
+        # Never signal a group after its leader has been reaped: its ID may be
+        # reused. A remaining child makes the repetition fail closed instead.
         try:
-            descendant, _status = os.waitpid(-p.pid, os.WNOHANG)
-        except ChildProcessError:
-            descendant = None
-        if descendant is not None:
-            # The bounded launcher is a subreaper. An unexpected surviving or
-            # orphaned descendant makes this repetition invalid.
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            reap_owned_group(p.pid)
-            raise RuntimeError("native repetition left descendant processes")
+            contained = no_adopted_children()
+        except OSError:
+            contained = False
+        except BaseException:
+            self.last_observation = {"elapsed_seconds": time.monotonic() - start,
+                                     "termination": "interrupted", "returncode": p.returncode,
+                                     "direct_child_reaped": True, "descendant_containment": "uncertain"}
+            raise
+        self.last_observation = {"elapsed_seconds": time.monotonic() - start,
+                                 "termination": "exited", "returncode": p.returncode,
+                                 "direct_child_reaped": True,
+                                 "descendant_containment": "established" if contained else "uncertain"}
+        if not contained:
+            raise RuntimeError("native repetition descendant containment uncertain")
         if p.returncode != 0:
             # Runtime stderr can contain private paths or arbitrary environment data.
             raise RuntimeError(f"native repetition failed (exit status {p.returncode})")
@@ -310,7 +372,7 @@ def run_experiment(directory: Path, tokens: tuple[int, ...], config: dict, order
             save_manifest(directory, manifest, checkpoint)
         manifest["status"] = "complete"
         manifest["analysis"] = analyse_run(directory, manifest)
-    except Exception as exc:
+    except BaseException as exc:
         manifest["status"] = "failed"
         manifest["errors"].append(f"{type(exc).__name__}: {exc}")
         if "rec" in locals() and rec["status"] == "running":

@@ -225,7 +225,7 @@ export interface AaPlanSummaryV0 {
 		approvalWindowMs: number;
 	};
 }
-const short = (digest: { value: string }) => digest.value.slice(0, 16);
+const shortHex = (value: string) => value.slice(0, 16);
 
 /**
  * Read-only: validates the configuration and the verified sibling pair, and describes what `--run` would ask to approve.
@@ -259,7 +259,7 @@ export function inspectAaV0(config: AaOperatorConfigV0, key: EndoDigestKeyV0): A
 	);
 	if (siblings.status !== "verified-pristine") throw new Error("the sibling pair is not verified pristine");
 	return {
-		launchPlan: short(plan.commitment),
+		launchPlan: shortHex(plan.commitment.value),
 		profile: EXPLICIT_FIT_OFF_PROFILE_V0,
 		endpoint: plan.endpoint,
 		executable: { path: config.server.executablePath, sha256: config.server.executableSha256 },
@@ -382,8 +382,11 @@ export async function runAaOperatorV0(
 		slots: [],
 		independentRead: { performed: false, status: "not-attempted", report: null, answers: null },
 	};
+	// `stage` ends as the stage that stopped the study, or "done" when nothing did; cleanup and verification always run.
+	let stoppedAt: AaOperatorOutcomeV0["stage"] | undefined;
 	const stopWith = (stage: AaOperatorOutcomeV0["stage"], reason: string) => {
 		outcome.stage = stage;
+		stoppedAt ??= stage;
 		outcome.reasons.push(reason);
 	};
 	const say = (text: string) => {
@@ -503,15 +506,10 @@ export async function runAaOperatorV0(
 
 		// 5. Slots: each needs its own typed approval for each turn. The first slot that does not complete ends the study.
 		outcome.stage = "study";
-		const environmentOk = async () => {
-			if (signal.aborted) return false;
-			try {
-				await observer.observe(provenance, 1, signal);
-				return true;
-			} catch {
-				return false;
-			}
-		};
+		// Repeated gates use the cheap synchronous recheck against the readiness observation; the full per-turn
+		// observation happens once, at admission.
+		const environmentOk = async () =>
+			!signal.aborted && observed !== undefined && observer.recheck(provenance, observed, 1);
 		let position = 0;
 		const hooks: CoordinatorHooks = {
 			checkEnvironment: environmentOk,
@@ -572,7 +570,6 @@ export async function runAaOperatorV0(
 	if (signal.aborted) outcome.reasons.push("interrupted");
 
 	// 6. Cleanup: the keeper-owned group is stopped once. A failed stop is reported, never softened or retried.
-	outcome.stage = "cleanup";
 	try {
 		const end = await server.stop();
 		outcome.server.stop = { exit: end.exit, processGone: end.processGone, listenerGone: end.listenerGone };
@@ -585,7 +582,6 @@ export async function runAaOperatorV0(
 		outcome.reasons.push("owned-server cleanup could not be confirmed");
 
 	// 7. Independent verification, in fresh processes, from the files on disk only.
-	outcome.stage = "verification";
 	for (let position = 1; position <= 4; position++) {
 		if (!existsSync(slotPath(config.studyFile, position, "start"))) continue;
 		let status = "no-end-record";
@@ -600,10 +596,10 @@ export async function runAaOperatorV0(
 			string,
 			string,
 		];
-		const [taskOwnedStatus, studyStatus] = [
-			await readFresh(["--task-owned", config.studyFile, config.keyFile, provenanceFile]),
-			await readFresh([config.studyFile, config.keyFile, studyFile]),
-		];
+		const [taskOwnedStatus, studyStatus] = await Promise.all([
+			readFresh(["--task-owned", config.studyFile, config.keyFile, provenanceFile]),
+			readFresh([config.studyFile, config.keyFile, studyFile]),
+		]);
 		if (taskOwnedStatus === 0) {
 			try {
 				outcome.independentRead.report = readJson(provenanceFile) as TaskOwnedStudyReportV0;
@@ -612,6 +608,7 @@ export async function runAaOperatorV0(
 				outcome.independentRead.status = "reader-refused";
 			}
 		} else outcome.independentRead.status = "reader-refused";
+		if (studyStatus !== 0) outcome.reasons.push("the fresh-process study reader refused the evidence");
 		if (studyStatus === 0) {
 			try {
 				const trials =
@@ -632,7 +629,7 @@ export async function runAaOperatorV0(
 		outcome.interrupted = true;
 		outcome.reasons.push("interrupted during cleanup or verification; both still ran to completion");
 	}
-	outcome.stage = "done";
+	outcome.stage = stoppedAt ?? "done";
 	return finish(outcome);
 }
 
@@ -643,6 +640,8 @@ function finish(outcome: AaOperatorOutcomeV0): AaOperatorOutcomeV0 {
 	const complete =
 		outcome.server.cleanup === "confirmed" &&
 		outcome.independentRead.status === "valid" &&
+		outcome.independentRead.answers !== null &&
+		!outcome.interrupted &&
 		report?.studyAdmission === "complete" &&
 		report.studyStatus === "four-receipts" &&
 		report.observedProcessIdentity === "consistent" &&
@@ -659,7 +658,6 @@ function finish(outcome: AaOperatorOutcomeV0): AaOperatorOutcomeV0 {
 	return outcome;
 }
 
-const shortHex = (value: string) => value.slice(0, 16);
 function renderLaunchApproval(
 	summary: AaPlanSummaryV0,
 	plans: Record<Arm, InitialContinuationPlanV0>,

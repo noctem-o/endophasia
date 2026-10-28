@@ -150,7 +150,7 @@ export async function awaitTaskOwnedReadinessV0(
 		loadingResponses,
 	});
 	if (options.signal.aborted) return refuse("cancelled");
-	if (!(await options.verifyIdentity())) return refuse("identity-changed");
+	if (!(await options.verifyIdentity())) return refuse(options.signal.aborted ? "cancelled" : "identity-changed");
 	for (;;) {
 		if (options.signal.aborted) return refuse("cancelled");
 		const remaining = deadline - performance.now();
@@ -164,7 +164,8 @@ export async function awaitTaskOwnedReadinessV0(
 		if (probe.status >= 300 && probe.status < 400) return refuse("redirect");
 		if (probe.status === 200) {
 			if (!isHealthyBodyV0(probe.body)) return refuse("invalid-body");
-			if (!(await options.verifyIdentity())) return refuse("identity-changed");
+			if (!(await options.verifyIdentity()))
+				return refuse(options.signal.aborted ? "cancelled" : "identity-changed");
 			return { status: "ready", polls, loadingResponses };
 		}
 		if (probe.status !== 503) return refuse("unexpected-status");

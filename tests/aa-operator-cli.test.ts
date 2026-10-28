@@ -148,6 +148,7 @@ describe.runIf(process.platform === "linux" && hasScript)(
 			live.push(stdoutPipe);
 			await stdoutPipe.exit;
 			expect(stdoutPipe.output).not.toContain("APPROVAL");
+			expect(stdoutPipe.output).toContain("needs a terminal on both stdin and stdout");
 			// A terminal that is not this session's controlling terminal is no terminal either.
 			const uncontrolled = spawnSync(
 				"python3",
@@ -394,10 +395,11 @@ describe.runIf(process.platform === "linux" && hasScript)(
 				expect(existsSync(slotPath(config.studyFile, 1, "end"))).toBe(true);
 				expect(existsSync(slotPath(config.studyFile, 2, "start"))).toBe(false);
 				expect(await portIsFree(config.server.port)).toBe(true);
-				if (pty.output.includes("A/A operator outcome")) {
-					expect(pty.output).toContain("PARTIAL");
-					expect(pty.output).toContain("(interrupted)");
-				}
+				// The terminal is still there to tell the operator, and an interrupted run is never shown as complete.
+				expect(pty.output).toContain("A/A operator outcome: PARTIAL");
+				expect(pty.output).toContain("(interrupted)");
+				expect(pty.output).toContain("owned-server cleanup    confirmed");
+				expect(pty.output).not.toContain("COMPLETE-UNDER");
 			},
 			120000,
 		);

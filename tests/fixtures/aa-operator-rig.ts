@@ -8,6 +8,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { prepareVerifiedInitialBranchPairV0 } from "../../cli/initial-branch-set.ts";
 import type { AaOperatorConfigV0, AaTerminalV0 } from "../../research/governed-initial-continuation/aa/operator.ts";
+import { portIsFree } from "../../research/governed-initial-continuation/aa/task-owned-server.ts";
 import { type FakeOpenAiOptions, type FakeOpenAiServer, startFakeOpenAiServer } from "./fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./verified-initial-checkpoint.ts";
 
@@ -24,12 +25,7 @@ export async function freePort(): Promise<number> {
 	await new Promise<void>((resolve, reject) => reservation.close((error) => (error ? reject(error) : resolve())));
 	return address.port;
 }
-export const portIsFree = (port: number) =>
-	new Promise<boolean>((resolve) => {
-		const probe = createServer();
-		probe.once("error", () => resolve(false));
-		probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
-	});
+export { portIsFree };
 /** Processes whose executable is exactly this file: how a test proves that a task-owned server is really gone. */
 export function runningFrom(executable: string): string[] {
 	return readdirSync("/proc")

@@ -50,7 +50,7 @@ describe.runIf(process.platform === "linux")("operator under model-endpoint faul
 			expect(outcome.slots[0]!.status).not.toBe("completed");
 			if (expectedStatus) expect(outcome.slots[0]!.status).toBe(expectedStatus);
 			expect(outcome.verdict).toBe("partial");
-			expect(outcome.stage).toBe("done");
+			expect(outcome.stage).toBe("study"); // Where the study stopped, not that cleanup ran afterwards.
 			expect(outcome.server.cleanup).toBe("confirmed");
 			expect(existsSync(provenanceEndPathV0(config.studyFile))).toBe(true);
 			expect(await portIsFree(config.server.port)).toBe(true);

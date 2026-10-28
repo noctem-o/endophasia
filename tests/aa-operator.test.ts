@@ -82,6 +82,7 @@ describe.runIf(process.platform === "linux")("terminal-governed A/A operator, fa
 			const outcome = await run(config, terminal);
 			expect(outcome.reasons).toEqual([]);
 			expect(outcome.verdict).toBe("complete-under-declared-assumptions");
+			expect(outcome.stage).toBe("done");
 			expect(slotArms(config)).toEqual(order);
 			// One approval for the server and one for each of the eight turns, every phrase distinct and used once.
 			expect(terminal.asked.map((a) => a.kind)).toEqual(["launch", ...Array(4).fill(["first", "second"]).flat()]);
@@ -282,7 +283,7 @@ describe.runIf(process.platform === "linux")("operator readiness", () => {
 		expect(outcome.readiness).toMatchObject({ status: "refused", reason });
 		expect(outcome).toMatchObject({
 			verdict: "refused",
-			stage: "done",
+			stage: "readiness",
 			server: { launched: true, cleanup: "confirmed" },
 		});
 		expect(outcome.reasons.join()).toContain("not reported ready");

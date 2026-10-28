@@ -221,6 +221,9 @@ describe("governed complete-request buffer limit", () => {
 					const response = send(port, host, requests, 6, false, ready);
 					await guarded(ready);
 					await guarded(clientPaused);
+					// Exercise the upload-idle deadline while the proxy owns the pause.
+					await new Promise((resolve) => setTimeout(resolve, 400));
+					expect(counts()).toEqual({ upstream: 1, admitted: 1, refused: 0 });
 					releaseFirst();
 					expect((await response).match(/HTTP\/1\.1 200/g)).toHaveLength(6);
 					expect(counts()).toEqual({ upstream: 6, admitted: 6, refused: 0 });
@@ -229,7 +232,7 @@ describe("governed complete-request buffer limit", () => {
 					spy.mockRestore();
 				}
 			},
-			5000,
+			150,
 			true,
 		);
 	}, 15000);
@@ -240,8 +243,23 @@ describe("governed complete-request buffer limit", () => {
 				Buffer.from("private-extra"),
 				wireOfSize(1000),
 			]);
-			await send(port, host, [data], 0);
-			expect(counts()).toEqual({ upstream: 0, admitted: 0, refused: 1 });
+			const received: Buffer[] = [];
+			const emitTarget = Socket.prototype as unknown as {
+				emit: (event: string | symbol, ...args: unknown[]) => boolean;
+			};
+			const originalEmit = emitTarget.emit;
+			const spy = vi.spyOn(emitTarget, "emit").mockImplementation(function (this: Socket, event, ...args) {
+				if (event === "data" && this.localPort === port && Buffer.isBuffer(args[0]))
+					received.push(Buffer.from(args[0]));
+				return originalEmit.call(this, event, ...args);
+			});
+			try {
+				await send(port, host, [data], 0);
+				expect(received.some((chunk) => chunk.equals(data))).toBe(true);
+				expect(counts()).toEqual({ upstream: 0, admitted: 0, refused: 1 });
+			} finally {
+				spy.mockRestore();
+			}
 		});
 	}, 15000);
 	it("does not copy a malformed private header into refusal evidence", async () => {

@@ -334,19 +334,30 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		/** The client connection is being ended: nothing further is forwarded on it. */
 		let ending = false;
 		let admissionTimer: NodeJS.Timeout | null = null;
-		client.on("close", () => {
+		const clearAdmissionTimer = () => {
 			if (admissionTimer !== null) clearTimeout(admissionTimer);
-		});
+			admissionTimer = null;
+		};
+		const armAdmissionTimer = () => {
+			clearAdmissionTimer();
+			if (options.admitRequest !== undefined && receiving !== null && !ending && !paused) {
+				admissionTimer = setTimeout(() => refuseAdmission(), admissionIdleMs);
+				admissionTimer.unref();
+			}
+		};
+		client.on("close", clearAdmissionTimer);
 
 		const updateFlow = () => {
 			const front = slots[0];
 			const need = queuedBytes > MAX_QUEUED_BYTES || (front?.hop?.socket.writableNeedDrain ?? false);
 			if (need && !paused) {
 				paused = true;
+				clearAdmissionTimer();
 				client.pause();
 			} else if (!need && paused) {
 				paused = false;
 				client.resume();
+				armAdmissionTimer();
 			}
 		};
 
@@ -959,10 +970,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		};
 
 		client.on("data", (data: Buffer) => {
-			if (admissionTimer !== null) {
-				clearTimeout(admissionTimer);
-				admissionTimer = null;
-			}
+			clearAdmissionTimer();
 			if (!countTransfer(data.length)) {
 				client.destroy();
 				return;
@@ -1003,10 +1011,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				}
 			}
 			dispatch();
-			if (options.admitRequest !== undefined && receiving !== null && !ending) {
-				admissionTimer = setTimeout(refuseAdmission, admissionIdleMs);
-				admissionTimer.unref();
-			}
+			armAdmissionTimer();
 		});
 
 		const clientGone = () => {

@@ -211,7 +211,8 @@ function queueUpdate() {
 const textOf = (message) => (message.content ?? []).map((part) => part.text ?? "").join("");
 /** The conversation as an OpenAI chat request: the working directory in the system message, then the entries. */
 function modelMessages() {
-	const out = [{ role: "system", content: `fake pi${has("system-variant") ? " (variant)" : ""}\n<cwd>\n${process.cwd()}\n</cwd>` }];
+	const second = entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1;
+	const out = [{ role: "system", content: `fake pi${has("system-variant") || (second && has("second-context-change")) ? " (variant)" : ""}\n<cwd>\n${process.cwd()}\n</cwd>` }];
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const message = entry.message;
@@ -224,19 +225,22 @@ function modelMessages() {
 			if (has("unknown-prompt-part-field")) parts[0].extra = "unapproved";
 			out.push({ role: "user", content: has("prompt-text-parts") ? parts : text });
 		}
-		else if (message.role === "assistant")
-			out.push({ role: "assistant", content: textOf(message), ...(message.toolCalls ? { tool_calls: message.toolCalls } : {}) });
+		else if (message.role === "assistant") {
+			const reasoning = (message.content ?? []).filter((part) => part.type === "thinking").map((part) => part.thinking).join("");
+			out.push({ role: "assistant", content: textOf(message), ...(reasoning.trim() ? { reasoning_content: has("changed-second-reasoning") ? `${reasoning}!` : reasoning } : {}), ...(message.toolCalls ? { tool_calls: message.toolCalls } : {}) });
+		}
 		else if (message.role === "toolResult") out.push({ role: "tool", tool_call_id: message.toolCallId, content: textOf(message) });
 	}
 	return out;
 }
 /** One streamed chat completion; resolves with the text, the tool calls, or the error. Abort drops the request. */
 function modelCall(run) {
+	const second = entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1;
 	const body = JSON.stringify({
-		model: has("wrong-request-model") ? "substituted-model" : modelId,
+		model: has("wrong-request-model") || (second && has("second-request-model-change")) ? "substituted-model" : modelId,
 		stream: true,
 		messages: modelMessages(),
-		...(tools.includes("read") ? { tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }] } : {}),
+		...(tools.includes("read") || (second && has("second-offer-tools")) ? { tools: [{ type: "function", function: { name: "read", parameters: { type: "object" } } }] } : {}),
 	});
 	const url = new URL(`${modelBaseUrl}/chat/completions`);
 	return new Promise((resolve) => {
@@ -247,7 +251,7 @@ function modelCall(run) {
 			clearInterval(watch);
 			resolve(value);
 		};
-		let text = "";
+		let text = "", reasoning = "";
 		const calls = [];
 		const request = httpRequest(
 			{
@@ -276,6 +280,7 @@ function modelCall(run) {
 								text += delta.content;
 								emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: delta.content } });
 							}
+							if (typeof delta.reasoning_content === "string") reasoning += delta.reasoning_content;
 							for (const call of delta.tool_calls ?? []) {
 								calls[call.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } };
 								if (call.id) calls[call.index].id = call.id;
@@ -287,8 +292,8 @@ function modelCall(run) {
 						}
 					}
 				});
-				response.on("end", () => done({ text, calls: calls.filter(Boolean) }));
-				response.on("close", () => done({ text, calls: calls.filter(Boolean), cut: true }));
+				response.on("end", () => done({ text, reasoning, calls: calls.filter(Boolean) }));
+				response.on("close", () => done({ text, reasoning, calls: calls.filter(Boolean), cut: true }));
 			},
 		);
 		const watch = setInterval(() => {
@@ -305,11 +310,13 @@ async function modelTurn(run) {
 	emit({ type: "message_start", message: { role: "assistant", content: [], stopReason: "pending" } });
 	if (has("delay-second-model-request") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1) await sleep(1500);
 	const reply = await modelCall(run);
+	if (has("third-model-request") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1)
+		await modelCall(run);
 	const failed = reply.error !== undefined && !run.aborted;
 	const calls = run.aborted || failed ? [] : reply.calls;
 	const assistant = {
 		role: "assistant",
-		content: [{ type: "text", text: reply.text ?? "" }],
+		content: [...(reply.reasoning ? [{ type: "thinking", thinking: reply.reasoning, thinkingSignature: "reasoning_content" }] : []), { type: "text", text: reply.text ?? "" }],
 		...(calls.length > 0 ? { toolCalls: calls } : {}),
 		provider: model.provider,
 		model: model.id,
@@ -357,6 +364,10 @@ async function modelTurn(run) {
 async function turn(run, userText) {
 	emit({ type: "turn_start" });
 	if (userText !== undefined) {
+		if (has("pi-1-system-message") && !entries.some((entry) => entry.message?.role === "user")) {
+			append({ type: "message", message: { role: "system", content: "", sections: { fake: "system" }, timestamp: Date.now() } });
+			if (has("duplicate-system-message")) append({ type: "message", message: { role: "system", content: "", timestamp: Date.now() } });
+		}
 		const user = { role: "user", content: [{ type: "text", text: userText }], timestamp: Date.now() };
 		emit({ type: "message_start", message: user });
 		emit({ type: "message_end", message: user });

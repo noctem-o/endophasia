@@ -149,8 +149,10 @@ export function approveContinuationTurnV0(
 	};
 }
 
+type CapturedResponse = { text: string; reasoningContent: string | undefined };
+
 /** Decode only the bounded OpenAI streaming shape this profile knows how to verify. */
-function responseText(bytes: Uint8Array, model: string): string {
+function responseText(bytes: Uint8Array, model: string): CapturedResponse {
 	let headStatus = 0,
 		ends = 0;
 	const body: Buffer[] = [];
@@ -175,6 +177,7 @@ function responseText(bytes: Uint8Array, model: string): string {
 	if (!parser.close() || ends !== 1 || headStatus !== 200) throw new Error("response framing incomplete");
 	const text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(body));
 	let answer = "",
+		reasoningContent = "",
 		finished = false,
 		done = false;
 	for (const line of text.split(/\r?\n/)) {
@@ -211,22 +214,28 @@ function responseText(bytes: Uint8Array, model: string): string {
 			!choice.delta ||
 			typeof choice.delta !== "object" ||
 			Array.isArray(choice.delta) ||
-			Object.keys(choice.delta).some((field) => !["role", "content", "refusal"].includes(field)) ||
+			Object.keys(choice.delta).some(
+				(field) => !["role", "content", "refusal", "reasoning_content"].includes(field),
+			) ||
 			(choice.delta.refusal !== undefined && choice.delta.refusal !== null) ||
 			(choice.delta.role !== undefined && choice.delta.role !== "assistant") ||
 			(choice.delta.content !== undefined &&
 				choice.delta.content !== null &&
-				typeof choice.delta.content !== "string")
+				typeof choice.delta.content !== "string") ||
+			(choice.delta.reasoning_content !== undefined &&
+				choice.delta.reasoning_content !== null &&
+				typeof choice.delta.reasoning_content !== "string")
 		)
 			throw new Error("unsupported response or tool call");
 		if (typeof choice.delta.content === "string") answer += choice.delta.content;
+		if (typeof choice.delta.reasoning_content === "string") reasoningContent += choice.delta.reasoning_content;
 		if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
 			if (choice.finish_reason !== "stop" || finished) throw new Error("response did not settle normally");
 			finished = true;
 		}
 	}
-	if (!done || !finished) throw new Error("response settlement unavailable");
-	return answer;
+	if (!done || !finished || answer.trim().length === 0) throw new Error("response settlement unavailable");
+	return { text: answer, reasoningContent: reasoningContent.trim().length === 0 ? undefined : reasoningContent };
 }
 
 function requestMessages(bytes: Uint8Array, model: string): Record<string, unknown>[] {
@@ -256,7 +265,7 @@ function checkRequest(
 	messages: Record<string, unknown>[],
 	plan: InitialContinuationPlanV0,
 	key: EndoDigestKeyV0,
-	first?: { messages: Record<string, unknown>[]; response: string },
+	first?: { messages: Record<string, unknown>[]; response: CapturedResponse },
 ): void {
 	if (first === undefined) {
 		if (
@@ -277,9 +286,9 @@ function checkRequest(
 		const assistant = messages.at(-2)!;
 		if (
 			assistant.role !== "assistant" ||
-			assistant.tool_calls !== undefined ||
-			assistant.function_call !== undefined ||
-			initialExecutionPromptTextV0(assistant.content) !== first.response
+			Object.keys(assistant).some((field) => !["role", "content", "reasoning_content"].includes(field)) ||
+			initialExecutionPromptTextV0(assistant.content) !== first.response.text ||
+			assistant.reasoning_content !== first.response.reasoningContent
 		)
 			throw new Error("first response not retained");
 		const user = messages.at(-1)!;
@@ -321,7 +330,7 @@ function inspectEvidence(plan: InitialContinuationPlanV0, runtime: Runtime, key:
 	const surface = harnessSurfacesOfCaptureV0(store, key);
 	if (surface.length !== count) throw new Error("request surface unavailable");
 	const blobs = createEndoBlobStoreV0(endoCaptureRootV0(store), key, { readOnly: true });
-	let first: { messages: Record<string, unknown>[]; response: string } | undefined;
+	let first: { messages: Record<string, unknown>[]; response: CapturedResponse } | undefined;
 	const responseDigests: EndoKeyedDigestV0[] = [];
 	const requestDigests: EndoKeyedDigestV0[] = [];
 	for (let index = 0; index < count; index += 1) {
@@ -491,7 +500,13 @@ function inspectEvidence(plan: InitialContinuationPlanV0, runtime: Runtime, key:
 	const roles = entries
 		.filter((e) => (e.payload as { entryType?: unknown }).entryType === "message")
 		.map((e) => (e.payload as { details?: { role?: unknown } }).details?.role);
-	if (!same(roles, count === 1 ? ["user", "assistant"] : ["user", "assistant", "user", "assistant"]))
+	// Pi 1.0.4 persists its initial structured system prompt as one leading message. Only admit that
+	// prefix when the captured request has exactly one leading system message; later changes still refuse.
+	const hasSystemPrefix = roles[0] === "system";
+	if (hasSystemPrefix && (first!.messages.length !== 2 || first!.messages[0]?.role !== "system"))
+		throw new Error("initial system message mismatch");
+	const expectedRoles = count === 1 ? ["user", "assistant"] : ["user", "assistant", "user", "assistant"];
+	if (!same(roles, hasSystemPrefix ? ["system", ...expectedRoles] : expectedRoles))
 		throw new Error("unexpected session message ordering");
 	const trajectory = trajectoryFromStoreV0(store, `endo.session.pi.${runtime.sessionId}`);
 	if (
@@ -505,7 +520,16 @@ function inspectEvidence(plan: InitialContinuationPlanV0, runtime: Runtime, key:
 		trajectory.layers.outcome.entries.some((entry) => entry.outcome !== "completed")
 	)
 		throw new Error("trajectory incomplete or tool call observed");
-	return { capture, events, requests, requestDigests, responseDigests, trajectory, first: first! };
+	return {
+		capture,
+		events,
+		requests,
+		requestDigests,
+		responseDigests,
+		trajectory,
+		first: first!,
+		messageCount: roles.length,
+	};
 }
 
 function writeDispatch(area: string, marker: InitialContinuationDispatchV0): void {
@@ -642,7 +666,7 @@ export async function executeInitialContinuationV0(
 	});
 	let grant: 1 | 2 | null = null;
 	let grantDeadline = monotonicDeadline;
-	let firstConversation: { messages: Record<string, unknown>[]; response: string } | undefined;
+	let firstConversation: { messages: Record<string, unknown>[]; response: CapturedResponse } | undefined;
 	let firstSettled = false;
 	let secondSettled = false;
 	const publish = () => publishInitialExecutionReceiptV0(area, receipt, owned);
@@ -740,7 +764,6 @@ export async function executeInitialContinuationV0(
 			state.sessionId !== receipt.runtime!.sessionId ||
 			state.model?.provider !== plan.initial.provider ||
 			state.model.id !== plan.initial.model ||
-			state.messageCount !== 2 ||
 			state.pendingMessageCount !== 0 ||
 			state.isStreaming ||
 			state.isCompacting ||
@@ -748,6 +771,7 @@ export async function executeInitialContinuationV0(
 		)
 			throw new Error("first-turn session boundary mismatch");
 		const observed = inspectEvidence(plan, receipt.runtime!, key, 1);
+		if (state.messageCount !== observed.messageCount) throw new Error("first-turn session message count mismatch");
 		if (observed.events.some((event) => event.kind === "harness.process-exited"))
 			throw new Error("Pi exited before continuation boundary");
 		const boundaryBytes = archiveEndoWorkspaceV0(runtime).bytes;
@@ -824,7 +848,7 @@ export async function executeInitialContinuationV0(
 			nextState.sessionId !== boundary.sessionId ||
 			nextState.model?.provider !== boundary.provider ||
 			nextState.model.id !== boundary.model ||
-			nextState.messageCount !== 2 ||
+			nextState.messageCount !== observed.messageCount ||
 			nextState.pendingMessageCount !== 0 ||
 			nextState.isStreaming ||
 			nextState.isCompacting ||
@@ -879,7 +903,7 @@ export async function executeInitialContinuationV0(
 			finalState.sessionId !== boundary.sessionId ||
 			finalState.model?.provider !== boundary.provider ||
 			finalState.model.id !== boundary.model ||
-			finalState.messageCount !== 2 ||
+			finalState.messageCount !== observed.messageCount ||
 			finalState.pendingMessageCount !== 0 ||
 			finalState.isStreaming ||
 			finalState.isCompacting ||
@@ -889,6 +913,7 @@ export async function executeInitialContinuationV0(
 			proxy.open !== 0 ||
 			proxy.recordingFailures !== 0 ||
 			proxy.transferLimitExceeded ||
+			finalBoundary.messageCount !== observed.messageCount ||
 			!sameInitialStartupRuntimeV0(boundaryBytes, archiveEndoWorkspaceV0(runtime).bytes) ||
 			finalBoundary.trajectory.digest !== boundary.firstTrajectoryIdentity ||
 			!same(key.digest(finalBoundary.events.slice(0, boundary.storePrefixCount)), boundary.storePrefixCommitment) ||

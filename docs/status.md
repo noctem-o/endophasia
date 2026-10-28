@@ -83,7 +83,9 @@ implementation detail and its limitations. The real recordings and studies, with
     or establish operating-system confinement. The source-tree
     [initial-continuation API](initial-continuation.md) adds a separately approved second turn in the same newly
     launched Pi session, with a provisional boundary, gated requests and independently verified two-turn lineage.
-    Tests cover synthetic Pi and a fake model endpoint; no real-model two-turn continuation has been run. The API
+    Synthetic tests and a Pi 1.0.4/fake-endpoint compatibility check cover two turns. A
+    [readiness report](../research/governed-initial-continuation/READINESS.md) records why real-model two-turn
+    acceptance is gated; no such attempt has been run. The API
     does not provide historical process restoration, general tool use or a general fork. These checkpoint/execution
     slices are absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).

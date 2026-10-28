@@ -2,6 +2,14 @@
 
 Status: **ENGINEERING INCOMPLETE / LIVE GATED**. This is not a live A/A result or an approval to start one. No real model request or Pi session was made in this study. The private plan, a coordinator building block and a fresh-process comparison reader now exist, but there is no operator-facing execution command or independent real server/resource observer. The required adversarial and owned-cleanup tests are incomplete. Individual verified continuation receipts alone do not establish a valid matched study.
 
+## Synthetic dispatch-admission plumbing
+
+Status: **DISPATCH-BOUND EVIDENCE PLUMBING COMPLETE / REAL SERVER PARITY STILL GATED**.
+
+An optional synthetic-only study mode binds an expected fake identity to the keyed plan. The continuation executor prepares a turn-specific observation outside the proxy callback. At the existing one-shot admission boundary, after the complete request is buffered and before the upstream hop opens, the synthetic hook rechecks that identity and exclusively publishes a keyed sidecar binding the plan, slot, attempt, turn, upstream, captured-body digest, dispatch and approval commitments, and a unique observation reference. The executor checks cancellation and deadlines again before accepting the callback result. A fresh reader checks both sidecars against each independently verified receipt and captured request, including identity and observation uniqueness across slots. Legacy plans remain readable but have no synthetic admission evidence.
+
+This establishes only synthetic plumbing under the trusted local collector and key. It is not real server parity, historical process attestation, or proof of uninterrupted listener ownership. The declared identity and callback are test inputs. The reader reports server identity unverified even when synthetic sidecars verify; no live A/A is admitted. JavaScript cannot interrupt a blocked synchronous recheck or filesystem `fsync`; the post-callback deadline check can prevent forwarding after it returns. Asynchronous preparation can outlive cancellation, but its late result cannot publish a sidecar or grant a request. A real observer, terminal-directed approvals and their independent review remain separate work.
+
 ## Inherited evidence and feasibility
 
 The prior [real acceptance](../REAL-ACCEPTANCE.md) reports one separately approved, tool-free Pi 1.0.4 / Nanbeige4.3-33B session, two real completion requests and a verified receipt independently checked in a fresh process. Its private evidence is not published. The earlier [initial-child pilot](../../governed-initial-child/1.0.4/RESULTS.md) was a four-request **single-turn** pilot, not a two-turn A/A study. It observed request-body differences attributable to a uniquely identified cwd and reported narrowly cwd-adjusted equality only as a diagnostic.

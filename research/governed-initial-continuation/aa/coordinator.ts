@@ -16,6 +16,7 @@ import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.t
 import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { readStudy, sealSlot, slotPath } from "./reader.ts";
 import { commonTemplate, readStudyPlan } from "./study-plan.ts";
+import { type SyntheticIdentityProvider, syntheticAdmissionHook } from "./synthetic-admission.ts";
 
 /** Caller callbacks are trusted test/operator inputs, not evidence of a human or of server identity. */
 export interface CoordinatorHooks {
@@ -63,9 +64,12 @@ export async function runNextSlot(
 	key: EndoDigestKeyV0,
 	hooks: CoordinatorHooks,
 	signal?: AbortSignal,
+	syntheticProvider?: SyntheticIdentityProvider,
 ): Promise<string> {
 	if (signal?.aborted) throw new Error("cancelled");
 	const study = await readStudyPlan(studyFile, key);
+	if ((study.syntheticAdmission !== undefined) !== (syntheticProvider !== undefined))
+		throw new Error("synthetic admission mode mismatch");
 	const previous = await readStudy(studyFile, key);
 	if (previous.status === "four-receipts") throw new Error("study already has four slots");
 	if (previous.trials.length > 0 && !previous.effectiveParametersEqual) throw new Error("prior parity unavailable");
@@ -127,6 +131,15 @@ export async function runNextSlot(
 				return approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn");
 			},
 			signal,
+			syntheticProvider
+				? syntheticAdmissionHook(
+						key,
+						start,
+						study.syntheticAdmission!.identity,
+						syntheticProvider,
+						previous.syntheticObservationIds,
+					)
+				: undefined,
 		);
 		if ("area" in result) {
 			receipt = join(result.area, "receipt.json");

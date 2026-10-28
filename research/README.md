@@ -18,6 +18,7 @@ The numerical probe ran a separate CPU-only llama.cpp executable without Pi.
 | [Discriminating-task study](#discriminating-task-study) | [design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md) | 12 small coding tasks screened and confirmed: two discriminate (13/20 and 7/20), most are saturated, and most failures are a response cut off at the completion cap |
 | [Completion-cap study](#completion-cap-study) | [design](completion-cap/1.0.1/DESIGN.md), [results](completion-cap/1.0.1/RESULTS.md) | raising Pi's completion cap from 16,384 to 32,768 raised success on the two discriminating tasks from 10/24 to 19/23; thinking-off and a brief-reasoning sentence are cheaper but less reliable |
 | [Governed initial-child acceptance and A/A pilot](governed-initial-child/1.0.4/RESULTS.md) | [results](governed-initial-child/1.0.4/RESULTS.md) | qualified source checkpoint and four approved child turns; cwd-adjusted requests and final answers matched, complete responses differed |
+| [Governed real same-session continuation](governed-initial-continuation/REAL-ACCEPTANCE.md) | [results](governed-initial-continuation/REAL-ACCEPTANCE.md) | one separately approved Pi 1.0.4/Nanbeige two-turn attempt, two captured exchanges and independently verified receipt |
 | [Numerical execution probe (E4e-G)](#numerical-execution-probe-e4e-g) | [protocol](numerical-execution-probe/FIRST-EXPERIMENT.md), [result](numerical-execution-probe/FIRST-RESULT.md) | CPU-only, four fresh processes; stable logits within schedule and differences across token-submission schedules |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
@@ -192,7 +193,7 @@ vector commitments, but its raw vectors and model are not committed.
 
 The documents in this section are research contracts, readiness reports or preregistration drafts. They are **not** entries in the real-run table above and do not establish a real-model result for the proposed study.
 
-- [Governed same-session continuation readiness](governed-initial-continuation/READINESS.md) — fake-endpoint compatibility and the remaining gates for the first real two-turn acceptance.
+- [Governed same-session continuation readiness](governed-initial-continuation/READINESS.md) — historical fake-endpoint compatibility and gates before the subsequent real acceptance.
 - [Epistemic alignment experiment: Magpie as a shadow ledger](epistemic-alignment-experiment.md) — a deliberately gameable post-training environment with a separate epistemic measurement surface, a reward/measurement firewall, a staged sequence (reproduce, positive controls, reward interventions, monitor pressure) and predeclared power and comparison families. Moved here from the project README; not run.
 - [Developmental epistemic training v0](developmental-epistemic-training-v0.md) — separates epistemic-content effects from developmental-timing effects in a small synthetic microworld, with matched metadata controls, a plain anchor, learning-rate-controlled timing, downstream conflict-dose stress tests and a whole-generator-family holdout.
 

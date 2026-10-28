@@ -1,4 +1,7 @@
-# Real same-session continuation acceptance: GATED
+# Historical real same-session continuation readiness: GATED
+
+This readiness snapshot predates the separately approved real-model attempt. The subsequent
+[acceptance result](REAL-ACCEPTANCE.md) records its independently verified two-turn PASS.
 
 On 28 October 2026, the source-tree continuation API was audited against `main` at
 `2bf189110fdbda29042631acd93ee662e92d0f80`. No real-model continuation was attempted. The earlier

@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **AA-LIVE-001 preflight (research; read-only):** pre-registration, local environment qualification, `--fit off` profile
+  assessment and go/no-go for the first real matched A/A, in
+  [research/governed-initial-continuation/aa/LIVE-PREFLIGHT-001.md](research/governed-initial-continuation/aa/LIVE-PREFLIGHT-001.md).
+  The operator's printed outcome now states the server-binary status, so a study with an unpinned executable is not
+  presented as a pinned one. No server or inference was run.
 - **Terminal-governed A/A operator (research; fakes only):** `research/governed-initial-continuation/aa/operate.ts --inspect|--run <config>` (a research script, not an `endo` subcommand) connects the
   task-owned server lifecycle, a bounded read-only `GET /health` readiness gate, the governed two-turn A/A study with real
   procfs admission, and fresh-process verification behind typed terminal approvals (one for the server, one per turn). `--run`

@@ -122,6 +122,9 @@ describe.runIf(process.platform === "linux")("terminal-governed A/A operator, fa
 			const text = renderAaOutcomeV0(outcome);
 			expect(text).toContain("COMPLETE-UNDER-DECLARED-ASSUMPTIONS");
 			expect(text).toContain("not server attestation");
+			// The relay is not the historically accepted llama.cpp digest, and a complete study must still say so.
+			expect(text).toMatch(/server binary\s+UNSUPPORTED — NOT the historically accepted build/);
+			expect(text).toContain("UNSUPPORTED_BINARY");
 		},
 		300000,
 	);

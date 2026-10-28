@@ -708,6 +708,14 @@ function renderTurnApproval(
 	].join("\n");
 }
 
+/** A complete study with an unpinned binary must never read as a pinned one. */
+function binaryLine(report: TaskOwnedStudyReportV0): string {
+	const { supportedBinary, blockingReasons } = report.hostFacts;
+	return supportedBinary === "MATCH"
+		? "MATCH (digest equals the historically accepted build; file identity only, not build provenance)"
+		: `${supportedBinary} — NOT the historically accepted build (blocking reasons: ${blockingReasons.join(", ") || "none"})`;
+}
+
 /** Plain, secret-free rendering of an outcome for the operator. It never contains responses or reasoning. */
 export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 	const report = outcome.independentRead.report;
@@ -730,6 +738,7 @@ export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 		`  observed identity       ${report ? `${report.observedProcessIdentity} (task-owned process; not an attestation)` : "unavailable"}`,
 		`  study completion        ${report ? `${report.studyStatus}; admission ${report.studyAdmission}` : "unavailable"}`,
 		`  trust and missing facts ${report ? `${report.hostFacts.ownership}; ${report.declaredTrustAssumptions.length} declared assumptions (not verified); unavailable: ${report.hostFacts.unavailable.join(", ") || "none"}` : "unavailable"}`,
+		`  server binary           ${report ? binaryLine(report) : "unavailable"}`,
 		`  owned-server cleanup    ${outcome.server.cleanup}${outcome.server.stop ? ` (process gone: ${outcome.server.stop.processGone}, listener gone: ${outcome.server.stop.listenerGone})` : ""}`,
 		`  answer correctness      ${answers ? `first turn ${answers.firstCorrect}/${answers.of}, repeat turn ${answers.referenceCorrect}/${answers.of} (this study's own check; no parity claim)` : "unavailable"}`,
 		...outcome.reasons.map((reason) => `  note: ${reason}`),

@@ -92,6 +92,11 @@ function short(value: unknown, max = 128): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value.slice(0, max) : undefined;
 }
 
+// An identity must never be made to match another identity by truncation.
+function identity(value: unknown, max: number): string | undefined {
+	return typeof value === "string" && value.length > 0 && value.length <= max ? value : undefined;
+}
+
 /** The usage numbers of a Pi Usage object, or undefined when it is not one. Never the content around it. */
 export function piUsageV0(value: unknown): Record<string, JsonValueV0> | undefined {
 	if (!isRecord(value)) return undefined;
@@ -132,14 +137,17 @@ function entryDetails(entry: PiSessionEntryV0): { recognized: boolean; details: 
 				details: compact({
 					role: short(message.role, 32),
 					stopReason: short(message.stopReason, 32),
-					provider: short(message.provider),
-					model: short(message.model),
+					provider: identity(message.provider, 128),
+					model: identity(message.model, 256),
 					usage: piUsageV0(message.usage),
 				}),
 			};
 		}
 		case "model_change":
-			return { recognized: true, details: compact({ provider: short(raw.provider), modelId: short(raw.modelId) }) };
+			return {
+				recognized: true,
+				details: compact({ provider: identity(raw.provider, 128), modelId: identity(raw.modelId, 256) }),
+			};
 		case "thinking_level_change":
 			return { recognized: true, details: compact({ thinkingLevel: short(raw.thinkingLevel, 32) }) };
 		case "compaction":

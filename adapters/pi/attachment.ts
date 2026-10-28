@@ -620,6 +620,11 @@ export class PiSessionAttachmentV0 {
 		return this.#outputLimitExceeded;
 	}
 
+	/** Cumulative RPC stdout bytes observed from this owned process. */
+	get outputBytes(): number {
+		return this.#ownedClient?.connection.outputBytes ?? 0;
+	}
+
 	/** Live state used for a governed startup check before dispatch. */
 	async rpcState() {
 		if (this.#client === null) throw new TypeError("Pi is not running");

@@ -458,6 +458,24 @@ describe("mapping", () => {
 		expect(JSON.stringify(first)).not.toContain("secret reply");
 	});
 
+	it("never truncates model identities into a different approved identity", () => {
+		const selected = "m".repeat(128);
+		const entry = {
+			type: "model_change",
+			id: "model-entry",
+			parentId: null,
+			timestamp: AT,
+			raw: { type: "model_change", provider: "fake", modelId: `${selected}suffix` },
+		};
+		const mapped = mapPiEntryV0(context, entry);
+		expect((mapped.payload as { details: unknown }).details).toEqual({
+			provider: "fake",
+			modelId: `${selected}suffix`,
+		});
+		entry.raw.modelId = "m".repeat(257);
+		expect((mapPiEntryV0(context, entry).payload as { details: unknown }).details).toEqual({ provider: "fake" });
+	});
+
 	it("counts deltas, keeps unknown and malformed events visible by name only, and never stores tool data", () => {
 		expect(mapPiLiveEventV0(context, "message_update", {}).kind).toBe("delta");
 		const unknown = mapPiLiveEventV0(context, "brand_new_event", { secret: "x" });

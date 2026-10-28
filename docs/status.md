@@ -78,8 +78,11 @@ implementation detail and its limitations. The real recordings and studies, with
     The source-tree [single-child execution API](initial-child-execution.md) adds a fresh exact-scope local approval,
     a separate runtime derivation, one tool-free Pi turn and a strict `endo.initial-child-execution.v0` evidence reader.
     Its fake-runtime test verifies one actual captured model exchange and unchanged prepared siblings. It does not
-    restore a historical Pi process or establish operating-system confinement. These checkpoint/execution slices are
-    absent from the published npm alpha versions.
+    restore a historical Pi process or establish operating-system confinement. The source-tree
+    [initial-continuation API](initial-continuation.md) adds a separately approved second turn in the same newly
+    launched Pi session, with a provisional boundary, gated requests and independently verified two-turn lineage.
+    It does not provide historical process restoration, general tool use or a general fork. These checkpoint/execution
+    slices are absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
     conditions expressed only through Pi's documented configuration, and N trials. Every trial is a fresh live Pi

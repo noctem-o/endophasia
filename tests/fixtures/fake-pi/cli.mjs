@@ -149,7 +149,20 @@ function save() {
 	mkdirSync(dirname(sessionFile), { recursive: true });
 	writeFileSync(sessionFile, JSON.stringify({ entries, thinkingLevel }));
 }
-if (entries.length === 0) append({ type: "thinking_level_change", thinkingLevel });
+if (entries.length === 0) {
+	if (has("pi-1-startup")) {
+		append({
+			type: "model_change",
+			provider: has("startup-wrong-provider") ? "other-provider" : provider,
+			...(has("startup-missing-model") ? {} : { modelId: has("startup-wrong-model") ? "other-model" : modelId }),
+		});
+		if (has("startup-duplicate-model")) append({ type: "model_change", provider, modelId });
+	}
+	append({ type: "thinking_level_change", thinkingLevel });
+	if (has("startup-wrong-parent")) entries.at(-1).parentId = "wrong-parent";
+	if (has("startup-repeat-thinking")) append({ type: "thinking_level_change", thinkingLevel });
+	if (has("startup-unknown-entry")) append({ type: "future_entry" });
+}
 
 // --- output ---
 const pending = [];
@@ -290,6 +303,7 @@ function modelCall(run) {
 }
 async function modelTurn(run) {
 	emit({ type: "message_start", message: { role: "assistant", content: [], stopReason: "pending" } });
+	if (has("delay-second-model-request") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length > 1) await sleep(1500);
 	const reply = await modelCall(run);
 	const failed = reply.error !== undefined && !run.aborted;
 	const calls = run.aborted || failed ? [] : reply.calls;
@@ -306,6 +320,11 @@ async function modelTurn(run) {
 	};
 	emit({ type: "message_end", message: assistant });
 	append({ type: "message", message: assistant });
+	if (has("post-turn-model-change") ||
+		(has("second-turn-model-change") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length === 2)) {
+		append({ type: "model_change", provider, modelId: "other-model" });
+		append({ type: "model_change", provider, modelId });
+	}
 	const toolResults = [];
 	if (has("spurious-tool-event")) emit({ type: "tool_execution_start", toolCallId: "unasked", toolName: "read", args: { path: "endophasia-study.txt" } });
 	for (const call of calls) {
@@ -448,20 +467,22 @@ const log = (line) => {
 };
 const held = [];
 function state() {
+	if (hasSettled) settledStateReads += 1;
 	return {
-		model: { ...model, name: model.id, api: "openai-completions", baseUrl: "http://127.0.0.1/fake", reasoning: false },
+		model: { ...model, ...(has("wrong-model-after-boundary") && settledStateReads > 1 ? { id: "changed-model" } : {}), name: model.id, api: "openai-completions", baseUrl: "http://127.0.0.1/fake", reasoning: false },
 		thinkingLevel,
 		isStreaming: running !== null,
 		isCompacting: false,
 		steeringMode: "all",
 		followUpMode: "one-at-a-time",
 		...(ephemeral ? {} : { sessionFile: sessionFile ?? "/tmp/fake.jsonl" }),
-		sessionId,
+		sessionId: (has("wrong-session-after-settlement") && hasSettled) || (has("wrong-session-after-boundary") && settledStateReads > 1) ? `${sessionId}-changed` : sessionId,
 		autoCompactionEnabled: true,
 		messageCount: entries.filter((entry) => entry.type === "message").length,
 		pendingMessageCount: steering.length + followUps.length,
 	};
 }
+let settledStateReads = 0;
 let dialogOpen = has("dialog-on-start");
 const blocked = [];
 async function handle(command) {

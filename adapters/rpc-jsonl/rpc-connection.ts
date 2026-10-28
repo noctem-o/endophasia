@@ -316,6 +316,11 @@ export class RpcConnectionV0 {
 		return "running";
 	}
 
+	/** Bytes observed on stdout so far, for a bounded live-session approval. */
+	get outputBytes(): number {
+		return this.#outputBytes;
+	}
+
 	/** Total stderr bytes the runtime wrote (0 unless stderr is "capture"). */
 	get stderrBytes(): number {
 		return this.#stderrBytes;

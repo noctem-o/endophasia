@@ -378,11 +378,7 @@ function seal(
 	const { commitment: _old, ...body } = receipt as EndoInitialChildExecutionV0;
 	return { ...body, commitment: receiptDigest(key, body) };
 }
-function publish(
-	area: string,
-	receipt: EndoInitialChildExecutionV0,
-	owned: { dev: bigint; ino: bigint; birthtimeNs: bigint },
-): void {
+function publish(area: string, receipt: unknown, owned: { dev: bigint; ino: bigint; birthtimeNs: bigint }): void {
 	const current = lstatSync(area, { bigint: true });
 	if (
 		!current.isDirectory() ||
@@ -417,6 +413,151 @@ function publish(
 	} finally {
 		closeSync(dir);
 	}
+}
+
+type InitialRuntimeContextV0 = {
+	session: Awaited<ReturnType<PiAttachmentV0["openSession"]>> | null;
+	proxy: Awaited<ReturnType<typeof startEndoRecordingProxyV0>> | null;
+	log: EndoCaptureLogV0 | null;
+};
+
+/** Internal runtime derivation shared by the single-turn and governed continuation operations. */
+async function startInitialRuntimeV0(
+	plan: EndoInitialChildExecutionPlanV0,
+	key: EndoDigestKeyV0,
+	area: string,
+	deadline: number,
+	signal: AbortSignal | undefined,
+	context: InitialRuntimeContextV0,
+	onStaged: (runtime: NonNullable<EndoInitialChildExecutionV0["runtime"]>) => void,
+	admitRequest?: (request: { method: string; path: string; body: Uint8Array }) => boolean,
+	admitResponse?: (response: { status: number; wire: Uint8Array }) => boolean,
+) {
+	const runtime = join(area, "runtime");
+	mkdirSync(runtime, { mode: 0o700 });
+	const sourceArchive = createEndoBlobStoreV0(endoCaptureRootV0(plan.source), key, { readOnly: true }).get(
+		plan.archiveDigest,
+	);
+	restoreEndoWorkspaceV0(sourceArchive, runtime);
+	if (!Buffer.from(archiveEndoWorkspaceV0(runtime).bytes).equals(Buffer.from(sourceArchive)))
+		throw new Error("runtime source reconstruction mismatch");
+	const store = join(area, "evidence");
+	mkdirSync(store, { mode: 0o700 });
+	const log = new EndoCaptureLogV0(store, key, "record", { async: true });
+	context.log = log;
+	const proxy = await startEndoRecordingProxyV0({
+		upstream: plan.upstream,
+		log,
+		maxTransferredBytes: plan.maxTransferredBytes,
+		...(admitRequest === undefined ? {} : { admitRequest }),
+		...(admitResponse === undefined ? {} : { admitResponse }),
+	});
+	context.proxy = proxy;
+	const modelFile = join(runtime, "agent", "models.json");
+	writeFileSync(
+		modelFile,
+		JSON.stringify({
+			providers: {
+				[plan.provider]: {
+					baseUrl: `${proxy.origin}/v1`,
+					api: "openai-completions",
+					apiKey: "local",
+					models: [{ id: plan.model }],
+				},
+			},
+		}),
+	);
+	const manifest = manifestOf(plan);
+	const condition = manifest.children[plan.childRole].condition.specification;
+	if (condition.settings) writeFileSync(join(runtime, "agent", "settings.json"), JSON.stringify(condition.settings));
+	for (const file of ["auth.json", "models-store.json"])
+		writeFileSync(join(runtime, "agent", file), "{}", { flag: "wx", mode: 0o600 });
+	const adaptedBytes = archiveEndoWorkspaceV0(runtime).bytes;
+	const adapted = createEndoBlobStoreV0(store, key).put(adaptedBytes);
+	const sessionId = `endo-initial-${randomUUID()}`;
+	const sessionDir = join(store, "pi-sessions", "pi.initial-child");
+	const harnessDir = join(store, "harness", "pi.initial-child");
+	mkdirSync(harnessDir, { recursive: true, mode: 0o700 });
+	writeFileSync(join(harnessDir, "pi-session.json"), JSON.stringify({ sessionDir, sessionId }), {
+		flag: "wx",
+		mode: 0o600,
+	});
+	const stagedRuntime: NonNullable<EndoInitialChildExecutionV0["runtime"]> = {
+		root: runtime,
+		workingDirectory: join(runtime, "work"),
+		preExecutionArchive: plan.archiveDigest,
+		adaptedArchive: adapted.digest,
+		postExecutionArchive: null,
+		adaptations: [
+			"fresh-home-and-agent-directory",
+			"recording-proxy-models-json",
+			"empty-pi-runtime-stores",
+			...(condition.settings ? ["condition-thinking-off"] : []),
+		],
+		proxyOrigin: proxy.origin,
+		store,
+		sessionId,
+	};
+	onStaged(stagedRuntime);
+	const attachment = new PiAttachmentV0({
+		root: store,
+		cwd: join(runtime, "work"),
+		executable: plan.piExecutable,
+		env: piCassetteEnvV0(runtime),
+		provider: plan.provider,
+		model: plan.model,
+		tools: "none",
+		governedToolFree: true,
+		requestTimeoutMs: Math.min(plan.wallTimeoutMs, 30000),
+		digestKey: key,
+		digestDomain: key.public ? "fixture" : "private",
+		maxRpcOutputBytes: 2 * 1024 * 1024,
+		attachment: "pi.initial-child",
+		sessionDir,
+	});
+	let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>;
+	const startupAbort = new AbortController();
+	const cancelStartup = () => startupAbort.abort();
+	const startupTimer = setTimeout(cancelStartup, Math.max(0, deadline - Date.now()));
+	signal?.addEventListener("abort", cancelStartup, { once: true });
+	try {
+		if (signal?.aborted) cancelStartup();
+		session = await attachment.openSession(startupAbort.signal);
+		context.session = session;
+	} catch (error) {
+		// An aggregate means owned-process cleanup itself failed; preserve that failure rather than claiming cancellation.
+		if (startupAbort.signal.aborted && !(error instanceof AggregateError))
+			throw new Error(signal?.aborted ? "cancelled" : "timeout");
+		throw error;
+	} finally {
+		clearTimeout(startupTimer);
+		signal?.removeEventListener("abort", cancelStartup);
+	}
+	if (
+		session.fingerprint.identity.digest !== plan.piIdentity ||
+		session.fingerprint.reported.version !== plan.piVersion
+	)
+		throw new Error("Pi runtime changed before dispatch");
+	const state = await withinDeadline(session.rpcState(), deadline, signal);
+	if (
+		state.model?.provider !== plan.provider ||
+		state.model.id !== plan.model ||
+		state.messageCount !== 0 ||
+		state.thinkingLevel !== "off"
+	)
+		throw new Error("Pi startup model or state mismatch");
+	if (
+		session.piSessionId !== sessionId ||
+		readEndoStoreEventsV0(store).some((e) => e.kind === "harness.session-mismatch")
+	)
+		throw new Error("Pi did not open the requested fresh session");
+	const current = readVerifiedInitialBranchSetV0(plan.source, plan.replay, key, plan.outputParent, plan.preparation);
+	if (current.status !== "verified-pristine") throw new Error("prepared child changed before dispatch");
+	if (!sameStartupRuntime(adaptedBytes, archiveEndoWorkspaceV0(runtime).bytes))
+		throw new Error("adapted runtime changed before dispatch");
+	if (signal?.aborted) throw new Error("cancelled before dispatch");
+	if (Date.now() >= deadline) throw new Error("timeout before dispatch");
+	return { session, proxy, log, runtime, store, adaptedBytes, stagedRuntime };
 }
 
 export type InitialChildExecutionResultV0 =
@@ -478,139 +619,17 @@ export async function executeInitialChildV0(
 	let proxy: Awaited<ReturnType<typeof startEndoRecordingProxyV0>> | null = null;
 	let log: EndoCaptureLogV0 | null = null;
 	let dispatched = false;
+	const runtimeContext: InitialRuntimeContextV0 = { session: null, proxy: null, log: null };
 	try {
 		publish(area, receipt, owned);
-		const runtime = join(area, "runtime");
-		mkdirSync(runtime, { mode: 0o700 });
-		const sourceArchive = createEndoBlobStoreV0(endoCaptureRootV0(plan.source), key, { readOnly: true }).get(
-			plan.archiveDigest,
-		);
-		restoreEndoWorkspaceV0(sourceArchive, runtime);
-		if (!Buffer.from(archiveEndoWorkspaceV0(runtime).bytes).equals(Buffer.from(sourceArchive)))
-			throw new Error("runtime source reconstruction mismatch");
-		const store = join(area, "evidence");
-		mkdirSync(store, { mode: 0o700 });
-		log = new EndoCaptureLogV0(store, key, "record", { async: true });
-		proxy = await startEndoRecordingProxyV0({
-			upstream: plan.upstream,
-			log,
-			maxTransferredBytes: plan.maxTransferredBytes,
+		const started = await startInitialRuntimeV0(plan, key, area, deadline, signal, runtimeContext, (runtime) => {
+			receipt = seal({ ...receipt, runtime }, key);
+			publish(area, receipt, owned);
 		});
-		const modelFile = join(runtime, "agent", "models.json");
-		writeFileSync(
-			modelFile,
-			JSON.stringify({
-				providers: {
-					[plan.provider]: {
-						baseUrl: `${proxy.origin}/v1`,
-						api: "openai-completions",
-						apiKey: "local",
-						models: [{ id: plan.model }],
-					},
-				},
-			}),
-		);
-		const manifest = manifestOf(plan);
-		const condition = manifest.children[plan.childRole].condition.specification;
-		if (condition.settings)
-			writeFileSync(join(runtime, "agent", "settings.json"), JSON.stringify(condition.settings));
-		for (const file of ["auth.json", "models-store.json"])
-			writeFileSync(join(runtime, "agent", file), "{}", { flag: "wx", mode: 0o600 });
-		const adaptedBytes = archiveEndoWorkspaceV0(runtime).bytes;
-		const adapted = createEndoBlobStoreV0(store, key).put(adaptedBytes);
-		const sessionId = `endo-initial-${randomUUID()}`;
-		const sessionDir = join(store, "pi-sessions", "pi.initial-child");
-		const harnessDir = join(store, "harness", "pi.initial-child");
-		mkdirSync(harnessDir, { recursive: true, mode: 0o700 });
-		writeFileSync(join(harnessDir, "pi-session.json"), JSON.stringify({ sessionDir, sessionId }), {
-			flag: "wx",
-			mode: 0o600,
-		});
-		receipt = seal(
-			{
-				...receipt,
-				runtime: {
-					root: runtime,
-					workingDirectory: join(runtime, "work"),
-					preExecutionArchive: plan.archiveDigest,
-					adaptedArchive: adapted.digest,
-					postExecutionArchive: null,
-					adaptations: [
-						"fresh-home-and-agent-directory",
-						"recording-proxy-models-json",
-						"empty-pi-runtime-stores",
-						...(condition.settings ? ["condition-thinking-off"] : []),
-					],
-					proxyOrigin: proxy.origin,
-					store,
-					sessionId,
-				},
-			},
-			key,
-		);
-		publish(area, receipt, owned);
-		const attachment = new PiAttachmentV0({
-			root: store,
-			cwd: join(runtime, "work"),
-			executable: plan.piExecutable,
-			env: piCassetteEnvV0(runtime),
-			provider: plan.provider,
-			model: plan.model,
-			tools: "none",
-			governedToolFree: true,
-			requestTimeoutMs: Math.min(plan.wallTimeoutMs, 30000),
-			digestKey: key,
-			digestDomain: key.public ? "fixture" : "private",
-			maxRpcOutputBytes: 2 * 1024 * 1024,
-			attachment: "pi.initial-child",
-			sessionDir,
-		});
-		const startupAbort = new AbortController();
-		const cancelStartup = () => startupAbort.abort();
-		const startupTimer = setTimeout(cancelStartup, Math.max(0, deadline - Date.now()));
-		signal?.addEventListener("abort", cancelStartup, { once: true });
-		try {
-			if (signal?.aborted) cancelStartup();
-			session = await attachment.openSession(startupAbort.signal);
-		} catch (error) {
-			// An aggregate means owned-process cleanup itself failed; preserve that failure rather than claiming cancellation.
-			if (startupAbort.signal.aborted && !(error instanceof AggregateError))
-				throw new Error(signal?.aborted ? "cancelled" : "timeout");
-			throw error;
-		} finally {
-			clearTimeout(startupTimer);
-			signal?.removeEventListener("abort", cancelStartup);
-		}
-		if (
-			session.fingerprint.identity.digest !== plan.piIdentity ||
-			session.fingerprint.reported.version !== plan.piVersion
-		)
-			throw new Error("Pi runtime changed before dispatch");
-		const state = await withinDeadline(session.rpcState(), deadline, signal);
-		if (
-			state.model?.provider !== plan.provider ||
-			state.model.id !== plan.model ||
-			state.messageCount !== 0 ||
-			state.thinkingLevel !== "off"
-		)
-			throw new Error("Pi startup model or state mismatch");
-		if (
-			session.piSessionId !== sessionId ||
-			readEndoStoreEventsV0(store).some((e) => e.kind === "harness.session-mismatch")
-		)
-			throw new Error("Pi did not open the requested fresh session");
-		const current = readVerifiedInitialBranchSetV0(
-			plan.source,
-			plan.replay,
-			key,
-			plan.outputParent,
-			plan.preparation,
-		);
-		if (current.status !== "verified-pristine") throw new Error("prepared child changed before dispatch");
-		if (!sameStartupRuntime(adaptedBytes, archiveEndoWorkspaceV0(runtime).bytes))
-			throw new Error("adapted runtime changed before dispatch");
-		if (signal?.aborted) throw new Error("cancelled before dispatch");
-		if (Date.now() >= deadline) throw new Error("timeout before dispatch");
+		session = started.session;
+		proxy = started.proxy;
+		log = started.log;
+		const { runtime, store } = started;
 		const settlementAbort = new AbortController();
 		// Subscribe before any prompt bytes: acknowledgement and settlement may arrive in one stdout chunk.
 		const settled = session.waitForSettled(Math.max(1, deadline - Date.now()), settlementAbort.signal);
@@ -628,13 +647,16 @@ export async function executeInitialChildV0(
 		await withinDeadline(session.close(), deadline, signal);
 		if (session.outputLimitExceeded) throw new Error("runtime stdout limit exceeded");
 		session = null;
+		runtimeContext.session = null;
 		await proxy.flush();
 		if (proxy.recordingFailures > 0 || proxy.transferLimitExceeded)
 			throw new Error("capture incomplete or transfer bound exceeded");
 		await proxy.close();
 		proxy = null;
+		runtimeContext.proxy = null;
 		log.close();
 		log = null;
+		runtimeContext.log = null;
 		const postBytes = archiveEndoWorkspaceV0(runtime).bytes;
 		if (postBytes.length > 16 * 1024 * 1024) throw new Error("post-execution archive exceeds artifact bound");
 		const post = createEndoBlobStoreV0(store, key).put(postBytes);
@@ -649,17 +671,17 @@ export async function executeInitialChildV0(
 		const reason = (error as Error).message.slice(0, 128);
 		let stopped = true;
 		try {
-			await session?.terminate();
+			await runtimeContext.session?.terminate();
 		} catch {
 			stopped = false;
 		}
 		try {
-			await proxy?.close();
+			await runtimeContext.proxy?.close();
 		} catch {
 			stopped = false;
 		}
 		try {
-			log?.close();
+			runtimeContext.log?.close();
 		} catch {
 			stopped = false;
 		}
@@ -699,6 +721,110 @@ function observedEvidence(
 export type InitialChildEvidenceReadV0 =
 	| { status: "verified"; attemptId: string }
 	| { status: "unverified"; reason: string; outcome: EndoInitialChildExecutionV0["status"] | "unreadable" };
+/** Recheck the prepared lineage and all archived runtime derivations from durable evidence. */
+function verifyInitialExecutionLineageV0(
+	source: string,
+	replay: string,
+	key: EndoDigestKeyV0,
+	plan: EndoInitialChildExecutionPlanV0,
+	runtime: NonNullable<EndoInitialChildExecutionV0["runtime"]>,
+): void {
+	if (plan.source !== source || plan.replay !== replay) throw new Error("wrong source or replay");
+	if (
+		join(plan.outputParent, plan.attemptId, "runtime") !== runtime.root ||
+		join(runtime.root, "work") !== runtime.workingDirectory ||
+		join(plan.outputParent, plan.attemptId, "evidence") !== runtime.store
+	)
+		throw new Error("attempt area mismatch");
+	const lineage = readVerifiedInitialBranchSetV0(source, replay, key, plan.outputParent, plan.preparation);
+	if (lineage.status !== "verified-pristine") throw new Error("parent or siblings no longer pristine");
+	const m = manifestOf(plan);
+	const child = m.children[plan.childRole];
+	if (
+		m.id !== plan.branchId ||
+		!same(m.commitment, plan.branchCommitment) ||
+		!same(m.parentReference, plan.parentReference) ||
+		child.id !== plan.childId ||
+		!same(child.condition.commitment, plan.conditionCommitment) ||
+		!same(m.parent.archive.digest, plan.archiveDigest)
+	)
+		throw new Error("parent or child binding mismatch");
+	if (supportedCondition(m, plan.childRole)) throw new Error("unsupported condition");
+	const before = createEndoBlobStoreV0(endoCaptureRootV0(source), key, { readOnly: true }).get(plan.archiveDigest);
+	if (before.length > 16 * 1024 * 1024 || !same(runtime.preExecutionArchive, plan.archiveDigest))
+		throw new Error("source archive bound or identity mismatch");
+	if (supportedArchive(before, plan.provider, plan.model)) throw new Error("source archive unsupported");
+	const adapted = createEndoBlobStoreV0(runtime.store, key, { readOnly: true }).get(runtime.adaptedArchive);
+	if (adapted.length > 16 * 1024 * 1024 || runtime.postExecutionArchive === null)
+		throw new Error("adapted or post-execution archive unavailable");
+	const post = createEndoBlobStoreV0(runtime.store, key, { readOnly: true }).get(runtime.postExecutionArchive);
+	if (
+		post.length > 16 * 1024 * 1024 ||
+		!Buffer.from(archiveEndoWorkspaceV0(runtime.root).bytes).equals(Buffer.from(post))
+	)
+		throw new Error("post-execution tree changed or exceeds bound");
+	const parsed = readEndoWorkspaceArchiveV0(adapted);
+	if (!parsed.ok) throw new Error("adapted archive invalid");
+	const config = parsed.value.entries.find((e) => e.path === "agent/models.json");
+	if (config?.type !== "file") throw new Error("adapted model configuration missing");
+	const effective = JSON.parse(Buffer.from(config.base64, "base64").toString("utf8"));
+	if (
+		!same(effective, {
+			providers: {
+				[plan.provider]: {
+					baseUrl: `${runtime.proxyOrigin}/v1`,
+					api: "openai-completions",
+					apiKey: "local",
+					models: [{ id: plan.model }],
+				},
+			},
+		})
+	)
+		throw new Error("adapted model configuration mismatch");
+	const original = readEndoWorkspaceArchiveV0(before);
+	if (!original.ok) throw new Error("source archive unreadable");
+	const hasRuntimeStores = runtime.adaptations.includes("empty-pi-runtime-stores");
+	if (hasRuntimeStores) {
+		for (const path of ["agent/auth.json", "agent/models-store.json"]) {
+			const entry = parsed.value.entries.find((e) => e.path === path);
+			if (entry?.type !== "file" || entry.executable || Buffer.from(entry.base64, "base64").toString() !== "{}")
+				throw new Error("invalid empty Pi runtime store");
+		}
+	}
+	const nonAdapted = (entries: typeof parsed.value.entries) =>
+		entries
+			.filter(
+				(e) =>
+					e.path !== "agent/models.json" &&
+					e.path !== "agent/settings.json" &&
+					!(hasRuntimeStores && ["agent/auth.json", "agent/models-store.json"].includes(e.path)),
+			)
+			.map((e) => ({
+				path: e.path,
+				type: e.type,
+				...(e.type === "file" ? { base64: e.base64, executable: e.executable } : {}),
+			}));
+	if (!same(nonAdapted(parsed.value.entries), nonAdapted(original.value.entries)))
+		throw new Error("partial or unexpected runtime transformation");
+	const conditionSettings = m.children[plan.childRole].condition.specification.settings;
+	const settings = parsed.value.entries.find((e) => e.path === "agent/settings.json");
+	if (
+		conditionSettings &&
+		(settings?.type !== "file" ||
+			!same(JSON.parse(Buffer.from(settings.base64, "base64").toString("utf8")), conditionSettings))
+	)
+		throw new Error("condition was not applied");
+	if (
+		!same(runtime.adaptations, [
+			"fresh-home-and-agent-directory",
+			"recording-proxy-models-json",
+			...(hasRuntimeStores ? ["empty-pi-runtime-stores"] : []),
+			...(conditionSettings ? ["condition-thinking-off"] : []),
+		])
+	)
+		throw new Error("runtime adaptations mismatch");
+}
+
 /** Independently re-read parent, siblings, adapted pre-state, captured exchange and trajectory. */
 function verifyCandidate(
 	source: string,
@@ -721,102 +847,7 @@ function verifyCandidate(
 		const { commitment: __, ...planBody } = r.plan;
 		if (!same(planDigest(key, planBody), r.plan.commitment) || !same(r.approval.planCommitment, r.plan.commitment))
 			throw new Error("plan or approval mismatch");
-		if (r.plan.source !== source || r.plan.replay !== replay) throw new Error("wrong source or replay");
-		if (
-			join(r.plan.outputParent, r.plan.attemptId, "runtime") !== r.runtime.root ||
-			join(r.runtime.root, "work") !== r.runtime.workingDirectory ||
-			join(r.plan.outputParent, r.plan.attemptId, "evidence") !== r.runtime.store
-		)
-			throw new Error("attempt area mismatch");
-		const lineage = readVerifiedInitialBranchSetV0(source, replay, key, r.plan.outputParent, r.plan.preparation);
-		if (lineage.status !== "verified-pristine") throw new Error("parent or siblings no longer pristine");
-		const m = manifestOf(r.plan);
-		const child = m.children[r.plan.childRole];
-		if (
-			m.id !== r.plan.branchId ||
-			!same(m.commitment, r.plan.branchCommitment) ||
-			!same(m.parentReference, r.plan.parentReference) ||
-			child.id !== r.plan.childId ||
-			!same(child.condition.commitment, r.plan.conditionCommitment) ||
-			!same(m.parent.archive.digest, r.plan.archiveDigest)
-		)
-			throw new Error("parent or child binding mismatch");
-		if (supportedCondition(m, r.plan.childRole)) throw new Error("unsupported condition");
-		const before = createEndoBlobStoreV0(endoCaptureRootV0(source), key, { readOnly: true }).get(
-			r.plan.archiveDigest,
-		);
-		if (before.length > 16 * 1024 * 1024 || !same(r.runtime.preExecutionArchive, r.plan.archiveDigest))
-			throw new Error("source archive bound or identity mismatch");
-		if (supportedArchive(before, r.plan.provider, r.plan.model)) throw new Error("source archive unsupported");
-		const adapted = createEndoBlobStoreV0(r.runtime.store, key, { readOnly: true }).get(r.runtime.adaptedArchive);
-		if (adapted.length > 16 * 1024 * 1024 || r.runtime.postExecutionArchive === null)
-			throw new Error("adapted or post-execution archive unavailable");
-		const post = createEndoBlobStoreV0(r.runtime.store, key, { readOnly: true }).get(r.runtime.postExecutionArchive);
-		if (
-			post.length > 16 * 1024 * 1024 ||
-			!Buffer.from(archiveEndoWorkspaceV0(r.runtime.root).bytes).equals(Buffer.from(post))
-		)
-			throw new Error("post-execution tree changed or exceeds bound");
-		const parsed = readEndoWorkspaceArchiveV0(adapted);
-		if (!parsed.ok) throw new Error("adapted archive invalid");
-		const config = parsed.value.entries.find((e) => e.path === "agent/models.json");
-		if (config?.type !== "file") throw new Error("adapted model configuration missing");
-		const effective = JSON.parse(Buffer.from(config.base64, "base64").toString("utf8"));
-		if (
-			!same(effective, {
-				providers: {
-					[r.plan.provider]: {
-						baseUrl: `${r.runtime.proxyOrigin}/v1`,
-						api: "openai-completions",
-						apiKey: "local",
-						models: [{ id: r.plan.model }],
-					},
-				},
-			})
-		)
-			throw new Error("adapted model configuration mismatch");
-		const original = readEndoWorkspaceArchiveV0(before);
-		if (!original.ok) throw new Error("source archive unreadable");
-		const hasRuntimeStores = r.runtime.adaptations.includes("empty-pi-runtime-stores");
-		if (hasRuntimeStores) {
-			for (const path of ["agent/auth.json", "agent/models-store.json"]) {
-				const entry = parsed.value.entries.find((e) => e.path === path);
-				if (entry?.type !== "file" || entry.executable || Buffer.from(entry.base64, "base64").toString() !== "{}")
-					throw new Error("invalid empty Pi runtime store");
-			}
-		}
-		const nonAdapted = (entries: typeof parsed.value.entries) =>
-			entries
-				.filter(
-					(e) =>
-						e.path !== "agent/models.json" &&
-						e.path !== "agent/settings.json" &&
-						!(hasRuntimeStores && ["agent/auth.json", "agent/models-store.json"].includes(e.path)),
-				)
-				.map((e) => ({
-					path: e.path,
-					type: e.type,
-					...(e.type === "file" ? { base64: e.base64, executable: e.executable } : {}),
-				}));
-		if (!same(nonAdapted(parsed.value.entries), nonAdapted(original.value.entries)))
-			throw new Error("partial or unexpected runtime transformation");
-		const conditionSettings = m.children[r.plan.childRole].condition.specification.settings;
-		const settings = parsed.value.entries.find((e) => e.path === "agent/settings.json");
-		if (
-			conditionSettings &&
-			(settings?.type !== "file" ||
-				!same(JSON.parse(Buffer.from(settings.base64, "base64").toString("utf8")), conditionSettings))
-		)
-			throw new Error("condition was not applied");
-		if (
-			!same(r.runtime.adaptations, [
-				"fresh-home-and-agent-directory",
-				"recording-proxy-models-json",
-				...(hasRuntimeStores ? ["empty-pi-runtime-stores"] : []),
-				...(conditionSettings ? ["condition-thinking-off"] : []),
-			])
-		)
-			throw new Error("runtime adaptations mismatch");
+		verifyInitialExecutionLineageV0(source, replay, key, r.plan, r.runtime);
 		const events = readEndoCaptureEventsV0(r.runtime.store);
 		if (readEndoStoreEventsV0(r.runtime.store).some((event) => event.kind === "harness.output-limit-exceeded"))
 			throw new Error("runtime stdout limit exceeded");
@@ -971,3 +1002,21 @@ export function verifyInitialChildExecutionEvidenceV0(
 		return { status: "unverified", reason: (error as Error).message.slice(0, 128), outcome: "unreadable" };
 	}
 }
+
+// Internal building blocks: shared with the bounded continuation implementation, not execution authority.
+export {
+	promptText as initialExecutionPromptTextV0,
+	REQUIRED_FLAGS as INITIAL_EXECUTION_REQUIRED_FLAGS_V0,
+	verifyInitialExecutionLineageV0,
+	manifestOf as initialExecutionManifestV0,
+	planDigest as initialExecutionPlanDigestV0,
+	promptDigest as initialExecutionPromptDigestV0,
+	privateFile as initialExecutionPrivateFileV0,
+	publish as publishInitialExecutionReceiptV0,
+	same as sameInitialExecutionValueV0,
+	sameStartupRuntime as sameInitialStartupRuntimeV0,
+	startInitialRuntimeV0,
+	supportedCondition as supportedInitialExecutionConditionV0,
+	withinDeadline as withinInitialExecutionDeadlineV0,
+};
+export type { InitialRuntimeContextV0 };

@@ -190,8 +190,9 @@ vector commitments, but its raw vectors and model are not committed.
 
 ## Proposed studies — not run
 
-The documents in this section are research contracts or preregistration drafts. They are **not** entries in the real-run table above and do not establish empirical results.
+The documents in this section are research contracts, readiness reports or preregistration drafts. They are **not** entries in the real-run table above and do not establish a real-model result for the proposed study.
 
+- [Governed same-session continuation readiness](governed-initial-continuation/READINESS.md) — fake-endpoint compatibility and the remaining gates for the first real two-turn acceptance.
 - [Epistemic alignment experiment: Magpie as a shadow ledger](epistemic-alignment-experiment.md) — a deliberately gameable post-training environment with a separate epistemic measurement surface, a reward/measurement firewall, a staged sequence (reproduce, positive controls, reward interventions, monitor pressure) and predeclared power and comparison families. Moved here from the project README; not run.
 - [Developmental epistemic training v0](developmental-epistemic-training-v0.md) — separates epistemic-content effects from developmental-timing effects in a small synthetic microworld, with matched metadata controls, a plain anchor, learning-rate-controlled timing, downstream conflict-dose stress tests and a whole-generator-family holdout.
 

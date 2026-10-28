@@ -26,6 +26,10 @@ export interface FakeOpenAiOptions {
 	readonly disconnectAfterFirstChunk?: boolean;
 	/** Return a tool call even when the client did not offer tools. */
 	readonly forceToolCall?: boolean;
+	/** Emit a synthetic reasoning_content delta, including malformed values for negative tests. */
+	readonly reasoningContent?: unknown;
+	/** Send a normally terminated stream without a final text answer. */
+	readonly emptyAnswer?: boolean;
 }
 
 export interface FakeOpenAiRequestLog {
@@ -98,11 +102,13 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 			options.forceToolCall === true ||
 			(/read tool/.test(text) && Array.isArray(parsed.tools) && parsed.tools.length > 0 && !hasToolResult);
 		const slow = /forty/.test(text);
-		const pieces = slow
-			? Array.from({ length: 40 }, (_, index) => `${index + 1}. word\n`)
-			: hasToolResult
-				? ["Endophasia"]
-				: ["Fake ", "reply."];
+		const pieces = options.emptyAnswer
+			? []
+			: slow
+				? Array.from({ length: 40 }, (_, index) => `${index + 1}. word\n`)
+				: hasToolResult
+					? ["Endophasia"]
+					: ["Fake ", "reply."];
 		const usage = { prompt_tokens: 11, completion_tokens: pieces.length, total_tokens: 11 + pieces.length };
 		const id = "chatcmpl-fake";
 		if (parsed.stream !== true) {
@@ -163,6 +169,8 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 				),
 			);
 		} else {
+			if (options.reasoningContent !== undefined)
+				await write(chunk({ role: "assistant", reasoning_content: options.reasoningContent }, null));
 			for (const [index, piece] of pieces.entries()) {
 				if (response.destroyed) return;
 				await write(chunk(index === 0 ? { role: "assistant", content: piece } : { content: piece }, null));

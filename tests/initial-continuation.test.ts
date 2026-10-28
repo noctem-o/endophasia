@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -334,6 +335,48 @@ describe("governed initial continuation", () => {
 		expect(receipt).not.toContain(options.continuationPrompt);
 		expect(receipt).not.toContain("Fake reply.");
 	}, 120000);
+	it.each([false, true])(
+		"checks Pi's initial system entry and rejects duplicates (duplicate: %s)",
+		async (duplicate) => {
+			fixture.pi.setScenario(
+				`model-endpoint,pi-1-startup,pi-1-system-message${duplicate ? ",duplicate-system-message" : ""}`,
+			);
+			try {
+				const options = setup(),
+					plan = await planFor(options),
+					before = upstream.requests.length;
+				let asked = false;
+				const result = await executeInitialContinuationV0(
+					plan,
+					approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+					options.prompt,
+					options.continuationPrompt,
+					fixture.key,
+					async (boundary) => {
+						asked = true;
+						return approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn");
+					},
+				);
+				expect(result.status, JSON.stringify(result)).toBe(duplicate ? "outcome-unknown" : "completed");
+				expect(asked).toBe(!duplicate);
+				expect(upstream.requests.length - before).toBe(duplicate ? 1 : 2);
+				if (!duplicate && "area" in result)
+					expect(
+						(
+							await verifyInitialContinuationEvidenceV0(
+								fixture.source,
+								fixture.replay,
+								fixture.key,
+								join(result.area, "receipt.json"),
+							)
+						).status,
+					).toBe("verified");
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120000,
+	);
 	it("closes after the first turn when second approval is absent", async () => {
 		const options = setup(),
 			plan = await planFor(options);
@@ -357,10 +400,129 @@ describe("governed initial continuation", () => {
 		);
 		expect(checked.status, JSON.stringify(checked)).toBe("first-turn-verified");
 	}, 120000);
+	it.each([false, true])(
+		"checks captured reasoning in the continued request (changed: %s)",
+		async (changed) => {
+			const server = await startFakeOpenAiServer({ reasoningContent: "Synthetic reasoning." });
+			fixture.pi.setScenario(`model-endpoint${changed ? ",changed-second-reasoning" : ""}`);
+			try {
+				const options = { ...setup(), upstream: new URL(server.baseUrl).origin };
+				const plan = await planFor(options);
+				const result = await executeInitialContinuationV0(
+					plan,
+					approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+					options.prompt,
+					options.continuationPrompt,
+					fixture.key,
+					async (boundary) =>
+						approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn"),
+				);
+				expect(result.status, JSON.stringify(result)).toBe(changed ? "outcome-unknown" : "completed");
+				expect(server.requests.length).toBe(changed ? 1 : 2);
+				if (!changed && "area" in result) {
+					const messages = (server.requests[1]!.body as { messages: Record<string, unknown>[] }).messages;
+					expect(messages.at(-2)?.reasoning_content).toBe("Synthetic reasoning.");
+					expect(readFileSync(join(result.area, "receipt.json"), "utf8")).not.toContain("Synthetic reasoning.");
+					expect(
+						(
+							await verifyInitialContinuationEvidenceV0(
+								fixture.source,
+								fixture.replay,
+								fixture.key,
+								join(result.area, "receipt.json"),
+							)
+						).status,
+					).toBe("verified");
+				}
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+				await server.close();
+			}
+		},
+		120000,
+	);
+	it("refuses an absent answer, malformed reasoning and an upstream disconnect after the first dispatch", async () => {
+		for (const fault of [
+			{ emptyAnswer: true },
+			{ reasoningContent: { unexpected: true } },
+			{ disconnectAfterFirstChunk: true },
+		]) {
+			const server = await startFakeOpenAiServer(fault);
+			try {
+				const options = { ...setup(), upstream: new URL(server.baseUrl).origin, wallTimeoutMs: 5000 };
+				const plan = await planFor(options);
+				let asked = false;
+				const result = await executeInitialContinuationV0(
+					plan,
+					approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+					options.prompt,
+					options.continuationPrompt,
+					fixture.key,
+					async () => {
+						asked = true;
+						return null;
+					},
+				);
+				expect(result.status, JSON.stringify(result)).toBe("outcome-unknown");
+				expect(asked).toBe(false);
+				expect(server.requests.length).toBe(1);
+				if ("area" in result)
+					expect(
+						(
+							await verifyInitialContinuationEvidenceV0(
+								fixture.source,
+								fixture.replay,
+								fixture.key,
+								join(result.area, "receipt.json"),
+							)
+						).status,
+					).toBe("unverified");
+			} finally {
+				await server.close();
+			}
+		}
+	}, 120000);
+	it("closes its proxy and Pi on approval cancellation without signalling another process group", async () => {
+		const sentinel = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+			detached: true,
+			stdio: "ignore",
+		});
+		try {
+			const options = setup(),
+				plan = await planFor(options),
+				controller = new AbortController();
+			let pid = 0,
+				proxyOrigin = "";
+			const result = await executeInitialContinuationV0(
+				plan,
+				approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+				options.prompt,
+				options.continuationPrompt,
+				fixture.key,
+				async (boundary) => {
+					pid = boundary.pid;
+					proxyOrigin = JSON.parse(
+						readFileSync(join(options.outputParent, plan.initial.attemptId, "receipt.json"), "utf8"),
+					).runtime.proxyOrigin;
+					controller.abort();
+					return null;
+				},
+				controller.signal,
+			);
+			expect(result.status).toBe("cancelled");
+			expect(pid).toBeGreaterThan(0);
+			expect(() => process.kill(pid, 0)).toThrow();
+			expect(() => process.kill(sentinel.pid!, 0)).not.toThrow();
+			await expect(fetch(`${proxyOrigin}/v1/chat/completions`, { method: "POST" })).rejects.toThrow();
+		} finally {
+			sentinel.kill();
+		}
+	}, 120000);
 	it("refuses missing first approval and changed continuation text before any upstream request", async () => {
+		const before = upstream.requests.length;
 		const options = setup(),
 			plan = await planFor(options);
-		const before = upstream.requests.length;
+		expect(upstream.requests.length - before).toBe(0); // Preflight itself does not contact the endpoint.
 		const noApproval = await executeInitialContinuationV0(
 			plan,
 			null,
@@ -659,6 +821,36 @@ describe("governed initial continuation", () => {
 		expect(result.status).not.toBe("completed");
 		expect(upstream.requests.length - before).toBe(1);
 	}, 120000);
+	it.each([
+		["second-context-change", 1],
+		["second-request-model-change", 1],
+		["second-offer-tools", 1],
+		["third-model-request", 2],
+	] as const)(
+		"blocks %s before it reaches the endpoint",
+		async (fault, expectedRequests) => {
+			fixture.pi.setScenario(`model-endpoint,${fault}`);
+			try {
+				const options = setup(),
+					plan = await planFor(options),
+					before = upstream.requests.length;
+				const result = await executeInitialContinuationV0(
+					plan,
+					approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+					options.prompt,
+					options.continuationPrompt,
+					fixture.key,
+					async (boundary) =>
+						approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn"),
+				);
+				expect(result.status).not.toBe("completed");
+				expect(upstream.requests.length - before).toBe(expectedRequests);
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120000,
+	);
 	it("stops on an idle approval timeout and cancellation before the second dispatch", async () => {
 		for (const mode of ["timeout", "cancel"] as const) {
 			const options = { ...setup(), maxApprovalIdleMs: 1000 },

@@ -1,6 +1,14 @@
 // A deliberately narrow explicit CLI profile for the previously observed llama.cpp build.
 // Validation of arguments is not evidence of the binary's effective runtime settings.
 export const ACCEPTED_SERVER_SHA256_V0 = "2c4c7139b339fbe1c10d02f5d8e5464e2cecf91658b2c335b29ddd648d18af68";
+export const EXPLICIT_FIT_OFF_PROFILE_V0 = "llama.cpp-11518-explicit-fit-off-v0";
+export class LinuxProfileErrorV0 extends Error {
+	readonly classification: "MISMATCH" | "UNSUPPORTED";
+	constructor(classification: "MISMATCH" | "UNSUPPORTED", message: string) {
+		super(message);
+		this.classification = classification;
+	}
+}
 export interface ExplicitServerProfileV0 {
 	endpoint: string;
 	modelPath: string;
@@ -28,7 +36,7 @@ export function validateExplicitServerArgsV0(
 		"XDG_RUNTIME_DIR",
 	]);
 	if (argv.length > 128 || envNames.length > 4096 || envNames.some((name) => !allowedEnvironment.has(name)))
-		throw new Error("environment-derived configuration unavailable");
+		throw new LinuxProfileErrorV0("UNSUPPORTED", "environment override or unsupported environment name");
 	const endpoint = new URL(profile.endpoint);
 	if (
 		endpoint.origin !== profile.endpoint ||
@@ -41,13 +49,13 @@ export function validateExplicitServerArgsV0(
 		endpoint.username ||
 		endpoint.password
 	)
-		throw new Error("unsupported endpoint");
+		throw new LinuxProfileErrorV0("UNSUPPORTED", "unsupported endpoint");
 	if (
 		!/^\/(?!.*\0).+\.gguf$/i.test(profile.modelPath) ||
 		!/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(profile.modelAlias) ||
 		!/^(0|[1-9][0-9]{0,2})$/.test(profile.gpuLayers)
 	)
-		throw new Error("unsupported profile");
+		throw new LinuxProfileErrorV0("UNSUPPORTED", "unsupported profile");
 	const values: Record<string, string> = {
 		"--host": "127.0.0.1",
 		"--port": endpoint.port,
@@ -70,12 +78,12 @@ export function validateExplicitServerArgsV0(
 	const seen = new Set<string>();
 	for (let index = 1; index < argv.length; index++) {
 		const flag = argv[index]!;
-		if (seen.has(flag)) throw new Error("duplicate configuration argument");
+		if (seen.has(flag)) throw new LinuxProfileErrorV0("MISMATCH", "duplicate configuration argument");
 		seen.add(flag);
 		if (switches.has(flag)) continue;
-		if (!Object.hasOwn(values, flag) || argv[++index] !== values[flag])
-			throw new Error("unsupported configuration argument");
+		if (!Object.hasOwn(values, flag)) throw new LinuxProfileErrorV0("UNSUPPORTED", "unknown or router argument");
+		if (argv[++index] !== values[flag]) throw new LinuxProfileErrorV0("MISMATCH", "configuration value mismatch");
 	}
 	if ([...Object.keys(values), ...switches].some((flag) => !seen.has(flag)))
-		throw new Error("missing explicit configuration argument");
+		throw new LinuxProfileErrorV0("MISMATCH", "missing explicit configuration argument");
 }

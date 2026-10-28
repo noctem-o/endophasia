@@ -1,4 +1,13 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	assertProcessStartStableV0,
+	LinuxInspectionFailureV0,
+	selectLoopbackListenerV0,
+} from "../research/governed-initial-continuation/aa/linux-host-inspection.ts";
+import { inspectSocketOwnersV0 } from "../research/governed-initial-continuation/aa/linux-ownership.ts";
 import {
 	parseModelMappingsV0,
 	parseProcessStartTicksV0,
@@ -20,7 +29,63 @@ describe("bounded Linux observer parsers", () => {
 	it("extracts start ticks despite parentheses in the process name", () => {
 		const fields = ["S", ...Array(18).fill("0"), "123456", ...Array(5).fill("0")];
 		expect(parseProcessStartTicksV0(`42 (a ) b) ${fields.join(" ")}`, 42)).toBe("123456");
+		try {
+			assertProcessStartStableV0(42, "123455", `42 (a ) b) ${fields.join(" ")}`);
+			throw new Error("accepted");
+		} catch (error) {
+			expect(error).toMatchObject({ field: "process", classification: "MISMATCH" });
+		}
+		try {
+			assertProcessStartStableV0(42, "123455", "42 (bad) S");
+			throw new Error("accepted");
+		} catch (error) {
+			expect(error).toMatchObject({ field: "process", classification: "UNAVAILABLE" });
+		}
 		expect(() => parseProcessStartTicksV0("42 (bad) S", 42)).toThrow();
+	});
+	it("classifies IPv6 and multiple IPv4 listeners conservatively", () => {
+		const header = "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode";
+		const v4 = "0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 12345";
+		const v6 =
+			"1: 00000000000000000000000000000000:1F90 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 12346";
+		expect(selectLoopbackListenerV0(`${header}\n${v4}`, header, 8080)).toHaveLength(1);
+		try {
+			selectLoopbackListenerV0(`${header}\n${v4}`, `${header}\n${v6}`, 8080);
+			throw new Error("accepted");
+		} catch (error) {
+			expect(error).toBeInstanceOf(LinuxInspectionFailureV0);
+			expect(error).toMatchObject({ field: "ipv6", classification: "MISMATCH" });
+		}
+		try {
+			selectLoopbackListenerV0(`${header}\n${v4}\n${v4.replace("12345", "99999")}`, header, 8080);
+			throw new Error("accepted");
+		} catch (error) {
+			expect(error).toMatchObject({ field: "listenerPort", classification: "MISMATCH" });
+		}
+	});
+	it("distinguishes sole, shared and unobservable socket owners", async () => {
+		const root = mkdtempSync(join(tmpdir(), "endo-owner-fixture-"));
+		try {
+			mkdirSync(join(root, "100", "fd"), { recursive: true });
+			symlinkSync("socket:[123]", join(root, "100", "fd", "3"));
+			expect(await inspectSocketOwnersV0(root, "123", 100, () => {})).toBe("MATCH");
+			mkdirSync(join(root, "101", "fd"), { recursive: true });
+			symlinkSync("socket:[123]", join(root, "101", "fd", "4"));
+			expect(await inspectSocketOwnersV0(root, "123", 100, () => {})).toBe("MISMATCH");
+			rmSync(join(root, "101", "fd"), { recursive: true });
+			expect(await inspectSocketOwnersV0(root, "123", 100, () => {})).toBe("UNAVAILABLE");
+			if (process.getuid?.() !== 0) {
+				mkdirSync(join(root, "101", "fd"));
+				chmodSync(join(root, "101", "fd"), 0);
+				try {
+					expect(await inspectSocketOwnersV0(root, "123", 100, () => {})).toBe("UNAVAILABLE");
+				} finally {
+					chmodSync(join(root, "101", "fd"), 0o700);
+				}
+			}
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 	it("retains deleted GGUF mappings instead of treating them as valid paths", () => {
 		const lines =

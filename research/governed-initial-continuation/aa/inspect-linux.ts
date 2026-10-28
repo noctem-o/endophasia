@@ -1,7 +1,7 @@
 // Read-only research inspection. This partial implementation never authorizes inference.
 import { closeSync, constants, openSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
-import { inspectLinuxHostV0 } from "./linux-host-inspection.ts";
+import { inspectLinuxHostOutcomeV0 } from "./linux-host-inspection.ts";
 import { publishPrivateInspectionV0, validatePrivateDirectoryV0 } from "./private-inspection-output.ts";
 
 async function main(): Promise<void> {
@@ -12,6 +12,8 @@ async function main(): Promise<void> {
 		"--executable-sha256",
 		"--model",
 		"--model-sha256",
+		"--model-alias",
+		"--gpu-layers",
 		"--output",
 		"--timeout-ms",
 	];
@@ -19,16 +21,18 @@ async function main(): Promise<void> {
 	if (args.length !== names.length * 2 || names.some((name, i) => args[i * 2] !== name))
 		throw new Error("unsupported arguments");
 	const values = args.filter((_, i) => i % 2 === 1);
-	const [pid, endpoint, executablePath, executableSha256, modelPath, modelSha256, output, timeout] = values as [
-		string,
-		string,
-		string,
-		string,
-		string,
-		string,
-		string,
-		string,
-	];
+	const [
+		pid,
+		endpoint,
+		executablePath,
+		executableSha256,
+		modelPath,
+		modelSha256,
+		modelAlias,
+		gpuLayers,
+		output,
+		timeout,
+	] = values as [string, string, string, string, string, string, string, string, string, string];
 	const timeoutMs = Number(timeout);
 	if (!isAbsolute(output) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600000)
 		throw new Error("unsupported arguments");
@@ -41,16 +45,25 @@ async function main(): Promise<void> {
 	process.once("SIGTERM", cancel);
 	try {
 		validatePrivateDirectoryV0(parent);
-		const observation = await inspectLinuxHostV0(
-			{ pid: Number(pid), endpoint, executablePath, executableSha256, modelPath, modelSha256 },
+		const outcome = await inspectLinuxHostOutcomeV0(
+			{
+				pid: Number(pid),
+				endpoint,
+				executablePath,
+				executableSha256,
+				modelPath,
+				modelSha256,
+				modelAlias,
+				gpuLayers,
+			},
 			controller.signal,
 			timeoutMs,
 		);
 		if (controller.signal.aborted || performance.now() >= deadline)
 			throw new Error("inspection cancelled or expired");
-		publishPrivateInspectionV0(parent, output, observation);
+		publishPrivateInspectionV0(parent, output, outcome);
 		process.stdout.write(
-			"CRITICAL_UNAVAILABLE: partial host facts retained; no server parity or execution authority established.\n",
+			`${outcome.status}: ${outcome.blockingReasons.join(", ")}; no execution authority established.\n`,
 		);
 		process.exitCode = 2;
 	} finally {

@@ -6,6 +6,28 @@ export interface TcpListenerV0 {
 	inode: string;
 }
 
+/** Conservative IPv6 check: retain every listening port without interpreting address reachability. */
+export function parseTcp6ListeningPortsV0(text: string): number[] {
+	if (Buffer.byteLength(text) > 4 * 1024 * 1024) throw new Error("tcp6 table exceeds limit");
+	const lines = text.trim().split("\n");
+	if (!lines.shift()?.includes("local_address")) throw new Error("invalid tcp6 table header");
+	const ports: number[] = [];
+	for (const line of lines) {
+		const fields = line.trim().split(/\s+/);
+		const local = /^([0-9a-f]{32}):([0-9a-f]{4})$/i.exec(fields[1] ?? "");
+		if (
+			fields.length < 10 ||
+			!/^[0-9]+:$/.test(fields[0]!) ||
+			!local ||
+			!/^[0-9a-f]{2}$/i.test(fields[3]!) ||
+			!/^[0-9]+$/.test(fields[9]!)
+		)
+			throw new Error("invalid tcp6 row");
+		if (fields[3]!.toUpperCase() === "0A") ports.push(Number.parseInt(local[2]!, 16));
+	}
+	return ports;
+}
+
 /** Linux prints IPv4 addresses in host byte order. Reject malformed relevant rows rather than guessing. */
 export function parseTcpListenersV0(text: string): TcpListenerV0[] {
 	if (endianness() !== "LE") throw new Error("unsupported host byte order");

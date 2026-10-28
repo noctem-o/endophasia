@@ -291,7 +291,15 @@ class NativeBackend:
             raise
         # Never signal a group after its leader has been reaped: its ID may be
         # reused. A remaining child makes the repetition fail closed instead.
-        contained = no_adopted_children()
+        try:
+            contained = no_adopted_children()
+        except OSError:
+            contained = False
+        except BaseException:
+            self.last_observation = {"elapsed_seconds": time.monotonic() - start,
+                                     "termination": "interrupted", "returncode": p.returncode,
+                                     "direct_child_reaped": True, "descendant_containment": "uncertain"}
+            raise
         self.last_observation = {"elapsed_seconds": time.monotonic() - start,
                                  "termination": "exited", "returncode": p.returncode,
                                  "direct_child_reaped": True,

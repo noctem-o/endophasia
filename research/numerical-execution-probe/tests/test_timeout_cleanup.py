@@ -31,6 +31,9 @@ try:
     elif mode == 'direct_reap_failure':
         with patch.object(probe.subprocess.Popen, 'wait', side_effect=subprocess.TimeoutExpired('native', 0)):
             result = backend.evaluate('A1', (1, 2), dict(context=512,batch=32,ubatch=32,threads=1), root/'pids')
+    elif mode == 'verification_failure':
+        with patch.object(probe, 'no_adopted_children', side_effect=OSError('synthetic verification failure')):
+            result = backend.evaluate('A1', (1, 2), dict(context=512,batch=32,ubatch=32,threads=1), root/'pids')
     else:
         result = backend.evaluate('A1', (1, 2), dict(context=512,batch=32,ubatch=32,threads=1), root/'pids')
     outcome = {'result': result}
@@ -71,7 +74,7 @@ if mode in ('same_group', 'escaped', 'escaped_after_exit', 'escaped_closed_pipes
                              stderr=subprocess.DEVNULL if mode == 'escaped_closed_pipes' else None)
     pids['descendant'] = child.pid
 open(sys.argv[sys.argv.index('--output') + 1], 'w').write(json.dumps(pids))
-if mode in ('success', 'escaped_closed_pipes'):
+if mode in ('success', 'escaped_closed_pipes', 'verification_failure'):
     print(json.dumps({'synthetic': True}), flush=True)
 elif mode == 'escaped_after_exit':
     os._exit(0)
@@ -155,6 +158,13 @@ else:
         result, _ = self.run_fixture('direct_reap_failure')
         self.assertEqual(result['error'], 'RuntimeError')
         self.assertFalse(result['observation']['direct_child_reaped'])
+        self.assertEqual(result['observation']['descendant_containment'], 'uncertain')
+
+    def test_unavailable_containment_verification_fails_closed(self):
+        result, _ = self.run_fixture('verification_failure')
+        self.assertEqual(result['error'], 'RuntimeError')
+        self.assertEqual(result['observation']['termination'], 'exited')
+        self.assertTrue(result['observation']['direct_child_reaped'])
         self.assertEqual(result['observation']['descendant_containment'], 'uncertain')
 
     def test_successful_direct_exit_with_escaped_child_still_fails_closed(self):

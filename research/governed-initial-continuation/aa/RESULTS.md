@@ -2,6 +2,8 @@
 
 Status: **ENGINEERING INCOMPLETE / LIVE GATED**. This is not a live A/A result or an approval to start one. No real model request or Pi session was made in this study. The private plan, a coordinator building block and a fresh-process comparison reader now exist, but there is no operator-facing execution command or independent real server/resource observer. The required adversarial and owned-cleanup tests are incomplete. Individual verified continuation receipts alone do not establish a valid matched study.
 
+A [partial Linux host probe](LINUX-INSPECTION.md) collects selected process and mapped-file facts but does not verify exclusive listener ownership, configuration or real admission evidence. It cannot establish server parity.
+
 ## Synthetic dispatch-admission plumbing
 
 Status: **DISPATCH-BOUND EVIDENCE PLUMBING COMPLETE / REAL SERVER PARITY STILL GATED**.

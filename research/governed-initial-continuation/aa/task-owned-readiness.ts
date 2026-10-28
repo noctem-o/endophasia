@@ -63,8 +63,9 @@ function probeHealth(port: number, timeoutMs: number, signal: AbortSignal): Prom
 				method: "GET",
 				agent: false,
 				headers: { accept: "application/json", connection: "close" },
+				// `timeout` is socket inactivity and resets as bytes arrive; the signal is a hard wall-clock bound.
 				timeout: timeoutMs,
-				signal,
+				signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
 			},
 			(res) => {
 				const declared = Number(res.headers["content-length"] ?? 0);
@@ -158,6 +159,8 @@ export async function awaitTaskOwnedReadinessV0(
 		const probe = await probeHealth(port, Math.min(perRequest, Math.ceil(remaining)), options.signal);
 		polls++;
 		if (probe.kind === "cancelled" || options.signal.aborted) return refuse("cancelled");
+		// An answer that arrives after the deadline is not readiness, however well formed.
+		if (performance.now() >= deadline) return refuse("deadline-exceeded");
 		if (probe.kind === "oversized") return refuse("oversized-response");
 		if (probe.kind === "failed")
 			return refuse(performance.now() >= deadline ? "deadline-exceeded" : "network-failure");
@@ -166,6 +169,7 @@ export async function awaitTaskOwnedReadinessV0(
 			if (!isHealthyBodyV0(probe.body)) return refuse("invalid-body");
 			if (!(await options.verifyIdentity()))
 				return refuse(options.signal.aborted ? "cancelled" : "identity-changed");
+			if (performance.now() >= deadline) return refuse("deadline-exceeded");
 			return { status: "ready", polls, loadingResponses };
 		}
 		if (probe.status !== 503) return refuse("unexpected-status");

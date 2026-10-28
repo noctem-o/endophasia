@@ -135,6 +135,29 @@ describe("llama.cpp readiness gate", () => {
 		expect(outcome.loadingResponses).toBeGreaterThan(5);
 		expect(performance.now() - started).toBeLessThan(1500);
 	});
+	it("enforces the deadline against a healthy answer that is trickled in slowly", async () => {
+		// Each chunk arrives well inside the inactivity timeout, but the whole answer takes far longer than the deadline.
+		const { endpoint } = await serve([
+			(response) => {
+				response.writeHead(200, { "content-type": "application/json" });
+				const body = '{"status":"ok"}';
+				let i = 0;
+				const timer = setInterval(() => {
+					if (i < body.length) response.write(body[i++]);
+					else {
+						clearInterval(timer);
+						response.end();
+					}
+				}, 40);
+				response.on("close", () => clearInterval(timer));
+			},
+		]);
+		const started = performance.now();
+		const outcome = await awaitTaskOwnedReadinessV0(endpoint, options({ timeoutMs: 100, requestTimeoutMs: 3000 }));
+		expect(outcome.status).toBe("refused");
+		expect(["deadline-exceeded", "network-failure"]).toContain((outcome as { reason: string }).reason);
+		expect(performance.now() - started).toBeLessThan(400);
+	});
 	it("honours cancellation before and during the wait", async () => {
 		const { endpoint, log } = await serve([loading]);
 		const early = new AbortController();

@@ -11,6 +11,7 @@ import {
 } from "../cli/initial-continuation.ts";
 import { readEndoStoreEventsV0 } from "../cli/trajectory.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoFrameBytesV0 } from "../storage/log.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./fixtures/verified-initial-checkpoint.ts";
 
@@ -60,6 +61,239 @@ async function planFor(options: ReturnType<typeof setup>) {
 }
 
 describe("governed initial continuation", () => {
+	it("accepts the Pi 1.0.1 startup prefix for two turns in one process", async () => {
+		const recording = readFileSync(
+			new URL("../research/pi-conformance/1.0.1/cassettes/completes/session.events.jsonl", import.meta.url),
+			"utf8",
+		)
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as { kind: string; payload: { entryType?: string; details?: unknown } })
+			.filter((event) => event.kind === "session.entry-observed");
+		expect(recording.slice(0, 2).map((event) => event.payload)).toMatchObject([
+			{ entryType: "model_change", details: { provider: "endolocal", modelId: "qwen3.8-27b" } },
+			{ entryType: "thinking_level_change", details: { thinkingLevel: "off" } },
+		]);
+		fixture.pi.setScenario("model-endpoint,pi-1-startup");
+		try {
+			const options = setup(),
+				plan = await planFor(options),
+				before = upstream.requests.length;
+			let pid = 0;
+			const result = await executeInitialContinuationV0(
+				plan,
+				approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+				options.prompt,
+				options.continuationPrompt,
+				fixture.key,
+				async (boundary) => {
+					pid = boundary.pid;
+					expect(() => process.kill(pid, 0)).not.toThrow();
+					return approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn");
+				},
+			);
+			expect(result.status, JSON.stringify(result)).toBe("completed");
+			expect(upstream.requests.length - before).toBe(2);
+			expect(() => process.kill(pid, 0)).toThrow();
+			if (!("area" in result)) throw new Error("no receipt");
+			const receipt = JSON.parse(readFileSync(join(result.area, "receipt.json"), "utf8"));
+			const entries = readEndoStoreEventsV0(receipt.runtime.store)
+				.filter((event) => event.kind === "session.entry-observed")
+				.map((event) => event.payload as { entryType: string; details: Record<string, unknown> });
+			expect(entries.map((entry) => entry.entryType)).toEqual([
+				"model_change",
+				"thinking_level_change",
+				"message",
+				"message",
+				"message",
+				"message",
+			]);
+			expect(entries[0]!.details).toEqual({ provider: "fake", modelId: "fake-1" });
+			expect(entries[1]!.details).toEqual({ thinkingLevel: "off" });
+			expect(
+				(
+					await verifyInitialContinuationEvidenceV0(
+						fixture.source,
+						fixture.replay,
+						fixture.key,
+						join(result.area, "receipt.json"),
+					)
+				).status,
+			).toBe("verified");
+			// Reframe modified events so the independent reader must examine the
+			// session semantics, rather than merely detect a broken frame checksum.
+			const logPath = join(receipt.runtime.store, "events", "events.log");
+			const originalLog = readFileSync(logPath);
+			const originalEvents = readEndoStoreEventsV0(receipt.runtime.store);
+			type Entry = {
+				entryType: string;
+				details: Record<string, unknown>;
+				parentId: string | null;
+				recognized: boolean;
+			};
+			const mutations: Array<{ expected: string; apply: (entries: Entry[]) => void }> = [
+				{
+					expected: "unexpected session model selection",
+					apply: (e) => {
+						e[0]!.details.modelId = "other";
+					},
+				},
+				{
+					expected: "unexpected session model selection",
+					apply: (e) => {
+						e[0]!.details.provider = "other";
+					},
+				},
+				{
+					expected: "unexpected session model selection",
+					apply: (e) => {
+						delete e[0]!.details.modelId;
+					},
+				},
+				{
+					expected: "unexpected session model selection",
+					apply: (e) => {
+						e[1]!.entryType = "model_change";
+						e[1]!.details = { provider: "fake", modelId: "fake-1" };
+					},
+				},
+				{
+					expected: "unexpected session setting",
+					apply: (e) => {
+						e[0]!.entryType = "thinking_level_change";
+						e[0]!.details = { thinkingLevel: "off" };
+					},
+				},
+				{
+					expected: "session entry lineage mismatch",
+					apply: (e) => {
+						e[1]!.parentId = "wrong";
+					},
+				},
+				{
+					expected: "unexpected session entry",
+					apply: (e) => {
+						e[1]!.entryType = "unknown";
+						e[1]!.recognized = false;
+					},
+				},
+				{
+					expected: "unexpected session model selection",
+					apply: (e) => {
+						e[3]!.entryType = "model_change";
+						e[3]!.details = { provider: "fake", modelId: "fake-1" };
+					},
+				},
+			];
+			try {
+				for (const mutation of mutations) {
+					const events = structuredClone(originalEvents);
+					const sessionEntries = events
+						.filter((event) => event.kind === "session.entry-observed")
+						.map((event) => event.payload as unknown as Entry);
+					mutation.apply(sessionEntries);
+					writeFileSync(
+						logPath,
+						Buffer.concat(events.map((event) => endoFrameBytesV0(Buffer.from(canonicalEndoJsonV0(event))))),
+					);
+					const checked = await verifyInitialContinuationEvidenceV0(
+						fixture.source,
+						fixture.replay,
+						fixture.key,
+						join(result.area, "receipt.json"),
+					);
+					expect(checked).toMatchObject({ status: "unverified", reason: mutation.expected });
+				}
+			} finally {
+				writeFileSync(logPath, originalLog);
+			}
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	}, 120000);
+	it.each([
+		"startup-wrong-model",
+		"startup-wrong-provider",
+		"startup-missing-model",
+		"startup-duplicate-model",
+		"startup-repeat-thinking",
+		"startup-wrong-parent",
+		"startup-unknown-entry",
+		"post-turn-model-change",
+	])(
+		"rejects invalid startup or first-turn session entry: %s",
+		async (fault) => {
+			fixture.pi.setScenario(`model-endpoint,pi-1-startup,${fault}`);
+			try {
+				const options = setup(),
+					plan = await planFor(options);
+				let approved = false;
+				const result = await executeInitialContinuationV0(
+					plan,
+					approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+					options.prompt,
+					options.continuationPrompt,
+					fixture.key,
+					async () => {
+						approved = true;
+						return null;
+					},
+				);
+				expect(result.status).not.toBe("completed");
+				expect(approved).toBe(false);
+				if ("area" in result)
+					expect(
+						(
+							await verifyInitialContinuationEvidenceV0(
+								fixture.source,
+								fixture.replay,
+								fixture.key,
+								join(result.area, "receipt.json"),
+							)
+						).status,
+					).toBe("unverified");
+			} finally {
+				fixture.pi.setScenario("model-endpoint");
+			}
+		},
+		120000,
+	);
+	it("rejects a model change after the approved second turn in final evidence", async () => {
+		fixture.pi.setScenario("model-endpoint,pi-1-startup,second-turn-model-change");
+		try {
+			const options = setup(),
+				plan = await planFor(options),
+				before = upstream.requests.length;
+			let approved = false;
+			const result = await executeInitialContinuationV0(
+				plan,
+				approveInitialContinuationV0(plan, plan.commitment, "approve first tool-free turn"),
+				options.prompt,
+				options.continuationPrompt,
+				fixture.key,
+				async (boundary) => {
+					approved = true;
+					return approveContinuationTurnV0(boundary, boundary.commitment, "approve continuation turn");
+				},
+			);
+			expect(approved).toBe(true);
+			expect(upstream.requests.length - before).toBe(2);
+			expect(result.status).not.toBe("completed");
+			if (!("area" in result)) throw new Error("no receipt");
+			expect(
+				(
+					await verifyInitialContinuationEvidenceV0(
+						fixture.source,
+						fixture.replay,
+						fixture.key,
+						join(result.area, "receipt.json"),
+					)
+				).status,
+			).toBe("unverified");
+		} finally {
+			fixture.pi.setScenario("model-endpoint");
+		}
+	}, 120000);
 	it("keeps the same live session, requires a second approval, and verifies both turns", async () => {
 		const options = setup();
 		const plan = await planFor(options);

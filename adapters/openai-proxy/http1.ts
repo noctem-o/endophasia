@@ -37,9 +37,30 @@ export class Http1ParseErrorV0 extends Error {}
 
 const MAX_HEAD = 256 * 1024;
 
+/** Strict framing used only by the governed admission profile. */
+export function validGovernedHttp1HeadV0(head: Http1HeadV0): boolean {
+	const lengths = http1HeaderValuesV0(head.headers, "content-length");
+	const transfers = http1HeaderValuesV0(head.headers, "transfer-encoding");
+	return (
+		head.headers.every(
+			([name, value]) =>
+				/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) &&
+				[...value].every(
+					(char) => char.charCodeAt(0) === 9 || (char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127),
+				),
+		) &&
+		lengths.length <= 1 &&
+		(lengths.length === 0 || (/^(0|[1-9][0-9]*)$/.test(lengths[0]!) && Number.isSafeInteger(Number(lengths[0])))) &&
+		transfers.length <= 1 &&
+		(transfers.length === 0 || transfers[0]!.toLowerCase() === "chunked") &&
+		!(lengths.length > 0 && transfers.length > 0)
+	);
+}
+
 export class Http1ParserV0 {
 	readonly #role: "request" | "response";
 	readonly #events: Http1ParserEventsV0;
+	readonly #strictChunks: boolean;
 	#buffer: Buffer = Buffer.alloc(0);
 	#state: "head" | "body" | "chunk-size" | "chunk-data" | "chunk-crlf" | "trailers" = "head";
 	#framing: Framing = { kind: "none" };
@@ -51,9 +72,10 @@ export class Http1ParserV0 {
 	#pushTotal = 0;
 	#leftover = 0;
 
-	constructor(role: "request" | "response", events: Http1ParserEventsV0) {
+	constructor(role: "request" | "response", events: Http1ParserEventsV0, options?: { strictChunks?: boolean }) {
 		this.#role = role;
 		this.#events = events;
+		this.#strictChunks = options?.strictChunks === true;
 	}
 
 	/** True while a message has started but not ended. */
@@ -204,6 +226,8 @@ export class Http1ParserV0 {
 			case "chunk-size": {
 				const line = this.#line();
 				if (line === null) return false;
+				if (this.#strictChunks && !/^[0-9a-fA-F]+$/.test(line))
+					throw new Http1ParseErrorV0("unsupported or malformed chunk size");
 				const size = Number.parseInt(line.split(";")[0]!.trim(), 16);
 				if (!Number.isSafeInteger(size) || size < 0) throw new Http1ParseErrorV0("malformed chunk size");
 				this.#chunkRemaining = size;
@@ -230,6 +254,7 @@ export class Http1ParserV0 {
 			case "trailers": {
 				const line = this.#line();
 				if (line === null) return false;
+				if (this.#strictChunks && line !== "") throw new Http1ParseErrorV0("unsupported chunk trailer");
 				if (line === "") this.#finish();
 				return true;
 			}

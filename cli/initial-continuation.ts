@@ -5,7 +5,7 @@ import { endoCaptureRootV0, readEndoCaptureEventsV0 } from "../adapters/openai-p
 import { loadEndoCassetteV0 } from "../adapters/openai-proxy/cassette.ts";
 import { harnessSurfacesOfCaptureV0 } from "../adapters/openai-proxy/harness-surface.ts";
 import { endoRequestDigestV0 } from "../adapters/openai-proxy/http.ts";
-import { Http1ParserV0 } from "../adapters/openai-proxy/http1.ts";
+import { Http1ParserV0, validGovernedHttp1HeadV0 } from "../adapters/openai-proxy/http1.ts";
 import { piProjectConfigurationDigestV0, piUserConfigurationDigestV0 } from "../adapters/pi/configuration.ts";
 import { fingerprintPiRuntimeV0 } from "../adapters/pi/identity.ts";
 import { projectPiTrajectoryV0 } from "../adapters/pi/trajectory.ts";
@@ -154,17 +154,22 @@ function responseText(bytes: Uint8Array, model: string): string {
 	let headStatus = 0,
 		ends = 0;
 	const body: Buffer[] = [];
-	const parser = new Http1ParserV0("response", {
-		head(h) {
-			headStatus = h.status ?? 0;
+	const parser = new Http1ParserV0(
+		"response",
+		{
+			head(h) {
+				if (!validGovernedHttp1HeadV0(h)) throw new Error("response framing invalid");
+				headStatus = h.status ?? 0;
+			},
+			body(b) {
+				body.push(Buffer.from(b));
+			},
+			end() {
+				ends += 1;
+			},
 		},
-		body(b) {
-			body.push(Buffer.from(b));
-		},
-		end() {
-			ends += 1;
-		},
-	});
+		{ strictChunks: true },
+	);
 	parser.pendingMethods.push("POST");
 	parser.push(Buffer.from(bytes));
 	if (!parser.close() || ends !== 1 || headStatus !== 200) throw new Error("response framing incomplete");
@@ -434,42 +439,54 @@ function inspectEvidence(plan: InitialContinuationPlanV0, runtime: Runtime, key:
 	)
 		throw new Error("unexpected control or prompt count");
 	const entries = events.filter((e) => e.kind === "session.entry-observed");
-	if (
-		entries.some(
-			(e) =>
-				!["message", "thinking_level_change"].includes(String((e.payload as { entryType?: unknown }).entryType)),
-		)
-	)
-		throw new Error("unexpected session entry");
 	let parent: string | null = null;
 	let sawMessage = false;
 	let settingsEntries = 0;
+	let modelEntries = 0;
+	const entryIds = new Set<string>();
 	for (const entry of entries) {
 		const value = entry.payload as unknown as {
 			entryType: string;
+			recognized?: boolean;
 			parentId: string | null;
 			source?: { sessionId?: string; entryId?: string };
-			details?: { role?: string; thinkingLevel?: string; provider?: string; model?: string };
+			details?: { role?: string; thinkingLevel?: string; provider?: string; model?: string; modelId?: string };
 		};
 		if (
 			value.source?.sessionId !== runtime.sessionId ||
 			typeof value.source.entryId !== "string" ||
+			value.source.entryId.length === 0 ||
+			entryIds.has(value.source.entryId) ||
 			value.parentId !== parent
 		)
 			throw new Error("session entry lineage mismatch");
 		parent = value.source.entryId;
-		if (value.entryType === "thinking_level_change") {
+		entryIds.add(parent);
+		if (value.recognized !== true) throw new Error("unexpected session entry");
+		if (value.entryType === "model_change") {
+			modelEntries += 1;
+			if (
+				sawMessage ||
+				settingsEntries !== 0 ||
+				modelEntries !== 1 ||
+				value.details?.provider !== plan.initial.provider ||
+				value.details.modelId !== plan.initial.model
+			)
+				throw new Error("unexpected session model selection");
+		} else if (value.entryType === "thinking_level_change") {
 			settingsEntries += 1;
 			if (sawMessage || settingsEntries > 1 || value.details?.thinkingLevel !== "off")
 				throw new Error("unexpected session setting");
-		} else {
+		} else if (value.entryType === "message") {
 			sawMessage = true;
 			if (
+				(value.details?.role === "assistant" &&
+					(value.details.provider !== plan.initial.provider || value.details.model !== plan.initial.model)) ||
 				(value.details?.provider !== undefined && value.details.provider !== plan.initial.provider) ||
 				(value.details?.model !== undefined && value.details.model !== plan.initial.model)
 			)
 				throw new Error("session entry model mismatch");
-		}
+		} else throw new Error("unexpected session entry");
 	}
 	const roles = entries
 		.filter((e) => (e.payload as { entryType?: unknown }).entryType === "message")

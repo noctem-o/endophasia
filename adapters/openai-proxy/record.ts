@@ -31,7 +31,7 @@ import {
 	offsetMsV0,
 	requireLoopbackBindV0,
 } from "./http.ts";
-import { type Http1HeadV0, Http1ParserV0 } from "./http1.ts";
+import { type Http1HeadV0, Http1ParserV0, validGovernedHttp1HeadV0 } from "./http1.ts";
 
 export interface EndoRecordingProxyOptionsV0 {
 	/** The upstream origin, e.g. http://127.0.0.1:8080 (scheme, host and port only; no path, query or credentials). */
@@ -54,6 +54,8 @@ export interface EndoRecordingProxyOptionsV0 {
 	 * The callback must consume its own one-shot authority synchronously; it is not a remote approval mechanism.
 	 */
 	readonly admitRequest?: (request: { method: string; path: string; body: Uint8Array }) => boolean;
+	/** Idle timeout for an incomplete governed request. Default 5 seconds. */
+	readonly admissionIdleMs?: number;
 	/** Optional bounded, fail-closed response admission; no response bytes reach the client until it accepts. */
 	readonly admitResponse?: (response: { status: number; wire: Uint8Array }) => boolean;
 }
@@ -200,6 +202,10 @@ function mayBeRequestHead(held: Buffer[]): boolean {
 /** Request bytes held for slots that are not yet at the front; above this the client socket is paused (backpressure). */
 const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
+/** Complete request wire (head plus fixed-length body), inclusive, for governed admission only. */
+export const GOVERNED_REQUEST_MAX_BYTES_V0 = 1024 * 1024;
+const GOVERNED_REQUEST_IDLE_MS = 5000;
+
 /** How long a retired hop may take to send request bytes the upstream has not read yet before it is dropped. */
 const HOP_DRAIN_MS = 5000;
 
@@ -209,6 +215,9 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		(!Number.isSafeInteger(options.maxTransferredBytes) || options.maxTransferredBytes! < 1)
 	)
 		throw new TypeError("governed admission requires a finite transfer bound");
+	const admissionIdleMs = options.admissionIdleMs ?? GOVERNED_REQUEST_IDLE_MS;
+	if (!Number.isSafeInteger(admissionIdleMs) || admissionIdleMs < 1 || admissionIdleMs > 120000)
+		throw new TypeError("invalid governed admission idle timeout");
 	const host = options.host ?? "127.0.0.1";
 	requireLoopbackBindV0(host);
 	const upstream = endoUpstreamOriginV0(options.upstream);
@@ -324,6 +333,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		let clientClosed = false;
 		/** The client connection is being ended: nothing further is forwarded on it. */
 		let ending = false;
+		let admissionTimer: NodeJS.Timeout | null = null;
+		client.on("close", () => {
+			if (admissionTimer !== null) clearTimeout(admissionTimer);
+		});
 
 		const updateFlow = () => {
 			const front = slots[0];
@@ -424,6 +437,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			queuedBytes = 0;
 			updateFlow();
 		};
+		const refuseAdmission = () => {
+			if (ending) return;
+			refusedRequests += 1;
+			ending = true;
+			failQueued("governed request refused before forwarding");
+			client.destroy();
+		};
 
 		const retire = (slot: Slot, advance: boolean) => {
 			const hop = slot.hop;
@@ -481,50 +501,59 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			let switched = false;
 			/** The upstream said `100 Continue`: the client is entitled to send the body. */
 			let continued = false;
-			const responseParser = new Http1ParserV0("response", {
-				head(head) {
-					if (entry === null) return;
-					if (
-						head.status === 101 ||
-						(entry.method === "CONNECT" && head.status !== undefined && head.status >= 200 && head.status < 300)
-					)
-						switched = true;
-					else if (head.status !== undefined && head.status >= 100 && head.status < 200) {
-						if (head.status === 100) continued = true;
-						interim = true;
-						return;
-					}
-					interim = false;
-					entry.responseHead = head;
-					const connection = head.headers
-						.filter(([name]) => name.toLowerCase() === "connection")
-						.flatMap(([, value]) =>
-							value
-								.toLowerCase()
-								.split(",")
-								.map((token) => token.trim()),
-						);
-					sawClose =
-						connection.includes("close") ||
-						(/^HTTP\/1\.0\b/.test(head.startLine) && !connection.includes("keep-alive"));
-					const target = current();
-					const response = {
-						exchange: entry.exchange,
-						status: head.status ?? null,
-						headers: capturedHeadersV0(head) as unknown as JsonValueV0,
-						offsetMs: offsetMsV0(entry.start),
-					};
-					if (target !== null) hold(() => target.record("capture.response", response));
-				},
-				body() {},
-				end(_bytes, offset) {
-					if (interim) {
+			const responseParser = new Http1ParserV0(
+				"response",
+				{
+					head(head) {
+						if (entry === null) return;
+						if (options.admitResponse !== undefined && !validGovernedHttp1HeadV0(head))
+							throw new Error("invalid governed response head");
+						if (
+							head.status === 101 ||
+							(entry.method === "CONNECT" &&
+								head.status !== undefined &&
+								head.status >= 200 &&
+								head.status < 300)
+						)
+							switched = true;
+						else if (head.status !== undefined && head.status >= 100 && head.status < 200) {
+							if (head.status === 100) continued = true;
+							interim = true;
+							return;
+						}
 						interim = false;
-						return;
-					}
-					ends.push(offset);
+						entry.responseHead = head;
+						const connection = head.headers
+							.filter(([name]) => name.toLowerCase() === "connection")
+							.flatMap(([, value]) =>
+								value
+									.toLowerCase()
+									.split(",")
+									.map((token) => token.trim()),
+							);
+						sawClose =
+							connection.includes("close") ||
+							(/^HTTP\/1\.0\b/.test(head.startLine) && !connection.includes("keep-alive"));
+						const target = current();
+						const response = {
+							exchange: entry.exchange,
+							status: head.status ?? null,
+							headers: capturedHeadersV0(head) as unknown as JsonValueV0,
+							offsetMs: offsetMsV0(entry.start),
+						};
+						if (target !== null) hold(() => target.record("capture.response", response));
+					},
+					body() {},
+					end(_bytes, offset) {
+						if (interim) {
+							interim = false;
+							return;
+						}
+						ends.push(offset);
+					},
 				},
-			});
+				{ strictChunks: options.admitResponse !== undefined },
+			);
 			if (entry !== null) responseParser.pendingMethods.push(entry.method);
 			const requestClose = entry?.requestClose ?? false;
 
@@ -761,10 +790,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					// A broken policy is a refusal, never a reason to forward.
 				}
 				if (!admitted) {
-					refusedRequests += 1;
-					ending = true;
-					failQueued("governed request refused before forwarding");
-					client.destroy();
+					refuseAdmission();
 					return;
 				}
 			}
@@ -837,6 +863,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					Number.isSafeInteger(Number(lengths[0]))
 						? Number(lengths[0])
 						: null;
+				if (
+					options.admitRequest !== undefined &&
+					(!validGovernedHttp1HeadV0(head) ||
+						admissionLength === null ||
+						head.raw.length + admissionLength > GOVERNED_REQUEST_MAX_BYTES_V0)
+				)
+					throw new Error("unsupported or oversized governed request");
 				const entry: Exchange = {
 					exchange: counter,
 					start: performance.now(),
@@ -905,7 +938,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (!parsing) return;
 			parsing = false;
 			const target = current();
-			const detail = String((error as Error).message ?? error).slice(0, 200);
+			const detail =
+				options.admitRequest === undefined
+					? String((error as Error).message ?? error).slice(0, 200)
+					: "governed request rejected";
 			if (target !== null) hold(() => target.record("capture.unparsed", { detail }));
 		};
 
@@ -923,6 +959,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		};
 
 		client.on("data", (data: Buffer) => {
+			if (admissionTimer !== null) {
+				clearTimeout(admissionTimer);
+				admissionTimer = null;
+			}
 			if (!countTransfer(data.length)) {
 				client.destroy();
 				return;
@@ -939,6 +979,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					requestParser.push(data);
 				} catch (error) {
 					unparsed(error);
+					if (options.admitRequest !== undefined) {
+						refuseAdmission();
+						return;
+					}
 				}
 				// Every byte up to a request's end belongs to that request; every byte after belongs to the next slot, even
 				// before its head has parsed. The slots' bytes concatenate to exactly what the client wrote.
@@ -959,6 +1003,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				}
 			}
 			dispatch();
+			if (options.admitRequest !== undefined && receiving !== null && !ending) {
+				admissionTimer = setTimeout(refuseAdmission, admissionIdleMs);
+				admissionTimer.unref();
+			}
 		});
 
 		const clientGone = () => {

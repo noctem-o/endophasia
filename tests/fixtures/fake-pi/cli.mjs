@@ -149,7 +149,20 @@ function save() {
 	mkdirSync(dirname(sessionFile), { recursive: true });
 	writeFileSync(sessionFile, JSON.stringify({ entries, thinkingLevel }));
 }
-if (entries.length === 0) append({ type: "thinking_level_change", thinkingLevel });
+if (entries.length === 0) {
+	if (has("pi-1-startup")) {
+		append({
+			type: "model_change",
+			provider: has("startup-wrong-provider") ? "other-provider" : provider,
+			...(has("startup-missing-model") ? {} : { modelId: has("startup-wrong-model") ? "other-model" : modelId }),
+		});
+		if (has("startup-duplicate-model")) append({ type: "model_change", provider, modelId });
+	}
+	append({ type: "thinking_level_change", thinkingLevel });
+	if (has("startup-wrong-parent")) entries.at(-1).parentId = "wrong-parent";
+	if (has("startup-repeat-thinking")) append({ type: "thinking_level_change", thinkingLevel });
+	if (has("startup-unknown-entry")) append({ type: "future_entry" });
+}
 
 // --- output ---
 const pending = [];
@@ -307,6 +320,11 @@ async function modelTurn(run) {
 	};
 	emit({ type: "message_end", message: assistant });
 	append({ type: "message", message: assistant });
+	if (has("post-turn-model-change") ||
+		(has("second-turn-model-change") && entries.filter((entry) => entry.type === "message" && entry.message?.role === "user").length === 2)) {
+		append({ type: "model_change", provider, modelId: "other-model" });
+		append({ type: "model_change", provider, modelId });
+	}
 	const toolResults = [];
 	if (has("spurious-tool-event")) emit({ type: "tool_execution_start", toolCallId: "unasked", toolName: "read", args: { path: "endophasia-study.txt" } });
 	for (const call of calls) {

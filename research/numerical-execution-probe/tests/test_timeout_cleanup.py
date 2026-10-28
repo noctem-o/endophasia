@@ -20,7 +20,8 @@ from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 import probe
 root = Path(sys.argv[2]); mode = sys.argv[3]
-backend = probe.NativeBackend(root / 'native', root / 'model', 0.25)
+timeout = 5 if mode == 'interrupt' else 1 if mode in ('success', 'verification_failure', 'escaped_closed_pipes') else 0.25
+backend = probe.NativeBackend(root / 'native', root / 'model', timeout)
 if mode == 'interrupt':
     signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     signal.setitimer(signal.ITIMER_REAL, 0.25)

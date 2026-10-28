@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { connect, createServer as createTcpServer, type Socket } from "node:net";
+import { connect, createServer as createTcpServer, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { EndoCaptureLogV0 } from "../adapters/openai-proxy/capture-log.ts";
+import { describe, expect, it, vi } from "vitest";
+import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { GOVERNED_REQUEST_MAX_BYTES_V0, startEndoRecordingProxyV0 } from "../adapters/openai-proxy/record.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
@@ -40,16 +40,33 @@ async function harness(
 		port: number;
 		host: string;
 		counts: () => { upstream: number; admitted: number; refused: number };
+		firstReceived: Promise<void>;
+		releaseFirst: () => void;
+		capture: () => Promise<string>;
 	}) => Promise<void>,
 	idleMs = 5000,
+	holdFirst = false,
 ) {
 	const root = mkdtempSync(join(tmpdir(), "endo-admission-limits-"));
 	let upstreamCount = 0,
 		admitted = 0;
+	let firstReady!: () => void;
+	let releaseFirst!: () => void;
+	const firstReceived = new Promise<void>((resolve) => {
+		firstReady = resolve;
+	});
+	const firstRelease = new Promise<void>((resolve) => {
+		releaseFirst = resolve;
+	});
 	const upstream: Server = createServer((request, response) => {
 		upstreamCount += 1;
+		const first = upstreamCount === 1;
 		request.resume();
-		request.on("end", () => {
+		request.on("end", async () => {
+			if (first && holdFirst) {
+				firstReady();
+				await firstRelease;
+			}
 			response.writeHead(200, { "Content-Length": "2", "Content-Type": "text/plain" });
 			response.end("ok");
 		});
@@ -73,6 +90,12 @@ async function harness(
 			run({
 				port: proxy.port,
 				host: proxy.host,
+				firstReceived,
+				releaseFirst,
+				capture: async () => {
+					await proxy.flush();
+					return JSON.stringify(readEndoCaptureEventsV0(root));
+				},
 				counts: () => ({ upstream: upstreamCount, admitted, refused: proxy.refusedRequests }),
 			}),
 		);
@@ -85,15 +108,26 @@ async function harness(
 	}
 }
 
-async function send(port: number, host: string, parts: Buffer[], expectedResponses: number, disconnect = false) {
+async function send(
+	port: number,
+	host: string,
+	parts: Buffer[],
+	expectedResponses: number,
+	disconnect = false,
+	beforeRest?: Promise<void>,
+) {
 	const socket: Socket = connect(port, host);
 	let response = "";
 	try {
 		await guarded(
 			new Promise<void>((resolve, reject) => {
 				socket.once("connect", () => {
-					for (const part of parts) socket.write(part);
-					if (disconnect) socket.end();
+					void (async () => {
+						if (parts[0]) socket.write(parts[0]);
+						if (beforeRest) await beforeRest;
+						for (const part of parts.slice(1)) socket.write(part);
+						if (disconnect) socket.end();
+					})().catch(reject);
 				});
 				socket.on("data", (data) => {
 					response += data.toString("latin1");
@@ -165,13 +199,39 @@ describe("governed complete-request buffer limit", () => {
 			expect(counts()).toEqual({ upstream: 0, admitted: 0, refused: 1 });
 		}, 100);
 	}, 15000);
-	it("handles more than four MiB of valid pipelined requests", async () => {
-		await harness(async ({ port, host, counts }) => {
-			const requests = Array.from({ length: 5 }, (_, i) => wireOfSize(900 * 1024, i === 4));
-			expect(Buffer.concat(requests).length).toBeGreaterThan(4 * 1024 * 1024);
-			expect((await send(port, host, requests, 5)).match(/HTTP\/1\.1 200/g)).toHaveLength(5);
-			expect(counts()).toEqual({ upstream: 5, admitted: 5, refused: 0 });
-		});
+	it("drains a valid pipeline after queued bytes trigger ordinary backpressure", async () => {
+		await harness(
+			async ({ port, host, counts, firstReceived, releaseFirst }) => {
+				let paused!: () => void;
+				let queueing = false;
+				const clientPaused = new Promise<void>((resolve) => {
+					paused = resolve;
+				});
+				const originalPause = Socket.prototype.pause;
+				const spy = vi.spyOn(Socket.prototype, "pause").mockImplementation(function (this: Socket) {
+					if (queueing && this.localPort === port) paused();
+					return originalPause.call(this);
+				});
+				try {
+					// Five queued requests behind the blocked first hop exceed 4 MiB.
+					const requests = Array.from({ length: 6 }, (_, i) => wireOfSize(900 * 1024, i === 5));
+					const ready = firstReceived.then(() => {
+						queueing = true;
+					});
+					const response = send(port, host, requests, 6, false, ready);
+					await guarded(ready);
+					await guarded(clientPaused);
+					releaseFirst();
+					expect((await response).match(/HTTP\/1\.1 200/g)).toHaveLength(6);
+					expect(counts()).toEqual({ upstream: 6, admitted: 6, refused: 0 });
+				} finally {
+					releaseFirst();
+					spy.mockRestore();
+				}
+			},
+			5000,
+			true,
+		);
 	}, 15000);
 	it("refuses an oversized declaration and extra bytes in the same read", async () => {
 		await harness(async ({ port, host, counts }) => {
@@ -182,6 +242,14 @@ describe("governed complete-request buffer limit", () => {
 			]);
 			await send(port, host, [data], 0);
 			expect(counts()).toEqual({ upstream: 0, admitted: 0, refused: 1 });
+		});
+	}, 15000);
+	it("does not copy a malformed private header into refusal evidence", async () => {
+		await harness(async ({ port, host, counts, capture }) => {
+			const secret = "PRIVATE_PROMPT_OR_CREDENTIAL_SENTINEL";
+			await send(port, host, [Buffer.from(`POST / HTTP/1.1\r\nHost: localhost\r\n${secret}\r\n\r\n`)], 0);
+			expect(counts()).toEqual({ upstream: 0, admitted: 0, refused: 1 });
+			expect(await capture()).not.toContain(secret);
 		});
 	}, 15000);
 	it("does not forward a client disconnected while buffering", async () => {

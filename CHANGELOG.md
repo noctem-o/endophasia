@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **Task-owned server provenance v0 (research; plumbing only):** a keyed `endo.research.aa.task-owned-provenance.0` record,
+  an approval-gated launch/stop lifecycle function for a loopback server the launcher owns, a real-observation continuation
+  admission hook with per-turn sidecars bound to the request-body digest and dispatch marker, and an offline fresh-process
+  reader that reports record validity, observed process consistency, declared trust assumptions, unavailable host facts and
+  study admission separately. `OWNERSHIP_UNVERIFIED` is never upgraded. Tested with fake executables, Pi and endpoint only:
+  no real server or inference, no operator command. See
+  [research/governed-initial-continuation/aa/TASK-OWNED-PROVENANCE.md](research/governed-initial-continuation/aa/TASK-OWNED-PROVENANCE.md).
 - **React Compare workspace (source builds and tested tarballs):** discover eligible Pi/DSH recordings, explicitly select
   A/B through opaque generation-bound selectors, load bounded candidate pages, and inspect authoritative per-layer verdicts,
   divergent entries, qualifications, ordering assessment and B-minus-A deltas. Unknown/malformed responses, invalid selections,

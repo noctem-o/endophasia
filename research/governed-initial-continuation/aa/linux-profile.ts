@@ -16,28 +16,13 @@ export interface ExplicitServerProfileV0 {
 	gpuLayers: string;
 }
 
-/** Unknown flags, aliases, duplicates, router settings and environment-derived configuration are refused. */
-export function validateExplicitServerArgsV0(
-	argv: string[],
-	envNames: string[],
-	profile: ExplicitServerProfileV0,
-): void {
-	const allowedEnvironment = new Set([
-		"PATH",
-		"HOME",
-		"USER",
-		"LOGNAME",
-		"SHELL",
-		"LANG",
-		"LC_ALL",
-		"TZ",
-		"TERM",
-		"TMPDIR",
-		"XDG_RUNTIME_DIR",
-	]);
-	if (argv.length > 128 || envNames.length > 4096 || envNames.some((name) => !allowedEnvironment.has(name)))
-		throw new LinuxProfileErrorV0("UNSUPPORTED", "environment override or unsupported environment name");
-	const endpoint = new URL(profile.endpoint);
+function explicitEndpointV0(profile: ExplicitServerProfileV0): URL {
+	let endpoint: URL;
+	try {
+		endpoint = new URL(profile.endpoint);
+	} catch {
+		throw new LinuxProfileErrorV0("UNSUPPORTED", "unsupported endpoint");
+	}
 	if (
 		endpoint.origin !== profile.endpoint ||
 		endpoint.protocol !== "http:" ||
@@ -50,6 +35,14 @@ export function validateExplicitServerArgsV0(
 		endpoint.password
 	)
 		throw new LinuxProfileErrorV0("UNSUPPORTED", "unsupported endpoint");
+	return endpoint;
+}
+/** The one definition of the accepted flags: the task-owned launcher builds from it and the inspector validates against it. */
+export function explicitServerFlagsV0(profile: ExplicitServerProfileV0): {
+	values: Record<string, string>;
+	switches: Set<string>;
+} {
+	const endpoint = explicitEndpointV0(profile);
 	if (
 		!/^\/(?!.*\0).+\.gguf$/i.test(profile.modelPath) ||
 		!/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(profile.modelAlias) ||
@@ -74,7 +67,36 @@ export function validateExplicitServerArgsV0(
 		"--ctx-checkpoints": "0",
 		"--reasoning-format": "deepseek",
 	};
-	const switches = new Set(["--jinja", "--no-context-shift", "--no-cache-idle-slots"]);
+	return { values, switches: new Set(["--jinja", "--no-context-shift", "--no-cache-idle-slots"]) };
+}
+/** Arguments after argv[0], in a fixed order. */
+export function buildExplicitServerArgsV0(profile: ExplicitServerProfileV0): string[] {
+	const { values, switches } = explicitServerFlagsV0(profile);
+	return [...Object.entries(values).flat(), ...switches];
+}
+
+/** Unknown flags, aliases, duplicates, router settings and environment-derived configuration are refused. */
+export function validateExplicitServerArgsV0(
+	argv: string[],
+	envNames: string[],
+	profile: ExplicitServerProfileV0,
+): void {
+	const allowedEnvironment = new Set([
+		"PATH",
+		"HOME",
+		"USER",
+		"LOGNAME",
+		"SHELL",
+		"LANG",
+		"LC_ALL",
+		"TZ",
+		"TERM",
+		"TMPDIR",
+		"XDG_RUNTIME_DIR",
+	]);
+	if (argv.length > 128 || envNames.length > 4096 || envNames.some((name) => !allowedEnvironment.has(name)))
+		throw new LinuxProfileErrorV0("UNSUPPORTED", "environment override or unsupported environment name");
+	const { values, switches } = explicitServerFlagsV0(profile);
 	const seen = new Set<string>();
 	for (let index = 1; index < argv.length; index++) {
 		const flag = argv[index]!;

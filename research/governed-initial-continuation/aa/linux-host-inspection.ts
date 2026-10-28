@@ -502,3 +502,6 @@ export async function inspectLinuxHostOutcomeV0(
 		};
 	}
 }
+
+/** Bounded procfs readers shared with task-owned rechecks, so one definition decides what a fact is. */
+export const linuxProcFactsV0 = { identity, procArgv, procEnvironmentNames, boundedBytes, boundedText, major, minor };

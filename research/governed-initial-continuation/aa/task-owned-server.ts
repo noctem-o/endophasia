@@ -1,6 +1,6 @@
 // Lifecycle for a llama.cpp server this process starts, observes and stops itself.
 //
-// This module is a building block for a later interactive operator command. It deliberately exports no CLI entry
+// This module is a building block for the interactive operator (aa/operator.ts), its only caller. It deliberately exports no CLI entry
 // point and accepts no pre-supplied approval: every launch needs the exact phrase from `approve`, a trusted caller
 // callback exactly like CoordinatorHooks. It sends no HTTP request and performs no inference.
 import { closeSync, constants, createReadStream, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
@@ -120,7 +120,8 @@ async function pinnedFile(path: string, expected: string, signal: AbortSignal): 
 		closeSync(fd);
 	}
 }
-function portIsFree(port: number): Promise<boolean> {
+/** True when a loopback bind on `port` succeeds right now. */
+export function portIsFree(port: number): Promise<boolean> {
 	return new Promise((resolve) => {
 		const probe = createServer();
 		probe.once("error", () => resolve(false));

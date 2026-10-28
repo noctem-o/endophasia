@@ -1,0 +1,49 @@
+# Terminal-governed A/A operator v0: offline acceptance only, real model acceptance gated
+
+Status: **TERMINAL-GOVERNED A/A OPERATOR COMPLETE / REAL MODEL ACCEPTANCE GATED**. `operate.ts --inspect|--run <config>` connects the task-owned server lifecycle, a bounded model-readiness gate, the governed two-turn A/A study and the fresh-process reader behind typed terminal approvals. It was exercised only with task-owned fake executables (a C relay that listens on loopback and maps a stand-in model file), a fake Pi and an in-process fake OpenAI endpoint, through a real pseudo-terminal. **No llama.cpp server was started, no real model request was sent, and no real A/A result exists.** Nothing here shows real model parity. Live acceptance is a separately authorised experiment.
+
+## Using it
+
+```
+node research/governed-initial-continuation/aa/operate.ts --inspect /absolute/private-config.json
+node research/governed-initial-continuation/aa/operate.ts --run     /absolute/private-config.json
+```
+
+This is a research script, like `read-private.ts` and `inspect-linux.ts`, not an `endo` subcommand and not part of the published package. The repository enforces (`tests/prime-research-boundary.test.ts`) that production `cli/` never imports `research/`, directly or through another module, and the package ships only what `cli/index.ts` reaches. Adding `endo experiment aa` would need that rule relaxed and research code shipped; that is a separate decision this PR does not make. Making it one later is a small wrapper over `operator.ts`.
+
+The configuration is one owner-only regular file (at most 16 KiB, never followed through a link). **Every field is required; nothing is defaulted.** The study fields are `keyFile`, `studyFile` (must not exist), `seed`, `expectedAnswer`, `serverDeclaration`, `source`, `replay`, `outputParent`, `preparation` (an already prepared and verified sibling pair), `piExecutable`, `provider`, `model`, `prompt`, `continuationPrompt`, `wallTimeoutMs`, `maxApprovalIdleMs` and `maxTransferredBytes`. The `server` object holds `executablePath`, `executableSha256`, `modelPath`, `modelSha256`, `modelAlias`, `gpuLayers`, `port`, `startupTimeoutMs`, `modelReadyTimeoutMs` and `workingDirectory`. The upstream is always `http://127.0.0.1:<port>`; there is no field for another host. The seed fixes the committed order (even: ABBA, odd: BAAB) and is shown before anything is approved.
+
+**`--inspect`** is read-only. It validates the configuration, the supported profile (the same one the launcher and the Linux inspector share), the owner-only directories, the absence of earlier evidence and the verified-pristine sibling pair, then prints one canonical-JSON description. It starts no server, no Pi and no study, binds no port, sends no request and writes nothing. It does not run Pi's `--version`/`--help` preflight (that runs only with `--run`), and it does not hash the executable or model (the launcher does that before it asks for approval).
+
+**`--run`** is interactive and refuses to start unless stdin and stdout are this process's *controlling terminal* (the kernel's controlling-terminal number from `/proc/self/stat` must equal both descriptors' device). A pipe, a redirected file, a terminal that is not the session's own, or no terminal at all is refused before any server, Pi or file is touched. There is no approval flag, environment variable, saved answer, default or unattended mode, and no web or remote approval path; a test asserts that the only code that can start the launcher is the operator, that the only caller of the operator is `operate.ts` after its terminal check, and that nothing in `cli/`, `scripts/` or the package refers to any of them. Approvals are read with a single outstanding `readline` question, each with its own expiry, so an expired or cancelled question cannot linger and swallow a later answer.
+
+## Order of events
+
+1. **Preparation (nothing is started).** Inspect, then Pi's `--version`/`--help` preflight for both arms, then a check that the port is unused.
+2. **Launch approval.** The launcher hashes the pinned executable and model, then the terminal shows a redacted plan (launch-plan identity, profile, executable and model with digest prefixes, alias, endpoint, prompt commitments, committed order, limits, the pending action) and asks for `APPROVE TASK-OWNED SERVER <plan prefix>`. Only the exact phrase starts the server, in a keeper-owned process group, with the existing minimal environment. This authorises no model request.
+3. **Readiness.** See below. Failure ends the run: no study plan is created.
+4. **Study plan.** `createStudyPlan` commits to the provenance this run just published, so it can only come after launch and readiness. No second plan schema exists.
+5. **Slots.** For each of up to four slots, `runNextSlot` runs with the real procfs observer at dispatch admission. Every turn is a separate typed approval: `APPROVE FIRST <attempt>` and `APPROVE CONTINUATION <attempt>`, each shown with the slot, arm, attempt, turn and request number (of at most eight). One approval never covers another turn or slot. The study **halts at the first slot that does not complete** (declined, expired, interrupted, refused, uncertain, failed). That slot stays spent; nothing reopens it, retries it or substitutes another process.
+6. **Cleanup.** The owned server is stopped exactly once, in a `finally` that runs after success, refusal, interruption or failure. A failed or unconfirmed stop is reported as `cleanup-unconfirmed` and is never retried or softened. Handlers for SIGINT, SIGTERM and SIGHUP (terminal loss) and the terminal's EOF or Ctrl-C only abort a controller; they never stop the server themselves and stay installed through cleanup, so a second signal cannot skip the end record.
+7. **Independent verification.** After cleanup, fresh processes run `read-private.ts --task-owned` and the plain study reader on the files on disk. The runner's own statuses are shown, labelled unverified, beside the reader's.
+
+## Model readiness
+
+`aa/task-owned-readiness.ts` sends `GET /health` to the provenance's loopback endpoint and nothing else: no completion, no `/v1/models`, no POST, no reload or router API, no redirect following, no other host. HTTP 503 means loading and polling continues inside a required, bounded deadline (at most ten minutes, plus a per-request timeout and a 4 KiB body limit). HTTP 200 with exactly `{"status":"ok"}` is reported ready. A redirect, any other status or body, an oversized response, a network failure, cancellation or expiry refuses. The owned process and listener are re-observed before the first request, between polls (cheaply) and after a ready answer, so a crashed or replaced server is never reported ready. A sealed `*.readiness.json` records the outcome beside the study. `/v1/models` is deliberately not queried, to avoid a second, unverified identity claim.
+
+**Readiness is a bounded observation the server reported about itself.** It does not show that a later completion will succeed, which weights are loaded, or that the server is the pinned build. A listener that merely accepts connections, or a build without the route, is refused.
+
+## What the outcome reports, separately
+
+The verdict is `complete-under-declared-assumptions` only when the server was confirmed stopped, the fresh-process reader returned a report, four slots completed, the reader says `studyAdmission: complete` with `four-receipts`, observed identity is `consistent` and the lifecycle is `cleaned`. Otherwise it is `partial`, `refused` or `cleanup-unconfirmed`. The printed outcome keeps these apart: evidence-record validity; request/dispatch binding (sidecars bound to captured requests); observed identity consistency; study completion; declared trust assumptions and unavailable host facts (`OWNERSHIP_UNVERIFIED` is always present); owned-server cleanup; and answer correctness from the study's own check. Completion is not correctness: a study can be complete with answers wrong. If the reader refuses partial or interrupted evidence, that is shown as `reader-refused`, never as success, and the partial evidence is left in place for inspection. Private responses and reasoning are never printed.
+
+`studyAdmission: complete` means the recorded observations are internally consistent under the declared trust assumptions. It is not server attestation, sole socket ownership, GPU-resident weights, kernel integrity or model parity. See [TASK-OWNED-PROVENANCE.md](TASK-OWNED-PROVENANCE.md).
+
+## Limits and what is not established
+
+- No real llama.cpp binary, model or inference was involved. The relay is a byte-forwarding test double; `supportedBinary` is therefore `UNSUPPORTED` in its provenance. A fake study proves the plumbing and the refusal semantics, not model behaviour.
+- Linux only. Single operator, single host, trusted-local-host model: a same-user attacker who swaps the process, files or listener between samples is outside the guarantees, as in the provenance doc.
+- If this process is killed outright (for example SIGKILL), no end record is written; the keeper still ends the owned group, and the reader will report the lifecycle as `open` rather than `cleaned`.
+- `cleanup-unconfirmed` after a failed launch means the port was still occupied after an approved launch failed; nothing was signalled.
+- The study stops at the first non-completing slot; this command never offers to continue it.
+- The next step, a live acceptance run against a real llama.cpp build and model, needs its own explicit authorisation.

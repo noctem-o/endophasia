@@ -4,19 +4,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startEndoRecordingProxyV0 } from "../../adapters/openai-proxy/record.ts";
 import { recordPiCassetteSessionV0, replayPiCassetteSessionV0 } from "../../cli/cassette-session.ts";
-import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../../storage/digest-key.ts";
+import {
+	endoFixtureDigestKeyPathV0,
+	loadEndoFixtureDigestKeyV0,
+	loadOrCreateEndoDigestKeyV0,
+} from "../../storage/digest-key.ts";
 import { startFakeOpenAiServer } from "./fake-openai-server.ts";
 import { installFakePi } from "./fake-pi/install.ts";
 
-export async function verifiedInitialCheckpointFixtureV0() {
+/**
+ * With `installationKeyFile` the checkpoint is recorded and verified under that (non-public) installation key, which is
+ * what the operator command and the private evidence reader require. The caller must keep ENDO_DIGEST_KEY_FILE pointing
+ * at it for as long as the fixture is used.
+ */
+export async function verifiedInitialCheckpointFixtureV0(options: { installationKeyFile?: string } = {}) {
 	const base = mkdtempSync(join(tmpdir(), "endo-siblings-test-"));
 	const pi = installFakePi("1.0.0");
 	pi.setScenario("model-endpoint");
 	const starts = join(base, "pi-starts.jsonl");
 	pi.setEnvLog(starts);
 	const keyPath = endoFixtureDigestKeyPathV0();
-	const key = loadEndoFixtureDigestKeyV0(keyPath);
-	const keySource = { kind: "fixture" as const, path: keyPath };
+	const key = options.installationKeyFile
+		? loadOrCreateEndoDigestKeyV0(options.installationKeyFile)
+		: loadEndoFixtureDigestKeyV0(keyPath);
+	const keySource = options.installationKeyFile
+		? { kind: "installation" as const }
+		: { kind: "fixture" as const, path: keyPath };
 	const source = join(base, "source");
 	const replay = join(base, "replay");
 	const scratch = join(base, "scratch");

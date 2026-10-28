@@ -32,6 +32,15 @@ export interface FakeOpenAiOptions {
 	readonly emptyAnswer?: boolean;
 }
 
+/** One scripted answer to `GET /health`; the last step repeats. Without a script `/health` is a 404, as before. */
+export interface FakeHealthStep {
+	readonly status: number;
+	readonly body?: string;
+	readonly headers?: Readonly<Record<string, string>>;
+	/** Close the connection without answering. */
+	readonly drop?: boolean;
+}
+
 export interface FakeOpenAiRequestLog {
 	readonly method: string;
 	readonly url: string;
@@ -42,6 +51,10 @@ export interface FakeOpenAiRequestLog {
 export interface FakeOpenAiServer {
 	readonly baseUrl: string;
 	readonly requests: FakeOpenAiRequestLog[];
+	/** Replace the `/health` script. */
+	setHealth(steps: readonly FakeHealthStep[]): void;
+	/** Requests that asked the model for a completion: the only ones an A/A study is allowed to spend. */
+	completionRequests(): FakeOpenAiRequestLog[];
 	close(): Promise<void>;
 }
 
@@ -63,6 +76,7 @@ function lastUserText(messages: unknown): string {
 
 export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Promise<FakeOpenAiServer> {
 	const requests: FakeOpenAiRequestLog[] = [];
+	let health: FakeHealthStep[] = [];
 	const handle = async (request: IncomingMessage, response: ServerResponse) => {
 		let raw = "";
 		for await (const chunk of request) raw += chunk;
@@ -73,6 +87,16 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 			body = raw;
 		}
 		requests.push({ method: request.method ?? "", url: request.url ?? "", headers: request.headers, body });
+		if (request.method === "GET" && request.url === "/health" && health.length > 0) {
+			const step = health.length > 1 ? health.shift()! : health[0]!;
+			if (step.drop) {
+				request.socket.destroy();
+				return;
+			}
+			response.writeHead(step.status, { "content-type": "application/json", ...step.headers });
+			response.end(step.body ?? "");
+			return;
+		}
 		if (request.method === "GET" && request.url?.endsWith("/models")) {
 			response.writeHead(200, { "content-type": "application/json" });
 			response.end(JSON.stringify({ object: "list", data: [{ id: "fake-1", object: "model" }] }));
@@ -199,6 +223,10 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 	return {
 		baseUrl: `http://127.0.0.1:${port}/v1`,
 		requests,
+		setHealth: (steps) => {
+			health = [...steps];
+		},
+		completionRequests: () => requests.filter((r) => r.method === "POST" && r.url.endsWith("/chat/completions")),
 		close: () =>
 			new Promise<void>((done) => {
 				server.closeAllConnections();

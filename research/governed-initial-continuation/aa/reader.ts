@@ -17,6 +17,7 @@ import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.t
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 import { type Arm, commonTemplate, readStudyPlan } from "./study-plan.ts";
+import { admissionPath, type SyntheticAdmissionRecord, sealAdmission } from "./synthetic-admission.ts";
 
 export interface SlotStart {
 	position: number;
@@ -226,6 +227,8 @@ export async function readStudy(
 ): Promise<{
 	status: "partial" | "four-receipts";
 	serverIdentity: "unverified";
+	syntheticAdmission: "verified" | "unavailable";
+	syntheticObservationIds: string[];
 	trials: TrialMeasurement[];
 	effectiveParametersEqual: boolean;
 	comparisons: Array<{
@@ -251,6 +254,9 @@ export async function readStudy(
 	const attempts = new Set<string>(),
 		sessions = new Set<string>();
 	let missing = false;
+	let allSynthetic = true;
+	let syntheticIdentity: string | undefined;
+	const observations = new Set<string>();
 	let previousEnd = Date.parse(plan.createdAt);
 	for (let position = 1; position <= 4; position++) {
 		const startFile = slotPath(path, position, "start"),
@@ -315,6 +321,87 @@ export async function readStudy(
 		sessions.add(receipt.runtime.sessionId);
 		const cassette = loadEndoCassetteV0(receipt.runtime.store, key);
 		if (cassette.exchanges.length !== 2) throw new Error("unexpected request count");
+		const files = [admissionPath(dirname(end.receipt), 1), admissionPath(dirname(end.receipt), 2)];
+		if (
+			readdirSync(dirname(end.receipt)).some(
+				(name) =>
+					name.startsWith("synthetic-admission-") &&
+					!["synthetic-admission-1.json", "synthetic-admission-2.json"].includes(name),
+			)
+		)
+			throw new Error("unplanned admission artifact");
+		if (!files.some(existsSync)) {
+			if (plan.syntheticAdmission !== undefined) throw new Error("synthetic admission missing");
+			allSynthetic = false;
+		} else {
+			if (plan.syntheticAdmission === undefined) throw new Error("unexpected synthetic admission");
+			for (const turn of [1, 2] as const) {
+				const text = initialExecutionPrivateFileV0(files[turn - 1]!, 8192);
+				const record = JSON.parse(text) as SyntheticAdmissionRecord;
+				if (!record || text !== canonicalEndoJsonV0(record)) throw new Error("invalid admission encoding");
+				const { commitment, ...body } = record;
+				const dispatch = turn === 1 ? receipt.dispatch1 : receipt.dispatch2;
+				const response = cassette.events.find(
+					(event) =>
+						event.kind === "capture.response" && (event.payload as { exchange?: number }).exchange === turn,
+				);
+				if (
+					!same(
+						Object.keys(record).sort(),
+						[
+							"version",
+							"studyCommitment",
+							"startCommitment",
+							"position",
+							"attemptId",
+							"turn",
+							"upstream",
+							"requestDigest",
+							"dispatchCommitment",
+							"approvalCommitment",
+							"identity",
+							"observationId",
+							"result",
+							"refusalReason",
+							"preparedAt",
+							"admittedAt",
+							"commitment",
+						].sort(),
+					) ||
+					!same(commitment, sealAdmission(key, body).commitment) ||
+					record.version !== "endo.research.aa.synthetic-admission.0" ||
+					!same(record.studyCommitment, plan.commitment) ||
+					!same(record.startCommitment, start.commitment) ||
+					record.position !== position ||
+					record.attemptId !== start.plan.initial.attemptId ||
+					record.turn !== turn ||
+					record.upstream !== plan.options.upstream ||
+					!same(record.requestDigest, cassette.exchanges[turn - 1]!.requestBody.digest) ||
+					!same(record.dispatchCommitment, dispatch.commitment) ||
+					!same(record.approvalCommitment, dispatch.approvalCommitment) ||
+					typeof record.identity !== "string" ||
+					record.identity.length < 1 ||
+					record.identity.length > 256 ||
+					record.identity !== plan.syntheticAdmission.identity ||
+					record.result !== "admitted" ||
+					record.refusalReason !== null ||
+					typeof record.observationId !== "string" ||
+					!/^[a-f0-9]{32}$/.test(record.observationId) ||
+					observations.has(record.observationId) ||
+					!Number.isFinite(Date.parse(record.preparedAt)) ||
+					!Number.isFinite(Date.parse(record.admittedAt)) ||
+					Date.parse(record.preparedAt) < Date.parse(dispatch.at) ||
+					Date.parse(record.preparedAt) > Date.parse(record.admittedAt) ||
+					!response ||
+					Date.parse(record.admittedAt) > Date.parse(response.at) ||
+					Date.parse(record.admittedAt) > Date.parse(end.endedAt) ||
+					(syntheticIdentity !== undefined && syntheticIdentity !== record.identity)
+				)
+					throw new Error("synthetic admission invalid");
+				syntheticIdentity = record.identity;
+				observations.add(record.observationId);
+			}
+		}
 		const blobs = createEndoBlobStoreV0(endoCaptureRootV0(receipt.runtime.store), key, { readOnly: true });
 		const answers: string[] = [];
 		const turns = cassette.exchanges.map((exchange, index) => {
@@ -385,6 +472,8 @@ export async function readStudy(
 	return {
 		status: trials.length === 4 ? "four-receipts" : "partial",
 		serverIdentity: "unverified",
+		syntheticAdmission: trials.length > 0 && allSynthetic ? "verified" : "unavailable",
+		syntheticObservationIds: [...observations],
 		trials,
 		effectiveParametersEqual: params.length > 0 && params.every((p) => same(p, params[0])),
 		comparisons,

@@ -6,9 +6,13 @@ import { readEndoDigestKeyV0 } from "../../../storage/digest-key.ts";
 import { readStudy } from "./reader.ts";
 
 async function main() {
-	const [plan, keyFile, output] = process.argv.slice(2);
-	if (process.argv.length !== 5 || !plan || !keyFile || !output || ![plan, keyFile, output].every(isAbsolute))
-		throw new Error("usage: node read-private.ts /private/study /private/key /private/new-output");
+	const args = process.argv.slice(2);
+	const required = args[0] === "--require-synthetic-admission";
+	const [plan, keyFile, output] = args.slice(required ? 1 : 0);
+	if (args.length !== (required ? 4 : 3) || !plan || !keyFile || !output || ![plan, keyFile, output].every(isAbsolute))
+		throw new Error(
+			"usage: node read-private.ts [--require-synthetic-admission] /private/study /private/key /private/new-output",
+		);
 	const parent = lstatSync(dirname(output));
 	if (
 		!parent.isDirectory() ||
@@ -21,6 +25,7 @@ async function main() {
 		throw new Error("key unavailable");
 	});
 	const result = await readStudy(plan, key);
+	if (required && result.syntheticAdmission !== "verified") throw new Error("synthetic admission unavailable");
 	const fd = openSync(output, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
 	try {
 		writeFileSync(fd, canonicalEndoJsonV0(result));

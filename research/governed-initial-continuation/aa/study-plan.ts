@@ -25,6 +25,7 @@ export interface StudyPlan {
 	maxAttempts: 4;
 	maxDispatches: 8;
 	serverDeclaration: string;
+	syntheticAdmission?: { identity: string };
 	templates: Record<Arm, InitialContinuationPlanV0>;
 	commitment: EndoKeyedDigestV0;
 }
@@ -116,6 +117,7 @@ export async function createStudyPlan(
 	expectedAnswer: string,
 	serverDeclaration: string,
 	key: EndoDigestKeyV0,
+	syntheticIdentity?: string,
 ): Promise<StudyPlan> {
 	if (
 		!isAbsolute(path) ||
@@ -124,6 +126,8 @@ export async function createStudyPlan(
 		seed > 0xffffffff ||
 		!validInputs(options, expectedAnswer) ||
 		!serverDeclaration ||
+		(syntheticIdentity !== undefined &&
+			(typeof syntheticIdentity !== "string" || syntheticIdentity.length < 1 || syntheticIdentity.length > 256)) ||
 		Buffer.byteLength(serverDeclaration) > 16384 ||
 		options.wallTimeoutMs > 120000 ||
 		options.maxApprovalIdleMs > 60000 ||
@@ -151,6 +155,7 @@ export async function createStudyPlan(
 		maxAttempts: 4 as const,
 		maxDispatches: 8 as const,
 		serverDeclaration,
+		...(syntheticIdentity ? { syntheticAdmission: { identity: syntheticIdentity } } : {}),
 		templates,
 	};
 	const plan = { ...body, commitment: commitment(key, body) };
@@ -195,6 +200,7 @@ export async function readStudyPlan(path: string, key: EndoDigestKeyV0): Promise
 				"serverDeclaration",
 				"templates",
 				"commitment",
+				...(plan.syntheticAdmission !== undefined ? ["syntheticAdmission"] : []),
 			].sort(),
 		) ||
 		!same(saved, commitment(key, body)) ||
@@ -212,6 +218,12 @@ export async function readStudyPlan(path: string, key: EndoDigestKeyV0): Promise
 		!same(plan.order, orderForSeed(plan.seed)) ||
 		!validInputs(plan.options, plan.expectedAnswer) ||
 		typeof plan.serverDeclaration !== "string" ||
+		(plan.syntheticAdmission !== undefined &&
+			(!plan.syntheticAdmission ||
+				!same(Object.keys(plan.syntheticAdmission), ["identity"]) ||
+				typeof plan.syntheticAdmission.identity !== "string" ||
+				plan.syntheticAdmission.identity.length < 1 ||
+				plan.syntheticAdmission.identity.length > 256)) ||
 		!plan.serverDeclaration ||
 		Buffer.byteLength(plan.serverDeclaration) > 16384
 	)

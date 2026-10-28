@@ -600,6 +600,24 @@ export type InitialContinuationResultV0 =
 	| { status: InitialContinuationReceiptV0["status"]; area: string; reason: string | null }
 	| { status: "refused"; reason: string };
 
+/** Optional research policy. Preparation cannot grant a request; admit runs synchronously at the proxy boundary. */
+export interface ContinuationAdmissionHookV0 {
+	readonly binding: { studyCommitment: EndoKeyedDigestV0; slotCommitment: EndoKeyedDigestV0; position: number };
+	prepare: (
+		context: { turn: 1 | 2; marker: InitialContinuationDispatchV0; area: string },
+		signal: AbortSignal,
+	) => Promise<unknown>;
+	admit: (context: {
+		turn: 1 | 2;
+		marker: InitialContinuationDispatchV0;
+		area: string;
+		upstream: string;
+		requestDigest: EndoKeyedDigestV0;
+		prepared: unknown;
+		signal: AbortSignal;
+	}) => { accepted: boolean; reason: string | null };
+}
+
 /**
  * One owned session, with a separate local approval callback after a provisional first-turn boundary.
  * The callback receives no session handle. Its wait is bounded by both the idle limit and the overall deadline.
@@ -612,6 +630,7 @@ export async function executeInitialContinuationV0(
 	key: EndoDigestKeyV0,
 	requestContinuationApproval: (boundary: InitialContinuationBoundaryV0) => Promise<ContinuationTurnApprovalV0 | null>,
 	signal?: AbortSignal,
+	admissionHook?: ContinuationAdmissionHookV0,
 ): Promise<InitialContinuationResultV0> {
 	let plan: InitialContinuationPlanV0;
 	let approval: InitialContinuationApprovalV0;
@@ -669,6 +688,8 @@ export async function executeInitialContinuationV0(
 	});
 	let grant: 1 | 2 | null = null;
 	let grantDeadline = monotonicDeadline;
+	let preparedAdmission: unknown;
+	let admissionRefusal: string | null = null;
 	let firstConversation: { messages: Record<string, unknown>[]; response: CapturedResponse } | undefined;
 	let firstSettled = false;
 	let secondSettled = false;
@@ -688,8 +709,30 @@ export async function executeInitialContinuationV0(
 			const messages = requestMessages(request.body, plan.initial.model);
 			if (turn === 2 && firstConversation === undefined) return false;
 			checkRequest(messages, plan, key, turn === 1 ? undefined : firstConversation);
+			const dispatch = turn === 1 ? receipt.dispatch1 : receipt.dispatch2;
+			if (admissionHook) {
+				if (!dispatch) {
+					admissionRefusal = "admission dispatch missing";
+					return false;
+				}
+				const decision = admissionHook.admit({
+					turn,
+					marker: dispatch,
+					area,
+					upstream: plan.initial.upstream,
+					requestDigest: key.digestBytes(request.body),
+					prepared: preparedAdmission,
+					signal: operationSignal,
+				});
+				if (decision.accepted !== true) {
+					admissionRefusal = "admission identity or binding refused";
+					return false;
+				}
+			}
+			preparedAdmission = undefined;
 			return !operationSignal.aborted && performance.now() < grantDeadline;
 		} catch {
+			if (admissionHook) admissionRefusal = "admission policy or publication failed";
 			return false;
 		}
 	};
@@ -737,6 +780,14 @@ export async function executeInitialContinuationV0(
 		publish();
 		if (operationSignal.aborted || performance.now() >= monotonicDeadline)
 			throw new Error(signal?.aborted ? "cancelled" : "timeout");
+		if (admissionHook)
+			preparedAdmission = await withinDeadline(
+				admissionHook.prepare({ turn: 1, marker, area }, operationSignal),
+				deadline,
+				operationSignal,
+			);
+		if (operationSignal.aborted || performance.now() >= monotonicDeadline)
+			throw new Error("admission preparation cancelled");
 		grant = 1;
 		const initialAbort = new AbortController();
 		const initialSettled = session.waitForSettled(Math.max(1, deadline - Date.now()), initialAbort.signal);
@@ -937,6 +988,14 @@ export async function executeInitialContinuationV0(
 		publish();
 		if (operationSignal.aborted || performance.now() >= monotonicDeadline || performance.now() >= idleDeadline)
 			throw new Error(signal?.aborted ? "cancelled" : "continuation approval expired before dispatch");
+		if (admissionHook)
+			preparedAdmission = await withinDeadline(
+				admissionHook.prepare({ turn: 2, marker, area }, operationSignal),
+				Math.min(deadline, Date.parse(boundary.approvalDeadlineAt)),
+				operationSignal,
+			);
+		if (operationSignal.aborted || performance.now() >= monotonicDeadline || performance.now() >= idleDeadline)
+			throw new Error("admission preparation cancelled");
 		grantDeadline = idleDeadline;
 		grant = 2;
 		const secondAbort = new AbortController();
@@ -1000,7 +1059,11 @@ export async function executeInitialContinuationV0(
 		return { status: "completed", area, reason: null };
 	} catch (error) {
 		const reason =
-			!signal?.aborted && timeoutAbort.signal.aborted ? "timeout" : (error as Error).message.slice(0, 128);
+			!signal?.aborted && timeoutAbort.signal.aborted
+				? "timeout"
+				: signal?.aborted
+					? "cancelled"
+					: (admissionRefusal ?? (error instanceof Error ? error.message.slice(0, 128) : "execution failed"));
 		grant = null;
 		let stopped = true;
 		try {

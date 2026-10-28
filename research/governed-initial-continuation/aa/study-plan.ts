@@ -1,5 +1,5 @@
 // Research-only private plan. Publication grants no inference authority.
-import { closeSync, constants, fsyncSync, lstatSync, openSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fsyncSync, lstatSync, openSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 import { readVerifiedInitialBranchSetV0 } from "../../../cli/initial-branch-set.ts";
 import { initialExecutionManifestV0, initialExecutionPrivateFileV0 } from "../../../cli/initial-child-execution.ts";
@@ -9,7 +9,17 @@ import {
 } from "../../../cli/initial-continuation.ts";
 import type { InitialContinuationPlanV0 } from "../../../protocol/initial-continuation.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
-import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../../runtime/contracts/keyed-digest.ts";
+import {
+	type EndoDigestKeyV0,
+	type EndoKeyedDigestV0,
+	isEndoKeyedDigestV0,
+} from "../../../runtime/contracts/keyed-digest.ts";
+import {
+	provenanceEndPathV0,
+	provenancePathV0,
+	readTaskOwnedProvenanceV0,
+	type TaskOwnedProvenanceV0,
+} from "./task-owned-provenance.ts";
 
 type Options = Omit<InitialContinuationOptionsV0, "childRole">;
 export type Arm = "baseline" | "alternative";
@@ -26,6 +36,8 @@ export interface StudyPlan {
 	maxDispatches: 8;
 	serverDeclaration: string;
 	syntheticAdmission?: { identity: string };
+	/** Commits the plan to one task-owned server provenance record published beside it. Exclusive with syntheticAdmission. */
+	taskOwnedProvenance?: { commitment: EndoKeyedDigestV0 };
 	templates: Record<Arm, InitialContinuationPlanV0>;
 	commitment: EndoKeyedDigestV0;
 }
@@ -118,6 +130,7 @@ export async function createStudyPlan(
 	serverDeclaration: string,
 	key: EndoDigestKeyV0,
 	syntheticIdentity?: string,
+	taskOwnedProvenance?: TaskOwnedProvenanceV0,
 ): Promise<StudyPlan> {
 	if (
 		!isAbsolute(path) ||
@@ -126,6 +139,7 @@ export async function createStudyPlan(
 		seed > 0xffffffff ||
 		!validInputs(options, expectedAnswer) ||
 		!serverDeclaration ||
+		(syntheticIdentity !== undefined && taskOwnedProvenance !== undefined) ||
 		(syntheticIdentity !== undefined &&
 			(typeof syntheticIdentity !== "string" || syntheticIdentity.length < 1 || syntheticIdentity.length > 256)) ||
 		Buffer.byteLength(serverDeclaration) > 16384 ||
@@ -142,6 +156,17 @@ export async function createStudyPlan(
 		(parent.mode & 0o077) !== 0
 	)
 		throw new Error("study parent must be an owner-only directory");
+	if (taskOwnedProvenance) {
+		// The published record, not a caller's copy, is what the plan commits to; the study must target its listener.
+		const published = readTaskOwnedProvenanceV0(provenancePathV0(path), key);
+		if (
+			canonicalEndoJsonV0(published) !== canonicalEndoJsonV0(taskOwnedProvenance) ||
+			options.upstream !== published.listener.endpoint ||
+			existsSync(provenanceEndPathV0(path)) ||
+			Date.parse(published.observedAt) > Date.now()
+		)
+			throw new Error("task-owned provenance does not match the study");
+	}
 	const templates = await templatesFor(options, key);
 	const body = {
 		version: "endo.research.two-turn-aa.plan.0" as const,
@@ -156,6 +181,7 @@ export async function createStudyPlan(
 		maxDispatches: 8 as const,
 		serverDeclaration,
 		...(syntheticIdentity ? { syntheticAdmission: { identity: syntheticIdentity } } : {}),
+		...(taskOwnedProvenance ? { taskOwnedProvenance: { commitment: taskOwnedProvenance.commitment } } : {}),
 		templates,
 	};
 	const plan = { ...body, commitment: commitment(key, body) };
@@ -201,6 +227,7 @@ export async function readStudyPlan(path: string, key: EndoDigestKeyV0): Promise
 				"templates",
 				"commitment",
 				...(plan.syntheticAdmission !== undefined ? ["syntheticAdmission"] : []),
+				...(plan.taskOwnedProvenance !== undefined ? ["taskOwnedProvenance"] : []),
 			].sort(),
 		) ||
 		!same(saved, commitment(key, body)) ||
@@ -224,6 +251,11 @@ export async function readStudyPlan(path: string, key: EndoDigestKeyV0): Promise
 				typeof plan.syntheticAdmission.identity !== "string" ||
 				plan.syntheticAdmission.identity.length < 1 ||
 				plan.syntheticAdmission.identity.length > 256)) ||
+		(plan.taskOwnedProvenance !== undefined &&
+			(plan.syntheticAdmission !== undefined ||
+				!plan.taskOwnedProvenance ||
+				!same(Object.keys(plan.taskOwnedProvenance), ["commitment"]) ||
+				!isEndoKeyedDigestV0(plan.taskOwnedProvenance.commitment))) ||
 		!plan.serverDeclaration ||
 		Buffer.byteLength(plan.serverDeclaration) > 16384
 	)

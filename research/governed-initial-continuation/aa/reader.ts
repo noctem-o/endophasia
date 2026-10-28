@@ -74,7 +74,7 @@ export function cwdAdjustedContext(messages: unknown[], cwd: string): { context:
 	matches[0]!.content = matches[0]!.content.replace(needle, marker);
 	return { context: copy, adjusted: true };
 }
-function readSlot<T extends { commitment: EndoKeyedDigestV0 }>(
+export function readSlot<T extends { commitment: EndoKeyedDigestV0 }>(
 	path: string,
 	key: EndoDigestKeyV0,
 	kind: "start" | "end",
@@ -330,6 +330,15 @@ export async function readStudy(
 			)
 		)
 			throw new Error("unplanned admission artifact");
+		if (
+			readdirSync(dirname(end.receipt)).some(
+				(name) =>
+					name.startsWith("task-owned-admission-") &&
+					(plan.taskOwnedProvenance === undefined ||
+						!["task-owned-admission-1.json", "task-owned-admission-2.json"].includes(name)),
+			)
+		)
+			throw new Error("unplanned task-owned admission artifact");
 		if (!files.some(existsSync)) {
 			if (plan.syntheticAdmission !== undefined) throw new Error("synthetic admission missing");
 			allSynthetic = false;

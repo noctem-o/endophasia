@@ -4,6 +4,10 @@ Status: **ENGINEERING INCOMPLETE / LIVE GATED**. This is not a live A/A result o
 
 A [Linux host profile probe](LINUX-INSPECTION.md) checks sampled process, launch arguments, environment names, listener tables and mapped-file facts, but cannot verify exclusive socket ownership or all effective runtime configuration. It does not produce real admission evidence and cannot establish server parity.
 
+## Task-owned provenance plumbing
+
+Status: **TASK-OWNED PROVENANCE PLUMBING COMPLETE / INTERACTIVE LIVE EXECUTION GATED**. A versioned, keyed provenance record for a server this process family launches itself, an approval-gated launch/stop lifecycle function, a real-observation admission hook that binds each turn's sidecar to the actual request-body digest, dispatch marker, study, slot and attempt, and an offline fresh-process reader now exist. They are tested only with task-owned fake executables, a fake Pi and a fake endpoint; no real server or model was started. Lifecycle ownership is a declared assumption: `OWNERSHIP_UNVERIFIED` is never converted into `MATCH`, and the reader reports record validity, observed-identity consistency, declared trust assumptions, unavailable host facts and study admission separately. See [TASK-OWNED-PROVENANCE.md](TASK-OWNED-PROVENANCE.md). No operator-facing command exists and live execution remains gated.
+
 ## Synthetic dispatch-admission plumbing
 
 Status: **DISPATCH-BOUND EVIDENCE PLUMBING COMPLETE / REAL SERVER PARITY STILL GATED**.

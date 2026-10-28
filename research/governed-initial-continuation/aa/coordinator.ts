@@ -1,6 +1,6 @@
 // Research building block. Not an operator-facing command: a real server observer is not yet supplied.
-import { closeSync, constants, existsSync, fsyncSync, openSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
 	approveContinuationTurnV0,
 	approveInitialContinuationV0,
@@ -14,30 +14,19 @@ import type {
 } from "../../../protocol/initial-continuation.ts";
 import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
+import { publishExclusiveV0 } from "./exclusive-publish.ts";
 import { readStudy, sealSlot, slotPath } from "./reader.ts";
 import { commonTemplate, readStudyPlan } from "./study-plan.ts";
 import { type SyntheticIdentityProvider, syntheticAdmissionHook } from "./synthetic-admission.ts";
+import { type TaskOwnedObserverV0, taskOwnedAdmissionHook } from "./task-owned-admission.ts";
+import { provenanceEndPathV0, provenancePathV0, readTaskOwnedProvenanceV0 } from "./task-owned-provenance.ts";
+import { readTaskOwnedStudyV0 } from "./task-owned-reader.ts";
 
 /** Caller callbacks are trusted test/operator inputs, not evidence of a human or of server identity. */
 export interface CoordinatorHooks {
 	checkEnvironment: () => Promise<boolean>;
 	first: (plan: InitialContinuationPlanV0, phrase: string) => Promise<string | null>;
 	second: (boundary: InitialContinuationBoundaryV0, phrase: string) => Promise<string | null>;
-}
-function publishExclusive(file: string, value: unknown): void {
-	const fd = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-	try {
-		writeFileSync(fd, canonicalEndoJsonV0(value));
-		fsyncSync(fd);
-	} finally {
-		closeSync(fd);
-	}
-	const parent = openSync(dirname(file), constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-	try {
-		fsyncSync(parent);
-	} finally {
-		closeSync(parent);
-	}
 }
 const same = (a: unknown, b: unknown) => canonicalEndoJsonV0(a) === canonicalEndoJsonV0(b);
 async function checkUntilAbort(check: () => Promise<boolean>, signal?: AbortSignal): Promise<boolean> {
@@ -65,11 +54,24 @@ export async function runNextSlot(
 	hooks: CoordinatorHooks,
 	signal?: AbortSignal,
 	syntheticProvider?: SyntheticIdentityProvider,
+	taskOwned?: { observer: TaskOwnedObserverV0; maxObservationAgeMs?: number },
 ): Promise<string> {
 	if (signal?.aborted) throw new Error("cancelled");
 	const study = await readStudyPlan(studyFile, key);
 	if ((study.syntheticAdmission !== undefined) !== (syntheticProvider !== undefined))
 		throw new Error("synthetic admission mode mismatch");
+	if ((study.taskOwnedProvenance !== undefined) !== (taskOwned !== undefined))
+		throw new Error("task-owned admission mode mismatch");
+	let provenance: ReturnType<typeof readTaskOwnedProvenanceV0> | undefined;
+	let priorTaskOwnedIds: readonly string[] = [];
+	if (study.taskOwnedProvenance) {
+		provenance = readTaskOwnedProvenanceV0(provenancePathV0(studyFile), key);
+		// A stopped server cannot be admitted again, and earlier slots must still agree with the committed process.
+		if (existsSync(provenanceEndPathV0(studyFile))) throw new Error("task-owned server already stopped");
+		const report = await readTaskOwnedStudyV0(studyFile, key);
+		if (report.observedProcessIdentity === "inconsistent") throw new Error("prior task-owned identity inconsistent");
+		priorTaskOwnedIds = report.observationIds;
+	}
 	const previous = await readStudy(studyFile, key);
 	if (previous.status === "four-receipts") throw new Error("study already has four slots");
 	if (previous.trials.length > 0 && !previous.effectiveParametersEqual) throw new Error("prior parity unavailable");
@@ -92,7 +94,7 @@ export async function runNextSlot(
 		plan: preflight.plan,
 		startedAt: new Date().toISOString(),
 	});
-	publishExclusive(slotPath(studyFile, position, "start"), start);
+	publishExclusiveV0(slotPath(studyFile, position, "start"), start);
 	let status = "no-request-cancelled",
 		receipt: string | null = null;
 	try {
@@ -139,7 +141,16 @@ export async function runNextSlot(
 						syntheticProvider,
 						previous.syntheticObservationIds,
 					)
-				: undefined,
+				: taskOwned && provenance
+					? taskOwnedAdmissionHook(
+							key,
+							start,
+							provenance,
+							taskOwned.observer,
+							priorTaskOwnedIds,
+							taskOwned.maxObservationAgeMs,
+						)
+					: undefined,
 		);
 		if ("area" in result) {
 			receipt = join(result.area, "receipt.json");
@@ -162,7 +173,7 @@ export async function runNextSlot(
 		} else status = "no-request-refused";
 		return status;
 	} finally {
-		publishExclusive(
+		publishExclusiveV0(
 			slotPath(studyFile, position, "end"),
 			sealSlot(key, "end", {
 				position,

@@ -8,7 +8,7 @@ Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96)
 
 ## 1. Pre-registered design
 
-**Binding rule.** The executable decision is recorded in §5, so this document is binding from the commit that adds this amendment (named in the PR description and required to precede the run). Every field below is fixed and may not change after any real execution; any later change needs a new dated amendment, committed before the run. The git history is the tamper-evident record.
+**Binding rule.** The executable decision is recorded in §5, so this document is binding once it is merged to `main`. Because a commit hash does not survive a squash merge, the binding identity is the document's own content: the live run record must state the output of `git hash-object` for this file and the `main` commit it ran from, and that blob must already exist on `main` before the run. Every field below is fixed once any real execution has happened; before that, a change (for example to `--n-gpu-layers` after a loading check) is allowed only as a new dated amendment merged first, and is never made automatically.
 
 Purpose: harness validation. It establishes operational repeatability and capture integrity of the governed matched A/A protocol. It is not a statistical study and says nothing about general capability.
 
@@ -41,16 +41,16 @@ Applied mechanically to the printed outcome, in this precedence (first match win
 
 PASS is qualified by two printed facts. If the server binary is not the pinned digest, the result is reported as **PASS (UNSUPPORTED BINARY)** and is never described as a pinned-build result. PASS also does not include a verified readiness record: readiness is an operator-side note of a server-reported observation (see §4).
 
-A correct answer is a separate dimension from admission: a PASS may have wrong answers, and correct answers do not make a study PASS. The printed headline and a detail line state the server-binary status. Receipts never establish sole socket ownership, full runtime parity, GPU-resident weights or deterministic reasoning. Analysis is descriptive: per-trial exact-answer scores, request-body digest equality and response agreement as the readers report them; no significance tests, and no stopping or seed change after seeing results.
+A correct answer is a separate dimension from admission: a PASS may have wrong answers, and correct answers do not make a study PASS. The printed headline and a detail line state the server-binary status, and the outcome carries it as a machine-readable `serverBinary` field (`MATCH`, `UNSUPPORTED`, another reader state such as `UNAVAILABLE` meaning "not established", or `not-read`); the verdict itself does not encode it, so any consumer must read that field too. Receipts never establish sole socket ownership, full runtime parity, GPU-resident weights or deterministic reasoning. Analysis is descriptive: per-trial exact-answer scores, request-body digest equality and response agreement as the readers report them; no significance tests, and no stopping or seed change after seeing results.
 
 ## 2. Qualification results
 
 | # | Prerequisite | Result | Evidence |
 | --- | --- | --- | --- |
 | 1 | Repository and CI | **VERIFIED** | `main` = PR #96 merge `bc7de095b`; PR checks and the post-merge `main` run all succeeded; no open PRs |
-| 2 | Pinned llama.cpp build 11518 | **VERIFIED** (recovered) | Executable at the path above: ELF build ID `ae939bd24b8f80fa08145c0768c04bb335051097`, 15,976 bytes, SHA-256 equal to the pinned digest; `--version` reports `0.6.0-dev (build 11518, commit 1f8fa5231)`, GCC 16.2.1; source checkout clean at the exact commit. It is the same file the Oct 27 runtime record (E4e-R) identified. That the Oct 28 acceptance launched this file is inferred from its documented digest, which only this file carries |
-| 3 | Recovered build: enforced flags | **VERIFIED** | `--help` of the recovered binary advertises all 19 enforced flags |
-| 4 | Recovered build: dependencies | **VERIFIED, file identity only** | Under the launcher's `PATH=/usr/bin:/bin` all 29 libraries resolve, 0 missing; the build's own libraries resolve through its RUNPATH; CUDA 13.4.92 / cuBLAS 13.8.0.4 come from pacman's `/opt/cuda`, the driver from `nvidia-utils` 615.78.08. All 35 regular mapped files recorded on Oct 27 still hash identically. Full table in §5 |
+| 2 | Pinned llama.cpp build 11518 | **VERIFIED (file identity)** | Executable at the path above: ELF build ID `ae939bd24b8f80fa08145c0768c04bb335051097`, 15,976 bytes, SHA-256 equal to the pinned digest; `--version` reports `0.6.0-dev (build 11518, commit 1f8fa5231)`, GCC 16.2.1; source checkout clean at the exact commit. It is the same file the Oct 27 runtime record (E4e-R) identified. The rows describe the files on disk now. They do not show build provenance, do not show what ran on Oct 28 (inferred only from the documented digest, which only this file carries), and do not establish parity with that run |
+| 3 | Recovered build: enforced flags | **VERIFIED (help text)** | `--help` of the recovered binary advertises all 19 enforced flags |
+| 4 | Recovered build: dependencies | **VERIFIED (file identity, as of now)** | Under the launcher's `PATH=/usr/bin:/bin` all 29 libraries resolve, 0 missing; the build's own libraries resolve through its RUNPATH; CUDA 13.4.92 / cuBLAS 13.8.0.4 come from pacman's `/opt/cuda`, the driver from `nvidia-utils` 615.78.08. All 35 regular mapped files recorded on Oct 27 still hash identically. Full table in §5 |
 | 5 | Model file | **VERIFIED** | exact size and SHA-256 equal the historical reference; readable, owner-only parent |
 | 6 | Pi | **VERIFIED** | `/usr/bin/pi` is 1.0.1 and is **not** used. `~/pi-acceptance-*/node_modules/.bin/pi` reports 1.0.4 and its Endophasia identity digest equals the historical `09fc0452…` |
 | 7 | Checkpoint and siblings | **VERIFIED** | checkpoint `qualified`; sibling pair `verified-pristine`; manifest `declared-noop`, conditions otherwise equal (checked with the repo's own readers) |
@@ -120,7 +120,7 @@ Toolchain recorded in the build cache: CMake 4.4.4, GCC 16.2.1, nvcc 13.4.92, `C
 
 The operator and readers report the selected executable by what it is: `supportedBinary` is derived from the digest, so it reads `MATCH` here and would read `UNSUPPORTED` for any other build; a `MATCH` states file identity only.
 
-**Go / no-go: NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI, and (b) a server-only loading check (§3, LIVE-UNVERIFIED) is separately authorised and shows the profile loads, or the operator knowingly accepts that risk. Then a new explicit instruction starts the live run.
+**Go / no-go: NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI and merged, and (b) a server-only loading check (§3) has shown that the profile loads. The loading check is required, not optional, because `--n-gpu-layers 46` is an estimate and a failed first load would otherwise force a change to the profile after the pre-registration. If the check fails, nothing is lowered automatically: the operator decides whether to amend `--n-gpu-layers` (a new dated amendment, merged first) or stop. Only then does a new explicit instruction start the live run.
 
 ## 6. Phase B procedure (only after a new explicit instruction from the operator)
 

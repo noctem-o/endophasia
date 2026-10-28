@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { prepareVerifiedInitialBranchPairV0 } from "../../cli/initial-branch-set.ts";
+import type { EndoExperimentConditionV0 } from "../../protocol/experiment-spec.ts";
 import type { AaOperatorConfigV0, AaTerminalV0 } from "../../research/governed-initial-continuation/aa/operator.ts";
 import { portIsFree } from "../../research/governed-initial-continuation/aa/task-owned-server.ts";
 import { type FakeOpenAiOptions, type FakeOpenAiServer, startFakeOpenAiServer } from "./fake-openai-server.ts";
@@ -52,7 +53,7 @@ export interface AaRig {
 	newConfig(
 		overrides?: Partial<AaOperatorConfigV0>,
 		server?: Partial<AaOperatorConfigV0["server"]>,
-		alternative?: { id: string; description: string; settings?: { thinkingLevel: "off" } },
+		alternative?: EndoExperimentConditionV0,
 	): Promise<AaOperatorConfigV0>;
 	/** Writes `config` as the private owner-only file the command reads. */
 	writeConfig(config: unknown, mode?: number): string;
@@ -87,7 +88,11 @@ export async function createAaRig(backendOptions: FakeOpenAiOptions = { chunkMs:
 		async newConfig(
 			overrides = {},
 			server = {},
-			alternative = { id: "arm-b", description: "matched", settings: { thinkingLevel: "off" as const } },
+			alternative: EndoExperimentConditionV0 = {
+				id: "arm-b",
+				description: "matched",
+				settings: { thinkingLevel: "off" },
+			},
 		) {
 			const id = ++counter;
 			const outputParent = mkdtempSync(join(fixture.base, `aa-study-${id}-`));

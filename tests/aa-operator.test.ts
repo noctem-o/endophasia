@@ -126,10 +126,10 @@ describe.runIf(process.platform === "linux")("terminal-governed A/A operator, fa
 			// in the headline as well as in the detail line.
 			expect(text).toMatch(/outcome: COMPLETE-UNDER-DECLARED-ASSUMPTIONS \(server binary UNSUPPORTED/);
 			expect(text).toMatch(
-				/server binary\s+UNSUPPORTED \(NOT the historically accepted build; reasons: UNSUPPORTED_BINARY\)/,
+				/server binary\s+UNSUPPORTED \(NOT the historically accepted build; reason: UNSUPPORTED_BINARY\)/,
 			);
 			// Only binary reasons are attributed to the binary.
-			expect(text).not.toMatch(/reasons:[^)]*OWNERSHIP_UNVERIFIED/);
+			expect(text).not.toMatch(/reason:[^)]*OWNERSHIP_UNVERIFIED/);
 		},
 		300000,
 	);
@@ -574,7 +574,7 @@ describe.runIf(process.platform === "linux")("operator pre-launch pair check and
 		const config = await rig.newConfig(
 			{},
 			{},
-			{ id: "arm-b", description: "differs", settings: { thinkingLevel: "high" } as never },
+			{ id: "arm-b", description: "differs", settings: { thinkingLevel: "high" } },
 		);
 		const terminal = new ScriptedTerminal();
 		const outcome = await run(config, terminal);
@@ -583,48 +583,38 @@ describe.runIf(process.platform === "linux")("operator pre-launch pair check and
 		expect(terminal.asked).toEqual([]);
 		await nothingStarted(config);
 	}, 60000);
-	const base = (report: AaOperatorOutcomeV0["independentRead"]["report"]): AaOperatorOutcomeV0 => ({
-		verdict: "partial",
-		stage: "done",
-		interrupted: false,
-		reasons: [],
-		server: { launched: true, cleanup: "confirmed", stop: null },
-		readiness: { status: "not-attempted" },
-		slots: [],
-		independentRead: { performed: true, status: report ? "valid" : "reader-refused", report, answers: null },
-	});
-	const report = (supportedBinary: string, blockingReasons: string[]) =>
-		({
-			studyStatus: "four-receipts",
-			records: "valid",
-			admissionSidecars: 8,
-			observedProcessIdentity: "consistent",
-			identityDifferences: [],
-			declaredTrustAssumptions: ["a"],
-			hostFacts: {
-				ownership: "OWNERSHIP_UNVERIFIED",
-				checks: {},
-				supportedBinary,
-				unavailable: [],
-				blockingReasons,
-			},
-			lifecycle: "cleaned",
-			studyAdmission: "complete",
-			observationIds: [],
-		}) as unknown as NonNullable<AaOperatorOutcomeV0["independentRead"]["report"]>;
-	it("states the binary as matching, unsupported, or unavailable, and never blames unrelated reasons", () => {
-		const matched = renderAaOutcomeV0(base(report("MATCH", ["OWNERSHIP_UNVERIFIED"])));
+	it("states the binary as matching, unsupported, or not established, and exposes it as a field", async () => {
+		// Use the real report shape of a completed fake study, then vary only the binary state.
+		const config = await rig.newConfig();
+		rig.backend.setHealth(ready);
+		const real = await run(config, new ScriptedTerminal());
+		expect(real.verdict).toBe("complete-under-declared-assumptions");
+		expect(real.serverBinary).toBe("UNSUPPORTED"); // The relay is not the accepted digest.
+		const withBinary = (state: string, reasons: string[]): AaOperatorOutcomeV0 => {
+			const copy = structuredClone(real);
+			copy.independentRead.report!.hostFacts.supportedBinary = state as never;
+			copy.independentRead.report!.hostFacts.blockingReasons = reasons;
+			copy.serverBinary = state;
+			return copy;
+		};
+		const matched = renderAaOutcomeV0(withBinary("MATCH", ["OWNERSHIP_UNVERIFIED"]));
 		expect(matched).toMatch(/server binary\s+MATCH \(digest equals the historically accepted build/);
-		expect(matched).not.toContain("server binary UNSUPPORTED");
+		expect(matched).toMatch(/outcome: COMPLETE-UNDER-DECLARED-ASSUMPTIONS\n/);
 		expect(matched).not.toContain("not the accepted build");
 		const unsupported = renderAaOutcomeV0(
-			base(report("UNSUPPORTED", ["OWNERSHIP_UNVERIFIED", "REUSEPORT_UNVERIFIED", "UNSUPPORTED_BINARY"])),
+			withBinary("UNSUPPORTED", ["OWNERSHIP_UNVERIFIED", "REUSEPORT_UNVERIFIED", "UNSUPPORTED_BINARY"]),
 		);
 		expect(unsupported).toContain("(server binary UNSUPPORTED, not the accepted build)");
-		expect(unsupported).toContain("reasons: UNSUPPORTED_BINARY)");
-		expect(unsupported).not.toMatch(/reasons:[^)]*(OWNERSHIP|REUSEPORT)/);
-		const odd = renderAaOutcomeV0(base(report("UNAVAILABLE", [])));
-		expect(odd).toMatch(/server binary\s+UNAVAILABLE \(NOT the historically accepted build\)/);
-		expect(renderAaOutcomeV0(base(null))).toMatch(/server binary\s+unavailable/);
-	});
+		expect(unsupported).toContain("reason: UNSUPPORTED_BINARY)");
+		expect(unsupported).not.toMatch(/reason:[^)]*(OWNERSHIP|REUSEPORT)/);
+		// An inconclusive inspection is not a negative finding about the build.
+		const unavailable = renderAaOutcomeV0(withBinary("UNAVAILABLE", []));
+		expect(unavailable).toContain("(server binary UNAVAILABLE: identity not established)");
+		expect(unavailable).toMatch(/server binary\s+UNAVAILABLE \(the reader did not establish which build ran\)/);
+		expect(unavailable).not.toContain("NOT the historically accepted build");
+		const unread = structuredClone(real);
+		unread.independentRead.report = null;
+		unread.serverBinary = "not-read";
+		expect(renderAaOutcomeV0(unread)).toMatch(/server binary\s+unavailable/);
+	}, 120000);
 });

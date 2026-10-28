@@ -313,8 +313,10 @@ export function validateTaskOwnedProvenanceV0(
 	// Ownership can be declared by lifecycle, never observed from procfs. A record claiming otherwise is refused.
 	if (checks.ownership !== "UNAVAILABLE" || checks.effectiveRuntimeConfiguration !== "UNAVAILABLE")
 		throw new Error("provenance overstates unverifiable host facts");
-	if (checks.reusePort !== "MATCH" && checks.reusePort !== "UNAVAILABLE")
-		throw new Error("provenance reuse-port refused");
+	// Both scans are best effort on a shared host: unreadable processes make them UNAVAILABLE, which is recorded and
+	// reported. Only an observed second owner or an enabled reuse-port option is refused.
+	for (const field of ["visibleOwners", "reusePort"] as const)
+		if (checks[field] !== "MATCH" && checks[field] !== "UNAVAILABLE") throw new Error(`provenance ${field} refused`);
 	const expectedSupported: CheckStateV0 = ex.sha256 === ACCEPTED_SERVER_SHA256_V0 ? "MATCH" : "UNSUPPORTED";
 	if (record.supportedBinary !== expectedSupported || checks.supportedBinary !== expectedSupported)
 		throw new Error("provenance supported-binary state invalid");

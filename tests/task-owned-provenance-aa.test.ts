@@ -368,6 +368,12 @@ describe.runIf(process.platform === "linux")("provenance record validation", () 
 			},
 		],
 		[
+			"a second visible socket owner",
+			(b: Omit<TaskOwnedProvenanceV0, "commitment">) => {
+				b.checks.visibleOwners = "MISMATCH";
+			},
+		],
+		[
 			"reuse-port enabled",
 			(b: Omit<TaskOwnedProvenanceV0, "commitment">) => {
 				b.checks.reusePort = "MISMATCH";

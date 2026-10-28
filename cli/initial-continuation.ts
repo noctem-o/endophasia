@@ -238,6 +238,9 @@ function responseText(bytes: Uint8Array, model: string): CapturedResponse {
 	return { text: answer, reasoningContent: reasoningContent.trim().length === 0 ? undefined : reasoningContent };
 }
 
+// Research readers may reuse the identical bounded decoder after verifying a receipt.
+export { responseText as decodeInitialContinuationResponseV0 };
+
 function requestMessages(bytes: Uint8Array, model: string): Record<string, unknown>[] {
 	let body: Record<string, unknown>;
 	try {

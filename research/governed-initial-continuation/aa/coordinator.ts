@@ -39,6 +39,23 @@ function publishExclusive(file: string, value: unknown): void {
 	}
 }
 const same = (a: unknown, b: unknown) => canonicalEndoJsonV0(a) === canonicalEndoJsonV0(b);
+async function checkUntilAbort(check: () => Promise<boolean>, signal?: AbortSignal): Promise<boolean> {
+	if (!signal) return check();
+	if (signal.aborted) return false;
+	let onAbort: () => void = () => {};
+	try {
+		return await Promise.race([
+			check(),
+			new Promise<false>((resolve) => {
+				onAbort = () => resolve(false);
+				signal.addEventListener("abort", onAbort, { once: true });
+				if (signal.aborted) onAbort();
+			}),
+		]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
+}
 
 /** A slot is spent even if declined or interrupted. The caller must never reuse it. */
 export async function runNextSlot(
@@ -52,7 +69,7 @@ export async function runNextSlot(
 	const previous = await readStudy(studyFile, key);
 	if (previous.status === "four-receipts") throw new Error("study already has four slots");
 	if (previous.trials.length > 0 && !previous.effectiveParametersEqual) throw new Error("prior parity unavailable");
-	if (!(await hooks.checkEnvironment())) throw new Error("environment gate refused");
+	if (!(await checkUntilAbort(hooks.checkEnvironment, signal))) throw new Error("environment gate refused");
 	const position = previous.trials.length + 1;
 	const arm = study.order[position - 1]!;
 	const preflight = await preflightInitialContinuationV0({ ...study.options, childRole: arm }, key);
@@ -76,6 +93,7 @@ export async function runNextSlot(
 		receipt: string | null = null;
 	try {
 		const firstPhrase = `APPROVE FIRST ${preflight.plan.initial.attemptId}`;
+		const approvalDeadline = performance.now() + 300000;
 		const approvalSignal = AbortSignal.any([AbortSignal.timeout(300000), ...(signal ? [signal] : [])]);
 		const firstAnswer = await Promise.race([
 			hooks.first(preflight.plan, firstPhrase),
@@ -84,8 +102,11 @@ export async function runNextSlot(
 				else approvalSignal.addEventListener("abort", () => resolve(null), { once: true });
 			}),
 		]);
-		if (firstAnswer !== firstPhrase || signal?.aborted) return status;
-		if (!(await hooks.checkEnvironment())) return status;
+		if (firstAnswer !== firstPhrase || approvalSignal.aborted || performance.now() >= approvalDeadline) return status;
+		if (!(await checkUntilAbort(hooks.checkEnvironment, approvalSignal))) return status;
+		// The environment check can itself outlast the approval window or cancellation.
+		// Never mint a fresh approval from an answer that has already expired.
+		if (approvalSignal.aborted || performance.now() >= approvalDeadline) return status;
 		const first = approveInitialContinuationV0(
 			preflight.plan,
 			preflight.plan.commitment,

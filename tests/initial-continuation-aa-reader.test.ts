@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prepareVerifiedInitialBranchPairV0 } from "../cli/initial-branch-set.ts";
 import { runNextSlot } from "../research/governed-initial-continuation/aa/coordinator.ts";
 import {
@@ -37,7 +37,7 @@ describe("independent A/A reader", () => {
 			),
 		).toThrow("uniquely");
 	});
-	it.each(["first", "second"] as const)(
+	it.each(["first", "second", "environment-cancel", "environment-hang", "environment-expired"] as const)(
 		"stops permanently on denied %s approval",
 		async (denied) => {
 			const outputParent = mkdtempSync(join(fixture.base, "aa-denial-"));
@@ -68,15 +68,32 @@ describe("independent A/A reader", () => {
 			const file = join(outputParent, "study.json");
 			await createStudyPlan(file, options, 0, "9", "synthetic endpoint", fixture.key);
 			const before = upstream.requests.length;
+			const controller = new AbortController();
+			let checks = 0;
+			let clock: ReturnType<typeof vi.spyOn> | undefined;
 			const hooks = {
-				checkEnvironment: async () => true,
+				checkEnvironment: async () => {
+					if (++checks === 2 && denied === "environment-cancel") controller.abort();
+					if (checks === 2 && denied === "environment-hang") {
+						setTimeout(() => controller.abort(), 10);
+						return new Promise<boolean>(() => {});
+					}
+					if (checks === 2 && denied === "environment-expired")
+						clock = vi.spyOn(performance, "now").mockReturnValue(performance.now() + 300001);
+					return true;
+				},
 				first: async (_p: unknown, phrase: string) => (denied === "first" ? null : phrase),
 				second: async (_b: unknown, phrase: string) => (denied === "second" ? null : phrase),
 			};
-			const result = await runNextSlot(file, fixture.key, hooks);
-			expect(result).toBe(denied === "first" ? "no-request-cancelled" : "first-turn-verified");
+			let result: string;
+			try {
+				result = await runNextSlot(file, fixture.key, hooks, controller.signal);
+			} finally {
+				clock?.mockRestore();
+			}
+			expect(result).toBe(denied === "second" ? "first-turn-verified" : "no-request-cancelled");
 			expect(await inspectStoppedSlot(file, fixture.key, 1)).toBe(result);
-			expect(upstream.requests.length - before).toBe(denied === "first" ? 0 : 1);
+			expect(upstream.requests.length - before).toBe(denied === "second" ? 1 : 0);
 			await expect(runNextSlot(file, fixture.key, hooks)).rejects.toThrow();
 		},
 		120000,

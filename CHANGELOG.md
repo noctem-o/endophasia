@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Added
-- **AA-LIVE-001 preflight (research; read-only):** pre-registration, local environment qualification, `--fit off` profile
+- **AA-LIVE-001 preflight (research; read-only):** pre-registration, local environment qualification, recovery and
+  dependency identity of the historical pinned llama.cpp build (build 11518, commit `1f8fa5231`), `--fit off` profile
   assessment and go/no-go for the first real matched A/A, in
   [research/governed-initial-continuation/aa/LIVE-PREFLIGHT-001.md](research/governed-initial-continuation/aa/LIVE-PREFLIGHT-001.md).
   The operator's printed outcome now states the server-binary status, so a study with an unpinned executable is not

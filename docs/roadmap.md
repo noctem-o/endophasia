@@ -6,9 +6,10 @@ What runs today is in [status.md](status.md) and the [README](../README.md#what-
 
 ## Delivery sequence — current priority
 
-The numbered capability map below remains the long-term architecture. React Compare is now on `main` (PR #76). The next
-source-tree priority is the checkpoint substrate. The installed Pi workflow and the
-read-only Observe workspace are established foundations; the proposed native desktop binary is a separate future interface.
+The numbered capability map below remains the long-term architecture. React Compare and the verified initial-state
+checkpoint APIs are on `main`. Single-turn governed Pi execution and bounded same-session two-turn continuation are
+implemented as source-tree APIs. Next are wider continuation experiments, a verified cassette-then-live transition
+and external-effect isolation. Historical process restoration and general fork execution remain unbuilt.
 
 ~~~text
 evidence closure (done)
@@ -19,15 +20,19 @@ browser Observe (built in source; alpha.2 contains the earlier page)
       ↓
 React Compare workspace (done in source, PR #76)
       ↓
-verified initial-state candidate (PR A, source-tree slice)
+verified initial-state candidate (done, source-tree API)
       ↓
-verified isolated initial-scratch materialization (PR B, source-tree slice)
+verified isolated initial-scratch materialization (done, source-tree API)
       ↓
-verified sibling preparation and private parent/child lineage (PR C, source-tree slice)
+verified sibling preparation and parent/child lineage (done, source-tree API)
       ↓
-bounded same-session initial continuation and execution lineage (source-tree slice)
+governed fresh Pi initial-child execution (done, source-tree API)
       ↓
-later native instrumentation and broader Research / Cognition / Evolve directions (proposals)
+bounded two-turn same-session continuation (done, PR #88, source-tree API)
+      ↓
+broader continuation, external-effect isolation and restore/fork (not built)
+      ↓
+later native instrumentation and Research / Cognition / Evolve (proposals)
 ~~~
 
 A small, bounded Rust/GPUI feasibility study is optional and may run alongside Compare or checkpoint work; it must not
@@ -106,14 +111,16 @@ evidence-qualified, with unavailable signals and mapping losses explicit; native
      current pristine states. Preparation applies no manipulation and grants no execution authority.
    - PR D adds [governed initial-child execution](initial-child-execution.md): one fresh tool-free Pi turn from a
      separately derived runtime, under exact local approval, with captured model request and trajectory evidence.
-     It is neither process continuation nor a general effect sandbox; real-server acceptance remains optional.
+     It is neither process continuation nor a general effect sandbox. A separately approved
+     [Pi 1.0.4/Nanbeige A/A pilot](../research/governed-initial-child/1.0.4/RESULTS.md) ran four successful
+     single-turn attempts with private, locally verified evidence.
    - The [initial-continuation slice](initial-continuation.md) adds one separately approved second turn in the same
      newly launched Pi session, with a provisional first-turn boundary, one-shot request admission and an independently
      checked two-turn lineage receipt. It does not restore a historical process or provide general fork execution.
    - Later slices need broader continuation and external-effect isolation, restore/fork lineage and a validated
      cassette-then-live boundary.
-   - Once this exists, use it to support controlled continuation experiments rather than adding another large
-     protocol-only migration.
+   - Use the completed initial-state APIs to design controlled continuation experiments. Keep treatment,
+     evidence checks and external-effect limits separate. Do not mistake same-session execution for restored state.
 
 **Optional native interface track (not implemented).** The future native desktop application would be called
 **Endophasia**, distinct from **Endophasia Web** (currently `endo studio`) and the `endo` CLI. A bounded Rust/GPUI Kit +
@@ -125,6 +132,9 @@ deterministic fixtures, explicit missing signals, GPU composition feasibility te
 client. AppImage, Windows packaging, and `endo web` remain future options, not current deliverables.
 
 5. **Later research loop (proposed, contingent on priorities and evidence).**
+   - The [first CPU numerical execution probe](../research/numerical-execution-probe/FIRST-RESULT.md) ran on
+     27 October 2026. It found schedule-dependent logits for a pinned SmolLM2 f16 model under four CPU runs.
+     A kernel-level explanation and wider replication are separate, unrun experiments.
    - Resume the compute-frontier follow-up (item 13): where success saturates above 32,768 tokens, whether retry after
      cut-off beats a larger cap, and whether failures merely move. Pre-register the comparison, pin everything else,
      and use several predefined fixed seeds as the replication unit, with the same seed set across compared arms.
@@ -139,7 +149,7 @@ client. AppImage, Windows packaging, and `endo web` remain future options, not c
 
 ## Parked or upstream-gated
 
-These are valid directions, but they should **not** displace the delivery sequence above (browser Observe and React Compare are built in source; verified checkpoint work is the current priority).
+These are valid directions, but they should **not** displace the delivery sequence above. Browser Observe, React Compare and narrow initial-state APIs are built in source; broader checkpoint work remains the priority.
 
 - **ACP v2:** the experimental, version-pinned study is complete. ACP v2 remains Draft upstream and its own migration
   guide recommends version negotiation plus feature flags until stabilization. Do not chase the moving draft. Re-study

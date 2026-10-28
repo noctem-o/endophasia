@@ -34,8 +34,10 @@ Endophasia studies coding-agent systems through explicit, evidence-bounded adapt
 [Pi](https://github.com/earendil-works/pi) for live recording, or deliberately cold-import persisted
 [DeepSeek Harness (DSH)](docs/dsh-native-attachment.md) Session format-4 records without operating DSH.
 Both paths produce durable evidence from which Endophasia can construct trajectories and read-only comparisons.
-The CLI also provides Pi recording, replay, controlled experiments and authorised intervention; the browser interface
-(currently `endo studio`) displays recorded observations and compares two explicitly selected Pi/DSH recordings through the authoritative read-only APIs.
+The CLI also provides Pi recording, replay, controlled experiments and authorised intervention. The browser interface
+(currently `endo studio`) displays recorded observations and compares two selected Pi/DSH recordings through read-only APIs.
+Source-tree APIs can also prepare verified initial Pi scratch copies, run one approved fresh tool-free turn, and require
+separate approval before a second turn in the same Pi process. These APIs are not in the published npm alphas.
 
 It is harness-neutral by design, but **the two evidence sources do not have the same capabilities**: DSH import is
 offline, not a live attachment or a Pi-equivalent replay/control path. Endophasia does not replace a harness's execution
@@ -66,6 +68,7 @@ agent (what it requested, what it was told, what it reported and what it did), a
 - To steer a running Pi session through an explicit, authorised intervention, distinguishing acceptance, observed consumption
   and subsequent behaviour.
 - To run controlled Pi experiments in which the harness and its configuration are treated as variables, not as plumbing.
+- To test a fresh Pi session derived from verified initial scratch state, with one approval per turn and checked execution records.
 
 ### What it keeps apart
 
@@ -176,7 +179,10 @@ reads. The one thing it creates is its own comparison key, on first launch, and 
 Maturity is stated by the **evidence** behind each row, because that is what differs:
 
 - **Real Pi:** the installed-package CI `acceptance` job runs against separately installed **Pi 1.0.0** and a local fake
-  model endpoint (no credentials or provider cost). The research studies used **Pi 1.0.1** with one local model on one machine.
+  model endpoint (no credentials or provider cost). The earlier harness studies used **Pi 1.0.1** and one local model.
+- **Real governed execution:** a separate source-tree pilot ran four approved, tool-free initial-child turns with
+  **Pi 1.0.4** and **Nanbeige4.3-33B**. Its private receipts were verified locally; the repository cannot reproduce them alone.
+- **Synthetic continuation:** the two-turn same-session API has fake-Pi and fake-model-endpoint tests, not real-provider acceptance.
 - **Recorded DSH:** the native importer was checked against five retained captures from pinned DSH
   `dsh-v0.2.1-rc.2`, including failure and resume cases. This is not live attachment or general-version conformance.
 - **Deterministic/packaged:** fake-harness tests, retained fixtures, browser tests and source-built package smoke validate
@@ -184,7 +190,7 @@ Maturity is stated by the **evidence** behind each row, because that is what dif
 - **Library:** implemented and unit-tested, but not reachable through a command or served interface.
 - **Not built:** designed or planned, with no implementation.
 
-The table distinguishes features on **source-tree `main`** from the older published `0.1.0-alpha.2` package.
+The table distinguishes features on **source-tree `main`**, as of 28 October 2026, from the older published `0.1.0-alpha.2` package.
 
 | Capability | Reached through | Evidence |
 | :--- | :--- | :--- |
@@ -200,9 +206,10 @@ The table distinguishes features on **source-tree `main`** from the older publis
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| Verified initial Pi scratch candidate, isolated materialization and sibling preparation | Source-tree replay receipt and programmatic APIs; private `endo.initial-branch-set.v0` lineage | Two initial scratch trees share one verified parent and private planned conditions; readers detect changed children. No execution, continuation or applied treatment. Absent from published npm alpha versions. See [scope and limits](docs/initial-branch-set.md) |
-| Governed initial-child execution | Source-tree programmatic preflight, exact local approval, one tool-free fresh Pi turn and private `endo.initial-child-execution.v0` receipt | Fake-runtime end-to-end evidence; separate derived runtime and independently checked capture/trajectory. No historical process resume, arbitrary tools or real Nanbeige acceptance claim. Absent from published npm alpha versions. See [contract and limits](docs/initial-child-execution.md) |
-| Browser workspaces beyond Observe and Compare; native Endophasia binary; `endo web` alias; model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; forkable checkpoints | none | Not built |
+| Verified initial Pi scratch candidate, isolated materialization and sibling preparation | Source-tree replay receipt and programmatic APIs; private `endo.initial-branch-set.v0` lineage | Two scratch copies share a verified parent and private planned conditions. The reader detects modified or substituted children. Preparation alone executes nothing and grants no approval. See [limits](docs/initial-branch-set.md) |
+| Governed initial-child execution | Source-tree preflight, local approval, one fresh tool-free Pi turn and `endo.initial-child-execution.v0` receipt | Fake-runtime end-to-end tests and a [four-turn Pi 1.0.4/Nanbeige A/A pilot](research/governed-initial-child/1.0.4/RESULTS.md) with private verified evidence. Not a restored process, general tool execution or OS sandbox. See [contract](docs/initial-child-execution.md) |
+| Governed same-session continuation | Source-tree two-turn API, separate second approval and `endo.initial-continuation.v0` evidence reader | Fake-Pi and local fake-endpoint tests exercise one owned Pi process, two captured tool-free turns and verified lineage. No live-model continuation acceptance, historical process restoration or general fork. See [contract](docs/initial-continuation.md) |
+| Browser workspaces beyond Observe and Compare; native Endophasia binary; `endo web` alias; integrated model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; general fork/restore checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:
 
@@ -218,9 +225,9 @@ Some of the distinctions that matter when reading the table:
   withholds sensitive source values and rejects insufficient or ambiguous evidence. Different digest domains cannot
   establish equality; matching layers do not establish identical causes. Selection tokens are tied to the verified
   store generation and become invalid if the evidence changes.
-- **OBSERVE.** What exists is harness-level observation: lifecycle, context, tools, usage and trajectories. That is not
-  model-internal interpretability. Residual-stream capture, logits and probes would be provider-specific and capability-gated, and
-  none is implemented.
+- **OBSERVE.** The CLI records harness events, request context, tools, usage and trajectories. It does not capture model
+  internals in live Pi sessions. A separate [CPU logits probe](research/numerical-execution-probe/FIRST-RESULT.md) ran
+  as a standalone experiment. It is not a Studio observation provider, residual-stream trace or CUDA measurement.
 - **EVOLVE.** Records, selection policies and promotion gates exist as libraries. Nothing in this repository is a working
   autonomous self-improvement system.
 
@@ -280,6 +287,21 @@ must not be presented as equivalent live runtime capability. Details:
 [Pi attachment](docs/attachment.md), [DSH importer](docs/dsh-native-importer.md) and
 [Compare contracts](docs/cockpit.md#compare-candidate-discovery).
 
+### Governed initial-state experiments (source tree)
+
+The separate experimental API starts with a verified Pi replay and an initial scratch archive. It makes checked
+scratch copies, then runs a fresh, tool-free Pi session with explicit approval. A second approval permits one more turn
+in that same process. An independent reader checks the resulting evidence. These steps do not restore a historical
+process or isolate external effects.
+
+~~~mermaid
+flowchart LR
+    R["Verified Pi replay<br/>and initial scratch archive"] --> B["Checked scratch copies<br/>and lineage"]
+    B --> T["Approved fresh Pi session<br/>first tool-free turn"]
+    T --> C["Separate approval<br/>second turn, same process"]
+    C --> E["Independent evidence reader<br/>two-turn receipt"]
+~~~
+
 ## Research direction
 
 The long-term ambition is a reproducible way to study coding agents as systems: what the harness and the model contribute,
@@ -292,7 +314,7 @@ gates. These directions name distinct responsibilities, not a fixed set of Studi
 | :--- | :--- | :--- |
 | **DEVELOP** | The current session: what the agent is doing, what the runtime reported, whether to intervene | Observation and authorised steering from the CLI. Studio's read-only page shows recorded sessions but is not a DEVELOP mode |
 | **OBSERVE** | The measurement surface: what was recorded and what can be derived reproducibly | Harness level: implemented. Model-internal signals: design only ([docs/observe.md](docs/observe.md)) |
-| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Pi replay/experiments, trajectory comparison and Pi/DSH read-only Compare APIs on `main`, consumed by the React Compare workspace. Causal checkpoint interventions require forkable checkpoints, not built |
+| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Pi replay/experiments, trajectory comparison and Pi/DSH read-only Compare APIs on `main`, consumed by the React Compare workspace. Governed initial-state execution and two-turn continuation exist as narrow source-tree APIs; general fork/restore is not built |
 | **EVOLVE** | Explicit candidate, evaluation, admission and promotion, never silent self-modification | Records and policies as libraries; no operator interface ([docs/evolve.md](docs/evolve.md)) |
 | **COGNITION** | A possible Studio workspace for declared cognition policies and externally represented plans, hypotheses and branches | Not built. **WORK** (one bounded main trajectory) and **DREAM** (wider search with counterfactual branches) are proposed profiles, not separate tabs ([docs/vision.md](docs/vision.md#work-and-dream)) |
 | **RESEARCH (proposed)** | Controlled comparisons of harnesses, agent hierarchies, skill policies, inference budgets and experimental methods | Pi experiment runner and studies exist; no dedicated Research workspace, cross-harness intervention experiment or general training integration |
@@ -319,16 +341,15 @@ interpret evidence differently, silently write the store or bypass authorization
 interface, with WebGPU as a possible later renderer. GPU composition and portability require feasibility work before
 promising a particular backend or packaging format.
 
-**Sequencing (25 October 2026):** the [Compare presentation (#69)](https://github.com/noctem-o/endophasia/pull/69),
-[DSH study and native importer (#70–71)](https://github.com/noctem-o/endophasia/pull/71),
-[DSH CLI entry point (#72)](https://github.com/noctem-o/endophasia/pull/72), and
-[Compare HTTP and candidate-discovery backend (#73–74)](https://github.com/noctem-o/endophasia/pull/74)
-are **merged into `main`** and absent from the `0.1.0-alpha.2` package. Source builds also expose those contracts in React Compare, without changing their evidence or privacy semantics. Next: prioritise
-forkable checkpoints for reproducible continuation and branching. A small, independently evaluated Rust/GPUI
-feasibility spike may run alongside this work but should not displace checkpoints or introduce a second
-authoritative implementation of evidence semantics. A useful native read-only instrument and deeper EVOLVE
-loops depend on those foundations, not on graphics alone. The existing Pi acceptance baseline is unchanged.
-See [roadmap](docs/roadmap.md).
+**Sequencing (28 October 2026).** The [DSH importer and Compare APIs](docs/status.md#dsh-native-cold-import)
+are on `main`, alongside the React Compare workspace. The verified initial scratch candidate, materialization,
+sibling preparation, governed single-turn execution and [two-turn continuation](docs/initial-continuation.md)
+are also implemented as source-tree APIs. [PR #88](https://github.com/noctem-o/endophasia/pull/88) completed the
+bounded same-session continuation slice; [PR #89](https://github.com/noctem-o/endophasia/pull/89) repaired cleanup
+for the standalone numerical probe. None of these later capabilities is in the published `0.1.0-alpha.2` package.
+Next steps are broader continuation tests, external-effect isolation and a verified cassette-then-live boundary.
+General historical process restore and fork execution remain unbuilt. A Rust/GPUI feasibility study may run separately,
+but must not duplicate the evidence rules. See the [roadmap](docs/roadmap.md).
 
 ### Exploratory horizon: physical-world systems (not implemented)
 
@@ -346,9 +367,9 @@ physical-world evaluation capability is implemented or committed to the delivery
 The chain for any adaptation loop is longer than "the score went up", and every link is its own record:
 grader evidence is not reward, reward is not selection, selection is not promotion, and promotion is not authority.
 
-**What the studies have found so far.** All of it comes from Pi 1.0.1, one local model (qwen3.8-27b on llama.cpp) and one
-machine, so none of it is a statement about other runtimes or models. The full designs, results and caveats are in
-[research/README.md](research/README.md).
+**Research results.** The six earlier Pi harness studies below used Pi 1.0.1 and qwen3.8-27b on one machine.
+They do not establish behaviour on other harnesses or models. The later governed Pi and standalone CPU studies
+used different systems and have separate limits. See [research/README.md](research/README.md).
 
 - [Variance](research/README.md#variance-study-e2) and [pinned environment](research/README.md#pinned-environment-study-e3):
   runs were "unstable" under every arm, from sampling and then from tool output that carried wall-clock values; with the
@@ -364,11 +385,18 @@ machine, so none of it is a statement about other runtimes or models. The full d
   pre-registered, 21 of the 25 failures on the advancing tasks were responses cut off at Pi's default completion cap. Raising
   the cap from 16,384 to 32,768 tokens raised success on those two tasks from 10 of 24 to 19 of 23 (pooled over four paths at
   3 trials per cell; the interval excludes 0 only with all four paths included).
+- [Governed initial-child A/A pilot](research/governed-initial-child/1.0.4/RESULTS.md): four separately approved,
+  tool-free Pi 1.0.4/Nanbeige4.3-33B turns ended with the same answer, `ready`. After adjusting only the verified
+  working-directory field, request bodies matched. Complete responses differed. The private receipts were verified;
+  four trials do not establish model determinism or treatment effects.
+- [CPU numerical execution probe](research/numerical-execution-probe/FIRST-RESULT.md): a pinned SmolLM2-135M f16 model
+  produced bitwise-identical logits within each of two submission schedules, but all 49,152 logits differed across
+  schedules in the four-repetition test. Argmax stayed the same. The result identifies no specific kernel or operation.
 
-The next core substrate milestone remains forkable checkpoints, with the merged Compare backend exposed through the React workspace; an optional native-interface feasibility experiment can run independently. The full sequence, the
-numbered capability map and the deferred research tracks are in [docs/roadmap.md](docs/roadmap.md). One proposed, not yet run
-study (a shadow epistemic ledger beside a deliberately gameable post-training environment) is in
-[research/epistemic-alignment-experiment.md](research/epistemic-alignment-experiment.md).
+The next checkpoint work concerns broader continuation, external-effect isolation and a verified cassette-then-live
+boundary. Neither the initial-state APIs nor the two-turn test restores an old Pi process. Details and deferred tracks
+are in the [roadmap](docs/roadmap.md). The proposed [epistemic alignment experiment](research/epistemic-alignment-experiment.md)
+has not run.
 
 
 ### Candidate study: durable execution compatibility (not implemented)
@@ -424,6 +452,13 @@ remains the observer rather than becoming the execution engine. The upstream pac
 [Steering](docs/steering.md) ·
 [Schema compatibility](docs/schema-compatibility.md)
 
+**Governed initial-state work (source-tree APIs)**
+[Checkpoint candidate](docs/checkpoint-candidate.md) ·
+[Initial scratch materialization](docs/checkpoint-materialization.md) ·
+[Sibling preparation](docs/initial-branch-set.md) ·
+[Initial-child execution](docs/initial-child-execution.md) ·
+[Same-session continuation](docs/initial-continuation.md)
+
 **Browser interface and the observation bridge**
 [Observation bridge and Compare backend](docs/cockpit.md) ·
 [React frontend architecture](docs/studio-ui-architecture.md) ·
@@ -447,6 +482,7 @@ remains the observer rather than becoming the execution engine. The upstream pac
 
 **Research**
 [Real recordings and studies](research/README.md) ·
+[First CPU numerical execution result](research/numerical-execution-probe/FIRST-RESULT.md) ·
 [Where the raw run data lives](research/DATA.md) ·
 [Epistemic alignment experiment (proposed)](research/epistemic-alignment-experiment.md) ·
 [Developmental epistemic training v0 (proposed)](research/developmental-epistemic-training-v0.md) ·

@@ -1,11 +1,11 @@
 # Real recordings and studies
 
-What has been run against a real Pi and a real model, what each run establishes, and what it does not. The README's
-[research summary](../README.md#research-direction) links here instead of inlining the detail. The text of each section was
-moved here unchanged.
+The completed studies and recordings, with the conditions and limits of each result. The main
+[README](../README.md#research-direction) gives a shorter summary.
 
-Unless stated otherwise, each entry below uses Pi 1.0.1 and qwen3.8-27b (Q4_K_M) on one machine with a llama.cpp
-OpenAI-compatible server. The governed initial-child acceptance uses Pi 1.0.4 and Nanbeige4.3-33B instead.
+The Pi harness studies used Pi 1.0.1 and qwen3.8-27b (Q4_K_M) on one machine with a llama.cpp
+OpenAI-compatible server. The governed initial-child pilot used Pi 1.0.4 and Nanbeige4.3-33B.
+The numerical probe ran a separate CPU-only llama.cpp executable without Pi.
 
 | Entry | Where | Summary |
 | :--- | :--- | :--- |
@@ -18,6 +18,7 @@ OpenAI-compatible server. The governed initial-child acceptance uses Pi 1.0.4 an
 | [Discriminating-task study](#discriminating-task-study) | [design](discriminating-tasks/1.0.1/DESIGN.md), [results](discriminating-tasks/1.0.1/RESULTS.md) | 12 small coding tasks screened and confirmed: two discriminate (13/20 and 7/20), most are saturated, and most failures are a response cut off at the completion cap |
 | [Completion-cap study](#completion-cap-study) | [design](completion-cap/1.0.1/DESIGN.md), [results](completion-cap/1.0.1/RESULTS.md) | raising Pi's completion cap from 16,384 to 32,768 raised success on the two discriminating tasks from 10/24 to 19/23; thinking-off and a brief-reasoning sentence are cheaper but less reliable |
 | [Governed initial-child acceptance and A/A pilot](governed-initial-child/1.0.4/RESULTS.md) | [results](governed-initial-child/1.0.4/RESULTS.md) | qualified source checkpoint and four approved child turns; cwd-adjusted requests and final answers matched, complete responses differed |
+| [Numerical execution probe (E4e-G)](#numerical-execution-probe-e4e-g) | [protocol](numerical-execution-probe/FIRST-EXPERIMENT.md), [result](numerical-execution-probe/FIRST-RESULT.md) | CPU-only, four fresh processes; stable logits within schedule and differences across token-submission schedules |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle
@@ -168,16 +169,28 @@ switched off per request (E).
 - **There is no sandbox, and it showed.** One excluded trial read a hidden check and the reference solution in the repository, through a leftover file of the author's in `/tmp`; another deleted files in
   `/tmp` by glob. Future trials should run with the checkout unreachable.
 
+## Numerical execution probe (E4e-G)
+
+On 27 October 2026, the [first experiment](numerical-execution-probe/FIRST-RESULT.md) compared two ways to submit
+the same 16 tokens to a pinned CPU-only llama.cpp executable with SmolLM2-135M-Instruct f16. Schedule A passed all
+16 tokens in one `llama_decode` call. Schedule B passed 15 tokens, then the final token. The balanced order was
+A1, B1, B2, A2, with a fresh process and empty context for each repetition.
+
+Within each schedule, the two 49,152-logit vectors were bitwise identical. Across schedules, all 49,152 logits
+were numerically different. The mean absolute difference was 0.004299034187473201, while the top token remained
+ID 111. The full candidate ordering changed. This establishes a difference between application-level submission
+schedules under these settings. It does not identify a kernel or arithmetic operation, measure CUDA behaviour,
+or establish results for other models or positions. The model, raw vectors and host-specific manifest remain private.
+
 ## Raw run data
 
 The studies' raw run directories are not in this repository (about 1 GB of tracked files was moved out on 2026-10-05, and later studies' data was never added): see
-[DATA.md](DATA.md) for where they live, how to restore them and what the secret scan found. The results, analyses, run summaries and cassettes stay here.
+[DATA.md](DATA.md) for where they live, how to restore them and what the secret scan found. The results, analyses, run summaries and cassettes stay here. The standalone numerical probe's public report records
+vector commitments, but its raw vectors and model are not committed.
 
 ## Proposed studies — not run
 
 The documents in this section are research contracts or preregistration drafts. They are **not** entries in the real-run table above and do not establish empirical results.
-
-- [E4e-G numerical execution probe](numerical-execution-probe/README.md) — standalone CPU-first two-schedule fixture with offline tests; [first real experiment](numerical-execution-probe/FIRST-EXPERIMENT.md) proposed but not executed.
 
 - [Epistemic alignment experiment: Magpie as a shadow ledger](epistemic-alignment-experiment.md) — a deliberately gameable post-training environment with a separate epistemic measurement surface, a reward/measurement firewall, a staged sequence (reproduce, positive controls, reward interventions, monitor pressure) and predeclared power and comparison families. Moved here from the project README; not run.
 - [Developmental epistemic training v0](developmental-epistemic-training-v0.md) — separates epistemic-content effects from developmental-timing effects in a small synthetic microworld, with matched metadata controls, a plain anchor, learning-rate-controlled timing, downstream conflict-dose stress tests and a whole-generator-family holdout.

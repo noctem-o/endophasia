@@ -77,11 +77,14 @@ implementation detail and its limitations. The real recordings and studies, with
     A later read distinguishes pristine, modified, missing and substituted children; no execution authority is granted.
     The source-tree [single-child execution API](initial-child-execution.md) adds a fresh exact-scope local approval,
     a separate runtime derivation, one tool-free Pi turn and a strict `endo.initial-child-execution.v0` evidence reader.
-    Its fake-runtime test verifies one actual captured model exchange and unchanged prepared siblings. It does not
-    restore a historical Pi process or establish operating-system confinement. The source-tree
+    Its fake-runtime test verifies one captured model exchange and unchanged prepared siblings. A separate
+    [Pi 1.0.4/Nanbeige A/A pilot](../research/governed-initial-child/1.0.4/RESULTS.md) completed four approved
+    tool-free turns and locally verified their private receipts. This does not restore a historical Pi process
+    or establish operating-system confinement. The source-tree
     [initial-continuation API](initial-continuation.md) adds a separately approved second turn in the same newly
     launched Pi session, with a provisional boundary, gated requests and independently verified two-turn lineage.
-    It does not provide historical process restoration, general tool use or a general fork. These checkpoint/execution
+    Tests cover synthetic Pi and a fake model endpoint; no real-model two-turn continuation has been run. The API
+    does not provide historical process restoration, general tool use or a general fork. These checkpoint/execution
     slices are absent from the published npm alpha versions.
 - **Experiments** ([how they run](experiments.md)).
   - `endo experiment run` runs a spec (`endo.experiment-spec.v0`): tasks with optional deterministic success checks,
@@ -143,6 +146,9 @@ A/A pilot](../research/governed-initial-child/1.0.4/RESULTS.md) exercised the so
 evidence; it is not a package acceptance or general fork claim. Hostile trajectory cases and the lifecycle's failure,
 retry, compaction and unknown-record paths are
 exercised only against fake Pi ([research/README.md](../research/README.md#fake-only-paths)).
+The separate [E4e-G CPU numerical experiment](../research/numerical-execution-probe/FIRST-RESULT.md) used a pinned
+llama.cpp executable and SmolLM2 f16 model, without Pi. It measured differences between application-level token
+submission schedules, not CUDA behaviour or live model-internal observation in Studio.
 
 The boundary and the evidence rules were audited adversarially ([audit](pi-attach-audit.md)), including the
 limitations accepted for now.

@@ -3,13 +3,23 @@
 ## Unreleased
 
 ### Added
+- **STEER, QUEUE and STOP from the DEVELOP workbench:** the composer gains Steer and Queue modes (never switched for the operator,
+  each showing its delivery semantics) and STOP sits in the run strip. They drive the existing intervention desk and chain, behind the
+  same terminal approval for every one: the page only requests, the operator types `APPROVE STEER|QUEUE|STOP <digest prefix>` on the
+  attached terminal (recorded as `confirmation: "terminal-phrase"`, origin `operator-workbench`). Offered only for an open run on the
+  live session and an admitted capability, with the reason when not. Cards in the conversation keep requested, approved, sent, Pi's reply,
+  consumption and the run's end apart: acceptance is not consumption, consumption is checked only on request against the proxy capture
+  (and is not established without one), and a run's end is what Pi reported, never attributed to the request. A lost reply is "outcome
+  unknown", not refused. One approval waits at a time; a duplicate STOP returns the pending one; the desk tells the broker before it
+  records consequences, so nothing is approved after they are written. Steer and queue text is kept in `<root>/interventions/` before
+  approval, as `endo steer` does. See [docs/develop-workbench.md](docs/develop-workbench.md#13-slice-b-steer-queue-and-stop-through-the-broker).
 - **DEVELOP live workbench for one governed Pi session (opt-in):** `endo harness attach <root> --control --workbench` serves the Studio
   page on its own loopback address behind a small command broker. The page shows the live connection and run state the broker
   reports, a private in-memory conversation (never written to evidence or any read route; Pi keeps its own session file), and can
   request one new prompt, which is sent only after the operator types its exact phrase on the attached terminal. The prompt has its own
   record chain (`workbench.prompt-*`, by keyed digest only). Pairing by a one-time terminal code, a single in-memory grant, exact
   same-origin guards, closed routes, no shell, no PTY, no raw RPC. `endo studio` remains read-only (its server gains only a constant
-  "no workbench" status answer). STEER/QUEUE/STOP through the broker, OMP and streaming are not built. See
+  "no workbench" status answer). OMP and streaming are not built. See
   [docs/develop-workbench.md](docs/develop-workbench.md).
 - **Develop workspace (read-only session desk) in Endophasia Web:** browse the recorded Pi and DSH sessions in a store, group them by
   source, select one and read its recorded lifecycle state (as recorded, never as a live process), counts, positions, per-run usage as

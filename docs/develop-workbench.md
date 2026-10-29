@@ -1,9 +1,11 @@
 # DEVELOP workbench: design for a governed live Pi session
 
-Status: **slice A is implemented; later slices are design.** This document fixes the authority boundary, the privacy rules and the
+Status: **slices A and B are implemented; later slices are design.** This document fixes the authority boundary, the privacy rules and the
 slicing of the live DEVELOP workbench. Implemented in slice A (see section 8): the opt-in broker, pairing and the grant, terminal
 approval, the live status, the memory-only transcript, the **prompt** command and its record chain, and the workbench interface.
-Not implemented: STEER / QUEUE / STOP through the broker, the OMP adapter, streaming, Git changes, any terminal surface. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
+Implemented in slice B (section 13): **STEER / QUEUE / STOP** through the broker onto the existing intervention chain, behind the same
+terminal approval for every one. Not implemented: the OMP adapter, streaming, Git changes, any terminal surface, any weaker approval
+mode. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
 (the intervention chain) and [pi-attach-inventory.md](pi-attach-inventory.md) first.
 
 Product split this design keeps explicit:
@@ -91,8 +93,8 @@ Five states are never merged in the UI or the API: **requested**, **authorised**
 **observed-consumed/completed**. HTTP acceptance of a request means *requested* only. Disabled commands say why (no admitted
 capability, session ended, no active run, authorisation expired, operator has not approved).
 
-The first slice implements `prompt` and the read-only live view. STEER, QUEUE and STOP reuse the existing chain behind the same
-terminal approval in the following change.
+Slice A implemented `prompt` and the read-only live view. Slice B implements STEER, QUEUE and STOP on the existing chain behind the same
+terminal approval (section 13).
 
 ## 5. Presence and state (never inferred from recordings)
 
@@ -125,7 +127,7 @@ ownership, backpressure, reconnection and its security semantics can be implemen
 | Change | Contents |
 | :--- | :--- |
 | **A (implemented)** | broker boundary (`--workbench`), pairing and grant, terminal approval, live status, in-memory transcript, the **prompt** command with its record chain, the workbench UI (conversation, composer gated by capability and grant, run state), security and integration tests: unit, HTTP, a real fake-Pi process, a real pseudo-terminal, and a real browser. |
-| **B** | STEER / QUEUE / STOP through the broker onto the existing chain; accepted-versus-consumed display. |
+| **B (implemented)** | STEER / QUEUE / STOP through the broker onto the existing chain; accepted-versus-consumed display. See section 13. |
 | **C** | OMP adapter behind the same typed command/event boundary; richer transcript; Git changes; optional terminal surface. |
 
 ## 9. OMP compatibility assessment (from the public RPC page; nothing was installed or run)
@@ -212,8 +214,9 @@ rule, the open turn a dashed one with "turn open (as of last read)"; no row spin
 - The advisory sketched an in-browser **[Authorise]** button. **Rejected for the first slice**: authorisation is typed on the
   controlling terminal (section 3). The browser shows the proposal, its short digest and "Waiting for operator approval in the attached
   terminal. Expires by HH:MM. Single use. A local confirmation, not proof of identity." There is no browser button that grants authority.
-- The advisory listed Steer/Queue/Stop in the composer. In slice A only **Prompt** exists; the page says plainly that steer, queue and
-  stop are not available in this build rather than drawing disabled power. They arrive in slice B behind the same terminal approval.
+- The advisory listed Steer/Queue/Stop in the composer. In slice A only **Prompt** existed. Slice B adds Steer and Queue as modes of the
+  composer (a mode is never switched for the operator) and puts **Stop in the run strip**, since it is a control on the run and not a
+  message; all three are behind the same terminal approval.
 - "Start Studio with control authority" is wrong: control authority is the broker's `--workbench`, never Studio.
 - The earlier read-only advisory's rejection of attach/resume/stop affordances still holds for recorded-only, disconnected and unknown
   sessions; it lifts only for a session currently admitted by the broker, per admitted capability.
@@ -265,3 +268,67 @@ The operator approved (1) the broker serves the workbench page itself, (2) termi
   explicit-refresh only.
 - **A real model run is not part of the automated tests.** They use the fake Pi (a real child process speaking Pi's RPC) and a stand-in
   model endpoint. A run against a real Pi and model needs the operator's explicit approval and may cost money.
+
+## 13. Slice B: STEER, QUEUE and STOP through the broker
+
+Implemented in `adapters/pi/workbench-interventions.ts`. It adds **no competing control path**: the broker drives the existing
+`PiInterventionDeskV0` and its chain (`proposal → authorization → request → acceptance | refusal → consumption → consequence`, see
+[steering.md](steering.md)), with the existing gate, authority provider, capability admission and idempotent `apply`. A new prompt keeps its
+own chain; the two never share a record.
+
+**Authority is unchanged.** The page may *request*; the operator approves by typing a phrase on the attached process's controlling terminal.
+The phrase names the operation and the proposal's digest (`APPROVE STEER <16 hex>`, `APPROVE QUEUE …`, `APPROVE STOP …`), so another
+operation's phrase, or another request's, declines. The approval is recorded as the desk's authorization, bound to the proposal digest, the
+session and the attachment, with the new confirmation value `terminal-phrase` (a shorter act than `endo steer authorize`, which carries the
+whole digest, and recorded as such). Proposals gain the origin `operator-workbench`, and the launch id is part of the nonce the digest
+covers. There is no browser route to authorise or apply, no raw RPC and no browser-supplied proposal id that reaches the desk: the broker
+applies only the requests it made in this launch.
+
+| Route (under `api/v0/workbench/`) | Meaning |
+| :--- | :--- |
+| `POST intervention/propose {operation, message?}` | request a STEER, QUEUE or STOP; `202` means requested, nothing sent |
+| `GET intervention/<id>` | the request's state |
+| `POST intervention/discard {proposalId}` | withdraw it before it is approved |
+| `POST intervention/check {proposalId}` | an explicit operator action: read the recording proxy's capture for consumption |
+
+Status gains `offers.{steer,queue,stop}` (each `{offered, reason}`) and `interventions` (the last 40 requests, memory only).
+
+**What is offered.** Only for the live session this broker serves, only while a run is open, only for a capability admitted for the observed
+runtime identity (`steering.steer`, `steering.follow-up`, `steering.stop`), and only when the terminal is free. A recording's last known
+`running` state never offers a live control (the recorded views have none, and a test pins it). Otherwise the reason is shown.
+
+**Concurrency.** The terminal is one readline, so **one approval waits at a time** across the prompt and the interventions; a second
+request is refused (409) before the desk records anything. A request that was approved and is waiting for Pi does not hold that slot. At
+most one STOP is in flight; a duplicate returns it, and steer and queue are withheld while it is pending. Pending Pi replies are held by the
+broker, so a late reply is recorded and shown after the page went away, and status reads are never held behind an `abort` Pi answers only
+once idle. A pending steer approval blocks a STOP until it is withdrawn on the page or declined in the terminal (press Enter).
+
+**Teardown.** The desk's `finish()` records consequences, so the desk first tells the broker (`onFinishing`, which also covers the control
+socket's `close`): it refuses new requests and withdraws what waits for the terminal. A request cannot be approved after the chains close.
+`dispose()` waits at most two seconds for a request still waiting for Pi.
+
+**States, never merged.** requested, approved, sent, runtime-accepted, observed-consumed, run-ended:
+
+| State | Page wording | Evidence |
+| :--- | :--- | :--- |
+| `awaiting-approval` | Requested. Waiting for you to approve it in the attached terminal | the proposal record |
+| `dispatching` / `sent` | Approved in the terminal. Being sent / Sent to Pi. Waiting for its reply | the request record exists |
+| `accepted` | Pi accepted it. That is a reply, not proof the message was used (STOP: Pi acknowledged the stop request) | `intervention.accepted` |
+| `refused` | Not sent (with the reason), or Pi refused it | the gate's or Pi's refusal |
+| `unknown` | Outcome unknown: it was sent, and Pi's reply was not seen. It may have taken effect | a request with no usable reply |
+
+A timeout or lost connection after the request was written is **unknown**, not refused, whatever the desk's `runtime-failed` record says.
+
+**Consumption** is the established rule (`endoFindConsumptionV0`): a later captured model request carries the message **one more time**.
+It reads the capture, so it is checked only when the operator presses *Check evidence* (or when the session closes), never per poll, and
+it is *not established* when the store holds no proxy capture. Text appearing in the conversation, or a successful RPC reply, is never
+treated as consumption. **The run's end** on a card is what Pi reported (`aborted`, `failed` or `completed`, from the last assistant
+message at `agent_settled`) and is never presented as caused by the request; a STOP that races a natural completion reads *completed*.
+The desk's **consequence** record is written at session close, and the card says so.
+
+**Privacy.** The message of a STEER or QUEUE is written to the desk's keyed blob store (`<root>/interventions/`) **before approval**, exactly
+as `endo steer` does, because the gate re-verifies it at the moment of sending. It is therefore retained even when the operator declines or
+withdraws it, unlike a prompt. It never enters canonical evidence; the composer says so beside Steer and Queue. The page keeps the text it
+sent in memory only, to show it on the card.
+
+**Not covered.** Real Pi behaviour beyond the fake Pi and the operator's single manual session; no real model run was made for this slice.

@@ -1,7 +1,15 @@
 // Workbench state. Pure: no DOM, no network, no clock (times are passed in). One owner for what the page knows of the live session: what
 // the broker last said (status), the private transcript it served, the one prompt in flight, and the grant, which lives here in memory
 // only. Nothing is inferred: a state is what the broker reported; a lost broker is "unreachable", never "ended".
-import type { TranscriptItem, WorkbenchCommand, WorkbenchReply, WorkbenchStatus } from "./workbench-wire.ts";
+import type {
+	InterventionOperation,
+	InterventionState,
+	TranscriptItem,
+	WorkbenchCommand,
+	WorkbenchIntervention,
+	WorkbenchReply,
+	WorkbenchStatus,
+} from "./workbench-wire.ts";
 
 export const MAX_ITEMS = 400;
 
@@ -17,6 +25,8 @@ export interface WorkbenchState {
 	watermark: number;
 	evicted: number;
 	command: WorkbenchCommand | null;
+	/** Every intervention the broker holds for this launch, as it last reported them (a reply to a request is merged in by id). */
+	interventions: WorkbenchIntervention[];
 	busy: boolean;
 	problem: string | null;
 	/** The last attempt did not reach the broker at all. It says nothing about whether the session ended. */
@@ -37,6 +47,7 @@ export const initialWorkbench = (): WorkbenchState => ({
 	watermark: 0,
 	evicted: 0,
 	command: null,
+	interventions: [],
 	busy: false,
 	problem: null,
 	unreachable: false,
@@ -54,6 +65,14 @@ export type WorkbenchAction =
 
 export const commandOpen = (c: WorkbenchCommand | null): boolean =>
 	c !== null && (c.state === "awaiting-approval" || c.state === "dispatching");
+
+/** An intervention still moving: waiting for the terminal, being sent, or sent and waiting for Pi. */
+export const interventionOpen = (i: WorkbenchIntervention): boolean =>
+	i.state === "awaiting-approval" || i.state === "dispatching" || i.state === "sent";
+export const anyOpen = (s: WorkbenchState): boolean => commandOpen(s.command) || s.interventions.some(interventionOpen);
+/** The STOP in flight, if any. */
+export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
+	s.interventions.find((i) => i.operation === "stop" && interventionOpen(i)) ?? null;
 
 export function reduceWorkbench(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
 	switch (action.type) {
@@ -94,6 +113,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 				// The broker holds one grant: if it says this page is not paired, the grant we hold is no longer one.
 				grant: status.paired ? base.grant : null,
 				command: status.command,
+				interventions: status.interventions,
 				problem: null,
 				unreachable: false,
 			};
@@ -131,6 +151,14 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			return { ...state, grant: reply.record.grant, problem: null };
 		case "command":
 			return { ...state, command: reply.record, problem: null };
+		case "intervention": {
+			// A reply to a request or a check: merged by id, so it shows now and the next status confirms it.
+			const known = state.interventions.some((i) => i.proposalId === reply.record.proposalId);
+			const merged = known
+				? state.interventions.map((i) => (i.proposalId === reply.record.proposalId ? reply.record : i))
+				: [...state.interventions, reply.record];
+			return { ...state, interventions: merged, problem: null };
+		}
 		case "failure": {
 			// 401 on a grant-gated route: the page is not (or no longer) paired. Say so; do not keep a grant the broker refused.
 			const unpaired = reply.status === 401 && reply.code === "grant-required";
@@ -164,6 +192,14 @@ export const COMMAND_WORDS: Readonly<Record<string, string>> = {
 	refused: "Not sent",
 };
 export const REFUSAL_WORDS: Readonly<Record<string, string>> = {
+	withdrawn: "it was withdrawn before it was approved",
+	"authorization-for-another-proposal": "the approval was for another request",
+	"authorization-for-another-session": "the approval was for another session",
+	"authorization-for-another-attachment": "the approval was for another attachment",
+	"proposal-tampered": "the request no longer matched what was approved",
+	"proposal-for-another-session": "the request was for another session",
+	"no-active-run": "no run was open any more",
+	"runtime-failed": "the runtime did not answer",
 	"not-authorized": "it was withdrawn or the page was no longer paired",
 	"authorization-denied": "it was declined in the terminal",
 	"approval-timed-out": "no approval was typed in time",
@@ -173,4 +209,50 @@ export const REFUSAL_WORDS: Readonly<Record<string, string>> = {
 	"capability-unavailable": "the runtime does not offer it",
 	duplicate: "it duplicated another prompt",
 	"runtime-refused": "the runtime did not accept it",
+};
+
+export const OPERATION_WORDS: Readonly<Record<InterventionOperation, { name: string; delivery: string }>> = {
+	steer: {
+		name: "Steer",
+		delivery:
+			"Delivered to the run that is open, after the current turn's tool calls and before the next model request. It changes a run; it does not start one.",
+	},
+	queue: {
+		name: "Queue",
+		delivery:
+			"Delivered to the run that is open when the agent has no more tool calls or steering. It changes a run; it does not start one.",
+	},
+	stop: {
+		name: "Stop",
+		delivery:
+			"Asks Pi to abort the run that is open. Pi answers only once it is idle: a request, not an immediate stop.",
+	},
+};
+
+/** One line for an intervention's state, saying no more than is known. */
+export function interventionWords(i: WorkbenchIntervention): string {
+	const state: InterventionState = i.state;
+	switch (state) {
+		case "awaiting-approval":
+			return "Requested. Waiting for you to approve it in the attached terminal";
+		case "dispatching":
+			return "Approved in the terminal. Being sent to Pi";
+		case "sent":
+			return i.operation === "stop"
+				? "Sent to Pi. Waiting for its reply (Pi answers a stop once the run is idle)"
+				: "Sent to Pi. Waiting for its reply";
+		case "accepted":
+			return i.operation === "stop"
+				? "Pi acknowledged the stop request"
+				: "Pi accepted it. That is a reply, not proof the message was used";
+		case "refused":
+			return i.reason === "runtime-refused" ? "Pi refused it" : "Not sent";
+		case "unknown":
+			return "Outcome unknown: it was sent, and Pi's reply was not seen. It may have taken effect";
+	}
+}
+export const RUN_END_WORDS: Readonly<Record<"completed" | "aborted" | "failed", string>> = {
+	completed: "completed",
+	aborted: "aborted",
+	failed: "failed",
 };

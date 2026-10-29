@@ -24,8 +24,9 @@
 // model was sent the message; **effect** is what the trajectory did after that point. Consumption is recorded only when
 // the capture shows it; otherwise the consequence says it was not observed, and why.
 //
-// v0 proposals come only from the operator through the CLI (`origin: "operator-cli"`, or `"operator-scenario"` when a
-// recorded scenario the operator wrote carries them). There are no model-originated proposals. Authorization is the
+// v0 proposals come only from the operator through the CLI (`origin: "operator-cli"`), from a recorded scenario the operator wrote
+// (`"operator-scenario"`) or from the DEVELOP workbench page (`"operator-workbench"`: the page only requests; the operator approves on
+// the attached terminal). There are no model-originated proposals. Authorization is the
 // local operator's confirmation of the exact proposal digest; nothing is allowed by default. An external authority
 // provider (for example Deadbolt) is a documented seam (`runtime/contracts/intervention.ts`), not wired.
 
@@ -37,7 +38,8 @@ export const ENDO_INTERVENTION_SCHEMA_V0 = "endo.intervention.v0";
 export type EndoInterventionOperationV0 = "steer" | "queue" | "stop";
 export const ENDO_INTERVENTION_OPERATIONS_V0: readonly EndoInterventionOperationV0[] = ["steer", "queue", "stop"];
 
-export type EndoInterventionOriginV0 = "operator-cli" | "operator-scenario";
+/** `operator-workbench`: requested from the DEVELOP workbench page; approved only by the operator typing a phrase on the attached terminal. */
+export type EndoInterventionOriginV0 = "operator-cli" | "operator-scenario" | "operator-workbench";
 
 /** A message, referenced by keyed digest (the text is kept outside canonical evidence, addressed by that digest). */
 export interface EndoInterventionMessageRefV0 {
@@ -90,7 +92,11 @@ export interface EndoInterventionProposalV0 extends EndoInterventionProposalCont
 }
 
 export type EndoInterventionAuthorityV0 =
-	| { kind: "local-operator"; confirmation: "digest-confirmed" | "scenario" }
+	/**
+	 * `digest-confirmed`: the operator gave the proposal's whole digest (`endo steer authorize`). `terminal-phrase`: the operator typed the
+	 * workbench's per-operation phrase, which carries the first 16 hex characters of the digest, on the attached process's controlling terminal.
+	 */
+	| { kind: "local-operator"; confirmation: "digest-confirmed" | "terminal-phrase" | "scenario" }
 	| { kind: "external"; provider: string };
 
 export interface EndoInterventionAuthorizationV0 {
@@ -250,8 +256,8 @@ export function endoInterventionProposalContentProblemV0(value: unknown): string
 	const keys = ["attachment", "basis", "message", "nonce", "operation", "origin", "schemaVersion", "session"];
 	for (const key of Object.keys(v)) if (!keys.includes(key)) return `unknown field ${key}`;
 	if (v.schemaVersion !== ENDO_INTERVENTION_SCHEMA_V0) return "wrong schemaVersion";
-	if (v.origin !== "operator-cli" && v.origin !== "operator-scenario")
-		return "origin must be operator-cli or operator-scenario (v0 has no model-originated proposals)";
+	if (v.origin !== "operator-cli" && v.origin !== "operator-scenario" && v.origin !== "operator-workbench")
+		return "origin must be operator-cli, operator-scenario or operator-workbench (v0 has no model-originated proposals)";
 	if (!ENDO_INTERVENTION_OPERATIONS_V0.includes(v.operation as EndoInterventionOperationV0))
 		return "operation must be steer, queue or stop";
 	if (v.operation === "stop" ? v.message !== null : !messageRef(v.message))

@@ -26,6 +26,7 @@ import type { ReadRequest } from "./model/state.ts";
 import {
 	readWorkbenchCommand,
 	readWorkbenchGrant,
+	readWorkbenchIntervention,
 	readWorkbenchStatus,
 	readWorkbenchTranscript,
 	type WorkbenchReply,
@@ -195,6 +196,16 @@ export async function fetchWorkbench(
 	} else if (request.kind === "propose") {
 		route = "./api/v0/workbench/prompt/propose";
 		body = JSON.stringify({ message: request.message });
+	} else if (request.kind === "intervene") {
+		const stop = request.operation === "stop";
+		if (stop !== (request.message === null)) return bad("Steer and queue need a message; stop carries none.");
+		route = "./api/v0/workbench/intervention/propose";
+		body = JSON.stringify(stop ? { operation: "stop" } : { operation: request.operation, message: request.message });
+	} else if (request.kind === "withdraw" || request.kind === "check") {
+		if (!/^endo\.evidence\.intervention\.proposal\.[0-9a-f]{64}$/.test(request.proposalId))
+			return bad("Invalid intervention reference.");
+		route = `./api/v0/workbench/intervention/${request.kind === "withdraw" ? "discard" : "check"}`;
+		body = JSON.stringify({ proposalId: request.proposalId });
 	} else if (request.kind === "command" || request.kind === "discard") {
 		if (!/^endo\.evidence\.workbench-prompt-[0-9a-f]{32}$/.test(request.proposalId))
 			return bad("Invalid prompt reference.");
@@ -239,6 +250,9 @@ export async function fetchWorkbench(
 		} else if (request.kind === "pair") {
 			const record = readWorkbenchGrant(json);
 			if (record !== null) return { kind: "grant", record };
+		} else if (request.kind === "intervene" || request.kind === "withdraw" || request.kind === "check") {
+			const record = readWorkbenchIntervention(json);
+			if (record !== null) return { kind: "intervention", record };
 		} else {
 			const record = readWorkbenchCommand(json);
 			if (record !== null) return { kind: "command", record };

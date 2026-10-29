@@ -2,8 +2,21 @@
 // is what was RECEIVED (a failed page is read again, nothing is skipped), a new launch forgetting everything, an unpaired page
 // dropping its grant, and an absent workbench.
 import { describe, expect, it } from "vitest";
-import { initialWorkbench, MAX_ITEMS, reduceWorkbench, type WorkbenchState } from "../studio-ui/src/model/workbench.ts";
-import type { TranscriptItem, WorkbenchStatus, WorkbenchTranscript } from "../studio-ui/src/model/workbench-wire.ts";
+import {
+	anyOpen,
+	initialWorkbench,
+	interventionWords,
+	MAX_ITEMS,
+	reduceWorkbench,
+	stopInFlight,
+	type WorkbenchState,
+} from "../studio-ui/src/model/workbench.ts";
+import type {
+	TranscriptItem,
+	WorkbenchIntervention,
+	WorkbenchStatus,
+	WorkbenchTranscript,
+} from "../studio-ui/src/model/workbench-wire.ts";
 
 const LAUNCH = "0123456789abcdef";
 const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
@@ -14,9 +27,15 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	run: "idle",
 	session: "endo.session.pi.x",
 	attachment: "pi.default",
-	offers: { prompt: { offered: true, reason: null } },
+	offers: {
+		prompt: { offered: true, reason: null },
+		steer: { offered: false, reason: "No run is open." },
+		queue: { offered: false, reason: "No run is open." },
+		stop: { offered: false, reason: "No run is open." },
+	},
 	paired: true,
 	command: null,
+	interventions: [],
 	transcript: { watermark: 0, firstSeq: 1 },
 	...over,
 });
@@ -141,5 +160,76 @@ describe("launch, pairing and availability", () => {
 			view: "recorded",
 			grant: null,
 		});
+	});
+});
+
+const intervention = (over: Partial<WorkbenchIntervention> = {}): WorkbenchIntervention => ({
+	proposalId: `endo.evidence.intervention.proposal.${"a".repeat(64)}`,
+	operation: "stop",
+	state: "awaiting-approval",
+	approved: false,
+	reason: null,
+	disposition: null,
+	bytes: null,
+	digestPrefix: "0123456789abcdef",
+	expiresAtMs: 1,
+	afterSeq: 0,
+	runEnded: null,
+	consumption: null,
+	...over,
+});
+
+describe("interventions", () => {
+	it("takes the broker's list from each status and merges a reply to a request by id, without duplicating it", () => {
+		const first = intervention();
+		let s = reduceWorkbench(withStatus(), { type: "reply", reply: { kind: "intervention", record: first }, at });
+		expect(s.interventions).toEqual([first]);
+		expect(anyOpen(s)).toBe(true);
+		expect(stopInFlight(s)).toEqual(first);
+		const sent = intervention({ state: "sent", approved: true });
+		s = reduceWorkbench(s, { type: "reply", reply: { kind: "intervention", record: sent }, at });
+		expect(s.interventions).toEqual([sent]);
+		// A status is the broker's whole list: it replaces what the page held.
+		s = reduceWorkbench(s, {
+			type: "reply",
+			reply: {
+				kind: "status",
+				record: status({ interventions: [intervention({ state: "accepted", approved: true })] }),
+			},
+			at,
+		});
+		expect(s.interventions.map((i) => i.state)).toEqual(["accepted"]);
+		expect(anyOpen(s)).toBe(false);
+		expect(stopInFlight(s)).toBeNull();
+	});
+
+	it("forgets interventions with a different launch, as it forgets the grant and the text", () => {
+		let s = reduceWorkbench(withStatus(), {
+			type: "reply",
+			reply: { kind: "intervention", record: intervention() },
+			at,
+		});
+		s = reduceWorkbench(s, {
+			type: "reply",
+			reply: { kind: "status", record: status({ launchId: "fedcba9876543210" }) },
+			at,
+		});
+		expect(s.interventions).toEqual([]);
+		expect(s.grant).toBeNull();
+	});
+
+	it("words each state for what is known: a reply is not use, a stop is not an immediate stop, a lost reply is unknown", () => {
+		const say = (over: Partial<WorkbenchIntervention>) => interventionWords(intervention(over));
+		expect(say({ state: "awaiting-approval" })).toContain("Waiting for you to approve it in the attached terminal");
+		expect(say({ state: "sent" })).toContain("Pi answers a stop once the run is idle");
+		expect(say({ operation: "steer", state: "accepted" })).toContain("not proof the message was used");
+		expect(say({ state: "accepted" })).toBe("Pi acknowledged the stop request");
+		expect(say({ state: "unknown" })).toContain("Outcome unknown");
+		expect(say({ state: "unknown" })).not.toMatch(/not sent|refused/i);
+		expect(say({ state: "refused", reason: "runtime-refused" })).toBe("Pi refused it");
+		expect(say({ state: "refused", reason: "authorization-denied" })).toBe("Not sent");
+		for (const word of ["stopped", "completed", "done", "delivered", "consumed"])
+			for (const state of ["awaiting-approval", "dispatching", "sent", "accepted", "refused", "unknown"] as const)
+				expect(say({ state }).toLowerCase(), `${state}:${word}`).not.toContain(word);
 	});
 });

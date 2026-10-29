@@ -233,7 +233,7 @@ never inferred from recordings). The page can **read** the live conversation and
   its own session file; that is Pi's retention.
 - **Records.** Each prompt leaves its own chain in the store, by keyed digest only: `workbench.prompt-proposed`, `-authorized`
   (allow or deny, confirmation `terminal`), `-dispatched`, `-accepted`, or `-refused` with a reason. It is not an intervention.
-- **Not here.** STEER, QUEUE and STOP (the page says they are not available in this build), a shell, a PTY, raw RPC, attaching to a
+- **Not here.** a weaker approval mode, a shell, a PTY, raw RPC, attaching to a
   Pi another tool started, project or worktree views.
 
 Design, threat model and slicing: [develop-workbench.md](develop-workbench.md).

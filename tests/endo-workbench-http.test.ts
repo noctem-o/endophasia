@@ -13,7 +13,7 @@ import { event, ingestAll, removeTempRoots, tempRoot, treeHash } from "./cockpit
 import { capabilityOf, get, raw, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
-import { Approval, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
+import { Approval, FakeDesk, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
 
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -25,14 +25,17 @@ afterEach(async () => {
 const API = "/api/v0/workbench/";
 const SECRET = "CANARY-live-text-5b7a-never-in-evidence";
 
-async function startBroker() {
+async function startBroker(options: { interventions?: boolean } = {}) {
 	const session = new FakeSession();
 	const approval = new Approval();
+	const desk = new FakeDesk(session);
+	session.runActive = options.interventions === true;
 	const broker = new WorkbenchBrokerV0({
 		session,
 		key: OTHER_KEY,
 		attachment: "pi.default",
 		approver: approval.approver,
+		...(options.interventions === true ? { interventions: desk } : {}),
 	});
 	const root = tempRoot("endo-wb-http-");
 	ingestAll(root, [
@@ -47,7 +50,7 @@ async function startBroker() {
 			body: JSON.stringify(body),
 		});
 	const getW = (route: string, headers: Record<string, string> = {}) => get(server, `${API}${route}`, headers);
-	return { session, approval, broker, root, server, origin, post, getW };
+	return { session, approval, desk, broker, root, server, origin, post, getW };
 }
 const errorOf = (r: { body: string }) => (JSON.parse(r.body) as { error: string }).error;
 
@@ -76,6 +79,89 @@ describe("the read-only server has no command surface", () => {
 		]);
 		expect((await get(server, `${API}status?x=1`)).status).toBe(404);
 		expect((await get(server, `${API}transcript`)).status).toBe(404);
+		// No intervention route exists here either: Studio holds no control authority, ever.
+		for (const route of ["propose", "discard", "check"])
+			expect(
+				(await send(server, `${capabilityOf(server)}${API}intervention/${route}`, { method: "POST" })).status,
+			).toBe(405);
+		expect(
+			(await get(server, `${API}intervention/endo.evidence.intervention.proposal.${"0".repeat(64)}`)).status,
+		).toBe(404);
+	});
+});
+
+describe("the intervention routes", () => {
+	it("pass the same guards as every command: a same-origin Origin, JSON, the grant in its header, a bounded body", async () => {
+		const { broker, post, server, origin } = await startBroker({ interventions: true });
+		const grant = (
+			JSON.parse((await post("pair", { code: broker.issuePairingCode().code })).body) as { grant: string }
+		).grant;
+		const body = { operation: "stop" };
+		const url = `${capabilityOf(server)}${API}intervention/propose`;
+		const fetchWith = (headers: Record<string, string>, payload: string = JSON.stringify(body)) =>
+			send(server, url, { method: "POST", headers, body: payload });
+		const good = { Origin: origin, "Content-Type": "application/json", "X-Endo-Grant": grant };
+		expect((await fetchWith({ "Content-Type": "application/json", "X-Endo-Grant": grant })).status).toBe(403); // no Origin
+		expect((await fetchWith({ ...good, Origin: "http://evil.example" })).status).toBe(403);
+		expect((await fetchWith({ ...good, "Content-Type": "text/plain" })).status).toBeGreaterThanOrEqual(400);
+		expect((await fetchWith({ Origin: origin, "Content-Type": "application/json" })).status).toBe(401); // no grant
+		expect((await fetchWith({ ...good, "X-Endo-Grant": `${grant}x` })).status).toBe(401);
+		expect((await fetchWith(good, "x".repeat(100_000))).status).toBeGreaterThanOrEqual(400);
+		// A grant in the URL is no grant.
+		expect(
+			(
+				await send(server, `${url}?grant=${grant}`, {
+					method: "POST",
+					headers: { Origin: origin, "Content-Type": "application/json" },
+					body: JSON.stringify(body),
+				})
+			).status,
+		).toBeGreaterThanOrEqual(400);
+		expect((await fetchWith(good)).status).toBe(202);
+	});
+
+	it("are a closed list: nothing passes a raw Pi command through, and a made-up operation or id reaches nothing", async () => {
+		const { broker, post, getW, desk } = await startBroker({ interventions: true });
+		const grant = (
+			JSON.parse((await post("pair", { code: broker.issuePairingCode().code })).body) as { grant: string }
+		).grant;
+		const headers = { "X-Endo-Grant": grant };
+		for (const operation of ["abort", "abort_and_prompt", "clear_queue", "bash", "follow_up", "prompt", "STOP", ""])
+			expect((await post("intervention/propose", { operation, message: "x" }, headers)).status, operation).toBe(400);
+		for (const route of [
+			"intervention/abort",
+			"intervention/rpc",
+			"intervention/apply",
+			"intervention/authorize",
+			"intervention/propose/x",
+		])
+			expect((await post(route, { proposalId: "x" }, headers)).status, route).toBe(404);
+		// The page cannot authorise or apply: there is no such route, and an id it makes up is unknown.
+		expect((await getW("intervention/apply", headers)).status).toBe(404);
+		expect((await post("intervention/discard", { proposalId: "made-up" }, headers)).status).toBe(404);
+		expect(desk.proposals.size + desk.applyCalls.length + desk.authorizations.length).toBe(0);
+	});
+
+	it("let exactly one of two concurrent steer requests through, and keep the text out of every read route", async () => {
+		const { broker, post, getW, approval, desk, server, session } = await startBroker({ interventions: true });
+		const grant = (
+			JSON.parse((await post("pair", { code: broker.issuePairingCode().code })).body) as { grant: string }
+		).grant;
+		const headers = { "X-Endo-Grant": grant };
+		const [a, b] = await Promise.all([
+			post("intervention/propose", { operation: "steer", message: SECRET }, headers),
+			post("intervention/propose", { operation: "steer", message: SECRET }, headers),
+		]);
+		expect([a.status, b.status].sort()).toEqual([202, 409]);
+		await approval.waitForRequest();
+		expect(approval.requests).toHaveLength(1);
+		expect(desk.proposals.size).toBe(1);
+		// Nothing a read route serves carries the text, even though the page asked with it.
+		for (const route of [`${API}status`, "/api/v0/snapshot", "/api/v0/develop/sessions"])
+			expect((await get(server, route, headers)).body, route).not.toContain(SECRET);
+		const view = JSON.parse(a.status === 202 ? a.body : b.body) as { proposalId: string };
+		expect((await getW(`intervention/${view.proposalId}`, headers)).body).not.toContain(SECRET);
+		expect(JSON.stringify(session.records)).not.toContain(SECRET);
 	});
 });
 

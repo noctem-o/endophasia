@@ -74,7 +74,7 @@ export interface EndoInterventionAuthorityProviderV0 {
  */
 export function localOperatorAuthorityV0(
 	confirmedDigest: string | null,
-	confirmation: "digest-confirmed" | "scenario" = "digest-confirmed",
+	confirmation: "digest-confirmed" | "terminal-phrase" | "scenario" = "digest-confirmed",
 ): EndoInterventionAuthorityProviderV0 {
 	return {
 		authority: { kind: "local-operator", confirmation },

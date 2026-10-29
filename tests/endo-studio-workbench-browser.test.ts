@@ -230,11 +230,12 @@ suite("the DEVELOP workbench", () => {
 		expect([await done(0), await done(1)]).toEqual(["true", "false"]);
 	});
 
-	it("gates the composer on what is offered and explains why not, and says steer, queue and stop are not available", async () => {
+	it("gates the composer on what is offered and explains why not, and offers no intervention without a desk", async () => {
 		const { page, session, broker } = await open();
 		await pairWith(page, broker);
-		expect(await page.text("form[aria-label='Message to agent']")).toContain(
-			"Steer, queue and stop are not available in this build",
+		// This launch has no intervention desk: steer, queue and stop are listed as unavailable, with the reason.
+		expect(await page.text("[data-testid=offer-steer]")).toContain(
+			"interventions are not configured for this launch",
 		);
 		session.runActive = true;
 		await refresh(page);

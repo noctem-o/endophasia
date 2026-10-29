@@ -2,11 +2,12 @@
 // test that matters most for the authority boundary: the prompt is requested over HTTP, and it is sent only after the operator TYPES
 // the exact phrase on the process's controlling terminal. Also the refusals: no terminal, no --control.
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
@@ -109,7 +110,7 @@ describe.runIf(hasScript && process.platform === "linux")(
 			);
 			const address = (await pty.waitFor(/workbench: (http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)/))[1]!;
 			const code = (await pty.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})/))[1]!;
-			expect(pty.output).toContain("only you, here, can approve a prompt");
+			expect(pty.output).toContain("only you, here, can approve a prompt or an intervention");
 			const origin = new URL(address).origin;
 			const api = `${address}api/v0/workbench/`;
 			const post = (route: string, body: unknown, grant?: string) =>
@@ -199,5 +200,173 @@ describe.runIf(hasScript && process.platform === "linux")(
 			]);
 			expect(JSON.stringify(events)).not.toContain("Count to forty");
 		}, 120_000);
+
+		it("steers, then stops, an open run only on the exact phrase for that operation, typed on the terminal", async () => {
+			const install = installFakePi("1.0.0");
+			cleanup.push(() => install.remove());
+			const root = temp("endo-wbcli-iv-");
+			const cwd = temp("endo-wbcli-ivcwd-");
+			const xdg = temp("endo-wbcli-ivxdg-");
+			const log = join(temp("endo-wbcli-ivlog-"), "commands.log");
+			// The controls are offered only for admitted capabilities: record the live study first, in the same root.
+			const studier = new PiAttachmentV0({
+				root,
+				cwd,
+				executable: install.bin,
+				env: fakePiEnv({ FAKE_PI_STEP_MS: "15" }),
+				requestTimeoutMs: 10_000,
+			});
+			await studier.checkLocal();
+			await studier.studyLive({ authorized: true, stepTimeoutMs: 20_000 });
+			const env = { ...process.env, XDG_DATA_HOME: xdg, ...fakePiEnv({ FAKE_PI_STEP_MS: "250", FAKE_PI_LOG: log }) };
+			const pty = new Pty(
+				`${process.execPath} ${CLI} harness attach ${root} --pi ${install.bin} --cwd ${cwd} --control --workbench`,
+				env,
+			);
+			const address = (await pty.waitFor(/workbench: (http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)/))[1]!;
+			const code = (await pty.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})/))[1]!;
+			const origin = new URL(address).origin;
+			const api = `${address}api/v0/workbench/`;
+			const post = async (route: string, body: unknown, grant?: string) =>
+				(await fetch(`${api}${route}`, {
+					method: "POST",
+					headers: {
+						Origin: origin,
+						"Content-Type": "application/json",
+						...(grant ? { "X-Endo-Grant": grant } : {}),
+					},
+					body: JSON.stringify(body),
+				})) as Response;
+			const getJson = async (route: string, grant?: string) =>
+				(await fetch(`${api}${route}`, { headers: grant ? { "X-Endo-Grant": grant } : {} })).json() as Promise<
+					Record<string, any>
+				>;
+			const until = async (what: string, ok: () => Promise<boolean>) => {
+				for (let i = 0; i < 400; i++) {
+					if (await ok()) return;
+					await sleep(50);
+				}
+				throw new Error(`never: ${what}\n${pty.output.slice(-1200)}`);
+			};
+			const grant = ((await (await post("pair", { code })).json()) as { grant: string }).grant;
+			const sent = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []);
+
+			// Nothing to steer while idle: not offered, and a forced request is refused with nothing written to the terminal.
+			expect((await getJson("status")).offers.steer).toMatchObject({ offered: false });
+			expect((await post("intervention/propose", { operation: "stop" }, grant)).status).toBe(409);
+
+			// A prompt opens a run (its own phrase), which the interventions then act on.
+			const prompt = (await (await post("prompt/propose", { message: "Count to forty" }, grant)).json()) as {
+				proposalId: string;
+			};
+			const promptPhrase = (await pty.waitFor(/Type (APPROVE PROMPT [0-9a-f]{16}) to send exactly this prompt/))[1]!;
+			pty.type(promptPhrase);
+			await until(
+				"prompt accepted",
+				async () => (await getJson(`prompt/${prompt.proposalId}`, grant)).state === "accepted",
+			);
+			await until("run active", async () => (await getJson("status")).run === "active");
+			expect((await getJson("status")).offers).toMatchObject({ steer: { offered: true }, stop: { offered: true } });
+			const base = sent().length;
+
+			// The prompt's phrase does not approve a steer: the approval is for the exact operation and digest.
+			const steerText = "STEER-CANARY-0f3a say hello too";
+			const wrong = (await (
+				await post("intervention/propose", { operation: "steer", message: steerText }, grant)
+			).json()) as { proposalId: string };
+			const deniedPhrase = (await pty.waitFor(/Type (APPROVE STEER [0-9a-f]{16}) to send exactly this steer/))[1]!;
+			expect(pty.output).toContain(steerText);
+			expect(pty.output).toContain("after its current turn's tool calls and before the next model request");
+			pty.type(promptPhrase);
+			await until(
+				"denied",
+				async () => (await getJson(`intervention/${wrong.proposalId}`, grant)).state === "refused",
+			);
+			expect(await getJson(`intervention/${wrong.proposalId}`, grant)).toMatchObject({
+				reason: "authorization-denied",
+				approved: false,
+			});
+			expect(sent().slice(base)).not.toContain("steer");
+
+			// The right phrase sends exactly one steer.
+			const steer = (await (
+				await post("intervention/propose", { operation: "steer", message: steerText }, grant)
+			).json()) as { proposalId: string };
+			const steerPhrase = (await pty.waitFor(/Type (APPROVE STEER [0-9a-f]{16}) to send exactly this steer/))[1]!;
+			expect(steerPhrase).not.toBe(promptPhrase);
+			expect(steerPhrase).not.toBe(deniedPhrase); // each request has its own digest, so its own phrase
+			await sleep(300);
+			expect(await getJson(`intervention/${steer.proposalId}`, grant)).toMatchObject({ state: "awaiting-approval" });
+			expect(sent().slice(base)).not.toContain("steer");
+			pty.type(steerPhrase);
+			await until(
+				"steer accepted",
+				async () => (await getJson(`intervention/${steer.proposalId}`, grant)).state === "accepted",
+			);
+			expect(
+				sent()
+					.slice(base)
+					.filter((c) => c === "steer"),
+			).toHaveLength(1);
+
+			// A stop: its own wording and phrase, sent, and answered by Pi once the run is idle.
+			const stop = (await (await post("intervention/propose", { operation: "stop" }, grant)).json()) as {
+				proposalId: string;
+			};
+			const stopPhrase = (await pty.waitFor(/Type (APPROVE STOP [0-9a-f]{16}) to send it/))[1]!;
+			expect(pty.output).toContain("Pi answers only once it is idle");
+			pty.type(stopPhrase);
+			await until(
+				"stop acknowledged",
+				async () => (await getJson(`intervention/${stop.proposalId}`, grant)).state === "accepted",
+			);
+			await until(
+				"run ended",
+				async () => (await getJson(`intervention/${stop.proposalId}`, grant)).runEnded !== null,
+			);
+			expect(await getJson(`intervention/${stop.proposalId}`, grant)).toMatchObject({
+				disposition: null,
+				runEnded: "aborted",
+			});
+			expect(
+				sent()
+					.slice(base)
+					.filter((c) => c === "abort"),
+			).toHaveLength(1);
+
+			pty.child.stdin.write("\x03");
+			expect(await pty.exit).toBe(0);
+			const store = createEndoDurableEventStoreV0(root, { readOnly: true });
+			const all: EndoEventV0[] = [];
+			for (let after = 0; ; ) {
+				const page = store.page({ afterSequence: after, limit: 10_000 });
+				if (page.events.length === 0) break;
+				all.push(...page.events);
+				after = page.nextAfterSequence;
+			}
+			store.close();
+			const chain = all
+				.filter((e) => e.kind.startsWith("intervention."))
+				.map(
+					(e) =>
+						`${e.kind}${(e.payload as { reason?: string }).reason ? `:${(e.payload as { reason?: string }).reason}` : ""}`,
+				);
+			expect(chain).toEqual([
+				"intervention.proposal", // the steer the prompt's phrase did not approve
+				"intervention.authorization:the operator confirmed no digest", // a deny, by the existing local-operator authority
+				"intervention.refused:authorization-denied",
+				"intervention.proposal", // the steer that was approved
+				"intervention.authorization",
+				"intervention.request",
+				"intervention.accepted",
+				"intervention.proposal", // the stop
+				"intervention.authorization",
+				"intervention.request",
+				"intervention.accepted",
+				"intervention.consequence",
+				"intervention.consequence",
+			]);
+			expect(JSON.stringify(all)).not.toContain("STEER-CANARY-0f3a");
+		}, 180_000);
 	},
 );

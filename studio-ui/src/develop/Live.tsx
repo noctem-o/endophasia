@@ -10,6 +10,7 @@ import {
 	interventionWords,
 	OPERATION_WORDS,
 	REFUSAL_WORDS,
+	RUN_END_WORDS,
 	runStripWords,
 	stopInFlight,
 } from "../model/workbench.ts";
@@ -216,8 +217,7 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 				) : null}
 				{i.runEnded === null ? null : (
 					<p className="small dim" data-testid="run-ended">
-						The run this was made in has ended: {i.runEnded}, as Pi reported. That is not shown to be caused by
-						this request.
+						The run this was made in {RUN_END_WORDS[i.runEnded]}. That is not shown to be caused by this request.
 					</p>
 				)}
 				{i.state === "accepted" && i.operation === "stop" && i.runEnded === null ? (

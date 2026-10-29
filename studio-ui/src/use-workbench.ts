@@ -30,6 +30,17 @@ export function useWorkbench(active: boolean) {
 	const [mode, setMode] = useState<"prompt" | "steer" | "queue">("prompt");
 	// The text THIS page sent as a steer or queue, by request, so its card can show it. Memory only; the broker's view never carries text.
 	const [sentText, setSentText] = useState<Readonly<Record<string, string>>>({});
+	// It is private live text, so it goes when the session ends or the launch changes, and with the cards the broker no longer lists.
+	const ended = state.status?.connection === "disconnected";
+	const listed = state.interventions.map((i) => i.proposalId).join();
+	useEffect(() => {
+		setSentText((now) => {
+			const keep = Object.keys(now).filter((id) => !ended && listed.split(",").includes(id));
+			return keep.length === Object.keys(now).length
+				? now
+				: Object.fromEntries(keep.map((id) => [id, now[id] as string]));
+		});
+	}, [ended, listed]);
 	const reading = useRef<(() => Promise<void>) | null>(null);
 
 	// Bumped when a grant is issued. A read that began before it carries an older status (paired: false) that must not be applied over the

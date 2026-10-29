@@ -166,6 +166,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#grant: { token: string; expiresAtMs: number } | null = null;
 	#command: Proposal | null = null;
 	readonly #interventions: WorkbenchInterventionsV0 | null;
+	/** The desk's final finish began: no prompt is offered or sent from here on, and one waiting for the terminal is withdrawn. */
+	#closing = false;
 	#disposed = false;
 	/** The runtime ended: the workbench for this session is over. Terminal: a later process is a new connection, never a continuation. */
 	#ended = false;
@@ -292,6 +294,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		const session = this.#o.session;
 		if (this.#disposed || this.#ended || !session.live || session.piSessionId === null)
 			return { offered: false, reason: "The session has no admitted connection now." };
+		if (this.#closing) return { offered: false, reason: "The session is closing." };
 		if (session.runActive)
 			return {
 				offered: false,
@@ -334,6 +337,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	 * request is approved after the chains have been closed off. The desk calls this when its `finish` begins.
 	 */
 	beginClose(): void {
+		this.#closing = true;
 		this.#interventions?.beginClose();
 		this.#command?.abort.abort();
 	}
@@ -490,7 +494,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		} catch {
 			answer = null;
 		}
-		if (this.#disposed || this.#ended) return settle("session-ended", p.proposedEventId);
+		if (this.#disposed || this.#ended || this.#closing) return settle("session-ended", p.proposedEventId);
 		if (answer === null)
 			return settle(p.abort.signal.aborted ? "not-authorized" : "approval-timed-out", p.proposedEventId);
 		const decidedAt = new Date(this.#now()).toISOString();
@@ -516,7 +520,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
 		const piId = session.piSessionId;
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
-		if (this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
+		if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
 			return settle("session-ended", authorized.id);
 		if (!this.#granted(p.grant)) return settle("not-authorized", authorized.id);
 		if (session.runActive) return settle("run-active", authorized.id);

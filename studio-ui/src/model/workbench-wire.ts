@@ -35,7 +35,7 @@ export interface WorkbenchIntervention {
 	/** The transcript position when it was requested. */
 	afterSeq: number;
 	/** The run it was made in ended, as the runtime reported it. Not a claim that the request caused it. */
-	runEnded: "completed" | "aborted" | "failed" | null;
+	runEnded: "completed" | "aborted" | "failed" | "unclassified" | null;
 	consumption: InterventionConsumption | null;
 }
 export interface Offer {
@@ -131,7 +131,7 @@ const intervention: Check = (v) =>
 		digestPrefix: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 		expiresAtMs: count,
 		afterSeq: count,
-		runEnded: eitherNull(one("completed", "aborted", "failed")),
+		runEnded: eitherNull(one("completed", "aborted", "failed", "unclassified")),
 		consumption: eitherNull(
 			(c) =>
 				shape(c, { status: one("observed"), exchange: count, captureEvent: short }) ||

@@ -251,8 +251,9 @@ export function interventionWords(i: WorkbenchIntervention): string {
 			return "Outcome unknown: it was sent, and Pi's reply was not seen. It may have taken effect";
 	}
 }
-export const RUN_END_WORDS: Readonly<Record<"completed" | "aborted" | "failed", string>> = {
-	completed: "completed",
-	aborted: "aborted",
-	failed: "failed",
+export const RUN_END_WORDS: Readonly<Record<"completed" | "aborted" | "failed" | "unclassified", string>> = {
+	completed: "has ended: completed, as Pi reported",
+	aborted: "has ended: aborted, as Pi reported",
+	failed: "has ended: failed, as Pi reported",
+	unclassified: "has ended with no classified outcome: Pi reported no stop reason",
 };

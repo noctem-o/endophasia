@@ -484,6 +484,55 @@ describe("the close, and who may ask", () => {
 		expect((await t.status()).offers.stop.reason).toContain("closing");
 	});
 
+	it("offers and sends no prompt once the desk's final finish begins, including an approval already given", async () => {
+		const t = setup();
+		t.session.runActive = false;
+		const grant = await t.pair();
+		const waiting = (await t.call("POST", "prompt/propose", { message: "late prompt" }, grant)).body as {
+			proposalId: string;
+		};
+		await t.approval.waitForRequest();
+		t.desk.finish();
+		t.approval.answer("allow"); // approval resolved just as the close began
+		await settle();
+		expect(t.session.promptCalls).toEqual([]);
+		expect((await t.call("GET", `prompt/${waiting.proposalId}`, null, grant)).body).toMatchObject({
+			state: "refused",
+			reason: "session-ended",
+		});
+		expect((await t.status()).offers.prompt).toMatchObject({ offered: false, reason: "The session is closing." });
+		expect((await t.call("POST", "prompt/propose", { message: "again" }, grant)).status).toBe(409);
+	});
+
+	it("reports a run's end like the recorded lifecycle: unclassified without a stop reason, failed when retries are exhausted", async () => {
+		const ending = async (events: Parameters<FakeSession["live_"]>[0][]) => {
+			const t = setup();
+			const grant = await t.pair();
+			t.session.live_({ type: "agent_start", record: {} });
+			await propose(t, grant, "stop");
+			await t.approval.waitForRequest();
+			t.approval.answer("allow");
+			await settle();
+			for (const e of events) t.session.live_(e);
+			t.session.live_({ type: "agent_settled", record: {} });
+			return (await t.status()).interventions[0].runEnded;
+		};
+		expect(await ending([])).toBe("unclassified");
+		expect(await ending([{ type: "auto_retry_end", record: { success: false } }])).toBe("failed");
+		expect(
+			await ending([
+				{ type: "message_end", record: { message: { role: "assistant", stopReason: "stop", content: [] } } },
+				{ type: "auto_retry_end", record: { success: false } },
+			]),
+		).toBe("failed");
+		expect(
+			await ending([
+				{ type: "auto_retry_end", record: { success: true } },
+				{ type: "message_end", record: { message: { role: "assistant", stopReason: "stop", content: [] } } },
+			]),
+		).toBe("completed");
+	});
+
 	it("ends the session without holding on to a stop Pi has not answered", async () => {
 		const t = setup();
 		const grant = await t.pair();

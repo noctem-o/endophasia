@@ -326,6 +326,27 @@ suite("steer, queue and stop in the DEVELOP workbench", () => {
 		expect(await page.text("[data-testid=offer-stop]")).toContain("unavailable");
 	});
 
+	it("forgets the text it sent when the session ends, while the card stays", async () => {
+		const { page, broker, session, desk, approval } = await open();
+		await pairWith(page, broker);
+		await page.click("[data-testid=mode-steer]");
+		await fill(page, "[data-testid=composer]", "PRIVATE-STEER-TEXT");
+		await page.click("[data-testid=send]");
+		await approval.waitForRequest();
+		approval.answer("allow");
+		await page.waitFor("document.querySelector('[data-testid=intervention-card]')?.dataset.state === 'sent'");
+		desk.release([...desk.proposals.keys()][0]!);
+		await page.waitFor("document.querySelector('[data-testid=intervention-card]')?.dataset.state === 'accepted'");
+		expect(await card(page, "steer")).toContain("PRIVATE-STEER-TEXT");
+		session.live = false;
+		await refresh(page);
+		await page.waitFor(
+			"document.querySelector('[data-testid=run-strip-words]').textContent.startsWith('disconnected')",
+		);
+		await page.waitFor("!document.body.innerText.includes('PRIVATE-STEER-TEXT')");
+		expect(await page.eval<boolean>("!!document.querySelector('[data-testid=intervention-card]')")).toBe(true);
+	});
+
 	it("exposes no live control on a recording, even one whose last recorded state is a running run", async () => {
 		const { page, broker } = await open(1440, 900, { running: false, root: historicalRunningStore() });
 		await pairWith(page, broker);

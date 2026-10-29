@@ -74,7 +74,7 @@ export type WorkbenchInterventionStateV0 =
 	| "unknown";
 
 /** How a run ended, as the runtime reported it (its last assistant message's stop reason at `agent_settled`). */
-export type WorkbenchRunEndingV0 = "completed" | "aborted" | "failed";
+export type WorkbenchRunEndingV0 = "completed" | "aborted" | "failed" | "unclassified";
 
 export interface WorkbenchInterventionViewV0 {
 	proposalId: string;
@@ -147,6 +147,8 @@ export class WorkbenchInterventionsV0 {
 	#runCount = 0;
 	#runOpen = false;
 	#lastStopReason: string | null = null;
+	/** The retry loop gave up in the open run (`auto_retry_end` with `success: false`): a failure whatever the last message said. */
+	#retryExhausted = false;
 
 	constructor(host: InterventionHostV0) {
 		this.#h = host;
@@ -185,6 +187,7 @@ export class WorkbenchInterventionsV0 {
 				this.#runCount += 1;
 				this.#runOpen = true;
 				this.#lastStopReason = null;
+				this.#retryExhausted = false;
 			}
 			return;
 		}
@@ -194,14 +197,27 @@ export class WorkbenchInterventionsV0 {
 				this.#lastStopReason = message.stopReason.slice(0, 32);
 			return;
 		}
+		if (event.type === "auto_retry_end") {
+			if (event.record.success === false) this.#retryExhausted = true;
+			return;
+		}
 		if (event.type !== "agent_settled" || !this.#runOpen) return;
+		// The same precedence as the recorded lifecycle (adapters/pi/lifecycle.ts): retry exhausted or an error is a failure, then an abort,
+		// then no stop reason at all is unclassified, and only a reported other stop reason is a completion.
 		const ending: WorkbenchRunEndingV0 =
-			this.#lastStopReason === "aborted" ? "aborted" : this.#lastStopReason === "error" ? "failed" : "completed";
+			this.#retryExhausted || this.#lastStopReason === "error"
+				? "failed"
+				: this.#lastStopReason === "aborted"
+					? "aborted"
+					: this.#lastStopReason === null
+						? "unclassified"
+						: "completed";
 		for (const c of this.#commands.values())
 			if (c.run === this.#runCount && c.view.runEnded === null && c.view.approved && c.view.state !== "refused")
 				c.view = { ...c.view, runEnded: ending };
 		this.#runOpen = false;
 		this.#lastStopReason = null;
+		this.#retryExhausted = false;
 	}
 
 	// --- what is offered ------------------------------------------------------------------------------------------------------
@@ -317,6 +333,7 @@ export class WorkbenchInterventionsV0 {
 			this.#runCount += 1;
 			this.#runOpen = true;
 			this.#lastStopReason = null;
+			this.#retryExhausted = false;
 		}
 		const abort = new AbortController();
 		const command: Command = {

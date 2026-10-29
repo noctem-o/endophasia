@@ -1,6 +1,6 @@
 # Terminal-governed A/A operator v0: offline acceptance only, real model acceptance gated
 
-Status: **TERMINAL-GOVERNED A/A OPERATOR COMPLETE / REAL MODEL ACCEPTANCE GATED**. `operate.ts --inspect|--run <config>` connects the task-owned server lifecycle, a bounded model-readiness gate, the governed two-turn A/A study and the fresh-process reader behind typed terminal approvals. It was exercised only with task-owned fake executables (a C relay that listens on loopback and maps a stand-in model file), a fake Pi and an in-process fake OpenAI endpoint, through a real pseudo-terminal. **No llama.cpp server was started, no real model request was sent, and no real A/A result exists.** Nothing here shows real model parity. Live acceptance is a separately authorised experiment.
+Status: **TERMINAL-GOVERNED A/A OPERATOR COMPLETE / ONE REAL RUN COMPLETED (AA-LIVE-001)**. `operate.ts --inspect|--run <config>` connects the task-owned server lifecycle, a bounded model-readiness gate, the governed two-turn A/A study and the fresh-process reader behind typed terminal approvals. Its automated tests use only task-owned fake executables (a C relay that listens on loopback and maps a stand-in model file), a fake Pi and an in-process fake OpenAI endpoint, through a real pseudo-terminal. **No llama.cpp server or real model request is involved in the tests**, and nothing in them shows model parity. The command was later run once against a real server (AA-LIVE-001, 2026-10-29); see [RESULTS.md](RESULTS.md) and [LIVE-PREFLIGHT-001.md](LIVE-PREFLIGHT-001.md).
 
 ## Using it
 

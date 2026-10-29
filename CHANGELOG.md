@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- **AA-LIVE-001 result (research):** the first real matched two-turn A/A ran once against the pinned llama.cpp build and
+  model: `COMPLETE-UNDER-DECLARED-ASSUMPTIONS`, 4 of 4 slots, 8 of 8 requests bound, server binary `MATCH`, cleanup
+  confirmed. Redacted summary and limits in
+  [research/governed-initial-continuation/aa/RESULTS.md](research/governed-initial-continuation/aa/RESULTS.md). Harness
+  validation only: not model parity, not attestation, no noise floor.
+
 ### Fixed
 - **Task-owned launcher now waits for the model mapping (research):** a real llama.cpp server listens before it loads its
   model, but the launcher inspected the process the moment the listener appeared and required the model to be mapped, so

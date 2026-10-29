@@ -9,6 +9,7 @@ import {
 	groupBySource,
 	initialDevelop,
 	listCoverage,
+	liveObserveStart,
 	NO_DEVELOP_FILTERS,
 	observeHandoffBlock,
 	reduceDevelop,
@@ -391,5 +392,20 @@ describe("the hand-off while Observe cannot read", () => {
 		expect(observeHandoffBlock(controlsLocked(paced, 2000))).not.toBeNull();
 		// The pause is a monotonic deadline: once it has passed the action is offered again.
 		expect(observeHandoffBlock(controlsLocked(paced, 31_001))).toBeNull();
+	});
+});
+
+describe("where Observe starts for a live session", () => {
+	it("starts just before the session's recorded first event, else at the latest window, else says it does not know", () => {
+		const alias = "endo.session.pi.a";
+		const row = sessions.sessions.find((r) => r.session === alias)!;
+		expect(liveObserveStart(alias, sessions, null, 100)).toBe(Math.max(0, row.firstStorageSequence - 1));
+		// Not among the loaded recorded rows (a new session, or on a later page): the latest window of the longest log known.
+		const length = sessions.source.watermark!.length;
+		expect(liveObserveStart("endo.session.pi.brand-new", sessions, null, 10)).toBe(length - 10);
+		expect(liveObserveStart("endo.session.pi.brand-new", sessions, length + 500, 10)).toBe(length + 490);
+		expect(liveObserveStart("endo.session.pi.brand-new", null, 5, 100)).toBe(0);
+		expect(liveObserveStart(null, null, null, 100)).toBeNull();
+		expect(liveObserveStart("endo.session.pi.x", null, 0, 100)).toBeNull();
 	});
 });

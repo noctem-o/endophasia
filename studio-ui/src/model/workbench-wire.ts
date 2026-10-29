@@ -3,7 +3,7 @@
 // and a failure becomes fixed text: no response body, grant or transcript text ever reaches a message.
 import { type Check, count, eitherNull, list, obj, one, shape } from "./compare-wire.ts";
 
-export type WorkbenchCommandState = "awaiting-approval" | "dispatching" | "accepted" | "refused";
+export type WorkbenchCommandState = "awaiting-approval" | "dispatching" | "accepted" | "refused" | "unknown";
 export interface WorkbenchCommand {
 	proposalId: string;
 	state: WorkbenchCommandState;
@@ -70,7 +70,7 @@ const REASONS = [
 const command: Check = (v) =>
 	shape(v, {
 		proposalId: (x) => typeof x === "string" && /^endo\.evidence\.workbench-prompt-[0-9a-f]{32}$/.test(x),
-		state: one("awaiting-approval", "dispatching", "accepted", "refused"),
+		state: one("awaiting-approval", "dispatching", "accepted", "refused", "unknown"),
 		approved: bool,
 		reason: eitherNull(one(...REASONS)),
 		disposition: eitherNull(one("started", "queued", "handled")),

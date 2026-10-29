@@ -225,7 +225,8 @@ never inferred from recordings). The page can **read** the live conversation and
 - **Approval.** A requested prompt waits until you type its exact phrase (`APPROVE PROMPT <digest>`) **on the attached terminal**,
   where the whole prompt is shown. Anything else declines it. The page shows *Waiting for you to approve it in the attached terminal*,
   then *Approved. Sending*, then *Accepted by the runtime*: acceptance is Pi's reply, never completion; follow the run in the
-  conversation. A prompt is only sent when the session is connected and idle; the gate is checked again at the moment of sending.
+  conversation. If Pi's reply is not seen (a timeout, a lost connection) the page says *Sent, but the runtime's reply was not seen* and
+  asks you to check the conversation before sending another: only Pi's own refusal is shown as *Not sent*. A prompt is only sent when the session is connected and idle; the gate is checked again at the moment of sending.
 - **The conversation** is a private, in-memory view of what the attached process has received: your prompts and the assistant's text
   (tagged *live · private, cleared at session end*), tool calls by name and outcome (three or more in a row fold), run markers. Tool
   arguments and results and reasoning text are not kept. It is never written to the event store or served by any read route. Pi keeps

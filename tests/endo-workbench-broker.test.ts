@@ -7,6 +7,7 @@ import {
 	LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
 	LiveTranscriptV0,
 } from "../adapters/pi/live-transcript.ts";
+import { PiRpcRefusalV0 } from "../adapters/pi/rpc.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { Approval, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
@@ -92,6 +93,19 @@ describe("the live transcript", () => {
 		);
 		for (let i = 0; i < 60; i++) t.push(textMessage("assistant", "x".repeat(30_000)));
 		expect(t.size.bytes).toBeLessThanOrEqual(1024 * 1024);
+	});
+
+	it("cuts a very long non-ASCII message in linear time, at a character boundary", () => {
+		const t = new LiveTranscriptV0();
+		const started = performance.now();
+		t.push(textMessage("assistant", "漢".repeat(100_000)));
+		expect(performance.now() - started).toBeLessThan(500);
+		const m = t.view().items[0]!;
+		expect(m.kind === "message" && m.truncated).toBe(true);
+		expect(m.kind === "message" && Buffer.byteLength(m.text)).toBeLessThanOrEqual(
+			LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
+		);
+		expect(m.kind === "message" && m.text.includes("\ufffd")).toBe(false);
 	});
 
 	it("forgets everything when cleared and ignores anything after", () => {
@@ -376,11 +390,13 @@ describe("the prompt command", () => {
 		}
 	});
 
-	it("says the runtime refused when it does, and never claims acceptance for a disposition it does not know", async () => {
-		for (const [result, reason] of [
-			[async () => Promise.reject(new Error("pi said no")), "runtime-refused"],
-			[async () => "mystery", "runtime-refused"],
-		] as const) {
+	it("says the runtime refused only when Pi itself refused; a lost reply or an odd answer is unknown, never 'not sent'", async () => {
+		const cases: [() => Promise<string>, string, string | null][] = [
+			[async () => Promise.reject(new PiRpcRefusalV0("prompt", "no")), "refused", "runtime-refused"],
+			[async () => Promise.reject(new Error("request timed out")), "unknown", null],
+			[async () => "mystery", "unknown", null],
+		];
+		for (const [result, state, reason] of cases) {
 			const ctx = setup();
 			ctx.session.promptResult = result;
 			const grant = await ctx.pair();
@@ -390,15 +406,30 @@ describe("the prompt command", () => {
 			await ctx.approval.waitForRequest();
 			ctx.approval.answer("allow");
 			await settle();
-			expect(ctx.session.records.map((r) => r.kind)).toContain("workbench.prompt-dispatched");
-			expect(ctx.session.records.map((r) => r.kind)).not.toContain("workbench.prompt-accepted");
-			expect(
-				(await ctx.call("GET", `prompt/${view.proposalId}`, null, grant)).body as { state: string; reason: string },
-			).toMatchObject({
-				state: "refused",
-				reason,
-			});
+			const kinds = ctx.session.records.map((r) => r.kind);
+			expect(kinds).toContain("workbench.prompt-dispatched");
+			expect(kinds).not.toContain("workbench.prompt-accepted");
+			// An unknown outcome is not recorded as a refusal: the dispatch stands as the last step.
+			expect(kinds.includes("workbench.prompt-refused")).toBe(state === "refused");
+			const view2 = (await ctx.call("GET", `prompt/${view.proposalId}`, null, grant)).body as {
+				state: string;
+				reason: string | null;
+				approved: boolean;
+			};
+			expect(view2).toMatchObject({ state, reason, approved: true });
 		}
+	});
+
+	it("takes the largest prompt even when every byte is escaped in JSON, and refuses one byte more", async () => {
+		const { call, pair, session, approval } = setup();
+		const grant = await pair();
+		const max = 16 * 1024;
+		expect((await call("POST", "prompt/propose", { message: '"'.repeat(max) }, grant)).status).toBe(202);
+		await approval.waitForRequest();
+		expect(session.records[0]!.payload.message).toMatchObject({ bytes: max });
+		const other = setup();
+		const g2 = await other.pair();
+		expect((await other.call("POST", "prompt/propose", { message: "x".repeat(max + 1) }, g2)).status).toBe(400);
 	});
 
 	it("fails closed when the store cannot record: nothing is proposed and nothing is sent", async () => {

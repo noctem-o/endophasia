@@ -519,7 +519,7 @@ is itself the writable boundary (`endo harness attach --control --workbench`); `
 is unchanged: GET only, every POST a 405, and the one extra answer is a constant `GET api/v0/workbench/status` →
 `{"available":false,"schemaVersion":"endo.workbench-status.v0"}` (so a page can ask quietly). With it, the routes under
 `api/v0/workbench/` pass the same Host, Origin and Fetch Metadata guards and, for a POST, an Origin that is exactly the server's own,
-`Content-Type: application/json` and a body of at most 8 KiB; the server forwards the single `x-endo-grant` header and the parsed body
+`Content-Type: application/json` and a body of at most 40 KiB (the largest prompt, 16 KiB, with every byte JSON-escaped); the server forwards the single `x-endo-grant` header and the parsed body
 and charges nothing to the read budget because it reads no store. The handler decides what any command means.
 
 ## DEVELOP session desk projection (implemented)

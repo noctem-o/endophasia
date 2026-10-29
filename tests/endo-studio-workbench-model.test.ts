@@ -96,6 +96,22 @@ describe("launch, pairing and availability", () => {
 		expect(s).toMatchObject({ launchId: "fedcba9876543210", grant: null, items: [], watermark: 0, command: null });
 	});
 
+	it("forgets the private text when the broker reports the session disconnected, but not when it merely cannot be reached", () => {
+		const s = give(withStatus(), page([msg(1, "private")], 1));
+		const down = reduceWorkbench(s, {
+			type: "reply",
+			reply: { kind: "failure", status: 0, code: "", message: "x", retrySeconds: null },
+			at,
+		});
+		expect(down.items).toHaveLength(1); // unreachable is not ended: nothing is concluded, nothing cleared
+		const gone = reduceWorkbench(s, {
+			type: "reply",
+			reply: { kind: "status", record: status({ connection: "disconnected", run: "unknown", paired: false }) },
+			at,
+		});
+		expect(gone).toMatchObject({ items: [], watermark: 0, grant: null });
+	});
+
 	it("drops a grant the broker says is no longer the paired one, and ignores a transcript of another launch", () => {
 		const s = withStatus();
 		expect(s.grant).not.toBeNull();

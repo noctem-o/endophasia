@@ -64,10 +64,12 @@ function textOf(content: unknown): string {
 
 /** Cut at a UTF-8 boundary no longer than `limit` bytes. */
 function cut(text: string, limit: number): { text: string; truncated: boolean } {
-	if (bytes(text) <= limit) return { text, truncated: false };
-	let end = Math.min(text.length, limit);
-	while (end > 0 && bytes(text.slice(0, end)) > limit) end -= 1;
-	return { text: text.slice(0, end), truncated: true };
+	const encoded = Buffer.from(text, "utf8");
+	if (encoded.length <= limit) return { text, truncated: false };
+	// One encoding, then back to a UTF-8 character boundary (a continuation byte is 10xxxxxx): linear, however long the message.
+	let end = limit;
+	while (end > 0 && (encoded[end]! & 0xc0) === 0x80) end -= 1;
+	return { text: encoded.subarray(0, end).toString("utf8"), truncated: true };
 }
 
 const name = (value: unknown): string =>

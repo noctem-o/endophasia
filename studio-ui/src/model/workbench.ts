@@ -81,8 +81,12 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			// A different launch is a different process: nothing held from the old one (grant, text, a prompt) belongs to it.
 			const fresh = state.launchId !== null && state.launchId !== status.launchId;
 			const base = fresh ? { ...initialWorkbench(), view: state.view, follow: state.follow } : state;
+			// The broker says the session is DISCONNECTED (its answer, not a failure to reach it): the private text it held is gone, so the
+			// page forgets its copy too. An unreachable broker is a different thing and clears nothing.
+			const gone = status.connection === "disconnected";
 			return {
 				...base,
+				...(gone ? { items: [], watermark: 0, evicted: 0 } : {}),
 				availability: "available",
 				status,
 				statusAt: at,
@@ -155,6 +159,8 @@ export const COMMAND_WORDS: Readonly<Record<string, string>> = {
 	"awaiting-approval": "Waiting for you to approve it in the attached terminal",
 	dispatching: "Approved. Sending to the runtime",
 	accepted: "Accepted by the runtime",
+	unknown:
+		"Sent, but the runtime's reply was not seen. It may have started: check the conversation before sending another",
 	refused: "Not sent",
 };
 export const REFUSAL_WORDS: Readonly<Record<string, string>> = {

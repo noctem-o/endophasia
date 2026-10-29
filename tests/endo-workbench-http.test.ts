@@ -115,7 +115,9 @@ describe("the guards on a command request", () => {
 			body: "{}",
 		});
 		expect(hostile.status).toBe(421);
-		expect((await post("pair", "x".repeat(9000))).status).toBe(400);
+		// The transport bound fits the largest prompt with every byte escaped (40 KiB); beyond it the body is refused before the broker.
+		expect((await post("pair", "x".repeat(41_000))).status).toBe(400);
+		expect((await post("pair", "x".repeat(9000))).status).toBe(401); // reached the broker: a pairing body that is not a code
 		expect(
 			(
 				await send(server, `${capabilityOf(server)}${API}pair`, {

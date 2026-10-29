@@ -38,6 +38,7 @@ import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { LiveTranscriptV0 } from "./live-transcript.ts";
+import { PiRpcRefusalV0 } from "./rpc.ts";
 
 export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 
@@ -93,7 +94,11 @@ export interface WorkbenchOptionsV0 {
 	grantMs?: number;
 }
 
-export type WorkbenchCommandStateV0 = "awaiting-approval" | "dispatching" | "accepted" | "refused";
+/**
+ * `unknown`: the prompt was dispatched and the runtime's reply was not seen (a timeout, a lost connection, an odd answer). Agent work may
+ * have started: it is neither accepted nor refused, and the page says so rather than inviting a duplicate.
+ */
+export type WorkbenchCommandStateV0 = "awaiting-approval" | "dispatching" | "accepted" | "refused" | "unknown";
 export interface WorkbenchCommandViewV0 {
 	proposalId: string;
 	state: WorkbenchCommandStateV0;
@@ -448,8 +453,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		p.message = null; // sent from here on: the broker keeps no copy
 		try {
 			const disposition = await session.prompt(text);
-			const known = (ENDO_WORKBENCH_DISPOSITIONS_V0 as readonly string[]).includes(disposition);
-			if (!known) return settle("runtime-refused", dispatched.id);
+			if (!(ENDO_WORKBENCH_DISPOSITIONS_V0 as readonly string[]).includes(disposition)) {
+				// Pi answered, in a form this version does not know: not an acceptance, and not a refusal either.
+				p.view = { ...p.view, state: "unknown" };
+				return;
+			}
 			p.view = { ...p.view, state: "accepted", disposition };
 			try {
 				session.recordWorkbench(
@@ -460,8 +468,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			} catch {
 				// recorded acceptance is best effort once the runtime has answered; the view says what Pi replied
 			}
-		} catch {
-			settle("runtime-refused", dispatched.id);
+		} catch (error) {
+			// Only Pi's own explicit refusal is a refusal. A timeout, a lost connection or a protocol fault rejected a request that was
+			// already written: the work may have started, so the outcome is unknown, never "not sent".
+			if (error instanceof PiRpcRefusalV0) settle("runtime-refused", dispatched.id);
+			else p.view = { ...p.view, state: "unknown" };
 		}
 	}
 

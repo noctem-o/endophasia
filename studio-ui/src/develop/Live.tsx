@@ -184,7 +184,7 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 			<ol className="chain" aria-label="Steps">
 				<li data-done="true">requested</li>
 				<li data-done={c.approved}>approved in the terminal</li>
-				<li data-done={c.state === "dispatching" || c.state === "accepted"}>sent</li>
+				<li data-done={c.state === "dispatching" || c.state === "accepted" || c.state === "unknown"}>sent</li>
 				<li data-done={c.state === "accepted"}>accepted by the runtime</li>
 			</ol>
 			{c.state === "awaiting-approval" ? (

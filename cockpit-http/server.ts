@@ -176,7 +176,8 @@ export interface EndoCockpitServerV0 {
 	close(): Promise<void>;
 }
 
-const MAX_WORKBENCH_BODY = 8 * 1024;
+/** The largest prompt (16 KiB) with every byte escaped (a quote, a backslash or a newline is two bytes in JSON), plus the envelope. */
+const MAX_WORKBENCH_BODY = 40 * 1024;
 /** The only statuses a workbench handler may answer with. */
 const WORKBENCH_STATUSES: readonly number[] = [200, 202, 400, 401, 403, 404, 409, 429, 503];
 

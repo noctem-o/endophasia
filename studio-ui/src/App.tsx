@@ -7,7 +7,7 @@ import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
 import { candidateValue } from "./model/compare.ts";
 import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
-import { observeHandoffBlock } from "./model/develop.ts";
+import { liveObserveStart, observeHandoffBlock } from "./model/develop.ts";
 import { attentionOf } from "./model/observe.ts";
 import { Attention } from "./observe/Attention.tsx";
 import { Banner, readStatusText } from "./observe/Chrome.tsx";
@@ -75,7 +75,15 @@ export function App(): ReactElement {
 		if (alias !== null) observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: alias } });
 		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
 		setWorkspace("observe");
-		observe.refresh();
+		// One explicit read of a window that contains the live session (its recorded row, else the latest window), never the old window.
+		const start = liveObserveStart(
+			alias,
+			develop.state.inventory,
+			state.loaded?.snapshot.timeline.source.watermark?.length ?? null,
+			state.pageSize,
+		);
+		if (start === null) observe.refresh();
+		else observe.goTo(start);
 	};
 	const showCompare = (row: EndoCockpitDevelopSessionRowV0) => {
 		setCompareNotice(null);

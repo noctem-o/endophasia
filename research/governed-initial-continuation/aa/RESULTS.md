@@ -1,8 +1,39 @@
 # Matched two-turn A/A: implementation feasibility only
 
-Status: **ENGINEERING INCOMPLETE / LIVE GATED**. This is not a live A/A result or an approval to start one. No real model request or Pi session was made in this study. The private plan, a coordinator building block and a fresh-process comparison reader now exist, and a terminal-governed operator command now exists ([OPERATOR.md](OPERATOR.md)), but it has only been run against fakes; there is no real-server acceptance. The required adversarial and owned-cleanup tests are incomplete. Individual verified continuation receipts alone do not establish a valid matched study.
+Status: **ONE REAL MATCHED A/A COMPLETED (AA-LIVE-001, PASS UNDER DECLARED ASSUMPTIONS) / ENGINEERING HARDENING INCOMPLETE**. The terminal-governed operator ([OPERATOR.md](OPERATOR.md)) was run once against a real llama.cpp server and model on 2026-10-29; the redacted result is in the first section below. This is harness validation under the pre-registration in [LIVE-PREFLIGHT-001.md](LIVE-PREFLIGHT-001.md). It is not a statistical study, not model parity and not an effect of sibling identity. Individual verified continuation receipts alone do not establish a valid matched study. The "Required work before live execution" list at the end predates this run and is kept as written; items on it that this run did not exercise remain open.
 
 A [Linux host profile probe](LINUX-INSPECTION.md) checks sampled process, launch arguments, environment names, listener tables and mapped-file facts, but cannot verify exclusive socket ownership or all effective runtime configuration. It does not produce real admission evidence and cannot establish server parity.
+
+## AA-LIVE-001: first real matched A/A (2026-10-29)
+
+**Result category: PASS** (applied mechanically from the printed outcome, per the pre-registered table), **qualified** as the pre-registration requires: readiness is a server-reported observation, the study is internally consistent under declared and unverified trust assumptions, and the server-binary status is file identity only. One run; no retry; nothing was reopened.
+
+**Binding record.** Pre-registration `LIVE-PREFLIGHT-001.md` at git blob `37df2a1e5282bb269fd2c5040a8a1aefcd08a008`, on `main` at `f05006e4e` (merged 2026-10-29 04:06 UTC, before the run began at about 08:39 UTC). That blob includes revision 3 (launcher fix, PR #98) and revision 4 (loading check, PR #99). No design field, limit, profile, executable, model, seed or verdict rule was changed after any execution. The seed `20261028` fixed the order ABBA.
+
+**What was run.** Operator `operate.ts --run`, one task-owned server on loopback `127.0.0.1:18181` (recovered historical build 11518, commit `1f8fa5231`, binary digest `2c4c7139…18af68`; model Nanbeige4.3-33B Q4_K_M, SHA-256 `9216fa91…ff8cc1`; profile `llama.cpp-11518-explicit-fit-off-v0`, `--fit off --n-gpu-layers 46`), then 4 fresh Pi sessions × 2 turns, tool-free, 8 requests, each turn approved separately by typed phrase in the operator's own terminal.
+
+| Check | Printed outcome |
+| --- | --- |
+| Verdict | `COMPLETE-UNDER-DECLARED-ASSUMPTIONS`, stopped at stage `done` |
+| Readiness | reported ready after 8 polls (server-reported, not proof of inference) |
+| Slots | 4 of 4 started and completed: 1 baseline, 2 alternative, 3 alternative, 4 baseline |
+| Independent (fresh-process) read | valid; evidence records valid |
+| Request/dispatch binding | 8 of 8 admission sidecars bound to captured requests |
+| Observed identity | consistent (task-owned process; not an attestation) |
+| Study completion | four receipts; admission complete |
+| Server binary | `MATCH` (digest equals the historically accepted build; file identity only) |
+| Owned-server cleanup | confirmed: process gone, listener gone; afterwards no llama-server, port free, GPU memory back to desktop baseline |
+| Answer correctness (this study's own check) | first turn 4/4, repeat turn 4/4; no parity claim |
+
+Per-slot wall time, from the start and end record times, was roughly 29–55 s including the operator's typing. That is a property of this machine and this run, not a benchmark.
+
+**Not established.** Server attestation, sole socket ownership, reuse-port state, runtime configuration, server metadata, GPU telemetry (`OWNERSHIP_UNVERIFIED` and eight declared, unverified assumptions stand), model parity with the earlier acceptance (the profile differs by design, see `LIVE-PREFLIGHT-001.md` §3), determinism, or any effect of sibling identity. Four identical-looking correct answers from a trivial arithmetic task say little about response variation. With two sessions per arm this is a descriptive harness check: it shows the governed pipeline runs end to end against a real server and leaves coherent, independently readable evidence. It does not give a noise floor.
+
+**Known presentation gap.** The operator printed the first-turn approval heading for slot 1 with a continuation prompt line in the operator's pasted terminal capture and the slot 1 continuation approval block did not appear in that capture. All eight requests are bound to admissions and four receipts verify, so the evidence is complete; the capture is probably a terminal-paste artifact, but it has not been reproduced or ruled out as an operator display issue.
+
+**Evidence.** The study, provenance, readiness, slot and reader records are private, owner-only and outside Git, as are the responses and reasoning. The comparison key, prompts, model responses and absolute private paths are not published. A separate redacted comparison of responses has not been produced.
+
+**Suggested next step (not started, not pre-registered).** A larger A/A to estimate run-to-run variation, or the single-parameter A/B the end of this document describes, each pre-registered first.
 
 ## Terminal-governed operator
 

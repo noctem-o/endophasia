@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- **Task-owned launcher now waits for the model mapping (research):** a real llama.cpp server listens before it loads its
+  model, but the launcher inspected the process the moment the listener appeared and required the model to be mapped, so
+  it refused a real server. It now waits, inside its startup deadline and under the same cancellation, for the first
+  model mapping and then runs the unchanged inspection; a server that exits, never maps, or times out is ended. Found by
+  the first real launch attempt (refused before any request). AA-LIVE-001 revision 3 records it.
+
 ### Added
 - **AA-LIVE-001 preflight (research; read-only):** pre-registration, local environment qualification, recovery and
   dependency identity of the historical pinned llama.cpp build (build 11518, commit `1f8fa5231`), `--fit off` profile

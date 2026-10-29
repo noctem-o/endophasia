@@ -1,10 +1,12 @@
 # AA-LIVE-001: pre-registration, executable decision and live go/no-go (Phase A, read-only)
 
-Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96). **No server was started, no model request was sent and `--run` was never invoked.** The checks below are read-only observations of one machine (Arch Linux, RTX 4090). The comparison key, private prompts and evidence contents are not published. Hardware and software identifiers (digests, versions) are published on purpose: they are the experiment's declared environment. Paths are shown relative to `~`.
+Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96). **As of revisions 1 and 2, no server was started, no model request was sent and `--run` was never invoked (revision 3 records the one later server-only loading check, which sent no request).** The checks below are read-only observations of one machine (Arch Linux, RTX 4090). The comparison key, private prompts and evidence contents are not published. Hardware and software identifiers (digests, versions) are published on purpose: they are the experiment's declared environment. Paths are shown relative to `~`.
 
 **Status: HISTORICAL BUILD RECOVERED / LOAD QUALIFICATION GATED.** The pinned executable was recovered and the operator approved it (§5). Loadability on this GPU (§3) is not yet qualified, and the live run needs its own instruction.
 
 **Revision 2 (this amendment).** Revision 1 of this document said the pinned build was unavailable and that build 11429 was the only server. That was wrong: my searches truncated their output and missed a local build. The exact historical executable exists (§2, §5). Everything about the Arch build is retained only as a superseded fallback.
+
+**Revision 3 (2026-10-29, this amendment).** The first server-only loading check (§3) was inconclusive: the task-owned launcher refused the real server before the model could load, because its host inspection required the model to be mapped the moment the listener appeared, and a real llama.cpp server listens first. The launcher now waits, inside its startup deadline, for the first model mapping before inspecting (§3). No design field, limit, profile, executable, model or verdict rule changed. The loading check has to be run again with the fixed launcher before any live run.
 
 ## 1. Pre-registered design
 
@@ -86,6 +88,14 @@ So full offload cannot load with `--fit off` on this GPU; a partial offload is r
 
 The same binary is used, but not the same launch. The Oct 27 service ran `--fit on --fit-target 1024 --temp 1.0 --top-p 0.95 --metrics` (plus the shared model, alias, ctx 65536, 1 slot, batch 512, ubatch 128, q4_0 K/V, flash attention, `--jinja`). The profile here replaces `--fit on --fit-target 1024` with `--fit off --n-gpu-layers 46`, adds `--cache-ram 0 --ctx-checkpoints 0 --reasoning-format deepseek --no-context-shift --no-cache-idle-slots`, and sets no `--temp`, `--top-p` or `--metrics`, so server defaults apply unless Pi sends values. The GPU layer count that `--fit on` chose is recorded as unknown. **This study therefore tests the pinned binary under a different, explicit profile and makes no claim of parity with the earlier acceptance.**
 
+### First loading check (2026-10-29): inconclusive, launcher gap found and fixed
+
+After PR #97 merged (main `761a6494e`), the operator approved one server-only check: the pinned executable and model through the existing task-owned launcher with `--fit off --n-gpu-layers 46`, `GET /health` polling only, then stop. Dependency hashes, port 18181, free VRAM (21,128 MiB) and `--inspect` were rechecked first and were as recorded.
+
+**Result: LOAD-UNKNOWN (the load was not attempted to completion).** The server listened and the launcher's host inspection refused it with `IDENTITY_MISMATCH: model mapping unavailable or changed`, then ended the owned process group. GPU memory never rose above its 1,506 MiB baseline. No request of any kind was sent (the readiness gate was never reached). Cleanup was confirmed: port free, no llama-server process. The check's own script first labelled this `LOAD-REFUSED`; that label was wrong and was corrected beside the record rather than edited into it. It did not test whether the profile loads.
+
+**Cause and fix.** The inspection is single-shot and requires the model file to be mapped already (`linux-host-inspection.ts`). The test double maps its stand-in model before it listens, so tests never saw the gap; the real server maps while it loads. `launchTaskOwnedServerV0` now waits, inside the same `startupTimeoutMs` deadline and under the same cancellation, for the first model mapping in `/proc/<pid>/maps`, ending the server if it exits, never maps, times out or is cancelled. It then runs the unchanged inspection, which still requires every model mapping to be the pinned file. A test double that listens first and maps 1.5 s later is accepted; one that never maps is ended at the deadline, and cancellation during the wait ends it; the new test fails against the previous launcher with the same error as the real run. Without this fix `operate.ts --run` would have refused at its first approval.
+
 ## 4. Evidence-integrity findings
 
 - **Readiness record (`*.readiness.json`) not read by the fresh-process reader: not material to the PASS conditions, and stated as a limitation of PASS (§1).** None of the PASS conditions depends on it. Each request is independently bound to a keyed admission that re-observes the process and listener, receipts and captures are verified by the unchanged readers, and a server that was not actually serving would fail those requests. The record is an operator-side note of a server-reported observation. No code change was made; extending the reader to check it is optional hardening, not a blocker.
@@ -120,7 +130,7 @@ Toolchain recorded in the build cache: CMake 4.4.4, GCC 16.2.1, nvcc 13.4.92, `C
 
 The operator and readers report the selected executable by what it is: `supportedBinary` is derived from the digest, so it reads `MATCH` here and would read `UNSUPPORTED` for any other build; a `MATCH` states file identity only.
 
-**Go / no-go: NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI and merged, and (b) a server-only loading check (§3) has shown that the profile loads. The loading check is required, not optional, because `--n-gpu-layers 46` is an estimate and a failed first load would otherwise force a change to the profile after the pre-registration. If the check fails, nothing is lowered automatically: the operator decides whether to amend `--n-gpu-layers` (a new dated amendment, merged first) or stop. Only then does a new explicit instruction start the live run.
+**Go / no-go: NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI and merged, and (b) a server-only loading check (§3), run again through the launcher as fixed in revision 3, has shown that the profile loads (the first attempt was inconclusive). The loading check is required, not optional, because `--n-gpu-layers 46` is an estimate and a failed first load would otherwise force a change to the profile after the pre-registration. If the check fails, nothing is lowered automatically: the operator decides whether to amend `--n-gpu-layers` (a new dated amendment, merged first) or stop. Only then does a new explicit instruction start the live run.
 
 ## 6. Phase B procedure (only after a new explicit instruction from the operator)
 

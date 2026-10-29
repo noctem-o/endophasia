@@ -15,6 +15,9 @@ export function useWorkbench(active: boolean) {
 	const [state, dispatch] = useReducer(reduceWorkbench, undefined, initialWorkbench);
 	const latest = useRef(state);
 	latest.current = state;
+	// Whether DEVELOP is shown NOW: a read that was already running when the operator left must not re-arm the timer when it ends.
+	const shown = useRef(active);
+	shown.current = active;
 	const running = useRef(false);
 	const controller = useRef<AbortController | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,9 +36,14 @@ export function useWorkbench(active: boolean) {
 		if (timer.current !== null) clearTimeout(timer.current);
 		timer.current = null;
 		const s = latest.current;
-		if (s.availability !== "available" || document.hidden) return;
+		if (!shown.current || s.availability !== "available" || document.hidden) return;
 		if (!s.follow && !commandOpen(s.command)) return;
-		timer.current = setTimeout(() => void reading.current?.(), s.follow ? FOLLOW_MS : WAITING_MS);
+		timer.current = setTimeout(
+			() => {
+				if (shown.current) void reading.current?.();
+			},
+			s.follow ? FOLLOW_MS : WAITING_MS,
+		);
 	}, []);
 
 	const read = useCallback(async (): Promise<void> => {

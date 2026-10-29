@@ -322,6 +322,27 @@ suite("the DEVELOP workbench", () => {
 		);
 	}, 60_000);
 
+	it("does not start polling again when a read that was running while the operator left DEVELOP finishes", async () => {
+		const { page, broker, server } = await open();
+		await pairWith(page, broker);
+		await page.click("[data-testid=follow]");
+		const reads = () => page.seen.requests.filter((r) => r.includes("/workbench/")).length;
+		// Make the next reads slow, so one is in flight at the moment the workspace is left.
+		const handle = broker.handle.bind(broker);
+		broker.handle = async (request) => {
+			await settle(1200);
+			return handle(request);
+		};
+		await page.eval("(() => { document.querySelector('#workbench-refresh').click(); })()");
+		await page.click("button[data-workspace=observe]");
+		await page.waitFor("document.querySelector('button[data-workspace=observe][aria-current=page]')");
+		await settle(2500); // the pending read finishes meanwhile
+		const after = reads();
+		await settle(7000); // longer than two follow periods
+		expect(reads()).toBe(after);
+		expect(server.port).toBeGreaterThan(0);
+	}, 60_000);
+
 	it("shows one stage at a time on a narrow screen and does not overflow at 1440, 1024, 768 and 420 pixels", async () => {
 		for (const width of [1440, 1024, 768, 420]) {
 			const { page, broker } = await open(width, 900);

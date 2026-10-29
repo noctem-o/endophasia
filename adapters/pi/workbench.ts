@@ -126,6 +126,13 @@ interface Proposal {
 	done: Promise<void>;
 }
 
+/**
+ * What a prompt may not contain, because the operator reads it on a terminal to approve it: every control character except a newline and a
+ * tab (a carriage return or an escape could overwrite or hide text on the line), the C1 controls (0x9b is a terminal escape), the line and
+ * paragraph separators, and the bidirectional overrides and isolates that reorder what is shown. A prompt with any of them is refused,
+ * not shown. What the operator sees is what would be sent.
+ */
+const UNSAFE_PROMPT_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const MAX_PAIR_ATTEMPTS = 5;
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -302,11 +309,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return refuse(400, "bad-request");
 		const message = body.message;
 		const bytes = Buffer.byteLength(message, "utf8");
-		// eslint-disable-next-line no-control-regex
 		if (
 			message.trim().length === 0 ||
 			bytes > ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0 ||
-			/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(message)
+			UNSAFE_PROMPT_CHARS.test(message)
 		)
 			return refuse(400, "bad-request");
 		const offer = this.#promptOffer();

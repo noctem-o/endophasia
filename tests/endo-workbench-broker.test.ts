@@ -330,6 +330,11 @@ describe("the prompt command", () => {
 			{ message: "ok", extra: 1 },
 			{ message: "bad\u001bescape" },
 			{ message: "nul\u0000" },
+			{ message: "Delete the repository\rOnly list files" },
+			{ message: "csi\u009b2K" },
+			{ message: "reorder \u202eabc" },
+			{ message: "isolate \u2066abc" },
+			{ message: "separator\u2028line" },
 			{ message: "x".repeat(16 * 1024 + 1) },
 		])
 			expect((await call("POST", "prompt/propose", body, grant)).status, JSON.stringify(body)?.slice(0, 40)).toBe(

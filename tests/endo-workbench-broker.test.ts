@@ -50,6 +50,7 @@ describe("the live transcript", () => {
 			["run", "started"],
 			["message", "user"],
 			["message", "assistant"],
+			["tool", "running"],
 			["tool", "ok"],
 			["run", "ended"],
 		]);
@@ -58,14 +59,19 @@ describe("the live transcript", () => {
 		const everything = JSON.stringify(view);
 		expect(everything).not.toContain("SECRET-REASONING");
 		expect(everything).not.toContain(SECRET);
-		expect(view.items.map((i) => i.seq)).toEqual([1, 2, 3, 4, 5]);
+		expect(view.items.map((i) => i.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+		// A reader that already holds the running item gets the outcome by the same cursor: it is a NEW item.
+		expect(t.view(4).items).toEqual([
+			{ seq: 5, kind: "tool", callId: "c1", name: "read", status: "ok" },
+			{ seq: 6, kind: "run", state: "ended" },
+		]);
 	});
 
 	it("marks a tool error, and reports a gap as a gap: the oldest items are evicted and counted", () => {
 		const t = new LiveTranscriptV0();
 		t.push({ type: "tool_execution_start", record: { toolCallId: "x", toolName: "bash" } });
 		t.push({ type: "tool_execution_end", record: { toolCallId: "x", toolName: "bash", isError: true } });
-		expect(t.view().items[0]).toMatchObject({ kind: "tool", status: "error" });
+		expect(t.view().items.map((i) => i.kind === "tool" && i.status)).toEqual(["running", "error"]);
 		for (let i = 0; i < LIVE_TRANSCRIPT_MAX_ITEMS_V0 + 50; i++) t.push(textMessage("user", `m${i}`));
 		const view = t.view(0);
 		expect(t.size.items).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_ITEMS_V0);
@@ -281,21 +287,21 @@ describe("the prompt command", () => {
 		expect(c.session.promptCalls).toEqual([]);
 	});
 
-	it("refuses to propose while the agent is running, the session is gone, or another prompt is open", async () => {
+	it("refuses to propose while the agent is running, the runtime is gone, or another prompt is open", async () => {
 		const { session, call, pair, approval } = setup();
 		const grant = await pair();
 		session.runActive = true;
 		expect((await call("POST", "prompt/propose", { message: "x" }, grant)).status).toBe(409);
 		session.runActive = false;
-		session.live = false;
-		expect((await call("POST", "prompt/propose", { message: "x" }, grant)).status).toBe(409);
-		session.live = true;
 		expect((await call("POST", "prompt/propose", { message: "first" }, grant)).status).toBe(202);
 		await approval.waitForRequest();
 		// A duplicate or concurrent request cannot open a second approval.
 		expect((await call("POST", "prompt/propose", { message: "first" }, grant)).status).toBe(409);
 		expect(approval.requests).toHaveLength(1);
 		expect(session.records.filter((r) => r.kind === "workbench.prompt-proposed")).toHaveLength(1);
+		// A runtime that is gone ends the session: the grant is revoked, so nothing more can even be asked.
+		session.live = false;
+		expect((await call("POST", "prompt/propose", { message: "x" }, grant)).status).toBe(401);
 	});
 
 	it("validates the request: exactly one message member, text only, bounded, no control characters", async () => {
@@ -424,6 +430,73 @@ describe("the prompt command", () => {
 			).toBeGreaterThanOrEqual(400);
 		expect((await call("GET", "transcript", null, grant, "after=-1")).status).toBe(400);
 		expect((await call("GET", "transcript", null, grant, "after=1&x=2")).status).toBe(400);
+	});
+});
+
+describe("the approval is attributed only when it happened", () => {
+	it("marks a prompt approved only after the terminal allowed it: not when withdrawn, timed out or declined", async () => {
+		const outcome = async (act: (c: ReturnType<typeof setup>, id: string, grant: string) => Promise<void>) => {
+			const ctx = setup();
+			const grant = await ctx.pair();
+			const view = (await ctx.call("POST", "prompt/propose", { message: "go" }, grant)).body as {
+				proposalId: string;
+			};
+			await ctx.approval.waitForRequest();
+			await act(ctx, view.proposalId, grant);
+			await settle();
+			return (await ctx.call("GET", `prompt/${view.proposalId}`, null, grant)).body as {
+				approved: boolean;
+				state: string;
+				reason: string | null;
+			};
+		};
+		expect(await outcome(async (c) => c.approval.answer("allow"))).toMatchObject({
+			approved: true,
+			state: "accepted",
+		});
+		expect(await outcome(async (c) => c.approval.answer("deny"))).toMatchObject({
+			approved: false,
+			reason: "authorization-denied",
+		});
+		expect(await outcome(async (c) => c.approval.answer(null))).toMatchObject({
+			approved: false,
+			reason: "approval-timed-out",
+		});
+		expect(
+			await outcome(async (c, id, g) => void (await c.call("POST", "prompt/discard", { proposalId: id }, g))),
+		).toMatchObject({ approved: false, reason: "not-authorized" });
+		// Approved and then refused at the gate: the approval did happen, and the reason says why it was not sent.
+		const late = await outcome(async (c) => {
+			c.session.runActive = true;
+			c.approval.answer("allow");
+		});
+		expect(late).toMatchObject({ approved: true, state: "refused", reason: "run-active" });
+	});
+});
+
+describe("the end of the runtime", () => {
+	it("withdraws a waiting approval, revokes the grant and clears the transcript as soon as the runtime is gone", async () => {
+		const { session, call, pair, broker, approval } = setup();
+		const grant = await pair();
+		session.live_(textMessage("user", SECRET));
+		expect(JSON.stringify((await call("GET", "transcript", null, grant)).body)).toContain(SECRET);
+		await call("POST", "prompt/propose", { message: "go" }, grant);
+		await approval.waitForRequest();
+		session.live = false; // the Pi child exited or crashed; the host keeps running
+		expect((await call("GET", "transcript", null, grant)).status).toBe(401);
+		expect(broker.transcript.cleared).toBe(true);
+		expect(JSON.stringify(broker.transcript.view())).not.toContain(SECRET);
+		await settle();
+		expect(session.records.at(-1)!.payload.reason).toBe("session-ended");
+		expect(session.promptCalls).toEqual([]);
+		const status = (await call("GET", "status")).body as { connection: string; run: string; paired: boolean };
+		expect(status).toMatchObject({ connection: "disconnected", run: "unknown", paired: false });
+		// A process that comes back is a new connection, never a continuation: the ended workbench does not resume.
+		session.live = true;
+		expect((await call("POST", "pair", { code: broker.issuePairingCode().code })).status).toBe(401);
+		expect((await call("GET", "transcript", null, grant)).status).toBe(401);
+		expect(((await call("GET", "status")).body as { connection: string }).connection).toBe("disconnected");
+		broker.endSession(); // idempotent
 	});
 });
 

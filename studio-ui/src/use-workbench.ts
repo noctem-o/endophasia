@@ -65,6 +65,10 @@ export function useWorkbench(active: boolean) {
 		if (active && !entered.current) {
 			entered.current = true;
 			void read();
+		} else if (active && latest.current.availability === "available") {
+			// Back in DEVELOP after a visit elsewhere (the timer was cleared when it was left): read once now, which also resumes Follow or a
+			// waiting prompt's check. Nothing keeps polling while the workspace is not shown.
+			void read();
 		}
 		if (!active) {
 			if (timer.current !== null) clearTimeout(timer.current);

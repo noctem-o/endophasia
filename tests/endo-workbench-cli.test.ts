@@ -169,7 +169,8 @@ describe.runIf(hasScript && process.platform === "linux")(
 			expect(transcript.items.some((x) => x.role === "assistant")).toBe(true);
 
 			// Ending the process: the broker is disposed, the listener is gone, the exit is clean, and the chain is in the store.
-			pty.child.kill("SIGINT");
+			// Ctrl+C TYPED on the terminal (it is in raw mode, so readline sees it, not the process): it must stop the workbench.
+			pty.child.stdin.write("\x03");
 			expect(await pty.exit).toBe(0);
 			await expect(fetch(`${api}status`)).rejects.toBeDefined();
 			const store = createEndoDurableEventStoreV0(root, { readOnly: true });

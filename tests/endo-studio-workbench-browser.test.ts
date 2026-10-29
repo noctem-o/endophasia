@@ -224,6 +224,10 @@ suite("the DEVELOP workbench", () => {
 			"document.querySelector('[data-testid=command-card]')?.dataset.state === 'refused' && document.querySelector('[data-testid=command-card]').textContent.includes('withdrawn')",
 		);
 		expect(session.promptCalls).toEqual([]);
+		// A withdrawn prompt was never approved, and the chain does not say it was.
+		const done = (n: number) =>
+			page.eval<string>(`document.querySelectorAll('[data-testid=command-card] .chain li')[${n}].dataset.done`);
+		expect([await done(0), await done(1)]).toEqual(["true", "false"]);
 	});
 
 	it("gates the composer on what is offered and explains why not, and says steer, queue and stop are not available", async () => {
@@ -290,6 +294,33 @@ suite("the DEVELOP workbench", () => {
 			"unknown",
 		);
 	}, 40_000);
+
+	it("resumes following when the operator comes back to DEVELOP, and a tool outcome reaches a page that saw it running", async () => {
+		const { page, session, broker } = await open();
+		await pairWith(page, broker);
+		await page.click("[data-testid=follow]");
+		session.live_({ type: "tool_execution_start", record: { toolCallId: "t1", toolName: "bash" } });
+		await page.waitFor("document.querySelector('[data-testid=tool-row]')?.textContent.includes('running')", 12_000);
+		// Leave DEVELOP (the timer is cleared); the tool fails and more is said meanwhile; come back.
+		await page.click("button[data-workspace=observe]");
+		await page.waitFor("document.querySelector('button[data-workspace=observe][aria-current=page]')");
+		session.live_({ type: "tool_execution_end", record: { toolCallId: "t1", toolName: "bash", isError: true } });
+		session.live_(textMessage("assistant", "said while away"));
+		await page.click("button[data-workspace=develop]");
+		await page.waitFor(
+			"document.querySelector('[data-testid=transcript]')?.textContent.includes('said while away')",
+			12_000,
+		);
+		// The running row became its outcome in place, not a second row.
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=tool-row]').length")).toBe(1);
+		expect(await page.text("[data-testid=tool-row]")).toContain("error (reported)");
+		// And Follow is still following: a later message arrives with no click.
+		session.live_(textMessage("assistant", "said after returning"));
+		await page.waitFor(
+			"document.querySelector('[data-testid=transcript]')?.textContent.includes('said after returning')",
+			12_000,
+		);
+	}, 60_000);
 
 	it("shows one stage at a time on a narrow screen and does not overflow at 1440, 1024, 768 and 420 pixels", async () => {
 		for (const width of [1440, 1024, 768, 420]) {

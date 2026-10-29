@@ -104,13 +104,14 @@ export class LiveTranscriptV0 {
 		} else if (event.type === "tool_execution_start") {
 			this.#add({ kind: "tool", callId: name(record.toolCallId), name: name(record.toolName), status: "running" });
 		} else if (event.type === "tool_execution_end") {
-			const callId = name(record.toolCallId);
-			const open = [...this.#items]
-				.reverse()
-				.find((i) => i.kind === "tool" && i.callId === callId && i.status === "running");
-			const status = record.isError === true ? "error" : "ok";
-			if (open !== undefined && open.kind === "tool") open.status = status;
-			else this.#add({ kind: "tool", callId, name: name(record.toolName), status });
+			// The end of a call is a NEW item with its own sequence number, so a reader that already holds the running item receives the
+			// outcome by the same cursor it uses for everything else. A reader folds items of one call id into one row.
+			this.#add({
+				kind: "tool",
+				callId: name(record.toolCallId),
+				name: name(record.toolName),
+				status: record.isError === true ? "error" : "ok",
+			});
 		}
 	}
 

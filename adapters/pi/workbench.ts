@@ -97,6 +97,8 @@ export type WorkbenchCommandStateV0 = "awaiting-approval" | "dispatching" | "acc
 export interface WorkbenchCommandViewV0 {
 	proposalId: string;
 	state: WorkbenchCommandStateV0;
+	/** Whether the operator typed the approval on the terminal. A withdrawn, timed-out or declined prompt was never approved. */
+	approved: boolean;
 	/** Why it was refused, when it was. */
 	reason: EndoWorkbenchRefusalReasonV0 | null;
 	/** The runtime's disposition, when it accepted. Acceptance is not completion. */
@@ -142,6 +144,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#grant: { token: string; expiresAtMs: number } | null = null;
 	#command: Proposal | null = null;
 	#disposed = false;
+	/** The runtime ended: the workbench for this session is over. Terminal: a later process is a new connection, never a continuation. */
+	#ended = false;
 
 	constructor(options: WorkbenchOptionsV0) {
 		this.#o = {
@@ -170,7 +174,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		const held = this.#code;
 		// Every refusal is the same answer: nothing says whether a code existed, expired or was used up.
 		const refused = refuse(401, "pairing-refused");
-		if (held === null || this.#disposed || this.#now() >= held.expiresAtMs) return refused;
+		if (held === null || this.#disposed || this.#ended || this.#now() >= held.expiresAtMs) return refused;
 		if (typeof code !== "string" || code.length > 16) {
 			held.attempts += 1;
 		} else if (equal(code.toUpperCase(), held.value)) {
@@ -192,6 +196,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		const held = this.#grant;
 		return (
 			!this.#disposed &&
+			!this.#ended &&
 			held !== null &&
 			grant !== null &&
 			this.#now() < held.expiresAtMs &&
@@ -204,7 +209,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#status() {
 		const session = this.#o.session;
 		const id = session.piSessionId;
-		const connected = !this.#disposed && session.live && id !== null;
+		const connected = !this.#disposed && !this.#ended && session.live && id !== null;
 		const sessionId = id === null ? null : `endo.session.pi.${id}`;
 		const prompt = this.#promptOffer();
 		return {
@@ -228,7 +233,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	/** Whether a new prompt can be proposed now, and if not, why (fixed sentences). */
 	#promptOffer(): { offered: boolean; reason: string | null } {
 		const session = this.#o.session;
-		if (this.#disposed || !session.live || session.piSessionId === null)
+		if (this.#disposed || this.#ended || !session.live || session.piSessionId === null)
 			return { offered: false, reason: "The session has no admitted connection now." };
 		if (session.runActive)
 			return {
@@ -245,7 +250,23 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 
 	// --- the request surface -------------------------------------------------------------------------------------------------
 
+	/**
+	 * The runtime this broker serves has ended (or was lost): withdraw a waiting approval, revoke the grant and forget the transcript NOW,
+	 * not when the host eventually exits. Idempotent. The listener may live on, answering status only, until the host stops it.
+	 */
+	endSession(): void {
+		if (this.#ended) return;
+		this.#ended = true;
+		this.#grant = null;
+		this.#code = null;
+		this.#command?.abort.abort();
+		this.transcript.clear();
+		this.#o.session.onLiveEvent = null;
+	}
+
 	async handle(request: EndoCockpitWorkbenchRequestV0): Promise<{ status: number; body: unknown }> {
+		// A runtime that is no longer running ends the session before anything is answered: no private text outlives it.
+		if (!this.#o.session.live) this.endSession();
 		const [a, b, ...more] = request.route;
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
 			return reply(200, this.#status());
@@ -319,6 +340,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			view: {
 				proposalId,
 				state: "awaiting-approval",
+				approved: false,
 				reason: null,
 				disposition: null,
 				bytes,
@@ -381,7 +403,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		} catch {
 			answer = null;
 		}
-		if (this.#disposed) return settle("session-ended", p.proposedEventId);
+		if (this.#disposed || this.#ended) return settle("session-ended", p.proposedEventId);
 		if (answer === null)
 			return settle(p.abort.signal.aborted ? "not-authorized" : "approval-timed-out", p.proposedEventId);
 		const decidedAt = new Date(this.#now()).toISOString();
@@ -403,10 +425,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return settle("session-ended", p.proposedEventId);
 		}
 		if (answer === "deny") return settle("authorization-denied", authorized.id);
+		p.view = { ...p.view, approved: true };
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
 		const piId = session.piSessionId;
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
-		if (!session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
+		if (this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
 			return settle("session-ended", authorized.id);
 		if (!this.#granted(p.grant)) return settle("not-authorized", authorized.id);
 		if (session.runActive) return settle("run-active", authorized.id);
@@ -450,6 +473,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#disposed = true;
 		this.#grant = null;
 		this.#code = null;
+		this.#ended = true;
 		this.#command?.abort.abort();
 		await this.#command?.done.catch(() => {});
 		this.transcript.clear();

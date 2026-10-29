@@ -100,8 +100,28 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const reset = t.watermark < state.watermark;
 			const held = reset ? [] : state.items;
 			const last = held.at(-1)?.seq ?? 0;
-			const items = [...held, ...t.items.filter((item) => item.seq > last)].slice(-MAX_ITEMS);
-			return { ...state, items, watermark: t.watermark, evicted: t.evicted, problem: null };
+			// Items of one tool call fold into one row: the running item is updated in place by its later outcome, which arrives as a
+			// NEW item (a new sequence number) so the same cursor delivers it.
+			const items = [...held];
+			for (const item of t.items) {
+				if (item.seq <= last && !reset) continue;
+				const at =
+					item.kind === "tool" ? items.findIndex((x) => x.kind === "tool" && x.callId === item.callId) : -1;
+				if (item.kind === "tool" && at >= 0) {
+					const existing = items[at] as typeof item;
+					items[at] = { ...existing, status: item.status };
+				} else items.push(item);
+			}
+			// The cursor is what was RECEIVED: when more pages follow, it is the last item of this one, not the broker's highest number,
+			// so a later page that fails is read again and nothing is skipped.
+			const cursor = t.more ? (t.items.at(-1)?.seq ?? state.watermark) : t.watermark;
+			return {
+				...state,
+				items: items.slice(-MAX_ITEMS),
+				watermark: Math.max(reset ? 0 : state.watermark, cursor),
+				evicted: t.evicted,
+				problem: null,
+			};
 		}
 		case "grant":
 			return { ...state, grant: reply.record.grant, problem: null };

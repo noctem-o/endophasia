@@ -125,6 +125,15 @@ export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<
 			`workbench: pairing code ${code}  (one use; expires ${hhmmss(expiresAtMs)}). Type it into the page to let it ask for prompts.\n`,
 		);
 	};
+	// The terminal is in raw mode, so Ctrl+C reaches readline, not the process: hand it to the same shutdown path a signal takes.
+	input.on("SIGINT", () => {
+		process.kill(process.pid, "SIGINT");
+	});
+	// A runtime that exits or is lost ends the session now: its private transcript and the grant do not wait for the host to stop.
+	void session.exited().then(
+		() => broker.endSession(),
+		() => broker.endSession(),
+	);
 	input.on("line", (line) => {
 		if (line.trim() === "pair") showCode();
 		else if (line.trim() !== "")

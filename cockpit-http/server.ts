@@ -29,9 +29,12 @@ import {
 	type EndoDigestKeyV0,
 	endoCockpitDigestKeyAdmittedV0,
 	isEndoCockpitCandidateSelectorV0,
+	isEndoCockpitDevelopSelectorV0,
 	isEndoCockpitSourceKindAdmittedV0,
 	isWellFormedKindV0,
 	parseEndoCockpitCandidateCursorV0,
+	parseEndoCockpitDevelopActivityCursorV0,
+	parseEndoCockpitDevelopSessionsCursorV0,
 	readEndoCockpitRecordV0,
 	readEndoCockpitRuntimeV0,
 	readEndoCockpitSnapshotV0,
@@ -44,6 +47,7 @@ import {
 	endoCockpitComparisonSelectionV0,
 	readEndoCockpitComparisonV0,
 } from "./comparison.ts";
+import { readEndoCockpitDevelopSessionsV0, readEndoCockpitDevelopSessionV0 } from "./develop.ts";
 
 const LOOPBACK = "127.0.0.1";
 /** The only API version. An unknown version is a 404, never a downgrade to this one. */
@@ -343,6 +347,33 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 			}
 		}
 		if (segments[0] !== "api" || segments[1] !== "v0") return refuse("not-found");
+		if (segments[2] === "develop") {
+			try {
+				// `develop/sessions[?cursor=s1-…]` and `develop/session/<selector>[?cursor=a1-…]`: GET only, one verified read each.
+				const cursorOf = (parse: (value: unknown) => unknown): string | undefined => {
+					if (rawQuery === "") return undefined;
+					if (rawQuery.length > MAX_QUERY_CHARS || !rawQuery.startsWith("cursor=")) return refuse("bad-request");
+					const cursor = rawQuery.slice(7);
+					return parse(cursor) === null ? refuse("bad-request") : cursor;
+				};
+				let record: unknown;
+				if (segments.length === 4 && segments[3] === "sessions") {
+					const cursor = cursorOf(parseEndoCockpitDevelopSessionsCursorV0);
+					admit();
+					record = readEndoCockpitDevelopSessionsV0(root, digestKey, cursor);
+				} else if (segments.length === 5 && segments[3] === "session") {
+					const selector = segments[4];
+					if (!isEndoCockpitDevelopSelectorV0(selector)) return refuse("not-found");
+					const cursor = cursorOf(parseEndoCockpitDevelopActivityCursorV0);
+					admit();
+					record = readEndoCockpitDevelopSessionV0(root, digestKey, selector, cursor);
+				} else return refuse("not-found");
+				return { records: [record], body: record };
+			} catch (error) {
+				if (error instanceof EndoCockpitComparisonRefusalV0) return refuse(error.refusal);
+				throw error;
+			}
+		}
 		if (segments[2] === "compare") {
 			try {
 				let record: unknown;

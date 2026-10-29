@@ -103,7 +103,7 @@ than the browser page in the published <code>0.1.0-alpha.2</code> package. This 
 model-brain visualisation or an internal-activation trace.</sub></p>
 
 **Endophasia Web** (currently invoked as `endo studio`) is the existing browser interface. The source tree implements
-**read-only Observe and Compare workspaces**, served from
+**read-only Observe, Compare and Develop workspaces**, served from
 the installed package on `127.0.0.1` behind a private per-launch address. Observe shows, as recorded:
 
 - the **runtime identity**: which harness installation the registry recorded, its fingerprint, and what changed;
@@ -120,7 +120,7 @@ store it reads.
 Endophasia Web is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
 browser workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
 within a possible COGNITION workspace, not separate top-level tabs. Further profiles could be added without creating
-new workspaces. Source builds include the read-only React **Compare workspace** for discovering and selecting recorded Pi/DSH sessions.
+new workspaces. Source builds include the read-only React **Compare workspace** for discovering and selecting recorded Pi/DSH sessions, and a read-only **Develop workspace** that browses recorded sessions and what each recorded (it reads recordings; it does not start, attach to or steer anything).
 Capabilities and Evolve remain marked "later" and show no records.
 Its guarded read-only routes discover eligible Pi/DSH recordings and compare two selections from one configured store,
 using generation-bound opaque selectors rather than exposing raw source identities. It does not read active harnesses,
@@ -152,7 +152,7 @@ endo studio                          # serves the published read-only browser pa
 git clone https://github.com/noctem-o/endophasia.git && cd endophasia
 npm ci && npm run build
 node scripts/seed-cockpit-demo.ts ./demo-store    # optional: committed fixtures and Pi 1.0.0 specimen; no Pi needed
-node dist/cli/index.js studio ./demo-store        # React Observe and Compare; prints a private local address
+node dist/cli/index.js studio ./demo-store        # React Observe, Compare and Develop; prints a private local address
 ~~~
 
 **Cold-import a DSH recording from the source build** (one explicit persisted Session format-4 directory,
@@ -161,7 +161,7 @@ not a DSH home, running process or transcript file):
 ~~~sh
 node dist/cli/index.js dsh import --root ./recordings /path/to/session-directory
 node dist/cli/index.js dsh loss-accounting       # static fidelity contract, not a measurement of this session
-node dist/cli/index.js studio ./recordings       # React Observe and Compare
+node dist/cli/index.js studio ./recordings       # React Observe, Compare and Develop
 ~~~
 
 Import reads DSH source bytes without modifying them, then writes validated evidence to the Endophasia store.
@@ -202,14 +202,14 @@ The table distinguishes features on **source-tree `main`**, as of 28 October 202
 | Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
 | **DSH native cold import**: verified append-only import, qualified trajectory projection, static loss accounting | `endo dsh import`, `endo dsh loss-accounting` on `main` | Five retained captures from a pinned real DSH runtime and importer/CLI tests. No live attach, DSH control, native DSH `trajectory show` CLI selection or published-alpha support |
 | **Compare backend**: privacy-preserving trajectory presentation, candidate discovery and selected comparison | Studio local GET APIs `/api/v0/compare/candidates` and `/api/v0/compare/selected/...` on `main` | Tested Pi/Pi, DSH/DSH and mixed-source recordings; bounded pages, eligibility and generation-bound selectors. No store writer or inference of causal equivalence |
-| **Endophasia Web**: read-only Observe and Compare workspaces | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe and Compare) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
+| **Endophasia Web**: read-only Observe, Compare and Develop workspaces | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe, Compare and Develop) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
 | ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
 | ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
 | Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
 | Verified initial Pi scratch candidate, isolated materialization and sibling preparation | Source-tree replay receipt and programmatic APIs; private `endo.initial-branch-set.v0` lineage | Two scratch copies share a verified parent and private planned conditions. The reader detects modified or substituted children. Preparation alone executes nothing and grants no approval. See [limits](docs/initial-branch-set.md) |
 | Governed initial-child execution | Source-tree preflight, local approval, one fresh tool-free Pi turn and `endo.initial-child-execution.v0` receipt | Fake-runtime end-to-end tests and a [four-turn Pi 1.0.4/Nanbeige A/A pilot](research/governed-initial-child/1.0.4/RESULTS.md) with private verified evidence. Not a restored process, general tool execution or OS sandbox. See [contract](docs/initial-child-execution.md) |
 | Governed same-session continuation | Source-tree two-turn API, separate second approval and `endo.initial-continuation.v0` evidence reader | Synthetic tests and one [real Pi 1.0.4/Nanbeige acceptance](research/governed-initial-continuation/REAL-ACCEPTANCE.md) with two captured exchanges and a verified private receipt; no historical process restoration or general fork. See [contract](docs/initial-continuation.md) |
-| Browser workspaces beyond Observe and Compare; native Endophasia binary; `endo web` alias; integrated model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; general fork/restore checkpoints | none | Not built |
+| Browser workspaces beyond Observe, Compare and Develop (no project/worktree view, live activity or control); native Endophasia binary; `endo web` alias; integrated model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; general fork/restore checkpoints | none | Not built |
 
 Some of the distinctions that matter when reading the table:
 
@@ -252,7 +252,7 @@ flowchart TB
     V["Read-only evidence projections<br/>capabilities · Pi/DSH trajectories · Compare · reports"]
     C["endo CLI<br/>record · import · replay · experiment · report"]
     N["Local read-only HTTP boundary<br/>127.0.0.1 · private address · GET only"]
-    U["Endophasia Web<br/>React Observe and Compare"]
+    U["Endophasia Web<br/>React Observe, Compare and Develop"]
 
     H -->|"documented RPC"| A
     H -.->|"model requests"| X

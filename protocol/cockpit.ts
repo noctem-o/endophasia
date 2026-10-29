@@ -49,6 +49,15 @@ import {
 export * from "./cockpit-candidates.ts";
 
 import {
+	type EndoCockpitDevelopSessionsV0,
+	type EndoCockpitDevelopSessionV0,
+	validateEndoCockpitDevelopSessionsV0,
+	validateEndoCockpitDevelopSessionV0,
+} from "./cockpit-develop.ts";
+
+export * from "./cockpit-develop.ts";
+
+import {
 	ENDO_COCKPIT_TRAJECTORY_COMPARISON_PROJECTION_V0,
 	ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0,
 	type EndoCockpitTrajectoryComparisonV0,
@@ -568,7 +577,9 @@ export type EndoCockpitRecordV0 =
 	| EndoCockpitSessionTimelineV0
 	| EndoCockpitSnapshotV0
 	| EndoCockpitTrajectoryComparisonV0
-	| EndoCockpitCompareCandidatesV0;
+	| EndoCockpitCompareCandidatesV0
+	| EndoCockpitDevelopSessionsV0
+	| EndoCockpitDevelopSessionV0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validation helpers
@@ -740,6 +751,12 @@ function isCondition(value: unknown): value is EndoCockpitSourceConditionV0 {
 			return tail === null && value.sealedAt === null && error !== null;
 	}
 }
+
+/** The event-log source and timeline-entry validators, for records that embed them (cockpit-develop.ts). */
+export const isEndoCockpitEventLogSourceV0 = (value: unknown): value is EndoCockpitEventLogSourceV0 =>
+	isEventLogSource(value);
+export const isEndoCockpitTimelineEntryV0 = (value: unknown): value is EndoCockpitTimelineEntryV0 =>
+	isTimelineEntry(value);
 
 /** The most positions one timeline page spans (equal to the event store's page maximum, which a test pins). */
 export const ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 = 10000;
@@ -2754,6 +2771,10 @@ export const ENDO_COCKPIT_VERSIONS_V0 = defineEndoVersionTableV0<EndoCockpitReco
 	["endo.cockpit-snapshot.v0", validateEndoCockpitSnapshotV0],
 	[ENDO_COCKPIT_TRAJECTORY_COMPARISON_SCHEMA_V0, validateEndoCockpitTrajectoryComparisonV0],
 	[ENDO_COCKPIT_COMPARE_CANDIDATES_SCHEMA_V0, validateEndoCockpitCompareCandidatesV0],
+	// String literals, not the develop module's constants: that module imports this one, and a constant read here would depend
+	// on which of the two is evaluated first. The validators are function declarations, initialised before either runs.
+	["endo.cockpit-develop-sessions.v0", validateEndoCockpitDevelopSessionsV0],
+	["endo.cockpit-develop-session.v0", validateEndoCockpitDevelopSessionV0],
 ]);
 
 /** Read a cockpit record under the version it declares; an unknown version is `unsupported-version`, never accepted. */

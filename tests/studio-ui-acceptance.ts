@@ -45,7 +45,7 @@ export async function exerciseStudioUi(
 		const count = (selector: string) =>
 			tab.eval<number>(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
 
-		// The shell: the instrument's name, the four workspaces with Observe the one in use, and the page's read-only state.
+		// The shell: the instrument's name, the five workspaces with Observe the one in use, and the page's read-only state.
 		expect(
 			(await tab.eval<string>("document.title")) === "Endophasia Studio",
 			"the page is titled Endophasia Studio",
@@ -55,8 +55,8 @@ export async function exerciseStudioUi(
 				await tab.eval<string[]>(
 					`[...document.querySelectorAll("nav.workspaces button")].map((b) => b.dataset.workspace)`,
 				)
-			).join() === "observe,compare,capabilities,evolve",
-			"the four workspaces are named",
+			).join() === "observe,compare,develop,capabilities,evolve",
+			"the five workspaces are named",
 		);
 		expect(
 			(await tab.eval<string>(

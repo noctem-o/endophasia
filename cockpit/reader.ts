@@ -265,6 +265,58 @@ export function readEndoCockpitVerifiedEventsV0(root: string, digestKey: EndoDig
 }
 
 /**
+ * One whole read-only observation of the event log: its source (condition and watermark, exactly as every other cockpit read
+ * reports them) and every event of the readable prefix, in storage order, from ONE open. A degraded log (a torn tail, which may
+ * be an append in flight, or a frame that failed verification) yields its verified prefix with the condition that says so; an
+ * absent log yields none, and an unopenable one yields neither a position nor events. Nothing is repaired or written.
+ */
+export interface EndoCockpitObservationV0 {
+	source: EndoCockpitEventLogSourceV0;
+	events: EndoEventV0[];
+}
+
+export function readEndoCockpitObservationV0(root: string, digestKey: EndoDigestKeyV0): EndoCockpitObservationV0 {
+	const key = requireKey(digestKey);
+	const opened = withEventStore(root, (store) => {
+		const recovery = store.recovery();
+		const length = store.length;
+		const events: EndoEventV0[] = [];
+		while (events.length < length) {
+			const page = store.page({ afterSequence: events.length, limit: ENDO_COCKPIT_PAGE_MAX_LIMIT_V0 });
+			if (page.events.length === 0) throw new Error("incomplete verified event snapshot");
+			for (const event of page.events) events.push(event);
+		}
+		return { recovery, length, events, digest: prefixDigestsOf(store, length, null).full };
+	});
+	if (opened.source === "absent")
+		return {
+			source: {
+				domain: "event-log",
+				condition: { state: "absent", ...NO_DAMAGE },
+				watermark: { length: 0, lastEventId: null, prefixDigest: null, keyId: key.keyId },
+			},
+			events: [],
+		};
+	if (opened.source === "unopenable")
+		return { source: { domain: "event-log", condition: opened.condition, watermark: null }, events: [] };
+	const { recovery, length, events, digest } = opened.value;
+	const last = events.at(-1);
+	return {
+		source: {
+			domain: "event-log",
+			condition: conditionOf(key, recovery, length),
+			watermark: {
+				length,
+				lastEventId: last === undefined ? null : cockpitAliasesV0(key).id(last.id),
+				prefixDigest: eventPrefixTokenV0(key, length, digest),
+				keyId: key.keyId,
+			},
+		},
+		events,
+	};
+}
+
+/**
  * The digest of the first `count` events and, in the same pass over the store, of the first `held` events (`held <=
  * count`; null when not asked). The lines are the shared ones (eventLogFrameV0); the hash is copied at `held`, so nothing is
  * traversed twice.

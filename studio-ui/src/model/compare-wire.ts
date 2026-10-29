@@ -3,27 +3,27 @@
 import type { EndoCockpitCompareCandidatesV0 } from "../../../protocol/cockpit-candidates.ts";
 import type { EndoCockpitTrajectoryComparisonV0 } from "../../../protocol/cockpit-comparison.ts";
 
-type Check = (v: unknown) => boolean;
+export type Check = (v: unknown) => boolean;
 type R = Record<string, unknown>;
-const obj = (v: unknown): v is R => typeof v === "object" && v !== null && !Array.isArray(v);
-const shape = (v: unknown, fields: Record<string, Check>): v is R =>
+export const obj = (v: unknown): v is R => typeof v === "object" && v !== null && !Array.isArray(v);
+export const shape = (v: unknown, fields: Record<string, Check>): v is R =>
 	obj(v) &&
 	Object.keys(v).length === Object.keys(fields).length &&
 	Object.entries(fields).every(([k, check]) => Object.hasOwn(v, k) && check(v[k]));
-const list =
+export const list =
 	(check: Check): Check =>
 	(v) =>
 		Array.isArray(v) && v.every(check);
-const eitherNull =
+export const eitherNull =
 	(check: Check): Check =>
 	(v) =>
 		v === null || check(v);
-const count = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
-const finite = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v);
-const bool = (v: unknown): boolean => typeof v === "boolean";
-const string = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 512;
-const token = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
-const one =
+export const count = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+export const finite = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v);
+export const bool = (v: unknown): boolean => typeof v === "boolean";
+export const string = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 512;
+export const token = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+export const one =
 	(...values: unknown[]): Check =>
 	(v) =>
 		values.includes(v);

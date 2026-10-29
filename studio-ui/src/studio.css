@@ -1516,3 +1516,295 @@ table.fields thead th {
  #compare-workspace .panel-head { flex-wrap: wrap; gap: 10px; }
  #compare-workspace .panel-tools { width: 100%; }
 }
+
+/* --- DEVELOP: the recorded-session desk ----------------------------------------------------------------------------------------
+   Reuses the Observe grammar (panels, blocks, facts, chips, the event table). Lifecycle states are squares with an inner mark and a
+   word, neutral in hue: a recorded `running` is never drawn as health or liveness. Nothing here is animated. */
+.develop {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.develop-grid {
+	display: grid;
+	grid-template-columns: clamp(270px, 21vw, 360px) minmax(0, 1fr) clamp(340px, 25vw, 460px);
+	grid-template-areas: "nav activity inspector";
+	gap: 12px;
+	align-items: start;
+}
+
+.develop-nav {
+	grid-area: nav;
+}
+
+.develop-activity {
+	grid-area: activity;
+}
+
+.develop-inspector {
+	grid-area: inspector;
+}
+
+.develop-inspector.panel {
+	position: sticky;
+	top: 8px;
+	max-height: calc(100vh - 16px);
+	overflow: auto;
+}
+
+.sessions-scroll {
+	max-height: min(70vh, 720px);
+	overflow: auto;
+}
+
+.nav-group h3 {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--surface-1);
+	margin: 0;
+	padding: 6px 2px 4px;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fg-3);
+	border-bottom: 1px solid var(--line);
+}
+
+.session-row {
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas:
+		"name"
+		"state"
+		"meta"
+		"reason";
+	gap: 3px 0;
+	padding: 6px 4px 6px 6px;
+}
+
+.session-row .session-name {
+	grid-area: name;
+	overflow-wrap: anywhere;
+	word-break: normal;
+}
+
+.session-row .session-state {
+	grid-area: state;
+	justify-self: start;
+}
+
+.session-row .session-meta {
+	grid-area: meta;
+	font-size: 11px;
+	color: var(--fg-3);
+}
+
+.session-row .session-reason {
+	grid-area: reason;
+	font-size: 11px;
+	color: var(--attention);
+}
+
+.session-row.is-static {
+	cursor: default;
+	opacity: 0.92;
+}
+
+.state-life {
+	height: 18px;
+	font-size: 10px;
+	color: var(--fg-2);
+}
+
+.state-life[data-life="interrupted"] {
+	color: var(--attention);
+	border-color: var(--attention);
+	border-style: dashed;
+}
+
+.state-life[data-life="not-observed"] {
+	color: var(--fg-3);
+	border-style: dashed;
+}
+
+.glyph.life-running,
+.glyph.life-idle,
+.glyph.life-detached,
+.glyph.life-not-observed {
+	color: currentColor;
+}
+
+.develop-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px 10px;
+}
+
+.develop-head h3 {
+	font-size: 15px;
+	overflow-wrap: anywhere;
+}
+
+.develop-lead {
+	margin-top: 4px;
+	color: var(--fg-2);
+	max-width: 70ch;
+}
+
+.develop-counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 14px;
+	margin: 8px 0 2px;
+	font-size: 12px;
+	color: var(--fg-2);
+}
+
+.develop-counts b {
+	font-family: var(--mono);
+	font-weight: 600;
+	color: var(--fg-1);
+}
+
+.develop-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+}
+
+.develop-stages {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+
+.develop-crumb {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--fg-3);
+	margin-bottom: 8px;
+}
+
+.runs-table td,
+.runs-table th {
+	font-size: 12px;
+}
+
+.runs-table td.num {
+	font-family: var(--mono);
+	text-align: right;
+}
+
+.develop-empty {
+	padding: 18px 6px;
+	color: var(--fg-2);
+	max-width: 60ch;
+}
+
+.develop-empty h3 {
+	font-size: 14px;
+	margin-bottom: 6px;
+}
+
+.develop-empty p + p {
+	margin-top: 6px;
+}
+
+.develop-event-table {
+	table-layout: fixed;
+	min-width: 620px;
+}
+
+.develop-event-table .c-seq {
+	width: 84px;
+}
+
+.develop-event-table .c-time {
+	width: 112px;
+}
+
+.develop-event-table .c-cat {
+	width: 92px;
+}
+
+.develop-event-table .c-flags {
+	width: 120px;
+}
+
+@media (max-width: 1359.98px) {
+	.develop-grid {
+		grid-template-columns: clamp(250px, 28vw, 330px) minmax(0, 1fr);
+		grid-template-areas:
+			"nav activity"
+			"nav inspector";
+	}
+	.develop-inspector.panel {
+		position: static;
+		max-height: none;
+	}
+}
+
+@media (max-width: 1023.98px) {
+	.develop-grid {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: "only";
+	}
+	.develop-nav,
+	.develop-activity,
+	.develop-inspector {
+		grid-area: only;
+	}
+	.sessions-scroll {
+		max-height: none;
+	}
+}
+
+.runs-table thead th {
+	position: static;
+	text-transform: none;
+	letter-spacing: 0;
+	font-size: 11px;
+	white-space: normal;
+}
+
+.develop-crumb:focus:not(:focus-visible) {
+	outline: none;
+}
+
+.col-basis .small {
+	white-space: nowrap;
+}
+
+.toolbar-spaced {
+	margin-top: 10px;
+}
+
+/* Five workspace tabs do not fit a 360 px bar: they wrap onto their own line instead of widening the page. */
+.workspaces {
+	flex-wrap: wrap;
+	min-width: 0;
+}
+
+@media (max-width: 520px) {
+	.workspace {
+		padding: 4px 7px;
+	}
+	.topbar {
+		padding: 8px 12px;
+		gap: 6px 10px;
+	}
+}
+
+/* Field names are identifiers: the name column takes the width of its longest name and only the value wraps. */
+.fields th[scope="row"] {
+	white-space: nowrap;
+	overflow-wrap: normal;
+	width: 1%;
+}

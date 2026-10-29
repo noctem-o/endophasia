@@ -644,6 +644,12 @@ try {
 				check(compareUi.failures.length === 0, `the installed React Compare workspace selects actual Pi/DSH recordings, renders authoritative layers, preserves Observe reads, keyboard focus, narrow layout and policy${compareUi.failures.length ? `: ${compareUi.failures.join("; ")}` : ""}`);
 				await compareLaunch.stop("SIGINT");
 
+				const { exerciseStudioDevelop } = await import("../tests/studio-develop-acceptance.ts");
+				const developLaunch = await launch(["--root", compareRoot]);
+				const developUi = await exerciseStudioDevelop(browser, developLaunch.address);
+				check(developUi.failures.length === 0, `the installed React Develop workspace lists actual Pi/DSH recordings, reads one and an event, words states as recorded and keeps the page policy${developUi.failures.length ? `: ${developUi.failures.join("; ")}` : ""}`);
+				await developLaunch.stop("SIGINT");
+
 				const absent = await launch(["--root", join(scratch, "studio-absent-browser", "store")]);
 				const absence = await exerciseStudioUi(browser, absent.address, absent.origin, { store: "absent" });
 				check(absence.failures.length === 0, `the installed frontend, over an absent store, shows absence as absence${absence.failures.length ? `: ${absence.failures.join("; ")}` : ""}`);

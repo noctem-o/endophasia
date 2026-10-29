@@ -79,6 +79,8 @@ let tools: string;
 let relay: string;
 let crash: string;
 let hang: string;
+let lateMap: string;
+let neverMap: string;
 let model: string;
 const sentinels: Array<ReturnType<typeof spawn>> = [];
 const servers = new Set<TaskOwnedServerV0>();
@@ -94,6 +96,10 @@ beforeAll(async () => {
 	execFileSync("cc", [`-DBACKEND_PORT=${new URL(backend.baseUrl).port}`, join(src, "relay.c"), "-o", relay]);
 	execFileSync("cc", [join(src, "crash.c"), "-o", crash]);
 	execFileSync("cc", [join(src, "hang.c"), "-o", hang]);
+	lateMap = join(tools, "late-map");
+	neverMap = join(tools, "never-map");
+	execFileSync("cc", ["-DMAP_DELAY_MS=1500", join(src, "late-map.c"), "-o", lateMap]);
+	execFileSync("cc", ["-DMAP_DELAY_MS=-1", join(src, "late-map.c"), "-o", neverMap]);
 	model = join(tools, "model.gguf");
 	writeFileSync(model, Buffer.alloc(8192, 7), { mode: 0o600 });
 }, 180000);
@@ -279,6 +285,31 @@ describe.runIf(process.platform === "linux")("task-owned launch refusals", () =>
 			"cancelled",
 		);
 		await expectNothingStarted(cancelled, hang);
+	}, 60000);
+	it("waits for a server that listens first and maps the model later, and still refuses one that never maps it", async () => {
+		const file = () => join(mkdtempSync(join(fixture.base, "to-late-")), "study.json");
+		const late = await request({ executablePath: lateMap, executableSha256: sha(lateMap) });
+		const started = performance.now();
+		const server = await launchTaskOwnedServerV0(fixture.key, file(), late, approve);
+		servers.add(server);
+		expect(performance.now() - started).toBeGreaterThan(1000);
+		expect(server.provenance.listener.endpoint).toBe(`http://127.0.0.1:${late.port}`);
+		await server.stop();
+		await expectNothingStarted(late, lateMap);
+		const never = await request({
+			executablePath: neverMap,
+			executableSha256: sha(neverMap),
+			readinessTimeoutMs: 1500,
+		});
+		await expect(launchTaskOwnedServerV0(fixture.key, file(), never, approve)).rejects.toThrow("timed out");
+		await expectNothingStarted(never, neverMap);
+		const cancelled = await request({ executablePath: neverMap, executableSha256: sha(neverMap) });
+		const controller = new AbortController();
+		setTimeout(() => controller.abort(), 400);
+		await expect(launchTaskOwnedServerV0(fixture.key, file(), cancelled, approve, controller.signal)).rejects.toThrow(
+			"cancelled",
+		);
+		await expectNothingStarted(cancelled, neverMap);
 	}, 60000);
 	it.each(["SIGKILL", "SIGTERM"] as const)(
 		"ends the owned server and its listener when the launcher itself dies by %s",

@@ -41,7 +41,8 @@ The verdict is `complete-under-declared-assumptions` only when the server was co
 
 ## Limits and what is not established
 
-- No real llama.cpp binary, model or inference was involved. The relay is a byte-forwarding test double; `supportedBinary` is therefore `UNSUPPORTED` in its provenance. A fake study proves the plumbing and the refusal semantics, not model behaviour.
+- Until revision 3 of the pre-registration the launcher inspected the server the moment its listener appeared and so would have refused a real llama.cpp server, which maps its model only while loading; it now waits, within the startup deadline, for the first model mapping. This was found by the first real launch attempt, which was refused before any request or model load. The tests that follow still use test doubles and say nothing about real loading or inference.
+- No real llama.cpp binary, model or inference was involved in the tests. The relay is a byte-forwarding test double; `supportedBinary` is therefore `UNSUPPORTED` in its provenance. A fake study proves the plumbing and the refusal semantics, not model behaviour.
 - Linux only. Single operator, single host, trusted-local-host model: a same-user attacker who swaps the process, files or listener between samples is outside the guarantees, as in the provenance doc.
 - If this process is killed outright (for example SIGKILL), no end record is written; the keeper still ends the owned group, and the reader will report the lifecycle as `open` rather than `cleaned`.
 - `cleanup-unconfirmed` after a failed launch means the port was still occupied after an approved launch failed; nothing was signalled.

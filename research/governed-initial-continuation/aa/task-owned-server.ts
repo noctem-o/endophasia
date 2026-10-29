@@ -16,7 +16,7 @@ import {
 	type LinuxFileIdentityV0,
 	linuxProcFactsV0,
 } from "./linux-host-inspection.ts";
-import { parseTcpListenersV0 } from "./linux-proc.ts";
+import { parseModelMappingsV0, parseTcpListenersV0 } from "./linux-proc.ts";
 import { buildExplicitServerArgsV0, validateExplicitServerArgsV0 } from "./linux-profile.ts";
 import {
 	buildTaskOwnedProvenanceV0,
@@ -241,6 +241,18 @@ export async function launchTaskOwnedServerV0(
 			await sleep(25);
 		}
 		const serverPid: number = pid;
+		// A real llama.cpp server listens before it loads, so the model is mapped some time after the listener appears.
+		// Wait, inside the same deadline, for the first model mapping; the inspection still checks what is mapped.
+		for (;;) {
+			if (stopSignal.aborted || performance.now() >= deadline)
+				throw new Error(signal?.aborted ? "cancelled" : "launch timed out");
+			if (exit !== undefined) throw new Error("server exited before mapping the model");
+			try {
+				const maps = linuxProcFactsV0.boundedText(`/proc/${serverPid}/maps`, 16 * 1024 * 1024);
+				if (parseModelMappingsV0(maps).length > 0) break;
+			} catch {}
+			await sleep(25);
+		}
 		const outcome = await inspectLinuxHostOutcomeV0(
 			{
 				pid: serverPid,

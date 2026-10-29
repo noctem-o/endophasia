@@ -32,8 +32,10 @@ export function Activity({
 	onObserve,
 	onCompare,
 	narrow,
+	observeBlocked,
 }: {
 	develop: Develop;
+	observeBlocked: string | null;
 	onObserve(): void;
 	onCompare(): void;
 	narrow: boolean;
@@ -166,13 +168,25 @@ export function Activity({
 					)}
 				</p>
 				<div className="develop-actions">
-					<button type="button" className="btn" data-testid="open-observe" onClick={onObserve}>
+					<button
+						type="button"
+						className="btn"
+						data-testid="open-observe"
+						disabled={observeBlocked !== null}
+						aria-describedby={observeBlocked === null ? undefined : "develop-observe-blocked"}
+						onClick={onObserve}
+					>
 						Open in Observe
 					</button>
 					<button type="button" className="btn" data-testid="open-compare" onClick={onCompare}>
 						Open in Compare as Recording A
 					</button>
 				</div>
+				{observeBlocked === null ? null : (
+					<p className="note note-warn" id="develop-observe-blocked" data-testid="observe-blocked">
+						{observeBlocked}
+					</p>
+				)}
 				<p className="dim small">
 					Observe shows the window it reads, which may need paging to reach this session. Compare loads its own
 					inventory and preselects this recording only if it is selectable there.

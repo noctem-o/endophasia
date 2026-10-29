@@ -318,3 +318,14 @@ export function listCoverage(state: DevelopState, shown: number): string {
 		? `${base}. Filters apply to the ${loaded} loaded${more > 0 ? `; ${more} more on the server` : ""}.`
 		: `${base}.`;
 }
+
+/**
+ * Why "Open in Observe" is not offered right now, or null when it is. Observe starts no read while one is running or while the server
+ * asked it to pause, and nothing queues a read for later, so a hand-off made then would change Observe's filters and silently lose the
+ * requested window. The action is withheld instead, with this sentence, so it is never half applied.
+ */
+export function observeHandoffBlock(observeLocked: boolean): string | null {
+	return observeLocked
+		? "Observe is reading or paused by the server right now. Try again when it has finished, so the window you ask for is not lost."
+		: null;
+}

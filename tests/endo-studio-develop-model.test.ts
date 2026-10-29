@@ -10,6 +10,7 @@ import {
 	initialDevelop,
 	listCoverage,
 	NO_DEVELOP_FILTERS,
+	observeHandoffBlock,
 	reduceDevelop,
 	STATE_WORDING,
 } from "../studio-ui/src/model/develop.ts";
@@ -21,7 +22,7 @@ import {
 	readDevelopSessions,
 	sessionsCursor,
 } from "../studio-ui/src/model/develop-wire.ts";
-import { initialState, reduce } from "../studio-ui/src/model/state.ts";
+import { controlsLocked, initialState, reduce } from "../studio-ui/src/model/state.ts";
 import { ingestAll, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { compareEvents } from "./studio-compare-fixtures.ts";
@@ -368,5 +369,27 @@ describe("the hand-off to Observe", () => {
 		// The operator's own choice is still limited to what the snapshot lists.
 		const own = read(initialState(), older);
 		expect(reduce(own, { type: "select-attachment", name: "pi.second" })).toBe(own);
+	});
+});
+
+describe("the hand-off while Observe cannot read", () => {
+	it("is withheld with a reason whenever Observe has a read running or a server pause, and offered otherwise", () => {
+		const idle = initialState();
+		expect(observeHandoffBlock(controlsLocked(idle, 0))).toBeNull();
+		const reading = reduce(idle, { type: "read-started" });
+		expect(controlsLocked(reading, 0)).toBe(true);
+		expect(observeHandoffBlock(controlsLocked(reading, 0))).toContain("reading or paused");
+		const paced = reduce(reading, {
+			type: "read-finished",
+			reply: { kind: "paced", retryAfterSeconds: 30 },
+			request: { afterSequence: 0, limit: 100 },
+			durationMs: 1,
+			at: new Date(0),
+			now: 1000,
+		});
+		expect(controlsLocked(paced, 2000)).toBe(true);
+		expect(observeHandoffBlock(controlsLocked(paced, 2000))).not.toBeNull();
+		// The pause is a monotonic deadline: once it has passed the action is offered again.
+		expect(observeHandoffBlock(controlsLocked(paced, 31_001))).toBeNull();
 	});
 });

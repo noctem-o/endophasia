@@ -73,10 +73,13 @@ export function DevelopWorkspace({
 	develop,
 	onObserve,
 	onCompare,
+	observeBlocked,
 }: {
 	develop: Develop;
 	onObserve(row: EndoCockpitDevelopSessionRowV0, attachment: string | null): void;
 	onCompare(row: EndoCockpitDevelopSessionRowV0): void;
+	/** Why Observe cannot take a hand-off now (it is reading or paused), or null. */
+	observeBlocked: string | null;
 }): ReactElement {
 	const narrow = useNarrow();
 	const { state, dispatch } = develop;
@@ -157,6 +160,7 @@ export function DevelopWorkspace({
 		<Activity
 			develop={develop}
 			narrow={narrow}
+			observeBlocked={observeBlocked}
 			onObserve={() => detail !== null && onObserve(detail.session, detail.attachment)}
 			onCompare={() => detail !== null && onCompare(detail.session)}
 		/>

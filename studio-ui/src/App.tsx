@@ -7,6 +7,7 @@ import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
 import { candidateValue } from "./model/compare.ts";
 import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
+import { observeHandoffBlock } from "./model/develop.ts";
 import { attentionOf } from "./model/observe.ts";
 import { Attention } from "./observe/Attention.tsx";
 import { Banner, readStatusText } from "./observe/Chrome.tsx";
@@ -56,7 +57,9 @@ export function App(): ReactElement {
 			);
 		setPending(null);
 	}, [pending, workspace, compare.state.inventory, compare.state.request, compare.choose]);
+	const observeBlocked = observeHandoffBlock(observe.locked);
 	const showObserve = (row: EndoCockpitDevelopSessionRowV0, attachment: string | null) => {
+		if (observeBlocked !== null) return;
 		observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: row.session } });
 		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
 		setWorkspace("observe");
@@ -180,7 +183,12 @@ export function App(): ReactElement {
 							<CompareWorkspace compare={compare} />
 						</>
 					) : workspace === "develop" ? (
-						<DevelopWorkspace develop={develop} onObserve={showObserve} onCompare={showCompare} />
+						<DevelopWorkspace
+							develop={develop}
+							onObserve={showObserve}
+							onCompare={showCompare}
+							observeBlocked={observeBlocked}
+						/>
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>
 							<Unavailable

@@ -91,7 +91,7 @@ export class PiInterventionDeskV0 {
 	readonly #inFlight = new Map<string, Promise<PiInterventionApplyResultV0>>();
 
 	readonly #capture: EndoInterventionCaptureSourceV0 | null;
-	/** Called, in order, when `finish` begins, before it waits for anything: a host that takes proposals stops taking them here. */
+	/** Called, in order, when a FINAL `finish` begins, before it waits for anything: a host that takes proposals stops taking them here. */
 	readonly #finishing: (() => void)[] = [];
 	readonly #now: () => number;
 	readonly #authorizationMaxAgeMs: number;
@@ -386,7 +386,7 @@ export class PiInterventionDeskV0 {
 		}
 	}
 
-	/** Run `listener` when `finish` begins (and on every later `finish`), before the desk waits for applies in flight. */
+	/** Run `listener` when a final `finish` (`{ final: true }`: the session is closing) begins, before the desk waits for applies in flight. */
 	onFinishing(listener: () => void): void {
 		this.#finishing.push(listener);
 	}
@@ -526,8 +526,10 @@ export class PiInterventionDeskV0 {
 	 * the consequence does not claim "no reply" for it. Call when the session's work has settled and the recording proxy
 	 * has flushed, before the session closes.
 	 */
-	async finish(options: { waitMs?: number } = {}): Promise<void> {
-		for (const listener of this.#finishing) {
+	async finish(options: { waitMs?: number; final?: boolean } = {}): Promise<void> {
+		// A mid-session finish (the control socket's `finish`) records what it can and leaves the session working; only the closing one
+		// tells the host to stop taking requests.
+		for (const listener of options.final === true ? this.#finishing : []) {
 			try {
 				listener();
 			} catch {

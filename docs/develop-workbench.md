@@ -303,8 +303,9 @@ most one STOP is in flight; a duplicate returns it, and steer and queue are with
 broker, so a late reply is recorded and shown after the page went away, and status reads are never held behind an `abort` Pi answers only
 once idle. A pending steer approval blocks a STOP until it is withdrawn on the page or declined in the terminal (press Enter).
 
-**Teardown.** The desk's `finish()` records consequences, so the desk first tells the broker (`onFinishing`, which also covers the control
-socket's `close`): it refuses new requests and withdraws what waits for the terminal. A request cannot be approved after the chains close.
+**Teardown.** The desk's closing `finish({ final: true })` records consequences, so the desk first tells the broker (`onFinishing`, which also
+covers the control socket's `close`): it refuses new requests and withdraws what waits for the terminal. A mid-session `finish` (the control
+socket's `finish` message) does not: the workbench keeps working. A request cannot be approved after the chains close.
 `dispose()` waits at most two seconds for a request still waiting for Pi.
 
 **States, never merged.** requested, approved, sent, runtime-accepted, observed-consumed, run-ended:
@@ -331,4 +332,5 @@ as `endo steer` does, because the gate re-verifies it at the moment of sending. 
 withdraws it, unlike a prompt. It never enters canonical evidence; the composer says so beside Steer and Queue. The page keeps the text it
 sent in memory only, to show it on the card.
 
-**Not covered.** Real Pi behaviour beyond the fake Pi and the operator's single manual session; no real model run was made for this slice.
+**Not covered.** The operator exercised slice A (prompts) by hand against a real Pi. STEER, QUEUE and STOP were tested only against the fake Pi
+and a real pseudo-terminal; no real Pi or model run was made for them, and `npm run test:acceptance` (`--real-pi`) was not run.

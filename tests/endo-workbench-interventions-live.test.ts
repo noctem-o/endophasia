@@ -295,6 +295,22 @@ describe("the broker on the real desk (fake Pi)", () => {
 		expect(t.commands().slice(before)).not.toContain("steer");
 	}, 60_000);
 
+	it("keeps working after a mid-session finish: controls stay offered and a waiting request stays waiting", async () => {
+		const t = await ready();
+		await t.session.prompt("count to forty");
+		await untilStreaming(t.session);
+		const id = (
+			(await t.call("POST", "intervention/propose", { operation: "steer", message: "still here" }, t.grant))
+				.body as any
+		).proposalId;
+		await t.approval.waitForRequest();
+		await t.desk.finish(); // the control socket's `finish`: consequences so far, nothing closed
+		expect(await t.view(id)).toMatchObject({ state: "awaiting-approval" });
+		t.approval.answer("allow");
+		await t.until("accepted", async () => (await t.view(id)).state === "accepted");
+		expect((await t.status()).offers.stop.offered).toBe(true);
+	}, 60_000);
+
 	it("withdraws a waiting approval when the desk finishes, so no request is approved after the consequences", async () => {
 		const t = await ready();
 		await t.session.prompt("count to forty");
@@ -305,7 +321,7 @@ describe("the broker on the real desk (fake Pi)", () => {
 		).proposalId;
 		await t.approval.waitForRequest();
 		const before = t.commands().length; // the conformance study that admitted the capabilities sent its own steer, queue and abort
-		await t.desk.finish();
+		await t.desk.finish({ final: true });
 		expect(await t.view(id)).toMatchObject({ state: "refused", reason: "session-ended" });
 		t.approval.answer("allow");
 		await settle(100);

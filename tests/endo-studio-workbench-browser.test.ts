@@ -89,6 +89,34 @@ const refresh = async (page: Page) => {
 };
 
 suite("the DEVELOP workbench", () => {
+	it("describes the live session in the neutral vocabulary without changing what the composer is offered", async () => {
+		const { page, session, broker } = await open();
+		expect(await page.text("[data-testid=surface-tag]")).toBe("live");
+		expect(await page.text("[data-testid=surface-source]")).toContain("Pi workbench · harness");
+		expect(await page.text("[data-testid=surface-ownership]")).toContain("Owned directly");
+		expect(await page.text("[data-testid=surface-observation]")).toContain("Live: attached and observed now");
+		expect(await page.text("[data-testid=surface-status]")).toContain("reported by the runtime");
+		const cap = (id: string) => page.eval<string>(`document.querySelector('[data-testid=${id}]').dataset.status`);
+		expect(await cap("cap-control-prompt")).toBe("supported");
+		expect(await cap("cap-control-steer")).toBe("unavailable");
+		expect(await cap("cap-control-resume")).toBe("unsupported");
+		// The offers list and the composer keep reading the broker's own offers, not the description.
+		expect(await page.text("[data-testid=offer-prompt]")).toContain(
+			"available: a new prompt, approved in the attached terminal",
+		);
+		await pairWith(page, broker);
+		expect(await page.eval<boolean>("!document.querySelector('[data-testid=composer]').disabled")).toBe(true);
+		session.live = false;
+		await refresh(page);
+		await page.waitFor(
+			"document.querySelector('[data-testid=surface-connection]')?.dataset.state === 'disconnected'",
+		);
+		expect(await page.text("[data-testid=surface-observation]")).toContain("Not observable now");
+		expect(await cap("cap-control-prompt")).toBe("unavailable");
+		expect(await page.text("[data-testid=surface-status]")).toContain("nothing about it is established");
+		expect(await page.text("[data-testid=surface-ownership]")).toContain("unknown");
+	});
+
 	it("shows the live session as its own kind of row with the state the broker reported, and a workbench's authority chip", async () => {
 		const { page, session } = await open();
 		expect(await words(page)).toBe("connected · idle");

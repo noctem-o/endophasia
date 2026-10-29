@@ -2061,3 +2061,22 @@ table.fields thead th {
 		display: none;
 	}
 }
+
+/* The neutral session surface: a small tag on list rows, and the block in the context panel. */
+.surface-tag {
+	display: inline-block;
+	margin-top: 2px;
+	padding: 0 6px;
+	border: 1px solid var(--line, currentColor);
+	border-radius: 3px;
+	font-size: 0.72rem;
+	opacity: 0.85;
+}
+.surface-tag[data-mode="live"] {
+	opacity: 1;
+}
+.surface h4 {
+	margin: 8px 0 2px;
+	font-size: 0.8rem;
+	font-weight: 600;
+}

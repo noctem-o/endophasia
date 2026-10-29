@@ -334,3 +334,5 @@ sent in memory only, to show it on the card.
 
 **Not covered.** The operator exercised slice A (prompts) by hand against a real Pi. STEER, QUEUE and STOP were tested only against the fake Pi
 and a real pseudo-terminal; no real Pi or model run was made for them, and `npm run test:acceptance` (`--real-pi`) was not run.
+
+How a session from any source (this broker, a recording, or one another host owns) is presented, and why a described capability is not an authorisation: [develop-session-surface.md](develop-session-surface.md).

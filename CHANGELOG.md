@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- **Neutral DEVELOP session surface (`endo.develop-session-surface.v0`):** one presentation contract for a session whatever produced it, with a
+  source-qualified key and its scope kept apart from the display alias, ownership, observed/reported/recorded status claims that are never
+  merged, live/recorded/unavailable observation, separate observe/control/coordinate capabilities (every action present, a reason for each
+  that is not supported) and independently qualified parent/child edges. The live Pi workbench, recorded Pi and recorded DSH sessions are
+  projected into it in the browser, with no change to any server response, and DEVELOP now shows a live-or-recorded tag per row and a
+  source, ownership and offers block per session. Offers are descriptions: the composer and STOP still follow the broker's own offers and
+  its admission. Two test-only shapes (an externally owned session; a meta-harness job with two children) show external and hierarchical
+  sessions can be represented without inventing observations or authority. See [docs/develop-session-surface.md](docs/develop-session-surface.md).
 - **STEER, QUEUE and STOP from the DEVELOP workbench:** the composer gains Steer and Queue modes (never switched for the operator,
   each showing its delivery semantics) and STOP sits in the run strip. They drive the existing intervention desk and chain, behind the
   same terminal approval for every one: the page only requests, the operator types `APPROVE STEER|QUEUE|STOP <digest prefix>` on the

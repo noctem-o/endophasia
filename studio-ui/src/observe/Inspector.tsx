@@ -14,7 +14,7 @@ const Block = ({ title, children }: { title: string; children: ReactNode }): Rea
 	</section>
 );
 
-function EventView({
+export function EventView({
 	detail,
 	hidden,
 	clearing,

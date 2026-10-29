@@ -121,9 +121,9 @@ implementation detail and its limitations. The real recordings and studies, with
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
 read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows an Observe workspace: an overview of the recorded window, the
 recorded runtime identity, capability state with its limits, the session timeline in storage order with an evidence-first inspector and each source's condition. It
-writes nothing to the store, attaches to nothing and does not poll. The React Compare workspace discovers recorded Pi/DSH candidates and presents authoritative comparisons; other modes remain unbuilt.
+writes nothing to the store, attaches to nothing and does not poll. The React Compare workspace discovers recorded Pi/DSH candidates and presents authoritative comparisons, and the read-only Develop workspace browses recorded sessions and their recorded lifecycle and activity (a recording is not a live process; project association is not established by the evidence and is not shown); other modes remain unbuilt.
 Published `0.1.0-alpha.2` contains the first, earlier browser page; the newer React
-Observe and Compare workspaces are in the source tree, as are the DSH CLI and Compare APIs described above. `endo web`, a native Endophasia binary and
+Observe, Compare and Develop workspaces are in the source tree, as are the DSH CLI and Compare APIs described above. `endo web`, a native Endophasia binary and
 native packaging are proposed only; the implemented CLI remains `endo studio`.
 
 ## Library-only and planned surfaces

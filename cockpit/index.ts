@@ -13,23 +13,39 @@ export { projectEndoCockpitCapabilityStateV0 } from "./projections/capability-st
 export type { EndoCockpitRegistryInputV0, EndoCockpitRegistryRecordsV0 } from "./projections/common.ts";
 // A direct projector admits only an input its source describes; these are the constructions the reader advertises: a registry's
 // content watermark and, for an event log read whole, the prefix digest of its events.
-export { eventLogPrefixDigestV0, registryWatermarkV0 } from "./projections/common.ts";
+export {
+	cockpitAliasesV0,
+	cockpitTokenV0,
+	compareCodeUnitsV0,
+	eventLogPrefixDigestV0,
+	registryWatermarkV0,
+	requireAdmittedKeyV0,
+} from "./projections/common.ts";
 export { projectEndoCockpitRuntimeIdentityV0 } from "./projections/runtime-identity.ts";
 export type {
 	EndoCockpitStoredEventV0,
 	EndoCockpitTimelineInputV0,
 } from "./projections/session-timeline.ts";
-export { projectEndoCockpitSessionTimelineV0 } from "./projections/session-timeline.ts";
+export {
+	projectEndoCockpitSessionTimelineV0,
+	projectEndoCockpitTimelineEntryV0,
+} from "./projections/session-timeline.ts";
 // The trajectory-comparison presentation: a pure projection of two validated trajectories (the comparator's own verdicts, with
 // paths and content-committing digests withheld), registered at the same wire gate as the other cockpit records.
 export { projectEndoCockpitTrajectoryComparisonV0 } from "./projections/trajectory-comparison.ts";
-export type { EndoCockpitEventLogReadOptionsV0, EndoCockpitEventLogReadV0, EndoCockpitFreshnessV0 } from "./reader.ts";
+export type {
+	EndoCockpitEventLogReadOptionsV0,
+	EndoCockpitEventLogReadV0,
+	EndoCockpitFreshnessV0,
+	EndoCockpitObservationV0,
+} from "./reader.ts";
 export {
 	checkEndoCockpitSourceFreshnessV0,
 	ENDO_COCKPIT_PAGE_DEFAULT_LIMIT_V0,
 	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
 	listEndoCockpitAttachmentsV0,
 	readEndoCockpitEventLogV0,
+	readEndoCockpitObservationV0,
 	readEndoCockpitRegistryV0,
 	readEndoCockpitVerifiedEventsV0,
 } from "./reader.ts";

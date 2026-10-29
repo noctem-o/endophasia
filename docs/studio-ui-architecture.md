@@ -1,13 +1,13 @@
 # Studio frontend foundation: architecture and security decision record
 
-Status: **the production Studio frontend (Studio PR A, the foundation, and Studio PR B, the Observe workspace).** A React/TypeScript
+Status: **the production Studio frontend (Studio PR A, the foundation, Studio PR B, the Observe workspace, and the read-only Compare and Develop workspaces).** A React/TypeScript
 application is built with esbuild, packaged flat with an exact manifest, installed, and served through the production server at its
 real capability address. Its Observe workspace reads the one snapshot the server offers and shows what the recorded evidence
 establishes, and where it stops. **`endo studio` serves it**: the page it replaces (`cockpit-ui/`) was retired in the same change as
 the default switched, with its tests moved, not dropped (section 10). There is no CLI flag and no route for it; the server, its
 guards and its page policy are the ones PR A hardened.
 
-Compare is a read-only consumer of the merged discovery and comparison presentations. Capabilities and Evolve remain honest placeholders.
+Compare is a read-only consumer of the merged discovery and comparison presentations. Develop is a read-only session desk over recorded sessions (see the Develop section below). Capabilities and Evolve remain honest placeholders.
 
 ## 1. What the audit found
 
@@ -388,6 +388,40 @@ named older artifact to that layout and holds a build from the checkout to the n
 4. **The concept's licence.** State it before any component code is copied.
 5. **Keep the gate.** Extend `tests/studio-ui-acceptance.ts` rather than adding a second browser harness; keep `ENDO_REQUIRE_BROWSER=1`
    in CI.
+
+## React Develop vertical slice (the read-only session desk)
+
+`develop/` renders the DEVELOP workspace from server-presented fields only; its contract is
+[cockpit.md](cockpit.md#develop-session-desk-projection-implemented). The frontend adds, in the established shape:
+
+- `model/develop-wire.ts`: the browser wire gate for both records (types-only import of the protocol; it reuses the Compare wire's
+  closed-shape helpers). It checks every field a renderer reads, then builds `eventDetail` for **every** entry of a page, as Observe does,
+  so a record the page cannot show is a failed read now and not a broken panel later. Failures become fixed text: no body reaches the page.
+- `model/develop.ts`: one pure reducer and the view helpers: one inventory, one selection (an opaque token bound to one verified
+  generation), one detail whose activity pages accumulate in order, the client-side filters of the loaded list, the narrow stage. A page
+  that is not the next one, a generation that differs, or a selector the held inventory lacks discards the held state and asks for
+  **Refresh**; an ordinary failure keeps the last good read marked not current; a 429 sets a monotonic deadline. The wording of each
+  recorded state lives here and is pinned by a test: every state but `not-observed` carries "as recorded", and none claims a live process.
+- `use-develop.ts`: the hook, shaped like `use-compare.ts`. One request at a time, cancellation plus request identity fence late replies,
+  one timer (the pause), a read at first entry and on operator action only. `api.ts` remains the only fetch module and gains the two
+  fixed routes; a display alias is never a URL argument.
+- `develop/Navigator.tsx`, `Activity.tsx`, `SessionInspector.tsx`, `DevelopWorkspace.tsx`: plain buttons and tables in Observe's
+  panel grammar (`.panel`, `.block`, `.facts`, `.caprow`, `.chip`, the event table and Observe's own `EventView` for one event). Lifecycle
+  states are a new square family (`LifecycleGlyph`) kept apart from provenance and source marks, neutral in hue: a recorded `running`
+  is never drawn as health or liveness. The navigator stays reachable at every width (one stage at a time under 1024 px, with a dialog for
+  an event), and nothing is animated.
+
+Hand-offs are explicit actions of the shell: *Open in Observe* sets Observe's session filter and starts **one** explicit read from just
+before the session's first event; *Open in Compare as Recording A* preselects the recording only if Compare's own inventory lists it as
+selectable. Neither can start, attach or steer anything.
+
+**Design advisory (Opus, one initial and one final pass).** Accepted: reuse Observe's panel grammar; breakpoints stay Observe's
+(`NARROW_QUERY`); rows carry alias, state word with "as recorded" and counts only (no source label, project or producer clock);
+qualification words only when not inspectable; no relative times; lifecycle states as squares distinct from provenance marks; filters
+that say they cover only the loaded page; the project fact once as a caption and once as an unavailable fact in the inspector; plain
+buttons with arrow-key walking instead of a roving-tabindex grid; focus to the stage breadcrumb and back to the opener row. Rejected, as
+the advisor itself flagged: local storage of filters or selection, auto-refresh or a live toggle, virtual-list and icon libraries, a time
+axis on producer clocks, summed usage, and any attach, resume or stop affordance even disabled.
 
 ## React Compare vertical slice
 

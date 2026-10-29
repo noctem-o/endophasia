@@ -1,14 +1,20 @@
-// Studio shell: read-only Observe and Compare workspaces with persistent, separate request state.
+// Studio shell: read-only Observe, Compare and Develop workspaces with persistent, separate request state.
 // Capabilities and Evolve remain explicit placeholders.
 import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
+import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
+import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
+import { candidateValue } from "./model/compare.ts";
+import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
 import { attentionOf } from "./model/observe.ts";
 import { Attention } from "./observe/Attention.tsx";
 import { Banner, readStatusText } from "./observe/Chrome.tsx";
 import { ObserveWorkspace } from "./observe/ObserveWorkspace.tsx";
 import { PanelBoundary } from "./ui/Panel.tsx";
+import { Note } from "./ui/text.tsx";
 import { useCompare } from "./use-compare.ts";
+import { useDevelop } from "./use-develop.ts";
 import { useObserve } from "./use-observe.ts";
 
 // The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
@@ -18,6 +24,7 @@ const Unavailable = lazy(() => import("./observe/Unavailable.tsx"));
 const WORKSPACES = [
 	{ id: "observe", label: "Observe", ready: true },
 	{ id: "compare", label: "Compare", ready: true },
+	{ id: "develop", label: "Develop", ready: true },
 	{ id: "capabilities", label: "Capabilities", ready: false },
 	{ id: "evolve", label: "Evolve", ready: false },
 ] as const;
@@ -27,6 +34,40 @@ export function App(): ReactElement {
 	const { state } = observe;
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
 	const compare = useCompare(workspace === "compare");
+	const develop = useDevelop(workspace === "develop");
+	// A hand-off from DEVELOP to Compare: the recording is preselected as Recording A once Compare's own inventory has it as selectable.
+	const [pending, setPending] = useState<{ source: "pi" | "dsh"; session: string } | null>(null);
+	const [compareNotice, setCompareNotice] = useState<string | null>(null);
+	useEffect(() => {
+		if (pending === null || workspace !== "compare") return;
+		const inventory = compare.state.inventory;
+		if (inventory === null || compare.state.request !== null) return;
+		const found = inventory.candidates.find(
+			(c) =>
+				c.source === pending.source &&
+				c.session === pending.session &&
+				c.eligibility === "selectable" &&
+				c.selector !== null,
+		);
+		if (found !== undefined) compare.choose("a", candidateValue(found));
+		else
+			setCompareNotice(
+				"The recording opened from Develop is not among the selectable candidates Compare has loaded, so nothing was preselected.",
+			);
+		setPending(null);
+	}, [pending, workspace, compare.state.inventory, compare.state.request, compare.choose]);
+	const showObserve = (row: EndoCockpitDevelopSessionRowV0, attachment: string | null) => {
+		observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: row.session } });
+		if (attachment !== null) observe.dispatch({ type: "select-attachment", name: attachment });
+		setWorkspace("observe");
+		// One explicit read, starting just before the session's first event; Observe shows its own window and may need paging.
+		observe.goTo(Math.max(0, row.firstStorageSequence - 1));
+	};
+	const showCompare = (row: EndoCockpitDevelopSessionRowV0) => {
+		setCompareNotice(null);
+		setPending({ source: row.source, session: row.session });
+		setWorkspace("compare");
+	};
 
 	// The page's state, for a test that must know a read finished, and for the style sheet.
 	useEffect(() => {
@@ -134,7 +175,12 @@ export function App(): ReactElement {
 					{workspace === "observe" ? (
 						<ObserveWorkspace observe={observe} />
 					) : workspace === "compare" ? (
-						<CompareWorkspace compare={compare} />
+						<>
+							{compareNotice === null ? null : <Note tone="warn">{compareNotice}</Note>}
+							<CompareWorkspace compare={compare} />
+						</>
+					) : workspace === "develop" ? (
+						<DevelopWorkspace develop={develop} onObserve={showObserve} onCompare={showCompare} />
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>
 							<Unavailable

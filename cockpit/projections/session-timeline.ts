@@ -419,6 +419,21 @@ function entryOf(alias: EndoCockpitAliasesV0, stored: EndoCockpitStoredEventV0):
 }
 
 /**
+ * The presentation of ONE recorded event, exactly as the timeline presents it (same allowlist, aliases, flags and withheld
+ * count). For a consumer that selects events by something other than a contiguous window, such as one session's events; the
+ * caller supplies the real storage sequence and owns the claim that the event belongs to the log it names.
+ */
+export function projectEndoCockpitTimelineEntryV0(
+	stored: EndoCockpitStoredEventV0,
+	digestKey: EndoDigestKeyV0,
+): EndoCockpitTimelineEntryV0 {
+	requireAdmittedKeyV0(digestKey);
+	if (!Number.isSafeInteger(stored.storageSequence) || stored.storageSequence < 1)
+		throw new TypeError("a storage sequence is a positive integer");
+	return entryOf(cockpitAliasesV0(digestKey), stored);
+}
+
+/**
  * The timeline projection of one window of the event log. Throws a TypeError when the input breaks its own contract: a
  * storage sequence that is not the previous position plus one, beginning at `afterSequence + 1`: every consumed position
  * is an event of the window or a duplicate it ignored, so the result accounts for them all. (A store reads contiguously.)

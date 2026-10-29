@@ -1,6 +1,6 @@
 # Endophasia Web (currently `endo studio`)
 
-Status: **implemented in the source tree, read-only, Observe and Compare workspaces.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; Capabilities and Evolve workspaces (and DEVELOP, WORK, DREAM and a model-internal OBSERVE view) remain future directions. Source builds include a read-only
+Status: **implemented in the source tree, read-only, Observe, Compare and Develop workspaces.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; Capabilities and Evolve workspaces (and WORK, DREAM, a project/worktree view and a model-internal OBSERVE view) remain future directions; **DEVELOP exists only as a read-only session desk over recorded sessions** (below). Source builds include a read-only
 **Observe workspace**: an overview of the recorded window, the runtime a Pi attachment recorded, the capability state with its reasons
 and limits, the session timeline in storage order with an evidence-first inspector, and the condition of each source, all as recorded and
 none of it inferred. Compare discovers and compares recorded Pi/DSH trajectories through the existing read-only APIs. Capabilities and Evolve remain marked "later" and show no records. It does not start,
@@ -172,9 +172,44 @@ Controls retain native keyboard behavior, labels and focus; the layout stacks at
 This is a source-build and tested-tarball capability. Registry artifacts `0.1.0-alpha.1` and `0.1.0-alpha.2` do not contain this
 React Compare workspace. No backend semantics, persistence, polling, runtime control or write API was added.
 
+## Develop workspace (read-only session desk)
+
+Open **Develop** to browse the recorded sessions in the store and read one: which recordings exist and which source (Pi or DSH) recorded
+each, what the recorded events say it did, and where that stops. It reads through two new GET routes (`develop/sessions`,
+`develop/session/<selector>`; contract in [cockpit.md](cockpit.md#develop-session-desk-projection-implemented)) and adds no write
+path, no polling and no execution authority. Nothing here starts, attaches to, prompts or steers an agent; **an agent session and a
+recording are not the same thing, and this page lists recordings.**
+
+- **Sessions (left).** Grouped by source (Pi recordings, DSH recordings). A row shows the alias, the lifecycle state **as recorded**
+  (`running · as recorded` means a run was open at the last recorded event; the page does not check that a process exists), event, run
+  and last-outcome counts. Ambiguous and insufficient recordings are listed with their reason and cannot be selected. Filters (alias text,
+  source, recorded state) apply to the loaded list only and say so; **Load next sessions** is explicit. *Project: unavailable* is shown
+  once: the recorded evidence does not establish a project, so none is guessed.
+- **Activity (centre).** The selected recording's counts and positions, the producer clock of its last event (labelled; it is not an
+  order and not "now"), tool calls and results reported as errors, then its events in storage order with position, producer clock,
+  category, kind, producer, how the presented fields are known (the OBS/REP/DER/N-A marks) and flags. Category chips and *Flagged only*
+  filter the loaded events; **Load next 100 events** is explicit. Tool arguments, results, prompts and paths are withheld by design.
+  *Open in Observe* sets Observe's session filter and makes one explicit read from just before the session's first event (Observe shows
+  its own window and may need paging). *Open in Compare as Recording A* switches to Compare and preselects the recording there only if
+  Compare lists it as selectable; otherwise it says nothing was preselected.
+- **Inspector (right).** For the session: identity (source, alias, attachment where grounded, project and process-now both shown as
+  unavailable and why), the recorded lifecycle and its counts, the event-log condition and position it was read under (a degraded log is
+  stated), per-run usage as the runtime reported it (never summed; a missing figure is "not reported", never zero), fields the runtime did
+  not report, and evidence positions. Selecting an event shows Observe's event inspector for it.
+- **States.** Loading, absent store, empty list, degraded log, filter with no match, failed read (last good read kept, marked *not
+  current*), pacing (429, controls lifted at the server's time, never retried), and a selection the log no longer supports (404/409:
+  the held inventory, selection and activity are discarded and **Refresh** rediscovers; that refusal alone does not prove a mutation).
+- **Narrow screens (under 1024 px).** One stage at a time: sessions, then activity, then details, with a breadcrumb; Escape steps back;
+  an event opens in a dialog. Between 1024 and 1360 px the navigator sits beside the activity with the inspector under it.
+- **Keyboard.** Arrow keys, Home and End move between session rows and between event rows; Enter and Space select; every control keeps
+  native focus. Reduced motion is respected (nothing here is animated).
+
+Not in this slice: project or worktree association, Git changes, live process or attachment detection, live activity, steering, queueing,
+stopping or launching anything. Those are separate, later changes.
+
 ## Limits
 
-- Two read-only workspaces, Observe and Compare. Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+- Three read-only workspaces, Observe, Compare and Develop. Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
   on explicit Observe refresh or Compare discovery, pagination and comparison actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).

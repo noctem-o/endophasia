@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **Develop workspace (read-only session desk) in Endophasia Web:** browse the recorded Pi and DSH sessions in a store, group them by
+  source, select one and read its recorded lifecycle state (as recorded, never as a live process), counts, positions, per-run usage as
+  reported, and its events in storage order with provenance marks, with explicit paging, client-side filters that say they cover only
+  what is loaded, and hand-offs to Observe and Compare. Two new GET routes (`develop/sessions`, `develop/session/<selector>`) with
+  versioned, validated presentations (`endo.cockpit-develop-sessions.v0`, `endo.cockpit-develop-session.v0`), selectors and cursors bound to
+  their own purpose and to the verified log generation, and the timeline's own withholding of arguments, results, prompts and paths. No
+  write path, polling, project inference or execution authority. See [docs/studio.md](docs/studio.md#develop-workspace-read-only-session-desk).
 - **AA-LIVE-001 result (research):** the first real matched two-turn A/A ran once against the pinned llama.cpp build and
   model: `COMPLETE-UNDER-DECLARED-ASSUMPTIONS`, 4 of 4 slots, 8 of 8 requests bound, server binary `MATCH`, cleanup
   confirmed. Redacted summary and limits in

@@ -167,3 +167,80 @@ export function StatusGlyph({ status }: { status: string }): ReactElement {
 		</svg>
 	);
 }
+
+/**
+ * A session's RECORDED lifecycle state. Squares with an inner mark, kept apart from provenance (discs and a diamond) and from the
+ * source and capability squares, and never coloured as health: `running` is neutral. A word always sits beside it.
+ */
+export function LifecycleGlyph({ state }: { state: string }): ReactElement {
+	const body = (() => {
+		switch (state) {
+			case "idle":
+				return (
+					<>
+						<rect x="2.6" y="2.6" width="6.8" height="6.8" rx="1.1" {...RING} strokeWidth="1.3" />
+						<path d="M4.4 6h3.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+					</>
+				);
+			case "running":
+				return (
+					<>
+						<path
+							d="M9.4 5V3.7a1.1 1.1 0 0 0-1.1-1.1H3.7a1.1 1.1 0 0 0-1.1 1.1v4.6a1.1 1.1 0 0 0 1.1 1.1h4.6a1.1 1.1 0 0 0 1.1-1.1V7"
+							{...RING}
+							strokeWidth="1.3"
+						/>
+						<path d="M5 4.2 7.6 6 5 7.8z" fill="currentColor" />
+					</>
+				);
+			case "interrupted":
+				return (
+					<>
+						<rect
+							x="2.6"
+							y="2.6"
+							width="6.8"
+							height="6.8"
+							rx="1.1"
+							{...RING}
+							strokeWidth="1.3"
+							strokeDasharray="2 1.5"
+						/>
+						<path d="M4.4 7.6 7.6 4.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+					</>
+				);
+			case "detached":
+				return (
+					<>
+						<rect x="2.6" y="2.6" width="6.8" height="6.8" rx="1.1" {...RING} strokeWidth="1.3" />
+						<path d="M2.6 7.2h6.8v1.2a1.1 1.1 0 0 1-1.1 1.1H3.7a1.1 1.1 0 0 1-1.1-1.1z" fill="currentColor" />
+					</>
+				);
+			default:
+				return (
+					<rect
+						x="2.6"
+						y="2.6"
+						width="6.8"
+						height="6.8"
+						rx="1.1"
+						{...RING}
+						strokeWidth="1.3"
+						strokeDasharray="0.9 1.9"
+					/>
+				);
+		}
+	})();
+	return (
+		<svg
+			viewBox="0 0 12 12"
+			width={12}
+			height={12}
+			aria-hidden="true"
+			focusable="false"
+			className={`glyph life-${state}`}
+		>
+			{body}
+		</svg>
+	);
+}

@@ -512,6 +512,55 @@ source causes. The original DSH files are never opened: checkpoints describe pre
 now. DSH turn/run, tool-request/execution, recovery-closer/interruption and missing usage/timing distinctions remain intact;
 no server read time or cross-domain equality claim is introduced.
 
+## DEVELOP session desk projection (implemented)
+
+Two bounded, versioned presentations serve the DEVELOP workspace of Endophasia Web. They are projections of **one verified
+observation of the event log** (`readEndoCockpitObservationV0`: the source's condition and watermark exactly as every other cockpit
+read reports them, plus every event of the readable prefix, from a single read-only open). They are registered at the normal cockpit
+version gate and are not durable evidence.
+
+| Route | Record | Projection |
+| :--- | :--- | :--- |
+| `GET /<cap>/api/v0/develop/sessions[?cursor=s1-…]` | `endo.cockpit-develop-sessions.v0` | `cockpit-develop-sessions.1` |
+| `GET /<cap>/api/v0/develop/session/<d1-selector>[?cursor=a1-…]` | `endo.cockpit-develop-session.v0` | `cockpit-develop-session.1` |
+
+**What a session is.** A *recording*: Pi or DSH evidence of one session, admitted the way Compare admits it (a Pi recording by its
+recording producer; a DSH recording by its import producer). It is not a process, a task or a run, and lifecycle-only sessions of other
+producers are counted (`otherSessions`), never listed. `ambiguous` (several Pi attachments recorded it) and `insufficient` (an incomplete
+DSH import, or a recording that could not be qualified) rows keep what does not depend on qualification (event count, positions, last
+producer clock) and carry no selector and no recorded state. One recording that fails qualification degrades its own row, never the list.
+
+**What a row says.** Source label, public alias, qualification and its fixed reason, event count, first and last storage position, the
+producer's clock reading on the last event, and, for an inspectable recording, the lifecycle state the recorded events reduce to
+(`not-observed`, `idle`, `running`, `interrupted` or `detached`, from the existing lifecycle reducer), the last run outcome and the run
+and turn counts. **`running` is a recorded state: a run was open at the last recorded event. It does not show that a process exists.**
+The producer clock is not an order and not "now". Project association, current attachment availability and token totals are not
+established by this evidence and are not carried; usage is per run, as the runtime reported it, never summed.
+
+**What a detail says.** The row, the Pi attachment name where presentable, the lifecycle counts (runs, turns, outcomes, compactions, stop
+requested, accepted and refused, anomalies, unrecognised kinds, and the fields the runtime did not report with their reasons), per-run
+outcome, usage and observer-measured wall time from the existing trajectory projection (each reported or unavailable with a reason), the
+count of tool calls and of results the runtime reported as errors, category and flag counts over the whole session, and one page of the
+session's events in storage order. Those entries are **the timeline's own entries** (same allowlist, aliases, flags and withheld-field
+count; validated by the timeline's own entry validator), so tool arguments, results, prompts and paths are withheld exactly as in Observe.
+
+**Tokens.** A selector is `d1-<64 hex>`, a keyed token of the verified prefix (generation), the source and the session. Cursors are
+`s1-<offset>-<mac>` (sessions, 50 per page, offsets multiples of 50) and `a1-<offset>-<mac>` (activity, 100 per page; bound also to the
+selector). Every token has its **own purpose** under the dedicated key (`endo.cockpit.develop-generation.v0`, `…-selection.v0`,
+`…-sessions-cursor.v0`, `…-activity-cursor.v0`): a Compare selector or cursor is never valid here, nor the reverse. Any append or
+rewrite changes the generation: a held selector is then a 404 and a held cursor a `409 continuation-invalid`; rediscover. An unchanged
+generation permits an idempotent replay. Nothing is cached, and no selection is stored.
+
+**Conditions.** Absent, degraded and unopenable logs are answered as `200` records carrying the source condition and no sessions (absent,
+unopenable) or the verified prefix (degraded; a torn tail may be an append in flight), so the page can say which. A store over 10,000
+recordings is a `503 too-many-candidates`. Queries are exactly the one `cursor` of the route; anything else is `400`. Errors are the closed
+refusal codes of the server; no source error, path or raw identifier is exposed.
+
+**Cost.** Like every cockpit read, one request reopens and validates the whole log and is charged to the read budget. Measured on this
+repository's fixtures (Node 26, one core): about 100 ms for a 1,800-event store and about 0.8 s for a 14,000-event store with a
+10,000-event session, comparable to the existing snapshot (0.6 s) and Compare discovery (0.8 s) reads. The pages bound the output, not that
+cost; there is no polling, so a read happens only when the operator asks.
+
 ## The local HTTP server (implemented)
 
 A transport over the bridge, not another observation system: it reconstructs no evidence, infers no fact, manages no harness

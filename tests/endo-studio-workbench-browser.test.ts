@@ -354,6 +354,38 @@ suite("the DEVELOP workbench", () => {
 		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("half written");
 	}, 60_000);
 
+	it("keeps edits made to the prompt while its request is pending", async () => {
+		const { page, broker } = await open();
+		await pairWith(page, broker);
+		const handle = broker.handle.bind(broker);
+		broker.handle = async (request) => {
+			const reply = await handle(request);
+			if (request.route[0] === "prompt") await settle(1200);
+			return reply;
+		};
+		await fill(page, "[data-testid=composer]", "first");
+		await page.click("[data-testid=send]");
+		await fill(page, "[data-testid=composer]", "first and more");
+		await page.waitFor("document.querySelector('[data-testid=command-card]')");
+		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("first and more");
+	}, 60_000);
+
+	it("does not let a status read that began before pairing take the new grant away", async () => {
+		const { page, broker } = await open();
+		const handle = broker.handle.bind(broker);
+		broker.handle = async (request) => {
+			const reply = await handle(request);
+			if (request.route[0] === "status") await settle(1500); // answered "not paired", delivered late
+			return reply;
+		};
+		await page.click("#workbench-refresh");
+		await fill(page, "[data-testid=pair-code]", broker.issuePairingCode().code);
+		await page.click("[data-testid=pair-submit]");
+		await page.waitFor("document.querySelector('[data-testid=composer]')");
+		await settle(3500); // the late status and the read queued behind it have been applied
+		expect(await page.eval<boolean>("!!document.querySelector('[data-testid=composer]')")).toBe(true);
+	}, 60_000);
+
 	it("shows one stage at a time on a narrow screen and does not overflow at 1440, 1024, 768 and 420 pixels", async () => {
 		for (const width of [1440, 1024, 768, 420]) {
 			const { page, broker } = await open(width, 900);

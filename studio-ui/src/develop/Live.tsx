@@ -251,9 +251,11 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 	const send = async () => {
 		if (!ok) return;
 		setSending(true);
-		const reply = await wb.propose(draft);
+		const sent = draft;
+		const reply = await wb.propose(sent);
 		setSending(false);
-		if (reply.kind === "command") setDraft("");
+		// Only what was proposed is cleared: edits made while the request was pending stay.
+		if (reply.kind === "command") setDraft((now) => (now === sent ? "" : now));
 		field.current?.focus();
 	};
 	return (

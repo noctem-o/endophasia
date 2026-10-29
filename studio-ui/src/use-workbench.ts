@@ -28,11 +28,17 @@ export function useWorkbench(active: boolean) {
 	const [draft, setDraft] = useState("");
 	const reading = useRef<(() => Promise<void>) | null>(null);
 
-	const send = useCallback(async (request: WorkbenchRequest): Promise<WorkbenchReply> => {
+	// Bumped when a grant is issued. A read that began before it carries an older status (paired: false) that must not be applied over the
+	// new grant, which no later status can bring back: the broker never repeats the token.
+	const epoch = useRef(0);
+
+	const send = useCallback(async (request: WorkbenchRequest, since?: number): Promise<WorkbenchReply> => {
 		const abort = controller.current ?? new AbortController();
 		controller.current = abort;
 		const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
-		if (!abort.signal.aborted) dispatch({ type: "reply", reply, at: new Date() });
+		if (reply.kind === "grant") epoch.current += 1;
+		if (!abort.signal.aborted && (since === undefined || since === epoch.current))
+			dispatch({ type: "reply", reply, at: new Date() });
 		return reply;
 	}, []);
 
@@ -57,13 +63,14 @@ export function useWorkbench(active: boolean) {
 		}
 		running.current = true;
 		again.current = false;
+		const since = epoch.current;
 		dispatch({ type: "started" });
 		try {
-			const status = await send({ kind: "status" });
+			const status = await send({ kind: "status" }, since);
 			if (status.kind === "status" && status.record.paired && latest.current.grant !== null) {
 				let after = status.record.launchId === latest.current.launchId ? latest.current.watermark : 0;
 				for (let page = 0; page < MAX_PAGES; page += 1) {
-					const reply = await send({ kind: "transcript", after });
+					const reply = await send({ kind: "transcript", after }, since);
 					if (reply.kind !== "transcript" || !reply.record.more || reply.record.items.length === 0) break;
 					after = reply.record.items.at(-1)?.seq ?? after;
 				}

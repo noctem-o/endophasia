@@ -122,6 +122,14 @@ describe.runIf(process.platform === "linux")("terminal-governed A/A operator, fa
 			const text = renderAaOutcomeV0(outcome);
 			expect(text).toContain("COMPLETE-UNDER-DECLARED-ASSUMPTIONS");
 			expect(text).toContain("not server attestation");
+			// The relay is not the historically accepted llama.cpp digest, and a complete study must still say so,
+			// in the headline as well as in the detail line.
+			expect(text).toMatch(/outcome: COMPLETE-UNDER-DECLARED-ASSUMPTIONS \(server binary UNSUPPORTED/);
+			expect(text).toMatch(
+				/server binary\s+UNSUPPORTED \(NOT the historically accepted build; reason: UNSUPPORTED_BINARY\)/,
+			);
+			// Only binary reasons are attributed to the binary.
+			expect(text).not.toMatch(/reason:[^)]*OWNERSHIP_UNVERIFIED/);
 		},
 		300000,
 	);
@@ -557,5 +565,56 @@ describe.runIf(process.platform === "linux")("operator interruptions and cleanup
 		expect(outcome.server.cleanup).toBe("confirmed");
 		expect(existsSync(provenanceEndPathV0(config.studyFile))).toBe(true);
 		expect(outcome.interrupted).toBe(true);
+	}, 120000);
+});
+
+describe.runIf(process.platform === "linux")("operator pre-launch pair check and binary rendering", () => {
+	it("refuses a sibling pair whose conditions differ before any launch prompt", async () => {
+		// Verified-pristine, but the alternative differs from the baseline. Pre-launch preflight must already refuse it.
+		const config = await rig.newConfig(
+			{},
+			{},
+			{ id: "arm-b", description: "differs", settings: { thinkingLevel: "high" } },
+		);
+		const terminal = new ScriptedTerminal();
+		const outcome = await run(config, terminal);
+		expect(outcome).toMatchObject({ verdict: "refused", stage: "preparation", server: { launched: false } });
+		expect(outcome.reasons.join()).toMatch(/preflight refused|not matched/);
+		expect(terminal.asked).toEqual([]);
+		await nothingStarted(config);
+	}, 60000);
+	it("states the binary as matching, unsupported, or not established, and exposes it as a field", async () => {
+		// Use the real report shape of a completed fake study, then vary only the binary state.
+		const config = await rig.newConfig();
+		rig.backend.setHealth(ready);
+		const real = await run(config, new ScriptedTerminal());
+		expect(real.verdict).toBe("complete-under-declared-assumptions");
+		expect(real.serverBinary).toBe("UNSUPPORTED"); // The relay is not the accepted digest.
+		const withBinary = (state: string, reasons: string[]): AaOperatorOutcomeV0 => {
+			const copy = structuredClone(real);
+			copy.independentRead.report!.hostFacts.supportedBinary = state as never;
+			copy.independentRead.report!.hostFacts.blockingReasons = reasons;
+			copy.serverBinary = state;
+			return copy;
+		};
+		const matched = renderAaOutcomeV0(withBinary("MATCH", ["OWNERSHIP_UNVERIFIED"]));
+		expect(matched).toMatch(/server binary\s+MATCH \(digest equals the historically accepted build/);
+		expect(matched).toMatch(/outcome: COMPLETE-UNDER-DECLARED-ASSUMPTIONS\n/);
+		expect(matched).not.toContain("not the accepted build");
+		const unsupported = renderAaOutcomeV0(
+			withBinary("UNSUPPORTED", ["OWNERSHIP_UNVERIFIED", "REUSEPORT_UNVERIFIED", "UNSUPPORTED_BINARY"]),
+		);
+		expect(unsupported).toContain("(server binary UNSUPPORTED, not the accepted build)");
+		expect(unsupported).toContain("reason: UNSUPPORTED_BINARY)");
+		expect(unsupported).not.toMatch(/reason:[^)]*(OWNERSHIP|REUSEPORT)/);
+		// An inconclusive inspection is not a negative finding about the build.
+		const unavailable = renderAaOutcomeV0(withBinary("UNAVAILABLE", []));
+		expect(unavailable).toContain("(server binary UNAVAILABLE: identity not established)");
+		expect(unavailable).toMatch(/server binary\s+UNAVAILABLE \(the reader did not establish which build ran\)/);
+		expect(unavailable).not.toContain("NOT the historically accepted build");
+		const unread = structuredClone(real);
+		unread.independentRead.report = null;
+		unread.serverBinary = "not-read";
+		expect(renderAaOutcomeV0(unread)).toMatch(/server binary\s+unavailable/);
 	}, 120000);
 });

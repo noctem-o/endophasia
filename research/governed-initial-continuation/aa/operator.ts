@@ -319,6 +319,12 @@ export interface AaOperatorOutcomeV0 {
 	readiness: { status: "not-attempted" } | ReadinessOutcomeV0;
 	/** What the runner wrote for each started slot. Spent slots stay spent; these are unverified runner statuses. */
 	slots: Array<{ position: number; arm: Arm | null; status: string }>;
+	/**
+	 * The executable's classification from the fresh-process reader, as a field of its own because the verdict does not
+	 * encode it: `MATCH` is the historically accepted digest (file identity only); `UNSUPPORTED` is any other build;
+	 * anything else means the reader did not establish it. `not-read` when no report exists.
+	 */
+	serverBinary: string;
 	independentRead: {
 		performed: boolean;
 		/** `valid` only when the fresh process returned a report; a refusal is not softened. */
@@ -380,6 +386,7 @@ export async function runAaOperatorV0(
 		server: { launched: false, cleanup: "nothing-started", stop: null },
 		readiness: { status: "not-attempted" },
 		slots: [],
+		serverBinary: "not-read",
 		independentRead: { performed: false, status: "not-attempted", report: null, answers: null },
 	};
 	// `stage` ends as the stage that stopped the study, or "done" when nothing did; cleanup and verification always run.
@@ -637,6 +644,7 @@ class StopStudy extends Error {}
 
 function finish(outcome: AaOperatorOutcomeV0): AaOperatorOutcomeV0 {
 	const report = outcome.independentRead.report;
+	outcome.serverBinary = report?.hostFacts.supportedBinary ?? "not-read";
 	const complete =
 		outcome.server.cleanup === "confirmed" &&
 		outcome.independentRead.status === "valid" &&
@@ -708,6 +716,31 @@ function renderTurnApproval(
 	].join("\n");
 }
 
+/** One place decides how the binary is worded, so the headline and the detail line cannot disagree. */
+function binaryText(report: TaskOwnedStudyReportV0 | null): { headline: string; detail: string } {
+	if (!report) return { headline: "", detail: "unavailable" };
+	const state = report.hostFacts.supportedBinary;
+	if (state === "MATCH")
+		return {
+			headline: "",
+			detail: "MATCH (digest equals the historically accepted build; file identity only, not build provenance)",
+		};
+	if (state === "UNSUPPORTED") {
+		const named = report.hostFacts.blockingReasons.includes("UNSUPPORTED_BINARY")
+			? "; reason: UNSUPPORTED_BINARY"
+			: "";
+		return {
+			headline: " (server binary UNSUPPORTED, not the accepted build)",
+			detail: `UNSUPPORTED (NOT the historically accepted build${named})`,
+		};
+	}
+	// An inconclusive inspection says nothing about which build ran, so it must not read as a negative finding.
+	return {
+		headline: ` (server binary ${state}: identity not established)`,
+		detail: `${state} (the reader did not establish which build ran)`,
+	};
+}
+
 /** Plain, secret-free rendering of an outcome for the operator. It never contains responses or reasoning. */
 export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 	const report = outcome.independentRead.report;
@@ -720,7 +753,7 @@ export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 				: `refused: ${outcome.readiness.reason}`;
 	const lines = [
 		"",
-		`A/A operator outcome: ${outcome.verdict.toUpperCase()}`,
+		`A/A operator outcome: ${outcome.verdict.toUpperCase()}${binaryText(report).headline}`,
 		`  stopped at stage        ${outcome.stage}${outcome.interrupted ? " (interrupted)" : ""}`,
 		`  server readiness        ${readiness} — a server-reported observation, not proof of inference`,
 		`  slots started           ${outcome.slots.length} of 4 — ${outcome.slots.map((s) => `${s.position}:${s.arm ?? "?"}:${s.status}`).join(", ") || "none"} (runner statuses, unverified)`,
@@ -730,6 +763,7 @@ export function renderAaOutcomeV0(outcome: AaOperatorOutcomeV0): string {
 		`  observed identity       ${report ? `${report.observedProcessIdentity} (task-owned process; not an attestation)` : "unavailable"}`,
 		`  study completion        ${report ? `${report.studyStatus}; admission ${report.studyAdmission}` : "unavailable"}`,
 		`  trust and missing facts ${report ? `${report.hostFacts.ownership}; ${report.declaredTrustAssumptions.length} declared assumptions (not verified); unavailable: ${report.hostFacts.unavailable.join(", ") || "none"}` : "unavailable"}`,
+		`  server binary           ${binaryText(report).detail}`,
 		`  owned-server cleanup    ${outcome.server.cleanup}${outcome.server.stop ? ` (process gone: ${outcome.server.stop.processGone}, listener gone: ${outcome.server.stop.listenerGone})` : ""}`,
 		`  answer correctness      ${answers ? `first turn ${answers.firstCorrect}/${answers.of}, repeat turn ${answers.referenceCorrect}/${answers.of} (this study's own check; no parity claim)` : "unavailable"}`,
 		...outcome.reasons.map((reason) => `  note: ${reason}`),

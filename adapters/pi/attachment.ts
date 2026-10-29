@@ -27,6 +27,7 @@ import type {
 } from "../../protocol/harness.ts";
 import type { EndoInterventionKindV0 } from "../../protocol/intervention.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
+import type { EndoWorkbenchKindV0 } from "../../protocol/workbench.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
@@ -59,6 +60,7 @@ import {
 	mapInterventionEventV0,
 	mapPiEntryV0,
 	mapPiLiveEventV0,
+	mapWorkbenchEventV0,
 	type PiMappingContextV0,
 	type PiRuntimeTextV0,
 	piEntryEventIdV0,
@@ -681,6 +683,28 @@ export class PiSessionAttachmentV0 {
 		return event;
 	}
 
+	/**
+	 * Record a workbench prompt-chain step (protocol/workbench.ts) in this session's store. Returns the stored event. The payload is
+	 * validated by its kind; the prompt text is never part of it.
+	 */
+	recordWorkbench(
+		kind: EndoWorkbenchKindV0,
+		payload: Record<string, JsonValueV0>,
+		derivedFrom: readonly string[] = [],
+	): EndoEventV0 {
+		if (this.#context === null || this.#storeClosed) throw new TypeError("the session attachment is not recording");
+		const event = mapWorkbenchEventV0(this.#context, kind, payload, derivedFrom);
+		this.#ingest(event);
+		return event;
+	}
+
+	/**
+	 * An in-process observer of every live runtime event, before it is mapped. It is how a private, memory-only view (the workbench
+	 * transcript) sees text that canonical evidence withholds. It must not write anywhere; a failure in it is swallowed so it can never
+	 * change what is recorded.
+	 */
+	onLiveEvent: ((event: RpcEventV0) => void) | null = null;
+
 	/** The current Pi process id, while one runs. */
 	get pid(): number | undefined {
 		return this.#client?.connection.pid;
@@ -893,6 +917,11 @@ export class PiSessionAttachmentV0 {
 	#onEvent(event: RpcEventV0): void {
 		const context = this.#context;
 		if (context === null) return;
+		try {
+			this.onLiveEvent?.(event);
+		} catch {
+			// an observer never changes what is recorded
+		}
 		if (event.type === "extension_ui_request") this.#answerDialog(event);
 		const mapped = mapPiLiveEventV0(context, event.type, event.record);
 		if (mapped.kind === "delta") {

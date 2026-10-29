@@ -30,6 +30,7 @@ import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
+import { requireWorkbenchTerminalV0, startWorkbenchV0, type WorkbenchHandleV0 } from "./workbench.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -47,7 +48,7 @@ const VALUE_FLAGS = new Set([
 	"--prompt",
 	"--wait",
 ]);
-const SWITCHES = new Set(["--force", "--authorize-live-study", "--control"]);
+const SWITCHES = new Set(["--force", "--authorize-live-study", "--control", "--workbench"]);
 
 function parse(argv: readonly string[], usage: string): ParsedV0 {
 	const taken = takeEndoRootV0(argv, 0, VALUE_FLAGS);
@@ -204,10 +205,14 @@ function summarize(
 export async function harnessAttachCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(
 		argv,
-		"usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control]",
+		"usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control [--workbench]]",
 	);
 	const wait = parsed.flags.has("--wait") ? Number(parsed.flags.get("--wait")) : 120_000;
 	if (!Number.isSafeInteger(wait) || wait < 0) throw new TypeError("--wait must be a non-negative integer");
+	// The workbench is checked before anything runs: not even Pi is identified without a terminal to approve on.
+	if (parsed.switches.has("--workbench") && !parsed.switches.has("--control"))
+		throw new TypeError("--workbench is part of the control path: use it with --control");
+	if (parsed.switches.has("--workbench")) requireWorkbenchTerminalV0();
 	const pi = new PiAttachmentV0(options(parsed));
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
@@ -250,9 +255,11 @@ async function attachWithControl(
 	const key = session.owner.digestKey();
 	const desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(parsed.root, key));
 	let server: EndoControlServerV0 | null = null;
+	let workbench: WorkbenchHandleV0 | null = null;
 	let disposition: string | null = null;
 	try {
 		server = await startEndoControlServerV0(parsed.root, desk);
+		if (parsed.switches.has("--workbench")) workbench = await startWorkbenchV0(session);
 		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
 		const prompt = parsed.flags.get("--prompt");
 		if (prompt !== undefined) disposition = await session.prompt(prompt);
@@ -263,6 +270,7 @@ async function attachWithControl(
 		await Promise.race([server.closeRequested, signalled]);
 		await desk.finish();
 	} finally {
+		await workbench?.stop();
 		await server?.close();
 		await session.close();
 	}

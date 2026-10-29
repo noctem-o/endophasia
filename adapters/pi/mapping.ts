@@ -35,6 +35,11 @@ import type {
 	EndoRuntimeTextRefV0,
 	EndoRuntimeTextSourceV0,
 } from "../../protocol/session-lifecycle.ts";
+import {
+	ENDO_WORKBENCH_KINDS_V0,
+	type EndoWorkbenchKindV0,
+	endoWorkbenchPayloadProblemV0,
+} from "../../protocol/workbench.ts";
 import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { PiSessionEntryV0 } from "./rpc.ts";
@@ -256,6 +261,25 @@ export function mapInterventionEventV0(
 	const event = {
 		...build(context, `endo.event.pi-live.${context.instance}.${context.nextLive()}`, kind, payload),
 		source: ENDO_INTERVENTION_KINDS_V0[kind],
+		derivedFrom: [...derivedFrom],
+	};
+	const validated = validateEndoEventV0(event);
+	if (validated === null) throw new TypeError(`the ${kind} event failed endo.event.v0 validation`);
+	return validated;
+}
+
+/** A workbench prompt-chain record (protocol/workbench.ts) as an event, with its source class and the steps it derives from. */
+export function mapWorkbenchEventV0(
+	context: PiMappingContextV0,
+	kind: EndoWorkbenchKindV0,
+	payload: Record<string, JsonValueV0>,
+	derivedFrom: readonly string[],
+): EndoEventV0 {
+	const problem = endoWorkbenchPayloadProblemV0(kind, payload);
+	if (problem !== null) throw new TypeError(`the ${kind} record is malformed: ${problem}`);
+	const event = {
+		...build(context, `endo.event.pi-live.${context.instance}.${context.nextLive()}`, kind, payload),
+		source: ENDO_WORKBENCH_KINDS_V0[kind],
 		derivedFrom: [...derivedFrom],
 	};
 	const validated = validateEndoEventV0(event);

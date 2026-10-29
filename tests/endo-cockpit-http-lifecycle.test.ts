@@ -179,6 +179,7 @@ describe("source boundary", () => {
 				"./candidates.ts",
 				"./comparison.ts",
 				"./develop.ts",
+				"../protocol/workbench-http.ts",
 				"../cockpit/index.ts",
 				"node:crypto",
 				"node:http",
@@ -189,7 +190,14 @@ describe("source boundary", () => {
 
 	it("the host module is the only file that reaches the key files, and it reads no environment itself", () => {
 		expect(specifiers(read("cockpit-http/host.ts")).sort()).toEqual(
-			["../storage/digest-key.ts", "./server.ts", "./studio-ui.ts", "node:fs", "node:path"].sort(),
+			[
+				"../protocol/workbench-http.ts",
+				"../storage/digest-key.ts",
+				"./server.ts",
+				"./studio-ui.ts",
+				"node:fs",
+				"node:path",
+			].sort(),
 		);
 		expect(code(read("cockpit-http/host.ts"))).not.toMatch(/process\.env/);
 	});

@@ -23,6 +23,7 @@ import {
 	ENDO_KEYED_DIGEST_VALUE_PATTERN_V0,
 } from "./keyed-digest-shape.ts";
 import { ENDO_LIFECYCLE_KINDS_V0, isEndoLifecycleKindV0 } from "./session-lifecycle.ts";
+import { ENDO_WORKBENCH_KINDS_V0 } from "./workbench.ts";
 
 function freezeDeep<T>(value: T): T {
 	if (typeof value === "object" && value !== null && !Object.isFrozen(value)) {
@@ -204,6 +205,7 @@ export const ENDO_COCKPIT_FIELD_SPECS_V0: Readonly<Record<string, readonly EndoC
 export const ENDO_COCKPIT_RECOGNIZED_KINDS_V0: readonly string[] = freezeDeep([
 	...ENDO_LIFECYCLE_KINDS_V0,
 	...Object.keys(ENDO_INTERVENTION_KINDS_V0),
+	...Object.keys(ENDO_WORKBENCH_KINDS_V0),
 	...Object.keys(ENDO_COCKPIT_FIELD_SPECS_V0),
 	"agent.prompt-accepted",
 	"agent.prompt-failed",

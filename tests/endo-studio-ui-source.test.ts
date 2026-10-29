@@ -42,6 +42,10 @@ describe("the frontend's source", () => {
 				"compare/Comparison.tsx",
 				"use-compare.ts",
 				"use-develop.ts",
+				"use-workbench.ts",
+				"develop/Live.tsx",
+				"model/workbench.ts",
+				"model/workbench-wire.ts",
 				"develop/Activity.tsx",
 				"develop/DevelopWorkspace.tsx",
 				"develop/Navigator.tsx",
@@ -155,7 +159,14 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(5);
+		expect(api.match(/\/api\//g)?.length).toBe(11);
+		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(6);
+		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard"])
+			expect(api).toContain(`./api/v0/workbench/${route}`);
+		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
+		expect(api).toContain('"X-Endo-Grant"');
+		expect(api).not.toMatch(/grant=|\?grant|localStorage|sessionStorage|document\.cookie/);
 		expect(api).toContain("./api/v0/develop/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/developSelector/);
@@ -183,7 +194,12 @@ describe("the frontend's source", () => {
 		expect(hook).toMatch(/if \(running\.current \|\| pacedNow\(latest\.current, performance\.now\(\)\)\) return;/);
 		expect(hook.match(/load\(\{ afterSequence: 0/g)?.length).toBe(1); // the read at open
 		for (const [name, text] of Object.entries(sources))
-			if (name !== "use-observe.ts" && name !== "use-compare.ts" && name !== "use-develop.ts")
+			if (
+				name !== "use-observe.ts" &&
+				name !== "use-compare.ts" &&
+				name !== "use-develop.ts" &&
+				name !== "use-workbench.ts"
+			)
 				expect(text, name).not.toMatch(/setTimeout|setInterval/);
 		// DEVELOP has the same shape as Compare: one request at a time, one timer (the pause), a read at first entry and on action only.
 		const develop = sources["use-develop.ts"]!;
@@ -193,6 +209,17 @@ describe("the frontend's source", () => {
 		expect(develop).toContain("if (paced(latest.current, performance.now())) return;");
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-develop.ts") expect(text, name).not.toMatch(/fetchDevelop/);
+		// The workbench hook: ONE timer, set only after a read ends and only while a prompt waits or Follow is on (opt-in), never while the
+		// page is hidden; the only fetch of the workbench is behind it; no interval and no animation frame anywhere.
+		const wb = sources["use-workbench.ts"]!;
+		expect(wb.match(/setTimeout\(/g)?.length).toBe(1);
+		expect(wb).not.toMatch(/setInterval|requestAnimationFrame/);
+		// One read at a time: a read asked for while one runs is queued behind it (one fresh read), never run alongside it.
+		expect(wb).toMatch(/if \(running\.current\) \{\s*again\.current = true;\s*return;\s*\}/);
+		expect(wb).toContain("document.hidden");
+		expect(wb).toContain("if (!s.follow && !commandOpen(s.command)) return;");
+		for (const [name, text] of Object.entries(sources))
+			if (name !== "api.ts" && name !== "use-workbench.ts") expect(text, name).not.toMatch(/fetchWorkbench/);
 		expect(sources["use-compare.ts"]!.match(/setTimeout\(/g)?.length).toBe(1);
 		expect(sources["use-compare.ts"]).toContain("if (sequence.current !== id) return;");
 		expect(sources["use-compare.ts"]).toContain("if (active && !entered.current)");

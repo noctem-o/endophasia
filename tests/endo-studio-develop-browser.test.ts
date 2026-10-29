@@ -84,8 +84,10 @@ suite("DEVELOP", () => {
 		expect(await page.text("#develop-inspector")).toContain("Event at position 1");
 		await page.click("#develop-inspector button.small-btn");
 		await page.waitFor("document.querySelector('#develop-inspector [data-testid=session-detail]')");
-		// One read to open the workspace and one per explicit action: selecting an event and going back read nothing.
-		expect(api(page, "/api/")).toHaveLength(3);
+		// One read to open the workspace, one quiet probe for a workbench (a read-only server answers it with a constant), and one per
+		// explicit action: selecting an event and going back read nothing.
+		expect(api(page, "/api/")).toHaveLength(4);
+		expect(api(page, "/api/v0/workbench/")).toHaveLength(1);
 		expect(page.seen.problems).toEqual([]);
 		expect(await noOverflow(page)).toBe(true);
 	});

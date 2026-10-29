@@ -1,6 +1,6 @@
 // The session navigator: recorded sessions grouped by the source that recorded them. Filters are client-side and cover only the
 // loaded list, and say so. A row states its RECORDED lifecycle state in words ("as recorded"); it never claims a live process.
-import type { KeyboardEvent, ReactElement } from "react";
+import type { KeyboardEvent, ReactElement, ReactNode } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../../protocol/cockpit-develop.ts";
 import {
 	type DevelopFilters,
@@ -104,7 +104,17 @@ function Row({
 	);
 }
 
-export function Navigator({ develop }: { develop: Develop }): ReactElement {
+export function Navigator({
+	develop,
+	live,
+	onRecorded,
+}: {
+	develop: Develop;
+	/** The live session's row, offered by a workbench: a "Connected" group above the recorded sessions. */
+	live?: ReactNode;
+	/** Called when a recorded session is chosen, so the workspace can leave the live view. */
+	onRecorded?: () => void;
+}): ReactElement {
 	const { state } = develop;
 	const inventory = state.inventory;
 	const rows = inventory === null ? [] : filterRows(inventory.sessions, state.filters);
@@ -161,6 +171,14 @@ export function Navigator({ develop }: { develop: Develop }): ReactElement {
 				</>
 			}
 		>
+			{live === undefined ? null : (
+				<section className="nav-group" aria-labelledby="develop-group-connected">
+					<h3 id="develop-group-connected">Attached (1)</h3>
+					<ul className="caplist">
+						<li>{live}</li>
+					</ul>
+				</section>
+			)}
 			{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
 			{state.notice === null ? null : <Note tone="warn">{state.notice}</Note>}
 			{reading && inventory === null ? (
@@ -282,7 +300,11 @@ export function Navigator({ develop }: { develop: Develop }): ReactElement {
 														key={`${row.source}:${row.session}`}
 														row={row}
 														selected={row.selector !== null && row.selector === state.selected}
-														onChoose={() => row.selector !== null && develop.choose(row.selector)}
+														onChoose={() => {
+															if (row.selector === null) return;
+															onRecorded?.();
+															develop.choose(row.selector);
+														}}
 													/>
 												))}
 											</ul>

@@ -329,3 +329,21 @@ export function observeHandoffBlock(observeLocked: boolean): string | null {
 		? "Observe is reading or paused by the server right now. Try again when it has finished, so the window you ask for is not lost."
 		: null;
 }
+
+/**
+ * Where Observe should start to show a LIVE session: the window must actually contain it, or the hand-off lands on unrelated events with
+ * the session filter silently dropped. From a recorded row for the same alias, just before its first event; otherwise the latest window
+ * (a live session is recent), from the longest log length either workspace has read; null when neither knows one (the caller then
+ * reads the window Observe already has). Pure.
+ */
+export function liveObserveStart(
+	alias: string | null,
+	inventory: EndoCockpitDevelopSessionsV0 | null,
+	observeLogLength: number | null,
+	pageSize: number,
+): number | null {
+	const row = alias === null ? undefined : inventory?.sessions.find((r) => r.session === alias);
+	if (row !== undefined) return Math.max(0, row.firstStorageSequence - 1);
+	const length = Math.max(inventory?.source.watermark?.length ?? 0, observeLogLength ?? 0);
+	return length > 0 ? Math.max(0, length - pageSize) : null;
+}

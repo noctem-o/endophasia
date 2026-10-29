@@ -10,6 +10,7 @@ import { Panel } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
 import { Activity } from "./Activity.tsx";
+import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
 import { SessionInspector } from "./SessionInspector.tsx";
 
@@ -74,8 +75,14 @@ export function DevelopWorkspace({
 	onObserve,
 	onCompare,
 	observeBlocked,
+	workbench,
+	onObserveLive,
 }: {
 	develop: Develop;
+	/** The workbench (the broker's live view), or a state saying the server has none. */
+	workbench: Workbench;
+	/** Open Observe on a live session by its alias. */
+	onObserveLive(alias: string | null, attachment: string | null): void;
 	onObserve(row: EndoCockpitDevelopSessionRowV0, attachment: string | null): void;
 	onCompare(row: EndoCockpitDevelopSessionRowV0): void;
 	/** Why Observe cannot take a hand-off now (it is reading or paused), or null. */
@@ -113,6 +120,10 @@ export function DevelopWorkspace({
 		if (!narrow) return;
 		const key = (event: KeyboardEvent) => {
 			if (event.key !== "Escape" || document.querySelector("dialog[open]") !== null || event.defaultPrevented)
+				return;
+			// Escape inside a text field belongs to the field: a draft is not abandoned by a stage change.
+			const target = event.target as HTMLElement | null;
+			if (target !== null && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable))
 				return;
 			if (state.stage === "details") dispatch({ type: "stage", stage: "activity" });
 			else if (state.stage === "activity") dispatch({ type: "stage", stage: "sessions" });
@@ -166,11 +177,42 @@ export function DevelopWorkspace({
 		/>
 	);
 
+	// The live conversation is shown only when this server has a workbench and the operator has not chosen a recorded session.
+	const liveMode = workbench.state.availability === "available" && workbench.state.view === "live";
+	const liveRow =
+		workbench.state.availability === "available" ? (
+			<LiveRow
+				wb={workbench}
+				selected={liveMode}
+				onSelect={() => {
+					workbench.setView("live");
+					if (narrow) dispatch({ type: "stage", stage: "activity" });
+				}}
+			/>
+		) : undefined;
+	const navigator = <Navigator develop={develop} live={liveRow} onRecorded={() => workbench.setView("recorded")} />;
+	const liveContext = (
+		<LiveContext
+			wb={workbench}
+			onObserve={() =>
+				onObserveLive(workbench.state.status?.session ?? null, workbench.state.status?.attachment ?? null)
+			}
+		/>
+	);
+	const inList = state.stage === "sessions" || (!liveMode && state.selected === null);
+	const crumbName = liveMode
+		? workbench.state.status?.session === null || workbench.state.status === null
+			? "live session"
+			: shortSession(workbench.state.status.session)
+		: detail === null
+			? "…"
+			: shortAlias(detail.session.session);
+
 	return (
 		<div className="develop" id="develop-workspace" data-testid="develop">
 			{narrow ? (
 				<>
-					{state.stage === "sessions" || state.selected === null ? null : (
+					{inList ? null : (
 						<div className="develop-crumb" ref={crumb} tabIndex={-1} data-testid="develop-crumb">
 							<button
 								type="button"
@@ -180,27 +222,41 @@ export function DevelopWorkspace({
 								‹ Sessions
 							</button>
 							<span aria-hidden="true">›</span>
-							<span className="mono">{detail === null ? "…" : shortAlias(detail.session.session)}</span>
+							<span className="mono">{crumbName}</span>
 							{state.stage === "details" ? (
 								<button
 									type="button"
 									className="btn small-btn"
 									onClick={() => dispatch({ type: "stage", stage: "activity" })}
 								>
-									‹ Activity
+									‹ {liveMode ? "Conversation" : "Activity"}
+								</button>
+							) : liveMode ? (
+								<button
+									type="button"
+									className="btn small-btn"
+									onClick={() => dispatch({ type: "stage", stage: "details" })}
+								>
+									Context
 								</button>
 							) : null}
 						</div>
 					)}
-					{state.stage === "sessions" || state.selected === null ? (
-						<Navigator develop={develop} />
+					{inList ? (
+						navigator
 					) : state.stage === "activity" ? (
-						open
+						liveMode ? (
+							<LiveConversation wb={workbench} />
+						) : (
+							open
+						)
+					) : liveMode ? (
+						liveContext
 					) : (
 						inspector
 					)}
 					<EventDialog
-						open={state.event !== null && eventModel !== null}
+						open={state.event !== null && eventModel !== null && !liveMode}
 						onClose={() => dispatch({ type: "event", sequence: null })}
 					>
 						{eventModel === null ? (
@@ -212,9 +268,9 @@ export function DevelopWorkspace({
 				</>
 			) : (
 				<div className="develop-grid">
-					<Navigator develop={develop} />
-					{open}
-					{inspector}
+					{navigator}
+					{liveMode ? <LiveConversation wb={workbench} /> : open}
+					{liveMode ? liveContext : inspector}
 				</div>
 			)}
 		</div>

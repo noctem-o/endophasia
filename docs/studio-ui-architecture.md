@@ -423,6 +423,16 @@ buttons with arrow-key walking instead of a roving-tabindex grid; focus to the s
 the advisor itself flagged: local storage of filters or selection, auto-refresh or a live toggle, virtual-list and icon libraries, a time
 axis on producer clocks, summed usage, and any attach, resume or stop affordance even disabled.
 
+## React live workbench (the opt-in writable boundary, slice A)
+
+`use-workbench.ts`, `model/workbench.ts`, `model/workbench-wire.ts` and `develop/Live.tsx` add the live view. Every rule above holds
+(`api.ts` the only fetch module; wire gate; one pure reducer). What is different, and pinned in `tests/endo-studio-ui-source.test.ts`:
+six fixed routes under one prefix; the grant in one header (`X-Endo-Grant`), in hook state only; a command is a JSON POST (the
+browser adds its own Origin); **one timer** set after a read ends, and only while a prompt waits for approval or the operator has
+switched **Follow** on (opt-in), never while the page is hidden. The conversation is plain `textContent` (`white-space: pre-wrap`),
+tagged as live and private. The page has no approve control: authority is on the terminal. Liveness has its own mark family
+(`ConnectionGlyph`) and no hue. Opus advisory and its reconciliation with the authority design: [develop-workbench.md](develop-workbench.md).
+
 ## React Compare vertical slice
 
 `compare/CompareWorkspace.tsx` and `compare/Comparison.tsx` render only server-presented fields using React text, semantic

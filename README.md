@@ -144,7 +144,7 @@ unchanged and writes validated evidence to the Endophasia store. It does not wat
 to select eligible recordings; a DSH recording needs a clean, complete import checkpoint. See the
 [import contract](docs/dsh-native-importer.md).
 
-### Use the published alpha
+### Install the earlier alpha
 
 For the earlier packaged browser page and CLI:
 

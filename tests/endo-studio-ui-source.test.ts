@@ -214,7 +214,8 @@ describe("the frontend's source", () => {
 		const wb = sources["use-workbench.ts"]!;
 		expect(wb.match(/setTimeout\(/g)?.length).toBe(1);
 		expect(wb).not.toMatch(/setInterval|requestAnimationFrame/);
-		expect(wb).toContain("if (running.current) return;");
+		// One read at a time: a read asked for while one runs is queued behind it (one fresh read), never run alongside it.
+		expect(wb).toMatch(/if \(running\.current\) \{\s*again\.current = true;\s*return;\s*\}/);
 		expect(wb).toContain("document.hidden");
 		expect(wb).toContain("if (!s.follow && !commandOpen(s.command)) return;");
 		for (const [name, text] of Object.entries(sources))

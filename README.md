@@ -7,8 +7,8 @@
 <p><strong>Instrumented cognition for coding agents.</strong></p>
 
 <p>
-An experimental, evidence-first instrument for studying coding-agent behaviour:<br>
-it records observable harness activity and keeps observation, interpretation, evidence and permission apart.
+A local-first research instrument and governed workbench for coding agents.<br>
+Record what a harness does, inspect the evidence, and test what changes its behaviour.
 </p>
 
 <p>
@@ -18,8 +18,8 @@ it records observable harness activity and keeps observation, interpretation, ev
 </p>
 
 <p>
-  <a href="#endophasia-web">Endophasia Web</a> &nbsp; · &nbsp;
   <a href="#quick-start">Quick start</a> &nbsp; · &nbsp;
+  <a href="#endophasia-web">Endophasia Web</a> &nbsp; · &nbsp;
   <a href="#what-works-today">What works today</a> &nbsp; · &nbsp;
   <a href="#architecture">Architecture</a> &nbsp; · &nbsp;
   <a href="#research-direction">Research</a> &nbsp; · &nbsp;
@@ -30,478 +30,329 @@ it records observable harness activity and keeps observation, interpretation, ev
 
 ---
 
-Endophasia studies coding-agent systems through explicit, evidence-bounded adapters. On `main`, it can attach to
-[Pi](https://github.com/earendil-works/pi) for live recording, or deliberately cold-import persisted
-[DeepSeek Harness (DSH)](docs/dsh-native-attachment.md) Session format-4 records without operating DSH.
-Both paths produce durable evidence from which Endophasia can construct trajectories and read-only comparisons.
-The CLI also provides Pi recording, replay, controlled experiments and authorised intervention. The browser interface
-(currently `endo studio`) displays recorded observations and compares two selected Pi/DSH recordings through read-only APIs.
-Source-tree APIs can also prepare verified initial Pi scratch copies, run one approved fresh tool-free turn, and require
-separate approval before a second turn in the same Pi process. These APIs are not in the published npm alphas.
+Endophasia connects to [Pi](https://github.com/earendil-works/pi) to record live harness activity, run replay and
+controlled experiments, and submit explicitly authorised prompts or interventions. It can also import persisted
+[DeepSeek Harness (DSH)](docs/dsh-native-importer.md) sessions for inspection and comparison. Pi owns its execution
+loop; DSH import reads saved records without starting or controlling DSH.
 
-It is harness-neutral by design, but **the two evidence sources do not have the same capabilities**: DSH import is
-offline, not a live attachment or a Pi-equivalent replay/control path. Endophasia does not replace a harness's execution
-loop. It is not itself an agent runtime, a model provider, a benchmark or a deployment system.
+The browser interface provides **Observe**, **Compare** and **Develop** workspaces. `endo studio` opens a read-only
+view of recordings. A separate, opt-in **live Pi workbench** shows the current conversation and lets the browser
+request a prompt, with approval entered in the controlling terminal before it is sent.
 
-*Endophasia* is an old term for inner speech. The project is built on the opposite discipline: it records the outside of an
-agent (what it requested, what it was told, what it reported and what it did), and it does not claim to read what a model
-"thought".
+*Endophasia* is an old term for inner speech. This project measures observable agent behaviour: requests, responses,
+tool activity and outcomes. It does not claim to read a model's thoughts.
 
 > [!IMPORTANT]
-> **Release and naming status (25 October 2026):** `0.1.0-alpha.1` is CLI-only. Published `0.1.0-alpha.2` adds the original
-> read-only browser page (`endo studio`); `alpha` points to it on npm, while `latest` still points to `0.1.0-alpha.1`.
-> The newer React/TypeScript Observe and Compare workspaces, DSH CLI import and Compare backend described below are **on `main`, not
-> in published `0.1.0-alpha.2`**. The intended
-> interface names are **Endophasia Web** (browser) and **Endophasia** (proposed native desktop binary), but the existing CLI
-> remains `endo studio`: `endo web`, the native application and its installers **do not exist yet**. See
-> [release history](docs/release-0.1.0-alpha.2.md), [current browser interface](docs/studio.md) and [quick start](#quick-start).
-> The earlier
-> Pi-fork version, which demonstrated the v0 cockpit and observation contracts, lives at
-> [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
+> **Source and release status — 29 October 2026.** Build from `main` for the current React interface, DSH import and
+> live workbench. Published `0.1.0-alpha.2` contains the earlier read-only browser page; npm's `alpha` tag points to it,
+> while `latest` still points to the CLI-only `0.1.0-alpha.1`. The source manifest also says `0.1.0-alpha.2`, so the
+> version string alone does not distinguish a new source build from the published package. See the
+> [changelog](CHANGELOG.md) and [published release record](docs/release-0.1.0-alpha.2.md).
 
-### Why you might use it
+### Why use it?
 
-- To know which Pi harness build and configuration produced a live recording, and when its admitted evidence changes.
-- To import a persisted DSH session without driving or resuming DSH, while retaining explicit mapping losses and unavailable signals.
-- To replay a recorded Pi session and learn whether it reproduces under the recorded model responses, with divergence classified.
-- To compare eligible recorded Pi and DSH trajectories layer by layer: lifecycle, tool calls, tool results and outcome.
-- To steer a running Pi session through an explicit, authorised intervention, distinguishing acceptance, observed consumption
-  and subsequent behaviour.
-- To run controlled Pi experiments in which the harness and its configuration are treated as variables, not as plumbing.
-- To test a fresh Pi session derived from verified initial scratch state, with one approval per turn and checked execution records.
+- **Inspect a session:** identify the harness build and configuration, read its event timeline, and see what was
+  observed, reported, derived or unavailable.
+- **Compare recordings:** inspect lifecycle, tool-call, tool-result and outcome differences across eligible Pi and
+  DSH recordings, with mapping losses and missing signals kept explicit.
+- **Test reproducibility:** replay Pi sessions with recorded model responses, then separately test live repeatability
+  and sensitivity to changes in prompts, paths, sampling or execution conditions.
+- **Work with explicit control:** use the live Pi conversation and terminal-approved prompts, or the CLI's authorised
+  STEER, QUEUE and STOP path.
+- **Study harness design:** treat the harness, its policies and its environment as experimental variables, with
+  recorded conditions and independently checked evidence.
 
-### What it keeps apart
+## Quick start
 
-~~~text
-observation  != inference
-acceptance   != execution
-evidence     != standing
-proposal     != permission
-~~~
+Requires **Node.js >= 22.19.0**. Install and configure Pi separately for live work; Endophasia does not install,
+update or patch it. The demo and inspection of existing recordings do not need Pi or a model provider.
 
-An observed event is shown as an observation. A reported value says who reported it. A derived value names its derivation.
-A capability a runtime cannot be shown to meet stays `UNAVAILABLE`; Endophasia does not fill the gap. And it keeps three
-properties of reproducibility apart, because they are different claims:
+### Build the current interface
 
-~~~text
-exact replay               did the recorded session reproduce under its recorded responses?
-fixed-condition repeat     do repeated live runs under the same declared conditions agree?
-perturbation invariance    does behaviour hold when an input that should not matter changes?
-~~~
+```sh
+git clone https://github.com/noctem-o/endophasia.git
+cd endophasia
+npm ci
+npm run build
 
-The fuller statement of these distinctions, and the projects Endophasia stays separate from, is in [docs/vision.md](docs/vision.md).
+# Optional demo: use a new or empty directory. No Pi or model call is needed.
+node scripts/seed-cockpit-demo.ts ./demo-store
+node dist/cli/index.js studio ./demo-store
+```
+
+Open the private loopback address printed by the command. The demo uses committed fake-Pi lifecycle fixtures and a
+recorded Pi 1.0.0 conformance specimen. Stop the server with **Ctrl-C**.
+
+The commands below run the built CLI from this checkout, so an older globally installed `endo` cannot be selected
+by mistake. Rebuild after updating the source.
+
+### Open a live Pi workbench
+
+This source-build feature currently requires **Linux with `/proc` and a controlling terminal**. Both stdin and
+stderr must be that terminal; pipes, redirected approval input and unverifiable terminals are refused.
+
+```sh
+node dist/cli/index.js doctor --root ./recordings
+node dist/cli/index.js harness attach ./recordings \
+  --cwd /path/to/project --control --workbench
+```
+
+1. Open the workbench address printed in the terminal and choose **Develop**.
+2. Enter the one-time pairing code shown in the terminal. Type `pair` there if you need a new code.
+3. Request a prompt in the browser. Review its full text in the terminal and type the exact
+   `APPROVE PROMPT <digest>` phrase shown there to send it. Each prompt needs its own approval.
+4. Follow the conversation and run state. **Follow** enables bounded polling; model acceptance and run completion
+   are shown separately. Stop the attached session with **Ctrl-C**.
+
+Pi uses its configured provider and model. You can select them with `--provider <provider> --model <model>`, or select
+a Pi executable with `--pi /path/to/pi`. `--cwd` sets Pi's project directory; `./recordings` is the separate evidence
+store. Approved prompts run real agent work and can incur provider cost or use Pi's tools. Terminal approval controls
+request dispatch; it does not sandbox the tools Pi runs.
+
+The workbench controls only the Pi child launched by this attach process. Its first slice supports new prompts
+while the session is idle; browser STEER, QUEUE and STOP are not implemented. Those interventions remain available
+through the separately authorised CLI control path. See [workbench usage](docs/studio.md#live-workbench-opt-in-the-one-writable-boundary)
+and [steering](docs/steering.md).
+
+### Record and inspect from the CLI
+
+```sh
+node dist/cli/index.js harness check ./recordings       # local protocol checks; no model call
+node dist/cli/index.js harness attach ./recordings \
+  --cwd /path/to/project --prompt "Summarise this project"
+node dist/cli/index.js harness status ./recordings
+node dist/cli/index.js harness overview ./recordings
+node dist/cli/index.js trajectory show ./recordings <session-id>
+node dist/cli/index.js studio ./recordings
+```
+
+Use the session ID printed by `attach`. The prompt uses Pi's model provider; `attach` reports both acceptance and
+whether the run was observed to settle within its wait budget. Omitting the store selects `$ENDO_STORE_ROOT`, then
+`$XDG_DATA_HOME/endophasia/store`, then `~/.local/share/endophasia/store`.
+
+### Import a saved DSH session
+
+```sh
+node dist/cli/index.js dsh import --root ./recordings /path/to/session-directory
+node dist/cli/index.js dsh loss-accounting
+node dist/cli/index.js studio ./recordings
+```
+
+Name one persisted **Session format-4 directory**, not a DSH home, process or transcript file. Import leaves the source
+unchanged and writes validated evidence to the Endophasia store. It does not watch, resume or operate DSH.
+`loss-accounting` prints the static mapping contract, not a measurement of that particular session. Use **Compare**
+to select eligible recordings; a DSH recording needs a clean, complete import checkpoint. See the
+[import contract](docs/dsh-native-importer.md).
+
+### Use the published alpha
+
+For the earlier packaged browser page and CLI:
+
+```sh
+npm install -g endophasia@0.1.0-alpha.2
+endo doctor
+endo studio
+```
+
+Explicitly select the version: a bare install follows npm's older `latest` tag. This package does not contain the
+React workspaces, DSH import or live workbench described above. Full installation, store selection and packaged
+verification: [docs/install.md](docs/install.md).
 
 <a id="studio"></a>
 ## Endophasia Web
 
 <p align="center">
-  <img src="docs/images/Screenshot_20261022_075029.png" alt="Endophasia Web observation view: runtime and capabilities, storage-ordered event timeline, source conditions and inspector" width="920">
+  <img src="docs/images/Screenshot_20261022_075029.png" alt="Endophasia Web Observe view: runtime, capabilities, event timeline, source conditions and inspector" width="920">
 </p>
 
-<p align="center"><sub><strong>A read-only inspection view of recorded events.</strong> The source-tree React interface is newer
-than the browser page in the published <code>0.1.0-alpha.2</code> package. This is a view of recorded evidence, not a live
-model-brain visualisation or an internal-activation trace.</sub></p>
+<p align="center"><sub>Observe screenshot, 22 October 2026. Recorded harness evidence; not a model-internal trace or a live workbench view.</sub></p>
 
-**Endophasia Web** (currently invoked as `endo studio`) is the existing browser interface. The source tree implements
-**read-only Observe, Compare and Develop workspaces**, served from
-the installed package on `127.0.0.1` behind a private per-launch address. Observe shows, as recorded:
+The browser is still labelled **Studio** in parts of the interface and is launched with `endo studio` for read-only
+inspection. **Endophasia Web** is its product name. `endo web`, a native desktop application and native installers
+are not implemented.
 
-- the **runtime identity**: which harness installation the registry recorded, its fingerprint, and what changed;
-- the **capability state**, each capability with its status, classification and the limits that qualify it;
-- a **timeline in storage order**, filterable, with a per-event inspector for the recorded fields and where each came from;
-- the **condition of each source**: the event log and each registry are read independently, and each says whether it was
-  readable, empty, absent, degraded or unopenable.
+| Workspace | What it shows | Control boundary |
+| :--- | :--- | :--- |
+| **Observe** | Runtime identity, capability evidence, source condition and events in storage order, with provenance and an inspector | Reads recorded snapshots; explicit refresh |
+| **Compare** | Eligible Pi/DSH recordings and separate lifecycle, tool-call, tool-result and outcome verdicts | Read-only selection and comparison; no claim of causal equivalence |
+| **Develop — recordings** | Recorded sessions, run structure, tool activity, reported usage and links into Observe and Compare | Read-only; a recorded `running` state does not establish a live process |
+| **Develop — live workbench** | Current Pi connection and run state, private conversation, prompt composer and approval status | Only through `harness attach --control --workbench`; the browser requests and the terminal approves |
 
-Each claim carries its basis (observed, reported or derived) or the N/A mark with the record's own reason; a value that was
-never recorded is shown as not recorded, never as zero. The page does not poll, draws no live activity or scores, and has no controls that act on a
-run or a store: only ones that change what it shows. It does not start, attach to or steer an agent, and it does not write to the
-store it reads.
+Capabilities and Evolve remain placeholders. Cognition, Research, model-internal observation, project/worktree views
+and an embedded terminal are not built.
 
-Endophasia Web is meant to grow beyond this first read-only page. **DEVELOP, COGNITION, VERIFY and EVOLVE are not implemented as
-browser workspaces**; a model-internal OBSERVE view does not exist either. WORK and DREAM are **proposed cognition profiles**
-within a possible COGNITION workspace, not separate top-level tabs. Further profiles could be added without creating
-new workspaces. Source builds include the read-only React **Compare workspace** for discovering and selecting recorded Pi/DSH sessions, and a read-only **Develop workspace** that browses recorded sessions and what each recorded (it reads recordings; it does not start, attach to or steer anything).
-Capabilities and Evolve remain marked "later" and show no records.
-Its guarded read-only routes discover eligible Pi/DSH recordings and compare two selections from one configured store,
-using generation-bound opaque selectors rather than exposing raw source identities. It does not read active harnesses,
-import files or claim two sources are equivalent. Details: [docs/studio.md](docs/studio.md),
-[Compare backend contract](docs/cockpit.md#compare-candidate-discovery) and the frontend's
-[design reference](docs/cockpit-ui.md).
+**Access and retention.** Both launch paths bind to `127.0.0.1` and use a private per-launch address. Anyone who can
+read that address can read the store's presented evidence; keep it private. `endo studio` does not write the store,
+although its first launch can create a separate comparison key. The workbench adds a separate, expiring in-memory
+grant for its live view and prompt requests; the page address alone cannot authorise a prompt.
 
-## Quick start
-
-Requires **Node >= 22.19.0**. Pi is installed separately, by you; Endophasia never installs, updates or patches it.
-
-**Install the published browser alpha.** Explicitly select `0.1.0-alpha.2`: npm's `latest` tag still points
-at the CLI-only `0.1.0-alpha.1`. `0.1.0-alpha.2` has the **earlier browser page**, not the newer React frontend on `main`.
-
-~~~sh
-npm install -g endophasia@0.1.0-alpha.2
-endo doctor                          # read-only: Node, Pi, store locations, recorded evidence
-endo harness check                   # local Pi checks, no model call; records evidence
-endo harness attach --prompt "..."   # uses your Pi model provider and may cost money
-endo harness status                  # recorded identity and capability state
-endo harness overview                # recorded session lifecycle
-endo trajectory show <session-id>    # the id attach prints
-endo studio                          # serves the published read-only browser page
-~~~
-
-**Try the newer source-tree capabilities (absent from the `0.1.0-alpha.2` package):**
-
-~~~sh
-git clone https://github.com/noctem-o/endophasia.git && cd endophasia
-npm ci && npm run build
-node scripts/seed-cockpit-demo.ts ./demo-store    # optional: committed fixtures and Pi 1.0.0 specimen; no Pi needed
-node dist/cli/index.js studio ./demo-store        # React Observe, Compare and Develop; prints a private local address
-~~~
-
-**Cold-import a DSH recording from the source build** (one explicit persisted Session format-4 directory,
-not a DSH home, running process or transcript file):
-
-~~~sh
-node dist/cli/index.js dsh import --root ./recordings /path/to/session-directory
-node dist/cli/index.js dsh loss-accounting       # static fidelity contract, not a measurement of this session
-node dist/cli/index.js studio ./recordings       # React Observe, Compare and Develop
-~~~
-
-Import reads DSH source bytes without modifying them, then writes validated evidence to the Endophasia store.
-It neither drives DSH nor watches for changes. A comparison requires eligible, recorded trajectories and a clean,
-complete DSH import checkpoint. Select recordings in the browser Compare workspace. See
-[DSH importer usage](docs/dsh-native-importer.md) and [Compare backend details](docs/studio.md#compare-workspace).
-
-Omit the store to read the default one that `endo harness attach` writes. Studio listens on loopback only and prints its
-address once; anyone who can read that address can read the store, so treat it as a secret. It never writes the store it
-reads. The one thing it creates is its own comparison key, on first launch, and it says so. Complete first-run guide:
-[docs/install.md](docs/install.md). Browser-interface arguments, key handling and limits: [docs/studio.md](docs/studio.md).
+The live transcript keeps user and assistant text in bounded memory, clears it when the session ends, and never puts
+that text in canonical evidence or the read-only Studio API. It includes tool names and outcomes, not tool arguments,
+results or reasoning text. **Pi still keeps its own session file.** Recorded-only views cannot reconstruct withheld
+text from digests. See [browser usage and limits](docs/studio.md) and the
+[workbench design](docs/develop-workbench.md).
 
 ## What works today
 
-Maturity is stated by the **evidence** behind each row, because that is what differs:
+This is an experimental project. The table describes **source-tree `main` as of 29 October 2026**, with the evidence
+behind each capability. Published alphas have the narrower scope described above.
 
-- **Real Pi:** the installed-package CI `acceptance` job runs against separately installed **Pi 1.0.0** and a local fake
-  model endpoint (no credentials or provider cost). The earlier harness studies used **Pi 1.0.1** and one local model.
-- **Real governed execution:** a separate source-tree pilot ran four approved, tool-free initial-child turns with
-  **Pi 1.0.4** and **Nanbeige4.3-33B**. Its private receipts were verified locally; the repository cannot reproduce them alone.
-- **Real governed continuation:** one separately approved Pi 1.0.4/Nanbeige two-turn same-session attempt completed with an independently verified private receipt.
-- **Recorded DSH:** the native importer was checked against five retained captures from pinned DSH
-  `dsh-v0.2.1-rc.2`, including failure and resume cases. This is not live attachment or general-version conformance.
-- **Deterministic/packaged:** fake-harness tests, retained fixtures, browser tests and source-built package smoke validate
-  specific contracts. These do not establish behaviour across all runtimes or operating systems.
-- **Library:** implemented and unit-tested, but not reachable through a command or served interface.
-- **Not built:** designed or planned, with no implementation.
-
-The table distinguishes features on **source-tree `main`**, as of 28 October 2026, from the older published `0.1.0-alpha.2` package.
-
-| Capability | Reached through | Evidence |
+| Capability | Entry point | Evidence and limits |
 | :--- | :--- | :--- |
-| Pi attachment: runtime identity, change records, evidence invalidation, capability admission | `endo doctor`, `endo harness check\|attach\|status` | Real runtime (Pi 1.0.0 acceptance; Pi 1.0.1 studies) and deterministic suites |
-| Recorded sessions: durable store with validated recovery, lifecycle events, session overview | `endo harness overview`; `endo status\|events\|ledger` | `harness overview`: real runtime. The others: deterministic (no command writes a ledger yet) |
-| Pi trajectory show and diff, layer by layer | `endo trajectory show\|diff` (Pi-specific CLI paths) | Real Pi recordings; hostile cases against the fake Pi only. These commands do not select native DSH trajectories |
-| Capture and cassette replay | `endo proxy record\|replay`, `endo replay` | Real runtime: 40 replays EXACT, plus a negative control that diverged as it should |
-| Experiments: specs, blocked randomisation, manipulation checks, pinned environments (the studies pre-registered their designs; the CLI does not enforce that) | `endo experiment run\|report` | Real runtime: the studies below. Also writes evaluation records |
-| Authorised steering: STEER, QUEUE, STOP | `endo harness attach --control` with `endo steer`; or an experiment's declared intervention | Real runtime for the intervention desk, driven by `endo experiment run` (the steering study) and the lifecycle recorder (STOP). The `attach --control` / `endo steer` endpoint is tested against the fake Pi only. v0 proposals come only from the operator; an external authority provider is a documented seam, not wired |
-| **DSH native cold import**: verified append-only import, qualified trajectory projection, static loss accounting | `endo dsh import`, `endo dsh loss-accounting` on `main` | Five retained captures from a pinned real DSH runtime and importer/CLI tests. No live attach, DSH control, native DSH `trajectory show` CLI selection or published-alpha support |
-| **Compare backend**: privacy-preserving trajectory presentation, candidate discovery and selected comparison | Studio local GET APIs `/api/v0/compare/candidates` and `/api/v0/compare/selected/...` on `main` | Tested Pi/Pi, DSH/DSH and mixed-source recordings; bounded pages, eligibility and generation-bound selectors. No store writer or inference of causal equivalence |
-| **Endophasia Web**: read-only Observe, Compare and Develop workspaces | `endo studio` (published `0.1.0-alpha.2`: earlier page; source-tree build: React Observe, Compare and Develop) | Real Pi 1.0.0 acceptance (fake model endpoint) and browser tests; the newer React interface has its own source and browser tests |
-| ACP v1 adapter (`adapters/acp`) | none; a library | Deterministic fake agent; an opt-in smoke against real OMP that CI does not run. No capability admitted from it |
-| ACP v2 conformance study | none; a library; experimental, against a Draft protocol | Deterministic fake agent only; no real v2 agent. No capability admitted from it |
-| Cognition graph; evolution and promotion records and selection policies (the CLI can read an evidence ledger, but no command writes one); Codex, Prime, REEF, Magpie, Deadbolt and Cogitator record mappings; model orchestration; an OpenAI-compatible provider adapter; the unwired scene state in `visualization/` | none; libraries | Unit tests only. The sealed Prime 0.9.7 study admitted no exact capability |
-| Verified initial Pi scratch candidate, isolated materialization and sibling preparation | Source-tree replay receipt and programmatic APIs; private `endo.initial-branch-set.v0` lineage | Two scratch copies share a verified parent and private planned conditions. The reader detects modified or substituted children. Preparation alone executes nothing and grants no approval. See [limits](docs/initial-branch-set.md) |
-| Governed initial-child execution | Source-tree preflight, local approval, one fresh tool-free Pi turn and `endo.initial-child-execution.v0` receipt | Fake-runtime end-to-end tests and a [four-turn Pi 1.0.4/Nanbeige A/A pilot](research/governed-initial-child/1.0.4/RESULTS.md) with private verified evidence. Not a restored process, general tool execution or OS sandbox. See [contract](docs/initial-child-execution.md) |
-| Governed same-session continuation | Source-tree two-turn API, separate second approval and `endo.initial-continuation.v0` evidence reader | Synthetic tests and one [real Pi 1.0.4/Nanbeige acceptance](research/governed-initial-continuation/REAL-ACCEPTANCE.md) with two captured exchanges and a verified private receipt; no historical process restoration or general fork. See [contract](docs/initial-continuation.md) |
-| Browser workspaces beyond Observe, Compare and Develop (no project/worktree view, live activity or control); native Endophasia binary; `endo web` alias; integrated model-internal observation; WebGPU rendering; WORK and DREAM cognition profiles; an EVOLVE operator interface; general fork/restore checkpoints | none | Not built |
+| Pi identity, local checks, live recording and capability admission | `doctor`, `harness check`, `harness attach`, `harness status` | Installed-package CI uses Pi 1.0.0 with a fake model endpoint; real-model studies used Pi 1.0.1 and later Pi 1.0.4. This is not general-version conformance |
+| Durable sessions and Pi trajectory comparison | `harness overview`, `trajectory show`, `trajectory diff` | Real Pi recordings plus synthetic failure cases. The trajectory CLI is Pi-specific; use browser Compare for native DSH recordings |
+| Capture and cassette replay | `proxy record`, `proxy replay`, `replay` | Forty exact replays across four recorded Pi sessions and a negative control. Recorded model responses are held fixed |
+| Controlled Pi experiments | `experiment run`, `experiment report` | Real studies with blocked randomisation, manipulation checks and declared conditions. The studies pre-registered designs; the CLI does not enforce pre-registration |
+| Authorised STEER, QUEUE and STOP | `harness attach --control` and `steer`; declared experiment interventions | Real-runtime intervention studies; the CLI control endpoint is tested against fake Pi. Runtime acceptance, observed consumption and effects remain separate |
+| DSH cold import and loss accounting | `dsh import`, `dsh loss-accounting` | Five retained captures from pinned `dsh-v0.2.1-rc.2`, including failure/resume cases, plus adversarial tests. No live DSH control |
+| React Observe, Compare and recorded-session Develop | `studio` | Projection, HTTP and browser tests; package smoke checks the built interface. Comparison selectors are bound to verified store generations |
+| Governed live Pi workbench | `harness attach --control --workbench` | Broker, HTTP, fake-Pi process, pseudo-terminal and browser tests. Linux terminal gate; prompt-only browser control; no real-model workbench conformance claim |
+| Verified initial scratch copies and governed continuation | Source-tree checkpoint, initial-child and two-turn APIs | Synthetic tests, a four-turn real initial-child pilot and real same-session continuation. Fresh Pi processes and tool-free turns; no historical process restore or general effect sandbox |
+| Matched two-turn A/A research workflow | `research/governed-initial-continuation/aa/operate.ts` | One real four-session/eight-request run completed under declared assumptions. Research script, not an `endo` subcommand; engineering hardening remains open |
+| ACP v1 adapter and ACP v2 conformance study | Library APIs | Deterministic tests; v1 also has an opt-in OMP smoke path. No admitted ACP capability and no real v2-agent conformance |
 
-Some of the distinctions that matter when reading the table:
+Cognition graphs, evolution records and selection policies, model orchestration, and mappings for Codex, Prime,
+REEF, Magpie, Deadbolt and Cogitator also exist as libraries. They are not live integrations exposed by the CLI or
+browser. No working autonomous self-improvement loop is claimed. The full inventory is in
+[docs/status.md](docs/status.md); the newest workbench boundary is documented in [docs/develop-workbench.md](docs/develop-workbench.md).
 
-- **Replay.** Exact cassette replay reproduces a session under its *recorded* responses. It says nothing about whether a live
-  run would repeat, or whether behaviour survives an irrelevant change. Those are separate measurements.
-- **Steering.** An intervention is a chain of separate records: a proposal, an authorisation bound to its exact digest, the
-  request, the runtime's acceptance, the consumption the recording proxy shows, and the consequence. Acceptance is not
-  execution, and an effect is only what the trajectory afterwards shows.
-- **DSH.** Import is an explicit snapshot of persisted source evidence, not continuous observation. DSH's turns and
-  steps map to *qualified* Endophasia runs and turns. A tool request does not establish execution; recovery-written
-  closers are not observations of a crash. Missing usage and timing stay unavailable.
-- **Compare.** The authoritative comparator keeps lifecycle, calls, results and outcome separate. The HTTP projection
-  withholds sensitive source values and rejects insufficient or ambiguous evidence. Different digest domains cannot
-  establish equality; matching layers do not establish identical causes. Selection tokens are tied to the verified
-  store generation and become invalid if the evidence changes.
-- **OBSERVE.** The CLI records harness events, request context, tools, usage and trajectories. It does not capture model
-  internals in live Pi sessions. A separate [CPU logits probe](research/numerical-execution-probe/FIRST-RESULT.md) ran
-  as a standalone experiment. It is not a Studio observation provider, residual-stream trace or CUDA measurement.
-- **EVOLVE.** Records, selection policies and promotion gates exist as libraries. Nothing in this repository is a working
-  autonomous self-improvement system.
+### What the evidence means
 
-The implementation detail, limits included, is in [docs/status.md](docs/status.md).
+| Distinction | Meaning |
+| :--- | :--- |
+| **Observation / interpretation** | An observation names its source; a reported value names its reporter; a derivation names its method. Missing evidence stays `UNAVAILABLE`, not zero |
+| **Acceptance / completion** | A runtime accepting a request does not prove that it executed, consumed an intervention or achieved the intended result |
+| **Evidence / authority** | A successful check or comparison does not grant permission. Consequential operations need their own explicit authorisation |
+| **Exact replay** | Did the harness reproduce the recorded session when given recorded model responses? |
+| **Live repeatability** | Do new runs agree under the same declared conditions? |
+| **Perturbation invariance** | Does behaviour hold when an input expected to be irrelevant changes? |
+
+DSH's persisted turns and steps map to qualified Endophasia lifecycle records. A tool request does not prove execution,
+and a recovery-written closer is not an observation of a crash. Comparison preserves those limits: matching layers
+do not prove identical causes, and different digest domains cannot establish equality. See the
+[vision and distinctions](docs/vision.md) and [comparison contract](docs/cockpit.md#compare-candidate-discovery).
 
 ## Architecture
 
-~~~mermaid
+Endophasia keeps execution, evidence acquisition and presentation separate. Its main observation paths are:
+
+```mermaid
 flowchart TB
-    subgraph native["Harness-owned execution"]
-        H["Pi<br/>live execution loop"]
-        D["DSH<br/>independent execution loop"]
-    end
-    subgraph acquisition["Explicit evidence acquisition"]
-        A["Pi RPC adapter<br/>identity · lifecycle"]
-        X["Recording proxy<br/>optional model boundary"]
-        L["Persisted DSH Session<br/>format 4"]
-        I["DSH cold importer<br/>source read-only"]
-    end
-    M["Model endpoint<br/>provider or local server"]
-    S[("Durable store<br/>events · evidence · registry · cassettes")]
-    V["Read-only evidence projections<br/>capabilities · Pi/DSH trajectories · Compare · reports"]
-    C["endo CLI<br/>record · import · replay · experiment · report"]
-    N["Local read-only HTTP boundary<br/>127.0.0.1 · private address · GET only"]
-    U["Endophasia Web<br/>React Observe, Compare and Develop"]
+    P["Pi session"] -->|"documented RPC"| A["Pi adapter"]
+    D["Saved DSH session"] -->|"explicit cold import"| I["DSH importer"]
+    A --> S[("Durable evidence store")]
+    I --> S
+    S --> V["Validated projections and comparisons"]
+    V --> C["CLI reports"]
+    V --> W["Read-only Studio"]
+```
 
-    H -->|"documented RPC"| A
-    H -.->|"model requests"| X
-    X -.-> M
-    D -->|"writes independently"| L
-    L -->|"explicit import"| I
-    A --> S
-    X --> S
-    I -->|"validated evidence"| S
-    S --> V
-    V --> C
-    V --> N
-    N --> U
-    C -.->|"authorised Pi STEER · QUEUE · STOP"| A
-    C -.->|"operator invokes import"| I
-~~~
+An optional recording proxy captures the model request/response boundary for replay and experiments. Pi capabilities
+are admitted from current transport, identity and conformance evidence; a runtime or configuration change invalidates
+dependent evidence. DSH has a separate, version-pinned import contract with explicit mapping losses.
 
-Each harness owns its execution loop. Pi attach, recording, replay, experiments and authorised steering use their
-documented boundaries; the DSH importer instead reads an explicitly named persisted session directory and appends
-validated evidence to the Endophasia store. It does not install, resume, control or watch DSH. Recording and import
-commands write Endophasia evidence; reporting and the Studio HTTP bridge read it without changing the store.
+The **live workbench** runs inside the process that owns the attached Pi child. It serves the same frontend on its own
+loopback address, supplies the private live transcript and exposes a closed prompt-request boundary. Approval comes
+from the controlling terminal, and the broker checks the session, grant and idle state again before dispatch. Prompt
+proposals, authorisations, dispatches and outcomes have a separate recorded chain. The read-only `endo studio` server
+does not gain that authority.
 
-The browser receives only validated presentation projections. Its Observe page reads recorded snapshots; the Compare
-APIs independently discover and compare eligible recordings from one configured store. The React Compare workspace consumes those APIs, and browser requests cannot trigger a model call, import or intervention. Apart from starting Pi sessions
-(attach, replay, experiments), Endophasia affects a running Pi session only through an authorised STEER, QUEUE or STOP
-at the intervention desk, never from the browser.
+The **initial-state research APIs** are a separate path: verify a replay and its initial scratch archive, prepare
+checked sibling copies, start a fresh tool-free Pi session with explicit approval, and require another approval for
+its second turn. An independent reader verifies the resulting receipts. This is bounded same-session continuation,
+not restoration of a historical process or isolation of all external effects.
 
-Pi capabilities are admitted on current evidence in order: transport, identity, local protocol checks, optionally a
-live study, then admission. When the installed Pi runtime or its configuration changes, dependent evidence stops
-counting and says so. DSH uses a different, version-pinned import and loss-accounting contract; its persisted events
-must not be presented as equivalent live runtime capability. Details:
-[Pi attachment](docs/attachment.md), [DSH importer](docs/dsh-native-importer.md) and
-[Compare contracts](docs/cockpit.md#compare-candidate-discovery).
-
-### Governed initial-state experiments (source tree)
-
-The separate experimental API starts with a verified Pi replay and an initial scratch archive. It makes checked
-scratch copies, then runs a fresh, tool-free Pi session with explicit approval. A second approval permits one more turn
-in that same process. An independent reader checks the resulting evidence. These steps do not restore a historical
-process or isolate external effects.
-
-~~~mermaid
-flowchart LR
-    R["Verified Pi replay<br/>and initial scratch archive"] --> B["Checked scratch copies<br/>and lineage"]
-    B --> T["Approved fresh Pi session<br/>first tool-free turn"]
-    T --> C["Separate approval<br/>second turn, same process"]
-    C --> E["Independent evidence reader<br/>two-turn receipt"]
-~~~
+Contracts: [Pi attachment](docs/attachment.md) · [capture and replay](docs/replay.md) ·
+[DSH importer](docs/dsh-native-importer.md) · [observation bridge](docs/cockpit.md) ·
+[workbench](docs/develop-workbench.md) · [initial-state continuation](docs/initial-continuation.md).
 
 ## Research direction
 
-The long-term ambition is a reproducible way to study coding agents as systems: what the harness and the model contribute,
-how to observe both without confusing measurement with interpretation, and how to change them under explicit, evidence-backed
-gates. These directions name distinct responsibilities, not a fixed set of Studio tabs. Where each stands today:
+The research goal is to explain how the model, harness, tools and environment contribute to agent behaviour, then
+test changes under declared conditions. The project keeps execution resumption, exact replay, live repeatability
+and perturbation invariance as separate claims.
+
+### Selected results
+
+| Study | Finding | Scope |
+| :--- | :--- | :--- |
+| [Cassette replay](research/README.md#cassette-replays) | Forty replays were exact; a changed workspace produced the expected divergence | Pi 1.0.1, four recorded sessions, fixed model responses |
+| [Variance and pinned environment](research/README.md#pinned-environment-study-e3) | With the environment pinned, deterministic sampling and prompt cache off, all judged layers and requests matched across 20 trials per task | Three small tasks, Pi 1.0.1 and qwen3.8-27b on one machine; not a universal determinism result |
+| [Path sensitivity](research/README.md#path-sensitivity-study) | Working-directory paths changed whether steering was followed, and changed a baseline on one task | Two tasks and 30 paths; acceptance and consumption were measured separately from following the instruction |
+| [Completion cap](research/README.md#completion-cap-study) | Raising the cap from 16,384 to 32,768 tokens raised success from 10/24 to 19/23 | Two selected tasks, four paths, small samples; the interval excludes zero only with all four paths included |
+| [Governed initial-child pilot](research/governed-initial-child/1.0.4/RESULTS.md) | Four approved turns returned `ready`; cwd-adjusted request bodies matched, complete responses differed | Pi 1.0.4/Nanbeige4.3-33B, tool-free, private verified receipts |
+| [Matched two-turn A/A — 29 October](research/governed-initial-continuation/aa/RESULTS.md) | Four fresh Pi sessions and eight approved requests completed; all request/admission bindings and the independent reader verified; owned-server cleanup was confirmed | `COMPLETE-UNDER-DECLARED-ASSUMPTIONS`. One real run, not a noise floor, model-parity result or server attestation; hardening and an approval-display question remain open |
+| [CPU numerical execution probe](research/numerical-execution-probe/FIRST-RESULT.md) | Logits were bitwise equal within each submission schedule and different across schedules; argmax stayed the same | SmolLM2-135M f16, four CPU processes. No specific kernel attribution, CUDA result or integrated model-internal viewer |
+
+The [research index](research/README.md) links designs, results and limitations. Some raw recordings and governed
+execution receipts remain private; public summaries do not make those runs reproducible from the repository alone.
+See [research data](research/DATA.md).
 
 <a id="roadmap"></a>
+### Delivery direction
 
-| Direction | What it names | Today |
-| :--- | :--- | :--- |
-| **DEVELOP** | The current session: what the agent is doing, what the runtime reported, whether to intervene | Observation and authorised steering from the CLI. Studio's read-only page shows recorded sessions but is not a DEVELOP mode |
-| **OBSERVE** | The measurement surface: what was recorded and what can be derived reproducibly | Harness level: implemented. Model-internal signals: design only ([docs/observe.md](docs/observe.md)) |
-| **VERIFY** | What the observations justify: replay, repetition, perturbation invariance, comparison | Pi replay/experiments, trajectory comparison and Pi/DSH read-only Compare APIs on `main`, consumed by the React Compare workspace. Governed initial-state execution and two-turn continuation exist as narrow source-tree APIs; general fork/restore is not built |
-| **EVOLVE** | Explicit candidate, evaluation, admission and promotion, never silent self-modification | Records and policies as libraries; no operator interface ([docs/evolve.md](docs/evolve.md)) |
-| **COGNITION** | A possible Studio workspace for declared cognition policies and externally represented plans, hypotheses and branches | Not built. **WORK** (one bounded main trajectory) and **DREAM** (wider search with counterfactual branches) are proposed profiles, not separate tabs ([docs/vision.md](docs/vision.md#work-and-dream)) |
-| **RESEARCH (proposed)** | Controlled comparisons of harnesses, agent hierarchies, skill policies, inference budgets and experimental methods | Pi experiment runner and studies exist; no dedicated Research workspace, cross-harness intervention experiment or general training integration |
+The current browser workspaces and governed initial-state APIs are implemented. The documented follow-on work has
+two immediate threads:
 
-COGNITION would accommodate additional or custom profiles as they are developed, rather than hard-code navigation around
-WORK and DREAM. A declared profile would describe intended policy; recorded actions and outcomes would establish what
-actually happened. Model-internal measurements would remain capability-gated observations, not a claim that Studio can
-see private reasoning. No profile selector, policy compiler or cognition workspace exists today.
+- **Develop:** extend the workbench's typed broker to STEER, QUEUE and STOP while preserving terminal approval and the
+  distinction between acceptance and observed consumption. OMP, richer transcripts, Git changes and any terminal
+  surface are later workbench slices, not current support.
+- **Research and verification:** harden and extend continuation experiments, isolate external effects and validate
+  a cassette-then-live boundary before claiming general restore/fork execution.
 
-The proposed RESEARCH direction could compare bounded single-agent and multi-agent coordination, skill policies and
-local inference conditions with matched budgets and declared outcomes. These are experimental questions, not an
-endorsement of any orchestrator or a claim that the dedicated workspace, SkillBench or a training pipeline exists.
+**Cognition** (including proposed WORK and DREAM profiles), an **Evolve** operator interface, model-internal
+observation and a dedicated **Research** workspace remain design directions. Native Rust/GPUI presentation, GPU
+rendering, durable-execution integrations and hardware/robotics workflows are exploratory tracks. None is a shipped
+capability or a requirement for the current Pi workflow.
 
-### Interfaces and near-term delivery (planned)
-
-The intended product names are **Endophasia Web** for the browser and **Endophasia** for a future native desktop
-instrument. The headless CLI stays `endo`. **Today the only shipped browser command is `endo studio`; `endo web`
-is a proposed future alias, not an accepted CLI invocation.** The native binary, AppImage and Windows executable
-are also proposed, not built. Internal `studio-ui/` and `cockpit-http/` names need not change with the branding.
-
-The proposed native application would be a separate Rust/GPUI-based presentation client over validated, read-only
-Endophasia projections. A GPU renderer (`wgpu` / WGSL) would be optional and separately benchmarked; a native app must not
-interpret evidence differently, silently write the store or bypass authorization. The browser remains an independent
-interface, with WebGPU as a possible later renderer. GPU composition and portability require feasibility work before
-promising a particular backend or packaging format.
-
-**Sequencing (28 October 2026).** The [DSH importer and Compare APIs](docs/status.md#dsh-native-cold-import)
-are on `main`, alongside the React Compare workspace. The verified initial scratch candidate, materialization,
-sibling preparation, governed single-turn execution and [two-turn continuation](docs/initial-continuation.md)
-are also implemented as source-tree APIs. [PR #88](https://github.com/noctem-o/endophasia/pull/88) completed the
-bounded same-session continuation slice; [PR #89](https://github.com/noctem-o/endophasia/pull/89) repaired cleanup
-for the standalone numerical probe. None of these later capabilities is in the published `0.1.0-alpha.2` package.
-Next steps are broader continuation tests, external-effect isolation and a verified cassette-then-live boundary.
-General historical process restore and fork execution remain unbuilt. A Rust/GPUI feasibility study may run separately,
-but must not duplicate the evidence rules. See the [roadmap](docs/roadmap.md).
-
-### Exploratory horizon: physical-world systems (not implemented)
-
-Coding agents are the current research scope, but these evidence and authority boundaries could eventually be useful
-when agents work with physical systems. A possible application-specific **HARDWARE** workspace might bring together
-electronic and mechanical designs, firmware changes, sensor-network events, instrument measurements and robotics
-experiments. It would distinguish proposals from authorised operations, simulations from real measurements, and
-reported actions from observed physical effects.
-
-External projects such as [Backplane](https://github.com/i2cjak/Backplane) (agentic KiCad/FreeCAD development) and
-[LeRobot](https://github.com/huggingface/lerobot) (robotics datasets and policies) are examples of potential research
-interfaces, **not** supported integrations or dependencies. No hardware workspace, device adapter, robot control or
-physical-world evaluation capability is implemented or committed to the delivery roadmap.
-
-The chain for any adaptation loop is longer than "the score went up", and every link is its own record:
-grader evidence is not reward, reward is not selection, selection is not promotion, and promotion is not authority.
-
-**Research results.** The six earlier Pi harness studies below used Pi 1.0.1 and qwen3.8-27b on one machine.
-They do not establish behaviour on other harnesses or models. The later governed Pi and standalone CPU studies
-used different systems and have separate limits. See [research/README.md](research/README.md).
-
-- [Variance](research/README.md#variance-study-e2) and [pinned environment](research/README.md#pinned-environment-study-e3):
-  runs were "unstable" under every arm, from sampling and then from tool output that carried wall-clock values; with the
-  environment pinned, sampling deterministic and the cache off, every judged layer and every request was identical across the
-  20 trials of each of three small tasks. That is an observation under a declared condition, not a claim that intrinsic noise
-  is zero.
-- [Steering](research/README.md#steering-study) and [path sensitivity](research/README.md#path-sensitivity-study): in the
-  deterministic condition a STEER and a QUEUE were consumed where Pi documents (80 of 80 steered trials). A QUEUE was followed at
-  every path; whether a STEER was followed varied by task and with the working-directory path (27 of 30 paths on one task, 6 of
-  30 on the other), and on one task the path changed the baseline too. Two tasks, one message each, one point.
-- [Discriminating tasks](research/README.md#discriminating-task-study) and the [completion cap](research/README.md#completion-cap-study):
-  of 12 small tasks only two discriminate for this model (13 of 20 and 7 of 20), and, in a post-hoc reading that was not
-  pre-registered, 21 of the 25 failures on the advancing tasks were responses cut off at Pi's default completion cap. Raising
-  the cap from 16,384 to 32,768 tokens raised success on those two tasks from 10 of 24 to 19 of 23 (pooled over four paths at
-  3 trials per cell; the interval excludes 0 only with all four paths included).
-- [Governed initial-child A/A pilot](research/governed-initial-child/1.0.4/RESULTS.md): four separately approved,
-  tool-free Pi 1.0.4/Nanbeige4.3-33B turns ended with the same answer, `ready`. After adjusting only the verified
-  working-directory field, request bodies matched. Complete responses differed. The private receipts were verified;
-  four trials do not establish model determinism or treatment effects.
-- [CPU numerical execution probe](research/numerical-execution-probe/FIRST-RESULT.md): a pinned SmolLM2-135M f16 model
-  produced bitwise-identical logits within each of two submission schedules, but all 49,152 logits differed across
-  schedules in the four-repetition test. Argmax stayed the same. The result identifies no specific kernel or operation.
-
-The next checkpoint work concerns broader continuation, external-effect isolation and a verified cassette-then-live
-boundary. Neither the initial-state APIs nor the two-turn test restores an old Pi process. Details and deferred tracks
-are in the [roadmap](docs/roadmap.md). The proposed [epistemic alignment experiment](research/epistemic-alignment-experiment.md)
-has not run.
-
-
-### Candidate study: durable execution compatibility (not implemented)
-
-[Vercel's `durable-harness`](https://github.com/vercel-labs/durable-harness)
-([design explanation](https://vercel.com/blog/making-every-harness-durable)) is a candidate *external execution layer*
-to investigate, starting with its Pi/`pi-durable` integration. It records model/tool-call intents and outcomes in a
-Workflow SDK World and can resume interrupted turns. This is **not** Endophasia's durable observation store or cassette
-replay: those can reconstruct and compare *recorded behaviour*, but do not themselves provide automatic mid-turn
-continuation. No compatibility, adapter support or execution durability is currently claimed. Separately, [dquickts](https://github.com/stencil-hq/dquickts)
-is a candidate for evaluating in-process execution-state snapshots rather than reconstructing a harness from an intent log;
-neither approach captures external effects automatically or proves exactly-once execution.
-
-A bounded, opt-in compatibility study should:
-
-1. Pin the experimental `durable-harness` and Pi versions; use a local World, a fake model endpoint and a synthetic
-   workspace, without adding a required runtime dependency or changing Endophasia's harness-owned execution loop.
-2. Check whether the existing Pi attachment can observe the durable runtime with authentic identity, lifecycle and
-   capability evidence. If the interface or evidence is absent, record `UNAVAILABLE` rather than asserting support.
-3. Inject process death before a call, during a tool call, after an external effect but before its outcome is recorded,
-   and during recovery. Compare World records, Endophasia's observed trajectory and the actual external effects.
-4. Distinguish completed, not-started and *outcome-unknown* operations; test declared safe retries versus never-retry
-   operations, reconciliation/idempotency where available, and possible duplicate side effects. Neither a retry policy
-   nor a durable intent alone proves exactly-once execution.
-5. Verify ordering, session continuity, provenance of reconstructed events, interruption/recovery attribution and
-   divergence classifications. Keep **execution resumption**, **exact cassette replay**, **live repeatability** and
-   **perturbation invariance** as separate claims.
-
-Only consider a private, self-hosted Postgres World after the local test demonstrates a useful observable boundary.
-This is a research candidate, not the next delivery milestone: forkable checkpoints remain next, and Endophasia
-remains the observer rather than becoming the execution engine. The upstream package is currently experimental
-(`0.0.x`); revisit its interfaces and security properties before any integration.
+The full plans, candidate studies and deferred integrations belong in the [roadmap](docs/roadmap.md),
+[workbench design](docs/develop-workbench.md) and [vision](docs/vision.md). A measured improvement is evidence for a
+candidate; it does not by itself authorise promotion or deployment.
 
 ## Documentation
 
 <a id="current-state"></a>
 <a id="try-it"></a>
 
-**Using it**
-[Install and first run](docs/install.md) ·
-[Endophasia Web (currently `endo studio`)](docs/studio.md) ·
-[Published 0.1.0-alpha.2 release record](docs/release-0.1.0-alpha.2.md) ·
-[Alpha release scope and verification](docs/release-alpha.md) ·
-[v0.1.0-alpha.1 release notes](https://github.com/noctem-o/endophasia/releases/tag/v0.1.0-alpha.1) ·
-[Changelog](CHANGELOG.md)
+| Need | Start here |
+| :--- | :--- |
+| Install, inspect or use the browser | [Installation](docs/install.md) · [Studio and live workbench](docs/studio.md) · [Release history](CHANGELOG.md) |
+| Check implementation status | [Detailed status](docs/status.md) · [Published alpha.2 scope](docs/release-0.1.0-alpha.2.md) · [Alpha verification](docs/release-alpha.md) |
+| Record, replay, compare or intervene | [Attachment](docs/attachment.md) · [Replay](docs/replay.md) · [Trajectories](docs/trajectory.md) · [Experiments](docs/experiments.md) · [Steering](docs/steering.md) |
+| Understand the browser boundary | [Observation bridge and Compare API](docs/cockpit.md) · [Frontend architecture](docs/studio-ui-architecture.md) · [Design reference](docs/cockpit-ui.md) · [Live workbench](docs/develop-workbench.md) |
+| Use the initial-state research APIs | [Checkpoint candidate](docs/checkpoint-candidate.md) · [Scratch materialization](docs/checkpoint-materialization.md) · [Sibling preparation](docs/initial-branch-set.md) · [Initial-child execution](docs/initial-child-execution.md) · [Continuation](docs/initial-continuation.md) |
+| Inspect adapter evidence | [Pi inventory](docs/pi-attach-inventory.md) · [Pi audit](docs/pi-attach-audit.md) · [DSH study](docs/dsh-native-attachment.md) · [DSH import](docs/dsh-native-importer.md) · [ACP v1](docs/acp-v1-slice.md) · [ACP v2 study](docs/acp-v2-study.md) |
+| Read research and future designs | [Studies](research/README.md) · [A/A result](research/governed-initial-continuation/aa/RESULTS.md) · [Vision](docs/vision.md) · [Observe/Verify](docs/observe.md) · [Evolve](docs/evolve.md) · [Roadmap](docs/roadmap.md) |
+| Work on contracts or provenance | [Schema compatibility](docs/schema-compatibility.md) · [Deadbolt intervention contract](docs/deadbolt-intervention-contract.md) · [Migration ledger](docs/migration-ledger.md) |
 
-**What is implemented, and how it works**
-[Status, in detail](docs/status.md) ·
-[Attaching and evidence admission](docs/attachment.md) ·
-[Capture and replay](docs/replay.md) ·
-[Trajectories](docs/trajectory.md) ·
-[Experiments](docs/experiments.md) ·
-[Steering](docs/steering.md) ·
-[Schema compatibility](docs/schema-compatibility.md)
-
-**Governed initial-state work (source-tree APIs)**
-[Checkpoint candidate](docs/checkpoint-candidate.md) ·
-[Initial scratch materialization](docs/checkpoint-materialization.md) ·
-[Sibling preparation](docs/initial-branch-set.md) ·
-[Initial-child execution](docs/initial-child-execution.md) ·
-[Same-session continuation](docs/initial-continuation.md)
-
-**Browser interface and the observation bridge**
-[Observation bridge and Compare backend](docs/cockpit.md) ·
-[React frontend architecture](docs/studio-ui-architecture.md) ·
-[Frontend design reference](docs/cockpit-ui.md) ·
-[Sequencing after the first slice](docs/cockpit-next-stages.md)
-
-**Adapters and boundaries**
-[Pi attach inventory](docs/pi-attach-inventory.md) ·
-[Pi attach audit](docs/pi-attach-audit.md) ·
-[ACP v1 adapter](docs/acp-v1-slice.md) ·
-[ACP v2 study](docs/acp-v2-study.md) ·
-[DSH native attachment study](docs/dsh-native-attachment.md) ·
-[DSH cold-import contract and CLI](docs/dsh-native-importer.md) ·
-[Deadbolt intervention contract](docs/deadbolt-intervention-contract.md)
-
-**Vision and design** (intent, not implementation)
-[Vision and distinctions](docs/vision.md) ·
-[OBSERVE and VERIFY](docs/observe.md) ·
-[EVOLVE](docs/evolve.md) ·
-[Roadmap](docs/roadmap.md)
-
-**Research**
-[Real recordings and studies](research/README.md) ·
-[First CPU numerical execution result](research/numerical-execution-probe/FIRST-RESULT.md) ·
-[Where the raw run data lives](research/DATA.md) ·
-[Epistemic alignment experiment (proposed)](research/epistemic-alignment-experiment.md) ·
-[Developmental epistemic training v0 (proposed)](research/developmental-epistemic-training-v0.md) ·
-[Migration ledger](docs/migration-ledger.md)
-
-**Neighbouring projects**, each with its own job, none granting another authority:
-[Magpie](https://github.com/noctem-o/magpie) (claims, evidence and derived standing) ·
-[Deadbolt](https://github.com/noctem-o/deadbolt) (authorising consequential actions) ·
-[Cogitator](https://github.com/noctem-o/cogitator) (sealed run records) ·
-[Buzz](https://github.com/noctem-o/buzz-prime) (a shared workspace for people and agents).
+Neighbouring projects have separate roles: [Magpie](https://github.com/noctem-o/magpie) for claims, evidence and derived
+standing; [Deadbolt](https://github.com/noctem-o/deadbolt) for authorising consequential actions;
+[Cogitator](https://github.com/noctem-o/cogitator) for sealed run records; and
+[Buzz](https://github.com/noctem-o/buzz-prime) for a shared workspace for people and agents. A record in one does not
+grant authority in another. The earlier Pi-fork implementation is archived at
+[endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 
 ## Development
 
-`npm ci`, then `npm test` (needs only Node and git; no network, no API key) and `npm run typecheck`. The opt-in checks against
-your own Pi (`ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real`) and the host-dependent tests are described in
-[docs/install.md](docs/install.md#running-the-tests).
+```sh
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run test:package
+```
+
+After dependencies are installed, the deterministic suite needs Node and git, with no model API key or provider call.
+Browser tests require Chromium; set `CHROME_BIN` to select it and `ENDO_REQUIRE_BROWSER=1` to make its absence fail
+instead of skip. Other host-dependent and private-data checks report their own skips. CI also runs installed-package
+acceptance with a separately installed Pi 1.0.0 and a fake model endpoint. See
+[test requirements and opt-in real-Pi checks](docs/install.md#running-the-tests).
 
 ## License
 
-Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 George Gallagher. Upstream components such as Pi remain under their own licenses.
+Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 George Gallagher. Upstream components such as Pi retain their
+own licenses.
 
-Versions published before this change (`0.1.0-alpha.1` and `0.1.0-alpha.2`) were released under the MIT License, and that grant stays with those versions; the Apache License applies to this source from the commit that changed it onward.
+Published `0.1.0-alpha.1` and `0.1.0-alpha.2` were released under MIT, and that grant remains with those versions.
+The Apache License applies to the source from the license-change commit onward.

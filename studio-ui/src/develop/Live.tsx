@@ -242,7 +242,7 @@ function Pairing({ wb }: { wb: Workbench }): ReactElement {
 }
 
 function Composer({ wb }: { wb: Workbench }): ReactElement {
-	const [draft, setDraft] = useState("");
+	const { draft, setDraft } = wb;
 	const [sending, setSending] = useState(false);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const id = useId();

@@ -2,7 +2,7 @@
 // send, withdraw), and, only while a prompt is waiting or the operator has switched Follow on, every few seconds from one timer that is
 // set after each read ends (never two at once, never while the page is hidden, never by hover). It reads the broker's memory, not the
 // store. A grant is held in this hook's state only.
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { fetchWorkbench } from "./api.ts";
 import { commandOpen, initialWorkbench, reduceWorkbench } from "./model/workbench.ts";
 import type { WorkbenchReply, WorkbenchRequest } from "./model/workbench-wire.ts";
@@ -24,7 +24,8 @@ export function useWorkbench(active: boolean) {
 	const again = useRef(false);
 	const controller = useRef<AbortController | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const entered = useRef(false);
+	// The unsent prompt lives here, not in the composer: the composer is unmounted when the stage or the layout changes. Memory only.
+	const [draft, setDraft] = useState("");
 	const reading = useRef<(() => Promise<void>) | null>(null);
 
 	const send = useCallback(async (request: WorkbenchRequest): Promise<WorkbenchReply> => {
@@ -78,14 +79,10 @@ export function useWorkbench(active: boolean) {
 	reading.current = read;
 
 	useEffect(() => {
-		if (active && !entered.current) {
-			entered.current = true;
-			void read();
-		} else if (active && latest.current.availability === "available") {
-			// Back in DEVELOP after a visit elsewhere (the timer was cleared when it was left): read once now, which also resumes Follow or a
-			// waiting prompt's check. Nothing keeps polling while the workspace is not shown.
-			void read();
-		}
+		// On entering DEVELOP, and on coming back to it after a visit elsewhere (the timer was cleared when it was left), read once now: this
+		// also discovers a workbench whose first status failed, and resumes Follow or a waiting prompt's check. Nothing keeps polling while
+		// the workspace is not shown, and a server known to have no workbench is not asked again.
+		if (active && latest.current.availability !== "absent") void read();
 		if (!active) {
 			if (timer.current !== null) clearTimeout(timer.current);
 			timer.current = null;
@@ -116,6 +113,8 @@ export function useWorkbench(active: boolean) {
 	return {
 		state,
 		dispatch,
+		draft,
+		setDraft,
 		refresh: () => void read(),
 		pair: async (code: string) => {
 			const reply = await send({ kind: "pair", code });

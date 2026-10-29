@@ -343,6 +343,17 @@ suite("the DEVELOP workbench", () => {
 		expect(server.port).toBeGreaterThan(0);
 	}, 60_000);
 
+	it("keeps an unsent prompt when the composer is unmounted by leaving and re-entering DEVELOP", async () => {
+		const { page, broker } = await open();
+		await pairWith(page, broker);
+		await fill(page, "[data-testid=composer]", "half written");
+		await page.click("button[data-workspace=observe]");
+		await page.waitFor("document.querySelector('button[data-workspace=observe][aria-current=page]')");
+		await page.click("button[data-workspace=develop]");
+		await page.waitFor("document.querySelector('[data-testid=composer]')");
+		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("half written");
+	}, 60_000);
+
 	it("shows one stage at a time on a narrow screen and does not overflow at 1440, 1024, 768 and 420 pixels", async () => {
 		for (const width of [1440, 1024, 768, 420]) {
 			const { page, broker } = await open(width, 900);

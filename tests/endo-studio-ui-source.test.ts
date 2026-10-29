@@ -159,12 +159,16 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(11);
+		expect(api.match(/\/api\//g)?.length).toBe(13);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(6);
-		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard"])
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(8);
+		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
 		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
+		// Withdraw and check name their route from a closed pair, never from the page's input; the id is gated to the proposal shape first.
+		expect(api).toMatch(
+			/\.\/api\/v0\/workbench\/intervention\/\$\{request\.kind === "withdraw" \? "discard" : "check"\}/,
+		);
 		expect(api).toContain('"X-Endo-Grant"');
 		expect(api).not.toMatch(/grant=|\?grant|localStorage|sessionStorage|document\.cookie/);
 		expect(api).toContain("./api/v0/develop/sessions");
@@ -209,7 +213,7 @@ describe("the frontend's source", () => {
 		expect(develop).toContain("if (paced(latest.current, performance.now())) return;");
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-develop.ts") expect(text, name).not.toMatch(/fetchDevelop/);
-		// The workbench hook: ONE timer, set only after a read ends and only while a prompt waits or Follow is on (opt-in), never while the
+		// The workbench hook: ONE timer, set only after a read ends and only while a prompt or an intervention is open or Follow is on (opt-in), never while the
 		// page is hidden; the only fetch of the workbench is behind it; no interval and no animation frame anywhere.
 		const wb = sources["use-workbench.ts"]!;
 		expect(wb.match(/setTimeout\(/g)?.length).toBe(1);
@@ -217,7 +221,7 @@ describe("the frontend's source", () => {
 		// One read at a time: a read asked for while one runs is queued behind it (one fresh read), never run alongside it.
 		expect(wb).toMatch(/if \(running\.current\) \{\s*again\.current = true;\s*return;\s*\}/);
 		expect(wb).toContain("document.hidden");
-		expect(wb).toContain("if (!s.follow && !commandOpen(s.command)) return;");
+		expect(wb).toContain("if (!s.follow && !anyOpen(s)) return;");
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-workbench.ts") expect(text, name).not.toMatch(/fetchWorkbench/);
 		expect(sources["use-compare.ts"]!.match(/setTimeout\(/g)?.length).toBe(1);

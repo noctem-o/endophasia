@@ -91,6 +91,8 @@ export class PiInterventionDeskV0 {
 	readonly #inFlight = new Map<string, Promise<PiInterventionApplyResultV0>>();
 
 	readonly #capture: EndoInterventionCaptureSourceV0 | null;
+	/** Called, in order, when a FINAL `finish` begins, before it waits for anything: a host that takes proposals stops taking them here. */
+	readonly #finishing: (() => void)[] = [];
 	readonly #now: () => number;
 	readonly #authorizationMaxAgeMs: number;
 
@@ -384,6 +386,56 @@ export class PiInterventionDeskV0 {
 		}
 	}
 
+	/** Run `listener` when a final `finish` (`{ final: true }`: the session is closing) begins, before the desk waits for applies in flight. */
+	onFinishing(listener: () => void): void {
+		this.#finishing.push(listener);
+	}
+
+	/** Whether current evidence admits the runtime capability an operation needs, and if not, why. */
+	admissionFor(operation: EndoInterventionOperationV0): { admitted: true } | { admitted: false; reason: string } {
+		return this.session.admission(PI_INTERVENTION_CAPABILITIES_V0[operation]);
+	}
+
+	/**
+	 * Record that a proposal will not be sent, for a reason the gate does not see (the host's own approval window, a withdrawn or
+	 * unanswered approval, a revoked grant). Nothing was sent: the refusal carries no request. A proposal that was already sent keeps its
+	 * request and outcome, and this records nothing for it.
+	 */
+	refuse(proposalId: string, reason: EndoInterventionRefusalReasonV0, detail: string): void {
+		if (!this.#proposals.has(proposalId) || this.#requests.has(proposalId)) return;
+		const found = this.#proposals.get(proposalId)!;
+		const authorized = [...this.#authorizations.values()].filter(
+			({ authorization }) => authorization.proposalId === proposalId,
+		);
+		this.#record(
+			"intervention.refused",
+			{
+				schemaVersion: ENDO_INTERVENTION_SCHEMA_V0,
+				proposalId,
+				requestId: null,
+				reason,
+				detail: detail.slice(0, 500),
+			},
+			[found.eventId, ...authorized.map(({ eventId }) => eventId)],
+		);
+	}
+
+	/** What the desk holds of a proposal's request, from memory: null before the request was recorded (the gate has not passed yet). */
+	requestOf(proposalId: string): { requestId: string; outcome: RequestStateV0["outcome"] } | null {
+		const state = this.#requests.get(proposalId);
+		return state === undefined ? null : { requestId: state.request.requestId, outcome: state.outcome };
+	}
+
+	/**
+	 * Whether the message of an accepted STEER or QUEUE appears in a later request the recording proxy captured, now. This READS the
+	 * capture, so a caller asks for it on purpose, never per poll. Observing it records `intervention.consumed` once (as `finish` would).
+	 */
+	consumption(proposalId: string): EndoInterventionConsumptionV0 {
+		const state = this.#requests.get(proposalId);
+		if (state === undefined) return { status: "not-applicable", reason: "the request was never sent" };
+		return this.#consumption(state);
+	}
+
 	#consumption(state: RequestStateV0): EndoInterventionConsumptionV0 {
 		const proposal = this.#proposals.get(state.request.proposalId)!.proposal;
 		if (proposal.message === null) return { status: "not-applicable", reason: "stop carries no message to consume" };
@@ -474,7 +526,16 @@ export class PiInterventionDeskV0 {
 	 * the consequence does not claim "no reply" for it. Call when the session's work has settled and the recording proxy
 	 * has flushed, before the session closes.
 	 */
-	async finish(options: { waitMs?: number } = {}): Promise<void> {
+	async finish(options: { waitMs?: number; final?: boolean } = {}): Promise<void> {
+		// A mid-session finish (the control socket's `finish`) records what it can and leaves the session working; only the closing one
+		// tells the host to stop taking requests.
+		for (const listener of options.final === true ? this.#finishing : []) {
+			try {
+				listener();
+			} catch {
+				// a listener never stops the consequences from being recorded
+			}
+		}
 		await this.settled(options.waitMs);
 		for (const state of this.#requests.values()) {
 			if (state.consequence) continue;

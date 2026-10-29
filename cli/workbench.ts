@@ -11,6 +11,7 @@
 import { fstatSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import type { PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
+import type { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { cockpitAliasesV0 } from "../cockpit/index.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
@@ -51,13 +52,25 @@ export interface WorkbenchHandleV0 {
 	stop(): Promise<void>;
 }
 
+/** What approving each operation does, in the operator's own terminal. The page cannot approve any of them; only the operator can. */
+const EFFECT_WORDS: Readonly<Record<"prompt" | "steer" | "queue" | "stop", string>> = {
+	prompt:
+		"Approving starts agent work, which may use the model and cost money. The page cannot approve this; only you can.",
+	steer: "Approving sends this to the run that is open, after its current turn's tool calls and before the next model request. That may use the model and cost money. The page cannot approve this; only you can.",
+	queue: "Approving sends this to the run that is open, to be delivered when the agent has no more tool calls or steering. That may use the model and cost money. The page cannot approve this; only you can.",
+	stop: "Approving asks Pi to abort the run that is open. Pi answers only once it is idle, so this is a request, not an immediate stop. The page cannot approve this; only you can.",
+};
+
 const hhmmss = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour12: false });
 
 /**
  * Start the workbench for an attached session. Order: the terminal is verified first, then the frontend and the dedicated cockpit key
  * (host), then the broker, then the listener; a failure before the last leaves nothing listening.
  */
-export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<WorkbenchHandleV0> {
+export async function startWorkbenchV0(
+	session: PiSessionAttachmentV0,
+	desk: PiInterventionDeskV0,
+): Promise<WorkbenchHandleV0> {
 	requireWorkbenchTerminalV0();
 	const uiDirectory = endoStudioUiDirectoryV0();
 	if (uiDirectory === null)
@@ -70,18 +83,21 @@ export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<
 	};
 	let aliasOf: (id: string) => string = (id) => id;
 	const approver: WorkbenchApproverV0 = async (request, signal) => {
+		const what = request.operation;
 		write(
 			[
 				"",
-				"=== WORKBENCH: approve this prompt? ===",
+				`=== WORKBENCH: approve this ${what}? ===`,
 				`session     ${request.session}`,
 				`attachment  ${request.attachment}`,
-				`size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
-				"--- the exact prompt ---",
-				request.message,
-				"--- end of prompt ---",
-				"Approving starts agent work, which may use the model and cost money. The page cannot approve this; only you can.",
-				`Type ${request.phrase} to send exactly this prompt; anything else declines.`,
+				request.message === null
+					? `expires ${hhmmss(request.expiresAtMs)}`
+					: `size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
+				...(request.message === null
+					? []
+					: [`--- the exact ${what} ---`, request.message, `--- end of ${what} ---`]),
+				EFFECT_WORDS[what],
+				`Type ${request.phrase} to ${request.message === null ? "send it" : `send exactly this ${what}`}; anything else declines.`,
 				"",
 			].join("\n"),
 		);
@@ -99,6 +115,7 @@ export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<
 		key: session.owner.digestKey(),
 		attachment: session.owner.attachment,
 		approver,
+		interventions: desk,
 		aliasOf: (id) => aliasOf(id),
 	});
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;
@@ -122,7 +139,7 @@ export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<
 	const showCode = (): void => {
 		const { code, expiresAtMs } = broker.issuePairingCode();
 		write(
-			`workbench: pairing code ${code}  (one use; expires ${hhmmss(expiresAtMs)}). Type it into the page to let it ask for prompts.\n`,
+			`workbench: pairing code ${code}  (one use; expires ${hhmmss(expiresAtMs)}). Type it into the page to let it ask for prompts and interventions.\n`,
 		);
 	};
 	// The terminal is in raw mode, so Ctrl+C reaches readline, not the process: hand it to the same shutdown path a signal takes.
@@ -140,7 +157,7 @@ export async function startWorkbenchV0(session: PiSessionAttachmentV0): Promise<
 			write("workbench: type `pair` for a new pairing code; approvals are typed when a prompt is waiting\n");
 	});
 	write(
-		"workbench: the address below is private to this launch; anyone who can read it can read what this store records. It lets a page READ and ask; only you, here, can approve a prompt.\n",
+		"workbench: the address below is private to this launch; anyone who can read it can read what this store records. It lets a page READ and ask; only you, here, can approve a prompt or an intervention.\n",
 	);
 	write(`workbench: ${launched.server.baseUrl}/\n`);
 	showCode();

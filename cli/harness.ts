@@ -259,7 +259,7 @@ async function attachWithControl(
 	let disposition: string | null = null;
 	try {
 		server = await startEndoControlServerV0(parsed.root, desk);
-		if (parsed.switches.has("--workbench")) workbench = await startWorkbenchV0(session);
+		if (parsed.switches.has("--workbench")) workbench = await startWorkbenchV0(session, desk);
 		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
 		const prompt = parsed.flags.get("--prompt");
 		if (prompt !== undefined) disposition = await session.prompt(prompt);
@@ -268,7 +268,7 @@ async function attachWithControl(
 			process.once("SIGTERM", () => done());
 		});
 		await Promise.race([server.closeRequested, signalled]);
-		await desk.finish();
+		await desk.finish({ final: true });
 	} finally {
 		await workbench?.stop();
 		await server?.close();

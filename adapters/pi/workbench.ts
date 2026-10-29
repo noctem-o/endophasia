@@ -10,6 +10,10 @@
 //   POST prompt/propose {message}   ask to send ONE new user prompt. Needs the grant. This only REQUESTS: see below.
 //   GET  prompt/<id>            the state of that prompt. Needs the grant.
 //   POST prompt/discard {proposalId}  withdraw it before it is approved.
+//   POST intervention/propose {operation, message?}   ask to STEER, QUEUE or STOP the open run. Needs the grant. Only REQUESTS.
+//   GET  intervention/<id>      the state of that request. Needs the grant.
+//   POST intervention/discard {proposalId}   withdraw it before it is approved.
+//   POST intervention/check {proposalId}     ask whether the capture shows a STEER or QUEUE was consumed. Needs the grant.
 //
 // Authority. The browser can request and can never authorise. A prompt is sent only after the operator types its exact digest on the
 // attached process's CONTROLLING TERMINAL (the `approver` below); a page script cannot do that. The grant (obtained by typing the
@@ -20,8 +24,9 @@
 // proposed → authorized → dispatched → accepted, or refused with a closed reason. HTTP acceptance of a request means only that it was
 // REQUESTED. The prompt text is never recorded; it is held in memory until the prompt is dispatched or refused, then dropped.
 //
-// Not here: a shell, a PTY, a raw Pi RPC passthrough, STEER/QUEUE/STOP (the next change, through the existing intervention chain), or
-// any store read or write other than the record chain above.
+// STEER, QUEUE and STOP are not new machinery: they go through the existing intervention desk and its chain (adapters/pi/
+// workbench-interventions.ts), behind the same terminal approval. Not here: a shell, a PTY, a raw Pi RPC passthrough, or any store read
+// or write other than those two record chains.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { EndoEventV0 } from "../../protocol/event.ts";
@@ -39,6 +44,7 @@ import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { LiveTranscriptV0 } from "./live-transcript.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
+import { type WorkbenchDeskV0, WorkbenchInterventionsV0 } from "./workbench-interventions.ts";
 
 export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 
@@ -60,14 +66,16 @@ export interface WorkbenchSessionV0 {
 
 /** What the operator is shown on the controlling terminal to decide. */
 export interface WorkbenchApprovalRequestV0 {
+	/** What the operator is being asked to approve. A prompt starts a run; the others act on the run that is open. */
+	operation: "prompt" | "steer" | "queue" | "stop";
 	proposalId: string;
-	/** The exact phrase that approves this prompt. Anything else declines. */
+	/** The exact phrase that approves this request. Anything else declines. */
 	phrase: string;
 	session: string;
 	attachment: string;
 	bytes: number;
-	/** The whole prompt: it is the operator's own terminal, and they must see exactly what they authorise. */
-	message: string;
+	/** The whole message (null for STOP): it is the operator's own terminal, and they must see exactly what they authorise. */
+	message: string | null;
 	expiresAtMs: number;
 }
 /** "allow" only for the exact phrase; "deny" for any other answer; null when there was no answer in time or it was withdrawn. */
@@ -83,6 +91,8 @@ export interface WorkbenchOptionsV0 {
 	/** The attachment name as recorded (for example `pi.default`). */
 	attachment: string;
 	approver: WorkbenchApproverV0;
+	/** The intervention desk STEER, QUEUE and STOP go through. Without it they are not offered. */
+	interventions?: WorkbenchDeskV0;
 	/** The presented alias of a session id (the cockpit's own), so the page can link the live session to its recording. */
 	aliasOf?: (sessionId: string) => string;
 	now?: () => number;
@@ -155,6 +165,9 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#code: { value: string; expiresAtMs: number; attempts: number } | null = null;
 	#grant: { token: string; expiresAtMs: number } | null = null;
 	#command: Proposal | null = null;
+	readonly #interventions: WorkbenchInterventionsV0 | null;
+	/** The desk's final finish began: no prompt is offered or sent from here on, and one waiting for the terminal is withdrawn. */
+	#closing = false;
 	#disposed = false;
 	/** The runtime ended: the workbench for this session is over. Terminal: a later process is a new connection, never a continuation. */
 	#ended = false;
@@ -167,7 +180,29 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			...options,
 		};
 		this.#now = options.now ?? Date.now;
-		options.session.onLiveEvent = (event) => this.transcript.push(event);
+		this.#interventions =
+			options.interventions === undefined
+				? null
+				: new WorkbenchInterventionsV0({
+						session: options.session,
+						desk: options.interventions,
+						approver: options.approver,
+						launchId: this.launchId,
+						now: this.#now,
+						approvalWindowMs: this.#o.approvalWindowMs,
+						granted: (grant) => this.#granted(grant),
+						closed: () => this.#disposed || this.#ended,
+						unsafe: (message) => UNSAFE_PROMPT_CHARS.test(message),
+						watermark: () => this.transcript.view(Number.MAX_SAFE_INTEGER).watermark,
+						promptAwaitingApproval: () => this.#command?.view.state === "awaiting-approval",
+						maxMessageBytes: ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0,
+					});
+		// The desk records consequences when it finishes: a prompt still waiting for the terminal is withdrawn then too.
+		options.interventions?.onFinishing(() => this.beginClose());
+		options.session.onLiveEvent = (event) => {
+			this.transcript.push(event);
+			this.#interventions?.observe(event);
+		};
 	}
 
 	// --- pairing and grant ---------------------------------------------------------------------------------------------------
@@ -232,9 +267,21 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			run: connected ? (session.runActive ? "active" : "idle") : "unknown",
 			session: sessionId === null ? null : (this.#o.aliasOf?.(sessionId) ?? sessionId),
 			attachment: this.#o.attachment,
-			offers: { prompt },
+			offers: {
+				prompt,
+				...Object.fromEntries(
+					(["steer", "queue", "stop"] as const).map((operation) => [
+						operation,
+						this.#interventions?.offer(operation) ?? {
+							offered: false,
+							reason: "Interventions are not configured for this launch.",
+						},
+					]),
+				),
+			},
 			paired: this.#grant !== null && this.#now() < this.#grant.expiresAtMs,
 			command: this.#command?.view ?? null,
+			interventions: this.#interventions?.views() ?? [],
 			transcript: {
 				watermark: this.transcript.view(Number.MAX_SAFE_INTEGER).watermark,
 				firstSeq: this.transcript.view(Number.MAX_SAFE_INTEGER).firstSeq,
@@ -247,16 +294,24 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		const session = this.#o.session;
 		if (this.#disposed || this.#ended || !session.live || session.piSessionId === null)
 			return { offered: false, reason: "The session has no admitted connection now." };
+		if (this.#closing) return { offered: false, reason: "The session is closing." };
 		if (session.runActive)
 			return {
 				offered: false,
-				reason: "A run is open. A new prompt is sent only when the agent is idle; steering comes later.",
+				reason:
+					"A run is open. A new prompt is sent only when the agent is idle; steer or queue changes the open run.",
 			};
 		if (
 			this.#command !== null &&
 			(this.#command.view.state === "awaiting-approval" || this.#command.view.state === "dispatching")
 		)
 			return { offered: false, reason: "Another prompt is waiting for approval or being sent." };
+		if (this.#interventions?.awaitingApproval())
+			return {
+				offered: false,
+				reason:
+					"An intervention is waiting for approval in the terminal. Press Enter there to decline it, or withdraw it on this page.",
+			};
 		return { offered: true, reason: null };
 	}
 
@@ -272,8 +327,19 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#grant = null;
 		this.#code = null;
 		this.#command?.abort.abort();
+		this.#interventions?.beginClose();
 		this.transcript.clear();
 		this.#o.session.onLiveEvent = null;
+	}
+
+	/**
+	 * The session is about to close and record its consequences: take nothing new and withdraw what waits for the terminal, so no
+	 * request is approved after the chains have been closed off. The desk calls this when its `finish` begins.
+	 */
+	beginClose(): void {
+		this.#closing = true;
+		this.#interventions?.beginClose();
+		this.#command?.abort.abort();
 	}
 
 	async handle(request: EndoCockpitWorkbenchRequestV0): Promise<{ status: number; body: unknown }> {
@@ -298,6 +364,19 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return this.#discard(isRecord(request.body) ? request.body.proposalId : undefined);
 		if (a === "prompt" && b !== undefined && more.length === 0 && request.method === "GET" && request.query === "") {
 			return this.#command?.view.proposalId === b ? reply(200, this.#command.view) : refuse(404, "not-found");
+		}
+		if (this.#interventions !== null && a === "intervention" && b !== undefined) {
+			const body = isRecord(request.body) ? request.body : null;
+			if (request.query === "" && more.length === 0) {
+				if (request.method === "POST" && b === "propose")
+					return this.#interventions.propose(request.grant as string, body);
+				if (request.method === "POST" && b === "discard") return this.#interventions.discard(body?.proposalId);
+				if (request.method === "POST" && b === "check") return this.#interventions.check(body?.proposalId);
+				if (request.method === "GET") {
+					const view = this.#interventions.viewOf(b);
+					return view === null ? refuse(404, "not-found") : reply(200, view);
+				}
+			}
 		}
 		return refuse(404, "not-found");
 	}
@@ -401,6 +480,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		try {
 			answer = await this.#o.approver(
 				{
+					operation: "prompt",
 					proposalId: p.view.proposalId,
 					phrase,
 					session: p.session,
@@ -414,7 +494,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		} catch {
 			answer = null;
 		}
-		if (this.#disposed || this.#ended) return settle("session-ended", p.proposedEventId);
+		if (this.#disposed || this.#ended || this.#closing) return settle("session-ended", p.proposedEventId);
 		if (answer === null)
 			return settle(p.abort.signal.aborted ? "not-authorized" : "approval-timed-out", p.proposedEventId);
 		const decidedAt = new Date(this.#now()).toISOString();
@@ -440,7 +520,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
 		const piId = session.piSessionId;
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
-		if (this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
+		if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
 			return settle("session-ended", authorized.id);
 		if (!this.#granted(p.grant)) return settle("not-authorized", authorized.id);
 		if (session.runActive) return settle("run-active", authorized.id);
@@ -492,7 +572,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#code = null;
 		this.#ended = true;
 		this.#command?.abort.abort();
+		this.#interventions?.beginClose();
 		await this.#command?.done.catch(() => {});
+		// Bounded: a STOP Pi answers only once idle must not hold the process (the desk's `finish` has already waited for it).
+		await this.#interventions?.settle(2_000);
 		this.transcript.clear();
 		this.#o.session.onLiveEvent = null;
 	}

@@ -1,11 +1,11 @@
 // The workbench's reads and commands, one at a time. A read happens when DEVELOP is first opened, when the operator asks (Refresh, pair,
-// send, withdraw), and, only while a prompt is waiting or the operator has switched Follow on, every few seconds from one timer that is
+// send, withdraw), and, only while a prompt or an intervention is open (waiting, being sent, or waiting for Pi) or the operator has switched Follow on, every few seconds from one timer that is
 // set after each read ends (never two at once, never while the page is hidden, never by hover). It reads the broker's memory, not the
 // store. A grant is held in this hook's state only.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { fetchWorkbench } from "./api.ts";
-import { commandOpen, initialWorkbench, reduceWorkbench } from "./model/workbench.ts";
-import type { WorkbenchReply, WorkbenchRequest } from "./model/workbench-wire.ts";
+import { anyOpen, initialWorkbench, reduceWorkbench } from "./model/workbench.ts";
+import type { InterventionOperation, WorkbenchReply, WorkbenchRequest } from "./model/workbench-wire.ts";
 
 const FOLLOW_MS = 3000;
 const WAITING_MS = 1500;
@@ -26,6 +26,21 @@ export function useWorkbench(active: boolean) {
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	// The unsent prompt lives here, not in the composer: the composer is unmounted when the stage or the layout changes. Memory only.
 	const [draft, setDraft] = useState("");
+	// What the operator is composing: a new prompt, or a change to the run that is open. Chosen by the operator and never switched for them.
+	const [mode, setMode] = useState<"prompt" | "steer" | "queue">("prompt");
+	// The text THIS page sent as a steer or queue, by request, so its card can show it. Memory only; the broker's view never carries text.
+	const [sentText, setSentText] = useState<Readonly<Record<string, string>>>({});
+	// It is private live text, so it goes when the session ends or the launch changes, and with the cards the broker no longer lists.
+	const ended = state.status?.connection === "disconnected";
+	const listed = state.interventions.map((i) => i.proposalId).join();
+	useEffect(() => {
+		setSentText((now) => {
+			const keep = Object.keys(now).filter((id) => !ended && listed.split(",").includes(id));
+			return keep.length === Object.keys(now).length
+				? now
+				: Object.fromEntries(keep.map((id) => [id, now[id] as string]));
+		});
+	}, [ended, listed]);
 	const reading = useRef<(() => Promise<void>) | null>(null);
 
 	// Bumped when a grant is issued. A read that began before it carries an older status (paired: false) that must not be applied over the
@@ -47,7 +62,7 @@ export function useWorkbench(active: boolean) {
 		timer.current = null;
 		const s = latest.current;
 		if (!shown.current || s.availability !== "available" || document.hidden) return;
-		if (!s.follow && !commandOpen(s.command)) return;
+		if (!s.follow && !anyOpen(s)) return;
 		timer.current = setTimeout(
 			() => {
 				if (shown.current) void reading.current?.();
@@ -109,7 +124,7 @@ export function useWorkbench(active: boolean) {
 				!document.hidden &&
 				active &&
 				latest.current.availability === "available" &&
-				(latest.current.follow || commandOpen(latest.current.command))
+				(latest.current.follow || anyOpen(latest.current))
 			)
 				void read();
 		};
@@ -122,6 +137,9 @@ export function useWorkbench(active: boolean) {
 		dispatch,
 		draft,
 		setDraft,
+		mode,
+		setMode,
+		sentText,
 		refresh: () => void read(),
 		pair: async (code: string) => {
 			const reply = await send({ kind: "pair", code });
@@ -132,6 +150,21 @@ export function useWorkbench(active: boolean) {
 			const reply = await send({ kind: "propose", message });
 			if (reply.kind === "command") void read();
 			return reply;
+		},
+		intervene: async (operation: InterventionOperation, message: string | null) => {
+			const reply = await send({ kind: "intervene", operation, message });
+			if (reply.kind === "intervention") {
+				if (message !== null) setSentText((now) => ({ ...now, [reply.record.proposalId]: message }));
+				void read();
+			}
+			return reply;
+		},
+		withdraw: async (proposalId: string) => {
+			await send({ kind: "withdraw", proposalId });
+			void read();
+		},
+		check: async (proposalId: string) => {
+			await send({ kind: "check", proposalId });
 		},
 		discard: async () => {
 			const open = latest.current.command;

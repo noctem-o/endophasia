@@ -107,6 +107,13 @@ STEER, QUEUE and STOP change a run that is already open. A **new prompt** opens 
 (`workbench.prompt-proposed → authorized → dispatched → accepted | refused`, [develop-workbench.md](develop-workbench.md)), sent
 through the DEVELOP workbench broker after the operator types its exact phrase on the attached terminal. The two chains are kept apart.
 
+## From the DEVELOP workbench
+
+The same chain is driven by the workbench broker ([develop-workbench.md](develop-workbench.md), section 13). The page requests (origin
+`operator-workbench`); the operator types `APPROVE STEER|QUEUE|STOP <16 hex of the digest>` on the attached terminal, which is recorded as
+the authorization with `confirmation: "terminal-phrase"`; the desk's gate and `apply` are unchanged. The message text is kept in the same
+`<root>/interventions/` blob store before approval, so a declined or withdrawn request's text is retained there too.
+
 ## What is not built
 
 Model-originated proposals; an external authority provider; observation and interpretation records are in the schema

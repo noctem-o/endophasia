@@ -1975,6 +1975,82 @@ table.fields thead th {
 	gap: 8px;
 }
 
+/* The send mode is chosen by the operator and is always visible: a prompt starts a run, a steer or queue changes the one that is open.
+   The difference is carried by the words and the rule's style, not by hue alone. */
+.modes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 14px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+.modes legend {
+	float: left;
+	margin-right: 10px;
+	padding: 0;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fg-3);
+}
+
+.mode {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 12.5px;
+	padding: 2px 8px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	cursor: pointer;
+}
+
+.mode[data-selected="true"] {
+	border-color: var(--select);
+	color: var(--fg-1);
+}
+
+.mode-name {
+	font-weight: 600;
+}
+
+.composer[data-mode="steer"],
+.composer[data-mode="queue"] {
+	border-top: 2px dashed var(--attention);
+}
+
+.composer[data-mode="prompt"] {
+	border-top: 2px solid var(--line-strong);
+}
+
+.turn-intervention {
+	border-left: 2px dashed var(--attention);
+	background: var(--surface-2);
+	padding: 6px 8px;
+}
+
+.turn-intervention[data-state="refused"] {
+	border-left-style: dotted;
+}
+
+.turn-intervention[data-state="unknown"] {
+	border-left-color: var(--fault);
+}
+
+.intervention-head {
+	margin: 0;
+}
+
+.stop-control {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	margin-left: auto;
+}
+
 .composer .search {
 	flex: 1;
 }

@@ -130,7 +130,7 @@ export async function startEndoControlServerV0(root: string, desk: PiInterventio
 				await desk.finish();
 				return desk.status();
 			case "close":
-				await desk.finish();
+				await desk.finish({ final: true });
 				requestClose();
 				return { closing: true };
 			default: {

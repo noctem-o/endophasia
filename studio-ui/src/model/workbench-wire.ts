@@ -15,6 +15,33 @@ export interface WorkbenchCommand {
 	digestPrefix: string;
 	expiresAtMs: number;
 }
+export type InterventionOperation = "steer" | "queue" | "stop";
+export type InterventionState = "awaiting-approval" | "dispatching" | "sent" | "accepted" | "refused" | "unknown";
+export type InterventionConsumption =
+	| { status: "observed"; exchange: number; captureEvent: string }
+	| { status: "not-observed"; reason: string }
+	| { status: "not-applicable"; reason: string };
+export interface WorkbenchIntervention {
+	proposalId: string;
+	operation: InterventionOperation;
+	state: InterventionState;
+	/** Whether the operator typed the approval on the terminal. */
+	approved: boolean;
+	reason: string | null;
+	disposition: string | null;
+	bytes: number | null;
+	digestPrefix: string;
+	expiresAtMs: number;
+	/** The transcript position when it was requested. */
+	afterSeq: number;
+	/** The run it was made in ended, as the runtime reported it. Not a claim that the request caused it. */
+	runEnded: "completed" | "aborted" | "failed" | "unclassified" | null;
+	consumption: InterventionConsumption | null;
+}
+export interface Offer {
+	offered: boolean;
+	reason: string | null;
+}
 export interface WorkbenchStatus {
 	schemaVersion: "endo.workbench-status.v0";
 	launchId: string;
@@ -23,9 +50,10 @@ export interface WorkbenchStatus {
 	run: "active" | "idle" | "unknown";
 	session: string | null;
 	attachment: string;
-	offers: { prompt: { offered: boolean; reason: string | null } };
+	offers: { prompt: Offer; steer: Offer; queue: Offer; stop: Offer };
 	paired: boolean;
 	command: WorkbenchCommand | null;
+	interventions: WorkbenchIntervention[];
 	transcript: { watermark: number; firstSeq: number };
 }
 export type TranscriptItem =
@@ -79,6 +107,41 @@ const command: Check = (v) =>
 		expiresAtMs: count,
 	});
 
+const INTERVENTION_REASONS = [...REASONS, "approval-timed-out", "withdrawn"];
+const intervention: Check = (v) =>
+	shape(v, {
+		proposalId: (x) => typeof x === "string" && /^endo\.evidence\.intervention\.proposal\.[0-9a-f]{64}$/.test(x),
+		operation: one("steer", "queue", "stop"),
+		state: one("awaiting-approval", "dispatching", "sent", "accepted", "refused", "unknown"),
+		approved: bool,
+		reason: eitherNull(
+			one(
+				...INTERVENTION_REASONS,
+				"authorization-for-another-proposal",
+				"authorization-for-another-session",
+				"authorization-for-another-attachment",
+				"proposal-tampered",
+				"proposal-for-another-session",
+				"no-active-run",
+				"runtime-failed",
+			),
+		),
+		disposition: eitherNull(one("started", "queued", "handled")),
+		bytes: eitherNull((n) => count(n) && n >= 1 && n <= 16384),
+		digestPrefix: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
+		expiresAtMs: count,
+		afterSeq: count,
+		runEnded: eitherNull(one("completed", "aborted", "failed", "unclassified")),
+		consumption: eitherNull(
+			(c) =>
+				shape(c, { status: one("observed"), exchange: count, captureEvent: short }) ||
+				shape(c, { status: one("not-observed"), reason: text(400) }) ||
+				shape(c, { status: one("not-applicable"), reason: text(400) }),
+		),
+	});
+
+const offer: Check = (o) => shape(o, { offered: bool, reason: eitherNull(text(400)) });
+
 export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 	shape(v, {
 		schemaVersion: one("endo.workbench-status.v0"),
@@ -88,9 +151,10 @@ export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 		run: one("active", "idle", "unknown"),
 		session: eitherNull((x) => typeof x === "string" && x.length <= 269 && /^endo\.session\./.test(x)),
 		attachment: short,
-		offers: (o) => shape(o, { prompt: (p) => shape(p, { offered: bool, reason: eitherNull(text(300)) }) }),
+		offers: (o) => shape(o, { prompt: offer, steer: offer, queue: offer, stop: offer }),
 		paired: bool,
 		command: eitherNull(command),
+		interventions: (x) => Array.isArray(x) && x.length <= 40 && list(intervention)(x),
 		transcript: (t) => shape(t, { watermark: count, firstSeq: count }),
 	})
 		? (v as unknown as WorkbenchStatus)
@@ -148,19 +212,26 @@ export const readWorkbenchGrant = (v: unknown): { grant: string; expiresAtMs: nu
 export const readWorkbenchCommand = (v: unknown): WorkbenchCommand | null =>
 	command(v) && obj(v) ? (v as unknown as WorkbenchCommand) : null;
 
+export const readWorkbenchIntervention = (v: unknown): WorkbenchIntervention | null =>
+	intervention(v) && obj(v) ? (v as unknown as WorkbenchIntervention) : null;
+
 export type WorkbenchRequest =
 	| { kind: "status" }
 	| { kind: "transcript"; after: number }
 	| { kind: "pair"; code: string }
 	| { kind: "propose"; message: string }
 	| { kind: "command"; proposalId: string }
-	| { kind: "discard"; proposalId: string };
+	| { kind: "discard"; proposalId: string }
+	| { kind: "intervene"; operation: InterventionOperation; message: string | null }
+	| { kind: "withdraw"; proposalId: string }
+	| { kind: "check"; proposalId: string };
 
 export type WorkbenchReply =
 	| { kind: "status"; record: WorkbenchStatus }
 	| { kind: "transcript"; record: WorkbenchTranscript }
 	| { kind: "grant"; record: { grant: string; expiresAtMs: number } }
 	| { kind: "command"; record: WorkbenchCommand }
+	| { kind: "intervention"; record: WorkbenchIntervention }
 	/** 404 on the status route: this server has no workbench (it is the read-only Studio). */
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: string; message: string; retrySeconds: number | null };
@@ -168,7 +239,8 @@ export type WorkbenchReply =
 const FIXED: Record<string, string> = {
 	"pairing-refused": "That pairing code was not accepted. Type `pair` in the attached terminal for a new one.",
 	"grant-required": "This page is not paired. Enter the pairing code shown in the attached terminal.",
-	"not-offered": "A prompt cannot be sent right now.",
+	"not-offered": "That cannot be requested right now. The reason is shown beside it.",
+	"not-checkable": "Only an accepted steer or queue can be checked.",
 	"bad-request": "The request was not in a form the workbench accepts.",
 	"not-found": "That prompt is no longer known to the workbench.",
 	"not-withdrawable": "That prompt is no longer waiting for approval.",

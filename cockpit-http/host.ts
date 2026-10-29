@@ -17,7 +17,7 @@
 import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
-import { type EndoCockpitServerV0, startEndoCockpitServerV0 } from "./server.ts";
+import { type EndoCockpitServerV0, type EndoCockpitWorkbenchV0, startEndoCockpitServerV0 } from "./server.ts";
 import { loadEndoStudioUiFilesV0 } from "./studio-ui.ts";
 
 /** The dedicated cockpit key file: beside the installation key, so it follows the same location rules. */
@@ -41,6 +41,11 @@ export interface EndoCockpitLaunchOptionsV0 {
 	onKey?: (key: { path: string; created: boolean }) => void;
 	/** Called with an internal failure's error for the host's own diagnostics. The server never sends it to a client. */
 	onError?: (error: unknown) => void;
+	/**
+	 * A command surface, only for a host that is itself the writable boundary (the attached process of `endo harness attach --workbench`).
+	 * `endo studio` never passes one: its server has no command route.
+	 */
+	workbench?: EndoCockpitWorkbenchV0;
 }
 
 export interface EndoCockpitLaunchedV0 {
@@ -173,6 +178,7 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 		ui,
 		port: options.port ?? 0,
 		...(options.onError === undefined ? {} : { onError: options.onError }),
+		...(options.workbench === undefined ? {} : { workbench: options.workbench }),
 	});
 	return { server, key: { path: keyFile, created } };
 }

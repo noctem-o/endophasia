@@ -158,6 +158,8 @@ export interface EndoCockpitServerOptionsV0 {
 	readBudget?: { duty: number; burstMs: number };
 	/** Called with an internal failure's error, for the host's own diagnostics. It is never sent to a client. */
 	onError?: (error: unknown) => void;
+	/** The host's command surface (see `EndoCockpitWorkbenchV0`). Absent for a read-only server. */
+	workbench?: EndoCockpitWorkbenchV0;
 }
 
 export interface EndoCockpitServerV0 {
@@ -172,6 +174,32 @@ export interface EndoCockpitServerV0 {
 	/** Stop listening, close every connection and resolve once the port is released. Idempotent. */
 	close(): Promise<void>;
 }
+
+/**
+ * What a host that serves a command surface gives the server: ONE handler for the routes under `api/v0/workbench/`. Without it, which
+ * is every `endo studio` launch, the server has no POST route at all and behaves exactly as before. With it the server still answers
+ * every request only if it passes the Host, Origin and Fetch Metadata guards, and a POST additionally needs an Origin that is
+ * exactly this server's own, `Content-Type: application/json` and a body of at most `MAX_WORKBENCH_BODY` bytes. The server forwards
+ * the grant header and the parsed body and nothing else; it neither reads a store nor charges the read budget for these routes, and
+ * the handler (not this module) decides what any command means.
+ */
+export interface EndoCockpitWorkbenchRequestV0 {
+	method: "GET" | "POST";
+	/** The path segments after `api/v0/workbench/`. */
+	route: string[];
+	/** The raw query string without `?`. */
+	query: string;
+	/** The value of the single `x-endo-grant` header, or null. */
+	grant: string | null;
+	/** The parsed JSON body of a POST, or null for a GET. */
+	body: unknown;
+}
+export interface EndoCockpitWorkbenchV0 {
+	handle(request: EndoCockpitWorkbenchRequestV0): Promise<{ status: number; body: unknown }>;
+}
+const MAX_WORKBENCH_BODY = 8 * 1024;
+/** The only statuses a workbench handler may answer with. */
+const WORKBENCH_STATUSES: readonly number[] = [200, 202, 400, 401, 403, 404, 409, 429, 503];
 
 type Query = { afterSequence?: number; limit?: number };
 
@@ -282,6 +310,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		if (!files.has("index.html")) throw new TypeError("the UI needs an index.html");
 	}
 
+	const workbench = options.workbench;
 	const capability = randomBytes(32).toString("base64url");
 	const capabilityBytes = Buffer.from(capability);
 	let balance = burstMs;
@@ -303,7 +332,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		chargeFrom = performance.now();
 	};
 
-	const guard = (request: IncomingMessage): { segments: string[]; rawQuery: string } => {
+	const guard = (request: IncomingMessage): { segments: string[]; rawQuery: string; method: "GET" | "POST" } => {
 		// Host: exactly this server's loopback name and bound port, once. A rebound hostname carries its own name here.
 		const host = request.headers.host;
 		if (rawHeaderCount(request, "host") !== 1 || host === undefined || !hosts.has(host.toLowerCase()))
@@ -315,9 +344,19 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		const site = request.headers["sec-fetch-site"];
 		if (site !== undefined && site !== "same-origin" && site !== "none") return refuse("forbidden");
 		// Read-only, no body: HEAD would still run the whole read, so it is refused with the rest.
-		if (request.method !== "GET") return refuse("method-not-allowed");
+		const post = request.method === "POST" && workbench !== undefined;
+		if (request.method !== "GET" && !post) return refuse("method-not-allowed");
 		const length = request.headers["content-length"];
-		if (request.headers["transfer-encoding"] !== undefined || (length !== undefined && length !== "0"))
+		if (post) {
+			// A command: the browser must say where it comes from (a page cannot forge Origin), in the one content type, with a bounded
+			// body. Nothing of this relaxes the read routes: a POST to anything but the workbench routes is refused after routing.
+			if (rawHeaderCount(request, "origin") !== 1 || request.headers.origin === undefined)
+				return refuse("forbidden");
+			if (request.headers["transfer-encoding"] !== undefined) return refuse("bad-request");
+			if (request.headers["content-type"] !== "application/json") return refuse("bad-request");
+			if (length === undefined || !/^[1-9][0-9]{0,4}$/.test(length) || Number(length) > MAX_WORKBENCH_BODY)
+				return refuse("bad-request");
+		} else if (request.headers["transfer-encoding"] !== undefined || (length !== undefined && length !== "0"))
 			return refuse("bad-request");
 		// The raw target, never resolved by a URL parser: it must be an origin-form path of route characters only.
 		const target = request.url ?? "";
@@ -329,7 +368,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		const presented = Buffer.from(segments[0] ?? "");
 		if (presented.length !== capabilityBytes.length || !timingSafeEqual(presented, capabilityBytes))
 			return refuse("not-found");
-		return { segments: segments.slice(1), rawQuery };
+		return { segments: segments.slice(1), rawQuery, method: post ? "POST" : "GET" };
 	};
 
 	/**
@@ -477,9 +516,74 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 	const sendRefusal = (response: ServerResponse, refusal: Refusal): void =>
 		send(response, REFUSALS[refusal], `{"error":"${refusal}"}\n`);
 
+	/** A bounded body, as UTF-8 JSON. The connection is closed on anything else. */
+	const readJson = (request: IncomingMessage): Promise<unknown> =>
+		new Promise((resolve, reject) => {
+			const chunks: Buffer[] = [];
+			let size = 0;
+			request.on("data", (chunk: Buffer) => {
+				size += chunk.length;
+				if (size > MAX_WORKBENCH_BODY) {
+					request.destroy();
+					reject(new Refused("bad-request"));
+				} else chunks.push(chunk);
+			});
+			request.on("end", () => {
+				try {
+					resolve(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))));
+				} catch {
+					reject(new Refused("bad-request"));
+				}
+			});
+			request.on("error", () => reject(new Refused("bad-request")));
+		});
+
+	/** The command surface: guarded like everything else, never a store read, never charged to the read budget. */
+	const handleWorkbench = async (
+		request: IncomingMessage,
+		response: ServerResponse,
+		segments: string[],
+		rawQuery: string,
+		method: "GET" | "POST",
+	): Promise<void> => {
+		try {
+			if (workbench === undefined) return sendRefusal(response, "not-found");
+			if (rawQuery.length > MAX_QUERY_CHARS) return sendRefusal(response, "bad-request");
+			const grants = request.headers["x-endo-grant"];
+			if (rawHeaderCount(request, "x-endo-grant") > 1) return sendRefusal(response, "bad-request");
+			const body = method === "POST" ? await readJson(request) : null;
+			const answer = await workbench.handle({
+				method,
+				route: segments.slice(3),
+				query: rawQuery,
+				grant: typeof grants === "string" ? grants : null,
+				body,
+			});
+			if (!WORKBENCH_STATUSES.includes(answer.status)) throw new TypeError("workbench status");
+			send(response, answer.status, canonicalEndoJsonV0(answer.body as never));
+		} catch (error) {
+			if (error instanceof Refused) return sendRefusal(response, error.refusal);
+			try {
+				options.onError?.(error);
+			} catch {
+				// a host's own diagnostics never change what the client is told
+			}
+			sendRefusal(response, "internal-error");
+		}
+	};
+
 	const handle = (request: IncomingMessage, response: ServerResponse): void => {
 		try {
-			const { segments, rawQuery } = guard(request);
+			const { segments, rawQuery, method } = guard(request);
+			if (segments[0] === "api" && segments[1] === "v0" && segments[2] === "workbench") {
+				void handleWorkbench(request, response, segments, rawQuery, method);
+				return;
+			}
+			if (method !== "GET") {
+				// A refused command still announced a body (at most MAX_WORKBENCH_BODY): drain it, so it is not read as the next request.
+				request.resume();
+				refuse("method-not-allowed");
+			}
 			const routed = route(segments, rawQuery);
 			if ("file" in routed) {
 				sendFile(response, routed.file);

@@ -2,11 +2,13 @@
 
 Written 2026-10-28, before any real execution, on `main` at `bc7de095b` (PR #96). **As of revisions 1 and 2, no server was started, no model request was sent and `--run` was never invoked (revision 3 records the one later server-only loading check, which sent no request).** The checks below are read-only observations of one machine (Arch Linux, RTX 4090). The comparison key, private prompts and evidence contents are not published. Hardware and software identifiers (digests, versions) are published on purpose: they are the experiment's declared environment. Paths are shown relative to `~`.
 
-**Status: HISTORICAL BUILD RECOVERED / LOAD QUALIFICATION GATED.** The pinned executable was recovered and the operator approved it (§5). Loadability on this GPU (§3) is not yet qualified, and the live run needs its own instruction.
+**Status: HISTORICAL BUILD RECOVERED / LOAD QUALIFIED / LIVE RUN GATED.** The pinned executable was recovered and the operator approved it (§5). Loadability on this GPU was qualified by the loading check in §3 (revision 4); the live run needs its own instruction.
 
 **Revision 2 (this amendment).** Revision 1 of this document said the pinned build was unavailable and that build 11429 was the only server. That was wrong: my searches truncated their output and missed a local build. The exact historical executable exists (§2, §5). Everything about the Arch build is retained only as a superseded fallback.
 
 **Revision 3 (2026-10-29, this amendment).** The first server-only loading check (§3) was inconclusive: the task-owned launcher refused the real server before the model could load, because its host inspection required the model to be mapped the moment the listener appeared, and a real llama.cpp server listens first. The launcher now waits, inside its startup deadline, for the first model mapping before inspecting (§3). No design field, limit, profile, executable, model or verdict rule changed. The loading check has to be run again with the fixed launcher before any live run.
+
+**Revision 4 (2026-10-29, this amendment).** Records the result of the rerun loading check (§3): LOAD-QUALIFIED. Nothing else changed; no design field, limit, profile, executable, model or verdict rule.
 
 ## 1. Pre-registered design
 
@@ -96,6 +98,20 @@ After PR #97 merged (main `761a6494e`), the operator approved one server-only ch
 
 **Cause and fix.** The inspection is single-shot and requires the model file to be mapped already (`linux-host-inspection.ts`). The test double maps its stand-in model before it listens, so tests never saw the gap; the real server maps while it loads. `launchTaskOwnedServerV0` now waits, inside the same `startupTimeoutMs` deadline and under the same cancellation, for the first model mapping in `/proc/<pid>/maps`, ending the server if it exits, never maps, times out or is cancelled. It then runs the unchanged inspection, which still requires every model mapping to be the pinned file. A test double that listens first and maps 1.5 s later is accepted; one that never maps is ended at the deadline, and cancellation during the wait ends it; the new test fails against the previous launcher with the same error as the real run. Without this fix `operate.ts --run` would have refused at its first approval.
 
+### Second loading check (2026-10-29, launcher fixed in PR #98, main `ef6f98613`): LOAD-QUALIFIED
+
+Same approval, same profile (`--fit off --n-gpu-layers 46`, port 18181), same pinned executable and model, through the fixed launcher; prerequisites rechecked first (all 29 dependency hashes OK, 21,128 MiB free, port free, no server, `--inspect` exit 0). One server was started, `GET /health` was polled and nothing else was sent: no completion, tokenise, embedding or warm-up request.
+
+| Observation | Value |
+| --- | --- |
+| Launcher returned (listener up, model mapped, inspection passed) | 23.7 s after start |
+| `/health` | 84 loading (503) answers, then `{"status":"ok"}`; 85 polls |
+| Ready | 45.2 s after start (21.5 s after the launcher returned; budget 120 s) |
+| GPU memory used, baseline → peak | 1,506 → 21,580 MiB of 23,028 MiB (about 1.4 GiB free while loaded) |
+| Stop | exit code 0; process and listener gone; port free; no llama-server; GPU back to 1,506 MiB |
+
+**What this establishes:** with this profile the server loads the pinned model on this GPU and, observed through the task-owned identity checks, reports itself ready. **What it does not:** that completions succeed or fit (nothing was requested), anything about answers or parity, or that the margin survives desktop VRAM growth. The margin is thin (about 1.4 GiB free after load, against an estimate of 2.0 GiB before compute buffers), so free VRAM must be rechecked immediately before the run (§6). `--n-gpu-layers` stays 46. Cleanup was confirmed. The private record (`result.json`, mode `0600`) is outside Git.
+
 ## 4. Evidence-integrity findings
 
 - **Readiness record (`*.readiness.json`) not read by the fresh-process reader: not material to the PASS conditions, and stated as a limitation of PASS (§1).** None of the PASS conditions depends on it. Each request is independently bound to a keyed admission that re-observes the process and listener, receipts and captures are verified by the unchanged readers, and a server that was not actually serving would fail those requests. The record is an operator-side note of a server-reported observation. No code change was made; extending the reader to check it is optional hardening, not a blocker.
@@ -130,7 +146,7 @@ Toolchain recorded in the build cache: CMake 4.4.4, GCC 16.2.1, nvcc 13.4.92, `C
 
 The operator and readers report the selected executable by what it is: `supportedBinary` is derived from the digest, so it reads `MATCH` here and would read `UNSUPPORTED` for any other build; a `MATCH` states file identity only.
 
-**Go / no-go: NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI and merged, and (b) a server-only loading check (§3), run again through the launcher as fixed in revision 3, has shown that the profile loads (the first attempt was inconclusive). The loading check is required, not optional, because `--n-gpu-layers 46` is an estimate and a failed first load would otherwise force a change to the profile after the pre-registration. If the check fails, nothing is lowered automatically: the operator decides whether to amend `--n-gpu-layers` (a new dated amendment, merged first) or stop. Only then does a new explicit instruction start the live run.
+**Go / no-go (revision 4: both conditions are now met once this amendment is merged; the live run still needs a new explicit instruction from the operator, who runs it in their own terminal). It was NO-GO until** (a) the PR carrying this amendment is reviewed with passing CI and merged, and (b) a server-only loading check (§3), run again through the launcher as fixed in revision 3, has shown that the profile loads (the first attempt was inconclusive; the second, LOAD-QUALIFIED, is recorded in §3). The loading check is required, not optional, because `--n-gpu-layers 46` is an estimate and a failed first load would otherwise force a change to the profile after the pre-registration. If the check fails, nothing is lowered automatically: the operator decides whether to amend `--n-gpu-layers` (a new dated amendment, merged first) or stop. Only then does a new explicit instruction start the live run.
 
 ## 6. Phase B procedure (only after a new explicit instruction from the operator)
 

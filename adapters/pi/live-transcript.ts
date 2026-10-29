@@ -84,14 +84,23 @@ export class LiveTranscriptV0 {
 	#evicted = 0;
 	#firstSeq = 1;
 	#cleared = false;
+	// Whether a run is open. As in adapters/pi/lifecycle.ts, a run lasts until agent_settled: an agent_start inside it is a continuation
+	// (retry, compaction recovery, queued follow-up) and an agent_end is not the end.
+	#runOpen = false;
 
 	/** Take one live runtime event. Anything that is not a message, a tool boundary or a run boundary is ignored. */
 	push(event: RpcEventV0): void {
 		if (this.#cleared) return;
 		const record = event.record;
-		if (event.type === "agent_start") this.#add({ kind: "run", state: "started" });
-		else if (event.type === "agent_end") this.#add({ kind: "run", state: "ended" });
-		else if (event.type === "message_end" && isRecord(record.message)) {
+		if (event.type === "agent_start") {
+			if (this.#runOpen) return;
+			this.#runOpen = true;
+			this.#add({ kind: "run", state: "started" });
+		} else if (event.type === "agent_settled") {
+			if (!this.#runOpen) return;
+			this.#runOpen = false;
+			this.#add({ kind: "run", state: "ended" });
+		} else if (event.type === "message_end" && isRecord(record.message)) {
 			const role = record.message.role;
 			if (role !== "user" && role !== "assistant") return;
 			const shown = cut(textOf(record.message.content), LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0);

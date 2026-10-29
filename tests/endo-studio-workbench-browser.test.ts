@@ -157,7 +157,7 @@ suite("the DEVELOP workbench", () => {
 				},
 			},
 		});
-		session.live_({ type: "agent_end", record: {} });
+		session.live_({ type: "agent_settled", record: {} });
 		await refresh(page);
 		await page.waitFor("document.querySelector('[data-testid=turn-assistant]')");
 		expect(await page.text("[data-testid=turn-user]")).toContain("What is 4 plus 5?");

@@ -19,6 +19,9 @@ export function useWorkbench(active: boolean) {
 	const shown = useRef(active);
 	shown.current = active;
 	const running = useRef(false);
+	// A read asked for while another is running: its answer may predate what the asker just did (a proposal made meanwhile), so one fresh read
+	// follows the running one rather than being dropped.
+	const again = useRef(false);
 	const controller = useRef<AbortController | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const entered = useRef(false);
@@ -47,8 +50,12 @@ export function useWorkbench(active: boolean) {
 	}, []);
 
 	const read = useCallback(async (): Promise<void> => {
-		if (running.current) return;
+		if (running.current) {
+			again.current = true;
+			return;
+		}
 		running.current = true;
+		again.current = false;
 		dispatch({ type: "started" });
 		try {
 			const status = await send({ kind: "status" });
@@ -64,7 +71,8 @@ export function useWorkbench(active: boolean) {
 			running.current = false;
 			dispatch({ type: "finished" });
 			// State from this read is applied before the timer decides.
-			queueMicrotask(schedule);
+			if (again.current && shown.current) queueMicrotask(() => void reading.current?.());
+			else queueMicrotask(schedule);
 		}
 	}, [send, schedule]);
 	reading.current = read;

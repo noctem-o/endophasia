@@ -41,6 +41,7 @@ describe("the live transcript", () => {
 		t.push(textMessage("system", "not shown"));
 		t.push(textMessage("toolResult", "not shown"));
 		t.push({ type: "agent_end", record: {} });
+		t.push({ type: "agent_settled", record: {} });
 		const view = t.view();
 		expect(
 			view.items.map((i) => [
@@ -66,6 +67,19 @@ describe("the live transcript", () => {
 			{ seq: 5, kind: "tool", callId: "c1", name: "read", status: "ok" },
 			{ seq: 6, kind: "run", state: "ended" },
 		]);
+	});
+
+	it("keeps one run open from its first agent_start to agent_settled, across retries and continuations", () => {
+		const t = new LiveTranscriptV0();
+		const states = () => t.view().items.map((i) => (i.kind === "run" ? i.state : i.kind));
+		t.push({ type: "agent_start", record: {} });
+		t.push({ type: "agent_end", record: { willRetry: true } });
+		t.push({ type: "agent_start", record: {} });
+		t.push({ type: "agent_end", record: {} });
+		expect(states()).toEqual(["started"]);
+		t.push({ type: "agent_settled", record: {} });
+		t.push({ type: "agent_settled", record: {} });
+		expect(states()).toEqual(["started", "ended"]);
 	});
 
 	it("marks a tool error, and reports a gap as a gap: the oldest items are evicted and counted", () => {

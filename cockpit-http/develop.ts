@@ -36,6 +36,7 @@ import {
 	type EndoCockpitDevelopTokensV0,
 	type EndoCockpitTimelineEntryV0,
 	isEndoCockpitDevelopSelectorV0,
+	isEndoCockpitDevelopSessionRowV0,
 	parseEndoCockpitDevelopActivityCursorV0,
 	parseEndoCockpitDevelopSessionsCursorV0,
 	validateEndoCockpitDevelopSessionsV0,
@@ -150,10 +151,20 @@ interface Qualified {
 	trajectory: EndoTrajectoryV0 | null;
 }
 
-/** The authoritative admission Compare uses. A source that fails it for any reason degrades this one row, never the listing. */
+const NOT_QUALIFIED: Qualified = { qualification: "insufficient", reason: "not-qualified", trajectory: null };
+
+/**
+ * The authoritative admission Compare uses, plus what DEVELOP presents. A recording that fails either, for any reason (an
+ * incomplete lifecycle can pass the trajectory projection and still reduce to a state the presentation cannot state), degrades this
+ * one row, never the listing.
+ */
 function qualify(recording: Recording): Qualified {
 	try {
 		const trajectory = projectEndoCockpitRecordingV0(recording.events, recording.selection);
+		const { counts, lastRun } = reduceEndoSessionOverviewV0(recording.events);
+		const ended = counts.completed + counts.failed + counts.aborted + counts.unclassified + counts.interrupted;
+		// Every ended run was counted as a run, and an outcome exists only for a run: otherwise the lifecycle is incomplete.
+		if (ended > counts.runs || (lastRun !== null && counts.runs < 1)) return NOT_QUALIFIED;
 		return { qualification: "inspectable", reason: null, trajectory };
 	} catch (error) {
 		if (error instanceof EndoCockpitComparisonRefusalV0) {
@@ -162,8 +173,19 @@ function qualify(recording: Recording): Qualified {
 			if (error.refusal === "source-degraded" && recording.selection.source === "dsh")
 				return { qualification: "insufficient", reason: "import-incomplete", trajectory: null };
 		}
-		return { qualification: "insufficient", reason: "not-qualified", trajectory: null };
+		return NOT_QUALIFIED;
 	}
+}
+
+/** The row for one recording and the qualification it was built from; a row the contract rejects is the degraded row. */
+function qualifiedRow(
+	recording: Recording,
+	selector: string,
+): { row: EndoCockpitDevelopSessionRowV0; qualified: Qualified } {
+	const qualified = qualify(recording);
+	const row = rowOf(recording, selector, qualified);
+	if (isEndoCockpitDevelopSessionRowV0(row)) return { row, qualified };
+	return { row: rowOf(recording, selector, NOT_QUALIFIED), qualified: NOT_QUALIFIED };
 }
 
 function rowOf(recording: Recording, selector: string, qualified: Qualified): EndoCockpitDevelopSessionRowV0 {
@@ -232,7 +254,7 @@ export function projectEndoCockpitDevelopSessionsV0(
 	)
 		throw new EndoCockpitComparisonRefusalV0("continuation-invalid");
 	const page = rows.slice(offset, offset + ENDO_COCKPIT_DEVELOP_SESSIONS_PAGE_SIZE_V0);
-	const sessions = page.map((recording) => rowOf(recording, selectorOf(recording), qualify(recording)));
+	const sessions = page.map((recording) => qualifiedRow(recording, selectorOf(recording)).row);
 	const next = offset + sessions.length;
 	const record: EndoCockpitDevelopSessionsV0 = {
 		schemaVersion: ENDO_COCKPIT_DEVELOP_SESSIONS_SCHEMA_V0,
@@ -335,7 +357,7 @@ export function projectEndoCockpitDevelopSessionV0(
 	const matches = generation === null ? [] : rows.filter((row) => selectorOf(row) === selector);
 	if (generation === null || matches.length !== 1) throw new EndoCockpitComparisonRefusalV0("not-found");
 	const recording = matches[0]!;
-	const qualified = qualify(recording);
+	const { row: selectorRow, qualified } = qualifiedRow(recording, selector);
 	if (qualified.trajectory === null) throw new EndoCockpitComparisonRefusalV0("not-found");
 	const total = recording.events.length;
 	const offset = parsed?.offset ?? 0;
@@ -368,7 +390,6 @@ export function projectEndoCockpitDevelopSessionV0(
 		recording.selection.source === "pi" && isEndoCockpitSourceKindAdmittedV0(qualified.trajectory.source.attachment)
 			? qualified.trajectory.source.attachment
 			: null;
-	const selectorRow = rowOf(recording, selector, qualified);
 	const record: EndoCockpitDevelopSessionV0 = {
 		schemaVersion: ENDO_COCKPIT_DEVELOP_SESSION_SCHEMA_V0,
 		projectionVersion: ENDO_COCKPIT_DEVELOP_SESSION_PROJECTION_V0,

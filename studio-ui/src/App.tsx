@@ -58,7 +58,7 @@ export function App(): ReactElement {
 	}, [pending, workspace, compare.state.inventory, compare.state.request, compare.choose]);
 	const showObserve = (row: EndoCockpitDevelopSessionRowV0, attachment: string | null) => {
 		observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: row.session } });
-		if (attachment !== null) observe.dispatch({ type: "select-attachment", name: attachment });
+		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
 		setWorkspace("observe");
 		// One explicit read, starting just before the session's first event; Observe shows its own window and may need paging.
 		observe.goTo(Math.max(0, row.firstStorageSequence - 1));

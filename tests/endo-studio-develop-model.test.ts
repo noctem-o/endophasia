@@ -1,5 +1,7 @@
 // DEVELOP frontend, pure parts: the browser wire gate and the reducer, against real server records and one-field mutations of them.
 import { describe, expect, it } from "vitest";
+import { readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
+import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import {
 	type DevelopState,
 	developFiltersActive,
@@ -19,6 +21,10 @@ import {
 	readDevelopSessions,
 	sessionsCursor,
 } from "../studio-ui/src/model/develop-wire.ts";
+import { initialState, reduce } from "../studio-ui/src/model/state.ts";
+import { ingestAll, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
+import { OTHER_KEY } from "./cockpit-keyed.ts";
+import { compareEvents } from "./studio-compare-fixtures.ts";
 import { developRecords } from "./studio-develop-fixtures.ts";
 
 const { sessions, session, selectorOf } = developRecords();
@@ -305,5 +311,62 @@ describe("the view helpers", () => {
 		expect(developFiltersActive(filtered.filters)).toBe(true);
 		expect(listCoverage(filtered, 1)).toContain("Filters apply to the");
 		expect(listCoverage({ ...s, inventory: null }, 0)).toBe("");
+	});
+});
+
+describe("the hand-off to Observe", () => {
+	const root = tempRoot("endo-develop-handoff-");
+	ingestAll(root, compareEvents());
+	seedRegistry(root, "pi.default");
+	const older = readEndoCockpitSnapshotV0(root, { digestKey: OTHER_KEY });
+	openEndoHarnessRegistryV0(root, "pi.second"); // registered after the older snapshot was read
+	const newer = readEndoCockpitSnapshotV0(root, { digestKey: OTHER_KEY });
+	const request = { afterSequence: 0, limit: 100 };
+	const read = (s: ReturnType<typeof initialState>, snapshot: typeof older) =>
+		reduce(s, {
+			type: "read-finished",
+			reply: { kind: "snapshot", snapshot },
+			request,
+			durationMs: 1,
+			at: new Date(0),
+			now: 0,
+		});
+	const attachments = (snapshot: typeof older) => snapshot.runtimes.map((r) => r.identity.source.attachment);
+
+	it("keeps an attachment the held snapshot does not list through the next read and selects it when that read lists it", () => {
+		expect(attachments(older)).toEqual(["pi.default"]);
+		expect(attachments(newer)).toEqual(["pi.default", "pi.second"]);
+		let s = read(initialState(), older);
+		expect(s.attachment).toBe("pi.default");
+		// The old snapshot cannot show pi.second yet: nothing is selected now, and the wish is kept.
+		s = reduce(s, { type: "want-attachment", name: "pi.second" });
+		expect(s.attachment).toBe("pi.default");
+		expect(s.wantedAttachment).toBe("pi.second");
+		s = read(s, newer);
+		expect(s.attachment).toBe("pi.second");
+		expect(s.wantedAttachment).toBeNull();
+	});
+
+	it("selects at once an attachment the held snapshot lists, and ends the wait on a read that does not list it or fails", () => {
+		let s = read(initialState(), newer);
+		s = reduce(s, { type: "want-attachment", name: "pi.second" });
+		expect(s).toMatchObject({ attachment: "pi.second", wantedAttachment: null });
+		// A name no snapshot lists never becomes the selection, and the wait does not outlive the read that could have admitted it.
+		let waiting = reduce(read(initialState(), older), { type: "want-attachment", name: "pi.ghost" });
+		waiting = read(waiting, newer);
+		expect(waiting).toMatchObject({ attachment: "pi.default", wantedAttachment: null });
+		let failed = reduce(read(initialState(), older), { type: "want-attachment", name: "pi.second" });
+		failed = reduce(failed, {
+			type: "read-finished",
+			reply: { kind: "unreachable", reason: "network" },
+			request,
+			durationMs: 1,
+			at: new Date(0),
+			now: 0,
+		});
+		expect(failed.wantedAttachment).toBeNull();
+		// The operator's own choice is still limited to what the snapshot lists.
+		const own = read(initialState(), older);
+		expect(reduce(own, { type: "select-attachment", name: "pi.second" })).toBe(own);
 	});
 });

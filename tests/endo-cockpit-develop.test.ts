@@ -192,6 +192,32 @@ describe("DEVELOP session inventory", () => {
 		expect(validateEndoCockpitDevelopSessionsV0(record)).not.toBeNull();
 	});
 
+	it("contains an incomplete lifecycle to its own recording: the rest of the inventory still appears", async () => {
+		// Without lifecycle.run-started the trajectory still qualifies, but the lifecycle reduces to an outcome with no run, which the
+		// DEVELOP row contract refuses. That used to fail the whole listing (one bad recording hid every healthy one).
+		const broken = comparePiEvents("baseline", "endo.session.pi.broken").filter(
+			(e) => e.kind !== "lifecycle.run-started",
+		);
+		const root = seed([...compareEvents(), ...broken]);
+		const record = list(root);
+		expect(validateEndoCockpitDevelopSessionsV0(record)).not.toBeNull();
+		const rows = Object.fromEntries(record.sessions.map((r) => [r.session, r]));
+		expect(rows["endo.session.pi.broken"]).toMatchObject({
+			qualification: "insufficient",
+			reason: "not-qualified",
+			selector: null,
+			recorded: null,
+		});
+		expect(rows["endo.session.pi.a"]).toMatchObject({ qualification: "inspectable" });
+		expect(rows["endo.session.dsh.session-1"]).toMatchObject({ qualification: "inspectable" });
+		expect(detail(root, rows["endo.session.pi.a"]!.selector!).session.session).toBe("endo.session.pi.a");
+		// And over HTTP: a 200 listing, not an internal error.
+		const server = await serve(root, { readBudget: { duty: 1, burstMs: 60_000 } });
+		const res = await get(server, SESSIONS);
+		expect(res.status).toBe(200);
+		expect((JSON.parse(res.body) as EndoCockpitDevelopSessionsV0).sessions).toHaveLength(3);
+	});
+
 	it("never carries a canary planted in a payload, an id or a path", () => {
 		const base = comparePiEvents("baseline", "endo.session.pi.p");
 		const planted: EndoEventV0[] = base.map((e) =>

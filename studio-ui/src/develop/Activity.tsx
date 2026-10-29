@@ -40,8 +40,23 @@ export function Activity({
 }): ReactElement {
 	const { state } = develop;
 	const detail = state.detail;
-	const [categories, setCategories] = useState<ReadonlySet<string>>(new Set());
-	const [flaggedOnly, setFlaggedOnly] = useState(false);
+	// The filters belong to the session they were set in: a different session starts unfiltered, so a filter set elsewhere can never
+	// hide this session's events behind a chip that is not there.
+	const [filter, setFilter] = useState<{
+		owner: string | null;
+		categories: ReadonlySet<string>;
+		flaggedOnly: boolean;
+	}>({
+		owner: null,
+		categories: new Set(),
+		flaggedOnly: false,
+	});
+	const own = filter.owner === state.selected;
+	const categories: ReadonlySet<string> = own ? filter.categories : new Set();
+	const flaggedOnly = own ? filter.flaggedOnly : false;
+	const setCategories = (next: ReadonlySet<string>) =>
+		setFilter({ owner: state.selected, categories: next, flaggedOnly });
+	const setFlaggedOnly = (next: boolean) => setFilter({ owner: state.selected, categories, flaggedOnly: next });
 	const reading = state.request !== null;
 	const body = (() => {
 		if (state.selected === null)
@@ -165,21 +180,23 @@ export function Activity({
 				<div className="toolbar toolbar-spaced">
 					<fieldset className="chips">
 						<legend className="sr-only">Category of loaded events</legend>
-						{CATEGORIES.filter((name) => detail.activity.byCategory[name] > 0).map((name) => (
-							<button
-								key={name}
-								type="button"
-								className="chip"
-								aria-pressed={categories.has(name)}
-								onClick={() => {
-									const next = new Set(categories);
-									if (!next.delete(name)) next.add(name);
-									setCategories(next);
-								}}
-							>
-								{known(CATEGORY, name) ?? name} {grouped(detail.activity.byCategory[name])}
-							</button>
-						))}
+						{CATEGORIES.filter((name) => detail.activity.byCategory[name] > 0 || categories.has(name)).map(
+							(name) => (
+								<button
+									key={name}
+									type="button"
+									className="chip"
+									aria-pressed={categories.has(name)}
+									onClick={() => {
+										const next = new Set(categories);
+										if (!next.delete(name)) next.add(name);
+										setCategories(next);
+									}}
+								>
+									{known(CATEGORY, name) ?? name} {grouped(detail.activity.byCategory[name])}
+								</button>
+							),
+						)}
 					</fieldset>
 					<label className="check">
 						<input
@@ -189,6 +206,16 @@ export function Activity({
 						/>
 						Flagged only
 					</label>
+					{categories.size === 0 && !flaggedOnly ? null : (
+						<button
+							type="button"
+							className="btn small-btn"
+							data-testid="clear-activity-filters"
+							onClick={() => setFilter({ owner: state.selected, categories: new Set(), flaggedOnly: false })}
+						>
+							Clear filters
+						</button>
+					)}
 				</div>
 				<p className="window-line dim" data-testid="activity-coverage">
 					{shown.length === loaded.length ? "" : `${shown.length} of `}

@@ -110,6 +110,26 @@ suite("DEVELOP", () => {
 		expect(api(page, "?cursor=a1-")).toHaveLength(1);
 	});
 
+	it("starts each session unfiltered, so a category chosen elsewhere never hides a session behind a chip that is not there", async () => {
+		const { page } = await open(developStore());
+		await pick(page, "pi.a");
+		const tool = "[...document.querySelectorAll('.chips button')].find(b => b.textContent.startsWith('tool'))";
+		await page.eval(`${tool}.click()`);
+		await page.waitFor("document.querySelector('[data-testid=clear-activity-filters]')");
+		expect(await page.eval<number>("document.querySelectorAll('[data-event-row]').length")).toBe(4);
+		// The DSH recording has no tool-category events: with the old retained filter it showed no rows and no chip to clear.
+		await pick(page, "dsh.session-1");
+		expect(await page.eval<number>("document.querySelectorAll('[data-event-row]').length")).toBe(30);
+		expect(await page.eval<boolean>("!document.querySelector('[data-testid=clear-activity-filters]')")).toBe(true);
+		// An active filter is always visible and clearable, even if the loaded events happened not to match it.
+		await page.eval(
+			"[...document.querySelectorAll('.chips button')].find(b => b.textContent.startsWith('lifecycle')).click()",
+		);
+		await page.eval("document.querySelector('[data-testid=clear-activity-filters]').click()");
+		expect(await page.eval<number>("document.querySelectorAll('[data-event-row]').length")).toBe(30);
+		expect(page.seen.problems).toEqual([]);
+	});
+
 	it("drops a selection the log no longer supports, with a sentence, and rediscovers on request", async () => {
 		const root = developStore();
 		const { page } = await open(root);

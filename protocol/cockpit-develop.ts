@@ -290,6 +290,10 @@ function isRow(value: unknown): value is EndoCockpitDevelopSessionRowV0 {
 	}
 }
 
+/** Whether one row satisfies the row contract: what discovery checks per recording, so one bad recording never fails the list. */
+export const isEndoCockpitDevelopSessionRowV0 = (value: unknown): value is EndoCockpitDevelopSessionRowV0 =>
+	isRow(value);
+
 function pageOk(
 	page: unknown,
 	count: number,

@@ -3,6 +3,14 @@
 ## Unreleased
 
 ### Added
+- **DEVELOP live workbench for one governed Pi session (opt-in):** `endo harness attach <root> --control --workbench` serves the Studio
+  page on its own loopback address behind a small command broker. The page shows the live connection and run state the broker
+  reports, a private in-memory conversation (never written to evidence or any read route; Pi keeps its own session file), and can
+  request one new prompt, which is sent only after the operator types its exact phrase on the attached terminal. The prompt has its own
+  record chain (`workbench.prompt-*`, by keyed digest only). Pairing by a one-time terminal code, a single in-memory grant, exact
+  same-origin guards, closed routes, no shell, no PTY, no raw RPC. `endo studio` remains read-only (its server gains only a constant
+  "no workbench" status answer). STEER/QUEUE/STOP through the broker, OMP and streaming are not built. See
+  [docs/develop-workbench.md](docs/develop-workbench.md).
 - **Develop workspace (read-only session desk) in Endophasia Web:** browse the recorded Pi and DSH sessions in a store, group them by
   source, select one and read its recorded lifecycle state (as recorded, never as a live process), counts, positions, per-run usage as
   reported, and its events in storage order with provenance marks, with explicit paging, client-side filters that say they cover only

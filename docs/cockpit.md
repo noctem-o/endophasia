@@ -512,6 +512,16 @@ source causes. The original DSH files are never opened: checkpoints describe pre
 now. DSH turn/run, tool-request/execution, recovery-closer/interruption and missing usage/timing distinctions remain intact;
 no server read time or cross-domain equality claim is introduced.
 
+## The optional workbench hook (implemented)
+
+`startEndoCockpitServerV0` accepts one optional `workbench` handler (`protocol/workbench-http.ts`), supplied only by the process that
+is itself the writable boundary (`endo harness attach --control --workbench`); `endo studio` never passes one. Without it the server
+is unchanged: GET only, every POST a 405, and the one extra answer is a constant `GET api/v0/workbench/status` →
+`{"available":false,"schemaVersion":"endo.workbench-status.v0"}` (so a page can ask quietly). With it, the routes under
+`api/v0/workbench/` pass the same Host, Origin and Fetch Metadata guards and, for a POST, an Origin that is exactly the server's own,
+`Content-Type: application/json` and a body of at most 8 KiB; the server forwards the single `x-endo-grant` header and the parsed body
+and charges nothing to the read budget because it reads no store. The handler decides what any command means.
+
 ## DEVELOP session desk projection (implemented)
 
 Two bounded, versioned presentations serve the DEVELOP workspace of Endophasia Web. They are projections of **one verified

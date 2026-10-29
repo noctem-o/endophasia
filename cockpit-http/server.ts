@@ -40,6 +40,7 @@ import {
 	readEndoCockpitSnapshotV0,
 	readEndoCockpitTimelineV0,
 } from "../cockpit/index.ts";
+import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
 
 import { readEndoCockpitCompareCandidatesV0, readEndoCockpitSelectedComparisonV0 } from "./candidates.ts";
 import {
@@ -175,28 +176,6 @@ export interface EndoCockpitServerV0 {
 	close(): Promise<void>;
 }
 
-/**
- * What a host that serves a command surface gives the server: ONE handler for the routes under `api/v0/workbench/`. Without it, which
- * is every `endo studio` launch, the server has no POST route at all and behaves exactly as before. With it the server still answers
- * every request only if it passes the Host, Origin and Fetch Metadata guards, and a POST additionally needs an Origin that is
- * exactly this server's own, `Content-Type: application/json` and a body of at most `MAX_WORKBENCH_BODY` bytes. The server forwards
- * the grant header and the parsed body and nothing else; it neither reads a store nor charges the read budget for these routes, and
- * the handler (not this module) decides what any command means.
- */
-export interface EndoCockpitWorkbenchRequestV0 {
-	method: "GET" | "POST";
-	/** The path segments after `api/v0/workbench/`. */
-	route: string[];
-	/** The raw query string without `?`. */
-	query: string;
-	/** The value of the single `x-endo-grant` header, or null. */
-	grant: string | null;
-	/** The parsed JSON body of a POST, or null for a GET. */
-	body: unknown;
-}
-export interface EndoCockpitWorkbenchV0 {
-	handle(request: EndoCockpitWorkbenchRequestV0): Promise<{ status: number; body: unknown }>;
-}
 const MAX_WORKBENCH_BODY = 8 * 1024;
 /** The only statuses a workbench handler may answer with. */
 const WORKBENCH_STATUSES: readonly number[] = [200, 202, 400, 401, 403, 404, 409, 429, 503];
@@ -547,7 +526,13 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		method: "GET" | "POST",
 	): Promise<void> => {
 		try {
-			if (workbench === undefined) return sendRefusal(response, "not-found");
+			if (workbench === undefined) {
+				// A read-only server has no workbench, and says so with one constant answer, so a page can ask quietly (a 404 would be
+				// logged by every browser as a failed request). Nothing else under this prefix exists here.
+				if (method === "GET" && segments.length === 4 && segments[3] === "status" && rawQuery === "")
+					return send(response, 200, '{"available":false,"schemaVersion":"endo.workbench-status.v0"}\n');
+				return sendRefusal(response, "not-found");
+			}
 			if (rawQuery.length > MAX_QUERY_CHARS) return sendRefusal(response, "bad-request");
 			const grants = request.headers["x-endo-grant"];
 			if (rawHeaderCount(request, "x-endo-grant") > 1) return sendRefusal(response, "bad-request");

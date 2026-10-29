@@ -16,8 +16,9 @@
 
 import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
-import { type EndoCockpitServerV0, type EndoCockpitWorkbenchV0, startEndoCockpitServerV0 } from "./server.ts";
+import { type EndoCockpitServerV0, startEndoCockpitServerV0 } from "./server.ts";
 import { loadEndoStudioUiFilesV0 } from "./studio-ui.ts";
 
 /** The dedicated cockpit key file: beside the installation key, so it follows the same location rules. */

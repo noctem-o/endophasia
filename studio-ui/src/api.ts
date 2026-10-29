@@ -23,6 +23,15 @@ import {
 	sessionsCursor,
 } from "./model/develop-wire.ts";
 import type { ReadRequest } from "./model/state.ts";
+import {
+	readWorkbenchCommand,
+	readWorkbenchGrant,
+	readWorkbenchStatus,
+	readWorkbenchTranscript,
+	type WorkbenchReply,
+	type WorkbenchRequest,
+	workbenchFailure,
+} from "./model/workbench-wire.ts";
 
 export interface Fetched {
 	reply: Reply;
@@ -155,6 +164,114 @@ export async function fetchDevelop(request: DevelopRequest, cancel: AbortSignal)
 		};
 	}
 }
+
+/**
+ * The workbench routes: one fixed prefix, a closed list, GET or POST. The grant (held in the page's memory, never in a URL, a cookie or
+ * storage) goes in one header; a command is a JSON POST, which the browser sends with its own Origin. A request is built here from
+ * validated pieces, never from a display value.
+ */
+export async function fetchWorkbench(
+	request: WorkbenchRequest,
+	grant: string | null,
+	cancel: AbortSignal,
+): Promise<WorkbenchReply> {
+	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+	const bad = (message: string): WorkbenchReply => ({
+		kind: "failure",
+		status: 0,
+		code: "bad-request",
+		message,
+		retrySeconds: null,
+	});
+	let route = "./api/v0/workbench/status";
+	let body: string | null = null;
+	if (request.kind === "transcript") {
+		if (!Number.isSafeInteger(request.after) || request.after < 0) return bad("Invalid transcript position.");
+		route = `./api/v0/workbench/transcript${request.after === 0 ? "" : `?after=${request.after}`}`;
+	} else if (request.kind === "pair") {
+		if (!/^[A-Za-z0-9-]{1,16}$/.test(request.code)) return bad("A pairing code is letters, digits and one hyphen.");
+		route = "./api/v0/workbench/pair";
+		body = JSON.stringify({ code: request.code });
+	} else if (request.kind === "propose") {
+		route = "./api/v0/workbench/prompt/propose";
+		body = JSON.stringify({ message: request.message });
+	} else if (request.kind === "command" || request.kind === "discard") {
+		if (!/^endo\.evidence\.workbench-prompt-[0-9a-f]{32}$/.test(request.proposalId))
+			return bad("Invalid prompt reference.");
+		if (request.kind === "command") route = `./api/v0/workbench/prompt/${request.proposalId}`;
+		else {
+			route = "./api/v0/workbench/prompt/discard";
+			body = JSON.stringify({ proposalId: request.proposalId });
+		}
+	}
+	try {
+		const response = await fetch(new URL(route, document.baseURI), {
+			method: body === null ? "GET" : "POST",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			headers: {
+				...(grant === null ? {} : { "X-Endo-Grant": grant }),
+				...(body === null ? {} : { "Content-Type": "application/json" }),
+			},
+			...(body === null ? {} : { body }),
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		let json: unknown = null;
+		try {
+			json = await response.json();
+		} catch {
+			/* a refusal whose body cannot be read is still a refusal */
+		}
+		if (response.status === 404 && request.kind === "status") return { kind: "absent" };
+		if (response.status === 200 && request.kind === "status" && isNoWorkbench(json)) return { kind: "absent" };
+		if (response.status !== 200 && response.status !== 202)
+			return workbenchFailure(response.status, json, response.headers.get("retry-after"));
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
+			throw new Error("content type");
+		if (request.kind === "status") {
+			const record = readWorkbenchStatus(json);
+			if (record !== null) return { kind: "status", record };
+		} else if (request.kind === "transcript") {
+			const record = readWorkbenchTranscript(json);
+			if (record !== null) return { kind: "transcript", record };
+		} else if (request.kind === "pair") {
+			const record = readWorkbenchGrant(json);
+			if (record !== null) return { kind: "grant", record };
+		} else {
+			const record = readWorkbenchCommand(json);
+			if (record !== null) return { kind: "command", record };
+		}
+		return {
+			kind: "failure",
+			status: response.status,
+			code: "",
+			message: "Unsupported or malformed workbench response. Nothing from it was accepted.",
+			retrySeconds: null,
+		};
+	} catch {
+		return {
+			kind: "failure",
+			status: 0,
+			code: "",
+			message: cancel.aborted
+				? "Request interrupted."
+				: timeout.aborted
+					? "The request timed out."
+					: "The workbench could not be reached. It may have ended: that is not shown by this message alone.",
+			retrySeconds: null,
+		};
+	}
+}
+
+/** The read-only server's constant answer: this server has no workbench. */
+const isNoWorkbench = (v: unknown): boolean =>
+	typeof v === "object" &&
+	v !== null &&
+	Object.keys(v).sort().join() === "available,schemaVersion" &&
+	(v as { available: unknown }).available === false &&
+	(v as { schemaVersion: unknown }).schemaVersion === "endo.workbench-status.v0";
 
 const REQUEST_TIMEOUT_MS = 60_000;
 

@@ -24,7 +24,6 @@
 // any store read or write other than the record chain above.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../cockpit-http/server.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import {
@@ -34,6 +33,7 @@ import {
 	type EndoWorkbenchKindV0,
 	type EndoWorkbenchRefusalReasonV0,
 } from "../../protocol/workbench.ts";
+import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";

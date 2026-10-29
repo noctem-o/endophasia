@@ -101,6 +101,12 @@ says `pending`, and the late acceptance is recorded after it.
 - **An experiment condition** can carry `interventions` per task ([experiments.md](experiments.md)).
 - **A replay re-issues the intervention at the recorded point**, as STOP is ([replay.md](replay.md)), and reports it.
 
+## A new prompt is not an intervention
+
+STEER, QUEUE and STOP change a run that is already open. A **new prompt** opens one, and has its own chain
+(`workbench.prompt-proposed → authorized → dispatched → accepted | refused`, [develop-workbench.md](develop-workbench.md)), sent
+through the DEVELOP workbench broker after the operator types its exact phrase on the attached terminal. The two chains are kept apart.
+
 ## What is not built
 
 Model-originated proposals; an external authority provider; observation and interpretation records are in the schema

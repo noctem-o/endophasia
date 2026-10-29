@@ -244,3 +244,31 @@ export function LifecycleGlyph({ state }: { state: string }): ReactElement {
 		</svg>
 	);
 }
+
+/**
+ * A LIVE connection, as the broker reports it: notched pentagons, a family of their own (not the recorded-lifecycle squares, not the
+ * provenance discs). Solid connected, hollow disconnected, dashed unknown. A word always sits beside it.
+ */
+export function ConnectionGlyph({ state }: { state: string }): ReactElement {
+	const path = "M2.2 2.4h5.6L10 6 7.8 9.6H2.2z";
+	const body =
+		state === "connected" ? (
+			<path d={path} fill="currentColor" />
+		) : state === "disconnected" ? (
+			<path d={path} {...RING} strokeWidth="1.3" />
+		) : (
+			<path d={path} {...RING} strokeWidth="1.3" strokeDasharray="1.6 1.6" />
+		);
+	return (
+		<svg
+			viewBox="0 0 12 12"
+			width={12}
+			height={12}
+			aria-hidden="true"
+			focusable="false"
+			className={`glyph conn-${state}`}
+		>
+			{body}
+		</svg>
+	);
+}

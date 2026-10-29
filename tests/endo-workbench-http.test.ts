@@ -52,7 +52,7 @@ async function startBroker() {
 const errorOf = (r: { body: string }) => (JSON.parse(r.body) as { error: string }).error;
 
 describe("the read-only server has no command surface", () => {
-	it("refuses every POST and knows no workbench route, exactly as before", async () => {
+	it("refuses every POST and has no workbench: one constant status answer, nothing else", async () => {
 		const root = tempRoot("endo-wb-ro-");
 		ingestAll(root, [
 			event("harness.attached", {}, { session: "endo.session.pi.x", producer: "pi-rpc-adapter:pi.default" }),
@@ -68,7 +68,13 @@ describe("the read-only server has no command surface", () => {
 				`HEAD ${capabilityOf(server)}${API}status HTTP/1.1\r\nHost: 127.0.0.1:${server.port}\r\n\r\n`,
 			),
 		).toMatch(/^HTTP\/1\.1 405/);
-		expect((await get(server, `${API}status`)).status).toBe(404);
+		// The one constant answer: this server has no workbench (a quiet probe; nothing else under the prefix exists).
+		const probe = await get(server, `${API}status`);
+		expect([probe.status, JSON.parse(probe.body)]).toEqual([
+			200,
+			{ available: false, schemaVersion: "endo.workbench-status.v0" },
+		]);
+		expect((await get(server, `${API}status?x=1`)).status).toBe(404);
 		expect((await get(server, `${API}transcript`)).status).toBe(404);
 	});
 });

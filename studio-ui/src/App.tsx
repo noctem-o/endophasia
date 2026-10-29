@@ -17,6 +17,7 @@ import { Note } from "./ui/text.tsx";
 import { useCompare } from "./use-compare.ts";
 import { useDevelop } from "./use-develop.ts";
 import { useObserve } from "./use-observe.ts";
+import { useWorkbench } from "./use-workbench.ts";
 
 // The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
 // capability-prefixed assets path) is exercised by every browser run.
@@ -36,6 +37,8 @@ export function App(): ReactElement {
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
 	const compare = useCompare(workspace === "compare");
 	const develop = useDevelop(workspace === "develop");
+	const workbench = useWorkbench(workspace === "develop");
+	const workbenchOn = workbench.state.availability === "available";
 	// A hand-off from DEVELOP to Compare: the recording is preselected as Recording A once Compare's own inventory has it as selectable.
 	const [pending, setPending] = useState<{ source: "pi" | "dsh"; session: string } | null>(null);
 	const [compareNotice, setCompareNotice] = useState<string | null>(null);
@@ -65,6 +68,14 @@ export function App(): ReactElement {
 		setWorkspace("observe");
 		// One explicit read, starting just before the session's first event; Observe shows its own window and may need paging.
 		observe.goTo(Math.max(0, row.firstStorageSequence - 1));
+	};
+	// The live session has no recorded first position to start from: Observe is asked for its latest window, filtered to the session.
+	const showObserveLive = (alias: string | null, attachment: string | null) => {
+		if (observeBlocked !== null) return;
+		if (alias !== null) observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: alias } });
+		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
+		setWorkspace("observe");
+		observe.refresh();
 	};
 	const showCompare = (row: EndoCockpitDevelopSessionRowV0) => {
 		setCompareNotice(null);
@@ -134,7 +145,12 @@ export function App(): ReactElement {
 				<span className="spacer" />
 				<span
 					className="readonly"
-					title="This page only reads. It cannot change a store, steer a runtime or start anything."
+					data-testid="authority-chip"
+					title={
+						workbenchOn
+							? "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
+							: "This page only reads. It cannot change a store, steer a runtime or start anything."
+					}
 				>
 					<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
 						<rect
@@ -149,10 +165,18 @@ export function App(): ReactElement {
 						/>
 						<path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
 					</svg>
-					Read-only
+					{workbenchOn
+						? workbench.state.grant === null
+							? "Workbench · not paired"
+							: "Workbench · paired"
+						: "Read-only"}
 				</span>
 				<span id="read-status" className="read-status" aria-live="polite">
-					{workspace === "observe" ? readStatusText(state) : "Read-only workspace"}
+					{workspace === "observe"
+						? readStatusText(state)
+						: workbenchOn
+							? "Live workbench"
+							: "Read-only workspace"}
 				</span>
 				{workspace === "observe" ? (
 					<button
@@ -188,6 +212,8 @@ export function App(): ReactElement {
 							onObserve={showObserve}
 							onCompare={showCompare}
 							observeBlocked={observeBlocked}
+							workbench={workbench}
+							onObserveLive={showObserveLive}
 						/>
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>

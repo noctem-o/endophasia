@@ -1,8 +1,9 @@
 # DEVELOP workbench: design for a governed live Pi session
 
-Status: **design, not implemented.** This document fixes the authority boundary, the privacy rules and the slicing of the first
-live DEVELOP workbench before any writable code exists. Nothing here is built; where a statement is about code it names the code
-that exists today. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
+Status: **slice A is implemented; later slices are design.** This document fixes the authority boundary, the privacy rules and the
+slicing of the live DEVELOP workbench. Implemented in slice A (see section 8): the opt-in broker, pairing and the grant, terminal
+approval, the live status, the memory-only transcript, the **prompt** command and its record chain, and the workbench interface.
+Not implemented: STEER / QUEUE / STOP through the broker, the OMP adapter, streaming, Git changes, any terminal surface. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
 (the intervention chain) and [pi-attach-inventory.md](pi-attach-inventory.md) first.
 
 Product split this design keeps explicit:
@@ -123,7 +124,7 @@ ownership, backpressure, reconnection and its security semantics can be implemen
 
 | Change | Contents |
 | :--- | :--- |
-| **A (next PR)** | broker boundary (`--workbench`), pairing and grant, terminal approval, live status, in-memory transcript, the **prompt** command with its record chain, the workbench UI (conversation, composer gated by capability and grant, run state), security and integration tests with a fake Pi endpoint. |
+| **A (implemented)** | broker boundary (`--workbench`), pairing and grant, terminal approval, live status, in-memory transcript, the **prompt** command with its record chain, the workbench UI (conversation, composer gated by capability and grant, run state), security and integration tests: unit, HTTP, a real fake-Pi process, a real pseudo-terminal, and a real browser. |
 | **B** | STEER / QUEUE / STOP through the broker onto the existing chain; accepted-versus-consumed display. |
 | **C** | OMP adapter behind the same typed command/event boundary; richer transcript; Git changes; optional terminal surface. |
 
@@ -240,10 +241,27 @@ filters. DEVELOP links to them and never re-renders them.
 unbounded buffers, new dependencies (virtual lists, markdown renderers), persisted drafts, and auto-following by default (following is
 opt-in, bounded and pausable).
 
-## 12. Decisions requested before building
+## 12. Decisions taken, and what slice A actually does
 
-1. **Serve the workbench page from the broker** (recommended) rather than forwarding from Studio.
-2. **Terminal approval only** for the first slice (the browser requests; the controlling terminal authorises).
-3. **A separate `prompt` record chain** rather than modelling a prompt as an intervention.
-4. **Slice A scope** as in section 8: broker, pairing, live view, prompt; steer/queue/stop next.
-5. A **real local Pi test** (one bounded session, harmless prompt) only on your explicit approval; automated tests use a fake endpoint.
+The operator approved (1) the broker serves the workbench page itself, (2) terminal-only approval for the first slice, (3) a separate
+`prompt` record chain, and (4) slice A as scoped. Facts that came out of building it:
+
+- **Pi retains the conversation itself.** A persistent Pi session writes its own session file under the store root
+  (`<root>/pi-sessions/`), as it always has. That is **Pi's** retention, outside Endophasia's evidence, and the workbench cannot
+  remove it. What Endophasia writes (events, registries, runtime-text and artifact stores) never holds the prompt or reply text; a
+  test scans for it. The workbench's own transcript is separate, in memory, bounded (400 items, 1 MiB, 32 KiB per message) and
+  cleared when the session ends or the broker is disposed.
+- **Tool arguments and results are not kept at all** in v0, not even in memory: the transcript holds a tool's name and outcome only.
+  Reasoning ("thinking") text is never kept.
+- **The prompt text is shown in full on the operator's terminal** for approval (it is their own terminal and they must see exactly what
+  they authorise); control characters are refused so a prompt cannot drive the terminal. Terminal scrollback is the operator's.
+- **Unreachable is not ended.** If the page cannot reach the broker it says *connection unknown*; the broker closing with the process
+  is indistinguishable from a network failure to the page.
+- **One constant answer on the read-only server.** `endo studio` has no workbench; so the page can ask quietly (a 404 would be logged by
+  every browser as a failed request), the read-only server answers `GET api/v0/workbench/status` with the constant
+  `{"available":false,…}` and nothing else under that prefix exists there. Every POST is still refused (405).
+- **Follow is opt-in and bounded.** The page reads the broker's memory every 3 s only if the operator switches Follow on, and every
+  1.5 s only while a prompt waits for approval; never while the tab is hidden, never both in flight. The cockpit store reader remains
+  explicit-refresh only.
+- **A real model run is not part of the automated tests.** They use the fake Pi (a real child process speaking Pi's RPC) and a stand-in
+  model endpoint. A run against a real Pi and model needs the operator's explicit approval and may cost money.

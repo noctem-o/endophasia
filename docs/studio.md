@@ -207,9 +207,39 @@ recording are not the same thing, and this page lists recordings.**
 Not in this slice: project or worktree association, Git changes, live process or attachment detection, live activity, steering, queueing,
 stopping or launching anything. Those are separate, later changes.
 
+## Live workbench (opt-in; the one writable boundary)
+
+`endo studio` is read-only and stays so: its server has no command route. A live session is worked with through a **separate,
+explicitly enabled** process, the one that owns the Pi child:
+
+```sh
+endo harness attach <root> --control --workbench      # needs a real terminal; prints a private address and a pairing code
+```
+
+It serves the same Studio page on its own loopback address. Open **Develop**: a **Connected** row appears for the live session,
+with the state the broker reports (connected, run active or idle, disconnected, or *connection unknown* when it cannot be reached;
+never inferred from recordings). The page can **read** the live conversation and **request** one new prompt; it cannot approve it.
+
+- **Pairing.** The terminal shows a one-time code; type it into the page to get a grant (held in page memory only; one grant at a
+  time; expires; a new pairing replaces it). Type `pair` in the terminal for a new code. The grant is never in a URL, cookie or storage.
+- **Approval.** A requested prompt waits until you type its exact phrase (`APPROVE PROMPT <digest>`) **on the attached terminal**,
+  where the whole prompt is shown. Anything else declines it. The page shows *Waiting for you to approve it in the attached terminal*,
+  then *Approved. Sending*, then *Accepted by the runtime*: acceptance is Pi's reply, never completion; follow the run in the
+  conversation. A prompt is only sent when the session is connected and idle; the gate is checked again at the moment of sending.
+- **The conversation** is a private, in-memory view of what the attached process has received: your prompts and the assistant's text
+  (tagged *live · private, cleared at session end*), tool calls by name and outcome (three or more in a row fold), run markers. Tool
+  arguments and results and reasoning text are not kept. It is never written to the event store or served by any read route. Pi keeps
+  its own session file; that is Pi's retention.
+- **Records.** Each prompt leaves its own chain in the store, by keyed digest only: `workbench.prompt-proposed`, `-authorized`
+  (allow or deny, confirmation `terminal`), `-dispatched`, `-accepted`, or `-refused` with a reason. It is not an intervention.
+- **Not here.** STEER, QUEUE and STOP (the page says they are not available in this build), a shell, a PTY, raw RPC, attaching to a
+  Pi another tool started, project or worktree views.
+
+Design, threat model and slicing: [develop-workbench.md](develop-workbench.md).
+
 ## Limits
 
-- Three read-only workspaces, Observe, Compare and Develop. Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+- Three workspaces, Observe, Compare and Develop; all read-only in `endo studio` (Develop gains a live conversation and one governed prompt only when the page is served by `endo harness attach --control --workbench`). Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
   on explicit Observe refresh or Compare discovery, pagination and comparison actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).

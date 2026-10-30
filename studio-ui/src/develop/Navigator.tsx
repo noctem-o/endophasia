@@ -12,12 +12,14 @@ import {
 	NO_DEVELOP_FILTERS,
 	STATE_WORDING,
 } from "../model/develop.ts";
+import { presentRecorded } from "../model/develop-session.ts";
 import { known, SOURCE_STATE } from "../model/labels.ts";
 import { grouped } from "../model/views.ts";
 import { LifecycleGlyph } from "../ui/marks.tsx";
 import { Panel } from "../ui/Panel.tsx";
 import { ConditionTag, Note } from "../ui/text.tsx";
 import type { useDevelop } from "../use-develop.ts";
+import { SurfaceTag } from "./Surface.tsx";
 
 export type Develop = ReturnType<typeof useDevelop>;
 const STATES: LifecycleState[] = ["idle", "running", "interrupted", "detached"];
@@ -71,6 +73,7 @@ function Row({
 					</span>
 					<span className="session-state state state-degraded">{row.qualification}</span>
 					<span className="session-meta">{meta}</span>
+					<SurfaceTag session={presentRecorded(row, null)} />
 					<span className="session-reason">
 						{row.reason === "several-attachments"
 							? "Several Pi attachments recorded this session; it is not reduced."
@@ -99,6 +102,7 @@ function Row({
 					<StateTag state={row.recorded.state} />
 				</span>
 				<span className="session-meta">{meta}</span>
+				<SurfaceTag session={presentRecorded(row, null)} />
 			</button>
 		</li>
 	);

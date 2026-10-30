@@ -4,10 +4,12 @@ import type { ReactElement, ReactNode } from "react";
 import type { EndoCockpitDevelopSessionV0 } from "../../../protocol/cockpit-develop.ts";
 import { dim, type Fact, mono, parts, plain, textCell, textModel, unavailableCell } from "../model/cells.ts";
 import { STATE_WORDING } from "../model/develop.ts";
+import { presentRecorded } from "../model/develop-session.ts";
 import { known, SOURCE_STATE } from "../model/labels.ts";
 import { duration, eventLogSourceView, grouped } from "../model/views.ts";
 import { ConditionTag, FactsView, Note, TextView } from "../ui/text.tsx";
 import { StateTag } from "./Navigator.tsx";
+import { SurfaceView } from "./Surface.tsx";
 
 const Block = ({ title, children }: { title: string; children: ReactNode }): ReactElement => (
 	<section className="block">
@@ -55,6 +57,7 @@ export function SessionInspector({ detail }: { detail: EndoCockpitDevelopSession
 	];
 	return (
 		<div className="detail" data-testid="session-detail">
+			<SurfaceView session={presentRecorded(row, detail.generation)} />
 			<Block title="Identity">
 				<FactsView facts={identity} label="Session identity" />
 			</Block>

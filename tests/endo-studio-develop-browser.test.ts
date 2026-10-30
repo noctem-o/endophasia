@@ -63,6 +63,31 @@ const noOverflow = (page: Page) =>
 	page.eval<boolean>("document.documentElement.scrollWidth <= document.documentElement.clientWidth");
 
 suite("DEVELOP", () => {
+	it("marks every recording as recorded only, shows its source, ownership and offers with reasons, and sends nothing to a workbench", async () => {
+		const { page } = await open(developStore());
+		const tags = await page.eval<string[]>(
+			"[...document.querySelectorAll('[data-testid=surface-tag]')].map((e) => e.textContent)",
+		);
+		expect(tags.length).toBeGreaterThan(1);
+		expect(new Set(tags)).toEqual(new Set(["recorded only"]));
+		await pick(page, "pi.a");
+		expect(await page.text("[data-testid=surface-source]")).toContain("Pi recording");
+		expect(await page.text("[data-testid=surface-observation]")).toContain("Recorded only");
+		expect(await page.text("[data-testid=surface-connection]")).toContain("none: this is a recording");
+		expect(await page.text("[data-testid=surface-ownership]")).toContain("Imported from a recording");
+		expect(await page.text("[data-testid=surface-status]")).toContain("as recorded");
+		const status = (action: string) =>
+			page.eval<string>(`document.querySelector('[data-testid=cap-control-${action}]').dataset.status`);
+		for (const action of ["prompt", "steer", "queue", "stop", "resume"])
+			expect(await status(action)).toBe("unsupported");
+		expect(await page.text("[data-testid=cap-control-stop]")).toContain("read-only");
+		await pick(page, "dsh.session-1");
+		expect(await page.text("[data-testid=cap-control-prompt]")).toContain("no control path to DSH");
+		// Reading a recording never reaches a workbench route that could change anything.
+		expect(page.seen.requests.filter((r) => /\/workbench\/(prompt|intervention|pair)/.test(r))).toEqual([]);
+		expect(page.seen.requests.filter((r) => /develop-session|fixture/.test(r))).toEqual([]);
+	});
+
 	it("discovers recorded sessions, selects one, reads its activity and an event, and keeps the page policy", async () => {
 		const { page } = await open(developStore());
 		const dev = "/api/v0/develop/";

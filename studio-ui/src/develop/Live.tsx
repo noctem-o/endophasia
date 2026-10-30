@@ -3,6 +3,7 @@
 // REQUESTED here: the operator approves it in the attached terminal, and a refused or unapproved request is shown as not sent. What each
 // card claims stops where the evidence stops: acceptance is Pi's reply, consumption is proxy evidence, and a run's end is Pi's report.
 import { type FormEvent, type KeyboardEvent, type ReactElement, useId, useRef, useState } from "react";
+import { presentLivePi } from "../model/develop-session.ts";
 import {
 	COMMAND_WORDS,
 	commandOpen,
@@ -19,6 +20,7 @@ import { ConnectionGlyph } from "../ui/marks.tsx";
 import { Panel } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
 import type { useWorkbench } from "../use-workbench.ts";
+import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 
 export type Workbench = ReturnType<typeof useWorkbench>;
 const clock = (at: Date | null): string => (at === null ? "" : at.toLocaleTimeString([], { hour12: false }));
@@ -55,6 +57,7 @@ export function LiveRow({
 					<span>{runStripWords(status, unreachable)}</span>
 				</span>
 			</span>
+			<SurfaceTag session={presentLivePi(status, unreachable)} />
 			<span className="session-meta">
 				{connection === "connected"
 					? "Pi · admitted by this broker"
@@ -611,6 +614,7 @@ export function LiveContext({ wb, onObserve }: { wb: Workbench; onObserve(): voi
 					</div>
 				</dl>
 			</section>
+			<SurfaceView session={presentLivePi(status, wb.state.unreachable)} />
 			<section className="block">
 				<h3>Offered</h3>
 				<ul className="plain">

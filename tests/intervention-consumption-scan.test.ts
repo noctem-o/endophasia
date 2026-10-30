@@ -187,6 +187,41 @@ describe("the sliced scan is the same rule as endoFindConsumptionV0", () => {
 		expect(settled.reads).toEqual([]);
 	});
 
+	it("forgets a baseline that was lost and then replaced, and never reports an exchange before the delivery point", () => {
+		// from=3. The first look holds only exchange 1, and its body cannot be read, so it is the (lost) baseline.
+		let readable = false;
+		const early = history([1], [1]);
+		const lost: EndoCaptureSnapshotV0 = {
+			entries: early.entries,
+			body: (entry) => {
+				if (!readable) throw new TypeError("missing");
+				return early.snapshot.body(entry);
+			},
+		};
+		const scan = endoNewConsumptionScanV0();
+		expect(endoSliceConsumptionV0(scan, lost, 3, ref, KEY, EVERYTHING).kind).toBe("end");
+		expect(scan.unreadable).toEqual([1]);
+		// A new check, as the desk starts one: the lost baseline is reset, and the lost bodies go to the retry queue.
+		scan.baseline = null;
+		scan.baselineExchange = null;
+		scan.next = 3;
+		scan.retry = [...scan.unreadable];
+		// The capture has since grown: exchanges 1-3, only exchange 1 carrying the message. Exchange 2 is now the baseline.
+		readable = true;
+		const grown = history([1, 2, 3], [1, 0, 0]);
+		const requests = [1, 2, 3].map((e) => ({
+			exchange: e,
+			captureEvent: `endo.event.c${e}`,
+			at: "x",
+			body: grown.bodies.get(e),
+		}));
+		expect(endoFindConsumptionV0(requests, ref, KEY, 3)).toBeNull();
+		expect(endoSliceConsumptionV0(scan, grown.snapshot, 3, ref, KEY, EVERYTHING).kind).toBe("end");
+		expect(scan.retry).toEqual([]);
+		expect(scan.unreadable).toEqual([]);
+		expect(grown.reads).not.toContain(1);
+	});
+
 	it("retries a lost body without starting over, and still finds what an earlier lost body now shows", () => {
 		const h = history([1, 2, 3, 4, 5], [0, 1, 1, 1, 2]);
 		let readable = false;

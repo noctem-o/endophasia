@@ -400,6 +400,13 @@ export function endoSliceConsumptionV0(
 			scan.baseline = got === null ? Number.POSITIVE_INFINITY : endoMessageOccurrencesV0(got, message, key);
 		}
 	}
+	// Only exchanges from the delivery point on can be the answer. A body that failed while it was an earlier baseline, and has been
+	// replaced by a newer one, is obsolete: it must not be retried and read as a finding, nor keep the scan incomplete. The CURRENT
+	// baseline's failure stays, because it is what makes the answer incomplete.
+	const relevant = (exchange: number): boolean => exchange >= from || exchange === scan.baselineExchange;
+	scan.retry = scan.retry.filter(relevant);
+	scan.unreadable = scan.unreadable.filter(relevant);
+	scan.tooLarge = scan.tooLarge.filter(relevant);
 	if (scan.baseline === Number.POSITIVE_INFINITY) return { kind: "end", requests: entries.length, startedAt: from };
 	if (scan.next <= from) scan.seen = []; // a scan that has not moved forward has examined nothing
 	// Concurrent proxy connections can finish recording out of exchange order, so a request below the forward place may appear only now.
@@ -416,7 +423,7 @@ export function endoSliceConsumptionV0(
 		if (requests >= limits.maxRequests || (requests > 0 && bytes >= limits.maxBytes)) return { kind: "more" };
 		const exchange = scan.retry.shift()!;
 		const entry = entries.find((e) => e.exchange === exchange);
-		if (entry === undefined || exchange === scan.baselineExchange) continue;
+		if (entry === undefined || exchange < from) continue;
 		const got = read(entry);
 		if (got !== null && endoMessageOccurrencesV0(got, message, key) > scan.baseline)
 			return { kind: "found", exchange: entry.exchange, captureEvent: entry.captureEvent };

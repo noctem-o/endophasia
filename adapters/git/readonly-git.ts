@@ -103,16 +103,38 @@ const BASE_CONFIG: readonly (readonly [string, string])[] = [
  * The configuration keys a repository can use to make Git run a program, from a configuration listing (`git config --list --name-only
  * -z`, already split). Keys keep the exact case Git printed: the subsection of `filter.<name>.clean` is case-sensitive.
  */
+/**
+ * A configuration name split as Git defines it: `section[.subsection].variable`. The section and the variable are restricted ASCII; only
+ * the subsection is the repository's free text (any character but a newline, and possibly empty). So a name is judged by its section and
+ * variable alone, never by matching the subsection's characters (a pattern's `.` misses U+2028, U+2029 and `\r`; `.+` misses an empty one).
+ */
+export function configNameV0(name: string): { section: string; variable: string; subsection: string | null } {
+	const first = name.indexOf(".");
+	const last = name.lastIndexOf(".");
+	if (first < 0) return { section: name.toLowerCase(), variable: "", subsection: null };
+	return {
+		section: name.slice(0, first).toLowerCase(),
+		variable: name.slice(last + 1).toLowerCase(),
+		subsection: last > first ? name.slice(first + 1, last) : null,
+	};
+}
+
 export function programKeysV0(names: readonly string[]): [string, string][] {
 	const found = new Map<string, string>();
 	for (const name of names) {
-		// The driver's name may be EMPTY (`[filter ""]`, selected by the attribute `filter=`): `.*`, never `.+`.
-		if (/^filter\..*\.(clean|smudge|process)$/i.test(name)) found.set(name, "");
-		else if (/^filter\..*\.required$/i.test(name)) found.set(name, "false");
-		else if (/^diff\..*\.(textconv|command)$/i.test(name)) found.set(name, "");
-		else if (/^diff\..*\.cachetextconv$/i.test(name)) found.set(name, "false");
-		else if (/^pager\..+$/i.test(name)) found.set(name, "false");
-		else if (/^core\.(editor|sshcommand|askpass|gitproxy|fsmonitorhookversion)$/i.test(name)) found.set(name, "");
+		const { section, variable, subsection } = configNameV0(name);
+		const driver = subsection !== null;
+		if (section === "filter" && driver && ["clean", "smudge", "process"].includes(variable)) found.set(name, "");
+		else if (section === "filter" && driver && variable === "required") found.set(name, "false");
+		else if (section === "diff" && driver && ["textconv", "command"].includes(variable)) found.set(name, "");
+		else if (section === "diff" && driver && variable === "cachetextconv") found.set(name, "false");
+		else if (section === "pager") found.set(name, "false");
+		else if (
+			section === "core" &&
+			!driver &&
+			["editor", "sshcommand", "askpass", "gitproxy", "fsmonitorhookversion"].includes(variable)
+		)
+			found.set(name, "");
 	}
 	return [...found];
 }
@@ -124,7 +146,13 @@ export function programKeysV0(names: readonly string[]): [string, string][] {
  * `GIT_NO_LAZY_FETCH`, which Git has from 2.44. On a Git without it, such a repository is not read.
  */
 export const isPartialCloneV0 = (names: readonly string[]): boolean =>
-	names.some((name) => /^(remote\..+\.promisor|extensions\.partialclone)$/i.test(name));
+	names.some((name) => {
+		const { section, variable, subsection } = configNameV0(name);
+		return (
+			(section === "remote" && subsection !== null && variable === "promisor") ||
+			(section === "extensions" && subsection === null && variable === "partialclone")
+		);
+	});
 
 /** Whether this Git version understands `GIT_NO_LAZY_FETCH` (2.44 and later). An answer that cannot be read is "no". */
 export function hasNoLazyFetchV0(versionOutput: string): boolean {

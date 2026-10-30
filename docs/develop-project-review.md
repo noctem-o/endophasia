@@ -57,7 +57,7 @@ A fixed list of reads in the launch directory ([adapters/git/readonly-git.ts](..
 
 - **No program a repository names is run.** `core.fsmonitor`, `core.hooksPath`, `core.pager`, `diff.external` are overridden for every
   read; `filter.<n>.clean|smudge|process`, `diff.<n>.textconv|command`, `pager.*` and similar are found by listing the configuration
-  (which runs nothing; a driver with an EMPTY name, selected by `filter=`, included) and overridden by exact key. A program-bearing key named in bytes that are not valid UTF-8 cannot be passed back to Git exactly, so such a repository is refused (`unsafe-config`) before anything touches the working tree through `GIT_CONFIG_KEY_n`/`VALUE_n`, so a key containing `=` cannot slip through.
+  (which runs nothing; each name is judged by its section and variable, never by matching the driver name the repository chose, so an empty name or one holding line separators is covered) and overridden by exact key. A program-bearing key named in bytes that are not valid UTF-8 cannot be passed back to Git exactly, so such a repository is refused (`unsafe-config`) before anything touches the working tree through `GIT_CONFIG_KEY_n`/`VALUE_n`, so a key containing `=` cannot slip through.
   Tests plant canary programs in every one of these and in hooks, run a plain `git` read to prove the canaries are real, then show none
   runs under the inspector.
 - **The repository is not written.** `--no-optional-locks`, and plumbing (`diff-index`, `diff-files`) instead of `git diff`: the porcelain

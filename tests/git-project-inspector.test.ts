@@ -961,6 +961,48 @@ suite("a hostile repository cannot make it run anything, read outside, or write"
 		});
 	});
 
+	it("switches off a driver whose name holds line separators, which a pattern's `.` does not match", async () => {
+		for (const sep of ["\u2028", "\u2029"]) {
+			const root = commitedRepo();
+			const out = fixtureDir("canaries-sep");
+			const script = join(out, "evil.sh");
+			writeFileSync(script, `#!/bin/sh\ntouch "${out}/canary-$1"\ncat\n`);
+			chmodSync(script, 0o755);
+			const name = `evil${sep}driver`;
+			write(root, ".gitattributes", `*.txt filter=${name}\n`);
+			git(root, "add", ".gitattributes");
+			git(root, "commit", "-q", "-m", "attrs");
+			const config = join(root, ".git", "config");
+			writeFileSync(config, `${readFileSync(config, "utf8")}[filter "${name}"]\n\tclean = ${script} clean\n`);
+			write(root, "a.txt", "one\nTWO\nthree\n");
+			execFileSync("git", ["status", "--porcelain"], {
+				cwd: root,
+				env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" },
+				stdio: "ignore",
+			});
+			expect(readdirSync(out).filter((n) => n.startsWith("canary-")).length, "the canary is real").toBeGreaterThan(
+				0,
+			);
+			for (const n of readdirSync(out)) if (n.startsWith("canary-")) rmSync(join(out, n));
+			const inspector = inspect(root);
+			const project = await inspector.overview();
+			for (const file of project.changes.files) await inspector.diff(project.snapshot, file.id);
+			expect(
+				readdirSync(out).filter((n) => n.startsWith("canary-")),
+				JSON.stringify(sep),
+			).toEqual([]);
+		}
+		// Decided by section and variable, whatever the driver's name holds.
+		for (const sub of ["a\u2028b", "a\u2029b", "a\rb", "a.b", "", "\u0085"])
+			expect(
+				Object.fromEntries(programKeysV0([`filter.${sub}.clean`, `diff.${sub}.textconv`, `remote.${sub}.url`])),
+				JSON.stringify(sub),
+			).toEqual({
+				[`filter.${sub}.clean`]: "",
+				[`diff.${sub}.textconv`]: "",
+			});
+	});
+
 	it("refuses, before touching the working tree, a repository whose program-bearing key cannot be named exactly", async () => {
 		const root = commitedRepo();
 		const out = fixtureDir("canaries-bytes");

@@ -93,9 +93,18 @@ working tree**: a diff is then "unavailable", never run without the overrides (a
 asserts no further Git read ran and the canary did not). A file that changes type (a file becomes a link) is two patches for one path; the
 comparison is checked from the first patch's source to the last patch's target.
 
+**A missing object is never fetched on demand.** In a partial clone Git fetches a missing object from the promisor remote by running the
+programs that remote's configuration names, and writes into `.git`. A test reproduced a canary running during a plain overview. Configuration
+overrides do not stop it (found by test: `remote.<n>.promisor=false` still fetches, and `remote.<n>.uploadpack` keeps its first value), so the
+protection is `GIT_NO_LAZY_FETCH` (Git 2.44 and later). On an older Git a partial clone is **refused** (`partial-clone`), not read.
+
+Two more things follow the operator's own Git exactly: a repository's own `core.excludesFile` beats the global one (the effective value is
+read once and passed on unchanged), and `diff.suppressBlankEmpty` is forced off (and unprefixed blank context lines are read as context if
+one slips through), so line numbers stay right. Git's "no newline at end of file" marker counts against the per-diff line budget.
+
 Residual risk, stated plainly: a program-bearing key written into the repository's configuration in the instant between the listing and a
 read is not seen. Whoever can write there is the agent itself, which can already run any program; this layer defends against a hostile
-repository, not against the attached process. A newer Git that adds a new program-running key would need it added to the list.
+repository, not against the attached process. A newer Git that adds a new program-running key would need it added to the list, and a Git older than 2.44 cannot read a partial clone at all.
 
 ## 5. States, and what the page says
 

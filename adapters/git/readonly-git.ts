@@ -13,6 +13,8 @@
 //     because they decide what the operator's own Git would not show: their default ignore file, and the `core.excludesFile` named in
 //     their global configuration (read by one `config --global --get`, which runs nothing and is passed on as an override). A repository
 //     that sets `status.showUntrackedFiles=no` is respected, and the page is told untracked files are hidden.
+//   - A missing object is never fetched on demand (`GIT_NO_LAZY_FETCH`): that would write into `.git` and run the remote's configured
+//     programs. Configuration overrides cannot stop it, so on a Git older than 2.44 a partial clone is refused, not read.
 //   - No lock is taken and no index is written (`--no-optional-locks`, `GIT_OPTIONAL_LOCKS=0`), so Git does not refresh the index or run
 //     an index hook, and the reads do not disturb the agent's own Git use.
 //   - Pathspecs are literal (`--literal-pathspecs`): no glob, no magic. A path comes from Git's own status, never from a browser.
@@ -85,6 +87,7 @@ const BASE_CONFIG: readonly (readonly [string, string])[] = [
 	["core.attributesFile", devNull],
 	["core.quotePath", "true"],
 	["diff.external", ""],
+	["diff.suppressBlankEmpty", "false"],
 	["diff.noprefix", "false"],
 	["diff.mnemonicPrefix", "false"],
 	["diff.renames", "true"],
@@ -111,6 +114,24 @@ export function programKeysV0(names: readonly string[]): [string, string][] {
 		else if (/^core\.(editor|sshcommand|askpass|gitproxy|fsmonitorhookversion)$/i.test(name)) found.set(name, "");
 	}
 	return [...found];
+}
+
+/**
+ * Whether the repository is a partial clone (it names a promisor remote). Git can fetch a missing object from such a remote on demand, by
+ * running the programs that remote's configuration names, writing into `.git`. Configuration keys cannot prevent that (found by test:
+ * `remote.<n>.promisor=false` still fetches, and `remote.<n>.uploadpack` keeps its first value), so the only protection is
+ * `GIT_NO_LAZY_FETCH`, which Git has from 2.44. On a Git without it, such a repository is not read.
+ */
+export const isPartialCloneV0 = (names: readonly string[]): boolean =>
+	names.some((name) => /^(remote\..+\.promisor|extensions\.partialclone)$/i.test(name));
+
+/** Whether this Git version understands `GIT_NO_LAZY_FETCH` (2.44 and later). An answer that cannot be read is "no". */
+export function hasNoLazyFetchV0(versionOutput: string): boolean {
+	const match = /git version (\d+)\.(\d+)/.exec(versionOutput);
+	if (match === null) return false;
+	const major = Number(match[1]);
+	const minor = Number(match[2]);
+	return major > 2 || (major === 2 && minor >= 44);
 }
 
 export interface GitEnvOptionsV0 {
@@ -143,6 +164,7 @@ export function gitEnvV0(
 		GIT_OPTIONAL_LOCKS: "0",
 		GIT_TERMINAL_PROMPT: "0",
 		GIT_NO_REPLACE_OBJECTS: "1",
+		GIT_NO_LAZY_FETCH: "1",
 		GIT_PAGER: "cat",
 		GIT_CONFIG_COUNT: String(config.length),
 	};
@@ -522,7 +544,8 @@ export function parseUnifiedDiff(text: string, truncatedInput: boolean): ParsedD
 	};
 	for (const line of lines) {
 		if (hunk !== null && (oldLeft > 0 || newLeft > 0 || line.startsWith("\\"))) {
-			const c = line[0];
+			// `diff.suppressBlankEmpty` drops the space before an empty context line: inside a hunk an empty line is that line.
+			const c = line === "" ? " " : line[0];
 			if (c === " " || c === "+" || c === "-" || c === "\\") {
 				if (total >= GIT_LIMITS_V0.diffLines) {
 					result.truncated = true;

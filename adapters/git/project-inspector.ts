@@ -37,6 +37,8 @@ import {
 	type GitRunnerV0,
 	type GitRunV0,
 	gitEnvV0,
+	hasNoLazyFetchV0,
+	isPartialCloneV0,
 	type NumstatV0,
 	parseNumstat,
 	parseStatusV2,
@@ -174,9 +176,11 @@ export class GitProjectInspectorV0 {
 	 * whether this repository turns untracked files off. Two config reads; nothing is run.
 	 */
 	async #listing(cwd: string): Promise<{ untracked: "all" | "no"; excludes: [string, string][] }> {
+		// The EFFECTIVE value, as Git itself resolves it (a repository's own setting beats the global one): read with the global
+		// configuration visible, passed on unchanged.
 		const global = await this.#git_(
 			cwd,
-			["config", "--global", "--type=path", "--get", "core.excludesFile"],
+			["config", "--type=path", "--get", "core.excludesFile"],
 			GIT_LIMITS_V0.listBytes,
 			[],
 			true,
@@ -192,6 +196,21 @@ export class GitProjectInspectorV0 {
 
 	/** The program-bearing configuration keys the repository sets, to be overridden for the reads that touch the working tree. */
 	async #programKeys(cwd: string): Promise<[string, string][] | EndoProjectReasonV0> {
+		const config = await this.#config(cwd);
+		return typeof config === "string" ? config : config.keys;
+	}
+
+	#noLazyFetch: Promise<boolean> | null = null;
+	/** Whether this Git can be told not to fetch missing objects on demand. Asked once. */
+	#canBlockLazyFetch(cwd: string): Promise<boolean> {
+		this.#noLazyFetch ??= this.#git_(cwd, ["--version"], GIT_LIMITS_V0.listBytes).then(
+			(run) => run.code === 0 && hasNoLazyFetchV0(run.stdout.toString("utf8")),
+		);
+		return this.#noLazyFetch;
+	}
+
+	/** The overrides to apply, or why the repository cannot be read safely. */
+	async #config(cwd: string): Promise<{ keys: [string, string][] } | EndoProjectReasonV0> {
 		const run = await this.#git_(
 			cwd,
 			["config", "--includes", "--list", "--name-only", "-z"],
@@ -204,7 +223,8 @@ export class GitProjectInspectorV0 {
 			.toString("utf8")
 			.split("\0")
 			.filter((name) => name !== "");
-		return programKeysV0(names);
+		if (isPartialCloneV0(names) && !(await this.#canBlockLazyFetch(cwd))) return "partial-clone";
+		return { keys: programKeysV0(names) };
 	}
 
 	// --- the project and the change inventory -------------------------------------------------------------------------------
@@ -678,7 +698,12 @@ export class GitProjectInspectorV0 {
 				if (safe.text.endsWith("…") && line.length > GIT_LIMITS_V0.lineChars - 1) longLines = true;
 				lines.push(`+${safe.text}`);
 			}
-			if (!endsWithNewline && !truncated) lines.push("\\ No newline at end of file");
+			// Git's "no newline" marker is a line of the hunk like any other: it counts against the budget, so a file of exactly that many
+			// lines is cut rather than sent one line over what the page accepts.
+			if (!endsWithNewline && !truncated) {
+				if (lines.length >= GIT_LIMITS_V0.diffLines) truncated = true;
+				else lines.push("\\ No newline at end of file");
+			}
 			const added = lines.filter((l) => l.startsWith("+")).length;
 			const hunk: EndoDiffHunkV0 = { oldStart: 0, oldLines: 0, newStart: 1, newLines: added, section: "", lines };
 			return { ...shell, state: "ready", hunks: [hunk], truncated, longLines };

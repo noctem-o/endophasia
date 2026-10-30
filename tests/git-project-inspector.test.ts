@@ -22,6 +22,7 @@ import {
 	displaySafeV0,
 	GIT_LIMITS_V0,
 	gitEnvV0,
+	hasNoLazyFetchV0,
 	parseNumstat,
 	parseStatusV2,
 	parseUnifiedDiff,
@@ -461,6 +462,123 @@ suite("a failed configuration listing never lets the working tree be touched wit
 	});
 });
 
+suite("more of what real Git does", () => {
+	function partialClone() {
+		const origin = commitedRepo();
+		git(origin, "config", "uploadpack.allowFilter", "true");
+		git(origin, "config", "uploadpack.allowAnySHA1InWant", "true");
+		const clone = join(fixtureDir("clone"), "c");
+		git(
+			fixtureDir("clone-parent"),
+			"clone",
+			"-q",
+			"--no-local",
+			"--filter=blob:none",
+			"--no-checkout",
+			origin,
+			clone,
+		);
+		git(clone, "read-tree", "HEAD"); // the index names blobs this clone does not hold
+		const out = fixtureDir("canaries-promisor");
+		const script = join(out, "upload.sh");
+		writeFileSync(script, `#!/bin/sh\ntouch "${out}/canary-uploadpack"\nexec git-upload-pack "$@"\n`);
+		chmodSync(script, 0o755);
+		git(clone, "config", "remote.origin.uploadpack", script);
+		write(clone, "a.txt", "changed\n");
+		write(clone, "old.txt", "changed too\n");
+		const objects = () => readdirSync(join(clone, ".git", "objects"), { recursive: true }).length;
+		return { clone, out, objects };
+	}
+	const canaries = (out: string) => readdirSync(out).filter((n) => n.startsWith("canary-"));
+
+	it("never fetches a missing object from a promisor remote: no program that remote names runs, and nothing is written", async () => {
+		const { clone, out, objects } = partialClone();
+		const before = objects();
+		const inspector = inspect(clone);
+		const project = await inspector.overview();
+		for (const f of project.changes.files) await inspector.diff(project.snapshot, f.id);
+		expect(canaries(out)).toEqual([]);
+		expect(objects()).toBe(before);
+	});
+
+	it("refuses a partial clone on a Git that cannot be told not to fetch, rather than trusting configuration overrides that do not work", async () => {
+		const { clone, out, objects } = partialClone();
+		const before = objects();
+		// A Git older than 2.44: it reports its version, and does not know the switch.
+		const old = inspect(clone, {
+			runner: async (args, options) => {
+				if (args.includes("--version"))
+					return {
+						code: 0,
+						stdout: Buffer.from("git version 2.40.1\n"),
+						truncated: false,
+						timedOut: false,
+						notFound: false,
+						stderr: "",
+					};
+				const { GIT_NO_LAZY_FETCH: _drop, ...env } = options.env;
+				return runGitV0(args, { ...options, env });
+			},
+		});
+		expect(await old.overview()).toMatchObject({ state: "unavailable", reason: "partial-clone", repository: null });
+		expect(canaries(out)).toEqual([]);
+		expect(objects()).toBe(before);
+		// An ordinary repository is unaffected by the same old Git.
+		const plain = inspect(commitedRepo(), {
+			runner: async (args, options) =>
+				args.includes("--version")
+					? {
+							code: 0,
+							stdout: Buffer.from("git version 2.40.1\n"),
+							truncated: false,
+							timedOut: false,
+							notFound: false,
+							stderr: "",
+						}
+					: runGitV0(args, options),
+		});
+		expect((await plain.overview()).state).toBe("ready");
+		expect(hasNoLazyFetchV0("git version 2.43.0")).toBe(false);
+		expect(hasNoLazyFetchV0("git version 2.44.0")).toBe(true);
+		expect(hasNoLazyFetchV0("git version 3.0.0")).toBe(true);
+		expect(hasNoLazyFetchV0("not git")).toBe(false);
+	});
+
+	it("keeps the 5 000-line budget when the last line has no newline: the marker counts, and the page's gate accepts the result", async () => {
+		const root = commitedRepo();
+		write(root, "exact.txt", Array.from({ length: GIT_LIMITS_V0.diffLines }, (_, i) => `l${i}`).join("\n"));
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		const diff = await diffOf(inspector, project, "exact.txt", "untracked");
+		expect(bodyOf(diff).length).toBeLessThanOrEqual(GIT_LIMITS_V0.diffLines);
+		expect(diff.truncated).toBe(true);
+		expect(readWorkbenchDiff(JSON.parse(JSON.stringify(diff)))).not.toBeNull();
+	});
+
+	it("reads blank context lines even where the repository asks Git to leave out their leading space", async () => {
+		const root = commitedRepo();
+		write(root, "b.txt", "first\n\nthird\nfourth\n");
+		git(root, "add", "b.txt");
+		git(root, "commit", "-q", "-m", "blank");
+		git(root, "config", "diff.suppressBlankEmpty", "true");
+		write(root, "b.txt", "first\n\nTHIRD\nfourth\n");
+		const inspector = inspect(root);
+		let project = await inspector.overview();
+		const unstaged = await diffOf(inspector, project, "b.txt", "unstaged");
+		expect(bodyOf(unstaged)).toEqual([" first", " ", "-third", "+THIRD", " fourth"]);
+		expect(unstaged.hunks[0]).toMatchObject({ oldStart: 1, newStart: 1 });
+		git(root, "add", "b.txt");
+		project = await inspector.overview();
+		expect(bodyOf(await diffOf(inspector, project, "b.txt", "staged"))).toEqual([
+			" first",
+			" ",
+			"-third",
+			"+THIRD",
+			" fourth",
+		]);
+	});
+});
+
 suite("what the operator's own Git would hide stays hidden", () => {
 	function home(): string {
 		const dir = fixtureDir("home");
@@ -484,6 +602,27 @@ suite("what the operator's own Git would hide stays hidden", () => {
 		// Without a home, nothing is hidden by the user's rules (and nothing is read from the real one).
 		const none = await inspect(repo, { env: { HOME: fixtureDir("empty-home") } }).overview();
 		expect(none.changes.files.map((f) => f.path)).toContain("secret.local");
+	});
+
+	it("lets a repository's own core.excludesFile win over the global one, as Git does", async () => {
+		const repo = commitedRepo();
+		write(repo, "secret.txt", "s\n");
+		write(repo, "global-only.txt", "g\n");
+		write(repo, "visible.txt", "v\n");
+		const h = fixtureDir("home-excludes");
+		write(h, "global-ignore", "global-only.txt\n");
+		writeFileSync(join(h, ".gitconfig"), "[core]\n\texcludesFile = ~/global-ignore\n");
+		write(repo, ".git/local-ignore", "secret.txt\n");
+		git(repo, "config", "core.excludesFile", join(repo, ".git", "local-ignore"));
+		const ordinary = execFileSync("git", ["status", "--porcelain", "-uall"], {
+			cwd: repo,
+			env: { ...process.env, HOME: h, GIT_CONFIG_GLOBAL: join(h, ".gitconfig") },
+			encoding: "utf8",
+		});
+		expect(ordinary).not.toContain("secret.txt");
+		expect(ordinary).toContain("global-only.txt");
+		const project = await inspect(repo, { env: { HOME: h } }).overview();
+		expect(project.changes.files.map((f) => f.path).sort()).toEqual(["global-only.txt", "visible.txt"]);
 	});
 
 	it("respects a repository that hides untracked files, says so, and does not scan its tree", async () => {
@@ -674,7 +813,8 @@ describe("the pure parts", () => {
 		expect(Object.keys(env)).not.toContain("GIT_DIR");
 		expect(
 			Object.keys(env).filter(
-				(k) => k.startsWith("GIT_") && !/^GIT_(CONFIG|ATTR|OPTIONAL|TERMINAL|NO_REPLACE|PAGER)/.test(k),
+				(k) =>
+					k.startsWith("GIT_") && !/^GIT_(CONFIG|ATTR|OPTIONAL|TERMINAL|NO_REPLACE|NO_LAZY_FETCH|PAGER)/.test(k),
 			),
 		).toEqual([]);
 		const count = Number(env.GIT_CONFIG_COUNT);

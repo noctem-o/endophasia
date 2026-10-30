@@ -299,10 +299,12 @@ export interface EndoConsumptionScanV0 {
 	baseline: number | null;
 	/** The exchange the baseline was read from (null: there was none before `from` in the capture then). A newer one replaces it. */
 	baselineExchange: number | null;
-	/** Lost exchanges still to be tried again, in order, before the scan goes on forward. */
+	/** Exchanges to be tried again, in order, before the scan goes on forward: lost bodies, and requests that were recorded late. */
 	retry: number[];
 	/** The next exchange to examine. */
 	next: number;
+	/** The exchanges from `from` up to `next` that the scan has examined. A request recorded late, below `next`, is not among them. */
+	seen: number[];
 	/** Work done so far, over every slice. */
 	scanned: { requests: number; bytes: number };
 	/** Exchanges whose body could not be read, and exchanges whose body is over the per-body limit. A scan with any is never a negative. */
@@ -316,6 +318,7 @@ export const endoNewConsumptionScanV0 = (): EndoConsumptionScanV0 => ({
 	baselineExchange: null,
 	retry: [],
 	next: 0,
+	seen: [],
 	scanned: { requests: 0, bytes: 0 },
 	unreadable: [],
 	tooLarge: [],
@@ -398,6 +401,15 @@ export function endoSliceConsumptionV0(
 		}
 	}
 	if (scan.baseline === Number.POSITIVE_INFINITY) return { kind: "end", requests: entries.length, startedAt: from };
+	if (scan.next <= from) scan.seen = []; // a scan that has not moved forward has examined nothing
+	// Concurrent proxy connections can finish recording out of exchange order, so a request below the forward place may appear only now.
+	// It was never examined, and the forward scan will not come back to it: it joins the retry queue, which is tried first and in order.
+	const seen = new Set(scan.seen);
+	const late = entries.filter((e) => e.exchange >= from && e.exchange < scan.next && !seen.has(e.exchange));
+	if (late.length > 0) {
+		for (const entry of late) scan.seen.push(entry.exchange);
+		scan.retry = [...new Set([...scan.retry, ...late.map((e) => e.exchange)])].sort((a, b) => a - b);
+	}
 	// Lost bodies from an earlier check are tried again FIRST, in order: they precede the forward place, so an increase among them is the
 	// earliest one, as `endoFindConsumptionV0` would find it. The forward place is kept, not reset.
 	while (scan.retry.length > 0) {
@@ -414,6 +426,7 @@ export function endoSliceConsumptionV0(
 		if (requests >= limits.maxRequests || (requests > 0 && bytes >= limits.maxBytes)) return { kind: "more" };
 		const got = read(entry);
 		scan.next = entry.exchange + 1;
+		scan.seen.push(entry.exchange);
 		if (got !== null && endoMessageOccurrencesV0(got, message, key) > scan.baseline)
 			return { kind: "found", exchange: entry.exchange, captureEvent: entry.captureEvent };
 	}

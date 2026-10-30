@@ -156,6 +156,37 @@ describe("the sliced scan is the same rule as endoFindConsumptionV0", () => {
 		expect(endoSliceConsumptionV0(fresh, three.snapshot, 3, ref, KEY, EVERYTHING).kind).toBe("end"); // 2 is not more than 2
 	});
 
+	it("examines a request recorded late, below the forward place, and still finds the earliest increase", () => {
+		// Concurrent connections finish recording out of order: exchange 2 is indexed before exchange 1.
+		const full = history([1, 2], [1, 0]); // only exchange 1 carries the message
+		const onlyTwo: EndoCaptureSnapshotV0 = {
+			entries: full.entries.filter((e) => e.exchange === 2),
+			body: full.snapshot.body,
+		};
+		const scan = endoNewConsumptionScanV0();
+		expect(endoSliceConsumptionV0(scan, onlyTwo, 1, ref, KEY, EVERYTHING).kind).toBe("end");
+		expect(scan.next).toBe(3);
+		// Exchange 1, which carries the message, now appears behind the cursor.
+		const requests = [1, 2].map((e) => ({
+			exchange: e,
+			captureEvent: `endo.event.c${e}`,
+			at: "x",
+			body: full.bodies.get(e),
+		}));
+		expect(endoFindConsumptionV0(requests, ref, KEY, 1)).toMatchObject({ exchange: 1 });
+		expect(endoSliceConsumptionV0(scan, full.snapshot, 1, ref, KEY, EVERYTHING)).toMatchObject({
+			kind: "found",
+			exchange: 1,
+		});
+		// A request that was examined is not examined again just because the snapshot was reopened.
+		const settled = history([1, 2, 3], [0, 0, 0]);
+		const calm = endoNewConsumptionScanV0();
+		endoSliceConsumptionV0(calm, settled.snapshot, 1, ref, KEY, EVERYTHING);
+		settled.reads.length = 0;
+		expect(endoSliceConsumptionV0(calm, settled.snapshot, 1, ref, KEY, EVERYTHING).kind).toBe("end");
+		expect(settled.reads).toEqual([]);
+	});
+
 	it("retries a lost body without starting over, and still finds what an earlier lost body now shows", () => {
 		const h = history([1, 2, 3, 4, 5], [0, 1, 1, 1, 2]);
 		let readable = false;
@@ -455,6 +486,22 @@ describe("the desk's bounded check", () => {
 		const again = h.reads.slice(readSoFar.length);
 		expect(again.filter((e) => readSoFar.includes(e) && e !== 1)).toEqual([]);
 		expect(h.reads.filter((e) => e === 5)).toHaveLength(1);
+	});
+
+	it("finds a request that the capture indexed late, below where the last check had got to", async () => {
+		const session = await openSession();
+		const full = history([1, 2], [1, 0]); // from=1: baseline 0, so exchange 1 is the first increase
+		let current: typeof full = {
+			...full,
+			snapshot: { entries: full.entries.filter((e) => e.exchange === 2), body: full.snapshot.body },
+		};
+		const { desk, id } = acceptedSteer(session, { requests: () => null, open: () => current.snapshot });
+		const first = drive(desk, id);
+		expect(first.step.status).not.toBe("observed");
+		expect(stored(session, "intervention.consumed")).toEqual([]);
+		current = full;
+		expect(drive(desk, id).step).toMatchObject({ status: "observed", exchange: 1 });
+		expect(stored(session, "intervention.consumed")).toHaveLength(1);
 	});
 
 	it("does not touch the store once it is closed, and reports the finding it could not record as incomplete", async () => {

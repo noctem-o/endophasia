@@ -401,7 +401,10 @@ view back while it runs. The scan:
   one is judged again, so a message already in the history can never be recorded as consumed on a stale baseline. A body that was lost
   (unreadable, or over its limit) is **tried again first** at the start of the next check, in order, and the scan then goes on from where it
   had got to: a long capture is not read from the start each time because one body stays lost, and an earlier body that has become readable
-  still wins if it shows the earliest increase;
+  still wins if it shows the earliest increase. A request the capture **records late**, below the place the scan had reached (concurrent
+  connections can finish out of exchange order), is not skipped for good: the scan remembers which exchanges it examined, and any other
+  exchange from the delivery point on that appears in a later snapshot joins the same retry queue, so the earliest increase is found
+  whatever order the capture was written in;
 - is bounded: a slice reads at most 64 requests or about 1 MiB of bodies; a body over 32 MiB is not read; a check may use 256 MiB, 20 000
   requests and 10 s of the broker's clock; one check runs at a time per request, two at once overall (a third is refused as busy, nothing
   read); within 5 s of a finished check the same answer is returned and nothing is read; the capture index is not opened above 16 MiB of

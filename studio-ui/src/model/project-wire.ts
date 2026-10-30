@@ -39,6 +39,7 @@ export const PROJECT_INCOMPLETE: readonly EndoProjectIncompleteV0[] = [
 	"stats-unavailable",
 	"worktrees-unavailable",
 	"worktrees-truncated",
+	"untracked-hidden",
 ];
 export const DIFF_REASONS: readonly EndoDiffReasonV0[] = [
 	"unmerged",

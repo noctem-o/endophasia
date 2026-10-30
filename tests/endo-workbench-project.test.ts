@@ -156,6 +156,28 @@ suite("the project routes", () => {
 			expect((await get(readOnly, `${API}${route}`)).status, route).toBe(404);
 	});
 
+	it("answer 429 busy for an overview that could not run, and never serve 'busy' as if it were a worktree", async () => {
+		const repo = demoRepo();
+		const inner = new GitProjectInspectorV0({ cwd: repo, minRefreshMs: 0 });
+		const busy = {
+			...(await inner.overview()),
+			state: "unavailable" as const,
+			reason: "busy" as const,
+			repository: null,
+		};
+		const { pair, getW } = await start({
+			project: {
+				overview: async () => busy,
+				diff: async () => ({ kind: "busy" as const }),
+			} as unknown as GitProjectInspectorV0,
+		});
+		const grant = await pair();
+		const reply = await getW("project", grant);
+		expect(reply.status).toBe(429);
+		expect(json<{ error: string }>(reply)).toEqual({ error: "busy" });
+		expect((await getW("project/diff?snapshot=0123456789abcdef&file=0", grant)).status).toBe(429);
+	});
+
 	it("drop what they read when the session ends, and answer nothing after", async () => {
 		const repo = demoRepo();
 		const { pair, getW, broker } = await start({

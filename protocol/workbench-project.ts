@@ -32,6 +32,7 @@ export const ENDO_PROJECT_INCOMPLETE_V0 = [
 	"stats-unavailable", // line counts could not be read
 	"worktrees-unavailable", // the linked-worktree list could not be read
 	"worktrees-truncated", // more linked worktrees exist than are listed
+	"untracked-hidden", // the repository's own configuration hides untracked files, so none are listed or counted
 ] as const;
 export type EndoProjectIncompleteV0 = (typeof ENDO_PROJECT_INCOMPLETE_V0)[number];
 

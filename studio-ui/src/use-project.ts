@@ -41,31 +41,46 @@ export function useProject(grant: string | null, launchId: string | null, active
 		return controller.current.signal;
 	}, []);
 
+	// One diff is asked for at a time, and the newest wanted file wins: stepping quickly through the list asks the broker for the file the
+	// operator ended on, not for every file on the way (the broker serves one read at a time and would answer the extras "busy").
+	const wanted = useRef<{ project: Project; key: FileKey } | null>(null);
+	const running = useRef(false);
 	const loadDiff = useCallback(
 		async (project: Project, key: FileKey) => {
-			const entry = findEntry(project, key);
-			const { grant: g } = held.current;
-			if (entry === null) return;
-			diffSeq.current += 1;
-			const seq = diffSeq.current;
-			dispatch({ type: "diff-start", seq, key });
-			// No grant (the session ended, or the page was unpaired): the list that was last confirmed stays readable, but a file cannot be
-			// read, and the page says so instead of waiting for an answer that will not come.
-			if (g === null) {
-				dispatch({
-					type: "diff-done",
-					seq,
-					key,
-					reply: { kind: "failure", status: 401, code: "grant-required", retrySeconds: null },
-				});
-				return;
+			wanted.current = { project, key };
+			if (running.current) return;
+			running.current = true;
+			try {
+				while (wanted.current !== null) {
+					const want = wanted.current;
+					wanted.current = null;
+					const entry = findEntry(want.project, want.key);
+					const { grant: g } = held.current;
+					if (entry === null) continue;
+					diffSeq.current += 1;
+					const seq = diffSeq.current;
+					dispatch({ type: "diff-start", seq, key: want.key });
+					// No grant (the session ended, or the page was unpaired): the list that was last confirmed stays readable, but a file
+					// cannot be read, and the page says so instead of waiting for an answer that will not come.
+					if (g === null) {
+						dispatch({
+							type: "diff-done",
+							seq,
+							key: want.key,
+							reply: { kind: "failure", status: 401, code: "grant-required", retrySeconds: null },
+						});
+						continue;
+					}
+					const reply = await fetchProject(
+						{ kind: "project-diff", snapshot: want.project.snapshot, id: entry.id },
+						g,
+						abort(),
+					);
+					dispatch({ type: "diff-done", seq, key: want.key, reply });
+				}
+			} finally {
+				running.current = false;
 			}
-			const reply = await fetchProject(
-				{ kind: "project-diff", snapshot: project.snapshot, id: entry.id },
-				g,
-				abort(),
-			);
-			dispatch({ type: "diff-done", seq, key, reply });
 		},
 		[abort],
 	);

@@ -404,7 +404,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (this.#o.project !== undefined && a === "project" && request.method === "GET" && more.length === 0) {
 			const project = this.#o.project;
 			try {
-				if (b === undefined && request.query === "") return reply(200, await project.overview());
+				if (b === undefined && request.query === "") {
+					const overview = await project.overview();
+					// Busy is not a read: it says nothing about the worktree, so it is not served as one (the page keeps what it had).
+					if (overview.state === "unavailable" && overview.reason === "busy") return refuse(429, "busy");
+					return reply(200, overview);
+				}
 				if (b === "diff") {
 					const match = /^snapshot=([0-9a-f]{16})&file=(0|[1-9][0-9]{0,5})$/.exec(request.query);
 					if (match === null) return refuse(400, "bad-request");

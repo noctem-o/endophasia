@@ -63,13 +63,20 @@ A fixed list of reads in the launch directory ([adapters/git/readonly-git.ts](..
 - **The repository is not written.** `--no-optional-locks`, and plumbing (`diff-index`, `diff-files`) instead of `git diff`: the porcelain
   command refreshes the index and rewrites it even under `--no-optional-locks` (found by test), which a read-only view must not do. A test
   makes the index stale on purpose and asserts the index bytes and the whole `.git` listing are unchanged.
-- **The environment is built from nothing but `PATH`**; user and system configuration are not read, so the output is the same on every
-  machine and a user's `diff.external` is not honoured.
+- **The environment is built from `PATH`, `HOME` and `XDG_CONFIG_HOME` only**; user and system configuration are not read, so a user's
+  `diff.external` is not honoured and the diff format does not depend on their settings. Two things of the operator's *are* honoured,
+  because they decide what their own Git would not show: their default ignore file (`~/.config/git/ignore`, a file of patterns), and the
+  `core.excludesFile` named in their global configuration (one `config --global --get`, which runs nothing, passed on as an override).
+  A repository that sets `status.showUntrackedFiles=no` is respected: no untracked file is listed, counted or read, and the page says
+  "untracked files hidden by this repository" rather than calling the worktree plainly clean. Otherwise a file the operator's Git
+  ignores could be listed, and up to 256 KiB of it read into the page.
 - **Scope.** The repository's working tree must contain the launch directory *and* hold its `.git` at that root; a `core.worktree` that
   points elsewhere, or at an ancestor, is refused (`scope-mismatch`), not followed.
 - **Bounds.** 10 s per Git process and byte caps on every output; 500 files listed (counts still cover the rest and say when they are lower
   bounds); 256 KiB and 5 000 lines per diff; 2 000 characters per line; untracked files over 256 KiB are not read. One inspection at a time,
-  two waiting, then `busy`; a re-read within 750 ms returns the same snapshot.
+  at most one more waiting behind it, then `busy` (429; a busy overview is never served as a worktree, and the page keeps what it had); a
+  re-read within 750 ms returns the same snapshot. The page asks for **one diff at a time and the newest wanted file wins**, so holding `j`
+  asks the broker for the file the operator stops on, not for every file on the way.
 - **Untracked files** are read by the inspector itself with the least trust: the name must stay inside the working tree after symlinks are
   resolved, the file must be a plain file (not a link, directory, pipe or device), opened `O_NOFOLLOW|O_NONBLOCK` and still the file that
   was examined, at most a fixed number of bytes. A file replaced by a link or a pipe after the list was read is stale, not opened.
@@ -100,7 +107,7 @@ drops it.
 | Not read / reading | "Worktree not read yet." / "Reading the worktree with Git…" (the previous list stays, marked while it is replaced). |
 | Clean / dirty | "clean" / per-area counts; "Clean: nothing staged, unstaged or untracked." |
 | Unavailable | One sentence per reason (not a repository, bare repository, ownership refused, scope mismatch, Git missing, timeout, too large, busy), in the page's words, never Git's. Neutral, no red. |
-| Incomplete | "The change list was cut at a limit, so the counts are at least these" (counts get `≥`); line counts or the worktree list unavailable. |
+| Incomplete | "The change list was cut at a limit, so the counts are at least these" (counts get `≥`); line counts or the worktree list unavailable; "This repository's configuration hides untracked files, so none are listed or counted." |
 | Stale | "The worktree changed after HH:MM:SS: this list is out of date and this file was not shown." and a Refresh button; the list is marked **out of date**. |
 | Session ended / grant gone | The last confirmed facts stay, marked **unconfirmed** (nothing could check), with "what was last read"; a file cannot be read and the page says so. |
 | Unsupported | No Changes tab; "This workbench does not offer worktree reading." |

@@ -152,6 +152,20 @@ describe("what stays on the screen", () => {
 		expect(read(failed, ok(project(files)))).toMatchObject({ current: true, problem: null });
 	});
 
+	it("does not call a busy answer a failure of what was confirmed: the list stays as it was, current or not", () => {
+		const good = read(initialProject(), ok(project(files)));
+		const busy = read(good, { kind: "failure", status: 429, code: "busy", retrySeconds: null });
+		expect(busy).toMatchObject({ problem: "busy", current: true, reading: false });
+		expect(busy.project).toBe(good.project);
+		const unconfirmed = read(read(good, { kind: "failure", status: 0, code: "unreachable", retrySeconds: null }), {
+			kind: "failure",
+			status: 429,
+			code: "busy",
+			retrySeconds: null,
+		});
+		expect(unconfirmed.current).toBe(false);
+	});
+
 	it("selects by name, not by position: a refreshed list that still has the file reads it again, and one without it says it is gone", () => {
 		const key: FileKey = { path: "a.ts", area: "unstaged" };
 		let state = read(initialProject(), ok(project(files)));

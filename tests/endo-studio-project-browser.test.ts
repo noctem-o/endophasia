@@ -63,9 +63,20 @@ class Counting implements WorkbenchProjectSourceV0 {
 		this.overviews += 1;
 		return this.inner.overview();
 	}
-	diff(snapshot: string, id: number) {
+	/** A slow Git: every diff takes this much longer, so quick keys overlap their requests. */
+	diffDelayMs = 0;
+	maxDiffsAtOnce = 0;
+	#running = 0;
+	async diff(snapshot: string, id: number) {
 		this.diffs += 1;
-		return this.inner.diff(snapshot, id);
+		this.#running += 1;
+		this.maxDiffsAtOnce = Math.max(this.maxDiffsAtOnce, this.#running);
+		try {
+			if (this.diffDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.diffDelayMs));
+			return await this.inner.diff(snapshot, id);
+		} finally {
+			this.#running -= 1;
+		}
 	}
 	dispose() {
 		this.inner.dispose();
@@ -736,9 +747,10 @@ suite("what Opus's second review found, pinned", () => {
 		const repo = commitedRepo();
 		for (let i = 0; i < 60; i++)
 			write(repo, `many/file-${String(i).padStart(3, "0")}.txt`, `${"line\n".repeat(200)}`);
-		const { page } = await open(1440, 900, { cwd: repo });
+		const { page, source } = await open(1440, 900, { cwd: repo });
 		await ready(page);
 		await page.waitFor("document.querySelectorAll('[data-testid=change-row]').length >= 60");
+		if (source !== null) source.diffDelayMs = 90;
 		await choose(page, "file-000.txt");
 		await page.eval("document.activeElement.blur()");
 		const top = () => page.eval<number>("document.querySelector('.diff-scroll').scrollTop");
@@ -747,8 +759,17 @@ suite("what Opus's second review found, pinned", () => {
 		await page.waitFor("document.querySelector('.diff-scroll').scrollTop > 100");
 		await page.press("PageUp");
 		await page.waitFor("document.querySelector('.diff-scroll').scrollTop === 0");
-		for (let i = 0; i < 25; i++) await page.press("j");
+		// A held key: 25 presses a millisecond apart, faster than a diff can be read.
+		await page.eval(
+			"(async () => { for (let i = 0; i < 25; i++) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true })); await new Promise((r) => setTimeout(r, 1)); } })()",
+		);
 		await page.waitFor("document.querySelector('[data-testid=diff-position]').textContent.startsWith('26 of')");
+		// The file being read is READ, however fast the keys came: the newest request wins and none ends as "busy".
+		await page.waitFor("document.querySelector('[data-testid=diff-view]').dataset.state === 'ready'");
+		expect(await page.text("[data-testid=diff-view]")).not.toContain("Another inspection");
+		// One diff at a time asked of the broker, however many keys: the newest file wins, the ones in between are not asked for.
+		expect(source?.maxDiffsAtOnce).toBe(1);
+		expect(source?.diffs ?? 99).toBeLessThan(15);
 		// The selected row is inside the visible part of its scrolling column.
 		expect(
 			await page.eval<boolean>(
@@ -812,5 +833,19 @@ suite("what Opus's second review found, pinned", () => {
 			"document.querySelector('#develop-inspector, #develop-context').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))",
 		);
 		await page.waitFor("getComputedStyle(document.querySelector('#develop-nav-wrap')).display === 'none'");
+	});
+});
+
+suite("what the operator's own Git hides", () => {
+	it("says untracked files are hidden where the repository turns them off, rather than calling the worktree clean without qualification", async () => {
+		const repo = commitedRepo();
+		git(repo, "config", "status.showUntrackedFiles", "no");
+		write(repo, "stray.txt", "x\n");
+		const { page } = await open(1440, 900, { cwd: repo });
+		await ready(page);
+		await page.waitFor("document.querySelector('[data-testid=incomplete-untracked-hidden]')");
+		expect(await page.text("[data-testid=project-counts]")).toContain("untracked files hidden by this repository");
+		expect(await page.text("[data-testid=incomplete-untracked-hidden]")).toContain("none are listed or counted");
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=change-row]').length")).toBe(0);
 	});
 });

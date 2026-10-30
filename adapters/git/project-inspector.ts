@@ -57,6 +57,8 @@ export interface GitProjectInspectorOptionsV0 {
 	now?: () => number;
 	/** Within this long of the last inspection, the same snapshot is returned and nothing is read again. Default 750 ms. */
 	minRefreshMs?: number;
+	/** Where the operator's own Git configuration lives (for their ignore rules). Default: this process's HOME and XDG_CONFIG_HOME. */
+	env?: { HOME?: string; XDG_CONFIG_HOME?: string };
 }
 
 export type GitDiffOutcomeV0 = EndoDiffOutcomeV0;
@@ -72,6 +74,9 @@ interface Snapshot {
 	root: string;
 	/** What the index is compared with: `HEAD`, or the empty tree for a branch with no commit yet. */
 	tree: string;
+	/** Whether untracked files are listed, and the operator's global excludes file, as read for this snapshot: a diff is read under the same. */
+	untracked: "all" | "no";
+	excludes: [string, string][];
 	entries: EntryRecord[];
 	statusDigest: string;
 }
@@ -103,6 +108,7 @@ export class GitProjectInspectorV0 {
 	readonly #run: GitRunnerV0;
 	readonly #now: () => number;
 	readonly #minRefreshMs: number;
+	readonly #home: { HOME?: string; XDG_CONFIG_HOME?: string } | undefined;
 	#snapshot: Snapshot | null = null;
 	#project: EndoWorkbenchProjectV0 | null = null;
 	#projectAt = Number.NEGATIVE_INFINITY;
@@ -117,6 +123,7 @@ export class GitProjectInspectorV0 {
 		this.#run = options.runner ?? runGitV0;
 		this.#now = options.now ?? (() => Date.now());
 		this.#minRefreshMs = options.minRefreshMs ?? 750;
+		this.#home = options.env;
 	}
 
 	/** The session ended: nothing read is kept, and nothing more is read. */
@@ -145,10 +152,11 @@ export class GitProjectInspectorV0 {
 		args: readonly string[],
 		maxBytes: number,
 		extra: readonly (readonly [string, string])[] = [],
+		readGlobalConfig = false,
 	): Promise<GitRunV0> {
 		return this.#run([...GIT_PREFIX_V0, ...args], {
 			cwd,
-			env: gitEnvV0(extra),
+			env: gitEnvV0(extra, { ...(this.#home === undefined ? {} : { home: this.#home }), readGlobalConfig }),
 			limits: { timeoutMs: GIT_LIMITS_V0.timeoutMs, maxBytes },
 			gitPath: this.#git,
 		}).catch(() => ({
@@ -159,6 +167,27 @@ export class GitProjectInspectorV0 {
 			notFound: false,
 			stderr: "",
 		}));
+	}
+
+	/**
+	 * What the operator's own Git would hide or not list here: their global `core.excludesFile` (a path; the file is only patterns) and
+	 * whether this repository turns untracked files off. Two config reads; nothing is run.
+	 */
+	async #listing(cwd: string): Promise<{ untracked: "all" | "no"; excludes: [string, string][] }> {
+		const global = await this.#git_(
+			cwd,
+			["config", "--global", "--type=path", "--get", "core.excludesFile"],
+			GIT_LIMITS_V0.listBytes,
+			[],
+			true,
+		);
+		const path = global.code === 0 ? global.stdout.toString("utf8").trim() : "";
+		const local = await this.#git_(cwd, ["config", "--get", "status.showUntrackedFiles"], GIT_LIMITS_V0.listBytes);
+		const setting = local.code === 0 ? local.stdout.toString("utf8").trim().toLowerCase() : "";
+		return {
+			untracked: ["no", "false", "0"].includes(setting) ? "no" : "all",
+			excludes: path !== "" && !path.includes("\0") && !path.includes("\n") ? [["core.excludesFile", path]] : [],
+		};
 	}
 
 	/** The program-bearing configuration keys the repository sets, to be overridden for the reads that touch the working tree. */
@@ -274,8 +303,10 @@ export class GitProjectInspectorV0 {
 			return this.#unavailable("scope-mismatch");
 		}
 
-		const keys = await this.#programKeys(cwd);
-		if (typeof keys === "string") return this.#unavailable(keys);
+		const programs = await this.#programKeys(cwd);
+		if (typeof programs === "string") return this.#unavailable(programs);
+		const listing = await this.#listing(cwd);
+		const keys = [...programs, ...listing.excludes];
 
 		const status = await this.#git_(
 			cwd,
@@ -284,7 +315,7 @@ export class GitProjectInspectorV0 {
 				"--porcelain=v2",
 				"-z",
 				"--branch",
-				"--untracked-files=all",
+				`--untracked-files=${listing.untracked}`,
 				"--ignore-submodules=all",
 				"--renames",
 				"--no-ahead-behind",
@@ -293,7 +324,7 @@ export class GitProjectInspectorV0 {
 			keys,
 		);
 		const statusReason = failureReasonV0(status);
-		const incomplete: EndoProjectIncompleteV0[] = [];
+		const incomplete: EndoProjectIncompleteV0[] = listing.untracked === "no" ? ["untracked-hidden"] : [];
 		const head = (parsed: ReturnType<typeof parseStatusV2> | null): EndoWorkbenchProjectV0["head"] => {
 			if (parsed === null || parsed.branchHead === null) return null;
 			if (parsed.branchHead === "(detached)") return { kind: "detached", branch: null, oid: parsed.branchOid };
@@ -383,6 +414,8 @@ export class GitProjectInspectorV0 {
 			id: snapshotId,
 			root,
 			tree: tree ?? "HEAD",
+			untracked: listing.untracked,
+			excludes: listing.excludes,
 			entries: records,
 			statusDigest: sha256(status.stdout),
 		};
@@ -493,7 +526,8 @@ export class GitProjectInspectorV0 {
 		// Between asking and being served the inventory may have been re-read: only the snapshot the page holds is answered for.
 		if (this.#snapshot !== known) return { kind: "stale" };
 		const { change } = record;
-		const keys = await this.#programKeys(known.root);
+		const programsNow = await this.#programKeys(known.root);
+		const keys = typeof programsNow === "string" ? programsNow : [...programsNow, ...known.excludes];
 		const now = await this.#git_(
 			known.root,
 			[
@@ -501,7 +535,7 @@ export class GitProjectInspectorV0 {
 				"--porcelain=v2",
 				"-z",
 				"--branch",
-				"--untracked-files=all",
+				`--untracked-files=${known.untracked}`,
 				"--ignore-submodules=all",
 				"--renames",
 				"--no-ahead-behind",

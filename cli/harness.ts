@@ -262,7 +262,8 @@ async function attachWithControl(
 		server = await startEndoControlServerV0(parsed.root, desk);
 		if (parsed.switches.has("--workbench"))
 			workbench = await startWorkbenchV0(session, desk, {
-				cwd: resolve(parsed.flags.get("--cwd") ?? process.cwd()),
+				// The directory Pi was actually started in: one source, the attachment's own.
+				cwd: resolve(session.owner.options.cwd ?? process.cwd()),
 			});
 		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
 		const prompt = parsed.flags.get("--prompt");

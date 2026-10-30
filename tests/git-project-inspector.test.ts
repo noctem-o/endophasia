@@ -356,6 +356,46 @@ suite("it answers only for the working tree the page was shown", () => {
 	});
 });
 
+suite("what the operator's own Git would hide stays hidden", () => {
+	function home(): string {
+		const dir = fixtureDir("home");
+		write(dir, ".config/git/ignore", "*.local\n");
+		return dir;
+	}
+	it("honours the default global ignore file and a global core.excludesFile, though no global configuration is otherwise read", async () => {
+		const repo = commitedRepo();
+		write(repo, "secret.local", "TOKEN=1\n");
+		write(repo, "notes.scratch", "n\n");
+		write(repo, "visible.txt", "v\n");
+		const h = home();
+		// Default location: $HOME/.config/git/ignore.
+		const byDefault = await inspect(repo, { env: { HOME: h } }).overview();
+		expect(byDefault.changes.files.map((f) => f.path).sort()).toEqual(["notes.scratch", "visible.txt"]);
+		// A global core.excludesFile (read from the global configuration, which runs nothing).
+		write(h, "ignore-more", "*.scratch\n");
+		writeFileSync(join(h, ".gitconfig"), "[core]\n\texcludesFile = ~/ignore-more\n[diff]\n\texternal = /bin/false\n");
+		const configured = await inspect(repo, { env: { HOME: h } }).overview();
+		expect(configured.changes.files.map((f) => f.path).sort()).toEqual(["secret.local", "visible.txt"]);
+		// Without a home, nothing is hidden by the user's rules (and nothing is read from the real one).
+		const none = await inspect(repo, { env: { HOME: fixtureDir("empty-home") } }).overview();
+		expect(none.changes.files.map((f) => f.path)).toContain("secret.local");
+	});
+
+	it("respects a repository that hides untracked files, says so, and does not scan its tree", async () => {
+		const repo = commitedRepo();
+		git(repo, "config", "status.showUntrackedFiles", "no");
+		write(repo, "stray.txt", "x\n");
+		write(repo, "a.txt", "changed\n");
+		const inspector = inspect(repo);
+		const project = await inspector.overview();
+		expect(project.changes.files.map((f) => `${f.area}:${f.path}`)).toEqual(["unstaged:a.txt"]);
+		expect(project.incomplete).toContain("untracked-hidden");
+		expect(project.changes.counts.untracked).toBe(0);
+		// A diff is read under the same rule.
+		expect((await inspector.diff(project.snapshot, 0)).kind).toBe("diff");
+	});
+});
+
 suite("a hostile repository cannot make it run anything, read outside, or write", () => {
 	function hostile(): { root: string; out: string } {
 		const root = commitedRepo();

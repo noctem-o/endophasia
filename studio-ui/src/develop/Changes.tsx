@@ -129,7 +129,12 @@ export function WorktreeBar({
 						{unknown ? (
 							<span className="dim">changes unknown</span>
 						) : parts.length === 0 && shown.changes.counts.exact ? (
-							<span>clean</span>
+							<span>
+								clean
+								{shown.incomplete.includes("untracked-hidden") ? (
+									<span className="dim"> · untracked files hidden by this repository</span>
+								) : null}
+							</span>
 						) : parts.length === 0 ? (
 							<span className="dim">changes unknown</span>
 						) : (

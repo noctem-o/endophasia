@@ -117,12 +117,14 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 								: { status: "gone", key: state.selection },
 				};
 			}
+			const problem = problemOf(reply);
 			return {
 				...state,
 				availability: state.availability === "unknown" ? "available" : state.availability,
 				reading: false,
-				current: false,
-				problem: problemOf(reply),
+				// "Busy" says nothing about the worktree: what was confirmed is neither confirmed again nor called into doubt.
+				current: problem === "busy" ? state.current : false,
+				problem,
 			};
 		}
 		case "select":
@@ -176,6 +178,7 @@ export const INCOMPLETE_WORDS: Readonly<Record<string, string>> = {
 	"stats-unavailable": "Line counts could not be read.",
 	"worktrees-unavailable": "Other worktrees could not be listed.",
 	"worktrees-truncated": "More worktrees exist than are listed.",
+	"untracked-hidden": "This repository's configuration hides untracked files, so none are listed or counted.",
 };
 
 export const PROBLEM_WORDS: Readonly<Record<ProjectProblem, string>> = {

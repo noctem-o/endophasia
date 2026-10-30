@@ -8,8 +8,11 @@
 //     the ones with a fixed name outright, and the ones with a repository-chosen name by listing the configuration (a read that runs
 //     nothing) and overriding exactly the program-bearing keys found. The overrides go in as `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n`, so a
 //     key is never split on a character it contains. The diff reads also pass `--no-ext-diff --no-textconv`.
-//   - The user's and the system's configuration are not read (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM`): the output is the same
-//     on every machine, and a user's `diff.external` is not honoured either.
+//   - The user's and the system's configuration are not read (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM`): a user's
+//     `diff.external` is not honoured and the diff format does not depend on their settings. Two things of the operator's ARE honoured,
+//     because they decide what the operator's own Git would not show: their default ignore file, and the `core.excludesFile` named in
+//     their global configuration (read by one `config --global --get`, which runs nothing and is passed on as an override). A repository
+//     that sets `status.showUntrackedFiles=no` is respected, and the page is told untracked files are hidden.
 //   - No lock is taken and no index is written (`--no-optional-locks`, `GIT_OPTIONAL_LOCKS=0`), so Git does not refresh the index or run
 //     an index hook, and the reads do not disturb the agent's own Git use.
 //   - Pathspecs are literal (`--literal-pathspecs`): no glob, no magic. A path comes from Git's own status, never from a browser.
@@ -88,7 +91,6 @@ const BASE_CONFIG: readonly (readonly [string, string])[] = [
 	["diff.ignoreSubmodules", "all"],
 	["status.renames", "true"],
 	["status.submoduleSummary", "false"],
-	["status.showUntrackedFiles", "all"],
 	["submodule.recurse", "false"],
 	["color.ui", "false"],
 	["advice.statusHints", "false"],
@@ -111,14 +113,31 @@ export function programKeysV0(names: readonly string[]): [string, string][] {
 	return [...found];
 }
 
-/** The environment of every read: built from nothing but PATH. `extra` are the overrides found in the repository's configuration. */
-export function gitEnvV0(extra: readonly (readonly [string, string])[] = []): Record<string, string> {
+export interface GitEnvOptionsV0 {
+	/** Where Git looks for the operator's default ignore file (`$XDG_CONFIG_HOME/git/ignore`, `$HOME/.config/git/ignore`). Default: this process's. */
+	home?: { HOME?: string; XDG_CONFIG_HOME?: string };
+	/** Read the operator's global configuration (only for the one read that asks it where their ignore file is: `config --global --get`). */
+	readGlobalConfig?: boolean;
+}
+
+/**
+ * The environment of every read: built from nothing but PATH, plus HOME and XDG_CONFIG_HOME so Git finds the operator's own default ignore
+ * file (a file of patterns: it runs nothing). `extra` are the overrides found in the repository's configuration. The global configuration
+ * is read only by the one read that says `readGlobalConfig`.
+ */
+export function gitEnvV0(
+	extra: readonly (readonly [string, string])[] = [],
+	options: GitEnvOptionsV0 = {},
+): Record<string, string> {
 	const config = [...BASE_CONFIG, ...extra];
+	const home = options.home ?? { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
 	const env: Record<string, string> = {
 		PATH: process.env.PATH ?? "",
+		...(home.HOME === undefined ? {} : { HOME: home.HOME }),
+		...(home.XDG_CONFIG_HOME === undefined ? {} : { XDG_CONFIG_HOME: home.XDG_CONFIG_HOME }),
 		LC_ALL: "C",
 		LANG: "C",
-		GIT_CONFIG_GLOBAL: devNull,
+		...(options.readGlobalConfig === true ? {} : { GIT_CONFIG_GLOBAL: devNull }),
 		GIT_CONFIG_NOSYSTEM: "1",
 		GIT_ATTR_NOSYSTEM: "1",
 		GIT_OPTIONAL_LOCKS: "0",

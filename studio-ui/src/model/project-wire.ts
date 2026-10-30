@@ -16,6 +16,7 @@ export type {
 	EndoChangeEntryV0 as ChangeEntry,
 	EndoChangeStatusV0 as ChangeStatus,
 	EndoDiffHunkV0 as DiffHunk,
+	EndoProjectReasonV0 as ProjectReason,
 	EndoWorkbenchDiffV0 as ProjectDiff,
 	EndoWorkbenchProjectV0 as Project,
 	EndoWorktreeV0 as Worktree,

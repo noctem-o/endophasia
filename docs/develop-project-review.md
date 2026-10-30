@@ -124,6 +124,7 @@ drops it.
 | Unavailable | One sentence per reason (not a repository, bare repository, ownership refused, scope mismatch, Git missing, timeout, too large, busy), in the page's words, never Git's. Neutral, no red. |
 | Incomplete | "The change list was cut at a limit, so the counts are at least these" (counts get `≥`); line counts or the worktree list unavailable; "This repository's configuration hides untracked files, so none are listed or counted." |
 | Stale | "The worktree changed after HH:MM:SS: this list is out of date and this file was not shown." and a Refresh button; the list is marked **out of date**. |
+| Git failed on a refresh | The broker answered but Git failed, timed out, was missing, said too much or was busy: that confirms nothing, so the last good list and the file being read stay, marked **unconfirmed**, with the reason. Only a fact about the directory (not a repository, bare, refused, out of scope, a partial clone, gone) replaces what is shown. |
 | Session ended / grant gone | The last confirmed facts stay, marked **unconfirmed** (nothing could check), with "what was last read"; a file cannot be read and the page says so. |
 | Unsupported | No Changes tab; "This workbench does not offer worktree reading." |
 | Diff not showable | Binary, empty (a mode change, noted), too large, conflicted, not a regular file, name not text, cut at the limit, long lines cut short. |

@@ -168,6 +168,59 @@ describe("what stays on the screen", () => {
 		expect(unconfirmed.current).toBe(false);
 	});
 
+	it("keeps the last good list and diff when Git fails on a refresh, and replaces them only when the directory itself has changed", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let good = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		good = reduceProject(good, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		good = reduceProject(good, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		const unavailable = (reason: Project["reason"]): Project => ({
+			...project([], { snapshot: "1111111111111111" }),
+			state: "unavailable",
+			reason,
+			repository: null,
+			head: null,
+			changes: { ...project([]).changes, state: "unavailable", reason, dirty: "unknown" },
+		});
+		for (const reason of ["git-failed", "git-timeout", "git-not-found", "output-too-large", "busy"] as const) {
+			const failed = read(good, ok(unavailable(reason)));
+			expect(failed.project, reason).toBe(good.project);
+			expect(failed, reason).toMatchObject({
+				current: false,
+				problem: "error",
+				failure: reason,
+				diff: { status: "ready" },
+			});
+		}
+		// The repository answered but its change list could not be read: the same, a failed confirmation.
+		const listFailed = project([], { snapshot: "2222222222222222" });
+		const noList = read(
+			good,
+			ok({
+				...listFailed,
+				changes: { ...listFailed.changes, state: "unavailable", reason: "git-failed", dirty: "unknown" },
+			}),
+		);
+		expect(noList.project).toBe(good.project);
+		expect(noList).toMatchObject({ current: false, failure: "git-failed", diff: { status: "ready" } });
+		// A fact about the directory replaces what was shown.
+		const gone = read(good, ok(unavailable("not-a-repository")));
+		expect(gone.project?.reason).toBe("not-a-repository");
+		expect(gone).toMatchObject({ current: true, problem: null, failure: null });
+		// With nothing confirmed before, a failed first read is shown as it is.
+		expect(read(initialProject(), ok(unavailable("git-failed"))).project?.reason).toBe("git-failed");
+		// A good read clears the failure.
+		expect(read(read(good, ok(unavailable("git-timeout"))), ok(project(files)))).toMatchObject({
+			failure: null,
+			current: true,
+		});
+	});
+
 	it("selects by name, not by position: a refreshed list that still has the file reads it again, and one without it says it is gone", () => {
 		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		let state = read(initialProject(), ok(project(files)));

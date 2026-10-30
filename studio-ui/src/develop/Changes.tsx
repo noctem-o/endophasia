@@ -184,6 +184,7 @@ export function WorktreeBar({
 			{state.problem === null || reading ? null : (
 				<output className="wt-problem small" data-testid="project-problem">
 					{PROBLEM_WORDS[state.problem]}
+					{state.problem === "error" && state.failure !== null ? ` ${REASON_WORDS[state.failure] ?? ""}` : ""}
 				</output>
 			)}
 		</div>

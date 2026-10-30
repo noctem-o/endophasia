@@ -2,7 +2,7 @@
 // built page. What an operator sees and does: where the session works, what changed there, one file's diff, the way back to the
 // conversation with STOP and the draft still in reach, and what the page says when it cannot know. Set ENDO_SHOTS_DIR to also write
 // screenshots (of these synthetic fixtures; no private transcript or source is ever on screen).
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -928,5 +928,33 @@ suite("keyboard reading on a narrow screen", () => {
 				"!!document.querySelector('[data-testid=diff-table]') || !!document.querySelector('[data-testid=diff-view] .diff-note')",
 			),
 		).toBe(true);
+	});
+});
+
+suite("when Git fails on a refresh", () => {
+	it("keeps the last good list and the diff being read, marked unconfirmed, and says Git could not read it", async () => {
+		const repo = demoRepo();
+		const { page } = await open(1440, 900, { cwd: repo });
+		await ready(page);
+		await page.waitFor("document.querySelector('[data-testid=change-row]')");
+		await choose(page, "tokenizer.ts");
+		const rows = await page.eval<number>("document.querySelectorAll('[data-testid=change-row]').length");
+		chmodSync(join(repo, ".git", "index"), 0o000);
+		try {
+			await page.click("[data-testid=project-refresh]");
+			await page.waitFor("document.querySelector('[data-testid=project-problem]')");
+			expect(await page.text("[data-testid=project-problem]")).toContain("Git could not read this repository.");
+			expect(await page.text("[data-testid=project-not-current]")).toBe("unconfirmed");
+			expect(await page.eval<number>("document.querySelectorAll('[data-testid=change-row]').length")).toBe(rows);
+			expect(await page.eval<string>("document.querySelector('[data-testid=diff-view]').dataset.state")).toBe(
+				"ready",
+			);
+			expect(await page.text("[data-testid=diff-table]")).toContain("tokenizeStream");
+		} finally {
+			chmodSync(join(repo, ".git", "index"), 0o644);
+		}
+		// Once Git can read it again, one refresh confirms it.
+		await page.click("[data-testid=project-refresh]");
+		await page.waitFor("document.querySelector('[data-testid=project-header]').dataset.current === 'yes'");
 	});
 });

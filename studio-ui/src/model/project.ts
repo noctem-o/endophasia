@@ -13,6 +13,7 @@ import type {
 	DiffHunk,
 	Project,
 	ProjectDiff,
+	ProjectReason,
 	ProjectReply,
 } from "./project-wire.ts";
 
@@ -46,6 +47,8 @@ export interface ProjectState {
 	current: boolean;
 	/** What the last attempt ended in, when it was not a good read. */
 	problem: ProjectProblem | null;
+	/** Why Git could not confirm the worktree on the last attempt, when the broker answered but Git failed. */
+	failure: ProjectReason | null;
 	selection: FileKey | null;
 	diff: DiffState;
 	view: "conversation" | "changes";
@@ -60,6 +63,7 @@ export const initialProject = (): ProjectState => ({
 	project: null,
 	current: false,
 	problem: null,
+	failure: null,
 	selection: null,
 	diff: { status: "idle" },
 	view: "conversation",
@@ -103,6 +107,15 @@ function problemOf(reply: ProjectReply): ProjectProblem {
 	return "error";
 }
 
+/** Reasons that say an ATTEMPT failed, not what the directory is. */
+const FAILED_ATTEMPTS: readonly ProjectReason[] = [
+	"git-failed",
+	"git-timeout",
+	"git-not-found",
+	"output-too-large",
+	"busy",
+];
+
 export function reduceProject(state: ProjectState, action: ProjectAction): ProjectState {
 	switch (action.type) {
 		case "read-start":
@@ -113,6 +126,23 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 			if (reply.kind === "absent") return { ...initialProject(), availability: "absent", readSeq: state.readSeq };
 			if (reply.kind === "project") {
 				const project = reply.record;
+				// The broker answered, but Git could not read the worktree (it failed, timed out, was missing, said too much, or was busy).
+				// That confirms nothing and refutes nothing: the last good list and the file being read stay, marked unconfirmed, with the
+				// reason. Only a fact about the directory (not a repository, bare, refused, out of scope, a partial clone, gone) replaces it.
+				const attemptFailed =
+					(project.state === "unavailable" &&
+						project.reason !== null &&
+						FAILED_ATTEMPTS.includes(project.reason)) ||
+					(project.state === "ready" && project.changes.state === "unavailable");
+				if (attemptFailed && state.project !== null)
+					return {
+						...state,
+						availability: "available",
+						reading: false,
+						current: false,
+						problem: "error",
+						failure: project.state === "unavailable" ? project.reason : project.changes.reason,
+					};
 				// The selection survives the refresh by name: if that change is still listed it is read again, if not it is said to be gone.
 				const survives = findEntry(project, state.selection) !== null;
 				return {
@@ -122,6 +152,7 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 					project,
 					current: true,
 					problem: null,
+					failure: null,
 					diff:
 						state.selection === null
 							? { status: "idle" }

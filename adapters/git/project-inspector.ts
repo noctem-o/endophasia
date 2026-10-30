@@ -186,12 +186,14 @@ export class GitProjectInspectorV0 {
 		// configuration visible, passed on unchanged.
 		const global = await this.#git_(
 			cwd,
-			["config", "--type=path", "--get", "core.excludesFile"],
+			// NUL-terminated: a path is passed on exactly, a trailing space in a file name included.
+			["config", "-z", "--type=path", "--get", "core.excludesFile"],
 			GIT_LIMITS_V0.listBytes,
 			[],
 			true,
 		);
-		const path = global.code === 0 ? global.stdout.toString("utf8").trim() : "";
+		const raw = global.code === 0 ? global.stdout.toString("utf8") : "";
+		const path = raw.includes("\0") ? raw.slice(0, raw.indexOf("\0")) : "";
 		const local = await this.#git_(cwd, ["config", "--get", "status.showUntrackedFiles"], GIT_LIMITS_V0.listBytes);
 		const setting = local.code === 0 ? local.stdout.toString("utf8").trim().toLowerCase() : "";
 		return {

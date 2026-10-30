@@ -748,6 +748,17 @@ suite("what the operator's own Git would hide stays hidden", () => {
 		expect(project.changes.files.map((f) => f.path).sort()).toEqual(["global-only.txt", "visible.txt"]);
 	});
 
+	it("keeps an excludes-file name exactly, trailing spaces included", async () => {
+		const repo = commitedRepo();
+		write(repo, "secret.txt", "s\n");
+		write(repo, "visible.txt", "v\n");
+		const h = fixtureDir("home-spaces");
+		write(h, "ignore rules ", "secret.txt\n");
+		writeFileSync(join(h, ".gitconfig"), '[core]\n\texcludesFile = "~/ignore rules "\n');
+		const project = await inspect(repo, { env: { HOME: h } }).overview();
+		expect(project.changes.files.map((f) => f.path).sort()).toEqual(["visible.txt"]);
+	});
+
 	it("respects a repository that hides untracked files, says so, and does not scan its tree", async () => {
 		const repo = commitedRepo();
 		git(repo, "config", "status.showUntrackedFiles", "no");

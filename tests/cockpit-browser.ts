@@ -295,6 +295,11 @@ export class Page {
 		);
 	}
 
+	/** Make this tab refuse requests whose URL matches one of these patterns (`*` is a wildcard), as a failed download would. */
+	async block(patterns: string[]): Promise<void> {
+		await this.browser.send("Network.setBlockedURLs", { urls: patterns }, this.sessionId);
+	}
+
 	/** Close the tab, so a long suite does not hold every page it opened. */
 	async close(): Promise<void> {
 		await this.browser.send("Target.closeTarget", { targetId: this.targetId }).catch(() => undefined);

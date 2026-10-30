@@ -649,11 +649,17 @@ export function LiveConversation({
 	wb,
 	project,
 	leading,
+	arrival,
+	beacon,
 }: {
 	wb: Workbench;
 	project: ProjectApi;
 	/** Shown at the start of the header: the sessions toggle at the widths where the list is a drawer. */
 	leading?: ReactElement;
+	/** Field appearance: shown in place of the empty conversation (the ledger). */
+	arrival?: ReactNode;
+	/** Field appearance: a line under the run strip while something waits for the terminal. Text only, never a control. */
+	beacon?: ReactNode;
 }): ReactElement {
 	const { state } = wb;
 	const words = runStripWords(state.status, state.unreachable);
@@ -663,6 +669,7 @@ export function LiveConversation({
 	const view = project.state.view;
 	const changesOffered = project.state.availability !== "absent";
 	const narrow = useNarrow();
+	const empty = state.items.length === 0 && state.interventions.length === 0 && state.command === null;
 	const signature = `${state.items.at(-1)?.seq ?? 0}:${state.interventions.map((i) => `${i.proposalId}${i.state}${i.consumption?.status ?? ""}`).join()}:${state.command?.state ?? ""}`;
 	// Something arrived in the conversation while the operator was reading changes: the tab says so (an agent's question must not go unseen).
 	const seen = useRef(signature);
@@ -753,6 +760,7 @@ export function LiveConversation({
 					</span>
 					<StopControl wb={wb} />
 				</div>
+				{beacon}
 				<div
 					className="live-view"
 					id="develop-view-conversation"
@@ -760,14 +768,26 @@ export function LiveConversation({
 					aria-labelledby="develop-tab-conversation"
 					hidden={view !== "conversation"}
 				>
-					<LiveScroll signature={signature} visible={view === "conversation"}>
-						<p className="dim small live-privacy" data-testid="live-privacy">
-							Live text: private to the attached process, not recorded, and cleared when the session ends.
-						</p>
-						{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
-						<Transcript wb={wb} />
-						<CommandCard wb={wb} />
-					</LiveScroll>
+					{/* Field: with nothing in the conversation yet, the ledger stands in its place, read from the top (the
+					    conversation's own scroller follows the newest item, which would carry the ledger's head out of view). */}
+					{arrival != null && empty ? (
+						<div className="live-scroll arrival-scroll">
+							<p className="dim small live-privacy" data-testid="live-privacy">
+								Live text: private to the attached process, not recorded, and cleared when the session ends.
+							</p>
+							{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
+							{arrival}
+						</div>
+					) : (
+						<LiveScroll signature={signature} visible={view === "conversation"}>
+							<p className="dim small live-privacy" data-testid="live-privacy">
+								Live text: private to the attached process, not recorded, and cleared when the session ends.
+							</p>
+							{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
+							<Transcript wb={wb} />
+							<CommandCard wb={wb} />
+						</LiveScroll>
+					)}
 				</div>
 				{changesOffered ? (
 					<div

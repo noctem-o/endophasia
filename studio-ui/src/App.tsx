@@ -36,6 +36,10 @@ export function App(): ReactElement {
 	const observe = useObserve();
 	const { state } = observe;
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
+	// How DEVELOP is drawn: Instrument (the default) or Field. Only the drawing differs; every hook above and below is the same, so a
+	// switch keeps the draft, the selection and the file being read. Memory only (the page keeps no storage): a reload is Instrument.
+	const [appearance, setAppearance] = useState<"instrument" | "field">("instrument");
+	const [fieldPaused, setFieldPaused] = useState(false);
 	const compare = useCompare(workspace === "compare");
 	const develop = useDevelop(workspace === "develop");
 	const workbench = useWorkbench(workspace === "develop");
@@ -155,6 +159,24 @@ export function App(): ReactElement {
 					))}
 				</nav>
 				<span className="spacer" />
+				{workspace === "develop" ? (
+					<fieldset className="appearance" data-testid="appearance">
+						<legend className="sr-only">Develop appearance</legend>
+						{(["instrument", "field"] as const).map((a) => (
+							<label key={a} className="appearance-option" data-selected={appearance === a}>
+								<input
+									type="radio"
+									name="develop-appearance"
+									value={a}
+									checked={appearance === a}
+									onChange={() => setAppearance(a)}
+									data-testid={`appearance-${a}`}
+								/>
+								{a === "instrument" ? "Instrument" : "Field"}
+							</label>
+						))}
+					</fieldset>
+				) : null}
 				<span
 					className="readonly"
 					data-testid="authority-chip"
@@ -227,6 +249,9 @@ export function App(): ReactElement {
 							workbench={workbench}
 							project={project}
 							onObserveLive={showObserveLive}
+							appearance={appearance}
+							paused={fieldPaused}
+							onPause={setFieldPaused}
 						/>
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>

@@ -334,6 +334,33 @@ suite("it answers only for the working tree the page was shown", () => {
 		expect(await inspector.diff("0000000000000000", 0)).toEqual({ kind: "stale" });
 	});
 
+	it("refuses a diff after a same-length rewrite whose modification time was put back", async () => {
+		const root = commitedRepo();
+		write(root, "a.txt", "one\nTWO\nthree\n");
+		write(root, "fresh.txt", "ONE\n");
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		for (const [path, area, text] of [
+			["a.txt", "unstaged", "one\nBAD\nthree\n"],
+			["fresh.txt", "untracked", "BAD\n"],
+		] as const) {
+			const full = join(root, path);
+			const before = statSync(full, { bigint: true });
+			writeFileSync(full, text); // same length
+			// The old modification time, to the nanosecond (a Date would only restore milliseconds, and the test would prove nothing).
+			const ns = before.mtimeNs;
+			execFileSync("touch", [
+				"-m",
+				"-d",
+				`@${ns / 1_000_000_000n}.${String(ns % 1_000_000_000n).padStart(9, "0")}`,
+				full,
+			]);
+			const after = statSync(full, { bigint: true });
+			expect([after.size, after.mtimeNs, after.ino]).toEqual([before.size, before.mtimeNs, before.ino]);
+			expect(await inspector.diff(project.snapshot, entry(project, path, area).id), path).toEqual({ kind: "stale" });
+		}
+	});
+
 	it("says the list of files has changed when only another file did, and still reads the one asked for", async () => {
 		const root = dirtyRepo();
 		const inspector = inspect(root);

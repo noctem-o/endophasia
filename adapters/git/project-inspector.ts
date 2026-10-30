@@ -760,12 +760,16 @@ function repoLabel(common: string): string {
 	return name === ".git" ? basename(dirname(common)) : name.replace(/\.git$/, "") || name;
 }
 
-/** Size, modification time (ns) and inode of a working-tree path, or "absent". A path that cannot be examined is also a stamp: it changes when that does. */
+/**
+ * Size, modification and change times (ns) and inode of a working-tree path, or "absent". The change time matters: a same-length rewrite
+ * can put the modification time back, but the system moves the change time on every write and every time-setting, and nothing can set it
+ * back. A path that cannot be examined is also a stamp: it changes when that does.
+ */
 async function stampOf(root: string, path: string): Promise<string> {
 	if (!safeRelative(path)) return "unsafe";
 	try {
 		const s = await lstat(join(root, path), { bigint: true });
-		return `${s.size}:${s.mtimeNs}:${s.ino}:${s.isFile() ? "f" : s.isSymbolicLink() ? "l" : "o"}`;
+		return `${s.size}:${s.mtimeNs}:${s.ctimeNs}:${s.ino}:${s.isFile() ? "f" : s.isSymbolicLink() ? "l" : "o"}`;
 	} catch {
 		return "absent";
 	}

@@ -81,7 +81,7 @@ A fixed list of reads in the launch directory ([adapters/git/readonly-git.ts](..
   resolved, the file must be a plain file (not a link, directory, pipe or device), opened `O_NOFOLLOW|O_NONBLOCK` and still the file that
   was examined, at most a fixed number of bytes. A file replaced by a link or a pipe after the list was read is stale, not opened.
 - **Revalidation.** A diff is returned only if the entry is still the same change in a fresh status (same area, same blobs, same names),
-  the working-tree file's size/time/inode stamp is unchanged before and after the read, and the diff's own `index` blobs match the status.
+  the working-tree file's size/modification-time/change-time/inode stamp is unchanged before and after the read (the change time catches a same-length rewrite whose modification time was put back), and the diff's own `index` blobs match the status.
   Otherwise: stale, with nothing of the file in the reply. Whether *other* files changed is reported alongside a good diff.
 - **Display safety.** Names, branches and diff lines have control characters, escapes and bidirectional marks replaced and the entry flagged;
   a name that is not valid UTF-8 is listed but cannot be asked for exactly (`path-not-text`).

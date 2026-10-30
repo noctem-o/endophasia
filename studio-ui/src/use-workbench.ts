@@ -164,7 +164,9 @@ export function useWorkbench(active: boolean) {
 			void read();
 		},
 		check: async (proposalId: string) => {
-			await send({ kind: "check", proposalId });
+			const reply = await send({ kind: "check", proposalId });
+			// A check runs in the broker and is read back: start reading until it ends.
+			if (reply.kind === "intervention") void read();
 		},
 		discard: async () => {
 			const open = latest.current.command;

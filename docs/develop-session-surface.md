@@ -103,13 +103,9 @@ connected, refused by a production validation, and a test fails if any productio
   at run time. A server-side projection is a later step if an integration needs one.
 - No live Pi or model run was made for this change; the live entry was exercised against the fake-session broker only.
 
-## Known risks from the STEER/QUEUE/STOP slice, not changed here
+## Risks from the STEER/QUEUE/STOP slice
 
-These remain as documented in [develop-workbench.md](develop-workbench.md#13-slice-b-steer-queue-and-stop-through-the-broker) and
-are **not** resolved by this change. Proposed follow-up: a separate control PR.
-
-- A pending steer or queue approval blocks STOP until it is withdrawn or declined. The operator can withdraw it from the page or let it
-  time out, but a stop is not available during that wait.
-- `intervention/check` reads the proxy capture synchronously and is not rate-limited. It is reachable only with the pairing grant on
-  loopback, but a slow or large capture can hold the event loop.
-- Steer and queue text is stored under `<root>/interventions/` before approval, so declined text is retained there.
+This change did not touch them. The first two were remediated afterwards, as
+[develop-workbench.md §14](develop-workbench.md#14-stop-priority-and-bounded-evidence-checks) describes: a STOP now supersedes an
+unapproved steer or queue, and the evidence check is bounded and cooperative. Steer and queue text is still stored under
+`<root>/interventions/` before approval, so declined text is retained there.

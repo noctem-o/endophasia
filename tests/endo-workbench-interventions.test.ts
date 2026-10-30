@@ -425,15 +425,25 @@ describe("consumption is checked on request, and only reported as the capture sh
 		await settle();
 		for (let i = 0; i < 5; i++) await t.status();
 		expect(t.desk.consumptionChecks).toBe(0);
-		const checked = await t.call("POST", "intervention/check", { proposalId: view.proposalId }, grant);
-		expect(checked.body).toMatchObject({
+		// A check starts and returns at once; the answer is read back from the request's view.
+		const started = await t.call("POST", "intervention/check", { proposalId: view.proposalId }, grant);
+		expect(started.status).toBe(202);
+		expect(started.body).toMatchObject({ consumption: { status: "checking" } });
+		await settle();
+		const read = async () => (await t.call("GET", `intervention/${view.proposalId}`, null, grant)).body;
+		expect(await read()).toMatchObject({
 			state: "accepted",
 			consumption: { status: "not-observed", reason: "this session store holds no proxy capture" },
 		});
+		// Within the cooldown the same answer comes back and the capture is not read again.
 		t.desk.consumptionResult = { status: "observed", exchange: 3, captureEvent: "endo.event.c3" };
-		expect((await t.call("POST", "intervention/check", { proposalId: view.proposalId }, grant)).body).toMatchObject({
-			consumption: { status: "observed", exchange: 3 },
-		});
+		const again = await t.call("POST", "intervention/check", { proposalId: view.proposalId }, grant);
+		expect(again.body).toMatchObject({ consumption: { status: "not-observed" } });
+		expect(t.desk.consumptionChecks).toBe(1);
+		t.advance(6_000);
+		expect((await t.call("POST", "intervention/check", { proposalId: view.proposalId }, grant)).status).toBe(202);
+		await settle();
+		expect(await read()).toMatchObject({ consumption: { status: "observed", exchange: 3 } });
 		// A stop has no message to consume.
 		const stop = setup();
 		const g = await stop.pair();

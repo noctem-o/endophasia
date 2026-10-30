@@ -34,13 +34,17 @@ import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	ENDO_INTERVENTION_AUTHORIZATION_MAX_AGE_MS_V0,
+	type EndoCaptureSnapshotV0,
+	type EndoConsumptionScanV0,
+	type EndoConsumptionSliceLimitsV0,
 	type EndoInterventionAuthorityProviderV0,
 	type EndoInterventionCaptureSourceV0,
-	endoFindConsumptionV0,
 	endoInterventionAuthorizationV0,
 	endoInterventionGateV0,
 	endoInterventionMessageRefV0,
 	endoInterventionProposalV0,
+	endoNewConsumptionScanV0,
+	endoSliceConsumptionV0,
 	PI_INTERVENTION_CAPABILITIES_V0,
 } from "../../runtime/contracts/intervention.ts";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../../runtime/contracts/keyed-digest.ts";
@@ -76,6 +80,12 @@ interface RequestStateV0 {
 
 const record = (value: unknown) => value as Record<string, JsonValueV0>;
 
+/** What one slice of an explicit consumption check says. Only `observed` is recorded; nothing else is ever a finding. */
+export type PiConsumptionStepV0 =
+	| EndoInterventionConsumptionV0
+	| { status: "scanning"; scanned: { requests: number; bytes: number }; total: number }
+	| { status: "incomplete"; reason: string; scanned: { requests: number; bytes: number }; total: number };
+
 export class PiInterventionDeskV0 {
 	readonly session: PiSessionAttachmentV0;
 	readonly key: EndoDigestKeyV0;
@@ -87,6 +97,8 @@ export class PiInterventionDeskV0 {
 		{ authorization: EndoInterventionAuthorizationV0; eventId: string; recordedAt: string }
 	>();
 	readonly #requests = new Map<string, RequestStateV0>();
+	/** Where an explicit consumption check has got to, by proposal. Plain data and, between slices, no snapshot; dropped once observed. */
+	readonly #scans = new Map<string, { scan: EndoConsumptionScanV0; snapshot: EndoCaptureSnapshotV0 | null }>();
 	/** Applies in flight, by proposal: a concurrent duplicate waits for the first instead of sending twice. */
 	readonly #inFlight = new Map<string, Promise<PiInterventionApplyResultV0>>();
 
@@ -436,39 +448,148 @@ export class PiInterventionDeskV0 {
 		return this.#consumption(state);
 	}
 
-	#consumption(state: RequestStateV0): EndoInterventionConsumptionV0 {
-		const proposal = this.#proposals.get(state.request.proposalId)!.proposal;
+	/**
+	 * One BOUNDED slice of the consumption check, for a caller that yields between slices (the workbench). The rule is `endoFindConsumptionV0`'s,
+	 * run over an index with the bodies read on demand; a scan keeps its place per request, so a stopped check is resumed, not restarted.
+	 * `scanning`: more to read, nothing established. `incomplete`: the inspection could not finish (a body unreadable or over its limit, the
+	 * capture not indexable, the store closed): it establishes nothing, least of all that the message was not used. `observed` records
+	 * `intervention.consumed` once, here, and only when the capture shows the increase.
+	 */
+	consumptionStep(
+		proposalId: string,
+		limits: EndoConsumptionSliceLimitsV0,
+		options: { fresh?: boolean } = {},
+	): PiConsumptionStepV0 {
+		const state = this.#requests.get(proposalId);
+		if (state === undefined) return { status: "not-applicable", reason: "the request was never sent" };
+		return this.#step(state, limits, options.fresh === true);
+	}
+
+	/** The capture's index now, or null when there is none. A source with no bounded reader is adapted from its whole-capture read. */
+	#snapshot(unbounded: boolean): EndoCaptureSnapshotV0 | null {
+		const source = this.#capture;
+		if (source === null) return null;
+		if (source.open !== undefined) return source.open(unbounded ? { maxIndexBytes: Number.POSITIVE_INFINITY } : {});
+		const requests = source.requests();
+		if (requests === null) return null;
+		const byExchange = new Map(requests.map((request) => [request.exchange, request]));
+		return {
+			entries: requests.map((r) => ({ exchange: r.exchange, captureEvent: r.captureEvent, at: r.at, bodyBytes: 0 })),
+			body: (entry) => byExchange.get(entry.exchange)!.body,
+		};
+	}
+
+	#step(
+		state: RequestStateV0,
+		limits: EndoConsumptionSliceLimitsV0,
+		fresh: boolean,
+		unbounded = false,
+	): PiConsumptionStepV0 {
+		const id = state.request.proposalId;
+		const proposal = this.#proposals.get(id)!.proposal;
 		if (proposal.message === null) return { status: "not-applicable", reason: "stop carries no message to consume" };
 		if (state.outcome?.status !== "accepted")
 			return { status: "not-applicable", reason: "the request was not accepted" };
-		if (state.consumedEvent !== null && state.consumedExchange !== null)
+		// Every path that records consumption passes here first, so a check and `finish` cannot both record it.
+		if (state.consumedEvent !== null && state.consumedExchange !== null) {
+			this.#scans.delete(id);
 			return { status: "observed", exchange: state.consumedExchange, captureEvent: state.consumedEvent };
-		const requests = this.#capture?.requests() ?? null;
-		if (requests === null) return { status: "not-observed", reason: "this session store holds no proxy capture" };
+		}
+		let held = this.#scans.get(id);
+		// A scan that lost bodies is started again when a NEW check begins (not between its slices), so a body that has become readable
+		// is not skipped for good.
+		if (
+			held !== undefined &&
+			(fresh || held.snapshot === null) &&
+			(held.scan.unreadable.length > 0 || held.scan.tooLarge.length > 0)
+		)
+			held = { scan: endoNewConsumptionScanV0(), snapshot: null };
+		if (held === undefined) held = { scan: endoNewConsumptionScanV0(), snapshot: null };
+		if (held.snapshot === null || fresh) {
+			let snapshot: EndoCaptureSnapshotV0 | null;
+			try {
+				snapshot = this.#snapshot(unbounded);
+			} catch {
+				this.#scans.set(id, { scan: held.scan, snapshot: null });
+				return {
+					status: "incomplete",
+					reason: "the capture could not be indexed within the bounded reader's limit, so it was not inspected",
+					scanned: { ...held.scan.scanned },
+					total: 0,
+				};
+			}
+			if (snapshot === null) return { status: "not-observed", reason: "this session store holds no proxy capture" };
+			held = { scan: held.scan, snapshot };
+			this.#scans.set(id, held);
+		}
+		const entries = held.snapshot!.entries;
 		// With the proxy's delivery point, the message can first appear in the next exchange; without one, in the first
 		// exchange captured after the request was recorded.
 		const from =
 			state.request.at !== null
 				? state.request.at.exchange + 1
-				: (requests.find((request) => request.at >= state.recordedAt)?.exchange ?? Number.POSITIVE_INFINITY);
-		const found = endoFindConsumptionV0(requests, proposal.message, this.key, from);
-		if (found === null)
+				: (entries.find((entry) => entry.at >= state.recordedAt)?.exchange ?? null);
+		const slice = endoSliceConsumptionV0(held.scan, held.snapshot!, from, proposal.message, this.key, limits);
+		const scanned = { ...held.scan.scanned };
+		if (slice.kind === "more") return { status: "scanning", scanned, total: entries.length };
+		this.#scans.set(id, { scan: held.scan, snapshot: null });
+		if (slice.kind === "found") {
+			try {
+				this.#record(
+					"intervention.consumed",
+					{
+						schemaVersion: ENDO_INTERVENTION_SCHEMA_V0,
+						requestId: state.request.requestId,
+						exchange: slice.exchange,
+						captureEvent: slice.captureEvent,
+						message: proposal.message,
+					},
+					[state.eventId],
+				);
+			} catch {
+				// The store closed under it: what was seen is not recorded, and a check that cannot record says so.
+				return {
+					status: "incomplete",
+					reason: "the session store was closed before the finding could be recorded",
+					scanned,
+					total: entries.length,
+				};
+			}
+			this.#scans.delete(id);
+			return { status: "observed", exchange: slice.exchange, captureEvent: slice.captureEvent };
+		}
+		const lost = held.scan.unreadable.length + held.scan.tooLarge.length;
+		if (lost > 0)
+			return {
+				status: "incomplete",
+				reason: `${lost} captured request${lost === 1 ? "" : "s"} could not be inspected (unreadable, or over the per-request limit); the message was not found in the others`,
+				scanned,
+				total: entries.length,
+			};
+		if (slice.startedAt === null)
 			return {
 				status: "not-observed",
-				reason: `no captured request from exchange ${from} on carries the message (${requests.length} captured)`,
+				reason: `no request was captured after this one was recorded (${slice.requests} captured)`,
 			};
-		this.#record(
-			"intervention.consumed",
-			{
-				schemaVersion: ENDO_INTERVENTION_SCHEMA_V0,
-				requestId: state.request.requestId,
-				exchange: found.exchange,
-				captureEvent: found.captureEvent,
-				message: proposal.message,
-			},
-			[state.eventId],
-		);
-		return { status: "observed", exchange: found.exchange, captureEvent: found.captureEvent };
+		return {
+			status: "not-observed",
+			reason: `no captured request from exchange ${slice.startedAt} on carries the message (${slice.requests} captured)`,
+		};
+	}
+
+	/** The whole check in one synchronous run, with no budget: what closing the session records. A scan that could not finish is `not-observed`, saying why. */
+	#consumption(state: RequestStateV0): EndoInterventionConsumptionV0 {
+		const everything = {
+			maxBytes: Number.POSITIVE_INFINITY,
+			maxRequests: Number.POSITIVE_INFINITY,
+			maxBodyBytes: Number.POSITIVE_INFINITY,
+		};
+		const result = this.#step(state, everything, true, true);
+		if (result.status === "incomplete")
+			return { status: "not-observed", reason: `not established: ${result.reason}` };
+		if (result.status === "scanning")
+			return { status: "not-observed", reason: "not established: the inspection did not finish" };
+		return result;
 	}
 
 	/** What the store shows after a request: runs that ended and how, turns, and tool calls. */

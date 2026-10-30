@@ -56,17 +56,39 @@ function historicalRunningStore(): string {
 	);
 }
 
+/** The yield between slices of an evidence check, held by the test when asked: the page can then be seen mid-check. */
+class Hold {
+	held = false;
+	#waiting: (() => void)[] = [];
+	readonly yieldToLoop = () =>
+		this.held
+			? new Promise<void>((resolve) => this.#waiting.push(resolve))
+			: new Promise<void>((done) => setImmediate(done));
+	/** Let exactly one waiting check go on to its next slice, and hold the one after. */
+	step(): void {
+		this.#waiting.shift()?.();
+	}
+	release(): void {
+		this.held = false;
+		for (const resolve of this.#waiting.splice(0)) resolve();
+	}
+}
+
 async function open(width = 1440, height = 900, options: { running?: boolean; root?: string } = {}) {
 	const session = new FakeSession();
 	session.runActive = options.running ?? true;
 	const desk = new FakeDesk(session);
 	const approval = new Approval();
+	const hold = new Hold();
 	const broker = new WorkbenchBrokerV0({
 		session,
 		key: OTHER_KEY,
 		attachment: "pi.default",
 		approver: approval.approver,
 		interventions: desk,
+		yieldToLoop: hold.yieldToLoop,
+		// A check may be repeated at once here, so a test can show two answers in a row; the cooldown has its own tests.
+		evidenceBudget: { cooldownMs: 0 },
 	});
 	const root = options.root ?? developStore();
 	const server = await serve(root, { ui, workbench: broker, readBudget: { duty: 1, burstMs: 1e6 } });
@@ -84,7 +106,7 @@ async function open(width = 1440, height = 900, options: { running?: boolean; ro
 		await page.click("[data-testid=live-row]");
 		await page.waitFor("document.querySelector('#develop-live')");
 	}
-	return { page, session, desk, approval, broker, server };
+	return { page, session, desk, approval, broker, server, hold };
 }
 const fill = (page: Page, selector: string, value: string) =>
 	page.eval(
@@ -384,4 +406,102 @@ suite("steer, queue and stop in the DEVELOP workbench", () => {
 			expect(page.seen.problems, `${width}px`).toEqual([]);
 		}
 	}, 60_000);
+
+	it("keeps STOP requestable while a steer awaits approval, says it will cancel it, and keeps the cancelled card", async () => {
+		const { page, broker, desk, approval } = await open();
+		await pairWith(page, broker);
+		await page.click("[data-testid=mode-steer]");
+		await fill(page, "[data-testid=composer]", "also mention the tests");
+		await page.click("[data-testid=send]");
+		await approval.waitForRequest();
+		await page.waitFor(
+			"document.querySelector('[data-testid=intervention-card]')?.dataset.state === 'awaiting-approval'",
+		);
+		// The steer holds the terminal, and STOP is still there, enabled, saying what asking for it does.
+		expect(await page.eval<boolean>("!document.querySelector('[data-testid=stop]').disabled")).toBe(true);
+		const note = await page.text("[data-testid=stop-reason]");
+		expect(note).toContain("You approve it in the terminal");
+		expect(note).toContain("cancels the steer now waiting for approval");
+		expect(note).toContain("will not be sent");
+		expect(await page.eval<string>("document.querySelector('[data-testid=stop-reason]').dataset.supersedes")).toBe(
+			"steer",
+		);
+
+		await page.click("[data-testid=stop]");
+		await page.waitFor("document.querySelector('[data-testid=stop-status]')");
+		for (let i = 0; i < 200 && approval.requests.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+		expect(approval.requests.map((r) => r.operation)).toEqual(["steer", "stop"]);
+		// The cancelled request is still in the conversation, said plainly, and was never approved or sent.
+		await page.waitFor(
+			"document.querySelector('[data-testid=intervention-card][data-op=steer]')?.dataset.state === 'refused'",
+		);
+		const steer = await card(page, "steer");
+		expect(steer).toContain(
+			"Not sent: a stop was requested while it was still waiting for approval, so it was cancelled and never sent",
+		);
+		expect(
+			await page.eval<string>(
+				"document.querySelector('[data-testid=intervention-card][data-op=steer] .chain li:nth-child(2)').dataset.done",
+			),
+		).toBe("false");
+		// The STOP is awaiting the terminal like any other request. The page offers nothing that approves.
+		expect(await page.text("[data-testid=stop-status]")).toContain("Stop requested · awaiting terminal approval");
+		expect(desk.applyCalls).toEqual([]);
+		expect(
+			await page.eval<boolean>(
+				"![...document.querySelectorAll('button')].some(b => /approve|authori[sz]e|confirm/i.test(b.textContent))",
+			),
+		).toBe(true);
+		approval.answer("allow");
+		await page.waitFor("document.querySelector('[data-testid=stop-status]')?.dataset.state === 'sent'");
+		expect(desk.applyCalls).toHaveLength(1);
+		expect(page.seen.problems).toEqual([]);
+	});
+
+	it("shows a check while it runs, and an incomplete one as establishing nothing about the message", async () => {
+		const { page, broker, desk, approval, hold } = await open();
+		await pairWith(page, broker);
+		await page.click("[data-testid=mode-steer]");
+		await fill(page, "[data-testid=composer]", "look again");
+		await page.click("[data-testid=send]");
+		await approval.waitForRequest();
+		approval.answer("allow");
+		await page.waitFor("document.querySelector('[data-testid=intervention-card]')?.dataset.state === 'sent'");
+		desk.release([...desk.proposals.keys()][0]!);
+		await page.waitFor("document.querySelector('[data-testid=intervention-card]')?.dataset.state === 'accepted'");
+
+		hold.held = true;
+		desk.steps = [{ status: "scanning", scanned: { requests: 64, bytes: 64000 }, total: 500 }];
+		desk.consumptionResult = {
+			status: "incomplete",
+			reason:
+				"1 captured request could not be inspected (unreadable, or over the per-request limit); the message was not found in the others",
+			scanned: { requests: 500, bytes: 500000 },
+			total: 500,
+		};
+		await page.click("[data-testid=check-evidence]");
+		await page.waitFor("document.querySelector('[data-testid=consumption]')?.textContent.includes('checking')");
+		expect(await page.text("[data-testid=consumption]")).toContain("Starting: nothing has been read yet");
+		hold.step();
+		await new Promise((r) => setTimeout(r, 50));
+		await refresh(page);
+		await page.waitFor("document.querySelector('[data-testid=consumption]')?.textContent.includes('Read 64 of 500')");
+		const running = await page.text("[data-testid=consumption]");
+		expect(running).toContain("Read 64 of 500 captured requests so far");
+		expect(running).toContain("Nothing is established yet");
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=check-evidence]').disabled")).toBe(true);
+		hold.release();
+		await page.waitFor("document.querySelector('[data-testid=consumption-incomplete]')");
+		const incomplete = await page.text("[data-testid=consumption]");
+		expect(incomplete).toContain("check incomplete");
+		expect(incomplete).toContain("This does not show the message was not used");
+		expect(incomplete).not.toContain("not established");
+		expect(
+			await page.eval<string>(
+				"document.querySelector('[data-testid=intervention-card] .chain li:nth-child(5)').dataset.done",
+			),
+		).toBe("false");
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=check-evidence]').disabled")).toBe(false);
+		expect(page.seen.problems).toEqual([]);
+	});
 });

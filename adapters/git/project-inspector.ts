@@ -695,7 +695,7 @@ export class GitProjectInspectorV0 {
 					break;
 				}
 				const safe = displaySafeV0(line, GIT_LIMITS_V0.lineChars);
-				if (safe.text.endsWith("…") && line.length > GIT_LIMITS_V0.lineChars - 1) longLines = true;
+				if (safe.cut) longLines = true;
 				lines.push(`+${safe.text}`);
 			}
 			// Git's "no newline" marker is a line of the hunk like any other: it counts against the budget, so a file of exactly that many

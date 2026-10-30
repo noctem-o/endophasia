@@ -31,7 +31,7 @@ import {
 	runGitV0,
 } from "../adapters/git/readonly-git.ts";
 import type { EndoWorkbenchDiffV0, EndoWorkbenchProjectV0 } from "../protocol/workbench-project.ts";
-import { readWorkbenchDiff } from "../studio-ui/src/model/project-wire.ts";
+import { readWorkbenchDiff, readWorkbenchProject } from "../studio-ui/src/model/project-wire.ts";
 import { cleanGitFixtures, commitedRepo, dirtyRepo, fixtureDir, git, haveGit, write } from "./git-fixtures.ts";
 
 afterEach(cleanGitFixtures);
@@ -414,6 +414,39 @@ suite("what real Git sends in awkward cases, through the page's own gate", () =>
 			bodies.push(bodyOf(outcome.diff).join());
 		}
 		expect(bodies.sort()).toEqual(["+the one with a newline", "+the one with a picture"]);
+	});
+});
+
+suite("a name that grows when made safe still fits what the page accepts", () => {
+	it("reads a branch, a worktree branch and a path made of characters that each expand, and the page's gate accepts the whole project", async () => {
+		const root = commitedRepo();
+		const wide = `feature/${"\u202e".repeat(65)}`;
+		git(root, "checkout", "-q", "-b", wide);
+		git(root, "worktree", "add", "-q", join(fixtureDir("trees"), "w"), "-b", `side/${"\u0085".repeat(80)}`);
+		write(root, `${"\u2066".repeat(80)}.txt`, "x\n"); // 240 bytes on disk; 640 characters once made safe
+		const project = await inspect(root).overview();
+		expect(project.head?.kind).toBe("branch");
+		expect(project.head?.branch?.length).toBeLessThanOrEqual(200);
+		expect(project.head?.branch).toContain("\u2026");
+		expect(readWorkbenchProject(JSON.parse(JSON.stringify(project)))).not.toBeNull();
+	});
+
+	it("bounds the OUTPUT, whatever each character expands to, and never splits a character", () => {
+		for (const [input, max] of [
+			["\u202e".repeat(100), 50],
+			["\u0085".repeat(100), 50],
+			["\u0001".repeat(100), 50],
+			["😀".repeat(100), 51],
+			["plain text that is long enough", 10],
+		] as const) {
+			const safe = displaySafeV0(input, max);
+			expect(safe.text.length, JSON.stringify(input.slice(0, 2))).toBeLessThanOrEqual(max);
+			expect(safe.changed).toBe(true);
+			expect(safe.cut).toBe(true);
+			expect(safe.text.endsWith("\u2026")).toBe(true);
+			expect(/[\ud800-\udbff]\u2026$/.test(safe.text)).toBe(false); // no half of a surrogate pair before the ellipsis
+		}
+		expect(displaySafeV0("zzzz", 4)).toEqual({ text: "zzzz", changed: false, cut: false });
 	});
 });
 
@@ -883,6 +916,6 @@ describe("the pure parts", () => {
 		expect(displaySafeV0("a\tb").changed).toBe(false);
 		expect(displaySafeV0("a\u001bb").text).toBe("a␛b");
 		expect(displaySafeV0("x‮y").text).toContain("U+202E");
-		expect(displaySafeV0("z".repeat(10), 4)).toEqual({ text: "zzzz…", changed: true });
+		expect(displaySafeV0("z".repeat(10), 4)).toEqual({ text: "zzz…", changed: true, cut: true });
 	});
 });

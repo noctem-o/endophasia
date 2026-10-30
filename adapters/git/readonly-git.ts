@@ -248,11 +248,16 @@ export function failureReasonV0(run: GitRunV0): EndoProjectReasonV0 | null {
 
 // --- making what came from a repository safe to show --------------------------------------------------------------------------
 
-/** Control characters become their visible pictures (U+2400…), bidirectional controls become a named mark, and a long value is cut. */
-export function displaySafeV0(text: string, maxChars = 512): { text: string; changed: boolean } {
+/**
+ * Control characters become their visible pictures (U+2400…), bidirectional and C1 controls become a named mark, and a long value is cut.
+ * `maxChars` bounds the OUTPUT, in UTF-16 units as a string's `length` counts them (which is what the page's gate checks): a mark is eight
+ * units for one character, so a name made of them must be cut by what it becomes, not by what it was. A cut ends in "…", which is counted,
+ * and never falls inside a character.
+ */
+export function displaySafeV0(text: string, maxChars = 512): { text: string; changed: boolean; cut: boolean } {
 	let changed = false;
 	let out = "";
-	let count = 0;
+	const pieces: string[] = [];
 	for (const ch of text) {
 		const code = ch.codePointAt(0) as number;
 		let piece = ch;
@@ -270,15 +275,16 @@ export function displaySafeV0(text: string, maxChars = 512): { text: string; cha
 			piece = `⟨U+${code.toString(16).toUpperCase().padStart(4, "0")}⟩`;
 		else if (code === 0xfffd) piece = ch;
 		if (piece !== ch) changed = true;
-		if (count + 1 > maxChars) {
-			changed = true;
-			out += "…";
-			break;
-		}
-		out += piece;
-		count += 1;
+		pieces.push(piece);
 	}
-	return { text: out, changed };
+	const whole = pieces.join("");
+	if (whole.length <= maxChars) return { text: whole, changed, cut: false };
+	// Too long once made safe: keep whole pieces while they and the ellipsis fit.
+	for (const piece of pieces) {
+		if (out.length + piece.length + 1 > maxChars) break;
+		out += piece;
+	}
+	return { text: `${out}…`, changed: true, cut: true };
 }
 
 /** Whether decoding these bytes as UTF-8 and encoding them again gives the same bytes. */
@@ -539,7 +545,7 @@ export function parseUnifiedDiff(text: string, truncatedInput: boolean): ParsedD
 	let total = 0;
 	const cut = (value: string): string => {
 		const safe = displaySafeV0(value, GIT_LIMITS_V0.lineChars);
-		if (safe.text.endsWith("…") && value.length > GIT_LIMITS_V0.lineChars - 1) result.longLines = true;
+		if (safe.cut) result.longLines = true;
 		return safe.text;
 	};
 	for (const line of lines) {

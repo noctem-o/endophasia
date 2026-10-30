@@ -6,7 +6,7 @@
 //
 // Display, not configuration: the operator's choice to fold or show reasoning changes what this page draws. It never touches the model's
 // thinking setting, and it is held in page memory only (a reload is the default again).
-import type { MessagePart, ReasoningPart, TranscriptMessage } from "./workbench-wire.ts";
+import type { MessagePart, OpenMessage, ReasoningPart, ReasoningRelay, TranscriptItem } from "./workbench-wire.ts";
 
 /** Folded: each trace is a one-line disclosure. Shown: each trace is open as it arrives. Either way a trace can be opened or folded alone. */
 export type ReasoningMode = "folded" | "shown";
@@ -80,10 +80,29 @@ export function reasoningParts(
 	return out;
 }
 
-/** Whether any reasoning was supplied in a conversation. Only the count of messages with any: never a measure of the reasoning itself. */
-export const messagesWithReasoning = (items: readonly { kind: string }[]): number =>
-	items.filter((i) => i.kind === "message" && (i as TranscriptMessage).parts.some((p) => p.kind === "reasoning"))
-		.length;
+/** How many messages carry any reasoning part. Only a count: never a measure of the reasoning itself. */
+export const messagesWithReasoning = (items: readonly TranscriptItem[]): number =>
+	items.filter((i) => i.kind === "message" && i.parts.some((p) => p.kind === "reasoning")).length;
+
+/**
+ * One sentence for a conversation that shows no reasoning, so its absence is explained rather than looking broken; null when there is
+ * nothing to say (the source relays reasoning and some has arrived, or nothing has been said yet). It never guesses why a model gave none.
+ */
+export function reasoningNotice(
+	relay: ReasoningRelay | null,
+	items: readonly TranscriptItem[],
+	open: OpenMessage | null,
+): string | null {
+	if (relay === null) return null;
+	if (relay.relay === "withheld")
+		return relay.reason ?? "This source withholds model-provided reasoning: none is shown here.";
+	if (relay.relay === "unsupported")
+		return relay.reason ?? "This source does not provide model-provided reasoning: none is shown here.";
+	const assistant = items.some((i) => i.kind === "message" && i.role === "assistant");
+	const anyOpen = open?.parts.some((p) => p.kind === "reasoning") ?? false;
+	if (!assistant || messagesWithReasoning(items) > 0 || anyOpen) return null;
+	return "No model-provided reasoning in this conversation so far. It is shown only when the model supplies it as structured reasoning; reasoning written inside an answer (in <think> tags, for example) is part of the answer's text.";
+}
 
 /** One clause for a trace's head: its place among the message's traces, its size, and what is not shown. */
 export function traceMeta(part: ReasoningPart, ordinal: number, count: number): string {

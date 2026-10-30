@@ -1938,12 +1938,13 @@ table.fields thead th {
 	margin-top: 6px;
 }
 
+/* The head wraps: on a narrow column the size and the preview move to their own lines rather than squeezing to nothing. */
 .reasoning-toggle,
 .reasoning-line {
-	display: grid;
-	grid-template-columns: auto auto auto minmax(0, 1fr);
+	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	column-gap: 8px;
+	gap: 2px 8px;
 	width: 100%;
 	margin: 0;
 	padding: 3px 6px 3px 2px;
@@ -1953,10 +1954,6 @@ table.fields thead th {
 	font: inherit;
 	text-align: left;
 	color: var(--fg-3);
-}
-
-.reasoning-line {
-	grid-template-columns: auto auto minmax(0, 1fr);
 }
 
 .reasoning-toggle {
@@ -1977,6 +1974,7 @@ table.fields thead th {
 }
 
 .reasoning-chevron {
+	flex: none;
 	width: 0;
 	height: 0;
 	border-left: 4px solid currentColor;
@@ -1992,6 +1990,7 @@ table.fields thead th {
 
 .strata {
 	display: block;
+	flex: none;
 	color: var(--rep);
 }
 
@@ -2023,7 +2022,8 @@ table.fields thead th {
 
 /* Folded, the first words of the trace follow on the next line, one line only, in the quietest text colour. */
 .reasoning-preview {
-	grid-column: 3 / -1;
+	flex: 1 0 100%;
+	padding-left: 34px;
 	min-width: 0;
 	overflow: hidden;
 	white-space: nowrap;
@@ -2079,6 +2079,11 @@ table.fields thead th {
 	margin: 8px 0 0;
 	font-size: 11.5px;
 	color: var(--fg-3);
+}
+
+.reasoning-notice {
+	margin: 0 0 10px;
+	max-width: 80ch;
 }
 
 /* The display preference: a small radio pair in the conversation's header. */

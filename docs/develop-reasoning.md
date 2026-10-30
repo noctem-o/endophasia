@@ -68,6 +68,7 @@ All in UTF-8 bytes. A cut is made at a character boundary, in linear time, and i
 | The whole transcript | 400 items and 2 MiB of text and reasoning together | oldest items evicted **whole**, counted in `evicted` |
 | One page | 200 items and 512 KiB (always at least one item) | `more: true`; the page reads up to five pages per read |
 | A streamed block | the same per-block bound, counted incrementally (no re-measuring per delta) | cut, received bytes still counted |
+| The message being written | the same per-message budgets as a completed message (32 KiB text, 96 KiB reasoning, 32 parts) | cut, marked |
 | The page's own copy | 400 items and 2 Mi UTF-16 units | oldest items let go, counted, and said: "Earlier items are no longer held here (n dropped …)" |
 
 An item is never changed after it is issued, because the page never re-reads a sequence number it holds, so eviction removes items
@@ -89,10 +90,16 @@ Reasoning is treated exactly as the live transcript's text always was, because i
   `tests/endo-studio-ui-source.test.ts` checks the `fieldSignal(...)` call.
 - **Pi's own retention is Pi's.** Pi keeps its session file, thinking included, as it always does. That is not Endophasia's evidence,
   and the leak test below says so by leaving Pi's session directory out of its scan.
+- **A recording proxy records what passes through it.** If the operator routes the model's traffic through Endophasia's recording
+  proxy (the capture that consumption checks read), the proxy keeps raw HTTP request and response bodies in `<store>/capture/blobs/`,
+  outside canonical evidence, by design. Those bodies already hold whatever reasoning the provider streamed, and whatever Pi replays
+  of earlier turns. They hold it exactly as they hold the answer text. This change does not add to, read from or alter that record.
+  The transcript and everything built here write nothing.
 
-`tests/pi-reasoning-leak.test.ts` drives a model endpoint that streams `reasoning_content` with a sentinel, through a Pi, the attachment
-and the broker. It checks that the sentinel reaches the transcript as a reasoning part and **no byte of it is in any file under the
-store** (events, side store, harness and artifact records). It runs always against the fake Pi, and with `ENDO_PI_EXECUTABLE` against an
+`tests/pi-reasoning-leak.test.ts` drives a model endpoint that streams `reasoning_content` with a sentinel, over **two turns** (so the
+second request carries the first back), through a Pi, the attachment and the broker. No recording proxy is in that path. It checks that the
+sentinel reaches the transcript as a reasoning part and **no byte of it is in any file under the store** (events, side store, harness and
+artifact records), outside Pi's own session directory. It runs always against the fake Pi, and with `ENDO_PI_EXECUTABLE` against an
 installed Pi. It was run against Pi 1.0.1 for this change, where Pi's own provider turned the stream into a thinking block, in order
 before the answer.
 
@@ -144,6 +151,9 @@ Both appearances share these components (`develop/Reasoning.tsx`, `model/reasoni
   re-judges that, so a long trace opened near the bottom is read from its top. The next arrival does not pull the reader down. The
   message being written grows without the "New items below" cue. Turns are memoised by item, so a read that brings nothing new for a turn
   does not redraw it.
+- **A conversation with no reasoning says so.** When the source relays reasoning but no answer has carried any, one line under the
+  privacy note explains that reasoning is shown only when supplied in structured form, and that `<think>` text inside an answer is the
+  answer's text. It never guesses the model's setting. A source that withholds reasoning or has none gives its own reason.
 - **Keyboard and assistive technology.** Disclosures are buttons with `aria-expanded` and `aria-controls`. The preference is a radio group
   with a legend. Folded bodies are not in the DOM.
 

@@ -16,7 +16,14 @@ import {
 } from "react";
 import { presentLivePi } from "../model/develop-session.ts";
 import { REASON_WORDS } from "../model/project.ts";
-import { type Disclosure, disclosureOf, type ReasoningMode, reasoningKey, reasoningParts } from "../model/reasoning.ts";
+import {
+	type Disclosure,
+	disclosureOf,
+	type ReasoningMode,
+	reasoningKey,
+	reasoningNotice,
+	reasoningParts,
+} from "../model/reasoning.ts";
 import {
 	COMMAND_WORDS,
 	commandOpen,
@@ -441,8 +448,14 @@ function Transcript({ wb, reasoning }: { wb: Workbench; reasoning: ReasoningView
 			/>,
 		);
 	const dropped = state.evicted + state.trimmed;
+	const notice = reasoningNotice(state.reasoning, state.items, state.open);
 	return (
 		<>
+			{notice === null ? null : (
+				<p className="dim small reasoning-notice" data-testid="reasoning-none">
+					{notice}
+				</p>
+			)}
 			{dropped > 0 ? (
 				<Note>Earlier items are no longer held here ({dropped} dropped to stay within the limit).</Note>
 			) : null}

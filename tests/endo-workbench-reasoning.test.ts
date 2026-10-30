@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	LIVE_TRANSCRIPT_MAX_BYTES_V0,
+	LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
 	LIVE_TRANSCRIPT_MAX_PARTS_V1,
 	LIVE_TRANSCRIPT_MAX_REASONING_BLOCK_BYTES_V1,
 	LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1,
@@ -337,6 +338,21 @@ describe("the message being written", () => {
 		expect(part.bytes).toBe(40_000 * 5);
 		expect(Buffer.byteLength(part.text)).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_REASONING_BLOCK_BYTES_V1);
 		expect(part.text.includes("�")).toBe(false);
+	});
+
+	it("holds the snapshot to a completed message's budgets: text across its text parts, reasoning across its reasoning parts", () => {
+		const t = new LiveTranscriptV0();
+		t.push(start());
+		for (let i = 0; i < LIVE_TRANSCRIPT_MAX_PARTS_V1; i++)
+			t.push(
+				update({ type: i % 2 === 0 ? "text_delta" : "thinking_delta", contentIndex: i, delta: "x".repeat(40_000) }),
+			);
+		const parts = t.view().open!.parts;
+		const sum = (kind: string) =>
+			parts.filter((p) => p.kind === kind).reduce((n, p) => n + Buffer.byteLength(p.text), 0);
+		expect(sum("text")).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0);
+		expect(sum("reasoning")).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1);
+		expect(parts.filter((p) => p.truncated).length).toBeGreaterThan(0);
 	});
 
 	it("is cleared with the session and nothing is taken after", () => {

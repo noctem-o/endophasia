@@ -1,8 +1,9 @@
 // Model-provided reasoning, end to end through the attached process: a model endpoint that streams `reasoning_content` (as llama.cpp's
-// server does), a Pi that turns it into structured thinking blocks, the attachment, and the workbench broker. Reasoning must reach the
-// broker's private transcript and nothing durable Endophasia writes: not the event store, not the runtime-text side store, not the
-// harness or artifact records. Pi keeps its own session file, as it always does (that is Pi's retention, not Endophasia's evidence), so
-// the scan below leaves Pi's session directory out and says so.
+// server does), a Pi that turns it into structured thinking blocks, the attachment, and the workbench broker, over two turns. Reasoning
+// must reach the broker's private transcript and nothing durable Endophasia writes: not the event store, not the runtime-text side store,
+// not the harness or artifact records. Pi keeps its own session file, as it always does (that is Pi's retention, not Endophasia's
+// evidence), so the scan below leaves Pi's session directory out and says so. No recording proxy is in this path: a proxy, where an
+// operator puts one, records raw HTTP bodies by design (docs/develop-reasoning.md §4), and this change does not alter what it records.
 //
 // The first suite runs always, against the fake Pi (tests/fixtures/fake-pi) in its model-endpoint mode. The second runs only when
 // ENDO_PI_EXECUTABLE names an installed Pi; it is the same check with the real Pi's own openai-completions provider.
@@ -87,8 +88,12 @@ async function run(executable: string, extraEnv: Record<string, string>) {
 			attachment: "pi.default",
 			approver: new Approval().approver,
 		});
-		expect(await session.prompt("Say something short.")).toBe("started");
-		expect(await session.waitForSettled(60_000)).toBe(true);
+		// Two turns: the second model request carries the first turn back to the model (whatever Pi replays of it), so a durable record
+		// made of that request would show here too.
+		for (const prompt of ["Say something short.", "And once more."]) {
+			expect(await session.prompt(prompt)).toBe("started");
+			expect(await session.waitForSettled(60_000)).toBe(true);
+		}
 		const view = broker.transcript.view();
 		await session.close();
 		broker.endSession();

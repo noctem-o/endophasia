@@ -210,6 +210,15 @@ screenshots of both appearances at 390 px, 1180, 1366, 1440 and 2560.
 1. Brightening the terrain made it show through the ledger's words in the live arrival: a legibility regression from pass 2. The
    arrival surface now has its own dark clearing behind the text, with the terrain kept at its edges.
 
+**Pass 4** (after a review of the finished branch):
+1. In Instrument on a 390 px phone, a trace's head collapsed: its size wrapped one character per line ("1", "4", "2") beside a label that
+   cannot wrap. The head now wraps as a whole, so the size and the preview move to their own lines.
+2. A conversation whose model supplied no structured reasoning showed no disclosures and gave no reason. That is likely when a local
+   server leaves reasoning inside the answer as `<think>` text. One line now says that reasoning is shown only when supplied in
+   structured form, and that `<think>` text is the answer's text.
+3. Changing the reasoning preference while changes were being read lost the conversation's place on return. The hidden scroller was
+   judged, and it reported the reader at the bottom. A hidden scroller is no longer judged; a browser test fails without the fix.
+
 What was kept after review:
 - STOP's explanatory sentence wraps under it when it supersedes a waiting steer. STOP is still the first, filled control in the strip.
 - The beacon outranks the dashed texture while the broker is unreachable and a request waits: the request waits whatever the
@@ -249,7 +258,7 @@ Its refinements remain in force:
   - pause and reduced motion stop frames;
   - unreachable is drawn dashed;
   - and, new, the composition: the drawer, the dock, STOP in view with the dock closed, and the draft kept.
-- `tests/endo-studio-reasoning-browser.test.ts` (11, both appearances):
+- `tests/endo-studio-reasoning-browser.test.ts` (13, both appearances):
   - folded by default;
   - the keyboard;
   - the clamp and *Show the whole trace*;
@@ -258,7 +267,9 @@ Its refinements remain in force:
   - the reader's place kept while opening traces and while new items arrive;
   - the draft untouched;
   - no request made for the preference;
-  - everything kept across an appearance switch.
+  - everything kept across an appearance switch;
+  - the conversation's place kept when the preference changes during review;
+  - the no-reasoning line, shown, then gone once a trace arrives.
 
 **Limits.**
 - **Synthetic screenshots.** Every screenshot here is of synthetic fixtures. The live path was exercised through the fake Pi and through

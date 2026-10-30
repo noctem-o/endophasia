@@ -288,6 +288,44 @@ for (const appearance of ["instrument", "field"] as const) {
 	});
 });
 
+suite("a conversation without model-provided reasoning", () => {
+	it("says why none is shown, and stops saying it once a trace arrives", async () => {
+		const session = new FakeSession();
+		const broker = new WorkbenchBrokerV0({
+			session,
+			key: OTHER_KEY,
+			attachment: "pi.default",
+			approver: new Approval().approver,
+		});
+		const server = await serve(developStore(), { ui, workbench: broker, readBudget: { duty: 1, burstMs: 1e6 } });
+		session.live_(user("Hello."));
+		session.live_(assistant([{ type: "text", text: "<think>not structured</think>Hi." }]));
+		const page = await browser.open(1440, 900);
+		tabs.push(page);
+		await page.goto(`${server.baseUrl}/`);
+		await page.settled();
+		await page.click("button[data-workspace=develop]");
+		await page.waitFor("document.querySelector('[data-testid=live-row]')");
+		await fill(page, "[data-testid=pair-code]", broker.issuePairingCode().code);
+		await page.click("[data-testid=pair-submit]");
+		await page.waitFor("document.querySelector('[data-testid=reasoning-none]')");
+		expect(await page.text("[data-testid=reasoning-none]")).toContain(
+			"No model-provided reasoning in this conversation so far",
+		);
+		expect(await page.text("[data-testid=turn-assistant] .turn-text")).toBe("<think>not structured</think>Hi.");
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=reasoning]').length")).toBe(0);
+		session.live_(
+			assistant([
+				{ type: "thinking", thinking: "Now structured." },
+				{ type: "text", text: "Done." },
+			]),
+		);
+		await reread(page);
+		await page.waitFor("!document.querySelector('[data-testid=reasoning-none]')");
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=reasoning]').length")).toBe(1);
+	});
+});
+
 suite("model-provided reasoning across appearances", () => {
 	it("keeps the preference, the hand-opened traces and the draft when the appearance changes", async () => {
 		const { page } = await live("instrument");

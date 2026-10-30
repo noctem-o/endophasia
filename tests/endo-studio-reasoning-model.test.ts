@@ -8,6 +8,7 @@ import {
 	formatBytes,
 	preview,
 	reasoningKey,
+	reasoningNotice,
 	traceMeta,
 	utf8Length,
 	visibleText,
@@ -210,6 +211,53 @@ describe("the message being written, in the page's state", () => {
 		expect(held).toBeLessThanOrEqual(MAX_TEXT);
 		expect(s.trimmed).toBe(60 - s.items.length);
 		expect(s.items.at(-1)?.seq).toBe(60);
+	});
+});
+
+describe("a conversation that shows no reasoning says why", () => {
+	const msg = (
+		role: "user" | "assistant",
+		parts: TranscriptItem extends infer _ ? unknown[] : never,
+	): TranscriptItem =>
+		({
+			seq: 1,
+			kind: "message",
+			role,
+			parts,
+			truncated: false,
+			partsDropped: 0,
+			stopReason: null,
+			from: null,
+		}) as TranscriptItem;
+	const relayed = { relay: "relayed" as const, reason: null };
+	it("says nothing before the source has spoken, or before the model has answered, or once reasoning has arrived", () => {
+		expect(reasoningNotice(null, [], null)).toBeNull();
+		expect(
+			reasoningNotice(relayed, [msg("user", [{ kind: "text", text: "hi", truncated: false }])], null),
+		).toBeNull();
+		const withTrace = msg("assistant", [
+			{ kind: "reasoning", state: "supplied", text: "r", truncated: false, bytes: 1 },
+		]);
+		expect(reasoningNotice(relayed, [withTrace], null)).toBeNull();
+		const plain = msg("assistant", [{ kind: "text", text: "<think>x</think>ok", truncated: false }]);
+		expect(
+			reasoningNotice(relayed, [plain], {
+				id: 1,
+				afterSeq: 1,
+				parts: [{ kind: "reasoning", state: "supplied", text: "r", truncated: false, bytes: 1 }],
+			}),
+		).toBeNull();
+	});
+	it("explains an answer without reasoning, and a source that withholds it or has none, never guessing the model's setting", () => {
+		const plain = msg("assistant", [{ kind: "text", text: "<think>x</think>ok", truncated: false }]);
+		const none = reasoningNotice(relayed, [plain], null);
+		expect(none).toMatch(/No model-provided reasoning in this conversation so far/);
+		expect(none).toMatch(/<think>/);
+		expect(none).not.toMatch(/thinking level|turned off|disabled/i);
+		expect(reasoningNotice({ relay: "withheld", reason: null }, [plain], null)).toMatch(/withholds/);
+		expect(reasoningNotice({ relay: "unsupported", reason: "The host has none." }, [], null)).toBe(
+			"The host has none.",
+		);
 	});
 });
 

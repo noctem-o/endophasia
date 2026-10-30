@@ -335,11 +335,17 @@ export class LiveTranscriptV0 {
 	#openView(): LiveTranscriptOpenV1 | null {
 		const open = this.#open;
 		if (open === null) return null;
+		// The same per-message budgets as a completed message: text across its text parts, reasoning across its reasoning parts.
+		let textLeft = LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0;
 		let reasoningLeft = LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1;
 		const parts: LiveTranscriptPartV1[] = [...open.blocks.entries()]
 			.sort(([a], [b]) => a - b)
 			.map(([, block]): LiveTranscriptPartV1 => {
-				if (block.kind === "text") return { kind: "text", text: block.text, truncated: block.truncated };
+				if (block.kind === "text") {
+					const shown = cut(block.text, textLeft);
+					textLeft -= bytes(shown.text);
+					return { kind: "text", text: shown.text, truncated: block.truncated || shown.truncated };
+				}
 				const shown = cut(block.text, reasoningLeft);
 				reasoningLeft -= bytes(shown.text);
 				return {

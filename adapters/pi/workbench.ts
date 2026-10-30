@@ -13,6 +13,8 @@
 //   POST intervention/propose {operation, message?}   ask to STEER, QUEUE or STOP the open run. Needs the grant. Only REQUESTS.
 //   GET  intervention/<id>      the state of that request. Needs the grant.
 //   POST intervention/discard {proposalId}   withdraw it before it is approved.
+//   GET  project                the launch directory's Git context (repository, worktree, branch, linked worktrees, changed files). Needs the grant. READ ONLY.
+//   GET  project/diff?snapshot=&file=   one changed file's diff, for an entry of that snapshot. Needs the grant. READ ONLY.
 //   POST intervention/check {proposalId}     start a bounded check of whether the capture shows a STEER or QUEUE was consumed; the answer is read
 //                                             back from the request's view. Needs the grant.
 //
@@ -40,6 +42,11 @@ import {
 	type EndoWorkbenchRefusalReasonV0,
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
+import type {
+	EndoDiffOutcomeV0,
+	EndoWorkbenchDiffV0,
+	EndoWorkbenchProjectV0,
+} from "../../protocol/workbench-project.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
@@ -91,6 +98,17 @@ export type WorkbenchApproverV0 = (
 	signal: AbortSignal,
 ) => Promise<"allow" | "deny" | null>;
 
+/**
+ * The project context the broker may serve: two READS about the directory the session was launched in (adapters/git/project-inspector.ts).
+ * It is not part of the command surface: it can change nothing, takes no path from the page, and says nothing about who made a change.
+ */
+export interface WorkbenchProjectSourceV0 {
+	overview(): Promise<EndoWorkbenchProjectV0>;
+	diff(snapshot: string, id: number): Promise<EndoDiffOutcomeV0>;
+	/** The session ended: drop what was read. */
+	dispose?(): void;
+}
+
 export interface WorkbenchOptionsV0 {
 	session: WorkbenchSessionV0;
 	/** The comparison-domain key the prompt's digest is made under (its text never enters a record). */
@@ -100,6 +118,8 @@ export interface WorkbenchOptionsV0 {
 	approver: WorkbenchApproverV0;
 	/** The intervention desk STEER, QUEUE and STOP go through. Without it they are not offered. */
 	interventions?: WorkbenchDeskV0;
+	/** Read-only project context (the launch directory's Git state). Without it the project routes do not exist. */
+	project?: WorkbenchProjectSourceV0;
 	/** The presented alias of a session id (the cockpit's own), so the page can link the live session to its recording. */
 	aliasOf?: (sessionId: string) => string;
 	now?: () => number;
@@ -341,6 +361,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();
 		this.transcript.clear();
+		this.#o.project?.dispose?.();
 		this.#o.session.onLiveEvent = null;
 	}
 
@@ -369,6 +390,33 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			if (request.query !== "" && match === null) return refuse(400, "bad-request");
 			const view = this.transcript.view(match === null ? 0 : Number(match[1]));
 			return reply(200, { schemaVersion: "endo.workbench-transcript.v0", launchId: this.launchId, ...view });
+		}
+		// A workbench with no project context says so with one constant answer (as the read-only server does for status), so a page can ask
+		// quietly: a 404 would be logged by every browser as a failed request.
+		if (
+			this.#o.project === undefined &&
+			a === "project" &&
+			b === undefined &&
+			request.method === "GET" &&
+			request.query === ""
+		)
+			return reply(200, { available: false, schemaVersion: "endo.workbench-project.v0" });
+		if (this.#o.project !== undefined && a === "project" && request.method === "GET" && more.length === 0) {
+			const project = this.#o.project;
+			try {
+				if (b === undefined && request.query === "") return reply(200, await project.overview());
+				if (b === "diff") {
+					const match = /^snapshot=([0-9a-f]{16})&file=(0|[1-9][0-9]{0,5})$/.exec(request.query);
+					if (match === null) return refuse(400, "bad-request");
+					const outcome = await project.diff(match[1] as string, Number(match[2]));
+					if (outcome.kind === "diff") return reply(200, outcome.diff satisfies EndoWorkbenchDiffV0);
+					if (outcome.kind === "stale") return refuse(409, "stale-snapshot");
+					if (outcome.kind === "busy") return refuse(429, "busy");
+					return refuse(400, "bad-request");
+				}
+			} catch {
+				return refuse(503, "unavailable");
+			}
 		}
 		if (a === "prompt" && b === "propose" && more.length === 0 && request.method === "POST" && request.query === "")
 			return this.#propose(request.grant as string, isRecord(request.body) ? request.body : null);

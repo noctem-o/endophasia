@@ -2065,6 +2065,7 @@ table.fields thead th {
 /* The neutral session surface: a small tag on list rows, and the block in the context panel. */
 .surface-tag {
 	display: inline-block;
+	justify-self: start;
 	margin-top: 2px;
 	padding: 0 6px;
 	border: 1px solid var(--line, currentColor);
@@ -2079,4 +2080,675 @@ table.fields thead th {
 	margin: 8px 0 2px;
 	font-size: 0.8rem;
 	font-weight: 600;
+}
+
+
+/* --- DEVELOP: the live workspace, filled to the viewport -----------------------------------------------------------------------
+   The conversation is the working surface and the page does not scroll around it: the header (tabs, worktree, run strip, STOP) stays
+   at the top, the composer at the bottom, and only the middle scrolls. The worktree's changes are read in the same place as the
+   conversation, switched by the tabs, so STOP and an unsent draft are in reach while a diff is read. Nothing here is animated. */
+.develop-nav-wrap {
+	grid-area: nav;
+	min-width: 0;
+}
+
+.sessions-toggle {
+	display: none;
+}
+
+.live-view[hidden],
+.live-view > [hidden] {
+	display: none;
+}
+
+.develop-live {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.live-head {
+	gap: 8px 12px;
+	flex-wrap: wrap;
+}
+
+.view-tabs {
+	display: flex;
+	gap: 2px;
+	margin-right: auto;
+}
+
+.view-tab {
+	background: none;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	padding: 4px 10px;
+	cursor: pointer;
+	color: var(--fg-3);
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	font-size: 12px;
+}
+
+.view-tab:hover {
+	color: var(--fg-2);
+}
+
+.view-tab[aria-selected="true"] {
+	color: var(--fg-1);
+	border-bottom-color: var(--select);
+}
+
+.view-count {
+	color: var(--fg-3);
+	font-family: var(--mono);
+	font-weight: 400;
+}
+
+.worktree-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 4px 14px;
+	padding: 6px 14px;
+	border-bottom: 1px solid var(--line-subtle);
+	background: var(--surface-1);
+	font-size: 12px;
+}
+
+.worktree-bar[data-current="no"][data-state="ready"] {
+	border-bottom: 1px dashed var(--attention);
+}
+
+.wt-main {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 14px;
+	min-width: 0;
+	flex: 1 1 18rem;
+}
+
+.wt-repo {
+	color: var(--fg-1);
+	overflow-wrap: anywhere;
+}
+
+.wt-counts [data-area="conflicted"] {
+	color: var(--attention);
+}
+
+.wt-tail {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+}
+
+.wt-problem {
+	flex-basis: 100%;
+	color: var(--attention);
+}
+
+.chip-stale {
+	border: 1px dashed var(--attention);
+	color: var(--attention);
+	border-radius: var(--radius);
+	padding: 0 6px;
+	font-size: 11px;
+}
+
+.develop-live .run-strip {
+	margin: 8px 14px 0;
+}
+
+.live-view {
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+}
+
+.live-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+	padding: 10px 14px;
+	position: relative;
+}
+
+.live-privacy {
+	margin: 0 0 8px;
+}
+
+.develop-live .transcript {
+	max-height: none;
+	overflow: visible;
+	margin-bottom: 8px;
+}
+
+.develop-live .turn-text {
+	font-size: 14px;
+	line-height: 22px;
+	max-width: 72ch;
+}
+
+.develop-live .turn-tool {
+	font-size: 12px;
+}
+
+.new-below {
+	position: sticky;
+	bottom: 4px;
+	display: block;
+	margin-left: auto;
+	background: var(--surface-3);
+}
+
+.develop-live .composer {
+	flex: none;
+	gap: 4px;
+	padding: 6px 14px 8px;
+	background: var(--surface-1);
+}
+
+.develop-live .composer textarea {
+	min-height: 3.2em;
+	max-height: 14em;
+	field-sizing: content;
+	max-width: 96ch;
+}
+
+.composer-hint {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+	overflow: hidden;
+	max-width: 96ch;
+	margin: 0;
+}
+
+.stop-control .small[data-supersedes=""] {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	line-clamp: 1;
+	overflow: hidden;
+	max-width: 34ch;
+}
+
+/* The context column: the facts that matter first, the standing prose folded away. */
+.develop-inspector .more > summary {
+	cursor: pointer;
+	color: var(--fg-3);
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.develop-inspector .more[open] > summary {
+	margin-bottom: 6px;
+}
+
+.path {
+	overflow-wrap: anywhere;
+}
+
+.changes-block h4 {
+	margin: 10px 0 2px;
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--fg-2);
+}
+
+.changes-block .authorship {
+	margin-top: 10px;
+}
+
+.changes-block[data-stale="yes"] .changes-list {
+	opacity: 0.78;
+}
+
+.change-row {
+	display: grid;
+	grid-template-columns: 1.6em minmax(0, 1fr) auto;
+	grid-template-areas:
+		"letter name delta"
+		". dir dir";
+	align-items: baseline;
+	gap: 0 6px;
+	width: 100%;
+	padding: 3px 6px 3px 4px;
+	border: 0;
+	border-left: 2px solid transparent;
+	background: none;
+	text-align: left;
+	cursor: pointer;
+	border-radius: 0;
+}
+
+.change-row:hover {
+	background: var(--surface-2);
+}
+
+.change-row[aria-pressed="true"] {
+	background: var(--surface-3);
+	border-left-color: var(--select);
+}
+
+.change-letter {
+	grid-area: letter;
+	text-align: center;
+	font-family: var(--mono);
+	color: var(--fg-3);
+}
+
+.change-row[data-area="conflicted"] .change-letter {
+	color: var(--attention);
+}
+
+.change-name {
+	grid-area: name;
+	font-size: 12px;
+	line-height: 16px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.change-row .delta {
+	grid-area: delta;
+	font-size: 11px;
+	color: var(--fg-3);
+}
+
+.change-dir {
+	grid-area: dir;
+	font-size: 11px;
+	line-height: 14px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* --- the diff reader --------------------------------------------------------------------------------------------------------- */
+.diff-view {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.diff-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 12px;
+	padding: 8px 14px 4px;
+}
+
+.diff-title {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.diff-tools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.diff-meta,
+.diff-notes {
+	margin: 0;
+	padding: 0 14px 6px;
+	color: var(--fg-3);
+}
+
+.diff-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	border-top: 1px solid var(--line-subtle);
+}
+
+.diff-note {
+	padding: 14px;
+	color: var(--fg-2);
+}
+
+.diff {
+	border-collapse: collapse;
+	min-width: 100%;
+	width: max-content;
+	font-family: var(--mono);
+	font-size: 12px;
+	line-height: 18px;
+	tab-size: 4;
+}
+
+.diff th,
+.diff td {
+	padding: 0;
+	font-weight: 400;
+	text-align: left;
+}
+
+.hunk-head th {
+	padding: 3px 12px;
+	background: var(--surface-2);
+	color: var(--fg-3);
+	border-top: 1px solid var(--line-subtle);
+	border-bottom: 1px solid var(--line-subtle);
+	position: sticky;
+	left: 0;
+}
+
+.diff .ln {
+	position: sticky;
+	left: 0;
+	width: calc(5ch + 12px);
+	min-width: calc(5ch + 12px);
+	padding: 0 6px;
+	text-align: right;
+	color: var(--fg-3);
+	background: var(--surface-1);
+	user-select: none;
+}
+
+.diff .ln + .ln {
+	left: calc(5ch + 12px);
+}
+
+.diff .sign {
+	position: sticky;
+	left: calc(2 * (5ch + 12px));
+	width: 2.4ch;
+	min-width: 2.4ch;
+	text-align: center;
+	color: var(--fg-1);
+	background: var(--surface-1);
+	border-left: 2px solid transparent;
+	user-select: none;
+}
+
+.diff .code {
+	white-space: pre;
+	padding: 0 16px 0 6px;
+}
+
+/* Colour is reserved for provenance and condition, so a change is carried by a sign, a rule and weight: added lines are lifted, removed
+   lines are sunk and dotted, context is plain. */
+.diff-added {
+	background: color-mix(in srgb, var(--fg-1) 7%, var(--surface-1));
+}
+
+.diff-added .ln,
+.diff-added .sign {
+	background: color-mix(in srgb, var(--fg-1) 7%, var(--surface-1));
+}
+
+.diff-added .sign {
+	border-left-color: var(--fg-2);
+}
+
+.diff-removed {
+	background: var(--surface-0);
+	color: var(--fg-2);
+}
+
+.diff-removed .ln,
+.diff-removed .sign {
+	background: var(--surface-0);
+}
+
+.diff-removed .sign {
+	border-left: 2px dotted var(--fg-3);
+}
+
+.diff-note-row,
+.diff-note .code {
+	color: var(--fg-3);
+}
+
+/* --- the widths --------------------------------------------------------------------------------------------------------------- */
+@media (min-width: 1024px) and (min-height: 540px) {
+	body:has(.develop[data-fill="true"]) {
+		height: 100dvh;
+		overflow: hidden;
+	}
+	body:has(.develop[data-fill="true"]) #root {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+	body:has(.develop[data-fill="true"]) main {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		padding-bottom: 12px;
+	}
+	.develop[data-fill="true"] {
+		flex: 1;
+		min-height: 0;
+	}
+	.develop[data-fill="true"] .develop-grid {
+		flex: 1;
+		min-height: 0;
+		width: 100%;
+		max-width: 2400px;
+		margin-inline: auto;
+		align-items: stretch;
+		grid-template-rows: minmax(0, 1fr);
+		grid-template-columns: clamp(240px, 18vw, 340px) minmax(0, 1fr) clamp(320px, 24vw, 460px);
+		grid-template-areas: "nav activity inspector";
+	}
+	.develop[data-fill="true"] .develop-nav-wrap {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.develop[data-fill="true"] .develop-nav-wrap > .panel,
+	.develop[data-fill="true"] .develop-live,
+	.develop[data-fill="true"] .develop-inspector.panel {
+		position: static;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		max-height: none;
+		overflow: hidden;
+	}
+	/* Overflow:hidden alone does not stop a very tall table in a scrolling child from leaking into the page's own scroll height, and a
+	   viewport that cannot be scrolled by the user can still be scrolled by a focus. Paint containment keeps every panel's contents inside it. */
+	.develop[data-fill="true"] .develop-live,
+	.develop[data-fill="true"] .develop-inspector.panel,
+	.develop[data-fill="true"] .develop-nav-wrap > .panel {
+		contain: paint;
+	}
+	.develop[data-fill="true"] .develop-live {
+		grid-area: activity;
+	}
+	.develop[data-fill="true"] .develop-inspector.panel {
+		grid-area: inspector;
+	}
+	.develop[data-fill="true"] .develop-nav-wrap > .panel > .panel-body,
+	.develop[data-fill="true"] .develop-inspector.panel > .panel-body {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable;
+	}
+	.develop[data-fill="true"] .sessions-scroll {
+		max-height: none;
+		overflow: visible;
+	}
+}
+
+/* Three columns do not fit a laptop: the sessions list becomes a drawer, opened by a button, closed by choosing and by Escape. */
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-fill="true"] .develop-grid {
+		grid-template-columns: minmax(0, 1fr) 320px;
+		grid-template-areas: "activity inspector";
+		position: relative;
+	}
+	.develop[data-fill="true"] .sessions-toggle {
+		display: inline-flex;
+	}
+	.develop[data-fill="true"] .develop-nav-wrap {
+		display: none;
+		position: absolute;
+		z-index: 6;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: min(340px, 80%);
+		box-shadow:
+			0 0 0 1px var(--line-strong),
+			10px 0 28px rgba(0, 0, 0, 0.55);
+	}
+	.develop[data-fill="true"] .develop-grid[data-drawer="open"] .develop-nav-wrap {
+		display: flex;
+	}
+}
+
+/* One column: the page scrolls as it always did, with the run strip and the composer kept in reach. */
+@media (max-width: 1023.98px) {
+	.develop-live .run-strip {
+		position: sticky;
+		top: 0;
+		z-index: 3;
+	}
+	.develop-live .composer {
+		position: sticky;
+		bottom: 0;
+		z-index: 3;
+	}
+	.live-scroll {
+		overflow: visible;
+	}
+	.diff-scroll {
+		max-height: 70dvh;
+	}
+	.diff {
+		width: 100%;
+	}
+	.diff .code {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	.diff .ln + .ln,
+	.diff .ln {
+		position: static;
+	}
+	.worktree-bar {
+		padding: 6px 12px;
+	}
+}
+
+/* Buttons in a panel head name what they do on one line; a row's tag is as wide as its words, never the row. */
+.panel-tools .btn {
+	white-space: nowrap;
+}
+
+.caprow .surface-tag,
+.session-row .surface-tag {
+	justify-self: start;
+	width: fit-content;
+	max-width: 100%;
+}
+
+/* The composer is one compact block docked under the work: the mode choice and the request button share a row, the field is two lines and
+   grows with what is typed, and the hint is one line (its whole sentence is the field's description). */
+.composer-top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 12px;
+}
+
+/* A mode's description is its tooltip (the hint line says the rest); a selected mode that cannot be requested now reads as unavailable. */
+.mode .dim {
+	display: none;
+}
+
+.mode[data-selected="true"][data-offered="no"] {
+	border-style: dashed;
+	border-color: var(--line-strong);
+	color: var(--fg-3);
+}
+
+.modes legend {
+	display: none;
+}
+
+@media (max-width: 1023.98px) {
+	.develop-live .composer textarea {
+		min-height: 2.6em;
+	}
+}
+
+
+/* The run strip names the session and carries STOP last, with a short clause; the whole sentence is the button's description. */
+.strip-session {
+	color: var(--fg-1);
+}
+
+.stop-short {
+	white-space: nowrap;
+}
+
+.develop-live .run-strip {
+	border: 0;
+	border-bottom: 1px solid var(--line-subtle);
+	border-radius: 0;
+	background: none;
+	margin: 0;
+	padding: 6px 14px;
+}
+
+/* A back button duplicates the tab and Escape where the tabs are always in view. */
+@media (min-width: 1024px) {
+	[data-testid="diff-back"] {
+		display: none;
+	}
+}
+
+/* Reading on a phone: the diff gets the screen. The composer is not stuck to the bottom while changes are read, the diff is not a second
+   scroll area inside the page, and the line-number gutters are narrower. */
+@media (max-width: 1023.98px) {
+	.develop-live[data-view="changes"] .composer {
+		position: static;
+	}
+	.diff-scroll {
+		max-height: none;
+		overflow: visible;
+	}
+	.diff .ln {
+		width: calc(3.5ch + 8px);
+		min-width: calc(3.5ch + 8px);
+		padding: 0 4px;
+	}
+	.diff .ln + .ln,
+	.diff .sign {
+		position: static;
+	}
+}
+
+/* The top bar does not run past the grid on a very wide screen. */
+@media (min-width: 2600px) {
+	.topbar {
+		padding-inline: max(16px, calc((100vw - 2400px) / 2 + 16px));
+	}
 }

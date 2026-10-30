@@ -2,8 +2,18 @@
 // evidence. The text is the broker's private, in-memory transcript; the page says so. A prompt, steer, queue or stop can only be
 // REQUESTED here: the operator approves it in the attached terminal, and a refused or unapproved request is shown as not sent. What each
 // card claims stops where the evidence stops: acceptance is Pi's reply, consumption is proxy evidence, and a run's end is Pi's report.
-import { type FormEvent, type KeyboardEvent, type ReactElement, useId, useRef, useState } from "react";
+import {
+	type FormEvent,
+	type KeyboardEvent,
+	type ReactElement,
+	type ReactNode,
+	useId,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import { presentLivePi } from "../model/develop-session.ts";
+import { REASON_WORDS } from "../model/project.ts";
 import {
 	COMMAND_WORDS,
 	commandOpen,
@@ -17,9 +27,12 @@ import {
 } from "../model/workbench.ts";
 import type { TranscriptItem, WorkbenchIntervention } from "../model/workbench-wire.ts";
 import { ConnectionGlyph } from "../ui/marks.tsx";
-import { Panel } from "../ui/Panel.tsx";
+import { Panel, PanelBoundary } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
+import { useNarrow } from "../ui/use-narrow.ts";
+import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
+import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 
 export type Workbench = ReturnType<typeof useWorkbench>;
@@ -118,16 +131,14 @@ function Turn({ item }: { item: TranscriptItem }): ReactElement {
 			<span className="turn-role">{item.role === "user" ? "user" : "assistant"}</span>
 			<div className="turn-body">
 				<p className="turn-text">{item.text}</p>
-				<p className="turn-meta">
-					<span
-						className="live-tag"
-						title="This text exists only in the attached process's memory. It is not recorded evidence and is cleared when the session ends."
-					>
-						live · private, cleared at session end
-					</span>
-					{item.truncated ? <span className="dim"> · cut at the display limit</span> : null}
-					{item.stopReason === "error" ? <span className="flag flag-anomaly"> run error (reported)</span> : null}
-				</p>
+				{item.truncated || item.stopReason === "error" ? (
+					<p className="turn-meta">
+						{item.truncated ? <span className="dim">cut at the display limit</span> : null}
+						{item.stopReason === "error" ? (
+							<span className="flag flag-anomaly"> run error (reported)</span>
+						) : null}
+					</p>
+				) : null}
 			</div>
 		</li>
 	);
@@ -429,22 +440,34 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 				void send();
 			}}
 		>
-			<fieldset className="modes">
-				<legend>Send as</legend>
-				{MODES.map((m) => (
-					<label key={m.id} className="mode" data-mode={m.id} data-selected={mode === m.id}>
-						<input
-							type="radio"
-							name={`${id}-mode`}
-							value={m.id}
-							checked={mode === m.id}
-							onChange={() => setMode(m.id)}
-							data-testid={`mode-${m.id}`}
-						/>
-						<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
-					</label>
-				))}
-			</fieldset>
+			<div className="composer-top">
+				<fieldset className="modes">
+					<legend>Send as</legend>
+					{MODES.map((m) => (
+						<label
+							key={m.id}
+							className="mode"
+							data-mode={m.id}
+							data-selected={mode === m.id}
+							data-offered={wb.state.status?.offers[m.id]?.offered === true ? "yes" : "no"}
+							title={m.gist}
+						>
+							<input
+								type="radio"
+								name={`${id}-mode`}
+								value={m.id}
+								checked={mode === m.id}
+								onChange={() => setMode(m.id)}
+								data-testid={`mode-${m.id}`}
+							/>
+							<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
+						</label>
+					))}
+				</fieldset>
+				<button type="submit" className="btn" data-testid="send" disabled={!ok}>
+					Request {mode}
+				</button>
+			</div>
 			<label htmlFor={id} className="sr-only">
 				{label}
 			</label>
@@ -453,7 +476,6 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 				ref={field}
 				rows={3}
 				value={draft}
-				disabled={!offer.offered || promptOpen}
 				aria-describedby={`${id}-hint`}
 				data-testid="composer"
 				placeholder={
@@ -463,7 +485,7 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 							: mode === "steer"
 								? "A steering message for the run that is open"
 								: "A follow-up for when the run's work is done"
-						: ""
+						: "You can draft here; why it cannot be requested now is below."
 				}
 				onChange={(e) => setDraft(e.currentTarget.value)}
 				onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -474,14 +496,14 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 					}
 				}}
 			/>
-			<p className="dim small" id={`${id}-hint`} data-testid="composer-hint">
+			<p
+				className="dim small composer-hint"
+				id={`${id}-hint`}
+				data-testid="composer-hint"
+				title={offer.offered ? MODE_HINT[mode] : (offer.reason ?? "")}
+			>
 				{offer.offered ? MODE_HINT[mode] : (offer.reason ?? "")}
 			</p>
-			<div className="composer-row">
-				<button type="submit" className="btn" data-testid="send" disabled={!ok}>
-					Request {mode}
-				</button>
-			</div>
 		</form>
 	);
 }
@@ -521,6 +543,9 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 	// A stop does not wait behind an unapproved steer or queue: it cancels it. Said before the click, and again that the stop is approved
 	// in the terminal like any other request: this page never approves anything.
 	const superseded = wb.state.interventions.find((x) => x.state === "awaiting-approval" && x.operation !== "stop");
+	// The whole sentence is shown when it matters (it cancels something, or cannot be requested); otherwise a short clause is shown and the
+	// sentence stays as the button's description for assistive technology and the tooltip.
+	const showAll = superseded !== undefined || grant === null || !offer.offered;
 	return (
 		<span className="stop-control">
 			<button
@@ -533,10 +558,16 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 			>
 				Request stop
 			</button>
+			{showAll ? null : (
+				<span className="dim small stop-short" aria-hidden="true">
+					approve in the terminal
+				</span>
+			)}
 			<span
-				className="dim small"
+				className={showAll ? "dim small" : "dim small sr-only"}
 				id="stop-reason"
 				data-testid="stop-reason"
+				title={offer.offered ? OPERATION_WORDS.stop.delivery : (offer.reason ?? "")}
 				data-supersedes={superseded?.operation ?? ""}
 			>
 				{grant === null
@@ -553,63 +584,299 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 	);
 }
 
-export function LiveConversation({ wb }: { wb: Workbench }): ReactElement {
-	const { state } = wb;
-	const words = runStripWords(state.status, state.unreachable);
-	const connection = state.status === null || state.unreachable ? "unknown" : state.status.connection;
+/**
+ * The scrolling part of the conversation: it follows the newest item while the reader is at the bottom, and when the reader has scrolled
+ * up it leaves them where they are and says there is something below. The scroll position survives a switch to the Changes view and back.
+ */
+function LiveScroll({
+	signature,
+	visible,
+	children,
+}: {
+	signature: string;
+	visible: boolean;
+	children: ReactNode;
+}): ReactElement {
+	const box = useRef<HTMLDivElement>(null);
+	const stick = useRef(true);
+	const saved = useRef(0);
+	const [below, setBelow] = useState(false);
+	const onScroll = () => {
+		const el = box.current;
+		if (el === null || !visible) return;
+		stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+		saved.current = el.scrollTop;
+		if (stick.current) setBelow(false);
+	};
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `signature` stands for "the conversation changed"
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (el === null || !visible) return;
+		if (stick.current) el.scrollTop = el.scrollHeight;
+		else {
+			el.scrollTop = saved.current;
+			setBelow(true);
+		}
+	}, [signature, visible]);
 	return (
-		<Panel
-			id="develop-live"
-			title="Conversation"
-			subtitle="live · private to this session's process"
-			className="develop-activity"
-			resetKey={state.status?.launchId ?? "none"}
-			tools={
-				<>
-					<label className="check" title="Reads the broker's memory every few seconds while on. Off by default.">
-						<input
-							type="checkbox"
-							checked={state.follow}
-							onChange={(e) => wb.setFollow(e.currentTarget.checked)}
-							data-testid="follow"
-						/>
-						Follow
-					</label>
-					<button type="button" className="btn" id="workbench-refresh" disabled={state.busy} onClick={wb.refresh}>
-						{state.busy ? "Reading…" : "Refresh"}
-					</button>
-				</>
-			}
-		>
-			<div className="run-strip" data-testid="run-strip" data-connection={connection}>
-				<ConnectionGlyph state={connection} />
-				<span aria-live="polite" data-testid="run-strip-words">
-					{words}
-				</span>
-				<span className="dim small">
-					{state.statusAt === null ? "" : `read ${clock(state.statusAt)} (browser clock)`}
-				</span>
-				<StopControl wb={wb} />
-			</div>
-			{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
-			<Transcript wb={wb} />
-			<CommandCard wb={wb} />
-			{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}
-		</Panel>
+		<div className="live-scroll" ref={box} onScroll={onScroll}>
+			{children}
+			{below ? (
+				<button
+					type="button"
+					className="btn small-btn new-below"
+					data-testid="new-below"
+					onClick={() => {
+						const el = box.current;
+						if (el !== null) el.scrollTop = el.scrollHeight;
+						stick.current = true;
+						setBelow(false);
+					}}
+				>
+					New items below ↓
+				</button>
+			) : null}
+		</div>
 	);
 }
 
-/** Concise context for the live session: what it is, what is offered and why not, and the way back to evidence. */
-export function LiveContext({ wb, onObserve }: { wb: Workbench; onObserve(): void }): ReactElement {
-	const { status, grant } = wb.state;
+const VIEWS = [
+	{ id: "conversation", label: "Conversation" },
+	{ id: "changes", label: "Changes" },
+] as const;
+
+export function LiveConversation({
+	wb,
+	project,
+	leading,
+}: {
+	wb: Workbench;
+	project: ProjectApi;
+	/** Shown at the start of the header: the sessions toggle at the widths where the list is a drawer. */
+	leading?: ReactElement;
+}): ReactElement {
+	const { state } = wb;
+	const words = runStripWords(state.status, state.unreachable);
+	const connection = state.status === null || state.unreachable ? "unknown" : state.status.connection;
+	const paired = state.grant !== null;
+	const connected = connection === "connected";
+	const view = project.state.view;
+	const changesOffered = project.state.availability !== "absent";
+	const narrow = useNarrow();
+	const signature = `${state.items.at(-1)?.seq ?? 0}:${state.interventions.map((i) => `${i.proposalId}${i.state}${i.consumption?.status ?? ""}`).join()}:${state.command?.state ?? ""}`;
+	// Something arrived in the conversation while the operator was reading changes: the tab says so (an agent's question must not go unseen).
+	const seen = useRef(signature);
+	if (view === "conversation") seen.current = signature;
+	const unseen = view === "changes" && signature !== seen.current;
+	// Left and right arrows move between the two views, as on any tab list; the view is the operator's choice and is never switched for them.
+	const tabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (!changesOffered || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+		event.preventDefault();
+		const to = event.key === "Home" || event.key === "ArrowLeft" ? "conversation" : "changes";
+		project.setView(to);
+		document.getElementById(`develop-tab-${to}`)?.focus();
+	};
+	return (
+		<PanelBoundary resetKey={state.status?.launchId ?? "none"}>
+			<section
+				className="panel develop-activity develop-live"
+				id="develop-live"
+				aria-label="Live session"
+				data-view={view}
+			>
+				<header className="panel-head live-head">
+					{leading}
+					<div className="view-tabs" role="tablist" aria-label="Conversation or changes" onKeyDown={tabKeys}>
+						{VIEWS.filter((v) => v.id === "conversation" || changesOffered).map((v) => (
+							<button
+								key={v.id}
+								type="button"
+								role="tab"
+								id={`develop-tab-${v.id}`}
+								className="view-tab"
+								data-testid={`tab-${v.id}`}
+								aria-selected={view === v.id}
+								aria-controls={`develop-view-${v.id}`}
+								tabIndex={view === v.id ? 0 : -1}
+								onClick={() => project.setView(v.id)}
+							>
+								{v.label}
+								{v.id === "conversation" && unseen ? (
+									<span className="view-count" data-testid="conversation-new">
+										{" "}
+										· new
+									</span>
+								) : null}
+							</button>
+						))}
+					</div>
+					<div className="panel-tools">
+						<label
+							className="check"
+							title="Reads the broker's memory every few seconds while on. Off by default."
+						>
+							<input
+								type="checkbox"
+								checked={state.follow}
+								onChange={(e) => wb.setFollow(e.currentTarget.checked)}
+								data-testid="follow"
+							/>
+							Follow
+						</label>
+						<button
+							type="button"
+							className="btn"
+							id="workbench-refresh"
+							disabled={state.busy}
+							title="Read the session's status and conversation again. It does not read the worktree."
+							onClick={wb.refresh}
+						>
+							{state.busy ? "Reading…" : "Read session"}
+						</button>
+					</div>
+				</header>
+				<WorktreeBar api={project} paired={paired} connected={connected} />
+				<div className="run-strip" data-testid="run-strip" data-connection={connection}>
+					<ConnectionGlyph state={connection} />
+					<span
+						className="mono strip-session"
+						data-testid="run-strip-session"
+						title="The session this conversation belongs to"
+					>
+						{state.status?.session == null ? "session not identified yet" : shortSession(state.status.session)}
+					</span>
+					<span aria-live="polite" data-testid="run-strip-words">
+						{words}
+					</span>
+					<span className="dim small">
+						{state.statusAt === null ? "" : `read ${clock(state.statusAt)} (browser clock)`}
+					</span>
+					<StopControl wb={wb} />
+				</div>
+				<div
+					className="live-view"
+					id="develop-view-conversation"
+					role="tabpanel"
+					aria-labelledby="develop-tab-conversation"
+					hidden={view !== "conversation"}
+				>
+					<LiveScroll signature={signature} visible={view === "conversation"}>
+						<p className="dim small live-privacy" data-testid="live-privacy">
+							Live text: private to the attached process, not recorded, and cleared when the session ends.
+						</p>
+						{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
+						<Transcript wb={wb} />
+						<CommandCard wb={wb} />
+					</LiveScroll>
+				</div>
+				{changesOffered ? (
+					<div
+						className="live-view"
+						id="develop-view-changes"
+						role="tabpanel"
+						aria-labelledby="develop-tab-changes"
+						hidden={view !== "changes"}
+					>
+						<DiffView
+							api={project}
+							paired={paired}
+							connected={connected}
+							narrow={narrow}
+							onBack={() => {
+								project.setView("conversation");
+								document.getElementById("develop-tab-conversation")?.focus();
+							}}
+						/>
+					</div>
+				) : null}
+				{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}
+			</section>
+		</PanelBoundary>
+	);
+}
+
+/** The context column in live mode: where the session is working, what changed there, what can be requested, and the way back to evidence. */
+export function LiveContext({
+	wb,
+	project,
+	onObserve,
+}: {
+	wb: Workbench;
+	project: ProjectApi;
+	onObserve(): void;
+}): ReactElement {
+	const { status } = wb.state;
+	const paired = wb.state.grant !== null;
+	const connected = status?.connection === "connected" && !wb.state.unreachable;
+	const view = projectView(project, paired);
+	const shown = project.state.project;
+	const repo = shown?.repository ?? null;
 	return (
 		<Panel
 			id="develop-context"
 			title="Context"
-			subtitle="this session, and what you can do"
+			subtitle="where it works, and what you can do"
 			className="develop-inspector"
 			resetKey={status?.launchId ?? "none"}
 		>
+			<ChangesList api={project} paired={paired} connected={connected} />
+			<section className="block" data-testid="context-worktree">
+				<h3>Worktree</h3>
+				{repo === null ? (
+					<p className="dim small" data-testid="context-worktree-none">
+						{view.kind === "unpaired"
+							? "Pair this page to read the worktree."
+							: view.kind === "unsupported"
+								? "This workbench does not offer worktree reading."
+								: view.kind === "unavailable"
+									? (REASON_WORDS[view.reason] ?? REASON_WORDS["git-failed"])
+									: "Not read yet. Nothing is known about where the session works."}
+					</p>
+				) : (
+					<dl className="facts">
+						<div className="fact">
+							<dt>basis</dt>
+							<dd className="dim">configured: the directory Pi was launched in, read with Git</dd>
+						</div>
+						<div className="fact">
+							<dt>worktree</dt>
+							<dd className="mono path" title={repo.root}>
+								{repo.root}
+							</dd>
+						</div>
+						{repo.cwdRelative === "" ? null : (
+							<div className="fact">
+								<dt>launched in</dt>
+								<dd className="mono">{repo.cwdRelative}</dd>
+							</div>
+						)}
+					</dl>
+				)}
+				{shown === null || shown.worktrees.length < 2 ? null : (
+					<details className="more" data-testid="other-worktrees">
+						<summary>Other worktrees of this repository ({shown.worktrees.length - 1})</summary>
+						<p className="dim small">
+							These are places Git knows, not sessions: nothing says an agent runs in any of them.
+						</p>
+						<ul className="plain">
+							{shown.worktrees.map((w) => (
+								<li key={w.path} data-current={w.current} className={w.current ? "dim" : undefined}>
+									<span className="mono path" title={w.path}>
+										{w.path}
+									</span>
+									<span className="dim small">
+										{" "}
+										{w.current ? "this worktree · " : ""}
+										{w.branch ?? (w.detached ? "detached" : "no branch")}
+										{w.locked ? " · locked" : ""}
+										{w.prunable ? " · missing" : ""}
+									</span>
+								</li>
+							))}
+						</ul>
+					</details>
+				)}
+			</section>
 			<section className="block">
 				<h3>Session</h3>
 				<dl className="facts">
@@ -627,23 +894,14 @@ export function LiveContext({ wb, onObserve }: { wb: Workbench; onObserve(): voi
 							{status?.session === null || status === null ? "not identified yet" : shortSession(status.session)}
 						</dd>
 					</div>
-					<div className="fact">
-						<dt>project</dt>
-						<dd className="dim">unavailable: the evidence does not establish one</dd>
-					</div>
-					<div className="fact">
-						<dt>this page</dt>
-						<dd>
-							{grant === null
-								? "not paired: it can read status, not the conversation"
-								: "paired: it can read the conversation and request what is offered"}
-						</dd>
-					</div>
 				</dl>
+				<button type="button" className="btn" data-testid="live-observe" onClick={onObserve}>
+					Open in Observe
+				</button>
+				<p className="dim small">What was recorded about this session (structure, never its text) is in Observe.</p>
 			</section>
-			<SurfaceView session={presentLivePi(status, wb.state.unreachable)} />
-			<section className="block">
-				<h3>Offered</h3>
+			<details className="more block" data-testid="controls">
+				<summary>Controls: what the broker offers</summary>
 				<ul className="plain">
 					{(["prompt", "steer", "queue", "stop"] as const).map((op) => {
 						const o = status?.offers[op];
@@ -658,22 +916,22 @@ export function LiveContext({ wb, onObserve }: { wb: Workbench; onObserve(): voi
 						);
 					})}
 				</ul>
-			</section>
-			<section className="block">
-				<h3>Where the text lives</h3>
+			</details>
+			<details className="more block" data-testid="source-capabilities">
+				<summary>Source and capabilities</summary>
+				<SurfaceView session={presentLivePi(status, wb.state.unreachable)} />
+				<h4>Where the text lives</h4>
 				<p className="dim small">
-					The conversation above is held in the attached process's memory only, bounded, and cleared when the
-					session ends. It is not written to the event store or any read view. Pi keeps its own session file as it
-					always does; that is Pi's retention, not Endophasia's evidence.
+					The conversation is held in the attached process's memory only, bounded, and cleared when the session
+					ends. It is not written to the event store or any read view. Pi keeps its own session file as it always
+					does; that is Pi's retention, not Endophasia's evidence.
 				</p>
-			</section>
-			<section className="block">
-				<h3>Evidence</h3>
-				<button type="button" className="btn" data-testid="live-observe" onClick={onObserve}>
-					Open in Observe
-				</button>
-				<p className="dim small">What was recorded about this session (structure, never its text) is in Observe.</p>
-			</section>
+			</details>
+			{connected ? null : (
+				<p className="dim small" data-testid="context-disconnected">
+					No admitted connection now: the worktree shown is what was last read.
+				</p>
+			)}
 		</Panel>
 	);
 }

@@ -190,7 +190,11 @@ suite("the DEVELOP workbench", () => {
 		await page.waitFor("document.querySelector('[data-testid=turn-assistant]')");
 		expect(await page.text("[data-testid=turn-user]")).toContain("What is 4 plus 5?");
 		expect(await page.text("[data-testid=turn-assistant]")).toContain("It is 9.");
-		expect(await page.text("[data-testid=turn-assistant]")).toContain("live · private, cleared at session end");
+		// The privacy of the text is said once, above it, not under every message; the text is still not evidence and still goes with the session.
+		expect(await page.text("[data-testid=live-privacy]")).toContain(
+			"private to the attached process, not recorded, and cleared when the session ends",
+		);
+		expect(await page.text("[data-testid=turn-assistant]")).not.toContain("private");
 		expect(await page.eval<string>("document.body.innerText")).not.toContain("HIDDEN-THOUGHT");
 		// Three tool calls in a row are one folded line.
 		expect(await page.eval<number>("document.querySelectorAll('.transcript details').length")).toBe(1);
@@ -267,8 +271,10 @@ suite("the DEVELOP workbench", () => {
 		);
 		session.runActive = true;
 		await refresh(page);
-		await page.waitFor("document.querySelector('[data-testid=composer]').disabled");
+		await page.waitFor("document.querySelector('[data-testid=composer-hint]').textContent.includes('A run is open')");
 		expect(await page.text("form[aria-label='Message to agent']")).toContain("A run is open");
+		// What cannot be requested is gated at the REQUEST, not at the field: the operator can draft while the agent works.
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=composer]').disabled")).toBe(false);
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=send]').disabled")).toBe(true);
 	});
 

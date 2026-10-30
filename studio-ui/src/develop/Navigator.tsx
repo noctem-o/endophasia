@@ -170,7 +170,7 @@ export function Navigator({
 						disabled={reading || develop.paced}
 						onClick={develop.refresh}
 					>
-						{reading ? "Reading…" : inventory === null ? "Read sessions" : "Refresh"}
+						{reading ? "Reading…" : inventory === null ? "Read sessions" : "Reload list"}
 					</button>
 				</>
 			}

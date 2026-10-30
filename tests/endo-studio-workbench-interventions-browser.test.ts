@@ -156,7 +156,9 @@ suite("steer, queue and stop in the DEVELOP workbench", () => {
 		// Back to a prompt while a run is open: it is the one thing that is not offered now.
 		await page.click("[data-testid=mode-prompt]");
 		expect(await hint()).toContain("A run is open");
-		expect(await page.eval<boolean>("document.querySelector('[data-testid=composer]').disabled")).toBe(true);
+		// The field stays editable (a steer can be drafted while a prompt cannot be sent); only the request is gated.
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=composer]').disabled")).toBe(false);
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=send]').disabled")).toBe(true);
 		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe(
 			"a half written thought",
 		);

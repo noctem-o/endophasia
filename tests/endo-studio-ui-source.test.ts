@@ -44,6 +44,10 @@ describe("the frontend's source", () => {
 				"use-develop.ts",
 				"use-workbench.ts",
 				"develop/Live.tsx",
+				"develop/Changes.tsx",
+				"model/project.ts",
+				"model/project-wire.ts",
+				"use-project.ts",
 				"model/workbench.ts",
 				"model/workbench-wire.ts",
 				"develop/Activity.tsx",
@@ -161,12 +165,16 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(13);
+		expect(api.match(/\/api\//g)?.length).toBe(14);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(8);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(9);
 		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
 		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
+		// The project routes: GET only, a snapshot id and a number validated first, never a path, a branch or a command.
+		expect(api).toContain("./api/v0/workbench/project");
+		expect(api).toMatch(/\/diff\?snapshot=\$\{request\.snapshot\}&file=\$\{request\.id\}/);
+		expect(api).toMatch(/\^\[0-9a-f\]\{16\}\$/);
 		// Withdraw and check name their route from a closed pair, never from the page's input; the id is gated to the proposal shape first.
 		expect(api).toMatch(
 			/\.\/api\/v0\/workbench\/intervention\/\$\{request\.kind === "withdraw" \? "discard" : "check"\}/,

@@ -22,6 +22,12 @@ import {
 	readDevelopSessions,
 	sessionsCursor,
 } from "./model/develop-wire.ts";
+import {
+	type ProjectReply,
+	type ProjectRequest,
+	readWorkbenchDiff,
+	readWorkbenchProject,
+} from "./model/project-wire.ts";
 import type { ReadRequest } from "./model/state.ts";
 import {
 	readWorkbenchCommand,
@@ -278,6 +284,84 @@ export async function fetchWorkbench(
 		};
 	}
 }
+
+/**
+ * The project routes: two GETs under the workbench prefix, behind the grant. A diff is asked for by (snapshot, entry number), both
+ * validated here; no path, no command and no Git argument is ever built from anything the page holds. A reply is checked whole before
+ * it is accepted, and a failure is a classified reply with no body text.
+ */
+export async function fetchProject(request: ProjectRequest, grant: string, cancel: AbortSignal): Promise<ProjectReply> {
+	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+	let route = "./api/v0/workbench/project";
+	if (request.kind === "project-diff") {
+		if (
+			!/^[0-9a-f]{16}$/.test(request.snapshot) ||
+			!Number.isSafeInteger(request.id) ||
+			request.id < 0 ||
+			request.id > 999_999
+		)
+			return { kind: "failure", status: 0, code: "bad-request", retrySeconds: null };
+		route += `/diff?snapshot=${request.snapshot}&file=${request.id}`;
+	}
+	try {
+		const response = await fetch(new URL(route, document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			headers: { "X-Endo-Grant": grant },
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		let json: unknown = null;
+		try {
+			json = await response.json();
+		} catch {
+			/* a refusal whose body cannot be read is still a refusal */
+		}
+		const code =
+			typeof json === "object" && json !== null && typeof (json as { error?: unknown }).error === "string"
+				? ((json as { error: string }).error.match(/^[a-z-]{1,40}$/)?.[0] ?? "")
+				: "";
+		if (response.status === 404 && request.kind === "project") return { kind: "absent" };
+		if (response.status === 200 && request.kind === "project" && isNoProject(json)) return { kind: "absent" };
+		if (response.status === 409 && code === "stale-snapshot") return { kind: "stale" };
+		if (response.status !== 200) {
+			const retry = response.headers.get("retry-after");
+			return {
+				kind: "failure",
+				status: response.status,
+				code,
+				retrySeconds:
+					response.status === 429 && retry !== null && /^(0|[1-9][0-9]{0,3})$/.test(retry)
+						? Math.min(3600, Number(retry))
+						: null,
+			};
+		}
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
+			throw new Error("content type");
+		if (request.kind === "project") {
+			const record = readWorkbenchProject(json);
+			if (record !== null) return { kind: "project", record };
+		} else {
+			const record = readWorkbenchDiff(json);
+			// A diff is only accepted for the entry that was asked for.
+			if (record !== null && record.snapshot === request.snapshot && record.id === request.id)
+				return { kind: "diff", record };
+		}
+		return { kind: "failure", status: 200, code: "invalid", retrySeconds: null };
+	} catch {
+		return { kind: "failure", status: 0, code: "unreachable", retrySeconds: null };
+	}
+}
+
+/** A workbench started without a project context answers the project route with one constant. */
+const isNoProject = (v: unknown): boolean =>
+	typeof v === "object" &&
+	v !== null &&
+	Object.keys(v).sort().join() === "available,schemaVersion" &&
+	(v as { available: unknown }).available === false &&
+	(v as { schemaVersion: unknown }).schemaVersion === "endo.workbench-project.v0";
 
 /** The read-only server's constant answer: this server has no workbench. */
 const isNoWorkbench = (v: unknown): boolean =>

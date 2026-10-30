@@ -355,6 +355,8 @@ export class Page {
 			ArrowDown: { code: "ArrowDown", vk: 40 },
 			ArrowUp: { code: "ArrowUp", vk: 38 },
 			Tab: { code: "Tab", vk: 9 },
+			PageDown: { code: "PageDown", vk: 34 },
+			PageUp: { code: "PageUp", vk: 33 },
 			r: { code: "KeyR", vk: 82, text: "r" },
 		};
 		const spec = codes[key] ?? { code: key, vk: key.toUpperCase().charCodeAt(0), text: key };

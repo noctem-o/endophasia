@@ -106,10 +106,11 @@ const BASE_CONFIG: readonly (readonly [string, string])[] = [
 export function programKeysV0(names: readonly string[]): [string, string][] {
 	const found = new Map<string, string>();
 	for (const name of names) {
-		if (/^filter\..+\.(clean|smudge|process)$/i.test(name)) found.set(name, "");
-		else if (/^filter\..+\.required$/i.test(name)) found.set(name, "false");
-		else if (/^diff\..+\.(textconv|command)$/i.test(name)) found.set(name, "");
-		else if (/^diff\..+\.cachetextconv$/i.test(name)) found.set(name, "false");
+		// The driver's name may be EMPTY (`[filter ""]`, selected by the attribute `filter=`): `.*`, never `.+`.
+		if (/^filter\..*\.(clean|smudge|process)$/i.test(name)) found.set(name, "");
+		else if (/^filter\..*\.required$/i.test(name)) found.set(name, "false");
+		else if (/^diff\..*\.(textconv|command)$/i.test(name)) found.set(name, "");
+		else if (/^diff\..*\.cachetextconv$/i.test(name)) found.set(name, "false");
 		else if (/^pager\..+$/i.test(name)) found.set(name, "false");
 		else if (/^core\.(editor|sshcommand|askpass|gitproxy|fsmonitorhookversion)$/i.test(name)) found.set(name, "");
 	}

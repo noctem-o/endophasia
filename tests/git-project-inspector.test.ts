@@ -881,6 +881,58 @@ suite("a hostile repository cannot make it run anything, read outside, or write"
 		expect(readdirSync(out).filter((n) => n.startsWith("canary-"))).toEqual([]);
 	});
 
+	it("switches off a filter or diff driver with an EMPTY name, which a repository can select with `filter=`", async () => {
+		const root = commitedRepo();
+		const out = fixtureDir("canaries-empty");
+		const script = join(out, "evil.sh");
+		writeFileSync(script, `#!/bin/sh\ntouch "${out}/canary-$1"\ncat\n`);
+		chmodSync(script, 0o755);
+		write(root, ".gitattributes", "*.txt filter= diff=\n");
+		git(root, "add", ".gitattributes");
+		git(root, "commit", "-q", "-m", "attrs");
+		const config = join(root, ".git", "config");
+		writeFileSync(
+			config,
+			`${readFileSync(config, "utf8")}[filter ""]\n\tclean = ${script} clean\n\tsmudge = ${script} smudge\n[diff ""]\n\ttextconv = ${script} textconv\n\tcommand = ${script} command\n`,
+		);
+		write(root, "a.txt", "one\nTWO\nthree\n");
+		// The canaries are real: a plain Git read runs the empty-named filter.
+		execFileSync("git", ["status", "--porcelain"], {
+			cwd: root,
+			env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" },
+			stdio: "ignore",
+		});
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-")).length).toBeGreaterThan(0);
+		for (const name of readdirSync(out)) if (name.startsWith("canary-")) rmSync(join(out, name));
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		expect(project.state).toBe("ready");
+		for (const file of project.changes.files) await inspector.diff(project.snapshot, file.id);
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-"))).toEqual([]);
+		// Every program-bearing key of an empty-named driver is switched off, process and required included.
+		expect(
+			Object.fromEntries(
+				programKeysV0([
+					"filter..clean",
+					"filter..smudge",
+					"filter..process",
+					"filter..required",
+					"diff..textconv",
+					"diff..command",
+					"diff..cachetextconv",
+				]),
+			),
+		).toEqual({
+			"filter..clean": "",
+			"filter..smudge": "",
+			"filter..process": "",
+			"filter..required": "false",
+			"diff..textconv": "",
+			"diff..command": "",
+			"diff..cachetextconv": "false",
+		});
+	});
+
 	it("writes nothing to the repository: the index and the Git directory are untouched, even when a read could have refreshed them", async () => {
 		const root = dirtyRepo();
 		// A file whose recorded stat is out of date makes a plain `git status` rewrite the index.

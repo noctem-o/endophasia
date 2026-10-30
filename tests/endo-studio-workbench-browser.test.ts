@@ -195,7 +195,15 @@ suite("the DEVELOP workbench", () => {
 			"private to the attached process, not recorded, and cleared when the session ends",
 		);
 		expect(await page.text("[data-testid=turn-assistant]")).not.toContain("private");
-		expect(await page.eval<string>("document.body.innerText")).not.toContain("HIDDEN-THOUGHT");
+		// Model-provided reasoning is shown as what it is, folded by default, and is never mixed into the answer's text.
+		expect(await page.text("[data-testid=reasoning-toggle]")).toContain("Model-provided reasoning");
+		expect(
+			await page.eval<string | null>(
+				"document.querySelector('[data-testid=reasoning-toggle]').getAttribute('aria-expanded')",
+			),
+		).toBe("false");
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=reasoning-text]') === null")).toBe(true);
+		expect(await page.text("[data-testid=turn-assistant] .turn-text")).not.toContain("HIDDEN-THOUGHT");
 		// Three tool calls in a row are one folded line.
 		expect(await page.eval<number>("document.querySelectorAll('.transcript details').length")).toBe(1);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=run-marker]').length")).toBe(2);

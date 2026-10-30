@@ -22,6 +22,7 @@ import { projectView } from "./Changes.tsx";
 import { Arrival, Beacon, FieldLayer, FieldLegend, useReducedMotion } from "./Field.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
+import type { ReasoningView } from "./Reasoning.tsx";
 import { SessionInspector } from "./SessionInspector.tsx";
 
 function EventDialog({
@@ -87,6 +88,7 @@ export function DevelopWorkspace({
 	observeBlocked,
 	workbench,
 	project,
+	reasoning,
 	onObserveLive,
 	appearance = "instrument",
 	paused = false,
@@ -100,6 +102,8 @@ export function DevelopWorkspace({
 	onPause?(paused: boolean): void;
 	/** The worktree context of the live launch (read-only Git, read when asked). */
 	project: ProjectApi;
+	/** How model-provided reasoning is shown (display only, memory only). */
+	reasoning: ReasoningView;
 	/** The workbench (the broker's live view), or a state saying the server has none. */
 	workbench: Workbench;
 	/** Open Observe on a live session by its alias. */
@@ -440,7 +444,13 @@ export function DevelopWorkspace({
 						</>
 					) : state.stage === "activity" ? (
 						liveMode ? (
-							<LiveConversation wb={workbench} project={project} arrival={arrival} beacon={beacon} />
+							<LiveConversation
+								wb={workbench}
+								project={project}
+								reasoning={reasoning}
+								arrival={arrival}
+								beacon={beacon}
+							/>
 						) : (
 							open
 						)
@@ -469,6 +479,7 @@ export function DevelopWorkspace({
 						<LiveConversation
 							wb={workbench}
 							project={project}
+							reasoning={reasoning}
 							arrival={arrival}
 							beacon={beacon}
 							leading={

@@ -66,25 +66,55 @@ export interface WorkbenchStatus {
 	interventions: WorkbenchIntervention[];
 	transcript: { watermark: number; firstSeq: number };
 }
+/** One part of a message, in the runtime's order. Reasoning is what the model emitted as reasoning, relayed: not an account of its computation. */
+export type MessagePart =
+	| { kind: "text"; text: string; truncated: boolean }
+	| {
+			kind: "reasoning";
+			/** `supplied`: text was given. `withheld`: the provider redacted it. `empty`: a block arrived with no text. */
+			state: "supplied" | "withheld" | "empty";
+			text: string;
+			truncated: boolean;
+			/** The block's size as the runtime sent it, in UTF-8 bytes (before any cut). */
+			bytes: number;
+	  };
+export type ReasoningPart = Extract<MessagePart, { kind: "reasoning" }>;
 export type TranscriptItem =
 	| {
 			seq: number;
 			kind: "message";
 			role: "user" | "assistant";
-			text: string;
+			parts: MessagePart[];
 			truncated: boolean;
+			partsDropped: number;
 			stopReason: string | null;
+			/** The in-progress snapshot this completed message replaced, or null. */
+			from: number | null;
 	  }
 	| { seq: number; kind: "tool"; callId: string; name: string; status: "running" | "ok" | "error" }
 	| { seq: number; kind: "run"; state: "started" | "ended" };
+export type TranscriptMessage = Extract<TranscriptItem, { kind: "message" }>;
+/** The assistant message being written, as the broker held it when the page read it. Replaced by the completed message. */
+export interface OpenMessage {
+	id: number;
+	afterSeq: number;
+	parts: MessagePart[];
+}
+/** What the source relays of model-provided reasoning: harness-neutral, said by the source, not inferred by the page. */
+export interface ReasoningRelay {
+	relay: "relayed" | "withheld" | "unsupported";
+	reason: string | null;
+}
 export interface WorkbenchTranscript {
-	schemaVersion: "endo.workbench-transcript.v0";
+	schemaVersion: "endo.workbench-transcript.v1";
 	launchId: string;
 	items: TranscriptItem[];
 	watermark: number;
 	firstSeq: number;
 	evicted: number;
 	more: boolean;
+	open: OpenMessage | null;
+	reasoning: ReasoningRelay;
 }
 
 const bool = (v: unknown): boolean => typeof v === "boolean";
@@ -179,14 +209,33 @@ export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 		? (v as unknown as WorkbenchStatus)
 		: null;
 
+// The broker's bounds (adapters/pi/live-transcript.ts) in UTF-16 units: a UTF-8 byte is at most one unit, so these never refuse a body
+// the broker may send, and they stop one it may not.
+const MAX_PARTS = 32;
+const part: Check = (v) =>
+	shape(v, { kind: one("text"), text: text(32 * 1024), truncated: bool }) ||
+	(shape(v, {
+		kind: one("reasoning"),
+		state: one("supplied", "withheld", "empty"),
+		text: text(64 * 1024),
+		truncated: bool,
+		bytes: count,
+	}) &&
+		reasoningConsistent(v as unknown as ReasoningPart));
+/** Withheld and empty blocks carry no text and no cut. A supplied block has text, unless the message's reasoning budget ran out first. */
+const reasoningConsistent = (r: ReasoningPart): boolean =>
+	r.state === "supplied" ? r.text.length > 0 || r.truncated : r.text === "" && !r.truncated && r.bytes === 0;
+const parts: Check = (x) => Array.isArray(x) && x.length <= MAX_PARTS && list(part)(x);
 const item: Check = (v) =>
 	shape(v, {
 		seq: (n) => count(n) && n >= 1,
 		kind: one("message"),
 		role: one("user", "assistant"),
-		text: text(40_000),
+		parts,
 		truncated: bool,
+		partsDropped: count,
 		stopReason: eitherNull(text(32)),
+		from: eitherNull((n) => count(n) && n >= 1),
 	}) ||
 	shape(v, {
 		seq: (n) => count(n) && n >= 1,
@@ -200,17 +249,22 @@ const item: Check = (v) =>
 export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null {
 	if (
 		!shape(v, {
-			schemaVersion: one("endo.workbench-transcript.v0"),
+			schemaVersion: one("endo.workbench-transcript.v1"),
 			launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 			items: (x) => Array.isArray(x) && x.length <= 200 && list(item)(x),
 			watermark: count,
 			firstSeq: count,
 			evicted: count,
 			more: bool,
+			open: eitherNull((o) => shape(o, { id: (n) => count(n) && n >= 1, afterSeq: count, parts })),
+			reasoning: (r) =>
+				shape(r, { relay: one("relayed", "withheld", "unsupported"), reason: eitherNull(text(400)) }),
 		})
 	)
 		return null;
 	const t = v as unknown as WorkbenchTranscript;
+	// The message being written belongs after an item the broker has issued.
+	if (t.open !== null && t.open.afterSeq > t.watermark) return null;
 	let previous = 0;
 	for (const i of t.items) {
 		if (i.seq <= previous || i.seq > t.watermark) return null;

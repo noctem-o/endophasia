@@ -68,7 +68,7 @@ export const ENDO_DEVELOP_CONNECTIONS_V0 = ["connected", "disconnected", "unknow
 
 /** The closed action sets. A capability map must hold every one of its group's actions. */
 export const ENDO_DEVELOP_ACTIONS_V0 = {
-	observe: ["live-status", "live-transcript", "lifecycle", "activity"],
+	observe: ["live-status", "live-transcript", "live-reasoning", "lifecycle", "activity"],
 	control: ["prompt", "steer", "queue", "stop", "resume"],
 	coordinate: ["list-children", "dispatch-job"],
 } as const;

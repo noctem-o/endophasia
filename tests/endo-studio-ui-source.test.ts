@@ -57,6 +57,8 @@ describe("the frontend's source", () => {
 				"develop/Surface.tsx",
 				"develop/Field.tsx",
 				"develop/FieldCanvas.tsx",
+				"develop/Reasoning.tsx",
+				"model/reasoning.ts",
 				"model/field.ts",
 				"model/ledger.ts",
 				"model/develop.ts",
@@ -288,6 +290,14 @@ describe("the frontend's source", () => {
 		// The workspace hands the renderer the signal and nothing else.
 		const field = sources["develop/Field.tsx"]!;
 		expect(field.match(/<FieldCanvas [^>]*\/>/g)).toEqual(["<FieldCanvas signal={signal} />"]);
+		// Model-provided reasoning never reaches the field: not its text, its size, its presence, nor the message being written. The signal
+		// is built from typed state and the count of items only.
+		const workspace = sources["develop/DevelopWorkspace.tsx"]!;
+		const call = workspace.slice(workspace.indexOf("const signal = fieldSignal({"));
+		const args = call.slice(0, call.indexOf("});"));
+		expect(args).not.toMatch(/\b(reasoning|open|parts|text)\b/);
+		expect(args).toContain("received: wbs.items.length,");
+		expect(sources["model/field.ts"]).not.toMatch(/reasoning|thinking/i);
 	});
 
 	it("makes text a React child only: no component builds an element from a record's string", () => {

@@ -54,6 +54,7 @@ export function externalReadOnlySession(): EndoDevelopSessionV0 {
 			observe: {
 				"live-status": via("test-external-feed"),
 				"live-transcript": absent("The host reports no transcript feed."),
+				"live-reasoning": no("The host withholds model reasoning."),
 				lifecycle: no("The host exposes no lifecycle records."),
 				activity: no("The host exposes no recorded activity."),
 			},
@@ -88,6 +89,7 @@ const child = (
 		observe: {
 			"live-status": via("test-meta-harness-feed"),
 			"live-transcript": no("Not offered by the coordinator."),
+			"live-reasoning": no("Not offered by the coordinator."),
 			lifecycle: no("Not offered by the coordinator."),
 			activity: no("Not offered by the coordinator."),
 		},
@@ -123,6 +125,7 @@ export function metaHarnessSurface(): EndoDevelopSurfaceV0 {
 			observe: {
 				"live-status": via("test-meta-harness-feed"),
 				"live-transcript": no("A job has no conversation."),
+				"live-reasoning": no("A job has no conversation."),
 				lifecycle: no("Not offered."),
 				activity: no("Not offered."),
 			},
@@ -140,6 +143,7 @@ export function metaHarnessSurface(): EndoDevelopSurfaceV0 {
 			observe: {
 				"live-status": absent("The coordinator offers no feed for this agent."),
 				"live-transcript": no("Not offered by the coordinator."),
+				"live-reasoning": no("Not offered by the coordinator."),
 				lifecycle: no("Not offered by the coordinator."),
 				activity: no("Not offered by the coordinator."),
 			},

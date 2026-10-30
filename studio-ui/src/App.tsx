@@ -4,6 +4,7 @@ import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
 import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
+import { useReasoningView } from "./develop/Reasoning.tsx";
 import { candidateValue } from "./model/compare.ts";
 import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
@@ -47,6 +48,9 @@ export function App(): ReactElement {
 	// The worktree context belongs to the live launch, so it is held here beside the workbench's state: switching workspaces does not drop it,
 	// and losing the grant or changing launch does.
 	const project = useProject(workbench.state.grant, workbench.state.status?.launchId ?? null, workspace === "develop");
+	// How model-provided reasoning is shown, in both appearances: folded (the default) or shown, and the traces opened or folded by hand.
+	// Display only, memory only: it never changes the model's thinking setting, and a reload is the default again.
+	const reasoning = useReasoningView(workbench.state.status?.launchId ?? null);
 	// A hand-off from DEVELOP to Compare: the recording is preselected as Recording A once Compare's own inventory has it as selectable.
 	const [pending, setPending] = useState<{ source: "pi" | "dsh"; session: string } | null>(null);
 	const [compareNotice, setCompareNotice] = useState<string | null>(null);
@@ -248,6 +252,7 @@ export function App(): ReactElement {
 							observeBlocked={observeBlocked}
 							workbench={workbench}
 							project={project}
+							reasoning={reasoning}
 							onObserveLive={showObserveLive}
 							appearance={appearance}
 							paused={fieldPaused}

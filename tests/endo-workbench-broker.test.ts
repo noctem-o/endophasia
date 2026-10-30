@@ -3,8 +3,10 @@
 // the terminal approver: no Pi, no model, no network.
 import { describe, expect, it } from "vitest";
 import {
+	LIVE_TRANSCRIPT_MAX_BYTES_V0,
 	LIVE_TRANSCRIPT_MAX_ITEMS_V0,
 	LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
+	type LiveTranscriptItemV0,
 	LiveTranscriptV0,
 } from "../adapters/pi/live-transcript.ts";
 import { PiRpcRefusalV0 } from "../adapters/pi/rpc.ts";
@@ -13,9 +15,11 @@ import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { Approval, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
 
 const SECRET = "CANARY-prompt-9d2e-do-not-record";
+const text = (m: LiveTranscriptItemV0): string =>
+	m.kind === "message" ? m.parts.map((p) => (p.kind === "text" ? p.text : "")).join("") : "";
 
 describe("the live transcript", () => {
-	it("keeps user and assistant text and tool names and outcomes, and nothing else", () => {
+	it("keeps user and assistant text, structured reasoning, and tool names and outcomes, and nothing else", () => {
 		const t = new LiveTranscriptV0();
 		t.push({ type: "agent_start", record: {} });
 		t.push(textMessage("user", "hello"));
@@ -57,9 +61,11 @@ describe("the live transcript", () => {
 			["run", "ended"],
 		]);
 		const assistant = view.items[2]!;
-		expect(assistant.kind === "message" && assistant.text).toBe("hi there");
+		expect(assistant.kind === "message" && assistant.parts).toEqual([
+			{ kind: "reasoning", state: "supplied", text: "SECRET-REASONING", truncated: false, bytes: 16 },
+			{ kind: "text", text: "hi there", truncated: false },
+		]);
 		const everything = JSON.stringify(view);
-		expect(everything).not.toContain("SECRET-REASONING");
 		expect(everything).not.toContain(SECRET);
 		expect(view.items.map((i) => i.seq)).toEqual([1, 2, 3, 4, 5, 6]);
 		// A reader that already holds the running item gets the outcome by the same cursor: it is a NEW item.
@@ -102,11 +108,11 @@ describe("the live transcript", () => {
 		t.push(textMessage("assistant", "é".repeat(LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0)));
 		const m = t.view().items[0]!;
 		expect(m.kind === "message" && m.truncated).toBe(true);
-		expect(m.kind === "message" && Buffer.byteLength(m.text)).toBeLessThanOrEqual(
+		expect(m.kind === "message" && Buffer.byteLength(text(m))).toBeLessThanOrEqual(
 			LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
 		);
-		for (let i = 0; i < 60; i++) t.push(textMessage("assistant", "x".repeat(30_000)));
-		expect(t.size.bytes).toBeLessThanOrEqual(1024 * 1024);
+		for (let i = 0; i < 120; i++) t.push(textMessage("assistant", "x".repeat(30_000)));
+		expect(t.size.bytes).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_BYTES_V0);
 	});
 
 	it("cuts a very long non-ASCII message in linear time, at a character boundary", () => {
@@ -116,10 +122,10 @@ describe("the live transcript", () => {
 		expect(performance.now() - started).toBeLessThan(500);
 		const m = t.view().items[0]!;
 		expect(m.kind === "message" && m.truncated).toBe(true);
-		expect(m.kind === "message" && Buffer.byteLength(m.text)).toBeLessThanOrEqual(
+		expect(m.kind === "message" && Buffer.byteLength(text(m))).toBeLessThanOrEqual(
 			LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
 		);
-		expect(m.kind === "message" && m.text.includes("\ufffd")).toBe(false);
+		expect(m.kind === "message" && text(m).includes("\ufffd")).toBe(false);
 	});
 
 	it("forgets everything when cleared and ignores anything after", () => {

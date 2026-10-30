@@ -4,6 +4,8 @@
 import type {
 	InterventionOperation,
 	InterventionState,
+	OpenMessage,
+	ReasoningRelay,
 	TranscriptItem,
 	WorkbenchCommand,
 	WorkbenchIntervention,
@@ -12,6 +14,8 @@ import type {
 } from "./workbench-wire.ts";
 
 export const MAX_ITEMS = 400;
+/** The page's own bound on the text it holds (UTF-16 units), the broker's 2 MiB mirrored: older items go first, and are counted. */
+export const MAX_TEXT = 2 * 1024 * 1024;
 
 export interface WorkbenchState {
 	/** unknown until the first status answer; absent on a server that has no workbench (the read-only Studio). */
@@ -24,6 +28,12 @@ export interface WorkbenchState {
 	items: TranscriptItem[];
 	watermark: number;
 	evicted: number;
+	/** Items this page let go of to stay within its own bound (the broker may still hold them). */
+	trimmed: number;
+	/** The assistant message being written, as of the last read. Never a message: replaced by the completed one. */
+	open: OpenMessage | null;
+	/** What the source said it relays of model-provided reasoning, or null before the first transcript read. */
+	reasoning: ReasoningRelay | null;
 	command: WorkbenchCommand | null;
 	/** Every intervention the broker holds for this launch, as it last reported them (a reply to a request is merged in by id). */
 	interventions: WorkbenchIntervention[];
@@ -46,6 +56,9 @@ export const initialWorkbench = (): WorkbenchState => ({
 	items: [],
 	watermark: 0,
 	evicted: 0,
+	trimmed: 0,
+	open: null,
+	reasoning: null,
 	command: null,
 	interventions: [],
 	busy: false,
@@ -108,7 +121,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const gone = status.connection === "disconnected";
 			return {
 				...base,
-				...(gone ? { items: [], watermark: 0, evicted: 0 } : {}),
+				...(gone ? { items: [], watermark: 0, evicted: 0, trimmed: 0, open: null } : {}),
 				availability: "available",
 				status,
 				statusAt: at,
@@ -142,11 +155,16 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			// The cursor is what was RECEIVED: when more pages follow, it is the last item of this one, not the broker's highest number,
 			// so a later page that fails is read again and nothing is skipped.
 			const cursor = t.more ? (t.items.at(-1)?.seq ?? state.watermark) : t.watermark;
+			const kept = bounded(items);
 			return {
 				...state,
-				items: items.slice(-MAX_ITEMS),
+				items: kept,
 				watermark: Math.max(reset ? 0 : state.watermark, cursor),
 				evicted: t.evicted,
+				trimmed: (reset ? 0 : state.trimmed) + (items.length - kept.length),
+				// Every page carries the snapshot as of its own read: the last one read is the newest.
+				open: t.open,
+				reasoning: t.reasoning,
 				problem: null,
 			};
 		}
@@ -173,6 +191,22 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			};
 		}
 	}
+}
+
+const textOf = (item: TranscriptItem): number =>
+	item.kind === "message" ? item.parts.reduce((sum, part) => sum + part.text.length, 0) : 0;
+/** At most MAX_ITEMS items and MAX_TEXT of text, the newest kept (always the newest one). */
+function bounded(items: TranscriptItem[]): TranscriptItem[] {
+	let from = Math.max(0, items.length - MAX_ITEMS);
+	let total = 0;
+	for (let i = items.length - 1; i >= from; i -= 1) {
+		total += textOf(items[i]!);
+		if (total > MAX_TEXT && i < items.length - 1) {
+			from = i + 1;
+			break;
+		}
+	}
+	return from === 0 ? items : items.slice(from);
 }
 
 /** One line for the run strip, from what the broker reported and nothing more. */

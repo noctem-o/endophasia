@@ -361,6 +361,34 @@ suite("it answers only for the working tree the page was shown", () => {
 		}
 	});
 
+	it("refuses a staged diff when the change is committed between the status read and the patch read", async () => {
+		const root = commitedRepo();
+		write(root, "a.txt", "one\nTWO\nthree\n");
+		git(root, "add", "a.txt");
+		let commitBeforePatch = false;
+		const inspector = inspect(root, {
+			runner: async (args, options) => {
+				// The agent commits in the instant after the status read and before the patch read.
+				if (commitBeforePatch && args.includes("diff-index") && args.includes("-p")) {
+					commitBeforePatch = false;
+					git(root, "commit", "-q", "-m", "raced");
+				}
+				return runGitV0(args, options);
+			},
+		});
+		const project = await inspector.overview();
+		const id = entry(project, "a.txt", "staged").id;
+		commitBeforePatch = true;
+		expect(await inspector.diff(project.snapshot, id)).toEqual({ kind: "stale" });
+		// Without the race the same entry would have been read.
+		const quiet = commitedRepo();
+		write(quiet, "a.txt", "one\nTWO\nthree\n");
+		git(quiet, "add", "a.txt");
+		const other = inspect(quiet);
+		const p2 = await other.overview();
+		expect((await other.diff(p2.snapshot, entry(p2, "a.txt", "staged").id)).kind).toBe("diff");
+	});
+
 	it("says the list of files has changed when only another file did, and still reads the one asked for", async () => {
 		const root = dirtyRepo();
 		const inspector = inspect(root);

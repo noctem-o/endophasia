@@ -581,28 +581,12 @@ export class GitProjectInspectorV0 {
 		if (typeof programsNow === "string")
 			return { kind: "diff", diff: this.#shell(known, id, change, "unavailable", "git-failed", "unchanged") };
 		const keys = [...programsNow, ...known.excludes];
-		const now = await this.#git_(
-			known.root,
-			[
-				"status",
-				"--porcelain=v2",
-				"-z",
-				"--branch",
-				`--untracked-files=${known.untracked}`,
-				"--ignore-submodules=all",
-				"--renames",
-				"--no-ahead-behind",
-			],
-			GIT_LIMITS_V0.statusBytes,
-			keys,
-		);
-		if (failureReasonV0(now) !== null || now.code !== 0 || now.truncated) {
+		const now = await this.#statusNow(known, keys);
+		if (now === null)
 			return { kind: "diff", diff: this.#shell(known, id, change, "unavailable", "git-failed", "unchanged") };
-		}
-		const fresh = parseStatusV2(now.stdout, false);
 		// Still the same change: the same area, the same blobs, the same names.
-		if (!fresh.changes.some((c) => c.signature === change.signature)) return { kind: "stale" };
-		const inventory = sha256(now.stdout) === known.statusDigest ? "unchanged" : "changed";
+		if (!now.changes.some((c) => c.signature === change.signature)) return { kind: "stale" };
+		const inventory = now.digest === known.statusDigest ? "unchanged" : "changed";
 		if (record.stamp !== null && (await stampOf(known.root, change.path)) !== record.stamp) return { kind: "stale" };
 
 		const base = (state: EndoWorkbenchDiffV0["state"], reason: EndoDiffReasonV0 | null) =>
@@ -650,6 +634,13 @@ export class GitProjectInspectorV0 {
 				const from = change.area === "staged" ? change.headOid : change.indexOid;
 				if (!sameBlobV0(parsed.index.from, from)) return { kind: "stale" };
 				if (change.area === "staged" && !sameBlobV0(parsed.index.to, change.indexOid)) return { kind: "stale" };
+			} else {
+				// No `index` line: no patch at all (the change may have been committed between the status read and this one), or a change
+				// of mode only. There are no blobs to check, and a staged entry has no working-tree stamp, so the status is read again and
+				// the entry must still be the same change.
+				const after = await this.#statusNow(known, keys);
+				if (after === null || !after.changes.some((c) => c.signature === change.signature))
+					return { kind: "stale" };
 			}
 			diff = {
 				...base(parsed.binary ? "binary" : parsed.hunks.length === 0 ? "empty" : "ready", null),
@@ -661,6 +652,30 @@ export class GitProjectInspectorV0 {
 		}
 		if (record.stamp !== null && (await stampOf(known.root, change.path)) !== record.stamp) return { kind: "stale" };
 		return this.#snapshot === known ? { kind: "diff", diff } : { kind: "stale" };
+	}
+
+	/** A fresh status under the snapshot's own rules, or null when Git could not give a whole one. */
+	async #statusNow(
+		known: Snapshot,
+		keys: readonly (readonly [string, string])[],
+	): Promise<{ changes: RawChangeV0[]; digest: string } | null> {
+		const run = await this.#git_(
+			known.root,
+			[
+				"status",
+				"--porcelain=v2",
+				"-z",
+				"--branch",
+				`--untracked-files=${known.untracked}`,
+				"--ignore-submodules=all",
+				"--renames",
+				"--no-ahead-behind",
+			],
+			GIT_LIMITS_V0.statusBytes,
+			keys,
+		);
+		if (failureReasonV0(run) !== null || run.code !== 0 || run.truncated) return null;
+		return { changes: parseStatusV2(run.stdout, false).changes, digest: sha256(run.stdout) };
 	}
 
 	#shell(

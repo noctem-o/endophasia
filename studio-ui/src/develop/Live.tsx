@@ -743,16 +743,18 @@ function LiveScroll({
 	const stick = useRef(true);
 	const saved = useRef(0);
 	const [below, setBelow] = useState(false);
+	// Whether the conversation is the view shown now: a hidden scroller has no geometry, and judging it would lose the reader's place
+	// (a preference changed while changes are read redraws every trace).
+	const shown = useRef(visible);
+	shown.current = visible;
 	const judge = useCallback(() => {
 		const el = box.current;
-		if (el === null) return;
+		if (el === null || !shown.current) return;
 		stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
 		saved.current = el.scrollTop;
 		if (stick.current) setBelow(false);
 	}, []);
-	const onScroll = () => {
-		if (visible) judge();
-	};
+	const onScroll = () => judge();
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `signature` stands for "the conversation changed"
 	useLayoutEffect(() => {
 		const el = box.current;

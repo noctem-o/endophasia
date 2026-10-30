@@ -3041,11 +3041,11 @@ table.fields thead th {
 	--f-veil: rgba(3, 4, 5, 0.88);
 	--f-ink-1: #efebe3;
 	--f-ink-2: #c9c5bc;
-	/* 5.9:1 on the ground and the slab: the quietest text. */
+	/* 6.0:1 on the ground and the slab: the quietest text. */
 	--f-ink-3: #8f8c85;
 	/* Marks and rules only, never text. */
 	--f-ink-4: #57565a;
-	/* The reported hue, lifted for a black ground: a run Pi reports and the reasoning it relays. 9.6:1 on the slab. */
+	/* The reported hue, lifted for a black ground: a run Pi reports and the reasoning it relays. 10.2:1 on the slab. */
 	--f-lamp: #9ab8ff;
 	--f-amber: #f2bc58;
 	--f-measure: 46rem;
@@ -3916,7 +3916,8 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* Where there is nothing to read, the work surfaces step aside and the field shows. */
 .develop[data-surface="arrival"] .develop-live {
-	background: rgba(3, 4, 5, 0.42);
+	/* Words are read here, so they get a dark clearing; the terrain stays at the edges of the surface. */
+	background: radial-gradient(75% 70% at 38% 46%, rgba(3, 4, 5, 0.95) 0%, rgba(3, 4, 5, 0.86) 52%, rgba(3, 4, 5, 0.5) 100%);
 	border-color: transparent;
 	box-shadow: none;
 }

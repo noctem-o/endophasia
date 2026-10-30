@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
@@ -21,6 +22,7 @@ import {
 	thinkingDelta,
 	user,
 } from "./develop-reasoning-fixtures.ts";
+import { cleanGitFixtures, demoRepo, haveGit } from "./git-fixtures.ts";
 import { developStore } from "./studio-develop-fixtures.ts";
 import { Approval, FakeDesk, FakeSession } from "./workbench-fixtures.ts";
 
@@ -44,6 +46,7 @@ beforeAll(async () => {
 afterEach(async () => {
 	await Promise.all(tabs.splice(0).map((p) => p.close()));
 	await stopServers();
+	cleanGitFixtures();
 });
 afterAll(async () => {
 	await browser?.close();
@@ -66,7 +69,7 @@ const reread = async (page: Page) => {
 	await page.waitFor("!document.querySelector('#workbench-refresh').disabled");
 };
 
-async function live(appearance: "instrument" | "field", width = 1440, height = 900) {
+async function live(appearance: "instrument" | "field", width = 1440, height = 900, withProject = false) {
 	const session = new FakeSession();
 	session.runActive = true;
 	const broker = new WorkbenchBrokerV0({
@@ -75,6 +78,7 @@ async function live(appearance: "instrument" | "field", width = 1440, height = 9
 		attachment: "pi.default",
 		approver: new Approval().approver,
 		interventions: new FakeDesk(session),
+		...(withProject ? { project: new GitProjectInspectorV0({ cwd: demoRepo(), minRefreshMs: 0 }) } : {}),
 	});
 	const server = await serve(developStore(), { ui, workbench: broker, readBudget: { duty: 1, burstMs: 1e6 } });
 	for (const event of SYNTHETIC_CONVERSATION) session.live_(event);
@@ -266,6 +270,23 @@ for (const appearance of ["instrument", "field"] as const) {
 		});
 	});
 }
+
+(executable === null || !haveGit ? describe.skip : describe)("model-provided reasoning while changes are read", () => {
+	it("keeps the conversation's place when the preference is changed from the Changes view", async () => {
+		const { page } = await live("field", 1366, 768, true);
+		await page.eval(
+			"(() => { const s = document.querySelector('.live-scroll'); const r = document.querySelectorAll('[data-testid=reasoning]')[1]; s.scrollTop += r.getBoundingClientRect().top - s.getBoundingClientRect().top; s.dispatchEvent(new Event('scroll')); })()",
+		);
+		const before = await page.eval<number>("document.querySelector('.live-scroll').scrollTop");
+		expect(before).toBeGreaterThan(100);
+		await page.click("[data-testid=tab-changes]");
+		await page.click("[data-testid=reasoning-shown]");
+		await page.waitFor("document.querySelectorAll('[data-testid=reasoning-text]').length === 4");
+		await page.click("[data-testid=tab-conversation]");
+		await page.waitFor("!document.querySelector('#develop-view-conversation').hidden");
+		expect(await page.eval<number>("document.querySelector('.live-scroll').scrollTop")).toBe(before);
+	});
+});
 
 suite("model-provided reasoning across appearances", () => {
 	it("keeps the preference, the hand-opened traces and the draft when the appearance changes", async () => {

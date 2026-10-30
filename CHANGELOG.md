@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- **Model-provided reasoning in the DEVELOP live workbench:** where Pi supplies reasoning as structured `thinking` blocks (for a local
+  model behind llama.cpp, its `reasoning_content`), the conversation shows it in the runtime's order, labelled *Model-provided
+  reasoning*, folded by default, with a **Folded | Shown** display preference (memory only; it never changes the model's thinking
+  setting) and per-trace opening. The message being written is shown as of the last read and replaced by the completed message.
+  Redacted reasoning is shown as withheld; `<think>` tags in ordinary text are never treated as reasoning. Memory only, bounded per
+  block, message, page and in all, served only to the paired page, cleared with the session, never in evidence or logs (a test scans
+  the store with a real Pi). Wire: `endo.workbench-transcript.v1`; the session surface gains a harness-neutral `live-reasoning`
+  action. See [docs/develop-reasoning.md](docs/develop-reasoning.md).
+- **Field, second iteration (the night survey):** a near-black ground for OLED screens, the contour field in phosphor-like ink (the
+  reported hue only while a reported run is re-read, amber high ground while the terminal is waited on), a dark clearing for the
+  conversation, a horizon line under the run strip carrying the field's state, sessions in a drawer and a closable changes/context
+  dock (**Focus**) during a live session, and a wider measure on large screens. See [docs/develop-field.md](docs/develop-field.md).
 - **Field, an optional appearance for DEVELOP:** an **Instrument | Field** switch in the top bar (DEVELOP only; Instrument stays the
   default). Field draws the same workspace, state and controls as a survey sheet: a slow contour field in text behind the work (Canvas 2D,
   loaded on demand, GPU not needed), a reading surface with a measure, and, where there is nothing to read yet, a ledger of what is

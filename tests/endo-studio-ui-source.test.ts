@@ -343,10 +343,18 @@ describe("the page, style sheet and icon", () => {
 		expect(css).toMatch(/repeating-linear-gradient/);
 	});
 
-	it("runs no animation except the loading spinner, which exists only while the first read is running", () => {
+	it("runs no animation except the loading spinner and, drawn as Field, the horizon while the field is flowing and motion is allowed", () => {
 		const animations = [...css.matchAll(/animation:[^;]*;/g)].map((match) => match[0]);
-		expect(animations).toEqual(["animation: spin 0.9s linear infinite;", "animation: none;"]);
-		expect(css.match(/@keyframes/g)?.length).toBe(1);
+		expect(animations).toEqual([
+			"animation: spin 0.9s linear infinite;",
+			"animation: none;",
+			"animation: horizon 6.5s linear infinite;",
+		]);
+		expect(css.match(/@keyframes/g)?.length).toBe(2);
+		// The horizon moves only under the reduced-motion query's "no preference", and only while the field's signal says it is flowing.
+		expect(css).toMatch(
+			/@media \(prefers-reduced-motion: no-preference\) \{\s*\.develop\[data-appearance="field"\]\[data-motion="current"\] \.develop-live \.run-strip::after \{\s*animation: horizon/,
+		);
 	});
 
 	it("keeps ivory for selection and focus: no provenance, status or flag colour is the selection colour", () => {

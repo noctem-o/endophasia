@@ -153,11 +153,7 @@ export function ReasoningBlock({
 							</button>
 						) : null}
 						<p className="reasoning-note">
-							{part.truncated
-								? "Cut at the workbench's limit: the rest was not kept. "
-								: partial
-									? "Still being written: replaced by the completed message when it arrives. "
-									: ""}
+							{part.truncated ? "Cut at the workbench's limit: the rest was not kept. " : ""}
 							Relayed as the model sent it; not a record of how the answer was produced.
 						</p>
 					</>

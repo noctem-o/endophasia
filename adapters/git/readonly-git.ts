@@ -555,7 +555,10 @@ export function parseUnifiedDiff(text: string, truncatedInput: boolean): ParsedD
 			if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) result.binary = true;
 			else if (line.startsWith("index ")) {
 				const match = /^index ([0-9a-f]+)\.\.([0-9a-f]+)/.exec(line);
-				if (match !== null) result.index = { from: match[1] as string, to: match[2] as string };
+				// A file that changes TYPE (a file becomes a link) is two patches for one path: a deletion, then an addition. The comparison
+				// runs from the FIRST patch's source to the LAST patch's target.
+				if (match !== null)
+					result.index = { from: result.index?.from ?? (match[1] as string), to: match[2] as string };
 			} else if (NOTE.test(line) && result.notes.length < 8) result.notes.push(displaySafeV0(line, 200).text);
 		}
 	}

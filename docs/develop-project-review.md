@@ -88,6 +88,11 @@ A fixed list of reads in the launch directory ([adapters/git/readonly-git.ts](..
 - **Privacy.** Paths, branch names and source lines are never put in an event, a log or the event store (a test searches the whole store),
   never in a URL (the page uses a snapshot id and a number), and never in browser storage.
 
+A configuration listing that cannot be completed (it grew past the cap, or Git failed) ends the request **before any read that touches the
+working tree**: a diff is then "unavailable", never run without the overrides (a test plants a clean-filter canary, breaks the listing, and
+asserts no further Git read ran and the canary did not). A file that changes type (a file becomes a link) is two patches for one path; the
+comparison is checked from the first patch's source to the last patch's target.
+
 Residual risk, stated plainly: a program-bearing key written into the repository's configuration in the instant between the listing and a
 read is not seen. Whoever can write there is the agent itself, which can already run any program; this layer defends against a hostile
 repository, not against the attached process. A newer Git that adds a new program-running key would need it added to the list.
@@ -97,7 +102,8 @@ repository, not against the attached process. A newer Git that adds a new progra
 The page keeps **the last good read** through failures and marks it (a dashed rule and a chip: *out of date* when Git said it moved on, *unconfirmed* when nothing could check); it never refreshes by itself.
 One read happens on its own, when the page first holds a grant for a live launch; everything after is the operator's (Refresh worktree, choosing
 a file, next/previous). Nothing polls, nothing reads while the page is hidden or another workspace is shown, nothing repeats a failed read,
-and a selection is remembered **by (path, area)**, never by position, so a refreshed list cannot show a different file under the same slot
+and a selection is remembered **by (path, area, nth)**, never by position (`nth` is the place among entries that show the same name in the
+same area, because two different names can look identical once control characters are replaced), so a refreshed list cannot show a different file under the same slot
 (a file that left the list says so). The state lives in memory only; a reload leaves nothing (no storage, no URL), and a different launch
 drops it.
 

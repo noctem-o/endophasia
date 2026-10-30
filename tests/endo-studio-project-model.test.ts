@@ -10,9 +10,11 @@ import {
 	hunkLabel,
 	hunkRows,
 	initialProject,
+	keyOf,
 	neighbour,
 	type ProjectState,
 	reduceProject,
+	sameKey,
 	splitPath,
 } from "../studio-ui/src/model/project.ts";
 import {
@@ -167,7 +169,7 @@ describe("what stays on the screen", () => {
 	});
 
 	it("selects by name, not by position: a refreshed list that still has the file reads it again, and one without it says it is gone", () => {
-		const key: FileKey = { path: "a.ts", area: "unstaged" };
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		let state = read(initialProject(), ok(project(files)));
 		state = reduceProject(state, { type: "select", key });
 		expect(state).toMatchObject({ view: "changes", diff: { status: "loading" } });
@@ -183,7 +185,7 @@ describe("what stays on the screen", () => {
 		// Another AREA of the same path is another file.
 		const second = reduceProject(read(initialProject(), ok(project(files))), {
 			type: "select",
-			key: { path: "a.ts", area: "staged" },
+			key: { path: "a.ts", area: "staged", nth: 0 },
 		});
 		expect(findEntry(second.project, second.selection)?.id).toBe(0);
 	});
@@ -195,8 +197,8 @@ describe("what stays on the screen", () => {
 		expect(state.project).toBeNull();
 		state = reduceProject(state, { type: "read-done", seq: 2, reply: ok(project(files)) });
 		expect(state.project?.changes.files).toHaveLength(3);
-		const a: FileKey = { path: "a.ts", area: "staged" };
-		const b: FileKey = { path: "a.ts", area: "unstaged" };
+		const a: FileKey = { path: "a.ts", area: "staged", nth: 0 };
+		const b: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		state = reduceProject(state, { type: "select", key: a });
 		state = reduceProject(state, { type: "diff-start", seq: 1, key: a });
 		state = reduceProject(state, { type: "select", key: b });
@@ -214,7 +216,7 @@ describe("what stays on the screen", () => {
 	});
 
 	it("shows a stale answer as stale and the list as not current, and reads nothing by itself", () => {
-		const key: FileKey = { path: "a.ts", area: "unstaged" };
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
 		state = reduceProject(state, { type: "diff-start", seq: 1, key });
 		state = reduceProject(state, { type: "diff-done", seq: 1, key, reply: { kind: "stale" } });
@@ -225,7 +227,7 @@ describe("what stays on the screen", () => {
 	it("drops everything when the launch changes (the reducer's reset), remembers that a server has no project context, and starts in the conversation", () => {
 		let state = reduceProject(read(initialProject(), ok(project(files))), {
 			type: "select",
-			key: { path: "a.ts", area: "staged" },
+			key: { path: "a.ts", area: "staged", nth: 0 },
 		});
 		expect(state.view).toBe("changes");
 		state = reduceProject(state, { type: "reset" });
@@ -284,10 +286,64 @@ describe("the words and rows a diff is drawn from", () => {
 		expect(splitPath("src/a/b.ts")).toEqual({ dir: "src/a/", name: "b.ts" });
 		expect(splitPath("top.ts")).toEqual({ dir: "", name: "top.ts" });
 		const p = project([entry(0, "a", "staged"), entry(1, "b", "unstaged"), entry(2, "c", "untracked")]);
-		expect(neighbour(p, { path: "b", area: "unstaged" }, 1)).toEqual({ path: "c", area: "untracked" });
-		expect(neighbour(p, { path: "b", area: "unstaged" }, -1)).toEqual({ path: "a", area: "staged" });
-		expect(neighbour(p, { path: "c", area: "untracked" }, 1)).toBeNull();
-		expect(neighbour(p, { path: "a", area: "staged" }, -1)).toBeNull();
-		expect(neighbour(p, { path: "zzz", area: "staged" }, 1)).toBeNull();
+		expect(neighbour(p, { path: "b", area: "unstaged", nth: 0 }, 1)).toEqual({
+			path: "c",
+			area: "untracked",
+			nth: 0,
+		});
+		expect(neighbour(p, { path: "b", area: "unstaged", nth: 0 }, -1)).toEqual({ path: "a", area: "staged", nth: 0 });
+		expect(neighbour(p, { path: "c", area: "untracked", nth: 0 }, 1)).toBeNull();
+		expect(neighbour(p, { path: "a", area: "staged", nth: 0 }, -1)).toBeNull();
+		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, 1)).toBeNull();
+	});
+});
+
+describe("a file's identity is not its display path", () => {
+	it("tells apart two entries that show the same name in the same area, by their place among them", () => {
+		const twins = [
+			entry(0, "a␊b.txt", "untracked"),
+			entry(1, "a␊b.txt", "untracked"),
+			entry(2, "z.txt", "untracked"),
+		];
+		const p = project(twins);
+		const [first, second] = twins.map((e) => keyOf(p.changes.files, e));
+		expect(first).toEqual({ path: "a␊b.txt", area: "untracked", nth: 0 });
+		expect(second).toEqual({ path: "a␊b.txt", area: "untracked", nth: 1 });
+		expect(findEntry(p, first as FileKey)?.id).toBe(0);
+		expect(findEntry(p, second as FileKey)?.id).toBe(1);
+		// Stepping from the first reaches the second, then the third: neither is skipped.
+		expect(neighbour(p, first as FileKey, 1)).toEqual(second);
+		expect(neighbour(p, second as FileKey, 1)).toEqual({ path: "z.txt", area: "untracked", nth: 0 });
+		expect(neighbour(p, second as FileKey, -1)).toEqual(first);
+		expect(sameKey(first as FileKey, second as FileKey)).toBe(false);
+		// Another area is another file even with the same name and the same nth.
+		expect(keyOf([entry(0, "x", "staged"), entry(1, "x", "unstaged")], entry(1, "x", "unstaged"))).toEqual({
+			path: "x",
+			area: "unstaged",
+			nth: 0,
+		});
+	});
+});
+
+describe("the wire gate accepts what the server can send", () => {
+	it("takes Git's no-newline marker, and still refuses a line that is not a diff line or is empty", () => {
+		const marker = diff({
+			hunks: [
+				{
+					oldStart: 1,
+					oldLines: 1,
+					newStart: 1,
+					newLines: 1,
+					section: "",
+					lines: ["-old", "+new", "\\ No newline at end of file"],
+				},
+			],
+		});
+		expect(readWorkbenchDiff(structuredClone(marker))).not.toBeNull();
+		for (const bad of ["", "x", "@@", "\t"]) {
+			const d = diff();
+			(d.hunks[0] as { lines: string[] }).lines = [bad];
+			expect(readWorkbenchDiff(d), JSON.stringify(bad)).toBeNull();
+		}
 	});
 });

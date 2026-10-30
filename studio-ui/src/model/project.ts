@@ -18,9 +18,14 @@ import type {
 
 export type ProjectProblem = "unpaired" | "stale" | "busy" | "error" | "invalid" | "unreachable";
 
+/**
+ * Which change is being read. `path` is the DISPLAY path, which is not unique (two different names can show the same once their control
+ * characters are replaced), so `nth` is the position among the entries that show the same path in the same area: normally 0.
+ */
 export interface FileKey {
 	path: string;
 	area: ChangeArea;
+	nth: number;
 }
 
 export type DiffState =
@@ -73,12 +78,19 @@ export type ProjectAction =
 	| { type: "reset" };
 
 export const sameKey = (a: FileKey | null, b: FileKey | null): boolean =>
-	a !== null && b !== null && a.path === b.path && a.area === b.area;
+	a !== null && b !== null && a.path === b.path && a.area === b.area && a.nth === b.nth;
+
+/** The key of an entry in its list. */
+export const keyOf = (files: readonly ChangeEntry[], entry: ChangeEntry): FileKey => ({
+	path: entry.path,
+	area: entry.area,
+	nth: files.filter((f) => f.path === entry.path && f.area === entry.area && f.id < entry.id).length,
+});
 
 export const findEntry = (project: Project | null, key: FileKey | null): ChangeEntry | null =>
 	project === null || key === null
 		? null
-		: (project.changes.files.find((file) => file.path === key.path && file.area === key.area) ?? null);
+		: (project.changes.files.filter((file) => file.path === key.path && file.area === key.area)[key.nth] ?? null);
 
 function problemOf(reply: ProjectReply): ProjectProblem {
 	if (reply.kind === "stale") return "stale";
@@ -256,9 +268,9 @@ export function splitPath(path: string): { dir: string; name: string } {
 export function neighbour(project: Project | null, key: FileKey | null, step: 1 | -1): FileKey | null {
 	if (project === null || key === null) return null;
 	const files = project.changes.files;
-	const at = files.findIndex((f) => f.path === key.path && f.area === key.area);
-	const next = at < 0 ? undefined : files[at + step];
-	return next === undefined ? null : { path: next.path, area: next.area };
+	const at = findEntry(project, key);
+	const next = at === null ? undefined : files[files.indexOf(at) + step];
+	return next === undefined ? null : keyOf(files, next);
 }
 
 export interface DiffRow {

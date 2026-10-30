@@ -14,6 +14,7 @@ import {
 	hunkLabel,
 	hunkRows,
 	INCOMPLETE_WORDS,
+	keyOf,
 	neighbour,
 	PROBLEM_WORDS,
 	REASON_WORDS,
@@ -278,7 +279,8 @@ export function ChangesList({
 							<ul className="plain">
 								{group.files.map((file) => {
 									const { dir, name } = splitPath(file.path);
-									const selected = sameKey(state.selection, { path: file.path, area: file.area });
+									const key = keyOf(files, file);
+									const selected = sameKey(state.selection, key);
 									const first = files[0] === file;
 									return (
 										<li key={`${file.area}:${file.id}`}>
@@ -291,7 +293,7 @@ export function ChangesList({
 												aria-pressed={selected}
 												tabIndex={selected || (state.selection === null && first) ? 0 : -1}
 												title={`${file.path}${file.origPath === null ? "" : ` (from ${file.origPath})`}${file.escaped ? " — some characters in the name were replaced to show it safely" : ""}`}
-												onClick={() => api.select({ path: file.path, area: file.area })}
+												onClick={() => api.select(key)}
 											>
 												<span className="change-letter" aria-hidden="true">
 													{STATUS_LETTER[file.status].letter}

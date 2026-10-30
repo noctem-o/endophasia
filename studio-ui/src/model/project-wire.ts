@@ -50,6 +50,8 @@ export const DIFF_REASONS: readonly EndoDiffReasonV0[] = [
 	"git-timeout",
 ];
 
+/** The first character of a diff line: context, added, removed, or the backslash of Git's "no newline at end of file". */
+const DIFF_SIGNS = " +-\\";
 const bool = (v: unknown): boolean => typeof v === "boolean";
 const text =
 	(max: number): Check =>
@@ -152,7 +154,9 @@ const hunk: Check = (v) =>
 		newLines: count,
 		section: text(400),
 		lines: (l) =>
-			Array.isArray(l) && l.length <= MAX_HUNK_LINES && list((x) => typeof x === "string" && /^[ +-]/.test(x))(l),
+			Array.isArray(l) &&
+			l.length <= MAX_HUNK_LINES &&
+			list((x) => typeof x === "string" && DIFF_SIGNS.includes(x.charAt(0)) && x.length > 0)(l),
 	});
 
 export function readWorkbenchDiff(v: unknown): EndoWorkbenchDiffV0 | null {

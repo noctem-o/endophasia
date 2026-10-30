@@ -30,6 +30,7 @@ import {
 	runGitV0,
 } from "../adapters/git/readonly-git.ts";
 import type { EndoWorkbenchDiffV0, EndoWorkbenchProjectV0 } from "../protocol/workbench-project.ts";
+import { readWorkbenchDiff } from "../studio-ui/src/model/project-wire.ts";
 import { cleanGitFixtures, commitedRepo, dirtyRepo, fixtureDir, git, haveGit, write } from "./git-fixtures.ts";
 
 afterEach(cleanGitFixtures);
@@ -353,6 +354,110 @@ suite("it answers only for the working tree the page was shown", () => {
 		release();
 		const [a, b] = await Promise.all([running, shared]);
 		expect(a.snapshot).toBe(b.snapshot);
+	});
+});
+
+suite("what real Git sends in awkward cases, through the page's own gate", () => {
+	it("reads files with no trailing newline, tracked and untracked, and the page's wire gate accepts them", async () => {
+		const root = commitedRepo();
+		write(root, "a.txt", "one\ntwo\nthree");
+		write(root, "nonl.txt", "no newline");
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		for (const [path, area] of [
+			["a.txt", "unstaged"],
+			["nonl.txt", "untracked"],
+		] as const) {
+			const diff = await diffOf(inspector, project, path, area);
+			expect(
+				bodyOf(diff).some((l) => l.startsWith("\\")),
+				path,
+			).toBe(true);
+			expect(readWorkbenchDiff(JSON.parse(JSON.stringify(diff))), path).not.toBeNull();
+		}
+	});
+
+	it("reads a file that becomes a symbolic link, staged and unstaged, as one change: not stale", async () => {
+		const root = commitedRepo();
+		rmSync(join(root, "old.txt"));
+		symlinkSync("a.txt", join(root, "old.txt"));
+		const inspector = inspect(root);
+		let project = await inspector.overview();
+		expect(entry(project, "old.txt", "unstaged").status).toBe("type-changed");
+		const unstaged = await diffOf(inspector, project, "old.txt", "unstaged");
+		expect(unstaged.state).toBe("ready");
+		expect(readWorkbenchDiff(JSON.parse(JSON.stringify(unstaged)))).not.toBeNull();
+		git(root, "add", "old.txt");
+		project = await inspector.overview();
+		const staged = await diffOf(inspector, project, "old.txt", "staged");
+		expect(staged.state).toBe("ready");
+		expect(bodyOf(staged).length).toBeGreaterThan(1);
+		// A real change of the index in between is still stale: the check is not loosened.
+		git(root, "commit", "-q", "-m", "link");
+		expect(await inspector.diff(project.snapshot, entry(project, "old.txt", "staged").id)).toEqual({ kind: "stale" });
+	});
+
+	it("tells apart two files whose names look the same once made safe, by id, so each is read as itself", async () => {
+		const root = commitedRepo();
+		write(root, "a\nb.txt", "the one with a newline\n");
+		write(root, "a\u240ab.txt", "the one with a picture\n");
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		const twins = project.changes.files.filter((f) => f.area === "untracked" && f.path === "a\u240ab.txt");
+		expect(twins).toHaveLength(2);
+		expect(twins.map((f) => f.id)).toEqual([...new Set(twins.map((f) => f.id))]);
+		const bodies: string[] = [];
+		for (const twin of twins) {
+			const outcome = await inspector.diff(project.snapshot, twin.id);
+			if (outcome.kind !== "diff") throw new Error("not a diff");
+			bodies.push(bodyOf(outcome.diff).join());
+		}
+		expect(bodies.sort()).toEqual(["+the one with a newline", "+the one with a picture"]);
+	});
+});
+
+suite("a failed configuration listing never lets the working tree be touched without its overrides", () => {
+	it("refuses a diff, and runs no Git read that could reach a filter, when the listing cannot be completed", async () => {
+		const root = commitedRepo();
+		const out = fixtureDir("canaries-2");
+		const script = join(out, "evil.sh");
+		writeFileSync(script, `#!/bin/sh\ntouch "${out}/canary-$1"\ncat\n`);
+		chmodSync(script, 0o755);
+		write(root, ".gitattributes", "*.txt filter=evil\n");
+		git(root, "add", ".gitattributes");
+		git(root, "commit", "-q", "-m", "attrs");
+		git(root, "config", "filter.evil.clean", `${script} clean`);
+		git(root, "config", "filter.evil.process", `${script} process`);
+		write(root, "a.txt", "one\nTWO\nthree\n");
+		let breakListing = false;
+		const calls: string[] = [];
+		const inspector = inspect(root, {
+			runner: async (args, options) => {
+				const listing = args.includes("config") && args.includes("--list");
+				if (breakListing && listing) {
+					calls.push("config-listing (failed)");
+					return {
+						code: null,
+						stdout: Buffer.alloc(0),
+						truncated: true,
+						timedOut: false,
+						notFound: false,
+						stderr: "",
+					};
+				}
+				if (breakListing) calls.push(args.find((a) => !a.startsWith("--")) ?? "?");
+				return runGitV0(args, options);
+			},
+		});
+		const project = await inspector.overview();
+		const id = entry(project, "a.txt", "unstaged").id;
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-"))).toEqual([]);
+		breakListing = true; // the configuration has grown past what is read
+		const outcome = await inspector.diff(project.snapshot, id);
+		expect(outcome).toMatchObject({ kind: "diff", diff: { state: "unavailable", reason: "git-failed" } });
+		// Nothing after the failed listing touched the working tree: no status, no diff, no hash.
+		expect(calls).toEqual(["config-listing (failed)"]);
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-"))).toEqual([]);
 	});
 });
 

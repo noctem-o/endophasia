@@ -527,7 +527,10 @@ export class GitProjectInspectorV0 {
 		if (this.#snapshot !== known) return { kind: "stale" };
 		const { change } = record;
 		const programsNow = await this.#programKeys(known.root);
-		const keys = typeof programsNow === "string" ? programsNow : [...programsNow, ...known.excludes];
+		// Without the listing there is no way to switch off the repository's filters, so nothing that touches the working tree is run.
+		if (typeof programsNow === "string")
+			return { kind: "diff", diff: this.#shell(known, id, change, "unavailable", "git-failed", "unchanged") };
+		const keys = [...programsNow, ...known.excludes];
 		const now = await this.#git_(
 			known.root,
 			[
@@ -541,9 +544,9 @@ export class GitProjectInspectorV0 {
 				"--no-ahead-behind",
 			],
 			GIT_LIMITS_V0.statusBytes,
-			typeof keys === "string" ? [] : keys,
+			keys,
 		);
-		if (typeof keys === "string" || failureReasonV0(now) !== null || now.code !== 0 || now.truncated) {
+		if (failureReasonV0(now) !== null || now.code !== 0 || now.truncated) {
 			return { kind: "diff", diff: this.#shell(known, id, change, "unavailable", "git-failed", "unchanged") };
 		}
 		const fresh = parseStatusV2(now.stdout, false);

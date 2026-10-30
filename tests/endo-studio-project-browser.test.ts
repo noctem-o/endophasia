@@ -849,3 +849,33 @@ suite("what the operator's own Git hides", () => {
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=change-row]').length")).toBe(0);
 	});
 });
+
+suite("two files that look the same", () => {
+	it("reads each as itself, and steps through both with the keyboard, when their names are the same once made safe", async () => {
+		const repo = commitedRepo();
+		write(repo, "a\nb.txt", "the one with a newline\n");
+		write(repo, "a\u240ab.txt", "the one with a picture\n");
+		const { page } = await open(1440, 900, { cwd: repo });
+		await ready(page);
+		await page.waitFor("document.querySelectorAll('[data-testid=change-row]').length === 2");
+		const body = () => page.text("[data-testid=diff-table]");
+		await page.eval("document.querySelectorAll('[data-testid=change-row]')[1].click()");
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
+		const second = await body();
+		await page.eval("document.querySelectorAll('[data-testid=change-row]')[0].click()");
+		await page.waitFor("document.querySelector('[data-testid=diff-position]').textContent.startsWith('1 of')");
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
+		const first = await body();
+		expect(first).not.toBe(second);
+		expect([first, second].sort()).toEqual([
+			expect.stringContaining("the one with a newline"),
+			expect.stringContaining("the one with a picture"),
+		]);
+		// j from the first reaches the second (it is not skipped), and k comes back.
+		await page.eval("document.activeElement && document.activeElement.blur()");
+		await page.press("j");
+		await page.waitFor("document.querySelector('[data-testid=diff-position]').textContent.startsWith('2 of')");
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
+		expect(await body()).toBe(second);
+	});
+});

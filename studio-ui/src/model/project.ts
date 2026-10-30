@@ -230,6 +230,8 @@ export const REASON_WORDS: Readonly<Record<string, string>> = {
 	"git-failed": "Git could not read this repository.",
 	"git-timeout": "Git did not answer in time.",
 	"output-too-large": "Git's answer was larger than is read.",
+	"unsafe-config":
+		"This repository's configuration names a program in a way that cannot be switched off exactly, so it was not read.",
 	"partial-clone":
 		"This repository is a partial clone, and this Git cannot be told not to fetch missing objects on demand, so it was not read.",
 	busy: "Another inspection is running. Try again shortly.",

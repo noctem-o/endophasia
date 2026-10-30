@@ -39,6 +39,7 @@ import {
 	type GitRunV0,
 	gitEnvV0,
 	hasNoLazyFetchV0,
+	isLosslessUtf8V0,
 	isPartialCloneV0,
 	type NumstatV0,
 	parseNumstat,
@@ -227,10 +228,16 @@ export class GitProjectInspectorV0 {
 		const reason = failureReasonV0(run);
 		if (reason !== null) return reason;
 		if (run.truncated) return "output-too-large";
-		const names = run.stdout
-			.toString("utf8")
-			.split("\0")
-			.filter((name) => name !== "");
+		const raw: Buffer[] = [];
+		for (let start = 0, at = run.stdout.indexOf(0); at !== -1; start = at + 1, at = run.stdout.indexOf(0, start))
+			raw.push(run.stdout.subarray(start, at));
+		const named = raw.filter((bytes) => bytes.length > 0);
+		const names = named.map((bytes) => bytes.toString("utf8"));
+		// An override is passed to Git as text, so a key whose name is not valid UTF-8 (a driver named by a byte like 0xFF) cannot be
+		// named exactly: its override would switch off some other key, and the repository's program would stay live. If such a key is
+		// one that runs a program, nothing that touches the working tree is run. (A name that runs nothing, like a branch's, is harmless.)
+		const lossy = named.filter((bytes) => !isLosslessUtf8V0(bytes)).map((bytes) => bytes.toString("utf8"));
+		if (programKeysV0(lossy).length > 0) return "unsafe-config";
 		if (isPartialCloneV0(names) && !(await this.#canBlockLazyFetch(cwd))) return "partial-clone";
 		return { keys: programKeysV0(names) };
 	}

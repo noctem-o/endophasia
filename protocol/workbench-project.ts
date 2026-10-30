@@ -23,6 +23,7 @@ export const ENDO_PROJECT_REASONS_V0 = [
 	"git-timeout", // Git did not answer in time
 	"output-too-large", // Git's answer exceeded what is read
 	"partial-clone", // a partial clone, and this Git cannot be told not to fetch missing objects on demand
+	"unsafe-config", // a configuration key that runs a program is named in bytes that cannot be passed back to Git exactly
 	"busy", // another inspection is running
 ] as const;
 export type EndoProjectReasonV0 = (typeof ENDO_PROJECT_REASONS_V0)[number];

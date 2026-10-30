@@ -961,6 +961,54 @@ suite("a hostile repository cannot make it run anything, read outside, or write"
 		});
 	});
 
+	it("refuses, before touching the working tree, a repository whose program-bearing key cannot be named exactly", async () => {
+		const root = commitedRepo();
+		const out = fixtureDir("canaries-bytes");
+		const script = join(out, "evil.sh");
+		writeFileSync(script, `#!/bin/sh\ntouch "${out}/canary-$1"\ncat\n`);
+		chmodSync(script, 0o755);
+		// A driver named by the byte 0xFF: valid to Git, not valid UTF-8, so it cannot be passed back to Git as an override.
+		const ff = Buffer.from([0xff]);
+		writeFileSync(join(root, ".gitattributes"), Buffer.concat([Buffer.from("*.txt filter="), ff, Buffer.from("\n")]));
+		git(root, "add", ".gitattributes");
+		git(root, "commit", "-q", "-m", "attrs");
+		const config = join(root, ".git", "config");
+		writeFileSync(
+			config,
+			Buffer.concat([
+				readFileSync(config),
+				Buffer.from('[filter "'),
+				ff,
+				Buffer.from(`"]\n\tclean = ${script} clean\n`),
+			]),
+		);
+		write(root, "a.txt", "one\nTWO\nthree\n");
+		// The canary is real: a plain Git read runs it.
+		execFileSync("git", ["status", "--porcelain"], {
+			cwd: root,
+			env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" },
+			stdio: "ignore",
+		});
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-")).length).toBeGreaterThan(0);
+		for (const name of readdirSync(out)) if (name.startsWith("canary-")) rmSync(join(out, name));
+		const project = await inspect(root).overview();
+		expect(project).toMatchObject({ state: "unavailable", reason: "unsafe-config", repository: null });
+		expect(readdirSync(out).filter((n) => n.startsWith("canary-"))).toEqual([]);
+		// A name that is not text but runs nothing (a branch's remote, say) does not stop the read.
+		const benign = commitedRepo();
+		const benignConfig = join(benign, ".git", "config");
+		writeFileSync(
+			benignConfig,
+			Buffer.concat([
+				readFileSync(benignConfig),
+				Buffer.from('[branch "x'),
+				ff,
+				Buffer.from('"]\n\tremote = origin\n'),
+			]),
+		);
+		expect((await inspect(benign).overview()).state).toBe("ready");
+	});
+
 	it("writes nothing to the repository: the index and the Git directory are untouched, even when a read could have refreshed them", async () => {
 		const root = dirtyRepo();
 		// A file whose recorded stat is out of date makes a plain `git status` rewrite the index.

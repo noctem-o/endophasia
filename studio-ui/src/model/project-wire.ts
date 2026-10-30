@@ -34,6 +34,7 @@ export const PROJECT_REASONS: readonly EndoProjectReasonV0[] = [
 	"git-timeout",
 	"output-too-large",
 	"partial-clone",
+	"unsafe-config",
 	"busy",
 ];
 export const PROJECT_INCOMPLETE: readonly EndoProjectIncompleteV0[] = [

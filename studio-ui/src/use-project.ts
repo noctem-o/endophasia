@@ -59,7 +59,8 @@ export function useProject(grant: string | null, launchId: string | null, active
 					if (entry === null) continue;
 					diffSeq.current += 1;
 					const seq = diffSeq.current;
-					dispatch({ type: "diff-start", seq, key: want.key });
+					const snapshot = want.project.snapshot;
+					dispatch({ type: "diff-start", seq, key: want.key, snapshot });
 					// No grant (the session ended, or the page was unpaired): the list that was last confirmed stays readable, but a file
 					// cannot be read, and the page says so instead of waiting for an answer that will not come.
 					if (g === null) {
@@ -67,6 +68,7 @@ export function useProject(grant: string | null, launchId: string | null, active
 							type: "diff-done",
 							seq,
 							key: want.key,
+							snapshot,
 							reply: { kind: "failure", status: 401, code: "grant-required", retrySeconds: null },
 						});
 						continue;
@@ -76,7 +78,7 @@ export function useProject(grant: string | null, launchId: string | null, active
 						g,
 						abort(),
 					);
-					dispatch({ type: "diff-done", seq, key: want.key, reply });
+					dispatch({ type: "diff-done", seq, key: want.key, snapshot, reply });
 				}
 			} finally {
 				running.current = false;

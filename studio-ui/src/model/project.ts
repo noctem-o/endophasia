@@ -70,8 +70,9 @@ export const initialProject = (): ProjectState => ({
 export type ProjectAction =
 	| { type: "read-start"; seq: number }
 	| { type: "read-done"; seq: number; reply: ProjectReply }
-	| { type: "diff-start"; seq: number; key: FileKey }
-	| { type: "diff-done"; seq: number; key: FileKey; reply: ProjectReply }
+	/** `snapshot` is the list the diff was asked under: an answer for an older list is dropped once a refresh has replaced it. */
+	| { type: "diff-start"; seq: number; key: FileKey; snapshot: string }
+	| { type: "diff-done"; seq: number; key: FileKey; snapshot: string; reply: ProjectReply }
 	| { type: "select"; key: FileKey | null }
 	| { type: "view"; view: "conversation" | "changes" }
 	/** The grant is gone or the launch changed: nothing private is kept. */
@@ -149,7 +150,12 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 		case "diff-start":
 			return { ...state, diffSeq: action.seq, diff: { status: "loading", key: action.key } };
 		case "diff-done": {
-			if (action.seq !== state.diffSeq || !sameKey(action.key, state.selection)) return state;
+			if (
+				action.seq !== state.diffSeq ||
+				!sameKey(action.key, state.selection) ||
+				action.snapshot !== state.project?.snapshot
+			)
+				return state;
 			const { reply } = action;
 			if (reply.kind === "diff")
 				return { ...state, diff: { status: "ready", key: action.key, record: reply.record } };
@@ -268,10 +274,11 @@ export function splitPath(path: string): { dir: string; name: string } {
 
 /** The neighbour of a file in reading order (the order of the list), or null at either end or when the file is not listed. */
 export function neighbour(project: Project | null, key: FileKey | null, step: 1 | -1): FileKey | null {
-	if (project === null || key === null) return null;
+	if (project === null) return null;
 	const files = project.changes.files;
 	const at = findEntry(project, key);
-	const next = at === null ? undefined : files[files.indexOf(at) + step];
+	// Nothing selected, or the selection left the list (it was committed, say): stepping starts at an end rather than going nowhere.
+	const next = at === null ? files.at(step === 1 ? 0 : -1) : files[files.indexOf(at) + step];
 	return next === undefined ? null : keyOf(files, next);
 }
 

@@ -361,6 +361,18 @@ suite("when the worktree moves on, or cannot be known", () => {
 		await page.click("[data-testid=project-refresh]");
 		await page.waitFor("document.querySelector('[data-testid=diff-gone]')");
 		expect(await page.text("[data-testid=diff-gone]")).toContain("That file is no longer in this change list.");
+		// The list stays reachable from the keyboard: the first row is the tab stop, and next/j have somewhere to go.
+		expect(await page.eval<number>("document.querySelectorAll('button.change-row[tabindex=\"0\"]').length")).toBe(1);
+		expect(
+			await page.eval<boolean>(
+				"document.querySelector('button.change-row') === document.querySelector('button.change-row[tabindex=\"0\"]')",
+			),
+		).toBe(true);
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=diff-next]').disabled")).toBe(false);
+		await page.eval("document.activeElement && document.activeElement.blur()");
+		await page.press("j");
+		await page.waitFor("document.querySelector('[data-testid=diff-position]')?.textContent.startsWith('1 of')");
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
 	});
 
 	it("is quiet where there is nothing to review: a clean worktree, an unborn branch, a detached HEAD, several worktrees", async () => {

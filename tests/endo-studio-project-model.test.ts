@@ -200,26 +200,66 @@ describe("what stays on the screen", () => {
 		const a: FileKey = { path: "a.ts", area: "staged", nth: 0 };
 		const b: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		state = reduceProject(state, { type: "select", key: a });
-		state = reduceProject(state, { type: "diff-start", seq: 1, key: a });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key: a, snapshot: "0123456789abcdef" });
 		state = reduceProject(state, { type: "select", key: b });
-		state = reduceProject(state, { type: "diff-start", seq: 2, key: b });
+		state = reduceProject(state, { type: "diff-start", seq: 2, key: b, snapshot: "0123456789abcdef" });
 		// The first file's answer arrives late: it is not shown under the second file.
 		state = reduceProject(state, {
 			type: "diff-done",
 			seq: 1,
 			key: a,
+			snapshot: "0123456789abcdef",
 			reply: { kind: "diff", record: diff({ area: "staged" }) },
 		});
 		expect(state.diff).toMatchObject({ status: "loading", key: b });
-		state = reduceProject(state, { type: "diff-done", seq: 2, key: b, reply: { kind: "diff", record: diff() } });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 2,
+			key: b,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
 		expect(state.diff).toMatchObject({ status: "ready", key: b });
+	});
+
+	it("drops a diff that was asked for under an older list once a refresh has replaced it", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		// The list is re-read while that diff is in flight; the file is no longer in it.
+		state = read(state, ok(project([entry(0, "new.ts", "untracked")], { snapshot: "fedcba9876543210" })));
+		expect(state.diff).toMatchObject({ status: "gone", key });
+		// The old answer arrives late: it belongs to the old list and must not replace "gone".
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(state.diff).toMatchObject({ status: "gone", key });
+		// Nor may a late "stale" or failure from the old list mark the new list out of date.
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "stale" },
+		});
+		expect(state).toMatchObject({ current: true, problem: null, diff: { status: "gone" } });
 	});
 
 	it("shows a stale answer as stale and the list as not current, and reads nothing by itself", () => {
 		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
-		state = reduceProject(state, { type: "diff-start", seq: 1, key });
-		state = reduceProject(state, { type: "diff-done", seq: 1, key, reply: { kind: "stale" } });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "stale" },
+		});
 		expect(state).toMatchObject({ current: false, problem: "stale", diff: { status: "stale", key }, reading: false });
 		expect(state.project).not.toBeNull();
 	});
@@ -294,7 +334,14 @@ describe("the words and rows a diff is drawn from", () => {
 		expect(neighbour(p, { path: "b", area: "unstaged", nth: 0 }, -1)).toEqual({ path: "a", area: "staged", nth: 0 });
 		expect(neighbour(p, { path: "c", area: "untracked", nth: 0 }, 1)).toBeNull();
 		expect(neighbour(p, { path: "a", area: "staged", nth: 0 }, -1)).toBeNull();
-		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, 1)).toBeNull();
+		// A selection that is not in the list (it left it) steps to the first file, or back to the last.
+		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, 1)).toEqual({ path: "a", area: "staged", nth: 0 });
+		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, -1)).toEqual({
+			path: "c",
+			area: "untracked",
+			nth: 0,
+		});
+		expect(neighbour(project([]), { path: "zzz", area: "staged", nth: 0 }, 1)).toBeNull();
 	});
 });
 

@@ -254,6 +254,7 @@ export function ChangesList({
 		message = `Changes: unknown. ${REASON_WORDS[project.changes.reason ?? project.reason ?? "git-failed"] ?? ""}`;
 	const files = project?.changes.files ?? [];
 	const groups = groupFiles(files);
+	const listed = findEntry(project, state.selection) !== null;
 	return (
 		<section className="block changes-block" data-testid="changes" data-stale={stale ? "yes" : "no"}>
 			<h3>Changes</h3>
@@ -291,7 +292,9 @@ export function ChangesList({
 												data-area={file.area}
 												data-status={file.status}
 												aria-pressed={selected}
-												tabIndex={selected || (state.selection === null && first) ? 0 : -1}
+												// One tab stop: the selected row, or the first row when the selection is not in this list
+												// (nothing chosen, or the chosen change left it), so the list is always reachable by Tab.
+												tabIndex={selected || (!listed && first) ? 0 : -1}
 												title={`${file.path}${file.origPath === null ? "" : ` (from ${file.origPath})`}${file.escaped ? " — some characters in the name were replaced to show it safely" : ""}`}
 												onClick={() => api.select(key)}
 											>

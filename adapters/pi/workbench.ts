@@ -13,7 +13,8 @@
 //   POST intervention/propose {operation, message?}   ask to STEER, QUEUE or STOP the open run. Needs the grant. Only REQUESTS.
 //   GET  intervention/<id>      the state of that request. Needs the grant.
 //   POST intervention/discard {proposalId}   withdraw it before it is approved.
-//   POST intervention/check {proposalId}     ask whether the capture shows a STEER or QUEUE was consumed. Needs the grant.
+//   POST intervention/check {proposalId}     start a bounded check of whether the capture shows a STEER or QUEUE was consumed; the answer is read
+//                                             back from the request's view. Needs the grant.
 //
 // Authority. The browser can request and can never authorise. A prompt is sent only after the operator types its exact digest on the
 // attached process's CONTROLLING TERMINAL (the `approver` below); a page script cannot do that. The grant (obtained by typing the
@@ -44,7 +45,11 @@ import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { LiveTranscriptV0 } from "./live-transcript.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
-import { type WorkbenchDeskV0, WorkbenchInterventionsV0 } from "./workbench-interventions.ts";
+import {
+	type WorkbenchDeskV0,
+	type WorkbenchEvidenceBudgetV0,
+	WorkbenchInterventionsV0,
+} from "./workbench-interventions.ts";
 
 export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 
@@ -77,6 +82,8 @@ export interface WorkbenchApprovalRequestV0 {
 	/** The whole message (null for STOP): it is the operator's own terminal, and they must see exactly what they authorise. */
 	message: string | null;
 	expiresAtMs: number;
+	/** For a STOP: the steer or queue it superseded while that was still awaiting approval (it was cancelled unapproved), else null. */
+	supersedes?: "steer" | "queue" | null;
 }
 /** "allow" only for the exact phrase; "deny" for any other answer; null when there was no answer in time or it was withdrawn. */
 export type WorkbenchApproverV0 = (
@@ -102,6 +109,9 @@ export interface WorkbenchOptionsV0 {
 	pairingWindowMs?: number;
 	/** How long a grant lives. Default 1 hour. */
 	grantMs?: number;
+	/** For tests: where an evidence check yields between slices, and its work limits. */
+	yieldToLoop?: () => Promise<void>;
+	evidenceBudget?: Partial<WorkbenchEvidenceBudgetV0>;
 }
 
 /**
@@ -196,6 +206,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 						watermark: () => this.transcript.view(Number.MAX_SAFE_INTEGER).watermark,
 						promptAwaitingApproval: () => this.#command?.view.state === "awaiting-approval",
 						maxMessageBytes: ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0,
+						...(options.yieldToLoop === undefined ? {} : { yieldToLoop: options.yieldToLoop }),
+						...(options.evidenceBudget === undefined ? {} : { evidenceBudget: options.evidenceBudget }),
 					});
 		// The desk records consequences when it finishes: a prompt still waiting for the terminal is withdrawn then too.
 		options.interventions?.onFinishing(() => this.beginClose());

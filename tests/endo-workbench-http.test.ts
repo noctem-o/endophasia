@@ -165,6 +165,52 @@ describe("the intervention routes", () => {
 	});
 });
 
+describe("a STOP and an evidence check over the real HTTP surface", () => {
+	it("lets a STOP replace a steer that awaits approval, and answers a check at once, then by reading its view", async () => {
+		const { broker, post, getW, approval, desk, server } = await startBroker({ interventions: true });
+		const grant = (
+			JSON.parse((await post("pair", { code: broker.issuePairingCode().code })).body) as { grant: string }
+		).grant;
+		const headers = { "X-Endo-Grant": grant };
+		const steer = JSON.parse(
+			(await post("intervention/propose", { operation: "steer", message: "first thought" }, headers)).body,
+		) as { proposalId: string };
+		await approval.waitForRequest();
+		// A second steer is withheld; a STOP is not.
+		expect((await post("intervention/propose", { operation: "queue", message: "x" }, headers)).status).toBe(409);
+		const stop = await post("intervention/propose", { operation: "stop" }, headers);
+		expect(stop.status).toBe(202);
+		for (let i = 0; i < 200 && approval.requests.length < 2; i++) await settle(5);
+		expect(approval.requests.map((r) => r.operation)).toEqual(["steer", "stop"]);
+		expect(JSON.parse((await getW(`intervention/${steer.proposalId}`, headers)).body)).toMatchObject({
+			state: "refused",
+			reason: "superseded-by-stop",
+			approved: false,
+		});
+		approval.answer("deny");
+		await settle(30);
+		expect(desk.applyCalls).toEqual([]);
+
+		// A check on a steer that Pi accepted: answered at once with its progress, then read back from the view.
+		const second = JSON.parse(
+			(await post("intervention/propose", { operation: "steer", message: "second thought" }, headers)).body,
+		) as { proposalId: string };
+		await approval.waitForRequest();
+		approval.answer("allow");
+		await settle(30);
+		desk.release(second.proposalId);
+		await settle(30);
+		const started = await post("intervention/check", { proposalId: second.proposalId }, headers);
+		expect(started.status).toBe(202);
+		expect(JSON.parse(started.body)).toMatchObject({ consumption: { status: "checking" } });
+		await settle(60);
+		expect(JSON.parse((await getW(`intervention/${second.proposalId}`, headers)).body)).toMatchObject({
+			consumption: { status: "not-observed" },
+		});
+		expect(server.baseUrl).toBeTruthy();
+	});
+});
+
 describe("the guards on a command request", () => {
 	it("answers a POST only with an exact same-origin Origin, the one content type and a bounded JSON body", async () => {
 		const { post, getW, server, origin } = await startBroker();

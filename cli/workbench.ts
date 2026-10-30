@@ -82,8 +82,23 @@ export async function startWorkbenchV0(
 		process.stderr.write(text);
 	};
 	let aliasOf: (id: string) => string = (id) => id;
-	const approver: WorkbenchApproverV0 = async (request, signal) => {
+	// ONE question at a time. The broker already serialises its approvals (a STOP waits for the request it superseded to settle), and this
+	// is the second, independent guard at the terminal itself: a question starts only after the previous one has settled, whatever
+	// called it. A question that is cancelled also discards the line the operator was typing, so half an approval typed for it cannot
+	// complete into the next question's answer. The next question is compared to its own exact phrase, which carries its operation and
+	// digest, so even a complete stale phrase could only ever decline it.
+	let questioning: Promise<unknown> = Promise.resolve();
+	const approver: WorkbenchApproverV0 = (request, signal) => {
+		const asked = questioning.then(() => ask(request, signal));
+		questioning = asked.catch(() => {});
+		return asked;
+	};
+	const ask = async (
+		request: Parameters<WorkbenchApproverV0>[0],
+		signal: AbortSignal,
+	): Promise<"allow" | "deny" | null> => {
 		const what = request.operation;
+		if (signal.aborted) return null;
 		write(
 			[
 				"",
@@ -93,6 +108,11 @@ export async function startWorkbenchV0(
 				request.message === null
 					? `expires ${hhmmss(request.expiresAtMs)}`
 					: `size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
+				...(request.supersedes === undefined || request.supersedes === null
+					? []
+					: [
+							`This stop replaced a ${request.supersedes} that was still waiting for approval. That ${request.supersedes} was cancelled; it was not sent.`,
+						]),
 				...(request.message === null
 					? []
 					: [`--- the exact ${what} ---`, request.message, `--- end of ${what} ---`]),
@@ -107,6 +127,14 @@ export async function startWorkbenchV0(
 			});
 			return answer === request.phrase ? "allow" : "deny";
 		} catch {
+			// Cancelled or out of time: the question is gone; so is any half-typed answer to it.
+			input.write(null, { ctrl: true, name: "u" });
+			if (signal.aborted)
+				write(
+					signal.reason === "superseded-by-stop"
+						? "\nworkbench: that request was cancelled, unapproved, because a stop was requested. It was not sent.\n"
+						: "\nworkbench: that request was withdrawn.\n",
+				);
 			return null;
 		}
 	};

@@ -15,12 +15,27 @@
 //   checked only when the operator asks (it reads the capture) or when the session closes (`desk.finish`). The run's end is what Pi
 //   reported, and it is never attributed to a STOP.
 //
-// Concurrency. The terminal is one readline: ONE approval waits at a time across the prompt and the interventions, and a second request
-// is refused (the operator can withdraw the first on the page, or press Enter in the terminal to decline it). A request that was
-// approved and is waiting for Pi does not hold that slot, so an `abort` Pi answers only once idle never blocks a status read or a
-// withdrawal. At most one STOP is in flight, and a duplicate STOP returns it. The broker calls the desk directly, beside the control
+// Concurrency. The terminal is one readline: ONE approval waits at a time across the prompt and the interventions. A second STEER or
+// QUEUE is refused while one waits (the operator can withdraw the first on the page, or press Enter in the terminal to decline it).
+// A STOP is different, because it is time-sensitive: requested while a STEER or QUEUE still awaits its approval, it SUPERSEDES that
+// request. The order is fixed and every step is a precondition of the next: the STOP's proposal is recorded first (if that fails,
+// nothing is disturbed); then the pending request is marked superseded and its terminal question is aborted; the STOP asks its question
+// only after the superseded request has fully settled, so there is never a second question on the terminal; and whatever the operator
+// typed for the superseded request, even in the same instant, is discarded, never recorded as an approval. The STOP then needs its OWN
+// approval, the exact phrase for STOP, like any other. Only a request still awaiting approval can be superseded: one that was approved
+// and is waiting for Pi is left alone. A request that was approved and is waiting for Pi does not hold the slot, so an `abort` Pi
+// answers only once idle never blocks a status read or a withdrawal. At most one STOP is in flight, and a duplicate STOP returns it.
+// A pending PROMPT approval is not superseded (a prompt needs an idle session; STOP needs an open run), and still holds the terminal. The broker calls the desk directly, beside the control
 // socket: `propose` and `authorize` are synchronous, and `apply` is guarded by the desk's own in-flight map, so the two callers cannot
 // interleave inside a step.
+//
+// Evidence checks. `check` starts a bounded, cooperative scan of the recording proxy's capture and returns at once; the page polls the
+// request's view. The scan runs in slices (a fixed number of requests and body bytes each) through the desk's resumable scan, yielding
+// to the event loop between slices, so a status read, a withdrawal or a STOP is served while a long capture is read. Work is bounded
+// per check (bytes, requests, wall time), per proposal (one check at a time, and a cooldown after it), and overall (a few checks at once).
+// A check that stops for any reason other than finding or exhausting the capture is INCOMPLETE: it establishes nothing, and in
+// particular it never says the model did not receive the message. Only the desk records `intervention.consumed`, only when the capture
+// shows the increase, and only once.
 //
 // Privacy. The message of a STEER or QUEUE is written to the desk's keyed blob store (`<root>/interventions/`) before it is approved,
 // exactly as `endo steer` does, because the gate re-verifies it at the moment of sending. It is therefore retained even if the
@@ -33,9 +48,9 @@ import type {
 	EndoInterventionProposalV0,
 	EndoInterventionRefusalReasonV0,
 } from "../../protocol/intervention.ts";
-import { localOperatorAuthorityV0 } from "../../runtime/contracts/intervention.ts";
+import { type EndoConsumptionSliceLimitsV0, localOperatorAuthorityV0 } from "../../runtime/contracts/intervention.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
-import type { PiInterventionApplyResultV0 } from "./intervention.ts";
+import type { PiConsumptionStepV0, PiInterventionApplyResultV0 } from "./intervention.ts";
 import type { WorkbenchApproverV0, WorkbenchSessionV0 } from "./workbench.ts";
 
 /** What the broker needs of the intervention desk (PiInterventionDeskV0 satisfies it). */
@@ -53,13 +68,52 @@ export interface WorkbenchDeskV0 {
 	apply(proposalId: string, authorizationId: string): Promise<PiInterventionApplyResultV0>;
 	refuse(proposalId: string, reason: EndoInterventionRefusalReasonV0, detail: string): void;
 	requestOf(proposalId: string): { requestId: string; outcome: { status: string } | null } | null;
-	consumption(proposalId: string): EndoInterventionConsumptionV0;
+	/** One bounded slice of the evidence check (the desk keeps the scan's place per proposal). */
+	consumptionStep(
+		proposalId: string,
+		limits: EndoConsumptionSliceLimitsV0,
+		options?: { fresh?: boolean },
+	): PiConsumptionStepV0;
 	admissionFor(operation: EndoInterventionOperationV0): { admitted: true } | { admitted: false; reason: string };
 	onFinishing(listener: () => void): void;
 }
 
 /** Why the page was told a request is not sent, beyond the gate's own reasons. */
-export type WorkbenchInterventionReasonV0 = EndoInterventionRefusalReasonV0 | "approval-timed-out" | "withdrawn";
+export type WorkbenchInterventionReasonV0 =
+	| EndoInterventionRefusalReasonV0
+	| "approval-timed-out"
+	| "withdrawn"
+	/** A STOP was requested while this still awaited its approval, so it was cancelled unapproved (recorded as not authorized, with that detail). */
+	| "superseded-by-stop";
+
+/**
+ * The work an explicit evidence check may do. All numbers are upper bounds the tests hold the broker to; none is a claim about
+ * how fast a given machine reads. A slice is the most the event loop is held for, apart from one body (at most `maxBodyBytes`).
+ */
+export const WORKBENCH_EVIDENCE_BUDGET_V0 = {
+	sliceBytes: 1024 * 1024,
+	sliceRequests: 64,
+	maxBodyBytes: 32 * 1024 * 1024,
+	checkBytes: 256 * 1024 * 1024,
+	checkRequests: 20_000,
+	checkMs: 10_000,
+	cooldownMs: 5_000,
+	concurrent: 2,
+} as const;
+export type WorkbenchEvidenceBudgetV0 = { -readonly [K in keyof typeof WORKBENCH_EVIDENCE_BUDGET_V0]: number };
+
+/** What the page is told of an evidence check. `checking` and `incomplete` establish nothing about the message. */
+export type WorkbenchConsumptionV0 =
+	| EndoInterventionConsumptionV0
+	| { status: "checking"; scanned: { requests: number; bytes: number }; total: number }
+	| {
+			status: "incomplete";
+			reason: string;
+			scanned: { requests: number; bytes: number };
+			total: number;
+			/** The earliest time another check will do new work (the broker's clock); until then it returns this answer. */
+			retryAtMs: number;
+	  };
 
 /**
  * `awaiting-approval` → `dispatching` (approved, the gate and the send) → `sent` (the request was written; Pi has not replied) →
@@ -95,7 +149,7 @@ export interface WorkbenchInterventionViewV0 {
 	/** The run the request was made in ended, and how the runtime reported it. Not a claim that this request caused it. */
 	runEnded: WorkbenchRunEndingV0 | null;
 	/** Null until the operator asked for the check; the session's close checks it too. */
-	consumption: EndoInterventionConsumptionV0 | null;
+	consumption: WorkbenchConsumptionV0 | null;
 }
 
 interface Command {
@@ -108,7 +162,15 @@ interface Command {
 	run: number;
 	abort: AbortController;
 	done: Promise<void>;
-	checking: boolean;
+	/** Set when a STOP supersedes this request while it awaits approval: whatever the terminal answers is then discarded. */
+	superseded: boolean;
+	/** The request this STOP superseded, or null. The STOP asks its question only after that one has settled. */
+	supersedes: Command | null;
+	/** The evidence check in flight for this request, and the earliest time another does new work. */
+	check: { abort: AbortController; done: Promise<void> } | null;
+	cooldownUntilMs: number;
+	/** What the desk's scan had read at the end of the last check, to count the next one's own work. */
+	lastScanned: { requests: number; bytes: number };
 }
 
 /** What the manager needs of the broker. */
@@ -130,8 +192,13 @@ export interface InterventionHostV0 {
 	/** A prompt is waiting for the terminal. */
 	promptAwaitingApproval(): boolean;
 	maxMessageBytes: number;
+	/** Where an evidence check gives the event loop back between slices. Default: the next turn of the loop (`setImmediate`). */
+	yieldToLoop?(): Promise<void>;
+	evidenceBudget?: Partial<WorkbenchEvidenceBudgetV0>;
 }
 
+/** The reason a superseded request's question is aborted with, so the terminal can say why it was cancelled. */
+export const SUPERSEDED = "superseded-by-stop";
 const OPERATIONS: readonly EndoInterventionOperationV0[] = ["steer", "queue", "stop"];
 const KEEP = 40;
 const OPEN: readonly WorkbenchInterventionStateV0[] = ["awaiting-approval", "dispatching", "sent"];
@@ -143,6 +210,8 @@ export class WorkbenchInterventionsV0 {
 	readonly #commands = new Map<string, Command>();
 	#counter = 0;
 	#closing = false;
+	#checksRunning = 0;
+	readonly #budget: WorkbenchEvidenceBudgetV0;
 	/** The broker's own count of runs, from the live events it sees (a start with none open), and what the open one has reported. */
 	#runCount = 0;
 	#runOpen = false;
@@ -152,6 +221,7 @@ export class WorkbenchInterventionsV0 {
 
 	constructor(host: InterventionHostV0) {
 		this.#h = host;
+		this.#budget = { ...WORKBENCH_EVIDENCE_BUDGET_V0, ...host.evidenceBudget };
 		host.desk.onFinishing(() => this.beginClose());
 	}
 
@@ -160,12 +230,19 @@ export class WorkbenchInterventionsV0 {
 	/** Refuse anything new and withdraw what waits for the terminal. Idempotent. Applies already sent are left to finish. */
 	beginClose(): void {
 		this.#closing = true;
-		for (const c of this.#commands.values()) if (c.view.state === "awaiting-approval") c.abort.abort();
+		for (const c of this.#commands.values()) {
+			if (c.view.state === "awaiting-approval") c.abort.abort();
+			// An evidence check stops at its next slice; the desk's own close-time check then records what the capture shows.
+			c.check?.abort.abort();
+		}
 	}
 
 	/** Wait, bounded, for the commands still in flight; a STOP Pi has not answered must not hold the process. */
 	async settle(ms: number): Promise<void> {
-		const flying = [...this.#commands.values()].map((c) => c.done.catch(() => {}));
+		const flying = [...this.#commands.values()].flatMap((c) => [
+			c.done.catch(() => {}),
+			(c.check?.done ?? Promise.resolve()).catch(() => {}),
+		]);
 		if (flying.length === 0) return;
 		let timer: NodeJS.Timeout | undefined;
 		try {
@@ -230,6 +307,15 @@ export class WorkbenchInterventionsV0 {
 		);
 	}
 
+	/** The steer or queue still awaiting its approval, or null. There is at most one: the terminal has one question at a time. */
+	#awaitingIntervention(): Command | null {
+		return (
+			[...this.#commands.values()].find(
+				(c) => c.view.state === "awaiting-approval" && !c.superseded && c.view.operation !== "stop",
+			) ?? null
+		);
+	}
+
 	#stopInFlight(): Command | null {
 		return (
 			[...this.#commands.values()].find((c) => c.view.operation === "stop" && OPEN.includes(c.view.state)) ?? null
@@ -256,7 +342,12 @@ export class WorkbenchInterventionsV0 {
 					? "A stop is already pending: Pi answers it once the run is idle."
 					: "A stop is pending, so steer and queue are withheld until it is answered.",
 			);
-		if (this.approvalBusy())
+		if (this.#h.promptAwaitingApproval())
+			return no(
+				"A prompt is waiting for approval in the terminal. Press Enter there to decline it, or withdraw it on this page.",
+			);
+		// A STOP does not wait behind an unapproved steer or queue: it supersedes it (see the header).
+		if (operation !== "stop" && this.#awaitingIntervention() !== null)
 			return no(
 				"Another request is waiting for approval in the terminal. Press Enter there to decline it, or withdraw it on this page.",
 			);
@@ -358,8 +449,20 @@ export class WorkbenchInterventionsV0 {
 			run: this.#runCount,
 			abort,
 			done: Promise.resolve(),
-			checking: false,
+			superseded: false,
+			supersedes: null,
+			check: null,
+			cooldownUntilMs: 0,
+			lastScanned: { requests: 0, bytes: 0 },
 		};
+		// A STOP supersedes the steer or queue still awaiting approval. Its proposal is already recorded (above), so a failure to
+		// record it left that request untouched. From here: mark it, abort its question, and make the STOP wait for it to settle.
+		const victim = operation === "stop" ? this.#awaitingIntervention() : null;
+		if (victim !== null) {
+			victim.superseded = true;
+			victim.abort.abort(SUPERSEDED);
+			command.supersedes = victim;
+		}
 		this.#commands.set(proposal.proposalId, command);
 		this.#trim();
 		command.done = this.#drive(command);
@@ -374,24 +477,109 @@ export class WorkbenchInterventionsV0 {
 		return reply(200, this.#view(c));
 	}
 
-	/** Ask the desk whether the capture shows the message was consumed. An explicit operator action, one at a time per request. */
+	/**
+	 * Start (or report) a bounded evidence check for an accepted STEER or QUEUE: does the capture show the message once more? Returns at once.
+	 * The answer is already known when it was observed (it is final and cached); within the cooldown after a check it is that check's answer
+	 * again, and no work is done; while one runs it is the progress; and at the broker's limit of concurrent checks it is refused.
+	 */
 	check(proposalId: unknown): { status: number; body: unknown } {
 		const c = typeof proposalId === "string" ? this.#commands.get(proposalId) : undefined;
 		if (c === undefined) return refuse(404, "not-found");
 		if (c.view.operation === "stop" || c.view.state !== "accepted") return refuse(409, "not-checkable");
-		if (c.checking) return reply(200, this.#view(c));
-		c.checking = true;
+		if (c.view.consumption?.status === "observed" || c.check !== null) return reply(200, this.#view(c));
+		if (this.#closing || this.#h.closed()) return refuse(409, "closing");
+		if (this.#h.now() < c.cooldownUntilMs && c.view.consumption !== null) return reply(200, this.#view(c));
+		if (this.#checksRunning >= this.#budget.concurrent) return refuse(409, "check-busy");
+		const abort = new AbortController();
+		this.#checksRunning += 1;
+		c.view = {
+			...c.view,
+			consumption: { status: "checking", scanned: { ...c.lastScanned }, total: 0 },
+		};
+		const check = { abort, done: Promise.resolve() };
+		c.check = check;
+		// The slot is returned however the check ends, so a fault can never leave the broker permanently "busy".
+		check.done = this.#runCheck(c, abort).finally(() => {
+			this.#checksRunning -= 1;
+			if (c.check === check) c.check = null;
+		});
+		return reply(202, this.#view(c));
+	}
+
+	async #runCheck(c: Command, abort: AbortController): Promise<void> {
+		const { desk } = this.#h;
+		const budget = this.#budget;
+		const limits: EndoConsumptionSliceLimitsV0 = {
+			maxBytes: budget.sliceBytes,
+			maxRequests: budget.sliceRequests,
+			maxBodyBytes: budget.maxBodyBytes,
+		};
+		const yieldToLoop = this.#h.yieldToLoop ?? (() => new Promise<void>((done) => setImmediate(done)));
+		const startedAt = this.#h.now();
+		const incomplete = (
+			reason: string,
+			scanned: { requests: number; bytes: number },
+			total: number,
+		): WorkbenchConsumptionV0 => ({
+			status: "incomplete",
+			reason,
+			scanned,
+			total,
+			retryAtMs: this.#h.now() + budget.cooldownMs,
+		});
+		let before = c.lastScanned;
+		let usedBytes = 0;
+		let usedRequests = 0;
+		let fresh = true;
+		let result: WorkbenchConsumptionV0;
 		try {
-			c.view = { ...c.view, consumption: this.#h.desk.consumption(c.view.proposalId) };
+			// The request that started the check is answered first: not even the first slice runs inside its handler.
+			await yieldToLoop();
+			for (;;) {
+				if (abort.signal.aborted || this.#closing || this.#h.closed()) {
+					result = incomplete(
+						"the session was closing, so the check stopped; closing the session checks the capture once more",
+						{ ...c.lastScanned },
+						0,
+					);
+					break;
+				}
+				const step = desk.consumptionStep(c.view.proposalId, limits, { fresh });
+				fresh = false;
+				if (step.status !== "scanning") {
+					if (step.status === "incomplete") {
+						c.lastScanned = step.scanned;
+						result = incomplete(step.reason, step.scanned, step.total);
+					} else result = step;
+					break;
+				}
+				// The scan's counts are cumulative over resumed checks; this check's own work is the difference. A restart resets them.
+				if (step.scanned.requests < before.requests) before = { requests: 0, bytes: 0 };
+				usedRequests += step.scanned.requests - before.requests;
+				usedBytes += step.scanned.bytes - before.bytes;
+				before = step.scanned;
+				c.lastScanned = step.scanned;
+				if (
+					usedBytes > budget.checkBytes ||
+					usedRequests > budget.checkRequests ||
+					this.#h.now() - startedAt >= budget.checkMs
+				) {
+					result = incomplete(
+						`the check's work limit was reached after ${step.scanned.requests} of ${step.total} captured requests; a later check resumes from there`,
+						step.scanned,
+						step.total,
+					);
+					break;
+				}
+				c.view = { ...c.view, consumption: { status: "checking", scanned: step.scanned, total: step.total } };
+				await yieldToLoop();
+			}
 		} catch {
-			c.view = {
-				...c.view,
-				consumption: { status: "not-observed", reason: "the evidence could not be read just now" },
-			};
-		} finally {
-			c.checking = false;
+			result = incomplete("the evidence could not be read just now", { ...c.lastScanned }, 0);
 		}
-		return reply(200, this.#view(c));
+		c.view = { ...c.view, consumption: result };
+		c.cooldownUntilMs = this.#h.now() + budget.cooldownMs;
+		c.check = null;
 	}
 
 	#trim(): void {
@@ -423,24 +611,38 @@ export class WorkbenchInterventionsV0 {
 		};
 		const phrase = `APPROVE ${op.toUpperCase()} ${c.proposal.proposalDigest.slice(0, 16)}`;
 		let answer: "allow" | "deny" | null = null;
+		// The terminal has one question at a time: a STOP that superseded a request waits until that request has fully settled (its
+		// question is aborted and released, and its refusal is recorded) before it asks its own.
+		if (c.supersedes !== null) await c.supersedes.done.catch(() => {});
+		const askable = !c.abort.signal.aborted && !this.#closing && !this.#h.closed();
 		try {
-			answer = await this.#h.approver(
-				{
-					operation: op,
-					proposalId: id,
-					phrase,
-					session: c.session,
-					attachment: c.proposal.attachment,
-					bytes: c.view.bytes ?? 0,
-					message: c.message,
-					expiresAtMs: c.view.expiresAtMs,
-				},
-				c.abort.signal,
-			);
+			if (askable)
+				answer = await this.#h.approver(
+					{
+						operation: op,
+						proposalId: id,
+						phrase,
+						session: c.session,
+						attachment: c.proposal.attachment,
+						bytes: c.view.bytes ?? 0,
+						message: c.message,
+						expiresAtMs: c.view.expiresAtMs,
+						supersedes: c.supersedes === null ? null : (c.supersedes.view.operation as "steer" | "queue"),
+					},
+					c.abort.signal,
+				);
 		} catch {
 			answer = null;
 		}
 		c.message = null;
+		// Whatever the terminal answered, a superseded request is cancelled: an approval typed in the same instant is discarded and is
+		// not recorded as one, so a cancelled request is never accepted through late input.
+		if (c.superseded)
+			return settle(
+				"superseded-by-stop",
+				"superseded by a stop request before its approval was acted on",
+				"not-authorized",
+			);
 		if (this.#h.closed() || this.#closing)
 			return settle("session-ended", "the session was closing or had ended", "session-ended");
 		if (answer === null) {

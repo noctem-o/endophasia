@@ -1,12 +1,11 @@
 // A controllable stand-in for the attached session, and helpers for driving the workbench broker. No Pi, no model, no network.
-import type { PiInterventionApplyResultV0 } from "../adapters/pi/intervention.ts";
+import type { PiConsumptionStepV0, PiInterventionApplyResultV0 } from "../adapters/pi/intervention.ts";
 import type { WorkbenchApprovalRequestV0, WorkbenchApproverV0, WorkbenchSessionV0 } from "../adapters/pi/workbench.ts";
 import type { WorkbenchDeskV0 } from "../adapters/pi/workbench-interventions.ts";
 import type { RpcEventV0 } from "../adapters/rpc-jsonl/rpc-connection.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type {
 	EndoInterventionAuthorizationV0,
-	EndoInterventionConsumptionV0,
 	EndoInterventionOperationV0,
 	EndoInterventionProposalV0,
 	EndoInterventionRefusalReasonV0,
@@ -98,7 +97,7 @@ export class FakeDesk implements WorkbenchDeskV0 {
 	requests = new Map<string, { requestId: string; outcome: { status: string } | null }>();
 	admitted: Partial<Record<EndoInterventionOperationV0, string>> = {};
 	finishing: (() => void)[] = [];
-	consumptionResult: EndoInterventionConsumptionV0 = {
+	consumptionResult: PiConsumptionStepV0 = {
 		status: "not-observed",
 		reason: "this session store holds no proxy capture",
 	};
@@ -106,6 +105,10 @@ export class FakeDesk implements WorkbenchDeskV0 {
 	/** Held replies, by proposal: the test releases them. */
 	held = new Map<string, (result: PiInterventionApplyResultV0) => void>();
 	hold = true;
+	/** The desk cannot record a proposal (the store is closed or not recording): `propose` throws, as the real desk's would. */
+	proposeFails = false;
+	/** A scripted answer for the next `apply` (the gate refusing, for example), instead of the held or accepted one. */
+	nextApply: PiInterventionApplyResultV0 | null = null;
 	readonly session: FakeSession;
 	constructor(session: FakeSession) {
 		this.session = session;
@@ -117,6 +120,7 @@ export class FakeDesk implements WorkbenchDeskV0 {
 		origin?: "operator-workbench";
 		nonce?: string;
 	}) {
+		if (this.proposeFails) throw new TypeError("the session attachment is not recording");
 		const proposal = endoInterventionProposalV0({
 			schemaVersion: "endo.intervention.v0",
 			origin: input.origin ?? "operator-workbench",
@@ -140,6 +144,11 @@ export class FakeDesk implements WorkbenchDeskV0 {
 	apply(proposalId: string, _authorizationId: string): Promise<PiInterventionApplyResultV0> {
 		this.applyCalls.push(proposalId);
 		const requestId = `endo.evidence.intervention.request.${proposalId.slice(-16)}`;
+		if (this.nextApply !== null) {
+			const scripted = this.nextApply;
+			this.nextApply = null;
+			return Promise.resolve(scripted);
+		}
 		this.requests.set(proposalId, { requestId, outcome: null });
 		const finish = (result: PiInterventionApplyResultV0) => {
 			if (result.status === "accepted") this.requests.get(proposalId)!.outcome = { status: "accepted" };
@@ -159,9 +168,13 @@ export class FakeDesk implements WorkbenchDeskV0 {
 	requestOf(proposalId: string) {
 		return this.requests.get(proposalId) ?? null;
 	}
-	consumption(): EndoInterventionConsumptionV0 {
+	/** Slices to return first, in order (a test scripts a long scan with these), then `consumptionResult`. */
+	steps: PiConsumptionStepV0[] = [];
+	stepCalls: { fresh: boolean }[] = [];
+	consumptionStep(_proposalId: string, _limits: unknown, options: { fresh?: boolean } = {}): PiConsumptionStepV0 {
 		this.consumptionChecks += 1;
-		return this.consumptionResult;
+		this.stepCalls.push({ fresh: options.fresh === true });
+		return this.steps.shift() ?? this.consumptionResult;
 	}
 	admissionFor(operation: EndoInterventionOperationV0) {
 		const why = this.admitted[operation];

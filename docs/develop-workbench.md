@@ -301,7 +301,7 @@ runtime identity (`steering.steer`, `steering.follow-up`, `steering.stop`), and 
 request is refused (409) before the desk records anything. A request that was approved and is waiting for Pi does not hold that slot. At
 most one STOP is in flight; a duplicate returns it, and steer and queue are withheld while it is pending. Pending Pi replies are held by the
 broker, so a late reply is recorded and shown after the page went away, and status reads are never held behind an `abort` Pi answers only
-once idle. A pending steer approval blocks a STOP until it is withdrawn on the page or declined in the terminal (press Enter).
+once idle. A STOP is the exception to "a second request is refused": it supersedes a steer or queue that is still awaiting approval (§14).
 
 **Teardown.** The desk's closing `finish({ final: true })` records consequences, so the desk first tells the broker (`onFinishing`, which also
 covers the control socket's `close`): it refuses new requests and withdraws what waits for the terminal. A mid-session `finish` (the control
@@ -321,8 +321,9 @@ socket's `finish` message) does not: the workbench keeps working. A request cann
 A timeout or lost connection after the request was written is **unknown**, not refused, whatever the desk's `runtime-failed` record says.
 
 **Consumption** is the established rule (`endoFindConsumptionV0`): a later captured model request carries the message **one more time**.
-It reads the capture, so it is checked only when the operator presses *Check evidence* (or when the session closes), never per poll, and
-it is *not established* when the store holds no proxy capture. Text appearing in the conversation, or a successful RPC reply, is never
+It reads the capture, so it is checked only when the operator presses *Check evidence* (or when the session closes), never per poll. Since
+§14 the explicit check is a bounded, resumable scan that returns at once and yields between slices; it is *not established* when the store
+holds no proxy capture, and *incomplete* (establishing nothing) when it could not finish. Text appearing in the conversation, or a successful RPC reply, is never
 treated as consumption. **The run's end** on a card is what Pi reported (`aborted`, `failed` or `completed`, from the last assistant
 message at `agent_settled`) and is never presented as caused by the request; a STOP that races a natural completion reads *completed*.
 The desk's **consequence** record is written at session close, and the card says so.
@@ -334,5 +335,121 @@ sent in memory only, to show it on the card.
 
 **Not covered.** The operator exercised slice A (prompts) by hand against a real Pi. STEER, QUEUE and STOP were tested only against the fake Pi
 and a real pseudo-terminal; no real Pi or model run was made for them, and `npm run test:acceptance` (`--real-pi`) was not run.
+
+## 14. STOP priority and bounded evidence checks
+
+Two limitations of §13 are remediated here. Neither changes who may authorise anything.
+
+### 14.1 Root causes
+
+1. **STOP waited behind an unrelated question.** The terminal has one readline, and the broker refused every new request while any approval
+   waited, STOP included. A time-sensitive abort therefore depended on first cancelling a steer the operator might not be looking at.
+2. **The evidence check ran inside the request.** `intervention/check` called the desk synchronously, and the desk read *every* captured
+   request with its body (`readEndoCaptureEventsV0`, one verified blob per request, each body parsed and every user message digested) before
+   comparing anything. Nothing bounded the work, nothing stopped a repeat, and an unreadable body was skipped as if it were absent.
+
+### 14.2 The plan the change follows
+
+The mechanisms it had to work with: the manager's `#drive` per request awaits one `approver` promise; `cli/workbench.ts` implements it with
+`readline.question({ signal })`; the desk's `consumption()` is synchronous and records `intervention.consumed` through `#record`, which indexes
+the event it writes (so a second reader sees it). Each fix is built on those, without a second path:
+
+- STOP: record its proposal, mark the pending request superseded, abort its question, make the STOP wait for that request to settle, then ask.
+- Check: an index-plus-body-reader over the same capture, the same rule applied in slices, a place kept per request, and every limit in the
+  manager (the owner of responsiveness), with the desk owning the evidence rules.
+
+### 14.3 STOP supersedes an unapproved request
+
+Order, each step a precondition of the next (`WorkbenchInterventionsV0.propose` and `#drive`):
+
+1. The STOP is validated and admitted exactly as before (`offer`: connected, a run open, the capability admitted, no STOP in flight, no
+   *prompt* approval waiting). If any of that fails, **nothing else is touched**.
+2. The desk records the STOP's proposal. If that throws, the pending request is untouched (503 `not-recording`).
+3. Only then is the pending steer or queue marked `superseded`, and its question aborted with the reason `superseded-by-stop`.
+4. The STOP's drive awaits the superseded request's `done` promise: its approver has returned, its refusal is recorded. Only then does the
+   STOP ask its own question, so **the terminal never holds two**. `cli/workbench.ts` adds a second, independent guard: questions are
+   queued so one starts only after the previous one settled.
+5. Whatever the superseded request's question answered (even the exact phrase, typed in the same instant) is **discarded**: after the await,
+   a superseded request is settled as refused, never authorised. Nothing is recorded as an approval it was not.
+6. The STOP needs its own approval: `APPROVE STOP <16 hex>`. The steer's phrase, typed into the STOP's question, **declines** it (the phrase
+   carries its operation and digest). Then every gate the desk always checks runs at dispatch.
+
+What is recorded. The cancelled request keeps its chain: proposal, then `intervention.refused` with reason `not-authorized` and the detail
+*"superseded by a stop request before its approval was acted on"* (the existing schema; no new canonical reason). The page's view carries the
+distinct reason `superseded-by-stop`, so a supersession reads differently from a withdrawal or a timeout, and the card stays in the
+conversation. No authorization is recorded for it, and no request.
+
+What it does not do. It does not touch a request that was **approved** and is waiting for Pi (that one keeps its slot-free state). It does
+not supersede a **prompt** awaiting approval: a prompt needs an idle session and STOP needs an open run, so the two only meet if a run opens
+while a prompt waits; STOP then stays unavailable, with that reason, until the prompt is withdrawn or declined. It does not make a STOP
+automatic, and a cancellation is not undone if the STOP is then declined, expires or is refused because the run ended meanwhile.
+
+Terminal behaviour. The cancelled question prints *"that request was cancelled, unapproved, because a stop was requested. It was not
+sent."*, and the STOP's banner says which request it replaced. An abort rejects the question asynchronously, which is why the STOP waits for
+the settlement rather than trusting the signal; a cancelled question also discards the half-typed line (a readline `ctrl+u`).
+
+### 14.4 The evidence check
+
+`POST intervention/check` now starts a scan and answers at once with the request's view (`consumption.status = "checking"`); the page reads the
+view back while it runs. The scan:
+
+- opens the capture's **index** (event metadata, no bodies) and reads bodies one at a time, verified, through the existing blob store;
+- applies **the same rule as `endoFindConsumptionV0`** (a baseline from the last request before the delivery point, then the first request
+  with one more occurrence of the message's keyed digest) in slices, and keeps its place per request, so a stopped check resumes. The
+  baseline is the request just before the delivery point **in the snapshot being read**: if the capture has grown since, because its writes had
+  not caught up at the first look, and a newer request now precedes that point, the baseline is read again and what was judged against the old
+  one is judged again, so a message already in the history can never be recorded as consumed on a stale baseline. A body that was lost
+  (unreadable, or over its limit) is **tried again first** at the start of the next check, in order, and the scan then goes on from where it
+  had got to: a long capture is not read from the start each time because one body stays lost, and an earlier body that has become readable
+  still wins if it shows the earliest increase. A request the capture **records late**, below the place the scan had reached (concurrent
+  connections can finish out of exchange order), is not skipped for good: the scan remembers which exchanges it examined, and any other
+  exchange from the delivery point on that appears in a later snapshot joins the same retry queue, so the earliest increase is found
+  whatever order the capture was written in. Only exchanges from the delivery point on can be the answer: a body that failed while it was
+  an earlier baseline, since replaced by a newer one, is forgotten, so it is neither retried as a finding nor held against the answer;
+- is bounded: a slice reads at most 64 requests or about 1 MiB of bodies; a body over 32 MiB is not read; a check may use 256 MiB, 20 000
+  requests and 10 s of the broker's clock; one check runs at a time per request, two at once overall (a third is refused as busy, nothing
+  read); within 5 s of a finished check the same answer is returned and nothing is read; the capture index is not opened above 16 MiB of
+  event log (the closing record has no such limit, below);
+- yields to the event loop between slices (and before the first), so status, the transcript, a withdrawal and a STOP are served meanwhile;
+- stops at the next slice when the session begins to close, and `dispose()` waits for it.
+
+What it can say, and what each means:
+
+| Status | Meaning |
+| :--- | :--- |
+| `observed` | The capture shows the message one more time. Final; `intervention.consumed` is recorded once, by the desk, here or at close |
+| `not-observed` | The whole capture was read, every body, and none shows an increase (or there is no capture). Not proof of non-delivery beyond the capture |
+| `incomplete` | The check could not finish: a limit was reached, a body could not be read or was over its limit, the capture could not be indexed, the session was closing. **Establishes nothing**, and in particular not that the model did not receive the message |
+| `checking` | Under way; progress only |
+
+`intervention.consumed` is written only when consumption is observed, only by the desk, and only once: every path that records it first
+checks whether it is already recorded, and the scan, the explicit check and the closing `finish` all pass through that check. If the store is
+closed when a finding is reached, the finding is reported incomplete, not recorded.
+
+**Close time and offline verification are unchanged in meaning.** `finish()` still reads the whole capture, unbudgeted and synchronously (the
+process is closing and there is nothing to keep responsive), through the same scan with no limits, so a long session's capture is still read
+whole. The one difference: a body it cannot read is no longer silently skipped. It is recorded as `not-observed` with the reason
+*"not established: N captured requests could not be inspected…"*. The canonical consumption schema is unchanged (three statuses). `scripts/verify-consumption.ts` and the steering
+analysis call `endoFindConsumptionV0`, which is unchanged.
+
+### 14.5 Measurements (one machine, indicative only)
+
+On a real on-disk capture of 1 000 requests of about 100 kB (100 MB), with the 1 MiB slice limit: opening the index 33 ms; the scan 91 slices,
+longest 8.9 ms, mean 2.5 ms, 225 ms in all; the previous whole-capture read of the same capture 250 ms in one block (before any comparison).
+The capture's event log was 0.84 MB for those 1 000 request events, so the 16 MiB index limit is about 19 000 request events (a real
+proxy also records response events, which this did not measure). Not measured: a single body near the 32 MiB limit, an index open near the
+limit, and a slow disk. The tests assert structure (slice limits, interleaving through a controlled yield) rather than timings, plus one coarse
+bound on the longest slice.
+
+### 14.6 Remaining risks
+
+- A pending **prompt** approval still blocks STOP (above).
+- A superseded steer's text stays in `<root>/interventions/` (unchanged from §13: it is written before approval).
+- A cancelled request is not restored if the STOP is then not approved.
+- A body below 32 MiB is read whole in one slice; one such body is the longest the loop can be held, and it was not measured.
+- A check that hits its work limit establishes nothing; a very large capture needs several checks (each resumes).
+- The terminal's half-typed-line clearing is not exercised under the pseudo-terminal test.
+- Real Pi: STOP preemption and the checks were exercised against the fake Pi and a real pseudo-terminal only; `npm run test:acceptance`
+  (`--real-pi`) was not run.
 
 How a session from any source (this broker, a recording, or one another host owns) is presented, and why a described capability is not an authorisation: [develop-session-surface.md](develop-session-surface.md).

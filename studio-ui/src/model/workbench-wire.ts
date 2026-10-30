@@ -17,10 +17,20 @@ export interface WorkbenchCommand {
 }
 export type InterventionOperation = "steer" | "queue" | "stop";
 export type InterventionState = "awaiting-approval" | "dispatching" | "sent" | "accepted" | "refused" | "unknown";
+export interface ScanProgress {
+	requests: number;
+	bytes: number;
+}
+/**
+ * Only `observed` is a finding. `checking` and `incomplete` establish nothing about the message: an incomplete check (a limit reached,
+ * a body that could not be read, the session closing) is not "not observed", and never "the model did not receive it".
+ */
 export type InterventionConsumption =
 	| { status: "observed"; exchange: number; captureEvent: string }
 	| { status: "not-observed"; reason: string }
-	| { status: "not-applicable"; reason: string };
+	| { status: "not-applicable"; reason: string }
+	| { status: "checking"; scanned: ScanProgress; total: number }
+	| { status: "incomplete"; reason: string; scanned: ScanProgress; total: number; retryAtMs: number };
 export interface WorkbenchIntervention {
 	proposalId: string;
 	operation: InterventionOperation;
@@ -107,7 +117,8 @@ const command: Check = (v) =>
 		expiresAtMs: count,
 	});
 
-const INTERVENTION_REASONS = [...REASONS, "approval-timed-out", "withdrawn"];
+const INTERVENTION_REASONS = [...REASONS, "approval-timed-out", "withdrawn", "superseded-by-stop"];
+const progress: Check = (v) => shape(v, { requests: count, bytes: count });
 const intervention: Check = (v) =>
 	shape(v, {
 		proposalId: (x) => typeof x === "string" && /^endo\.evidence\.intervention\.proposal\.[0-9a-f]{64}$/.test(x),
@@ -136,7 +147,15 @@ const intervention: Check = (v) =>
 			(c) =>
 				shape(c, { status: one("observed"), exchange: count, captureEvent: short }) ||
 				shape(c, { status: one("not-observed"), reason: text(400) }) ||
-				shape(c, { status: one("not-applicable"), reason: text(400) }),
+				shape(c, { status: one("not-applicable"), reason: text(400) }) ||
+				shape(c, { status: one("checking"), scanned: progress, total: count }) ||
+				shape(c, {
+					status: one("incomplete"),
+					reason: text(400),
+					scanned: progress,
+					total: count,
+					retryAtMs: count,
+				}),
 		),
 	});
 
@@ -243,6 +262,8 @@ const FIXED: Record<string, string> = {
 	"not-checkable": "Only an accepted steer or queue can be checked.",
 	"bad-request": "The request was not in a form the workbench accepts.",
 	"not-found": "That prompt is no longer known to the workbench.",
+	"check-busy": "Other evidence checks are running. Try again in a moment; nothing was asked of the capture.",
+	closing: "The session is closing. Closing it checks the capture once more and records what it shows.",
 	"not-withdrawable": "That prompt is no longer waiting for approval.",
 	"not-recording": "The session is not recording, so nothing was requested.",
 	forbidden: "The workbench refused this request.",

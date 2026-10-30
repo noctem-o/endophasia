@@ -201,6 +201,20 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 								carried the message one more time than the request before it. That shows the model was sent it;
 								it does not show it helped.
 							</p>
+						) : i.consumption.status === "checking" ? (
+							<p>
+								Consumption: <strong>checking</strong>.{" "}
+								{i.consumption.total === 0
+									? "Starting: nothing has been read yet."
+									: `Read ${i.consumption.scanned.requests} of ${i.consumption.total} captured requests so far.`}{" "}
+								Nothing is established yet.
+							</p>
+						) : i.consumption.status === "incomplete" ? (
+							<p data-testid="consumption-incomplete">
+								Consumption: <strong>check incomplete</strong>. {i.consumption.reason}. This does not show the
+								message was not used. It can be checked again after{" "}
+								{new Date(i.consumption.retryAtMs).toLocaleTimeString([], { hour12: false })} (browser clock).
+							</p>
 						) : (
 							<p>
 								Consumption: <strong>not established</strong>. {i.consumption.reason}
@@ -211,6 +225,7 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 								type="button"
 								className="btn small-btn"
 								data-testid="check-evidence"
+								disabled={i.consumption?.status === "checking"}
 								onClick={() => void wb.check(i.proposalId)}
 							>
 								{i.consumption === null ? "Check evidence" : "Check again"}
@@ -503,6 +518,9 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 	if (status.run !== "active") return null;
 	const offer = status.offers.stop;
 	const usable = offer.offered && grant !== null;
+	// A stop does not wait behind an unapproved steer or queue: it cancels it. Said before the click, and again that the stop is approved
+	// in the terminal like any other request: this page never approves anything.
+	const superseded = wb.state.interventions.find((x) => x.state === "awaiting-approval" && x.operation !== "stop");
 	return (
 		<span className="stop-control">
 			<button
@@ -515,11 +533,20 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 			>
 				Request stop
 			</button>
-			<span className="dim small" id="stop-reason">
+			<span
+				className="dim small"
+				id="stop-reason"
+				data-testid="stop-reason"
+				data-supersedes={superseded?.operation ?? ""}
+			>
 				{grant === null
 					? "Pair this page to request a stop."
 					: offer.offered
-						? `${OPERATION_WORDS.stop.delivery} You approve it in the terminal.`
+						? `${OPERATION_WORDS.stop.delivery} You approve it in the terminal.${
+								superseded === undefined
+									? ""
+									: ` Requesting it cancels the ${superseded.operation} now waiting for approval: that ${superseded.operation} will not be sent.`
+							}`
 						: (offer.reason ?? "")}
 			</span>
 		</span>

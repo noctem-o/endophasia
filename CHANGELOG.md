@@ -43,6 +43,17 @@
   validation only: not model parity, not attestation, no noise floor.
 
 ### Fixed
+- **DEVELOP: a STOP no longer waits behind an unapproved steer or queue, and the evidence check no longer holds the workbench:** requesting a
+  STOP while a STEER or QUEUE awaits terminal approval now supersedes it. The STOP's proposal is recorded first (if that fails nothing is
+  disturbed), the pending request is cancelled with a recorded `not-authorized` refusal whose detail says it was superseded, its terminal
+  question is released before the STOP asks its own, and anything typed for the cancelled request is discarded. The STOP still needs its own
+  exact `APPROVE STOP` phrase, and every gate is checked at dispatch; a request already approved and waiting for Pi is never touched.
+  *Check evidence* now returns at once and runs as a bounded, resumable scan in slices that yield to the event loop, with limits per slice,
+  per check, per request (one at a time, a cooldown) and overall; an incomplete check (a limit, an unreadable body, a closing session)
+  establishes nothing, and `intervention.consumed` is still written only when the capture shows the message one more time, once. The close-time
+  check still reads the whole capture; a body it cannot read is now reported rather than skipped. A pending prompt approval still blocks STOP,
+  and a cancelled steer's text stays in `<root>/interventions/`. See
+  [docs/develop-workbench.md](docs/develop-workbench.md#14-stop-priority-and-bounded-evidence-checks).
 - **Task-owned launcher now waits for the model mapping (research):** a real llama.cpp server listens before it loads its
   model, but the launcher inspected the process the moment the listener appeared and required the model to be mapped, so
   it refused a real server. It now waits, inside its startup deadline and under the same cancellation, for the first

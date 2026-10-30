@@ -5,10 +5,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { EndoCaptureLogV0 } from "../adapters/openai-proxy/capture-log.ts";
 import { PiAttachmentV0, type PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
+import type { WorkbenchEvidenceBudgetV0 } from "../adapters/pi/workbench-interventions.ts";
+import { endoInterventionCaptureSourceV0 } from "../cli/intervention-capture.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
+import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
@@ -26,7 +30,15 @@ const temp = (prefix: string) => {
 	return dir;
 };
 
-async function ready(options: { admitted?: boolean; stepMs?: number } = {}) {
+async function ready(
+	options: {
+		admitted?: boolean;
+		stepMs?: number;
+		capture?: boolean;
+		yieldMs?: number;
+		budget?: Partial<WorkbenchEvidenceBudgetV0>;
+	} = {},
+) {
 	const install = installFakePi("1.0.0");
 	cleanup.push(() => install.remove());
 	const root = temp("endo-wbi-");
@@ -48,7 +60,11 @@ async function ready(options: { admitted?: boolean; stepMs?: number } = {}) {
 	cleanup.push(async () => {
 		if (!closed) await session.close();
 	});
-	const desk = new PiInterventionDeskV0(session, KEY);
+	const desk = new PiInterventionDeskV0(
+		session,
+		KEY,
+		options.capture === true ? endoInterventionCaptureSourceV0(root, KEY) : null,
+	);
 	const approval = new Approval();
 	const broker = new WorkbenchBrokerV0({
 		session,
@@ -56,6 +72,10 @@ async function ready(options: { admitted?: boolean; stepMs?: number } = {}) {
 		attachment: session.owner.attachment,
 		approver: approval.approver,
 		interventions: desk,
+		...(options.budget === undefined ? {} : { evidenceBudget: options.budget }),
+		...(options.yieldMs === undefined
+			? {}
+			: { yieldToLoop: () => new Promise<void>((done) => setTimeout(done, options.yieldMs)) }),
 	});
 	cleanup.push(() => broker.dispose());
 	const call = (method: "GET" | "POST", route: string, body: unknown = null, grant: string | null = null) =>
@@ -152,8 +172,9 @@ describe("the broker on the real desk (fake Pi)", () => {
 			consumption: null,
 		});
 		// Consumption is not established from acceptance, nor from text in a later conversation: this store has no proxy capture.
-		const checked = await t.call("POST", "intervention/check", { proposalId: id }, t.grant);
-		expect(checked.body).toMatchObject({
+		expect((await t.call("POST", "intervention/check", { proposalId: id }, t.grant)).status).toBe(202);
+		await t.until("checked", async () => (await t.view(id)).consumption?.status === "not-observed");
+		expect(await t.view(id)).toMatchObject({
 			consumption: { status: "not-observed", reason: "this session store holds no proxy capture" },
 		});
 		expect(await settled).toBe(true);
@@ -328,5 +349,201 @@ describe("the broker on the real desk (fake Pi)", () => {
 		expect(t.commands().slice(before)).not.toContain("steer");
 		const chain = events(t.root).filter((e) => e.kind.startsWith("intervention."));
 		expect(chain.map((e) => e.kind)).toEqual(["intervention.proposal", "intervention.refused"]);
+	}, 60_000);
+});
+
+describe("a STOP supersedes an unapproved steer on the real desk (fake Pi)", () => {
+	it("sends the abort only after the STOP's own approval, and never sends the steer it cancelled", async () => {
+		const t = await ready({ stepMs: 60 });
+		await t.session.prompt("count to forty");
+		await untilStreaming(t.session);
+		const before = t.commands().length;
+		const steer = (
+			(await t.call("POST", "intervention/propose", { operation: "steer", message: `also ${SECRET}` }, t.grant))
+				.body as any
+		).proposalId;
+		await t.until("the steer's question", () => t.approval.requests.length === 1);
+		const stop = ((await t.call("POST", "intervention/propose", { operation: "stop" }, t.grant)).body as any)
+			.proposalId;
+		await t.until("the stop's question", () => t.approval.requests.length === 2);
+		expect(t.approval.requests.map((r) => r.operation)).toEqual(["steer", "stop"]);
+		expect(t.approval.requests[1]!.supersedes).toBe("steer");
+		expect(await t.view(steer)).toMatchObject({ state: "refused", approved: false, reason: "superseded-by-stop" });
+		// Nothing has reached Pi: the steer was cancelled and the STOP has not been approved.
+		await settle(100);
+		expect(t.commands().slice(before)).not.toContain("steer");
+		expect(t.commands().slice(before)).not.toContain("abort");
+		expect(await t.view(stop)).toMatchObject({ state: "awaiting-approval", approved: false });
+
+		t.approval.answer("allow");
+		await t.until("the stop is sent", async () => ["sent", "accepted"].includes((await t.view(stop)).state));
+		expect(t.commands().slice(before)).toContain("abort");
+		expect(t.commands().slice(before)).not.toContain("steer");
+		await t.desk.finish();
+		await t.close();
+
+		const chain = events(t.root).filter((e) => e.kind.startsWith("intervention."));
+		const of = (kind: string) => chain.filter((e) => e.kind === kind);
+		// The cancelled steer's chain ends at a refusal recorded as "not authorized", with no authorization and no request.
+		expect(of("intervention.proposal").map((e) => (e.payload as any).operation)).toEqual(["steer", "stop"]);
+		expect(of("intervention.refused").map((e) => (e.payload as any).reason)).toEqual(["not-authorized"]);
+		// The canonical record says why, in fixed words, so a supersession can be told from a withdrawal or a timeout.
+		expect((of("intervention.refused")[0]!.payload as any).detail).toBe(
+			"superseded by a stop request before its approval was acted on",
+		);
+		expect((of("intervention.refused")[0]!.payload as any).proposalId).toBe(steer);
+		expect(of("intervention.authorization")).toHaveLength(1);
+		expect((of("intervention.authorization")[0]!.payload as any).proposalId).toBe(stop);
+		expect(of("intervention.request").map((e) => (e.payload as any).operation)).toEqual(["stop"]);
+		expect(JSON.stringify(events(t.root))).not.toContain(SECRET);
+	}, 60_000);
+
+	it("discards the steer's approval typed after it was cancelled, and declines the STOP with it", async () => {
+		const t = await ready({ stepMs: 60 });
+		await t.session.prompt("count to forty");
+		await untilStreaming(t.session);
+		const before = t.commands().length;
+		const steer = (
+			(await t.call("POST", "intervention/propose", { operation: "steer", message: "late approval" }, t.grant))
+				.body as any
+		).proposalId;
+		await t.until("the steer's question", () => t.approval.requests.length === 1);
+		const steerPhrase = t.approval.requests[0]!.phrase;
+		const stop = ((await t.call("POST", "intervention/propose", { operation: "stop" }, t.grant)).body as any)
+			.proposalId;
+		await t.until("the stop's question", () => t.approval.requests.length === 2);
+		expect(steerPhrase).not.toBe(t.approval.requests[1]!.phrase);
+		// The operator types the old steer's phrase: it is an answer to the STOP's question, and it is not the STOP's phrase.
+		t.approval.answer("deny");
+		await t.until("the stop is declined", async () => (await t.view(stop)).state === "refused");
+		expect(await t.view(stop)).toMatchObject({ reason: "authorization-denied", approved: false });
+		expect(await t.view(steer)).toMatchObject({ state: "refused", reason: "superseded-by-stop" });
+		await settle(100);
+		expect(t.commands().slice(before)).not.toContain("steer");
+		expect(t.commands().slice(before)).not.toContain("abort");
+	}, 60_000);
+});
+
+/** Record `count` captured model requests of about `bytes` each; the message appears one more time from request `deliveredAt` on. */
+function captureHistory(root: string, count: number, bytes: number, message: string, deliveredAt: number): void {
+	const log = new EndoCaptureLogV0(root, KEY, "record");
+	const padding = "x".repeat(bytes);
+	for (let exchange = 1; exchange <= count; exchange++) {
+		const messages = [
+			{ role: "user", content: "count to forty" },
+			{ role: "user", content: `${padding} ${exchange}` },
+			...(exchange >= deliveredAt ? [{ role: "user", content: message }] : []),
+		];
+		const body = log.keep(Buffer.from(JSON.stringify({ model: "m", messages })));
+		log.record("capture.request", {
+			exchange,
+			attempt: 1,
+			method: "POST",
+			path: "/v1/chat/completions",
+			requestDigest: body.digest as unknown as JsonValueV0,
+			body: body as unknown as JsonValueV0,
+			headers: {},
+		});
+	}
+	log.close();
+}
+
+describe("the evidence check over a real on-disk capture", () => {
+	it("finds consumption in a large capture while status, the transcript and a STOP stay answerable between slices", async () => {
+		const t = await ready({ stepMs: 100, capture: true, yieldMs: 1 });
+		await t.session.prompt("count to forty");
+		await untilStreaming(t.session);
+		const id = (
+			(
+				await t.call(
+					"POST",
+					"intervention/propose",
+					{ operation: "steer", message: "look at the notes again" },
+					t.grant,
+				)
+			).body as any
+		).proposalId;
+		await t.approve();
+		await t.until("accepted", async () => (await t.view(id)).state === "accepted");
+		// 120 captured requests of ~100 kB, recorded after the steer; the steer's text arrives in request 90.
+		captureHistory(t.root, 120, 100_000, "look at the notes again", 90);
+
+		const slices: number[] = [];
+		const step = t.desk.consumptionStep.bind(t.desk);
+		t.desk.consumptionStep = (...args) => {
+			const started = performance.now();
+			const result = step(...args);
+			slices.push(performance.now() - started);
+			return result;
+		};
+
+		expect((await t.call("POST", "intervention/check", { proposalId: id }, t.grant)).status).toBe(202);
+		let answered = 0;
+		let stopAsked = false;
+		while ((await t.view(id)).consumption?.status === "checking") {
+			await t.status();
+			await t.call("GET", "transcript", null, t.grant);
+			answered += 1;
+			// A page's requests arrive over a socket, one turn of the loop apart: wait a timer, as a real client's would.
+			await settle(2);
+			if (!stopAsked) {
+				stopAsked = true;
+				const stop = await t.call("POST", "intervention/propose", { operation: "stop" }, t.grant);
+				expect(stop.status).toBe(202); // requested while the check is still reading
+				await t.until("the stop's question", () => t.approval.requests.length >= 1);
+			}
+		}
+		// The check was read in slices, and the broker was served between them.
+		expect(answered).toBeGreaterThan(2);
+		expect(slices.length).toBeGreaterThan(5);
+		expect(await t.view(id)).toMatchObject({ consumption: { status: "observed", exchange: 90 } });
+		const longest = Math.max(...slices);
+		console.info(
+			`evidence check: ${slices.length} slices, longest ${longest.toFixed(1)} ms, served ${answered} reads between them`,
+		);
+		expect(longest).toBeLessThan(500); // a coarse sanity bound on one slice (~1 MiB of bodies), not a benchmark
+		t.approval.answer("deny");
+		await t.desk.finish();
+		await t.close();
+		// Exactly one consumed record, however the check and the close interleaved.
+		expect(events(t.root).filter((e) => e.kind === "intervention.consumed")).toHaveLength(1);
+	}, 120_000);
+
+	it("stops at its work limit as incomplete, says what it read, and the next check resumes instead of starting over", async () => {
+		const t = await ready({
+			stepMs: 100,
+			capture: true,
+			yieldMs: 1,
+			budget: { checkRequests: 30, cooldownMs: 40 },
+		});
+		await t.session.prompt("count to forty");
+		await untilStreaming(t.session);
+		const id = (
+			(await t.call("POST", "intervention/propose", { operation: "steer", message: "later words" }, t.grant))
+				.body as any
+		).proposalId;
+		await t.approve();
+		await t.until("accepted", async () => (await t.view(id)).state === "accepted");
+		captureHistory(t.root, 100, 20_000, "later words", 100);
+		const done = async () => (await t.view(id)).consumption?.status !== "checking";
+		await t.call("POST", "intervention/check", { proposalId: id }, t.grant);
+		await t.until("first check ends", done);
+		const first = (await t.view(id)).consumption;
+		expect(first.status).toBe("incomplete");
+		expect(first.reason).toContain("work limit");
+		expect(first.scanned.requests).toBeLessThan(100);
+		// Asked again at once: no new work.
+		await t.call("POST", "intervention/check", { proposalId: id }, t.grant);
+		expect((await t.view(id)).consumption.status).toBe("incomplete");
+		// After the cooldown it carries on from where it stopped, and reaches the end of the capture in a few checks.
+		let latest = first;
+		for (let round = 0; round < 6 && latest.status !== "observed"; round++) {
+			await settle(60);
+			await t.call("POST", "intervention/check", { proposalId: id }, t.grant);
+			await t.until("check ends", done);
+			latest = (await t.view(id)).consumption;
+		}
+		expect(latest).toMatchObject({ status: "observed", exchange: 100 });
+		expect(events(t.root).filter((e) => e.kind === "intervention.consumed")).toHaveLength(1);
 	}, 60_000);
 });

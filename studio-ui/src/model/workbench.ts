@@ -69,7 +69,10 @@ export const commandOpen = (c: WorkbenchCommand | null): boolean =>
 /** An intervention still moving: waiting for the terminal, being sent, or sent and waiting for Pi. */
 export const interventionOpen = (i: WorkbenchIntervention): boolean =>
 	i.state === "awaiting-approval" || i.state === "dispatching" || i.state === "sent";
-export const anyOpen = (s: WorkbenchState): boolean => commandOpen(s.command) || s.interventions.some(interventionOpen);
+/** An evidence check still running: the page reads again until it ends. */
+export const checkRunning = (i: WorkbenchIntervention): boolean => i.consumption?.status === "checking";
+export const anyOpen = (s: WorkbenchState): boolean =>
+	commandOpen(s.command) || s.interventions.some((i) => interventionOpen(i) || checkRunning(i));
 /** The STOP in flight, if any. */
 export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
 	s.interventions.find((i) => i.operation === "stop" && interventionOpen(i)) ?? null;
@@ -193,6 +196,8 @@ export const COMMAND_WORDS: Readonly<Record<string, string>> = {
 };
 export const REFUSAL_WORDS: Readonly<Record<string, string>> = {
 	withdrawn: "it was withdrawn before it was approved",
+	"superseded-by-stop":
+		"a stop was requested while it was still waiting for approval, so it was cancelled and never sent",
 	"authorization-for-another-proposal": "the approval was for another request",
 	"authorization-for-another-session": "the approval was for another session",
 	"authorization-for-another-attachment": "the approval was for another attachment",

@@ -126,6 +126,12 @@ environment pinned, 120 trials of a STEER and a QUEUE at a fixed point against a
 documents it in all 80 steered trials; the effect on what the agent did, which differed by task and arm, is reported as
 measured, with its limits.
 
+## Workbench STOP priority and evidence checks
+
+In the DEVELOP workbench a STOP supersedes a steer or queue that is still awaiting terminal approval, and still needs its own approval, and
+its evidence check is a bounded scan that can finish as incomplete without saying anything about the message. See
+[develop-workbench.md §14](develop-workbench.md#14-stop-priority-and-bounded-evidence-checks).
+
 ## Audit
 
 The protocol was audited after it merged ([the audit](audits/pr29-post-merge.md)): consumption now means an increase

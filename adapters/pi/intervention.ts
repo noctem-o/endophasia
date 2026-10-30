@@ -496,15 +496,21 @@ export class PiInterventionDeskV0 {
 			return { status: "observed", exchange: state.consumedExchange, captureEvent: state.consumedEvent };
 		}
 		let held = this.#scans.get(id);
-		// A scan that lost bodies is started again when a NEW check begins (not between its slices), so a body that has become readable
-		// is not skipped for good.
-		if (
-			held !== undefined &&
-			(fresh || held.snapshot === null) &&
-			(held.scan.unreadable.length > 0 || held.scan.tooLarge.length > 0)
-		)
-			held = { scan: endoNewConsumptionScanV0(), snapshot: null };
 		if (held === undefined) held = { scan: endoNewConsumptionScanV0(), snapshot: null };
+		// When a NEW check begins (not between its slices), the bodies the last one lost are tried again, first, and the scan goes on from
+		// where it had got to: a body that has become readable is not skipped for good, and a long capture is not read from the start
+		// each time because one body stays lost.
+		if (fresh || held.snapshot === null) {
+			const scan = held.scan;
+			if (scan.baseline === Number.POSITIVE_INFINITY) {
+				// The baseline itself was lost: it is read again, and the scan, which could find nothing without it, starts over.
+				scan.baseline = null;
+				scan.baselineExchange = null;
+				scan.retry = [];
+				scan.next = scan.from ?? 0;
+			}
+			scan.retry = [...new Set([...scan.retry, ...scan.unreadable, ...scan.tooLarge])].sort((a, b) => a - b);
+		}
 		if (held.snapshot === null || fresh) {
 			let snapshot: EndoCaptureSnapshotV0 | null;
 			try {

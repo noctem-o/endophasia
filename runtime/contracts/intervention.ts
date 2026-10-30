@@ -297,6 +297,10 @@ export interface EndoConsumptionScanV0 {
 	from: number | null;
 	/** The message's occurrence count in the request before `from`; null until that request has been read. */
 	baseline: number | null;
+	/** The exchange the baseline was read from (null: there was none before `from` in the capture then). A newer one replaces it. */
+	baselineExchange: number | null;
+	/** Lost exchanges still to be tried again, in order, before the scan goes on forward. */
+	retry: number[];
 	/** The next exchange to examine. */
 	next: number;
 	/** Work done so far, over every slice. */
@@ -309,6 +313,8 @@ export interface EndoConsumptionScanV0 {
 export const endoNewConsumptionScanV0 = (): EndoConsumptionScanV0 => ({
 	from: null,
 	baseline: null,
+	baselineExchange: null,
+	retry: [],
 	next: 0,
 	scanned: { requests: 0, bytes: 0 },
 	unreadable: [],
@@ -351,24 +357,38 @@ export function endoSliceConsumptionV0(
 		scan.scanned.bytes += entry.bodyBytes;
 		requests += 1;
 		bytes += entry.bodyBytes;
-		if (entry.bodyBytes > limits.maxBodyBytes) {
-			scan.tooLarge.push(entry.exchange);
+		const lose = (list: number[]): null => {
+			if (!list.includes(entry.exchange)) list.push(entry.exchange);
 			return null;
-		}
+		};
+		if (entry.bodyBytes > limits.maxBodyBytes) return lose(scan.tooLarge);
 		try {
-			return { body: snapshot.body(entry) };
+			const body = snapshot.body(entry);
+			// Read now: no longer lost.
+			scan.unreadable = scan.unreadable.filter((e) => e !== entry.exchange);
+			scan.tooLarge = scan.tooLarge.filter((e) => e !== entry.exchange);
+			return { body };
 		} catch {
-			scan.unreadable.push(entry.exchange);
-			return null;
+			return lose(scan.unreadable);
 		}
 	};
 	if (scan.from !== from) {
 		scan.from = from;
 		scan.baseline = null;
+		scan.baselineExchange = null;
+		scan.retry = [];
 		scan.next = from;
 	}
-	if (scan.baseline === null) {
-		const before = entries.filter((entry) => entry.exchange < from).at(-1);
+	// The baseline is the request just before `from` in THIS snapshot. A capture that has grown since the baseline was read may now hold
+	// a newer one (its writes had not caught up when the scan first looked), and what was judged against the old baseline is judged again.
+	const before = entries.filter((entry) => entry.exchange < from).at(-1);
+	const beforeExchange = before?.exchange ?? null;
+	if (scan.baseline === null || scan.baselineExchange !== beforeExchange) {
+		if (scan.baseline !== null) {
+			scan.next = from;
+			scan.retry = [];
+		}
+		scan.baselineExchange = beforeExchange;
 		if (before === undefined) scan.baseline = 0;
 		else {
 			const got = read(before);
@@ -376,6 +396,18 @@ export function endoSliceConsumptionV0(
 			// unreadable record makes the scan's answer incomplete rather than negative.
 			scan.baseline = got === null ? Number.POSITIVE_INFINITY : endoMessageOccurrencesV0(got, message, key);
 		}
+	}
+	if (scan.baseline === Number.POSITIVE_INFINITY) return { kind: "end", requests: entries.length, startedAt: from };
+	// Lost bodies from an earlier check are tried again FIRST, in order: they precede the forward place, so an increase among them is the
+	// earliest one, as `endoFindConsumptionV0` would find it. The forward place is kept, not reset.
+	while (scan.retry.length > 0) {
+		if (requests >= limits.maxRequests || (requests > 0 && bytes >= limits.maxBytes)) return { kind: "more" };
+		const exchange = scan.retry.shift()!;
+		const entry = entries.find((e) => e.exchange === exchange);
+		if (entry === undefined || exchange === scan.baselineExchange) continue;
+		const got = read(entry);
+		if (got !== null && endoMessageOccurrencesV0(got, message, key) > scan.baseline)
+			return { kind: "found", exchange: entry.exchange, captureEvent: entry.captureEvent };
 	}
 	for (const entry of entries) {
 		if (entry.exchange < scan.next) continue;

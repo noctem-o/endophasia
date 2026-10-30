@@ -395,7 +395,13 @@ view back while it runs. The scan:
 
 - opens the capture's **index** (event metadata, no bodies) and reads bodies one at a time, verified, through the existing blob store;
 - applies **the same rule as `endoFindConsumptionV0`** (a baseline from the last request before the delivery point, then the first request
-  with one more occurrence of the message's keyed digest) in slices, and keeps its place per request, so a stopped check resumes;
+  with one more occurrence of the message's keyed digest) in slices, and keeps its place per request, so a stopped check resumes. The
+  baseline is the request just before the delivery point **in the snapshot being read**: if the capture has grown since, because its writes had
+  not caught up at the first look, and a newer request now precedes that point, the baseline is read again and what was judged against the old
+  one is judged again, so a message already in the history can never be recorded as consumed on a stale baseline. A body that was lost
+  (unreadable, or over its limit) is **tried again first** at the start of the next check, in order, and the scan then goes on from where it
+  had got to: a long capture is not read from the start each time because one body stays lost, and an earlier body that has become readable
+  still wins if it shows the earliest increase;
 - is bounded: a slice reads at most 64 requests or about 1 MiB of bodies; a body over 32 MiB is not read; a check may use 256 MiB, 20 000
   requests and 10 s of the broker's clock; one check runs at a time per request, two at once overall (a third is refused as busy, nothing
   read); within 5 s of a finished check the same answer is returned and nothing is read; the capture index is not opened above 16 MiB of

@@ -130,6 +130,59 @@ describe("the sliced scan is the same rule as endoFindConsumptionV0", () => {
 		expect(scan.scanned).toEqual({ requests: 6, bytes: 3_600_000 });
 	});
 
+	it("recomputes the baseline when a later snapshot has a newer request before the delivery point", () => {
+		// The first look at the capture is before its writes caught up: nothing is captured yet, so the baseline is zero.
+		const empty: EndoCaptureSnapshotV0 = { entries: [], body: () => ({}) };
+		const scan = endoNewConsumptionScanV0();
+		expect(endoSliceConsumptionV0(scan, empty, 2, ref, KEY, EVERYTHING).kind).toBe("end");
+		// Then exchanges 1 and 2 appear, each carrying the message once (it was already in the history): no increase at all.
+		const grown = history([1, 2], [1, 1]);
+		const requests = [1, 2].map((e) => ({
+			exchange: e,
+			captureEvent: `endo.event.c${e}`,
+			at: "x",
+			body: grown.bodies.get(e),
+		}));
+		expect(endoFindConsumptionV0(requests, ref, KEY, 2)).toBeNull();
+		expect(endoSliceConsumptionV0(scan, grown.snapshot, 2, ref, KEY, EVERYTHING).kind).toBe("end");
+		// The same when the baseline was read from an older request and a newer one has since appeared.
+		const older = history([0, 1], [0, 0]);
+		const again = endoNewConsumptionScanV0();
+		expect(endoSliceConsumptionV0(again, older.snapshot, 3, ref, KEY, EVERYTHING).kind).toBe("end");
+		const newer = history([0, 1, 2], [0, 0, 2]); // exchange 2 now carries it twice, so it is the baseline for from=3
+		expect(endoSliceConsumptionV0(again, newer.snapshot, 3, ref, KEY, EVERYTHING).kind).toBe("end");
+		const three = history([0, 1, 2, 3], [0, 0, 2, 2]);
+		const fresh = endoNewConsumptionScanV0();
+		expect(endoSliceConsumptionV0(fresh, three.snapshot, 3, ref, KEY, EVERYTHING).kind).toBe("end"); // 2 is not more than 2
+	});
+
+	it("retries a lost body without starting over, and still finds what an earlier lost body now shows", () => {
+		const h = history([1, 2, 3, 4, 5], [0, 1, 1, 1, 2]);
+		let readable = false;
+		const flaky: EndoCaptureSnapshotV0 = {
+			entries: h.entries,
+			body: (entry) => {
+				if (entry.exchange === 2 && !readable) throw new TypeError("missing");
+				return h.snapshot.body(entry);
+			},
+		};
+		const scan = endoNewConsumptionScanV0();
+		// First pass: exchange 2 is lost, so exchange 3 is the first readable increase over the baseline (exchange 0: none).
+		const first = endoSliceConsumptionV0(scan, flaky, 1, ref, KEY, { ...EVERYTHING });
+		expect(first).toMatchObject({ kind: "found", exchange: 3 });
+		expect(scan.unreadable).toEqual([2]);
+		// A new check, the body is readable now: the lost one is retried FIRST, so the earliest increase wins, as endoFindConsumptionV0 says.
+		readable = true;
+		scan.retry = [...scan.unreadable];
+		scan.unreadable = [];
+		scan.next = 1;
+		expect(endoSliceConsumptionV0(scan, flaky, 1, ref, KEY, EVERYTHING)).toMatchObject({
+			kind: "found",
+			exchange: 2,
+		});
+		expect(scan.unreadable).toEqual([]);
+	});
+
 	it("counts a body it cannot read or will not read, so the caller can never mistake the scan for a negative", () => {
 		const h = history([1, 2, 3], [0, 0, 0]);
 		const broken: EndoCaptureSnapshotV0 = {
@@ -381,6 +434,27 @@ describe("the desk's bounded check", () => {
 		});
 		// The public whole-check read (the control socket's) takes the same unbounded path.
 		expect(desk.consumption(id)).toMatchObject({ status: "observed", exchange: 2 });
+	});
+
+	it("keeps its forward place when a retry follows a lost body, so a long capture is not re-read from the start", async () => {
+		const session = await openSession();
+		const h = history([1, 2, 3, 4, 5, 6, 7, 8, 9], [0, 0, 0, 0, 0, 0, 0, 0, 1]);
+		// Exchange 1 is over the per-body limit for good: every retry meets it again.
+		h.entries[0]!.bodyBytes = 10_000_000;
+		const { desk, id } = acceptedSteer(session, source(h));
+		const limits = { maxBytes: Number.POSITIVE_INFINITY, maxRequests: 2, maxBodyBytes: 1_000_000 };
+		// A first check gets through four slices (its work limit, in the manager) and stops.
+		let step = desk.consumptionStep(id, limits, { fresh: true });
+		for (let i = 0; i < 3; i++) step = desk.consumptionStep(id, limits);
+		expect(step.status).toBe("scanning");
+		const readSoFar = [...h.reads];
+		// The next check starts fresh. It must resume after what was read, not begin again at exchange 1.
+		let next = desk.consumptionStep(id, limits, { fresh: true });
+		while (next.status === "scanning") next = desk.consumptionStep(id, limits);
+		expect(next).toMatchObject({ status: "observed", exchange: 9 });
+		const again = h.reads.slice(readSoFar.length);
+		expect(again.filter((e) => readSoFar.includes(e) && e !== 1)).toEqual([]);
+		expect(h.reads.filter((e) => e === 5)).toHaveLength(1);
 	});
 
 	it("does not touch the store once it is closed, and reports the finding it could not record as incomplete", async () => {

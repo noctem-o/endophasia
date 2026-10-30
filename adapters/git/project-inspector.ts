@@ -303,20 +303,22 @@ export class GitProjectInspectorV0 {
 		if (inside !== "true") return this.#unavailable("not-a-repository");
 		const where = await this.#git_(
 			cwd,
-			["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir"],
+			["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", "--absolute-git-dir"],
 			GIT_LIMITS_V0.listBytes,
 		);
 		const whereReason = failureReasonV0(where);
 		if (whereReason !== null) return this.#unavailable(whereReason);
 		const lines = where.stdout.toString("utf8").split("\n");
-		// Exactly two paths and a closing newline: a path with a newline in it cannot be read unambiguously, so it is not guessed at.
-		if (lines.length !== 3 || lines[2] !== "" || lines[0] === "" || lines[1] === "")
+		// Exactly three paths and a closing newline: a path with a newline in it cannot be read unambiguously, so it is not guessed at.
+		if (lines.length !== 4 || lines[3] !== "" || lines.slice(0, 3).some((line) => line === ""))
 			return this.#unavailable("git-failed");
 		let root: string;
 		let common: string;
+		let gitDir: string;
 		try {
 			root = await realpath(lines[0] as string);
 			common = await realpath(lines[1] as string);
+			gitDir = await realpath(lines[2] as string);
 		} catch {
 			return this.#unavailable("git-failed");
 		}
@@ -330,6 +332,26 @@ export class GitProjectInspectorV0 {
 		} catch {
 			return this.#unavailable("scope-mismatch");
 		}
+		// ...and that `.git` must be THIS repository's. A nested repository can claim the enclosing one's directory as its working tree,
+		// which has a `.git` of its own: Git, asked from the root, must find the same Git directory as it found from the launch directory
+		// (true for the root itself, for a launch from a subdirectory, and for a linked worktree, whose `.git` file points at its own).
+		const atRoot = await this.#git_(
+			root,
+			["rev-parse", "--path-format=absolute", "--absolute-git-dir"],
+			GIT_LIMITS_V0.listBytes,
+		);
+		const atRootReason = failureReasonV0(atRoot);
+		if (atRootReason !== null && atRootReason !== "not-a-repository") return this.#unavailable(atRootReason);
+		const rootLines = atRoot.stdout.toString("utf8").split("\n");
+		let rootGitDir: string | null = null;
+		if (atRoot.code === 0 && rootLines.length === 2 && rootLines[1] === "" && rootLines[0] !== "") {
+			try {
+				rootGitDir = await realpath(rootLines[0] as string);
+			} catch {
+				rootGitDir = null;
+			}
+		}
+		if (rootGitDir !== gitDir) return this.#unavailable("scope-mismatch");
 
 		const programs = await this.#programKeys(cwd);
 		if (typeof programs === "string") return this.#unavailable(programs);

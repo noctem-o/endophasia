@@ -70,7 +70,7 @@ A fixed list of reads in the launch directory ([adapters/git/readonly-git.ts](..
   A repository that sets `status.showUntrackedFiles=no` is respected: no untracked file is listed, counted or read, and the page says
   "untracked files hidden by this repository" rather than calling the worktree plainly clean. Otherwise a file the operator's Git
   ignores could be listed, and up to 256 KiB of it read into the page.
-- **Scope.** The repository's working tree must contain the launch directory *and* hold its `.git` at that root; a `core.worktree` that
+- **Scope.** The repository's working tree must contain the launch directory *and* hold its `.git` at that root, and that `.git` must be this repository's (Git, asked from the root, must find the same Git directory as from the launch directory, so a nested repository cannot claim the enclosing one's tree); a `core.worktree` that
   points elsewhere, or at an ancestor, is refused (`scope-mismatch`), not followed.
 - **Bounds.** 10 s per Git process and byte caps on every output; 500 files listed (counts still cover the rest and say when they are lower
   bounds); 256 KiB and 5 000 lines per diff; 2 000 characters per line; untracked files over 256 KiB are not read. One inspection at a time,

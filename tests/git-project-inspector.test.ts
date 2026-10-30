@@ -223,6 +223,25 @@ suite("the project context from a real repository", () => {
 		});
 	});
 
+	it("refuses a nested repository whose working tree claims the enclosing repository's directory", async () => {
+		const outer = commitedRepo();
+		write(outer, "outer-secret.txt", "OUTER CONTENT\n");
+		const inner = join(outer, "inner");
+		mkdirSync(inner);
+		git(inner, "init", "-q", "-b", "main");
+		write(inner, "own.txt", "x\n");
+		git(inner, "add", "own.txt");
+		git(inner, "commit", "-q", "-m", "inner");
+		// Without the claim, the inner repository is read as itself.
+		const honest = await inspect(inner).overview();
+		expect(honest).toMatchObject({ state: "ready", repository: { root: inner } });
+		// With it, the root has a .git, but not the inner repository's.
+		git(inner, "config", "core.worktree", outer);
+		const project = await inspect(inner).overview();
+		expect(project).toMatchObject({ state: "unavailable", reason: "scope-mismatch", repository: null });
+		expect(JSON.stringify(project)).not.toContain("outer-secret");
+	});
+
 	it("bounds the list: a repository with more files than the limit says so, and still counts them", async () => {
 		const root = commitedRepo();
 		for (let i = 0; i < GIT_LIMITS_V0.maxFiles + 25; i++)

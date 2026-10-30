@@ -450,6 +450,46 @@ suite("a name that grows when made safe still fits what the page accepts", () =>
 	});
 });
 
+suite("one entry is exactly one path", () => {
+	it("reads a file replaced by a directory, and the directory's new file, each as itself (staged and unstaged)", async () => {
+		const root = commitedRepo();
+		git(root, "rm", "-q", "gone.txt");
+		write(root, "gone.txt/inner.txt", "inside\n");
+		git(root, "add", "gone.txt/inner.txt");
+		const inspector = inspect(root);
+		let project = await inspector.overview();
+		const deleted = await diffOf(inspector, project, "gone.txt", "staged");
+		expect(deleted.state).toBe("ready");
+		expect(bodyOf(deleted)).toEqual(["-del"]);
+		const added = await diffOf(inspector, project, "gone.txt/inner.txt", "staged");
+		expect(bodyOf(added)).toEqual(["+inside"]);
+		// Unstaged: a tracked file whose place in the working tree is now a directory holding a tracked file of the index.
+		const other = commitedRepo();
+		write(other, "nest/keep.txt", "k\n");
+		git(other, "add", "nest/keep.txt");
+		git(other, "commit", "-q", "-m", "nest");
+		write(other, "nest/keep.txt", "k2\n");
+		project = await inspect(other).overview();
+		const ins = inspect(other);
+		project = await ins.overview();
+		expect(bodyOf(await diffOf(ins, project, "nest/keep.txt", "unstaged"))).toEqual(["-k", "+k2"]);
+	});
+
+	it("treats a name with wildcard characters as itself, not as a pattern matching its neighbours", async () => {
+		const root = commitedRepo();
+		write(root, "we*rd.txt", "a\n");
+		write(root, "weZrd.txt", "b\n");
+		git(root, "add", "we*rd.txt", "weZrd.txt");
+		git(root, "commit", "-q", "-m", "names");
+		write(root, "we*rd.txt", "a2\n");
+		write(root, "weZrd.txt", "b2\n");
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		expect(bodyOf(await diffOf(inspector, project, "we*rd.txt", "unstaged"))).toEqual(["-a", "+a2"]);
+		expect(bodyOf(await diffOf(inspector, project, "weZrd.txt", "unstaged"))).toEqual(["-b", "+b2"]);
+	});
+});
+
 suite("a failed configuration listing never lets the working tree be touched without its overrides", () => {
 	it("refuses a diff, and runs no Git read that could reach a filter, when the listing cannot be completed", async () => {
 		const root = commitedRepo();

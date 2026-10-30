@@ -249,6 +249,52 @@ describe("what stays on the screen", () => {
 		expect(state).toMatchObject({ current: true, problem: null, diff: { status: "gone" } });
 	});
 
+	it("keeps a good diff readable but marks the list out of date when the broker says other files changed", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff({ inventory: "changed" }) },
+		});
+		expect(state).toMatchObject({ current: false, problem: "stale", diff: { status: "ready" } });
+		// An unchanged inventory leaves the list as current as it was.
+		let calm = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		calm = reduceProject(calm, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		calm = reduceProject(calm, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(calm).toMatchObject({ current: true, problem: null });
+	});
+
+	it("ignores a list or a diff of the previous launch that arrives after the reset", () => {
+		let state = reduceProject(initialProject(), { type: "read-start", seq: 1 });
+		state = reduceProject(state, { type: "reset" });
+		state = reduceProject(state, { type: "read-done", seq: 1, reply: ok(project(files)) });
+		expect(state).toMatchObject({ project: null, current: false, reading: false });
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let other = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		other = reduceProject(other, { type: "diff-start", seq: 4, key, snapshot: "0123456789abcdef" });
+		other = reduceProject(other, { type: "reset" });
+		other = reduceProject(other, {
+			type: "diff-done",
+			seq: 4,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(other).toMatchObject({ project: null, diff: { status: "idle" } });
+		// A read made after the reset is accepted as usual.
+		expect(read(state, ok(project(files)), 2).project).not.toBeNull();
+	});
+
 	it("shows a stale answer as stale and the list as not current, and reads nothing by itself", () => {
 		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
 		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });

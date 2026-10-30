@@ -175,6 +175,15 @@ export function gitEnvV0(
 	return env;
 }
 
+/**
+ * The pathspecs that name exactly one path. A literal pathspec still matches a directory's contents, so `foo` would also bring in a
+ * staged `foo/bar` when a file was replaced by a directory, and two unrelated patches would be read as one. Each path is therefore taken
+ * literally and its descendants excluded. These carry their own `:(literal)` magic, so they are run WITHOUT the global
+ * `--literal-pathspecs` (which would read the magic as part of the name); nothing else is ever passed as a pathspec in that read.
+ */
+export const exactPathspecsV0 = (paths: readonly string[]): string[] =>
+	paths.flatMap((path) => [`:(literal)${path}`, `:(exclude,literal)${path}/`]);
+
 /** Arguments that precede every read's own: no pager, no lock, literal pathspecs. */
 export const GIT_PREFIX_V0 = ["--no-pager", "--no-optional-locks", "--literal-pathspecs"] as const;
 

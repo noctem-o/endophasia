@@ -31,6 +31,7 @@ import {
 } from "../../protocol/workbench-project.ts";
 import {
 	displaySafeV0,
+	exactPathspecsV0,
 	failureReasonV0,
 	GIT_LIMITS_V0,
 	GIT_PREFIX_V0,
@@ -155,8 +156,11 @@ export class GitProjectInspectorV0 {
 		maxBytes: number,
 		extra: readonly (readonly [string, string])[] = [],
 		readGlobalConfig = false,
+		/** The arguments carry `:(literal)` pathspecs of their own (`exactPathspecsV0`), so the global flag is left off. */
+		ownPathspecs = false,
 	): Promise<GitRunV0> {
-		return this.#run([...GIT_PREFIX_V0, ...args], {
+		const prefix = ownPathspecs ? GIT_PREFIX_V0.filter((flag) => flag !== "--literal-pathspecs") : GIT_PREFIX_V0;
+		return this.#run([...prefix, ...args], {
 			cwd,
 			env: gitEnvV0(extra, { ...(this.#home === undefined ? {} : { home: this.#home }), readGlobalConfig }),
 			limits: { timeoutMs: GIT_LIMITS_V0.timeoutMs, maxBytes },
@@ -599,10 +603,12 @@ export class GitProjectInspectorV0 {
 					"--ignore-submodules=all",
 					...(change.area === "staged" ? [known.tree] : []),
 					"--",
-					...paths,
+					...exactPathspecsV0(paths),
 				],
 				GIT_LIMITS_V0.diffBytes,
 				keys,
+				false,
+				true,
 			);
 			const reason = failureReasonV0(run);
 			if (reason !== null || (run.code !== 0 && !run.truncated))

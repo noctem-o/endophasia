@@ -187,9 +187,15 @@ export function DevelopWorkspace({
 			const inList = target?.closest?.(".changes-list") != null;
 			if (!reading && !inList) return;
 			// PageUp and PageDown scroll the diff from wherever focus is: a button in the list would otherwise swallow them.
+			// Only where the diff region is what scrolls: on a narrow screen the page scrolls, and the keys keep their own meaning there.
 			if (reading && (event.key === "PageDown" || event.key === "PageUp")) {
 				const region = document.querySelector<HTMLElement>(".diff-scroll");
-				region?.scrollBy({ top: (event.key === "PageDown" ? 1 : -1) * region.clientHeight * 0.9 });
+				const scrolls =
+					region !== null &&
+					getComputedStyle(region).overflowY !== "visible" &&
+					region.scrollHeight > region.clientHeight;
+				if (!scrolls) return;
+				region.scrollBy({ top: (event.key === "PageDown" ? 1 : -1) * region.clientHeight * 0.9 });
 				event.preventDefault();
 				return;
 			}

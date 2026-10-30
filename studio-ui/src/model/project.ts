@@ -157,8 +157,17 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 			)
 				return state;
 			const { reply } = action;
-			if (reply.kind === "diff")
-				return { ...state, diff: { status: "ready", key: action.key, record: reply.record } };
+			if (reply.kind === "diff") {
+				// The diff is good, but the broker found OTHER files changed since this list was read: the list is out of date, though
+				// this file can still be read. Shown as such until the operator refreshes; nothing is re-read by itself.
+				const moved = reply.record.inventory === "changed";
+				return {
+					...state,
+					current: moved ? false : state.current,
+					problem: moved ? "stale" : state.problem,
+					diff: { status: "ready", key: action.key, record: reply.record },
+				};
+			}
 			// A stale answer also says the LIST is out of date: the page keeps showing it, marked not current, and reads nothing by itself.
 			if (reply.kind === "stale")
 				return { ...state, current: false, problem: "stale", diff: { status: "stale", key: action.key } };
@@ -170,8 +179,10 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 			return {
 				...initialProject(),
 				availability: state.availability === "absent" ? "absent" : "unknown",
-				readSeq: state.readSeq,
-				diffSeq: state.diffSeq,
+				// No answer to a request made before the reset is accepted after it (a list of the previous launch arriving late would
+				// otherwise fill the cleared state, marked current): no request ever carries a negative sequence.
+				readSeq: -1,
+				diffSeq: -1,
 			};
 	}
 }

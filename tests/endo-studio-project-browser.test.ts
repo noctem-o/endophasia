@@ -891,3 +891,24 @@ suite("two files that look the same", () => {
 		expect(await body()).toBe(second);
 	});
 });
+
+suite("page keys on a narrow screen", () => {
+	it("leaves PageDown to the page where the page, not the diff, is what scrolls", async () => {
+		const repo = commitedRepo();
+		write(repo, "a.txt", `${Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n")}\n`);
+		const { page } = await open(390, 844, { cwd: repo });
+		await ready(page);
+		await page.click("[data-testid=tab-changes]");
+		await page.waitFor("document.querySelector('[data-testid=diff-empty] [data-testid=change-row]')");
+		await page.eval("document.querySelector('[data-testid=diff-empty] [data-testid=change-row]').click()");
+		await page.waitFor("document.querySelector('[data-testid=diff-table]')");
+		await page.eval("document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0)");
+		const prevented = await page.eval<boolean>(
+			"(() => { const e = new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }); document.dispatchEvent(e); return e.defaultPrevented; })()",
+		);
+		expect(prevented).toBe(false);
+		// A real key press scrolls the page.
+		await page.press("PageDown");
+		await page.waitFor("window.scrollY > 100");
+	});
+});

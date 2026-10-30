@@ -2752,3 +2752,948 @@ table.fields thead th {
 		padding-inline: max(16px, calc((100vw - 2400px) / 2 + 16px));
 	}
 }
+
+/* --- DEVELOP, Field appearance --------------------------------------------------------------------------------------------------
+   The same workspace, drawn as a survey sheet: a contour field in text behind the work (develop/FieldCanvas.tsx, loaded only here), a
+   reading surface that is calm and wide, margins that read like annotations, and a legend that says what the field is showing. The
+   field is decoration with a stated meaning (model/field.ts): it never stands for the model's work. Colour keeps the instrument's
+   grammar: hue is still provenance, amber still attention; the field itself is ink. Everything here is scoped to the appearance, and
+   nothing is animated by the style sheet: the canvas moves, the layers only fade (transitions). */
+
+/* The switch between appearances, in the top bar, shown on DEVELOP only. */
+.appearance {
+	display: inline-flex;
+	align-items: stretch;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 2px;
+	gap: 2px;
+}
+
+.appearance-option {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 11px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	color: var(--fg-3);
+	cursor: pointer;
+	transition:
+		background-color 160ms ease,
+		color 160ms ease;
+}
+
+.appearance-option:hover {
+	color: var(--fg-1);
+}
+
+.appearance-option input {
+	position: absolute;
+	opacity: 0;
+	inset: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+.appearance-option[data-selected="true"] {
+	background: var(--surface-4);
+	color: var(--fg-1);
+}
+
+.appearance-option:has(input:focus-visible) {
+	outline: 2px solid var(--select);
+	outline-offset: 1px;
+}
+
+.develop[data-appearance="field"] {
+	--f-ground: #0a0b0d;
+	--f-slab: #0f1013;
+	--f-slab-2: #14161a;
+	--f-hair: rgba(236, 232, 223, 0.075);
+	--f-hair-2: rgba(236, 232, 223, 0.13);
+	--f-veil: rgba(10, 11, 13, 0.8);
+	--f-ink-1: var(--fg-1);
+	--f-ink-2: #c7c2b7;
+	--f-ink-3: #8e8a81;
+	--f-ink-4: #64625d;
+	--f-measure: 46rem;
+	position: relative;
+}
+
+body:has(.develop[data-appearance="field"]) {
+	background:
+		radial-gradient(120% 70% at 50% -12%, #17191d 0%, rgba(23, 25, 29, 0) 62%),
+		#0a0b0d;
+}
+
+/* The Field page is as tall as the window, so the legend sits at the bottom of it however little there is to show. */
+body:has(.develop[data-appearance="field"]) #root {
+	min-height: 100dvh;
+	display: flex;
+	flex-direction: column;
+}
+
+body:has(.develop[data-appearance="field"]) main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.develop[data-appearance="field"] {
+	flex: 1;
+}
+
+.develop[data-appearance="field"] > .field-legend {
+	margin-top: auto;
+}
+
+body:has(.develop[data-appearance="field"]) .topbar {
+	position: relative;
+	z-index: 2;
+	background: rgba(10, 11, 13, 0.94);
+	border-bottom-color: rgba(236, 232, 223, 0.07);
+}
+
+/* The field: fixed behind everything in DEVELOP, never above the top bar, never a target. The gradient and dot grid are what is seen
+   when the canvas cannot be drawn. */
+.field-layer {
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	background-image: radial-gradient(rgba(236, 232, 223, 0.05) 1px, transparent 1.4px);
+	background-size: 18px 32px;
+	transition: opacity 700ms ease;
+}
+
+.field-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.develop[data-appearance="field"] > :not(.field-layer) {
+	position: relative;
+	z-index: 1;
+}
+
+.develop[data-surface="conversation"] .field-layer,
+.develop[data-surface="recording"] .field-layer {
+	opacity: 0.85;
+}
+
+.develop[data-surface="changes"] .field-layer {
+	opacity: 0.45;
+}
+
+@media (forced-colors: active) {
+	.field-layer {
+		display: none;
+	}
+}
+
+/* Surfaces: one ground, hairlines instead of boxes, labels in the legend's voice (mono, small capitals). */
+.develop[data-appearance="field"] .panel {
+	background: var(--f-veil);
+	border-color: transparent;
+	border-radius: 14px;
+}
+
+.develop[data-appearance="field"] .panel-head {
+	border-bottom-color: var(--f-hair);
+	padding: 10px 14px;
+}
+
+.develop[data-appearance="field"] .panel-head h2 {
+	font-family: var(--mono);
+	font-weight: 400;
+	font-size: 10.5px;
+	letter-spacing: 0.18em;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .panel-sub {
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] h3 {
+	font-family: var(--mono);
+	font-weight: 400;
+	font-size: 10.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .btn {
+	background: transparent;
+	border-color: var(--f-hair-2);
+	border-radius: 999px;
+	padding: 3px 13px;
+	color: var(--f-ink-2);
+	transition:
+		background-color 140ms ease,
+		border-color 140ms ease,
+		color 140ms ease;
+}
+
+.develop[data-appearance="field"] .btn:hover:not(:disabled) {
+	background: rgba(236, 232, 223, 0.06);
+	border-color: rgba(236, 232, 223, 0.24);
+	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .chip {
+	border-radius: 999px;
+	border-color: var(--f-hair-2);
+	background: transparent;
+}
+
+.develop[data-appearance="field"] .search,
+.develop[data-appearance="field"] input[type="search"] {
+	background: rgba(236, 232, 223, 0.03);
+	border-color: var(--f-hair-2);
+	border-radius: 8px;
+}
+
+/* The session rail: an index, not a stack of cards. */
+.develop[data-appearance="field"] .session-row {
+	border: 0;
+	border-left: 2px solid transparent;
+	border-radius: 6px;
+	background: transparent;
+	transition: background-color 140ms ease;
+}
+
+.develop[data-appearance="field"] .session-row:hover {
+	background: rgba(236, 232, 223, 0.04);
+}
+
+.develop[data-appearance="field"] .session-row[aria-pressed="true"] {
+	background: rgba(236, 232, 223, 0.06);
+	border-left-color: var(--select);
+}
+
+.develop[data-appearance="field"] .caplist > li + li {
+	border-top-color: var(--f-hair);
+}
+
+.develop[data-appearance="field"] .state,
+.develop[data-appearance="field"] .surface-tag {
+	border-color: var(--f-hair-2);
+	border-radius: 7px;
+	background: transparent;
+}
+
+.develop[data-appearance="field"] .nav-group > h3 {
+	background: transparent;
+	border-bottom: 1px solid var(--f-hair);
+	padding: 6px 2px;
+}
+
+/* The reading surface: the conversation and the diff sit on one calm slab, and the text keeps a measure. */
+.develop[data-appearance="field"] .develop-live {
+	background: var(--f-slab);
+	border-color: var(--f-hair);
+	box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.9);
+	transition:
+		background-color 500ms ease,
+		border-color 500ms ease;
+}
+
+.develop[data-appearance="field"] .live-head {
+	border-bottom: 0;
+	padding: 10px 18px 4px;
+}
+
+.develop[data-appearance="field"] .view-tab {
+	font-family: var(--mono);
+	font-weight: 400;
+	font-size: 10.5px;
+	letter-spacing: 0.18em;
+	padding: 4px 2px;
+	margin-right: 14px;
+	border-bottom-width: 1px;
+}
+
+.develop[data-appearance="field"] .worktree-bar {
+	background: transparent;
+	border-bottom-color: var(--f-hair);
+	padding: 4px 18px 8px;
+	font-size: 11.5px;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .wt-repo {
+	color: var(--f-ink-2);
+}
+
+.develop[data-appearance="field"] .develop-live .run-strip {
+	gap: 6px 14px;
+	padding: 12px 18px;
+	border-bottom-color: var(--f-hair);
+	font-size: 12.5px;
+	color: var(--f-ink-2);
+}
+
+.develop[data-appearance="field"] .strip-session {
+	font-family: var(--sans);
+	font-weight: 600;
+	font-size: 15px;
+	letter-spacing: -0.005em;
+	color: var(--f-ink-1);
+}
+
+/* STOP stays the most visible control while a run is open: a filled button, last in the strip. */
+.develop[data-appearance="field"] [data-testid="stop"]:not(:disabled) {
+	background: var(--fg-1);
+	border-color: var(--fg-1);
+	color: #0b0c0e;
+	font-weight: 600;
+}
+
+.develop[data-appearance="field"] [data-testid="stop"]:hover:not(:disabled) {
+	background: #ffffff;
+	color: #0b0c0e;
+}
+
+.develop[data-appearance="field"] .live-scroll {
+	padding: 22px 18px 18px;
+	mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 10px), transparent 100%);
+}
+
+.develop[data-appearance="field"] .live-scroll > *,
+.develop[data-appearance="field"] .develop-live .composer > * {
+	max-width: var(--f-measure);
+	margin-inline: auto;
+	width: 100%;
+}
+
+.develop[data-appearance="field"] .live-privacy {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.02em;
+	color: var(--f-ink-4);
+	margin-bottom: 18px;
+}
+
+.develop[data-appearance="field"] .transcript {
+	gap: 18px;
+}
+
+.develop[data-appearance="field"] .turn {
+	grid-template-columns: 5.5rem minmax(0, 1fr);
+	gap: 14px;
+	padding-left: 0;
+	border-left: 0;
+}
+
+.develop[data-appearance="field"] .turn-role {
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.16em;
+	color: var(--f-ink-4);
+	text-align: right;
+	padding-top: 5px;
+}
+
+.develop[data-appearance="field"] .develop-live .turn-text {
+	font-size: 15px;
+	line-height: 1.7;
+	color: var(--f-ink-1);
+	max-width: none;
+}
+
+.develop[data-appearance="field"] .turn-assistant .turn-text {
+	color: var(--f-ink-2);
+}
+
+/* The operator's own words sit on a lifted plate; the agent's are set on the page. */
+.develop[data-appearance="field"] .turn-user .turn-body {
+	background: rgba(236, 232, 223, 0.045);
+	border: 1px solid var(--f-hair);
+	border-radius: 10px;
+	padding: 10px 14px;
+}
+
+.develop[data-appearance="field"] .turn-user .turn-role {
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .turn-tool {
+	font-family: var(--mono);
+	font-size: 11.5px;
+	color: var(--f-ink-3);
+	border-left: 0;
+}
+
+/* A tool line is marked by its tilde; its role word stays for assistive technology only. */
+.develop[data-appearance="field"] .turn-tool > .turn-role {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+}
+
+.develop[data-appearance="field"] .turn-tool {
+	grid-template-columns: minmax(0, 1fr);
+	padding-left: calc(5.5rem + 14px);
+}
+
+.develop[data-appearance="field"] .turn-tool .turn-body::before {
+	content: "~ ";
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] .turn-tool details.turn-body::before {
+	content: none;
+}
+
+.develop[data-appearance="field"] .turn-tool summary {
+	cursor: pointer;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .turn-tool summary::marker {
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] .turn-run {
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] .turn-run::before,
+.develop[data-appearance="field"] .turn-run::after {
+	border-top: 1px solid var(--f-hair);
+}
+
+.develop[data-appearance="field"] .turn-intervention {
+	background: rgba(227, 176, 75, 0.035);
+	border: 1px solid var(--f-hair);
+	border-left: 2px dashed var(--attention);
+	border-radius: 0 10px 10px 0;
+	padding: 10px 14px;
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.develop[data-appearance="field"] .turn-intervention .turn-role {
+	text-align: left;
+	padding-top: 0;
+	color: var(--attention);
+}
+
+.develop[data-appearance="field"] .command-card {
+	background: rgba(227, 176, 75, 0.035);
+	border-color: var(--f-hair-2);
+	border-radius: 10px;
+}
+
+/* The beacon: something waits for the terminal. Amber is attention in the instrument's grammar; the line is text, never a control. */
+.field-beacon {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	margin: 0;
+	padding: 9px 18px;
+	border-bottom: 1px solid rgba(227, 176, 75, 0.28);
+	background: linear-gradient(90deg, rgba(227, 176, 75, 0.1), rgba(227, 176, 75, 0.02) 60%, transparent);
+	color: var(--f-ink-2);
+	font-size: 12.5px;
+}
+
+.field-beacon strong {
+	color: var(--f-ink-1);
+	font-weight: 600;
+}
+
+.beacon-key {
+	font-family: var(--mono);
+	color: var(--attention);
+	flex: none;
+}
+
+/* The composer: one plate docked under the reading measure. */
+.develop[data-appearance="field"] .develop-live .composer {
+	background: linear-gradient(180deg, rgba(15, 16, 19, 0), var(--f-slab) 28%);
+	border-top: 0;
+	padding: 10px 18px 16px;
+}
+
+.develop[data-appearance="field"] .develop-live .composer[data-mode] {
+	border-top: 0;
+}
+
+.develop[data-appearance="field"] .composer textarea {
+	background: var(--f-slab-2);
+	border: 1px solid var(--f-hair-2);
+	border-radius: 12px;
+	padding: 11px 14px;
+	font-size: 14.5px;
+	line-height: 1.55;
+	transition: border-color 160ms ease;
+}
+
+.develop[data-appearance="field"] .composer textarea:focus {
+	border-color: rgba(236, 232, 223, 0.32);
+	outline: none;
+}
+
+.develop[data-appearance="field"] .composer textarea:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 1px;
+}
+
+.develop[data-appearance="field"] .composer[data-mode="steer"] textarea,
+.develop[data-appearance="field"] .composer[data-mode="queue"] textarea {
+	border-style: dashed;
+	border-color: rgba(227, 176, 75, 0.55);
+}
+
+.develop[data-appearance="field"] .mode {
+	border-radius: 999px;
+	border-color: var(--f-hair-2);
+	font-size: 12px;
+	padding: 2px 11px;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .mode[data-selected="true"] {
+	border-color: rgba(236, 232, 223, 0.5);
+	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .mode input {
+	accent-color: var(--fg-1);
+}
+
+.develop[data-appearance="field"] [data-testid="send"]:not(:disabled) {
+	background: var(--fg-1);
+	border-color: var(--fg-1);
+	color: #0b0c0e;
+	font-weight: 600;
+}
+
+.develop[data-appearance="field"] .composer-hint {
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] .composer.pairing {
+	gap: 8px;
+}
+
+.develop[data-appearance="field"] .composer.pairing label {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--f-ink-3);
+}
+
+/* The diff: the field steps back and the code gets a flat, quiet ground. */
+.develop[data-appearance="field"] .diff-scroll {
+	border-top-color: var(--f-hair);
+}
+
+.develop[data-appearance="field"] .diff .ln,
+.develop[data-appearance="field"] .diff .sign {
+	background: var(--f-slab);
+}
+
+.develop[data-appearance="field"] .diff-added,
+.develop[data-appearance="field"] .diff-added .ln,
+.develop[data-appearance="field"] .diff-added .sign {
+	background: color-mix(in srgb, var(--fg-1) 6%, var(--f-slab));
+}
+
+.develop[data-appearance="field"] .diff-removed,
+.develop[data-appearance="field"] .diff-removed .ln,
+.develop[data-appearance="field"] .diff-removed .sign {
+	background: #08090b;
+}
+
+.develop[data-appearance="field"] .hunk-head th {
+	background: var(--f-slab-2);
+	border-color: var(--f-hair);
+	font-size: 11px;
+}
+
+/* The margins: context and inspector read as notes beside the work. */
+.develop[data-appearance="field"] .develop-inspector.panel {
+	background: rgba(10, 11, 13, 0.74);
+}
+
+.develop[data-appearance="field"] .change-row {
+	border-radius: 0 6px 6px 0;
+}
+
+.develop[data-appearance="field"] .change-row:hover {
+	background: rgba(236, 232, 223, 0.04);
+}
+
+.develop[data-appearance="field"] .change-row[aria-pressed="true"] {
+	background: rgba(236, 232, 223, 0.07);
+}
+
+.develop[data-appearance="field"] .facts .fact {
+	border-color: var(--f-hair);
+}
+
+/* --- the arrival: the ledger ------------------------------------------------------------------------------------------------ */
+.arrival-frame {
+	container-type: inline-size;
+	overflow: clip;
+}
+
+.arrival {
+	padding: clamp(28px, 9vh, 110px) clamp(20px, 4vw, 64px) 40px;
+	max-width: 74rem;
+	margin-inline: auto;
+	position: relative;
+	isolation: isolate;
+}
+
+/* A soft clearing in the field behind the words (they are read; the field is only seen). It reaches past the block, so it has no edge. */
+.arrival::before {
+	content: "";
+	position: absolute;
+	inset: -18% -22%;
+	z-index: -1;
+	pointer-events: none;
+	background: radial-gradient(50% 50% at 46% 44%, rgba(10, 11, 13, 0.92) 0%, rgba(10, 11, 13, 0.72) 48%, rgba(10, 11, 13, 0) 100%);
+}
+
+.arrival-kicker {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	color: var(--f-ink-3);
+	margin-bottom: 22px;
+}
+
+.arrival-kicker::after {
+	content: "";
+	width: 64px;
+	border-top: 1px solid var(--f-hair-2);
+}
+
+.develop[data-appearance="field"] .arrival-statement {
+	font-family: var(--sans);
+	font-weight: 400;
+	font-size: clamp(28px, 3.2vw, 46px);
+	line-height: 1.12;
+	letter-spacing: -0.024em;
+	text-transform: none;
+	color: var(--f-ink-1);
+	max-width: 24ch;
+	text-wrap: balance;
+}
+
+.arrival-statement .mono {
+	font-size: 0.82em;
+	letter-spacing: -0.03em;
+}
+
+.arrival-source {
+	margin-top: 14px;
+	font-size: 13.5px;
+	color: var(--f-ink-3);
+	max-width: 62ch;
+}
+
+.ledger {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 0 28px;
+	margin-top: clamp(28px, 6vh, 64px);
+}
+
+.ledger-col {
+	border-top: 1px solid var(--f-hair-2);
+	padding-top: 12px;
+	min-width: 0;
+}
+
+.ledger-col[data-col="yours"] {
+	border-top-color: rgba(236, 232, 223, 0.42);
+}
+
+.develop[data-appearance="field"] .ledger-col h3 {
+	margin-bottom: 12px;
+	color: var(--f-ink-2);
+}
+
+.ledger-lines {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.ledger-lines li {
+	display: grid;
+	grid-template-columns: 14px minmax(0, 1fr);
+	gap: 8px;
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--f-ink-2);
+	overflow-wrap: anywhere;
+}
+
+.ledger-mark {
+	display: inline-flex;
+	align-items: center;
+	height: 1.55em;
+}
+
+.ledger-lines li[data-basis="observed"] .ledger-mark {
+	color: var(--obs);
+}
+
+.ledger-lines li[data-basis="reported"] .ledger-mark {
+	color: var(--rep);
+}
+
+.ledger-lines li[data-basis="unavailable"] .ledger-mark {
+	color: var(--na);
+}
+
+.ledger-lines li[data-basis="recorded"] .ledger-mark {
+	color: var(--f-ink-3);
+}
+
+.ledger-lines li[data-basis="unavailable"] {
+	color: var(--f-ink-3);
+}
+
+.ledger-rule {
+	display: block;
+	width: 10px;
+	border-top: 1px solid var(--f-ink-3);
+}
+
+.ledger-empty {
+	font-size: 13px;
+	color: var(--f-ink-4);
+}
+
+/* Where there is nothing to read, the work surfaces step aside and the field shows. */
+.develop[data-surface="arrival"] .develop-live {
+	background: rgba(10, 11, 13, 0.5);
+	border-color: transparent;
+	box-shadow: none;
+}
+
+.develop[data-surface="arrival"] .develop-live > .live-head,
+.develop[data-surface="arrival"] .develop-live > .worktree-bar,
+.develop[data-surface="arrival"] .develop-live > .run-strip {
+	background: var(--f-veil);
+}
+
+.develop[data-surface="arrival"] .develop-live > .live-head {
+	border-radius: 14px 14px 0 0;
+}
+
+.develop[data-surface="arrival"] .develop-live .composer {
+	background: var(--f-veil);
+	border-radius: 0 0 14px 14px;
+}
+
+.develop[data-surface="arrival"] .develop-live .live-scroll > .arrival {
+	max-width: 74rem;
+	padding-top: clamp(16px, 6vh, 72px);
+}
+
+.develop[data-appearance="field"] .develop-arrival.panel {
+	background: transparent;
+	border-color: transparent;
+	overflow: clip;
+	grid-area: activity / activity / activity / inspector;
+}
+
+.develop[data-surface="arrival"] .develop-arrival ~ #develop-inspector {
+	display: none;
+}
+
+
+/* --- the legend --------------------------------------------------------------------------------------------------------------- */
+.field-legend {
+	position: sticky;
+	bottom: 0;
+	background: linear-gradient(to top, rgba(10, 11, 13, 0.94) 60%, rgba(10, 11, 13, 0));
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 30px;
+	padding: 5px 4px 0;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--f-ink-3);
+}
+
+.field-label {
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: var(--f-ink-2);
+	margin-right: 6px;
+}
+
+.field-words {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.field-key {
+	flex: none;
+	width: 22px;
+	height: 9px;
+	background:
+		linear-gradient(var(--f-ink-3), var(--f-ink-3)) 0 0 / 100% 1px no-repeat,
+		linear-gradient(var(--f-ink-3), var(--f-ink-3)) 0 4px / 70% 1px no-repeat,
+		linear-gradient(var(--f-ink-3), var(--f-ink-3)) 0 8px / 40% 1px no-repeat;
+}
+
+.field-key[data-texture="dashed"] {
+	background: repeating-linear-gradient(90deg, var(--f-ink-3) 0 3px, transparent 3px 6px) 0 4px / 100% 1px no-repeat;
+}
+
+.field-legend[data-motion="held"] .field-key {
+	background: linear-gradient(var(--attention), var(--attention)) 0 4px / 100% 1px no-repeat;
+}
+
+.field-pause {
+	flex: none;
+	background: none;
+	border: 1px solid var(--f-hair-2);
+	border-radius: 999px;
+	padding: 1px 10px;
+	font: inherit;
+	color: var(--f-ink-3);
+	cursor: pointer;
+}
+
+.field-pause:hover:not(:disabled) {
+	color: var(--f-ink-1);
+	border-color: rgba(236, 232, 223, 0.26);
+}
+
+.field-pause:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+/* --- the widths ----------------------------------------------------------------------------------------------------------------- */
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-appearance="field"][data-fill="true"] .develop-grid {
+		gap: 14px;
+		grid-template-columns: clamp(240px, 17vw, 320px) minmax(0, 1fr) clamp(300px, 22vw, 420px);
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-appearance="field"][data-fill="true"] .develop-grid {
+		grid-template-columns: minmax(0, 1fr) 300px;
+	}
+	.develop[data-appearance="field"][data-fill="true"] .develop-nav-wrap {
+		background: var(--f-ground);
+		border-radius: 10px;
+	}
+}
+
+/* The ledger is as wide as the column it is in: four questions side by side where they fit, two by two, then one under another. */
+@container (max-width: 980px) {
+	.ledger {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 22px 28px;
+		margin-top: 30px;
+	}
+	.develop[data-appearance="field"] .arrival-statement {
+		font-size: clamp(24px, 4.2cqi, 34px);
+	}
+	.arrival {
+		padding-top: clamp(8px, 3vh, 36px);
+	}
+	.arrival-kicker {
+		margin-bottom: 14px;
+	}
+}
+
+@container (max-width: 520px) {
+	.ledger {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 1023.98px) {
+	.arrival {
+		padding: 18px 4px 22px;
+	}
+	.develop[data-appearance="field"] .arrival-statement {
+		font-size: clamp(24px, 6.4vw, 32px);
+	}
+	.develop[data-appearance="field"] .turn {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 4px;
+	}
+	.develop[data-appearance="field"] .turn-role {
+		text-align: left;
+		padding-top: 0;
+	}
+	.develop[data-appearance="field"] .live-scroll {
+		padding: 14px 12px;
+	}
+	.develop[data-appearance="field"] .develop-live .run-strip,
+	.develop[data-appearance="field"] .develop-live .composer {
+		background: var(--f-slab);
+	}
+	.field-legend {
+		background: var(--f-veil);
+		padding: 6px 12px;
+		margin-inline: -16px;
+		margin-bottom: -24px;
+	}
+}
+
+@media (max-width: 640px) {
+	.field-words {
+		white-space: normal;
+	}
+}
+
+/* The "new items below" cue stays a small pill, centred on the measure, not a bar across it. */
+.develop[data-appearance="field"] .live-scroll > .new-below {
+	width: auto;
+	margin: 0 auto;
+	border-radius: 999px;
+	padding: 3px 14px;
+	background: var(--f-slab-2);
+	box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.8);
+}
+
+/* Inside the live column the surface's own veil gives the words their ground; a second clearing would show its edge. */
+.arrival-scroll .arrival::before {
+	display: none;
+}
+
+.arrival-scroll .arrival {
+	padding: 4px 4px 24px;
+}
+
+.arrival-scroll .live-privacy {
+	margin-bottom: 4px;
+}

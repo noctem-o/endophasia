@@ -55,6 +55,10 @@ describe("the frontend's source", () => {
 				"develop/Navigator.tsx",
 				"develop/SessionInspector.tsx",
 				"develop/Surface.tsx",
+				"develop/Field.tsx",
+				"develop/FieldCanvas.tsx",
+				"model/field.ts",
+				"model/ledger.ts",
 				"model/develop.ts",
 				"model/develop-session.ts",
 				"model/develop-wire.ts",
@@ -108,11 +112,12 @@ describe("the frontend's source", () => {
 			}
 			expect(text, name).not.toMatch(/from "node:|require\(/);
 		}
-		// One dynamic import, and it is a module of this directory: the placeholder workspaces, loaded on demand.
+		// Two dynamic imports, each a module of this directory: the placeholder workspaces, and the Field appearance's renderer, which is
+		// requested only when DEVELOP is drawn as Field (docs/develop-field.md), so Instrument never loads it.
 		const dynamic = Object.entries(sources).flatMap(([name, text]) =>
 			[...text.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => `${name}: ${m[1]}`),
 		);
-		expect(dynamic).toEqual(["App.tsx: ./observe/Unavailable.tsx"]);
+		expect(dynamic).toEqual(["App.tsx: ./observe/Unavailable.tsx", "develop/Field.tsx: ./FieldCanvas.tsx"]);
 		for (const text of Object.values(sources)) expect(text).not.toMatch(/\bimport\(\s*[^"'\s]/);
 	});
 
@@ -138,7 +143,7 @@ describe("the frontend's source", () => {
 			],
 			["a script-set style attribute", /setAttribute\(\s*["']style|\.style\.|cssText|<style/],
 			["logging", /\bconsole\./],
-			["an animation or polling loop", /\b(requestAnimationFrame|setInterval|requestIdleCallback)\b/],
+			["a polling loop", /\b(setInterval|requestIdleCallback)\b/],
 			["an absolute address", /https?:\/\//],
 			["a raw target attribute that opens something", /\btarget=|\bhref=\{/],
 			[
@@ -148,6 +153,11 @@ describe("the frontend's source", () => {
 		];
 		for (const [name, text] of Object.entries(sources))
 			for (const [what, pattern] of forbidden) expect(text, `${name}: ${what}`).not.toMatch(pattern);
+		// An animation frame is drawn in one module only: the Field renderer (see the next test for what it may touch).
+		const animated = Object.entries(sources)
+			.filter(([, text]) => /\b(requestAnimationFrame|cancelAnimationFrame)\b/.test(text))
+			.map(([name]) => name);
+		expect(animated).toEqual(["develop/FieldCanvas.tsx"]);
 		// A style prop is set through the CSS object model, which the page policy allows. It is used in two places and no others.
 		const styled = Object.entries(sources)
 			.filter(([, text]) => /\bstyle=\{/.test(text))
@@ -254,6 +264,30 @@ describe("the frontend's source", () => {
 			for (const { specifier } of specifiers(text))
 				expect(specifier, `${name}: ${specifier}`).not.toMatch(/^\.\.\/(observe|ui|api|use-observe|App)/);
 		}
+	});
+
+	it("keeps the Field renderer a drawing of one typed signal: loaded on demand, given no text, able to request nothing", () => {
+		const renderer = sources["develop/FieldCanvas.tsx"]!;
+		// It imports React and the signal's TYPE, nothing else: no wire module, no hook, no api, no transcript or project type.
+		expect(specifiers(renderer)).toEqual([
+			{ typeOnly: false, specifier: "react" },
+			{ typeOnly: true, specifier: "../model/field.ts" },
+		]);
+		// Nothing imports it statically: it is its own file in the bundle, requested by the Field appearance only.
+		for (const [name, text] of Object.entries(sources))
+			for (const { specifier } of specifiers(text)) expect(specifier, name).not.toMatch(/FieldCanvas/);
+		// It schedules nothing but frames, reads nothing over the network and has one prop.
+		expect(renderer).not.toMatch(/\bfetch\(|setTimeout|\bdocument\.cookie|\bWorker\b|getContext\(\s*["']webgl/);
+		expect(renderer).toMatch(/export default function FieldCanvas\(\{ signal \}: \{ signal: FieldSignal \}\)/);
+		// Every frame it asks for can be cancelled, and it is cancelled when the component goes.
+		expect(renderer).toContain("cancelAnimationFrame(frame)");
+		expect(renderer).toContain('document.addEventListener("visibilitychange", visible)');
+		expect(renderer).toContain('"(prefers-reduced-motion: reduce)"');
+		// The signal is built from typed state only: the adapter imports nothing at all, so it cannot be handed a record's text.
+		expect(specifiers(sources["model/field.ts"]!)).toEqual([]);
+		// The workspace hands the renderer the signal and nothing else.
+		const field = sources["develop/Field.tsx"]!;
+		expect(field.match(/<FieldCanvas [^>]*\/>/g)).toEqual(["<FieldCanvas signal={signal} />"]);
 	});
 
 	it("makes text a React child only: no component builds an element from a record's string", () => {

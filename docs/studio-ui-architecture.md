@@ -188,8 +188,11 @@ Chromium):
 **What the source may contain** (`tests/endo-studio-ui-source.test.ts`, carried over from the earlier page's rules and extended): no HTML
 sink (`dangerouslySetInnerHTML`, `innerHTML`, ...), no dynamic code, no request channel but `fetch`, no storage, no navigation, no
 logging, no absolute address, no telemetry or hosted service; `fetch` in exactly one module, to the one relative endpoint, with no
-credentials, no referrer and no redirect; one `setTimeout` (the pause) and no interval, animation frame or idle callback; only the
-hook starts a read; the protocol is imported as types only; `model/` has no DOM, clock or randomness; one dynamic import; one file
+credentials, no referrer and no redirect; one `setTimeout` (the pause) and no interval or idle callback; an animation frame in **one**
+module only, the Field renderer (`develop/FieldCanvas.tsx`), which imports React and the signal's type and nothing else, is never imported
+statically, and fetches and times nothing ([develop-field.md](develop-field.md)); only the
+hook starts a read; the protocol is imported as types only; `model/` has no DOM, clock or randomness; two dynamic imports (the
+placeholder workspaces and the Field renderer); one file
 (the overview) sets a style prop, in two places (the tooltip and the log-extent bracket), through the CSS object model; the style sheet's only `url()` are the three bundled fonts and ivory is
 never a provenance or status colour.
 
@@ -330,7 +333,8 @@ fidelity and an evidentiary claim conflicted, the claim won and the presentation
 
 The Capabilities and Evolve workspaces; the full declared-versus-observed capability matrix; any new data projection or HTTP
 route; any steering or mutation endpoint; trajectory verdicts in the browser; authentication, hosted backends, analytics or
-telemetry; WebGL or WebGPU; automatic monitoring or polling; any release, tag or version change (`0.1.0-alpha.2` is published and
+telemetry; WebGL or WebGPU (the optional Field appearance of DEVELOP draws with Canvas 2D and runs with the GPU off); automatic
+monitoring or polling; any release, tag or version change (`0.1.0-alpha.2` is published and
 untouched); a second HTTP security implementation; a development-server proxy.
 
 ## 9. Risks and limits
@@ -409,7 +413,8 @@ named older artifact to that layout and holds a build from the checkout to the n
   panel grammar (`.panel`, `.block`, `.facts`, `.caprow`, `.chip`, the event table and Observe's own `EventView` for one event). Lifecycle
   states are a new square family (`LifecycleGlyph`) kept apart from provenance and source marks, neutral in hue: a recorded `running`
   is never drawn as health or liveness. The navigator stays reachable at every width (one stage at a time under 1024 px, with a dialog for
-  an event), and nothing is animated.
+  an event), and nothing is animated in the default appearance (Instrument). The optional Field appearance animates one background layer
+  from a typed signal, and only there: [develop-field.md](develop-field.md).
 
 Hand-offs are explicit actions of the shell: *Open in Observe* sets Observe's session filter and starts **one** explicit read from just
 before the session's first event; *Open in Compare as Recording A* preselects the recording only if Compare's own inventory lists it as

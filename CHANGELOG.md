@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Added
+- **Field, an optional appearance for DEVELOP:** an **Instrument | Field** switch in the top bar (DEVELOP only; Instrument stays the
+  default). Field draws the same workspace, state and controls as a survey sheet: a slow contour field in text behind the work (Canvas 2D,
+  loaded on demand, GPU not needed), a reading surface with a measure, and, where there is nothing to read yet, a ledger of what is
+  **known**, **not known**, **possible here** and **yours**, each line with its provenance mark. The field's motion comes from typed state
+  only (`model/field.ts`): a run Pi reports open flows only while the page is re-reading it; a recording never moves; an unreachable broker is
+  drawn broken, not ended; a request awaiting terminal approval holds the field and shows a text beacon that names the terminal; reading
+  changes stills it. A legend says what the field shows; it pauses on request, under reduced motion, and while the page is hidden. Nothing is
+  persisted (the page has no storage), no route, hook or dependency was added, and the one animation-frame loop is confined to the renderer
+  by a source test. See [docs/develop-field.md](docs/develop-field.md).
 - **Project and worktree context, and a read-only Changes review, in the DEVELOP live workbench:** a worktree bar (repository, branch or
   detached/unborn HEAD, short commit, per-area counts) above the run strip; a Conversation | Changes switch in the centre with unified
   diffs of staged (HEAD → index), unstaged (index → working tree) and untracked files, previous/next file, and `j`/`k`/`Esc`; the changed-file

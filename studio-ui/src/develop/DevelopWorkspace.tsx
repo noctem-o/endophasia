@@ -1,16 +1,25 @@
 // The DEVELOP workspace: a recorded-session desk. Read-only: it starts, attaches to, prompts and steers nothing, and it never claims
 // a process exists. Wide: navigator, activity, inspector. Compact: navigator beside activity over inspector. Narrow: one stage at a
 // time (sessions, activity, details) so no column is squeezed; an event opens in a dialog as in Observe.
+//
+// Two appearances share this one component tree: Instrument (the default) and Field (docs/develop-field.md). Field changes no state,
+// no action and no element the keyboard handlers below look for; it adds a contour field behind the work, a legend that says what the
+// field shows, the ledger where there is nothing to read, and a beacon while something waits for the terminal.
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../../protocol/cockpit-develop.ts";
 import { eventDetail } from "../model/detail.ts";
-import type { DevelopStage } from "../model/develop.ts";
+import type { DevelopStage, LifecycleState } from "../model/develop.ts";
+import { type FieldSurface, fieldSignal } from "../model/field.ts";
+import { type LedgerInput, ledger } from "../model/ledger.ts";
+import { anyOpen, stopInFlight } from "../model/workbench.ts";
 import { EventView } from "../observe/Inspector.tsx";
 import { Panel } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
 import type { ProjectApi } from "../use-project.ts";
 import { Activity } from "./Activity.tsx";
+import { projectView } from "./Changes.tsx";
+import { Arrival, Beacon, FieldLayer, FieldLegend, useReducedMotion } from "./Field.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
 import { SessionInspector } from "./SessionInspector.tsx";
@@ -79,8 +88,16 @@ export function DevelopWorkspace({
 	workbench,
 	project,
 	onObserveLive,
+	appearance = "instrument",
+	paused = false,
+	onPause,
 }: {
 	develop: Develop;
+	/** How DEVELOP is drawn. Nothing but the drawing differs. */
+	appearance?: "instrument" | "field";
+	/** Field only: the operator stopped the field's motion (memory only, held by the shell). */
+	paused?: boolean;
+	onPause?(paused: boolean): void;
 	/** The worktree context of the live launch (read-only Git, read when asked). */
 	project: ProjectApi;
 	/** The workbench (the broker's live view), or a state saying the server has none. */
@@ -295,13 +312,89 @@ export function DevelopWorkspace({
 			? "…"
 			: shortAlias(detail.session.session);
 
+	// Field: what the field and the ledger are built from. Typed state and counts only; no text reaches the renderer.
+	const field = appearance === "field";
+	const reduced = useReducedMotion();
+	const wbs = workbench.state;
+	const clockOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour12: false });
+	const pendingIntervention = wbs.interventions.find((i) => i.state === "awaiting-approval") ?? null;
+	const awaiting: LedgerInput["awaiting"] =
+		wbs.command !== null && wbs.command.state === "awaiting-approval"
+			? { operation: "prompt", digest: wbs.command.digestPrefix, expires: clockOf(wbs.command.expiresAtMs) }
+			: pendingIntervention !== null
+				? {
+						operation: pendingIntervention.operation,
+						digest: pendingIntervention.digestPrefix,
+						expires: clockOf(pendingIntervention.expiresAtMs),
+					}
+				: null;
+	const liveEmpty = wbs.items.length === 0 && wbs.interventions.length === 0 && wbs.command === null;
+	const surface: FieldSurface = liveMode
+		? project.state.view === "changes"
+			? "changes"
+			: liveEmpty
+				? "arrival"
+				: "conversation"
+		: detail !== null
+			? "recording"
+			: "arrival";
+	const signal = fieldSignal({
+		surface,
+		workbench: wbs.availability,
+		connection: wbs.status?.connection ?? null,
+		run: wbs.status?.run ?? null,
+		unreachable: wbs.unreachable,
+		following: wbs.follow || anyOpen(wbs),
+		awaiting: awaiting?.operation ?? null,
+		stopping: (() => {
+			const stop = stopInFlight(wbs);
+			return stop !== null && stop.state !== "awaiting-approval";
+		})(),
+		received: wbs.items.length,
+		paused: paused || reduced,
+	});
+	const shownProject = projectView(project, wbs.grant !== null);
+	const states: Partial<Record<LifecycleState, number>> = {};
+	for (const row of state.inventory?.sessions ?? [])
+		if (row.recorded !== null) states[row.recorded.state] = (states[row.recorded.state] ?? 0) + 1;
+	const arrival = field ? (
+		<Arrival
+			compact={narrow}
+			ledger={ledger({
+				workbench: wbs.availability,
+				status: wbs.status,
+				statusAt: wbs.statusAt === null ? null : wbs.statusAt.toLocaleTimeString([], { hour12: false }),
+				unreachable: wbs.unreachable,
+				paired: wbs.grant !== null,
+				awaiting,
+				project:
+					shownProject.kind === "ready"
+						? { kind: "ready", project: shownProject.project }
+						: shownProject.kind === "unavailable"
+							? { kind: "unavailable", reason: shownProject.reason }
+							: { kind: shownProject.kind },
+				recordings:
+					state.inventory === null
+						? null
+						: { loaded: state.inventory.sessions.length, total: state.inventory.page.total, states },
+			})}
+		/>
+	) : null;
+	const beacon =
+		field && awaiting !== null ? (
+			<Beacon operation={awaiting.operation} digest={awaiting.digest} expires={awaiting.expires} />
+		) : null;
+
 	return (
 		<div
 			className="develop"
 			id="develop-workspace"
 			data-testid="develop"
 			data-fill={liveMode && !narrow ? "true" : "false"}
+			data-appearance={appearance}
+			data-surface={field ? surface : undefined}
 		>
+			{field ? <FieldLayer signal={signal} /> : null}
 			{narrow ? (
 				<>
 					{inList ? null : (
@@ -335,10 +428,13 @@ export function DevelopWorkspace({
 						</div>
 					)}
 					{inList ? (
-						navigator
+						<>
+							{arrival}
+							{navigator}
+						</>
 					) : state.stage === "activity" ? (
 						liveMode ? (
-							<LiveConversation wb={workbench} project={project} />
+							<LiveConversation wb={workbench} project={project} arrival={arrival} beacon={beacon} />
 						) : (
 							open
 						)
@@ -367,6 +463,8 @@ export function DevelopWorkspace({
 						<LiveConversation
 							wb={workbench}
 							project={project}
+							arrival={arrival}
+							beacon={beacon}
 							leading={
 								<button
 									type="button"
@@ -380,12 +478,19 @@ export function DevelopWorkspace({
 								</button>
 							}
 						/>
+					) : field && state.selected === null ? (
+						<section className="panel develop-activity develop-arrival" id="develop-arrival" aria-label="Develop">
+							{arrival}
+						</section>
 					) : (
 						open
 					)}
 					{liveMode ? liveContext : inspector}
 				</div>
 			)}
+			{field && onPause !== undefined ? (
+				<FieldLegend signal={signal} paused={paused} reduced={reduced} onPause={onPause} />
+			) : null}
 		</div>
 	);
 }

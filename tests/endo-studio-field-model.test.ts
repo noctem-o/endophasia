@@ -100,6 +100,15 @@ describe("the field signal", () => {
 		);
 	});
 
+	it("shows a first request that got no answer as broken, not as 'not read yet' (the page does not ask again by itself)", () => {
+		const s = fieldSignal(
+			input({ workbench: "unknown", connection: null, run: null, unreachable: true, surface: "arrival" }),
+		);
+		expect(s).toMatchObject({ motion: "still", texture: "dashed", responsive: false });
+		expect(s.words).toContain("got no answer");
+		expect(s.words).not.toContain("Not read yet");
+	});
+
 	it("holds while a stop is on its way to Pi", () => {
 		const s = fieldSignal(input({ stopping: true, run: "active", following: true }));
 		expect(s.motion).toBe("held");
@@ -234,11 +243,43 @@ describe("the ledger", () => {
 				state: "ready",
 				counts: { staged: 2, unstaged: 1, untracked: 0, conflicted: 0, exact: true },
 			},
+			incomplete: [],
 		} as unknown as Project;
 		const l = ledger(base({ project: { kind: "ready", project } }));
 		expect(text(l.known)).toContain("Worktree demo on main, read with Git: 2 staged · 1 unstaged.");
 		expect(text(l.unknown)).toContain("Who changed the files in the worktree: Git does not say.");
 		expect(text(l.known)).not.toMatch(/agent (changed|made|wrote)/i);
+	});
+
+	it("says a first workbench request that got no answer, and how to ask again, instead of 'reading'", () => {
+		const l = ledger(base({ workbench: "unknown", status: null, statusAt: null, unreachable: true, paired: false }));
+		expect(l.statement.before).toBe("No answer about a workbench.");
+		expect(l.source).toContain("Unreachable is not ended.");
+		expect(text(l.unknown)).toContain("Whether this server serves a live workbench");
+		expect(text(l.possible)).toContain("Leave DEVELOP and come back to ask again");
+		expect(JSON.stringify(l)).not.toContain("Reading the workbench");
+	});
+
+	it("reads the worktree as the bar does: clean only from an exact, complete list", () => {
+		const project = (counts: Record<string, number | boolean>, incomplete: string[] = []) =>
+			({
+				repository: { label: "demo", root: "/r/demo", worktreeLabel: "demo", cwdRelative: "" },
+				head: { kind: "branch", branch: "main", oid: "0".repeat(40) },
+				changes: { state: "ready", counts: { staged: 0, unstaged: 0, untracked: 0, conflicted: 0, ...counts } },
+				incomplete,
+			}) as unknown as Project;
+		const of = (p: Project) => text(ledger(base({ project: { kind: "ready", project: p } })).known);
+		expect(of(project({ exact: true }))).toContain("read with Git: clean.");
+		// A list cut at a limit with nothing in it is not a clean worktree.
+		expect(of(project({ exact: false }))).toContain("read with Git: changes unknown.");
+		expect(of(project({ exact: false }))).not.toContain("clean");
+		expect(of(project({ exact: false, staged: 500 }))).toContain(
+			"≥500 staged (the list was cut at a limit, so these are lower bounds)",
+		);
+		// Untracked files a repository hides are said to be hidden, never counted as none.
+		expect(of(project({ exact: true }, ["untracked-hidden"]))).toContain(
+			"clean (untracked files are hidden by this repository)",
+		);
 	});
 
 	it("says a recording last recorded running is not a process", () => {

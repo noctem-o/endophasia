@@ -128,6 +128,27 @@ export function ledger(input: LedgerInput): Ledger {
 		};
 	}
 
+	// The first question to this server (does it serve a live workbench?) got no answer: that is an answer to show, not "reading".
+	if (input.workbench === "unknown" && input.unreachable) {
+		unknown.unshift({
+			basis: "unavailable",
+			text: "Whether this server serves a live workbench, and whether any session runs: the request got no answer.",
+		});
+		possible.push({
+			basis: "standing",
+			text: "Leave DEVELOP and come back to ask again. The page does not retry by itself.",
+		});
+		return {
+			statement: { before: "No answer about a workbench.", mono: null, after: "" },
+			source:
+				"The page asked this server for a live workbench and the request did not reach it. Unreachable is not ended.",
+			known,
+			unknown,
+			possible,
+			yours,
+		};
+	}
+
 	if (input.workbench === "unknown" || (status === null && !input.unreachable))
 		return {
 			statement: { before: "Reading the workbench…", mono: null, after: "" },
@@ -203,12 +224,25 @@ export function ledger(input: LedgerInput): Ledger {
 						: head.kind === "detached"
 							? " at a detached HEAD"
 							: ` on ${head.branch} (no commit yet)`;
+			// The same reading as the worktree bar: "clean" only from an exact, complete list; a cut list is "at least"; hidden
+			// untracked files are said to be hidden, never counted as none.
 			const parts = countParts(p).map((part) => part.text);
+			const exact = p.changes.counts.exact;
+			const changes =
+				p.changes.state === "unavailable" || (parts.length === 0 && !exact)
+					? "changes unknown"
+					: parts.length === 0
+						? "clean"
+						: parts.join(" · ");
+			const notes = [
+				...(changes !== "changes unknown" && !exact
+					? ["the list was cut at a limit, so these are lower bounds"]
+					: []),
+				...(p.incomplete.includes("untracked-hidden") ? ["untracked files are hidden by this repository"] : []),
+			];
 			known.push({
 				basis: "observed",
-				text: `Worktree ${p.repository.label}${where}, read with Git: ${
-					p.changes.state === "unavailable" ? "changes unknown" : parts.length === 0 ? "clean" : parts.join(" · ")
-				}.`,
+				text: `Worktree ${p.repository.label}${where}, read with Git: ${changes}${notes.length === 0 ? "" : ` (${notes.join("; ")})`}.`,
 			});
 		} else
 			unknown.push({

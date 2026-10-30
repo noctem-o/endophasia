@@ -337,6 +337,28 @@ suite("DEVELOP drawn as Field", () => {
 		);
 	});
 
+	it("keeps the conversation, the composer and STOP when the renderer's file cannot be loaded", async () => {
+		const { page } = await live(1440, 900);
+		await page.block(["*FieldCanvas-*"]);
+		await fill(page, "[data-testid=composer]", "still here");
+		await page.click("[data-testid=appearance-field]");
+		await page.waitFor("document.querySelector('[data-testid=field-legend]')");
+		await new Promise((r) => setTimeout(r, 500));
+		// The field is left out; nothing else is.
+		expect(await page.eval<boolean>("document.querySelector('.field-canvas') === null")).toBe(true);
+		expect(await page.eval<boolean>("document.querySelector('.field-layer') !== null")).toBe(true);
+		expect(await page.text("#develop-workspace")).not.toContain("could not be displayed");
+		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("still here");
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=stop]').disabled")).toBe(false);
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=turn-user]').length")).toBeGreaterThan(0);
+		// What went wrong is the blocked file and nothing else.
+		for (const problem of page.seen.problems)
+			expect(problem).toMatch(/FieldCanvas|ERR_BLOCKED|dynamically imported module/);
+		// Back to Instrument, everything is as it was.
+		await page.click("[data-testid=appearance-instrument]");
+		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("still here");
+	});
+
 	it("draws an unreachable broker broken, not ended", async () => {
 		const { page, server } = await live(1440, 900);
 		await field(page);

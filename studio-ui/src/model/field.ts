@@ -133,16 +133,21 @@ function describe(input: FieldInput): FieldSignal {
 		};
 	if (input.workbench === "absent")
 		return moving("drift", 0.25, "Read-only", "the field drifts on its own; it shows no activity.");
-	if (input.workbench === "unknown" || (input.connection === null && !input.unreachable))
-		return moving("drift", 0.2, "Not read yet", "nothing is known about a live session.");
+	// No answer outranks "not read yet": a first request that failed has been read, and its answer was silence. (The page does not ask
+	// again by itself while it does not know there is a workbench, so "not read yet" would stay on screen.)
 	if (input.unreachable)
 		return {
 			...base,
 			motion: "still",
 			tempo: 0,
 			texture: "dashed",
-			words: "Broken: the broker did not answer. The session may still be running; unreachable is not ended.",
+			words:
+				input.workbench === "unknown"
+					? "Broken: the page asked for a workbench and got no answer. Whether a session runs is not known; unreachable is not ended."
+					: "Broken: the broker did not answer. The session may still be running; unreachable is not ended.",
 		};
+	if (input.workbench === "unknown" || input.connection === null)
+		return moving("drift", 0.2, "Not read yet", "nothing is known about a live session.");
 	if (input.connection === "disconnected")
 		return {
 			...base,

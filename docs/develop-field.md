@@ -123,7 +123,9 @@ Each frame it asks for can be cancelled, and is cancelled on unmount.
 The terrain is seeded noise sampled on a half-resolution lattice, so a still frame is the same on every machine. Each row is drawn as one
 `fillText` per strength bucket rather than one call per character. Glyphs are ASCII only, because the bundled Plex Mono is a latin subset.
 The renderer waits for that face before its first frame. If a 2D context cannot be had or is lost, it draws nothing, and a dot-grid
-background in CSS remains. It is hidden under `forced-colors`, and it is `aria-hidden`; the legend carries its meaning in text. It writes its state, frame count and average frame
+background in CSS remains. If its file cannot be loaded, the import resolves to nothing, so the field is left out and no error is thrown
+or printed. A failure while it renders is caught by a boundary of its own, so it can never take the conversation, the composer or STOP
+with it. It is hidden under `forced-colors`, and it is `aria-hidden`; the legend carries its meaning in text. It writes its state, frame count and average frame
 cost to the canvas's `data-` attributes, for the tests and the measurements below. These are numbers only, and nothing reads them back.
 
 **Measured** (headless Chromium, GPU off, this machine, steady-state frame time of the moving read-only arrival, exponential average over
@@ -205,16 +207,27 @@ A second, adversarial review of the finished slice found honesty defects in the 
 11. **The field could bend under the pointer while the legend said Held or Broken.** It now responds only while drifting or flowing.
 12. **Hints, the privacy line and role words were at 3.1:1.** They moved to 5.5:1, and the low ink is kept for marks.
 
+The pull request's automated review (Codex) found three more problems, all fixed and pinned:
+
+13. **A first workbench request that got no answer showed "not read yet" forever.** The page does not ask again by itself while it does
+    not know there is a workbench. No answer now outranks "not read yet": the field is broken (dashed), and the ledger says there was no
+    answer and how to ask again.
+14. **The ledger could call a worktree clean when the bar would not.** That happened with an empty list cut at a limit, or when untracked
+    files were hidden by the repository. It now reads the counts exactly as the worktree bar does.
+15. **A renderer file that failed to load took the whole DEVELOP panel down,** STOP included.
+
 ## 7. Validation
 
-- `tests/endo-studio-field-model.test.ts` (18): the honesty rules above, and what the ledger says per state and per store condition.
-- `tests/endo-studio-field-browser.test.ts` (10, real Chromium, real broker, real Git):
+- `tests/endo-studio-field-model.test.ts` (21): the honesty rules above, and what the ledger says per state, per store condition and per
+  worktree reading.
+- `tests/endo-studio-field-browser.test.ts` (11, real Chromium, real broker, real Git):
   - Instrument is the default, draws no field and never requests the renderer; the renderer is requested once when Field is first shown.
   - A switch, mid-diff with a draft and a scrolled conversation, keeps the view, the file, the draft, STOP and the scroll position.
   - At 1920, 1440, 1366 and 1024 px the page does not scroll, the composer is docked, and STOP is in view.
   - No sideways scroll at 768, 420 and 360 px in both appearances, and at 390 px for the Field read-only arrival.
   - The read-only arrival has no input of any kind, and opening a recording stills the field.
   - An absent store is said to be absent, never empty.
+  - With the renderer's file blocked, the conversation, the draft and STOP stay, and nothing but the blocked request is a problem.
   - An unpaired arrival's only input is the pairing form.
   - An approval shows a beacon with no control, and the field held.
   - Pause stops frames, and reduced motion never starts them.

@@ -2,13 +2,19 @@
 // both appearances; Field draws a contour field behind them (loaded on demand), says in a legend what that field is showing, and, where
 // there is nothing to read yet, sets out the ledger of what is known, what is not, what can be done and what is the operator's. It holds
 // no state of its own except whether motion is paused, which lives in the shell, in memory only.
-import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
+import { Component, lazy, type ReactElement, type ReactNode, Suspense, useEffect, useState } from "react";
 import type { FieldSignal } from "../model/field.ts";
 import type { Ledger, LedgerBasis, LedgerLine } from "../model/ledger.ts";
 import { ProvGlyph } from "../ui/marks.tsx";
 
-// The renderer is its own file in the bundle, requested only when the Field appearance is first shown.
-const FieldCanvas = lazy(() => import("./FieldCanvas.tsx"));
+// The renderer is its own file in the bundle, requested only when the Field appearance is first shown. If that file cannot be loaded, the
+// field is simply left out: the import resolves to nothing rather than throwing (a thrown error would also be printed to the console with
+// the page's address in it).
+type Renderer = { default: (props: { signal: FieldSignal }) => ReactElement | null };
+const Absent = (): null => null;
+const FieldCanvas = lazy(
+	(): Promise<Renderer> => import("./FieldCanvas.tsx").catch((): Renderer => ({ default: Absent })),
+);
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
 
@@ -25,6 +31,23 @@ export function useReducedMotion(): boolean {
 	return reduced;
 }
 
+/**
+ * The renderer is decoration: if its file cannot be loaded or it fails, it is left out and the layer's own background stays. Its failure
+ * never reaches the workspace's boundary, which would take the conversation, the composer and STOP with it.
+ */
+class Optional extends Component<{ children: ReactNode }, { failed: boolean }> {
+	override state = { failed: false };
+	static getDerivedStateFromError(): { failed: boolean } {
+		return { failed: true };
+	}
+	override componentDidCatch(): void {
+		// Nothing is logged: the page sends nothing anywhere.
+	}
+	override render(): ReactNode {
+		return this.state.failed ? null : this.props.children;
+	}
+}
+
 /** The field itself: a fixed layer behind the workspace. The canvas is decoration (hidden from assistive technology); the legend says it. */
 export function FieldLayer({ signal }: { signal: FieldSignal }): ReactElement {
 	return (
@@ -35,9 +58,11 @@ export function FieldLayer({ signal }: { signal: FieldSignal }): ReactElement {
 			data-texture={signal.texture}
 			data-attention={signal.attention}
 		>
-			<Suspense fallback={null}>
-				<FieldCanvas signal={signal} />
-			</Suspense>
+			<Optional>
+				<Suspense fallback={null}>
+					<FieldCanvas signal={signal} />
+				</Suspense>
+			</Optional>
 		</div>
 	);
 }

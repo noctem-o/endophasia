@@ -27,8 +27,10 @@ import {
 	parseStatusV2,
 	parseUnifiedDiff,
 	parseWorktrees,
+	patchHeaderV0,
 	programKeysV0,
 	runGitV0,
+	selectPatchesV0,
 } from "../adapters/git/readonly-git.ts";
 import type { EndoWorkbenchDiffV0, EndoWorkbenchProjectV0 } from "../protocol/workbench-project.ts";
 import { readWorkbenchDiff, readWorkbenchProject } from "../studio-ui/src/model/project-wire.ts";
@@ -473,6 +475,54 @@ suite("one entry is exactly one path", () => {
 		const ins = inspect(other);
 		project = await ins.overview();
 		expect(bodyOf(await diffOf(ins, project, "nest/keep.txt", "unstaged"))).toEqual(["-k", "+k2"]);
+	});
+
+	it("reads a rename into its own descendant, and out of it, as one change: not stale", async () => {
+		const root = commitedRepo();
+		git(root, "mv", "old.txt", "tmp-move");
+		mkdirSync(join(root, "old.txt"));
+		git(root, "mv", "tmp-move", "old.txt/child");
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		const into = await diffOf(inspector, project, "old.txt/child", "staged");
+		// A pure rename has no lines to show: "empty", with Git's rename notes; what matters is that it is read, not refused as stale.
+		expect(into.state).toBe("empty");
+		expect(into.notes.join("\n")).toMatch(/rename from old\.txt/);
+		const back = commitedRepo();
+		mkdirSync(join(back, "nest"));
+		git(back, "mv", "old.txt", "nest/old.txt");
+		git(back, "commit", "-q", "-m", "nest");
+		git(back, "mv", "nest/old.txt", "tmp-move");
+		git(back, "mv", "tmp-move", "nest-file");
+		const other = inspect(back);
+		const p2 = await other.overview();
+		const out = await diffOf(other, p2, "nest-file", "staged");
+		expect(out.state).toBe("empty");
+		expect(out.notes.join("\n")).toMatch(/rename to nest-file/);
+	});
+
+	it("matches Git's own patch header for every awkward name, so each file's patch is found", async () => {
+		const root = commitedRepo();
+		const names = ["fö o.txt", "t\tab.txt", 'q"uo\\te.txt', "plain name.txt", "del\u007f.txt"];
+		for (const name of names) write(root, name, "a");
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "names");
+		for (const name of names) write(root, name, "ab");
+		const headers = execFileSync("git", ["-c", "core.quotePath=true", "diff-files", "-p"], {
+			cwd: root,
+			encoding: "utf8",
+			env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" },
+		})
+			.split("\n")
+			.filter((l) => l.startsWith("diff --git "));
+		for (const name of names) expect(headers).toContain(patchHeaderV0(name, name));
+		const inspector = inspect(root);
+		const project = await inspector.overview();
+		for (const file of project.changes.files.filter((f) => f.area === "unstaged"))
+			expect((await inspector.diff(project.snapshot, file.id)).kind, file.path).toBe("diff");
+		// Output that holds only other paths' patches is refused, never shown as an empty change.
+		expect(selectPatchesV0("diff --git a/x b/x\n@@ -1 +1 @@\n-a\n+b\n", patchHeaderV0("y", "y"))).toBeNull();
+		expect(selectPatchesV0("", patchHeaderV0("y", "y"))).toBe("");
 	});
 
 	it("treats a name with wildcard characters as itself, not as a pattern matching its neighbours", async () => {

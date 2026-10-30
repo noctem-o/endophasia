@@ -202,11 +202,13 @@ export function DevelopWorkspace({
 			if (event.key === "j" || event.key === "]") project.step(1);
 			else if (event.key === "k" || event.key === "[") project.step(-1);
 			else return;
+			// On a narrow screen the diff is on the other stage: a file chosen from the keyboard is shown, as a click shows it.
+			if (narrow) dispatch({ type: "stage", stage: "activity" });
 			event.preventDefault();
 		};
 		document.addEventListener("keydown", key);
 		return () => document.removeEventListener("keydown", key);
-	}, [liveShown, drawer, project]);
+	}, [liveShown, drawer, project, narrow, dispatch]);
 
 	const inspector = (
 		<Panel

@@ -45,10 +45,12 @@ import {
 	parseStatusV2,
 	parseUnifiedDiff,
 	parseWorktrees,
+	patchHeaderV0,
 	programKeysV0,
 	type RawChangeV0,
 	runGitV0,
 	sameBlobV0,
+	selectPatchesV0,
 } from "./readonly-git.ts";
 
 export interface GitProjectInspectorOptionsV0 {
@@ -613,7 +615,12 @@ export class GitProjectInspectorV0 {
 			const reason = failureReasonV0(run);
 			if (reason !== null || (run.code !== 0 && !run.truncated))
 				return { kind: "diff", diff: base("unavailable", reason === "git-timeout" ? "git-timeout" : "git-failed") };
-			const parsed = parseUnifiedDiff(run.stdout.toString("utf8"), run.truncated);
+			const own = selectPatchesV0(
+				run.stdout.toString("utf8"),
+				patchHeaderV0(change.origPath ?? change.path, change.path),
+			);
+			if (own === null) return { kind: "diff", diff: base("unavailable", "git-failed") };
+			const parsed = parseUnifiedDiff(own, run.truncated);
 			// The diff must be of the blobs the status named, or the index moved between the two reads.
 			if (parsed.index !== null) {
 				const from = change.area === "staged" ? change.headOid : change.indexOid;

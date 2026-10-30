@@ -182,7 +182,63 @@ export function gitEnvV0(
  * `--literal-pathspecs` (which would read the magic as part of the name); nothing else is ever passed as a pathspec in that read.
  */
 export const exactPathspecsV0 = (paths: readonly string[]): string[] =>
-	paths.flatMap((path) => [`:(literal)${path}`, `:(exclude,literal)${path}/`]);
+	paths.flatMap((path) => [
+		`:(literal)${path}`,
+		// An exclusion wins over every match, so it is left out where it would drop the OTHER path of this entry (a rename of `foo` to
+		// `foo/bar`). It only keeps unrelated output small: which patch is this entry's is decided by `selectPatchesV0`, by its header.
+		...(paths.some((other) => other.startsWith(`${path}/`)) ? [] : [`:(exclude,literal)${path}/`]),
+	]);
+
+/** A path as Git writes it in a patch header with `core.quotePath`: quoted, C-style, when it holds a byte that needs it. */
+export function quoteGitPathV0(path: string): string {
+	const named: Readonly<Record<number, string>> = {
+		7: "a",
+		8: "b",
+		9: "t",
+		10: "n",
+		11: "v",
+		12: "f",
+		13: "r",
+		34: '"',
+		92: "\\",
+	};
+	let out = "";
+	let quote = false;
+	for (const byte of Buffer.from(path, "utf8")) {
+		if (named[byte] !== undefined) {
+			out += `\\${named[byte]}`;
+			quote = true;
+		} else if (byte < 0x20 || byte >= 0x7f) {
+			out += `\\${byte.toString(8).padStart(3, "0")}`;
+			quote = true;
+		} else out += String.fromCharCode(byte);
+	}
+	return quote ? `"${out}"` : out;
+}
+
+/** The header line of the one patch (or, for a change of type, the two patches) that belong to a change from `from` to `to`. */
+export const patchHeaderV0 = (from: string, to: string): string =>
+	`diff --git ${quoteGitPathV0(`a/${from}`)} ${quoteGitPathV0(`b/${to}`)}`;
+
+/**
+ * Keep only the patches whose header is exactly `header`: a pathspec can bring in other paths (a directory's contents), and a patch that
+ * is not this entry's must never be read as part of it. Null when there was output but none of it was this entry's: that is refused,
+ * not shown as an empty change.
+ */
+export function selectPatchesV0(text: string, header: string): string | null {
+	if (text === "") return "";
+	const kept: string[] = [];
+	let keeping = false;
+	let seen = false;
+	for (const line of text.split("\n")) {
+		if (line.startsWith("diff --git ")) {
+			keeping = line === header;
+			seen ||= keeping;
+		}
+		if (keeping) kept.push(line);
+	}
+	return seen ? `${kept.join("\n")}\n` : null;
+}
 
 /** Arguments that precede every read's own: no pager, no lock, literal pathspecs. */
 export const GIT_PREFIX_V0 = ["--no-pager", "--no-optional-locks", "--literal-pathspecs"] as const;

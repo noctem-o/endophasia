@@ -912,3 +912,21 @@ suite("page keys on a narrow screen", () => {
 		await page.waitFor("window.scrollY > 100");
 	});
 });
+
+suite("keyboard reading on a narrow screen", () => {
+	it("shows the file j chooses from the Context list, on the stage where diffs are", async () => {
+		const { page } = await open(390, 844);
+		await ready(page);
+		await page.click("[data-testid=develop-crumb] button:last-child");
+		await page.waitFor("document.querySelector('#develop-context [data-testid=change-row]')");
+		await page.eval("document.querySelector('#develop-context button.change-row').focus()");
+		await page.press("j");
+		await page.waitFor("document.querySelector('#develop-live')?.dataset.view === 'changes'");
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
+		expect(
+			await page.eval<boolean>(
+				"!!document.querySelector('[data-testid=diff-table]') || !!document.querySelector('[data-testid=diff-view] .diff-note')",
+			),
+		).toBe(true);
+	});
+});

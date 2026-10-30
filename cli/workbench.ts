@@ -10,6 +10,7 @@
  */
 import { fstatSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import type { PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import type { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
@@ -70,6 +71,8 @@ const hhmmss = (ms: number): string => new Date(ms).toLocaleTimeString([], { hou
 export async function startWorkbenchV0(
 	session: PiSessionAttachmentV0,
 	desk: PiInterventionDeskV0,
+	/** The working directory Pi was launched in: the one place the project context reads (read-only Git), never a value from the page. */
+	options: { cwd: string },
 ): Promise<WorkbenchHandleV0> {
 	requireWorkbenchTerminalV0();
 	const uiDirectory = endoStudioUiDirectoryV0();
@@ -144,6 +147,7 @@ export async function startWorkbenchV0(
 		attachment: session.owner.attachment,
 		approver,
 		interventions: desk,
+		project: new GitProjectInspectorV0({ cwd: options.cwd }),
 		aliasOf: (id) => aliasOf(id),
 	});
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;

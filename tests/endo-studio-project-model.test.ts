@@ -1,0 +1,495 @@
+// The page's side of the project context, without a browser: the wire gate (what is accepted and what is refused whole), the state
+// machine (what a failure, a stale answer or a refresh leaves on the screen), and the words and rows a diff is drawn from.
+import { describe, expect, it } from "vitest";
+import {
+	AREA_ORDER,
+	countParts,
+	type FileKey,
+	findEntry,
+	groupFiles,
+	hunkLabel,
+	hunkRows,
+	initialProject,
+	keyOf,
+	neighbour,
+	type ProjectState,
+	reduceProject,
+	sameKey,
+	splitPath,
+} from "../studio-ui/src/model/project.ts";
+import {
+	type ChangeEntry,
+	type Project,
+	type ProjectDiff,
+	type ProjectReply,
+	readWorkbenchDiff,
+	readWorkbenchProject,
+} from "../studio-ui/src/model/project-wire.ts";
+
+const entry = (
+	id: number,
+	path: string,
+	area: ChangeEntry["area"],
+	status: ChangeEntry["status"] = "modified",
+): ChangeEntry => ({
+	id,
+	path,
+	origPath: null,
+	area,
+	status,
+	additions: 1,
+	deletions: 0,
+	binary: false,
+	escaped: false,
+});
+
+const project = (files: ChangeEntry[], over: Partial<Project> = {}): Project => ({
+	schemaVersion: "endo.workbench-project.v0",
+	basis: "launch-directory",
+	snapshot: "0123456789abcdef",
+	capturedAtMs: 1_700_000_000_000,
+	state: "ready",
+	reason: null,
+	repository: { label: "demo", worktreeLabel: "demo", root: "/w/demo", cwdRelative: "", commonDir: "/w/demo/.git" },
+	head: { kind: "branch", branch: "main", oid: "a".repeat(40) },
+	worktrees: [],
+	changes: {
+		state: "ready",
+		reason: null,
+		dirty: files.length === 0 ? "clean" : "dirty",
+		counts: {
+			staged: files.filter((f) => f.area === "staged").length,
+			unstaged: files.filter((f) => f.area === "unstaged").length,
+			untracked: files.filter((f) => f.area === "untracked").length,
+			conflicted: 0,
+			exact: true,
+		},
+		stats: null,
+		files,
+		filesTruncated: false,
+	},
+	incomplete: [],
+	...over,
+});
+
+const diff = (over: Partial<ProjectDiff> = {}): ProjectDiff => ({
+	schemaVersion: "endo.workbench-diff.v0",
+	snapshot: "0123456789abcdef",
+	id: 0,
+	area: "unstaged",
+	path: "a.ts",
+	origPath: null,
+	comparison: "index-to-working-tree",
+	state: "ready",
+	reason: null,
+	notes: [],
+	hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 2, section: "", lines: [" keep", "+added"] }],
+	truncated: false,
+	longLines: false,
+	inventory: "unchanged",
+	...over,
+});
+
+const ok = (record: Project): ProjectReply => ({ kind: "project", record });
+
+describe("the wire gate refuses what it cannot vouch for, whole", () => {
+	it("accepts a well-formed project and diff, and nothing with an extra, missing or mistyped field", () => {
+		const good = project([entry(0, "a.ts", "staged")]);
+		expect(readWorkbenchProject(structuredClone(good))).toEqual(good);
+		expect(readWorkbenchProject({ ...good, extra: 1 })).toBeNull();
+		const { snapshot: _snapshot, ...missing } = good;
+		expect(readWorkbenchProject(missing)).toBeNull();
+		expect(readWorkbenchProject({ ...good, snapshot: "NOT-HEX" })).toBeNull();
+		expect(readWorkbenchProject({ ...good, basis: "observed" })).toBeNull();
+		expect(readWorkbenchProject({ ...good, reason: "because" })).toBeNull();
+		expect(readWorkbenchProject(null)).toBeNull();
+		expect(readWorkbenchProject([])).toBeNull();
+		const d = diff();
+		expect(readWorkbenchDiff(structuredClone(d))).toEqual(d);
+		expect(readWorkbenchDiff({ ...d, extra: 1 })).toBeNull();
+		expect(readWorkbenchDiff({ ...d, comparison: "everything" })).toBeNull();
+	});
+
+	it("refuses a list whose entries are not addressed by position, and an unavailable project that names a repository", () => {
+		expect(readWorkbenchProject(project([entry(0, "a.ts", "staged"), entry(0, "b.ts", "staged")]))).toBeNull();
+		expect(readWorkbenchProject(project([entry(1, "a.ts", "staged")]))).toBeNull();
+		const base = project([]);
+		expect(readWorkbenchProject({ ...base, state: "unavailable", reason: null })).toBeNull();
+		expect(readWorkbenchProject({ ...base, state: "unavailable", reason: "not-a-repository" })).toBeNull(); // still names a repository
+		expect(
+			readWorkbenchProject({ ...base, state: "unavailable", reason: "not-a-repository", repository: null }),
+		).not.toBeNull();
+	});
+
+	it("refuses a diff that contradicts itself: a reason without being unavailable, hunks without being ready, or a line that is not a diff line", () => {
+		expect(readWorkbenchDiff(diff({ state: "unavailable", reason: null }))).toBeNull();
+		expect(readWorkbenchDiff(diff({ state: "ready", reason: "unmerged" }))).toBeNull();
+		expect(readWorkbenchDiff(diff({ state: "binary" }))).toBeNull(); // hunks present
+		expect(readWorkbenchDiff(diff({ state: "binary", hunks: [] }))).not.toBeNull();
+		const bad = diff();
+		(bad.hunks[0] as { lines: string[] }).lines = ["no sign here"];
+		expect(readWorkbenchDiff(bad)).toBeNull();
+	});
+});
+
+describe("what stays on the screen", () => {
+	const files = [entry(0, "a.ts", "staged"), entry(1, "a.ts", "unstaged"), entry(2, "new.ts", "untracked")];
+	const read = (state: ProjectState, reply: ProjectReply, seq = state.readSeq + 1): ProjectState =>
+		reduceProject(reduceProject(state, { type: "read-start", seq }), { type: "read-done", seq, reply });
+
+	it("keeps the last good read through a failure, and says it is not current", () => {
+		const good = read(initialProject(), ok(project(files)));
+		expect(good).toMatchObject({ availability: "available", current: true, problem: null });
+		const failed = read(good, { kind: "failure", status: 0, code: "unreachable", retrySeconds: null });
+		expect(failed.project).toBe(good.project);
+		expect(failed).toMatchObject({ current: false, problem: "unreachable", reading: false });
+		for (const [code, problem] of [
+			["grant-required", "unpaired"],
+			["busy", "busy"],
+			["invalid", "invalid"],
+			["", "error"],
+		] as const)
+			expect(read(good, { kind: "failure", status: 500, code, retrySeconds: null }).problem).toBe(problem);
+		// A good read clears it.
+		expect(read(failed, ok(project(files)))).toMatchObject({ current: true, problem: null });
+	});
+
+	it("does not call a busy answer a failure of what was confirmed: the list stays as it was, current or not", () => {
+		const good = read(initialProject(), ok(project(files)));
+		const busy = read(good, { kind: "failure", status: 429, code: "busy", retrySeconds: null });
+		expect(busy).toMatchObject({ problem: "busy", current: true, reading: false });
+		expect(busy.project).toBe(good.project);
+		const unconfirmed = read(read(good, { kind: "failure", status: 0, code: "unreachable", retrySeconds: null }), {
+			kind: "failure",
+			status: 429,
+			code: "busy",
+			retrySeconds: null,
+		});
+		expect(unconfirmed.current).toBe(false);
+	});
+
+	it("keeps the last good list and diff when Git fails on a refresh, and replaces them only when the directory itself has changed", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let good = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		good = reduceProject(good, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		good = reduceProject(good, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		const unavailable = (reason: Project["reason"]): Project => ({
+			...project([], { snapshot: "1111111111111111" }),
+			state: "unavailable",
+			reason,
+			repository: null,
+			head: null,
+			changes: { ...project([]).changes, state: "unavailable", reason, dirty: "unknown" },
+		});
+		for (const reason of ["git-failed", "git-timeout", "git-not-found", "output-too-large", "busy"] as const) {
+			const failed = read(good, ok(unavailable(reason)));
+			expect(failed.project, reason).toBe(good.project);
+			expect(failed, reason).toMatchObject({
+				current: false,
+				problem: "error",
+				failure: reason,
+				diff: { status: "ready" },
+			});
+		}
+		// The repository answered but its change list could not be read: the same, a failed confirmation.
+		const listFailed = project([], { snapshot: "2222222222222222" });
+		const noList = read(
+			good,
+			ok({
+				...listFailed,
+				changes: { ...listFailed.changes, state: "unavailable", reason: "git-failed", dirty: "unknown" },
+			}),
+		);
+		expect(noList.project).toBe(good.project);
+		expect(noList).toMatchObject({ current: false, failure: "git-failed", diff: { status: "ready" } });
+		// A fact about the directory replaces what was shown.
+		const gone = read(good, ok(unavailable("not-a-repository")));
+		expect(gone.project?.reason).toBe("not-a-repository");
+		expect(gone).toMatchObject({ current: true, problem: null, failure: null });
+		// With nothing confirmed before, a failed first read is shown as it is.
+		expect(read(initialProject(), ok(unavailable("git-failed"))).project?.reason).toBe("git-failed");
+		// A good read clears the failure.
+		expect(read(read(good, ok(unavailable("git-timeout"))), ok(project(files)))).toMatchObject({
+			failure: null,
+			current: true,
+		});
+	});
+
+	it("selects by name, not by position: a refreshed list that still has the file reads it again, and one without it says it is gone", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = read(initialProject(), ok(project(files)));
+		state = reduceProject(state, { type: "select", key });
+		expect(state).toMatchObject({ view: "changes", diff: { status: "loading" } });
+		// The list is reordered: the same name is still the same file, wherever it sits.
+		const reordered = [entry(0, "new.ts", "untracked"), entry(1, "a.ts", "unstaged")];
+		state = read(state, ok(project(reordered)));
+		expect(state.selection).toEqual(key);
+		expect(state.diff).toMatchObject({ status: "loading", key });
+		expect(findEntry(state.project, key)?.id).toBe(1);
+		// The file left the list.
+		state = read(state, ok(project([entry(0, "new.ts", "untracked")])));
+		expect(state.diff).toMatchObject({ status: "gone", key });
+		// Another AREA of the same path is another file.
+		const second = reduceProject(read(initialProject(), ok(project(files))), {
+			type: "select",
+			key: { path: "a.ts", area: "staged", nth: 0 },
+		});
+		expect(findEntry(second.project, second.selection)?.id).toBe(0);
+	});
+
+	it("ignores an answer that arrives after a newer request, for both the list and a diff", () => {
+		let state = reduceProject(initialProject(), { type: "read-start", seq: 1 });
+		state = reduceProject(state, { type: "read-start", seq: 2 });
+		state = reduceProject(state, { type: "read-done", seq: 1, reply: ok(project([entry(0, "old.ts", "staged")])) });
+		expect(state.project).toBeNull();
+		state = reduceProject(state, { type: "read-done", seq: 2, reply: ok(project(files)) });
+		expect(state.project?.changes.files).toHaveLength(3);
+		const a: FileKey = { path: "a.ts", area: "staged", nth: 0 };
+		const b: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		state = reduceProject(state, { type: "select", key: a });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key: a, snapshot: "0123456789abcdef" });
+		state = reduceProject(state, { type: "select", key: b });
+		state = reduceProject(state, { type: "diff-start", seq: 2, key: b, snapshot: "0123456789abcdef" });
+		// The first file's answer arrives late: it is not shown under the second file.
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key: a,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff({ area: "staged" }) },
+		});
+		expect(state.diff).toMatchObject({ status: "loading", key: b });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 2,
+			key: b,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(state.diff).toMatchObject({ status: "ready", key: b });
+	});
+
+	it("drops a diff that was asked for under an older list once a refresh has replaced it", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		// The list is re-read while that diff is in flight; the file is no longer in it.
+		state = read(state, ok(project([entry(0, "new.ts", "untracked")], { snapshot: "fedcba9876543210" })));
+		expect(state.diff).toMatchObject({ status: "gone", key });
+		// The old answer arrives late: it belongs to the old list and must not replace "gone".
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(state.diff).toMatchObject({ status: "gone", key });
+		// Nor may a late "stale" or failure from the old list mark the new list out of date.
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "stale" },
+		});
+		expect(state).toMatchObject({ current: true, problem: null, diff: { status: "gone" } });
+	});
+
+	it("keeps a good diff readable but marks the list out of date when the broker says other files changed", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff({ inventory: "changed" }) },
+		});
+		expect(state).toMatchObject({ current: false, problem: "stale", diff: { status: "ready" } });
+		// An unchanged inventory leaves the list as current as it was.
+		let calm = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		calm = reduceProject(calm, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		calm = reduceProject(calm, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(calm).toMatchObject({ current: true, problem: null });
+	});
+
+	it("ignores a list or a diff of the previous launch that arrives after the reset", () => {
+		let state = reduceProject(initialProject(), { type: "read-start", seq: 1 });
+		state = reduceProject(state, { type: "reset" });
+		state = reduceProject(state, { type: "read-done", seq: 1, reply: ok(project(files)) });
+		expect(state).toMatchObject({ project: null, current: false, reading: false });
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let other = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		other = reduceProject(other, { type: "diff-start", seq: 4, key, snapshot: "0123456789abcdef" });
+		other = reduceProject(other, { type: "reset" });
+		other = reduceProject(other, {
+			type: "diff-done",
+			seq: 4,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "diff", record: diff() },
+		});
+		expect(other).toMatchObject({ project: null, diff: { status: "idle" } });
+		// A read made after the reset is accepted as usual.
+		expect(read(state, ok(project(files)), 2).project).not.toBeNull();
+	});
+
+	it("shows a stale answer as stale and the list as not current, and reads nothing by itself", () => {
+		const key: FileKey = { path: "a.ts", area: "unstaged", nth: 0 };
+		let state = reduceProject(read(initialProject(), ok(project(files))), { type: "select", key });
+		state = reduceProject(state, { type: "diff-start", seq: 1, key, snapshot: "0123456789abcdef" });
+		state = reduceProject(state, {
+			type: "diff-done",
+			seq: 1,
+			key,
+			snapshot: "0123456789abcdef",
+			reply: { kind: "stale" },
+		});
+		expect(state).toMatchObject({ current: false, problem: "stale", diff: { status: "stale", key }, reading: false });
+		expect(state.project).not.toBeNull();
+	});
+
+	it("drops everything when the launch changes (the reducer's reset), remembers that a server has no project context, and starts in the conversation", () => {
+		let state = reduceProject(read(initialProject(), ok(project(files))), {
+			type: "select",
+			key: { path: "a.ts", area: "staged", nth: 0 },
+		});
+		expect(state.view).toBe("changes");
+		state = reduceProject(state, { type: "reset" });
+		expect(state).toMatchObject({
+			project: null,
+			selection: null,
+			current: false,
+			view: "conversation",
+			availability: "unknown",
+		});
+		expect(initialProject().view).toBe("conversation");
+		const absent = read(initialProject(), { kind: "absent" });
+		expect(absent.availability).toBe("absent");
+		expect(reduceProject(absent, { type: "reset" }).availability).toBe("absent");
+	});
+});
+
+describe("the words and rows a diff is drawn from", () => {
+	it("numbers each side from the hunk header, leaves added lines without an old number and removed without a new one", () => {
+		const rows = hunkRows({
+			oldStart: 10,
+			oldLines: 3,
+			newStart: 20,
+			newLines: 3,
+			section: "fn",
+			lines: [" same", "-gone", "+new", "+newer", " tail", "\\ No newline at end of file"],
+		});
+		expect(rows.map((r) => [r.kind, r.old, r.new, r.text])).toEqual([
+			["context", 10, 20, "same"],
+			["removed", 11, null, "gone"],
+			["added", null, 21, "new"],
+			["added", null, 22, "newer"],
+			["context", 12, 23, "tail"],
+			["note", null, null, " No newline at end of file"],
+		]);
+		expect(hunkLabel({ oldStart: 1, oldLines: 1, newStart: 1, newLines: 4, section: "x", lines: [] })).toBe(
+			"@@ −1 +1,4 @@ x",
+		);
+	});
+
+	it("counts each area on its own, says 'at least' when the list was cut, and never adds the areas together", () => {
+		const p = project([entry(0, "a", "staged"), entry(1, "b", "unstaged"), entry(2, "c", "unstaged")]);
+		expect(countParts(p).map((c) => c.text)).toEqual(["1 staged", "2 unstaged"]);
+		const cut = project(p.changes.files, {
+			changes: { ...p.changes, counts: { ...p.changes.counts, exact: false } },
+		});
+		expect(countParts(cut).map((c) => c.text)).toEqual(["≥1 staged", "≥2 unstaged"]);
+		expect(AREA_ORDER).toEqual(["conflicted", "staged", "unstaged", "untracked"]);
+		expect(groupFiles(p.changes.files).map((g) => [g.area, g.files.length])).toEqual([
+			["staged", 1],
+			["unstaged", 2],
+		]);
+	});
+
+	it("splits a path for a two-line row, and moves between neighbours in reading order without wrapping", () => {
+		expect(splitPath("src/a/b.ts")).toEqual({ dir: "src/a/", name: "b.ts" });
+		expect(splitPath("top.ts")).toEqual({ dir: "", name: "top.ts" });
+		const p = project([entry(0, "a", "staged"), entry(1, "b", "unstaged"), entry(2, "c", "untracked")]);
+		expect(neighbour(p, { path: "b", area: "unstaged", nth: 0 }, 1)).toEqual({
+			path: "c",
+			area: "untracked",
+			nth: 0,
+		});
+		expect(neighbour(p, { path: "b", area: "unstaged", nth: 0 }, -1)).toEqual({ path: "a", area: "staged", nth: 0 });
+		expect(neighbour(p, { path: "c", area: "untracked", nth: 0 }, 1)).toBeNull();
+		expect(neighbour(p, { path: "a", area: "staged", nth: 0 }, -1)).toBeNull();
+		// A selection that is not in the list (it left it) steps to the first file, or back to the last.
+		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, 1)).toEqual({ path: "a", area: "staged", nth: 0 });
+		expect(neighbour(p, { path: "zzz", area: "staged", nth: 0 }, -1)).toEqual({
+			path: "c",
+			area: "untracked",
+			nth: 0,
+		});
+		expect(neighbour(project([]), { path: "zzz", area: "staged", nth: 0 }, 1)).toBeNull();
+	});
+});
+
+describe("a file's identity is not its display path", () => {
+	it("tells apart two entries that show the same name in the same area, by their place among them", () => {
+		const twins = [
+			entry(0, "a␊b.txt", "untracked"),
+			entry(1, "a␊b.txt", "untracked"),
+			entry(2, "z.txt", "untracked"),
+		];
+		const p = project(twins);
+		const [first, second] = twins.map((e) => keyOf(p.changes.files, e));
+		expect(first).toEqual({ path: "a␊b.txt", area: "untracked", nth: 0 });
+		expect(second).toEqual({ path: "a␊b.txt", area: "untracked", nth: 1 });
+		expect(findEntry(p, first as FileKey)?.id).toBe(0);
+		expect(findEntry(p, second as FileKey)?.id).toBe(1);
+		// Stepping from the first reaches the second, then the third: neither is skipped.
+		expect(neighbour(p, first as FileKey, 1)).toEqual(second);
+		expect(neighbour(p, second as FileKey, 1)).toEqual({ path: "z.txt", area: "untracked", nth: 0 });
+		expect(neighbour(p, second as FileKey, -1)).toEqual(first);
+		expect(sameKey(first as FileKey, second as FileKey)).toBe(false);
+		// Another area is another file even with the same name and the same nth.
+		expect(keyOf([entry(0, "x", "staged"), entry(1, "x", "unstaged")], entry(1, "x", "unstaged"))).toEqual({
+			path: "x",
+			area: "unstaged",
+			nth: 0,
+		});
+	});
+});
+
+describe("the wire gate accepts what the server can send", () => {
+	it("takes Git's no-newline marker, and still refuses a line that is not a diff line or is empty", () => {
+		const marker = diff({
+			hunks: [
+				{
+					oldStart: 1,
+					oldLines: 1,
+					newStart: 1,
+					newLines: 1,
+					section: "",
+					lines: ["-old", "+new", "\\ No newline at end of file"],
+				},
+			],
+		});
+		expect(readWorkbenchDiff(structuredClone(marker))).not.toBeNull();
+		for (const bad of ["", "x", "@@", "\t"]) {
+			const d = diff();
+			(d.hunks[0] as { lines: string[] }).lines = [bad];
+			expect(readWorkbenchDiff(d), JSON.stringify(bad)).toBeNull();
+		}
+	});
+});

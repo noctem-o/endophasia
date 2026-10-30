@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- **Project and worktree context, and a read-only Changes review, in the DEVELOP live workbench:** a worktree bar (repository, branch or
+  detached/unborn HEAD, short commit, per-area counts) above the run strip; a Conversation | Changes switch in the centre with unified
+  diffs of staged (HEAD → index), unstaged (index → working tree) and untracked files, previous/next file, and `j`/`k`/`Esc`; the changed-file
+  inventory and the repository's other worktrees (places, not sessions) in the context column. The directory is the one Pi was launched in
+  (configured, then read with Git): a recorded Pi or DSH session still has no project, and nothing says who changed a file. Two GET routes
+  behind the workbench grant (`project`, `project/diff`) with a fixed query shape and no browser-supplied path; Git is run with a fixed list
+  of reads that run no program a repository names (fsmonitor, filters, textconv, external diff, hooks, pagers), take no lock and write nothing
+  (plumbing, not `git diff`, which rewrites the index), under timeouts and output caps, with symlink and scope checks, display-safe names, and
+  a revalidation that refuses a diff once the working tree has moved on. Nothing is polled; the last confirmed facts stay, marked out of
+  date or unconfirmed. The live view now fills the window (the conversation scrolls between a pinned header and a docked composer), the composer stays
+  editable during a run, the sessions list is a drawer at laptop widths, and the privacy of live text is stated once instead of under every
+  message. See [docs/develop-project-review.md](docs/develop-project-review.md).
 - **Neutral DEVELOP session surface (`endo.develop-session-surface.v0`):** one presentation contract for a session whatever produced it, with a
   source-qualified key and its scope kept apart from the display alias, ownership, observed/reported/recorded status claims that are never
   merged, live/recorded/unavailable observation, separate observe/control/coordinate capabilities (every action present, a reason for each

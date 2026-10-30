@@ -18,6 +18,7 @@
  * None of these installs, updates, downgrades or replaces Pi.
  */
 
+import { resolve } from "node:path";
 import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
@@ -259,7 +260,11 @@ async function attachWithControl(
 	let disposition: string | null = null;
 	try {
 		server = await startEndoControlServerV0(parsed.root, desk);
-		if (parsed.switches.has("--workbench")) workbench = await startWorkbenchV0(session, desk);
+		if (parsed.switches.has("--workbench"))
+			workbench = await startWorkbenchV0(session, desk, {
+				// The directory Pi was actually started in: one source, the attachment's own.
+				cwd: resolve(session.owner.options.cwd ?? process.cwd()),
+			});
 		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
 		const prompt = parsed.flags.get("--prompt");
 		if (prompt !== undefined) disposition = await session.prompt(prompt);

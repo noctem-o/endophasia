@@ -290,6 +290,7 @@ applies only the requests it made in this launch.
 | `GET intervention/<id>` | the request's state |
 | `POST intervention/discard {proposalId}` | withdraw it before it is approved |
 | `POST intervention/check {proposalId}` | an explicit operator action: read the recording proxy's capture for consumption |
+| `GET project`, `GET project/diff?snapshot=&file=` | **read only**, behind the grant: the launch directory's Git worktree and one file's diff. They change nothing, take no path from the page and send nothing to Pi. See [docs/develop-project-review.md](develop-project-review.md). |
 
 Status gains `offers.{steer,queue,stop}` (each `{offered, reason}`) and `interventions` (the last 40 requests, memory only).
 

@@ -109,3 +109,12 @@ This change did not touch them. The first two were remediated afterwards, as
 [develop-workbench.md §14](develop-workbench.md#14-stop-priority-and-bounded-evidence-checks) describes: a STOP now supersedes an
 unapproved steer or queue, and the evidence check is bounded and cooperative. Steer and queue text is still stored under
 `<root>/interventions/` before approval, so declined text is retained there.
+
+## Project and worktree context is not part of this contract
+
+A project is not a session and a worktree is not an agent, so the live workbench's repository, branch and changed files are a **separate
+presentation model** (`endo.workbench-project.v0`, [docs/develop-project-review.md](develop-project-review.md)) shown beside a session, never a
+field of it. This contract gained no project field. A recorded Pi or DSH session still has no project, and the page never infers one from an
+alias, a path or a time; the one worktree shown is the directory the attached process was launched in, labelled as configured and read with
+Git. Several sessions may share a project and several worktrees may share a repository; a meta-harness that coordinates sessions owns
+neither their files nor their control permissions.

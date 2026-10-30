@@ -1,7 +1,7 @@
 // The DEVELOP workspace: a recorded-session desk. Read-only: it starts, attaches to, prompts and steers nothing, and it never claims
 // a process exists. Wide: navigator, activity, inspector. Compact: navigator beside activity over inspector. Narrow: one stage at a
 // time (sessions, activity, details) so no column is squeezed; an event opens in a dialog as in Observe.
-import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../../protocol/cockpit-develop.ts";
 import { eventDetail } from "../model/detail.ts";
 import type { DevelopStage } from "../model/develop.ts";
@@ -9,6 +9,7 @@ import { EventView } from "../observe/Inspector.tsx";
 import { Panel } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
+import type { ProjectApi } from "../use-project.ts";
 import { Activity } from "./Activity.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
@@ -76,9 +77,12 @@ export function DevelopWorkspace({
 	onCompare,
 	observeBlocked,
 	workbench,
+	project,
 	onObserveLive,
 }: {
 	develop: Develop;
+	/** The worktree context of the live launch (read-only Git, read when asked). */
+	project: ProjectApi;
 	/** The workbench (the broker's live view), or a state saying the server has none. */
 	workbench: Workbench;
 	/** Open Observe on a live session by its alias. */
@@ -121,6 +125,13 @@ export function DevelopWorkspace({
 		const key = (event: KeyboardEvent) => {
 			if (event.key !== "Escape" || document.querySelector("dialog[open]") !== null || event.defaultPrevented)
 				return;
+			// While changes are being read, Escape belongs to that view (it returns to the conversation), not to a stage change.
+			if (
+				workbench.state.availability === "available" &&
+				workbench.state.view === "live" &&
+				project.state.view === "changes"
+			)
+				return;
 			// Escape inside a text field belongs to the field: a draft is not abandoned by a stage change.
 			const target = event.target as HTMLElement | null;
 			if (target !== null && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable))
@@ -130,7 +141,74 @@ export function DevelopWorkspace({
 		};
 		document.addEventListener("keydown", key);
 		return () => document.removeEventListener("keydown", key);
-	}, [narrow, state.stage, dispatch]);
+	}, [narrow, state.stage, dispatch, workbench.state.availability, workbench.state.view, project.state.view]);
+
+	// The sessions list is a drawer at the widths where three columns do not fit; it closes when something is chosen, and on Escape.
+	const [drawer, setDrawer] = useState(false);
+	const liveShown = workbench.state.availability === "available" && workbench.state.view === "live";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: choosing a session (or the live one) closes the drawer
+	useEffect(() => setDrawer(false), [state.selected, liveShown]);
+	// An open drawer takes focus, and a click outside it closes it (it is a convenience, never a trap).
+	useEffect(() => {
+		if (!drawer) return;
+		document
+			.querySelector<HTMLElement>("#develop-nav-wrap button, #develop-nav-wrap input")
+			?.focus({ preventScroll: true });
+		const outside = (event: MouseEvent) => {
+			const target = event.target as HTMLElement | null;
+			if (target?.closest("#develop-nav-wrap, [data-testid=sessions-toggle]") != null) return;
+			setDrawer(false);
+		};
+		document.addEventListener("mousedown", outside);
+		return () => document.removeEventListener("mousedown", outside);
+	}, [drawer]);
+	// Reading changes from the keyboard, while the live session is shown and nobody is typing: j and k (also ] and [) read the next and the
+	// previous file, Escape returns to the conversation. These only read; none of them sends, approves or changes anything.
+	useEffect(() => {
+		if (!liveShown) return;
+		const key = (event: KeyboardEvent) => {
+			if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+			if (document.querySelector("dialog[open]") !== null) return;
+			const target = event.target as HTMLElement | null;
+			// Escape closes the drawer from anywhere in it, even from its filter field.
+			if (event.key === "Escape" && drawer) {
+				setDrawer(false);
+				document.querySelector<HTMLElement>('[data-testid="sessions-toggle"]')?.focus({ preventScroll: true });
+				return;
+			}
+			if (target !== null && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable))
+				return;
+			const reading = project.state.view === "changes";
+			if (event.key === "Escape" && reading) {
+				project.setView("conversation");
+				document.getElementById("develop-tab-conversation")?.focus({ preventScroll: true });
+				return;
+			}
+			const inList = target?.closest?.(".changes-list") != null;
+			if (!reading && !inList) return;
+			// PageUp and PageDown scroll the diff from wherever focus is: a button in the list would otherwise swallow them.
+			// Only where the diff region is what scrolls: on a narrow screen the page scrolls, and the keys keep their own meaning there.
+			if (reading && (event.key === "PageDown" || event.key === "PageUp")) {
+				const region = document.querySelector<HTMLElement>(".diff-scroll");
+				const scrolls =
+					region !== null &&
+					getComputedStyle(region).overflowY !== "visible" &&
+					region.scrollHeight > region.clientHeight;
+				if (!scrolls) return;
+				region.scrollBy({ top: (event.key === "PageDown" ? 1 : -1) * region.clientHeight * 0.9 });
+				event.preventDefault();
+				return;
+			}
+			if (event.key === "j" || event.key === "]") project.step(1);
+			else if (event.key === "k" || event.key === "[") project.step(-1);
+			else return;
+			// On a narrow screen the diff is on the other stage: a file chosen from the keyboard is shown, as a click shows it.
+			if (narrow) dispatch({ type: "stage", stage: "activity" });
+			event.preventDefault();
+		};
+		document.addEventListener("keydown", key);
+		return () => document.removeEventListener("keydown", key);
+	}, [liveShown, drawer, project, narrow, dispatch]);
 
 	const inspector = (
 		<Panel
@@ -191,9 +269,18 @@ export function DevelopWorkspace({
 			/>
 		) : undefined;
 	const navigator = <Navigator develop={develop} live={liveRow} onRecorded={() => workbench.setView("recorded")} />;
+	// Choosing a file in the context column reads it in the centre: on a narrow screen that is the other stage.
+	const chosen: ProjectApi = {
+		...project,
+		select: (key) => {
+			project.select(key);
+			if (narrow) dispatch({ type: "stage", stage: "activity" });
+		},
+	};
 	const liveContext = (
 		<LiveContext
 			wb={workbench}
+			project={chosen}
 			onObserve={() =>
 				onObserveLive(workbench.state.status?.session ?? null, workbench.state.status?.attachment ?? null)
 			}
@@ -209,7 +296,12 @@ export function DevelopWorkspace({
 			: shortAlias(detail.session.session);
 
 	return (
-		<div className="develop" id="develop-workspace" data-testid="develop">
+		<div
+			className="develop"
+			id="develop-workspace"
+			data-testid="develop"
+			data-fill={liveMode && !narrow ? "true" : "false"}
+		>
 			{narrow ? (
 				<>
 					{inList ? null : (
@@ -246,7 +338,7 @@ export function DevelopWorkspace({
 						navigator
 					) : state.stage === "activity" ? (
 						liveMode ? (
-							<LiveConversation wb={workbench} />
+							<LiveConversation wb={workbench} project={project} />
 						) : (
 							open
 						)
@@ -267,9 +359,30 @@ export function DevelopWorkspace({
 					</EventDialog>
 				</>
 			) : (
-				<div className="develop-grid">
-					{navigator}
-					{liveMode ? <LiveConversation wb={workbench} /> : open}
+				<div className="develop-grid" data-drawer={drawer ? "open" : "closed"}>
+					<div className="develop-nav-wrap" id="develop-nav-wrap">
+						{navigator}
+					</div>
+					{liveMode ? (
+						<LiveConversation
+							wb={workbench}
+							project={project}
+							leading={
+								<button
+									type="button"
+									className="btn small-btn sessions-toggle"
+									data-testid="sessions-toggle"
+									aria-expanded={drawer}
+									aria-controls="develop-nav-wrap"
+									onClick={() => setDrawer((open) => !open)}
+								>
+									Sessions
+								</button>
+							}
+						/>
+					) : (
+						open
+					)}
 					{liveMode ? liveContext : inspector}
 				</div>
 			)}

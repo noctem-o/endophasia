@@ -17,6 +17,7 @@ import { Note } from "./ui/text.tsx";
 import { useCompare } from "./use-compare.ts";
 import { useDevelop } from "./use-develop.ts";
 import { useObserve } from "./use-observe.ts";
+import { useProject } from "./use-project.ts";
 import { useWorkbench } from "./use-workbench.ts";
 
 // The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
@@ -39,6 +40,9 @@ export function App(): ReactElement {
 	const develop = useDevelop(workspace === "develop");
 	const workbench = useWorkbench(workspace === "develop");
 	const workbenchOn = workbench.state.availability === "available";
+	// The worktree context belongs to the live launch, so it is held here beside the workbench's state: switching workspaces does not drop it,
+	// and losing the grant or changing launch does.
+	const project = useProject(workbench.state.grant, workbench.state.status?.launchId ?? null, workspace === "develop");
 	// A hand-off from DEVELOP to Compare: the recording is preselected as Recording A once Compare's own inventory has it as selectable.
 	const [pending, setPending] = useState<{ source: "pi" | "dsh"; session: string } | null>(null);
 	const [compareNotice, setCompareNotice] = useState<string | null>(null);
@@ -221,6 +225,7 @@ export function App(): ReactElement {
 							onCompare={showCompare}
 							observeBlocked={observeBlocked}
 							workbench={workbench}
+							project={project}
 							onObserveLive={showObserveLive}
 						/>
 					) : (

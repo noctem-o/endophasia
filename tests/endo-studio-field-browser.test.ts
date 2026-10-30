@@ -11,7 +11,7 @@ import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
-import { removeTempRoots } from "./cockpit-fixtures.ts";
+import { removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
 import { serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { cleanGitFixtures, demoRepo, haveGit } from "./git-fixtures.ts";
@@ -113,14 +113,16 @@ async function live(
 	return { session, desk, broker, server, page, approval };
 }
 
-async function readOnly(width: number, height: number) {
-	const server = await serve(developStore(), { ui, readBudget: { duty: 1, burstMs: 1e6 } });
+async function readOnly(width: number, height: number, root = developStore()) {
+	const server = await serve(root, { ui, readBudget: { duty: 1, burstMs: 1e6 } });
 	const page = await browser.open(width, height);
 	tabs.push(page);
 	await page.goto(`${server.baseUrl}/`);
 	await page.settled();
 	await page.click("button[data-workspace=develop]");
-	await page.waitFor("document.querySelector('[data-testid=session-row]')");
+	await page.waitFor(
+		"document.querySelector('[data-testid=session-row]') || document.querySelector('[data-testid=develop-empty]')",
+	);
 	return { server, page };
 }
 
@@ -260,10 +262,22 @@ suite("DEVELOP drawn as Field", () => {
 		expect(page.seen.problems).toEqual([]);
 	});
 
+	it("over an absent store, says there is no store, never that it is empty", async () => {
+		const { page } = await readOnly(1440, 900, tempRoot());
+		await field(page);
+		const ledger = await page.text("[data-testid=ledger]");
+		expect(ledger).toContain("there is no event store here (absent, which is not empty)");
+		expect(ledger).not.toMatch(/holds no|is empty/);
+		expect(page.seen.problems).toEqual([]);
+	});
+
 	it("on an unpaired workbench, the only input in the arrival is the real pairing form", async () => {
 		const { page } = await live(1440, 900, { pair: false, empty: true });
 		await field(page);
-		expect(await page.text("[data-testid=arrival-statement]")).toContain("is connected");
+		// Nothing is being re-read (Follow is off, nothing is open), so the status is said in the past, as last read.
+		expect(await page.text("[data-testid=arrival-statement]")).toContain(
+			"was connected, with a run open, at the last read",
+		);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=pair-code]').length")).toBe(1);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=composer]').length")).toBe(0);
 		expect(await page.text("[data-testid=ledger]")).toContain("Pair this page");

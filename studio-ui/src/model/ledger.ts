@@ -32,6 +32,8 @@ export interface LedgerInput {
 	/** When the status was read, by the browser's clock, already written out; null when it has not been read. */
 	statusAt: string | null;
 	unreachable: boolean;
+	/** The page is re-reading the broker by itself now (Follow on, or a request or check open). If not, the status is as last read. */
+	following: boolean;
 	paired: boolean;
 	/** What waits for approval in the terminal, if anything: the operation, the short digest and when it expires (written out). */
 	awaiting: { operation: "prompt" | "steer" | "queue" | "stop"; digest: string; expires: string } | null;
@@ -40,8 +42,13 @@ export interface LedgerInput {
 		| { kind: "ready"; project: Project }
 		| { kind: "unavailable"; reason: string }
 		| { kind: "unpaired" | "unsupported" | "unread" | "reading" };
-	/** The recorded sessions the page has listed, or null before the list was read. */
-	recordings: { loaded: number; total: number; states: Readonly<Partial<Record<LifecycleState, number>>> } | null;
+	/** The recorded sessions the page has listed, with the condition of the store they were read from; null before the list was read. */
+	recordings: {
+		condition: "absent" | "empty" | "readable" | "degraded" | "unopenable";
+		loaded: number;
+		total: number;
+		states: Readonly<Partial<Record<LifecycleState, number>>>;
+	} | null;
 }
 
 const short = (alias: string): string => alias.replace(/^endo\.session\./, "");
@@ -68,15 +75,33 @@ export function ledger(input: LedgerInput): Ledger {
 	const yours: LedgerLine[] = [];
 
 	// The recordings are the same on every server: the store holds them, and they say what was recorded, never what is running.
+	// An absent store is not an empty one, and a store that cannot be opened says nothing about what it holds.
 	if (input.recordings !== null) {
-		const { loaded, total } = input.recordings;
-		known.push({
-			basis: "recorded",
-			text:
-				total === 0
-					? "This store holds no Pi or DSH recording."
-					: `${total} recorded session${total === 1 ? "" : "s"} in this store${loaded < total ? ` (${loaded} listed so far)` : ""}.`,
-		});
+		const { loaded, total, condition } = input.recordings;
+		if (condition === "absent")
+			unknown.push({
+				basis: "unavailable",
+				text: "Recordings: there is no event store here (absent, which is not empty).",
+			});
+		else if (condition === "unopenable")
+			unknown.push({
+				basis: "unavailable",
+				text: "Recordings: the event store could not be opened, so what it holds is not known.",
+			});
+		else
+			known.push({
+				basis: "recorded",
+				text:
+					total === 0
+						? condition === "empty"
+							? "The event store is empty: it holds no recording."
+							: "This store holds no Pi or DSH recording."
+						: `${total} recorded session${total === 1 ? "" : "s"} in this store${loaded < total ? ` (${loaded} listed so far)` : ""}${
+								condition === "degraded"
+									? ", listed from the readable part of a degraded log; what follows it is not readable here"
+									: ""
+							}.`,
+			});
 		const running = input.recordings.states.running ?? 0;
 		if (running > 0)
 			unknown.push({
@@ -114,44 +139,55 @@ export function ledger(input: LedgerInput): Ledger {
 		};
 
 	const name = status?.session == null ? null : short(status.session);
-	const at = input.statusAt === null ? "" : ` at ${input.statusAt} (browser clock)`;
+	// The time is when THIS PAGE read the status (the browser's clock), never when Pi said anything.
+	const at = input.statusAt === null ? "" : ` (read at ${input.statusAt}, browser clock)`;
+	// Not being re-read, the status is what the last read said, and the sentence is in the past.
+	const now = input.following;
 
 	// The statement: what the broker said, or that it said nothing.
 	let statement: Ledger["statement"];
 	if (input.unreachable) statement = { before: "The broker did not answer.", mono: null, after: "" };
 	else if (input.awaiting !== null) statement = { before: "Waiting for you in the terminal.", mono: null, after: "" };
 	else if (status?.connection === "disconnected")
-		statement = { before: "", mono: name ?? "The session", after: " is disconnected." };
-	else
+		statement = {
+			before: "",
+			mono: name ?? "The session",
+			after: now ? " is disconnected." : " was disconnected at the last read.",
+		};
+	else {
+		const state = status?.run === "active" ? ", with a run open" : status?.run === "idle" ? " and idle" : "";
 		statement = {
 			before: "",
 			mono: name ?? "A Pi session",
-			after:
-				status?.run === "active"
-					? " is connected, with a run open."
-					: status?.run === "idle"
-						? " is connected and idle."
-						: " is connected.",
+			after: now
+				? ` is connected${state}.`
+				: ` was connected${state}${status?.run === "active" ? "," : ""} at the last read.`,
 		};
+	}
 	const source = input.unreachable
 		? `The last answer${status === null ? " never came" : ` said ${status.connection}${at}`}. Unreachable is not ended.`
-		: `Reported by Pi through this broker${at}.`;
+		: now
+			? `Reported through this broker and re-read every few seconds${at}.`
+			: `Reported through this broker${at}. Not re-read since: switch Follow on to keep it current, or read the session again.`;
 
 	// Known.
 	if (status !== null && !input.unreachable) {
 		known.unshift(
 			status.connection === "connected"
-				? { basis: "observed", text: `Connected: admitted by this broker${name === null ? "" : ` as ${name}`}.` }
-				: { basis: "observed", text: "The broker reports no admitted connection now." },
+				? {
+						basis: "observed",
+						text: `Connected: admitted by this broker${name === null ? "" : ` as ${name}`}${at}.`,
+					}
+				: { basis: "observed", text: `The broker reported no admitted connection${at}.` },
 		);
 		if (status.connection === "connected")
 			known.splice(1, 0, {
 				basis: "reported",
 				text:
 					status.run === "active"
-						? `Pi reports a run open${at}.`
+						? `Pi reported a run open${at}.`
 						: status.run === "idle"
-							? `Pi reports the session idle${at}.`
+							? `Pi reported the session idle${at}.`
 							: "Pi has not reported a run state.",
 			});
 	}

@@ -64,7 +64,6 @@ export function FieldLegend({
 				type="button"
 				className="field-pause"
 				data-testid="field-pause"
-				aria-pressed={paused || reduced}
 				disabled={reduced}
 				title={
 					reduced

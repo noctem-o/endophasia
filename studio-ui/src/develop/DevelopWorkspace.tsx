@@ -365,6 +365,7 @@ export function DevelopWorkspace({
 				status: wbs.status,
 				statusAt: wbs.statusAt === null ? null : wbs.statusAt.toLocaleTimeString([], { hour12: false }),
 				unreachable: wbs.unreachable,
+				following: wbs.follow || anyOpen(wbs),
 				paired: wbs.grant !== null,
 				awaiting,
 				project:
@@ -376,7 +377,12 @@ export function DevelopWorkspace({
 				recordings:
 					state.inventory === null
 						? null
-						: { loaded: state.inventory.sessions.length, total: state.inventory.page.total, states },
+						: {
+								condition: state.inventory.source.condition.state,
+								loaded: state.inventory.sessions.length,
+								total: state.inventory.page.total,
+								states,
+							},
 			})}
 		/>
 	) : null;

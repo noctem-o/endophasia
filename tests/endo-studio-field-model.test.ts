@@ -45,18 +45,20 @@ describe("the field signal", () => {
 	});
 
 	it("draws an unreachable broker broken (dashed) and still, and a disconnected one still and solid: they are different", () => {
-		const unreachable = fieldSignal(input({ unreachable: true, run: "active", following: true }));
-		expect(unreachable).toMatchObject({ motion: "still", texture: "dashed" });
+		const unreachable = fieldSignal(input({ unreachable: true, run: "active", following: true, surface: "arrival" }));
+		expect(unreachable).toMatchObject({ motion: "still", texture: "dashed", responsive: false });
 		expect(unreachable.words).toContain("unreachable is not ended");
-		const gone = fieldSignal(input({ connection: "disconnected" }));
-		expect(gone).toMatchObject({ motion: "still", texture: "solid" });
+		const gone = fieldSignal(input({ connection: "disconnected", surface: "arrival" }));
+		expect(gone).toMatchObject({ motion: "still", texture: "solid", responsive: false });
 		expect(gone.words).toContain("no admitted connection");
 		expect(gone.words).not.toContain("ended");
 	});
 
 	it("holds while something waits for the terminal, tints for attention, and says the page cannot approve", () => {
 		for (const op of ["prompt", "steer", "queue", "stop"] as const) {
-			const s = fieldSignal(input({ awaiting: op, run: "active", following: true }));
+			const s = fieldSignal(input({ awaiting: op, run: "active", following: true, surface: "arrival" }));
+			// Held means held: it does not bend under the pointer either.
+			expect(s.responsive).toBe(false);
 			expect(s).toMatchObject({ motion: "held", attention: true, tempo: 0 });
 			expect(s.words).toContain(`a ${op} waits for your approval in the attached terminal`);
 			expect(s.words).toContain("This page cannot approve it");
@@ -130,10 +132,11 @@ const base = (over: Partial<LedgerInput> = {}): LedgerInput => ({
 	status: status(),
 	statusAt: "10:00:00",
 	unreachable: false,
+	following: true,
 	paired: true,
 	awaiting: null,
 	project: { kind: "unread" },
-	recordings: { loaded: 3, total: 3, states: { detached: 3 } },
+	recordings: { condition: "readable", loaded: 3, total: 3, states: { detached: 3 } },
 	...over,
 });
 const text = (lines: readonly { text: string }[]) => lines.map((l) => l.text).join("\n");
@@ -151,8 +154,50 @@ describe("the ledger", () => {
 	it("keeps observed (the connection) apart from reported (the run state), each with its basis", () => {
 		const l = ledger(base({ status: status({ run: "active" }) }));
 		expect(l.statement).toEqual({ before: "", mono: "pi.alpha", after: " is connected, with a run open." });
-		expect(l.known[0]).toEqual({ basis: "observed", text: "Connected: admitted by this broker as pi.alpha." });
-		expect(l.known[1]).toEqual({ basis: "reported", text: "Pi reports a run open at 10:00:00 (browser clock)." });
+		expect(l.known[0]).toEqual({
+			basis: "observed",
+			text: "Connected: admitted by this broker as pi.alpha (read at 10:00:00, browser clock).",
+		});
+		expect(l.known[1]).toEqual({
+			basis: "reported",
+			text: "Pi reported a run open (read at 10:00:00, browser clock).",
+		});
+	});
+
+	it("puts a status that is not being re-read in the past, with the page's read time, never as Pi's time", () => {
+		const l = ledger(base({ status: status({ run: "active" }), following: false }));
+		expect(l.statement).toEqual({
+			before: "",
+			mono: "pi.alpha",
+			after: " was connected, with a run open, at the last read.",
+		});
+		expect(l.source).toContain("Not re-read since");
+		expect(l.source).toContain("Follow");
+		const all = [l.source, ...l.known.map((line) => line.text)].join("\n");
+		expect(all).not.toMatch(/Pi reports|is connected/);
+		expect(all).toContain("read at 10:00:00, browser clock");
+		const gone = ledger(base({ status: status({ connection: "disconnected" }), following: false }));
+		expect(gone.statement.after).toBe(" was disconnected at the last read.");
+	});
+
+	it("keeps an absent store, an unopenable one, an empty one and a degraded one apart", () => {
+		const of = (condition: NonNullable<LedgerInput["recordings"]>["condition"], total = 0) =>
+			ledger(
+				base({ workbench: "absent", status: null, recordings: { condition, loaded: total, total, states: {} } }),
+			);
+		const absent = of("absent");
+		expect(text(absent.unknown)).toContain("there is no event store here (absent, which is not empty)");
+		expect(text(absent.known)).not.toMatch(/holds no|empty/);
+		const unopenable = of("unopenable");
+		expect(text(unopenable.unknown)).toContain("could not be opened, so what it holds is not known");
+		expect(text(unopenable.known)).toBe("");
+		expect(text(of("empty").known)).toContain("The event store is empty: it holds no recording.");
+		expect(text(of("readable").known)).toContain("This store holds no Pi or DSH recording.");
+		expect(text(of("degraded", 4).known)).toContain(
+			"4 recorded sessions in this store, listed from the readable part of a degraded log",
+		);
+		for (const condition of ["absent", "unopenable", "empty"] as const)
+			expect(text(of(condition).possible)).not.toContain("Read a recording");
 	});
 
 	it("lists what the broker offers, and why not, from its offers alone; an unpaired page is only told to pair", () => {
@@ -197,7 +242,9 @@ describe("the ledger", () => {
 	});
 
 	it("says a recording last recorded running is not a process", () => {
-		const l = ledger(base({ recordings: { loaded: 2, total: 5, states: { running: 1, detached: 1 } } }));
+		const l = ledger(
+			base({ recordings: { condition: "readable", loaded: 2, total: 5, states: { running: 1, detached: 1 } } }),
+		);
 		expect(text(l.known)).toContain("5 recorded sessions in this store (2 listed so far).");
 		expect(text(l.unknown)).toContain("A recording is not a process.");
 	});

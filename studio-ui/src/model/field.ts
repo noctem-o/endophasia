@@ -82,6 +82,12 @@ const PRESENCE: Readonly<Record<FieldSurface, number>> = {
 };
 
 export function fieldSignal(input: FieldInput): FieldSignal {
+	const signal = describe(input);
+	// The field follows the pointer only while it moves anyway: a field the legend calls still, held or broken does not move at all.
+	return { ...signal, responsive: signal.responsive && (signal.motion === "drift" || signal.motion === "current") };
+}
+
+function describe(input: FieldInput): FieldSignal {
 	const presence = PRESENCE[input.surface];
 	const base = {
 		texture: "solid" as const,

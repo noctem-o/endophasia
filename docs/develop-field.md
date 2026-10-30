@@ -21,8 +21,9 @@ question a picture and a page.
   stands for nothing it cannot show. Its motion is tied to typed state (§3), and a legend under the workspace says, in one line, what the
   field is showing right now.
 - **The page is a ledger.** Where there is nothing to read yet, DEVELOP says what is the case in one sentence ("pi.alpha is connected
-  and idle.", "Nothing is attached here.", "The broker did not answer."). Under it are four columns: **Known**, **Not known**, **Possible
-  here** and **Yours**. Each line carries the instrument's own provenance mark: observed disc, reported half disc, unavailable dashed
+  and idle.", "Nothing is attached here.", "The broker did not answer."). A status the page is not re-reading is said in the past: "pi.alpha
+  was connected and idle at the last read.", with the time the page read it, which is never presented as the time Pi said it. Under it are
+  four columns: **Known**, **Not known**, **Possible here** and **Yours**. Each line carries the instrument's own provenance mark: observed disc, reported half disc, unavailable dashed
   ring, a solid square for what was recorded, and a rule for how the system works. *Yours* always says that approval happens in the
   attached terminal and that this page can only request.
 - **When there is work, Field steps back.** The conversation sits on one calm surface with a reading measure (46 rem) and larger text.
@@ -63,7 +64,8 @@ given that signal and nothing else.
 | Pi reports idle, or no run state | slow drift | solid | "Drifting: … The drift is atmosphere, not activity." |
 | The operator paused it, or the system asks for reduced motion | still | — | "Paused by you. …" (the state is still described) |
 
-The page's copy of the transcript growing makes one ripple. The signal carries the **count** of items, never the items. That is an
+The field follows the pointer only in the arrival and only while it is drifting or flowing anyway: a field the legend calls still, held or
+broken does not move at all. The page's copy of the transcript growing makes one ripple. The signal carries the **count** of items, never the items. That is an
 observation by this page that something arrived, not a measure of anything.
 
 These rules are pinned in `tests/endo-studio-field-model.test.ts`. The most important one is the stale-status rule: with Follow off and
@@ -73,7 +75,7 @@ nothing open, the page stops reading the broker, so a "run active" status may be
 
 | State | What Field does |
 | :-- | :-- |
-| **Arrival** (no session open, or a live session with nothing in its conversation) | The statement and the ledger, over the field at full strength. Only real controls exist: on `endo studio` there is no input of any kind; on an unpaired workbench the input is the real pairing form; on a paired one it is the real composer, gated by the broker's offers. The ledger's *Possible here* is built from the same offers and their reasons. |
+| **Arrival** (no session open, or a live session with nothing in its conversation) | The statement and the ledger, over the field at full strength. The recordings line keeps the store's condition: an absent store is "no event store here (absent, which is not empty)", an unopenable one is "not known", an empty one is empty, and a degraded one is "listed from the readable part". Only real controls exist: on `endo studio` there is no input of any kind; on an unpaired workbench the input is the real pairing form; on a paired one it is the real composer, gated by the broker's offers. The ledger's *Possible here* is built from the same offers and their reasons. |
 | **Conversation** | One calm surface with a measure, larger type, a lifted plate for the operator's words, quiet tool lines, run markers as hairlines. The run strip names the session in the sans at 15 px. |
 | **Active run** | STOP is a filled button, last in the run strip, the most visible control. The field flows only while the status is being re-read. |
 | **Approval pending** | A **beacon** under the run strip: "Waiting for you in the attached terminal. Approve or decline the steer there (digest …, until …). This page cannot approve it." It is text, with no control and no hover. The field holds and the high ground turns amber. The cards in the conversation are unchanged and keep their Withdraw. |
@@ -121,7 +123,8 @@ Each frame it asks for can be cancelled, and is cancelled on unmount.
 The terrain is seeded noise sampled on a half-resolution lattice, so a still frame is the same on every machine. Each row is drawn as one
 `fillText` per strength bucket rather than one call per character. Glyphs are ASCII only, because the bundled Plex Mono is a latin subset.
 The renderer waits for that face before its first frame. If a 2D context cannot be had or is lost, it draws nothing, and a dot-grid
-background in CSS remains. It is hidden under `forced-colors`, and it is `aria-hidden`; the legend carries its meaning in text.
+background in CSS remains. It is hidden under `forced-colors`, and it is `aria-hidden`; the legend carries its meaning in text. It writes its state, frame count and average frame
+cost to the canvas's `data-` attributes, for the tests and the measurements below. These are numbers only, and nothing reads them back.
 
 **Measured** (headless Chromium, GPU off, this machine, steady-state frame time of the moving read-only arrival, exponential average over
 about 60 frames):
@@ -135,6 +138,23 @@ about 60 frames):
 At 15 frames a second that is about 5–9 % of one core at most. Behind a conversation it is 8 frames a second at lower strength, and zero
 while still. This was not measured on a GPU-accelerated browser, where `fillText` is cheaper. Typing latency was not measured
 separately; a frame is at most a few milliseconds and yields between frames.
+
+**Accessibility.**
+- The switch is a radio group with a legend, and is keyboard-focusable. The pause control is a button whose label says what it will do.
+- The field is `aria-hidden`, and its meaning is in the legend's text. The beacon is text, not a live region, so it is not announced on
+  every read; the workbench's own polite line is unchanged.
+- Under reduced motion one frame is drawn and the pause control says so. Under `forced-colors` the field is hidden.
+- Focus rings are the instrument's ivory.
+- Contrast (WCAG 2), computed from the tokens on the reading surface `#0f1013`:
+
+  | Ink | Ratio | Used for |
+  | :-- | :-- | :-- |
+  | ink-1 `#ece8df` | 15.6:1 | conversation text, statements |
+  | ink-2 `#c7c2b7` | 10.7:1 | the agent's text, ledger lines |
+  | ink-3 `#8e8a81` | 5.5:1 | labels, hints, the privacy line, role words |
+  | ink-4 `#64625d` | 3.1:1 | decorative marks only (the tool tilde, disclosure markers), never text |
+
+  The provenance hues on the same ground are 6.3:1 (slate) to 10.2:1 (teal), and amber is 9.6:1.
 
 **Dependencies:** none added. No WebGL, no animation library, no font. textmode.js, React Bits and Motion Primitives were considered and not
 used: each would be a runtime dependency (some under licence terms beyond MIT, and textmode.js renders with WebGL), for effects that come
@@ -177,21 +197,33 @@ The first build was reviewed from real screenshots, and several things looked wr
    technology. State tags have small radii.
 8. **The ledger crushed to four narrow columns on a phone.** Its columns now follow its own width.
 
+A second, adversarial review of the finished slice found honesty defects in the ledger itself. All were fixed and pinned:
+
+9. **An absent store read as an empty one** ("holds no recording"). The ledger now takes the store's condition and words each one apart.
+10. **A stale status was stated as current, with the page's read time presented as Pi's.** It now says "read at …", and "at the last
+    read" when the page is not re-reading.
+11. **The field could bend under the pointer while the legend said Held or Broken.** It now responds only while drifting or flowing.
+12. **Hints, the privacy line and role words were at 3.1:1.** They moved to 5.5:1, and the low ink is kept for marks.
+
 ## 7. Validation
 
-- `tests/endo-studio-field-model.test.ts` (16): the honesty rules above, and what the ledger says per state.
-- `tests/endo-studio-field-browser.test.ts` (9, real Chromium, real broker, real Git):
+- `tests/endo-studio-field-model.test.ts` (18): the honesty rules above, and what the ledger says per state and per store condition.
+- `tests/endo-studio-field-browser.test.ts` (10, real Chromium, real broker, real Git):
   - Instrument is the default, draws no field and never requests the renderer; the renderer is requested once when Field is first shown.
   - A switch, mid-diff with a draft and a scrolled conversation, keeps the view, the file, the draft, STOP and the scroll position.
   - At 1920, 1440, 1366 and 1024 px the page does not scroll, the composer is docked, and STOP is in view.
-  - No sideways scroll at 768, 420, 390 and 360 px, in both appearances.
+  - No sideways scroll at 768, 420 and 360 px in both appearances, and at 390 px for the Field read-only arrival.
   - The read-only arrival has no input of any kind, and opening a recording stills the field.
+  - An absent store is said to be absent, never empty.
   - An unpaired arrival's only input is the pairing form.
   - An approval shows a beacon with no control, and the field held.
   - Pause stops frames, and reduced motion never starts them.
   - An unreachable broker is drawn dashed.
   - No console message, exception, CSP or Trusted Types violation, and no request off the page's own server.
-- Every existing Studio, workbench and package test is unchanged, and passes.
+- The existing Studio, workbench, cockpit-UI and package-smoke tests pass, with only the pins in §5 changed.
+- The bundle built on Node 22.19.0 and on Node 26 is byte-identical.
+- Full-suite runs on this branch are reported in the pull request as they ran, including two process-signal timing tests that each failed
+  once under full parallel load and passed alone.
 
 ## 8. Limits and next steps
 
@@ -199,6 +231,8 @@ The first build was reviewed from real screenshots, and several things looked wr
   server-side setting), not a workaround.
 - **Hidden-page stopping is not tested in a browser.** The CDP driver cannot hide a page. It is pinned in source, which listens for
   `visibilitychange` and cancels the frame.
+- **On a phone the beacon scrolls with the conversation** (only the run strip and composer are sticky there). The request's card in
+  the conversation carries the same facts and its Withdraw.
 - **The ledger's *Not known* lines are general statements,** not findings. They are true of the workbench as built.
 - **Next, in order:**
   1. Let the ledger use the evidence check: "consumption observed for 1 of 2 steers" is known; the rest is not.

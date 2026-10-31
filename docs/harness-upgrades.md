@@ -72,7 +72,9 @@ Evidence applies only while everything it depends on is unchanged ([attachment.m
   across observations, even at the same digest.
 - **An identity on another basis**: nothing carries over, and it is not a runtime difference either. See below.
 - **A changed adapter, mapping or suite version**: all evidence that depends on it stops counting.
-- **A changed check definition**: only that check's evidence stops counting.
+- **A changed check definition**: only that check's evidence stops counting. That is every capability the check covers: the
+  live study covers nine, so redefining it (version 2 → 3, for the `agent_settled.aborted` correction) requalifies all nine,
+  including results that were not wrong. `harness status` names the recorded and current check versions.
 - **A changed configuration** (Pi's settings, models, MCP servers, prompts and extensions; never credentials): the
   evidence of that check kind stops counting.
 

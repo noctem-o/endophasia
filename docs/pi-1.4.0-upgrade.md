@@ -74,12 +74,64 @@ Upstream assessment for pi.default (from recorded state; the installed Pi was no
 
 The entrypoint is not listed among the changes because its bytes did not change (see Provenance above).
 
+## Correction: `agent_settled.aborted` (check version 3)
+
+The matrix above is the result of the study as run, and is kept as it was: under check version 2, Pi 1.4.0 produced a
+`run.identity` **MISMATCH**. This section says what that result was, why, and what replaced it. It does not change the
+study's records.
+
+**Why it happened.** `pi.live.study` version 2 compared every lifecycle event's keys with a table written from Pi 1.0.0's
+documentation, in which `agent_settled` has only `type`. Since Pi 1.1.0 `agent_settled` carries `aborted: boolean`
+(`docs/json.md` in the 1.4.0 package, also at tag `v1.4.0`: "`aborted` is `true` when the run ended because it was
+aborted"). The check read a documented field as an unreviewed key. Re-run against the operator's installed Pi 1.4.0 with
+the old code, it reported `lifecycle events carried undocumented keys (agent_settled.aborted)`.
+
+**What the field is.** A termination flag on the settlement event. In 1.4.0's `agent-session.ts` it is set from an
+internal "an abort was requested during this run" flag, which `abort()` raises when a run is active. It is not a run,
+turn or operation identifier, and not a command receipt. It does not show that a STOP request caused a run to end: a
+request can arrive after the last message, and (from reading the source, not observed) an extension that stops the agent directly may not raise the flag.
+
+**The revised check (`pi.live.study` version 3).** The lifecycle-key inspection is an explicit specification, not a
+filter: the same required keys as before, plus `agent_settled.aborted` only as a Boolean and only on `agent_settled`.
+A missing flag (Pi 1.0.x) is accepted. A flag of another type (string, number, null, array, object), the flag on any other
+event, and every other key, identifier-shaped or not (`runId`, `turnId`, `id`, `parentToolCallId`, an unrelated name), is
+reported and classifies `run.identity` as **MISMATCH**, needing review. A study that did not observe a settled run is
+**inconclusive** and records nothing. A clean inspection classifies **UNAVAILABLE**, and says so in the observation,
+naming the flag when it was present: Pi's lifecycle events still carry no runtime-supplied run or turn identifier.
+
+**What this invalidates.** Changing the definition changes its digest, and the digest is how evidence says which check
+it came from. So evidence recorded under version 2 does not apply, for **all nine capabilities the check covers**
+(`lifecycle.trace`, `usage.entries`, `tool.activity`, `steering.steer`, `steering.follow-up`, `steering.stop`,
+`session.identity`, `run.identity`, `operation.outcome`), including results that were not wrong. It is not selective.
+Local protocol checks and the documented-surface review keep their digests and are unaffected. Old records stay readable
+as history. A capability whose only evidence was version 2 becomes unverified (an old MISMATCH does not become
+UNAVAILABLE), and `endo harness status` says `the check pi.live.study was redefined (version 2 recorded; this build runs
+version 3; every capability the check covers needs a fresh run)`. A fresh `endo harness study --authorize-live-study`
+records evidence under version 3. The adapter, mapping and suite versions are unchanged.
+
+**Tested against the installed Pi.** `/usr/bin/pi`, reporting 1.4.0, package `@earendil-works/pi-coding-agent` 1.4.0,
+identified read-only first: `runtime-content.v1`, strong, 81 files and 9,211,377 bytes under `dist/bundle`, content
+digest `997898f1…`, which is the digest a clean `npm install` of 1.4.0 gives. `tests/pi-real-runtime.test.ts` then ran
+against that executable with the fake OpenAI-compatible endpoint, a scratch `HOME` and agent directory and a scratch
+store (no provider, no operator configuration or sessions): `run.identity` **UNAVAILABLE** from an observation of
+`agent_settled.aborted=false`, check version 3. The same run with the version 2 code from `main` gave MISMATCH on the same
+executable. A separate probe of the same executable showed `{"type":"agent_settled","aborted":false}` for a normal run and
+`aborted: true` for one aborted mid-stream, with last assistant stop reasons `stop` and `aborted` (one run each). The same real-runtime test on an isolated Pi 1.0.4, which has no `aborted` field, also gave UNAVAILABLE. Across all 16 capabilities, the 1.4.0 recordings under the two check versions differ only in `run.identity` (MISMATCH to UNAVAILABLE).
+
+**Not established.** That the flag and the last assistant stop reason always agree (static reading says they can differ;
+one aborted and one normal run agreed on the installed 1.4.0). Anything about retry, compaction or follow-up paths. Resume after a crash on
+1.4.0. Real-provider behaviour. A passing fake-provider run establishes only what it exercised: Pi 1.4.0 is **not** added
+to `PI_VERIFIED_BASELINE_VERSIONS`.
+
+**Not changed, and proposed separately.** The lifecycle still reads a run's outcome from the last assistant message's
+`stopReason`, and does not read `aborted`. Using it as an additional reported termination signal would need its own
+mapping version, evidence implications and tests, and must not be read as a STOP receipt.
+
 ## Unresolved, and follow-up
 
-- **The `run.identity` key table.** Adding `aborted` to the `agent_settled` keys is a change to what `pi.live.study`
-  checks. It needs its own check version, so that evidence recorded under the old table stops applying. Mapping
-  `agent_settled.aborted` into the lifecycle, as a reported signal beside the stop reason, would be a mapping-version
-  bump. Neither is done here.
+- **The `run.identity` key table.** Done afterwards for the check: see [the correction below](#correction-agent_settledaborted-check-version-3).
+  Mapping `agent_settled.aborted` into the lifecycle, as a reported signal beside the stop reason, is not done and would
+  be a mapping-version bump with its own tests.
 - **Identity beyond the launcher.** Addressed afterwards by the `runtime-content.v1` identity basis, a digest over the
   files in `dist/bundle`. It changes the basis, so evidence recorded here is not carried over to it; see
   [harness-upgrades.md](harness-upgrades.md#changing-the-identity-basis). This case study's own records stay on the

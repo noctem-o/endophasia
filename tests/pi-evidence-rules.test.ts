@@ -285,7 +285,7 @@ describe("evidence validity, one dependency at a time", () => {
 		changedDefinition.set(PI_LOCAL_CONTROLS_CHECK.name, { ...PI_LOCAL_CONTROLS_CHECK, version: "2" });
 		expect(piEvidenceValidityV0(record, { ...current(print), definitions: changedDefinition })).toMatchObject({
 			valid: false,
-			reason: "the check pi.local.controls definition changed",
+			reason: "the check pi.local.controls definition changed (recorded under version 1; this build runs version 2)",
 		});
 		expect(
 			piEvidenceValidityV0(record, { ...current(print), configurationDigest: () => "f".repeat(64) }),

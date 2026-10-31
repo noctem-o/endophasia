@@ -406,7 +406,12 @@ export function piEvidenceValidityV0(
 	const definition = current.definitions.get(evidence.check.name);
 	if (definition === undefined) return { valid: false, reason: `the check ${evidence.check.name} no longer exists` };
 	if (piCheckDefinitionDigestV0(definition) !== evidence.check.definitionDigest) {
-		return { valid: false, reason: `the check ${evidence.check.name} definition changed` };
+		// A bumped version says why (the check was redefined and must be run again); an edit without one stays terse.
+		const versions =
+			definition.version === evidence.check.version
+				? ""
+				: ` (recorded under version ${evidence.check.version}; this build runs version ${definition.version})`;
+		return { valid: false, reason: `the check ${evidence.check.name} definition changed${versions}` };
 	}
 	if (dependencies.configurationDigest !== current.configurationDigest(evidence.check.kind)) {
 		return { valid: false, reason: "the relevant configuration changed" };

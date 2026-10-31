@@ -34,6 +34,8 @@ export interface EndoHarnessBuildV0 {
 	suiteVersion: string;
 	/** The current definition digest of a check, or null when the check no longer exists. */
 	definitionDigest(checkName: string): string | null;
+	/** The current version of a check, when the adapter has one: used only to word why evidence was redefined away. */
+	definitionVersion?(checkName: string): string | null;
 }
 
 /** A dependency an evidence record rests on, as named in an assessment. */
@@ -197,8 +199,19 @@ function staleAgainst(
 	if (definition === null)
 		out.push({ dependency: "check-definition", detail: `the check ${evidence.check.name} no longer exists` });
 	else if (definition !== evidence.check.definitionDigest)
-		out.push({ dependency: "check-definition", detail: `the check ${evidence.check.name} was redefined` });
+		out.push({
+			dependency: "check-definition",
+			detail: `the check ${evidence.check.name} was redefined${redefinedVersions(evidence, build)}`,
+		});
 	return out;
+}
+
+/** " (version 2 recorded, this build runs 3)" when the check's version was bumped, else nothing. */
+function redefinedVersions(evidence: EndoCapabilityEvidenceV0, build: EndoHarnessBuildV0): string {
+	const current = build.definitionVersion?.(evidence.check.name) ?? null;
+	return current === null || current === evidence.check.version
+		? ""
+		: ` (version ${evidence.check.version} recorded; this build runs version ${current}; every capability the check covers needs a fresh run)`;
 }
 
 function observation(fingerprint: EndoHarnessFingerprintRecordV0): EndoAssessedObservationV0 {

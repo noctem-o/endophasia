@@ -110,11 +110,13 @@ export function piFingerprintDifferencesV0(
 	)
 		differences.push("package");
 	if (previous.reported.version !== current.reported.version) differences.push("version");
-	if (
-		!crossBasis &&
-		(endoHarnessRuntimeContentV0(previous)?.sha256 ?? null) !== (endoHarnessRuntimeContentV0(current)?.sha256 ?? null)
-	)
-		differences.push("runtimeContent");
+	// Both the digest and the scope it was taken over are identity inputs (endoHarnessIdentityBasisV1): a scope that
+	// moved with identical files changes the digest, and must be listed or the change record would not validate.
+	const contentKey = (print: EndoHarnessFingerprintRecordV0) => {
+		const content = endoHarnessRuntimeContentV0(print);
+		return content === null ? null : `${content.scope}\n${content.sha256}`;
+	};
+	if (!crossBasis && contentKey(previous) !== contentKey(current)) differences.push("runtimeContent");
 	if (previous.identity.confidence !== current.identity.confidence) differences.push("confidence");
 	if (crossBasis) differences.push("identityBasis");
 	return differences;

@@ -311,6 +311,20 @@ describe("the v1 fingerprint of an installed Pi", () => {
 		expect(piFingerprintDifferencesV0(before, after)).toEqual(["runtimeContent"]);
 	});
 
+	it("lists a moved scope as a runtimeContent difference, so the change still records (every digest input is a listed fact)", async () => {
+		const fake = install();
+		const before = await fingerprintOf(fake.bin);
+		// A nearer package.json with the same name and version moves the scope from dist/bundle to bundle; the files are unchanged.
+		writeFileSync(join(dirname(fake.bundleDir), "package.json"), readFileSync(fake.packageJson));
+		const after = await fingerprintOf(fake.bin);
+		expect(after.local.runtimeContent?.scope).toBe("bundle");
+		expect(after.identity.digest).not.toBe(before.identity.digest);
+		expect(piFingerprintDifferencesV0(before, after)).toContain("runtimeContent");
+		const change = piChangeV0({ attachment: "pi.default", previous: before, current: after, at: after.observedAt });
+		expect(change.kind).toBe("changed");
+		expect(validateEndoHarnessChangeV1(change)).not.toBeNull();
+	});
+
 	it("is the same through a symlinked path, an explicit path or PATH, and differs between side-by-side installs", async () => {
 		const a = install("1.0.4");
 		const b = install("1.4.0");

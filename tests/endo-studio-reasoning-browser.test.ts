@@ -362,9 +362,11 @@ suite("a transcript that needs many pages", () => {
 		await page.click("[data-testid=pair-submit]");
 		await page.waitFor(
 			"[...document.querySelectorAll('[data-testid=turn-assistant] .turn-text')].some((t) => t.textContent.startsWith('THE-NEWEST-MESSAGE'))",
+			// About 2 MiB crosses the wire and is drawn: seconds on a loaded CI runner, so the default 15 s is too tight.
+			90_000,
 		);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=turn-assistant]').length")).toBe(17);
-	});
+	}, 120_000);
 });
 
 suite("model-provided reasoning across appearances", () => {

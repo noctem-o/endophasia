@@ -34,7 +34,9 @@ const until = async (condition: () => boolean, what: string, ms = 5000) => {
 
 function scratch(): string {
 	const dir = mkdtempSync(join(tmpdir(), "endo-transport-test-"));
-	cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+	// A recording proxy's async log can still be finishing a write when teardown starts (slow CI runners): retry
+	// instead of failing the next test's cleanup with ENOTEMPTY.
+	cleanup.push(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 	return dir;
 }
 
@@ -599,7 +601,7 @@ describe("transport closeout: what is not HTTP/1.1 is still relayed untouched", 
 
 	it("a request head split across reads is still waited for (the 7-byte test covers every cut)", async () => {
 		const upstream = await upstreamOf((_s, _r, respond) => respond(response("ok")));
-		const { proxy } = await proxyTo(upstream.port);
+		const { proxy, finish } = await proxyTo(upstream.port);
 		const c = client(proxy.port);
 		await new Promise<void>((resolve) => c.socket.once("connect", () => resolve()));
 		for (const part of ["PO", "ST /v1/x HT", "TP/1.1\r\nHost: h\r\nContent-Le", "ngth: 0\r\n\r\n"]) {
@@ -607,6 +609,9 @@ describe("transport closeout: what is not HTTP/1.1 is still relayed untouched", 
 			await sleep(10);
 		}
 		await until(() => c.bytes.toString("latin1") === response("ok"), "the answer");
+		// Let the recording finish before teardown removes its directory, as the sibling tests do.
+		await proxy.flush();
+		await finish();
 	});
 
 	it("a request whose body turns out malformed after its head: the upstream's bytes, before and after, all reach the client", async () => {

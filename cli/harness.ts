@@ -3,7 +3,8 @@
  * about it, and run checks. Each command prints one canonical-JSON document to stdout; a runtime-change notification
  * is also printed to stderr as plain text, so an operator sees it without reading JSON.
  *
- *   endo harness status   [<root> | --root dir] [--attachment a]                       registry only, read-only; starts nothing
+ *   endo harness status   [<root> | --root dir] [--attachment a]                       registry only, read-only; starts nothing;
+ *                                                                        with the upstream assessment (stderr and JSON)
  *   endo harness overview [<root> | --root dir] [--attachment a]                       the session overview, replayed read-only
  *   endo harness identify [<root> | --root dir] [selection]                            fingerprint and compare; starts no session
  *   endo harness check    [<root> | --root dir] [selection] [--force]                  identify + automatic local checks
@@ -19,6 +20,7 @@
  */
 
 import { resolve } from "node:path";
+import { piAssessmentV0, renderPiAssessmentV0 } from "../adapters/pi/assessment.ts";
 import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
@@ -101,8 +103,9 @@ function print(value: unknown): void {
 }
 
 /**
- * `harness status [<root> | --root dir] [--attachment a]` — the recorded identity, change, notice and capability state. The registry
- * is opened read-only: status creates no directory (an unknown attachment reports nothing recorded) and cuts nothing.
+ * `harness status [<root> | --root dir] [--attachment a]` — the recorded identity, change, notice and capability state, and the
+ * upstream assessment derived from them (runtime/contracts/harness-assessment.ts). The registry is opened read-only:
+ * status creates no directory (an unknown attachment reports nothing recorded), cuts nothing, and examines no executable.
  */
 export async function harnessStatusCommand(argv: readonly string[]): Promise<void> {
 	const parsed = parse(argv, "usage: endo harness status [<root> | --root dir] [--attachment a]");
@@ -113,8 +116,11 @@ export async function harnessStatusCommand(argv: readonly string[]): Promise<voi
 	const current = fingerprints.at(-1) ?? null;
 	const previous =
 		[...fingerprints].reverse().find((print) => print.identity.digest !== current?.identity.digest) ?? null;
+	const assessment = piAssessmentV0(registry);
+	process.stderr.write(`\n${renderPiAssessmentV0(assessment).join("\n")}\n\n`);
 	print({
 		attachment: registry.attachment,
+		assessment,
 		recovery: registry.recovery(),
 		current,
 		versionStanding: current === null ? null : piVersionStandingV0(current.reported.version),
@@ -163,7 +169,8 @@ export async function harnessCheckCommand(argv: readonly string[]): Promise<void
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
 	const checked = await pi.checkLocal({ force: parsed.switches.has("--force") });
-	print({ change: identified.change, ran: checked.ran, state: checked.state });
+	for (const line of checked.inconclusive) process.stderr.write(`inconclusive (nothing recorded): ${line}\n`);
+	print({ change: identified.change, ran: checked.ran, inconclusive: checked.inconclusive, state: checked.state });
 }
 
 /** `harness study [<root> | --root dir] [selection] --authorize-live-study` — the live study, only with the explicit switch. */

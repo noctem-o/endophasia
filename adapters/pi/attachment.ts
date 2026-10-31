@@ -292,11 +292,14 @@ export class PiAttachmentV0 {
 		/** False when the runtime changed while the checks ran: their results were discarded. */
 		recorded: boolean;
 		evidence: EndoCapabilityEvidenceV0[];
+		/** Results the checks could not decide (`capability: what was observed`). They are not recorded as evidence. */
+		inconclusive: string[];
 		state: EndoCapabilityStateV0;
 	}> {
 		if (!this.#identified) await this.identify();
 		const fingerprint = this.#fingerprint;
-		if (fingerprint === null) return { ran: false, recorded: false, evidence: [], state: this.state() };
+		if (fingerprint === null)
+			return { ran: false, recorded: false, evidence: [], inconclusive: [], state: this.state() };
 		const before = this.state();
 		const needs = (kind: string) =>
 			before.capabilities.some((entry) => entry.status === "unverified" && entry.requires === kind);
@@ -317,12 +320,18 @@ export class PiAttachmentV0 {
 				})),
 			);
 		}
-		if (runs.length === 0) return { ran: false, recorded: false, evidence: [], state: this.state() };
+		if (runs.length === 0)
+			return { ran: false, recorded: false, evidence: [], inconclusive: [], state: this.state() };
+		const inconclusive = runs.flatMap((run) =>
+			run.results
+				.filter((result) => result.classification === "inconclusive")
+				.map((result) => `${result.capability}: ${result.observed}`),
+		);
 		if (!(await this.#stillSame(fingerprint))) {
-			return { ran: true, recorded: false, evidence: [], state: this.state() };
+			return { ran: true, recorded: false, evidence: [], inconclusive, state: this.state() };
 		}
 		const evidence = runs.flatMap((run) => this.#record(run, fingerprint));
-		return { ran: true, recorded: true, evidence, state: this.state() };
+		return { ran: true, recorded: true, evidence, inconclusive, state: this.state() };
 	}
 
 	/** Run the live study. `authorized` must be exactly true: it runs agent work and may cost provider usage. */

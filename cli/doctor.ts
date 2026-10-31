@@ -4,7 +4,9 @@
  * It observes and reports; it installs nothing, starts no agent session, calls no model provider, runs no study,
  * creates no digest key and writes nothing to the store. The one process it runs is `<pi> --version`, directly and
  * bounded (the existing fingerprint code). Finding an executable is a fact about the machine, not a capability: the
- * capability view below is only what earlier recorded checks established, copied from the store, never re-derived.
+ * capability view below is only what earlier recorded checks established, copied from the store, never re-derived. It
+ * is marked stale when it describes an earlier identity, or rests on evidence this build no longer accepts (judged by
+ * the read-only upstream assessment over the same records; nothing is recomputed or written).
  *
  * Exit status: 0 when the diagnosis ran, whatever it found (the report says what is missing); 1 only when the doctor
  * itself failed or was misused. Missing prerequisites are `unavailable`, never an internal failure.
@@ -12,6 +14,7 @@
 
 import { accessSync, constants, lstatSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { piAssessmentV0 } from "../adapters/pi/assessment.ts";
 import {
 	fingerprintPiRuntimeV0,
 	PiFingerprintErrorV0,
@@ -247,7 +250,7 @@ export async function endoDoctorV0(
 		digestKey.reason = error instanceof Error ? error.message : String(error);
 	}
 
-	// Recorded evidence: copied from the registry opened read-only; the capability evaluator is not run.
+	// Recorded evidence: copied from the registry opened read-only; the capability evaluator is not run (staleness is judged below).
 	let sealed = false;
 	const evidence: EndoDoctorReportV0["evidence"] = {
 		status: "not-checked",
@@ -334,10 +337,23 @@ export async function endoDoctorV0(
 				// following state (identify, then the process stopped) leaves older capabilities describing another Pi.
 				evidence.capabilitiesStale =
 					state !== null && fingerprint !== null && state.fingerprintId !== fingerprint.id;
+				// Evidence recorded under an earlier adapter, mapping, suite or check definition no longer counts in this
+				// build (the upstream assessment says which; it reads the same records and writes nothing).
+				const rebuilt =
+					state !== null &&
+					piAssessmentV0(registry).capabilities.some(
+						(entry) =>
+							entry.recorded !== null && entry.recorded !== "unverified" && entry.effective === "unverified",
+					);
 				if (state === null) evidence.reason = "no capability state is recorded yet";
 				else if (evidence.capabilitiesStale)
 					evidence.reason =
 						"the capabilities below were derived for an earlier identity than the latest recorded one: they are not current";
+				else if (rebuilt) {
+					evidence.capabilitiesStale = true;
+					evidence.reason =
+						"some capabilities below rest on evidence this version of Endophasia no longer accepts (an adapter, mapping, suite or check definition changed): they are not current; endo harness status says which";
+				}
 				const recovery = registry.recovery();
 				sealed = recovery.sealed;
 				if (recovery.truncated || recovery.sealed || recovery.corruptAt !== null || recovery.discarded !== null) {
@@ -399,7 +415,9 @@ export async function endoDoctorV0(
 				}`,
 			);
 		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)
-			steps.push(`The recorded capabilities do not describe the installed Pi: run ${check} again.`);
+			steps.push(
+				`The recorded capabilities do not describe the installed Pi: run ${check} again. endo harness status ${shellWordV0(rootPath ?? "<root>")} explains what changed and what each capability needs.`,
+			);
 	}
 
 	return {
@@ -465,7 +483,9 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 			}${report.evidence.currentMatchesRecorded === null && report.evidence.recordedFingerprintAt !== null && report.pi.identityDigest !== null ? "; whether the installed Pi is the same could not be established (a reduced-confidence identity does not prove it)" : ""}`,
 		);
 	if (report.evidence.capabilitiesStale)
-		lines.push("  capabilities below are STALE (recorded for an earlier identity):");
+		lines.push(
+			"  capabilities below are STALE (recorded for an earlier identity, or on evidence this version no longer accepts):",
+		);
 	for (const entry of report.evidence.capabilities)
 		lines.push(
 			`  ${entry.status.toUpperCase().padEnd(16)} ${entry.capability.padEnd(28)} ${entry.classification ?? "-"}  ${entry.reason}${entry.status === "unverified" && entry.requires === "live-study" ? " (needs an authorised live study)" : ""}`,

@@ -45,7 +45,8 @@ An observed event is shown as an observation. A derived value says how it was de
 
 ## Related projects
 
-Related projects have separate jobs, and none grants another authority:
+Related projects have separate jobs, and none grants another authority. What Endophasia owns, and what it leaves to the
+harnesses it attaches to, is in [upstream-boundaries.md](upstream-boundaries.md).
 
 | Project | Job |
 | :--- | :--- |

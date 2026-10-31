@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- **Upstream-change assessment in `endo harness status`:** after a harness changes, status explains it from the recorded
+  registry, read-only and without examining the executable: the previous and current runtime, which identity facts differ,
+  each capability's standing before and now with every dependency that changed (identity, confidence, adapter, mapping,
+  suite, check definition, configuration), what re-establishes it (offline check, authorised live study, or a release
+  review), and a ladder of claims that keeps "protocol checked" and "capability qualified" apart from "behaviour compared"
+  and "reproducibility established", which no check reaches. A standing is never reported stronger than recorded; evidence
+  this Endophasia build no longer accepts is shown as unverified, and `endo doctor` now marks such capabilities stale. The
+  logic is runtime-neutral (`runtime/contracts/harness-assessment.ts`); no record type was added. `harness check` now
+  reports inconclusive local results instead of leaving them silent. See [docs/harness-upgrades.md](docs/harness-upgrades.md),
+  the [Pi 1.0.4 → 1.4.0 case study](docs/pi-1.4.0-upgrade.md) and [docs/upstream-boundaries.md](docs/upstream-boundaries.md).
 - **Model-provided reasoning in the DEVELOP live workbench:** where Pi supplies reasoning as structured `thinking` blocks (for a local
   model behind llama.cpp, its `reasoning_content`), the conversation shows it in the runtime's order, labelled *Model-provided
   reasoning*, folded by default, with a **Folded | Shown** display preference (memory only; it never changes the model's thinking

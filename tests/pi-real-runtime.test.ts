@@ -94,6 +94,17 @@ describe.runIf(executable !== undefined && executable.length > 0)("real Pi accep
 		expect(byId["session.entries-cursor"]?.classification).toBe("EXACT");
 		expect(byId["lifecycle.trace"]?.status).not.toBe("admitted");
 
+		// Pi still supplies no run or turn identifier. Whether its agent_settled carries the documented `aborted` flag
+		// (Pi >= 1.1.0) or not (1.0.x), the result is UNAVAILABLE from an observation of the real lifecycle events; the
+		// flag, when present, is named as a termination flag. A MISMATCH here would mean an unreviewed key.
+		expect(byId["run.identity"]).toMatchObject({ status: "unavailable", classification: "UNAVAILABLE" });
+		const runIdentity = pi.registry
+			.list("evidence")
+			.find((record) => record.check.name === "pi.live.study" && record.capability === "run.identity");
+		expect(runIdentity?.check.version).toBe("3");
+		expect(runIdentity?.observed).toMatch(/only documented keys: no run or turn identifier/);
+		expect(runIdentity?.observed).not.toMatch(/undocumented|wrong type/);
+
 		const again = attach();
 		expect((await again.identify()).change.kind).toBe("unchanged");
 		const session = await again.openSession();

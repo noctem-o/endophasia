@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Changed
+- **Live-study `run.identity` no longer mistakes Pi's documented `agent_settled.aborted` for an unreviewed key.** Since Pi 1.1.0
+  `agent_settled` carries `aborted: boolean`; the version-2 check classified Pi 1.4.0 as a `run.identity` MISMATCH. Version 3 of
+  `pi.live.study` accepts exactly that field (a Boolean, on `agent_settled`), still reports any other key and any mistyped flag, treats
+  an unsettled study as inconclusive, and records UNAVAILABLE (Pi still supplies no run or turn identifier) with an observation that
+  names the flag as a termination flag. The definition digest changes, so evidence recorded under version 2 stops applying for all
+  nine capabilities the check covers; run `endo harness study --authorize-live-study` again. Adapter, mapping and suite versions are
+  unchanged; Pi 1.4.0 is not added to the verified baseline. See [docs/pi-1.4.0-upgrade.md](docs/pi-1.4.0-upgrade.md#correction-agent_settledaborted-check-version-3).
 - **Pi runtime identity now covers the runtime's own files, not only the launcher.** Pi's npm entrypoint
   `dist/bundle/cli.js` is a ~160-byte launcher that is byte-identical across 1.0.1, 1.0.4 and 1.4.0, so the old identity could not see
   a same-version change to the code behind it. New fingerprints (`endo.harness-fingerprint.v1`, basis `runtime-content.v1`) add a

@@ -18,6 +18,9 @@
 //                       retry-fail (a retry loop that ends with auto_retry_end success:false and a finalError),
 //                       compact-after-run (a threshold compaction, with its entry, before agent_settled),
 //                       unknown-lifecycle (an undocumented agent_paused record inside each run),
+//                       settled-aborted (Pi >= 1.1.0: agent_settled carries `aborted`, true when an abort was requested
+//                       during the run), settled-aborted:string|number|null (a mistyped `aborted`),
+//                       settled-key:<name> (agent_settled carries an extra key of that name),
 //                       abort-ack-only (abort answers success at once and does not stop the run),
 //                       model-endpoint (each turn streams a chat completion from the provider's baseUrl in
 //                       $PI_CODING_AGENT_DIR/models.json; the conversation, with the working directory in the system
@@ -471,7 +474,13 @@ async function startRun(text) {
 		return;
 	}
 	hasSettled = true;
-	emit({ type: "agent_settled" });
+	const settledFields = {};
+	if (has("settled-aborted")) settledFields.aborted = run.aborted;
+	const mistyped = option("settled-aborted:");
+	if (mistyped !== undefined) settledFields.aborted = { string: "false", number: 0, null: null }[mistyped];
+	const extraKey = option("settled-key:");
+	if (extraKey !== undefined) settledFields[extraKey] = run.id;
+	emit({ type: "agent_settled", ...settledFields });
 }
 
 // --- commands ---

@@ -106,7 +106,7 @@ export const PI_STATIC_SURFACE_CHECK: PiCheckDefinitionV0 = {
 		"documented-surface review of Pi 1.0.0 packages/coding-agent/src/modes/rpc/rpc-types.ts and docs/json.md: agent_start, turn_start, turn_end, agent_end and agent_settled carry no identifiers; prompt, steer and follow_up responses carry a disposition only; no command reads an operation outcome. Applies only to the reviewed release",
 };
 
-/** The keys Pi 1.0.0 documents on each lifecycle event (docs/json.md). Anything else is a surface difference. */
+/** The keys Pi documents on each lifecycle event since 1.0.0 (docs/json.md). Anything else is a surface difference. */
 const DOCUMENTED_LIFECYCLE_KEYS: Readonly<Record<string, readonly string[]>> = {
 	agent_start: ["type"],
 	turn_start: ["type"],
@@ -115,9 +115,111 @@ const DOCUMENTED_LIFECYCLE_KEYS: Readonly<Record<string, readonly string[]>> = {
 	agent_settled: ["type"],
 };
 
+/**
+ * Fields Pi documents on a lifecycle event from a later release, each with the one type it is documented to have.
+ * Since Pi 1.1.0 `agent_settled` carries `aborted: boolean` (docs/json.md: "true when the run ended because it was
+ * aborted"; Pi 1.4.0 sets it from "an abort was requested during the run", agent-session.ts). It reports how a run
+ * ended. It is not a run, turn or operation identifier, not a command receipt, and not proof that a STOP caused the
+ * end. A release that does not emit the field (Pi 1.0.x) is accepted without it; a value of any other type is not.
+ */
+const DOCUMENTED_OPTIONAL_LIFECYCLE_FIELDS: Readonly<Record<string, Readonly<Record<string, "boolean">>>> = {
+	agent_settled: { aborted: "boolean" },
+};
+
+export interface PiLifecycleSurfaceV0 {
+	/** How many documented lifecycle events were inspected. */
+	readonly events: number;
+	/** `<event>.<key>` for every key that is neither required-documented nor an optional documented field. */
+	readonly undocumented: readonly string[];
+	/** `<event>.<key> (<typeof>)` for every optional documented field present with the wrong type. */
+	readonly malformed: readonly string[];
+	/** `<event>.<key>=<value>` for every well-typed optional documented field seen (termination flags). */
+	readonly flags: readonly string[];
+}
+
+/**
+ * Inspect the keys of the lifecycle events a study observed against what Pi documents. A strict, explicit
+ * specification: required keys plus named optional fields with an exact type. Unknown keys (an identifier-shaped
+ * `runId` included) and mistyped documented fields are reported separately, never accepted.
+ */
+export function inspectPiLifecycleSurfaceV0(
+	events: readonly { readonly type: string; readonly record: Readonly<Record<string, unknown>> }[],
+): PiLifecycleSurfaceV0 {
+	const undocumented = new Set<string>();
+	const malformed = new Set<string>();
+	const flags = new Set<string>();
+	let inspected = 0;
+	for (const event of events) {
+		if (!Object.hasOwn(DOCUMENTED_LIFECYCLE_KEYS, event.type)) continue;
+		inspected += 1;
+		const required = DOCUMENTED_LIFECYCLE_KEYS[event.type]!;
+		const optional = Object.hasOwn(DOCUMENTED_OPTIONAL_LIFECYCLE_FIELDS, event.type)
+			? DOCUMENTED_OPTIONAL_LIFECYCLE_FIELDS[event.type]!
+			: {};
+		for (const key of Object.keys(event.record)) {
+			if (required.includes(key)) continue;
+			if (Object.hasOwn(optional, key)) {
+				const value = event.record[key];
+				if (typeof value === optional[key]) flags.add(`${event.type}.${key}=${String(value)}`);
+				else malformed.add(`${event.type}.${key} (${value === null ? "null" : typeof value})`);
+				continue;
+			}
+			undocumented.add(`${event.type}.${key}`);
+		}
+	}
+	return {
+		events: inspected,
+		undocumented: [...undocumented].sort(),
+		malformed: [...malformed].sort(),
+		flags: [...flags].sort(),
+	};
+}
+
+/**
+ * The run.identity result a study's lifecycle inspection supports. Without a settled run nothing was observed, so the
+ * result is inconclusive whatever the keys looked like (and is not recorded). With one, a clean surface means Pi still
+ * supplies no run or turn identifier (UNAVAILABLE); an undocumented key or a mistyped documented field needs review.
+ */
+export function runIdentityResultV0(surface: PiLifecycleSurfaceV0, settled: boolean): PiCheckResultV0 {
+	const reviewNeeded = surface.undocumented.length > 0 || surface.malformed.length > 0;
+	return {
+		capability: "run.identity",
+		classification: !settled ? "inconclusive" : reviewNeeded ? "MISMATCH" : "UNAVAILABLE",
+		expected: "runtime-supplied run or turn identifiers on lifecycle events",
+		observed: !settled
+			? "no settled run was observed, so the lifecycle events were not judged"
+			: reviewNeeded
+				? `lifecycle events carried ${[
+						surface.undocumented.length > 0 ? `undocumented keys (${surface.undocumented.join(", ")})` : null,
+						surface.malformed.length > 0
+							? `documented fields of the wrong type (${surface.malformed.join(", ")})`
+							: null,
+					]
+						.filter((part) => part !== null)
+						.join(" and ")}; the adapter does not map them and needs review`
+				: `${surface.events} lifecycle events carried only documented keys: no run or turn identifier${
+						surface.flags.length > 0
+							? `; ${surface.flags.join(", ")} is a documented termination flag, which says how the run ended and identifies no run or turn`
+							: ""
+					}`,
+		limitations: [
+			"Endophasia does not invent run ids: mapped events carry no run coordinate",
+			...(settled && surface.flags.length > 0
+				? [
+						"agent_settled.aborted is a termination flag, not an identifier; it is not mapped, and it is not proof that a STOP request ended the run",
+					]
+				: []),
+		],
+	};
+}
+
 export const PI_LIVE_STUDY_CHECK: PiCheckDefinitionV0 = {
 	name: "pi.live.study",
-	version: "2",
+	// Version 3: the lifecycle-key inspection accepts Pi's documented `agent_settled.aborted` Boolean (Pi >= 1.1.0)
+	// and reports a mistyped value or any other undocumented key. Version 2 classified that documented field as an
+	// undocumented key (MISMATCH on Pi 1.4.0). The definition digest changes with the procedure, so evidence recorded
+	// under version 2 does not apply to this check, for all nine capabilities it covers.
+	version: "3",
 	kind: "live-study",
 	capabilities: [
 		"lifecycle.trace",
@@ -131,7 +233,7 @@ export const PI_LIVE_STUDY_CHECK: PiCheckDefinitionV0 = {
 		"operation.outcome",
 	],
 	procedure:
-		"in a scratch workspace and persistent scratch session: (1) a short prompt, observing the lifecycle event order, the keys each lifecycle event carries, the keys of the prompt response, and the assistant entry's usage; (2) a prompt asking for the read tool on a fixture file, observing tool_execution_start/end correlation; (3) a long prompt with a steer sent after agent_start, checking the marker is consumed by that run; (4) the same with follow_up, checking a later run consumes it; (5) a long prompt aborted after agent_start, checking the run ends; (6) a second process on the same session id, checking the session id and earlier entry ids persist",
+		"in a scratch workspace and persistent scratch session: (1) a short prompt, observing the lifecycle event order, the keys each lifecycle event carries (Pi's documented keys only, with agent_settled.aborted accepted as a Boolean termination flag when present and any other key or a mistyped flag reported as needing review), the keys of the prompt response, and the assistant entry's usage; (2) a prompt asking for the read tool on a fixture file, observing tool_execution_start/end correlation; (3) a long prompt with a steer sent after agent_start, checking the marker is consumed by that run; (4) the same with follow_up, checking a later run consumes it; (5) a long prompt aborted after agent_start, checking the run ends; (6) a second process on the same session id, checking the session id and earlier entry ids persist",
 	// Step 6 re-tests what the local state check tests (a non-empty, stable session id) across two processes, which is
 	// strictly broader. Nothing else is superseded: every other overlap is combined conservatively.
 	supersedes: { "session.identity": ["pi.local.state"] },
@@ -702,26 +804,7 @@ export async function runPiLiveStudyV0(options: PiLiveStudyOptionsV0): Promise<P
 					? String((data as { disposition: string }).disposition)
 					: "refused";
 			const settled = disposition === "started" ? await settle(from) : null;
-			const lifecycle = recorder.events.slice(from).filter((event) => event.type in DOCUMENTED_LIFECYCLE_KEYS);
-			const extraKeys = [
-				...new Set(
-					lifecycle.flatMap((event) =>
-						Object.keys(event.record)
-							.filter((key) => !DOCUMENTED_LIFECYCLE_KEYS[event.type]!.includes(key))
-							.map((key) => `${event.type}.${key}`),
-					),
-				),
-			].sort();
-			results.push({
-				capability: "run.identity",
-				classification: settled === null ? "inconclusive" : extraKeys.length === 0 ? "UNAVAILABLE" : "MISMATCH",
-				expected: "runtime-supplied run or turn identifiers on lifecycle events",
-				observed:
-					extraKeys.length === 0
-						? `${lifecycle.length} lifecycle events carried only their documented keys: no run or turn identifier`
-						: `lifecycle events carried undocumented keys (${extraKeys.join(", ")}); the adapter does not map them and needs review`,
-				limitations: ["Endophasia does not invent run ids: mapped events carry no run coordinate"],
-			});
+			results.push(runIdentityResultV0(inspectPiLifecycleSurfaceV0(recorder.events.slice(from)), settled !== null));
 			results.push({
 				capability: "operation.outcome",
 				classification: !response.success

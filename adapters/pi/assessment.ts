@@ -17,6 +17,9 @@ export const PI_BUILD_V0 = {
 	adapterVersion: PI_ADAPTER_VERSION,
 	mappingVersion: PI_MAPPING_VERSION,
 	suiteVersion: PI_SUITE_VERSION,
+	definitionVersion(checkName: string): string | null {
+		return PI_CHECK_DEFINITIONS_V0.get(checkName)?.version ?? null;
+	},
 	definitionDigest(checkName: string): string | null {
 		const definition = PI_CHECK_DEFINITIONS_V0.get(checkName);
 		return definition === undefined ? null : piCheckDefinitionDigestV0(definition);

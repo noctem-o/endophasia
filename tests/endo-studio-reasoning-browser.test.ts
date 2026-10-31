@@ -326,6 +326,47 @@ suite("a conversation without model-provided reasoning", () => {
 	});
 });
 
+suite("a transcript that needs many pages", () => {
+	it("is read to its newest message on the first read, with Follow off and nothing open", async () => {
+		// The case that needs more pages than one read used to take: 200 tool items, then 17 messages of about 120 KiB each.
+		const session = new FakeSession();
+		const broker = new WorkbenchBrokerV0({
+			session,
+			key: OTHER_KEY,
+			attachment: "pi.default",
+			approver: new Approval().approver,
+		});
+		const server = await serve(developStore(), { ui, workbench: broker, readBudget: { duty: 1, burstMs: 1e6 } });
+		for (let i = 0; i < 100; i++)
+			for (const event of [
+				{ type: "tool_execution_start", record: { toolCallId: `t${i}`, toolName: "read" } },
+				{ type: "tool_execution_end", record: { toolCallId: `t${i}`, toolName: "read", isError: false } },
+			])
+				session.live_(event);
+		for (let i = 0; i < 17; i++)
+			session.live_(
+				assistant([
+					// Two blocks, each under the per-block bound, so the message really is about 120 KiB: four fit a page.
+					{ type: "thinking", thinking: "r".repeat(44 * 1024) },
+					{ type: "thinking", thinking: "s".repeat(44 * 1024) },
+					{ type: "text", text: `${i === 16 ? "THE-NEWEST-MESSAGE " : ""}${"t".repeat(31 * 1024)}` },
+				]),
+			);
+		const page = await browser.open(1440, 900);
+		tabs.push(page);
+		await page.goto(`${server.baseUrl}/`);
+		await page.settled();
+		await page.click("button[data-workspace=develop]");
+		await page.waitFor("document.querySelector('[data-testid=live-row]')");
+		await fill(page, "[data-testid=pair-code]", broker.issuePairingCode().code);
+		await page.click("[data-testid=pair-submit]");
+		await page.waitFor(
+			"[...document.querySelectorAll('[data-testid=turn-assistant] .turn-text')].some((t) => t.textContent.startsWith('THE-NEWEST-MESSAGE'))",
+		);
+		expect(await page.eval<number>("document.querySelectorAll('[data-testid=turn-assistant]').length")).toBe(17);
+	});
+});
+
 suite("model-provided reasoning across appearances", () => {
 	it("keeps the preference, the hand-opened traces and the draft when the appearance changes", async () => {
 		const { page } = await live("instrument");

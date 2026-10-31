@@ -9,7 +9,9 @@ import type { InterventionOperation, WorkbenchReply, WorkbenchRequest } from "./
 
 const FOLLOW_MS = 3000;
 const WAITING_MS = 1500;
-const MAX_PAGES = 5;
+// Enough pages for anything the broker can hold (400 items and 2 MiB, pages of 200 items or 512 KiB, a message at most 128 KiB: at most
+// seven pages). A read that still finds more after them reads again at once, as long as it made progress.
+const MAX_PAGES = 8;
 
 export function useWorkbench(active: boolean) {
 	const [state, dispatch] = useReducer(reduceWorkbench, undefined, initialWorkbench);
@@ -84,11 +86,17 @@ export function useWorkbench(active: boolean) {
 			const status = await send({ kind: "status" }, since);
 			if (status.kind === "status" && status.record.paired && latest.current.grant !== null) {
 				let after = status.record.launchId === latest.current.launchId ? latest.current.watermark : 0;
+				const from = after;
+				let more = false;
 				for (let page = 0; page < MAX_PAGES; page += 1) {
 					const reply = await send({ kind: "transcript", after }, since);
-					if (reply.kind !== "transcript" || !reply.record.more || reply.record.items.length === 0) break;
+					more = reply.kind === "transcript" && reply.record.more && reply.record.items.length > 0;
+					if (!more || reply.kind !== "transcript") break;
 					after = reply.record.items.at(-1)?.seq ?? after;
 				}
+				// The broker still has more: never leave the conversation silently short. One more read follows this one (it made progress,
+				// so this cannot loop on a broker that answers the same page).
+				if (more && after > from) again.current = true;
 			}
 		} finally {
 			running.current = false;

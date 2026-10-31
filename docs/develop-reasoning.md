@@ -66,7 +66,7 @@ All in UTF-8 bytes. A cut is made at a character boundary, in linear time, and i
 | A message's reasoning | 96 KiB across its blocks | later blocks cut |
 | Parts per message | 32 | the rest counted in `partsDropped` |
 | The whole transcript | 400 items and 2 MiB of text and reasoning together | oldest items evicted **whole**, counted in `evicted` |
-| One page | 200 items and 512 KiB (always at least one item) | `more: true`; the page reads up to five pages per read |
+| One page | 200 items and 512 KiB (always at least one item) | `more: true`; the page reads up to eight pages per read (the most the broker's bounds can need is seven) and, if more remain, reads again at once |
 | A streamed block | the same per-block bound, counted incrementally (no re-measuring per delta) | cut, received bytes still counted |
 | The message being written | the same per-message budgets as a completed message (32 KiB text, 96 KiB reasoning, 32 parts) | cut, marked |
 | The page's own copy | 400 items and 2 Mi UTF-16 units | oldest items let go, counted, and said: "Earlier items are no longer held here (n dropped …)" |

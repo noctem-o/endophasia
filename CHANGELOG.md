@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Changed
+- **`endo doctor` labels a recorded capability list that describes another identity.** When the installed Pi's identity differs
+  from the recorded one, or is on another identity basis and so cannot be compared, the listed capabilities are headed "as
+  RECORDED for the earlier identity above, not established for the installed Pi" and a next step says to run `endo harness check`.
+  Previously the list appeared under a plain heading, and the next step was missing after a basis change. New
+  `evidence.capabilitiesDescribeOtherIdentity` in the JSON report.
 - **Live-study `run.identity` no longer mistakes Pi's documented `agent_settled.aborted` for an unreviewed key.** Since Pi 1.1.0
   `agent_settled` carries `aborted: boolean`; the version-2 check classified Pi 1.4.0 as a `run.identity` MISMATCH. Version 3 of
   `pi.live.study` accepts exactly that field (a Boolean, on `agent_settled`), still reports any other key and any mistyped flag, treats

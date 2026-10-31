@@ -26,7 +26,13 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { piAssessmentV0, renderPiAssessmentV0 } from "../adapters/pi/assessment.ts";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
-import { piChangeV0, piFingerprintDifferencesV0, piNotificationV0 } from "../adapters/pi/evidence.ts";
+import { PI_CHECK_DEFINITIONS_V0 } from "../adapters/pi/checks.ts";
+import {
+	derivePiCapabilityStateV0,
+	piChangeV0,
+	piFingerprintDifferencesV0,
+	piNotificationV0,
+} from "../adapters/pi/evidence.ts";
 import { fingerprintPiRuntimeV0 } from "../adapters/pi/identity.ts";
 import { hashPiRuntimeContentV1, piRuntimeContentScopeV1 } from "../adapters/pi/runtime-content.ts";
 import { endoDoctorV0, renderEndoDoctorV0 } from "../cli/doctor.ts";
@@ -631,6 +637,63 @@ describe("history: v0 records stay what they were", () => {
 		const text = renderEndoDoctorV0(report);
 		expect(text).toMatch(/cannot be compared.*not established.*requalification/);
 		expect(text).not.toMatch(/DIFFERENT identity/);
+		// The recorded capability list is labelled as describing the earlier identity, and a next step says what to run.
+		expect(report.evidence.capabilitiesDescribeOtherIdentity).toBe(true);
+		expect(text).toMatch(
+			/capabilities below are as RECORDED for the earlier identity above, not established for the installed Pi/,
+		);
+		expect(report.nextSteps.join(" ")).toMatch(/harness check/);
+	});
+
+	it("labels a recorded capability list that was derived for the old basis, and says to run harness check", async () => {
+		const fake = install();
+		const donor = scratch("endo-rc-store-");
+		const checked = attach(fake, donor);
+		await checked.checkLocal();
+		const root = scratch("endo-rc-store-");
+		const seeded = v0Registry(root, fake);
+		const registry = openEndoHarnessRegistryV0(root, "pi.default");
+		const evidence = checked.registry.list("evidence").map((record) => {
+			const rebound = {
+				...record,
+				dependencies: { ...record.dependencies, fingerprintId: seeded.id, identityDigest: seeded.identity.digest },
+			};
+			const { id: _id, ...body } = rebound;
+			const withId = { ...body, id: `endo.evidence.pi-capability.${sha256HexV0(canonicalEndoJsonV0(body))}` };
+			registry.append("evidence", withId);
+			return withId;
+		});
+		const digestFor = (kind: string) =>
+			evidence.find((record) => record.check.kind === kind)?.dependencies.configurationDigest ?? "0".repeat(64);
+		registry.append(
+			"state",
+			derivePiCapabilityStateV0({
+				attachment: "pi.default",
+				at: "2026-10-30T22:00:00.000Z",
+				fingerprint: seeded,
+				evidence,
+				definitions: PI_CHECK_DEFINITIONS_V0,
+				configurationDigest: digestFor,
+			}),
+		);
+		const report = await endoDoctorV0(
+			{ root, pi: fake.bin },
+			{ HOME: scratch("endo-rc-home-"), PATH: process.env.PATH },
+		);
+		expect(report.evidence.capabilities.some((entry) => entry.status === "admitted")).toBe(true);
+		expect(report.evidence.capabilitiesStale).toBe(false);
+		expect(report.evidence.capabilitiesDescribeOtherIdentity).toBe(true);
+		const text = renderEndoDoctorV0(report);
+		expect(text).toMatch(/capabilities below are as RECORDED for the earlier identity above/);
+		expect(report.nextSteps.join(" ")).toMatch(/do not describe the installed Pi: run .*harness check/);
+		// After the check the list describes the installed Pi and is no longer labelled.
+		await attach(fake, root).checkLocal();
+		const after = await endoDoctorV0(
+			{ root, pi: fake.bin },
+			{ HOME: scratch("endo-rc-home-"), PATH: process.env.PATH },
+		);
+		expect(after.evidence.capabilitiesDescribeOtherIdentity).toBe(false);
+		expect(renderEndoDoctorV0(after)).not.toMatch(/as RECORDED for the earlier identity/);
 	});
 
 	it("names the identity basis in the events a session records", async () => {

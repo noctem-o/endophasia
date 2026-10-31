@@ -148,11 +148,17 @@ describe("endo doctor", () => {
 		const text = renderEndoDoctorV0(same);
 		for (const entry of recorded?.capabilities ?? [])
 			expect(text).toContain(`${entry.status.toUpperCase().padEnd(16)} ${entry.capability}`);
+		// The same identity: the capabilities describe the installed Pi, so nothing is marked.
+		expect(same.evidence.capabilitiesDescribeOtherIdentity).toBe(false);
+		expect(text).not.toMatch(/STALE|as RECORDED for the earlier identity/);
 
 		install.rebuild("changed");
 		const changed = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
 		expect(changed.evidence.currentMatchesRecorded).toBe(false);
 		expect(changed.nextSteps.join(" ")).toMatch(/do not describe the installed Pi/);
+		// A different installed identity: the recorded list is labelled as describing the earlier one.
+		expect(changed.evidence.capabilitiesDescribeOtherIdentity).toBe(true);
+		expect(renderEndoDoctorV0(changed)).toMatch(/capabilities below are as RECORDED for the earlier identity/);
 		expect(readdirSync(root, { recursive: true }).sort()).toEqual(before);
 	});
 	it("reports a bad --pi as unavailable, a bad flag as misuse, and a conflicting repeat as an error", async () => {

@@ -90,6 +90,11 @@ export interface EndoDoctorReportV0 {
 		capabilitiesFingerprintId: string | null;
 		/** True when the capabilities were derived for another identity than the latest recorded one: not current. */
 		capabilitiesStale: boolean;
+		/**
+		 * True when the installed Pi's identity is known to differ from the recorded one, or cannot be compared with it
+		 * (another identity basis): the capabilities describe the recorded runtime, not necessarily the installed one.
+		 */
+		capabilitiesDescribeOtherIdentity: boolean;
 		/** How the read-only open classified the log (torn tail, failed frame), as recorded. */
 		logDamage: string | null;
 		capabilities: EndoCapabilityStateEntryV0[];
@@ -282,6 +287,7 @@ export async function endoDoctorV0(
 		identityBasisDiffers: null,
 		capabilitiesFingerprintId: null,
 		capabilitiesStale: false,
+		capabilitiesDescribeOtherIdentity: false,
 		logDamage: null,
 		capabilities: [],
 		reason: null,
@@ -358,6 +364,8 @@ export async function endoDoctorV0(
 								? true
 								: null;
 				}
+				evidence.capabilitiesDescribeOtherIdentity =
+					evidence.currentMatchesRecorded === false || evidence.identityBasisDiffers === true;
 				evidence.capabilities = state?.capabilities ?? [];
 				evidence.capabilitiesFingerprintId = state?.fingerprintId ?? null;
 				// The state is current only for the identity it was derived for. A newer fingerprint recorded without a
@@ -421,6 +429,7 @@ export async function endoDoctorV0(
 				(evidence.capabilities.length === 0 ||
 					unchecked.length > 0 ||
 					evidence.currentMatchesRecorded === false ||
+					evidence.capabilitiesDescribeOtherIdentity ||
 					evidence.capabilitiesStale));
 		if (blocked !== null && !sealed && wantsCheck)
 			steps.push(
@@ -441,7 +450,11 @@ export async function endoDoctorV0(
 						: " Until then no capability is admitted."
 				}`,
 			);
-		else if (evidence.currentMatchesRecorded === false || evidence.capabilitiesStale)
+		else if (
+			evidence.currentMatchesRecorded === false ||
+			evidence.capabilitiesDescribeOtherIdentity ||
+			evidence.capabilitiesStale
+		)
 			steps.push(
 				`The recorded capabilities do not describe the installed Pi: run ${check} again. endo harness status ${shellWordV0(rootPath ?? "<root>")} explains what changed and what each capability needs.`,
 			);
@@ -526,6 +539,10 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 	if (report.evidence.capabilitiesStale)
 		lines.push(
 			"  capabilities below are STALE (recorded for an earlier identity, or on evidence this version no longer accepts):",
+		);
+	else if (report.evidence.capabilitiesDescribeOtherIdentity)
+		lines.push(
+			"  capabilities below are as RECORDED for the earlier identity above, not established for the installed Pi (a different or incomparable identity); endo harness check records evidence for the installed one:",
 		);
 	for (const entry of report.evidence.capabilities)
 		lines.push(

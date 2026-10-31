@@ -56,7 +56,8 @@ A capability's standing in the report is never stronger than what was recorded. 
 version of Endophasia no longer accepts the evidence behind it (a newer adapter, mapping, suite or check definition).
 That case can arise without any harness change, after you update Endophasia itself. **Not derived** means a runtime was
 identified but no standing was derived for it yet, for example when `identify` ran and nothing followed. It is not
-reported as unverified.
+reported as unverified. **Unidentified** means the latest identification failed (the executable is gone or will not answer): the last
+identified runtime is shown as such, and every capability is unverified until the runtime is identified again.
 
 ## What evidence does and does not carry over
 

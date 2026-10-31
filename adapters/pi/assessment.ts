@@ -37,6 +37,8 @@ export function piAssessmentV0(registry: Pick<EndoHarnessRegistryV0, "attachment
 }
 
 const HOW: Record<EndoReestablishV0, string> = {
+	"identify-runtime":
+		"make the selected Pi identifiable again (endo doctor shows why it is not), then endo harness check",
 	"offline-check": "endo harness check (offline; no prompt, no provider call)",
 	"live-study-with-consent": "endo harness study --authorize-live-study (agent work; may cost provider usage)",
 	"release-review-or-live-study":
@@ -53,14 +55,21 @@ export function renderPiAssessmentV0(assessment: EndoHarnessAssessmentV0): strin
 	lines.push(
 		`Upstream assessment for ${assessment.attachment} (from recorded state; the installed Pi was not examined)`,
 	);
-	lines.push(`  Current:  ${describe(assessment.current)}`);
+	lines.push(
+		assessment.unidentified === null
+			? `  Current:  ${describe(assessment.current)}`
+			: `  Current:  UNIDENTIFIED since ${assessment.unidentified.at}: ${assessment.unidentified.failure}`,
+	);
 	if (assessment.previous !== null) {
-		lines.push(`  Previous: ${describe(assessment.previous)}`);
 		lines.push(
-			assessment.change === null
-				? "  Changes:  no change record links the two"
-				: `  Changes:  ${assessment.change.differences.join(", ")}; version order ${assessment.change.versionOrder} (a lower version is not assumed safer, nor a higher one compatible)`,
+			`  ${assessment.unidentified === null ? "Previous:" : "Last identified:"} ${describe(assessment.previous)}`,
 		);
+		if (assessment.unidentified === null)
+			lines.push(
+				assessment.change === null
+					? "  Changes:  no change record links the two"
+					: `  Changes:  ${assessment.change.differences.join(", ")}; version order ${assessment.change.versionOrder} (a lower version is not assumed safer, nor a higher one compatible)`,
+			);
 	}
 	for (const level of assessment.levels)
 		lines.push(`  ${level.reached ? "[x]" : "[ ]"} ${level.level}: ${level.detail}`);
@@ -78,7 +87,12 @@ export function renderPiAssessmentV0(assessment: EndoHarnessAssessmentV0): strin
 			);
 	}
 	const missing = assessment.capabilities.filter((entry) => entry.reestablish !== null);
-	for (const how of ["offline-check", "live-study-with-consent", "release-review-or-live-study"] as const) {
+	for (const how of [
+		"identify-runtime",
+		"offline-check",
+		"live-study-with-consent",
+		"release-review-or-live-study",
+	] as const) {
 		const names = missing.filter((entry) => entry.reestablish === how).map((entry) => entry.capability);
 		if (names.length > 0) lines.push(`  To establish ${names.join(", ")}: ${HOW[how]}`);
 	}

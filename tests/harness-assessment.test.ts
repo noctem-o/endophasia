@@ -314,6 +314,47 @@ describe("the upstream-change assessment", () => {
 		expect(entry(a, "session.identity").reason).toContain("no capability state has been derived");
 	});
 
+	it("honours a failed identification after a successful check, until the runtime is identified again", () => {
+		const checked = observe(EMPTY, v104, { check: true });
+		const failure = piChangeV0({
+			attachment: "pi.default",
+			previous: v104,
+			current: null,
+			failure: "the Pi executable /usr/bin/pi was not found",
+			at: "2026-10-21T10:00:00.000Z",
+		});
+		const failed: History = {
+			...checked,
+			changes: [...checked.changes, failure],
+			states: [...checked.states, stateOf(null, checked.evidence, "2026-10-21T10:00:00.000Z")],
+		};
+		const a = assess(failed);
+		expect(a.current).toBeNull();
+		expect(a.unidentified).toEqual({
+			at: "2026-10-21T10:00:00.000Z",
+			failure: "the Pi executable /usr/bin/pi was not found",
+		});
+		expect(a.previous?.version).toBe("1.0.4");
+		for (const c of a.capabilities) {
+			expect(c.effective).toBe("unverified");
+			expect(c.reestablish).toBe("identify-runtime");
+		}
+		expect(entry(a, "session.identity")).toMatchObject({ previous: "admitted", recorded: "unverified" });
+		expect(a.levels.find((l) => l.level === "identity-observed")?.reached).toBe(false);
+		expect(a.comparisons.constrained).toBe(true);
+		const text = renderPiAssessmentV0(a).join("\n");
+		expect(text).toContain("UNIDENTIFIED since 2026-10-21T10:00:00.000Z");
+		expect(text).toContain("session.identity: admitted -> unverified");
+		expect(text).not.toContain("Changes:");
+		NEVER_STRONGER({ ...a, capabilities: a.capabilities.filter((c) => c.recorded !== null) });
+		// Identified again (same runtime, strong identity): the evidence applies again.
+		const back = fingerprint({ version: "1.0.4", sha: "1".repeat(64), at: "2026-10-22T10:00:00.000Z" });
+		const recovered = observe(failed, back);
+		const b = assess(recovered);
+		expect(b.unidentified).toBeNull();
+		expect(entry(b, "session.identity")).toMatchObject({ effective: "admitted", reestablish: null });
+	});
+
 	it("does not stand on evidence a state names but the registry lacks", () => {
 		const history = observe(EMPTY, v104, { check: true });
 		const a = assess({ ...history, evidence: [] });
@@ -448,6 +489,27 @@ describe("harness status and check against the fake Pi", () => {
 		});
 		expect(one.stderr).toContain("from recorded state; the installed Pi was not examined");
 		expect(one.stderr).toContain("session.identity: admitted -> unverified (changed: identity)");
+	});
+
+	it("reports an executable that disappeared after a check as unidentified, not with its old standings", async () => {
+		const { install, root } = setup("1.0.4");
+		const first = new PiAttachmentV0({ root, executable: install.bin, env: fakePiEnv(), requestTimeoutMs: 10_000 });
+		await first.identify();
+		await first.checkLocal();
+		const gone = new PiAttachmentV0({
+			root,
+			executable: join(root, "no-such-pi"),
+			env: fakePiEnv(),
+			requestTimeoutMs: 10_000,
+		});
+		await gone.identify();
+		await gone.checkLocal();
+		const out = await status([root]);
+		const assessment = (JSON.parse(out.stdout) as { assessment: EndoHarnessAssessmentV0 }).assessment;
+		expect(assessment.current).toBeNull();
+		expect(assessment.unidentified).not.toBeNull();
+		expect(assessment.capabilities.filter((c) => c.effective !== "unverified")).toEqual([]);
+		expect(out.stderr).toContain("UNIDENTIFIED since");
 	});
 
 	it("creates nothing for an attachment with no records", async () => {

@@ -55,7 +55,11 @@ export interface EndoAssessedObservationV0 {
 }
 
 /** How a capability can be re-established. Consent is the operator's, given per run; it is not a permission. */
-export type EndoReestablishV0 = "offline-check" | "live-study-with-consent" | "release-review-or-live-study";
+export type EndoReestablishV0 =
+	| "identify-runtime"
+	| "offline-check"
+	| "live-study-with-consent"
+	| "release-review-or-live-study";
 
 export interface EndoAssessedCapabilityV0 {
 	capability: string;
@@ -87,6 +91,11 @@ export interface EndoHarnessAssessmentV0 {
 	runtime: string | null;
 	/** Always "recorded": the report reads the registry and examines no executable. */
 	basis: "recorded";
+	/**
+	 * Set when the latest recorded observation failed (no fingerprint could be taken). `current` is then null and
+	 * `previous` is the last runtime that was identified: nothing recorded for it applies until identification succeeds.
+	 */
+	unidentified: { at: string; failure: string } | null;
 	current: EndoAssessedObservationV0 | null;
 	/** The latest recorded observation with a different identity than the current one, or null. */
 	previous: EndoAssessedObservationV0 | null;
@@ -230,11 +239,22 @@ export function assessEndoHarnessUpgradeV0(input: {
 	build: EndoHarnessBuildV0;
 }): EndoHarnessAssessmentV0 {
 	const { fingerprints, build } = input;
-	const current = fingerprints.at(-1) ?? null;
+	// The latest observation decides: a failed identification after a successful one leaves the runtime unidentified,
+	// and the last identified runtime becomes the previous one. Its standings are history, not current.
+	const lastChange = input.changes.at(-1) ?? null;
+	const failed = lastChange?.kind === "collection-failed" ? lastChange : null;
+	const unidentified = failed === null ? null : { at: failed.at, failure: failed.failure ?? "unknown failure" };
+	const lastIdentified = fingerprints.at(-1) ?? null;
+	const current = unidentified === null ? lastIdentified : null;
 	const previous =
-		current === null
-			? null
-			: ([...fingerprints].reverse().find((f) => f.identity.digest !== current.identity.digest) ?? null);
+		unidentified !== null
+			? lastIdentified
+			: current === null
+				? null
+				: ([...fingerprints].reverse().find((f) => f.identity.digest !== current.identity.digest) ?? null);
+	// What was recorded at the failure: the state derived for no fingerprint, when it is the latest state.
+	const unidentifiedState =
+		unidentified !== null && input.states.at(-1)?.fingerprintId === null ? input.states.at(-1)! : null;
 	const byId = new Map(input.evidence.map((record) => [record.id, record]));
 	const currentState = stateFor(current, fingerprints, input.states);
 	const previousState = stateFor(previous, fingerprints, input.states);
@@ -254,12 +274,17 @@ export function assessEndoHarnessUpgradeV0(input: {
 		const before: EndoCapabilityStateEntryV0 | null =
 			previousState?.capabilities.find((entry) => entry.capability === id) ?? null;
 		const now: EndoCapabilityStateEntryV0 | null =
-			currentState?.capabilities.find((entry) => entry.capability === id) ?? null;
+			(unidentified === null ? currentState : unidentifiedState)?.capabilities.find(
+				(entry) => entry.capability === id,
+			) ?? null;
 		const beforeEvidence = before?.evidenceId == null ? null : (byId.get(before.evidenceId) ?? null);
 		const nowEvidence = now?.evidenceId == null ? null : (byId.get(now.evidenceId) ?? null);
 		let effective: EndoAssessedCapabilityV0["effective"];
 		let reason: string;
-		if (now === null) {
+		if (unidentified !== null) {
+			effective = "unverified";
+			reason = `the runtime could not be identified at ${unidentified.at} (${unidentified.failure}); no evidence applies until it is identified again`;
+		} else if (now === null) {
 			effective = "not-derived";
 			reason =
 				current === null
@@ -281,7 +306,7 @@ export function assessEndoHarnessUpgradeV0(input: {
 			reason = now.reason;
 		}
 		let changed: EndoEvidenceDependencyV0[] = [];
-		if (beforeEvidence !== null) {
+		if (beforeEvidence !== null && unidentified === null) {
 			changed =
 				nowEvidence !== null
 					? endoEvidenceDependencyDiffV0(beforeEvidence, nowEvidence)
@@ -298,7 +323,7 @@ export function assessEndoHarnessUpgradeV0(input: {
 			effective,
 			reason: reason.slice(0, 2048),
 			changed,
-			reestablish: stands ? null : REESTABLISH[requires],
+			reestablish: stands ? null : unidentified !== null ? "identify-runtime" : REESTABLISH[requires],
 		};
 	});
 
@@ -317,9 +342,11 @@ export function assessEndoHarnessUpgradeV0(input: {
 			level: "identity-observed",
 			reached: current !== null,
 			detail:
-				current === null
-					? "no observation is recorded"
-					: `recorded ${current.observedAt} (${current.identity.confidence} identity); this report did not examine the installed executable`,
+				unidentified !== null
+					? `the latest identification failed at ${unidentified.at}: ${unidentified.failure}`
+					: current === null
+						? "no observation is recorded"
+						: `recorded ${current.observedAt} (${current.identity.confidence} identity); this report did not examine the installed executable`,
 		},
 		{
 			level: "protocol-checked",
@@ -359,13 +386,14 @@ export function assessEndoHarnessUpgradeV0(input: {
 		limitations.push(
 			"The current identity is reduced-confidence: two different runtimes could share it, so no evidence carries across its observations.",
 		);
-	if (lost.length > 0 && change === null && previous !== null)
+	if (lost.length > 0 && change === null && previous !== null && unidentified === null)
 		limitations.push("No change record links the two runtimes, so which identity facts differ is not known.");
 	return {
 		schemaVersion: "endo.harness-assessment.v0",
 		attachment: input.attachment,
 		runtime: current?.runtime ?? null,
 		basis: "recorded",
+		unidentified,
 		current: current === null ? null : observation(current),
 		previous: previous === null ? null : observation(previous),
 		change:
@@ -375,13 +403,19 @@ export function assessEndoHarnessUpgradeV0(input: {
 		levels,
 		capabilities,
 		comparisons:
-			previous === null
-				? { constrained: false, detail: "one runtime identity is recorded for this attachment" }
-				: {
+			unidentified !== null
+				? {
 						constrained: true,
 						detail:
-							"runs recorded under the previous identity came from a different runtime: they are not like-for-like with current runs whatever the checks say, and trajectory comparisons flag runtime-fingerprint-differs",
-					},
+							"the current runtime is unidentified: no run can be compared with recorded ones as the same runtime",
+					}
+				: previous === null
+					? { constrained: false, detail: "one runtime identity is recorded for this attachment" }
+					: {
+							constrained: true,
+							detail:
+								"runs recorded under the previous identity came from a different runtime: they are not like-for-like with current runs whatever the checks say, and trajectory comparisons flag runtime-fingerprint-differs",
+						},
 		limitations,
 	};
 }

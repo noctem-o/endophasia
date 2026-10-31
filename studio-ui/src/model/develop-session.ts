@@ -93,6 +93,10 @@ export function presentLivePi(status: WorkbenchStatus | null, unreachable: boole
 				"live-transcript": connected
 					? supported(BROKER)
 					: unavailable("There is no admitted connection to this session now."),
+				// Relayed when the model supplies it in structured form (Pi's thinking blocks); a turn without any had none supplied.
+				"live-reasoning": connected
+					? supported(BROKER)
+					: unavailable("There is no admitted connection to this session now."),
 				lifecycle: unsupported(
 					"A live session is not reduced to a recorded lifecycle; a recording is a separate entry.",
 				),
@@ -162,6 +166,7 @@ export function presentRecorded(row: EndoCockpitDevelopSessionRowV0, generation:
 			observe: {
 				"live-status": unsupported("A recording has no live process to ask."),
 				"live-transcript": unsupported("A recording has no live conversation."),
+				"live-reasoning": unsupported("Reasoning is never recorded: it is held only in the live session's memory."),
 				lifecycle: inspectable ? supported("cockpit-develop") : unavailable(why),
 				activity: inspectable ? supported("cockpit-develop") : unavailable(why),
 			},

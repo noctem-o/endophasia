@@ -436,14 +436,22 @@ describe("one real prompt, end to end, with the fake Pi", () => {
 			expect(view).toMatchObject({ state: "accepted" });
 			expect(["started", "queued", "handled"]).toContain(view.disposition);
 			// The private transcript has the user's prompt and the assistant's reply; the run is followed to its end.
-			let transcript: { items: { kind: string; role?: string; text?: string; state?: string }[] } = { items: [] };
+			let transcript: {
+				items: { kind: string; role?: string; parts?: { kind: string; text: string }[]; state?: string }[];
+			} = { items: [] };
+			const text = (role: string) =>
+				transcript.items
+					.find((x) => x.role === role)
+					?.parts?.filter((p) => p.kind === "text")
+					.map((p) => p.text)
+					.join("");
 			for (let i = 0; i < 400; i++) {
 				transcript = (await getJson("transcript", grant)) as typeof transcript;
 				if (transcript.items.some((x) => x.kind === "run" && x.state === "ended")) break;
 				await settle(25);
 			}
-			expect(transcript.items.find((x) => x.role === "user")?.text).toContain("Count to five");
-			expect(transcript.items.find((x) => x.role === "assistant")?.text).toBeTruthy();
+			expect(text("user")).toContain("Count to five");
+			expect(text("assistant")).toBeTruthy();
 			for (let i = 0; i < 400 && session.runActive; i++) await settle(25);
 			expect(session.runActive).toBe(false);
 			expect(await getJson("status")).toMatchObject({ run: "idle", command: { state: "accepted" } });

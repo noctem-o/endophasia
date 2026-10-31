@@ -22,6 +22,7 @@ import { projectView } from "./Changes.tsx";
 import { Arrival, Beacon, FieldLayer, FieldLegend, useReducedMotion } from "./Field.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
+import type { ReasoningView } from "./Reasoning.tsx";
 import { SessionInspector } from "./SessionInspector.tsx";
 
 function EventDialog({
@@ -87,6 +88,7 @@ export function DevelopWorkspace({
 	observeBlocked,
 	workbench,
 	project,
+	reasoning,
 	onObserveLive,
 	appearance = "instrument",
 	paused = false,
@@ -100,6 +102,8 @@ export function DevelopWorkspace({
 	onPause?(paused: boolean): void;
 	/** The worktree context of the live launch (read-only Git, read when asked). */
 	project: ProjectApi;
+	/** How model-provided reasoning is shown (display only, memory only). */
+	reasoning: ReasoningView;
 	/** The workbench (the broker's live view), or a state saying the server has none. */
 	workbench: Workbench;
 	/** Open Observe on a live session by its alias. */
@@ -160,8 +164,11 @@ export function DevelopWorkspace({
 		return () => document.removeEventListener("keydown", key);
 	}, [narrow, state.stage, dispatch, workbench.state.availability, workbench.state.view, project.state.view]);
 
-	// The sessions list is a drawer at the widths where three columns do not fit; it closes when something is chosen, and on Escape.
+	// The sessions list is a drawer at the widths where three columns do not fit (and, drawn as Field, wherever a live session is open);
+	// it closes when something is chosen, and on Escape.
 	const [drawer, setDrawer] = useState(false);
+	// Field only: the dock beside a live conversation (changes, then context) can be closed for a focused reading width. Memory only.
+	const [dock, setDock] = useState(true);
 	const liveShown = workbench.state.availability === "available" && workbench.state.view === "live";
 	// biome-ignore lint/correctness/useExhaustiveDependencies: choosing a session (or the live one) closes the drawer
 	useEffect(() => setDrawer(false), [state.selected, liveShown]);
@@ -399,6 +406,11 @@ export function DevelopWorkspace({
 			data-fill={liveMode && !narrow ? "true" : "false"}
 			data-appearance={appearance}
 			data-surface={field ? surface : undefined}
+			// The field's state, for the horizon under the run strip (it says the same as the legend, in light). Typed state only.
+			data-motion={field ? signal.motion : undefined}
+			data-texture={field ? signal.texture : undefined}
+			data-attention={field ? signal.attention : undefined}
+			data-dock={field ? (dock ? "open" : "closed") : undefined}
 		>
 			{field ? <FieldLayer signal={signal} /> : null}
 			{narrow ? (
@@ -440,7 +452,13 @@ export function DevelopWorkspace({
 						</>
 					) : state.stage === "activity" ? (
 						liveMode ? (
-							<LiveConversation wb={workbench} project={project} arrival={arrival} beacon={beacon} />
+							<LiveConversation
+								wb={workbench}
+								project={project}
+								reasoning={reasoning}
+								arrival={arrival}
+								beacon={beacon}
+							/>
 						) : (
 							open
 						)
@@ -469,19 +487,39 @@ export function DevelopWorkspace({
 						<LiveConversation
 							wb={workbench}
 							project={project}
+							reasoning={reasoning}
 							arrival={arrival}
 							beacon={beacon}
 							leading={
-								<button
-									type="button"
-									className="btn small-btn sessions-toggle"
-									data-testid="sessions-toggle"
-									aria-expanded={drawer}
-									aria-controls="develop-nav-wrap"
-									onClick={() => setDrawer((open) => !open)}
-								>
-									Sessions
-								</button>
+								<>
+									<button
+										type="button"
+										className="btn small-btn sessions-toggle"
+										data-testid="sessions-toggle"
+										aria-expanded={drawer}
+										aria-controls="develop-nav-wrap"
+										onClick={() => setDrawer((open) => !open)}
+									>
+										Sessions
+									</button>
+									{field ? (
+										<button
+											type="button"
+											className="btn small-btn dock-toggle"
+											data-testid="dock-toggle"
+											aria-expanded={dock}
+											aria-controls="develop-context"
+											title={
+												dock
+													? "Close the changes and context beside the conversation, for a wider reading measure."
+													: "Show the changes and context beside the conversation."
+											}
+											onClick={() => setDock((open) => !open)}
+										>
+											{dock ? "Focus" : "Changes & context"}
+										</button>
+									) : null}
+								</>
 							}
 						/>
 					) : field && state.selected === null ? (

@@ -114,6 +114,9 @@ Live state comes from the attached process, not the log. The broker reports a cl
   arrived before the broker started and so has no text.
 - Tool arguments and results are folded and are shown, if at all, only in the live view under an explicit reveal; they are not
   copied anywhere.
+- Model-provided reasoning, where the runtime supplies it in structured form, is part of the same private transcript and follows every
+  rule above ([develop-reasoning.md](develop-reasoning.md)). It is shown folded and labelled as what the model emitted, never as an
+  account of how it computed its answer.
 
 ## 7. Updates and performance
 
@@ -252,10 +255,12 @@ The operator approved (1) the broker serves the workbench page itself, (2) termi
 - **Pi retains the conversation itself.** A persistent Pi session writes its own session file under the store root
   (`<root>/pi-sessions/`), as it always has. That is **Pi's** retention, outside Endophasia's evidence, and the workbench cannot
   remove it. What Endophasia writes (events, registries, runtime-text and artifact stores) never holds the prompt or reply text; a
-  test scans for it. The workbench's own transcript is separate, in memory, bounded (400 items, 1 MiB, 32 KiB per message) and
-  cleared when the session ends or the broker is disposed.
-- **Tool arguments and results are not kept at all** in v0, not even in memory: the transcript holds a tool's name and outcome only.
-  Reasoning ("thinking") text is never kept.
+  test scans for it. The workbench's own transcript is separate, in memory, bounded (400 items and 2 MiB in all; 32 KiB of text and
+  96 KiB of reasoning per message) and cleared when the session ends or the broker is disposed.
+- **Tool arguments and results are not kept at all**, not even in memory: the transcript holds a tool's name and outcome only.
+- **Model-provided reasoning** is kept in that same transcript, under the same rules, when Pi supplies it as structured `thinking`
+  blocks; a redacted block is kept as withheld, with no text. It never reaches evidence, logs or the read-only Studio; a test scans the
+  store for it. See [develop-reasoning.md](develop-reasoning.md).
 - **The prompt text is shown in full on the operator's terminal** for approval (it is their own terminal and they must see exactly what
   they authorise); control characters are refused so a prompt cannot drive the terminal. Terminal scrollback is the operator's.
 - **Unreachable is not ended.** If the page cannot reach the broker it says *connection unknown*; the broker closing with the process

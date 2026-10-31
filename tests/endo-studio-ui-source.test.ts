@@ -57,6 +57,8 @@ describe("the frontend's source", () => {
 				"develop/Surface.tsx",
 				"develop/Field.tsx",
 				"develop/FieldCanvas.tsx",
+				"develop/Reasoning.tsx",
+				"model/reasoning.ts",
 				"model/field.ts",
 				"model/ledger.ts",
 				"model/develop.ts",
@@ -288,6 +290,14 @@ describe("the frontend's source", () => {
 		// The workspace hands the renderer the signal and nothing else.
 		const field = sources["develop/Field.tsx"]!;
 		expect(field.match(/<FieldCanvas [^>]*\/>/g)).toEqual(["<FieldCanvas signal={signal} />"]);
+		// Model-provided reasoning never reaches the field: not its text, its size, its presence, nor the message being written. The signal
+		// is built from typed state and the count of items only.
+		const workspace = sources["develop/DevelopWorkspace.tsx"]!;
+		const call = workspace.slice(workspace.indexOf("const signal = fieldSignal({"));
+		const args = call.slice(0, call.indexOf("});"));
+		expect(args).not.toMatch(/\b(reasoning|open|parts|text)\b/);
+		expect(args).toContain("received: wbs.items.length,");
+		expect(sources["model/field.ts"]).not.toMatch(/reasoning|thinking/i);
 	});
 
 	it("makes text a React child only: no component builds an element from a record's string", () => {
@@ -333,10 +343,18 @@ describe("the page, style sheet and icon", () => {
 		expect(css).toMatch(/repeating-linear-gradient/);
 	});
 
-	it("runs no animation except the loading spinner, which exists only while the first read is running", () => {
+	it("runs no animation except the loading spinner and, drawn as Field, the horizon while the field is flowing and motion is allowed", () => {
 		const animations = [...css.matchAll(/animation:[^;]*;/g)].map((match) => match[0]);
-		expect(animations).toEqual(["animation: spin 0.9s linear infinite;", "animation: none;"]);
-		expect(css.match(/@keyframes/g)?.length).toBe(1);
+		expect(animations).toEqual([
+			"animation: spin 0.9s linear infinite;",
+			"animation: none;",
+			"animation: horizon 6.5s linear infinite;",
+		]);
+		expect(css.match(/@keyframes/g)?.length).toBe(2);
+		// The horizon moves only under the reduced-motion query's "no preference", and only while the field's signal says it is flowing.
+		expect(css).toMatch(
+			/@media \(prefers-reduced-motion: no-preference\) \{\s*\.develop\[data-appearance="field"\]\[data-motion="current"\] \.develop-live \.run-strip::after \{\s*animation: horizon/,
+		);
 	});
 
 	it("keeps ivory for selection and focus: no provenance, status or flag colour is the selection colour", () => {

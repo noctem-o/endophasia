@@ -1,253 +1,285 @@
 # DEVELOP: the Field appearance
 
-DEVELOP can be drawn two ways. **Instrument** is the default and is unchanged. **Field** is optional: the same workspace, the same state,
-the same controls, drawn as a survey sheet, with a contour field in text moving slowly behind the work. Field changes how things look. It
-does not change what DEVELOP can do, what it reads, or what it claims.
+DEVELOP can be drawn two ways. **Instrument** is the default. **Field** is optional: the same workspace, the same state, the same
+controls, drawn as a survey read at night. Field changes how things look and where secondary panels sit. It does not change what DEVELOP
+can do, what it reads, or what it claims.
 
-Choose it with the **Instrument | Field** switch in the top bar. The switch is shown on DEVELOP only. The choice lives in page memory:
-the page keeps no storage ([studio-ui-architecture.md](studio-ui-architecture.md) §5), so a reload is Instrument again. Switching keeps
-the draft, the file being read, the Conversation or Changes view, and the conversation's scroll position, because every hook lives in
-the shell and the component tree does not change.
+Choose it with the **Instrument | Field** switch in the top bar, which is shown on DEVELOP only. The choice lives in page memory: the page
+keeps no storage ([studio-ui-architecture.md](studio-ui-architecture.md) §5), so a reload is Instrument again. Every hook lives in the
+shell and the component tree does not change, so switching keeps the draft, the file being read, the Conversation or Changes view, the
+conversation's scroll position, the reasoning preference and the traces opened by hand.
 
-![Arrival on the read-only server](images/field-arrival-readonly-1440.png)
+![A live conversation drawn as Field (synthetic fixture)](images/field-conversation-1440.png)
 
-## 1. The idea
+This document describes the **second iteration**: the night survey. It came with model-provided reasoning
+([develop-reasoning.md](develop-reasoning.md)) and a new composition for live sessions. §8 keeps what the first iteration learned.
+
+## 1. Using it
+
+- **Field:** top bar, *Instrument | Field*.
+- **Reasoning:** *Reasoning: Folded | Shown* in the conversation's header. *Shown* opens every trace as it arrives; any one trace can still
+  be opened or folded by itself, and *Folded* folds everything again. Display only: the model's thinking setting is not touched. The
+  preference applies in both appearances.
+- **Sessions:** during a live session, Field keeps the sessions list in a drawer at every width. Open it with **Sessions** in the header.
+  Choosing a session, Escape, or a click outside closes it.
+- **Focus:** **Focus** closes the dock (changes and context) for a wider reading measure. **Changes & context** brings it back. Memory
+  only.
+- **Reading changes:** the **Changes** tab, or a file in the dock. `j`/`k` (or `]`/`[`) step through files, PageUp/PageDown scroll the
+  diff, and Escape returns to the conversation. The draft and STOP stay in place throughout.
+- **Back to normal:** *Instrument* in the top bar, or reload. Motion: **Pause motion** in the legend, or the system's reduced-motion
+  setting.
+
+## 2. The idea
 
 The product's question is **what the system knows, what it does not know, what it can do, and what needs a person.** Field gives that
 question a picture and a page.
 
-- **The picture is a survey.** A contour map drawn in characters: land is filled with a light texture that thickens with height, and the
-  contour lines are the gaps between terraces. The sea is a sparse stipple. It is an instrument's view of terrain, not a creature, and it
-  stands for nothing it cannot show. Its motion is tied to typed state (§3), and a legend under the workspace says, in one line, what the
-  field is showing right now.
-- **The page is a ledger.** Where there is nothing to read yet, DEVELOP says what is the case in one sentence ("pi.alpha is connected
-  and idle.", "Nothing is attached here.", "The broker did not answer."). A status the page is not re-reading is said in the past: "pi.alpha
-  was connected and idle at the last read.", with the time the page read it, which is never presented as the time Pi said it. Under it are
-  four columns: **Known**, **Not known**, **Possible here** and **Yours**. Each line carries the instrument's own provenance mark: observed disc, reported half disc, unavailable dashed
-  ring, a solid square for what was recorded, and a rule for how the system works. *Yours* always says that approval happens in the
-  attached terminal and that this page can only request.
-- **When there is work, Field steps back.** The conversation sits on one calm surface with a reading measure (46 rem) and larger text.
-  The operator's own words sit on a lifted plate; the agent's are set on the page; tool calls are quiet marginal lines. The rail and the
-  context column read as annotations. The field dims behind a conversation, dims further and stops while changes are read, and stops for
-  a recording.
+- **The picture is a survey.** A contour map drawn in characters: land filled with a texture that thickens with height, contour lines
+  left as gaps, the sea a sparse stipple. It is an instrument's view of terrain, not a creature. Its motion is tied to typed state, and a
+  legend says in words what it shows.
+- **At night.** The ground is near black, so an OLED panel's pixels are off wherever nothing is shown. The terrain is drawn in light,
+  brighter as the ground rises, like a phosphor chart. The words sit in a dark **clearing**: black under the reading measure and a
+  margin either side, terrain through the rest of the surface. On a wide screen, most of the surface is terrain where nothing is read.
+- **The horizon.** One line under the run strip carries the field's state where the eye already is, saying in light what the legend
+  says in words:
+  - a hairline when still;
+  - a little brighter when drifting;
+  - the reported hue, with a slow light along it, while Pi reports a run open *and* the page is re-reading;
+  - amber while something waits for the terminal;
+  - dashed when the broker did not answer.
+- **The page is a ledger.** Where there is nothing to read yet, DEVELOP says what is the case in one sentence, with four columns under
+  it: *Known*, *Not known*, *Possible here* and *Yours*.
+- **Reasoning is strata.** A model-provided trace is a one-line disclosure in the reported hue under a mono label, marked by fine
+  horizontal strata. Open, it sits on a faint wash of that hue with its own rule. It never looks like the answer and is never brighter
+  than it.
 
-The colour grammar is the instrument's: hue is provenance, amber is attention, red is fault, ivory is selection. The field itself is ink.
-Amber appears only when something waits for the operator.
+The colour grammar is the instrument's:
+- **Hue is provenance.** A run Pi reports and the reasoning it relays are in the *reported* blue.
+- **Amber** is attention, appearing only when something waits for the operator.
+- **Red** is fault.
+- **Ivory** is selection and focus.
 
-## 2. Directions considered
+The terrain's resting ink is a cool, nearly neutral grey.
 
-Three genuinely different directions were weighed against the references (the HorizonX ASCII dashboards, Nocturne and BrainX, Agentaps,
-Tern, Mains, o8) and the trust model.
+## 3. Directions considered (second iteration)
+
+Three directions were weighed against the references in the operator's collection. They were:
+- Kurage's ambient arrival and command palette;
+- Nocturne's and BrainX's dense dark panels;
+- Agentaps' working session;
+- Tern's review queue;
+- Mains' side-by-side context.
+
+The references informed atmosphere and ergonomics. Nothing was copied.
 
 | Direction | What it was | Verdict |
 | :-- | :-- | :-- |
-| **Specimen** | A textmode organism (in the vein of the reference ASCII creatures) that breathes behind a centred composer | **Rejected.** A creature reads as a mind, so it would present the model's "life" and invite a reading of cognition. That is exactly what the workbench must not draw. It is also the references' own idea, and a centred hero composer is wrong for a page that may offer no input at all. |
-| **Threshold** | The page organised around its authority boundary: a horizon between what the browser can do (request) and what only the terminal can do (approve), with requests drawn as crossing it | **The strongest alternative.** It was kept in part: the beacon (§4) and the ledger's *Yours* column make the boundary visible. As a whole layout it put a diagram where the operator reads and writes, and it made the arrival about authority rather than about the session. |
-| **Field** | A survey: a contour field in text plus the ledger of what is and is not known | **Chosen.** It is original among the references, it carries the product's epistemic stance (surveyed versus not surveyed), it can be still without looking broken (a recording is a map, not a film), and it retreats cleanly behind dense work. |
+| **Marginalia** | A manuscript: the conversation as the text, reasoning as glosses in a margin column aligned with each turn, changes as footnotes | **Rejected.** Alignment fails with long traces and on narrow screens. Reasoning beside the answer at equal width gives it the answer's weight, the reverse of what it deserves. |
+| **Control room** | A dense operations board: run timeline with turn ticks and reasoning bands, metric tiles, three persistent panels | **Rejected.** It implies timing and metrics the workbench does not have (a polled transcript has no per-turn times), and its density works against hours of reading. It also made STOP one tile among many. |
+| **Night survey** | Field carried into a near-black, luminous presentation: phosphor terrain in a clearing, a horizon line for state, strata for reasoning, the conversation given the width | **Chosen.** It keeps Field's original idea (surveyed versus not surveyed) and makes it more distinctive on the operator's OLED screen. It is the cheapest to make honest: every light has a typed source and a sentence in the legend. It costs no more than the first field. |
 
-## 3. What the field may show
+The first iteration's directions (Specimen, Threshold, Field) are in §8.
+
+## 4. Composition
+
+During a live session, these stay in view: the run strip with **STOP**, the conversation, the composer, and the dock beside them.
+The dock holds the worktree's changes, then the session's context: worktree, session, controls offered, and source and capabilities.
+
+| Width | Live session, Field |
+| :-- | :-- |
+| ≥ 2200 px | Conversation and dock; the measure grows to 54 rem and the text a size; sessions in a drawer. **Focus** gives a centred measure in terrain. |
+| 1024–2199 px | Conversation and dock (`clamp(300px, 23vw, 420px)`); sessions in a drawer. |
+| < 1024 px | One stage at a time, as in Instrument: sessions, conversation, context. The run strip and composer are sticky; the header's tools wrap. |
+
+The questions the brief asked, and the answers this composition gives:
+- **The session rail** is read rarely during live work, so it is a drawer, one press away.
+- **The right-hand side** carries the worktree's changes first, because that is what changes during a coding session. Context follows,
+  because it changes rarely.
+- **Resizable panels** were not built. One closable dock covers the need without a docking framework, a second layout architecture, or
+  stored sizes the page could not keep.
+- **Conversation and diff** remain one surface switched by tabs. STOP and the draft stay in place, and the dock's file list stays
+  visible beside the diff. A side-by-side split of conversation and diff was considered and deferred (§9): it would change the tab
+  semantics both appearances share.
+- **The reasoning preference** sits in the conversation's header, next to Follow. It is a conversation-reading choice, beside the other
+  one.
+
+Instrument keeps its three columns. Its only visible change is the reasoning disclosures and the preference control.
+
+## 5. What the field may show
 
 `studio-ui/src/model/field.ts` turns typed state into the field's signal. It is pure, imports nothing, and never sees text. The renderer is
-given that signal and nothing else.
+given that signal and nothing else, and no reasoning text, size, presence or in-progress state reaches it (pinned in source).
 
-| What the page holds | Motion | Texture | Legend (abridged) |
+| What the page holds | Motion | Ink | Legend (abridged) |
 | :-- | :-- | :-- | :-- |
-| A request waits for approval in the terminal (prompt, steer, queue or stop) | held, amber tint on the high ground | solid | "Held: a steer waits for your approval in the attached terminal. This page cannot approve it." |
-| Changes are being read | still, pushed back | solid | "Still while you read changes." |
-| A recording is open (any recorded state, including `running`) | still | solid | "A recording: the field does not move. Nothing recorded is live." |
-| Read-only server (`endo studio`) | slow drift, follows the pointer in the arrival | solid | "Read-only: the field drifts on its own; it shows no activity." |
-| The broker did not answer | still | **dashed** (the instrument's texture for what is unavailable) | "Broken: … The session may still be running; unreachable is not ended." |
-| The broker says disconnected | still, dimmer | solid | "Still: the broker reports no admitted connection now." |
-| A stop was sent; Pi has not answered | held | solid | "Held: a stop was sent to Pi. Pi answers once the run is idle." |
-| Pi reports a run open **and** the page is re-reading (Follow on, or a request or check open) | directed flow | solid | "Flowing: Pi reports a run open, re-read every few seconds. The motion is not the model's work." |
-| Pi reported a run open, but the page is **not** re-reading | still | solid | "Still: Pi reported a run open at the last read. Not re-reading now; switch Follow on to keep it current." |
-| Pi reports idle, or no run state | slow drift | solid | "Drifting: … The drift is atmosphere, not activity." |
-| The operator paused it, or the system asks for reduced motion | still | — | "Paused by you. …" (the state is still described) |
+| A request waits for approval in the terminal | held | amber on the high ground; horizon amber | "Held: a steer waits for your approval in the attached terminal. This page cannot approve it." |
+| Changes are being read | still, pushed back | resting | "Still while you read changes." |
+| A recording is open | still | resting | "A recording: the field does not move. Nothing recorded is live." |
+| Read-only server (`endo studio`) | slow drift; follows the pointer in the arrival | resting | "Read-only: the field drifts on its own; it shows no activity." |
+| The broker did not answer | still, **dashed**; horizon dashed | resting | "Broken: … unreachable is not ended." |
+| The broker says disconnected | still, dimmer | resting | "Still: the broker reports no admitted connection now." |
+| A stop was sent; Pi has not answered | held | resting | "Held: a stop was sent to Pi. Pi answers once the run is idle." |
+| Pi reports a run open **and** the page is re-reading | directed flow | **reported hue**; horizon with a moving light | "Flowing: Pi reports a run open, re-read every few seconds. The motion is not the model's work." |
+| Pi reported a run open, the page is **not** re-reading | still | resting | "Still: … Not re-reading now; switch Follow on to keep it current." |
+| Pi reports idle, or no run state | slow drift | resting | "Drifting: … The drift is atmosphere, not activity." |
+| Paused, or reduced motion | still (horizon still too) | as above | "Paused by you. …" |
 
-The field follows the pointer only in the arrival and only while it is drifting or flowing anyway: a field the legend calls still, held or
-broken does not move at all. The page's copy of the transcript growing makes one ripple. The signal carries the **count** of items, never the items. That is an
-observation by this page that something arrived, not a measure of anything.
+The reported hue appears only in the flowing state, the one where the page is actually re-reading a report. A stale "run active" is still
+and resting, because a moving or blue field would claim the report is current.
 
-These rules are pinned in `tests/endo-studio-field-model.test.ts`. The most important one is the stale-status rule: with Follow off and
-nothing open, the page stops reading the broker, so a "run active" status may be minutes old, and a moving field would claim it is current.
+## 6. Architecture
 
-## 4. Each working state
-
-| State | What Field does |
+| Module | What changed in this iteration |
 | :-- | :-- |
-| **Arrival** (no session open, or a live session with nothing in its conversation) | The statement and the ledger, over the field at full strength. The recordings line keeps the store's condition: an absent store is "no event store here (absent, which is not empty)", an unopenable one is "not known", an empty one is empty, and a degraded one is "listed from the readable part". Only real controls exist: on `endo studio` there is no input of any kind; on an unpaired workbench the input is the real pairing form; on a paired one it is the real composer, gated by the broker's offers. The ledger's *Possible here* is built from the same offers and their reasons. |
-| **Conversation** | One calm surface with a measure, larger type, a lifted plate for the operator's words, quiet tool lines, run markers as hairlines. The run strip names the session in the sans at 15 px. |
-| **Active run** | STOP is a filled button, last in the run strip, the most visible control. The field flows only while the status is being re-read. |
-| **Approval pending** | A **beacon** under the run strip: "Waiting for you in the attached terminal. Approve or decline the steer there (digest …, until …). This page cannot approve it." It is text, with no control and no hover. The field holds and the high ground turns amber. The cards in the conversation are unchanged and keep their Withdraw. |
-| **Steering or stopping** | Steer and Queue drafts are drawn in a dashed amber field, the instrument's mark for "changes the open run". STOP priority and supersession are the workbench's, untouched. |
-| **Reviewing changes** | The field drops to a sixth of its strength and stops. The diff gets a flat ground. Comparison identity, `j`/`k`, PageUp/PageDown, `Esc`, stale and unconfirmed marks and the draft are the same components as in Instrument. |
-| **Recorded sessions** | The field is still. The activity table, the inspector, the "as recorded" wording and the live/recorded tags are unchanged. |
-| **Unavailable or disconnected** | Unreachable: dashed, still, "unreachable is not ended". Disconnected: still and dimmer. The ledger says the same in words. |
-| **Sizes** | ≥ 1360 px: three columns. 1024–1359 px: the sessions drawer, as in Instrument. < 1024 px: one stage at a time, the ledger above the sessions list, columns collapsing 4 → 2 → 1 by the ledger's own width (container queries). |
+| `develop/Reasoning.tsx` (new) | The trace disclosure, the preference control, and `useReasoningView` (memory only: the preference and the traces opened by hand). |
+| `model/reasoning.ts` (new) | Pure display rules: keys that carry a trace from the snapshot to the completed message, folding, clamping, the head's words. |
+| `develop/Live.tsx` | A message's parts in order; turns memoised by item; the message being written; the scroller's reading-position rules. |
+| `develop/DevelopWorkspace.tsx` | The field's state on the root (`data-motion`, `data-texture`, `data-attention`) for the horizon; the dock and its button (Field only). |
+| `develop/FieldCanvas.tsx` | Ink ramps (resting, reported, amber) instead of one ink; a stronger base. Nothing else. |
+| `studio.css` | The night survey section; shared reasoning styles; one more keyframe (the horizon), run only while flowing and only without reduced motion. |
+| `App.tsx` | Holds the reasoning view beside `appearance`. |
 
-Screenshots (synthetic fixtures only; written by `ENDO_SHOTS_DIR=… npx vitest --run tests/endo-studio-field-browser.test.ts` and a
-scratch harness over the same fixtures):
-[arrival, read-only](images/field-arrival-readonly-1440.png) ·
-[arrival, unpaired workbench](images/field-arrival-unpaired-1440.png) ·
-[conversation 1440](images/field-conversation-1440.png) ·
-[approval pending](images/field-approval-1440.png) ·
-[changes](images/field-changes-1440.png) ·
-[unreachable](images/field-unreachable-1440.png) ·
-[laptop 1366](images/field-conversation-1366.png) ·
-[phone, arrival](images/field-arrival-390.png) ·
-[phone, conversation](images/field-conversation-420.png).
-
-## 5. Architecture
-
-| Module | What it is |
-| :-- | :-- |
-| `App.tsx` | Holds `appearance` and the field's `paused` flag in memory; draws the switch on DEVELOP only; passes both to the workspace. No hook moved. |
-| `develop/DevelopWorkspace.tsx` | Sets `data-appearance` and `data-surface`; builds the field signal and the ledger from the hooks' state; adds the field layer, the legend, the arrival and the beacon. No state, action or element that its keyboard handlers look for changed. |
-| `develop/Live.tsx` | Two optional slots on `LiveConversation`: `arrival` (shown in place of an empty conversation, outside the scroller that follows the newest item, so the statement is read from the top) and `beacon` (under the run strip). Instrument passes neither. |
-| `model/field.ts` | The signal adapter (§3). Pure, no imports. |
-| `model/ledger.ts` | The ledger adapter. Pure; reads the workbench status, the broker's offers, the worktree as last read, and recording counts. |
-| `develop/Field.tsx` | The layer, the legend, the arrival and the beacon, plus `useReducedMotion`. The renderer is loaded from here with the bundle's second dynamic import. |
-| `develop/FieldCanvas.tsx` | The renderer, its own file in the bundle, requested only when Field is first shown. |
-| `studio.css` | One section, scoped to `.develop[data-appearance="field"]`. Transitions only: no keyframes were added, and the pinned animation list is unchanged. |
-
-**The renderer's lifetime and cost.** It uses Canvas 2D (no GPU needed; the acceptance runs with the GPU off), at most 1.5 device pixels
-per CSS pixel and at most 30,000 character cells (a larger window gets a larger face, not more cells). Text moves a cell at a time, so 15
-frames a second is enough where the field is the scene and 8 behind work. There are no frames at all when:
-- the field is still or held;
-- the page is hidden;
-- the operator paused it;
-- the system asks for reduced motion (one still frame is drawn).
-
-Each frame it asks for can be cancelled, and is cancelled on unmount.
-
-The terrain is seeded noise sampled on a half-resolution lattice, so a still frame is the same on every machine. Each row is drawn as one
-`fillText` per strength bucket rather than one call per character. Glyphs are ASCII only, because the bundled Plex Mono is a latin subset.
-The renderer waits for that face before its first frame. If a 2D context cannot be had or is lost, it draws nothing, and a dot-grid
-background in CSS remains. If its file cannot be loaded, the import resolves to nothing, so the field is left out and no error is thrown
-or printed. A failure while it renders is caught by a boundary of its own, so it can never take the conversation, the composer or STOP
-with it. It is hidden under `forced-colors`, and it is `aria-hidden`; the legend carries its meaning in text. It writes its state, frame count and average frame
-cost to the canvas's `data-` attributes, for the tests and the measurements below. These are numbers only, and nothing reads them back.
-
-**Measured** (headless Chromium, GPU off, this machine, steady-state frame time of the moving read-only arrival, exponential average over
-about 60 frames):
+**Cost.** Measured in headless Chromium with the GPU off, on this machine. The moving read-only arrival is the most expensive state,
+taken as an exponential average over its frames:
 
 | Viewport | Frame time | Of which: terrain and rows |
 | :-- | :-- | :-- |
-| 1440 × 900 | 3.1–3.4 ms | 1.2 ms |
-| 2560 × 1440 | 5.4–5.7 ms | 1.8–2.3 ms |
-| 3840 × 2160 | 6.1 ms | 2.2 ms |
+| 1440 × 900 | 3.1 ms | 1.2 ms |
+| 2560 × 1440 | 4.5 ms | 1.7 ms |
+| 3840 × 2160 | 5.1 ms | 2.1 ms |
 
-At 15 frames a second that is about 5–9 % of one core at most. Behind a conversation it is 8 frames a second at lower strength, and zero
-while still. This was not measured on a GPU-accelerated browser, where `fillText` is cheaper. Typing latency was not measured
-separately; a frame is at most a few milliseconds and yields between frames.
+These match the first iteration: a fill colour per strength bucket costs nothing measurable. Frames are drawn at 15 a second where the
+field is the scene and 8 behind work, and none at all when still, hidden, paused or under reduced motion.
+
+The horizon's light is a background-position animation on a one-pixel line. It runs only while the field is flowing.
+
+Typing in the composer, with the conversation's reasoning shown, was measured as key press to the next frame over 40 presses. The
+figures include the test driver's round trips:
+
+| Viewport | Median | p95 |
+| :-- | :-- | :-- |
+| 1440 × 900 | 17 ms | 17 ms |
+| 2560 × 1440 | 17 ms | 65 ms |
+| 3840 × 2160 | 17 ms | 86 ms |
+
+The p95 at the large sizes is software rasterising a large page with the GPU off. It was not measured on a GPU-accelerated browser.
 
 **Accessibility.**
-- The switch is a radio group with a legend, and is keyboard-focusable. The pause control is a button whose label says what it will do.
-- The field is `aria-hidden`, and its meaning is in the legend's text. The beacon is text, not a live region, so it is not announced on
-  every read; the workbench's own polite line is unchanged.
-- Under reduced motion one frame is drawn and the pause control says so. Under `forced-colors` the field is hidden.
-- Focus rings are the instrument's ivory.
-- Contrast (WCAG 2), computed from the tokens on the reading surface `#0f1013`:
+- Contrast (WCAG 2) on the ground `#030405` and the clearing `#060709`:
+  - ink-1: 17.3:1;
+  - ink-2 (the agent's text and traces): 11.9:1;
+  - ink-3 (labels, hints, previews): 6.0:1;
+  - the reported lamp (reasoning labels): 10.2:1;
+  - amber: 11.6:1;
+  - ink-4 (2.8:1) is used for marks only, never text.
+- The field and the horizon are decoration, and their meaning is in the legend's text.
+- Disclosures are buttons with `aria-expanded`/`aria-controls`; the dock button names what it will do.
+- Focus rings are ivory.
+- Under `forced-colors` the field is hidden.
 
-  | Ink | Ratio | Used for |
-  | :-- | :-- | :-- |
-  | ink-1 `#ece8df` | 15.6:1 | conversation text, statements |
-  | ink-2 `#c7c2b7` | 10.7:1 | the agent's text, ledger lines |
-  | ink-3 `#8e8a81` | 5.5:1 | labels, hints, the privacy line, role words |
-  | ink-4 `#64625d` | 3.1:1 | decorative marks only (the tool tilde, disclosure markers), never text |
+**Policy pins changed, each in `tests/endo-studio-ui-source.test.ts`:**
+- two new modules;
+- a second keyframe (`horizon`), allowed only under `prefers-reduced-motion: no-preference` and only for the flowing state;
+- the `fieldSignal(...)` call may not name reasoning, the open message, parts or text.
 
-  The provenance hues on the same ground are 6.3:1 (slate) to 10.2:1 (teal), and amber is 9.6:1.
+Everything else is unchanged: one dynamic import for the renderer, rAF in the renderer only, the renderer's single prop, no storage,
+no remote resource, the CSP and Trusted Types, and the manifest.
 
-**Dependencies:** none added. No WebGL, no animation library, no font. textmode.js, React Bits and Motion Primitives were considered and not
-used: each would be a runtime dependency (some under licence terms beyond MIT, and textmode.js renders with WebGL), for effects that come
-to about four hundred lines here.
+## 7. How it was refined
 
-**Policy changes, each pinned by a test** (`tests/endo-studio-ui-source.test.ts`):
-- A second dynamic import, the renderer.
-- `requestAnimationFrame` and `cancelAnimationFrame` are allowed in **one** file, the renderer. That file:
-  - imports only `react` and the signal's **type**;
-  - is imported statically by nothing;
-  - contains no `fetch`, timer, worker or WebGL;
-  - has exactly one prop.
-- `model/field.ts` imports nothing at all.
-- `Field.tsx` passes the renderer the signal and nothing else.
+Every pass below was judged from real renders: the opt-in harness `tests/endo-studio-field-shots.test.ts`, synthetic fixtures,
+screenshots of both appearances at 390 px, 1180, 1366, 1440 and 2560.
 
-`setInterval` and idle callbacks stay forbidden everywhere. The page policy, the server, the routes and the manifest loader are unchanged.
+**Pass 1** (the first working build):
+1. The terrain was all but invisible. At 2560 px the reading surface covered nearly the whole screen, so the field had no margin to
+   be seen in. The surface became a horizontal clearing, dark only under the measure and a margin either side, and the ink ramps were
+   brightened.
+2. At 2560 px the 46 rem measure was a narrow column in the dark. Above 2200 px the measure is 54 rem and the text a size larger.
+3. *Focus* looked switched on while the dock was open, because the expanded state was styled as "on". It is now styled only when it
+   has done something (the dock closed).
+4. The arrival statement broke the session's alias at its hyphen ("pi.fake-session-" / "1"). The alias stays whole where it fits.
+5. The arrival surface was still the old graphite veil. It became black.
 
-**What did not change:** every hook, reducer, wire gate and route; the broker's offers as the only source of what can be requested;
-terminal approval; STOP priority; the read-only `endo studio`; Git inspection and its safeguards; Observe and Compare hand-offs; what is
-kept in memory and what is never stored. Instrument's DOM is the same apart from the switch in the top bar, and its browser suites pass
-unchanged.
+**Pass 2:**
+1. The terrain was still too faint behind a conversation. The renderer's base strength went up, and the clearing's edges opened.
+2. On a 390 px phone the new preference control widened the header, so *Read session* was cut off and the page could scroll sideways.
+   The header's tools now wrap below 1024 px.
+3. An open trace still being written said so twice. Only the turn's line says it now.
 
-## 6. How it was refined
+**Pass 3:**
+1. Brightening the terrain made it show through the ledger's words in the live arrival: a legibility regression from pass 2. The
+   arrival surface now has its own dark clearing behind the text, with the terrain kept at its edges.
 
-The first build was reviewed from real screenshots, and several things looked wrong:
+**Pass 4** (after a review of the finished branch):
+1. In Instrument on a 390 px phone, a trace's head collapsed: its size wrapped one character per line ("1", "4", "2") beside a label that
+   cannot wrap. The head now wraps as a whole, so the size and the preview move to their own lines.
+2. A conversation whose model supplied no structured reasoning showed no disclosures and gave no reason. That is likely when a local
+   server leaves reasoning inside the answer as `<think>` text. One line now says that reasoning is shown only when supplied in
+   structured form, and that `<think>` text is the answer's text.
+3. Changing the reasoning preference while changes were being read lost the conversation's place on return. The hidden scroller was
+   judged, and it reported the reader at the bottom. A hidden scroller is no longer judged; a browser test fails without the fix.
 
-1. **The first field was rain, not terrain.** It drew contour *strokes* (`- / | \`), one per character cell. On a 9 × 16 px cell the strokes
-   did not join, and the result read as scratches. It became terraces: land filled with a density ramp, contour lines left as gaps, and
-   light relief shading from the upper left. Two characters per terrace stop a ring from becoming a wall of `=`.
-2. **It cost 10–13 ms a frame**, because each character was drawn separately. Rows are now strings, one call per strength. Measuring
-   showed the earlier figures were first-frame (cold JIT) numbers; the table above is steady state.
-3. **Three bordered panels brought back the "cards" look.** The rails lost their borders and became veils over the field. Only the reading
-   surface keeps an edge and a shadow.
-4. **The live arrival's statement was out of view.** The conversation's scroller follows the newest item, so it scrolled the ledger's head
-   away. The arrival is now drawn outside that scroller.
-5. **The clearing behind the arrival had a hard vertical edge,** clipped by its own box. It now bleeds past the box and is clipped only by
-   the column.
-6. **On a tall screen the legend sat in the middle of the page.** The Field page now fills the window.
-7. **Repeated `TOOL` labels and multi-line state pills were noise.** Tool lines are marked by a tilde, with the word kept for assistive
-   technology. State tags have small radii.
-8. **The ledger crushed to four narrow columns on a phone.** Its columns now follow its own width.
+What was kept after review:
+- STOP's explanatory sentence wraps under it when it supersedes a waiting steer. STOP is still the first, filled control in the strip.
+- The beacon outranks the dashed texture while the broker is unreachable and a request waits: the request waits whatever the
+  connection.
 
-A second, adversarial review of the finished slice found honesty defects in the ledger itself. All were fixed and pinned:
+## 8. The first iteration (summary)
 
-9. **An absent store read as an empty one** ("holds no recording"). The ledger now takes the store's condition and words each one apart.
-10. **A stale status was stated as current, with the page's read time presented as Pi's.** It now says "read at …", and "at the last
-    read" when the page is not re-reading.
-11. **The field could bend under the pointer while the legend said Held or Broken.** It now responds only while drifting or flowing.
-12. **Hints, the privacy line and role words were at 3.1:1.** They moved to 5.5:1, and the low ink is kept for marks.
+The first Field directions were:
+- **Specimen**, a textmode creature. Rejected: a creature reads as a mind.
+- **Threshold**, the page organised around its authority boundary. Partly kept, as the beacon and the ledger's *Yours* column.
+- **Field**. Chosen.
 
-The pull request's automated review (Codex) found three more problems, all fixed and pinned:
+Its refinements remain in force:
+- terraces instead of strokes;
+- rows drawn as strings, one call per strength;
+- veils instead of bordered cards;
+- the arrival drawn outside the follow-the-newest scroller;
+- a full-height page so the legend sits at the bottom;
+- an absent store never called empty;
+- a stale status said in the past tense;
+- motion only while drifting or flowing;
+- hints at 5.5:1 or better;
+- no answer outranking "not read yet";
+- the ledger reading worktree counts as the bar does;
+- a renderer that fails to load leaving the panel and STOP intact.
 
-13. **A first workbench request that got no answer showed "not read yet" forever.** The page does not ask again by itself while it does
-    not know there is a workbench. No answer now outranks "not read yet": the field is broken (dashed), and the ledger says there was no
-    answer and how to ask again.
-14. **The ledger could call a worktree clean when the bar would not.** That happened with an empty list cut at a limit, or when untracked
-    files were hidden by the repository. It now reads the counts exactly as the worktree bar does.
-15. **A renderer file that failed to load took the whole DEVELOP panel down,** STOP included.
+## 9. Validation, limits and next steps
 
-## 7. Validation
+**Browser suites.** These run in real Chromium, against the real broker, real Git and the real built page:
+- `tests/endo-studio-field-browser.test.ts` (12):
+  - Instrument is the default and never loads the renderer;
+  - switching appearance mid-diff keeps everything;
+  - no page scroll at 1920, 1440, 1366 and 1024 px, and no sideways scroll at 768, 420 and 360 px;
+  - the read-only arrival has no input of any kind;
+  - the renderer can be blocked without losing anything;
+  - the beacon offers no control;
+  - pause and reduced motion stop frames;
+  - unreachable is drawn dashed;
+  - and, new, the composition: the drawer, the dock, STOP in view with the dock closed, and the draft kept.
+- `tests/endo-studio-reasoning-browser.test.ts` (13, both appearances):
+  - folded by default;
+  - the keyboard;
+  - the clamp and *Show the whole trace*;
+  - the Shown preference with a hand-folded trace kept;
+  - the message being written, replaced with the opened trace carried over;
+  - the reader's place kept while opening traces and while new items arrive;
+  - the draft untouched;
+  - no request made for the preference;
+  - everything kept across an appearance switch;
+  - the conversation's place kept when the preference changes during review;
+  - the no-reasoning line, shown, then gone once a trace arrives.
 
-- `tests/endo-studio-field-model.test.ts` (21): the honesty rules above, and what the ledger says per state, per store condition and per
-  worktree reading.
-- `tests/endo-studio-field-browser.test.ts` (11, real Chromium, real broker, real Git):
-  - Instrument is the default, draws no field and never requests the renderer; the renderer is requested once when Field is first shown.
-  - A switch, mid-diff with a draft and a scrolled conversation, keeps the view, the file, the draft, STOP and the scroll position.
-  - At 1920, 1440, 1366 and 1024 px the page does not scroll, the composer is docked, and STOP is in view.
-  - No sideways scroll at 768, 420 and 360 px in both appearances, and at 390 px for the Field read-only arrival.
-  - The read-only arrival has no input of any kind, and opening a recording stills the field.
-  - An absent store is said to be absent, never empty.
-  - With the renderer's file blocked, the conversation, the draft and STOP stay, and nothing but the blocked request is a problem.
-  - An unpaired arrival's only input is the pairing form.
-  - An approval shows a beacon with no control, and the field held.
-  - Pause stops frames, and reduced motion never starts them.
-  - An unreachable broker is drawn dashed.
-  - No console message, exception, CSP or Trusted Types violation, and no request off the page's own server.
-- The existing Studio, workbench, cockpit-UI and package-smoke tests pass, with only the pins in §5 changed.
-- The bundle built on Node 22.19.0 and on Node 26 is byte-identical.
-- Full-suite runs on this branch are reported in the pull request as they ran, including two process-signal timing tests that each failed
-  once under full parallel load and passed alone.
+**Limits.**
+- **Synthetic screenshots.** Every screenshot here is of synthetic fixtures. The live path was exercised through the fake Pi and through
+  Pi 1.0.1 against a fake model endpoint, not against a live model.
+- **Hidden-page stopping** is pinned in source, not in a browser: the test driver cannot hide a page.
+- **The horizon's light** is drawn by the style sheet. Pause motion stops it, because a paused field is still.
+- **Not persisted.** Field, Focus and the reasoning preference reset on reload.
 
-## 8. Limits and next steps
-
-- **Not persisted.** The page has no storage, by policy. A durable preference would need a decision about that policy (or a
-  server-side setting), not a workaround.
-- **Hidden-page stopping is not tested in a browser.** The CDP driver cannot hide a page. It is pinned in source, which listens for
-  `visibilitychange` and cancels the frame.
-- **On a phone the beacon scrolls with the conversation** (only the run strip and composer are sticky there). The request's card in
-  the conversation carries the same facts and its Withdraw.
-- **The ledger's *Not known* lines are general statements,** not findings. They are true of the workbench as built.
-- **Next, in order:**
-  1. Let the ledger use the evidence check: "consumption observed for 1 of 2 steers" is known; the rest is not.
-  2. A static, printable rendering of the field for recorded sessions (a recording as a map).
-  3. A small keyboard affordance to toggle the appearance.
+**Next.**
+1. A side-by-side review mode for very wide screens, with tab semantics both appearances can share.
+2. Let the ledger use the evidence check ("consumption observed for 1 of 2 steers").
+3. A static, printable field for recordings.
+4. A keyboard toggle for the appearance and the dock.

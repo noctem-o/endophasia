@@ -5,8 +5,10 @@
 import {
 	type FormEvent,
 	type KeyboardEvent,
+	memo,
 	type ReactElement,
 	type ReactNode,
+	useCallback,
 	useId,
 	useLayoutEffect,
 	useRef,
@@ -14,6 +16,14 @@ import {
 } from "react";
 import { presentLivePi } from "../model/develop-session.ts";
 import { REASON_WORDS } from "../model/project.ts";
+import {
+	type Disclosure,
+	disclosureOf,
+	type ReasoningMode,
+	reasoningKey,
+	reasoningNotice,
+	reasoningParts,
+} from "../model/reasoning.ts";
 import {
 	COMMAND_WORDS,
 	commandOpen,
@@ -25,7 +35,13 @@ import {
 	runStripWords,
 	stopInFlight,
 } from "../model/workbench.ts";
-import type { TranscriptItem, WorkbenchIntervention } from "../model/workbench-wire.ts";
+import type {
+	MessagePart,
+	OpenMessage,
+	TranscriptItem,
+	TranscriptMessage,
+	WorkbenchIntervention,
+} from "../model/workbench-wire.ts";
 import { ConnectionGlyph } from "../ui/marks.tsx";
 import { Panel, PanelBoundary } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
@@ -33,6 +49,7 @@ import { useNarrow } from "../ui/use-narrow.ts";
 import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
 import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
+import { ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 
 export type Workbench = ReturnType<typeof useWorkbench>;
@@ -107,7 +124,69 @@ function rowsOf(items: readonly TranscriptItem[]): Row[] {
 	return rows;
 }
 
-function Turn({ item }: { item: TranscriptItem }): ReactElement {
+/** What a message's body draws: its parts in the runtime's order, reasoning as disclosures and text as text. */
+function Parts({
+	parts,
+	owner,
+	mode,
+	overrides,
+	onSet,
+	partial = false,
+}: {
+	parts: readonly MessagePart[];
+	owner: { seq: number; from: number | null } | { open: number };
+	mode: ReasoningMode;
+	overrides: ReadonlyMap<string, Disclosure>;
+	onSet(key: string, disclosure: Disclosure): void;
+	partial?: boolean;
+}): ReactElement {
+	const traces = reasoningParts(parts);
+	const ordinals = new Map(traces.map((t) => [t.index, t.ordinal]));
+	return (
+		<>
+			{parts.map((part, index) => {
+				if (part.kind === "text")
+					return part.text === "" ? null : (
+						// biome-ignore lint/suspicious/noArrayIndexKey: parts are positional and never reordered
+						<p key={index} className="turn-text" data-partial={partial}>
+							{part.text}
+						</p>
+					);
+				const ordinal = ordinals.get(index) ?? 0;
+				const key = reasoningKey(owner, ordinal);
+				return (
+					<ReasoningBlock
+						// biome-ignore lint/suspicious/noArrayIndexKey: parts are positional and never reordered
+						key={index}
+						part={part}
+						ordinal={ordinal}
+						count={traces.length}
+						traceKey={key}
+						disclosure={disclosureOf(mode, overrides, key)}
+						onSet={onSet}
+						partial={partial}
+					/>
+				);
+			})}
+		</>
+	);
+}
+
+/**
+ * One row of the conversation. Memoised: a read that brings nothing new for this row (most reads) does not redraw it, so a long
+ * conversation is not redrawn every few seconds while Follow is on.
+ */
+const Turn = memo(function Turn({
+	item,
+	mode,
+	overrides,
+	onSet,
+}: {
+	item: TranscriptItem;
+	mode: ReasoningMode;
+	overrides: ReadonlyMap<string, Disclosure>;
+	onSet(key: string, disclosure: Disclosure): void;
+}): ReactElement {
 	if (item.kind === "run")
 		return (
 			<li className="turn-run" data-testid="run-marker">
@@ -126,19 +205,72 @@ function Turn({ item }: { item: TranscriptItem }): ReactElement {
 				</span>
 			</li>
 		);
+	const empty = item.parts.length === 0;
 	return (
-		<li className={`turn turn-${item.role}`} data-testid={`turn-${item.role}`}>
+		<li
+			className={`turn turn-${item.role}`}
+			data-testid={`turn-${item.role}`}
+			data-empty={empty}
+			data-reasoning={item.parts.some((p) => p.kind === "reasoning")}
+		>
 			<span className="turn-role">{item.role === "user" ? "user" : "assistant"}</span>
 			<div className="turn-body">
-				<p className="turn-text">{item.text}</p>
-				{item.truncated || item.stopReason === "error" ? (
-					<p className="turn-meta">
-						{item.truncated ? <span className="dim">cut at the display limit</span> : null}
-						{item.stopReason === "error" ? (
-							<span className="flag flag-anomaly"> run error (reported)</span>
-						) : null}
-					</p>
-				) : null}
+				<Parts parts={item.parts} owner={item} mode={mode} overrides={overrides} onSet={onSet} />
+				<TurnMeta item={item} />
+			</div>
+		</li>
+	);
+});
+
+function TurnMeta({ item }: { item: TranscriptMessage }): ReactElement | null {
+	const aborted = item.stopReason === "aborted";
+	if (!item.truncated && item.stopReason !== "error" && !aborted) return null;
+	return (
+		<p className="turn-meta">
+			{item.truncated ? (
+				<span className="dim">
+					{item.partsDropped > 0
+						? `cut at the display limit (${item.partsDropped} more ${item.partsDropped === 1 ? "part" : "parts"} not kept)`
+						: "cut at the display limit"}
+				</span>
+			) : null}
+			{item.stopReason === "error" ? <span className="flag flag-anomaly"> run error (reported)</span> : null}
+			{aborted ? <span className="flag"> aborted (reported): what is shown may be incomplete</span> : null}
+		</p>
+	);
+}
+
+/** The assistant message being written, as of the last read: drawn after the conversation, and replaced by the completed message. */
+function OpenTurn({
+	open,
+	readAt,
+	mode,
+	overrides,
+	onSet,
+}: {
+	open: OpenMessage;
+	readAt: string;
+	mode: ReasoningMode;
+	overrides: ReadonlyMap<string, Disclosure>;
+	onSet(key: string, disclosure: Disclosure): void;
+}): ReactElement {
+	return (
+		<li className="turn turn-assistant turn-open" data-testid="turn-open">
+			<span className="turn-role">assistant</span>
+			<div className="turn-body">
+				<Parts
+					parts={open.parts}
+					owner={{ open: open.id }}
+					mode={mode}
+					overrides={overrides}
+					onSet={onSet}
+					partial
+				/>
+				<p className="turn-meta turn-open-meta">
+					<span className="dim">
+						Being written, as of the read at {readAt} (browser clock). Partial: the completed message replaces it.
+					</span>
+				</p>
 			</div>
 		</li>
 	);
@@ -260,8 +392,9 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 	);
 }
 
-function Transcript({ wb }: { wb: Workbench }): ReactElement {
+function Transcript({ wb, reasoning }: { wb: Workbench; reasoning: ReasoningView }): ReactElement {
 	const { state } = wb;
+	const { mode, overrides, set } = reasoning;
 	const rows = rowsOf(state.items);
 	// Each intervention card sits after the last row it followed in time (the transcript position when it was requested).
 	const cards = [...state.interventions].sort((a, b) => a.afterSeq - b.afterSeq);
@@ -278,7 +411,7 @@ function Transcript({ wb }: { wb: Workbench }): ReactElement {
 		flush(first);
 		out.push(
 			row.kind === "item" ? (
-				<Turn key={row.item.seq} item={row.item} />
+				<Turn key={row.item.seq} item={row.item} mode={mode} overrides={overrides} onSet={set} />
 			) : (
 				<li key={row.items[0]!.seq} className="turn turn-tool">
 					<span className="turn-role">tools</span>
@@ -303,10 +436,28 @@ function Transcript({ wb }: { wb: Workbench }): ReactElement {
 		);
 	}
 	flush(Number.POSITIVE_INFINITY);
+	if (state.open !== null)
+		out.push(
+			<OpenTurn
+				key={`open-${state.open.id}`}
+				open={state.open}
+				readAt={clock(state.statusAt)}
+				mode={mode}
+				overrides={overrides}
+				onSet={set}
+			/>,
+		);
+	const dropped = state.evicted + state.trimmed;
+	const notice = reasoningNotice(state.reasoning, state.items, state.open);
 	return (
 		<>
-			{state.evicted > 0 ? (
-				<Note>Earlier items are no longer held here ({state.evicted} dropped to stay within the limit).</Note>
+			{notice === null ? null : (
+				<p className="dim small reasoning-notice" data-testid="reasoning-none">
+					{notice}
+				</p>
+			)}
+			{dropped > 0 ? (
+				<Note>Earlier items are no longer held here ({dropped} dropped to stay within the limit).</Note>
 			) : null}
 			{out.length === 0 ? (
 				<div className="develop-empty" data-testid="transcript-empty">
@@ -587,13 +738,17 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 /**
  * The scrolling part of the conversation: it follows the newest item while the reader is at the bottom, and when the reader has scrolled
  * up it leaves them where they are and says there is something below. The scroll position survives a switch to the Changes view and back.
+ * The message being written (`tail`) is followed the same way, but its growth is not announced as new items. Opening or folding a trace
+ * re-judges whether the reader is at the bottom, so a long trace opened there is read from its top, not scrolled past on the next read.
  */
 function LiveScroll({
 	signature,
+	tail,
 	visible,
 	children,
 }: {
 	signature: string;
+	tail: string;
 	visible: boolean;
 	children: ReactNode;
 }): ReactElement {
@@ -601,13 +756,18 @@ function LiveScroll({
 	const stick = useRef(true);
 	const saved = useRef(0);
 	const [below, setBelow] = useState(false);
-	const onScroll = () => {
+	// Whether the conversation is the view shown now: a hidden scroller has no geometry, and judging it would lose the reader's place
+	// (a preference changed while changes are read redraws every trace).
+	const shown = useRef(visible);
+	shown.current = visible;
+	const judge = useCallback(() => {
 		const el = box.current;
-		if (el === null || !visible) return;
+		if (el === null || !shown.current) return;
 		stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
 		saved.current = el.scrollTop;
 		if (stick.current) setBelow(false);
-	};
+	}, []);
+	const onScroll = () => judge();
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `signature` stands for "the conversation changed"
 	useLayoutEffect(() => {
 		const el = box.current;
@@ -618,25 +778,34 @@ function LiveScroll({
 			setBelow(true);
 		}
 	}, [signature, visible]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `tail` stands for "the message being written grew"
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (el === null || !visible) return;
+		if (stick.current) el.scrollTop = el.scrollHeight;
+		else el.scrollTop = saved.current;
+	}, [tail]);
 	return (
-		<div className="live-scroll" ref={box} onScroll={onScroll}>
-			{children}
-			{below ? (
-				<button
-					type="button"
-					className="btn small-btn new-below"
-					data-testid="new-below"
-					onClick={() => {
-						const el = box.current;
-						if (el !== null) el.scrollTop = el.scrollHeight;
-						stick.current = true;
-						setBelow(false);
-					}}
-				>
-					New items below ↓
-				</button>
-			) : null}
-		</div>
+		<ReflowContext.Provider value={judge}>
+			<div className="live-scroll" ref={box} onScroll={onScroll}>
+				{children}
+				{below ? (
+					<button
+						type="button"
+						className="btn small-btn new-below"
+						data-testid="new-below"
+						onClick={() => {
+							const el = box.current;
+							if (el !== null) el.scrollTop = el.scrollHeight;
+							stick.current = true;
+							setBelow(false);
+						}}
+					>
+						New items below ↓
+					</button>
+				) : null}
+			</div>
+		</ReflowContext.Provider>
 	);
 }
 
@@ -648,12 +817,15 @@ const VIEWS = [
 export function LiveConversation({
 	wb,
 	project,
+	reasoning,
 	leading,
 	arrival,
 	beacon,
 }: {
 	wb: Workbench;
 	project: ProjectApi;
+	/** How model-provided reasoning is shown: the operator's choice and the traces opened or folded by hand. Memory only. */
+	reasoning: ReasoningView;
 	/** Shown at the start of the header: the sessions toggle at the widths where the list is a drawer. */
 	leading?: ReactElement;
 	/** Field appearance: shown in place of the empty conversation (the ledger). */
@@ -669,7 +841,9 @@ export function LiveConversation({
 	const view = project.state.view;
 	const changesOffered = project.state.availability !== "absent";
 	const narrow = useNarrow();
-	const empty = state.items.length === 0 && state.interventions.length === 0 && state.command === null;
+	const empty =
+		state.items.length === 0 && state.interventions.length === 0 && state.command === null && state.open === null;
+	const tail = state.open === null ? "" : `${state.open.id}:${state.open.parts.map((p) => p.text.length).join(",")}`;
 	const signature = `${state.items.at(-1)?.seq ?? 0}:${state.interventions.map((i) => `${i.proposalId}${i.state}${i.consumption?.status ?? ""}`).join()}:${state.command?.state ?? ""}`;
 	// Something arrived in the conversation while the operator was reading changes: the tab says so (an agent's question must not go unseen).
 	const seen = useRef(signature);
@@ -718,6 +892,7 @@ export function LiveConversation({
 						))}
 					</div>
 					<div className="panel-tools">
+						<ReasoningPreference view={reasoning} relay={state.reasoning} />
 						<label
 							className="check"
 							title="Reads the broker's memory every few seconds while on. Off by default."
@@ -779,12 +954,12 @@ export function LiveConversation({
 							{arrival}
 						</div>
 					) : (
-						<LiveScroll signature={signature} visible={view === "conversation"}>
+						<LiveScroll signature={signature} tail={tail} visible={view === "conversation"}>
 							<p className="dim small live-privacy" data-testid="live-privacy">
 								Live text: private to the attached process, not recorded, and cleared when the session ends.
 							</p>
 							{state.problem === null ? null : <Note tone="error">{state.problem}</Note>}
-							<Transcript wb={wb} />
+							<Transcript wb={wb} reasoning={reasoning} />
 							<CommandCard wb={wb} />
 						</LiveScroll>
 					)}

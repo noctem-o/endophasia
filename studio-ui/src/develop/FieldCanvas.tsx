@@ -26,8 +26,18 @@ const GLYPHS = ["..", ".:", ":-", "-=", "=+", "+*", "*#"] as const;
 const BUCKETS = 5;
 /** Where the light comes from (up and to the left), for a little relief on the slopes. */
 const LIGHT = { x: -0.62, y: -0.78 };
-const INK = "rgb(196 190 178)";
-const AMBER = "rgb(227 176 75)";
+// Night survey: the glyphs are drawn in light on a near-black ground, brighter as the ground rises, like a phosphor chart. One ramp per
+// state the legend can name: a cool, nearly neutral ink at rest; the reported hue while Pi reports a run open and the page re-reads it
+// (the same hue the page uses for what Pi reports); amber on the high ground while something waits for the operator.
+const INK = ["rgb(80 92 106)", "rgb(104 120 136)", "rgb(136 154 170)", "rgb(176 194 208)", "rgb(220 230 238)"] as const;
+const REPORTED = [
+	"rgb(70 88 136)",
+	"rgb(90 114 176)",
+	"rgb(116 146 218)",
+	"rgb(150 178 250)",
+	"rgb(200 216 255)",
+] as const;
+const AMBER = "rgb(242 188 88)";
 const SEED = 0x2f6b9d;
 
 /** A hash of a lattice point: deterministic, so the same field is drawn on every machine and in every screenshot. */
@@ -167,7 +177,7 @@ export default function FieldCanvas({ signal }: { signal: FieldSignal }): ReactE
 					grid[j * cols + i] = f;
 				}
 			const dashed = s.texture === "dashed";
-			const base = 0.62 * s.presence;
+			const base = 0.86 * s.presence;
 			const blank = "";
 			lines = Array.from({ length: BUCKETS }, () => []);
 			warm = Array.from({ length: BUCKETS }, () => []);
@@ -231,13 +241,14 @@ export default function FieldCanvas({ signal }: { signal: FieldSignal }): ReactE
 			}
 			computed = performance.now() - started;
 			ctx.font = `${px}px "IBM Plex Mono", ui-monospace, monospace`;
-			for (const [set, colour] of [
-				[lines, INK],
-				[warm, AMBER],
+			const ramp = s.motion === "current" ? REPORTED : INK;
+			for (const [set, amber] of [
+				[lines, false],
+				[warm, true],
 			] as const) {
-				ctx.fillStyle = colour;
 				for (let b = 0; b < BUCKETS; b++) {
-					ctx.globalAlpha = Math.min(1, base * ((b + 0.5) / BUCKETS) * (colour === AMBER ? 1.4 : 1));
+					ctx.fillStyle = amber ? AMBER : ramp[b]!;
+					ctx.globalAlpha = Math.min(1, base * (0.55 + (0.45 * (b + 0.5)) / BUCKETS) * (amber ? 1.3 : 1));
 					const set_b = set[b]!;
 					for (let j = 1; j < rows - 1; j++) {
 						const text = set_b[j];

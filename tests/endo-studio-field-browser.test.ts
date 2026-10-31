@@ -359,6 +359,53 @@ suite("DEVELOP drawn as Field", () => {
 		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe("still here");
 	});
 
+	it("composes a live session for the conversation: sessions in a drawer, the dock closable for focus, STOP and the draft kept", async () => {
+		const { page } = await live(1440, 900);
+		// Instrument keeps its three columns and has no dock control.
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=dock-toggle]') === null")).toBe(true);
+		expect(await page.eval<string>("getComputedStyle(document.querySelector('#develop-nav-wrap')).display")).not.toBe(
+			"none",
+		);
+		await field(page);
+		await fill(page, "[data-testid=composer]", "kept through every layout");
+		expect(await page.eval<string>("getComputedStyle(document.querySelector('#develop-nav-wrap')).display")).toBe(
+			"none",
+		);
+		await page.click("[data-testid=sessions-toggle]");
+		await page.waitFor("getComputedStyle(document.querySelector('#develop-nav-wrap')).display !== 'none'");
+		expect(
+			await page.eval<boolean>("document.querySelector('[data-testid=live-row]').getBoundingClientRect().width > 0"),
+		).toBe(true);
+		await page.press("Escape");
+		await page.waitFor("getComputedStyle(document.querySelector('#develop-nav-wrap')).display === 'none'");
+		const wide = await page.eval<number>("document.querySelector('#develop-live').getBoundingClientRect().width");
+		await page.click("[data-testid=dock-toggle]");
+		await page.waitFor("getComputedStyle(document.querySelector('#develop-context')).display === 'none'");
+		expect(
+			await page.eval<string | null>(
+				"document.querySelector('[data-testid=dock-toggle]').getAttribute('aria-expanded')",
+			),
+		).toBe("false");
+		expect(
+			await page.eval<number>("document.querySelector('#develop-live').getBoundingClientRect().width"),
+		).toBeGreaterThan(wide + 200);
+		const stop = await page.eval<{ top: number; bottom: number }>(
+			"(() => { const r = document.querySelector('[data-testid=stop]').getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })()",
+		);
+		expect(stop.top).toBeGreaterThanOrEqual(0);
+		expect(stop.bottom).toBeLessThanOrEqual(900);
+		await page.click("[data-testid=dock-toggle]");
+		await page.waitFor("getComputedStyle(document.querySelector('#develop-context')).display !== 'none'");
+		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe(
+			"kept through every layout",
+		);
+		expect(
+			await page.eval<boolean>(
+				"document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth",
+			),
+		).toBe(true);
+	});
+
 	it("draws an unreachable broker broken, not ended", async () => {
 		const { page, server } = await live(1440, 900);
 		await field(page);

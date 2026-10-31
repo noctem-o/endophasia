@@ -19,7 +19,7 @@ response or event record changed; the browser builds it from records it has alre
 | `runtime`, `ownership` | A value with its **basis** (`observed` / `reported` / `recorded`) and who said it. Ownership: `direct`, `external`, `imported`. | `unavailable` + reason (unknown) |
 | `observation` + `connection` | `live`, `recorded` or `unavailable`; connected, disconnected, unknown, or not applicable (a recording). `connection` is Endophasia's own read path to the source's feed (for Pi, the broker's admitted connection), not the source's claim about itself. | a reason, always, unless connected |
 | `status` | Claims, **at most one per basis**. Reported and observed are never merged; a recorded claim exists only for a recording. | empty list |
-| `capabilities` | `observe`, `control`, `coordinate`: a closed set of actions each. Every action must be present. | `unsupported` / `unavailable` + reason |
+| `capabilities` | `observe` (`live-status`, `live-transcript`, `live-reasoning`, `lifecycle`, `activity`), `control`, `coordinate`: a closed set of actions each. Every action must be present. `live-reasoning` says whether the source relays model-provided reasoning ([develop-reasoning.md](develop-reasoning.md)); a source that withholds it says so with `unsupported` and its reason. | `unsupported` / `unavailable` + reason |
 | `evidence` | The projections the entry was built from, each held only by a session of the source that produced it. | empty list |
 | `relations` (surface) | Parent/child edges, each with a basis and the party that claimed it. | no edge |
 

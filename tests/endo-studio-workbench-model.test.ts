@@ -41,22 +41,26 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	...over,
 });
 const page = (items: TranscriptItem[], watermark: number, more = false): WorkbenchTranscript => ({
-	schemaVersion: "endo.workbench-transcript.v0",
+	schemaVersion: "endo.workbench-transcript.v1",
 	launchId: LAUNCH,
 	items,
 	watermark,
 	firstSeq: 1,
 	evicted: 0,
 	more,
+	open: null,
+	reasoning: { relay: "relayed", reason: null },
 });
 const at = new Date(0);
 const msg = (seq: number, text = `m${seq}`): TranscriptItem => ({
 	seq,
 	kind: "message",
 	role: "user",
-	text,
+	parts: [{ kind: "text", text, truncated: false }],
 	truncated: false,
+	partsDropped: 0,
 	stopReason: null,
+	from: null,
 });
 const tool = (seq: number, callId: string, s: "running" | "ok" | "error"): TranscriptItem => ({
 	seq,

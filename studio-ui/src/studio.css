@@ -1912,6 +1912,234 @@ table.fields thead th {
 	border-top: 1px dotted var(--line-strong);
 }
 
+/* A message with nothing to draw (a tool call alone) takes no room; one with a note about its end keeps its row. */
+.turn[data-empty="true"]:not(:has(.turn-meta)) {
+	display: none;
+}
+
+/* The message being written: a dashed rule (the open turn's texture) and its text one step quieter until the completed message replaces it. */
+.turn-open {
+	border-left-style: dashed;
+}
+
+.turn-text[data-partial="true"] {
+	color: var(--fg-3);
+}
+
+/* Model-provided reasoning: what the model emitted as reasoning, relayed. It is reported material, so it takes the reported hue, and it
+   never looks like the answer: a one-line disclosure under a mono label, with its own rule when open. Shared by both appearances. */
+.reasoning {
+	margin: 0 0 8px;
+	min-width: 0;
+}
+
+.turn-body > .reasoning + .turn-text,
+.turn-body > .turn-text + .reasoning {
+	margin-top: 6px;
+}
+
+/* The head wraps: on a narrow column the size and the preview move to their own lines rather than squeezing to nothing. */
+.reasoning-toggle,
+.reasoning-line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px 8px;
+	width: 100%;
+	margin: 0;
+	padding: 3px 6px 3px 2px;
+	background: none;
+	border: 0;
+	border-radius: 6px;
+	font: inherit;
+	text-align: left;
+	color: var(--fg-3);
+}
+
+.reasoning-toggle {
+	cursor: pointer;
+}
+
+.reasoning-toggle:hover {
+	background: color-mix(in srgb, var(--rep) 7%, transparent);
+}
+
+.reasoning-toggle:hover .reasoning-label {
+	color: color-mix(in srgb, var(--rep) 70%, var(--fg-1));
+}
+
+.reasoning-toggle:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 1px;
+}
+
+.reasoning-chevron {
+	flex: none;
+	width: 0;
+	height: 0;
+	border-left: 4px solid currentColor;
+	border-top: 3.5px solid transparent;
+	border-bottom: 3.5px solid transparent;
+	transition: transform 160ms ease;
+}
+
+.reasoning[data-disclosure="open"] .reasoning-chevron,
+.reasoning[data-disclosure="full"] .reasoning-chevron {
+	transform: rotate(90deg);
+}
+
+.strata {
+	display: block;
+	flex: none;
+	color: var(--rep);
+}
+
+.reasoning[data-state="withheld"] .strata,
+.reasoning[data-state="empty"] .strata {
+	color: var(--na);
+}
+
+.reasoning-label {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--rep);
+	white-space: nowrap;
+}
+
+.reasoning[data-state="withheld"] .reasoning-label,
+.reasoning[data-state="empty"] .reasoning-label {
+	color: var(--fg-3);
+}
+
+.reasoning-meta {
+	min-width: 0;
+	font-size: 12px;
+	color: var(--fg-3);
+	overflow-wrap: anywhere;
+}
+
+/* Folded, the first words of the trace follow on the next line, one line only, in the quietest text colour. */
+.reasoning-preview {
+	flex: 1 0 100%;
+	padding-left: 34px;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 12.5px;
+	color: var(--fg-3);
+}
+
+.reasoning-body {
+	margin: 4px 0 2px 6px;
+	padding: 2px 0 4px 16px;
+	border-left: 1px solid color-mix(in srgb, var(--rep) 42%, transparent);
+}
+
+.reasoning[data-partial="true"] .reasoning-body {
+	border-left-style: dashed;
+}
+
+.reasoning-text {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-width: 74ch;
+	font-size: 13px;
+	line-height: 1.65;
+	color: var(--fg-2);
+}
+
+.reasoning-more {
+	margin-top: 8px;
+	padding: 0;
+	background: none;
+	border: 0;
+	font: inherit;
+	font-size: 12px;
+	color: var(--rep);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--rep) 40%, transparent);
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+
+.reasoning-more:hover {
+	text-decoration-color: currentColor;
+}
+
+.reasoning-more:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 2px;
+}
+
+.reasoning-note {
+	margin: 8px 0 0;
+	font-size: 11.5px;
+	color: var(--fg-3);
+}
+
+.reasoning-notice {
+	margin: 0 0 10px;
+	max-width: 80ch;
+}
+
+/* The display preference: a small radio pair in the conversation's header. */
+.reasoning-pref {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+}
+
+.reasoning-pref legend {
+	float: left;
+	padding: 0 6px 0 8px;
+	font-size: 11.5px;
+	color: var(--fg-3);
+}
+
+.reasoning-pref-option {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 10px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	color: var(--fg-3);
+	cursor: pointer;
+}
+
+.reasoning-pref-option:hover {
+	color: var(--fg-1);
+}
+
+.reasoning-pref-option input {
+	position: absolute;
+	inset: 0;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.reasoning-pref-option[data-selected="true"] {
+	background: var(--surface-4);
+	color: var(--fg-1);
+}
+
+.reasoning-pref-option:has(input:focus-visible) {
+	outline: 2px solid var(--select);
+	outline-offset: 1px;
+}
+
+.reasoning-pref:disabled {
+	opacity: 0.55;
+}
+
 .command-card {
 	border: 1px solid var(--line-strong);
 	border-radius: var(--radius);
@@ -2753,12 +2981,14 @@ table.fields thead th {
 	}
 }
 
-/* --- DEVELOP, Field appearance --------------------------------------------------------------------------------------------------
-   The same workspace, drawn as a survey sheet: a contour field in text behind the work (develop/FieldCanvas.tsx, loaded only here), a
-   reading surface that is calm and wide, margins that read like annotations, and a legend that says what the field is showing. The
-   field is decoration with a stated meaning (model/field.ts): it never stands for the model's work. Colour keeps the instrument's
-   grammar: hue is still provenance, amber still attention; the field itself is ink. Everything here is scoped to the appearance, and
-   nothing is animated by the style sheet: the canvas moves, the layers only fade (transitions). */
+/* --- DEVELOP, Field appearance: the night survey --------------------------------------------------------------------------------
+   The same workspace, drawn as a survey read at night (docs/develop-field.md): a near-black ground for OLED screens, a contour field in
+   phosphor-like text behind the work (develop/FieldCanvas.tsx, loaded only here), a dark clearing where the conversation is read, and
+   one horizon line under the run strip that carries the field's state where the eye already is. The field and the horizon are
+   decoration with a stated meaning (model/field.ts): they never stand for the model's work, and nothing derived from reasoning reaches
+   them. Colour keeps the instrument's grammar: hue is provenance (a run Pi reports, and the reasoning it relays, are in the reported
+   hue), amber is attention, red is fault, ivory is selection. Everything here is scoped to the appearance. The only animation the style
+   sheet runs is the horizon's, while the field is flowing; it is off under reduced motion. */
 
 /* The switch between appearances, in the top bar, shown on DEVELOP only. */
 .appearance {
@@ -2807,25 +3037,30 @@ table.fields thead th {
 }
 
 .develop[data-appearance="field"] {
-	--f-ground: #0a0b0d;
-	--f-slab: #0f1013;
-	--f-slab-2: #14161a;
-	--f-hair: rgba(236, 232, 223, 0.075);
-	--f-hair-2: rgba(236, 232, 223, 0.13);
-	--f-veil: rgba(10, 11, 13, 0.8);
-	--f-ink-1: var(--fg-1);
-	--f-ink-2: #c7c2b7;
-	--f-ink-3: #8e8a81;
-	/* 3.1:1 on the slab: marks and rules only, never text (text is ink-3 or brighter, 5.5:1 and up). */
-	--f-ink-4: #64625d;
+	/* Near black: true black pixels are off on an OLED panel, so the ground costs nothing and the light is only where something is. */
+	--f-ground: #030405;
+	--f-slab: #060709;
+	--f-slab-2: #0c0e11;
+	--f-hair: rgba(206, 218, 238, 0.075);
+	--f-hair-2: rgba(206, 218, 238, 0.13);
+	--f-veil: rgba(3, 4, 5, 0.88);
+	--f-ink-1: #efebe3;
+	--f-ink-2: #c9c5bc;
+	/* 6.0:1 on the ground and the slab: the quietest text. */
+	--f-ink-3: #8f8c85;
+	/* Marks and rules only, never text. */
+	--f-ink-4: #57565a;
+	/* The reported hue, lifted for a black ground: a run Pi reports and the reasoning it relays. 10.2:1 on the slab. */
+	--f-lamp: #9ab8ff;
+	--f-amber: #f2bc58;
 	--f-measure: 46rem;
 	position: relative;
 }
 
 body:has(.develop[data-appearance="field"]) {
 	background:
-		radial-gradient(120% 70% at 50% -12%, #17191d 0%, rgba(23, 25, 29, 0) 62%),
-		#0a0b0d;
+		radial-gradient(90% 60% at 50% -18%, rgba(120, 146, 196, 0.07) 0%, rgba(120, 146, 196, 0) 60%),
+		#030405;
 }
 
 /* The Field page is as tall as the window, so the legend sits at the bottom of it however little there is to show. */
@@ -2852,8 +3087,8 @@ body:has(.develop[data-appearance="field"]) main {
 body:has(.develop[data-appearance="field"]) .topbar {
 	position: relative;
 	z-index: 2;
-	background: rgba(10, 11, 13, 0.94);
-	border-bottom-color: rgba(236, 232, 223, 0.07);
+	background: rgba(3, 4, 5, 0.92);
+	border-bottom-color: rgba(206, 218, 238, 0.07);
 }
 
 /* The field: fixed behind everything in DEVELOP, never above the top bar, never a target. The gradient and dot grid are what is seen
@@ -2863,9 +3098,17 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
-	background-image: radial-gradient(rgba(236, 232, 223, 0.05) 1px, transparent 1.4px);
+	background-image: radial-gradient(rgba(206, 218, 238, 0.05) 1px, transparent 1.4px);
 	background-size: 18px 32px;
 	transition: opacity 700ms ease;
+}
+
+/* A dark centre: the terrain is brightest at the edges of the screen, where nothing is read. */
+.field-layer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: radial-gradient(60% 58% at 50% 52%, rgba(3, 4, 5, 0.5) 0%, rgba(3, 4, 5, 0.18) 60%, rgba(3, 4, 5, 0) 100%);
 }
 
 .field-canvas {
@@ -2897,8 +3140,8 @@ body:has(.develop[data-appearance="field"]) .topbar {
 /* Surfaces: one ground, hairlines instead of boxes, labels in the legend's voice (mono, small capitals). */
 .develop[data-appearance="field"] .panel {
 	background: var(--f-veil);
-	border-color: transparent;
-	border-radius: 14px;
+	border-color: var(--f-hair);
+	border-radius: 16px;
 }
 
 .develop[data-appearance="field"] .panel-head {
@@ -2940,8 +3183,8 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 .develop[data-appearance="field"] .btn:hover:not(:disabled) {
-	background: rgba(236, 232, 223, 0.06);
-	border-color: rgba(236, 232, 223, 0.24);
+	background: rgba(206, 218, 238, 0.07);
+	border-color: rgba(206, 218, 238, 0.26);
 	color: var(--f-ink-1);
 }
 
@@ -2995,9 +3238,19 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* The reading surface: the conversation and the diff sit on one calm slab, and the text keeps a measure. */
 .develop[data-appearance="field"] .develop-live {
-	background: var(--f-slab);
+	/* A clearing, not a card: black under the reading measure and a margin either side of it, and the terrain through the rest. On a wide
+	   screen that is most of the surface, so the field is seen where nothing is read. */
+	background: linear-gradient(
+		90deg,
+		rgba(4, 5, 6, 0.36) 0%,
+		rgba(4, 5, 6, 0.97) max(4%, calc(50% - var(--f-measure) / 2 - 12rem)),
+		rgba(4, 5, 6, 0.97) min(96%, calc(50% + var(--f-measure) / 2 + 12rem)),
+		rgba(4, 5, 6, 0.36) 100%
+	);
 	border-color: var(--f-hair);
-	box-shadow: 0 30px 80px -40px rgba(0, 0, 0, 0.9);
+	box-shadow:
+		inset 0 1px 0 rgba(206, 218, 238, 0.04),
+		0 40px 120px -50px #000;
 	transition:
 		background-color 500ms ease,
 		border-color 500ms ease;
@@ -3031,9 +3284,10 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 .develop[data-appearance="field"] .develop-live .run-strip {
+	position: relative;
 	gap: 6px 14px;
-	padding: 12px 18px;
-	border-bottom-color: var(--f-hair);
+	padding: 13px 22px 15px;
+	border-bottom-color: transparent;
 	font-size: 12.5px;
 	color: var(--f-ink-2);
 }
@@ -3041,22 +3295,86 @@ body:has(.develop[data-appearance="field"]) .topbar {
 .develop[data-appearance="field"] .strip-session {
 	font-family: var(--sans);
 	font-weight: 600;
-	font-size: 15px;
-	letter-spacing: -0.005em;
+	font-size: 16px;
+	letter-spacing: -0.01em;
 	color: var(--f-ink-1);
 }
 
-/* STOP stays the most visible control while a run is open: a filled button, last in the strip. */
+/* The horizon: one line under the run strip, carrying the field's state where the eye already is. Still is a hairline; drift is a
+   little brighter; flowing (Pi reports a run open AND the page is re-reading it) is the reported hue with a slow light along it; held
+   (something waits for the terminal) is amber; broken (no answer) is dashed. It says nothing the legend does not say in words. */
+.develop[data-appearance="field"] .develop-live .run-strip::after {
+	content: "";
+	position: absolute;
+	left: 22px;
+	right: 22px;
+	bottom: 0;
+	height: 1px;
+	background: var(--f-hair-2);
+	transition:
+		background-color 500ms ease,
+		box-shadow 500ms ease;
+}
+
+.develop[data-appearance="field"][data-motion="drift"] .develop-live .run-strip::after {
+	background: rgba(206, 218, 238, 0.2);
+}
+
+.develop[data-appearance="field"][data-motion="current"] .develop-live .run-strip::after {
+	background:
+		linear-gradient(90deg, rgba(154, 184, 255, 0), rgba(214, 228, 255, 0.95) 50%, rgba(154, 184, 255, 0)) -40% 0 / 38% 100% no-repeat,
+		rgba(154, 184, 255, 0.42);
+	box-shadow: 0 0 14px rgba(154, 184, 255, 0.28);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.develop[data-appearance="field"][data-motion="current"] .develop-live .run-strip::after {
+		animation: horizon 6.5s linear infinite;
+	}
+}
+
+@keyframes horizon {
+	to {
+		background-position:
+			140% 0,
+			0 0;
+	}
+}
+
+.develop[data-appearance="field"][data-motion="held"][data-attention="true"] .develop-live .run-strip::after {
+	background: var(--f-amber);
+	box-shadow: 0 0 16px rgba(242, 188, 88, 0.45);
+}
+
+.develop[data-appearance="field"][data-texture="dashed"] .develop-live .run-strip::after {
+	background: repeating-linear-gradient(90deg, var(--f-ink-3) 0 6px, transparent 6px 13px);
+	box-shadow: none;
+}
+
+/* STOP stays the most visible control while a run is open: a filled button with a stop mark, last in the strip. */
 .develop[data-appearance="field"] [data-testid="stop"]:not(:disabled) {
-	background: var(--fg-1);
-	border-color: var(--fg-1);
-	color: #0b0c0e;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 15px 5px 12px;
+	background: var(--f-ink-1);
+	border-color: var(--f-ink-1);
+	color: #050607;
 	font-weight: 600;
+	box-shadow: 0 0 0 4px rgba(239, 235, 227, 0.06);
+}
+
+.develop[data-appearance="field"] [data-testid="stop"]:not(:disabled)::before {
+	content: "";
+	width: 8px;
+	height: 8px;
+	border-radius: 1.5px;
+	background: currentColor;
 }
 
 .develop[data-appearance="field"] [data-testid="stop"]:hover:not(:disabled) {
 	background: #ffffff;
-	color: #0b0c0e;
+	color: #050607;
 }
 
 .develop[data-appearance="field"] .live-scroll {
@@ -3112,10 +3430,117 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* The operator's own words sit on a lifted plate; the agent's are set on the page. */
 .develop[data-appearance="field"] .turn-user .turn-body {
-	background: rgba(236, 232, 223, 0.045);
+	background: linear-gradient(180deg, rgba(206, 218, 238, 0.055), rgba(206, 218, 238, 0.03));
 	border: 1px solid var(--f-hair);
-	border-radius: 10px;
-	padding: 10px 14px;
+	border-radius: 12px;
+	padding: 11px 16px;
+}
+
+/* Reasoning on the night ground: the reported hue lifted to a lamp, the trace on a faint wash of it, never brighter than the answer. */
+.develop[data-appearance="field"] .reasoning {
+	margin-bottom: 10px;
+}
+
+.develop[data-appearance="field"] .reasoning-toggle,
+.develop[data-appearance="field"] .reasoning-line {
+	padding: 5px 10px 5px 4px;
+	margin-left: -4px;
+	width: calc(100% + 4px);
+	border-radius: 8px;
+}
+
+.develop[data-appearance="field"] .reasoning-toggle:hover {
+	background: rgba(154, 184, 255, 0.06);
+}
+
+.develop[data-appearance="field"] .strata,
+.develop[data-appearance="field"] .reasoning-label {
+	color: var(--f-lamp);
+}
+
+.develop[data-appearance="field"] .reasoning[data-state="withheld"] .strata,
+.develop[data-appearance="field"] .reasoning[data-state="empty"] .strata,
+.develop[data-appearance="field"] .reasoning[data-state="withheld"] .reasoning-label,
+.develop[data-appearance="field"] .reasoning[data-state="empty"] .reasoning-label {
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .reasoning-chevron {
+	color: var(--f-ink-4);
+}
+
+.develop[data-appearance="field"] .reasoning-toggle:hover .reasoning-chevron {
+	color: var(--f-lamp);
+}
+
+.develop[data-appearance="field"] .reasoning-meta,
+.develop[data-appearance="field"] .reasoning-preview {
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .reasoning-preview {
+	font-size: 13px;
+}
+
+.develop[data-appearance="field"] .reasoning-body {
+	margin: 6px 0 4px 9px;
+	padding: 12px 18px 12px 20px;
+	border-left: 1px solid rgba(154, 184, 255, 0.4);
+	border-radius: 0 12px 12px 0;
+	background: linear-gradient(90deg, rgba(154, 184, 255, 0.055), rgba(154, 184, 255, 0.015) 70%, transparent);
+}
+
+.develop[data-appearance="field"] .reasoning[data-partial="true"] .reasoning-body {
+	border-left: 1px dashed rgba(154, 184, 255, 0.55);
+}
+
+.develop[data-appearance="field"] .reasoning-text {
+	font-size: 13.5px;
+	line-height: 1.72;
+	color: var(--f-ink-2);
+	max-width: 68ch;
+}
+
+.develop[data-appearance="field"] .reasoning-more {
+	color: var(--f-lamp);
+}
+
+.develop[data-appearance="field"] .reasoning-note {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.02em;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .reasoning-pref {
+	border-color: var(--f-hair-2);
+}
+
+.develop[data-appearance="field"] .reasoning-pref legend {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .reasoning-pref-option[data-selected="true"] {
+	background: rgba(154, 184, 255, 0.16);
+	color: var(--f-ink-1);
+}
+
+/* The message being written: the open turn's dashed rule, beside the role, and quieter text. */
+.develop[data-appearance="field"] .turn-open .turn-role {
+	color: var(--f-lamp);
+}
+
+.develop[data-appearance="field"] .turn-open-meta {
+	font-family: var(--mono);
+	font-size: 10.5px;
+}
+
+.develop[data-appearance="field"] .turn-tool.tool-error .dim {
+	color: var(--fault);
 }
 
 .develop[data-appearance="field"] .turn-user .turn-role {
@@ -3172,7 +3597,7 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 .develop[data-appearance="field"] .turn-run::before,
 .develop[data-appearance="field"] .turn-run::after {
-	border-top: 1px solid var(--f-hair);
+	border-top: 1px solid var(--f-hair-2);
 }
 
 .develop[data-appearance="field"] .turn-intervention {
@@ -3222,9 +3647,9 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* The composer: one plate docked under the reading measure. */
 .develop[data-appearance="field"] .develop-live .composer {
-	background: linear-gradient(180deg, rgba(15, 16, 19, 0), var(--f-slab) 28%);
+	background: linear-gradient(180deg, rgba(4, 5, 6, 0), rgba(4, 5, 6, 0.97) 30%);
 	border-top: 0;
-	padding: 10px 18px 16px;
+	padding: 10px 22px 18px;
 }
 
 .develop[data-appearance="field"] .develop-live .composer[data-mode] {
@@ -3242,7 +3667,8 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 .develop[data-appearance="field"] .composer textarea:focus {
-	border-color: rgba(236, 232, 223, 0.32);
+	border-color: rgba(206, 218, 238, 0.34);
+	box-shadow: 0 0 0 4px rgba(206, 218, 238, 0.04);
 	outline: none;
 }
 
@@ -3327,7 +3753,7 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* The margins: context and inspector read as notes beside the work. */
 .develop[data-appearance="field"] .develop-inspector.panel {
-	background: rgba(10, 11, 13, 0.74);
+	background: rgba(4, 5, 6, 0.84);
 }
 
 .develop[data-appearance="field"] .change-row {
@@ -3335,11 +3761,11 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 .develop[data-appearance="field"] .change-row:hover {
-	background: rgba(236, 232, 223, 0.04);
+	background: rgba(206, 218, 238, 0.05);
 }
 
 .develop[data-appearance="field"] .change-row[aria-pressed="true"] {
-	background: rgba(236, 232, 223, 0.07);
+	background: rgba(206, 218, 238, 0.08);
 }
 
 .develop[data-appearance="field"] .facts .fact {
@@ -3401,6 +3827,9 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 .arrival-statement .mono {
+	display: inline-block;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 	font-size: 0.82em;
 	letter-spacing: -0.03em;
 }
@@ -3492,7 +3921,8 @@ body:has(.develop[data-appearance="field"]) .topbar {
 
 /* Where there is nothing to read, the work surfaces step aside and the field shows. */
 .develop[data-surface="arrival"] .develop-live {
-	background: rgba(10, 11, 13, 0.5);
+	/* Words are read here, so they get a dark clearing; the terrain stays at the edges of the surface. */
+	background: radial-gradient(75% 70% at 38% 46%, rgba(3, 4, 5, 0.95) 0%, rgba(3, 4, 5, 0.86) 52%, rgba(3, 4, 5, 0.5) 100%);
 	border-color: transparent;
 	box-shadow: none;
 }
@@ -3598,22 +4028,76 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	cursor: default;
 }
 
-/* --- the widths ----------------------------------------------------------------------------------------------------------------- */
+/* --- the widths and the composition ------------------------------------------------------------------------------------------------
+   While a live session is open, the conversation is the work and gets the width. What stays in view: the run strip (with STOP), the
+   conversation, the composer and, in the dock beside it, the worktree's changes over the session's context. The sessions list is a
+   drawer at every width (one press away; Escape and choosing close it): during a live session it is rarely read. The dock can be
+   closed for a focused reading width and opened again from the same button; both are memory only. */
 @media (min-width: 1024px) and (min-height: 540px) {
 	.develop[data-appearance="field"][data-fill="true"] .develop-grid {
+		position: relative;
 		gap: 14px;
-		grid-template-columns: clamp(240px, 17vw, 320px) minmax(0, 1fr) clamp(300px, 22vw, 420px);
+		grid-template-columns: minmax(0, 1fr) clamp(300px, 23vw, 420px);
+		grid-template-areas: "activity inspector";
+	}
+	.develop[data-appearance="field"][data-fill="true"][data-dock="closed"] .develop-grid {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas: "activity";
+	}
+	.develop[data-appearance="field"][data-fill="true"][data-dock="closed"] #develop-context {
+		display: none;
+	}
+	.develop[data-appearance="field"][data-fill="true"] .sessions-toggle,
+	.develop[data-appearance="field"][data-fill="true"] .dock-toggle {
+		display: inline-flex;
+	}
+	.develop[data-appearance="field"][data-fill="true"] .develop-nav-wrap {
+		display: none;
+		position: absolute;
+		z-index: 6;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: min(360px, 80%);
+		border-radius: 16px;
+		background: var(--f-ground);
+		box-shadow:
+			0 0 0 1px var(--f-hair-2),
+			24px 0 60px -20px #000;
+	}
+	.develop[data-appearance="field"][data-fill="true"] .develop-grid[data-drawer="open"] .develop-nav-wrap {
+		display: flex;
 	}
 }
 
-@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
-	.develop[data-appearance="field"][data-fill="true"] .develop-grid {
-		grid-template-columns: minmax(0, 1fr) 300px;
+/* A large, dense screen (a 1440p or 4K panel): a wider measure and a size up, so the conversation is not a narrow column in the dark. */
+@media (min-width: 2200px) {
+	.develop[data-appearance="field"] {
+		--f-measure: 54rem;
 	}
-	.develop[data-appearance="field"][data-fill="true"] .develop-nav-wrap {
-		background: var(--f-ground);
-		border-radius: 10px;
+	.develop[data-appearance="field"] .develop-live .turn-text {
+		font-size: 16.5px;
 	}
+	.develop[data-appearance="field"] .reasoning-text {
+		font-size: 14.5px;
+	}
+	.develop[data-appearance="field"] .turn {
+		grid-template-columns: 6.5rem minmax(0, 1fr);
+	}
+	.develop[data-appearance="field"] .turn-tool {
+		padding-left: calc(6.5rem + 14px);
+	}
+}
+
+/* The two buttons that open the drawer and the dock: quiet, in the conversation's header, with their state on them. */
+.dock-toggle {
+	display: none;
+}
+
+.develop[data-appearance="field"] .sessions-toggle[aria-expanded="true"],
+.develop[data-appearance="field"] .dock-toggle[aria-expanded="false"] {
+	background: rgba(206, 218, 238, 0.09);
+	color: var(--f-ink-1);
 }
 
 /* The ledger is as wide as the column it is in: four questions side by side where they fit, two by two, then one under another. */
@@ -3673,6 +4157,14 @@ body:has(.develop[data-appearance="field"]) .topbar {
 @media (max-width: 640px) {
 	.field-words {
 		white-space: normal;
+	}
+}
+
+/* On a narrow screen the header's tools wrap under the tabs instead of widening the page. */
+@media (max-width: 1023.98px) {
+	.live-head .panel-tools {
+		flex-wrap: wrap;
+		justify-content: flex-start;
 	}
 }
 

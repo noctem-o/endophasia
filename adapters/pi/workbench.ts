@@ -6,7 +6,8 @@
 //
 //   GET  status                 connection, run state, the one command in flight, what is offered and why not. Read capability only.
 //   POST pair {code}            exchange the one-time code shown on the attached terminal for an operator grant.
-//   GET  transcript?after=n     the live, private, in-memory transcript. Needs the grant.
+//   GET  transcript?after=n     the live, private, in-memory transcript (with model-provided reasoning, when the runtime supplies it in
+//                               structured form, and the message being written). Needs the grant.
 //   POST prompt/propose {message}   ask to send ONE new user prompt. Needs the grant. This only REQUESTS: see below.
 //   GET  prompt/<id>            the state of that prompt. Needs the grant.
 //   POST prompt/discard {proposalId}  withdraw it before it is approved.
@@ -50,7 +51,7 @@ import type {
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
-import { LiveTranscriptV0 } from "./live-transcript.ts";
+import { LIVE_TRANSCRIPT_SCHEMA_V1, LiveTranscriptV0 } from "./live-transcript.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
 import {
 	type WorkbenchDeskV0,
@@ -223,7 +224,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 						granted: (grant) => this.#granted(grant),
 						closed: () => this.#disposed || this.#ended,
 						unsafe: (message) => UNSAFE_PROMPT_CHARS.test(message),
-						watermark: () => this.transcript.view(Number.MAX_SAFE_INTEGER).watermark,
+						watermark: () => this.transcript.watermark,
 						promptAwaitingApproval: () => this.#command?.view.state === "awaiting-approval",
 						maxMessageBytes: ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0,
 						...(options.yieldToLoop === undefined ? {} : { yieldToLoop: options.yieldToLoop }),
@@ -315,8 +316,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			command: this.#command?.view ?? null,
 			interventions: this.#interventions?.views() ?? [],
 			transcript: {
-				watermark: this.transcript.view(Number.MAX_SAFE_INTEGER).watermark,
-				firstSeq: this.transcript.view(Number.MAX_SAFE_INTEGER).firstSeq,
+				watermark: this.transcript.watermark,
+				firstSeq: this.transcript.firstSeq,
 			},
 		};
 	}
@@ -389,7 +390,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			const match = /^after=(0|[1-9][0-9]{0,15})$/.exec(request.query);
 			if (request.query !== "" && match === null) return refuse(400, "bad-request");
 			const view = this.transcript.view(match === null ? 0 : Number(match[1]));
-			return reply(200, { schemaVersion: "endo.workbench-transcript.v0", launchId: this.launchId, ...view });
+			return reply(200, { schemaVersion: LIVE_TRANSCRIPT_SCHEMA_V1, launchId: this.launchId, ...view });
 		}
 		// A workbench with no project context says so with one constant answer (as the read-only server does for status), so a page can ask
 		// quietly: a 404 would be logged by every browser as a failed request.

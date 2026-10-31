@@ -31,11 +31,13 @@ import {
 	endoCockpitTextPresentableV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 } from "../../protocol/cockpit-fields.ts";
-import type {
-	EndoHarnessChangeV0,
-	EndoHarnessFingerprintV0,
-	EndoHarnessNotificationV0,
-	EndoHarnessObservationRefV0,
+import {
+	type EndoHarnessChangeRecordV0,
+	type EndoHarnessFingerprintRecordV0,
+	type EndoHarnessNotificationV0,
+	type EndoHarnessObservationRefRecordV0,
+	endoHarnessIdentityBasisNameV0,
+	endoHarnessRuntimeContentV0,
 } from "../../protocol/harness.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import {
@@ -55,7 +57,10 @@ import {
 const GAP_REASON = ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0;
 const WITHHELD_TEXT = ENDO_COCKPIT_WITHHELD_TEXT_V0;
 
-function observationView(alias: EndoCockpitAliasesV0, ref: EndoHarnessObservationRefV0): EndoCockpitObservationViewV0 {
+function observationView(
+	alias: EndoCockpitAliasesV0,
+	ref: EndoHarnessObservationRefRecordV0,
+): EndoCockpitObservationViewV0 {
 	return {
 		fingerprintId: alias.id(ref.fingerprintId),
 		identityDigest: alias.digest("identity", ref.identityDigest),
@@ -67,7 +72,7 @@ function observationView(alias: EndoCockpitAliasesV0, ref: EndoHarnessObservatio
 function fingerprintView(
 	alias: EndoCockpitAliasesV0,
 	attachment: string,
-	item: EndoCockpitIndexedV0<EndoHarnessFingerprintV0>,
+	item: EndoCockpitIndexedV0<EndoHarnessFingerprintRecordV0>,
 ): EndoCockpitFingerprintViewV0 {
 	const { record, index } = item;
 	const ref = registryRefV0(alias, attachment, "fingerprint", index, record.id);
@@ -102,6 +107,15 @@ function fingerprintView(
 						!endoCockpitTextPresentableV0(record.local.package.version)
 					? unavailableV0(WITHHELD_TEXT, refs)
 					: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
+		basis: endoHarnessIdentityBasisNameV0(record),
+		runtimeContent: (() => {
+			const covered = endoHarnessRuntimeContentV0(record);
+			return covered === null
+				? unavailableV0(GAP_REASON, refs)
+				: !endoCockpitTextPresentableV0(covered.scope)
+					? unavailableV0(WITHHELD_TEXT, refs)
+					: claimV0("observed", { scope: covered.scope, files: covered.files, bytes: covered.bytes }, refs);
+		})(),
 		withheld: [...ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0],
 	};
 }
@@ -109,7 +123,7 @@ function fingerprintView(
 function changeView(
 	alias: EndoCockpitAliasesV0,
 	attachment: string,
-	item: EndoCockpitIndexedV0<EndoHarnessChangeV0>,
+	item: EndoCockpitIndexedV0<EndoHarnessChangeRecordV0>,
 ): EndoCockpitChangeViewV0 {
 	const { record, index } = item;
 	return {
@@ -176,7 +190,7 @@ function projectEndoCockpitRuntimeIdentityV0Unchecked(
 	const notifications = cleanRegistryRecordsV0(source, alias, "notification", records, notes);
 
 	const current = fingerprints.at(-1) ?? null;
-	let previousDifferent: EndoCockpitIndexedV0<EndoHarnessFingerprintV0> | null = null;
+	let previousDifferent: EndoCockpitIndexedV0<EndoHarnessFingerprintRecordV0> | null = null;
 	if (current !== null) {
 		for (let at = fingerprints.length - 2; at >= 0; at -= 1) {
 			const candidate = fingerprints[at]!;

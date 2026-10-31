@@ -1,0 +1,29 @@
+{
+	"at": "2026-01-02T00:00:01.000Z",
+	"attachment": "fx.attachment",
+	"current": {
+		"basis": "runtime-content.v1",
+		"confidence": "strong",
+		"fingerprintId": "endo.evidence.fx-fingerprint-v1-3a91c07e55d2b648",
+		"identityDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+		"realPath": "/fx/lib/fx-runtime/dist/bundle/cli.js",
+		"version": "1.0.0"
+	},
+	"differences": [
+		"realPath",
+		"identityBasis"
+	],
+	"id": "endo.evidence.fx-change-v1-1",
+	"kind": "changed",
+	"previous": {
+		"basis": "entrypoint.v0",
+		"confidence": "strong",
+		"fingerprintId": "endo.evidence.fx-fingerprint-2142e80091af2f31",
+		"identityDigest": "fcb516e95fdb559845c027233e4c9a8676a61b6148f918d652e4f547a506dc11",
+		"realPath": "/fx/lib/fx-runtime/cli.js",
+		"version": "1.0.0"
+	},
+	"runtime": "fx.runtime",
+	"schemaVersion": "endo.harness-change.v1",
+	"versionOrder": "equal"
+}

@@ -4,7 +4,9 @@
 //
 // Evidence validity, explicitly. A capability evidence record applies to the current attachment only when ALL hold:
 //   1. the current runtime was identified (a fingerprint exists for this attachment now);
-//   2. its identity digest equals the current identity digest;
+//   2. its identity digest equals the current identity digest. The digest is computed over a basis that names itself
+//      (entrypoint.v0, runtime-content.v1), so evidence recorded on one basis never matches an identity on another;
+//      such evidence is reported as needing requalification, not as a runtime difference;
 //   3. its identity was "strong" and the current identity is "strong" — or it was recorded against the very
 //      fingerprint record that is current (same observation). Reduced identities are never carried across
 //      observations: two different runtimes could share a reduced digest;
@@ -35,16 +37,21 @@ import {
 	type EndoCapabilityEvidenceV0,
 	type EndoCapabilityStateEntryV0,
 	type EndoCapabilityStateV0,
-	type EndoHarnessChangeV0,
-	type EndoHarnessDifferenceV0,
-	type EndoHarnessFingerprintV0,
+	type EndoHarnessChangeRecordV0,
+	type EndoHarnessChangeV1,
+	type EndoHarnessDifferenceV1,
+	type EndoHarnessFingerprintRecordV0,
 	type EndoHarnessNotificationV0,
-	type EndoHarnessObservationRefV0,
+	type EndoHarnessObservationRefRecordV0,
+	type EndoHarnessObservationRefV1,
 	type EndoHarnessVersionOrderV0,
 	endoCapabilityStatusForV0,
+	endoHarnessIdentityBasisNameV0,
+	endoHarnessObservationBasisV0,
+	endoHarnessRuntimeContentV0,
 	validateEndoCapabilityEvidenceV0,
 	validateEndoCapabilityStateV0,
-	validateEndoHarnessChangeV0,
+	validateEndoHarnessChangeV1,
 	validateEndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -62,13 +69,14 @@ function contentId(prefix: string, body: unknown): string {
 	return `endo.evidence.${prefix}.${sha256HexV0(canonicalEndoJsonV0(body))}`;
 }
 
-function observationRef(fingerprint: EndoHarnessFingerprintV0): EndoHarnessObservationRefV0 {
+function observationRef(fingerprint: EndoHarnessFingerprintRecordV0): EndoHarnessObservationRefV1 {
 	return {
 		fingerprintId: fingerprint.id,
 		identityDigest: fingerprint.identity.digest,
 		confidence: fingerprint.identity.confidence,
 		version: fingerprint.reported.version,
 		realPath: fingerprint.local.realPath,
+		basis: endoHarnessIdentityBasisNameV0(fingerprint),
 	};
 }
 
@@ -81,12 +89,18 @@ function versionOrder(previous: string | null, current: string | null): EndoHarn
 	return order === 0 ? "equal" : order > 0 ? "higher" : "lower";
 }
 
-/** Which identity facts differ between two fingerprints, in a fixed order. */
+/**
+ * Which identity facts differ between two fingerprints, in a fixed order. Facts both bases carry (path, entrypoint,
+ * package, version) are compared directly. Runtime content exists only on the v1 basis, so it is compared only
+ * between two v1 fingerprints; across bases the difference is "identityBasis", which states that the digests are not
+ * comparable. It never claims the runtime's code differs.
+ */
 export function piFingerprintDifferencesV0(
-	previous: EndoHarnessFingerprintV0,
-	current: EndoHarnessFingerprintV0,
-): EndoHarnessDifferenceV0[] {
-	const differences: EndoHarnessDifferenceV0[] = [];
+	previous: EndoHarnessFingerprintRecordV0,
+	current: EndoHarnessFingerprintRecordV0,
+): EndoHarnessDifferenceV1[] {
+	const differences: EndoHarnessDifferenceV1[] = [];
+	const crossBasis = endoHarnessIdentityBasisNameV0(previous) !== endoHarnessIdentityBasisNameV0(current);
 	if (previous.local.realPath !== current.local.realPath) differences.push("realPath");
 	if ((previous.local.entrypoint?.sha256 ?? null) !== (current.local.entrypoint?.sha256 ?? null))
 		differences.push("entrypoint");
@@ -96,7 +110,15 @@ export function piFingerprintDifferencesV0(
 	)
 		differences.push("package");
 	if (previous.reported.version !== current.reported.version) differences.push("version");
+	// Both the digest and the scope it was taken over are identity inputs (endoHarnessIdentityBasisV1): a scope that
+	// moved with identical files changes the digest, and must be listed or the change record would not validate.
+	const contentKey = (print: EndoHarnessFingerprintRecordV0) => {
+		const content = endoHarnessRuntimeContentV0(print);
+		return content === null ? null : `${content.scope}\n${content.sha256}`;
+	};
+	if (!crossBasis && contentKey(previous) !== contentKey(current)) differences.push("runtimeContent");
 	if (previous.identity.confidence !== current.identity.confidence) differences.push("confidence");
+	if (crossBasis) differences.push("identityBasis");
 	return differences;
 }
 
@@ -106,16 +128,16 @@ export function piFingerprintDifferencesV0(
  */
 export function piChangeV0(args: {
 	attachment: string;
-	previous: EndoHarnessFingerprintV0 | null;
-	current: EndoHarnessFingerprintV0 | null;
+	previous: EndoHarnessFingerprintRecordV0 | null;
+	current: EndoHarnessFingerprintRecordV0 | null;
 	failure?: string;
 	at: string;
-}): EndoHarnessChangeV0 {
+}): EndoHarnessChangeV1 {
 	const { attachment, previous, current, at } = args;
-	let body: Omit<EndoHarnessChangeV0, "id">;
+	let body: Omit<EndoHarnessChangeV1, "id">;
 	if (current === null) {
 		body = {
-			schemaVersion: "endo.harness-change.v0",
+			schemaVersion: "endo.harness-change.v1",
 			attachment,
 			runtime: "pi",
 			at,
@@ -128,7 +150,7 @@ export function piChangeV0(args: {
 		};
 	} else if (previous === null) {
 		body = {
-			schemaVersion: "endo.harness-change.v0",
+			schemaVersion: "endo.harness-change.v1",
 			attachment,
 			runtime: "pi",
 			at,
@@ -142,9 +164,10 @@ export function piChangeV0(args: {
 		const same = previous.identity.digest === current.identity.digest;
 		const differences = same ? [] : piFingerprintDifferencesV0(previous, current);
 		// A differing digest with no listed difference cannot happen for digests computed from the listed facts; if it
-		// ever did, the record would fail validation rather than claim "changed" without saying what changed.
+		// ever did, the record would fail validation rather than claim "changed" without saying what changed. A
+		// digest that differs only because the basis differs is listed as "identityBasis", never as a content change.
 		body = {
-			schemaVersion: "endo.harness-change.v0",
+			schemaVersion: "endo.harness-change.v1",
 			attachment,
 			runtime: "pi",
 			at,
@@ -156,14 +179,14 @@ export function piChangeV0(args: {
 		};
 	}
 	const record = { ...body, id: contentId("pi-change", body) };
-	const validated = validateEndoHarnessChangeV0(record);
+	const validated = validateEndoHarnessChangeV1(record);
 	if (validated === null) throw new TypeError("the Pi runtime change record failed validation");
 	return validated;
 }
 
-function describe(ref: EndoHarnessObservationRefV0 | null): string {
+function describe(ref: EndoHarnessObservationRefRecordV0 | null): string {
 	if (ref === null) return "nothing recorded";
-	return `${ref.version ?? "version unknown"} / fingerprint ${ref.identityDigest.slice(0, 12)} (${ref.confidence} identity)${
+	return `${ref.version ?? "version unknown"} / fingerprint ${ref.identityDigest.slice(0, 12)} (${ref.confidence} identity, basis ${endoHarnessObservationBasisV0(ref)})${
 		ref.realPath === null ? "" : ` at ${ref.realPath}`
 	}`;
 }
@@ -176,7 +199,7 @@ export const PI_NOT_MANAGED_LINE =
  * The operator notice for a change, or null when nothing changed. The wording is neutral: a different fingerprint
  * says the runtime differs, never why, and never that an update is available or needed.
  */
-export function piNotificationV0(change: EndoHarnessChangeV0): EndoHarnessNotificationV0 | null {
+export function piNotificationV0(change: EndoHarnessChangeRecordV0): EndoHarnessNotificationV0 | null {
 	if (change.kind === "unchanged") return null;
 	let kind: EndoHarnessNotificationV0["kind"];
 	let title: string;
@@ -200,6 +223,17 @@ export function piNotificationV0(change: EndoHarnessChangeV0): EndoHarnessNotifi
 			"No conformance evidence exists yet. Capabilities are unverified until checks record evidence.",
 			PI_NOT_MANAGED_LINE,
 		];
+	} else if (change.differences.every((d) => d === "identityBasis" || d === "confidence")) {
+		// Only the identity basis (and the confidence it supports) differs: nothing says the runtime itself changed.
+		kind = "runtime-changed";
+		title = "Pi runtime identity recorded on a new basis";
+		lines = [
+			`Previously recorded: ${describe(change.previous)}`,
+			`Now recorded: ${describe(change.current)}`,
+			"The two identities use different bases and cannot be compared: this does not show that Pi changed. The earlier basis (entrypoint.v0) covered only the launcher file; runtime-content.v1 also covers the files it loads.",
+			"Evidence recorded under the earlier basis does not apply. Capabilities are unverified until checks record evidence for this identity (endo harness check).",
+			PI_NOT_MANAGED_LINE,
+		];
 	} else {
 		kind = "runtime-changed";
 		title = "Pi runtime changed";
@@ -208,6 +242,11 @@ export function piNotificationV0(change: EndoHarnessChangeV0): EndoHarnessNotifi
 			`Previously observed: ${describe(change.previous)}`,
 			`Currently detected: ${describe(change.current)}`,
 			`Differences: ${change.differences.join(", ")}; version order: ${change.versionOrder}; version standing: ${standing}`,
+			...((change.differences as readonly string[]).includes("identityBasis")
+				? [
+						"The identity basis also differs (entrypoint.v0 versus runtime-content.v1): the digests are not comparable, so a runtime-content difference is not asserted either way.",
+					]
+				: []),
 			"Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.",
 			PI_NOT_MANAGED_LINE,
 		];
@@ -277,7 +316,7 @@ export function piConfigurationDigestV0(
 
 /** The current dependency values for one check against one fingerprint. */
 export function piDependenciesV0(
-	fingerprint: EndoHarnessFingerprintV0,
+	fingerprint: EndoHarnessFingerprintRecordV0,
 	configurationDigest: string,
 ): EndoCapabilityDependenciesV0 {
 	return {
@@ -336,7 +375,9 @@ export function piEvidenceV0(args: {
 export function piEvidenceValidityV0(
 	evidence: EndoCapabilityEvidenceV0,
 	current: {
-		fingerprint: EndoHarnessFingerprintV0 | null;
+		fingerprint: EndoHarnessFingerprintRecordV0 | null;
+		/** The recorded fingerprints, used only to word why cross-basis evidence does not apply. */
+		fingerprints?: readonly EndoHarnessFingerprintRecordV0[];
 		definitions: ReadonlyMap<string, PiCheckDefinitionV0>;
 		configurationDigest: (kind: EndoCapabilityCheckKindV0) => string;
 	},
@@ -345,6 +386,14 @@ export function piEvidenceValidityV0(
 	if (fingerprint === null) return { valid: false, reason: "the current runtime is unidentified" };
 	const dependencies = evidence.dependencies;
 	if (dependencies.identityDigest !== fingerprint.identity.digest) {
+		const recorded = current.fingerprints?.find((print) => print.id === dependencies.fingerprintId);
+		const currentBasis = endoHarnessIdentityBasisNameV0(fingerprint);
+		if (recorded !== undefined && endoHarnessIdentityBasisNameV0(recorded) !== currentBasis) {
+			return {
+				valid: false,
+				reason: `recorded under the ${endoHarnessIdentityBasisNameV0(recorded)} identity basis; the current runtime is identified on ${currentBasis}, so the two are not comparable and the capability needs requalification`,
+			};
+		}
 		return { valid: false, reason: "recorded against a different runtime fingerprint" };
 	}
 	const sameObservation = dependencies.fingerprintId === fingerprint.id;
@@ -381,7 +430,8 @@ const CONSERVATIVE_ORDER: Record<EndoConformanceClassificationV0, number> = {
 export function derivePiCapabilityStateV0(args: {
 	attachment: string;
 	at: string;
-	fingerprint: EndoHarnessFingerprintV0 | null;
+	fingerprint: EndoHarnessFingerprintRecordV0 | null;
+	fingerprints?: readonly EndoHarnessFingerprintRecordV0[];
 	evidence: readonly EndoCapabilityEvidenceV0[];
 	definitions: ReadonlyMap<string, PiCheckDefinitionV0>;
 	configurationDigest: (kind: EndoCapabilityCheckKindV0) => string;

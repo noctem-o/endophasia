@@ -22,8 +22,8 @@ import {
 import type {
 	EndoCapabilityEvidenceV0,
 	EndoCapabilityStateV0,
-	EndoHarnessChangeV0,
-	EndoHarnessFingerprintV0,
+	EndoHarnessChangeRecordV0,
+	EndoHarnessFingerprintRecordV0,
 	EndoHarnessNotificationV0,
 } from "../../protocol/harness.ts";
 import { parseEndoIdentifierV0 } from "../../protocol/identity.ts";
@@ -32,8 +32,8 @@ import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 
 /** The validated records of one attachment's registry, each kind in append order. */
 export interface EndoCockpitRegistryRecordsV0 {
-	fingerprint: readonly EndoHarnessFingerprintV0[];
-	change: readonly EndoHarnessChangeV0[];
+	fingerprint: readonly EndoHarnessFingerprintRecordV0[];
+	change: readonly EndoHarnessChangeRecordV0[];
 	evidence: readonly EndoCapabilityEvidenceV0[];
 	state: readonly EndoCapabilityStateV0[];
 	notification: readonly EndoHarnessNotificationV0[];

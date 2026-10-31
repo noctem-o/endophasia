@@ -537,7 +537,9 @@ async function startInitialRuntimeV0(
 		session.fingerprint.identity.digest !== plan.piIdentity ||
 		session.fingerprint.reported.version !== plan.piVersion
 	)
-		throw new Error("Pi runtime changed before dispatch");
+		throw new Error(
+			"Pi runtime changed before dispatch (or the plan was made on an earlier identity basis; plan again)",
+		);
 	const state = await withinDeadline(session.rpcState(), deadline, signal);
 	if (
 		state.model?.provider !== plan.provider ||

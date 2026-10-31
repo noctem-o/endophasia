@@ -41,6 +41,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PiAttachmentV0, type PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { PI_ADAPTER_VERSION, PI_MAPPING_VERSION, PI_SUITE_VERSION } from "../adapters/pi/version.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
+import { endoHarnessIdentityBasisNameV0 } from "../protocol/harness.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
@@ -511,6 +512,7 @@ export async function recordPiLifecycleFixturesV0(options: PiLifecycleRecorderOp
 			pi: {
 				version: fingerprint.reported.version,
 				package: fingerprint.local.package === null ? null : { ...fingerprint.local.package, root: null },
+				identityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
 				entrypointSha256: fingerprint.local.entrypoint?.sha256 ?? null,
 				identityDigest: fingerprint.identity.digest,
 				isDeterministicSuiteFake: fingerprint.local.entrypoint?.sha256 === fakeDigest,

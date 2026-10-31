@@ -72,14 +72,21 @@ storage:  storage/harness-registry  per-attachment append-only frame log of thos
 are skipped), follows symlinks, hashes the real file, reads the nearest `package.json`, and runs `<pi> --version` once
 with a 15 s bound, bounded output, and `PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0`.
 
-The record (`endo.harness-fingerprint.v0`) separates **local facts** (requested, resolved path, real path, entrypoint
-SHA-256 and size, package name/version/root) from **reported facts** (version output, parsed semver). Every missing
-fact is listed in `gaps` with its reason; the validator rejects a gap list that disagrees with the null facts.
+The record is `endo.harness-fingerprint.v1` (earlier stores hold `endo.harness-fingerprint.v0`, which stays readable and
+unchanged). It separates **local facts** (requested, resolved path, real path, entrypoint SHA-256 and size, a runtime-content
+digest with its scope, file count and bytes, package name/version/root) from **reported facts** (version output, parsed
+semver). Every missing fact is listed in `gaps` with its reason; the validator rejects a gap list that disagrees with the
+null facts.
 
-- **Identity digest**: SHA-256 over runtime, real path, entrypoint digest, package name and version, reported version.
-- **Confidence**: `strong` when both the entrypoint digest and a parsed version exist; otherwise `reduced`.
-- **Scope, plainly**: the entrypoint digest covers one file (`dist/bundle/cli.js` for npm installs of 1.0.0). It does
-  not cover what that file loads: node_modules, the Node binary, user configuration or extensions. The package
+- **Identity digest**: SHA-256 over a basis that names itself (`runtime-content.v1`): runtime, real path, entrypoint
+  digest, runtime-content scope and digest, package name and version, reported version. A v0 digest (basis `entrypoint.v0`)
+  has no runtime-content part and can never equal a v1 digest.
+- **Confidence**: `strong` when the entrypoint digest, the runtime-content digest and a parsed version all exist;
+  otherwise `reduced`.
+- **Scope, plainly**: the entrypoint digest covers one file (`dist/bundle/cli.js` for npm installs), a launcher that is the
+  same in every release. The runtime-content digest covers every regular file in that file's directory, with no list of
+  names. Neither covers the Node binary, packages imported from node_modules, files read from elsewhere in the package,
+  user configuration or extensions, and neither authenticates a publisher. The package
   manifest is a local claim, not verified provenance. Pi is launched by its resolved path after fingerprinting; a
   reinstall between the two would go unnoticed until the next attachment fingerprints again.
 

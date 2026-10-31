@@ -14,6 +14,12 @@ export interface FakePiInstall {
 	readonly bin: string;
 	readonly entrypoint: string;
 	readonly packageJson: string;
+	/** `dist/bundle`: the directory the runtime-content identity covers. */
+	readonly bundleDir: string;
+	/** Write (or replace) a file under the bundle directory, e.g. `chunks/chunk-A.js`. */
+	writeBundleFile(relative: string, content: string): void;
+	/** Remove a file under the bundle directory. */
+	removeBundleFile(relative: string): void;
 	/** Rewrite the package version (what `--version` reports), keeping the entrypoint bytes. */
 	setVersion(version: string): void;
 	/** Change the entrypoint bytes, keeping the version (a local rebuild). */
@@ -43,12 +49,26 @@ export function installFakePi(
 			JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: v, type: "module" }),
 		);
 	writeManifest(version);
+	// Shaped like Pi's bundle: the entrypoint is a launcher; the program is in sibling and chunk files. The fake Pi
+	// itself runs from cli.js, so these only give the identity something real to cover.
+	const bundleDir = dirname(entrypoint);
+	const writeBundleFile = (relative: string, content: string) => {
+		const target = join(bundleDir, relative);
+		mkdirSync(dirname(target), { recursive: true });
+		writeFileSync(target, content);
+	};
+	writeBundleFile("cli-runtime.js", `export const runtime = "pi-runtime";\n`);
+	writeBundleFile("chunks/chunk-AAAA1111.js", "export const a = 1;\n");
+	writeBundleFile("chunks/chunk-BBBB2222.js", "export const b = 2;\n");
 	symlinkSync("../lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js", bin);
 	return {
 		prefix,
 		bin,
 		entrypoint,
 		packageJson,
+		bundleDir,
+		writeBundleFile,
+		removeBundleFile: (relative) => rmSync(join(bundleDir, relative), { force: true }),
 		setVersion: writeManifest,
 		rebuild(marker) {
 			writeFileSync(entrypoint, `${readFileSync(FAKE_PI_SOURCE, "utf8")}\n// rebuilt: ${marker}\n`);

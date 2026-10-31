@@ -22,7 +22,12 @@ import {
 	resolvePiExecutableV0,
 } from "../adapters/pi/identity.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
-import type { EndoCapabilityStateEntryV0 } from "../protocol/harness.ts";
+import {
+	type EndoCapabilityStateEntryV0,
+	type EndoHarnessFingerprintRecordV0,
+	endoHarnessIdentityBasisNameV0,
+	endoHarnessRuntimeContentV0,
+} from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyPathV0 } from "../storage/digest-key.ts";
 import { endoHarnessRegistryDirectoryV0, openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
@@ -53,7 +58,11 @@ export interface EndoDoctorReportV0 {
 		versionGap: string | null;
 		versionStanding: string | null;
 		identityDigest: string | null;
-		/** "reduced" when the entrypoint or version could not be observed: equality of such identities proves little. */
+		/** The basis the digest is computed on: digests on different bases are never comparable. */
+		identityBasis: string | null;
+		/** What the digest covers beyond the entrypoint file: the runtime files' scope, count and bytes, or null (a gap). */
+		runtimeContent: { scope: string; files: number; bytes: number } | null;
+		/** "reduced" when the entrypoint, the runtime files or the version could not be observed: equality of such identities proves little. */
 		identityConfidence: string | null;
 		/** Every fact the fingerprint could not obtain, with why. */
 		gaps: { fact: string; reason: string }[];
@@ -73,6 +82,10 @@ export interface EndoDoctorReportV0 {
 		currentMatchesRecorded: boolean | null;
 		/** The confidence of the latest recorded identity. */
 		recordedIdentityConfidence: string | null;
+		/** The basis of the latest recorded identity (a v0 record is "entrypoint.v0"). */
+		recordedIdentityBasis: string | null;
+		/** True when the recorded and the current identity are on different bases: they cannot be compared at all. */
+		identityBasisDiffers: boolean | null;
 		/** The fingerprint the recorded capability state was derived for, or null when none. */
 		capabilitiesFingerprintId: string | null;
 		/** True when the capabilities were derived for another identity than the latest recorded one: not current. */
@@ -154,7 +167,7 @@ export async function endoDoctorV0(
 	if (!compatible) steps.push(`Install Node ${ENDO_NODE_REQUIRED_V0.text} (running ${nodeVersion}).`);
 
 	// Pi: resolve, then (only if found) take the existing fingerprint, which runs `<pi> --version` once.
-	let piRecord: { identity: { digest: string; confidence: string } } | null = null;
+	let piRecord: EndoHarnessFingerprintRecordV0 | null = null;
 	const pi: EndoDoctorReportV0["pi"] = {
 		status: "not-found",
 		requested: null,
@@ -165,6 +178,8 @@ export async function endoDoctorV0(
 		versionGap: null,
 		versionStanding: null,
 		identityDigest: null,
+		identityBasis: null,
+		runtimeContent: null,
 		identityConfidence: null,
 		gaps: [],
 		reason: null,
@@ -196,6 +211,10 @@ export async function endoDoctorV0(
 				pi.reportedVersion = fingerprint.reported.version;
 				pi.versionStanding = piVersionStandingV0(fingerprint.reported.version);
 				pi.identityDigest = fingerprint.identity.digest;
+				pi.identityBasis = endoHarnessIdentityBasisNameV0(fingerprint);
+				const covered = endoHarnessRuntimeContentV0(fingerprint);
+				pi.runtimeContent =
+					covered === null ? null : { scope: covered.scope, files: covered.files, bytes: covered.bytes };
 				pi.identityConfidence = fingerprint.identity.confidence;
 				pi.gaps = fingerprint.gaps.map((gap) => ({ fact: gap.fact, reason: gap.reason }));
 				piRecord = fingerprint;
@@ -259,6 +278,8 @@ export async function endoDoctorV0(
 		recordedVersion: null,
 		currentMatchesRecorded: null,
 		recordedIdentityConfidence: null,
+		recordedIdentityBasis: null,
+		identityBasisDiffers: null,
 		capabilitiesFingerprintId: null,
 		capabilitiesStale: false,
 		logDamage: null,
@@ -322,14 +343,20 @@ export async function endoDoctorV0(
 				evidence.recordedFingerprintAt = fingerprint?.observedAt ?? null;
 				evidence.recordedVersion = fingerprint?.reported.version ?? null;
 				evidence.recordedIdentityConfidence = fingerprint?.identity.confidence ?? null;
+				evidence.recordedIdentityBasis = fingerprint === null ? null : endoHarnessIdentityBasisNameV0(fingerprint);
 				if (fingerprint !== null && piRecord !== null) {
+					evidence.identityBasisDiffers =
+						endoHarnessIdentityBasisNameV0(fingerprint) !== endoHarnessIdentityBasisNameV0(piRecord);
 					const sameDigest = fingerprint.identity.digest === piRecord.identity.digest;
-					// A reduced identity (no entrypoint digest or no version) may not change when the runtime does.
-					evidence.currentMatchesRecorded = !sameDigest
-						? false
-						: fingerprint.identity.confidence === "strong" && piRecord.identity.confidence === "strong"
-							? true
-							: null;
+					// Digests on different bases cannot be compared: neither "same" nor "different runtime" is established.
+					// A reduced identity (no entrypoint digest, no runtime files or no version) may not change when the runtime does.
+					evidence.currentMatchesRecorded = evidence.identityBasisDiffers
+						? null
+						: !sameDigest
+							? false
+							: fingerprint.identity.confidence === "strong" && piRecord.identity.confidence === "strong"
+								? true
+								: null;
 				}
 				evidence.capabilities = state?.capabilities ?? [];
 				evidence.capabilitiesFingerprintId = state?.fingerprintId ?? null;
@@ -452,6 +479,12 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 			? `Pi        found at ${pi.path}, reports ${pi.reportedVersion ?? "no parsable version"} (${pi.versionStanding}); a found executable is not an admitted capability`
 			: `Pi        ${pi.status.toUpperCase()}${pi.reason === null ? "" : ` — ${pi.reason}`}`,
 	);
+	if (pi.status === "found" && pi.identityBasis !== null)
+		lines.push(
+			pi.runtimeContent === null
+				? `          identity basis ${pi.identityBasis}: the entrypoint file only; the runtime's own files are NOT covered`
+				: `          identity basis ${pi.identityBasis}: ${pi.runtimeContent.files} files (${pi.runtimeContent.bytes} bytes) under ${pi.runtimeContent.scope} are covered; Node, imported packages and configuration are not`,
+		);
 	if (pi.status === "found" && pi.identityConfidence === "reduced")
 		lines.push(
 			`          identity is REDUCED confidence: ${pi.gaps.map((g) => `${g.fact} (${g.reason})`).join("; ")}`,
@@ -480,7 +513,15 @@ export function renderEndoDoctorV0(report: EndoDoctorReportV0): string {
 					: report.evidence.currentMatchesRecorded
 						? "; the installed Pi has that identity"
 						: "; the installed Pi has a DIFFERENT identity"
-			}${report.evidence.currentMatchesRecorded === null && report.evidence.recordedFingerprintAt !== null && report.pi.identityDigest !== null ? "; whether the installed Pi is the same could not be established (a reduced-confidence identity does not prove it)" : ""}`,
+			}${
+				report.evidence.identityBasisDiffers === true
+					? `; the recorded identity is on the ${report.evidence.recordedIdentityBasis} basis and the installed Pi's is on ${report.pi.identityBasis}: the digests cannot be compared, so whether the runtime is the same is not established, and recorded evidence needs requalification (endo harness check)`
+					: report.evidence.currentMatchesRecorded === null &&
+							report.evidence.recordedFingerprintAt !== null &&
+							report.pi.identityDigest !== null
+						? "; whether the installed Pi is the same could not be established (a reduced-confidence identity does not prove it)"
+						: ""
+			}`,
 		);
 	if (report.evidence.capabilitiesStale)
 		lines.push(

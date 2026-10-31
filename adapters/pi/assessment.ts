@@ -51,7 +51,7 @@ export function renderPiAssessmentV0(assessment: EndoHarnessAssessmentV0): strin
 	const describe = (o: EndoHarnessAssessmentV0["current"]) =>
 		o === null
 			? "nothing recorded"
-			: `${o.version ?? "version unknown"} (${piVersionStandingV0(o.version)}) / fingerprint ${o.identityDigest.slice(0, 12)}, ${o.confidence} identity, observed ${o.observedAt}`;
+			: `${o.version ?? "version unknown"} (${piVersionStandingV0(o.version)}) / fingerprint ${o.identityDigest.slice(0, 12)}, ${o.confidence} identity on basis ${o.identityBasis}${o.runtimeContent === null ? " (entrypoint file only)" : ` (${o.runtimeContent.files} runtime files under ${o.runtimeContent.scope})`}, observed ${o.observedAt}`;
 	lines.push(
 		`Upstream assessment for ${assessment.attachment} (from recorded state; the installed Pi was not examined)`,
 	);
@@ -68,7 +68,7 @@ export function renderPiAssessmentV0(assessment: EndoHarnessAssessmentV0): strin
 			lines.push(
 				assessment.change === null
 					? "  Changes:  no change record links the two"
-					: `  Changes:  ${assessment.change.differences.join(", ")}; version order ${assessment.change.versionOrder} (a lower version is not assumed safer, nor a higher one compatible)`,
+					: `  Changes:  ${assessment.change.differences.join(", ")}${assessment.change.differences.includes("identityBasis") ? " (the identities use different bases: not comparable, so no code change is asserted)" : ""}; version order ${assessment.change.versionOrder} (a lower version is not assumed safer, nor a higher one compatible)`,
 			);
 	}
 	for (const level of assessment.levels)

@@ -18,12 +18,13 @@ import { randomBytes } from "node:crypto";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
-import type {
-	EndoCapabilityEvidenceV0,
-	EndoCapabilityStateV0,
-	EndoHarnessChangeV0,
-	EndoHarnessFingerprintV0,
-	EndoHarnessNotificationV0,
+import {
+	type EndoCapabilityEvidenceV0,
+	type EndoCapabilityStateV0,
+	type EndoHarnessChangeRecordV0,
+	type EndoHarnessFingerprintRecordV0,
+	type EndoHarnessNotificationV0,
+	endoHarnessIdentityBasisNameV0,
 } from "../../protocol/harness.ts";
 import type { EndoInterventionKindV0 } from "../../protocol/intervention.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
@@ -53,7 +54,12 @@ import {
 	piEvidenceV0,
 	piNotificationV0,
 } from "./evidence.ts";
-import { fingerprintPiRuntimeV0, PiFingerprintErrorV0, piIdentityEnvironmentV0 } from "./identity.ts";
+import {
+	fingerprintPiRuntimeV0,
+	PiFingerprintErrorV0,
+	type PiFingerprintOptionsV0,
+	piIdentityEnvironmentV0,
+} from "./identity.ts";
 import { type PiLifecycleStateV0, piLifecycleInitialStateV0, piLifecycleStepV0 } from "./lifecycle.ts";
 import {
 	mapAttachmentEventV0,
@@ -88,6 +94,8 @@ export interface PiAttachmentOptionsV0 {
 	/** Where the attachment's persistent Pi session is stored. Default: `<root>/pi-sessions/<attachment>`. */
 	readonly sessionDir?: string;
 	readonly now?: () => Date;
+	/** Bounds on, and a test seam in, the runtime-content walk of each identification (adapters/pi/runtime-content.ts). */
+	readonly runtimeContent?: PiFingerprintOptionsV0["runtimeContent"];
 	readonly requestTimeoutMs?: number;
 	readonly maxRpcOutputBytes?: number;
 	/**
@@ -104,8 +112,8 @@ export interface PiAttachmentOptionsV0 {
 }
 
 export interface PiIdentificationV0 {
-	readonly fingerprint: EndoHarnessFingerprintV0 | null;
-	readonly change: EndoHarnessChangeV0;
+	readonly fingerprint: EndoHarnessFingerprintRecordV0 | null;
+	readonly change: EndoHarnessChangeRecordV0;
 	readonly notification: EndoHarnessNotificationV0 | null;
 }
 
@@ -130,7 +138,7 @@ export class PiAttachmentV0 {
 	readonly options: PiAttachmentOptionsV0;
 	readonly attachment: string;
 	readonly registry: EndoHarnessRegistryV0;
-	#fingerprint: EndoHarnessFingerprintV0 | null = null;
+	#fingerprint: EndoHarnessFingerprintRecordV0 | null = null;
 	#identified = false;
 
 	constructor(options: PiAttachmentOptionsV0) {
@@ -148,12 +156,12 @@ export class PiAttachmentV0 {
 	}
 
 	/** The fingerprint taken by identify() in this process, or null (not yet identified, or collection failed). */
-	get fingerprint(): EndoHarnessFingerprintV0 | null {
+	get fingerprint(): EndoHarnessFingerprintRecordV0 | null {
 		return this.#fingerprint;
 	}
 
 	/** Take one fingerprint of the selected Pi without recording it. Throws when nothing identifies the runtime. */
-	#takeFingerprint(): Promise<EndoHarnessFingerprintV0> {
+	#takeFingerprint(): Promise<EndoHarnessFingerprintRecordV0> {
 		return fingerprintPiRuntimeV0({
 			attachment: this.attachment,
 			...(this.options.executable === undefined ? {} : { executable: this.options.executable }),
@@ -162,13 +170,14 @@ export class PiAttachmentV0 {
 			...(this.options.cwd === undefined ? {} : { cwd: this.options.cwd }),
 			env: { ...piIdentityEnvironmentV0(), PATH: this.#env().PATH ?? process.env.PATH ?? "" },
 			...(this.options.now === undefined ? {} : { now: this.options.now }),
+			...(this.options.runtimeContent === undefined ? {} : { runtimeContent: this.options.runtimeContent }),
 		});
 	}
 
 	/** Fingerprint the selected Pi, compare with the last observation, and record the result. Never throws on failure. */
 	async identify(): Promise<PiIdentificationV0> {
 		const previous = this.registry.last("fingerprint");
-		let current: EndoHarnessFingerprintV0 | null = null;
+		let current: EndoHarnessFingerprintRecordV0 | null = null;
 		let failure: string | undefined;
 		try {
 			current = await this.#takeFingerprint();
@@ -208,7 +217,7 @@ export class PiAttachmentV0 {
 		});
 
 	/** The path Pi is launched by: the real path the fingerprint hashed when it is executable, else the resolved path. */
-	launchPath(fingerprint: EndoHarnessFingerprintV0): string {
+	launchPath(fingerprint: EndoHarnessFingerprintRecordV0): string {
 		const real = fingerprint.local.realPath;
 		if (real !== null) {
 			try {
@@ -226,8 +235,8 @@ export class PiAttachmentV0 {
 	 * while the check ran, the check's results describe an unknown mix of two runtimes: nothing is recorded, and the
 	 * change itself is identified and recorded instead. Returns whether the runtime is still the one checked.
 	 */
-	async #stillSame(fingerprint: EndoHarnessFingerprintV0): Promise<boolean> {
-		let after: EndoHarnessFingerprintV0 | null = null;
+	async #stillSame(fingerprint: EndoHarnessFingerprintRecordV0): Promise<boolean> {
+		let after: EndoHarnessFingerprintRecordV0 | null = null;
 		try {
 			after = await this.#takeFingerprint();
 		} catch {
@@ -245,6 +254,7 @@ export class PiAttachmentV0 {
 			attachment: this.attachment,
 			at: this.#now(),
 			fingerprint: this.#fingerprint,
+			fingerprints: this.registry.list("fingerprint"),
 			evidence: this.registry.list("evidence"),
 			definitions: PI_CHECK_DEFINITIONS_V0,
 			configurationDigest: this.#configurationDigest,
@@ -253,7 +263,7 @@ export class PiAttachmentV0 {
 		return state;
 	}
 
-	#record(run: PiCheckRunV0, fingerprint: EndoHarnessFingerprintV0): EndoCapabilityEvidenceV0[] {
+	#record(run: PiCheckRunV0, fingerprint: EndoHarnessFingerprintRecordV0): EndoCapabilityEvidenceV0[] {
 		const artifacts = createEndoArtifactStoreV0(this.options.root);
 		const bytes = new TextEncoder().encode(
 			// One compact record per line (JSON Lines); keys in canonical order, so equal transcripts hash equally.
@@ -445,7 +455,7 @@ export class PiAttachmentV0 {
 	}
 
 	/** @internal Re-identify for a reconnect: the recorded identification and the capability state it supports. */
-	async reidentify(): Promise<{ fingerprint: EndoHarnessFingerprintV0 | null; state: EndoCapabilityStateV0 }> {
+	async reidentify(): Promise<{ fingerprint: EndoHarnessFingerprintRecordV0 | null; state: EndoCapabilityStateV0 }> {
 		const { fingerprint } = await this.identify();
 		return { fingerprint, state: this.state() };
 	}
@@ -526,7 +536,7 @@ function acquireWriterLock(root: string, attachment: string): () => void {
 export class PiSessionAttachmentV0 {
 	readonly owner: PiAttachmentV0;
 	readonly store: EndoDurableEventStoreV0;
-	#fingerprint: EndoHarnessFingerprintV0;
+	#fingerprint: EndoHarnessFingerprintRecordV0;
 	#capabilityState: EndoCapabilityStateV0;
 	readonly #releaseLock: () => void;
 	readonly counters: PiSessionCountersV0 = {
@@ -560,7 +570,7 @@ export class PiSessionAttachmentV0 {
 	#lastExit: RpcExitV0 | null = null;
 	readonly #exitWaiters = new Set<() => void>();
 
-	constructor(owner: PiAttachmentV0, fingerprint: EndoHarnessFingerprintV0, state: EndoCapabilityStateV0) {
+	constructor(owner: PiAttachmentV0, fingerprint: EndoHarnessFingerprintRecordV0, state: EndoCapabilityStateV0) {
 		this.owner = owner;
 		this.#fingerprint = fingerprint;
 		this.#capabilityState = state;
@@ -643,7 +653,7 @@ export class PiSessionAttachmentV0 {
 	}
 
 	/** The fingerprint of the runtime the current (or last) process was launched from. */
-	get fingerprint(): EndoHarnessFingerprintV0 {
+	get fingerprint(): EndoHarnessFingerprintRecordV0 {
 		return this.#fingerprint;
 	}
 
@@ -838,6 +848,8 @@ export class PiSessionAttachmentV0 {
 		this.#attachmentEvent("harness.attached", {
 			fingerprintId: this.#fingerprint.id,
 			identityDigest: this.#fingerprint.identity.digest,
+			// The basis the digest was computed under: digests on different bases are not comparable.
+			identityBasis: endoHarnessIdentityBasisNameV0(this.#fingerprint),
 			version: this.#fingerprint.reported.version,
 			mapping: PI_MAPPING_VERSION,
 			// The digest domain tool-argument digests are made in: the key's id and label, never the key.
@@ -878,6 +890,8 @@ export class PiSessionAttachmentV0 {
 			this.#attachmentEvent("harness.runtime-changed", {
 				previousFingerprintId: this.#fingerprint.id,
 				currentFingerprintId: fingerprint.id,
+				previousIdentityBasis: endoHarnessIdentityBasisNameV0(this.#fingerprint),
+				currentIdentityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
 				previousVersion: this.#fingerprint.reported.version,
 				currentVersion: fingerprint.reported.version,
 			});

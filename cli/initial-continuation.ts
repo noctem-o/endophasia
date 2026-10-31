@@ -1319,7 +1319,7 @@ export async function verifyInitialContinuationEvidenceV0(
 			fingerprint.identity.digest !== r.plan.initial.piIdentity ||
 			fingerprint.reported.version !== r.plan.initial.piVersion
 		)
-			throw new Error("Pi binary identity changed");
+			throw new Error("Pi binary identity changed (or the plan was made on an earlier identity basis; plan again)");
 		const seen = inspectEvidence(r.plan, runtime, key, count);
 		if (
 			!same(

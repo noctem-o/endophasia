@@ -74,6 +74,7 @@ import {
 	type EndoExperimentTaskV0,
 	parseEndoExperimentSpecV0,
 } from "../protocol/experiment-spec.ts";
+import { endoHarnessIdentityBasisNameV0, endoHarnessRuntimeContentV0 } from "../protocol/harness.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import type { EndoTrajectoryComparisonV0, EndoTrajectoryV0 } from "../protocol/trajectory.ts";
 import { readEndoVersionedV0 } from "../protocol/versioned.ts";
@@ -196,6 +197,9 @@ async function observeEnvironment(spec: EndoExperimentSpecV0, keyId: string, scr
 						value: {
 							identityDigest: fingerprint.identity.digest,
 							version: fingerprint.reported.version,
+							// Digests on different bases are not comparable: say which one this is.
+							identityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
+							runtimeContentSha256: endoHarnessRuntimeContentV0(fingerprint)?.sha256 ?? null,
 							entrypointSha256: fingerprint.local.entrypoint?.sha256 ?? null,
 						},
 					};

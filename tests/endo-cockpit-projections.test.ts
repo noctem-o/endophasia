@@ -509,7 +509,7 @@ describe("capability state", () => {
 			...records.fingerprint[0]!,
 			id: "endo.evidence.test-fingerprint.2",
 			identity: { ...records.fingerprint[0]!.identity, digest: "c".repeat(64) },
-		};
+		} as (typeof records.fingerprint)[number];
 		const result = projectEndoCockpitCapabilityStateV0(
 			input({ ...records, fingerprint: [records.fingerprint[0]!, newer] }),
 		);
@@ -2632,7 +2632,7 @@ describe("fourth review round (PR #57)", () => {
 			...first,
 			id: "endo.evidence.test-fingerprint.2",
 			identity: { ...first.identity, digest: "c".repeat(64) },
-		};
+		} as typeof first;
 		const stale = projectEndoCockpitCapabilityStateV0(input({ ...records, fingerprint: [first, newer] }));
 		expect(validateEndoCockpitCapabilityStateV0(stale)).not.toBeNull();
 		const removed = mutated(stale, (c) => {
@@ -4227,5 +4227,56 @@ describe("eighth review round (PR #57)", () => {
 		};
 		expect(() => projectEndoCockpitRuntimeIdentityV0(disagreeing)).toThrow(TypeError);
 		expect(() => projectEndoCockpitCapabilityStateV0(disagreeing)).toThrow(TypeError);
+	});
+});
+
+describe("a registry holding both fingerprint generations", () => {
+	it("projects a v0 fingerprint followed by a v1 one, and a cross-basis change as 'changed' for identityBasis only", () => {
+		const records = specimenRecords();
+		const v0 = records.fingerprint[0]!;
+		const v1 = {
+			...v0,
+			schemaVersion: "endo.harness-fingerprint.v1",
+			id: "endo.evidence.test-fingerprint.v1",
+			methods: [...v0.methods, "runtime-content-sha256"],
+			local: {
+				...v0.local,
+				runtimeContent: {
+					scheme: "endo.runtime-content.v1",
+					scope: "dist/bundle",
+					files: 75,
+					bytes: 9000000,
+					sha256: "d".repeat(64),
+				},
+			},
+			identity: { basis: "runtime-content.v1", digest: "e".repeat(64), confidence: "strong" },
+		} as unknown as (typeof records.fingerprint)[number];
+		const ref = (fp: typeof v0, basis: string) => ({
+			fingerprintId: fp.id,
+			identityDigest: fp.identity.digest,
+			confidence: fp.identity.confidence,
+			version: fp.reported.version,
+			realPath: fp.local.realPath,
+			basis,
+		});
+		const change = {
+			schemaVersion: "endo.harness-change.v1",
+			id: "endo.evidence.test-change.v1",
+			attachment: ATTACHMENT,
+			runtime: "pi",
+			at: "2026-10-04T10:00:00.000Z",
+			kind: "changed",
+			previous: ref(v0, "entrypoint.v0"),
+			current: ref(v1 as typeof v0, "runtime-content.v1"),
+			differences: ["identityBasis"],
+			versionOrder: "equal",
+		} as unknown as (typeof records.change)[number];
+		const result = projectEndoCockpitRuntimeIdentityV0(
+			input({ ...records, fingerprint: [v0, v1], change: [change] }),
+		);
+		expect(result.current?.id).toBeDefined();
+		expect(result.lastChange?.kind).toBe("changed");
+		expect(result.lastChange?.differences).toEqual(["identityBasis"]);
+		expect(validateEndoCockpitRuntimeIdentityV0(result)).not.toBeNull();
 	});
 });

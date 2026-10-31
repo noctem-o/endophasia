@@ -49,7 +49,7 @@ Labels in the matrix:
 | Runtime metrics and model controls | `get_session_stats` is unchanged. `control.model` is EXACT and `control.thinking` QUALIFIED on both, against the fake endpoint only. With no model configured, `control.model` is inconclusive, and `harness check` now says so. 1.1.0 changed cost computation for prompt-length pricing tiers, so costs recorded under different releases are not like for like. 1.3.0 changed how `--model` alone picks a provider. Endophasia passes `--provider` with `--model` when given both; `--model` alone may resolve differently. | documented; experimental; unknown |
 | Retries and compaction | Several releases widen automatic retry. 1.4.0 summaries use the model's output limit. 1.2.0 omits thinking blocks from compaction summaries. These change trajectories and token use, not the RPC surface. Fake-only in Endophasia's tests. | documented; unknown |
 | Configuration | 1.2.0 (breaking) publishes JSON schemas for settings, models, keybindings and themes, and validates themes at startup. The configuration digest covers `settings.json` and `models.json` content, not how a release interprets it. An upgrade changes the identity, which already invalidates evidence. | documented; static |
-| Provenance and identity | The fingerprint's entrypoint, `dist/bundle/cli.js`, is a **160-byte launcher**. Its SHA-256 (`e79626f2…`) is identical in 1.0.1, 1.0.4 and 1.4.0. The program is in `cli-runtime.js` and `chunks/`, which the entrypoint digest does not cover (protocol/harness.ts says so). So a "strong" Pi identity rests on the reported version and the package manifest. A same-version change to the runtime files would not change the identity. | experimental |
+| Provenance and identity | The fingerprint's entrypoint, `dist/bundle/cli.js`, is a **160-byte launcher**. Its SHA-256 (`e79626f2…`) is identical in 1.0.1, 1.0.4 and 1.4.0. The program is in `cli-runtime.js` and `chunks/`, which the entrypoint digest does not cover (protocol/harness.ts says so). So a "strong" Pi identity rests on the reported version and the package manifest. A same-version change to the runtime files would not change the identity (this describes the `entrypoint.v0` identity this study ran under; newer Endophasia versions also hash the runtime files, see [attachment.md](attachment.md#what-the-fingerprint-covers)). | experimental |
 | Pi Durable | Not used. `@earendil-works/pi-durable` is a forbidden import under the Studio boundary test, and the adapter speaks only `pi --mode rpc`. Pi Durable's persistence changes do not reach this interface. | static |
 
 ## What the upgrade report says
@@ -80,9 +80,10 @@ The entrypoint is not listed among the changes because its bytes did not change 
   checks. It needs its own check version, so that evidence recorded under the old table stops applying. Mapping
   `agent_settled.aborted` into the lifecycle, as a reported signal beside the stop reason, would be a mapping-version
   bump. Neither is done here.
-- **Identity beyond the launcher.** Covering Pi's runtime files, for example a digest over `dist/` or over the files
-  the launcher loads, would detect same-version rebuilds. It changes the identity basis, which invalidates every
-  recorded fingerprint's evidence, so it needs its own decision.
+- **Identity beyond the launcher.** Addressed afterwards by the `runtime-content.v1` identity basis, a digest over the
+  files in `dist/bundle`. It changes the basis, so evidence recorded here is not carried over to it; see
+  [harness-upgrades.md](harness-upgrades.md#changing-the-identity-basis). This case study's own records stay on the
+  `entrypoint.v0` basis they were made under.
 - **Behaviour.** Nothing here compares model outputs, tool decisions, compaction, retry or timing between the two
   releases. That needs recorded sessions under each release, compared with `endo trajectory diff`, which flags the
   runtime difference itself.

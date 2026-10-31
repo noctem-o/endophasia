@@ -19,11 +19,13 @@ import type {
 	EndoCapabilityStateEntryV0,
 	EndoCapabilityStateV0,
 	EndoCapabilityStatusV0,
-	EndoHarnessChangeV0,
-	EndoHarnessDifferenceV0,
-	EndoHarnessFingerprintV0,
+	EndoHarnessChangeRecordV0,
+	EndoHarnessDifferenceV1,
+	EndoHarnessFingerprintRecordV0,
+	EndoHarnessIdentityBasisNameV1,
 	EndoHarnessVersionOrderV0,
 } from "../../protocol/harness.ts";
+import { endoHarnessIdentityBasisNameV0, endoHarnessRuntimeContentV0 } from "../../protocol/harness.ts";
 
 /** What this build of the adapter accepts. Evidence recorded under other values does not apply (it is not wrong). */
 export interface EndoHarnessBuildV0 {
@@ -48,6 +50,10 @@ export type EndoEvidenceDependencyV0 =
 export interface EndoAssessedObservationV0 {
 	fingerprintId: string;
 	identityDigest: string;
+	/** The basis the digest was computed under. Digests on different bases are never comparable. */
+	identityBasis: EndoHarnessIdentityBasisNameV1;
+	/** What the runtime-content digest covers, or null when the observation has none (v0, or a gap). */
+	runtimeContent: { scope: string; files: number; bytes: number } | null;
 	confidence: "strong" | "reduced";
 	version: string | null;
 	realPath: string | null;
@@ -102,7 +108,7 @@ export interface EndoHarnessAssessmentV0 {
 	/** The recorded change between the two, when one was recorded. */
 	change: {
 		changeId: string;
-		differences: EndoHarnessDifferenceV0[];
+		differences: EndoHarnessDifferenceV1[];
 		versionOrder: EndoHarnessVersionOrderV0;
 	} | null;
 	levels: { level: EndoAssessmentLevelV0; reached: boolean; detail: string }[];
@@ -155,12 +161,23 @@ export function endoEvidenceDependencyDiffV0(
 function staleAgainst(
 	evidence: EndoCapabilityEvidenceV0,
 	build: EndoHarnessBuildV0,
-	current: EndoHarnessFingerprintV0 | null,
+	current: EndoHarnessFingerprintRecordV0 | null,
+	fingerprints: readonly EndoHarnessFingerprintRecordV0[],
 ): { dependency: EndoEvidenceDependencyV0; detail: string }[] {
 	const d = evidence.dependencies;
 	const out: { dependency: EndoEvidenceDependencyV0; detail: string }[] = [];
-	if (current !== null && d.identityDigest !== current.identity.digest)
-		out.push({ dependency: "identity", detail: "recorded against a different runtime identity" });
+	if (current !== null && d.identityDigest !== current.identity.digest) {
+		const recorded = fingerprints.find((print) => print.id === d.fingerprintId);
+		const recordedBasis = recorded === undefined ? null : endoHarnessIdentityBasisNameV0(recorded);
+		const currentBasis = endoHarnessIdentityBasisNameV0(current);
+		out.push({
+			dependency: "identity",
+			detail:
+				recordedBasis !== null && recordedBasis !== currentBasis
+					? `recorded under the ${recordedBasis} identity basis, which is not comparable with the current ${currentBasis}: requalification is needed, and no runtime change is asserted`
+					: "recorded against a different runtime identity",
+		});
+	}
 	if (
 		current !== null &&
 		d.fingerprintId !== current.id &&
@@ -184,10 +201,13 @@ function staleAgainst(
 	return out;
 }
 
-function observation(fingerprint: EndoHarnessFingerprintV0): EndoAssessedObservationV0 {
+function observation(fingerprint: EndoHarnessFingerprintRecordV0): EndoAssessedObservationV0 {
+	const content = endoHarnessRuntimeContentV0(fingerprint);
 	return {
 		fingerprintId: fingerprint.id,
 		identityDigest: fingerprint.identity.digest,
+		identityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
+		runtimeContent: content === null ? null : { scope: content.scope, files: content.files, bytes: content.bytes },
 		confidence: fingerprint.identity.confidence,
 		version: fingerprint.reported.version,
 		realPath: fingerprint.local.realPath,
@@ -197,8 +217,8 @@ function observation(fingerprint: EndoHarnessFingerprintV0): EndoAssessedObserva
 
 /** The last recorded state that describes `fingerprint` (any same-identity observation, when the identity is strong). */
 function stateFor(
-	fingerprint: EndoHarnessFingerprintV0 | null,
-	fingerprints: readonly EndoHarnessFingerprintV0[],
+	fingerprint: EndoHarnessFingerprintRecordV0 | null,
+	fingerprints: readonly EndoHarnessFingerprintRecordV0[],
 	states: readonly EndoCapabilityStateV0[],
 ): EndoCapabilityStateV0 | null {
 	if (fingerprint === null) return null;
@@ -214,6 +234,17 @@ function stateFor(
 		if (state.fingerprintId !== null && ids.has(state.fingerprintId)) return state;
 	}
 	return null;
+}
+
+/** What the identity's digest covers, in words an operator can check. */
+export function coverageText(fingerprint: EndoHarnessFingerprintRecordV0): string {
+	const basis = endoHarnessIdentityBasisNameV0(fingerprint);
+	const content = endoHarnessRuntimeContentV0(fingerprint);
+	if (content !== null)
+		return `basis ${basis}: ${content.files} files / ${content.bytes} bytes under ${content.scope} are covered`;
+	return basis === "entrypoint.v0"
+		? `basis ${basis}: the entrypoint file only; the code it loads is not covered`
+		: `basis ${basis}: the entrypoint file only; the runtime files could not be covered (see the fingerprint's gaps)`;
 }
 
 const REESTABLISH: Record<EndoCapabilityCheckKindV0, EndoReestablishV0> = {
@@ -232,8 +263,8 @@ const ADMITTED = new Set<string>(["admitted", "admitted-partial"]);
 export function assessEndoHarnessUpgradeV0(input: {
 	attachment: string;
 	capabilities: readonly { id: string; requires: EndoCapabilityCheckKindV0 }[];
-	fingerprints: readonly EndoHarnessFingerprintV0[];
-	changes: readonly EndoHarnessChangeV0[];
+	fingerprints: readonly EndoHarnessFingerprintRecordV0[];
+	changes: readonly EndoHarnessChangeRecordV0[];
 	evidence: readonly EndoCapabilityEvidenceV0[];
 	states: readonly EndoCapabilityStateV0[];
 	build: EndoHarnessBuildV0;
@@ -295,7 +326,7 @@ export function assessEndoHarnessUpgradeV0(input: {
 			effective = "unverified";
 			reason = "the recorded standing names evidence that is not in the registry";
 		} else if (nowEvidence !== null) {
-			const stale = staleAgainst(nowEvidence, build, current);
+			const stale = staleAgainst(nowEvidence, build, current, fingerprints);
 			effective = stale.length === 0 ? now.status : "unverified";
 			reason =
 				stale.length === 0
@@ -311,7 +342,9 @@ export function assessEndoHarnessUpgradeV0(input: {
 				nowEvidence !== null
 					? endoEvidenceDependencyDiffV0(beforeEvidence, nowEvidence)
 					: DEPENDENCY_ORDER.filter((dependency) =>
-							staleAgainst(beforeEvidence, build, current).some((s) => s.dependency === dependency),
+							staleAgainst(beforeEvidence, build, current, fingerprints).some(
+								(s) => s.dependency === dependency,
+							),
 						);
 		}
 		const stands = effective !== "not-derived" && effective !== "unverified";
@@ -346,7 +379,7 @@ export function assessEndoHarnessUpgradeV0(input: {
 					? `the latest identification failed at ${unidentified.at}: ${unidentified.failure}`
 					: current === null
 						? "no observation is recorded"
-						: `recorded ${current.observedAt} (${current.identity.confidence} identity); this report did not examine the installed executable`,
+						: `recorded ${current.observedAt} (${current.identity.confidence} identity; ${coverageText(current)}); this report did not examine the installed executable`,
 		},
 		{
 			level: "protocol-checked",
@@ -386,6 +419,18 @@ export function assessEndoHarnessUpgradeV0(input: {
 		limitations.push(
 			"The current identity is reduced-confidence: two different runtimes could share it, so no evidence carries across its observations.",
 		);
+	if (current !== null && endoHarnessRuntimeContentV0(current) === null)
+		limitations.push(
+			"The current identity does not cover the runtime's own files, only the entrypoint: a change to the code behind an unchanged launcher and version would not show.",
+		);
+	const crossBasis =
+		current !== null &&
+		previous !== null &&
+		endoHarnessIdentityBasisNameV0(current) !== endoHarnessIdentityBasisNameV0(previous);
+	if (crossBasis)
+		limitations.push(
+			`The previous and current identities use different bases (${endoHarnessIdentityBasisNameV0(previous)} and ${endoHarnessIdentityBasisNameV0(current)}). Their digests cannot be compared: this report does not say whether the runtime's code changed.`,
+		);
 	if (lost.length > 0 && change === null && previous !== null && unidentified === null)
 		limitations.push("No change record links the two runtimes, so which identity facts differ is not known.");
 	return {
@@ -411,11 +456,17 @@ export function assessEndoHarnessUpgradeV0(input: {
 					}
 				: previous === null
 					? { constrained: false, detail: "one runtime identity is recorded for this attachment" }
-					: {
-							constrained: true,
-							detail:
-								"runs recorded under the previous identity came from a different runtime: they are not like-for-like with current runs whatever the checks say, and trajectory comparisons flag runtime-fingerprint-differs",
-						},
+					: crossBasis
+						? {
+								constrained: true,
+								detail:
+									"the previous identity was recorded on a different basis, so whether it is the same runtime is not established either way: do not treat runs under the two as like-for-like; trajectory comparisons flag runtime-fingerprint-differs because the digests differ",
+							}
+						: {
+								constrained: true,
+								detail:
+									"runs recorded under the previous identity came from a different runtime: they are not like-for-like with current runs whatever the checks say, and trajectory comparisons flag runtime-fingerprint-differs",
+							},
 		limitations,
 	};
 }

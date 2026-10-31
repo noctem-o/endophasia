@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Changed
+- **Pi runtime identity now covers the runtime's own files, not only the launcher.** Pi's npm entrypoint
+  `dist/bundle/cli.js` is a ~160-byte launcher that is byte-identical across 1.0.1, 1.0.4 and 1.4.0, so the old identity could not see
+  a same-version change to the code behind it. New fingerprints (`endo.harness-fingerprint.v1`, basis `runtime-content.v1`) add a
+  deterministic digest over every regular file in the directory the entrypoint sits in (`dist/bundle`): path, size and SHA-256,
+  sorted, domain-separated, bounded, never following symbolic links, and recorded as a gap, never as a partial digest, when
+  coverage is incomplete (unsupported layout, unreadable file, link out of scope, limit exceeded, or a change while reading). An
+  identity without that digest is `reduced`. Old `v0` records are not rewritten and keep their meaning; digests on different bases
+  are never compared, so the first identification after upgrading records an `identityBasis` change (`endo.harness-change.v1`), and
+  capabilities qualified on the old basis are unverified until `endo harness check` records evidence for the new identity. `endo
+  doctor`, `endo harness status` and the assessment say which basis each identity is on and what it covers. This verifies local
+  content; it does not authenticate the publisher, and Node, imported packages and user configuration remain outside it. See
+  [docs/attachment.md](docs/attachment.md#what-the-fingerprint-covers) and
+  [docs/harness-upgrades.md](docs/harness-upgrades.md#changing-the-identity-basis).
+
 ### Added
 - **Upstream-change assessment in `endo harness status`:** after a harness changes, status explains it from the recorded
   registry, read-only and without examining the executable: the previous and current runtime, which identity facts differ,

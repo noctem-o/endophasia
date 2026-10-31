@@ -25,7 +25,7 @@ import type { EndoConformanceClassificationV0 } from "../protocol/evaluation.ts"
 import {
 	type EndoCapabilityEvidenceV0,
 	type EndoCapabilityStateV0,
-	type EndoHarnessChangeV0,
+	type EndoHarnessChangeRecordV0,
 	type EndoHarnessFingerprintV0,
 	endoHarnessIdentityBasisV0,
 	endoHarnessIdentityConfidenceV0,
@@ -126,7 +126,7 @@ function stateOf(
 
 interface History {
 	fingerprints: EndoHarnessFingerprintV0[];
-	changes: EndoHarnessChangeV0[];
+	changes: EndoHarnessChangeRecordV0[];
 	evidence: EndoCapabilityEvidenceV0[];
 	states: EndoCapabilityStateV0[];
 }

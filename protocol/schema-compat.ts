@@ -264,16 +264,36 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 	{
 		family: "endo.harness-change",
 		schemaVersion: "endo.harness-change.v0",
-		status: "current",
+		status: "legacy",
 		boundary: "storage/harness-registry.ts (registry frames)",
 		fixtures: [{ file: "minimal.json", sha256: "abf33ae5c5f109fcc3318e50ca56b5f43101f6d631c14e687802abcdaa094a96" }],
 	},
 	{
-		family: "endo.harness-fingerprint",
-		schemaVersion: "endo.harness-fingerprint.v0",
+		family: "endo.harness-change",
+		schemaVersion: "endo.harness-change.v1",
 		status: "current",
 		boundary: "storage/harness-registry.ts (registry frames)",
+		fixtures: [
+			{ file: "cross-basis.json", sha256: "1cdcf63d9ccfdeda86492a881a19c7b1f66e168cb46abb7984bae2021775390b" },
+			{ file: "minimal.json", sha256: "65e1b381b4704c25fb5a533c9d3f3f3bc49636fb7f9e0f9b539c58992f63aaa9" },
+		],
+	},
+	{
+		family: "endo.harness-fingerprint",
+		schemaVersion: "endo.harness-fingerprint.v0",
+		status: "legacy",
+		boundary: "storage/harness-registry.ts (registry frames)",
 		fixtures: [{ file: "minimal.json", sha256: "be0b7b2797591b0dcf8c17539ca966577812c8a1c0896f6cfd0ac82d1027dd2e" }],
+	},
+	{
+		family: "endo.harness-fingerprint",
+		schemaVersion: "endo.harness-fingerprint.v1",
+		status: "current",
+		boundary: "storage/harness-registry.ts (registry frames)",
+		fixtures: [
+			{ file: "full.json", sha256: "38701736499d3fa3ab4539663a083740cee3e6a2468ef2c8d2188718a65586b8" },
+			{ file: "minimal.json", sha256: "9d1985afb0c517fd83d71debd3ca52623d16282120cfee0fec993b4036ecf8a2" },
+		],
 	},
 	{
 		family: "endo.harness-notification",

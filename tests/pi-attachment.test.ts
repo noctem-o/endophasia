@@ -168,7 +168,8 @@ describe("identify, check, state", () => {
 		install.rebuild("local build");
 		const rebuilt = await attachment(install, root, cwd).identify();
 		expect(rebuilt.change.kind).toBe("changed");
-		expect(rebuilt.change.differences).toEqual(["entrypoint"]);
+		// The launcher is part of the bundle directory, so a rebuilt entrypoint is a runtime-content difference too.
+		expect(rebuilt.change.differences).toEqual(["entrypoint", "runtimeContent"]);
 		expect(rebuilt.change.versionOrder).toBe("equal");
 		const other = installFakePi("0.99.2");
 		other.rebuild("local build");

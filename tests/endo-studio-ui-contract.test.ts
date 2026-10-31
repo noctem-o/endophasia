@@ -24,7 +24,7 @@ import {
 	ENDO_CAPABILITY_CHECK_KINDS_V0,
 	ENDO_CAPABILITY_STATUSES_V0,
 	ENDO_HARNESS_CHANGE_KINDS_V0,
-	ENDO_HARNESS_DIFFERENCES_V0,
+	ENDO_HARNESS_DIFFERENCES_V1,
 	ENDO_HARNESS_NOTIFICATION_KINDS_V0,
 	ENDO_HARNESS_VERSION_ORDERS_V0,
 } from "../protocol/harness.ts";
@@ -122,7 +122,7 @@ describe("the page's vocabularies are pinned to the protocol's", () => {
 		expect(keys(CLASSIFICATION)).toEqual(sorted(ENDO_CONFORMANCE_CLASSIFICATIONS_V0));
 		expect(keys(CHECK_KIND)).toEqual(sorted(ENDO_CAPABILITY_CHECK_KINDS_V0));
 		expect(keys(CHANGE_KIND)).toEqual(sorted(ENDO_HARNESS_CHANGE_KINDS_V0));
-		expect(keys(DIFFERENCE)).toEqual(sorted(ENDO_HARNESS_DIFFERENCES_V0));
+		expect(keys(DIFFERENCE)).toEqual(sorted(ENDO_HARNESS_DIFFERENCES_V1));
 		expect(keys(VERSION_ORDER)).toEqual(sorted(ENDO_HARNESS_VERSION_ORDERS_V0));
 		expect(keys(NOTIFICATION_KIND)).toEqual(sorted(ENDO_HARNESS_NOTIFICATION_KINDS_V0));
 		expect(keys(EVENT_SOURCE)).toEqual(sorted(ENDO_EVENT_SOURCES_V0));

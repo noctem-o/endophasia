@@ -113,13 +113,13 @@ import {
 	ENDO_CAPABILITY_CHECK_KINDS_V0,
 	ENDO_CAPABILITY_STATUSES_V0,
 	ENDO_HARNESS_CHANGE_KINDS_V0,
-	ENDO_HARNESS_DIFFERENCES_V0,
+	ENDO_HARNESS_DIFFERENCES_V1,
 	ENDO_HARNESS_NOTIFICATION_KINDS_V0,
 	ENDO_HARNESS_VERSION_ORDERS_V0,
 	type EndoCapabilityCheckKindV0,
 	type EndoCapabilityStatusV0,
 	type EndoHarnessChangeKindV0,
-	type EndoHarnessDifferenceV0,
+	type EndoHarnessDifferenceV1,
 	type EndoHarnessIdentityConfidenceV0,
 	type EndoHarnessNotificationKindV0,
 	type EndoHarnessVersionOrderV0,
@@ -376,7 +376,7 @@ export interface EndoCockpitChangeViewV0 {
 	id: string;
 	at: string;
 	kind: EndoHarnessChangeKindV0;
-	differences: EndoHarnessDifferenceV0[];
+	differences: EndoHarnessDifferenceV1[];
 	versionOrder: EndoHarnessVersionOrderV0;
 	previous: EndoCockpitObservationViewV0 | null;
 	current: EndoCockpitObservationViewV0 | null;
@@ -887,7 +887,7 @@ function isChangeView(value: unknown): value is EndoCockpitChangeViewV0 {
 		typeof value.at === "string" &&
 		isIso8601UtcV0(value.at) &&
 		oneOf(ENDO_HARNESS_CHANGE_KINDS_V0, value.kind) &&
-		arrayOf(value.differences, (item): item is EndoHarnessDifferenceV0 => oneOf(ENDO_HARNESS_DIFFERENCES_V0, item)) &&
+		arrayOf(value.differences, (item): item is EndoHarnessDifferenceV1 => oneOf(ENDO_HARNESS_DIFFERENCES_V1, item)) &&
 		oneOf(ENDO_HARNESS_VERSION_ORDERS_V0, value.versionOrder) &&
 		nullable(value.previous, isObservationView) &&
 		nullable(value.current, isObservationView) &&

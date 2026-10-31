@@ -3,7 +3,7 @@
 // records only say what was observed, what changed since the last observation, what was checked against the observed
 // runtime, and which capabilities that evidence supports.
 //
-// Five records, deliberately separate:
+// Five records, deliberately separate (fingerprint and change also have a v1; v0 records stay readable and unchanged):
 // - endo.harness-fingerprint.v0: one observation of an installed runtime. It keeps facts gathered from the local
 //   installation (paths, an entrypoint digest, package metadata) apart from facts the runtime reported about itself
 //   (its version output), and lists every fact it could not collect instead of filling it in.
@@ -244,6 +244,231 @@ export function validateEndoHarnessFingerprintV0(value: unknown): EndoHarnessFin
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Fingerprint v1: the runtime-content identity basis
+// ---------------------------------------------------------------------------------------------------------------
+//
+// v0 hashes one file, the entrypoint. For an npm install of Pi that file is a 160-byte launcher that is byte-identical
+// across releases, so v0 identifies the version string and the path, not the code. v1 keeps every v0 fact and adds a
+// digest over the files in the directory the entrypoint sits in (its "scope"; see adapters/pi/runtime-content.ts).
+//
+// v0 is not migrated and not reinterpreted: a v0 digest keeps meaning "entrypoint file + manifest facts + reported
+// version" forever, and a v1 digest is computed over a basis that names itself, so the two can never be equal.
+// Identities on different bases are NOT comparable: equal paths or versions do not make them the same runtime, and a
+// differing digest across bases is not evidence that the runtime's code changed.
+
+/** The identity bases this reader knows. v0 fingerprints carry no tag; they are, by definition, "entrypoint.v0". */
+export type EndoHarnessIdentityBasisNameV1 = "entrypoint.v0" | "runtime-content.v1";
+
+export const ENDO_HARNESS_IDENTITY_BASES_V1 = [
+	"entrypoint.v0",
+	"runtime-content.v1",
+] as const satisfies readonly EndoHarnessIdentityBasisNameV1[];
+
+/** The tag mixed into the v1 digest, so the digest depends on the basis it was computed under. */
+export const ENDO_HARNESS_RUNTIME_CONTENT_BASIS_TAG_V1 = "endo.harness-identity.runtime-content.v1";
+
+/** The scheme that produced a runtime-content digest. */
+export const ENDO_RUNTIME_CONTENT_SCHEME_V1 = "endo.runtime-content.v1";
+
+export type EndoHarnessFingerprintMethodV1 = EndoHarnessFingerprintMethodV0 | "runtime-content-sha256";
+
+export const ENDO_HARNESS_FINGERPRINT_METHODS_V1 = [
+	...ENDO_HARNESS_FINGERPRINT_METHODS_V0,
+	"runtime-content-sha256",
+] as const satisfies readonly EndoHarnessFingerprintMethodV1[];
+
+export type EndoHarnessFingerprintFactV1 = EndoHarnessFingerprintFactV0 | "runtimeContent";
+
+export const ENDO_HARNESS_FINGERPRINT_FACTS_V1 = [
+	...ENDO_HARNESS_FINGERPRINT_FACTS_V0,
+	"runtimeContent",
+] as const satisfies readonly EndoHarnessFingerprintFactV1[];
+
+/**
+ * A digest over the regular files of one directory tree (the scope), as adapters/pi/runtime-content.ts defines it.
+ * Present only when the whole scope was covered: a scope that could not be read completely, or a layout with no
+ * supported scope, is a gap (`runtimeContent`), never a partial digest.
+ */
+export interface EndoHarnessRuntimeContentV1 {
+	scheme: typeof ENDO_RUNTIME_CONTENT_SCHEME_V1;
+	/** The covered directory, relative to `local.package.root`, with "/" separators. */
+	scope: string;
+	/** How many entries (regular files and symbolic links) the digest covers. */
+	files: number;
+	/** The total bytes of the regular files covered. */
+	bytes: number;
+	/** The manifest digest (path, type, size and SHA-256 per entry, domain-separated). */
+	sha256: string;
+}
+
+export interface EndoHarnessLocalFactsV1 extends EndoHarnessLocalFactsV0 {
+	/** The runtime-content digest, or null with a `runtimeContent` gap. Never covers anything outside its scope. */
+	runtimeContent: EndoHarnessRuntimeContentV1 | null;
+}
+
+export interface EndoHarnessFingerprintV1 {
+	schemaVersion: "endo.harness-fingerprint.v1";
+	id: string;
+	attachment: string;
+	runtime: string;
+	observedAt: string;
+	methods: EndoHarnessFingerprintMethodV1[];
+	local: EndoHarnessLocalFactsV1;
+	reported: EndoHarnessReportedFactsV0;
+	gaps: { fact: EndoHarnessFingerprintFactV1; reason: string }[];
+	identity: {
+		/** The basis the digest was computed under. */
+		basis: "runtime-content.v1";
+		/** SHA-256 over the canonical v1 identity basis (see endoHarnessIdentityBasisV1). */
+		digest: string;
+		confidence: EndoHarnessIdentityConfidenceV0;
+	};
+}
+
+/** A fingerprint of any version this reader knows. Fields both versions carry are read directly; v1-only ones need a guard. */
+export type EndoHarnessFingerprintRecordV0 = EndoHarnessFingerprintV0 | EndoHarnessFingerprintV1;
+
+/** The identity basis a fingerprint's digest was computed under. */
+export function endoHarnessIdentityBasisNameV0(
+	fingerprint: EndoHarnessFingerprintRecordV0,
+): EndoHarnessIdentityBasisNameV1 {
+	return fingerprint.schemaVersion === "endo.harness-fingerprint.v1" ? fingerprint.identity.basis : "entrypoint.v0";
+}
+
+/** The runtime-content digest of a fingerprint, or null (a v0 fingerprint has none; a v1 one may lack it). */
+export function endoHarnessRuntimeContentV0(
+	fingerprint: EndoHarnessFingerprintRecordV0,
+): EndoHarnessRuntimeContentV1 | null {
+	return fingerprint.schemaVersion === "endo.harness-fingerprint.v1" ? fingerprint.local.runtimeContent : null;
+}
+
+/** The basis the v1 identity digest is computed over; exported so producers and checkers hash the same thing. */
+export function endoHarnessIdentityBasisV1(fingerprint: {
+	runtime: string;
+	local: EndoHarnessLocalFactsV1;
+	reported: EndoHarnessReportedFactsV0;
+}): Record<string, string | null> {
+	return {
+		basis: ENDO_HARNESS_RUNTIME_CONTENT_BASIS_TAG_V1,
+		runtime: fingerprint.runtime,
+		realPath: fingerprint.local.realPath,
+		entrypointSha256: fingerprint.local.entrypoint?.sha256 ?? null,
+		runtimeContentScope: fingerprint.local.runtimeContent?.scope ?? null,
+		runtimeContentSha256: fingerprint.local.runtimeContent?.sha256 ?? null,
+		packageName: fingerprint.local.package?.name ?? null,
+		packageVersion: fingerprint.local.package?.version ?? null,
+		version: fingerprint.reported.version,
+	};
+}
+
+/**
+ * The confidence v1 facts support. "strong" additionally requires complete runtime-content coverage: a launcher-only
+ * observation is "reduced" however well the version is known.
+ */
+export function endoHarnessIdentityConfidenceV1(fingerprint: {
+	local: EndoHarnessLocalFactsV1;
+	reported: EndoHarnessReportedFactsV0;
+}): EndoHarnessIdentityConfidenceV0 {
+	return fingerprint.local.entrypoint !== null &&
+		fingerprint.local.runtimeContent !== null &&
+		fingerprint.reported.version !== null
+		? "strong"
+		: "reduced";
+}
+
+const FINGERPRINT_KEYS_V1 = FINGERPRINT_KEYS.map((key) => key);
+
+function isRelativeScope(value: unknown): value is string {
+	if (!isText(value, 512)) return false;
+	if (value.startsWith("/") || value.includes("\\") || value.includes("\0")) return false;
+	return value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
+/**
+ * Validates a v1 fingerprint under the v0 rules plus: `identity.basis` is "runtime-content.v1"; `runtimeContent` is a
+ * well-formed digest or a listed gap; a present digest requires the package and entrypoint it was taken from and the
+ * `runtime-content-sha256` method (and an absent one forbids it); the confidence is the v1 confidence. It does not
+ * recompute digests. Returns the value unchanged, or null.
+ */
+export function validateEndoHarnessFingerprintV1(value: unknown): EndoHarnessFingerprintV1 | null {
+	if (!isPlain(value) || !onlyKeys(value, FINGERPRINT_KEYS_V1)) return null;
+	const v = value;
+	if (v.schemaVersion !== "endo.harness-fingerprint.v1") return null;
+	if (!isEvidenceId(v.id)) return null;
+	if (typeof v.attachment !== "string" || !isWellFormedKindV0(v.attachment)) return null;
+	if (typeof v.runtime !== "string" || !isWellFormedKindV0(v.runtime)) return null;
+	if (typeof v.observedAt !== "string" || !isIso8601UtcV0(v.observedAt)) return null;
+	if (!Array.isArray(v.methods) || v.methods.length === 0) return null;
+	const methods = new Set<string>();
+	for (const method of v.methods) {
+		if (!(ENDO_HARNESS_FINGERPRINT_METHODS_V1 as readonly unknown[]).includes(method)) return null;
+		if (methods.has(method as string)) return null;
+		methods.add(method as string);
+	}
+	if (
+		!isPlain(v.local) ||
+		!onlyKeys(v.local, ["requested", "resolvedPath", "realPath", "entrypoint", "package", "runtimeContent"])
+	)
+		return null;
+	const local = v.local;
+	if (!isText(local.requested, 4096)) return null;
+	if (local.resolvedPath !== null && !isText(local.resolvedPath, 4096)) return null;
+	if (local.realPath !== null && !isText(local.realPath, 4096)) return null;
+	if (local.entrypoint !== null) {
+		if (!isPlain(local.entrypoint) || !onlyKeys(local.entrypoint, ["sha256", "bytes"])) return null;
+		if (!isSha256Hex(local.entrypoint.sha256) || !isNonNegativeInteger(local.entrypoint.bytes)) return null;
+	}
+	if (local.package !== null) {
+		if (!isPlain(local.package) || !onlyKeys(local.package, ["name", "version", "root"])) return null;
+		if (!isText(local.package.name, 256) || !isText(local.package.version, 256) || !isText(local.package.root, 4096))
+			return null;
+	}
+	if (local.runtimeContent !== null) {
+		const content = local.runtimeContent;
+		if (!isPlain(content) || !onlyKeys(content, ["scheme", "scope", "files", "bytes", "sha256"])) return null;
+		if (content.scheme !== ENDO_RUNTIME_CONTENT_SCHEME_V1 || !isRelativeScope(content.scope)) return null;
+		if (!isNonNegativeInteger(content.files) || content.files < 1 || !isNonNegativeInteger(content.bytes))
+			return null;
+		if (!isSha256Hex(content.sha256)) return null;
+		// The digest was taken from the entrypoint's directory inside this package: both must be recorded.
+		if (local.package === null || local.entrypoint === null || local.realPath === null) return null;
+	}
+	if (methods.has("runtime-content-sha256") !== (local.runtimeContent !== null)) return null;
+	if (!isPlain(v.reported) || !onlyKeys(v.reported, ["versionText", "version"])) return null;
+	const reported = v.reported;
+	if (reported.versionText !== null && !isText(reported.versionText, 1024)) return null;
+	if (reported.version !== null && !isText(reported.version, 256)) return null;
+	if (reported.version !== null && reported.versionText === null) return null;
+	if (!Array.isArray(v.gaps)) return null;
+	const nullFacts = new Set<string>();
+	if (local.resolvedPath === null) nullFacts.add("resolvedPath");
+	if (local.realPath === null) nullFacts.add("realPath");
+	if (local.entrypoint === null) nullFacts.add("entrypoint");
+	if (local.package === null) nullFacts.add("package");
+	if (local.runtimeContent === null) nullFacts.add("runtimeContent");
+	if (reported.version === null) nullFacts.add("version");
+	const listed = new Set<string>();
+	for (const gap of v.gaps) {
+		if (!isPlain(gap) || !onlyKeys(gap, ["fact", "reason"])) return null;
+		if (!(ENDO_HARNESS_FINGERPRINT_FACTS_V1 as readonly unknown[]).includes(gap.fact)) return null;
+		if (!isText(gap.reason, 1024)) return null;
+		if (listed.has(gap.fact as string)) return null;
+		listed.add(gap.fact as string);
+	}
+	if (listed.size !== nullFacts.size || [...nullFacts].some((fact) => !listed.has(fact))) return null;
+	if (local.realPath === null && reported.version === null) return null;
+	if (!isPlain(v.identity) || !onlyKeys(v.identity, ["basis", "digest", "confidence"])) return null;
+	if (v.identity.basis !== "runtime-content.v1") return null;
+	if (!isSha256Hex(v.identity.digest)) return null;
+	const confidence = endoHarnessIdentityConfidenceV1({
+		local: local as unknown as EndoHarnessLocalFactsV1,
+		reported: reported as unknown as EndoHarnessReportedFactsV0,
+	});
+	if (v.identity.confidence !== confidence) return null;
+	return value as unknown as EndoHarnessFingerprintV1;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Change
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -384,6 +609,138 @@ export function validateEndoHarnessChangeV0(value: unknown): EndoHarnessChangeV0
 			break;
 	}
 	return value as unknown as EndoHarnessChangeV0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Change v1
+// ---------------------------------------------------------------------------------------------------------------
+//
+// The v0 change record cannot say "the digests differ because the identity basis differs", and it cannot name a
+// runtime-content difference. v1 adds both, and records the basis of each side. Kinds are unchanged: a comparison
+// across bases is a "changed" record whose differences include "identityBasis", and which never lists
+// "runtimeContent" (the two sides are not comparable on content). It states that the identities differ, not that the
+// runtime's code did.
+
+export type EndoHarnessDifferenceV1 = EndoHarnessDifferenceV0 | "runtimeContent" | "identityBasis";
+
+export const ENDO_HARNESS_DIFFERENCES_V1 = [
+	"realPath",
+	"entrypoint",
+	"package",
+	"version",
+	"runtimeContent",
+	"confidence",
+	"identityBasis",
+] as const satisfies readonly EndoHarnessDifferenceV1[];
+
+export interface EndoHarnessObservationRefV1 extends EndoHarnessObservationRefV0 {
+	/** The basis `identityDigest` was computed under. */
+	basis: EndoHarnessIdentityBasisNameV1;
+}
+
+export interface EndoHarnessChangeV1 {
+	schemaVersion: "endo.harness-change.v1";
+	id: string;
+	attachment: string;
+	runtime: string;
+	at: string;
+	kind: EndoHarnessChangeKindV0;
+	previous: EndoHarnessObservationRefV1 | null;
+	current: EndoHarnessObservationRefV1 | null;
+	differences: EndoHarnessDifferenceV1[];
+	versionOrder: EndoHarnessVersionOrderV0;
+	failure?: string;
+}
+
+/** A change record of any version this reader knows. */
+export type EndoHarnessChangeRecordV0 = EndoHarnessChangeV0 | EndoHarnessChangeV1;
+
+/** An observation reference of any version. */
+export type EndoHarnessObservationRefRecordV0 = EndoHarnessObservationRefV0 | EndoHarnessObservationRefV1;
+
+/** The basis of a side of a change record ("entrypoint.v0" for a v0 reference, which carries none). */
+export function endoHarnessObservationBasisV0(ref: EndoHarnessObservationRefRecordV0): EndoHarnessIdentityBasisNameV1 {
+	return "basis" in ref ? ref.basis : "entrypoint.v0";
+}
+
+function validateObservationRefV1(value: unknown): EndoHarnessObservationRefV1 | null {
+	if (
+		!isPlain(value) ||
+		!onlyKeys(value, ["fingerprintId", "identityDigest", "confidence", "version", "realPath", "basis"])
+	)
+		return null;
+	if (!(ENDO_HARNESS_IDENTITY_BASES_V1 as readonly unknown[]).includes(value.basis)) return null;
+	const { basis: _basis, ...rest } = value;
+	if (validateObservationRef(rest) === null) return null;
+	return value as unknown as EndoHarnessObservationRefV1;
+}
+
+/**
+ * Validates a v1 change record under the v0 rules, with the v1 difference vocabulary and two more doors: a "changed"
+ * record lists "identityBasis" exactly when the two sides' bases differ, and lists "runtimeContent" only when they
+ * share a basis that has runtime content. An "unchanged" record has the same digest and the same basis.
+ */
+export function validateEndoHarnessChangeV1(value: unknown): EndoHarnessChangeV1 | null {
+	if (
+		!isPlain(value) ||
+		!onlyKeys(value, [
+			"schemaVersion",
+			"id",
+			"attachment",
+			"runtime",
+			"at",
+			"kind",
+			"previous",
+			"current",
+			"differences",
+			"versionOrder",
+			"failure",
+		])
+	)
+		return null;
+	const v = value;
+	if (v.schemaVersion !== "endo.harness-change.v1") return null;
+	if (!isEvidenceId(v.id)) return null;
+	if (typeof v.attachment !== "string" || !isWellFormedKindV0(v.attachment)) return null;
+	if (typeof v.runtime !== "string" || !isWellFormedKindV0(v.runtime)) return null;
+	if (typeof v.at !== "string" || !isIso8601UtcV0(v.at)) return null;
+	if (!(ENDO_HARNESS_CHANGE_KINDS_V0 as readonly unknown[]).includes(v.kind)) return null;
+	const previous = v.previous === null ? null : validateObservationRefV1(v.previous);
+	if (v.previous !== null && previous === null) return null;
+	const current = v.current === null ? null : validateObservationRefV1(v.current);
+	if (v.current !== null && current === null) return null;
+	if (!Array.isArray(v.differences)) return null;
+	const differences = new Set<string>();
+	for (const difference of v.differences) {
+		if (!(ENDO_HARNESS_DIFFERENCES_V1 as readonly unknown[]).includes(difference)) return null;
+		if (differences.has(difference as string)) return null;
+		differences.add(difference as string);
+	}
+	if (!(ENDO_HARNESS_VERSION_ORDERS_V0 as readonly unknown[]).includes(v.versionOrder)) return null;
+	if (v.failure !== undefined && !isText(v.failure, 2048)) return null;
+	switch (v.kind) {
+		case "first-observation":
+			if (previous !== null || current === null || differences.size !== 0 || v.failure !== undefined) return null;
+			if (v.versionOrder !== "unknown") return null;
+			break;
+		case "unchanged":
+			if (previous === null || current === null || differences.size !== 0 || v.failure !== undefined) return null;
+			if (previous.identityDigest !== current.identityDigest || previous.basis !== current.basis) return null;
+			break;
+		case "changed": {
+			if (previous === null || current === null || differences.size === 0 || v.failure !== undefined) return null;
+			if (previous.identityDigest === current.identityDigest) return null;
+			const crossBasis = previous.basis !== current.basis;
+			if (differences.has("identityBasis") !== crossBasis) return null;
+			if (differences.has("runtimeContent") && (crossBasis || current.basis !== "runtime-content.v1")) return null;
+			break;
+		}
+		case "collection-failed":
+			if (current !== null || differences.size !== 0 || v.failure === undefined) return null;
+			if (v.versionOrder !== "unknown") return null;
+			break;
+	}
+	return value as unknown as EndoHarnessChangeV1;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -708,7 +1065,9 @@ export function validateEndoSourceEntryRefV0(value: unknown): EndoSourceEntryRef
 /** A harness-registry record of any kind this reader knows. */
 export type EndoHarnessRegistryRecordV0 =
 	| EndoHarnessFingerprintV0
+	| EndoHarnessFingerprintV1
 	| EndoHarnessChangeV0
+	| EndoHarnessChangeV1
 	| EndoCapabilityEvidenceV0
 	| EndoCapabilityStateV0
 	| EndoHarnessNotificationV0;
@@ -718,7 +1077,9 @@ export const ENDO_HARNESS_REGISTRY_RECORD_VERSIONS_V0 = defineEndoVersionTableV0
 	"endo.harness-registry-record",
 	[
 		["endo.harness-fingerprint.v0", validateEndoHarnessFingerprintV0],
+		["endo.harness-fingerprint.v1", validateEndoHarnessFingerprintV1],
 		["endo.harness-change.v0", validateEndoHarnessChangeV0],
+		["endo.harness-change.v1", validateEndoHarnessChangeV1],
 		["endo.capability-evidence.v0", validateEndoCapabilityEvidenceV0],
 		["endo.capability-state.v0", validateEndoCapabilityStateV0],
 		["endo.harness-notification.v0", validateEndoHarnessNotificationV0],

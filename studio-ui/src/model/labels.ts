@@ -18,7 +18,7 @@ import type {
 	EndoCapabilityCheckKindV0,
 	EndoCapabilityStatusV0,
 	EndoHarnessChangeKindV0,
-	EndoHarnessDifferenceV0,
+	EndoHarnessDifferenceV1,
 	EndoHarnessIdentityConfidenceV0,
 	EndoHarnessNotificationKindV0,
 	EndoHarnessVersionOrderV0,
@@ -160,12 +160,14 @@ export const CHANGE_KIND: Readonly<Record<EndoHarnessChangeKindV0, string>> = {
 	"collection-failed": "collection failed",
 };
 
-export const DIFFERENCE: Readonly<Record<EndoHarnessDifferenceV0, string>> = {
+export const DIFFERENCE: Readonly<Record<EndoHarnessDifferenceV1, string>> = {
 	realPath: "install path",
 	entrypoint: "entrypoint",
 	package: "package",
 	version: "version",
+	runtimeContent: "runtime files",
 	confidence: "identity confidence",
+	identityBasis: "identity basis (digests not comparable)",
 };
 
 export const VERSION_ORDER: Readonly<Record<EndoHarnessVersionOrderV0, string>> = {

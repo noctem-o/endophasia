@@ -4,10 +4,18 @@
 // path, or `pi` on PATH), follows symlinks, hashes the file the symlinks end at, reads the nearest package manifest,
 // and runs `<executable> --version` once, directly (never through a shell), with a bounded timeout and output.
 //
-// Scope of the fingerprint, stated plainly: the entrypoint digest covers one file. For an npm install of Pi 1.0.0 that
-// file is `dist/bundle/cli.js`; whatever it loads at runtime (node_modules, the Node binary, user configuration and
-// extensions) is not covered. The package manifest names the package the entrypoint sits in, as the manifest says;
-// it is a local fact, not a verified provenance. The version is what Pi reported.
+// Scope of the fingerprint, stated plainly. Two digests, kept apart:
+//  - the entrypoint digest covers one file. For an npm install of Pi that file is `dist/bundle/cli.js`, a ~160-byte
+//    launcher that is byte-identical across releases;
+//  - the runtime-content digest (runtime-content.ts) covers every file in the directory the entrypoint sits in
+//    (`dist/bundle`), where the program actually is. It is what lets a same-version change to the code be seen.
+// Neither covers the Node binary, packages imported from node_modules, user configuration or extensions. The package
+// manifest names the package the entrypoint sits in, as the manifest says; it is a local fact, not a verified
+// provenance, and hashing local files does not authenticate a publisher. The version is what Pi reported.
+//
+// New fingerprints are endo.harness-fingerprint.v1 (identity basis runtime-content.v1). When the layout has no
+// supported scope, or its files cannot all be read, the fingerprint records a `runtimeContent` gap and a reduced
+// identity instead of a partial digest. v0 fingerprints already in a registry are never rewritten.
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,14 +23,16 @@ import { createReadStream } from "node:fs";
 import { access, constants, readFile, realpath, stat } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import {
-	type EndoHarnessFingerprintFactV0,
-	type EndoHarnessFingerprintMethodV0,
-	type EndoHarnessFingerprintV0,
-	endoHarnessIdentityBasisV0,
-	endoHarnessIdentityConfidenceV0,
-	validateEndoHarnessFingerprintV0,
+	type EndoHarnessFingerprintFactV1,
+	type EndoHarnessFingerprintMethodV1,
+	type EndoHarnessFingerprintV1,
+	type EndoHarnessRuntimeContentV1,
+	endoHarnessIdentityBasisV1,
+	endoHarnessIdentityConfidenceV1,
+	validateEndoHarnessFingerprintV1,
 } from "../../protocol/harness.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { hashPiRuntimeContentV1, type PiRuntimeContentLimitsV1 } from "./runtime-content.ts";
 import { parsePiVersionOutputV0 } from "./version.ts";
 
 /** How the operator selected the executable. */
@@ -48,6 +58,11 @@ export interface PiFingerprintOptionsV0 extends PiExecutableSelectionV0 {
 	readonly maxEntrypointBytes?: number;
 	/** The observation clock. Default: the system clock. */
 	readonly now?: () => Date;
+	/** Bounds on the runtime-content walk (defaults in runtime-content.ts), and a test seam between hashing and re-listing. */
+	readonly runtimeContent?: {
+		readonly limits?: Partial<PiRuntimeContentLimitsV1>;
+		readonly afterHashing?: () => Promise<void>;
+	};
 }
 
 /** Thrown when no fingerprint can be taken: nothing identifies the runtime. */
@@ -196,10 +211,10 @@ export function piIdentityEnvironmentV0(): Record<string, string> {
  * Throws PiFingerprintErrorV0 when nothing identifies the runtime (no executable resolved, or neither a real path nor
  * a reported version): the caller records a collection failure instead of a fingerprint.
  */
-export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): Promise<EndoHarnessFingerprintV0> {
+export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): Promise<EndoHarnessFingerprintV1> {
 	const now = options.now ?? (() => new Date());
-	const methods: EndoHarnessFingerprintMethodV0[] = [];
-	const gaps: { fact: EndoHarnessFingerprintFactV0; reason: string }[] = [];
+	const methods: EndoHarnessFingerprintMethodV1[] = [];
+	const gaps: { fact: EndoHarnessFingerprintFactV1; reason: string }[] = [];
 	const resolution = await resolvePiExecutableV0(options);
 	methods.push(resolution.method);
 	if (resolution.resolvedPath === null) {
@@ -216,6 +231,7 @@ export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): P
 	}
 	let entrypoint: { sha256: string; bytes: number } | null = null;
 	let pkg: { name: string; version: string; root: string } | null = null;
+	let runtimeContent: EndoHarnessRuntimeContentV1 | null = null;
 	if (realPath !== null) {
 		try {
 			const hashed = await sha256File(realPath, options.maxEntrypointBytes ?? 512 * 1024 * 1024);
@@ -233,9 +249,27 @@ export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): P
 			pkg = found;
 			methods.push("package-manifest");
 		}
+		if (pkg === null) gaps.push({ fact: "runtimeContent", reason: "no package to scope the runtime content to" });
+		else if (entrypoint === null)
+			gaps.push({ fact: "runtimeContent", reason: "the entrypoint was not hashed, so the runtime content is not" });
+		else {
+			const covered = await hashPiRuntimeContentV1({
+				entrypoint: realPath,
+				packageRoot: pkg.root,
+				...(options.runtimeContent?.limits === undefined ? {} : { limits: options.runtimeContent.limits }),
+				...(options.runtimeContent?.afterHashing === undefined
+					? {}
+					: { afterHashing: options.runtimeContent.afterHashing }),
+			});
+			if (covered.ok) {
+				runtimeContent = covered.content;
+				methods.push("runtime-content-sha256");
+			} else gaps.push({ fact: "runtimeContent", reason: covered.reason });
+		}
 	} else {
 		gaps.push({ fact: "entrypoint", reason: "no real path to hash" });
 		gaps.push({ fact: "package", reason: "no real path to search from" });
+		gaps.push({ fact: "runtimeContent", reason: "no real path to scope the runtime content to" });
 	}
 	const observedAt = now().toISOString();
 	const outcome = await runVersion(
@@ -264,17 +298,19 @@ export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): P
 		realPath,
 		entrypoint,
 		package: pkg,
+		runtimeContent,
 	};
 	const reported = { versionText, version };
 	if (realPath === null && version === null) {
 		throw new PiFingerprintErrorV0("neither a real path nor a reported version identifies the runtime");
 	}
 	const identity = {
-		digest: sha256HexV0(canonicalEndoJsonV0(endoHarnessIdentityBasisV0({ runtime: "pi", local, reported }))),
-		confidence: endoHarnessIdentityConfidenceV0({ local, reported }),
+		basis: "runtime-content.v1" as const,
+		digest: sha256HexV0(canonicalEndoJsonV0(endoHarnessIdentityBasisV1({ runtime: "pi", local, reported }))),
+		confidence: endoHarnessIdentityConfidenceV1({ local, reported }),
 	};
 	const body = {
-		schemaVersion: "endo.harness-fingerprint.v0" as const,
+		schemaVersion: "endo.harness-fingerprint.v1" as const,
 		attachment: options.attachment,
 		runtime: "pi",
 		observedAt,
@@ -285,7 +321,7 @@ export async function fingerprintPiRuntimeV0(options: PiFingerprintOptionsV0): P
 		identity,
 	};
 	const fingerprint = { ...body, id: `endo.evidence.pi-fingerprint.${sha256HexV0(canonicalEndoJsonV0(body))}` };
-	const validated = validateEndoHarnessFingerprintV0(fingerprint);
+	const validated = validateEndoHarnessFingerprintV1(fingerprint);
 	if (validated === null) throw new PiFingerprintErrorV0("the collected fingerprint failed validation");
 	return validated;
 }

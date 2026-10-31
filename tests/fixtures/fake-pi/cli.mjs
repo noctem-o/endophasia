@@ -10,6 +10,8 @@
 //                       hang-on:<command>, exit-immediately, version-fail, version-garbage, active-tools,
 //                       entries-lie, no-usage, no-tool-call, lose-session, ignore-eof, dup-entries,
 //                       mutate-on:<command> (rewrites its own package version: an external update mid-check),
+//                       mutate-bundle-on:<command> (appends a byte to a bundled chunk beside this file: a same-version
+//                       rebuild mid-check, which only a runtime-content identity can see),
 //                       dialog-on-start (blocks every response until an extension dialog is answered),
 //                       run-ids (adds an undocumented runId to lifecycle events),
 //                       fail-run (the assistant message ends with stopReason "error" and an errorMessage),
@@ -514,6 +516,10 @@ async function handle(command) {
 	if (option("mutate-on:") === type && packageDirectory !== undefined) {
 		const manifest = join(packageDirectory, "package.json");
 		writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version: "9.9.9" }));
+	}
+	if (option("mutate-bundle-on:") === type) {
+		const chunk = join(here, "chunks", "chunk-AAAA1111.js");
+		if (existsSync(chunk)) appendFileSync(chunk, "// mutated mid-check\n");
 	}
 	if (option("hang-on:") === type) {
 		if (has("record-rpc-pid") && packageDirectory !== undefined)

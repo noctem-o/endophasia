@@ -23,9 +23,10 @@ rebuilds one.** It finds the executable you selected (`--pi /path`, or `pi` on `
 it in its documented RPC mode when you ask, and records what it does.
 
 Each attachment records a fingerprint: facts from your installation (resolved and real path, a SHA-256 of the
-entrypoint file, the package manifest) kept apart from what the runtime reports (`pi --version`), with every missing
-fact listed rather than guessed. When the fingerprint differs from the last one for that attachment, Endophasia
-records the change, marks the evidence that depended on it unverified, and tells you, for example:
+entrypoint file, a digest of the runtime's own files, the package manifest) kept apart from what the runtime reports
+(`pi --version`), with every missing fact listed rather than guessed. When the fingerprint differs from the last one for
+that attachment, Endophasia records the change, marks the evidence that depended on it unverified, and tells you, for
+example:
 
 ~~~text
 Pi runtime changed
@@ -36,6 +37,51 @@ Pi runtime changed
   Previous conformance evidence may no longer apply. Capabilities dependent on that evidence are now unverified.
   Endophasia will not install, update, downgrade or replace Pi. If you want a different version, use your normal installation method.
 ~~~
+
+### What the fingerprint covers
+
+Pi's npm package starts from `dist/bundle/cli.js`, a launcher of about 160 bytes that is byte-identical across Pi 1.0.1,
+1.0.4 and 1.4.0. The program is in the files beside it (`cli-runtime.js` and `chunks/`). So the fingerprint keeps
+**separate** facts, and says what each one is:
+
+| Fact | What it is | What it does **not** tell you |
+| :-- | :-- | :-- |
+| Entrypoint digest | SHA-256 of the one file the executable resolves to | anything about the files it loads |
+| **Runtime-content digest** (`runtime-content.v1`) | one digest over every regular file in the directory the entrypoint sits in (`dist/bundle` for Pi): path, size and SHA-256 of each, sorted, domain-separated | who published those bytes; the Node binary; packages imported from `node_modules`; files in the package outside that directory; user configuration and extensions |
+| Package metadata | the nearest `package.json`'s `name` and `version`, as the file says | that the files match that version |
+| Reported version | what `pi --version` printed | anything beyond what the process chose to print |
+
+The runtime-content digest is what lets a same-version change to Pi's implementation (a patched chunk, a local rebuild,
+a half-finished upgrade) change the identity, which the launcher alone cannot. It is **verified local content, not
+trusted provenance**: hashing what is installed here does not authenticate who made it, and no signature is checked.
+
+What the digest includes is decided by layout, not by a list of file names: the directory containing the entrypoint's
+real path, when that directory is inside the package (not the package root itself, and not under `node_modules`). A new
+chunk in a later Pi release is covered because it is in the directory; a file that disappears changes the digest. Pi's
+bundler keeps its program in that directory and permits only a short list of external packages
+(`@silvia-odwyer/photon-node`, `jiti` and optional native accelerators), which are **not** covered. Files the runtime
+reads from the package outside `dist/bundle` (themes, HTML export templates, docs, the photon `.wasm`) are not covered
+either; `package.json` contributes only its name and version.
+
+Coverage is all or nothing. If the layout has no supported scope (an entrypoint directly in the package root, no package
+manifest, a single self-contained binary), or a file cannot be read, or a symbolic link leaves the directory, or a limit
+is exceeded (4096 entries, 64 MiB per file, 256 MiB in total, depth 12, 30 s), or the tree changed while it was read,
+**no digest is produced**. The fingerprint records a `runtimeContent` gap with the reason, and the identity is
+**reduced**: usable, honestly labelled, and unable to carry evidence from one observation to the next. Symbolic links
+inside the directory are recorded, never followed. The read is not atomic: it detects a change made while it ran, not one
+made just afterwards, and nothing stops Pi from changing after the observation.
+
+### Identity bases
+
+New fingerprints are `endo.harness-fingerprint.v1` and name their basis, `runtime-content.v1`. Fingerprints recorded by
+earlier versions are `endo.harness-fingerprint.v0`, basis `entrypoint.v0` (the launcher file, path, package and version
+only). They are never rewritten and keep their meaning: a v0 digest says nothing about the files the launcher loads.
+
+Digests on different bases are **not comparable**. Endophasia does not say that two runtimes are the same because their
+paths and versions match, and it does not say the code changed because the digests differ. The first time you identify
+after upgrading Endophasia, the change is recorded as `identityBasis`, the notice says so, and capabilities qualified on
+the earlier basis are unverified until `endo harness check` records evidence for the new identity (see
+[harness-upgrades.md](harness-upgrades.md#changing-the-identity-basis)). Nothing is installed or repaired for you.
 
 A changed fingerprint says the runtime differs. It does not say an update is available, and it does not say the new
 runtime is incompatible. A capability can be unverified even when the runtime starts and answers.

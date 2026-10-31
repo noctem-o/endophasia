@@ -19,6 +19,8 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
+import { PI_LOCAL_STATE_CHECK } from "../adapters/pi/checks.ts";
+import { piEvidenceV0 } from "../adapters/pi/evidence.ts";
 import { endoDoctorV0, renderEndoDoctorV0 } from "../cli/doctor.ts";
 import { resolveEndoStoreRootV0 } from "../cli/store-root.ts";
 import { endoDigestKeyPathV0 } from "../storage/digest-key.ts";
@@ -198,6 +200,41 @@ describe("endo doctor", () => {
 		expect(report.evidence.reason).toMatch(/not current/);
 		expect(renderEndoDoctorV0(report)).toMatch(/STALE/);
 		expect(report.nextSteps.join(" ")).toMatch(/do not describe the installed Pi/);
+	});
+
+	it("does not present capabilities as current when this version no longer accepts their evidence", async () => {
+		const { install, root, pi } = await recordedStore();
+		// An older Endophasia recorded session.identity under mapping 1: the state it wrote still says admitted.
+		const registry = pi.registry;
+		const recorded = registry.list("evidence").find((e) => e.capability === "session.identity")!;
+		const older = piEvidenceV0({
+			attachment: "pi.default",
+			capability: "session.identity",
+			definition: PI_LOCAL_STATE_CHECK,
+			dependencies: { ...recorded.dependencies, mappingVersion: "pi-rpc-mapping.1" },
+			inputs: { older: true },
+			expected: recorded.expected,
+			observed: recorded.observed,
+			classification: "EXACT",
+			evidence: recorded.evidence,
+			limitations: [],
+			at: recorded.at,
+		});
+		registry.append("evidence", older);
+		const state = registry.last("state")!;
+		registry.append("state", {
+			...state,
+			capabilities: state.capabilities.map((entry) =>
+				entry.capability === "session.identity"
+					? { ...entry, status: "admitted", classification: "EXACT", evidenceId: older.id }
+					: entry,
+			),
+		});
+		const report = await endoDoctorV0({ root, pi: install.bin }, hostEnv());
+		expect(report.evidence.currentMatchesRecorded).toBe(true);
+		expect(report.evidence.capabilitiesStale).toBe(true);
+		expect(report.evidence.reason).toMatch(/no longer accepts/);
+		expect(report.nextSteps.join(" ")).toMatch(/endo harness status/);
 	});
 
 	it("reports a damaged registry log instead of a clean recorded state", async () => {

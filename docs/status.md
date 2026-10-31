@@ -14,7 +14,11 @@ implementation detail and its limitations. The real recordings and studies, with
 - **The Pi attachment** (`adapters/pi`, `endo harness …`): executable resolution, fingerprints and change records,
   neutral notifications, explicit evidence-validity rules, automatic local checks, an authorization-gated live study,
   and session recording into the durable event store with opaque source cursors, deduplicated catch-up, crash
-  recovery and replay. Controls are offered only for admitted capabilities.
+  recovery and replay. Controls are offered only for admitted capabilities. `harness status` adds an upstream
+  assessment derived read-only from those records ([harness-upgrades.md](harness-upgrades.md)): the previous and current
+  runtime, every dependency that invalidated evidence, what re-establishes each capability, and the claims no check
+  makes. A Pi 1.0.4 → 1.4.0 assessment, with offline checks and fake-endpoint live studies of both releases, is in
+  [pi-1.4.0-upgrade.md](pi-1.4.0-upgrade.md); it does not add 1.4.0 to the verified baseline.
 - **Session lifecycle on the Pi path** (`adapters/pi/lifecycle.ts`, `protocol/session-lifecycle.ts`): the recorded
   Pi records are folded into canonical `lifecycle.*` events as they are stored.
   - The events cover session started and resumed, run and turn started and completed, failed (with Pi's own

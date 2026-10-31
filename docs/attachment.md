@@ -40,6 +40,12 @@ Pi runtime changed
 A changed fingerprint says the runtime differs. It does not say an update is available, and it does not say the new
 runtime is incompatible. A capability can be unverified even when the runtime starts and answers.
 
+`endo harness status` then explains the change from the recorded state: what differs, which capabilities lost their
+standing and why (every changed dependency, not only the first), what re-establishes each one, and what no check
+establishes (behaviour comparison, reproducibility). See [evaluating a new harness version](harness-upgrades.md) and the
+[Pi 1.0.4 → 1.4.0 case study](pi-1.4.0-upgrade.md). Which responsibilities stay with the harness is in
+[upstream-boundaries.md](upstream-boundaries.md).
+
 Capabilities are admitted only on current evidence, in this order:
 
 ~~~text

@@ -593,6 +593,8 @@ async function handle(command) {
 			return;
 		}
 		case "get_available_models":
+			// no-available-models: no credentials or a placeholder model, so the model control cannot be exercised.
+			if (has("no-available-models")) return respond(id, type, { models: [] });
 			return respond(id, type, { models: [{ ...model, name: model.id, api: "openai-completions" }] });
 		case "set_model":
 			if (command.provider !== model.provider || command.modelId !== model.id)

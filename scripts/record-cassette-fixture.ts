@@ -36,6 +36,7 @@ import {
 	piCassetteAttachmentV0,
 	recordPiCassetteSessionV0,
 } from "../cli/cassette-session.ts";
+import { endoHarnessIdentityBasisNameV0 } from "../protocol/harness.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
@@ -217,6 +218,7 @@ export async function recordPiCassetteFixturesV0(options: PiCassetteRecorderOpti
 			pi: {
 				version,
 				package: fingerprint.local.package === null ? null : { ...fingerprint.local.package, root: null },
+				identityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
 				entrypointSha256: fingerprint.local.entrypoint?.sha256 ?? null,
 				identityDigest: fingerprint.identity.digest,
 			},

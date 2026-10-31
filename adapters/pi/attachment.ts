@@ -18,12 +18,13 @@ import { randomBytes } from "node:crypto";
 import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
-import type {
-	EndoCapabilityEvidenceV0,
-	EndoCapabilityStateV0,
-	EndoHarnessChangeRecordV0,
-	EndoHarnessFingerprintRecordV0,
-	EndoHarnessNotificationV0,
+import {
+	type EndoCapabilityEvidenceV0,
+	type EndoCapabilityStateV0,
+	type EndoHarnessChangeRecordV0,
+	type EndoHarnessFingerprintRecordV0,
+	type EndoHarnessNotificationV0,
+	endoHarnessIdentityBasisNameV0,
 } from "../../protocol/harness.ts";
 import type { EndoInterventionKindV0 } from "../../protocol/intervention.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
@@ -847,6 +848,8 @@ export class PiSessionAttachmentV0 {
 		this.#attachmentEvent("harness.attached", {
 			fingerprintId: this.#fingerprint.id,
 			identityDigest: this.#fingerprint.identity.digest,
+			// The basis the digest was computed under: digests on different bases are not comparable.
+			identityBasis: endoHarnessIdentityBasisNameV0(this.#fingerprint),
 			version: this.#fingerprint.reported.version,
 			mapping: PI_MAPPING_VERSION,
 			// The digest domain tool-argument digests are made in: the key's id and label, never the key.
@@ -887,6 +890,8 @@ export class PiSessionAttachmentV0 {
 			this.#attachmentEvent("harness.runtime-changed", {
 				previousFingerprintId: this.#fingerprint.id,
 				currentFingerprintId: fingerprint.id,
+				previousIdentityBasis: endoHarnessIdentityBasisNameV0(this.#fingerprint),
+				currentIdentityBasis: endoHarnessIdentityBasisNameV0(fingerprint),
 				previousVersion: this.#fingerprint.reported.version,
 				currentVersion: fingerprint.reported.version,
 			});

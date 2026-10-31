@@ -31,11 +31,13 @@ import {
 	endoCockpitTextPresentableV0,
 	endoCockpitUnreadableRuntimeReasonV0,
 } from "../../protocol/cockpit-fields.ts";
-import type {
-	EndoHarnessChangeRecordV0,
-	EndoHarnessFingerprintRecordV0,
-	EndoHarnessNotificationV0,
-	EndoHarnessObservationRefRecordV0,
+import {
+	type EndoHarnessChangeRecordV0,
+	type EndoHarnessFingerprintRecordV0,
+	type EndoHarnessNotificationV0,
+	type EndoHarnessObservationRefRecordV0,
+	endoHarnessIdentityBasisNameV0,
+	endoHarnessRuntimeContentV0,
 } from "../../protocol/harness.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import {
@@ -105,6 +107,15 @@ function fingerprintView(
 						!endoCockpitTextPresentableV0(record.local.package.version)
 					? unavailableV0(WITHHELD_TEXT, refs)
 					: claimV0("observed", { name: record.local.package.name, version: record.local.package.version }, refs),
+		basis: endoHarnessIdentityBasisNameV0(record),
+		runtimeContent: (() => {
+			const covered = endoHarnessRuntimeContentV0(record);
+			return covered === null
+				? unavailableV0(GAP_REASON, refs)
+				: !endoCockpitTextPresentableV0(covered.scope)
+					? unavailableV0(WITHHELD_TEXT, refs)
+					: claimV0("observed", { scope: covered.scope, files: covered.files, bytes: covered.bytes }, refs);
+		})(),
 		withheld: [...ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0],
 	};
 }

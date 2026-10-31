@@ -128,7 +128,7 @@ describe("determinism and purity", () => {
 	it("the projection definition versions are part of every output", () => {
 		const identity = projectEndoCockpitRuntimeIdentityV0(input(specimenRecords()));
 		const capabilities = projectEndoCockpitCapabilityStateV0(input(specimenRecords()));
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.3");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.4");
 		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.3");
 		expect(timeline([event("tool.started")]).projectionVersion).toBe("cockpit-session-timeline.3");
 	});
@@ -1432,7 +1432,7 @@ describe("projection version compatibility (PR #57 review)", () => {
 
 	it("pins each record to its declared projection version, and keeps it apart from the schema version", () => {
 		const { identity, capabilities, log, snapshot } = good();
-		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.3");
+		expect(identity.projectionVersion).toBe("cockpit-runtime-identity.4");
 		expect(capabilities.projectionVersion).toBe("cockpit-capability-state.3");
 		expect(log.projectionVersion).toBe("cockpit-session-timeline.3");
 		const validators: [string, unknown, (value: unknown) => unknown][] = [

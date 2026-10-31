@@ -120,6 +120,7 @@ import {
 	type EndoCapabilityStatusV0,
 	type EndoHarnessChangeKindV0,
 	type EndoHarnessDifferenceV1,
+	type EndoHarnessIdentityBasisNameV1,
 	type EndoHarnessIdentityConfidenceV0,
 	type EndoHarnessNotificationKindV0,
 	type EndoHarnessVersionOrderV0,
@@ -135,7 +136,7 @@ import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0
 
 /** The projection definition versions of this contract version. A change to what a projection computes bumps its own. */
 export const ENDO_COCKPIT_PROJECTION_VERSIONS_V0 = {
-	runtimeIdentity: "cockpit-runtime-identity.3",
+	runtimeIdentity: "cockpit-runtime-identity.4",
 	capabilityState: "cockpit-capability-state.3",
 	sessionTimeline: "cockpit-session-timeline.3",
 	snapshot: "cockpit-snapshot.3",
@@ -359,6 +360,10 @@ export interface EndoCockpitFingerprintViewV0 {
 	/** The sha256 and size of the entrypoint file, as observed locally. */
 	entrypoint: EndoCockpitClaimV0<{ sha256: string; bytes: number }>;
 	package: EndoCockpitClaimV0<{ name: string; version: string }>;
+	/** The identity basis the digest was computed under. Digests on different bases are not comparable. */
+	basis: EndoHarnessIdentityBasisNameV1;
+	/** The digest over the runtime's own files, as observed locally; unavailable on the entrypoint.v0 basis or when coverage was incomplete. */
+	runtimeContent: EndoCockpitClaimV0<{ scope: string; files: number; bytes: number }>;
 	/** The recorded fields that are not presented: local paths and the version command's raw output. */
 	withheld: string[];
 }
@@ -832,6 +837,7 @@ function isRegistrySource(value: unknown): value is EndoCockpitRegistrySourceV0 
 }
 
 const CONFIDENCES = ["strong", "reduced"] as const;
+const IDENTITY_BASES = ["entrypoint.v0", "runtime-content.v1"] as const;
 
 function isObservationView(value: unknown): value is EndoCockpitObservationViewV0 {
 	return (
@@ -847,7 +853,28 @@ function isObservationView(value: unknown): value is EndoCockpitObservationViewV
 function isFingerprintView(value: unknown): value is EndoCockpitFingerprintViewV0 {
 	return (
 		isPlain(value) &&
-		exactKeys(value, ["ref", "id", "observedAt", "identity", "version", "entrypoint", "package", "withheld"]) &&
+		exactKeys(value, [
+			"ref",
+			"id",
+			"observedAt",
+			"identity",
+			"version",
+			"entrypoint",
+			"package",
+			"basis",
+			"runtimeContent",
+			"withheld",
+		]) &&
+		oneOf(IDENTITY_BASES, value.basis) &&
+		isClaim(
+			value.runtimeContent,
+			(item): item is { scope: string; files: number; bytes: number } =>
+				isPlain(item) &&
+				exactKeys(item, ["scope", "files", "bytes"]) &&
+				isLabel(item.scope, 512) &&
+				isCount(item.files) &&
+				isCount(item.bytes),
+		) &&
 		isRef(value.ref) &&
 		isEvidenceId(value.id) &&
 		typeof value.observedAt === "string" &&
@@ -2206,16 +2233,25 @@ function identityPointsInto(identity: EndoCockpitRuntimeIdentityV0, ctx: RefCont
 		if (!claimIs(view.entrypoint, "observed", [ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0])) return false;
 		if (!claimIs(view.package, "observed", GAP_OR_WITHHELD)) return false;
 		// The durable fingerprint's confidence is `strong` exactly when its entrypoint and its reported version are both
-		// recorded (endoHarnessIdentityConfidenceV0). A claim is unavailable for the recorded-gap reason exactly when the
-		// fact is missing; a version withheld by the privacy policy is a recorded one, not a missing one.
+		// recorded (endoHarnessIdentityConfidenceV0) on the entrypoint.v0 basis, and, on runtime-content.v1, only when the
+		// runtime-content digest is recorded too (endoHarnessIdentityConfidenceV1). A claim is unavailable for the
+		// recorded-gap reason exactly when the fact is missing; a version withheld by the privacy policy is a recorded one,
+		// not a missing one. Runtime content exists only on the v1 basis.
 		const recorded = (claim: { basis: string; reason?: string }) =>
 			!(claim.basis === "unavailable" && claim.reason === ENDO_COCKPIT_FINGERPRINT_GAP_REASON_V0);
-		if (
-			view.identity.value.confidence !== (recorded(view.entrypoint) && recorded(view.version) ? "strong" : "reduced")
-		)
-			return false;
+		if (!claimIs(view.runtimeContent, "observed", GAP_OR_WITHHELD)) return false;
+		if (view.basis === "entrypoint.v0" && recorded(view.runtimeContent)) return false;
+		const strong =
+			recorded(view.entrypoint) &&
+			recorded(view.version) &&
+			(view.basis === "entrypoint.v0" || recorded(view.runtimeContent));
+		if (view.identity.value.confidence !== (strong ? "strong" : "reduced")) return false;
 		if (!sameJson(view.withheld, ENDO_COCKPIT_WITHHELD_FINGERPRINT_FIELDS_V0)) return false;
-		if (![view.identity, view.version, view.entrypoint, view.package].every((c) => claimReadFromOwn(c, view)))
+		if (
+			![view.identity, view.version, view.entrypoint, view.package, view.runtimeContent].every((c) =>
+				claimReadFromOwn(c, view),
+			)
+		)
 			return false;
 	}
 	if (identity.lastChange !== null && !ownRefOk(identity.lastChange, ctx, "change")) return false;

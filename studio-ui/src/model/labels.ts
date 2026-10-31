@@ -27,7 +27,7 @@ import type {
 /** The projection versions this page can read. A response declaring another is refused, never read as this one. */
 export const SUPPORTED_PROJECTIONS = {
 	snapshot: "cockpit-snapshot.3",
-	runtimeIdentity: "cockpit-runtime-identity.3",
+	runtimeIdentity: "cockpit-runtime-identity.4",
 	capabilityState: "cockpit-capability-state.3",
 	sessionTimeline: "cockpit-session-timeline.3",
 } as const;

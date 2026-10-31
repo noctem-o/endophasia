@@ -29,7 +29,10 @@ import { PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { piChangeV0, piFingerprintDifferencesV0, piNotificationV0 } from "../adapters/pi/evidence.ts";
 import { fingerprintPiRuntimeV0 } from "../adapters/pi/identity.ts";
 import { hashPiRuntimeContentV1, piRuntimeContentScopeV1 } from "../adapters/pi/runtime-content.ts";
+import { endoDoctorV0, renderEndoDoctorV0 } from "../cli/doctor.ts";
 import { harnessStatusCommand } from "../cli/harness.ts";
+import { projectEndoCockpitRuntimeIdentityV0 } from "../cockpit/projections/runtime-identity.ts";
+import { readEndoCockpitRegistryV0 } from "../cockpit/reader.ts";
 import {
 	type EndoHarnessFingerprintV0,
 	type EndoHarnessFingerprintV1,
@@ -42,7 +45,9 @@ import {
 	validateEndoHarnessFingerprintV1,
 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
+import { TEST_KEY } from "./cockpit-keyed.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 
 const cleanup: (() => void)[] = [];
@@ -597,6 +602,36 @@ describe("history: v0 records stay what they were", () => {
 		expect(assessment.capabilities.every((entry) => entry.effective === "unverified")).toBe(true);
 	});
 
+	it("makes doctor say a cross-basis identity cannot be compared, rather than 'different'", async () => {
+		const fake = install();
+		const root = scratch("endo-rc-store-");
+		v0Registry(root, fake);
+		const report = await endoDoctorV0(
+			{ root, pi: fake.bin },
+			{ HOME: scratch("endo-rc-home-"), PATH: process.env.PATH },
+		);
+		expect(report.pi).toMatchObject({ identityBasis: "runtime-content.v1", identityConfidence: "strong" });
+		expect(report.pi.runtimeContent).toMatchObject({ scope: "dist/bundle", files: 4 });
+		expect(report.evidence).toMatchObject({ recordedIdentityBasis: "entrypoint.v0", identityBasisDiffers: true });
+		expect(report.evidence.currentMatchesRecorded).toBeNull();
+		const text = renderEndoDoctorV0(report);
+		expect(text).toMatch(/cannot be compared.*not established.*requalification/);
+		expect(text).not.toMatch(/DIFFERENT identity/);
+	});
+
+	it("names the identity basis in the events a session records", async () => {
+		const fake = install();
+		const root = scratch("endo-rc-store-");
+		const pi = attach(fake, root);
+		const session = await pi.openSession();
+		await session.close();
+		const store = createEndoDurableEventStoreV0(root);
+		const attached = store.page({ limit: 1000 }).events.filter((event) => event.kind === "harness.attached");
+		store.close();
+		expect(attached.length).toBeGreaterThan(0);
+		expect(attached[0]?.payload).toMatchObject({ identityBasis: "runtime-content.v1" });
+	});
+
 	it("keeps status read-only for a mixed registry", async () => {
 		const fake = install();
 		const root = scratch("endo-rc-store-");
@@ -752,5 +787,41 @@ describe("a launcher that loads its program from outside its own directory", () 
 		// Pi's own launcher shape (a relative load of a sibling) stays covered.
 		const pi = tree({ "cli.js": 'createRequire(import.meta.url)("./cli-runtime.js");\n' });
 		expect((await hashPiRuntimeContentV1({ entrypoint: pi.entrypoint, packageRoot: pi.packageRoot })).ok).toBe(true);
+	});
+});
+
+describe("the cockpit reads what identify() records", () => {
+	it("projects a reduced v1 fingerprint with a runtimeContent gap (flat layout) and a basis change", async () => {
+		const fake = install();
+		const root = scratch("endo-rc-store-");
+		const packageRoot = join(fake.prefix, "lib", "node_modules", "@earendil-works", "pi-coding-agent");
+		writeFileSync(join(packageRoot, "cli.js"), readFileSync(fake.entrypoint));
+		chmodSync(join(packageRoot, "cli.js"), 0o755);
+		const flat = new PiAttachmentV0({
+			root,
+			cwd: scratch("endo-rc-cwd-"),
+			executable: join(packageRoot, "cli.js"),
+			env: fakePiEnv(),
+		});
+		const { fingerprint } = await flat.identify();
+		expect(fingerprint?.identity.confidence).toBe("reduced");
+		await new PiAttachmentV0({
+			root,
+			cwd: scratch("endo-rc-cwd-"),
+			executable: fake.bin,
+			env: fakePiEnv(),
+		}).identify();
+		const registry = readEndoCockpitRegistryV0(root, "pi.default", TEST_KEY);
+		const identity = projectEndoCockpitRuntimeIdentityV0(registry, TEST_KEY);
+		expect(identity.current?.identity).toMatchObject({ value: { confidence: "strong" } });
+		expect(identity.current?.basis).toBe("runtime-content.v1");
+		expect(identity.current?.runtimeContent).toMatchObject({
+			basis: "observed",
+			value: { scope: "dist/bundle", files: 4 },
+		});
+		expect(identity.previousDifferent?.identity).toMatchObject({ value: { confidence: "reduced" } });
+		expect(identity.previousDifferent?.runtimeContent.basis).toBe("unavailable");
+		expect(identity.lastChange?.kind).toBe("changed");
+		expect(identity.lastChange?.differences).toEqual(expect.arrayContaining(["runtimeContent", "confidence"]));
 	});
 });

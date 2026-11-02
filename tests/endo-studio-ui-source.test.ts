@@ -55,6 +55,7 @@ describe("the frontend's source", () => {
 				"develop/Attempts.tsx",
 				"model/attempts-wire.ts",
 				"use-attempts.ts",
+				"model/attempts-reader.ts",
 				"model/workbench.ts",
 				"model/workbench-wire.ts",
 				"develop/Activity.tsx",
@@ -286,7 +287,14 @@ describe("the frontend's source", () => {
 		// The section that draws attempts imports no api, no workbench command and no composer: Copy writes the clipboard and nothing else.
 		const attemptsHook = sources["use-attempts.ts"]!;
 		expect(attemptsHook).not.toMatch(/setTimeout|setInterval|requestAnimationFrame/);
-		expect(attemptsHook).toMatch(/if \(running\.current\) \{\s*again\.current = true;\s*return;\s*\}/);
+		// One read at a time (a read asked for during one is queued), and a read whose launch or pairing has gone is obsolete: its answer is
+		// dropped before it can touch the state (tests/develop-attempts-reader.test.ts drives these with deferred requests).
+		const reader = sources["model/attempts-reader.ts"]!;
+		expect(reader).not.toMatch(/setTimeout|setInterval|requestAnimationFrame|from "react"|api\.ts/);
+		expect(reader).toMatch(/if \(this\.#flight !== null\) \{\s*this\.#queued = true;\s*return;\s*\}/);
+		expect(reader).toMatch(/if \(this\.#flight !== flight\) return;/);
+		expect(reader).toMatch(/if \(launchChanged \|\| grantChanged\) \{/);
+		expect(attemptsHook).toContain("new AttemptsReader(fetchAttempts, setState)");
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-attempts.ts") expect(text, name).not.toMatch(/fetchAttempts/);
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(

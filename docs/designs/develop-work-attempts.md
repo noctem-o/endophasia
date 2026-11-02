@@ -242,7 +242,7 @@ this slice, and the section shows the commands with the attempt id and a `--root
 - `adapters/pi/workbench-tasks.ts`: `GET workspace/attempts` with no query and no body (a query is 400, other methods and sub-paths 404).
   It is reached only after the broker's grant check, as every `workspace` route is. A workbench without `--project` answers 404 as today,
   and the page asks only when its workspace view is `ready`, so it never logs a failed request.
-- `studio-ui/src/api.ts` gets `fetchAttempts`. A new hook, `studio-ui/src/use-attempts.ts`, composed into `useWorkspace`
+- `studio-ui/src/api.ts` gets `fetchAttempts`. A new hook, `studio-ui/src/use-attempts.ts` (its decisions in `model/attempts-reader.ts`), composed into `useWorkspace`
   (so nothing is threaded through the components), reads after each good workspace read: the first, the operator's Refresh, and each change
   they make. It uses no timer, runs one read at a time, and is the only caller of `fetchAttempts`. When the page holds a different task
   from the one selected in the file (a read-only launch cannot change the selection), the section says so rather than showing another
@@ -375,3 +375,42 @@ accessibility. It ran the targeted suite and a scratch script, and found no bloc
 | Every Copy button was announced "Copy brief"; misleading wording when no task is selected | **Fixed.** Each says which brief; the no-task wording says so. |
 | Command blocks scroll sideways at 390 px without keyboard focus; the section heading's explanation is only a tooltip | **Kept.** This is the existing task-view pattern (the same `task-command` blocks and tooltips); changing it belongs to that view, not this slice. |
 | "six bounded texts" | **Fixed:** seven. |
+
+### Remediation: stale reads and lost refreshes in the page's attempts read
+
+After the PR opened, a reviewer named two races in `use-attempts.ts`, and reading the code confirmed both:
+
+- **Lost refresh.** On a launch change the obsolete read returned from inside its `try`, so the check for a refresh queued during it was
+  skipped. The new launch could be left without its read.
+- **Stale grant.** A change of pairing without a change of launch did not invalidate the read in flight. Its answer could then mark the
+  attempts current under a grant that was no longer held, and overwrite the "unpaired" mark.
+
+**The fix** is local. The decisions move into `AttemptsReader` (`studio-ui/src/model/attempts-reader.ts`), a plain object with the request
+function injected, and the hook only hands it React's inputs.
+
+- A read is identified by its in-flight slot. A change of launch or grant aborts it and empties the slot, so its answer or failure is
+  dropped before it touches the state.
+- A refresh queued behind an abandoned read is run at once, with the inputs as they are then.
+- The grant is read when a request starts, never from a closure.
+- Every settled request, whether it resolved, rejected or threw, passes through one handler, so `busy` cannot stick and no rejection is
+  unhandled.
+- Disposal (and StrictMode's remount) forgets the inputs, so a remount reads again.
+
+Single flight and no polling are unchanged, and the only request is still the one GET.
+
+**Tests:** `tests/develop-attempts-reader.test.ts`, 12 deterministic tests with deferred requests and no timers:
+
+- a launch switch while A is held, with A resolving or rejecting later;
+- a queued refresh across a launch switch, with and without other changes in the same render;
+- a revoked grant, and a replaced grant;
+- coalesced refreshes, including across a re-pairing;
+- rejected, thrown and refused requests;
+- unpair and re-pair;
+- inactive or not-ready inputs;
+- disposal followed by a remount.
+
+Reintroducing each bug's shape made at least one test fail: an obsolete read keeping the slot, a grant change not invalidating, an
+obsolete answer not dropped, a queued refresh dropped on abandonment, and a rejection not settled.
+
+**Limitation:** the reader is tested directly. The few lines of React wiring in `useAttempts` (two effects) are covered by the source pins
+and the existing browser tests, not by a deterministic race test, because the page has no DOM-free React test harness.

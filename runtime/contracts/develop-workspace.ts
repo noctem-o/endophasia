@@ -6,7 +6,7 @@
 //   DevelopWorkspaceServiceV0           operator scope: register a project, read, create a task, change a status
 //        `-- forLaunch(config, host)    launch scope: one project, one launch directory, one launch's session facts
 //   DevelopTasksStoreV0                 the lock, the atomic rewrite, validation, revisions, the transition rules (storage/develop-tasks.ts)
-//   <root>/develop/tasks.json           endo.develop-tasks.v0, unchanged
+//   <root>/develop/tasks.json           endo.develop-tasks.v0 or .v1 (written in the version it was read in; v1 only by an explicit upgrade)
 //
 // It is a TypeScript library: no process, no server, no browser, no model and no harness are needed to use it, and it imports nothing from any
 // adapter. It is NOT an authentication boundary. Whoever holds an object of it may make the changes it offers; who may hold one is
@@ -15,33 +15,54 @@
 // reference true (the launch, the connected session, its source) come from the HOST that constructed the launch scope, never from the data of
 // a request: no operation here takes a session id, a launch id, a path or a project id from the caller's request.
 //
+// Two ways a reference is made, one per kind of source, and neither reachable from the other's scope:
+// - LIVE (`pi-live`): the launch scope's `linkCurrentSession`, built from the launch host's own facts. A host that speaks for any other
+//   source, `omp-saved` included, is `unsupported-source`: a launch can never mint a reference with a launch, an attachment or a connection
+//   for a session it does not host.
+// - OBSERVED (`omp-saved`): the operator scope's `linkObservedSession`, given an observation the CALLER established with its own observer
+//   (the CLI resolves OMP's id in the directory the operator named). The launch scope has no such method, so no workbench request can reach it.
+//   Here the observation's shape is checked (a closed source, OMP's id grammar, a scope digest, the format); that it is TRUE is the caller's
+//   duty, exactly as the live host's facts are the host's.
+//
 // What none of its operations can do: send a prompt, steer, queue or stop, start, resume or select a session, open, list or write a file
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
 import {
-	ENDO_DEVELOP_WORKSPACE_SCHEMA_V0,
+	ENDO_DEVELOP_OMP_FORMAT_V1,
+	ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1,
+	ENDO_DEVELOP_WORKSPACE_SCHEMA_V1,
 	ENDO_LAUNCH_ID_PATTERN_V0,
+	type EndoDevelopPiSessionRefV1,
 	type EndoDevelopProjectV0,
-	type EndoDevelopSessionRefV0,
-	type EndoDevelopTasksFileV0,
-	type EndoDevelopTaskV0,
-	type EndoDevelopTaskViewV0,
+	type EndoDevelopTasksFileV1,
+	type EndoDevelopTaskV1,
+	type EndoDevelopTaskViewV1,
 	type EndoDevelopUnreadableReasonV0,
-	type EndoDevelopWorkspaceViewV0,
+	type EndoDevelopWorkspaceViewV1,
 	endoDevelopNextStatusesV0,
+	endoDevelopOmpAliasV1,
+	endoDevelopOmpScopeLabelV1,
+	isEndoDevelopLiveSourceV1,
+	isEndoDevelopObservedSourceV1,
+	isEndoDevelopOmpSessionIdV1,
 	isEndoDevelopSessionIdV0,
-	isEndoDevelopSessionSourceV0,
 } from "../../protocol/develop-tasks.ts";
-import type { DevelopTasksStoreV0, EndoTasksRefusalV0, EndoTasksResultV0 } from "../../storage/develop-tasks.ts";
+import type {
+	DevelopTasksStoreV0,
+	EndoDevelopTasksFormatV1,
+	EndoTasksRefusalV0,
+	EndoTasksResultV0,
+	EndoTasksUpgradeV1,
+} from "../../storage/develop-tasks.ts";
 
-export type EndoDevelopReadOnlyReasonV0 = NonNullable<EndoDevelopWorkspaceViewV0["readOnlyReason"]>;
+export type EndoDevelopReadOnlyReasonV0 = NonNullable<EndoDevelopWorkspaceViewV1["readOnlyReason"]>;
 
 /**
  * Why an operation was refused. Nothing was written for any of them. The store's own refusals, plus:
  * - `read-only`: the launch scope cannot change this workspace now (`reason` says why: the file, the project, the directory).
  * - `no-session`: a link was asked for and the host has no connected session.
- * - `unsupported-source`: the host's sessions are of a source this version of the file cannot record.
+ * - `unsupported-source`: the host's sessions are not of a LIVE source this file can record, or an observation is not of an OBSERVED one.
  * - `unavailable`: the host's own facts are not well formed (an internal fault of the host, never the requester's).
  * - `not-a-directory`: a project was to be registered at a path that is not an existing directory.
  */
@@ -109,6 +130,28 @@ const fromStore = <T>(result: EndoTasksResultV0<T>): DevelopWorkspaceResultV0<T>
 			? { ok: false, code: result.code }
 			: { ok: false, code: result.code, reason: result.reason };
 
+/**
+ * What an operator's caller established about a saved session with its OWN observer, before asking for a link: the source, the session's id as
+ * that source wrote it, the scope (which directory the operator named, as a digest), and the format the observer read. Never a path, a
+ * selector, a title or any content. The service checks its shape; the caller is responsible for its truth (see the header).
+ */
+export interface DevelopObservedSessionV1 {
+	source: "omp-saved";
+	sessionId: string;
+	scope: string;
+	format: typeof ENDO_DEVELOP_OMP_FORMAT_V1;
+}
+
+/** The file as the operator inspects it before an upgrade: its version on disk and what it holds. Counts only. */
+export interface DevelopWorkspaceInspectionV1 {
+	format: EndoDevelopTasksFormatV1;
+	exists: boolean;
+	revision: number;
+	projects: number;
+	tasks: number;
+	references: { "pi-live": number; "omp-saved": number };
+}
+
 /** Module-private: only `forLaunch` can open a launch scope, so a scope always comes from a service object. */
 const OPEN: unique symbol = Symbol("develop-launch-scope");
 
@@ -122,14 +165,81 @@ export class DevelopWorkspaceServiceV0 {
 		this.#observeGitRoot = options.observeGitRoot ?? (async () => null);
 	}
 
-	/** The whole file, read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
-	read(): DevelopWorkspaceResultV0<EndoDevelopTasksFileV0> {
+	/** The whole file (as the v1 model), read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
+	read(): DevelopWorkspaceResultV0<EndoDevelopTasksFileV1> {
 		const read = this.#store.read();
 		return read.ok ? { ok: true, value: read.file } : { ok: false, code: "unreadable", reason: read.reason };
 	}
 
+	/** The file's version on disk and its counts, read now. Writes nothing. */
+	inspect(): DevelopWorkspaceResultV0<DevelopWorkspaceInspectionV1> {
+		const read = this.#store.read();
+		if (!read.ok) return { ok: false, code: "unreadable", reason: read.reason };
+		const refs = read.file.tasks.flatMap((t) => t.sessions);
+		return {
+			ok: true,
+			value: {
+				format: read.format,
+				exists: read.exists,
+				revision: read.file.revision,
+				projects: read.file.projects.length,
+				tasks: read.file.tasks.length,
+				references: {
+					"pi-live": refs.filter((r) => r.source === "pi-live").length,
+					"omp-saved": refs.filter((r) => r.source === "omp-saved").length,
+				},
+			},
+		};
+	}
+
+	/** The operator's explicit upgrade of a v0 file to v1 (`endo task upgrade --apply`). A v1 or missing file is unchanged. */
+	upgrade(expectedRevision?: number): DevelopWorkspaceResultV0<EndoTasksUpgradeV1> {
+		return fromStore(this.#store.upgrade(expectedRevision));
+	}
+
+	/**
+	 * Link a task to a saved session the caller's own observer established (see `DevelopObservedSessionV1`). The operator's process only: a
+	 * launch scope has no such operation. Idempotent per source, scope and session id. A live source is refused here: a live reference is made
+	 * only by the launch host that serves the session.
+	 */
+	linkObservedSession(
+		projectId: string,
+		taskId: string,
+		expectedRevision: number,
+		observed: DevelopObservedSessionV1,
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
+		if (!isEndoDevelopObservedSourceV1(observed.source)) return { ok: false, code: "unsupported-source" };
+		if (
+			!isEndoDevelopOmpSessionIdV1(observed.sessionId) ||
+			typeof observed.scope !== "string" ||
+			!ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1.test(observed.scope) ||
+			observed.format !== ENDO_DEVELOP_OMP_FORMAT_V1
+		)
+			return { ok: false, code: "bad-request" };
+		return fromStore(
+			this.#store.linkSession(projectId, taskId, expectedRevision, {
+				source: "omp-saved",
+				sessionId: observed.sessionId,
+				scope: observed.scope,
+				observedFormat: ENDO_DEVELOP_OMP_FORMAT_V1,
+				linkedBy: "operator",
+				via: "cli",
+			}),
+		);
+	}
+
+	/** Remove one reference, of any source, by its link id: the operator's own act. The session is not touched. */
+	unlinkSession(
+		projectId: string,
+		taskId: string,
+		expectedRevision: number,
+		linkId: string,
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
+		return fromStore(this.#store.unlinkSession(projectId, taskId, expectedRevision, linkId));
+	}
+
 	/** One registered project's tasks. */
-	tasks(projectId: string): DevelopWorkspaceResultV0<EndoDevelopTaskV0[]> {
+	tasks(projectId: string): DevelopWorkspaceResultV0<EndoDevelopTaskV1[]> {
 		const read = this.read();
 		if (!read.ok) return read;
 		if (!read.value.projects.some((p) => p.id === projectId)) return { ok: false, code: "not-found" };
@@ -137,7 +247,7 @@ export class DevelopWorkspaceServiceV0 {
 	}
 
 	/** One task of one project. */
-	task(projectId: string, taskId: string): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	task(projectId: string, taskId: string): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		const tasks = this.tasks(projectId);
 		if (!tasks.ok) return tasks;
 		const found = tasks.value.find((t) => t.id === taskId);
@@ -167,7 +277,7 @@ export class DevelopWorkspaceServiceV0 {
 	createTask(
 		projectId: string,
 		input: { title: unknown; description?: unknown; acceptance?: unknown },
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return fromStore(this.#store.createTask(projectId, input));
 	}
 
@@ -178,7 +288,7 @@ export class DevelopWorkspaceServiceV0 {
 		expectedRevision: number,
 		to: unknown,
 		note?: unknown,
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return fromStore(this.#store.setStatus(projectId, taskId, expectedRevision, to, note));
 	}
 
@@ -213,18 +323,18 @@ export class DevelopLaunchWorkspaceV0 {
 		this.#host = host;
 	}
 
-	/** The connected session, when the host speaks for a source this file can record. */
-	#connected(): { source: EndoDevelopSessionRefV0["source"]; sessionId: string } | null {
+	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */
+	#connected(): { source: EndoDevelopPiSessionRefV1["source"]; sessionId: string } | null {
 		const session = this.#host.session;
-		if (session === null || !isEndoDevelopSessionSourceV0(session.source)) return null;
+		if (session === null || !isEndoDevelopLiveSourceV1(session.source)) return null;
 		const now = session.current();
 		return now === null ? null : { source: session.source, sessionId: now.sessionId };
 	}
 
-	/** The workspace as a launch sees it, read from the file now: `endo.develop-workspace.v0`. */
-	view(): EndoDevelopWorkspaceViewV0 {
+	/** The workspace as a launch sees it, read from the file now: `endo.develop-workspace.v1`. */
+	view(): EndoDevelopWorkspaceViewV1 {
 		const base = {
-			schemaVersion: ENDO_DEVELOP_WORKSPACE_SCHEMA_V0 as typeof ENDO_DEVELOP_WORKSPACE_SCHEMA_V0,
+			schemaVersion: ENDO_DEVELOP_WORKSPACE_SCHEMA_V1 as typeof ENDO_DEVELOP_WORKSPACE_SCHEMA_V1,
 			available: true as const,
 			launchId: this.#host.launchId,
 		};
@@ -273,7 +383,10 @@ export class DevelopLaunchWorkspaceV0 {
 			writable,
 			readOnlyReason: writable ? null : launch === "missing" ? "project-missing" : "project-mismatch",
 			linkable: writable && connected !== null,
-			tasks: read.file.tasks.filter((t) => t.projectId === project.id).map((t) => this.#taskView(t, connected)),
+			tasks: this.#tasksView(
+				read.file.tasks.filter((t) => t.projectId === project.id),
+				connected,
+			),
 			selectedTaskId: project.selectedTaskId,
 		};
 	}
@@ -294,32 +407,66 @@ export class DevelopLaunchWorkspaceV0 {
 		return realpath(this.#config.launchDirectory) === registered ? "same" : "different";
 	}
 
+	/**
+	 * The tasks as the page sees them. An OMP label is the id's last 8 characters; when two different linked OMP ids end alike, neither gets a
+	 * label (as in the observer's own list), so a label never stands for two sessions.
+	 */
+	#tasksView(
+		tasks: EndoDevelopTaskV1[],
+		connected: { source: EndoDevelopPiSessionRefV1["source"]; sessionId: string } | null,
+	): EndoDevelopTaskViewV1[] {
+		const ends = new Map<string, Set<string>>();
+		for (const t of tasks)
+			for (const s of t.sessions)
+				if (s.source === "omp-saved") {
+					const end = s.sessionId.slice(-8);
+					ends.set(end, (ends.get(end) ?? new Set<string>()).add(s.sessionId));
+				}
+		const labelled = (id: string): boolean => (ends.get(id.slice(-8))?.size ?? 0) <= 1;
+		return tasks.map((t) => this.#taskView(t, connected, labelled));
+	}
+
 	#taskView(
-		task: EndoDevelopTaskV0,
-		connected: { source: EndoDevelopSessionRefV0["source"]; sessionId: string } | null,
-	): EndoDevelopTaskViewV0 {
+		task: EndoDevelopTaskV1,
+		connected: { source: EndoDevelopPiSessionRefV1["source"]; sessionId: string } | null,
+		labelled: (ompId: string) => boolean,
+	): EndoDevelopTaskViewV1 {
 		const launchId = this.#host.launchId;
 		return {
 			...task,
 			next: [...endoDevelopNextStatusesV0(task.status)],
-			sessions: task.sessions.map((s) => ({
-				linkId: s.linkId,
-				source: s.source,
-				alias: this.#host.aliasOf?.(s.sessionId) ?? null,
-				attachment: s.attachment,
-				launchId: s.launchId,
-				linkedAtMs: s.linkedAtMs,
-				linkedBy: s.linkedBy,
-				// Current only if the reference was made in THIS launch, to the session of the same source connected now. A session id can
-				// survive a restart; the launch cannot, so a reference from another launch is a historical claim whatever the ids say.
-				relation:
-					connected !== null &&
-					s.launchId === launchId &&
-					s.source === connected.source &&
-					s.sessionId === connected.sessionId
-						? "current"
-						: "historical",
-			})),
+			sessions: task.sessions.map((s) =>
+				s.source === "omp-saved"
+					? {
+							// Saved, always: decided by the source before any launch or session is compared. No id, no scope digest, no path.
+							linkId: s.linkId,
+							source: s.source,
+							alias: labelled(s.sessionId) ? endoDevelopOmpAliasV1(s.sessionId) : null,
+							scopeLabel: endoDevelopOmpScopeLabelV1(s.scope),
+							linkedAtMs: s.linkedAtMs,
+							linkedBy: s.linkedBy,
+							via: s.via,
+							relation: "saved" as const,
+						}
+					: {
+							linkId: s.linkId,
+							source: s.source,
+							alias: this.#host.aliasOf?.(s.sessionId) ?? null,
+							attachment: s.attachment,
+							launchId: s.launchId,
+							linkedAtMs: s.linkedAtMs,
+							linkedBy: s.linkedBy,
+							// Current only if the reference was made in THIS launch, to the session of the same source connected now. A session id can
+							// survive a restart; the launch cannot, so a reference from another launch is a historical claim whatever the ids say.
+							relation:
+								connected !== null &&
+								s.launchId === launchId &&
+								s.source === connected.source &&
+								s.sessionId === connected.sessionId
+									? ("current" as const)
+									: ("historical" as const),
+						},
+			),
 		};
 	}
 
@@ -334,7 +481,7 @@ export class DevelopLaunchWorkspaceV0 {
 	createTask(
 		input: { title: unknown; description?: unknown; acceptance?: unknown },
 		options: { select?: boolean } = {},
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return this.#change((projectId) => this.#store.createTask(projectId, input, options));
 	}
 
@@ -342,7 +489,7 @@ export class DevelopLaunchWorkspaceV0 {
 		taskId: string,
 		expectedRevision: number,
 		patch: { title?: unknown; description?: unknown; acceptance?: unknown },
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return this.#change((projectId) => this.#store.updateTask(projectId, taskId, expectedRevision, patch));
 	}
 
@@ -351,7 +498,7 @@ export class DevelopLaunchWorkspaceV0 {
 		expectedRevision: number,
 		to: unknown,
 		note?: unknown,
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return this.#change((projectId) => this.#store.setStatus(projectId, taskId, expectedRevision, to, note));
 	}
 
@@ -364,11 +511,11 @@ export class DevelopLaunchWorkspaceV0 {
 	 * reference (source, session id, attachment, launch) is built here from the host's facts. A reference grants nothing: it is not a handle
 	 * to the session and nothing reads it to control one.
 	 */
-	linkCurrentSession(taskId: string, expectedRevision: number): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	linkCurrentSession(taskId: string, expectedRevision: number): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		const refused = this.writeRefusal();
 		if (refused !== null) return refused;
 		const session = this.#host.session;
-		if (session !== null && !isEndoDevelopSessionSourceV0(session.source))
+		if (session !== null && !isEndoDevelopLiveSourceV1(session.source))
 			return { ok: false, code: "unsupported-source" };
 		const connected = this.#connected();
 		if (connected === null) return { ok: false, code: "no-session" };
@@ -377,13 +524,13 @@ export class DevelopLaunchWorkspaceV0 {
 			!isEndoDevelopSessionIdV0(connected.source, connected.sessionId)
 		)
 			return { ok: false, code: "unavailable" };
-		const ref: Omit<EndoDevelopSessionRefV0, "linkId" | "linkedAtMs"> = {
+		const ref: Omit<EndoDevelopPiSessionRefV1, "linkId" | "linkedAtMs"> = {
 			source: connected.source,
 			sessionId: connected.sessionId,
 			attachment: this.#host.attachment,
 			launchId: this.#host.launchId,
 			linkedBy: "operator",
-			// v0 records exactly one way a reference is made; a later host's own `via` belongs to a later version of the file.
+			// A live reference is made one way: by the workbench that serves the session (exactly v0's record).
 			via: "workbench",
 		};
 		return fromStore(this.#store.linkSession(this.#config.projectId, taskId, expectedRevision, ref));
@@ -393,7 +540,7 @@ export class DevelopLaunchWorkspaceV0 {
 		taskId: string,
 		expectedRevision: number,
 		linkId: string,
-	): DevelopWorkspaceResultV0<EndoDevelopTaskV0> {
+	): DevelopWorkspaceResultV0<EndoDevelopTaskV1> {
 		return this.#change((projectId) => this.#store.unlinkSession(projectId, taskId, expectedRevision, linkId));
 	}
 }

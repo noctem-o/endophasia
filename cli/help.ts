@@ -66,8 +66,12 @@ Commands that write to a store:
   project add [<root> | --root dir] --name <name> --path <directory>
                                      register a project (an explicit statement that this directory is this project) for DEVELOP;
                                      writes <root>/develop/tasks.json, never the event store. Nothing runs and nothing is opened.
-  project list | task list|add|status ...
+  project list | task list|add|status|show ...
                                      the operator's project and task metadata (docs/develop-tasks.md)
+  task link ... --source omp-saved --session <omp-id> --omp-sessions <dir>
+                                     reference an Oh My Pi saved session from a task, after reading that directory read-only;
+                                     a reference grants no control. task unlink removes one
+  task upgrade [--apply]             show the task file's version; --apply rewrites a v0 file as endo.develop-tasks.v1
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

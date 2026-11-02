@@ -3,21 +3,24 @@
 // refuses it whole when it does not. The words are the operator's own: they are only ever shown as text, and are re-checked for the
 // control and bidirectional characters the server already refuses.
 import type {
-	EndoDevelopSessionRefViewV0,
+	EndoDevelopSessionRefViewV1,
 	EndoDevelopStatusChangeV0,
 	EndoDevelopTaskStatusV0,
-	EndoDevelopTaskViewV0,
-	EndoDevelopWorkspaceViewV0,
+	EndoDevelopTaskViewV1,
+	EndoDevelopWorkspaceViewV1,
 } from "../../../protocol/develop-tasks.ts";
 import { type Check, count, eitherNull, list, one, shape } from "./compare-wire.ts";
 
 export type {
-	EndoDevelopSessionRefViewV0 as SessionRef,
+	EndoDevelopSessionRefViewV1 as SessionRef,
 	EndoDevelopStatusChangeV0 as StatusChange,
 	EndoDevelopTaskStatusV0 as TaskStatus,
-	EndoDevelopTaskViewV0 as Task,
-	EndoDevelopWorkspaceViewV0 as Workspace,
+	EndoDevelopTaskViewV1 as Task,
+	EndoDevelopWorkspaceViewV1 as Workspace,
 } from "../../../protocol/develop-tasks.ts";
+
+/** The read model this page reads. A body of any other version (v0 included) is refused whole. */
+export const WORKSPACE_SCHEMA = "endo.develop-workspace.v1";
 
 /** These mirror the protocol's closed lists; a contract test holds them equal. */
 export const TASK_STATUSES: readonly EndoDevelopTaskStatusV0[] = ["open", "in-progress", "blocked", "review", "done"];
@@ -47,7 +50,26 @@ const path: Check = (v) => oneLine(1024)(v) && (v as string).startsWith("/");
 
 const change: Check = (v) =>
 	shape(v, { atMs: stamp, from: eitherNull(status), to: status, note: eitherNull(oneLine(280)) });
+/**
+ * A reference, by its source, to exactly one closed shape. A Pi reference is `current` or `historical` with its attachment and launch; an OMP
+ * reference is `saved`, with neither: one that claims `current`, a launch or an attachment is refused, and the whole view with it.
+ */
 const reference: Check = (v) =>
+	typeof v === "object" && v !== null && (v as { source?: unknown }).source === "omp-saved"
+		? ompReference(v)
+		: piReference(v);
+const ompReference: Check = (v) =>
+	shape(v, {
+		linkId: hex(16),
+		source: one("omp-saved"),
+		alias: eitherNull((x) => typeof x === "string" && /^omp [0-9A-Za-z._:-]{4,8}$/.test(x)),
+		scopeLabel: hex(8),
+		linkedAtMs: stamp,
+		linkedBy: one("operator"),
+		via: one("cli"),
+		relation: one("saved"),
+	});
+const piReference: Check = (v) =>
 	shape(v, {
 		linkId: hex(16),
 		source: one("pi-live"),
@@ -75,10 +97,10 @@ const task: Check = (v) =>
 		next: (x) => list(status)(x) && (x as unknown[]).length <= 5,
 	});
 
-export function readWorkspace(v: unknown): EndoDevelopWorkspaceViewV0 | null {
+export function readWorkspace(v: unknown): EndoDevelopWorkspaceViewV1 | null {
 	if (
 		!shape(v, {
-			schemaVersion: one("endo.develop-workspace.v0"),
+			schemaVersion: one(WORKSPACE_SCHEMA),
 			available: one(true),
 			launchId: hex(16),
 			state: one("ready", "unknown-project", "unreadable"),
@@ -101,7 +123,7 @@ export function readWorkspace(v: unknown): EndoDevelopWorkspaceViewV0 | null {
 		})
 	)
 		return null;
-	const view = v as unknown as EndoDevelopWorkspaceViewV0;
+	const view = v as unknown as EndoDevelopWorkspaceViewV1;
 	// Coherence the renderers rely on: a ready workspace names its project; the others have no tasks; the ids are unique; a selection is a task shown.
 	if ((view.state === "ready") !== (view.project !== null)) return null;
 	if (view.state !== "ready" && (view.tasks.length > 0 || view.writable || view.selectedTaskId !== null)) return null;
@@ -121,7 +143,7 @@ export const isNoWorkspace = (v: unknown): boolean =>
 	v !== null &&
 	Object.keys(v).sort().join() === "available,schemaVersion" &&
 	(v as { available: unknown }).available === false &&
-	(v as { schemaVersion: unknown }).schemaVersion === "endo.develop-workspace.v0";
+	(v as { schemaVersion: unknown }).schemaVersion === WORKSPACE_SCHEMA;
 
 /** What the page may ask. The task id and the revision come from a view the page holds; nothing else (no project, path, session or launch) is ever sent. */
 export type WorkspaceRequest =
@@ -151,8 +173,8 @@ export type WorkspaceRefusal =
 	| "other";
 
 export type WorkspaceReply =
-	| { kind: "workspace"; record: EndoDevelopWorkspaceViewV0 }
+	| { kind: "workspace"; record: EndoDevelopWorkspaceViewV1 }
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: WorkspaceRefusal };
 
-export type { EndoDevelopSessionRefViewV0, EndoDevelopStatusChangeV0, EndoDevelopTaskViewV0 };
+export type { EndoDevelopSessionRefViewV1, EndoDevelopStatusChangeV0, EndoDevelopTaskViewV1 };

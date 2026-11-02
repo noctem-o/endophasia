@@ -4366,6 +4366,12 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	color: var(--fg-3);
 }
 
+/* A saved OMP reference: owned elsewhere, never connected. Dotted, so it reads apart from both Pi relations. */
+.chip-ref[data-relation="saved"] {
+	border-style: dotted;
+	color: var(--fg-3);
+}
+
 /* The Task view: one reading column, scrolled inside its own region like the conversation, with the run strip and the composer docked. */
 .task-scroll {
 	flex: 1;

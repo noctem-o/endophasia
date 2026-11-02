@@ -49,6 +49,8 @@ const HTTP: Record<DevelopWorkspaceRefusalV0, [number, string]> = {
 	"no-session": [409, "no-session"],
 	"unsupported-source": [409, "unsupported-source"],
 	unavailable: [503, "unavailable"],
+	// A live Pi link is recordable in a v0 file, so the workbench never asks for an upgrade; mapped for completeness.
+	"upgrade-required": [409, "upgrade-required"],
 	// Registration is the CLI's alone; a launch scope cannot reach it.
 	"not-a-directory": [400, "bad-request"],
 };

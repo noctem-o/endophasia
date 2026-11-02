@@ -383,7 +383,10 @@ export class DevelopLaunchWorkspaceV0 {
 			writable,
 			readOnlyReason: writable ? null : launch === "missing" ? "project-missing" : "project-mismatch",
 			linkable: writable && connected !== null,
-			tasks: read.file.tasks.filter((t) => t.projectId === project.id).map((t) => this.#taskView(t, connected)),
+			tasks: this.#tasksView(
+				read.file.tasks.filter((t) => t.projectId === project.id),
+				connected,
+			),
 			selectedTaskId: project.selectedTaskId,
 		};
 	}
@@ -404,9 +407,29 @@ export class DevelopLaunchWorkspaceV0 {
 		return realpath(this.#config.launchDirectory) === registered ? "same" : "different";
 	}
 
+	/**
+	 * The tasks as the page sees them. An OMP label is the id's last 8 characters; when two different linked OMP ids end alike, neither gets a
+	 * label (as in the observer's own list), so a label never stands for two sessions.
+	 */
+	#tasksView(
+		tasks: EndoDevelopTaskV1[],
+		connected: { source: EndoDevelopPiSessionRefV1["source"]; sessionId: string } | null,
+	): EndoDevelopTaskViewV1[] {
+		const ends = new Map<string, Set<string>>();
+		for (const t of tasks)
+			for (const s of t.sessions)
+				if (s.source === "omp-saved") {
+					const end = s.sessionId.slice(-8);
+					ends.set(end, (ends.get(end) ?? new Set<string>()).add(s.sessionId));
+				}
+		const labelled = (id: string): boolean => (ends.get(id.slice(-8))?.size ?? 0) <= 1;
+		return tasks.map((t) => this.#taskView(t, connected, labelled));
+	}
+
 	#taskView(
 		task: EndoDevelopTaskV1,
 		connected: { source: EndoDevelopPiSessionRefV1["source"]; sessionId: string } | null,
+		labelled: (ompId: string) => boolean,
 	): EndoDevelopTaskViewV1 {
 		const launchId = this.#host.launchId;
 		return {
@@ -418,7 +441,7 @@ export class DevelopLaunchWorkspaceV0 {
 							// Saved, always: decided by the source before any launch or session is compared. No id, no scope digest, no path.
 							linkId: s.linkId,
 							source: s.source,
-							alias: endoDevelopOmpAliasV1(s.sessionId),
+							alias: labelled(s.sessionId) ? endoDevelopOmpAliasV1(s.sessionId) : null,
 							scopeLabel: endoDevelopOmpScopeLabelV1(s.scope),
 							linkedAtMs: s.linkedAtMs,
 							linkedBy: s.linkedBy,

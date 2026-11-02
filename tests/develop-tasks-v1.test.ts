@@ -1,10 +1,11 @@
 // DEVELOP Slice D: `endo.develop-tasks.v1`, source-aware references, the operator-visible v0 -> v1 upgrade, and linking an Oh My Pi saved
 // session from the CLI. Temporary stores, synthetic OMP journals (tests/fixtures/omp-journals.ts), no Pi, no OMP process, no model.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	chmodSync,
 	existsSync,
+	linkSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
@@ -13,6 +14,7 @@ import {
 	realpathSync,
 	renameSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -283,19 +285,78 @@ describe("a v0 file is read, edited and kept as v0 until the operator upgrades i
 		expect(readdirSync(join(w.root, "develop")).filter((n) => n.includes(".tmp-"))).toEqual([]);
 	});
 
-	it("an unreadable, linked or unknown-version file is never upgraded and is left byte for byte", () => {
-		for (const text of [
-			"{not json",
-			JSON.stringify({ schemaVersion: "endo.develop-tasks.v9", revision: 0, projects: [], tasks: [] }),
-		]) {
+	it("an unreadable, linked, oversized or unknown-version file is never upgraded and is left byte for byte", () => {
+		const cases: [string, string][] = [
+			["{not json", "malformed"],
+			[
+				JSON.stringify({ schemaVersion: "endo.develop-tasks.v9", revision: 0, projects: [], tasks: [] }),
+				"unsupported-version",
+			],
+			[`{"schemaVersion":"endo.develop-tasks.v0","pad":"${"x".repeat(4 * 1024 * 1024)}"}`, "too-large"],
+		];
+		for (const [text, reason] of cases) {
 			const root = fresh("bad");
 			mkdirSync(join(root, "develop"), { mode: 0o700 });
 			writeFileSync(join(root, "develop", "tasks.json"), text);
-			const store = new DevelopTasksStoreV0(root);
-			expect(store.upgrade()).toMatchObject({ ok: false, code: "unreadable" });
-			expect(fileOf(root)).toBe(text);
+			expect(new DevelopTasksStoreV0(root).upgrade()).toEqual({ ok: false, code: "unreadable", reason });
+			expect(fileOf(root) === text).toBe(true);
 		}
+		// A v0 file reached through a link: refused, and neither the link nor its target changes.
+		const w = seeded();
+		const v0text = asV0File(w.root);
+		const target = join(fresh("elsewhere"), "tasks.json");
+		renameSync(join(w.root, "develop", "tasks.json"), target);
+		symlinkSync(target, join(w.root, "develop", "tasks.json"));
+		expect(w.store.upgrade()).toEqual({ ok: false, code: "unreadable", reason: "unsafe-path" });
+		expect(lstatSync(join(w.root, "develop", "tasks.json")).isSymbolicLink()).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe(v0text);
+		// A hard link to the file is not written through: the upgrade replaces the store's own name, never the other name's bytes.
+		const h = seeded();
+		const hv0 = asV0File(h.root);
+		const other = join(fresh("hard"), "copy.json");
+		linkSync(join(h.root, "develop", "tasks.json"), other);
+		ok(h.store.upgrade());
+		expect(readFileSync(other, "utf8")).toBe(hv0);
 	});
+
+	it("processes writing a v0 file while the operator upgrades it lose nothing, and exactly one upgrade is written", async () => {
+		const w = seeded();
+		asV0File(w.root);
+		const start = jsonOf(w.root).revision;
+		const worker = fileURLToPath(new URL("./fixtures/develop-tasks-writer.ts", import.meta.url));
+		const go = join(w.root, "go");
+		const upgrader = `const fs=require("node:fs");process.stdout.write("ready\\n");while(!fs.existsSync(${JSON.stringify(go)})){}require("node:child_process").execFileSync(process.execPath,[${JSON.stringify(CLI)},"task","upgrade",${JSON.stringify(w.root)},"--apply"],{stdio:"ignore"});`;
+		const children = [
+			...Array.from({ length: 4 }, (_, n) => [worker, w.root, w.projectId, String(n), "5", go]),
+			["-e", upgrader],
+		];
+		const runs = children.map((args) => {
+			const child = spawn(process.execPath, args, {
+				stdio: ["ignore", "pipe", "pipe"],
+				env: { ...process.env, HOME: base },
+			});
+			let stderr = "";
+			child.stderr.on("data", (c) => {
+				stderr += String(c);
+			});
+			const ready = new Promise<void>((resolve, reject) => {
+				child.stdout.once("data", () => resolve());
+				child.once("close", () => reject(new Error(stderr)));
+			});
+			const done = new Promise<{ status: number | null; stderr: string }>((resolve) =>
+				child.once("close", (status) => resolve({ status, stderr })),
+			);
+			return { ready, done };
+		});
+		await Promise.all(runs.map((r) => r.ready));
+		writeFileSync(go, "");
+		for (const run of await Promise.all(runs.map((r) => r.done))) expect(run.status, run.stderr).toBe(0);
+		const after = jsonOf(w.root);
+		expect(after.schemaVersion).toBe(ENDO_DEVELOP_TASKS_SCHEMA_V1);
+		expect(after.tasks).toHaveLength(21);
+		expect(after.revision).toBe(start + 20 + 1);
+		expect(after.tasks[0].sessions).toHaveLength(1);
+	}, 60_000);
 
 	it("a missing file is created as v1", () => {
 		const w = seeded();
@@ -467,6 +528,20 @@ describe("authority: a launch makes only live references, the operator scope onl
 		expect(forge({ attachment: "pi.default" })).toBeNull();
 		expect(forge({ sessionId: secretId })).toBeNull();
 		expect(readWorkspace({ ...view, schemaVersion: "endo.develop-workspace.v0" })).toBeNull();
+		// Two different OMP ids ending alike: neither gets a label, so a label never stands for two sessions.
+		const lookalike = `0${secretId}`;
+		ok(
+			service.linkObservedSession(w.projectId, w.taskId, 3, {
+				source: "omp-saved",
+				sessionId: lookalike,
+				scope: SCOPE_2,
+				format: 3,
+			}),
+		);
+		const both = service
+			.forLaunch({ projectId: w.projectId, launchDirectory: w.project }, hostOf("pi-live", PI_ID))
+			.view();
+		expect(both.tasks[0]!.sessions.filter((s) => s.source === "omp-saved").map((s) => s.alias)).toEqual([null, null]);
 	});
 });
 
@@ -501,6 +576,17 @@ describe("resolving an OMP id: exactly one readable carrier, every file read", (
 		chmodSync(locked, 0o000);
 		if (process.getuid?.() !== 0) expect(resolve(root, ID_A)).toEqual({ status: "uncertain", unread: 1 });
 		rmSync(locked);
+		expect(resolve(root, ID_A).status).toBe("established");
+		// A copy below the depth bound, or behind a link, is never read, so a single carrier is not established.
+		mkdirSync(join(root, "a", "b", "c"), { recursive: true });
+		writeFileSync(join(root, "a", "b", "c", "deep.jsonl"), session(ID_A));
+		expect(resolve(root, ID_A)).toEqual({ status: "uncertain", unread: 1 });
+		rmSync(join(root, "a"), { recursive: true });
+		const outside = fresh("omp-outside");
+		writeFileSync(join(outside, "x.jsonl"), session(ID_A));
+		symlinkSync(join(outside, "x.jsonl"), join(root, "linked.jsonl"));
+		expect(resolve(root, ID_A)).toEqual({ status: "uncertain", unread: 1 });
+		rmSync(join(root, "linked.jsonl"));
 		expect(resolve(root, ID_A).status).toBe("established");
 	});
 
@@ -716,9 +802,33 @@ describe("endo task link | show | unlink | upgrade", () => {
 		writeFileSync(join(w.sessions, "copy.jsonl"), session(ID_A));
 		expect(link(ID_A).stderr).toMatch(/2 saved files/);
 		rmSync(join(w.sessions, "copy.jsonl"));
+		// A store that does not exist yet, reached through a link into OMP's directory: refused before anything is made.
+		const omplink = join(fresh("via"), "omp");
+		symlinkSync(w.sessions, omplink);
+		const ompBefore = manifest(w.sessions);
+		expect(link(ID_A, ["--revision", "0"], w.sessions, join(omplink, "newstore")).stderr).toMatch(/no task file yet/);
+		expect(manifest(w.sessions)).toEqual(ompBefore);
+		// An existing store inside OMP's directory: the overlap is refused.
 		const inside = join(w.sessions, "store");
-		expect(link(ID_A, [], w.sessions, inside).stderr).toMatch(/overlap/);
-		expect(existsSync(inside)).toBe(false);
+		const p2 = json(endo(["project", "add", inside, "--name", "x", "--path", w.project]).stdout).project.id as string;
+		const t2 = json(endo(["task", "add", inside, "--project", p2, "--title", "x"]).stdout).task.id as string;
+		const overlapping = endo([
+			"task",
+			"link",
+			inside,
+			"--project",
+			p2,
+			"--task",
+			t2,
+			"--source",
+			"omp-saved",
+			"--session",
+			ID_A,
+			"--omp-sessions",
+			w.sessions,
+		]);
+		expect(overlapping.stderr).toMatch(/overlap/);
+		rmSync(inside, { recursive: true });
 		expect(link(ID_A, ["--revision", "7"]).stderr).toMatch(/changed since that revision/);
 		expect(fileOf(w.root)).toBe(before);
 	});

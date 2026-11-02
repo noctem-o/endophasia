@@ -21,7 +21,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import {
 	ENDO_DEVELOP_TASK_STATUSES_V0,
@@ -223,11 +223,19 @@ const within = (root: string, path: string): boolean => {
 	const from = relative(root, path);
 	return from === "" || (from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from));
 };
+/** Where a path lies: the realpath of its nearest existing ancestor, with the rest appended, so a link above a missing part is resolved. */
 const placeOf = (path: string): string => {
-	try {
-		return realpathSync(path);
-	} catch {
-		return resolve(path);
+	let at = resolve(path);
+	const rest: string[] = [];
+	for (;;) {
+		try {
+			return join(realpathSync(at), ...rest);
+		} catch {
+			const up = dirname(at);
+			if (up === at) return resolve(path);
+			rest.unshift(basename(at));
+			at = up;
+		}
 	}
 };
 
@@ -246,11 +254,11 @@ async function ompObserverAt(directory: string, root: string) {
 
 const UNSETTLED: Record<"not-found" | "duplicate" | "uncertain", (n: number) => string> = {
 	"not-found": (n) =>
-		`no readable saved session in that directory carries that id${n > 0 ? ` (${n} file(s) or directories there could not be read)` : ""}. Use OMP's own session id (OMP's /session info, or Studio's OMP inspector) and the directory that holds it`,
+		`no readable saved session in that directory carries that id${n > 0 ? ` (${n} entries there were not read: links, deeper directories, or unreadable or unknown-format files; name OMP's sessions directory itself)` : ""}. Use OMP's own session id (OMP's /session info, or Studio's OMP inspector) and the directory that holds it`,
 	duplicate: (n) =>
 		`${n} saved files in that directory carry that id, so none of them is established as the session; nothing was linked`,
 	uncertain: (n) =>
-		`one readable file carries that id, but ${n} file(s) or directories there could not be read and might carry it too, so it is not established; name a narrower directory or try again`,
+		`one readable file carries that id, but ${n} entries there were not read (links, deeper directories, or unreadable or unknown-format files) and might carry it too, so it is not established; name a narrower directory or try again`,
 };
 
 async function taskLink(argv: readonly string[]): Promise<void> {
@@ -280,9 +288,12 @@ async function taskLink(argv: readonly string[]): Promise<void> {
 		);
 	if (!isEndoDevelopOmpSessionIdV1(sessionId)) throw new TypeError("--session is not an OMP session id");
 	const service = serviceAt(root);
-	// Said before OMP's directory is read: a v0 file cannot record this, and the operator decides whether to upgrade.
-	if (unwrapRead(service.inspect()).format === ENDO_DEVELOP_TASKS_SCHEMA_V0)
-		unwrap({ ok: false, code: "upgrade-required" });
+	// Said before OMP's directory is read. A store with no task file has no task to link (and nothing is created for it); a v0 file
+	// cannot record this, and the operator decides whether to upgrade.
+	const file = unwrapRead(service.inspect());
+	if (!file.exists)
+		throw new Error("this store has no task file yet: register a project and add a task first; nothing was written");
+	if (file.format === ENDO_DEVELOP_TASKS_SCHEMA_V0) unwrap({ ok: false, code: "upgrade-required" });
 	const observer = await ompObserverAt(directory, root);
 	const revision = revisionFor(service, flags, project, taskId);
 	const found = observer.resolve(sessionId);
@@ -372,6 +383,14 @@ function taskUpgrade(argv: readonly string[]): void {
 			needed
 				? `dry run: nothing was written. \`endo task upgrade --apply\` rewrites develop/tasks.json once, atomically, as endo.develop-tasks.v1: every project, task, status, history, selection and Pi reference is kept exactly, and the file revision becomes ${before.revision + 1}. After it, OMP saved sessions can be linked, and endo builds from before v1 refuse the file (they never write over it). Copy tasks.json first if you may go back to such a build.\n`
 				: "nothing to upgrade.\n",
+		);
+		return;
+	}
+	if (!before.exists) {
+		// Nothing to upgrade, and nothing is created: no directory, no lock. A new store is created as v1 by its first write.
+		print({ upgrade: { from: before.format, to: before.format, unchanged: true }, file: before });
+		process.stderr.write(
+			"there is no task file yet; nothing was written. A new one is created as endo.develop-tasks.v1.\n",
 		);
 		return;
 	}

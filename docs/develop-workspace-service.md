@@ -75,8 +75,9 @@ Every operation returns `{ ok: true, value }`, or `{ ok: false, code, reason? }`
 - `read-only`, whose reason is `unreadable`, `project-mismatch`, `project-missing` or `unknown-project`;
 - `no-session`, `unsupported-source`, `unavailable` and `not-a-directory`.
 
-Nothing is written for any refusal. The version is in the names (`V0`) and in the two record schemas, which are unchanged:
-`endo.develop-tasks.v0` (the file) and `endo.develop-workspace.v0` (the read model).
+Nothing is written for any refusal. The version is in the names (`V0`) and in the two record schemas, which this slice left unchanged:
+`endo.develop-tasks.v0` (the file) and `endo.develop-workspace.v0` (the read model). Slice D (below) added `endo.develop-tasks.v1` and
+`endo.develop-workspace.v1`.
 
 ### The trusted caller boundary
 
@@ -220,6 +221,20 @@ two scopes), and the CLI end to end (a fake `omp` on `PATH` never runs, OMP's di
 reference, overlapping directories refused). Mutation checks on the live-source gate, the observed-source gate, the scope in the key, the
 uncertainty rule, v0 preservation, the page gate and the selector rule each make a test fail. (Dropping the source tag from the key does not:
 a Pi launch id and an OMP scope can never be equal, so the two sources' keys cannot collide by construction, which the key test asserts.)
+
+**Independent review (Opus, read-only) and dispositions.** No issue on the seven questions asked (Pi meaning preserved; no unpaired access;
+no forgeable source, scope or identity over HTTP or a launch host; the observer never treated as a host; no migration loss under concurrency;
+no path from a link to control). Minor findings:
+
+| Finding | Disposition |
+| :-- | :-- |
+| A store root that does not exist yet, under a link into OMP's directory, passed the overlap check, and the refused link left a lock file there | **Fixed**: a link needs an existing task file (refused first, nothing created); the overlap check resolves the nearest existing ancestor; tested with a manifest |
+| `resolve` did not count links, special files or directories below the depth bound, so a copy there could leave a single carrier `established` | **Fixed**: all count as unread, so the answer is `uncertain`; tested |
+| Two linked OMP ids ending alike got the same page label | **Fixed**: neither is labelled; tested |
+| `--apply` is parsed outside the shared flag reader | **Kept**: every misuse found ends in a usage error, never a write |
+| v0 read-model constants and an unreachable `upgrade-required` HTTP mapping remain | **Kept**: stable exports for older readers; the mapping keeps the refusal table total |
+| The workbench can remove an OMP reference | **Intended**: it is the operator's record; documented |
+| Keeping v0 files as v0 is the most expensive part | **Kept**: the brief forbids surprising failures in existing workflows and a silent rewrite |
 
 **Real-source evidence** (2 November 2026). The real `endo` CLI against the local OMP directory (`~/.omp/agent/sessions`: 41 files, all
 readable and keyed, nothing skipped), read in place, with a disposable task store in a scratch directory. A fresh store was rewritten as v0;

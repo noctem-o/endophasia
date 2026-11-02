@@ -174,8 +174,9 @@ The session id is the one OMP wrote: OMP's `/session info` prints it, and Studio
 does not take it on trust. It reads the directory you named with the same read-only observer Studio uses, and links only when:
 
 - exactly one readable file there, of OMP's format 3, carries that id in its header (two files carrying it are a copy: neither is the session);
-- every file there was read (a file over the bounds, unreadable, changing while read, or of another format might carry it too, so the answer
-  is "uncertain" and nothing is linked);
+- every entry there was read: a file over the bounds, unreadable, changing while read or of another format, a link (never followed), a special
+  file, or a directory below the observer's three levels might carry it too, so the answer is "uncertain" and nothing is linked. Name OMP's
+  sessions directory itself (`~/.omp/agent/sessions`), not `~/.omp`;
 - the id is OMP's, not a Studio selector (`o1-…`, which names a file in one Studio launch and is refused with that explanation);
 - the store and the OMP directory do not overlap, and the task revision is the one read (or the one you gave with `--revision`).
 
@@ -199,6 +200,9 @@ time. A digest of a path is a label, not a secret: someone who can guess the pat
 its label (`omp` and the id's last 8 characters) and the scope's first 8 hexadecimal characters, and says that whether the file is still there
 is not checked here. `endo task show --omp-sessions <dir>` checks, read-only, and reports each OMP reference as `established`, `not-found`,
 `duplicate`, `uncertain` or `other-directory`. A reference whose file has gone stays, as your record; it is removed only by you.
+
+Two different linked OMP ids that end in the same 8 characters get no label on the page, so a label never stands for two sessions. The paired
+workbench's **Remove link** removes an OMP reference like any other: it is your record, and removing it touches no session.
 
 There is **no browser link action** for OMP sessions. Studio, where OMP sessions are browsed, is the read-only, unpaired server and has no task
 route; the paired workbench has no OMP observer. Adding either would be a new control channel, so linking stays in the terminal.

@@ -108,8 +108,10 @@ export class OmpSavedSessionObserverV0 implements EndoOmpObserverV0 {
 	}
 
 	/** The plain `*.jsonl` files under the root, in a stable order, within the bounds. Nothing is opened here. */
-	#discover(): { found: Found[]; skipped: EndoOmpSessionsV0["skipped"] } {
+	/** `beyond`: entries not looked into at all (a directory past the depth bound, a link there); counted for `resolve` only. */
+	#discover(): { found: Found[]; skipped: EndoOmpSessionsV0["skipped"]; beyond: number } {
 		const skipped = { links: 0, notRegular: 0, overLimit: 0, notRead: 0, unreadable: 0 };
+		let beyond = 0;
 		const found: Found[] = [];
 		const visit = (dir: string, depth: number): void => {
 			let names: string[];
@@ -138,10 +140,12 @@ export class OmpSavedSessionObserverV0 implements EndoOmpObserverV0 {
 				}
 				if (info.isSymbolicLink()) {
 					if (name.endsWith(".jsonl") || depth < ENDO_OMP_LIMITS_V0.maxDepth) skipped.links += 1;
+					else beyond += 1;
 					continue;
 				}
 				if (info.isDirectory()) {
 					if (depth < ENDO_OMP_LIMITS_V0.maxDepth) visit(path, depth + 1);
+					else beyond += 1;
 					continue;
 				}
 				if (!name.endsWith(".jsonl")) continue;
@@ -175,7 +179,7 @@ export class OmpSavedSessionObserverV0 implements EndoOmpObserverV0 {
 			}
 		};
 		visit(this.#root, 1);
-		return { found, skipped };
+		return { found, skipped, beyond };
 	}
 
 	/** One file, whole, within `maxBytes`, and the bytes read. Null when the listing's byte budget, not the file's own bound, stopped it. */
@@ -279,12 +283,20 @@ export class OmpSavedSessionObserverV0 implements EndoOmpObserverV0 {
 
 	/** `resolve` for several ids from ONE read of the directory (`endo task show` checks each saved reference this way). */
 	resolveAll(ids: readonly string[]): Map<string, OmpResolutionV0> {
-		const { found, skipped } = this.#discover();
+		const { found, skipped, beyond } = this.#discover();
 		const journals = this.#readAll(found, skipped);
 		const readable = [...journals.values()].filter((j) => j.state === "readable");
-		// Every file or directory that could hold a copy and was not read whole: a file over the bounds, not read for the budget, a directory or
-		// file that could not be read, changed during the read, or is of a format this reader does not know.
-		const unread = skipped.overLimit + skipped.notRead + skipped.unreadable + (journals.size - readable.length);
+		// Every entry that could hold a copy and was not read whole: a file over the bounds or not read for the budget, a directory or file
+		// that could not be read, changed during the read or is of a format this reader does not know, a link (never followed), a special
+		// file, and a directory past the depth bound (never looked into). Any of them leaves a single carrier `uncertain`.
+		const unread =
+			skipped.overLimit +
+			skipped.notRead +
+			skipped.unreadable +
+			skipped.links +
+			skipped.notRegular +
+			beyond +
+			(journals.size - readable.length);
 		const answers = new Map<string, OmpResolutionV0>();
 		for (const id of ids) {
 			const carriers = readable.filter((j) => j.id === id).length;

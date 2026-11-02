@@ -16,7 +16,16 @@ const WORDS: Readonly<Record<string, string>> = {
 	acceptance: "acceptance criteria",
 };
 
-export function AttemptsSection({ attempts, task }: { attempts: AttemptsState; task: Task }): ReactElement | null {
+export function AttemptsSection({
+	attempts,
+	task,
+	tasksCurrent,
+}: {
+	attempts: AttemptsState;
+	task: Task;
+	/** Whether the tasks beside this section are confirmed now: when they are not, neither are the attempts read with them. */
+	tasksCurrent: boolean;
+}): ReactElement | null {
 	const { view, problem } = attempts;
 	// A workbench that serves no attempts says nothing about them.
 	if (problem === "absent" && view === null) return null;
@@ -32,7 +41,7 @@ export function AttemptsSection({ attempts, task }: { attempts: AttemptsState; t
 				</p>
 			) : (
 				<>
-					{attempts.current ? null : (
+					{attempts.current && tasksCurrent ? null : (
 						<Note tone="warn">
 							<span data-testid="attempts-stale">
 								{problem === "unpaired"
@@ -47,7 +56,10 @@ export function AttemptsSection({ attempts, task }: { attempts: AttemptsState; t
 						</p>
 					) : view.taskId !== task.id ? (
 						<p className="dim small" data-testid="attempts-other-task">
-							Attempts are shown for the task selected in the store, which is not this one.
+							{view.taskId === null
+								? "No task is selected in the store, so no attempts are shown here."
+								: "Attempts are shown for the task selected in the store, which is not this one."}{" "}
+							endo attempt list shows every task's attempts.
 						</p>
 					) : view.attempts.length === 0 ? (
 						<>
@@ -122,7 +134,7 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 						<span className="dim small">
 							Brief: select it, or copy it, and paste it into your agent yourself.
 						</span>
-						<CopyButton label="brief" value={a.brief} />
+						<CopyButton label={`brief ${short(a.id)}`} value={a.brief} />
 					</div>
 					<textarea
 						className="mono task-command attempt-brief"

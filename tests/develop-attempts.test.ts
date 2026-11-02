@@ -451,7 +451,8 @@ describe("the brief", () => {
 				"",
 				`Prepared by the operator in Endophasia on 2026-10-26T07:33:20.000Z, for endo.task.${"c".repeat(32)} (revision 3).`,
 				"This brief is the operator's request. It is not an approval: it grants no tools, permissions or access. Endophasia does not read your",
-				"reply; the operator records the outcome. The text of each section below is the operator's, quoted exactly.",
+				"reply; the operator records the outcome. The text inside each section's fence is the operator's, quoted exactly; Endophasia's own",
+				"words are outside the fences.",
 				"",
 				"## Task and project",
 				"```text",
@@ -478,9 +479,7 @@ describe("the brief", () => {
 				"```",
 				"",
 				"## What to report back",
-				"```text",
-				"Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.",
-				"```",
+				"(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.",
 				"",
 				`End of brief endo.attempt.${"a".repeat(32)}.`,
 				"",
@@ -667,6 +666,20 @@ describe("the workbench route and the page's gate", () => {
 		).toBeNull();
 	});
 
+	it("a task with more attempts than its cap (two prepares at once can pass it) is still shown, never refused", () => {
+		const w = seeded();
+		const first = ok(w.service.prepare(w.projectId, w.taskId, { objective: "o" }));
+		for (let i = 1; i < ENDO_DEVELOP_ATTEMPT_LIMITS_V0.maxPerTask; i += 1)
+			ok(w.service.prepare(w.projectId, w.taskId, { objective: `try ${i}` }));
+		const dir = attemptsDir(w.root);
+		const record = JSON.parse(readFileSync(join(dir, `${first.id}.prepared.json`), "utf8"));
+		const extra = `endo.attempt.${"9".repeat(32)}`;
+		writeFileSync(join(dir, `${extra}.prepared.json`), JSON.stringify({ ...record, id: extra }));
+		const view = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId)));
+		expect(view.attempts).toHaveLength(ENDO_DEVELOP_ATTEMPT_LIMITS_V0.maxPerTask + 1);
+		expect(readAttempts(view)).not.toBeNull();
+	});
+
 	it("the page's lists and labels are the protocol's", () => {
 		expect(ATTEMPT_LABELS).toEqual(ENDO_DEVELOP_ATTEMPT_LABELS_V0);
 		expect([...ATTEMPT_STATES].sort()).toEqual(Object.keys(ENDO_DEVELOP_ATTEMPT_LABELS_V0).sort());
@@ -764,6 +777,14 @@ describe("endo attempt", () => {
 		expect(r.status).toBe(1);
 		expect(r.stderr).toMatch(/no such project, task/);
 		expect(existsSync(join(empty, "develop"))).toBe(false);
+	});
+
+	it("says a project it does not know is not found, rather than listing nothing", () => {
+		const w = seeded();
+		const r = endo(["list", w.root, "--project", `endo.project.${"0".repeat(32)}`]);
+		expect(r.status).toBe(1);
+		expect(r.stderr).toMatch(/no such project/);
+		expect(JSON.parse(endo(["list", w.root, "--project", w.projectId]).stdout).attempts).toEqual([]);
 	});
 
 	it("is an unknown family member only by own property, like every family", () => {

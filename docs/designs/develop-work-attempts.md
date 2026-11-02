@@ -156,7 +156,8 @@ the route serves its output as text, so both show the same bytes always, includi
 
 Prepared by the operator in Endophasia on <ISO date-time, UTC>, for endo.task.<id> (revision <n>).
 This brief is the operator's request. It is not an approval: it grants no tools, permissions or access. Endophasia does not read your
-reply; the operator records the outcome. The text of each section below is the operator's, quoted exactly.
+reply; the operator records the outcome. The text inside each section's fence is the operator's, quoted exactly; Endophasia's own
+words are outside the fences.
 
 ## Task and project
 ```text
@@ -184,9 +185,11 @@ reply; the operator records the outcome. The text of each section below is the o
 
 ## What to report back
 ```text
-<reportBack, or the default: "Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what
-is left undone. The operator checks your report separately; it is not taken as verification.">
+<reportBack>
 ```
+   - or, when the operator wrote none, outside any fence:
+(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it
+printed, and what is left undone. The operator checks your report separately; it is not taken as verification.
 
 End of brief endo.attempt.<id>.
 ````
@@ -352,3 +355,23 @@ Comprehension stage. The intermediate zoom-out was one more fresh reviewer, of t
 | *Intermediate:* the page's commands would leak the store path | **Fixed.** A placeholder is shown. |
 | *Intermediate:* ship CLI-only and defer the page | **Declined.** The slice asked for a minimal read-only paired view. It is GET-only, behind the grant, scoped to the selected task, and Copy does not touch the composer. |
 | *Intermediate:* fold `abandon` into `report`; store the brief's bytes instead of a renderer version | **Declined.** Separate verbs keep "reported" and "abandoned" distinct at the prompt. Storing the bytes would double each record, so the v0 renderer is kept and pinned by a golden test. |
+
+## Implementation review
+
+A separate fresh-context reviewer (a Claude Code `Agent` subagent with no conversation history, not an EGM persona) reviewed the built
+commit for authority expansion, status and evidence claims, versions, concurrency and crash recovery, duplication, complexity and
+accessibility. It ran the targeted suite and a scratch script, and found no blocker.
+
+| Finding | Disposition |
+| :-- | :-- |
+| **Major:** the page's gate refused a view with more than 50 attempts, which the lock-free cap allows (reproduced with 51) | **Fixed.** The gate's bound is now 500, a sanity bound only; a test shows 51 attempts. |
+| The brief called Endophasia's default report-back text the operator's | **Fixed.** The default is written outside any fence and labelled; the provenance sentence says fenced text is the operator's. Golden brief updated (unreleased, so still `endo.develop-brief.v0`). |
+| A failed directory `fsync` after a successful link said "nothing was recorded"; a failing temporary-file cleanup could throw | **Fixed.** Once linked, a record is `created`; the directory `fsync` and the cleanup are best effort. |
+| `beforeLink`'s comment called a throw a crash | **Fixed** (comment). |
+| The attempts could look current while the tasks beside them were stale | **Fixed.** The section's stale note also follows the tasks' state. |
+| A reply begun under one launch could land after a launch switch | **Fixed.** Launch changes abort the read and drop its answer. |
+| `endo attempt list` printed `[]` for an unknown project | **Fixed.** `not-found` when the task file is readable; tested. |
+| A third copy of the bounded no-follow file read | **Declined.** The copies differ in bounds and in what they refuse, and one copy is the task store's, which this slice does not change. Worth a shared helper in a later cleanup. |
+| Every Copy button was announced "Copy brief"; misleading wording when no task is selected | **Fixed.** Each says which brief; the no-task wording says so. |
+| Command blocks scroll sideways at 390 px without keyboard focus; the section heading's explanation is only a tooltip | **Kept.** This is the existing task-view pattern (the same `task-command` blocks and tooltips); changing it belongs to that view, not this slice. |
+| "six bounded texts" | **Fixed:** seven. |

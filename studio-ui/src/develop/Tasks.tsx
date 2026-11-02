@@ -515,7 +515,7 @@ export function TaskPanel({
 			) : (
 				<>
 					<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} connected={connected} />
-					<AttemptsSection attempts={workspace.attempts} task={task} />
+					<AttemptsSection attempts={workspace.attempts} task={task} tasksCurrent={state.current} />
 				</>
 			)}
 			<p className="dim small task-foot" data-testid="task-foot">

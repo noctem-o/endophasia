@@ -144,6 +144,8 @@ export class DevelopAttemptsServiceV0 {
 		const read = this.#attempts.read();
 		if (!read.ok) return refuse("unreadable", read.reason);
 		const file = this.#taskFile();
+		// A project the readable task file does not have is said, not answered with an empty list (a mistyped id would look like "none").
+		if (file !== null && !file.projects.some((p) => p.id === projectId)) return refuse("not-found");
 		return {
 			ok: true,
 			value: {

@@ -69,7 +69,8 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV0 | null {
 			schemaVersion: one(ATTEMPTS_SCHEMA),
 			state: one("ready", "no-task", "unreadable"),
 			taskId: eitherNull(taskId),
-			attempts: (x) => list(attempt)(x) && (x as unknown[]).length <= 50,
+			// A sanity bound only: the per-task cap is checked without a lock and can be passed, and a read never refuses because of it.
+			attempts: (x) => list(attempt)(x) && (x as unknown[]).length <= 500,
 			problems: count,
 		})
 	)

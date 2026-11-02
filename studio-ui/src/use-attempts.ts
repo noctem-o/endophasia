@@ -35,10 +35,17 @@ export function useAttempts(
 	held.current = grant;
 	const controller = useRef<AbortController | null>(null);
 	const launch = useRef<string | null>(null);
+	// Bumped when a launch changes: an answer to a read begun before is dropped, never shown as this launch's.
+	const epoch = useRef(0);
 
 	useEffect(() => {
-		// A different launch is a different workspace: nothing carries over.
-		if (launchId !== null && launch.current !== null && launch.current !== launchId) setState(INITIAL);
+		// A different launch is a different workspace: nothing carries over, and a read still in flight is abandoned.
+		if (launchId !== null && launch.current !== null && launch.current !== launchId) {
+			epoch.current += 1;
+			controller.current?.abort();
+			controller.current = null;
+			setState(INITIAL);
+		}
 		if (launchId !== null) launch.current = launchId;
 	}, [launchId]);
 
@@ -56,10 +63,12 @@ export function useAttempts(
 			const g = held.current;
 			if (g === null) return;
 			running.current = true;
+			const mine = epoch.current;
 			setState((s) => ({ ...s, busy: true }));
 			controller.current ??= new AbortController();
 			try {
 				const reply = await fetchAttempts(g, controller.current.signal);
+				if (epoch.current !== mine) return;
 				setState((s) =>
 					reply.kind === "attempts"
 						? { view: reply.record, current: true, busy: false, problem: null }

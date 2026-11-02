@@ -66,7 +66,10 @@ export type EndoAttemptsReadV0 =
 	| { ok: false; reason: "unsafe-path" | "io" };
 
 export interface EndoDevelopAttemptsStoreOptionsV0 {
-	/** For tests: runs after the temporary file is complete and before it is linked (a throw there is a crash at that point). */
+	/**
+	 * For tests: runs after the temporary file is complete and before it is linked. A throw there is a failure at that point (the record
+	 * is not written and the temporary file is removed); a real crash, which removes nothing, is simulated by leaving a temporary file.
+	 */
 	beforeLink?: () => void;
 }
 
@@ -260,11 +263,17 @@ export class DevelopAttemptsStoreV0 {
 			} catch (error) {
 				return errno(error) === "EEXIST" ? "exists" : "failed";
 			}
-			const directory = openSync(this.#dir, constants.O_RDONLY | constants.O_DIRECTORY);
+			// The record exists from here on, whatever follows: a failure to make its name durable is not a failure to record it (and saying
+			// "nothing was recorded" would invite a retry that duplicates an attempt or is refused as already recorded).
 			try {
-				fsyncSync(directory);
-			} finally {
-				closeSync(directory);
+				const directory = openSync(this.#dir, constants.O_RDONLY | constants.O_DIRECTORY);
+				try {
+					fsyncSync(directory);
+				} finally {
+					closeSync(directory);
+				}
+			} catch {
+				// best effort: the record is linked and readable now
 			}
 			return "created";
 		} catch {
@@ -277,7 +286,11 @@ export class DevelopAttemptsStoreV0 {
 					// the descriptor is gone either way
 				}
 			}
-			rmSync(temporary, { force: true });
+			try {
+				rmSync(temporary, { force: true });
+			} catch {
+				// a temporary name that cannot be removed now is swept by a later writer once it is old
+			}
 		}
 	}
 }

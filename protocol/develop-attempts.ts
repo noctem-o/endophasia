@@ -26,7 +26,7 @@ export const ENDO_DEVELOP_BRIEF_V0 = "endo.develop-brief.v0";
 export const ENDO_ATTEMPT_ID_PATTERN_V0 = /^endo\.attempt\.[0-9a-f]{32}$/;
 
 /**
- * Closed bounds. A prepared record holds at most six bounded texts (each ≤ 4 000 characters, so ≤ 12 000 bytes once written as JSON) and
+ * Closed bounds. A prepared record holds at most seven bounded texts (each ≤ 4 000 characters, so ≤ 12 000 bytes once written as JSON) and
  * fits `maxPreparedBytes` with room; a handoff or outcome is small. The directory holds at most `maxAttempts` attempts, `maxPerTask` per task.
  */
 // The counts are checked when an attempt is prepared, without a lock, so two prepares at the same moment can pass them by one each: they
@@ -272,7 +272,8 @@ export function renderEndoDevelopBriefV0(attempt: EndoDevelopAttemptV0): string 
 		"",
 		`Prepared by the operator in Endophasia on ${new Date(attempt.preparedAtMs).toISOString()}, for ${attempt.taskId} (revision ${t.revision}).`,
 		"This brief is the operator's request. It is not an approval: it grants no tools, permissions or access. Endophasia does not read your",
-		"reply; the operator records the outcome. The text of each section below is the operator's, quoted exactly.",
+		"reply; the operator records the outcome. The text inside each section's fence is the operator's, quoted exactly; Endophasia's own",
+		"words are outside the fences.",
 		"",
 		"## Task and project",
 		fenced(`${t.title}\n${t.projectName}`),
@@ -290,7 +291,10 @@ export function renderEndoDevelopBriefV0(attempt: EndoDevelopAttemptV0): string 
 		fenced(attempt.constraints),
 		"",
 		"## What to report back",
-		attempt.reportBack === "" ? fenced(ENDO_DEVELOP_DEFAULT_REPORT_BACK_V0) : fenced(attempt.reportBack),
+		// The default is Endophasia's wording, not the operator's: it is written outside any fence, and says so.
+		attempt.reportBack === ""
+			? `(empty; Endophasia's default request:) ${ENDO_DEVELOP_DEFAULT_REPORT_BACK_V0}`
+			: fenced(attempt.reportBack),
 		"",
 		`End of brief ${attempt.id}.`,
 		"",

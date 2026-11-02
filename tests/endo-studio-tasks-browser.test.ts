@@ -649,14 +649,14 @@ suite("work attempts in the Task view: read-only, copyable, honest about what wa
 			);
 			expect(await page.eval<boolean>("document.querySelector('[data-testid=attempt-brief]').readOnly")).toBe(true);
 			// Copy writes the clipboard and nothing else: focus stays on the button, the draft is untouched, nothing is sent.
-			const copy = "[data-testid=attempt] button[aria-label='Copy brief']";
+			const copy = `[data-testid=attempt] button[aria-label='Copy brief ${attempt.value.id.slice(-8)}']`;
 			if (await page.eval<boolean>(`document.querySelector(${JSON.stringify(copy)}) !== null`)) {
 				// From the keyboard, as an operator would: focus the button and press Enter.
 				await page.eval(`document.querySelector(${JSON.stringify(copy)}).focus()`);
 				await page.press("Enter");
 				await page.waitFor(`document.querySelector(${JSON.stringify(copy)}).textContent !== 'copy'`);
 				expect(await page.eval<string>("document.activeElement?.getAttribute('aria-label') ?? ''")).toBe(
-					"Copy brief",
+					`Copy brief ${attempt.value.id.slice(-8)}`,
 				);
 			}
 			expect(await noOverflow(page)).toBe(true);

@@ -111,6 +111,7 @@ code. There is no new route family and no new capability:
 | :-- | :-- |
 | `GET workspace` | the registered project, its tasks, references; or one constant when no project was named |
 | `POST workspace/tasks/create`, `update`, `status`, `select`, `link-session`, `unlink-session` | closed bodies, a task id and the revision it saw |
+| `GET workspace/attempts` | the selected task's work attempts and their briefs, read-only (no query; nothing prepares or records one) |
 
 None of them sends a prompt, steers, queues or stops, starts, resumes or selects a session, runs Git or a shell, opens or writes any file but
 `develop/tasks.json`, reads the transcript, or approves anything. The terminal approval, the pairing grant, capability admission and STOP are unchanged,
@@ -206,6 +207,35 @@ workbench's **Remove link** removes an OMP reference like any other: it is your 
 
 There is **no browser link action** for OMP sessions. Studio, where OMP sessions are browsed, is the read-only, unpaired server and has no task
 route; the paired workbench has no OMP observer. Adding either would be a new control channel, so linking stays in the terminal.
+
+## Work attempts and handoff briefs
+
+A **work attempt** is one request you prepare on a task: an objective, constraints, and what to report back, together with the task's
+words as they were then. Its **brief** is plain text for you to paste into Pi, Claude Code, Codex, OMP or any other agent yourself.
+Preparing or copying a brief sends nothing. The full design and its review are in
+[designs/develop-work-attempts.md](designs/develop-work-attempts.md).
+
+```sh
+endo attempt prepare --root ./recordings --project endo.project.<id> --task endo.task.<id> --objective "…" [--constraints "…"]
+endo attempt brief   --root ./recordings --attempt endo.attempt.<id>          # plain text: pipe it to your clipboard tool
+endo attempt handoff --root ./recordings --attempt endo.attempt.<id> --to "Claude Code"
+endo attempt report  --root ./recordings --attempt endo.attempt.<id> --note "what the agent said it did"
+endo attempt abandon --root ./recordings --attempt endo.attempt.<id>
+endo attempt list    --root ./recordings --project endo.project.<id> [--task endo.task.<id>]
+```
+
+- Attempts live in `develop/attempts/`, one write-once file per record, and **never change `tasks.json`**. Every attempt command leaves
+  that file byte for byte as it was.
+- **Prepared** means a brief exists. **Handoff recorded** means you said you handed it over, not that the agent read it. **Result
+  reported, not verified** means you recorded a claim. **Abandoned** means you stopped. None of these changes the task's status: that
+  stays your `endo task status` or the page's buttons.
+- A handoff and an outcome are each recorded once. A second is refused `already-recorded`, and the first is kept. To try again, prepare
+  a new attempt.
+- In the paired workbench, the **Task** view lists the selected task's attempts read-only. It shows the brief in a read-only box with
+  **Copy brief**, and says when the task's words changed since the brief was prepared. Copying never touches your unsent draft.
+  `endo studio` has no route to attempts.
+- A copied brief carries your private task text to the clipboard, where a clipboard manager may keep it. To remove an attempt, delete its
+  files (`develop/attempts/<id>.*`); nothing else is affected.
 
 ## Versions and the upgrade
 

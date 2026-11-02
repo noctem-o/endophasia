@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|proxy|replay|experiment|steer|project|task> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|proxy|replay|experiment|steer|project|task|attempt> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -72,6 +72,11 @@ Commands that write to a store:
                                      reference an Oh My Pi saved session from a task, after reading that directory read-only;
                                      a reference grants no control. task unlink removes one
   task upgrade [--apply]             show the task file's version; --apply rewrites a v0 file as endo.develop-tasks.v1
+  attempt prepare ... --project <id> --task <id> --objective <text> [--constraints <text>] [--report-back <text>]
+                                     record one work attempt on a task; it sends nothing (docs/designs/develop-work-attempts.md)
+  attempt brief ... --attempt <id>   print the attempt's brief, plain text to copy into any coding agent yourself
+  attempt handoff|report|abandon ... record, once each, your own statement: handed over, what was reported (not verified), stopped;
+                                     the task's status is unchanged. attempt list|show read them
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

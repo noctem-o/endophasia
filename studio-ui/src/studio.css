@@ -4498,6 +4498,69 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	border-bottom: 1px solid var(--line-subtle);
 }
 
+.attempt summary {
+	cursor: pointer;
+}
+
+/* The marker stays on the summary's first line, with the row beside it. */
+.attempt summary .task-ref-head {
+	display: inline-flex;
+	vertical-align: top;
+	max-width: calc(100% - 1.5em);
+}
+
+.attempt-objective {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.attempt-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 0 2px;
+}
+
+.attempt-body p {
+	margin: 0;
+}
+
+.attempt-brief-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* The brief: a read-only text box, so it is focusable, scrolls inside itself, and select-all takes exactly the brief. Wrapped: it is prose. */
+.task-command.attempt-brief {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	resize: vertical;
+	color: inherit;
+	margin: 0;
+}
+
+.attempt-changed {
+	color: var(--attention);
+}
+
+/* An attempt's state: prepared is plain; a recorded handoff dashed (a statement); a reported result dotted (a claim, not verified). */
+.chip-ref[data-attempt="handed-off"] {
+	border-style: dashed;
+}
+
+.chip-ref[data-attempt="reported"] {
+	border-style: dotted;
+	color: var(--attention);
+}
+
+.chip-ref[data-attempt="abandoned"] {
+	color: var(--fg-3);
+}
+
 .task-ref-head {
 	display: flex;
 	flex-wrap: wrap;

@@ -37,6 +37,15 @@
   [docs/harness-upgrades.md](docs/harness-upgrades.md#changing-the-identity-basis).
 
 ### Added
+- **DEVELOP work attempts and handoff briefs** (`endo attempt prepare|brief|handoff|report|abandon|list|show`). An attempt is one
+  request you prepare on a task. It records an objective, constraints, what to report back, and the task's words as they were. Its brief is
+  harness-neutral plain text for you to paste into any coding agent. Preparing, printing or copying a brief sends nothing and starts no
+  process. Handoffs and outcomes are your own statements, recorded once each and labelled as such ("Result reported, not verified"). No
+  attempt operation writes `develop/tasks.json` or changes a task's status. Attempts are write-once files in `develop/attempts/`
+  (`endo.develop-attempt.v0`, `-handoff.v0`, `-outcome.v0`), so there is no lock and no migration; the task file's versions are unchanged.
+  The paired workbench's Task view lists the selected task's attempts read-only, with **Copy brief** (`GET workspace/attempts`, behind
+  the grant), and `endo studio` has no route to them. Design and its Elephant–Goldfish review:
+  [docs/designs/develop-work-attempts.md](docs/designs/develop-work-attempts.md).
 - **Source-aware task links: a task can reference an Oh My Pi saved session** (`endo task link --source omp-saved --session <omp-id>
   --omp-sessions <dir>`). The command reads the named directory with the existing read-only observer and links only when exactly one
   readable format-3 file there carries that id and every file there was read; a duplicate, an unread file, a Studio selector or a bare

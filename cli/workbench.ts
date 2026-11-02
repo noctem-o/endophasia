@@ -17,6 +17,7 @@ import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/work
 import { cockpitAliasesV0 } from "../cockpit/index.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { endoStudioUiDirectoryV0 } from "./studio.ts";
@@ -160,10 +161,10 @@ export async function startWorkbenchV0(
 					tasks: {
 						// The operator's configuration for this launch; the broker adds the host's own facts when it opens the scope.
 						open: (host) =>
-							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(session.owner.options.root)).forLaunch(
-								{ projectId, launchDirectory: options.cwd },
-								host,
-							),
+							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(session.owner.options.root), {
+								// The work attempts, read-only here: the page sees the selected task's attempts and briefs; it cannot make or record one.
+								attempts: new DevelopAttemptsStoreV0(session.owner.options.root),
+							}).forLaunch({ projectId, launchDirectory: options.cwd }, host),
 					},
 				}),
 		aliasOf: (id) => aliasOf(id),

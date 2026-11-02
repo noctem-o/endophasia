@@ -3,6 +3,7 @@
 // the opposite of a command surface:
 //
 //   GET  workspace                      the registered project, its tasks and the explicit session references. Needs the grant.
+//   GET  workspace/attempts             the work attempts of the SELECTED task, with their briefs (read-only; none are made here).
 //   POST workspace/tasks/create         {title, description?, acceptance?}              add a task (and select it).
 //   POST workspace/tasks/update         {taskId, expectedRevision, title?, description?, acceptance?}
 //   POST workspace/tasks/status         {taskId, expectedRevision, to, note?}           the operator's own status change.
@@ -76,6 +77,13 @@ export class WorkbenchTasksV0 {
 	): { status: number; body: unknown } {
 		const [, a, b, ...more] = route;
 		if (method === "GET") {
+			// The attempts: no query, no further path, and nothing in the request chooses the project or the task (the launch's project, and the
+			// task selected in the file). A launch given no attempt records has no such route.
+			if (a === "attempts" && b === undefined) {
+				const attempts = this.#workspace.attemptsView();
+				if (attempts === null) return refuse(404, "not-found");
+				return query === "" ? reply(200, attempts) : refuse(400, "bad-request");
+			}
 			if (a !== undefined || query !== "")
 				return refuse(a === undefined ? 400 : 404, a === undefined ? "bad-request" : "not-found");
 			return reply(200, this.view());

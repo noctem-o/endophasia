@@ -196,7 +196,9 @@ describe("the launch scope (what the workbench uses)", () => {
 		// Reconnecting in a NEW launch with the same Pi session id: still historical.
 		connected.id = "pi-session-1";
 		const b = w.service.forLaunch({ projectId: w.projectId, launchDirectory: w.dir }, piHost(LAUNCH_B, connected));
-		expect(b.view().tasks[0]!.sessions.map((s) => [s.launchId, s.relation])).toEqual([[LAUNCH_A, "historical"]]);
+		expect(b.view().tasks[0]!.sessions.map((s) => [s.source === "pi-live" ? s.launchId : null, s.relation])).toEqual([
+			[LAUNCH_A, "historical"],
+		]);
 		// And a host of another source reporting that same canonical id cannot make it current, nor record anything. (In v0 the service
 		// ignores an unknown source's session altogether; the same-source clause on `current` is for a later version that knows two sources.)
 		const before = fileOf(w.root);
@@ -373,7 +375,9 @@ describe("a consumer that is not Pi", () => {
 		// The consumer recorded no reference of its own.
 		const stored = new DevelopTasksStoreV0(w.root).read();
 		if (!stored.ok) throw new Error(stored.reason);
-		expect(stored.file.tasks.flatMap((t) => t.sessions).map((s) => s.launchId)).toEqual([LAUNCH_A]);
+		expect(
+			stored.file.tasks.flatMap((t) => t.sessions).map((s) => (s.source === "pi-live" ? s.launchId : null)),
+		).toEqual([LAUNCH_A]);
 	});
 
 	it("neither the service nor that consumer reaches a harness adapter, a server or the page", () => {

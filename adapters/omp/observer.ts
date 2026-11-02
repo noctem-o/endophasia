@@ -12,9 +12,15 @@
 // file replaced by another (a rewrite through a new file, a copy put in its place) has a new selector, so a page holding the old one is
 // told the session is not found rather than shown another file's contents under the old name.
 //
+// Linking (`resolve`). The `endo task link --source omp-saved` command asks this observer, over the directory the operator named, whether one
+// id is established: carried by exactly one readable format-3 file, with every file the directory holds read. Anything less (absent, two
+// files, a file not read that might carry it) is refused, never guessed. The answer carries the id, the format and the directory's SCOPE: a
+// digest of the resolved directory path (never the path), so the same id seen in two directories is two scopes and is never merged.
+//
 // What it can NOT say. Whether an OMP process is running, connected or about to write: a saved file is not a process, and no file time
 // is read as one. What is shown is the file as it was when it was read.
 
+import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import {
@@ -28,9 +34,38 @@ import {
 	type EndoOmpSessionV0,
 } from "../../protocol/omp-observation.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
-import { type OmpJournalV0, readOmpFileV0, reduceOmpJournalV0, unreadOmpJournalV0 } from "./journal.ts";
+import {
+	OMP_SESSION_FORMAT_V0,
+	type OmpJournalV0,
+	readOmpFileV0,
+	reduceOmpJournalV0,
+	unreadOmpJournalV0,
+} from "./journal.ts";
 
 const SELECTOR_PURPOSE = "endo.develop-omp-selector.v0";
+const SCOPE_PURPOSE = "endo.develop-omp-scope.v1";
+
+/**
+ * The scope of a resolved OMP sessions directory: `omp-dir.` and 32 hex characters of SHA-256 over a purpose label and the resolved path.
+ * Stable across runs and processes for one directory, different for another. It is a label that keeps two directories apart, not a secret: a
+ * path is guessable, so its digest hides nothing from someone who can guess it (the task file is owner-only for that reason).
+ */
+export function ompScopeOfRootV0(resolvedRoot: string): string {
+	return `omp-dir.${createHash("sha256").update(SCOPE_PURPOSE).update("\u0000").update(resolvedRoot).digest("hex").slice(0, 32)}`;
+}
+
+/**
+ * What `resolve` established about one id in the named directory.
+ * - `established`: exactly one readable file carries it, and every file under the directory was read.
+ * - `not-found`: no readable file carries it (`unread` files could not be read, and one of them might).
+ * - `duplicate`: more than one readable file carries it: neither is "the" session.
+ * - `uncertain`: one readable file carries it, but `unread` files were not read, so it cannot be established that no other one does.
+ */
+export type OmpResolutionV0 =
+	| { status: "established"; sessionId: string; scope: string; format: typeof OMP_SESSION_FORMAT_V0 }
+	| { status: "not-found"; unread: number }
+	| { status: "duplicate"; files: number }
+	| { status: "uncertain"; unread: number };
 
 export interface OmpObserverOptionsV0 {
 	/** The directory the operator named. Resolved once; it must be an existing directory. */
@@ -227,6 +262,44 @@ export class OmpSavedSessionObserverV0 implements EndoOmpObserverV0 {
 			sessions: rows,
 			skipped,
 		};
+	}
+
+	/** This directory's scope (see `ompScopeOfRootV0`). */
+	get scope(): string {
+		return ompScopeOfRootV0(this.#root);
+	}
+
+	/**
+	 * Whether `id` is established in this directory, from one fresh, whole read of every file (the same reads and the same counting as the list).
+	 * Reads only; nothing is written, run or kept. A Studio selector is not an id and is never looked up as one (the caller refuses it first).
+	 */
+	resolve(id: string): OmpResolutionV0 {
+		return this.resolveAll([id]).get(id) as OmpResolutionV0;
+	}
+
+	/** `resolve` for several ids from ONE read of the directory (`endo task show` checks each saved reference this way). */
+	resolveAll(ids: readonly string[]): Map<string, OmpResolutionV0> {
+		const { found, skipped } = this.#discover();
+		const journals = this.#readAll(found, skipped);
+		const readable = [...journals.values()].filter((j) => j.state === "readable");
+		// Every file or directory that could hold a copy and was not read whole: a file over the bounds, not read for the budget, a directory or
+		// file that could not be read, changed during the read, or is of a format this reader does not know.
+		const unread = skipped.overLimit + skipped.notRead + skipped.unreadable + (journals.size - readable.length);
+		const answers = new Map<string, OmpResolutionV0>();
+		for (const id of ids) {
+			const carriers = readable.filter((j) => j.id === id).length;
+			answers.set(
+				id,
+				carriers === 0
+					? { status: "not-found", unread }
+					: carriers > 1
+						? { status: "duplicate", files: carriers }
+						: unread > 0
+							? { status: "uncertain", unread }
+							: { status: "established", sessionId: id, scope: this.scope, format: OMP_SESSION_FORMAT_V0 },
+			);
+		}
+		return answers;
 	}
 
 	session(selector: string): EndoOmpSessionV0 | null {

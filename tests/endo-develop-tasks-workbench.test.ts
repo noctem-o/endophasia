@@ -129,7 +129,7 @@ describe("only a paired page can read or change tasks", () => {
 		const absent = await w.call("GET", "workspace", null, grant);
 		expect([absent.status, absent.body]).toEqual([
 			200,
-			{ available: false, schemaVersion: "endo.develop-workspace.v0" },
+			{ available: false, schemaVersion: "endo.develop-workspace.v1" },
 		]);
 		expect((await w.call("POST", "workspace/tasks/create", { title: "x" }, grant)).status).toBe(404);
 		expect((await w.call("GET", "workspace", null, grant, "x=1")).status).toBe(404);
@@ -595,7 +595,18 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 		const store = new DevelopTasksStoreV0(root);
 		const project = store.registerProject({ name: CANARY, path: "/work/demo", observedGitRoot: null });
 		if (!project.ok) throw new Error("registration failed");
-		store.createTask(project.value.id, { title: CANARY, description: CANARY, acceptance: CANARY });
+		const task = store.createTask(project.value.id, { title: CANARY, description: CANARY, acceptance: CANARY });
+		if (!task.ok) throw new Error("task refused");
+		// And a saved OMP reference whose session id is the canary: it must not leak through Studio either.
+		const linked = store.linkSession(project.value.id, task.value.id, 0, {
+			source: "omp-saved",
+			sessionId: CANARY,
+			scope: `omp-dir.${"9".repeat(32)}`,
+			observedFormat: 3,
+			linkedBy: "operator",
+			via: "cli",
+		});
+		if (!linked.ok) throw new Error(linked.code);
 		const server = await serve(root);
 		const base = `${capabilityOf(server)}/api/v0/`;
 		// Every read route family the page uses, each one ANSWERED (a refusal would prove nothing): the snapshot, the session list and one

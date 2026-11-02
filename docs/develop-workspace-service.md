@@ -62,7 +62,7 @@ DevelopWorkspaceServiceV0(store, { observeGitRoot? })        operator scope: the
   forLaunch(config, host) → DevelopLaunchWorkspaceV0
 
 DevelopLaunchWorkspaceV0                       launch scope: one project, as one launch sees it (the workbench)
-  view()                                       endo.develop-workspace.v0, unchanged
+  view()                                       endo.develop-workspace.v1 (v0 before Slice D)
   writeRefusal()                               null, or the `read-only` refusal every change would get now
   createTask · updateTask · setStatus · selectTask · unlinkSession
   linkCurrentSession(taskId, rev)              the reference is built from the HOST's facts; the caller names a task and a revision
@@ -173,13 +173,62 @@ The consumer is **not** a Codex, DSH, ACP or meta-harness integration. It shows 
 - Multi-agent execution.
 - A separate SQLite coordination database.
 - Cross-machine synchronisation.
-- Session sources other than `pi-live`. With them come three things v0 leaves fixed:
-  - a host's own `via` (v0 records only `workbench`);
-  - link idempotence keyed on the source as well as the session and launch (the store keys on the session and launch);
-  - a test of the same-source clause on `current`, which cannot decide anything while the file knows one source.
+- Session sources other than `pi-live` and (since Slice D, below) `omp-saved`. Each new source needs a new version of the file format with
+  its own validator in the version table; no file version silently accepts another source.
 
-  Adding a source needs a new version of the file format (`endo.develop-tasks.v1`) with its own
-  validator in the version table. The v0 file must never silently accept another source.
+## Source-aware references (Slice D)
+
+Status: implemented. The file is `endo.develop-tasks.v1`; the compatibility policy and the operator's view are in
+[develop-tasks.md](develop-tasks.md#versions-and-the-upgrade). What changed in this module:
+
+| | Before | Now |
+| :-- | :-- | :-- |
+| Sources | `pi-live` | `pi-live` (LIVE) and `omp-saved` (OBSERVED), two disjoint closed lists |
+| Who makes a live reference | `linkCurrentSession`, from the launch host's facts | Unchanged. A host of any non-live source (including `omp-saved`) is `unsupported-source` |
+| Who makes an observed reference | Nobody | `linkObservedSession` on the **operator scope** only, given an observation its caller established |
+| `current` | Same launch, same source, same session | Unchanged for Pi; an OMP reference is `saved`, decided by its source before anything is compared |
+| Idempotence | session + launch | `endoDevelopSessionKeyV1`: source + session + launch (Pi), source + scope + session (OMP) |
+| New operations | | `inspect()`, `upgrade(rev?)`, `linkObservedSession(...)`, operator-scope `unlinkSession(...)` |
+| New refusal | | `upgrade-required` |
+
+**Where the authority to create an OMP link lives.** In the operator's own process, the `endo` CLI. It names the OMP directory, builds the
+read-only observer (`adapters/omp/observer.ts`), asks it to `resolve` the id (one readable carrier, every file read), and passes the
+resulting observation (source, id, scope digest, format) to `linkObservedSession`. The service checks the observation's shape and imports no
+adapter; its truth is the CLI's duty, exactly as a live reference's truth is the launch host's. The workbench broker holds only a launch scope,
+which has no observed-link operation, and its HTTP routes accept no field that describes a session, so no page request can create one.
+Studio holds neither scope.
+
+**Rejected alternatives.**
+- *Loosening v0* to accept `omp-saved`: an older build would then misread a file it believes it understands. Refused by the brief and here.
+- *A uniform reference shape* with a synthetic `launchId`/`attachment` for OMP: it would manufacture a live connection that does not exist.
+- *A browser link action*: Studio (where OMP is browsed) is unpaired and must not gain a task route; the paired workbench has no OMP observer.
+  Either would be a new control channel. Deferred.
+- *Upgrading on first write, or on read*: silent; and it would break older builds without the operator deciding. The upgrade is explicit.
+- *Requiring the upgrade before any write*: it would break every existing workbench and CLI workflow on the day of the update. A v0 file keeps
+  being written as v0 while it says only what v0 can.
+- *A v0 backup at upgrade*: a second copy of private text with no owner and no retention. The atomic rename already guarantees old-or-new; the
+  dry run tells the operator to keep a copy if they may go back.
+- *Storing the OMP directory path* as the scope: a path in a reference is private and machine-specific; a digest separates stores without it.
+- *Matching by id prefix, alias, title, time or directory*: never. A Studio selector is refused by name.
+
+**Evidence** (`tests/develop-tasks-v1.test.ts`, plus extensions of the workbench, Studio-privacy, observer-layering and browser suites):
+format and migration (determinism, exact reversibility for Pi-only files, v0 kept by reads and v0-expressible writes, upgrade-required,
+stale and competing upgrades, a crash at replacement, unknown versions and forged references), source-aware idempotence across sources and
+scopes, authority (a host claiming `omp-saved`, an operator-scope live claim, forged HTTP bodies, the page given no id, scope or path, the
+page's gate refusing a `current` OMP reference), resolution (duplicates, malformed and unsupported files, unreadable files, a replaced file,
+two scopes), and the CLI end to end (a fake `omp` on `PATH` never runs, OMP's directory manifest unchanged, a vanished file keeps its
+reference, overlapping directories refused). Mutation checks on the live-source gate, the observed-source gate, the scope in the key, the
+uncertainty rule, v0 preservation, the page gate and the selector rule each make a test fail. (Dropping the source tag from the key does not:
+a Pi launch id and an OMP scope can never be equal, so the two sources' keys cannot collide by construction, which the key test asserts.)
+
+**Real-source evidence** (2 November 2026). The real `endo` CLI against the local OMP directory (`~/.omp/agent/sessions`: 41 files, all
+readable and keyed, nothing skipped), read in place, with a disposable task store in a scratch directory. A fresh store was rewritten as v0;
+`endo task upgrade` reported it and wrote nothing; `task link` answered `upgrade-required`; `--apply` upgraded it (revision 2 → 3); `task link`
+of one session that ends with OMP's own exit record linked it (`new`), a second time answered `already`, `task show --omp-sessions` reported
+it `established`, and a Studio selector was refused. A manifest of the whole OMP directory (size, modification and change times, inode, mode,
+SHA-256) was identical before and after, while an unrelated OMP process the operator had running stayed untouched; no OMP process was started,
+no model was called, and the task file held no path under the home directory. Not exercised against a real process: the workbench rendering
+of an OMP reference (synthetic browser tests only), and other OMP versions or profiles.
 
 ## How a later host consumes this
 

@@ -176,7 +176,9 @@ about 0.2 s for all 41 local files.
   - a `recorded` turn claim, or OMP's `reported` exit;
   - all control `unsupported`.
 - No change to `endo.develop-tasks.v0`. An OMP session cannot be linked to a task: the workspace service refuses a host of source
-  `omp-saved` (`unsupported-source`), and nothing joins one by a directory, a branch, a time or a title.
+  `omp-saved` (`unsupported-source`), and nothing joins one by a directory, a branch, a time or a title. (Since Slice D an OMP session can be
+  linked from the CLI, explicitly, in a v1 file: see [develop-tasks.md](develop-tasks.md#oh-my-pi-saved-references). A launch host of source
+  `omp-saved` is still refused.)
 - No server-side surface. The surface is still built in the browser. The server serves only the closed observation records, which are
   registered in the cockpit version table, so a malformed one is never sent.
 - No watcher, polling, daemon, OMP SDK (it targets Bun, not Node), OMP process, hook or configuration change.
@@ -245,11 +247,7 @@ The review found no control path, no live claim and no route that could reach OM
 
 ## Next step
 
-Two real sources now exist: Pi, live and recorded, and OMP, saved. The next logical slice is **explicit, source-aware task links**:
-- an `endo.develop-tasks.v1`, with an explicit read path for v0 files and an operator-visible upgrade;
-- a closed second source;
-- a host-supplied `via`;
-- source-aware idempotence.
-
-With those, the operator could link an OMP saved session to a task without it ever becoming current or controllable. A common local
-observation registry and a supervisor come after that.
+Done in Slice D: explicit, source-aware task links (`endo.develop-tasks.v1`, an operator-visible upgrade, a closed second source with its own
+`via`, and source-aware idempotence), so an OMP saved session can be linked to a task without ever becoming current or controllable. See
+[develop-tasks.md](develop-tasks.md#oh-my-pi-saved-references). `OmpSavedSessionObserverV0.resolve` is the observer's one addition: it says
+whether an id is established in the named directory, from the same reads and counting as the list.

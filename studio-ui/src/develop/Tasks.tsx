@@ -825,9 +825,22 @@ function TaskDetail({
 }
 
 function refWords(ref: SessionRef): string {
+	if (ref.source === "omp-saved")
+		return "A saved Oh My Pi session you linked from the endo CLI. OMP owns it: this workbench neither connects to nor controls it, and does not look for its file, so whether it is still there is not checked here (endo task show --omp-sessions checks).";
 	return ref.relation === "current"
 		? "Linked in this launch, to the session connected now."
 		: "Linked in an earlier launch. Whether that session is still the one attached cannot be verified from here, and nothing connects it to the conversation shown now.";
+}
+
+/** The chip: the source first, then what can be said of it. An OMP reference is always saved, never current. */
+function refChip(ref: SessionRef): string {
+	if (ref.source === "omp-saved") return "OMP · saved reference";
+	return ref.relation === "current" ? "Pi · current" : "Pi · earlier launch";
+}
+
+function refLabel(ref: SessionRef): string {
+	if (ref.source === "omp-saved") return `${ref.alias ?? "omp session"} · dir ${ref.scopeLabel}`;
+	return ref.alias === null ? "session" : shortSession(ref.alias);
 }
 
 function SessionBlock({
@@ -855,15 +868,23 @@ function SessionBlock({
 			) : (
 				<ul className="plain task-refs">
 					{task.sessions.map((ref) => (
-						<li key={ref.linkId} data-relation={ref.relation} data-testid="task-session-ref">
+						<li
+							key={ref.linkId}
+							data-relation={ref.relation}
+							data-source={ref.source}
+							data-testid="task-session-ref"
+						>
 							<span className="task-ref-head">
-								<span className="chip-ref" data-relation={ref.relation}>
-									{ref.relation === "current" ? "current" : "earlier launch"}
+								<span className="chip-ref" data-relation={ref.relation} data-source={ref.source}>
+									{refChip(ref)}
 								</span>
 								<span className="mono small" title="A label for the session, not an identifier">
-									{ref.alias === null ? "session" : shortSession(ref.alias)}
+									{refLabel(ref)}
 								</span>
-								<span className="dim small">linked by you, in the workbench, {whenWords(ref.linkedAtMs)}</span>
+								<span className="dim small">
+									linked by you, {ref.source === "omp-saved" ? "from the CLI" : "in the workbench"},{" "}
+									{whenWords(ref.linkedAtMs)}
+								</span>
 								{writable ? (
 									<button
 										type="button"

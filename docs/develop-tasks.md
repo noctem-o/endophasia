@@ -11,7 +11,7 @@ Four things stay apart, in the code and on the page:
 | **Project** | A directory you registered, with a name (`endo.project.<id>`). | You, by `endo project add`. |
 | **Task** | What you intend to get done: a title, optional description and acceptance criteria, and a status (`endo.task.<id>`). | You. |
 | **Worktree** | A Git working tree the broker reads, read-only ([develop-project-review.md](develop-project-review.md)). | Git. |
-| **Session** | A Pi session the attached process owns (the neutral surface, [develop-session-surface.md](develop-session-surface.md)). | The attached process. |
+| **Session** | A Pi session the attached process owns (the neutral surface, [develop-session-surface.md](develop-session-surface.md)), or an Oh My Pi saved session ([develop-omp-observer.md](develop-omp-observer.md)). | The attached process; OMP. |
 
 A project is not a session. A task is not a prompt. A worktree is not an agent. **An agent finishing is not a task done**: no run ending, final
 answer, disconnect or STOP changes a task, and only your button or your `endo task status` command changes a status.
@@ -68,7 +68,7 @@ leaves for later are in [develop-workspace-service.md](develop-workspace-service
 
 ## Where it lives, and what is in it
 
-`<root>/develop/tasks.json` (`endo.develop-tasks.v0`), beside the evidence and never inside it: it is not an event, is never appended to the event
+`<root>/develop/tasks.json` (`endo.develop-tasks.v0` or `.v1`, see [Versions](#versions-and-the-upgrade)), beside the evidence and never inside it: it is not an event, is never appended to the event
 log, and no existing store file is read, migrated or rewritten. Deleting `develop/` loses tasks and nothing else.
 
 | Stored | Not stored here |
@@ -123,8 +123,27 @@ second, longer-lived grant for metadata: `endo task` is the way to read and edit
 
 ## Session references
 
-A task may carry **explicit** references to a session. A reference is made only by your **Link the current session** button, and the broker
-builds it from its own state, never from anything the page sends:
+A task may carry **explicit** references to a session, from a closed set of two sources. Each records who decided, how, and what was
+established, and none of them is a handle to the session.
+
+| | Live Pi (`pi-live`) | Oh My Pi saved (`omp-saved`, needs a v1 file) |
+| :-- | :-- | :-- |
+| Made by | Your **Link the current session** button, in the paired workbench | `endo task link --source omp-saved`, in your terminal |
+| Identity | The evidence store's id of the Pi session, from the broker's own state | OMP's own session id, from the saved file's header |
+| Scope | The workbench launch that made it (`launchId`) | The OMP sessions directory you named, as a digest (`scope`) |
+| Provenance | The launch's attachment | The format the read-only observer validated (`observedFormat: 3`) |
+| Attribution | `linkedBy: "operator"`, `via: "workbench"` | `linkedBy: "operator"`, `via: "cli"` |
+| On the page | **Pi · current** or **Pi · earlier launch** | **OMP · saved reference**, never current |
+| Idempotence key | source, session id, launch | source, scope, session id |
+
+Repeating a link for the same association writes nothing. A Pi and an OMP reference never share a key, whatever their ids say, and the same
+OMP id in two directories is two references. Removing a reference (**Remove link**, or `endo task unlink --link <id>`) and linking again makes
+a new one.
+
+### Live Pi references
+
+A live reference is made only by your **Link the current session** button, and the broker builds it from its own state, never from anything the
+page sends:
 
 ```json
 { "linkId": "…", "source": "pi-live", "sessionId": "endo.session.pi.…", "attachment": "pi.default",
@@ -142,12 +161,81 @@ Nothing links a task to a session by an alias, a name, a time, a directory or pr
 automatically, and a reference gives a task no control over a session: no resume, no selection, no prompt. The neutral surface
 (`endo.develop-session-surface.v0`) is unchanged and has no task field.
 
+### Oh My Pi saved references
+
+```sh
+endo task link --root ./recordings --project endo.project.<id> --task endo.task.<id> \
+  --source omp-saved --session <OMP session id> --omp-sessions ~/.omp/agent/sessions
+endo task show --root ./recordings --project endo.project.<id> --task endo.task.<id> --omp-sessions ~/.omp/agent/sessions
+endo task unlink --root ./recordings --project endo.project.<id> --task endo.task.<id> --link <linkId>
+```
+
+The session id is the one OMP wrote: OMP's `/session info` prints it, and Studio's OMP inspector shows it as the session's key. `endo task link`
+does not take it on trust. It reads the directory you named with the same read-only observer Studio uses, and links only when:
+
+- exactly one readable file there, of OMP's format 3, carries that id in its header (two files carrying it are a copy: neither is the session);
+- every file there was read (a file over the bounds, unreadable, changing while read, or of another format might carry it too, so the answer
+  is "uncertain" and nothing is linked);
+- the id is OMP's, not a Studio selector (`o1-…`, which names a file in one Studio launch and is refused with that explanation);
+- the store and the OMP directory do not overlap, and the task revision is the one read (or the one you gave with `--revision`).
+
+```json
+{ "linkId": "…", "source": "omp-saved", "sessionId": "019a…", "scope": "omp-dir.<32 hex>", "observedFormat": 3,
+  "linkedAtMs": 0, "linkedBy": "operator", "via": "cli" }
+```
+
+It records one claim: *at that time you linked this task to the OMP session with this id, which Endophasia found exactly once in the directory
+whose scope this is.* The session is OMP's. The reference has no launch, attachment or connection; it is **never current**, and nothing reads
+it to resume, prompt, steer, queue, stop or select anything. A `session_exit` in the file says nothing about the task, and neither does a recent
+write. OMP is not run, nothing is sent to it, and its files are only read (a test compares a manifest of the directory and puts a fake `omp`
+first on `PATH`).
+
+**Scope is the directory you named**, as `omp-dir.` and a SHA-256 of a purpose label and the resolved path. The path itself is never stored.
+Two profiles or two copies of a store are two scopes, so their references are never merged. The same file reached through two different
+named directories (the whole sessions directory once, one project group another time) is also two scopes: name the same directory each
+time. A digest of a path is a label, not a secret: someone who can guess the path can compute it.
+
+**The workbench does not look for OMP files**: the broker has no OMP directory and is given none. The page shows the reference as saved, with
+its label (`omp` and the id's last 8 characters) and the scope's first 8 hexadecimal characters, and says that whether the file is still there
+is not checked here. `endo task show --omp-sessions <dir>` checks, read-only, and reports each OMP reference as `established`, `not-found`,
+`duplicate`, `uncertain` or `other-directory`. A reference whose file has gone stays, as your record; it is removed only by you.
+
+There is **no browser link action** for OMP sessions. Studio, where OMP sessions are browsed, is the read-only, unpaired server and has no task
+route; the paired workbench has no OMP observer. Adding either would be a new control channel, so linking stays in the terminal.
+
+## Versions and the upgrade
+
+| File | Meaning | Read by this build | Written by this build |
+| :-- | :-- | :-- | :-- |
+| `endo.develop-tasks.v0` | Live Pi references only | Yes, never rewritten by a read | As v0, for every change v0 can record |
+| `endo.develop-tasks.v1` | v0 plus `omp-saved` references | Yes | As v1, always |
+| anything else | | Refused whole (`unsupported-version`), never written over | Never |
+
+- v1 differs from v0 only in the references: a v0 reference is, byte for byte, a v1 `pi-live` reference with the same meaning. The v0 validator
+  was not loosened; v1 has its own closed validator in the version table.
+- **You can keep using a v0 file.** The workbench and `endo task add | status | unlink` work on it as before and keep it v0. Only linking an OMP
+  session needs v1: it answers `upgrade-required` and tells you how.
+- **The upgrade is your act.** `endo task upgrade` is a dry run: it prints the version, the revision, and the counts of projects, tasks and
+  references, and writes nothing. `endo task upgrade --apply [--revision n]` takes the writer lock, reads the file again, applies the pure
+  v0 → v1 projection (every project, task, status, history, selection and Pi reference kept exactly; task revisions unchanged), validates, and
+  replaces the file atomically; the file revision increases by one. A crash leaves the v0 file or the v1 file, never a mixture. A second upgrade,
+  or one of a v1 or missing file, writes nothing. `--revision` binds it to the file revision you inspected (`stale-revision` otherwise).
+- A new store is created as v1.
+- **Going back.** A build from before v1 refuses a v1 file as `unsupported-version` and never writes over it. No v0 copy is kept for you (it
+  would be a second copy of private text with no owner); copy `develop/tasks.json` before `--apply` if you may go back to such a build.
+- The workbench's read model is `endo.develop-workspace.v1`: v0's, with source-aware references (`relation` is `current` or `historical` for
+  Pi and always `saved` for OMP). The page refuses a body of any other version, and refuses an OMP reference that claims `current`, a launch or
+  an attachment.
+
 ## Limitations, and what is deferred
 
 - One project per workbench launch, named with `--project`; no project launcher, no automatic start of Pi, no worktree creation or checkout.
 - No task deletion, archive, search, tags, dependencies, priorities, due dates, or assignment; no agent selection, scheduling, retries or plans.
 - The Git association is by exact launch directory; a subdirectory launch is read-only.
-- `endo task` can list, add and change status; editing words and links is in the workbench page.
+- `endo task` can list, show, add, change status, link an OMP saved session and unlink; editing words and linking a live Pi session are in the
+  workbench page. There is no browser action to link an OMP session (see above).
+- Whether an OMP reference's file still exists is checked only by `endo task show --omp-sessions`; the page does not say "source unavailable".
+- Real-source evidence for the OMP link is one local smoke (see [develop-workspace-service.md](develop-workspace-service.md#source-aware-references-slice-d)), not conformance.
 - A registered path or task text is not scanned for secrets.
 - The store has no cross-machine sync. Moving a project to another path means registering it again.
 - Locks: the lock is a series of numbered files and the highest number holds it (see the header of `storage/develop-tasks.ts`). A writer takes it by

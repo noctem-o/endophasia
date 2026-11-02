@@ -192,7 +192,10 @@ describe("status is the operator's, in small reversible steps", () => {
 		expect(bytesOf(root).equals(bytes)).toBe(true);
 		// A different launch is a different claim.
 		const other = ok(store.linkSession(project.id, task.id, first.revision, { ...ref, launchId: "2".repeat(16) }));
-		expect(other.sessions.map((s) => s.launchId)).toEqual(["1".repeat(16), "2".repeat(16)]);
+		expect(other.sessions.map((s) => (s.source === "pi-live" ? s.launchId : null))).toEqual([
+			"1".repeat(16),
+			"2".repeat(16),
+		]);
 	});
 
 	it("does not edit the status through an edit", () => {
@@ -433,7 +436,7 @@ describe("a damaged, foreign or hostile file is unreadable, reported, and left e
 
 	it("an unknown version is refused whole, never read as the version it resembles", () => {
 		const root = fresh();
-		put(root, JSON.stringify({ schemaVersion: "endo.develop-tasks.v1", revision: 0, projects: [], tasks: [] }));
+		put(root, JSON.stringify({ schemaVersion: "endo.develop-tasks.v2", revision: 0, projects: [], tasks: [] }));
 		unreadable(root, "unsupported-version");
 	});
 

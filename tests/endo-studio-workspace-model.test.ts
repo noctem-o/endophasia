@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
 	ENDO_DEVELOP_TASK_STATUSES_V0,
 	ENDO_DEVELOP_UNREADABLE_REASONS_V0,
-	type EndoDevelopWorkspaceViewV0,
+	type EndoDevelopWorkspaceViewV1,
 	endoDevelopNextStatusesV0,
 } from "../protocol/develop-tasks.ts";
 import {
@@ -47,9 +47,9 @@ const task = (n: number, patch: Record<string, unknown> = {}) => ({
 	next: ["in-progress", "blocked"],
 	...patch,
 });
-const view = (patch: Record<string, unknown> = {}): EndoDevelopWorkspaceViewV0 =>
+const view = (patch: Record<string, unknown> = {}): EndoDevelopWorkspaceViewV1 =>
 	({
-		schemaVersion: "endo.develop-workspace.v0",
+		schemaVersion: "endo.develop-workspace.v1",
 		available: true,
 		launchId: hex(16, "c"),
 		state: "ready",
@@ -68,7 +68,7 @@ const view = (patch: Record<string, unknown> = {}): EndoDevelopWorkspaceViewV0 =
 		tasks: [task(1), task(2)],
 		selectedTaskId: null,
 		...patch,
-	}) as EndoDevelopWorkspaceViewV0;
+	}) as EndoDevelopWorkspaceViewV1;
 
 describe("the wire gate", () => {
 	it("accepts a well-formed workspace and its mirrors of the protocol's closed lists", () => {
@@ -138,9 +138,9 @@ describe("the wire gate", () => {
 	});
 
 	it("knows the workbench's one constant answer for 'no project', and no other", () => {
-		expect(isNoWorkspace({ available: false, schemaVersion: "endo.develop-workspace.v0" })).toBe(true);
-		expect(isNoWorkspace({ available: false, schemaVersion: "endo.develop-workspace.v0", extra: 1 })).toBe(false);
-		expect(isNoWorkspace({ available: true, schemaVersion: "endo.develop-workspace.v0" })).toBe(false);
+		expect(isNoWorkspace({ available: false, schemaVersion: "endo.develop-workspace.v1" })).toBe(true);
+		expect(isNoWorkspace({ available: false, schemaVersion: "endo.develop-workspace.v1", extra: 1 })).toBe(false);
+		expect(isNoWorkspace({ available: true, schemaVersion: "endo.develop-workspace.v1" })).toBe(false);
 	});
 });
 

@@ -67,7 +67,12 @@ process.stdout.write(
 		readBack:
 			mine === undefined ? null : { status: mine.status, revision: mine.revision, history: mine.history.length },
 		references: again.tasks.flatMap((t) =>
-			t.sessions.map((s) => ({ task: t.id, source: s.source, launchId: s.launchId, relation: s.relation })),
+			t.sessions.map((s) => ({
+				task: t.id,
+				source: s.source,
+				launchId: s.source === "pi-live" ? s.launchId : null,
+				relation: s.relation,
+			})),
 		),
 	})}\n`,
 );

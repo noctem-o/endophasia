@@ -1,4 +1,9 @@
-// The DEVELOP task store: `<root>/develop/tasks.json` (`endo.develop-tasks.v0`, protocol/develop-tasks.ts).
+// The DEVELOP task store: `<root>/develop/tasks.json` (`endo.develop-tasks.v0` or `.v1`, protocol/develop-tasks.ts).
+//
+// Versions. Both are read; every operation works on the v1 model. A file is written in the version it was READ in: a v0 file stays v0 while
+// it holds only what v0 can say (a change v0 cannot record, an `omp-saved` reference, is refused `upgrade-required`), and becomes v1 only
+// through `upgrade()`, the operator's explicit act. A v1 file is always written as v1. A missing file is created as v1. Nothing is migrated
+// by being read.
 //
 // This is operator metadata, kept SEPARATE from the evidence it sits beside: it is not an event, is never appended to the event log, and
 // changes nothing the log, the ledger, the capture store or any intervention record holds. Deleting `develop/` loses tasks and nothing else.
@@ -37,19 +42,27 @@ import { dirname, join } from "node:path";
 import {
 	checkEndoDevelopTextV0,
 	ENDO_DEVELOP_TASK_LIMITS_V0,
+	ENDO_DEVELOP_TASKS_SCHEMA_V0,
+	ENDO_DEVELOP_TASKS_SCHEMA_V1,
+	ENDO_LINK_ID_PATTERN_V0,
 	ENDO_PROJECT_ID_PATTERN_V0,
 	ENDO_TASK_ID_PATTERN_V0,
+	type EndoDevelopOmpSessionRefV1,
+	type EndoDevelopPiSessionRefV1,
 	type EndoDevelopProjectV0,
-	type EndoDevelopSessionRefV0,
 	type EndoDevelopTaskStatusV0,
 	type EndoDevelopTasksFileV0,
-	type EndoDevelopTaskV0,
+	type EndoDevelopTasksFileV1,
+	type EndoDevelopTaskV1,
 	type EndoDevelopUnreadableReasonV0,
-	emptyEndoDevelopTasksFileV0,
+	emptyEndoDevelopTasksFileV1,
 	endoDevelopNextStatusesV0,
+	endoDevelopSessionKeyV1,
+	endoDevelopTasksAsV0,
 	isEndoDevelopTaskStatusV0,
-	readEndoDevelopTasksFileV0,
-	validateEndoDevelopTasksFileV0,
+	readEndoDevelopTasksFileV1,
+	upgradeEndoDevelopTasksV0toV1,
+	validateEndoDevelopTasksFileV1,
 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { writeExactSyncV0 } from "./log.ts";
@@ -61,8 +74,12 @@ const LOCK_NUMBER = /^tasks\.lock\.([1-9][0-9]{0,14})$/;
 const LOCK_TEMPORARY = /^tasks\.lock\.tmp-[0-9]+-[0-9a-f]{12}$/;
 const TEMPORARY = /^tasks\.json\.tmp-[0-9]+-[0-9a-f]{12}$/;
 
+/** The version a file is in on disk (or, for a missing file, the version it will be created in). */
+export type EndoDevelopTasksFormatV1 = typeof ENDO_DEVELOP_TASKS_SCHEMA_V0 | typeof ENDO_DEVELOP_TASKS_SCHEMA_V1;
+
+/** `file` is always the v1 model (a v0 file read through the pure v0 → v1 projection); `format` is what is on disk, unchanged by the read. */
 export type EndoTasksReadV0 =
-	| { ok: true; file: EndoDevelopTasksFileV0; exists: boolean }
+	| { ok: true; file: EndoDevelopTasksFileV1; format: EndoDevelopTasksFormatV1; exists: boolean }
 	| { ok: false; reason: EndoDevelopUnreadableReasonV0 };
 
 /** Why a change was not made. Nothing was written for any of them. */
@@ -75,10 +92,12 @@ export type EndoTasksRefusalV0 =
 	| "duplicate"
 	| "unreadable"
 	| "busy"
-	| "storage-failed";
+	| "storage-failed"
+	/** The change needs a v1 file and the file is v0: `endo task upgrade --apply` first. */
+	| "upgrade-required";
 
 export type EndoTasksResultV0<T> =
-	| { ok: true; value: T; file: EndoDevelopTasksFileV0 }
+	| { ok: true; value: T; file: EndoDevelopTasksFileV1 }
 	| { ok: false; code: EndoTasksRefusalV0; reason?: EndoDevelopUnreadableReasonV0 };
 
 export interface EndoDevelopTasksStoreOptionsV0 {
@@ -98,8 +117,15 @@ const sleep = (ms: number): void => {
 };
 const errno = (error: unknown): string | undefined => (error as NodeJS.ErrnoException | undefined)?.code;
 const hex = (bytes: number): string => randomBytes(bytes).toString("hex");
-const clone = (file: EndoDevelopTasksFileV0): EndoDevelopTasksFileV0 =>
-	JSON.parse(JSON.stringify(file)) as EndoDevelopTasksFileV0;
+const clone = (file: EndoDevelopTasksFileV1): EndoDevelopTasksFileV1 =>
+	JSON.parse(JSON.stringify(file)) as EndoDevelopTasksFileV1;
+
+/** What an upgrade did: `unchanged` when the file was already v1 (or missing: it will be created as v1), and nothing was written. */
+export interface EndoTasksUpgradeV1 {
+	from: EndoDevelopTasksFormatV1;
+	to: typeof ENDO_DEVELOP_TASKS_SCHEMA_V1;
+	unchanged: boolean;
+}
 
 export class DevelopTasksStoreV0 {
 	readonly #dir: string;
@@ -124,10 +150,16 @@ export class DevelopTasksStoreV0 {
 	read(): EndoTasksReadV0 {
 		try {
 			const directory = lstatSync(this.#dir, { throwIfNoEntry: false });
-			if (directory === undefined) return { ok: true, file: emptyEndoDevelopTasksFileV0(), exists: false };
+			const absent = {
+				ok: true as const,
+				file: emptyEndoDevelopTasksFileV1(),
+				format: ENDO_DEVELOP_TASKS_SCHEMA_V1 as EndoDevelopTasksFormatV1,
+				exists: false,
+			};
+			if (directory === undefined) return absent;
 			if (!directory.isDirectory()) return { ok: false, reason: "unsafe-path" };
 			const entry = lstatSync(this.path, { throwIfNoEntry: false });
-			if (entry === undefined) return { ok: true, file: emptyEndoDevelopTasksFileV0(), exists: false };
+			if (entry === undefined) return absent;
 			if (!entry.isFile()) return { ok: false, reason: "unsafe-path" };
 			if (entry.size > ENDO_DEVELOP_TASK_LIMITS_V0.maxFileBytes) return { ok: false, reason: "too-large" };
 			// O_NOFOLLOW: a link swapped in after the check is refused by the system. The size is checked again on the descriptor.
@@ -154,10 +186,18 @@ export class DevelopTasksStoreV0 {
 			} catch {
 				return { ok: false, reason: "malformed" };
 			}
-			const read = readEndoDevelopTasksFileV0(parsed);
+			const read = readEndoDevelopTasksFileV1(parsed);
 			if (!read.ok)
 				return { ok: false, reason: read.kind === "unsupported-version" ? "unsupported-version" : "invalid" };
-			return { ok: true, file: read.value, exists: true };
+			// A v0 file is shown through the pure projection; the bytes on disk are untouched, and stay v0 until the operator upgrades.
+			if (read.value.schemaVersion === ENDO_DEVELOP_TASKS_SCHEMA_V0)
+				return {
+					ok: true,
+					file: upgradeEndoDevelopTasksV0toV1(read.value),
+					format: ENDO_DEVELOP_TASKS_SCHEMA_V0,
+					exists: true,
+				};
+			return { ok: true, file: read.value, format: ENDO_DEVELOP_TASKS_SCHEMA_V1, exists: true };
 		} catch (error) {
 			return { ok: false, reason: errno(error) === "ELOOP" || errno(error) === "ENOTDIR" ? "unsafe-path" : "io" };
 		}
@@ -302,7 +342,7 @@ export class DevelopTasksStoreV0 {
 		}
 	}
 
-	#replace(file: EndoDevelopTasksFileV0): boolean {
+	#replace(file: EndoDevelopTasksFileV0 | EndoDevelopTasksFileV1): boolean {
 		const text = `${canonicalEndoJsonV0(file as never)}\n`;
 		const bytes = Buffer.from(text, "utf8");
 		if (bytes.length > ENDO_DEVELOP_TASK_LIMITS_V0.maxFileBytes) return false;
@@ -357,10 +397,14 @@ export class DevelopTasksStoreV0 {
 	}
 
 	/**
-	 * Apply ONE change to a fresh read of the file. `change` receives a private copy; it returns the value to answer, or a refusal. The
-	 * result is validated as a whole, so this module never writes a file it would not itself read.
+	 * Apply ONE change to a fresh read of the file. `change` receives a private copy of the v1 model and the version on disk; it returns the
+	 * value to answer, or a refusal. The result is validated as a whole in the version it will be written in, so this module never writes a
+	 * file it would not itself read. It is written in the version it was read in, unless `upgrade` (the operator's explicit act) says v1.
 	 */
-	#mutate<T>(change: (draft: EndoDevelopTasksFileV0, now: number) => Draft<T>): EndoTasksResultV0<T> {
+	#mutate<T>(
+		change: (draft: EndoDevelopTasksFileV1, now: number, format: EndoDevelopTasksFormatV1) => Draft<T>,
+		options: { upgrade?: boolean } = {},
+	): EndoTasksResultV0<T> {
 		if (!this.#ensureDirectory()) return { ok: false, code: "unreadable", reason: "unsafe-path" };
 		const release = this.#acquire();
 		if (release === "busy") return fail("busy");
@@ -370,17 +414,24 @@ export class DevelopTasksStoreV0 {
 			const read = this.read();
 			if (!read.ok) return { ok: false, code: "unreadable", reason: read.reason };
 			const draft = clone(read.file);
-			const made = change(draft, this.#now());
+			const made = change(draft, this.#now(), read.format);
 			if (!made.ok) return made;
 			if (made.unchanged === true) return { ok: true, value: made.value, file: read.file };
 			draft.revision = read.file.revision + 1;
-			let checked: EndoDevelopTasksFileV0;
+			let checked: EndoDevelopTasksFileV1;
 			try {
-				checked = validateEndoDevelopTasksFileV0(draft);
+				checked = validateEndoDevelopTasksFileV1(draft);
 			} catch {
 				return fail("bad-request");
 			}
-			if (!this.#replace(checked)) return fail("storage-failed");
+			let written: EndoDevelopTasksFileV0 | EndoDevelopTasksFileV1 = checked;
+			if (read.format === ENDO_DEVELOP_TASKS_SCHEMA_V0 && options.upgrade !== true) {
+				// Still v0 on disk: written as v0, which it can be only while it says nothing v0 cannot.
+				const asV0 = endoDevelopTasksAsV0(checked);
+				if (asV0 === null) return fail("upgrade-required");
+				written = asV0;
+			}
+			if (!this.#replace(written)) return fail("storage-failed");
 			return { ok: true, value: made.value, file: checked };
 		} finally {
 			release();
@@ -419,7 +470,7 @@ export class DevelopTasksStoreV0 {
 		projectId: string,
 		input: { title: unknown; description?: unknown; acceptance?: unknown },
 		options: { select?: boolean } = {},
-	): EndoTasksResultV0<EndoDevelopTaskV0> {
+	): EndoTasksResultV0<EndoDevelopTaskV1> {
 		const title = checkEndoDevelopTextV0("title", input.title);
 		const description = checkEndoDevelopTextV0("text", input.description ?? "");
 		const acceptance = checkEndoDevelopTextV0("text", input.acceptance ?? "");
@@ -429,7 +480,7 @@ export class DevelopTasksStoreV0 {
 			const project = draft.projects.find((p) => p.id === projectId);
 			if (project === undefined) return fail("not-found");
 			if (draft.tasks.length >= ENDO_DEVELOP_TASK_LIMITS_V0.maxTasks) return fail("limit");
-			const task: EndoDevelopTaskV0 = {
+			const task: EndoDevelopTaskV1 = {
 				id: `endo.task.${hex(16)}`,
 				projectId,
 				title: title.text,
@@ -459,7 +510,7 @@ export class DevelopTasksStoreV0 {
 		taskId: string,
 		expectedRevision: number,
 		patch: { title?: unknown; description?: unknown; acceptance?: unknown },
-	): EndoTasksResultV0<EndoDevelopTaskV0> {
+	): EndoTasksResultV0<EndoDevelopTaskV1> {
 		const parts: Partial<Record<"title" | "description" | "acceptance", string>> = {};
 		for (const [key, rule] of [
 			["title", "title"],
@@ -490,7 +541,7 @@ export class DevelopTasksStoreV0 {
 		expectedRevision: number,
 		to: unknown,
 		note: unknown,
-	): EndoTasksResultV0<EndoDevelopTaskV0> {
+	): EndoTasksResultV0<EndoDevelopTaskV1> {
 		if (!isEndoDevelopTaskStatusV0(to) || !Number.isSafeInteger(expectedRevision)) return fail("bad-request");
 		const checkedNote =
 			note === undefined || note === null ? { ok: true as const, text: "" } : checkEndoDevelopTextV0("note", note);
@@ -533,28 +584,55 @@ export class DevelopTasksStoreV0 {
 	}
 
 	/**
-	 * Add the explicit reference. Idempotent for the same session in the same launch (no second reference, and nothing is written). The caller
-	 * supplies the reference from the broker's OWN state; nothing the page sent becomes part of it.
+	 * Add the explicit reference. Idempotent per association (`endoDevelopSessionKeyV1`): the same Pi session in the same launch, or the same
+	 * OMP session in the same directory scope, is not referenced twice and nothing is written. The caller supplies the reference from a trusted
+	 * host's or observer's OWN facts; nothing a page sent becomes part of it. An `omp-saved` reference on a v0 file is `upgrade-required`.
 	 */
 	linkSession(
 		projectId: string,
 		taskId: string,
 		expectedRevision: number,
-		ref: Omit<EndoDevelopSessionRefV0, "linkId" | "linkedAtMs">,
-	): EndoTasksResultV0<EndoDevelopTaskV0> {
+		ref:
+			| Omit<EndoDevelopPiSessionRefV1, "linkId" | "linkedAtMs">
+			| Omit<EndoDevelopOmpSessionRefV1, "linkId" | "linkedAtMs">,
+	): EndoTasksResultV0<EndoDevelopTaskV1> {
 		if (!Number.isSafeInteger(expectedRevision)) return fail("bad-request");
-		return this.#mutate((draft, now) => {
+		const key = endoDevelopSessionKeyV1(ref);
+		return this.#mutate((draft, now, format) => {
 			const task = this.#taskOf(draft, projectId, taskId);
 			if (task === null) return fail("not-found");
 			if (task.revision !== expectedRevision) return fail("stale-revision");
-			if (task.sessions.some((s) => s.sessionId === ref.sessionId && s.launchId === ref.launchId))
+			if (task.sessions.some((s) => endoDevelopSessionKeyV1(s) === key))
 				return { ok: true, value: task, unchanged: true };
+			// Said before anything else is decided, so the operator is told what to do rather than that a limit or a shape was wrong.
+			if (ref.source !== "pi-live" && format === ENDO_DEVELOP_TASKS_SCHEMA_V0) return fail("upgrade-required");
 			if (task.sessions.length >= ENDO_DEVELOP_TASK_LIMITS_V0.maxSessions) return fail("limit");
-			task.sessions.push({ ...ref, linkId: hex(8), linkedAtMs: now });
+			task.sessions.push({ ...ref, linkId: hex(8), linkedAtMs: now } as EndoDevelopTaskV1["sessions"][number]);
 			task.revision += 1;
 			task.updatedAtMs = now;
 			return { ok: true, value: task };
 		});
+	}
+
+	/**
+	 * The operator's explicit upgrade of a v0 file to v1: one locked re-read, the pure v0 → v1 projection, validation, and one atomic replacement.
+	 * Task revisions, histories, selections and references are kept exactly; the file revision increases by one, as for every write. A v1 file
+	 * (or a missing one) is `unchanged` and nothing is written. `expectedRevision`, when given, is the file revision the operator inspected.
+	 */
+	upgrade(expectedRevision?: number): EndoTasksResultV0<EndoTasksUpgradeV1> {
+		if (expectedRevision !== undefined && !Number.isSafeInteger(expectedRevision)) return fail("bad-request");
+		return this.#mutate(
+			(draft, _now, format) => {
+				if (expectedRevision !== undefined && draft.revision !== expectedRevision) return fail("stale-revision");
+				const value: EndoTasksUpgradeV1 = {
+					from: format,
+					to: ENDO_DEVELOP_TASKS_SCHEMA_V1,
+					unchanged: format !== ENDO_DEVELOP_TASKS_SCHEMA_V0,
+				};
+				return value.unchanged ? { ok: true, value, unchanged: true } : { ok: true, value };
+			},
+			{ upgrade: true },
+		);
 	}
 
 	unlinkSession(
@@ -562,8 +640,8 @@ export class DevelopTasksStoreV0 {
 		taskId: string,
 		expectedRevision: number,
 		linkId: string,
-	): EndoTasksResultV0<EndoDevelopTaskV0> {
-		if (!Number.isSafeInteger(expectedRevision) || !/^[0-9a-f]{16}$/.test(linkId)) return fail("bad-request");
+	): EndoTasksResultV0<EndoDevelopTaskV1> {
+		if (!Number.isSafeInteger(expectedRevision) || !ENDO_LINK_ID_PATTERN_V0.test(linkId)) return fail("bad-request");
 		return this.#mutate((draft, now) => {
 			const task = this.#taskOf(draft, projectId, taskId);
 			if (task === null) return fail("not-found");
@@ -577,7 +655,7 @@ export class DevelopTasksStoreV0 {
 		});
 	}
 
-	#taskOf(draft: EndoDevelopTasksFileV0, projectId: string, taskId: string): EndoDevelopTaskV0 | null {
+	#taskOf(draft: EndoDevelopTasksFileV1, projectId: string, taskId: string): EndoDevelopTaskV1 | null {
 		return draft.tasks.find((t) => t.id === taskId && t.projectId === projectId) ?? null;
 	}
 }

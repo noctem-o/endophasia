@@ -527,6 +527,71 @@ suite("the operator's journey through a project and its tasks (Instrument)", () 
 	});
 });
 
+suite("a saved OMP reference beside a live Pi one", () => {
+	/** What `endo task link --source omp-saved` records, written through the same store (the CLI path is tested in develop-tasks-v1). */
+	const linkOmp = (api: Api, sessionId: string) => {
+		const store = new DevelopTasksStoreV0(api.state.root);
+		const read = store.read();
+		if (!read.ok) throw new Error("unreadable");
+		const task = read.file.tasks[0]!;
+		const done = store.linkSession(api.state.project!, task.id, task.revision, {
+			source: "omp-saved",
+			sessionId,
+			scope: `omp-dir.${"5".repeat(32)}`,
+			observedFormat: 3,
+			linkedBy: "operator",
+			via: "cli",
+		});
+		if (!done.ok) throw new Error(done.code);
+	};
+	const OMP_ID = "019a0000-0000-7000-8000-0000c0ffee42";
+
+	for (const [appearance, width, height] of [
+		["instrument", 1440, 900],
+		["field", 1440, 900],
+		["instrument", 390, 844],
+	] as const)
+		it(`shows Pi as current and OMP as a saved reference, never current, in ${appearance} at ${width} px`, async () => {
+			const api = await launch(width, height);
+			const { page } = api;
+			if (appearance === "field") {
+				await page.click("[data-testid=appearance-field]");
+				await page.waitFor("document.querySelector('#develop-workspace').dataset.appearance === 'field'");
+			}
+			await ready(page);
+			await openTab(page);
+			await create(page, "Cross-harness task");
+			await page.click("[data-testid=task-link]");
+			await page.waitFor("document.querySelector('[data-testid=task-session-ref]')");
+			linkOmp(api, OMP_ID);
+			await page.click("[data-testid=tasks-refresh]");
+			await page.waitFor("document.querySelectorAll('[data-testid=task-session-ref]').length === 2");
+			const refs = await page.eval<string[][]>(
+				"[...document.querySelectorAll('[data-testid=task-session-ref]')].map(r => [r.dataset.source, r.dataset.relation, r.querySelector('.chip-ref').textContent])",
+			);
+			expect(refs).toEqual([
+				["pi-live", "current", "Pi · current"],
+				["omp-saved", "saved", "OMP · saved reference"],
+			]);
+			const omp = await page.text("[data-testid=task-session-ref][data-source=omp-saved]");
+			expect(omp).toContain("omp c0ffee42");
+			expect(omp).toContain("from the CLI");
+			expect(omp).toContain("neither connects to nor controls it");
+			// The full OMP id is never on the page; the Pi link stays available only for the session this workbench serves.
+			expect(await page.eval<boolean>(`document.body.textContent.includes(${JSON.stringify(OMP_ID)})`)).toBe(false);
+			expect(await page.eval<boolean>("document.querySelector('[data-testid=task-link]').disabled")).toBe(true);
+			expect(await noOverflow(page)).toBe(true);
+			// Its Remove link is an ordinary button, reachable from the keyboard.
+			const removable = await page.eval<boolean>(
+				"(() => { const b = document.querySelector('[data-testid=task-session-ref][data-source=omp-saved] button'); if (!b) return false; b.focus(); return document.activeElement === b && b.tabIndex >= 0; })()",
+			);
+			expect(removable).toBe(true);
+			await shot(page, `tasks-${appearance}-omp-ref-${width}`);
+			noAgentTraffic(api);
+			expect(page.seen.problems).toEqual([]);
+		});
+});
+
 suite("the same journey in Field", () => {
 	it("creates and chooses tasks in the Field appearance, with the conversation, STOP and the draft where they were", async () => {
 		const api = await launch(1440, 900);

@@ -1,4 +1,6 @@
-// The DEVELOP project and task records (`endo.develop-tasks.v0`) and the shape the workbench shows of them (`endo.develop-workspace.v0`).
+// The DEVELOP project and task records (`endo.develop-tasks.v0` and `.v1`) and the shape the workbench shows of them
+// (`endo.develop-workspace.v1`). v1 differs from v0 in one place only: a session reference is a closed union of two sources, the live Pi
+// reference exactly as v0 records it and a saved Oh My Pi reference (see "v1" below). docs/develop-tasks.md has the compatibility policy.
 //
 // A project is not a session, a task is not a prompt, a worktree is not an agent, and an agent finishing is not a task done. These records
 // are the operator's own metadata about their work. They are independent of Pi, DSH, Codex or any runtime, they are not evidence, they are
@@ -10,6 +12,7 @@
 // the operator's own words and may be private; they are shown only to a paired workbench page and never through `endo studio`.
 
 import { isWellFormedKindV0 } from "./identity.ts";
+import { ENDO_OMP_SELECTOR_PATTERN_V0, ENDO_OMP_SESSION_ID_PATTERN_V0 } from "./omp-observation.ts";
 import {
 	defineEndoVersionTableV0,
 	EndoInvalidRecordV0,
@@ -18,7 +21,10 @@ import {
 } from "./versioned.ts";
 
 export const ENDO_DEVELOP_TASKS_SCHEMA_V0 = "endo.develop-tasks.v0";
+export const ENDO_DEVELOP_TASKS_SCHEMA_V1 = "endo.develop-tasks.v1";
+/** The v0 read model. No longer served (the workbench serves v1); kept so its constant and types stay stable for readers of old code. */
 export const ENDO_DEVELOP_WORKSPACE_SCHEMA_V0 = "endo.develop-workspace.v0";
+export const ENDO_DEVELOP_WORKSPACE_SCHEMA_V1 = "endo.develop-workspace.v1";
 
 /** Closed bounds. The whole file is at most `maxFileBytes`, so a rewrite stays small and a hostile or damaged file stays cheap to refuse. */
 export const ENDO_DEVELOP_TASK_LIMITS_V0 = Object.freeze({
@@ -263,7 +269,11 @@ function change(v: unknown): EndoDevelopStatusChangeV0 {
 	};
 }
 
-function task(v: unknown): EndoDevelopTaskV0 {
+/** A task under one version's reference reader: everything but the references is the same in v0 and v1. */
+function taskOf<R extends { linkId: string }>(
+	v: unknown,
+	refOf: (x: unknown) => R,
+): Omit<EndoDevelopTaskV0, "sessions"> & { sessions: R[] } {
 	const r = closed(
 		v,
 		[
@@ -289,7 +299,7 @@ function task(v: unknown): EndoDevelopTaskV0 {
 		bad("a task's history is not a bounded list");
 	if (!Array.isArray(r.sessions) || r.sessions.length > ENDO_DEVELOP_TASK_LIMITS_V0.maxSessions)
 		bad("a task's sessions are not a bounded list");
-	const sessions = (r.sessions as unknown[]).map(ref);
+	const sessions = (r.sessions as unknown[]).map(refOf);
 	if (new Set(sessions.map((s) => s.linkId)).size !== sessions.length) bad("a task repeats a session reference");
 	return {
 		id: r.id as string,
@@ -339,13 +349,28 @@ function project(v: unknown): EndoDevelopProjectV0 {
 }
 
 export function validateEndoDevelopTasksFileV0(value: unknown): EndoDevelopTasksFileV0 {
+	const body = fileOf(value, ENDO_DEVELOP_TASKS_SCHEMA_V0, ref);
+	return { schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V0, ...body };
+}
+
+/** The parts of a file both versions share, under one version's reference reader. `schemaVersion` must be exactly `schema`. */
+function fileOf<R extends { linkId: string }>(
+	value: unknown,
+	schema: string,
+	refOf: (x: unknown) => R,
+): {
+	revision: number;
+	projects: EndoDevelopProjectV0[];
+	tasks: (Omit<EndoDevelopTaskV0, "sessions"> & { sessions: R[] })[];
+} {
 	const r = closed(value, ["schemaVersion", "revision", "projects", "tasks"], "the task file");
+	if (r.schemaVersion !== schema) return bad("the task file is of another version");
 	const limits = ENDO_DEVELOP_TASK_LIMITS_V0;
 	if (!Array.isArray(r.projects) || r.projects.length > limits.maxProjects)
 		return bad("the projects are not a bounded list");
 	if (!Array.isArray(r.tasks) || r.tasks.length > limits.maxTasks) return bad("the tasks are not a bounded list");
 	const projects = (r.projects as unknown[]).map(project);
-	const tasks = (r.tasks as unknown[]).map(task);
+	const tasks = (r.tasks as unknown[]).map((t) => taskOf(t, refOf));
 	if (new Set(projects.map((p) => p.id)).size !== projects.length) return bad("a project id repeats");
 	if (new Set(tasks.map((t) => t.id)).size !== tasks.length) return bad("a task id repeats");
 	const known = new Set(projects.map((p) => p.id));
@@ -353,15 +378,181 @@ export function validateEndoDevelopTasksFileV0(value: unknown): EndoDevelopTasks
 	for (const p of projects)
 		if (p.selectedTaskId !== null && !tasks.some((t) => t.id === p.selectedTaskId && t.projectId === p.id))
 			return bad("a project selects a task that is not its own");
-	return { schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V0, revision: count(r.revision, "revision"), projects, tasks };
+	return { revision: count(r.revision, "revision"), projects, tasks };
 }
 
-/** The versions of the file this reader knows. An unknown version is refused whole: it is never read as the version it resembles. */
+/** The v0-only table: what a build from before v1 reads. Kept so a test can show such a build refuses a v1 file whole. */
 export const ENDO_DEVELOP_TASKS_VERSIONS_V0 = defineEndoVersionTableV0<EndoDevelopTasksFileV0>("endo.develop-tasks", [
 	[ENDO_DEVELOP_TASKS_SCHEMA_V0, validateEndoDevelopTasksFileV0],
 ]);
 export const readEndoDevelopTasksFileV0 = (value: unknown) =>
 	readEndoVersionedV0(ENDO_DEVELOP_TASKS_VERSIONS_V0, value);
+
+// ---- v1: source-aware references -----------------------------------------------------------------------------------------------------
+//
+// Compatibility policy (docs/develop-tasks.md, "Versions"):
+// - v1 is v0 with one change: `sessions` holds a closed union of `pi-live` (byte for byte the v0 reference) and `omp-saved`.
+// - This build reads both. A v0 file is read as v0 and, while it holds only what v0 can say, is written back as v0: existing workflows
+//   (the workbench, `endo task status`) keep working on it unchanged. It becomes v1 only by the operator's `endo task upgrade --apply`.
+// - Recording an `omp-saved` reference needs a v1 file (`upgrade-required` otherwise). A v1 file is never written as v0.
+// - A new file is created as v1. A build from before v1 refuses a v1 file as `unsupported-version` and so never writes over it.
+
+/**
+ * Every source a v1 file can record. Closed. LIVE sources are the ones a launch's host may speak for (a connected session, a launch, an
+ * attachment); OBSERVED sources are recorded only from an operator's explicit choice of a session an observer established. A source is in
+ * exactly one of the two lists, and is never inferred from an id.
+ */
+export const ENDO_DEVELOP_SESSION_SOURCES_V1 = ["pi-live", "omp-saved"] as const;
+export type EndoDevelopSessionSourceV1 = (typeof ENDO_DEVELOP_SESSION_SOURCES_V1)[number];
+export const ENDO_DEVELOP_LIVE_SOURCES_V1 = ["pi-live"] as const;
+export const ENDO_DEVELOP_OBSERVED_SOURCES_V1 = ["omp-saved"] as const;
+export const isEndoDevelopLiveSourceV1 = (value: unknown): value is (typeof ENDO_DEVELOP_LIVE_SOURCES_V1)[number] =>
+	typeof value === "string" && (ENDO_DEVELOP_LIVE_SOURCES_V1 as readonly string[]).includes(value);
+export const isEndoDevelopObservedSourceV1 = (
+	value: unknown,
+): value is (typeof ENDO_DEVELOP_OBSERVED_SOURCES_V1)[number] =>
+	typeof value === "string" && (ENDO_DEVELOP_OBSERVED_SOURCES_V1 as readonly string[]).includes(value);
+
+/** The OMP session format an `omp-saved` reference was observed in. The observer reads format 3 only. */
+export const ENDO_DEVELOP_OMP_FORMAT_V1 = 3;
+/**
+ * The scope of an `omp-saved` reference: which OMP session directory the operator named, as a digest of its resolved path (never the path).
+ * Two directories holding copies of one session id are two scopes, so their references are never merged into one.
+ */
+export const ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1 = /^omp-dir\.[0-9a-f]{32}$/;
+
+/** A live Pi reference: exactly the v0 record, with exactly the v0 meaning (a claim scoped to the launch that made it). */
+export type EndoDevelopPiSessionRefV1 = EndoDevelopSessionRefV0;
+
+/**
+ * A saved Oh My Pi reference. It records ONE claim: at `linkedAtMs` the operator, from the `endo` CLI, asked for this task to be linked to the
+ * OMP session whose saved header carries `sessionId`, which Endophasia's read-only observer found exactly once, readable and of format
+ * `observedFormat`, in the directory whose scope is `scope`. The session belongs to OMP. The reference is historical by construction: it has no
+ * launch, no attachment and no connection, it is never `current`, and nothing reads it to resume, prompt, steer, queue, stop or select anything.
+ *   source identity:        source, sessionId (OMP's own id from the header), scope
+ *   observation provenance: observedFormat (what the observer validated)
+ *   operator attribution:   linkedAtMs, linkedBy, via
+ */
+export interface EndoDevelopOmpSessionRefV1 {
+	linkId: string;
+	source: "omp-saved";
+	sessionId: string;
+	scope: string;
+	observedFormat: typeof ENDO_DEVELOP_OMP_FORMAT_V1;
+	linkedAtMs: number;
+	linkedBy: "operator";
+	via: "cli";
+}
+
+export type EndoDevelopSessionRefV1 = EndoDevelopPiSessionRefV1 | EndoDevelopOmpSessionRefV1;
+
+export interface EndoDevelopTaskV1 extends Omit<EndoDevelopTaskV0, "sessions"> {
+	sessions: EndoDevelopSessionRefV1[];
+}
+
+export interface EndoDevelopTasksFileV1 {
+	schemaVersion: typeof ENDO_DEVELOP_TASKS_SCHEMA_V1;
+	revision: number;
+	projects: EndoDevelopProjectV0[];
+	tasks: EndoDevelopTaskV1[];
+}
+
+export const emptyEndoDevelopTasksFileV1 = (): EndoDevelopTasksFileV1 => ({
+	schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V1,
+	revision: 0,
+	projects: [],
+	tasks: [],
+});
+
+/** Whether `id` is an OMP session id an `omp-saved` reference may carry: OMP's grammar, and never an Endophasia Studio selector. */
+export const isEndoDevelopOmpSessionIdV1 = (id: unknown): id is string =>
+	typeof id === "string" && ENDO_OMP_SESSION_ID_PATTERN_V0.test(id) && !ENDO_OMP_SELECTOR_PATTERN_V0.test(id);
+
+function ompRef(r: Record<string, unknown>): EndoDevelopOmpSessionRefV1 {
+	closed(
+		r,
+		["linkId", "source", "sessionId", "scope", "observedFormat", "linkedAtMs", "linkedBy", "via"],
+		"a saved session reference",
+	);
+	if (typeof r.linkId !== "string" || !ENDO_LINK_ID_PATTERN_V0.test(r.linkId)) bad("a session reference has a bad id");
+	if (r.linkedBy !== "operator" || r.via !== "cli") bad("a saved session reference has an unknown attribution");
+	if (!isEndoDevelopOmpSessionIdV1(r.sessionId)) bad("a saved session reference has a bad session id");
+	if (typeof r.scope !== "string" || !ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1.test(r.scope))
+		bad("a saved session reference has a bad scope");
+	if (r.observedFormat !== ENDO_DEVELOP_OMP_FORMAT_V1) bad("a saved session reference has an unknown format");
+	return {
+		linkId: r.linkId as string,
+		source: "omp-saved",
+		sessionId: r.sessionId as string,
+		scope: r.scope as string,
+		observedFormat: ENDO_DEVELOP_OMP_FORMAT_V1,
+		linkedAtMs: stamp(r.linkedAtMs, "linkedAtMs"),
+		linkedBy: "operator",
+		via: "cli",
+	};
+}
+
+/** A v1 reference: dispatched on `source` to exactly one closed reader. An unknown source is refused, never read as one it resembles. */
+function refV1(v: unknown): EndoDevelopSessionRefV1 {
+	if (!isObject(v)) return bad("a session reference is not an object");
+	if (v.source === "pi-live") return ref(v);
+	if (v.source === "omp-saved") return ompRef(v);
+	return bad("a session reference has an unknown source");
+}
+
+export function validateEndoDevelopTasksFileV1(value: unknown): EndoDevelopTasksFileV1 {
+	const body = fileOf(value, ENDO_DEVELOP_TASKS_SCHEMA_V1, refV1);
+	return { schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V1, ...body };
+}
+
+export type EndoDevelopTasksFileAnyV1 = EndoDevelopTasksFileV0 | EndoDevelopTasksFileV1;
+
+/** The versions this build reads. Each by its own validator; an unknown version is refused whole. */
+export const ENDO_DEVELOP_TASKS_VERSIONS_V1 = defineEndoVersionTableV0<EndoDevelopTasksFileAnyV1>(
+	"endo.develop-tasks",
+	[
+		[ENDO_DEVELOP_TASKS_SCHEMA_V0, validateEndoDevelopTasksFileV0],
+		[ENDO_DEVELOP_TASKS_SCHEMA_V1, validateEndoDevelopTasksFileV1],
+	],
+);
+export const readEndoDevelopTasksFileV1 = (value: unknown) =>
+	readEndoVersionedV0(ENDO_DEVELOP_TASKS_VERSIONS_V1, value);
+
+/**
+ * v0 → v1, pure and total: the same revision, projects, tasks, histories, selections and references (a v0 reference IS a v1 `pi-live`
+ * reference), under the v1 version. No field is added, dropped, reordered in meaning or defaulted.
+ */
+export function upgradeEndoDevelopTasksV0toV1(file: EndoDevelopTasksFileV0): EndoDevelopTasksFileV1 {
+	const copy = JSON.parse(JSON.stringify(file)) as Omit<EndoDevelopTasksFileV0, "schemaVersion">;
+	return validateEndoDevelopTasksFileV1({ ...copy, schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V1 });
+}
+
+/**
+ * The v0 file a v1 model is, when it was READ from a v0 file and still says only what v0 can say; null when it holds a reference v0 cannot
+ * record. This is how a v0 file keeps being written as v0. It is never applied to a file that was v1 on disk: v1 is never written as v0.
+ */
+export function endoDevelopTasksAsV0(file: EndoDevelopTasksFileV1): EndoDevelopTasksFileV0 | null {
+	if (file.tasks.some((t) => t.sessions.some((s) => s.source !== "pi-live"))) return null;
+	const copy = JSON.parse(JSON.stringify(file)) as Omit<EndoDevelopTasksFileV1, "schemaVersion">;
+	try {
+		return validateEndoDevelopTasksFileV0({ ...copy, schemaVersion: ENDO_DEVELOP_TASKS_SCHEMA_V0 });
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The idempotence key of an association: the source, then that source's own identity. A Pi reference is keyed by its session AND the launch
+ * that made it (v0's rule); an OMP reference by the directory scope AND OMP's session id. Two sources never share a key, whatever their ids.
+ */
+export const endoDevelopSessionKeyV1 = (
+	ref:
+		| Pick<EndoDevelopPiSessionRefV1, "source" | "sessionId" | "launchId">
+		| Pick<EndoDevelopOmpSessionRefV1, "source" | "sessionId" | "scope">,
+): string =>
+	ref.source === "pi-live"
+		? JSON.stringify(["pi-live", ref.sessionId, ref.launchId])
+		: JSON.stringify(["omp-saved", ref.scope, ref.sessionId]);
 
 // ---- what the workbench shows -------------------------------------------------------------------------------------------------------
 
@@ -425,8 +616,60 @@ export interface EndoDevelopWorkspaceViewV0 {
 	selectedTaskId: string | null;
 }
 
-/** Without `--project` the workbench says so once, constantly, so a page can ask quietly. */
+/** Without `--project` the workbench says so once, constantly, so a page can ask quietly. (v0; the workbench now serves the v1 constant.) */
 export const ENDO_DEVELOP_WORKSPACE_ABSENT_V0 = Object.freeze({
 	available: false,
 	schemaVersion: ENDO_DEVELOP_WORKSPACE_SCHEMA_V0,
 });
+
+// ---- what the workbench shows: v1 ---------------------------------------------------------------------------------------------------
+//
+// `endo.develop-workspace.v1` is v0's read model with the references made source-aware. A page reading v0 refuses a v1 body whole (its
+// gate names the version), so an old page is never shown a reference kind it does not know. The page is given no session id and no path
+// for either source: a label, the relation, and for OMP a short label of the scope.
+
+/** A live Pi reference as the page sees it: exactly v0's. */
+export type EndoDevelopPiSessionRefViewV1 = EndoDevelopSessionRefViewV0;
+
+/**
+ * A saved OMP reference as the page sees it. `relation` is always `saved`: the workbench neither observes nor controls OMP, and it does not
+ * look for the file, so it says nothing about whether the session is still there (the CLI's `endo task show --omp-sessions` does).
+ */
+export interface EndoDevelopOmpSessionRefViewV1 {
+	linkId: string;
+	source: "omp-saved";
+	/** `omp <last 8 characters of the id>`, a label and never a key, or null when the id does not make one. */
+	alias: string | null;
+	/** The first 8 hexadecimal characters of the scope digest: which named directory, as a label. */
+	scopeLabel: string;
+	linkedAtMs: number;
+	linkedBy: "operator";
+	via: "cli";
+	relation: "saved";
+}
+
+export type EndoDevelopSessionRefViewV1 = EndoDevelopPiSessionRefViewV1 | EndoDevelopOmpSessionRefViewV1;
+
+export interface EndoDevelopTaskViewV1 extends Omit<EndoDevelopTaskV1, "sessions"> {
+	sessions: EndoDevelopSessionRefViewV1[];
+	next: EndoDevelopTaskStatusV0[];
+}
+
+export interface EndoDevelopWorkspaceViewV1 extends Omit<EndoDevelopWorkspaceViewV0, "schemaVersion" | "tasks"> {
+	schemaVersion: typeof ENDO_DEVELOP_WORKSPACE_SCHEMA_V1;
+	tasks: EndoDevelopTaskViewV1[];
+}
+
+export const ENDO_DEVELOP_WORKSPACE_ABSENT_V1 = Object.freeze({
+	available: false,
+	schemaVersion: ENDO_DEVELOP_WORKSPACE_SCHEMA_V1,
+});
+
+/** The page's label for an OMP id: its last 8 characters (OMP ids are UUIDv7; the first characters are a time). */
+export const endoDevelopOmpAliasV1 = (sessionId: string): string | null => {
+	const label = sessionId.slice(-8);
+	return label.length >= 4 && /^[0-9A-Za-z._:-]+$/.test(label) ? `omp ${label}` : null;
+};
+/** The label of a scope: the first 8 hexadecimal characters of its digest. */
+export const endoDevelopOmpScopeLabelV1 = (scope: string): string =>
+	scope.slice("omp-dir.".length, "omp-dir.".length + 8);

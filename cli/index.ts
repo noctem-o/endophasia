@@ -6,7 +6,7 @@
  *   node cli/index.ts <status|events|ingest|ledger|artifacts> <root> ...
  *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
- *   node cli/index.ts project <add|list> ...   task <list|add|status> ...   (DEVELOP's project and task metadata; docs/develop-tasks.md)
+ *   node cli/index.ts project <add|list> ...   task <list|add|status|show|link|unlink|upgrade> ...   (DEVELOP's project and task metadata; docs/develop-tasks.md)
  *   node cli/index.ts digest-key id
  *   node cli/index.ts dsh <import|loss-accounting> ...
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
@@ -61,7 +61,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),
 	replay: replayCommand,
 	project: family(PROJECT_COMMANDS_V0, "usage: endo project <add|list> ..."),
-	task: family(TASK_COMMANDS_V0, "usage: endo task <list|add|status> ..."),
+	task: family(TASK_COMMANDS_V0, "usage: endo task <list|add|status|show|link|unlink|upgrade> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(EXPERIMENT_COMMANDS_V0, "usage: endo experiment <run|report> ..."),
 	trajectory: family(TRAJECTORY_COMMANDS_V0, "usage: endo trajectory <show|diff> <store> <session> ..."),

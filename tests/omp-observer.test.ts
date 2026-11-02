@@ -800,6 +800,6 @@ describe("contracts and layering", () => {
 			for (const file of walk(dir).filter((f) => /\.(ts|tsx)$/.test(f)))
 				if (!file.startsWith("adapters/omp/") && specs(read(file)).some((s) => /adapters\/omp\//.test(s)))
 					importers.push(file);
-		expect(importers).toEqual(["cli/studio.ts"]);
+		expect(importers).toEqual(["cli/develop-tasks.ts", "cli/studio.ts"]);
 	});
 });

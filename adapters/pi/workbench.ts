@@ -35,7 +35,7 @@
 // or write other than those two record chains.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { ENDO_DEVELOP_WORKSPACE_ABSENT_V0 } from "../../protocol/develop-tasks.ts";
+import { ENDO_DEVELOP_WORKSPACE_ABSENT_V1 } from "../../protocol/develop-tasks.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import {
@@ -435,7 +435,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (a === "workspace") {
 			if (this.#tasks === null)
 				return b === undefined && request.method === "GET" && request.query === ""
-					? reply(200, ENDO_DEVELOP_WORKSPACE_ABSENT_V0)
+					? reply(200, ENDO_DEVELOP_WORKSPACE_ABSENT_V1)
 					: refuse(404, "not-found");
 			return this.#tasks.handle(request.route, request.method, request.query, request.body);
 		}

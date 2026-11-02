@@ -30,6 +30,23 @@
   [docs/harness-upgrades.md](docs/harness-upgrades.md#changing-the-identity-basis).
 
 ### Added
+- **Source-aware task links: a task can reference an Oh My Pi saved session** (`endo task link --source omp-saved --session <omp-id>
+  --omp-sessions <dir>`). The command reads the named directory with the existing read-only observer and links only when exactly one
+  readable format-3 file there carries that id and every file there was read; a duplicate, an unread file, a Studio selector or a bare
+  id is refused. The reference records OMP's own session id, a scope (a digest of the resolved directory, never the path), the format
+  observed and the operator's attribution (`via: "cli"`). It has no launch, attachment or connection, is shown as **OMP · saved
+  reference** and never as current, and grants no control; OMP is not run and its files are only read. `endo task show
+  [--omp-sessions <dir>]` lists a task's references and, with the directory, whether each OMP session is still found there;
+  `endo task unlink` removes one. Live Pi references are unchanged and are still made only by the workbench that serves the session.
+  See [docs/develop-tasks.md](docs/develop-tasks.md#session-references).
+- **`endo.develop-tasks.v1`, with an explicit upgrade.** v1 is v0 with one change: a session reference is a closed union of `pi-live`
+  (byte for byte the v0 record) and `omp-saved`. This build reads both; a v0 file is never rewritten by a read and keeps being written as
+  v0 for every change v0 can record, so existing workbench and CLI workflows are unaffected. `endo task upgrade` is a dry run that
+  reports the file's version and contents; `endo task upgrade --apply` rewrites it once, atomically, as v1 (task revisions kept, file
+  revision +1). Linking an OMP session on a v0 file answers `upgrade-required`. A new store is created as v1. Builds from before v1 refuse a
+  v1 file as `unsupported-version` and never write over it; keep a copy of `develop/tasks.json` if you may go back to one. The workbench's
+  read model is now `endo.develop-workspace.v1` (source-aware references; the page refuses a v0 body). `endo project list` prints the
+  file's `format`. See [docs/develop-tasks.md](docs/develop-tasks.md#versions-and-the-upgrade).
 - **Oh My Pi saved sessions in DEVELOP** (`endo studio --omp-sessions <dir>`). This is the first real non-Pi session source. Studio reads
   OMP's saved JSONL sessions (format 3, title slot v1, checked against the local files of the installed OMP 18.14.1, which record 18.13.3 and 18.14.1) from the directory the operator names,
   and shows them in DEVELOP as the neutral surface's `omp-saved` source. Every entry is externally owned and recorded, with no control

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+- **A Ctrl-C at the very end of Studio's shutdown no longer kills it by the default signal action.** Studio keeps its SIGINT and SIGTERM
+  listeners until the end, but Node removes them while it tears the process down after the event loop drains, so a signal landing in that
+  instant ended the process with `signal: SIGINT` instead of status 0 (a slow CI runner hit this with the repeated-signal test). Studio
+  now exits at the moment the loop drains (`beforeExit`), which still never happens while something leaked holds the loop, so a leak
+  remains visible as a Studio that does not end.
+
 ### Changed
 - **`endo doctor` labels a recorded capability list that describes another identity.** When the installed Pi's identity differs
   from the recorded one, or is on another identity basis and so cannot be compared, the listed capabilities are headed "as

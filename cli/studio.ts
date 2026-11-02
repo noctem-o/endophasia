@@ -181,4 +181,9 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 	process.stdout.write(`Endophasia Studio (read-only, loopback only): ${server.baseUrl}/\n`);
 	await stopped;
 	process.stderr.write("studio: stopped\n");
+	// The signal listeners stay attached until the end, but Node removes them while it tears the process down after the event loop has
+	// drained, and a Ctrl-C landing in that last instant would then kill the process by the default action (status: signal SIGINT). So the
+	// process exits at the very moment the loop drains: `beforeExit` is emitted only when nothing is left holding the loop, so a leaked
+	// socket, timer or promise still shows as a Studio that does not end, exactly as before; it is not hidden by this exit.
+	process.once("beforeExit", () => process.exit(0));
 }

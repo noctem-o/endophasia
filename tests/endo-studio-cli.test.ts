@@ -359,6 +359,25 @@ describe("a launch from a checkout", () => {
 		expect(studio.stderr()).not.toMatch(/error|unhandled/i);
 	}, 60_000);
 
+	it("a Ctrl-C that keeps arriving through the very end of the shutdown never kills it by the default action", async () => {
+		// Signals sent continuously from the first SIGINT until the process is gone, so some land after "studio: stopped", while the
+		// process ends. Before the fix every run of this was killed by SIGINT; a slow CI runner hit the same window with four signals.
+		for (let run = 0; run < 3; run += 1) {
+			const studio = await launch(["--root", populated()], sandbox(`signals-end-${run}`));
+			let gone = false;
+			void studio.exited.then(() => {
+				gone = true;
+			});
+			studio.signal("SIGINT");
+			while (!gone) {
+				studio.signal("SIGINT");
+				await new Promise((resolve) => setImmediate(resolve));
+			}
+			expect(await studio.exited).toEqual({ code: 0, signal: null });
+			expect(studio.stderr().match(/studio: stopped/g)).toHaveLength(1);
+		}
+	}, 60_000);
+
 	it("runs with an explicit store and key file where the environment has no HOME or XDG_DATA_HOME, as a container may", async () => {
 		const root = populated();
 		const keyFile = join(scratch, "bare-env", "studio.key");

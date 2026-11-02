@@ -48,7 +48,14 @@ describe("what loads when", () => {
 
 describe("the command and the host end nothing early and say nothing they should not", () => {
 	it("neither Studio nor the host calls process.exit, so cleanup is never bypassed (cli/index.ts, which ends a failed command, may)", () => {
-		for (const file of ["cli/studio.ts", "cockpit-http/host.ts", "cockpit-http/launch.ts"])
+		// The one exception: Studio exits at `beforeExit`, which Node emits only once the event loop has drained, so nothing is left to
+		// bypass (and a leak, which would keep the loop alive, still prevents it). It closes the window in which Node has removed the signal
+		// listeners and a last Ctrl-C would kill the process. Exactly that statement, once; any other exit is still refused.
+		const atDrain = 'process.once("beforeExit", () => process.exit(0));';
+		const studio = code(read("cli/studio.ts"));
+		expect(studio.split(atDrain)).toHaveLength(2);
+		expect(studio.split(atDrain).join(""), "cli/studio.ts").not.toMatch(/process\.exit\b/);
+		for (const file of ["cockpit-http/host.ts", "cockpit-http/launch.ts"])
 			expect(code(read(file)), file).not.toMatch(/process\.exit\b/);
 	});
 

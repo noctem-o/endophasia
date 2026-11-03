@@ -439,7 +439,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				return b === undefined && request.method === "GET" && request.query === ""
 					? reply(200, ENDO_DEVELOP_WORKSPACE_ABSENT_V1)
 					: refuse(404, "not-found");
-			return this.#tasks.handle(request.route, request.method, request.query, request.body);
+			return this.#tasks.route(request.route, request.method, request.query, request.body);
 		}
 		// A workbench with no project context says so with one constant answer (as the read-only server does for status), so a page can ask
 		// quietly: a 404 would be logged by every browser as a failed request.

@@ -269,6 +269,19 @@ never inside it.
   `tests/endo-develop-tasks-workbench.test.ts` covers the grant and the Studio canary, and `tests/endo-studio-tasks-browser.test.ts`
   covers the section at 1440 px (Instrument and Field) and 390 px.
 
+## Verification receipts (Slice F)
+
+Design, trust boundary and review record: [designs/develop-verification-receipts.md](designs/develop-verification-receipts.md).
+
+- **A second service beside attempts.** `runtime/contracts/develop-receipts.ts` (`DevelopReceiptsServiceV0`) reads the task and attempt
+  stores and writes only `storage/develop-receipts.ts`. The Git observer (`adapters/git/revision-observer.ts`) and the check runner
+  (`adapters/develop/check-runner.ts`, over `ProcessGroupV0`) are injected. Its only caller that runs anything is `endo attempt check`.
+- **The launch scope reads, and only reads.** `DevelopWorkspaceServiceV0` takes `{ receipts: { store, current } }`, where `current`
+  observes a directory's HEAD read-only. `attemptsView()` becomes asynchronous and serves `endo.develop-attempts-view.v1`, with each
+  attempt's receipts related to the launch directory's HEAD. `WorkbenchTasksV0.route` serves that one read asynchronously. Every other
+  workspace route is still the synchronous `handle`.
+- **Evidence:** `tests/develop-receipts.test.ts` (real Git, real processes, the gate); the browser and Studio-canary tests above.
+
 ## How a later host consumes this
 
 A future local supervisor or native desktop host would be one more caller:

@@ -11,6 +11,7 @@
 import { fstatSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
+import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import type { PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
 import type { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
@@ -18,6 +19,7 @@ import { cockpitAliasesV0 } from "../cockpit/index.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { endoStudioUiDirectoryV0 } from "./studio.ts";
@@ -164,6 +166,21 @@ export async function startWorkbenchV0(
 							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(session.owner.options.root), {
 								// The work attempts, read-only here: the page sees the selected task's attempts and briefs; it cannot make or record one.
 								attempts: new DevelopAttemptsStoreV0(session.owner.options.root),
+								// Their verification receipts, read-only, compared with the HEAD of this launch's own directory. Nothing here runs a check.
+								receipts: {
+									store: new DevelopReceiptsStoreV0(session.owner.options.root),
+									current: async (directory) => {
+										const seen = await new GitRevisionObserverV0().observe(directory, { within: true });
+										if (!seen.ok) return null;
+										const o = seen.observation;
+										return {
+											worktree: o.worktree,
+											commonDir: o.commonDir,
+											commit: o.commit,
+											clean: o.dirty.length === 0,
+										};
+									},
+								},
 							}).forLaunch({ projectId, launchDirectory: options.cwd }, host),
 					},
 				}),

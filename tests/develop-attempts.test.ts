@@ -24,7 +24,7 @@ import { WorkbenchTasksV0 } from "../adapters/pi/workbench-tasks.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_LABELS_V0,
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
-	type EndoDevelopAttemptsViewV0,
+	type EndoDevelopAttemptsViewV1,
 	type EndoDevelopAttemptV0,
 	renderEndoDevelopBriefV0,
 	validateEndoDevelopAttemptV0,
@@ -577,10 +577,10 @@ describe("the workbench route and the page's gate", () => {
 		);
 		const tasks = new WorkbenchTasksV0(scope);
 		return (method: "GET" | "POST", path: string, query = "", body: unknown = null) =>
-			tasks.handle(["workspace", ...path.split("/").filter((p) => p !== "")], method, query, body);
+			tasks.route(["workspace", ...path.split("/").filter((p) => p !== "")], method, query, body);
 	}
 
-	it("serves the selected task's attempts only, read-only (even when the workspace is read-only), with no path or session", () => {
+	it("serves the selected task's attempts only, read-only (even when the workspace is read-only), with no path or session", async () => {
 		const w = seeded();
 		const a = ok(w.service.prepare(w.projectId, w.taskId, { objective: CANARY }));
 		ok(w.service.prepare(w.otherProject, w.otherTask, { objective: "other project" }));
@@ -588,9 +588,9 @@ describe("the workbench route and the page's gate", () => {
 		const sibling = ok(w.tasks.createTask(w.projectId, { title: "sibling" }));
 		ok(w.service.prepare(w.projectId, sibling.id, { objective: "sibling task" }));
 		const call = route(w);
-		const reply = call("GET", "attempts");
+		const reply = await call("GET", "attempts");
 		expect(reply.status).toBe(200);
-		const view = reply.body as EndoDevelopAttemptsViewV0;
+		const view = reply.body as EndoDevelopAttemptsViewV1;
 		expect([view.state, view.taskId, view.attempts.map((x) => x.id)]).toEqual(["ready", w.taskId, [a.id]]);
 		expect(readAttempts(JSON.parse(JSON.stringify(view)))).toEqual(view);
 		const text = JSON.stringify(view);
@@ -600,23 +600,26 @@ describe("the workbench route and the page's gate", () => {
 		expect(text).not.toContain("sibling task");
 	});
 
-	it("accepts no query, no POST, no deeper path; without attempt records the route does not exist", () => {
+	it("accepts no query, no POST, no deeper path; without attempt records the route does not exist", async () => {
 		const w = seeded();
 		// Launched in the registered directory, so a refusal below is not the read-only workspace's: there is simply no such route.
 		const call = route(w, true, true);
-		expect(call("GET", "attempts", `task=${w.otherTask}`)).toEqual({ status: 400, body: { error: "bad-request" } });
-		expect(call("GET", "attempts/x").status).toBe(404);
+		expect(await call("GET", "attempts", `task=${w.otherTask}`)).toEqual({
+			status: 400,
+			body: { error: "bad-request" },
+		});
+		expect((await call("GET", "attempts/x")).status).toBe(404);
 		for (const path of ["attempts", "attempts/prepare", "attempts/report", "tasks/attempts"])
-			expect(call("POST", path, "", { objective: "x" }).status).toBe(404);
+			expect((await call("POST", path, "", { objective: "x" })).status).toBe(404);
 		expect(readdirSync(join(w.root, "develop"))).not.toContain("attempts");
-		expect(route(w, false)("GET", "attempts").status).toBe(404);
+		expect((await route(w, false)("GET", "attempts")).status).toBe(404);
 	});
 
 	it("the page's gate refuses a body whose state its records do not imply, or that is malformed", () => {
 		const w = seeded();
 		const a = ok(w.service.prepare(w.projectId, w.taskId, { objective: "o" }));
 		ok(w.service.handoff(a.id, { target: "Codex" }));
-		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV0;
+		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV1;
 		expect(readAttempts(good)).not.toBeNull();
 		const bad = (mutate: (v: any) => void) => {
 			const copy = JSON.parse(JSON.stringify(good));
@@ -650,7 +653,7 @@ describe("the workbench route and the page's gate", () => {
 		).toBeNull();
 		expect(
 			bad((v) => {
-				v.schemaVersion = "endo.develop-attempts-view.v1";
+				v.schemaVersion = "endo.develop-attempts-view.v0";
 			}),
 		).toBeNull();
 		expect(

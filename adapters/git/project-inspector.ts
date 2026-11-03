@@ -38,17 +38,14 @@ import {
 	type GitRunnerV0,
 	type GitRunV0,
 	gitEnvV0,
-	hasNoLazyFetchV0,
-	isLosslessUtf8V0,
-	isPartialCloneV0,
 	type NumstatV0,
 	parseNumstat,
 	parseStatusV2,
 	parseUnifiedDiff,
 	parseWorktrees,
 	patchHeaderV0,
-	programKeysV0,
 	type RawChangeV0,
+	repositoryOverridesV0,
 	runGitV0,
 	sameBlobV0,
 	selectPatchesV0,
@@ -209,37 +206,9 @@ export class GitProjectInspectorV0 {
 		return typeof config === "string" ? config : config.keys;
 	}
 
-	#noLazyFetch: Promise<boolean> | null = null;
-	/** Whether this Git can be told not to fetch missing objects on demand. Asked once. */
-	#canBlockLazyFetch(cwd: string): Promise<boolean> {
-		this.#noLazyFetch ??= this.#git_(cwd, ["--version"], GIT_LIMITS_V0.listBytes).then(
-			(run) => run.code === 0 && hasNoLazyFetchV0(run.stdout.toString("utf8")),
-		);
-		return this.#noLazyFetch;
-	}
-
-	/** The overrides to apply, or why the repository cannot be read safely. */
-	async #config(cwd: string): Promise<{ keys: [string, string][] } | EndoProjectReasonV0> {
-		const run = await this.#git_(
-			cwd,
-			["config", "--includes", "--list", "--name-only", "-z"],
-			GIT_LIMITS_V0.listBytes,
-		);
-		const reason = failureReasonV0(run);
-		if (reason !== null) return reason;
-		if (run.truncated) return "output-too-large";
-		const raw: Buffer[] = [];
-		for (let start = 0, at = run.stdout.indexOf(0); at !== -1; start = at + 1, at = run.stdout.indexOf(0, start))
-			raw.push(run.stdout.subarray(start, at));
-		const named = raw.filter((bytes) => bytes.length > 0);
-		const names = named.map((bytes) => bytes.toString("utf8"));
-		// An override is passed to Git as text, so a key whose name is not valid UTF-8 (a driver named by a byte like 0xFF) cannot be
-		// named exactly: its override would switch off some other key, and the repository's program would stay live. If such a key is
-		// one that runs a program, nothing that touches the working tree is run. (A name that runs nothing, like a branch's, is harmless.)
-		const lossy = named.filter((bytes) => !isLosslessUtf8V0(bytes)).map((bytes) => bytes.toString("utf8"));
-		if (programKeysV0(lossy).length > 0) return "unsafe-config";
-		if (isPartialCloneV0(names) && !(await this.#canBlockLazyFetch(cwd))) return "partial-clone";
-		return { keys: programKeysV0(names) };
+	/** The overrides to apply, or why the repository cannot be read safely (readonly-git.ts, shared with the revision observer). */
+	#config(cwd: string): Promise<{ keys: [string, string][] } | EndoProjectReasonV0> {
+		return repositoryOverridesV0((args, maxBytes) => this.#git_(cwd, args, maxBytes));
 	}
 
 	// --- the project and the change inventory -------------------------------------------------------------------------------

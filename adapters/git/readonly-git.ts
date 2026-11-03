@@ -329,6 +329,38 @@ export const runGitV0: GitRunnerV0 = (args, { cwd, env, limits, gitPath }) =>
 		});
 	});
 
+/** One fixed Git read, as a caller runs it: its own working directory, environment and limits already chosen. */
+export type GitReadV0 = (args: readonly string[], maxBytes: number) => Promise<GitRunV0>;
+
+/**
+ * The program-bearing configuration keys the repository sets, to be overridden for every read that touches the working tree, or why the
+ * repository cannot be read safely. One configuration listing (which runs nothing), and `git --version` only for a partial clone. Shared by
+ * the project inspector and the revision observer, so both refuse and override exactly the same things.
+ */
+export async function repositoryOverridesV0(
+	read: GitReadV0,
+): Promise<{ keys: [string, string][] } | EndoProjectReasonV0> {
+	const run = await read(["config", "--includes", "--list", "--name-only", "-z"], GIT_LIMITS_V0.listBytes);
+	const reason = failureReasonV0(run);
+	if (reason !== null) return reason;
+	if (run.truncated) return "output-too-large";
+	const raw: Buffer[] = [];
+	for (let start = 0, at = run.stdout.indexOf(0); at !== -1; start = at + 1, at = run.stdout.indexOf(0, start))
+		raw.push(run.stdout.subarray(start, at));
+	const named = raw.filter((bytes) => bytes.length > 0);
+	const names = named.map((bytes) => bytes.toString("utf8"));
+	// An override is passed to Git as text, so a key whose name is not valid UTF-8 (a driver named by a byte like 0xFF) cannot be
+	// named exactly: its override would switch off some other key, and the repository's program would stay live. If such a key is
+	// one that runs a program, nothing that touches the working tree is run. (A name that runs nothing, like a branch's, is harmless.)
+	const lossy = named.filter((bytes) => !isLosslessUtf8V0(bytes)).map((bytes) => bytes.toString("utf8"));
+	if (programKeysV0(lossy).length > 0) return "unsafe-config";
+	if (isPartialCloneV0(names)) {
+		const version = await read(["--version"], GIT_LIMITS_V0.listBytes);
+		if (!(version.code === 0 && hasNoLazyFetchV0(version.stdout.toString("utf8")))) return "partial-clone";
+	}
+	return { keys: programKeysV0(names) };
+}
+
 /** Why a Git process did not give an answer, from how it ended, or null when it did. Git's own words are only matched, never passed on. */
 export function failureReasonV0(run: GitRunV0): EndoProjectReasonV0 | null {
 	if (run.notFound) return "git-not-found";

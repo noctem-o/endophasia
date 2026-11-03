@@ -22,13 +22,14 @@ import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
-	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V0,
+	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
 	ENDO_DEVELOP_BRIEF_V0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
 	type EndoDevelopAttemptStateV0,
-	type EndoDevelopAttemptsViewV0,
+	type EndoDevelopAttemptsViewV1,
 	type EndoDevelopAttemptV0,
+	type EndoDevelopAttemptViewV1,
 	type EndoDevelopTaskWordV0,
 	endoDevelopAttemptStateV0,
 	endoDevelopTaskWordsChangedV0,
@@ -37,6 +38,7 @@ import {
 	validateEndoDevelopAttemptOutcomeV0,
 	validateEndoDevelopAttemptV0,
 } from "../../protocol/develop-attempts.ts";
+import { type EndoReceiptCurrentV0, endoReceiptRelationV0 } from "../../protocol/develop-receipts.ts";
 import {
 	checkEndoDevelopTextV0,
 	ENDO_PROJECT_ID_PATTERN_V0,
@@ -50,6 +52,7 @@ import type {
 	EndoAttemptProblemV0,
 	EndoAttemptRecordKindV0,
 } from "../../storage/develop-attempts.ts";
+import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 
 /**
@@ -100,6 +103,45 @@ const refuse = <T>(
 	code: DevelopAttemptsRefusalV0,
 	reason?: EndoDevelopUnreadableReasonV0 | EndoAttemptProblemV0["reason"],
 ): DevelopAttemptsResultV0<T> => (reason === undefined ? { ok: false, code } : { ok: false, code, reason });
+
+/**
+ * An argument as the page shows it: a control, bidirectional or separator character becomes U+FFFD, and a long one is cut, so the
+ * operator's own odd argument cannot make the page refuse the whole view. The receipt file keeps the argument exactly.
+ */
+const shownArgument = (arg: string): string => {
+	const safe = arg.replace(
+		/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g,
+		"\ufffd",
+	);
+	return safe.length > 400 ? `${safe.slice(0, 399)}\u2026` : safe;
+};
+
+/** One attempt's receipts as the workbench shows them: no path, each related to the reader's working tree. */
+function receiptsOf(
+	attemptId: string,
+	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
+): EndoDevelopAttemptViewV1["receipts"] {
+	if (receipts === null) return { state: "ready", list: [], problems: 0 };
+	const read = receipts.store.read(attemptId);
+	if (!read.ok) return { state: "unreadable", list: [], problems: 0 };
+	return {
+		state: "ready",
+		list: read.receipts.map((r) => ({
+			id: r.id,
+			startedAtMs: r.startedAtMs,
+			endedAtMs: r.endedAtMs,
+			argv: r.check.argv.map(shownArgument),
+			commit: r.revision.commit,
+			branch: r.revision.branch,
+			execution: r.execution,
+			outcome: r.outcome,
+			reasons: [...r.reasons],
+			limitations: [...r.limitations],
+			relation: endoReceiptRelationV0(r, receipts.current),
+		})),
+		problems: read.problems.length,
+	};
+}
 
 export class DevelopAttemptsServiceV0 {
 	readonly #tasks: DevelopTasksStoreV0;
@@ -176,11 +218,16 @@ export class DevelopAttemptsServiceV0 {
 
 	/**
 	 * The workbench's view: the attempts of the task the project has SELECTED, chosen from the task file, never from a request. The caller
-	 * (the launch scope) supplies its own project id.
+	 * (the launch scope) supplies its own project id, and, for the receipts, the store and the working tree it compares them with (its own
+	 * launch directory, observed by the caller; a path in a receipt is never used to choose what to read). Without a receipts store, every
+	 * attempt's receipt list is empty.
 	 */
-	viewFor(projectId: string): EndoDevelopAttemptsViewV0 {
-		const empty = (state: EndoDevelopAttemptsViewV0["state"], taskId: string | null): EndoDevelopAttemptsViewV0 => ({
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V0,
+	viewFor(
+		projectId: string,
+		receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null = null,
+	): EndoDevelopAttemptsViewV1 {
+		const empty = (state: EndoDevelopAttemptsViewV1["state"], taskId: string | null): EndoDevelopAttemptsViewV1 => ({
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
 			state,
 			taskId,
 			attempts: [],
@@ -194,7 +241,7 @@ export class DevelopAttemptsServiceV0 {
 		const read = this.#attempts.read();
 		if (!read.ok) return empty("unreadable", taskId);
 		return {
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V0,
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
 			state: "ready",
 			taskId,
 			attempts: read.entries
@@ -217,6 +264,7 @@ export class DevelopAttemptsServiceV0 {
 								: { recordedAtMs: e.outcome.recordedAtMs, kind: e.outcome.kind, note: e.outcome.note },
 						taskWordsChanged: r.taskWordsChanged,
 						brief: renderEndoDevelopBriefV0(e.attempt),
+						receipts: receiptsOf(e.attempt.id, receipts),
 					};
 				}),
 			problems: read.problems.length,

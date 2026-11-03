@@ -4561,6 +4561,50 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	color: var(--fg-3);
 }
 
+/* A verification receipt: what Endophasia observed, so it takes the observed colour when the check passed, the fault colour when it
+   failed, and the attention colour, dashed, when it is inconclusive. None of them is the task's own status. */
+.chip-ref[data-outcome="passed"] {
+	color: var(--obs);
+}
+
+.chip-ref[data-outcome="failed"] {
+	color: var(--fault);
+}
+
+.chip-ref[data-outcome="inconclusive"] {
+	border-style: dashed;
+	color: var(--attention);
+}
+
+.attempt-receipts {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-top: 4px;
+	border-top: 1px solid var(--line-subtle);
+}
+
+.attempt-receipts h4 {
+	margin: 0;
+	font-weight: 600;
+}
+
+.attempt-receipts li[data-testid="receipt"] {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px 0;
+}
+
+.receipt-argv {
+	overflow-wrap: anywhere;
+}
+
+.receipt-limits ul {
+	margin: 2px 0 0;
+	padding-left: 1.2em;
+}
+
 .task-ref-head {
 	display: flex;
 	flex-wrap: wrap;

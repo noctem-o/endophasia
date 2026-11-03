@@ -18,6 +18,8 @@
 //   GET  project/diff?snapshot=&file=   one changed file's diff, for an entry of that snapshot. Needs the grant. READ ONLY.
 //   GET  workspace              the operator's registered project and its tasks (metadata they wrote), and POST workspace/tasks/<create|update|status|
 //                               select|link-session|unlink-session>: see workbench-tasks.ts. Needs the grant. METADATA ONLY: none of them sends a command.
+//   GET  workspace/attempts     the selected task's work attempts and their briefs (docs/designs/develop-work-attempts.md). Needs the grant.
+//                               READ ONLY: no attempt is made or recorded here, and no brief is sent anywhere.
 //   POST intervention/check {proposalId}     start a bounded check of whether the capture shows a STEER or QUEUE was consumed; the answer is read
 //                                             back from the request's view. Needs the grant.
 //

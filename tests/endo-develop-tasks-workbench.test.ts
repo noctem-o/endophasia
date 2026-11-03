@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { piEndoSessionIdV0 } from "../adapters/pi/mapping.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import type { EndoDevelopWorkspaceViewV0 } from "../protocol/develop-tasks.ts";
+import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { event, ingestAll, removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
 import { capabilityOf, get, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
@@ -99,6 +101,7 @@ describe("only a paired page can read or change tasks", () => {
 		const before = fileOf(w.root);
 		for (const [method, route, body] of [
 			["GET", "workspace", null],
+			["GET", "workspace/attempts", null],
 			["POST", "workspace/tasks/create", { title: CANARY }],
 			["POST", "workspace/tasks/update", { taskId: "x", expectedRevision: 0, title: "y" }],
 			["POST", "workspace/tasks/status", { taskId: "x", expectedRevision: 0, to: "done" }],
@@ -607,6 +610,13 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 			via: "cli",
 		});
 		if (!linked.ok) throw new Error(linked.code);
+		// And a work attempt whose words are the canary (docs/designs/develop-work-attempts.md): no Studio route serves it.
+		const attempt = new DevelopAttemptsServiceV0(store, new DevelopAttemptsStoreV0(root)).prepare(
+			project.value.id,
+			task.value.id,
+			{ objective: CANARY, constraints: CANARY, reportBack: CANARY },
+		);
+		if (!attempt.ok) throw new Error(attempt.code);
 		const server = await serve(root);
 		const base = `${capabilityOf(server)}/api/v0/`;
 		// Every read route family the page uses, each one ANSWERED (a refusal would prove nothing): the snapshot, the session list and one
@@ -634,11 +644,17 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 			expect(reply.body, route).not.toContain(CANARY);
 			expect(reply.body, route).not.toContain("tasks.json");
 		}
-		for (const route of ["workbench/status", "workbench/workspace", "workbench/project"]) {
+		for (const route of [
+			"workbench/status",
+			"workbench/workspace",
+			"workbench/workspace/attempts",
+			"workbench/project",
+		]) {
 			const reply = await get(server, `/api/v0/${route}`);
 			expect(reply.body, route).not.toContain(CANARY);
 		}
 		expect((await get(server, "/api/v0/workbench/workspace")).status).toBe(404);
+		expect((await get(server, "/api/v0/workbench/workspace/attempts")).status).toBe(404);
 		for (const route of ["workspace", "workbench/workspace", "workbench/workspace/tasks/create"])
 			expect(
 				(

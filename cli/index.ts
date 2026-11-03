@@ -7,6 +7,7 @@
  *   node cli/index.ts harness <status|overview|identify|check|study|attach> <root> ...
  *   node cli/index.ts trajectory <show|diff> <store> <session> ...
  *   node cli/index.ts project <add|list> ...   task <list|add|status|show|link|unlink|upgrade> ...   (DEVELOP's project and task metadata; docs/develop-tasks.md)
+ *   node cli/index.ts attempt <prepare|brief|handoff|report|abandon|list|show> ...   (work attempts and handoff briefs; docs/designs/develop-work-attempts.md)
  *   node cli/index.ts digest-key id
  *   node cli/index.ts dsh <import|loss-accounting> ...
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
@@ -22,6 +23,7 @@
  */
 
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
+import { ATTEMPT_COMMANDS_V0 } from "./develop-attempts.ts";
 import { PROJECT_COMMANDS_V0, TASK_COMMANDS_V0 } from "./develop-tasks.ts";
 import { digestKeyCommand } from "./digest-key.ts";
 import { doctorCommand } from "./doctor.ts";
@@ -62,6 +64,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	replay: replayCommand,
 	project: family(PROJECT_COMMANDS_V0, "usage: endo project <add|list> ..."),
 	task: family(TASK_COMMANDS_V0, "usage: endo task <list|add|status|show|link|unlink|upgrade> ..."),
+	attempt: family(ATTEMPT_COMMANDS_V0, "usage: endo attempt <prepare|brief|handoff|report|abandon|list|show> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(EXPERIMENT_COMMANDS_V0, "usage: endo experiment <run|report> ..."),
 	trajectory: family(TRAJECTORY_COMMANDS_V0, "usage: endo trajectory <show|diff> <store> <session> ..."),

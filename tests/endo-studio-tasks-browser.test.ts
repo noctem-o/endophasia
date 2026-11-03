@@ -10,7 +10,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
+import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { removeTempRoots } from "./cockpit-fixtures.ts";
@@ -106,7 +108,10 @@ async function launch(
 			: {
 					tasks: {
 						open: (host) =>
-							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(root)).forLaunch(
+							// As cli/workbench.ts constructs it: the attempts are served read-only beside the tasks.
+							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(root), {
+								attempts: new DevelopAttemptsStoreV0(root),
+							}).forLaunch(
 								{
 									projectId: mode === "unknown" ? `endo.project.${"0".repeat(32)}` : project,
 									launchDirectory: other,
@@ -588,6 +593,105 @@ suite("a saved OMP reference beside a live Pi one", () => {
 			expect(removable).toBe(true);
 			await shot(page, `tasks-${appearance}-omp-ref-${width}`);
 			noAgentTraffic(api);
+			expect(page.seen.problems).toEqual([]);
+		});
+});
+
+suite("work attempts in the Task view: read-only, copyable, honest about what was recorded", () => {
+	const attemptsOf = (root: string) =>
+		new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
+	// The page reads the attempts after each good read of the tasks; the tests wait for what they expect to see, not for the clock.
+	const refresh = (page: Page) => page.click("[data-testid=tasks-refresh]");
+
+	for (const [appearance, width, height] of [
+		["instrument", 1440, 900],
+		["field", 1440, 900],
+		["instrument", 390, 844],
+	] as const)
+		it(`shows the selected task's attempts and their briefs, and changes nothing, in ${appearance} at ${width} px`, async () => {
+			const api = await launch(width, height);
+			const { page } = api;
+			if (appearance === "field") {
+				await page.click("[data-testid=appearance-field]");
+				await page.waitFor("document.querySelector('#develop-workspace').dataset.appearance === 'field'");
+			}
+			await ready(page);
+			await openTab(page);
+			await create(page, "Accept trailing commas", "", "npm test passes");
+			await page.waitFor("document.querySelector('[data-testid=attempts-none]')");
+			expect(await page.text("[data-testid=task-attempts]")).toContain("endo attempt prepare --root <store>");
+			// The operator prepares an attempt in a terminal; the page shows it after its next read.
+			const stored = new DevelopTasksStoreV0(api.state.root).read();
+			if (!stored.ok) throw new Error("unreadable");
+			const task = stored.file.tasks[0]!;
+			const service = attemptsOf(api.state.root);
+			const attempt = service.prepare(task.projectId, task.id, {
+				objective: "Make the parser accept a trailing comma in argument lists.\n\n```js\nf(a, b,)\n```",
+				constraints: "Do not touch the lexer.",
+			});
+			if (!attempt.ok) throw new Error(attempt.code);
+			const brief = service.brief(attempt.value.id);
+			if (!brief.ok) throw new Error(brief.code);
+			await page.click("[data-testid=tab-conversation]");
+			await fill(page, "[data-testid=composer]", "an unsent draft");
+			await openTab(page);
+			await refresh(page);
+			await page.waitFor("document.querySelector('[data-testid=attempt]')");
+			expect(await page.eval<string>("document.querySelector('[data-testid=attempt]').dataset.state")).toBe(
+				"prepared",
+			);
+			expect(await page.text("[data-testid=attempt] .chip-ref")).toBe("Prepared");
+			// Open it: the brief is the CLI's, byte for byte, in a read-only box.
+			await page.click("[data-testid=attempt] summary");
+			await page.waitFor("document.querySelector('[data-testid=attempt-brief]')?.offsetHeight > 0");
+			expect(await page.eval<string>("document.querySelector('[data-testid=attempt-brief]').value")).toBe(
+				brief.value,
+			);
+			expect(await page.eval<boolean>("document.querySelector('[data-testid=attempt-brief]').readOnly")).toBe(true);
+			// Copy writes the clipboard and nothing else: focus stays on the button, the draft is untouched, nothing is sent.
+			const copy = `[data-testid=attempt] button[aria-label='Copy brief ${attempt.value.id.slice(-8)}']`;
+			if (await page.eval<boolean>(`document.querySelector(${JSON.stringify(copy)}) !== null`)) {
+				// From the keyboard, as an operator would: focus the button and press Enter.
+				await page.eval(`document.querySelector(${JSON.stringify(copy)}).focus()`);
+				await page.press("Enter");
+				await page.waitFor(`document.querySelector(${JSON.stringify(copy)}).textContent !== 'copy'`);
+				expect(await page.eval<string>("document.activeElement?.getAttribute('aria-label') ?? ''")).toBe(
+					`Copy brief ${attempt.value.id.slice(-8)}`,
+				);
+			}
+			expect(await noOverflow(page)).toBe(true);
+			await shot(page, `attempts-${appearance}-prepared-${width}`);
+			// What the operator records later is shown as their statement, and a reported result is never shown as verified.
+			if (!service.handoff(attempt.value.id, { target: "Claude Code" }).ok) throw new Error("handoff");
+			if (!service.report(attempt.value.id, "The agent says the tests pass.").ok) throw new Error("report");
+			const edited = new DevelopTasksStoreV0(api.state.root).updateTask(task.projectId, task.id, task.revision, {
+				acceptance: "npm test and npm run lint pass",
+			});
+			if (!edited.ok) throw new Error(edited.code);
+			await refresh(page);
+			await page.waitFor("document.querySelector('[data-testid=attempt]')?.dataset.state === 'reported'");
+			expect(await page.text("[data-testid=attempt] .chip-ref")).toBe("Result reported, not verified");
+			await page.eval("document.querySelector('[data-testid=attempt] details').open = true");
+			expect(await page.text("[data-testid=attempt-handoff]")).toContain("does not show the agent read it");
+			expect(await page.text("[data-testid=attempt-outcome]")).toContain("Not verified");
+			expect(await page.text("[data-testid=attempt-task-changed]")).toContain(
+				"acceptance criteria has changed since this brief was prepared",
+			);
+			// The brief keeps the words it was prepared with.
+			expect(await page.eval<string>("document.querySelector('[data-testid=attempt-brief]').value")).toBe(
+				brief.value,
+			);
+			expect(await noOverflow(page)).toBe(true);
+			await shot(page, `attempts-${appearance}-reported-${width}`);
+			// No status moved, no draft was touched, nothing reached the agent, and the store path is not on the page.
+			expect(await statusOf(page)).toBe("open");
+			await page.click("[data-testid=tab-conversation]");
+			expect(await draftOf(page)).toBe("an unsent draft");
+			expect(await page.eval<boolean>(`document.body.textContent.includes(${JSON.stringify(api.state.root)})`)).toBe(
+				false,
+			);
+			noAgentTraffic(api);
+			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?/.test(r))).toEqual([]);
 			expect(page.seen.problems).toEqual([]);
 		});
 });

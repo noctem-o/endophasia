@@ -28,6 +28,7 @@
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
+import type { EndoDevelopAttemptsViewV0 } from "../../protocol/develop-attempts.ts";
 import {
 	ENDO_DEVELOP_OMP_FORMAT_V1,
 	ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1,
@@ -48,6 +49,7 @@ import {
 	isEndoDevelopOmpSessionIdV1,
 	isEndoDevelopSessionIdV0,
 } from "../../protocol/develop-tasks.ts";
+import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
 import type {
 	DevelopTasksStoreV0,
 	EndoDevelopTasksFormatV1,
@@ -55,6 +57,7 @@ import type {
 	EndoTasksResultV0,
 	EndoTasksUpgradeV1,
 } from "../../storage/develop-tasks.ts";
+import { DevelopAttemptsServiceV0 } from "./develop-attempts.ts";
 
 export type EndoDevelopReadOnlyReasonV0 = NonNullable<EndoDevelopWorkspaceViewV1["readOnlyReason"]>;
 
@@ -113,6 +116,11 @@ export interface DevelopWorkspaceServiceOptionsV0 {
 	 * existing Git project inspector), so this module reaches no adapter. Without it a registration records no observation (null).
 	 */
 	observeGitRoot?: (directory: string) => Promise<string | null>;
+	/**
+	 * The work-attempt records (storage/develop-attempts.ts). Given, a launch scope offers `attemptsView()`, the one read-only view of the
+	 * launch project's selected task's attempts; not given, it offers none (`null`), and the workbench's attempts route is not found.
+	 */
+	attempts?: DevelopAttemptsStoreV0;
 }
 
 const realpath = (path: string): string | null => {
@@ -159,10 +167,12 @@ const OPEN: unique symbol = Symbol("develop-launch-scope");
 export class DevelopWorkspaceServiceV0 {
 	readonly #store: DevelopTasksStoreV0;
 	readonly #observeGitRoot: (directory: string) => Promise<string | null>;
+	readonly #attempts: DevelopAttemptsStoreV0 | null;
 
 	constructor(store: DevelopTasksStoreV0, options: DevelopWorkspaceServiceOptionsV0 = {}) {
 		this.#store = store;
 		this.#observeGitRoot = options.observeGitRoot ?? (async () => null);
+		this.#attempts = options.attempts ?? null;
 	}
 
 	/** The whole file (as the v1 model), read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
@@ -297,7 +307,7 @@ export class DevelopWorkspaceServiceV0 {
 	 * knows. The scope can change only that project, and only while the launch directory is the project's registered one.
 	 */
 	forLaunch(config: DevelopLaunchConfigV0, host: DevelopLaunchHostV0): DevelopLaunchWorkspaceV0 {
-		return new DevelopLaunchWorkspaceV0(OPEN, this.#store, config, host);
+		return new DevelopLaunchWorkspaceV0(OPEN, this.#store, config, host, this.#attempts);
 	}
 }
 
@@ -309,6 +319,7 @@ export class DevelopLaunchWorkspaceV0 {
 	readonly #store: DevelopTasksStoreV0;
 	readonly #config: Readonly<DevelopLaunchConfigV0>;
 	readonly #host: DevelopLaunchHostV0;
+	readonly #attempts: DevelopAttemptsServiceV0 | null;
 
 	/** Opened only by `DevelopWorkspaceServiceV0.forLaunch`: the token is private to this module. */
 	constructor(
@@ -316,11 +327,22 @@ export class DevelopLaunchWorkspaceV0 {
 		store: DevelopTasksStoreV0,
 		config: DevelopLaunchConfigV0,
 		host: DevelopLaunchHostV0,
+		attempts: DevelopAttemptsStoreV0 | null = null,
 	) {
 		if (token !== OPEN) throw new TypeError("a launch scope is opened by DevelopWorkspaceServiceV0.forLaunch");
 		this.#store = store;
 		this.#config = Object.freeze({ ...config });
 		this.#host = host;
+		this.#attempts = attempts === null ? null : new DevelopAttemptsServiceV0(store, attempts);
+	}
+
+	/**
+	 * The attempts of the task this launch's project has selected (docs/designs/develop-work-attempts.md), read now; null when this launch
+	 * was given no attempt records. Read-only, in every state of the workspace: a launch scope cannot prepare or record an attempt. The project
+	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either.
+	 */
+	attemptsView(): EndoDevelopAttemptsViewV0 | null {
+		return this.#attempts?.viewFor(this.#config.projectId) ?? null;
 	}
 
 	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */

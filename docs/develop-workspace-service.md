@@ -245,6 +245,30 @@ SHA-256) was identical before and after, while an unrelated OMP process the oper
 no model was called, and the task file held no path under the home directory. Not exercised against a real process: the workbench rendering
 of an OMP reference (synthetic browser tests only), and other OMP versions or profiles.
 
+## Work attempts (Slice E)
+
+Design, review record and rejected alternatives: [designs/develop-work-attempts.md](designs/develop-work-attempts.md). In short, an attempt
+is one request the operator prepared on one task, with a brief to copy into any coding agent. It is kept beside the task file and
+never inside it.
+
+- **Its own service, not a second workspace.** `runtime/contracts/develop-attempts.ts` (`DevelopAttemptsServiceV0`) holds the task store
+  and calls only its `read()`, so nothing in it can write the task file. It also holds the write-once attempt store
+  (`storage/develop-attempts.ts`). The `endo attempt` CLI is its operator caller.
+- **The launch scope reads, and only reads.** `DevelopWorkspaceServiceV0` takes `{ attempts }`. A launch scope opened from it offers
+  `attemptsView()`, the attempts of the task the launch project has selected in the file. No request names the project, task or attempt.
+  `cli/workbench.ts` passes the store, and `GET workspace/attempts` (`adapters/pi/workbench-tasks.ts`) serves the view behind the broker's
+  grant check. A service built without the option has no such route: it answers 404. The workspace view (`endo.develop-workspace.v1`)
+  is unchanged.
+- **No lock, no rewrite.** Each record is a file written once: a temporary file, `fsync`, then a hard link to its final name. `link`
+  refuses an existing name, so concurrent writers of the same record get exactly one winner. The task store's lock and its code are
+  untouched.
+- **Nothing reaches an agent.** Preparing or reading a brief starts no process and sends nothing. Handoffs and outcomes are the
+  operator's statements (`recordedBy: "operator"`, `via: "cli"`). An outcome is never verification and never moves the task's status.
+- **Evidence:** `tests/develop-attempts.test.ts` covers records, crash, race, symlinks, limits, the task file's bytes, staleness, the
+  golden brief and its round trip, the route and the page's gate, and the CLI with fake agents on `PATH`.
+  `tests/endo-develop-tasks-workbench.test.ts` covers the grant and the Studio canary, and `tests/endo-studio-tasks-browser.test.ts`
+  covers the section at 1440 px (Instrument and Field) and 390 px.
+
 ## How a later host consumes this
 
 A future local supervisor or native desktop host would be one more caller:

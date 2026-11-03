@@ -23,6 +23,7 @@ import {
 import type { SessionRef, Task, TaskStatus, Workspace } from "../model/workspace-wire.ts";
 import { Note } from "../ui/text.tsx";
 import { NEW_TASK, type WorkspaceApi } from "../use-workspace.ts";
+import { AttemptsSection } from "./Attempts.tsx";
 
 const LIMITS = { title: 120, text: 4000, note: 280 } as const;
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour12: false });
@@ -512,7 +513,10 @@ export function TaskPanel({
 					</p>
 				</div>
 			) : (
-				<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} connected={connected} />
+				<>
+					<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} connected={connected} />
+					<AttemptsSection attempts={workspace.attempts} task={task} tasksCurrent={state.current} />
+				</>
 			)}
 			<p className="dim small task-foot" data-testid="task-foot">
 				<span data-testid="tasks-read-at">

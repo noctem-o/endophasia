@@ -15,6 +15,7 @@ import {
 	type WorkspaceState,
 } from "./model/workspace.ts";
 import type { Task, TaskStatus, WorkspaceRequest } from "./model/workspace-wire.ts";
+import { type AttemptsState, useAttempts } from "./use-attempts.ts";
 
 /** Unsaved words are kept here, not in the form, so switching tasks does not lose them. Memory only. */
 export type { TaskDraft };
@@ -39,6 +40,8 @@ export interface WorkspaceApi {
 	setStatus(task: Task, to: TaskStatus, note: string): Promise<boolean>;
 	link(task: Task): Promise<boolean>;
 	unlink(task: Task, linkId: string): Promise<boolean>;
+	/** The selected task's work attempts, read after each good workspace read. Read-only: nothing here makes or records one. */
+	attempts: AttemptsState;
 }
 
 export function useWorkspace(grant: string | null, launchId: string | null, active: boolean): WorkspaceApi {
@@ -151,8 +154,17 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 		[],
 	);
 
+	const attempts = useAttempts(
+		grant,
+		launchId,
+		active,
+		state.view?.state === "ready",
+		state.readAt === null ? null : state.readAt.getTime(),
+	);
+
 	return {
 		state,
+		attempts,
 		paired: grant !== null,
 		drafts,
 		composing,

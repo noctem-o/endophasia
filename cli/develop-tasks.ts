@@ -67,7 +67,8 @@ const REFUSALS: Readonly<Record<DevelopWorkspaceRefusalV0, string>> = {
 		"the task file is endo.develop-tasks.v0, which cannot record this reference; run `endo task upgrade` to see what an upgrade does, then `endo task upgrade --apply`",
 };
 
-function flagsOf(argv: readonly string[], values: readonly string[], usage: string, positionals = 0) {
+/** The develop commands' flag reader: each flag in `values` at most once, each with a value; the store root as every command takes it. */
+export function flagsOf(argv: readonly string[], values: readonly string[], usage: string, positionals = 0) {
 	const taken = takeEndoRootV0(argv, positionals, new Set(values));
 	const flags = new Map<string, string>();
 	const rest = [...taken.rest];

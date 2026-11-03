@@ -3,6 +3,7 @@
 // Every outcome becomes a classified reply with fixed failure text; raw exceptions and URLs never reach the page.
 
 import type { EndoOmpSessionV0 } from "../../protocol/omp-observation.ts";
+import { type AttemptsReply, readAttempts } from "./model/attempts-wire.ts";
 import type { CompareRequest } from "./model/compare.ts";
 import {
 	type CompareReply,
@@ -547,6 +548,40 @@ export async function fetchWorkspace(
 		const record = readWorkspace(json);
 		if (record !== null) return { kind: "workspace", record };
 		return { kind: "failure", status: 200, code: "invalid" };
+	} catch {
+		return { kind: "failure", status: 0, code: "unreachable" };
+	}
+}
+
+/**
+ * The work attempts of the task selected in this launch's project: one GET, behind the grant, with no query and no body. The page names no
+ * project, task or attempt, and cannot make or record one: there is no route for it. A reply is checked whole before it is accepted.
+ */
+export async function fetchAttempts(grant: string, cancel: AbortSignal): Promise<AttemptsReply> {
+	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+	try {
+		const response = await fetch(new URL("./api/v0/workbench/workspace/attempts", document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			headers: { "X-Endo-Grant": grant },
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		let json: unknown = null;
+		try {
+			json = await response.json();
+		} catch {
+			/* a refusal whose body cannot be read is still a refusal */
+		}
+		if (response.status === 404) return { kind: "absent" };
+		if (response.status === 401) return { kind: "failure", status: 401, code: "grant-required" };
+		if (response.status !== 200) return { kind: "failure", status: response.status, code: "other" };
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
+			throw new Error("content type");
+		const record = readAttempts(json);
+		return record === null ? { kind: "failure", status: 200, code: "invalid" } : { kind: "attempts", record };
 	} catch {
 		return { kind: "failure", status: 0, code: "unreachable" };
 	}

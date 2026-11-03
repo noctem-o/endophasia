@@ -52,6 +52,10 @@ describe("the frontend's source", () => {
 				"model/workspace.ts",
 				"model/workspace-wire.ts",
 				"use-workspace.ts",
+				"develop/Attempts.tsx",
+				"model/attempts-wire.ts",
+				"use-attempts.ts",
+				"model/attempts-reader.ts",
 				"model/workbench.ts",
 				"model/workbench-wire.ts",
 				"develop/Activity.tsx",
@@ -184,13 +188,13 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(17);
+		expect(api.match(/\/api\//g)?.length).toBe(18);
 		// Oh My Pi's saved sessions: two fixed GET routes, the second named only by an opaque selector the list gave, gated first.
 		expect(api).toContain("./api/v0/develop/omp/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(10);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(11);
 		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
 		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
@@ -200,6 +204,10 @@ describe("the frontend's source", () => {
 		for (const operation of ["create", "update", "status", "select", "link-session", "unlink-session"])
 			expect(api).toContain(`/tasks/${operation}`);
 		expect(api).not.toMatch(/tasks\/(prompt|intervention|propose|stop|steer|queue|delete|shell|run)/);
+		// The work attempts: one fixed GET with no query and no body; the page names no project, task or attempt, and there is no route to
+		// prepare or record one (docs/designs/develop-work-attempts.md).
+		expect(api).toContain('"./api/v0/workbench/workspace/attempts"');
+		expect(api).not.toMatch(/attempts\/(prepare|handoff|report|abandon|send|dispatch)|attempts\?/);
 		// The project routes: GET only, a snapshot id and a number validated first, never a path, a branch or a command.
 		expect(api).toContain("./api/v0/workbench/project");
 		expect(api).toMatch(/\/diff\?snapshot=\$\{request\.snapshot\}&file=\$\{request\.id\}/);
@@ -275,6 +283,23 @@ describe("the frontend's source", () => {
 		);
 		for (const [name, text] of Object.entries(sources))
 			if (name !== "api.ts" && name !== "use-workspace.ts") expect(text, name).not.toMatch(/fetchWorkspace/);
+		// The attempts hook: no timer; it reads after a good workspace read, one read at a time; it is the only caller of the attempts route.
+		// The section that draws attempts imports no api, no workbench command and no composer: Copy writes the clipboard and nothing else.
+		const attemptsHook = sources["use-attempts.ts"]!;
+		expect(attemptsHook).not.toMatch(/setTimeout|setInterval|requestAnimationFrame/);
+		// One read at a time (a read asked for during one is queued), and a read whose launch or pairing has gone is obsolete: its answer is
+		// dropped before it can touch the state (tests/develop-attempts-reader.test.ts drives these with deferred requests).
+		const reader = sources["model/attempts-reader.ts"]!;
+		expect(reader).not.toMatch(/setTimeout|setInterval|requestAnimationFrame|from "react"|api\.ts/);
+		expect(reader).toMatch(/if \(this\.#flight !== null\) \{\s*this\.#queued = true;\s*return;\s*\}/);
+		expect(reader).toMatch(/if \(this\.#flight !== flight\) return;/);
+		expect(reader).toMatch(/if \(launchChanged \|\| grantChanged\) \{/);
+		expect(attemptsHook).toContain("new AttemptsReader(fetchAttempts, setState)");
+		for (const [name, text] of Object.entries(sources))
+			if (name !== "api.ts" && name !== "use-attempts.ts") expect(text, name).not.toMatch(/fetchAttempts/);
+		expect(sources["develop/Attempts.tsx"]).not.toMatch(
+			/from "\.\.\/api\.ts"|use-workbench|use-workspace|propose|intervene|withdraw|\.prompt\b|fetch|composer|draft/,
+		);
 		const tasks = sources["develop/Tasks.tsx"]!;
 		expect(tasks).not.toMatch(/from "\.\.\/api\.ts"|use-workbench|propose|intervene|withdraw|\.prompt\b|fetch/);
 		expect(sources["model/workspace.ts"]).not.toMatch(/prompt|intervene|propose/i);

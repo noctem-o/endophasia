@@ -36,7 +36,7 @@ export function TextView({ text }: { text: TextModel }): ReactElement {
 }
 
 /** A copy button for one displayed identifier. It copies the string as shown in full, and says so; nothing withheld reaches it. */
-function CopyButton({ label, value }: { label: string; value: string }): ReactElement | null {
+export function CopyButton({ label, value }: { label: string; value: string }): ReactElement | null {
 	const [done, setDone] = useState<"idle" | "copied" | "failed">("idle");
 	if (typeof navigator === "undefined" || navigator.clipboard === undefined) return null;
 	const reset = () => setDone("idle");

@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough } from "node:stream";
+import { PassThrough, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
@@ -273,7 +273,7 @@ describe("the verdict follows from the facts alone", () => {
 			});
 	});
 
-	it("names its limitations: nine always, and the reflog, stray-process and in-tree-executable ones when their fact holds", () => {
+	it("names its limitations: nine always, and the reflog, stray-process and in-tree-executable ones when their fact holds (or is unknown)", () => {
 		expect(endoReceiptVerdictV0(facts()).limitations).toEqual(ENDO_RECEIPT_LIMITATIONS_V0.slice(0, 9));
 		const all = endoReceiptVerdictV0(
 			facts({
@@ -282,7 +282,14 @@ describe("the verdict follows from the facts alone", () => {
 				check: { argv: ["./t"], executable: "/w/t", realExecutable: "/w/t", timeoutMs: 1000 },
 			}),
 		).limitations;
-		expect(all).toEqual([...ENDO_RECEIPT_LIMITATIONS_V0]);
+		expect(all).toEqual(ENDO_RECEIPT_LIMITATIONS_V0.filter((l) => l !== "stray-processes-not-observable"));
+		// Where stray processes cannot be seen (no /proc), that is said: unknown is never recorded as "none".
+		expect(endoReceiptVerdictV0(facts({ strayProcesses: null })).limitations).toContain(
+			"stray-processes-not-observable",
+		);
+		expect(endoReceiptVerdictV0(facts({ strayProcesses: null })).limitations).not.toContain(
+			"stray-processes-stopped",
+		);
 	});
 
 	it("the validator re-derives the verdict: a forged 'passed', a dropped reason or a dropped limitation is not a receipt", () => {
@@ -695,6 +702,27 @@ describe("the check runner", () => {
 		});
 	});
 
+	it("a sink that fails (the terminal closed) does not end the run: the check is still observed and counted", async () => {
+		const failing = new Writable({
+			write(_chunk, _encoding, callback) {
+				callback(new Error("EPIPE"));
+			},
+		});
+		const r = await run(["-c", "for i in 1 2 3 4 5; do echo line; sleep 0.05; done; exit 0"], {
+			stdout: failing,
+			stderr: failing,
+		});
+		expect(r).toMatchObject({ execution: { kind: "exited", code: 0 }, escapedProcess: false });
+		expect(r.output.stdoutBytes).toBe(25);
+	});
+
+	it("a sink that never drains holds the check back while it runs, but is never taken for an escaped process", async () => {
+		const stuck = new Writable({ highWaterMark: 16, write() {} });
+		const r = await run(["-c", "head -c 300000 /dev/zero; exit 0"], { stdout: stuck, timeoutMs: 2_000 });
+		// The pipe filled and the command waited on it: stopped at its time limit, all inside its group; nothing escaped.
+		expect(r).toMatchObject({ execution: { kind: "timed-out" }, escapedProcess: false });
+	});
+
 	it("stops processes the check left in its group, and notes them; a process that left the group and holds the output is 'escaped'", async () => {
 		const pidFile = join(base, `stray-${made}`);
 		const stray = await run(["-c", `sleep 30 & echo $! > ${pidFile}; exit 0`]);
@@ -713,7 +741,12 @@ describe("the check runner", () => {
 			}
 		})();
 		expect(alive).toBe(false);
-		const escaped = await run(["-c", "setsid sleep 2 & exit 0"]);
+		// The child reports once it has left the group, so the check never exits before the escape happened.
+		const ready = join(base, `escaped-${made}`);
+		const escaped = await run([
+			"-c",
+			`setsid sh -c 'touch ${ready}; sleep 3' & while [ ! -e ${ready} ]; do sleep 0.01; done; exit 0`,
+		]);
 		expect(escaped).toMatchObject({ execution: { kind: "exited", code: 0 }, escapedProcess: true });
 	});
 });
@@ -796,6 +829,23 @@ describe.skipIf(!haveGit)("checks against a real repository", () => {
 		// A check that hides its own output by adding an ignore rule: clean afterwards, but under different rules.
 		const hidden = await check(w, ["sh", "-c", "echo out > made.txt && echo made.txt >> .git/info/exclude"]);
 		expect(hidden.reasons).toEqual(["rules-changed"]);
+		// ...or a nested .gitignore that ignores itself and the file the check made: no change shows in Git's status, but the rules moved.
+		mkdirSync(join(w.project, "sub"));
+		const nested = await check(w, ["sh", "-c", "printf '*\\n' > sub/.gitignore && echo evil > sub/payload.js"]);
+		expect([nested.outcome, nested.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+		expect(git(w.project, "status", "--porcelain")).toBe("");
+		// ...or Git's default user ignore file, when none is configured.
+		const userIgnore = join(HOME, ".config", "git", "ignore");
+		try {
+			const viaHome = await check(w, [
+				"sh",
+				"-c",
+				`mkdir -p ${join(HOME, ".config", "git")} && echo payload2.js > ${userIgnore} && echo evil > payload2.js`,
+			]);
+			expect([viaHome.outcome, viaHome.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+		} finally {
+			rmSync(join(HOME, ".config"), { recursive: true, force: true });
+		}
 	});
 
 	it("a timeout, an interruption, a signal and an unstartable executable are recorded honestly, never as passed", async () => {
@@ -884,6 +934,16 @@ describe.skipIf(!haveGit)("checks against a real repository", () => {
 		expect([a.outcome, b.outcome]).toEqual(["passed", "failed"]);
 		const list = w.service.list(w.attemptId, null);
 		expect(list.ok && list.receipts.map((x) => x.receipt.id).sort()).toEqual([a.id, b.id].sort());
+	});
+
+	it("a check whose receipt could not be recorded (a branch name over the bound) is refused before it runs", async () => {
+		const w = seeded();
+		const long = Array.from({ length: 5 }, (_, i) => `${i}${"b".repeat(239)}`).join("/");
+		git(w.project, "checkout", "-q", "-b", long);
+		const mark = join(base, `ran-${made}`);
+		const r = await w.service.plan(w.attemptId, { argv: ["sh", "-c", `touch ${mark}`] });
+		expect(r.ok ? "planned" : r.code).toBe("unrecordable");
+		expect(existsSync(mark)).toBe(false);
 	});
 
 	it("the receipt cap is checked before anything runs", async () => {

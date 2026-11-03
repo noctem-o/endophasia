@@ -252,7 +252,8 @@ const CHECK_REFUSALS: Readonly<Record<DevelopCheckRefusalV0, string>> = {
 	"other-repository": "that directory is a working tree of a different repository from the attempt's project",
 	"not-clean":
 		"the working tree is not a clean, committed state; commit or remove the changes (checks are only recorded against a commit)",
-	"too-large": "a receipt for this check would be too large (an argument list or a path is too long)",
+	unrecordable:
+		"a receipt for this check could not be recorded (an argument list, a path or the branch name is too long, or not plain text)",
 };
 
 const RISK =
@@ -317,6 +318,10 @@ async function check(argv: readonly string[]): Promise<void> {
 	process.stderr.write(
 		`${RISK}\n  command:   ${JSON.stringify(plan.argv)}\n  spawned:   ${plan.executable}${plan.realExecutable === plan.executable ? "" : ` (${plan.realExecutable})`}\n  in:        ${plan.before.worktree}\n  at:        ${plan.before.commit} (tree ${plan.before.tree})\n  time limit ${plan.timeoutMs / 1000} s\n--- the check's own output follows ---\n`,
 	);
+	// The check's output goes to this process's stderr. If that goes away (the terminal closed, a pipe reader exited), writing to it fails:
+	// the failure must not end this process before the receipt is written.
+	process.stderr.on("error", () => {});
+	process.stdout.on("error", () => {});
 	const interrupt = new AbortController();
 	const hurry = new AbortController();
 	let interrupted = false;
@@ -353,13 +358,15 @@ async function check(argv: readonly string[]): Promise<void> {
 	process.stderr.write(
 		`recorded: ${ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome]}${receipt.reasons.length === 0 ? "" : ` (${receipt.reasons.map((r) => ENDO_RECEIPT_REASON_TEXT_V0[r]).join("; ")})`}, at ${receipt.revision.commit}. This is what Endophasia observed of that command in that working tree; it is not acceptance of the task, whose status is unchanged.\n`,
 	);
-	process.exitCode = interrupted
-		? ENDO_CHECK_EXIT_CODES_V0.interrupted
-		: receipt.outcome === "passed"
-			? ENDO_CHECK_EXIT_CODES_V0.passed
-			: receipt.outcome === "failed"
-				? ENDO_CHECK_EXIT_CODES_V0.failed
-				: ENDO_CHECK_EXIT_CODES_V0.inconclusive;
+	// 130 only when the check itself was stopped by the interruption: a signal after it ended does not change what was recorded.
+	process.exitCode =
+		receipt.execution.kind === "interrupted"
+			? ENDO_CHECK_EXIT_CODES_V0.interrupted
+			: receipt.outcome === "passed"
+				? ENDO_CHECK_EXIT_CODES_V0.passed
+				: receipt.outcome === "failed"
+					? ENDO_CHECK_EXIT_CODES_V0.failed
+					: ENDO_CHECK_EXIT_CODES_V0.inconclusive;
 }
 
 const READ_REFUSALS: Readonly<Record<Exclude<DevelopReceiptsReadResultV0, { ok: true }>["code"], string>> = {

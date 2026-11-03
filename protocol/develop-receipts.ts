@@ -83,7 +83,7 @@ export const ENDO_RECEIPT_REASONS_V0 = [
 ] as const;
 export type EndoReceiptReasonV0 = (typeof ENDO_RECEIPT_REASONS_V0)[number];
 
-/** What a receipt does not establish. The first nine hold for every receipt; the last three when their fact does. In a fixed order. */
+/** What a receipt does not establish. The first nine hold for every receipt; the last four when their fact does. In a fixed order. */
 export const ENDO_RECEIPT_LIMITATIONS_V0 = [
 	"command-defines-the-check",
 	"ignored-files-not-examined",
@@ -97,6 +97,7 @@ export const ENDO_RECEIPT_LIMITATIONS_V0 = [
 	"reflog-unavailable",
 	"stray-processes-stopped",
 	"executable-in-worktree",
+	"stray-processes-not-observable",
 ] as const;
 export type EndoReceiptLimitationV0 = (typeof ENDO_RECEIPT_LIMITATIONS_V0)[number];
 
@@ -116,7 +117,7 @@ export interface EndoDevelopReceiptV0 {
 	durationMs: number;
 	repository: { worktree: string; commonDir: string; linked: boolean };
 	revision: { commit: string; tree: string; branch: string | null };
-	/** Whether the reflogs could be compared at all (`unavailable`: Git had no reflog for HEAD). */
+	/** Whether the reflogs could be compared (`unavailable`: Git had no reflog for HEAD, or for the branch HEAD names). */
 	reflog: "compared" | "unavailable";
 	check: {
 		/** Exactly the operator's argv after `--`. */
@@ -128,8 +129,11 @@ export interface EndoDevelopReceiptV0 {
 	};
 	execution: EndoReceiptExecutionV0;
 	output: { stdoutBytes: number; stderrBytes: number };
-	/** Members of the check's process group were still running when its leader exited; they were stopped before the second observation. */
-	strayProcesses: boolean;
+	/**
+	 * Members of the check's process group were still running when its leader exited; they were stopped before the second observation.
+	 * Null where that cannot be seen (no /proc): unknown, never "none".
+	 */
+	strayProcesses: boolean | null;
 	/** The output pipes stayed open after the group was gone: a process outside the group held them. */
 	escapedProcess: boolean;
 	after: EndoReceiptAfterV0;
@@ -175,7 +179,8 @@ export function endoReceiptVerdictV0(facts: EndoReceiptFactsV0): {
 		reasons.length > 0 || e.kind !== "exited" ? "inconclusive" : e.code === 0 ? "passed" : "failed";
 	const limits = new Set<EndoReceiptLimitationV0>(ENDO_RECEIPT_LIMITATIONS_V0.slice(0, 9));
 	if (facts.reflog === "unavailable") limits.add("reflog-unavailable");
-	if (facts.strayProcesses) limits.add("stray-processes-stopped");
+	if (facts.strayProcesses === true) limits.add("stray-processes-stopped");
+	if (facts.strayProcesses === null) limits.add("stray-processes-not-observable");
 	if (
 		within(facts.repository.worktree, facts.check.realExecutable) ||
 		within(facts.repository.worktree, facts.check.executable)
@@ -211,16 +216,18 @@ export const ENDO_RECEIPT_LIMITATION_TEXT_V0: Readonly<Record<EndoReceiptLimitat
 		"The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.",
 	"unsigned-local-record": "A local, unsigned file: anyone who can write the store can write a receipt.",
 	"reflog-unavailable":
-		"Git had no reflog for HEAD here, so a HEAD that moved and came back during the check cannot be told.",
+		"Git had no reflog for HEAD or its branch here, so a ref that moved and came back during the check cannot be told.",
 	"stray-processes-stopped":
 		"Processes of the check were still running when it exited; they were stopped before the second observation.",
 	"executable-in-worktree": "The executable is inside the working tree that was checked: the repository supplied it.",
+	"stray-processes-not-observable":
+		"Whether processes of the check were still running when it exited could not be seen here (no /proc); any were stopped with its group.",
 });
 
 /** The words each reason is shown with. */
 export const ENDO_RECEIPT_REASON_TEXT_V0: Readonly<Record<EndoReceiptReasonV0, string>> = Object.freeze({
 	"timed-out": "it ran past its time limit and was stopped",
-	interrupted: "the operator interrupted it",
+	interrupted: "endo was interrupted while it ran (Ctrl-C, a hangup or a termination signal), and stopped it",
 	signaled: "it was ended by a signal it did not get from Endophasia",
 	"output-limit": "it wrote more output than the limit and was stopped",
 	"spawn-failed": "it could not be started",
@@ -464,7 +471,7 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 			stdoutBytes: count(output.stdoutBytes, "output.stdoutBytes"),
 			stderrBytes: count(output.stderrBytes, "output.stderrBytes"),
 		},
-		strayProcesses: flag(r.strayProcesses, "strayProcesses"),
+		strayProcesses: r.strayProcesses === null ? null : flag(r.strayProcesses, "strayProcesses"),
 		escapedProcess: flag(r.escapedProcess, "escapedProcess"),
 		after: after(r.after),
 		outcome: oneOf(r.outcome, ["passed", "failed", "inconclusive"] as const, "outcome"),

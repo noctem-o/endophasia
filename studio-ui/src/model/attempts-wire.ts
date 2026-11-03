@@ -50,7 +50,7 @@ export const RECEIPT_OUTCOME_LABELS: Readonly<Record<EndoReceiptOutcomeV0, strin
 };
 export const RECEIPT_REASON_TEXT: Readonly<Record<EndoReceiptReasonV0, string>> = {
 	"timed-out": "it ran past its time limit and was stopped",
-	interrupted: "the operator interrupted it",
+	interrupted: "endo was interrupted while it ran (Ctrl-C, a hangup or a termination signal), and stopped it",
 	signaled: "it was ended by a signal it did not get from Endophasia",
 	"output-limit": "it wrote more output than the limit and was stopped",
 	"spawn-failed": "it could not be started",
@@ -81,10 +81,12 @@ export const RECEIPT_LIMITATION_TEXT: Readonly<Record<EndoReceiptLimitationV0, s
 		"The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.",
 	"unsigned-local-record": "A local, unsigned file: anyone who can write the store can write a receipt.",
 	"reflog-unavailable":
-		"Git had no reflog for HEAD here, so a HEAD that moved and came back during the check cannot be told.",
+		"Git had no reflog for HEAD or its branch here, so a ref that moved and came back during the check cannot be told.",
 	"stray-processes-stopped":
 		"Processes of the check were still running when it exited; they were stopped before the second observation.",
 	"executable-in-worktree": "The executable is inside the working tree that was checked: the repository supplied it.",
+	"stray-processes-not-observable":
+		"Whether processes of the check were still running when it exited could not be seen here (no /proc); any were stopped with its group.",
 };
 export const RECEIPT_RELATION_LABELS: Readonly<Record<EndoReceiptRelationV0, string>> = {
 	"at-head": "Recorded at this working tree's current HEAD",

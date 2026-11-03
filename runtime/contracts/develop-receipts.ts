@@ -35,6 +35,7 @@ import {
 	type EndoReceiptRelationV0,
 	endoReceiptRelationV0,
 	endoReceiptVerdictV0,
+	validateEndoDevelopReceiptV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopUnreadableReasonV0 } from "../../protocol/develop-tasks.ts";
 import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
@@ -54,7 +55,8 @@ import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
  * - `project-repository`: the project's registered path is not in a Git repository (`reason`).
  * - `other-repository`: the directory is a working tree of a different repository from the project's.
  * - `not-clean`: the tree is not a clean, committed state (`dirty` says what).
- * - `too-large`: a receipt for this check would not fit its bound (the argv or a path is too long).
+ * - `unrecordable`: a receipt for this check could not be recorded, whatever its end: it would not fit its bound, or a recorded value (a
+ *   path, the branch name) is not one a receipt can hold. Refused now rather than after the check has run.
  */
 export type DevelopCheckRefusalV0 =
 	| "bad-request"
@@ -68,7 +70,7 @@ export type DevelopCheckRefusalV0 =
 	| "project-repository"
 	| "other-repository"
 	| "not-clean"
-	| "too-large";
+	| "unrecordable";
 
 export type DevelopCheckPlanResultV0 =
 	| { ok: true; plan: DevelopCheckPlanV0 }
@@ -292,7 +294,12 @@ export class DevelopReceiptsServiceV0 {
 			8.64e15,
 			8.64e15,
 		);
-		if (DevelopReceiptsStoreV0.encode(largest) === null) return refuse("too-large");
+		try {
+			validateEndoDevelopReceiptV0(largest);
+		} catch {
+			return refuse("unrecordable");
+		}
+		if (DevelopReceiptsStoreV0.encode(largest) === null) return refuse("unrecordable");
 		return { ok: true, plan };
 	}
 
@@ -332,7 +339,11 @@ export class DevelopReceiptsServiceV0 {
 		const facts = {
 			repository: { worktree: b.worktree, commonDir: b.commonDir, linked: b.linked },
 			revision: { commit: b.commit, tree: b.tree, branch: b.branch },
-			reflog: b.reflogs.head === null ? ("unavailable" as const) : ("compared" as const),
+			// Compared only when every reflog that could have logged a movement was there to compare.
+			reflog:
+				b.reflogs.head === null || (b.branch !== null && b.reflogs.branch === null)
+					? ("unavailable" as const)
+					: ("compared" as const),
 			check: {
 				argv: [...plan.argv],
 				executable: plan.executable,

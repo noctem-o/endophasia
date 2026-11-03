@@ -128,8 +128,11 @@ export class GitRevisionObserverV0 {
 		maxBytes: number,
 		extra: readonly (readonly [string, string])[] = [],
 		readGlobalConfig = false,
+		/** The arguments carry `:(glob)` pathspec magic of their own, so the global `--literal-pathspecs` is left off. */
+		ownPathspecs = false,
 	): Promise<GitRunV0> {
-		return this.#run([...GIT_PREFIX_V0, ...args], {
+		const prefix = ownPathspecs ? GIT_PREFIX_V0.filter((flag) => flag !== "--literal-pathspecs") : GIT_PREFIX_V0;
+		return this.#run([...prefix, ...args], {
 			cwd,
 			env: gitEnvV0(extra, { ...(this.#home === undefined ? {} : { home: this.#home }), readGlobalConfig }),
 			limits: { timeoutMs: GIT_LIMITS_V0.timeoutMs, maxBytes },
@@ -233,17 +236,42 @@ export class GitRevisionObserverV0 {
 			...OBSERVER_CONFIG,
 			...(excludes !== "" && !excludes.includes("\n") ? [["core.excludesFile", excludes] as const] : []),
 		];
-		// The rules "clean" is judged under: the configuration listing with values (digested, never kept), the operator's ignore file's
-		// name, and the stamp of info/exclude and of that ignore file.
+		// The rules "clean" is judged under, so that a check cannot add an untracked file and hide it from the second observation by changing
+		// them: the configuration listing with values (digested, never kept), the operator's ignore file (the one configured, or Git's default
+		// one when none is), info/exclude, and every `.gitignore` in the tree that is itself ignored (a tracked or untracked one that is not
+		// ignored already shows in the status). Stamps only: nothing is read from those files here.
 		const listing = await this.#read(cwd, ["config", "--includes", "--list", "-z"], GIT_LIMITS_V0.listBytes);
 		const listingFailure = failed(listing);
 		if (listingFailure !== null) return listingFailure;
+		const home = this.#home ?? { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
+		const userIgnore =
+			excludes !== ""
+				? excludes
+				: home.XDG_CONFIG_HOME !== undefined && home.XDG_CONFIG_HOME !== ""
+					? join(home.XDG_CONFIG_HOME, "git", "ignore")
+					: home.HOME !== undefined && home.HOME !== ""
+						? join(home.HOME, ".config", "git", "ignore")
+						: "";
+		const hidden = await this.#read(
+			cwd,
+			["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", ":(glob)**/.gitignore"],
+			GIT_LIMITS_V0.listBytes,
+			keys,
+			false,
+			true,
+		);
+		const hiddenFailure = failed(hidden);
+		if (hiddenFailure !== null) return hiddenFailure;
+		const hiddenStamps: string[] = [];
+		for (const name of hidden.stdout.toString("utf8").split("\0"))
+			if (name !== "") hiddenStamps.push(`${name}\0${await stampOf(join(root, name))}`);
 		const rules = sha256(
 			[
 				sha256(listing.stdout),
-				excludes,
+				userIgnore,
+				userIgnore === "" ? "" : await stampOf(userIgnore),
 				await stampOf(join(common, "info", "exclude")),
-				excludes === "" ? "" : await stampOf(excludes),
+				sha256(hiddenStamps.join("\n")),
 			].join("\0"),
 		);
 

@@ -73,7 +73,8 @@ A `passed` receipt says this, and only this:
 > - Both times, Git reported no staged, unstaged, untracked or conflicted change, no index entry flagged assume-unchanged or
 >   skip-worktree, and no submodule. Ignored files were not examined.
 > - No ref update was **logged** in HEAD's (or the branch's) reflog in between.
-> - The configuration and ignore rules read the same both times.
+> - The configuration and ignore rules read the same both times: the configuration listing, the operator's ignore file (the configured
+>   one, or Git's default `~/.config/git/ignore`), `info/exclude`, and every `.gitignore` in the tree that is itself ignored.
 > - The process exited by itself, with code 0, within its time limit.
 
 What it does **not** establish is recorded in every receipt (`limitations`, a closed list the validator re-derives) and shown wherever
@@ -90,9 +91,10 @@ the receipt is shown:
 | `processes-leaving-group-not-tracked` | A process that leaves the group (`setsid`, a daemon) is outside it. If it still holds the output, the receipt is inconclusive. |
 | `attempt-link-is-operator-declared` | The operator chose the attempt. Endophasia does not know which revision the attempt's work produced. |
 | `unsigned-local-record` | Anyone who can write the store can write a receipt. It is evidence for the operator, not an attestation. |
-| `reflog-unavailable` (when so) | Git had no reflog for HEAD. A HEAD that moved and came back cannot be told. |
+| `reflog-unavailable` (when so) | Git had no reflog for HEAD, or for the branch HEAD names. A ref that moved and came back cannot be told. |
 | `stray-processes-stopped` (when so) | Members of the group were still running when the command exited. They were killed before the second observation. |
 | `executable-in-worktree` (when so) | The executable is inside the checked tree: the repository supplied it. |
+| `stray-processes-not-observable` (when so) | Where `/proc` is missing (macOS), leftover processes cannot be seen. "Unknown" is recorded (`strayProcesses: null`), never "none". Any leftovers are still killed with the group. |
 
 The user-facing phrase is "**observed check passed** *in this working tree at C*", never "C passed", "verified" or "task done".
 
@@ -116,7 +118,7 @@ this observer.
 | `status --porcelain=v2 -z --untracked-files=all` | any staged, unstaged, untracked or conflicted entry |
 | `ls-files --stage -v -z` | an entry flagged assume-unchanged or skip-worktree (status would hide its changes); a gitlink (submodule) |
 | HEAD's and the branch's reflog, read **through Git** (`rev-list --walk-reflogs --count` and the newest entry; any ref backend) | never refused; none gives `reflog-unavailable` |
-| A digest of the configuration listing (with values, never stored) and the stamps of `info/exclude` and the operator's ignore file | never refused; only compared |
+| A digest of the rules "clean" is judged under: the configuration listing (with values, never stored); the stamps of the operator's ignore file (the configured one, or Git's default), of `info/exclude`, and of every ignored `.gitignore` in the tree (`ls-files --others --ignored --exclude-standard -- ':(glob)**/.gitignore'`) | never refused; only compared, so a check cannot add a file and hide it from the second observation by changing the rules |
 
 **Detached HEAD** is supported: the commit is what is bound. A **linked worktree** of the project's repository is supported. Its receipt
 records `linked: true`, and it relates only to that worktree.
@@ -160,7 +162,10 @@ Otherwise it is `inconclusive`, with every reason that applies.
   they are closed from this side, and the receipt is `inconclusive` (`escaped-process`). The wait is bounded on every path.
 - **Input and output.**
   - stdin is an empty pipe, closed at once.
-  - Output is passed through to the operator's terminal (stderr) as it comes, with backpressure, and never buffered whole.
+  - Output is passed through to the operator's terminal (stderr) as it comes, with backpressure while the check runs, and never
+    buffered whole. Once the group is gone, what is left in the pipes is drained without backpressure, so a slow terminal is never
+    taken for an escaped process.
+  - If the terminal or pipe goes away during a check, writing to it stops. The check is still observed, counted and recorded.
   - Byte counts are recorded. Contents and digests are not: nothing could check a digest of output that is not kept.
   - At 64 MiB in total the check is stopped (`output-limit`).
 - **Time.** `--timeout <seconds>`, 1 to 7200, default 600.
@@ -172,7 +177,8 @@ Otherwise it is `inconclusive`, with every reason that applies.
 - **POSIX only.** On Windows, `check` is refused.
 - **What is recorded.**
   - The argv **is** recorded, since it is what was checked. It is bounded: at most 64 arguments and 8 KiB, no NUL, well-formed text.
-  - A receipt that could not fit its 64 KiB bound is refused before anything runs.
+  - A receipt that could not be recorded, whatever the check's end, is refused before anything runs (`unrecordable`). For example, it
+    could exceed its 64 KiB bound, or a branch name could be over its bound. The projected receipt is validated, not only measured.
   - Do not put secrets on the command line: the argv is stored and shown on the paired page.
 
 ## Outcome
@@ -269,7 +275,7 @@ endo attempt receipt  --root R --receipt E [--cwd DIR]    # one, in full, with i
 | 0 | recorded: observed check passed |
 | 3 | recorded: observed check failed |
 | 4 | recorded: inconclusive |
-| 130 | interrupted; recorded as inconclusive (`interrupted`) |
+| 130 | the check was stopped by an interruption; recorded as inconclusive (`interrupted`). A signal that arrives after the check ended does not change the exit code. |
 | 2 | refused before running: nothing ran, nothing was recorded (the reason on stderr) |
 | 5 | the check ran but its receipt could not be written: **nothing was recorded** (what was observed is printed on stderr) |
 | 1 | a usage error, or an internal fault |
@@ -329,7 +335,7 @@ covers that.
 
 ## Testing
 
-`tests/develop-receipts.test.ts` (43 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
+`tests/develop-receipts.test.ts` (46 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
 `codex` are first on PATH for the whole file, and are checked never to run.
 
 | Brief case | Test |
@@ -338,8 +344,8 @@ covers that.
 | Failure preserved | "a failing check is recorded as failed and kept when a passing one follows" |
 | Multiple and concurrent receipts | the same; "two checks at once on one attempt"; six writer processes at once (store) |
 | Dirty, untracked, detached, linked worktrees | the observer suite (changes; assume-unchanged, skip-worktree, gitlink; detached; linked); the refusal test; "checks a linked worktree" |
-| Repository changes during a running check | a tracked edit, an untracked file, a commit, HEAD moved and back (reflog only), an ignore rule added: each inconclusive with its reason |
-| Timeout, signal, missing executable, interruption, malformed output | the runner suite (binary output; stdin; SIGTERM-ignoring check; output limit; signal; missing and bad-interpreter executable; interrupt; stray and escaped processes); the service suite; CLI SIGINT gives exit 130 and an `interrupted` receipt |
+| Repository changes during a running check | a tracked edit, an untracked file, a commit, HEAD moved and back (reflog only), and three ways to hide a new file (an `info/exclude` rule, a self-ignoring nested `.gitignore`, Git's default user ignore file): each inconclusive with its reason |
+| Timeout, signal, missing executable, interruption, malformed output | the runner suite (binary output; stdin; SIGTERM-ignoring check; output limit; signal; missing and bad-interpreter executable; interrupt; stray and escaped processes; a failing sink; a sink that never drains); the service suite; CLI SIGINT gives exit 130 and an `interrupted` receipt; an unrecordable receipt is refused before running |
 | Missing, corrupt, oversize, misnamed, symlinked receipt files | the store suite: each reported by name and left byte for byte; symlinked directories refused |
 | Restart, atomic writes, crash recovery | a new store reads the same; `beforeLink` crash; a leftover temporary file skipped, then swept when old |
 | Another project's attempts, invalid ids | `other-repository` refusal; another repository's relation; malformed and unknown ids (service and CLI) |
@@ -354,7 +360,7 @@ Also covered:
 - `tests/endo-studio-ui-source.test.ts`: the page has no receipt or check route.
 - The existing attempts tests run against the `v1` view.
 
-Eight deliberate mutations were reintroduced one at a time, and each made at least one test fail:
+Thirteen deliberate mutations were reintroduced one at a time, and each made at least one test fail:
 - the verdict ignoring a changed tree;
 - the observer ignoring flagged entries;
 - PATH resolution not skipping in-tree entries;
@@ -362,7 +368,15 @@ Eight deliberate mutations were reintroduced one at a time, and each made at lea
 - the service not checking the repository;
 - the runner never reporting an escaped process;
 - the rules comparison removed;
-- the page's coherence check removed.
+- the page's coherence check removed;
+- the ignored-`.gitignore` stamps removed from the rules digest;
+- the default user ignore file removed from it;
+- the sink error listener removed;
+- backpressure kept while draining;
+- the projected receipt not validated.
+
+One more mutation, skipping writes to a sink that has already failed, made no test fail. That line only avoids pointless writes once
+the error listener has done its work. The listener is what keeps the run alive, and removing it is caught.
 
 ## Manual smoke test
 
@@ -427,3 +441,28 @@ not installed** in this Claude Code environment, and installing one would have c
 | An isolated checkout was not evaluated (critic) | **Fixed.** See [Options](#options). |
 | Ctrl-Z stops `endo` but not the check (critic) | **Documented**, not handled. |
 | Refuse a check when a live Pi session is known in that worktree (critic, optional) | **Declined.** The CLI does not know the workbench's sessions, and the limitation says it plainly. |
+
+## Implementation review
+
+After the build, a fresh-context reviewer (a Claude Code `Agent` subagent with no conversation history, not an EGM persona) reviewed the
+commit. It focused on process execution, file-system safety, provenance and overstatement. It read the diff and ran the receipts,
+attempts, inspector and reader suites. It also ran real `endo attempt check` experiments against disposable stores in a scratch
+directory. It found no blocker.
+
+| Finding | Disposition |
+| :-- | :-- |
+| **Major:** a check could add an untracked file and hide it with a self-ignoring nested `.gitignore`, or with Git's default `~/.config/git/ignore` when no `core.excludesFile` is set. It was then recorded as passed (reproduced) | **Fixed.** Both are in the rules digest: the default user ignore file is stamped, and so is every ignored `.gitignore` in the tree. Tested both ways; each gives `rules-changed`. |
+| **Major:** if `endo`'s stderr went away during a check (a closed terminal, an exited pipe reader), `endo` crashed with no receipt and exit 1 (reproduced with a FIFO) | **Fixed.** The runner listens for sink errors, stops writing, and keeps observing. The CLI also ignores later stderr and stdout errors. Tested with a sink that fails every write. |
+| **Major:** `plan` only measured the projected receipt, so a branch name over the validator's bound let the check run and then record nothing (exit 5; reproduced) | **Fixed.** The projected receipt is validated before anything runs (`unrecordable`). Tested with a 1 200-character branch. |
+| A slow sink kept a stream paused, so a check fully inside its group was recorded as `escaped-process` (reproduced) | **Fixed.** Once the group is gone, the pipes are drained without backpressure. Tested with a sink that never drains. |
+| Exit 130 whenever a signal arrived during `run`, even after the check had ended | **Fixed.** 130 only when the receipt's execution is `interrupted`. |
+| SIGTERM and SIGHUP were worded as "the operator interrupted it" | **Fixed.** "endo was interrupted while it ran (Ctrl-C, a hangup or a termination signal)". |
+| Without `/proc`, stray processes were recorded as none | **Fixed.** `strayProcesses: null` means unknown, with the limitation `stray-processes-not-observable`. |
+| `reflog: "compared"` when HEAD's reflog existed but the branch's did not | **Fixed.** `unavailable` unless every reflog that could have logged a movement was there. |
+| An output-limit stop during the final drain could arm a grace timer and relabel a check that had already exited | **Fixed.** Nothing is stopped once the command has exited. |
+| Each workbench read of the attempts runs about ten read-only Git processes | **Accepted.** The read is behind the grant and happens only after a workspace read (no polling), and the observation is the point of the relation. A cache would make "at current HEAD" less true. |
+| Confirmed sound: argv provenance; no shell; PATH skips; Git variables stripped; keeper reuse (it killed the group when `endo` crashed); write-once equivalence; `repositoryOverridesV0` equivalence (one fewer cache of `git --version`); store reads; the relation; the workbench route | No change. |
+
+The full suite also caught a race in the escaped-process test under load: the shell could exit before `setsid` had left the group. The
+test now waits for the escaped child to report.
+

@@ -40,7 +40,8 @@ export interface CheckRunOptionsV0 {
 export interface CheckRunResultV0 {
 	execution: EndoReceiptExecutionV0;
 	output: { stdoutBytes: number; stderrBytes: number };
-	strayProcesses: boolean;
+	/** Null where it cannot be seen (no /proc): never "none" for "unknown". */
+	strayProcesses: boolean | null;
 	escapedProcess: boolean;
 	/** From the spawn to the end of the group, on a monotonic clock. */
 	durationMs: number;
@@ -61,20 +62,35 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 	group.stdin?.end();
 
 	let stopped: Stop | null = null;
+	/** Set once the command has exited: from then on nothing is stopped, and a late reason is never given to an ended check. */
+	let finished = false;
 	let graceTimer: ReturnType<typeof setTimeout> | undefined;
 	const stop = (why: Stop): void => {
-		if (stopped !== null) return;
+		if (stopped !== null || finished) return;
 		stopped = why;
 		group.signalGroup("SIGTERM");
 		graceTimer = setTimeout(() => group.killGroup(), graceMs);
 	};
 	const hurry = (): void => {
+		if (finished) return;
 		if (stopped === null) stopped = "interrupted";
 		group.killGroup();
 	};
 
 	const counts = { stdoutBytes: 0, stderrBytes: 0 };
 	const ended: Promise<void>[] = [];
+	const paused = new Set<Readable>();
+	/** Once the group is gone, nothing is held back: what is left in a pipe is drained at once, so a slow sink is never an escape. */
+	let draining = false;
+	// A sink that fails (the operator's terminal closed, a pipe reader went away) stops being written to; the check is still observed,
+	// counted and recorded. Without a listener, its error would end this process with no receipt.
+	const broken = new Set<Writable>();
+	for (const sink of new Set([options.stdout, options.stderr]))
+		sink.on("error", () => {
+			broken.add(sink);
+			for (const from of paused) from.resume();
+			paused.clear();
+		});
 	const pump = (from: Readable | null, to: Writable, key: keyof typeof counts): void => {
 		if (from === null) return;
 		ended.push(
@@ -90,10 +106,15 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 				stop("output-limit");
 				return;
 			}
-			// Backpressure: a slow terminal pauses the check's output rather than growing a buffer here.
-			if (!to.write(chunk)) {
+			if (broken.has(to)) return;
+			// Backpressure while the check runs: a slow terminal pauses the check's output rather than growing a buffer here.
+			if (!to.write(chunk) && !draining) {
 				from.pause();
-				to.once("drain", () => from.resume());
+				paused.add(from);
+				to.once("drain", () => {
+					paused.delete(from);
+					from.resume();
+				});
 			}
 		});
 	};
@@ -108,10 +129,15 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 
 	const exit = await group.exited;
 	clearTimeout(timeout);
-	// What is still running in the group after the command exited by itself: noted, then killed with the rest of the group.
-	const strayProcesses = stopped === null && !exit.spawnFailed && group.liveMembers() === true;
+	// What is still running in the group after the command exited by itself: noted (or "unknown" without /proc), then killed with the rest.
+	const members = stopped === null && !exit.spawnFailed ? group.liveMembers() : false;
+	const strayProcesses = members === undefined ? null : members;
 	await group.release();
+	finished = true;
 	clearTimeout(graceTimer);
+	draining = true;
+	for (const from of paused) from.resume();
+	paused.clear();
 	const durationMs = Math.max(0, Math.round(performance.now() - started));
 	options.interrupt?.removeEventListener("abort", onInterrupt);
 	options.hurry?.removeEventListener("abort", hurry);
@@ -130,10 +156,11 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 		group.stderr?.destroy();
 	}
 
+	const why = stopped as Stop | null;
 	const execution: EndoReceiptExecutionV0 = exit.spawnFailed
 		? { kind: "spawn-failed" }
-		: stopped !== null
-			? { kind: stopped }
+		: why !== null
+			? { kind: why }
 			: exit.code !== null
 				? { kind: "exited", code: exit.code }
 				: { kind: "signaled", signal: exit.signal ?? "SIGKILL" };

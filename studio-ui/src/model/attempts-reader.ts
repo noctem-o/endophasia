@@ -56,11 +56,14 @@ function answered<V>(s: LaunchReadState<V>, reply: LaunchReply<V>): LaunchReadSt
 		problem:
 			reply.kind === "absent"
 				? "absent"
-				: (reply as { code: string }).code === "invalid"
-					? "invalid"
-					: (reply as { code: string }).code === "unreachable"
-						? "unreachable"
-						: "refused",
+				: (reply as { code: string }).code === "grant-required"
+					? // The host refused THIS page's grant (revoked, expired, or replaced by another page's pairing).
+						"unpaired"
+					: (reply as { code: string }).code === "invalid"
+						? "invalid"
+						: (reply as { code: string }).code === "unreachable"
+							? "unreachable"
+							: "refused",
 	};
 }
 

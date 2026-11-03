@@ -174,11 +174,17 @@ describe("failures, unpairing and pairing again", () => {
 		await flush();
 		expect(h.reader.state).toEqual({ view: null, current: false, busy: false, problem: "unreachable" });
 		h.set({ trigger: 2 });
+		// The host refused this page's grant: said as unpaired (the shell then ends the page's pairing), not as a generic refusal.
 		h.calls[1]!.resolve({ kind: "failure", status: 401, code: "grant-required" });
 		await flush();
-		expect(h.reader.state).toMatchObject({ current: false, busy: false, problem: "refused" });
+		expect(h.reader.state).toMatchObject({ current: false, busy: false, problem: "unpaired" });
+		// Any other refusal (a busy or failing host) is a refusal, and says nothing about the pairing.
 		h.set({ trigger: 3 });
-		h.calls[2]!.resolve(ok("back"));
+		h.calls[2]!.resolve({ kind: "failure", status: 503, code: "unavailable" });
+		await flush();
+		expect(h.reader.state).toMatchObject({ current: false, busy: false, problem: "refused" });
+		h.set({ trigger: 4 });
+		h.calls[3]!.resolve(ok("back"));
 		await flush();
 		expect(h.reader.state).toEqual({ view: view("back"), current: true, busy: false, problem: null });
 		// A request function that throws before returning a promise is a failure like any other.

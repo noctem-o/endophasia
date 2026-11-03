@@ -61,19 +61,21 @@ export function App(): ReactElement {
 	// The operator's project and tasks: metadata, held beside the workbench for the same reason as the worktree context. Choosing a task here
 	// sends nothing and changes no session, worktree or status.
 	const tasks = useWorkspace(workbench.state.grant, launchId, workspace === "develop");
-	// A read or change refused for want of a grant (revoked, expired or replaced at the host): ask the host's status once, which is the
-	// authority on whether this page is paired. If it is not, the page drops its grant and shows the pairing form again; drafts stay.
-	const refusedGrant =
-		workbench.state.grant !== null &&
-		(tasks.state.problem === "unpaired" ||
-			tasks.state.notice === "grant-required" ||
-			tasks.attention.problem === "refused" ||
-			tasks.attempts.problem === "refused" ||
-			project.state.problem === "unpaired");
-	// biome-ignore lint/correctness/useExhaustiveDependencies: only the moment a refusal appears asks again, never a loop
+	// A read or change refused for want of a grant: the host has refused THIS page's token (revoked, expired, or replaced because another
+	// page paired). That refusal is the answer, so the page drops its grant and shows the pairing form again; drafts stay. (The host's
+	// status cannot say this: its `paired` means some page holds the grant, which after a replacement is another page.)
+	// Only a refusal that ARRIVES acts, never one still on screen from the grant before: just after a new pairing, the previous grant's
+	// "unpaired" states remain until the first reads under the new one return, and must not drop it.
+	const refused =
+		tasks.state.problem === "unpaired" ||
+		tasks.state.notice === "grant-required" ||
+		tasks.attention.problem === "unpaired" ||
+		tasks.attempts.problem === "unpaired" ||
+		project.state.problem === "unpaired";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only the moment a refusal appears, once; a new grant alone never acts
 	useEffect(() => {
-		if (refusedGrant) workbench.refresh();
-	}, [refusedGrant]);
+		if (refused && workbench.state.grant !== null) workbench.unpair();
+	}, [refused]);
 	// How model-provided reasoning is shown, in both appearances: folded (the default) or shown, and the traces opened or folded by hand.
 	// Display only, memory only: it never changes the model's thinking setting, and a reload is the default again.
 	const reasoning = useReasoningView(workbench.state.status?.launchId ?? null);

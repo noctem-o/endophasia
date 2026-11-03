@@ -263,6 +263,29 @@ suite("the workspace desk: the project's work, with no agent", () => {
 		expect(await page.text("[data-testid=task-notice]")).toContain("Pair this page again");
 	});
 
+	it("asks to pair again when another page's pairing replaced this page's grant, though the host is still paired", async () => {
+		const api = await launch(1440, 900);
+		const { page, host, server, seeded } = api;
+		await page.click(`[data-testid=attention-row][data-task="${seeded.tasks.lint}"]`);
+		await page.click("[data-testid=task-edit]");
+		await fill(page, "[data-testid=task-title-input]", "Kept while another tab pairs");
+		// A second tab pairs: its grant replaces this one's. The host stays paired (to the other tab).
+		const other = await browser.open(1440, 900);
+		tabs.push(other);
+		await other.goto(`${server.baseUrl}/`);
+		await other.settled();
+		await other.waitFor("document.querySelector('[data-testid=workspace-desk]')");
+		await pair({ page: other, host });
+		await page.click("[data-testid=desk-refresh]");
+		await page.waitFor("document.querySelector('[data-testid=pair-code]')");
+		expect(await page.text("[data-testid=authority-chip]")).toContain("not paired");
+		expect(await page.eval<string>("document.querySelector('[data-testid=task-title-input]').value")).toBe(
+			"Kept while another tab pairs",
+		);
+		// The other tab is untouched by this one's refusal.
+		expect(await other.text("[data-testid=authority-chip]")).toContain("Workspace · paired");
+	});
+
 	it("reads the worktree's changes from the desk, and Escape returns to Tasks", async () => {
 		const api = await launch(1440, 900);
 		const { page } = api;

@@ -29,6 +29,7 @@
 
 import { realpathSync, statSync } from "node:fs";
 import type { EndoDevelopAttemptsViewV1 } from "../../protocol/develop-attempts.ts";
+import type { EndoDevelopAttentionViewV0 } from "../../protocol/develop-attention.ts";
 import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import {
 	ENDO_DEVELOP_OMP_FORMAT_V1,
@@ -60,6 +61,7 @@ import type {
 	EndoTasksUpgradeV1,
 } from "../../storage/develop-tasks.ts";
 import { DevelopAttemptsServiceV0 } from "./develop-attempts.ts";
+import { endoDevelopAttentionViewV0 } from "./develop-attention.ts";
 
 export type EndoDevelopReadOnlyReasonV0 = NonNullable<EndoDevelopWorkspaceViewV1["readOnlyReason"]>;
 
@@ -333,6 +335,7 @@ export class DevelopLaunchWorkspaceV0 {
 	readonly #config: Readonly<DevelopLaunchConfigV0>;
 	readonly #host: DevelopLaunchHostV0;
 	readonly #attempts: DevelopAttemptsServiceV0 | null;
+	readonly #attemptRecords: DevelopAttemptsStoreV0 | null;
 	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
 
 	/** Opened only by `DevelopWorkspaceServiceV0.forLaunch`: the token is private to this module. */
@@ -349,7 +352,31 @@ export class DevelopLaunchWorkspaceV0 {
 		this.#config = Object.freeze({ ...config });
 		this.#host = host;
 		this.#attempts = attempts === null ? null : new DevelopAttemptsServiceV0(store, attempts);
+		this.#attemptRecords = attempts;
 		this.#receipts = receipts;
+	}
+
+	/** The launch directory's HEAD for comparing receipts, observed now (read-only Git); null when there is no observer or it failed. */
+	async #current(): Promise<EndoReceiptCurrentV0 | null> {
+		const receipts = this.#receipts;
+		if (receipts === null || receipts === undefined) return null;
+		return receipts.current(this.#config.launchDirectory).catch(() => null);
+	}
+
+	/**
+	 * The attention projection of this launch's project (docs/designs/develop-attention.md), read now; null when this launch was given no
+	 * attempt records. Read-only, in every state of the workspace. The project is this launch's, every task of it that is not done is
+	 * summarised, and receipts are compared with this launch's own directory, observed once for the read. Nothing a request says chooses any
+	 * of it.
+	 */
+	async attentionView(): Promise<EndoDevelopAttentionViewV0 | null> {
+		if (this.#attemptRecords === null) return null;
+		const current = await this.#current();
+		return endoDevelopAttentionViewV0(
+			{ tasks: this.#store, attempts: this.#attemptRecords, receipts: this.#receipts?.store ?? null },
+			{ projectId: this.#config.projectId, launchId: this.#host.launchId },
+			current,
+		);
 	}
 
 	/**
@@ -362,8 +389,7 @@ export class DevelopLaunchWorkspaceV0 {
 		if (this.#attempts === null) return null;
 		const receipts = this.#receipts;
 		if (receipts === null || receipts === undefined) return this.#attempts.viewFor(this.#config.projectId);
-		const current = await receipts.current(this.#config.launchDirectory).catch(() => null);
-		return this.#attempts.viewFor(this.#config.projectId, { store: receipts.store, current });
+		return this.#attempts.viewFor(this.#config.projectId, { store: receipts.store, current: await this.#current() });
 	}
 
 	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */

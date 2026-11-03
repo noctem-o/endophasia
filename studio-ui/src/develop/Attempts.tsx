@@ -6,7 +6,7 @@
 // Under each attempt, its verification receipts (docs/designs/develop-verification-receipts.md): what Endophasia observed when the operator
 // ran a check in a terminal, at which commit, and how that commit relates to this workbench's working tree now. Read-only: nothing here
 // runs a check, and a receipt is never shown as the task's acceptance.
-import type { ReactElement } from "react";
+import { type ReactElement, useEffect, useRef } from "react";
 import {
 	ATTEMPT_LABELS,
 	type Attempt,
@@ -16,6 +16,7 @@ import {
 	RECEIPT_RELATION_LABELS,
 	type Receipt,
 } from "../model/attempts-wire.ts";
+import type { ReceiptFocus } from "../model/attention.ts";
 import type { Task } from "../model/workspace-wire.ts";
 import { CopyButton, Note } from "../ui/text.tsx";
 import type { AttemptsState } from "../use-attempts.ts";
@@ -32,13 +33,36 @@ export function AttemptsSection({
 	attempts,
 	task,
 	tasksCurrent,
+	focus = null,
+	onFocused,
 }: {
 	attempts: AttemptsState;
 	task: Task;
 	/** Whether the tasks beside this section are confirmed now: when they are not, neither are the attempts read with them. */
 	tasksCurrent: boolean;
+	/** A receipt to open once it is shown (from the overview): its attempt is opened and the receipt scrolled to and focused. */
+	focus?: ReceiptFocus | null;
+	onFocused?(): void;
 }): ReactElement | null {
 	const { view, problem } = attempts;
+	const list = useRef<HTMLUListElement>(null);
+	// When the attempts of THIS task arrive with the receipt asked for, open its attempt and bring the receipt into view, once.
+	useEffect(() => {
+		if (focus === null || view === null || view.taskId !== task.id) return;
+		const attempt = view.attempts.find((a) => a.id === focus.attemptId);
+		if (attempt === undefined || !attempt.receipts.list.some((r) => r.id === focus.receiptId)) return;
+		const item = list.current?.querySelector<HTMLElement>(`[data-attempt-id="${focus.attemptId}"]`);
+		const details = item?.querySelector("details");
+		if (details == null) return;
+		details.open = true;
+		const receipt = item?.querySelector<HTMLElement>(`[data-receipt-id="${focus.receiptId}"]`);
+		if (receipt != null) {
+			receipt.dataset.focused = "true";
+			receipt.scrollIntoView({ block: "center" });
+			receipt.focus({ preventScroll: true });
+		}
+		onFocused?.();
+	}, [focus, view, task.id, onFocused]);
 	// A workbench that serves no attempts says nothing about them.
 	if (problem === "absent" && view === null) return null;
 	const prepare = `endo attempt prepare --root <store> --project ${task.projectId} --task ${task.id} --objective "…"`;
@@ -81,7 +105,7 @@ export function AttemptsSection({
 							<pre className="mono task-command">{prepare}</pre>
 						</>
 					) : (
-						<ul className="plain task-refs" data-testid="attempt-list">
+						<ul className="plain task-refs" data-testid="attempt-list" ref={list}>
 							{view.attempts.map((a) => (
 								<AttemptItem key={a.id} attempt={a} />
 							))}
@@ -103,7 +127,7 @@ export function AttemptsSection({
 function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 	const first = a.objective.split("\n", 1)[0] ?? "";
 	return (
-		<li data-testid="attempt" data-state={a.state}>
+		<li data-testid="attempt" data-state={a.state} data-attempt-id={a.id}>
 			<details className="attempt">
 				<summary>
 					<span className="task-ref-head">
@@ -271,7 +295,14 @@ function Receipts({ attempt: a }: { attempt: Attempt }): ReactElement {
 
 function ReceiptItem({ receipt: r }: { receipt: Receipt }): ReactElement {
 	return (
-		<li data-testid="receipt" data-outcome={r.outcome} data-relation={r.relation}>
+		<li
+			data-testid="receipt"
+			data-outcome={r.outcome}
+			data-relation={r.relation}
+			data-receipt-id={r.id}
+			tabIndex={-1}
+			aria-label={`${RECEIPT_OUTCOME_LABELS[r.outcome]}: ${r.argv.join(" ")}`}
+		>
 			<span className="task-ref-head">
 				<span className="chip-ref" data-outcome={r.outcome}>
 					{RECEIPT_OUTCOME_LABELS[r.outcome]}

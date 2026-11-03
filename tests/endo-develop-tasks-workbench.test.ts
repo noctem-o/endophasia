@@ -104,6 +104,7 @@ describe("only a paired page can read or change tasks", () => {
 		for (const [method, route, body] of [
 			["GET", "workspace", null],
 			["GET", "workspace/attempts", null],
+			["GET", "workspace/attention", null],
 			["POST", "workspace/tasks/create", { title: CANARY }],
 			["POST", "workspace/tasks/update", { taskId: "x", expectedRevision: 0, title: "y" }],
 			["POST", "workspace/tasks/status", { taskId: "x", expectedRevision: 0, to: "done" }],
@@ -677,6 +678,7 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 			"workbench/status",
 			"workbench/workspace",
 			"workbench/workspace/attempts",
+			"workbench/workspace/attention",
 			"workbench/project",
 		]) {
 			const reply = await get(server, `/api/v0/${route}`);
@@ -684,6 +686,7 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 		}
 		expect((await get(server, "/api/v0/workbench/workspace")).status).toBe(404);
 		expect((await get(server, "/api/v0/workbench/workspace/attempts")).status).toBe(404);
+		expect((await get(server, "/api/v0/workbench/workspace/attention")).status).toBe(404);
 		for (const route of ["workspace", "workbench/workspace", "workbench/workspace/tasks/create"])
 			expect(
 				(

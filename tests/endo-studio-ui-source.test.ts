@@ -56,6 +56,10 @@ describe("the frontend's source", () => {
 				"model/attempts-wire.ts",
 				"use-attempts.ts",
 				"model/attempts-reader.ts",
+				"develop/Attention.tsx",
+				"model/attention.ts",
+				"model/attention-wire.ts",
+				"use-attention.ts",
 				"model/workbench.ts",
 				"model/workbench-wire.ts",
 				"develop/Activity.tsx",
@@ -188,13 +192,13 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(18);
+		expect(api.match(/\/api\//g)?.length).toBe(19);
 		// Oh My Pi's saved sessions: two fixed GET routes, the second named only by an opaque selector the list gave, gated first.
 		expect(api).toContain("./api/v0/develop/omp/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(11);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(12);
 		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
 		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
@@ -211,6 +215,10 @@ describe("the frontend's source", () => {
 		// Verification receipts come with the attempts, read-only (docs/designs/develop-verification-receipts.md): the page has no route to run
 		// a check, record a receipt, or name a directory to compare with.
 		expect(api).not.toMatch(/receipt|\/check\b|attempts\/check|cwd=/i);
+		// The attention overview: one fixed GET with no query and no body (docs/designs/develop-attention.md). The page names no project, task
+		// or path, and there is no route that changes a task or runs anything from it.
+		expect(api).toContain('"./api/v0/workbench/workspace/attention"');
+		expect(api).not.toMatch(/attention\/|attention\?/);
 		// The project routes: GET only, a snapshot id and a number validated first, never a path, a branch or a command.
 		expect(api).toContain("./api/v0/workbench/project");
 		expect(api).toMatch(/\/diff\?snapshot=\$\{request\.snapshot\}&file=\$\{request\.id\}/);
@@ -306,6 +314,24 @@ describe("the frontend's source", () => {
 		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
 		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v1"');
+		// The attention hook: no timer, read beside the attempts by the same reader (one at a time, obsolete when the launch or pairing goes);
+		// it is the only caller of its route. The overview imports no api, no workbench command and no composer: a row only chooses a task.
+		const attentionHook = sources["use-attention.ts"]!;
+		expect(attentionHook).not.toMatch(/setTimeout|setInterval|requestAnimationFrame/);
+		expect(attentionHook).toContain("new LaunchReader<AttentionView>(fetchAttention, setState)");
+		for (const [name, text] of Object.entries(sources))
+			if (name !== "api.ts" && name !== "use-attention.ts") expect(text, name).not.toMatch(/fetchAttention/);
+		expect(sources["develop/Attention.tsx"]).not.toMatch(
+			/from "\.\.\/api\.ts"|use-workbench|propose|intervene|withdraw|\.prompt\b|fetch|composer|setStatus|\.create\(|\.update\(|\.link\(/,
+		);
+		// The classification is pure: no clock, no network, no React, no storage.
+		expect(sources["model/attention.ts"]).not.toMatch(
+			/Date\.now|new Date|fetch|from "react"|localStorage|setTimeout|Math\.random/,
+		);
+		expect(sources["develop/Attention.tsx"]).not.toMatch(
+			/verified (task|work)|agent succeeded|accepted|approved|priority|score/i,
+		);
+		expect(sources["model/attention-wire.ts"]).toContain('ATTENTION_SCHEMA = "endo.develop-attention-view.v0"');
 		const tasks = sources["develop/Tasks.tsx"]!;
 		expect(tasks).not.toMatch(/from "\.\.\/api\.ts"|use-workbench|propose|intervene|withdraw|\.prompt\b|fetch/);
 		expect(sources["model/workspace.ts"]).not.toMatch(/prompt|intervene|propose/i);

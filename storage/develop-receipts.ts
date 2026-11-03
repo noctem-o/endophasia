@@ -67,6 +67,18 @@ export class DevelopReceiptsStoreV0 {
 
 	/** One attempt's receipts, oldest first, read now. A missing directory is no receipts (nothing is created). */
 	read(attemptId: string): EndoReceiptsReadV0 {
+		return this.#read(attemptId, undefined) as EndoReceiptsReadV0;
+	}
+
+	/**
+	 * As `read`, bounded: refused (`too-many`) before any file is read when the directory holds more than `maxFiles` entries (temporary files
+	 * aside), so a caller reading many attempts can bound the whole read.
+	 */
+	readAtMost(attemptId: string, maxFiles: number): EndoReceiptsReadV0 | { ok: false; reason: "too-many" } {
+		return this.#read(attemptId, maxFiles);
+	}
+
+	#read(attemptId: string, maxFiles: number | undefined): EndoReceiptsReadV0 | { ok: false; reason: "too-many" } {
 		const dir = this.#attemptDir(attemptId);
 		if (dir === null) return { ok: false, reason: "unsafe-path" };
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir, dir]);
@@ -79,6 +91,8 @@ export class DevelopReceiptsStoreV0 {
 			const code = (error as NodeJS.ErrnoException | undefined)?.code;
 			return { ok: false, reason: code === "ENOTDIR" || code === "ELOOP" ? "unsafe-path" : "io" };
 		}
+		if (maxFiles !== undefined && names.filter((n) => !WRITE_ONCE_TEMPORARY_V0.test(n)).length > maxFiles)
+			return { ok: false, reason: "too-many" };
 		const receipts: EndoDevelopReceiptV0[] = [];
 		const problems: EndoReceiptProblemV0[] = [];
 		for (const name of names) {

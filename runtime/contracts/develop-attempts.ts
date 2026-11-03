@@ -108,7 +108,7 @@ const refuse = <T>(
  * Text from a receipt as the page shows it (an argument, a branch name): a control, bidirectional or separator character becomes U+FFFD,
  * and a long one is cut, so an odd argument or branch name cannot make the page refuse the whole view. The receipt file keeps it exactly.
  */
-const shownText = (text: string, max: number): string => {
+export const endoShownTextV0 = (text: string, max: number): string => {
 	const safe = text.replace(
 		/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g,
 		"\ufffd",
@@ -130,9 +130,9 @@ function receiptsOf(
 			id: r.id,
 			startedAtMs: r.startedAtMs,
 			endedAtMs: r.endedAtMs,
-			argv: r.check.argv.map((arg) => shownText(arg, 400)),
+			argv: r.check.argv.map((arg) => endoShownTextV0(arg, 400)),
 			commit: r.revision.commit,
-			branch: r.revision.branch === null ? null : shownText(r.revision.branch, 1024),
+			branch: r.revision.branch === null ? null : endoShownTextV0(r.revision.branch, 1024),
 			execution: r.execution,
 			outcome: r.outcome,
 			reasons: [...r.reasons],

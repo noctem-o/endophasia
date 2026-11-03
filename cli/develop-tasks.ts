@@ -124,7 +124,7 @@ async function projectAdd(argv: readonly string[]): Promise<void> {
 	const path = project.path;
 	print({ project });
 	process.stderr.write(
-		`registered. Start a workbench for it from that directory with: endo harness attach --root ${root} --cwd ${path} --control --workbench --project ${project.id}\nthe workbench may change this project's tasks only when launched in exactly this directory (${path}); from a subdirectory or elsewhere it shows them read-only. Register the subdirectory instead if that is where you work.\n`,
+		`registered. Start a workbench for it from that directory with: endo harness attach --root ${root} --cwd ${path} --control --workbench --project ${project.id}\nthe workbench may change this project's tasks only when launched in exactly this directory (${path}); from a subdirectory or elsewhere it shows them read-only. Register the subdirectory instead if that is where you work.\nwith no agent running, open its tasks and evidence in a browser with: endo workspace open --root ${root} --project ${project.id}\n`,
 	);
 }
 

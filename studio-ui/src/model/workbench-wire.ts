@@ -66,6 +66,19 @@ export interface WorkbenchStatus {
 	interventions: WorkbenchIntervention[];
 	transcript: { watermark: number; firstSeq: number };
 }
+/**
+ * What a workspace host (`endo workspace open`, protocol/workspace-host.ts) answers on the status route: no harness, so no connection, run,
+ * session or offer to report. A normal mode, not a degraded attachment.
+ */
+export interface WorkspaceHostStatus {
+	schemaVersion: "endo.workspace-host-status.v0";
+	launchId: string;
+	host: "workspace";
+	harness: null;
+	paired: boolean;
+	/** Whether the worktree's changes can be read. */
+	changes: boolean;
+}
 /** One part of a message, in the runtime's order. Reasoning is what the model emitted as reasoning, relayed: not an account of its computation. */
 export type MessagePart =
 	| { kind: "text"; text: string; truncated: boolean }
@@ -191,6 +204,18 @@ const intervention: Check = (v) =>
 
 const offer: Check = (o) => shape(o, { offered: bool, reason: eitherNull(text(400)) });
 
+export const readWorkspaceHostStatus = (v: unknown): WorkspaceHostStatus | null =>
+	shape(v, {
+		schemaVersion: one("endo.workspace-host-status.v0"),
+		launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
+		host: one("workspace"),
+		harness: (x) => x === null,
+		paired: bool,
+		changes: bool,
+	})
+		? (v as unknown as WorkspaceHostStatus)
+		: null;
+
 export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 	shape(v, {
 		schemaVersion: one("endo.workbench-status.v0"),
@@ -301,6 +326,8 @@ export type WorkbenchRequest =
 
 export type WorkbenchReply =
 	| { kind: "status"; record: WorkbenchStatus }
+	/** The server is a workspace host: tasks and evidence, no harness (`endo workspace open`). */
+	| { kind: "host"; record: WorkspaceHostStatus }
 	| { kind: "transcript"; record: WorkbenchTranscript }
 	| { kind: "grant"; record: { grant: string; expiresAtMs: number } }
 	| { kind: "command"; record: WorkbenchCommand }
@@ -310,8 +337,9 @@ export type WorkbenchReply =
 	| { kind: "failure"; status: number; code: string; message: string; retrySeconds: number | null };
 
 const FIXED: Record<string, string> = {
-	"pairing-refused": "That pairing code was not accepted. Type `pair` in the attached terminal for a new one.",
-	"grant-required": "This page is not paired. Enter the pairing code shown in the attached terminal.",
+	"pairing-refused":
+		"That pairing code was not accepted. Type `pair` in the terminal that started this server for a new one.",
+	"grant-required": "This page is not paired. Enter the pairing code shown in the terminal that started this server.",
 	"not-offered": "That cannot be requested right now. The reason is shown beside it.",
 	"not-checkable": "Only an accepted steer or queue can be checked.",
 	"bad-request": "The request was not in a form the workbench accepts.",

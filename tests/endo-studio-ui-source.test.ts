@@ -45,6 +45,7 @@ describe("the frontend's source", () => {
 				"use-workbench.ts",
 				"develop/Live.tsx",
 				"develop/Changes.tsx",
+				"develop/Desk.tsx",
 				"model/project.ts",
 				"model/project-wire.ts",
 				"use-project.ts",

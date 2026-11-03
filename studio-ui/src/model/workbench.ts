@@ -11,6 +11,7 @@ import type {
 	WorkbenchIntervention,
 	WorkbenchReply,
 	WorkbenchStatus,
+	WorkspaceHostStatus,
 } from "./workbench-wire.ts";
 
 export const MAX_ITEMS = 400;
@@ -18,9 +19,14 @@ export const MAX_ITEMS = 400;
 export const MAX_TEXT = 2 * 1024 * 1024;
 
 export interface WorkbenchState {
-	/** unknown until the first status answer; absent on a server that has no workbench (the read-only Studio). */
-	availability: "unknown" | "available" | "absent";
+	/**
+	 * unknown until the first status answer; `available` on a live Pi workbench; `workspace` on a workspace host (tasks and evidence, no
+	 * harness: `endo workspace open`); absent on a server that has neither (the read-only Studio).
+	 */
+	availability: "unknown" | "available" | "workspace" | "absent";
 	status: WorkbenchStatus | null;
+	/** What a workspace host last said (only when `availability` is `workspace`). It has no session, run or offer to report. */
+	host: WorkspaceHostStatus | null;
 	statusAt: Date | null;
 	launchId: string | null;
 	/** The operator grant: held in memory only, dropped when the broker says the page is no longer paired. */
@@ -50,6 +56,7 @@ export interface WorkbenchState {
 export const initialWorkbench = (): WorkbenchState => ({
 	availability: "unknown",
 	status: null,
+	host: null,
 	statusAt: null,
 	launchId: null,
 	grant: null,
@@ -124,12 +131,31 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 				...(gone ? { items: [], watermark: 0, evicted: 0, trimmed: 0, open: null } : {}),
 				availability: "available",
 				status,
+				host: null,
 				statusAt: at,
 				launchId: status.launchId,
 				// The broker holds one grant: if it says this page is not paired, the grant we hold is no longer one.
 				grant: status.paired ? base.grant : null,
 				command: status.command,
 				interventions: status.interventions,
+				problem: null,
+				unreachable: false,
+			};
+		}
+		case "host": {
+			const host = reply.record;
+			// A different launch is a different process: nothing held from the old one belongs to it.
+			const fresh = state.launchId !== null && state.launchId !== host.launchId;
+			const base = fresh ? { ...initialWorkbench(), view: state.view } : state;
+			return {
+				...base,
+				availability: "workspace",
+				status: null,
+				host,
+				statusAt: at,
+				launchId: host.launchId,
+				// The host holds one grant: if it says this page is not paired, the grant we hold is no longer one.
+				grant: host.paired ? base.grant : null,
 				problem: null,
 				unreachable: false,
 			};

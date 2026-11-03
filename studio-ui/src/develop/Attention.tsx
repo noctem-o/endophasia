@@ -4,7 +4,7 @@
 //
 // Read-only. Opening a row chooses the task exactly as the picker does: it sends no prompt, selects no session and changes no status; the
 // composer's words and unsaved task edits stay where they are. Nothing here runs a check, records anything or accepts a task.
-import { type KeyboardEvent, type ReactElement, useState } from "react";
+import { type KeyboardEvent, type ReactElement, useEffect, useRef } from "react";
 import {
 	EVIDENCE_WORDS,
 	evidenceOf,
@@ -93,6 +93,8 @@ function Group({
 	items,
 	empty,
 	limit,
+	all,
+	onAll,
 	onOpen,
 }: {
 	id: string;
@@ -102,9 +104,11 @@ function Group({
 	empty: string | null;
 	/** Show this many, and the rest on request (memory only). */
 	limit?: number;
+	/** The operator asked for the rest (kept by the workspace, so it survives reading a task and coming back). */
+	all?: boolean;
+	onAll?(): void;
 	onOpen(item: Item): void;
 }): ReactElement | null {
-	const [all, setAll] = useState(false);
 	if (items.length === 0 && empty === null) return null;
 	const shown = limit === undefined || all ? items : items.slice(0, limit);
 	return (
@@ -129,7 +133,7 @@ function Group({
 					type="button"
 					className="btn quiet small-btn"
 					data-testid={`attention-${id}-all`}
-					onClick={() => setAll(true)}
+					onClick={() => onAll?.()}
 				>
 					Show all {items.length}
 				</button>
@@ -169,6 +173,18 @@ function rowKeys(event: KeyboardEvent<HTMLElement>): void {
 }
 
 export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): ReactElement | null {
+	// Coming back from a task: the operator's place is the row they opened, focused again (once) and brought into view.
+	const box = useRef<HTMLDivElement>(null);
+	const { returnTo, clearReturn } = workspace;
+	useEffect(() => {
+		if (returnTo === null) return;
+		const row = box.current?.querySelector<HTMLButtonElement>(`.attn-row[data-task="${CSS.escape(returnTo)}"]`);
+		if (row != null && row.offsetParent !== null) {
+			row.focus({ preventScroll: true });
+			row.scrollIntoView({ block: "nearest" });
+		}
+		clearReturn();
+	}, [returnTo, clearReturn]);
 	const overview = overviewFor(workspace);
 	if (overview === null) return null;
 	const { state, attention } = workspace;
@@ -180,6 +196,7 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 		// biome-ignore lint/a11y/noStaticElementInteractions: arrow keys move between the row buttons inside it
 		<div
 			className="attn"
+			ref={box}
 			data-testid="attention-overview"
 			data-current={current}
 			data-evidence={overview.evidence}
@@ -203,7 +220,7 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 							: !state.current
 								? "As last read: nothing could confirm these are still what the store holds."
 								: attention.problem === "refused"
-									? "As last read: the workbench refused the last read of the checks (the pairing may have ended)."
+									? "As last read: the server refused the last read of the checks (the pairing may have ended)."
 									: "As last read: the checks could not be read again just now."}
 					</span>
 				</Note>
@@ -247,10 +264,17 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 				items={overview.open}
 				empty={null}
 				limit={8}
+				all={workspace.sections.open === true}
+				onAll={() => workspace.setSection("open", true)}
 				onOpen={onOpen}
 			/>
 			{overview.done.length === 0 ? null : (
-				<details className="more attn-done" data-testid="attention-done">
+				<details
+					className="more attn-done"
+					data-testid="attention-done"
+					open={workspace.sections.done === true}
+					onToggle={(event) => workspace.setSection("done", event.currentTarget.open)}
+				>
 					<summary>
 						Done ({overview.done.length}){" "}
 						<span className="dim small">old checks of finished tasks are not read</span>

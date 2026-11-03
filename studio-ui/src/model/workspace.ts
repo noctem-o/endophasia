@@ -242,7 +242,7 @@ export function readOnlyWords(view: Workspace): string | null {
 }
 
 export const REFUSAL_WORDS: Readonly<Record<WorkspaceRefusal, string>> = {
-	"grant-required": "Pair this page again to change tasks: the workbench no longer holds a pairing for it.",
+	"grant-required": "Pair this page again to change tasks: the server no longer holds a pairing for it.",
 	"read-only": "That was not changed: the workspace is read-only now.",
 	"stale-revision":
 		"That task changed since you opened it, so your change was not applied. It was read again; look and retry.",
@@ -254,9 +254,9 @@ export const REFUSAL_WORDS: Readonly<Record<WorkspaceRefusal, string>> = {
 	unreadable: "The task file cannot be used. It was not changed.",
 	busy: "Another process is writing the task file. Try again.",
 	"storage-failed": "The task file could not be written. Nothing was changed.",
-	unavailable: "The workbench could not do that now. Nothing was changed.",
-	invalid: "The workbench answered with something this page does not accept. Nothing from it was used.",
-	unreachable: "The workbench could not be reached. It may have ended; that is not shown by this message alone.",
+	unavailable: "The server could not do that now. Nothing was changed.",
+	invalid: "The server answered with something this page does not accept. Nothing from it was used.",
+	unreachable: "The server could not be reached. It may have ended; that is not shown by this message alone.",
 	other: "That was not changed.",
 };
 

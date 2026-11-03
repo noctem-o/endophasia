@@ -21,6 +21,7 @@ import type { ProjectApi } from "../use-project.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
 import { Activity } from "./Activity.tsx";
 import { projectView } from "./Changes.tsx";
+import { WorkspaceContext, WorkspaceDesk, WorkspaceRow } from "./Desk.tsx";
 import { Arrival, Beacon, FieldLayer, FieldLegend, useReducedMotion } from "./Field.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
 import { type Develop, Navigator, shortAlias } from "./Navigator.tsx";
@@ -157,9 +158,9 @@ export function DevelopWorkspace({
 				return;
 			// While changes are being read, Escape belongs to that view (it returns to the conversation), not to a stage change.
 			if (
-				workbench.state.availability === "available" &&
 				workbench.state.view === "live" &&
-				project.state.view !== "conversation"
+				((workbench.state.availability === "available" && project.state.view !== "conversation") ||
+					(workbench.state.availability === "workspace" && project.state.view === "changes"))
 			)
 				return;
 			// Escape inside a text field belongs to the field: a draft is not abandoned by a stage change.
@@ -178,7 +179,11 @@ export function DevelopWorkspace({
 	const [drawer, setDrawer] = useState(false);
 	// Field only: the dock beside a live conversation (changes, then context) can be closed for a focused reading width. Memory only.
 	const [dock, setDock] = useState(true);
-	const liveShown = workbench.state.availability === "available" && workbench.state.view === "live";
+	// The live conversation, or the workspace desk (a host with no harness): both are the operator's own surface, beside the recordings.
+	const deskShown = workbench.state.availability === "workspace" && workbench.state.view === "live";
+	const liveShown = (workbench.state.availability === "available" || deskShown) && workbench.state.view === "live";
+	// Where Escape returns to from reading changes: the conversation, or the desk's Tasks.
+	const home = deskShown ? "task" : "conversation";
 	// biome-ignore lint/correctness/useExhaustiveDependencies: choosing a session (or the live one) closes the drawer
 	useEffect(() => setDrawer(false), [state.selected, liveShown]);
 	// An open drawer takes focus, and a click outside it closes it (it is a convenience, never a trap).
@@ -212,7 +217,14 @@ export function DevelopWorkspace({
 			if (target !== null && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable))
 				return;
 			const reading = project.state.view === "changes";
-			if (event.key === "Escape" && project.state.view !== "conversation") {
+			if (event.key === "Escape" && project.state.view === "changes") {
+				project.setView(home);
+				document
+					.getElementById(deskShown ? "desk-tab-task" : "develop-tab-conversation")
+					?.focus({ preventScroll: true });
+				return;
+			}
+			if (event.key === "Escape" && !deskShown && project.state.view !== "conversation") {
 				project.setView("conversation");
 				document.getElementById("develop-tab-conversation")?.focus({ preventScroll: true });
 				return;
@@ -241,7 +253,7 @@ export function DevelopWorkspace({
 		};
 		document.addEventListener("keydown", key);
 		return () => document.removeEventListener("keydown", key);
-	}, [liveShown, drawer, project, narrow, dispatch]);
+	}, [liveShown, deskShown, home, drawer, project, narrow, dispatch]);
 
 	const inspector = (
 		<Panel
@@ -290,24 +302,27 @@ export function DevelopWorkspace({
 
 	// The live conversation is shown only when this server has a workbench and the operator has not chosen a recorded session.
 	const liveMode = workbench.state.availability === "available" && workbench.state.view === "live";
+	// The workspace desk, on a host with no harness (`endo workspace open`): tasks and evidence, never a session.
+	const deskMode = deskShown;
+	const hosted = workbench.state.availability === "available" || workbench.state.availability === "workspace";
 	// An OMP saved session, when one is chosen: its own activity and inspector, in the same places.
-	const ompMode = !liveMode && omp.state.selected !== null;
+	const ompMode = !liveMode && !deskMode && omp.state.selected !== null;
+	const toOwn = () => {
+		omp.choose(null);
+		workbench.setView("live");
+		if (narrow) dispatch({ type: "stage", stage: "activity" });
+	};
 	const liveRow =
 		workbench.state.availability === "available" ? (
-			<LiveRow
-				wb={workbench}
-				selected={liveMode}
-				onSelect={() => {
-					omp.choose(null);
-					workbench.setView("live");
-					if (narrow) dispatch({ type: "stage", stage: "activity" });
-				}}
-			/>
+			<LiveRow wb={workbench} selected={liveMode} onSelect={toOwn} />
+		) : workbench.state.availability === "workspace" ? (
+			<WorkspaceRow workspace={workspace} selected={deskMode} onSelect={toOwn} />
 		) : undefined;
 	const navigator = (
 		<Navigator
 			develop={develop}
 			live={liveRow}
+			liveTitle={workbench.state.availability === "workspace" ? "Your work" : "Attached"}
 			onRecorded={() => {
 				omp.choose(null);
 				workbench.setView("recorded");
@@ -316,7 +331,7 @@ export function DevelopWorkspace({
 				<OmpGroup
 					omp={omp}
 					onChoose={(selector) => {
-						if (workbench.state.availability === "available") workbench.setView("recorded");
+						if (hosted) workbench.setView("recorded");
 						omp.choose(selector);
 						if (narrow) dispatch({ type: "stage", stage: "activity" });
 					}}
@@ -342,16 +357,20 @@ export function DevelopWorkspace({
 			}
 		/>
 	);
-	const inList = state.stage === "sessions" || (!liveMode && !ompMode && state.selected === null);
-	const crumbName = liveMode
-		? workbench.state.status?.session === null || workbench.state.status === null
-			? "live session"
-			: shortSession(workbench.state.status.session)
-		: ompMode
-			? (omp.state.detail?.session.alias ?? "OMP saved session")
-			: detail === null
-				? "…"
-				: shortAlias(detail.session.session);
+	const desk = <WorkspaceDesk wb={workbench} project={project} workspace={workspace} />;
+	const deskContext = <WorkspaceContext wb={workbench} project={chosen} workspace={workspace} />;
+	const inList = state.stage === "sessions" || (!liveMode && !deskMode && !ompMode && state.selected === null);
+	const crumbName = deskMode
+		? (workspace.state.view?.project?.name ?? "workspace")
+		: liveMode
+			? workbench.state.status?.session === null || workbench.state.status === null
+				? "live session"
+				: shortSession(workbench.state.status.session)
+			: ompMode
+				? (omp.state.detail?.session.alias ?? "OMP saved session")
+				: detail === null
+					? "…"
+					: shortAlias(detail.session.session);
 
 	// Field: what the field and the ledger are built from. Typed state and counts only; no text reaches the renderer.
 	const field = appearance === "field";
@@ -370,17 +389,21 @@ export function DevelopWorkspace({
 					}
 				: null;
 	const liveEmpty = wbs.items.length === 0 && wbs.interventions.length === 0 && wbs.command === null;
-	const surface: FieldSurface = liveMode
+	const surface: FieldSurface = deskMode
 		? project.state.view === "changes"
 			? "changes"
-			: project.state.view === "task"
-				? "conversation"
-				: liveEmpty
-					? "arrival"
-					: "conversation"
-		: detail !== null || ompMode
-			? "recording"
-			: "arrival";
+			: "desk"
+		: liveMode
+			? project.state.view === "changes"
+				? "changes"
+				: project.state.view === "task"
+					? "conversation"
+					: liveEmpty
+						? "arrival"
+						: "conversation"
+			: detail !== null || ompMode
+				? "recording"
+				: "arrival";
 	const signal = fieldSignal({
 		surface,
 		workbench: wbs.availability,
@@ -439,7 +462,7 @@ export function DevelopWorkspace({
 			className="develop"
 			id="develop-workspace"
 			data-testid="develop"
-			data-fill={liveMode && !narrow ? "true" : "false"}
+			data-fill={(liveMode || deskMode) && !narrow ? "true" : "false"}
 			data-appearance={appearance}
 			data-surface={field ? surface : undefined}
 			// The field's state, for the horizon under the run strip (it says the same as the legend, in light). Typed state only.
@@ -468,9 +491,9 @@ export function DevelopWorkspace({
 									className="btn small-btn"
 									onClick={() => dispatch({ type: "stage", stage: "activity" })}
 								>
-									‹ {liveMode ? "Conversation" : "Activity"}
+									‹ {deskMode ? "Tasks" : liveMode ? "Conversation" : "Activity"}
 								</button>
-							) : liveMode ? (
+							) : liveMode || deskMode ? (
 								<button
 									type="button"
 									className="btn small-btn"
@@ -487,7 +510,9 @@ export function DevelopWorkspace({
 							{navigator}
 						</>
 					) : state.stage === "activity" ? (
-						liveMode ? (
+						deskMode ? (
+							desk
+						) : liveMode ? (
 							<LiveConversation
 								wb={workbench}
 								project={project}
@@ -501,6 +526,8 @@ export function DevelopWorkspace({
 						) : (
 							open
 						)
+					) : deskMode ? (
+						deskContext
 					) : liveMode ? (
 						liveContext
 					) : ompMode ? (
@@ -524,7 +551,25 @@ export function DevelopWorkspace({
 					<div className="develop-nav-wrap" id="develop-nav-wrap">
 						{navigator}
 					</div>
-					{liveMode ? (
+					{deskMode ? (
+						<WorkspaceDesk
+							wb={workbench}
+							project={project}
+							workspace={workspace}
+							leading={
+								<button
+									type="button"
+									className="btn small-btn sessions-toggle"
+									data-testid="sessions-toggle"
+									aria-expanded={drawer}
+									aria-controls="develop-nav-wrap"
+									onClick={() => setDrawer((open) => !open)}
+								>
+									Sessions
+								</button>
+							}
+						/>
+					) : liveMode ? (
 						<LiveConversation
 							wb={workbench}
 							project={project}
@@ -573,7 +618,7 @@ export function DevelopWorkspace({
 					) : (
 						open
 					)}
-					{liveMode ? liveContext : ompMode ? <OmpInspector omp={omp} /> : inspector}
+					{deskMode ? deskContext : liveMode ? liveContext : ompMode ? <OmpInspector omp={omp} /> : inspector}
 				</div>
 			)}
 			{field && onPause !== undefined ? (

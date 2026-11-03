@@ -39,6 +39,7 @@ import {
 	readWorkbenchIntervention,
 	readWorkbenchStatus,
 	readWorkbenchTranscript,
+	readWorkspaceHostStatus,
 	type WorkbenchReply,
 	type WorkbenchRequest,
 	workbenchFailure,
@@ -334,6 +335,8 @@ export async function fetchWorkbench(
 		if (request.kind === "status") {
 			const record = readWorkbenchStatus(json);
 			if (record !== null) return { kind: "status", record };
+			const host = readWorkspaceHostStatus(json);
+			if (host !== null) return { kind: "host", record: host };
 		} else if (request.kind === "transcript") {
 			const record = readWorkbenchTranscript(json);
 			if (record !== null) return { kind: "transcript", record };

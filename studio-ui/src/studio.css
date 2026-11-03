@@ -4979,3 +4979,32 @@ body:has(.develop[data-appearance="field"]) .topbar {
 .task-head .task-edit {
 	margin-left: auto;
 }
+
+/* --- DEVELOP workspace desk (docs/designs/workspace-host.md) ---------------------------------------------------------------------
+   The desk is the live view's shell without a session: the same tabs, worktree bar and Task view. Its strip is one quiet line (a
+   diamond, not a liveness pentagon) that says what this host is; it never states a connection, because there is none to state. */
+.develop-live .host-strip {
+	gap: 4px 10px;
+	padding: 4px 8px;
+	font-size: 12px;
+	border-style: solid;
+	background: transparent;
+}
+
+.desk-glyph {
+	flex: none;
+	color: var(--fg-2);
+}
+
+.desk-row .session-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-family: inherit;
+}
+
+/* Field: the desk's strip keeps the appearance's title type, with less height than a live run strip (it reports no run). */
+.develop[data-appearance="field"] .develop-live .host-strip {
+	padding: 9px 22px 11px;
+	background: transparent;
+}

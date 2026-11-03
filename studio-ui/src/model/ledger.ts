@@ -27,7 +27,7 @@ export interface Ledger {
 }
 
 export interface LedgerInput {
-	workbench: "unknown" | "available" | "absent";
+	workbench: "unknown" | "available" | "workspace" | "absent";
 	status: WorkbenchStatus | null;
 	/** When the status was read, by the browser's clock, already written out; null when it has not been read. */
 	statusAt: string | null;
@@ -121,6 +121,35 @@ export function ledger(input: LedgerInput): Ledger {
 		return {
 			statement: { before: "Nothing is attached here.", mono: null, after: "" },
 			source: "endo studio: a read-only server over the recorded store.",
+			known,
+			unknown,
+			possible,
+			yours,
+		};
+	}
+
+	if (input.workbench === "workspace") {
+		known.unshift({
+			basis: "standing",
+			text: "This is a workspace host: your project's tasks, attempts and checks, read from the store. No agent is attached, and none is needed.",
+		});
+		possible.push({
+			basis: "standing",
+			text: input.paired
+				? "Open the Workspace row to see what needs your attention, read a task's evidence, and change its status."
+				: "Pair this page with the code printed in the terminal that started the workspace, then open the Workspace row.",
+		});
+		unknown.push({
+			basis: "unavailable",
+			text: "Whether any agent is working on these tasks now: this host neither runs nor watches one.",
+		});
+		yours.push({
+			basis: "standing",
+			text: "Every status is yours to set. A check that passed is evidence about one command at one commit, not acceptance.",
+		});
+		return {
+			statement: { before: "Your work, with no agent attached.", mono: null, after: "" },
+			source: "endo workspace open: the project's tasks and evidence, from the store.",
 			known,
 			unknown,
 			possible,

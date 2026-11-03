@@ -2,7 +2,20 @@
 
 ## Unreleased
 
+### Added
+- **`endo workspace open --project <id>`: DEVELOP without a running agent.** A foreground host on 127.0.0.1 serves the same page and the
+  same task routes as the live workbench, behind its own pairing code, with **no harness**: no Pi, model or provider is needed or started.
+  A paired page sees the attention overview, each task's attempts, briefs and verification receipts, and the worktree's changes. It
+  creates and edits tasks and sets statuses by the store's own rules and revisions. It cannot prompt, steer, queue or stop an agent, link
+  a session, run a command, or choose a path, store or project. The terminal issues codes (`pair`), ends the grant (`revoke`) and stops
+  it (Ctrl-C). The page shows a **Workspace** desk instead of a live session, and nothing on it says "disconnected". Returning from a task
+  to the overview now focuses the row you came from and keeps "Show all" and "Done" as you left them. Pairing and the task and project
+  routes moved to `cockpit-http/` (`pairing.ts`, `workspace-routes.ts`) and are shared with the Pi workbench unchanged; the broker's
+  worktree reads now also re-check the grant after reading Git. See [docs/designs/workspace-host.md](docs/designs/workspace-host.md).
+
 ### Fixed
+- **A browser test's stand-in servers close their keep-alive connections first.** `close()` alone waited for Chromium's idle connections,
+  which on a loaded CI runner outlasted the 10 s hook limit (`tests/endo-studio-observe-browser.test.ts`).
 - **A Ctrl-C at the very end of Studio's shutdown no longer kills it by the default signal action.** Studio keeps its SIGINT and SIGTERM
   listeners until the end, but Node removes them while it tears the process down after the event loop drains, so a signal landing in that
   instant ended the process with `signal: SIGINT` instead of status 0 (a slow CI runner hit this with the repeated-signal test). Studio

@@ -30,12 +30,14 @@ export type FieldSurface =
 	/** The operator is reading the worktree's changes. */
 	| "changes"
 	/** A recorded session is open. */
-	| "recording";
+	| "recording"
+	/** The workspace desk: the operator's tasks and evidence, on a host with no harness. */
+	| "desk";
 
 export interface FieldInput {
 	surface: FieldSurface;
-	/** Whether this server has a workbench at all (`absent` on the read-only `endo studio`). */
-	workbench: "unknown" | "available" | "absent";
+	/** Whether this server has a workbench at all (`absent` on the read-only `endo studio`; `workspace` on a host with no harness). */
+	workbench: "unknown" | "available" | "workspace" | "absent";
 	/** What the broker last said about its connection, or null when it has not said anything yet. */
 	connection: "connected" | "disconnected" | null;
 	/** What the broker last reported about the run, or null when it has not said anything yet. */
@@ -78,6 +80,7 @@ const PRESENCE: Readonly<Record<FieldSurface, number>> = {
 	arrival: 1,
 	conversation: 0.42,
 	recording: 0.42,
+	desk: 0.3,
 	changes: 0.16,
 };
 
@@ -133,6 +136,15 @@ function describe(input: FieldInput): FieldSignal {
 		};
 	if (input.workbench === "absent")
 		return moving("drift", 0.25, "Read-only", "the field drifts on its own; it shows no activity.");
+	// A workspace host has no harness: there is no session to be connected or disconnected, so nothing here is "still" or "broken" for
+	// want of one. The page's own failure to reach the host is said below like any other.
+	if (input.workbench === "workspace" && !input.unreachable)
+		return moving(
+			"drift",
+			0.2,
+			"Workspace",
+			"no agent is attached to this host; the field drifts on its own and shows no activity.",
+		);
 	// No answer outranks "not read yet": a first request that failed has been read, and its answer was silence. (The page does not ask
 	// again by itself while it does not know there is a workbench, so "not read yet" would stay on screen.)
 	if (input.unreachable)

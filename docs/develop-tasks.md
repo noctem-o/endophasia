@@ -103,7 +103,9 @@ fetches each Studio read route family (the snapshot, the session list and one re
 
 ## Authority
 
-The routes are inside the existing workbench broker (`adapters/pi/workbench-tasks.ts`, a translation layer over the shared service), so they pass every guard the broker's routes pass: Host,
+The routes are served by `runtime/contracts/workspace-routes.ts`, a translation layer over the shared service, behind either host of `api/v0/workbench/*`:
+the live workbench broker (`endo harness attach --workbench`) or the workspace host (`endo workspace open`, which runs no agent; see
+[designs/workspace-host.md](designs/workspace-host.md)). Either way they pass every guard the server applies there: Host,
 Origin and Fetch Metadata, an exact same-origin `Origin`, `application/json` and the 40 KiB body bound for a `POST`, and the **grant** from the pairing
 code. There is no new route family and no new capability:
 

@@ -17,7 +17,7 @@
 //   GET  project                the launch directory's Git context (repository, worktree, branch, linked worktrees, changed files). Needs the grant. READ ONLY.
 //   GET  project/diff?snapshot=&file=   one changed file's diff, for an entry of that snapshot. Needs the grant. READ ONLY.
 //   GET  workspace              the operator's registered project and its tasks (metadata they wrote), and POST workspace/tasks/<create|update|status|
-//                               select|link-session|unlink-session>: see workbench-tasks.ts. Needs the grant. METADATA ONLY: none of them sends a command.
+//                               select|link-session|unlink-session>: see runtime/contracts/workspace-routes.ts. Needs the grant. METADATA ONLY: none of them sends a command.
 //   GET  workspace/attempts     the selected task's work attempts and their briefs (docs/designs/develop-work-attempts.md). Needs the grant.
 //                               READ ONLY: no attempt is made or recorded here, and no brief is sent anywhere.
 //   GET  workspace/attention    every open task's attempts and latest checks, summarised for triage (docs/designs/develop-attention.md).
@@ -38,7 +38,7 @@
 // workbench-interventions.ts), behind the same terminal approval. Not here: a shell, a PTY, a raw Pi RPC passthrough, or any store read
 // or write other than those two record chains.
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { ENDO_DEVELOP_WORKSPACE_ABSENT_V1 } from "../../protocol/develop-tasks.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
@@ -50,14 +50,15 @@ import {
 	type EndoWorkbenchRefusalReasonV0,
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
-import type {
-	EndoDiffOutcomeV0,
-	EndoWorkbenchDiffV0,
-	EndoWorkbenchProjectV0,
-} from "../../protocol/workbench-project.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { DevelopLaunchHostV0, DevelopLaunchWorkspaceV0 } from "../../runtime/contracts/develop-workspace.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
+import { EndoPairingV0 } from "../../runtime/contracts/workbench-pairing.ts";
+import {
+	type EndoProjectSourceV0,
+	EndoWorkspaceRoutesV0,
+	endoProjectRouteV0,
+} from "../../runtime/contracts/workspace-routes.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { LIVE_TRANSCRIPT_SCHEMA_V1, LiveTranscriptV0 } from "./live-transcript.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
@@ -67,7 +68,6 @@ import {
 	type WorkbenchEvidenceBudgetV0,
 	WorkbenchInterventionsV0,
 } from "./workbench-interventions.ts";
-import { WorkbenchTasksV0 } from "./workbench-tasks.ts";
 
 export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 
@@ -110,15 +110,10 @@ export type WorkbenchApproverV0 = (
 ) => Promise<"allow" | "deny" | null>;
 
 /**
- * The project context the broker may serve: two READS about the directory the session was launched in (adapters/git/project-inspector.ts).
- * It is not part of the command surface: it can change nothing, takes no path from the page, and says nothing about who made a change.
+ * The project context the broker may serve: two READS about the directory the session was launched in (adapters/git/project-inspector.ts),
+ * served by the shared `endoProjectRouteV0` (runtime/contracts/workspace-routes.ts). Not part of the command surface.
  */
-export interface WorkbenchProjectSourceV0 {
-	overview(): Promise<EndoWorkbenchProjectV0>;
-	diff(snapshot: string, id: number): Promise<EndoDiffOutcomeV0>;
-	/** The session ended: drop what was read. */
-	dispose?(): void;
-}
+export type WorkbenchProjectSourceV0 = EndoProjectSourceV0;
 
 export interface WorkbenchOptionsV0 {
 	session: WorkbenchSessionV0;
@@ -132,7 +127,7 @@ export interface WorkbenchOptionsV0 {
 	/** Read-only project context (the launch directory's Git state). Without it the project routes do not exist. */
 	project?: WorkbenchProjectSourceV0;
 	/**
-	 * The operator's project and tasks (adapters/pi/workbench-tasks.ts over runtime/contracts/develop-workspace.ts): opens the launch scope of the
+	 * The operator's project and tasks (runtime/contracts/workspace-routes.ts over runtime/contracts/develop-workspace.ts): opens the launch scope of the
 	 * project the operator named for this launch with `--project`, from the directory the process was launched in. The broker supplies the
 	 * host's facts (its launch id, attachment and connected session) from its own state; the broker never holds the operator scope or the
 	 * store. Without it the workspace routes answer one constant. It adds no command.
@@ -191,14 +186,7 @@ interface Proposal {
  * not shown. What the operator sees is what would be sent.
  */
 const UNSAFE_PROMPT_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
-const MAX_PAIR_ATTEMPTS = 5;
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
-const equal = (a: string, b: string): boolean => {
-	const x = Buffer.from(a);
-	const y = Buffer.from(b);
-	return x.length === y.length && timingSafeEqual(x, y);
-};
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 const reply = (status: number, body: unknown) => ({ status, body });
@@ -210,11 +198,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	readonly #o: Required<Pick<WorkbenchOptionsV0, "approvalWindowMs" | "pairingWindowMs" | "grantMs">> &
 		WorkbenchOptionsV0;
 	readonly #now: () => number;
-	#code: { value: string; expiresAtMs: number; attempts: number } | null = null;
-	#grant: { token: string; expiresAtMs: number } | null = null;
+	/** The page's pairing (runtime/contracts/workbench-pairing.ts): one code at a time from the terminal, one grant at a time for the page. */
+	readonly #pairing: EndoPairingV0;
 	#command: Proposal | null = null;
 	readonly #interventions: WorkbenchInterventionsV0 | null;
-	readonly #tasks: WorkbenchTasksV0 | null;
+	readonly #tasks: EndoWorkspaceRoutesV0 | null;
 	/** The desk's final finish began: no prompt is offered or sent from here on, and one waiting for the terminal is withdrawn. */
 	#closing = false;
 	#disposed = false;
@@ -229,6 +217,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			...options,
 		};
 		this.#now = options.now ?? Date.now;
+		this.#pairing = new EndoPairingV0({
+			now: this.#now,
+			pairingWindowMs: this.#o.pairingWindowMs,
+			grantMs: this.#o.grantMs,
+			closed: () => this.#disposed || this.#ended,
+		});
 		this.#interventions =
 			options.interventions === undefined
 				? null
@@ -251,7 +245,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#tasks =
 			options.tasks === undefined
 				? null
-				: new WorkbenchTasksV0(
+				: new EndoWorkspaceRoutesV0(
 						options.tasks.open({
 							launchId: this.launchId,
 							attachment: options.attachment,
@@ -285,46 +279,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 
 	/** A new one-time pairing code, replacing any earlier one. It is shown only on the attached terminal. */
 	issuePairingCode(): { code: string; expiresAtMs: number } {
-		const bytes = randomBytes(8);
-		const letters = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
-		const code = `${letters.slice(0, 4)}-${letters.slice(4)}`;
-		const expiresAtMs = this.#now() + this.#o.pairingWindowMs;
-		this.#code = { value: code, expiresAtMs, attempts: 0 };
-		return { code, expiresAtMs };
-	}
-
-	#pair(code: unknown): { status: number; body: unknown } {
-		const held = this.#code;
-		// Every refusal is the same answer: nothing says whether a code existed, expired or was used up.
-		const refused = refuse(401, "pairing-refused");
-		if (held === null || this.#disposed || this.#ended || this.#now() >= held.expiresAtMs) return refused;
-		if (typeof code !== "string" || code.length > 16) {
-			held.attempts += 1;
-		} else if (equal(code.toUpperCase(), held.value)) {
-			this.#code = null; // single use
-			const token = randomBytes(32).toString("base64url");
-			// A new pairing replaces the grant: whatever held the old one can no longer ask.
-			this.#grant = { token, expiresAtMs: this.#now() + this.#o.grantMs };
-			return reply(200, {
-				schemaVersion: "endo.workbench-grant.v0",
-				grant: token,
-				expiresAtMs: this.#grant.expiresAtMs,
-			});
-		} else held.attempts += 1;
-		if (held.attempts >= MAX_PAIR_ATTEMPTS) this.#code = null;
-		return refused;
+		return this.#pairing.issue();
 	}
 
 	#granted(grant: string | null): boolean {
-		const held = this.#grant;
-		return (
-			!this.#disposed &&
-			!this.#ended &&
-			held !== null &&
-			grant !== null &&
-			this.#now() < held.expiresAtMs &&
-			equal(grant, held.token)
-		);
+		return this.#pairing.granted(grant);
 	}
 
 	// --- status --------------------------------------------------------------------------------------------------------------
@@ -355,7 +314,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					]),
 				),
 			},
-			paired: this.#grant !== null && this.#now() < this.#grant.expiresAtMs,
+			paired: this.#pairing.paired(),
 			command: this.#command?.view ?? null,
 			interventions: this.#interventions?.views() ?? [],
 			transcript: {
@@ -400,8 +359,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	endSession(): void {
 		if (this.#ended) return;
 		this.#ended = true;
-		this.#grant = null;
-		this.#code = null;
+		this.#pairing.clear();
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();
 		this.transcript.clear();
@@ -426,7 +384,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
 			return reply(200, this.#status());
 		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "")
-			return this.#pair(isRecord(request.body) ? request.body.code : undefined);
+			return this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
 		// Everything below needs the grant.
 		if (!this.#granted(request.grant)) return refuse(401, "grant-required");
 		if (a === "transcript" && b === undefined && request.method === "GET") {
@@ -446,37 +404,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			// asked under still holds: a pairing revoked meanwhile gets the refusal, never data that would look current.
 			return this.#granted(request.grant) ? answer : refuse(401, "grant-required");
 		}
-		// A workbench with no project context says so with one constant answer (as the read-only server does for status), so a page can ask
-		// quietly: a 404 would be logged by every browser as a failed request.
-		if (
-			this.#o.project === undefined &&
-			a === "project" &&
-			b === undefined &&
-			request.method === "GET" &&
-			request.query === ""
-		)
-			return reply(200, { available: false, schemaVersion: "endo.workbench-project.v0" });
-		if (this.#o.project !== undefined && a === "project" && request.method === "GET" && more.length === 0) {
-			const project = this.#o.project;
-			try {
-				if (b === undefined && request.query === "") {
-					const overview = await project.overview();
-					// Busy is not a read: it says nothing about the worktree, so it is not served as one (the page keeps what it had).
-					if (overview.state === "unavailable" && overview.reason === "busy") return refuse(429, "busy");
-					return reply(200, overview);
-				}
-				if (b === "diff") {
-					const match = /^snapshot=([0-9a-f]{16})&file=(0|[1-9][0-9]{0,5})$/.exec(request.query);
-					if (match === null) return refuse(400, "bad-request");
-					const outcome = await project.diff(match[1] as string, Number(match[2]));
-					if (outcome.kind === "diff") return reply(200, outcome.diff satisfies EndoWorkbenchDiffV0);
-					if (outcome.kind === "stale") return refuse(409, "stale-snapshot");
-					if (outcome.kind === "busy") return refuse(429, "busy");
-					return refuse(400, "bad-request");
-				}
-			} catch {
-				return refuse(503, "unavailable");
-			}
+		// The project context (read-only Git), by the shared translation: without a source, the bare route answers one constant (as the
+		// read-only server does for status), so a page can ask quietly: a 404 would be logged by every browser as a failed request.
+		if (a === "project") {
+			const answer = await endoProjectRouteV0(this.#o.project, request.route, request.method, request.query);
+			// As for the workspace reads: a pairing revoked while Git was being read gets the refusal, never the read.
+			if (answer !== null) return this.#granted(request.grant) ? answer : refuse(401, "grant-required");
 		}
 		if (a === "prompt" && b === "propose" && more.length === 0 && request.method === "POST" && request.query === "")
 			return this.#propose(request.grant as string, isRecord(request.body) ? request.body : null);
@@ -688,8 +621,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
-		this.#grant = null;
-		this.#code = null;
+		this.#pairing.clear();
 		this.#ended = true;
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();

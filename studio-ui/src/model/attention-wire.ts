@@ -1,5 +1,5 @@
 // Browser wire gate for the attention projection (`GET workspace/attention`, protocol/develop-attention.ts, served read-only by
-// adapters/pi/workbench-tasks.ts). It checks that a body has exactly the shape the overview reads, that every check's outcome is the one its
+// runtime/contracts/workspace-routes.ts). It checks that a body has exactly the shape the overview reads, that every check's outcome is the one its
 // execution and reasons imply (as the attempts gate does), that a relation can be what the view says of HEAD (no "at-head" when HEAD was not
 // observed), and refuses the body whole otherwise. There is no request body or query: the page names no project, task or path.
 import type { EndoDevelopAttentionViewV0 } from "../../../protocol/develop-attention.ts";

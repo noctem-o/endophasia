@@ -11,6 +11,7 @@
  *   node cli/index.ts digest-key id
  *   node cli/index.ts dsh <import|loss-accounting> ...
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
+ *   node cli/index.ts workspace open [<root>] [--root dir] --project <id> [--port n]   (the workspace host: no agent; docs/designs/workspace-host.md)
  *   node cli/index.ts proxy <record|replay> ...
  *   node cli/index.ts experiment <run|report> ...
  *   node cli/index.ts replay <store> <session> --pi <path> --timing <as-recorded|immediate> ...
@@ -59,6 +60,14 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	"digest-key": digestKeyCommand,
 	dsh: family(DSH_COMMANDS_V0, "usage: endo dsh <import|loss-accounting> ..."),
 	studio: (argv) => import("./studio.ts").then((module) => module.studioCommand(argv)),
+	// Long-running like studio, and likewise loaded only when asked for.
+	workspace: (argv) =>
+		import("./workspace.ts").then((module) =>
+			family(
+				module.WORKSPACE_COMMANDS_V0,
+				"usage: endo workspace open [<root> | --root dir] --project <id> ...",
+			)(argv),
+		),
 	doctor: doctorCommand,
 	proxy: family(PROXY_COMMANDS_V0, "usage: endo proxy <record|replay> ..."),
 	replay: replayCommand,

@@ -135,7 +135,7 @@ view and every change reads the file at that moment.
 
 - **CLI** (`cli/develop-tasks.ts`): translates flags into service calls and refusals into the same sentences as before. Its output is
   byte-identical, and the existing CLI tests pass unchanged. It needs no workbench, pairing code, browser or agent process.
-- **Workbench** (`adapters/pi/workbench-tasks.ts`): a translation layer. It checks a request's shape and maps refusals to status codes.
+- **Workbench** (`runtime/contracts/workspace-routes.ts`, moved there from `adapters/pi/workbench-tasks.ts` in Slice H and shared by the Pi workbench and the workspace host): a translation layer. It checks a request's shape and maps refusals to status codes.
   It asks `writeRefusal()` before reading the body, so a read-only workspace answers every change with the same 409, exactly as before.
   The grant, the request guards, the terminal-approved Prompt, STEER, QUEUE and STOP, and the read-only `endo studio` are unchanged.
 
@@ -256,7 +256,7 @@ never inside it.
   (`storage/develop-attempts.ts`). The `endo attempt` CLI is its operator caller.
 - **The launch scope reads, and only reads.** `DevelopWorkspaceServiceV0` takes `{ attempts }`. A launch scope opened from it offers
   `attemptsView()`, the attempts of the task the launch project has selected in the file. No request names the project, task or attempt.
-  `cli/workbench.ts` passes the store, and `GET workspace/attempts` (`adapters/pi/workbench-tasks.ts`) serves the view behind the broker's
+  `cli/workbench.ts` passes the store, and `GET workspace/attempts` (`runtime/contracts/workspace-routes.ts`) serves the view behind the broker's
   grant check. A service built without the option has no such route: it answers 404. The workspace view (`endo.develop-workspace.v1`)
   is unchanged.
 - **No lock, no rewrite.** Each record is a file written once: a temporary file, `fsync`, then a hard link to its final name. `link`
@@ -288,7 +288,7 @@ A future local supervisor or native desktop host would be one more caller:
 
 - It constructs `DevelopWorkspaceServiceV0` over the same store root, with the operator's own authority as the CLI does, or opens a launch
   scope for one project with its own host facts as the workbench does.
-- It translates its transport (IPC, a native view) the way `workbench-tasks.ts` translates HTTP.
+- It translates its transport (IPC, a native view) the way `runtime/contracts/workspace-routes.ts` translates HTTP.
 - It decides who may hold the object. Its own authorisation (an OS user, a pairing) is its responsibility and must be designed with it.
   Nothing here pretends to provide it.
 - It copies no domain rule, and it does not need a second store, a second approval path or a universal protocol.

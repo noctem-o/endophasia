@@ -90,7 +90,15 @@ const contentTypeOf = (name: string): string =>
 					? "font/woff2"
 					: "text/html";
 afterEach(async () => {
-	await Promise.all(standIns.splice(0).map((stand) => new Promise((resolve) => stand.close(resolve))));
+	// Close the browser's keep-alive connections first (as stopFake does below): `close` alone waits for them to idle out, which under a
+	// loaded CI runner can outlast the hook's limit.
+	await Promise.all(
+		standIns.splice(0).map((stand) => {
+			const closed = new Promise((resolve) => stand.close(resolve));
+			stand.closeAllConnections();
+			return closed;
+		}),
+	);
 });
 async function open(url: string, width = 1440, height = 900): Promise<Page> {
 	const page = await browser!.open(width, height);

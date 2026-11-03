@@ -12,6 +12,7 @@ import {
 	initialWorkspace,
 	rebaseDraft,
 	reduceWorkspace,
+	selectedTask,
 	type TaskDraft,
 	type WorkspaceState,
 } from "./model/workspace.ts";
@@ -57,6 +58,17 @@ export interface WorkspaceApi {
 	/** The receipt to open in the Task view once (cleared when shown, or when another task is chosen). */
 	focus: ReceiptFocus | null;
 	clearFocus(): void;
+	/**
+	 * Back to the overview from a task, keeping the operator's place: the row of the task they were reading is focused again (once), and
+	 * the overview's sections stay as they left them (`sections`). Unsaved edits stay in `drafts`. Memory only.
+	 */
+	back(): void;
+	/** The task whose row the overview focuses when it is next shown, once (null: none). */
+	returnTo: string | null;
+	clearReturn(): void;
+	/** Which of the overview's long sections the operator expanded ("Show all", "Done"). Memory only. */
+	sections: Readonly<Record<string, boolean>>;
+	setSection(id: string, open: boolean): void;
 }
 
 export type TaskPane = "overview" | "task";
@@ -77,6 +89,8 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 	// The overview first: the Task view opens on it until the operator chooses a task (here, in the picker, or by creating one).
 	const [pane, setPane] = useState<TaskPane>("overview");
 	const [focus, setFocus] = useState<ReceiptFocus | null>(null);
+	const [returnTo, setReturnTo] = useState<string | null>(null);
+	const [sections, setSections] = useState<Readonly<Record<string, boolean>>>({});
 
 	const abort = useCallback((): AbortSignal => {
 		controller.current ??= new AbortController();
@@ -136,6 +150,8 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 			setComposing(false);
 			setPane("overview");
 			setFocus(null);
+			setReturnTo(null);
+			setSections({});
 			automatic.current = null;
 		}
 		if (launchId !== null) launch.current = launchId;
@@ -207,6 +223,14 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 		setPane,
 		focus,
 		clearFocus: () => setFocus(null),
+		back: () => {
+			setReturnTo(selectedTask(latest.current)?.id ?? null);
+			setPane("overview");
+		},
+		returnTo,
+		clearReturn: () => setReturnTo(null),
+		sections,
+		setSection: (id, open) => setSections((now) => (now[id] === open ? now : { ...now, [id]: open })),
 		open: (taskId, receipt) => {
 			setComposing(false);
 			setFocus(receipt);

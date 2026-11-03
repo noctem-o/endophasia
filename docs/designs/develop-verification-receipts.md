@@ -117,8 +117,8 @@ this observer.
 | `rev-parse HEAD^{commit} HEAD^{tree}` | unborn branch |
 | `status --porcelain=v2 -z --untracked-files=all` | any staged, unstaged, untracked or conflicted entry |
 | `ls-files --stage -v -z` | an entry flagged assume-unchanged or skip-worktree (status would hide its changes); a gitlink (submodule) |
-| HEAD's and the branch's reflog, read **through Git** (`rev-list --walk-reflogs --count` and the newest entry; any ref backend) | never refused; none gives `reflog-unavailable` |
-| A digest of the rules "clean" is judged under: the configuration listing (with values, never stored); the stamps of the operator's ignore file (the configured one, or Git's default), of `info/exclude`, and of every ignored `.gitignore` in the tree (`ls-files --others --ignored --exclude-standard -- ':(glob)**/.gitignore'`) | never refused; only compared, so a check cannot add a file and hide it from the second observation by changing the rules |
+| HEAD's and the branch's reflog, read **through Git** (`rev-list --walk-reflogs --count` and the newest entry; any ref backend) | never refused; none, or one with no entries, gives `reflog-unavailable` |
+| A digest of the rules "clean" is judged under: the configuration listing (with values, never stored); the stamps (of the path and, through a link, of its target) of the operator's ignore file (the configured one, or Git's default), of `info/exclude`, and of every ignored `.gitignore` in the tree (`ls-files --others --ignored --exclude-standard -- ':(glob)**/.gitignore'`) | never refused; only compared, so a check cannot add a file and hide it from the second observation by changing the rules |
 
 **Detached HEAD** is supported: the commit is what is bound. A **linked worktree** of the project's repository is supported. Its receipt
 records `linked: true`, and it relates only to that worktree.
@@ -335,7 +335,7 @@ covers that.
 
 ## Testing
 
-`tests/develop-receipts.test.ts` (46 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
+`tests/develop-receipts.test.ts` (49 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
 `codex` are first on PATH for the whole file, and are checked never to run.
 
 | Brief case | Test |
@@ -360,7 +360,7 @@ Also covered:
 - `tests/endo-studio-ui-source.test.ts`: the page has no receipt or check route.
 - The existing attempts tests run against the `v1` view.
 
-Thirteen deliberate mutations were reintroduced one at a time, and each made at least one test fail:
+Sixteen deliberate mutations were reintroduced one at a time, and each made at least one test fail:
 - the verdict ignoring a changed tree;
 - the observer ignoring flagged entries;
 - PATH resolution not skipping in-tree entries;
@@ -373,7 +373,10 @@ Thirteen deliberate mutations were reintroduced one at a time, and each made at 
 - the default user ignore file removed from it;
 - the sink error listener removed;
 - backpressure kept while draining;
-- the projected receipt not validated.
+- the projected receipt not validated;
+- an ignore file's link target not stamped;
+- an empty reflog counted as compared;
+- a branch name not made display-safe for the page.
 
 One more mutation, skipping writes to a sink that has already failed, made no test fail. That line only avoids pointless writes once
 the error listener has done its work. The listener is what keeps the run alive, and removing it is caught.
@@ -465,4 +468,14 @@ directory. It found no blocker.
 
 The full suite also caught a race in the escaped-process test under load: the shell could exit before `setsid` had left the group. The
 test now waits for the escaped child to report.
+
+### Codex review on the PR
+
+The repository's automated Codex review left three findings on the PR. All three were reproduced by tests and fixed:
+
+| Finding | Disposition |
+| :-- | :-- |
+| An ignore file that is a symbolic link was stamped as the link, but Git reads its target. A check could append to the target and hide a new file. | **Fixed.** A stamp covers the path and, followed, its target. Tested with a symlinked `core.excludesFile`. |
+| A repository that writes no reflog returns count 0 and empty output, which were hashed as if compared. | **Fixed.** No entries means no reflog: `reflog: "unavailable"`, with its limitation. Tested in the observer and end to end. |
+| A branch name Git accepts with a bidirectional control was copied to the page, whose gate then refused the whole attempts view. | **Fixed.** The branch is made display-safe in the view, as argv is. The receipt file keeps it exactly. Tested with U+202E. |
 

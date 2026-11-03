@@ -94,13 +94,24 @@ const OBSERVER_CONFIG: readonly (readonly [string, string])[] = [
 
 const sha256 = (text: string | Buffer): string => createHash("sha256").update(text).digest("hex");
 
-/** Size, modification and change times (ns) and inode of a path (never followed, never read), or a word for what it is instead. */
+/**
+ * Size, modification and change times (ns) and inode of a path, as itself (never followed) AND as what it names (followed): Git reads an
+ * ignore file through a symbolic link, so editing the link's target must change the stamp as surely as replacing the link. Nothing is
+ * read from the file. A word stands for what cannot be stamped.
+ */
 async function stampOf(path: string): Promise<string> {
+	const one = (s: Awaited<ReturnType<typeof lstat>> & { mtimeNs: bigint; ctimeNs: bigint }) =>
+		`${s.isFile() ? "f" : s.isSymbolicLink() ? "l" : "o"}:${s.size}:${s.mtimeNs}:${s.ctimeNs}:${s.ino}`;
+	let own: string;
 	try {
-		const s = await lstat(path, { bigint: true });
-		return `${s.isFile() ? "f" : "o"}:${s.size}:${s.mtimeNs}:${s.ctimeNs}:${s.ino}`;
+		own = one(await lstat(path, { bigint: true }));
 	} catch {
 		return "absent";
+	}
+	try {
+		return `${own}>${one(await stat(path, { bigint: true }))}`;
+	} catch {
+		return `${own}>absent`;
 	}
 }
 
@@ -372,7 +383,8 @@ export class GitRevisionObserverV0 {
 			GIT_LIMITS_V0.listBytes,
 			keys,
 		);
-		if (count.code !== 0 || count.truncated) return null;
+		// No entries is no reflog: nothing could show a movement (`core.logAllRefUpdates=false` with no log written yet).
+		if (count.code !== 0 || count.truncated || !/^[1-9][0-9]*\n$/.test(count.stdout.toString("utf8"))) return null;
 		const newest = await this.#read(
 			cwd,
 			["log", "--walk-reflogs", "-n1", "--date=raw", "--format=%H%x00%gd%x00%gs", ref, "--"],

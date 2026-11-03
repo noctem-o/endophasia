@@ -615,6 +615,17 @@ describe.skipIf(!haveGit)("the revision observer", () => {
 		});
 	});
 
+	it("a repository that writes no reflog has none to compare: null, never a value that looks compared", async () => {
+		const dir = fresh("nolog");
+		git(dir, "init", "-q", "-b", "main");
+		git(dir, "config", "core.logAllRefUpdates", "false");
+		writeFileSync(join(dir, "check.sh"), "exit 0\n");
+		git(dir, "add", ".");
+		git(dir, "commit", "-q", "-m", "init");
+		rmSync(join(dir, ".git", "logs"), { recursive: true, force: true });
+		expect((await seen(dir)).reflogs).toEqual({ head: null, branch: null });
+	});
+
 	it("its reflog and rules values change when a commit is made, or info/exclude is edited", async () => {
 		const dir = repo();
 		const a = await seen(dir);
@@ -845,7 +856,25 @@ describe.skipIf(!haveGit)("checks against a real repository", () => {
 			expect([viaHome.outcome, viaHome.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
 		} finally {
 			rmSync(join(HOME, ".config"), { recursive: true, force: true });
+			rmSync(join(w.project, "payload2.js"), { force: true });
 		}
+		// ...or an ignore file that is a symbolic link: Git reads its target, so the target's change is the rules' change.
+		const target = join(fresh("ignore-target"), "ignore");
+		writeFileSync(target, "");
+		const link = join(fresh("ignore-link"), "ignore");
+		symlinkSync(target, link);
+		git(w.project, "config", "core.excludesFile", link);
+		const viaLink = await check(w, ["sh", "-c", `echo payload3.js >> ${target} && echo evil > payload3.js`]);
+		expect([viaLink.outcome, viaLink.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+	});
+
+	it("a check in a repository that writes no reflog says so: reflog unavailable, with its limitation", async () => {
+		const w = seeded();
+		git(w.project, "config", "core.logAllRefUpdates", "false");
+		rmSync(join(w.project, ".git", "logs"), { recursive: true, force: true });
+		const r = await check(w, ["sh", "check.sh"]);
+		expect([r.outcome, r.reflog]).toEqual(["passed", "unavailable"]);
+		expect(r.limitations).toContain("reflog-unavailable");
 	});
 
 	it("a timeout, an interruption, a signal and an unstartable executable are recorded honestly, never as passed", async () => {
@@ -1110,6 +1139,19 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 				r.argv = [`a${String.fromCharCode(0x202e)}b`];
 			}),
 		).toBeNull();
+	});
+
+	it("shows a branch name Git accepts but the page would refuse (a bidirectional control) safely, and keeps it exactly in the file", async () => {
+		const w = seeded();
+		const odd = `odd${String.fromCharCode(0x202e)}name`;
+		git(w.project, "checkout", "-q", "-b", odd);
+		const r = await check(w, ["sh", "check.sh"]);
+		expect(r.revision.branch).toBe(`refs/heads/${odd}`);
+		const reply = await routes(w, w.project).route(["workspace", "attempts"], "GET", "", null);
+		const view = readAttempts(JSON.parse(JSON.stringify(reply.body)));
+		expect(view?.attempts.find((a) => a.id === w.attemptId)?.receipts.list[0]?.branch).toBe(
+			"refs/heads/odd\ufffdname",
+		);
 	});
 
 	it("shows an operator's odd argument safely rather than refusing the whole view", async () => {

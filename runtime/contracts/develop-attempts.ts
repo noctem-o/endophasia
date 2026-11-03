@@ -105,15 +105,15 @@ const refuse = <T>(
 ): DevelopAttemptsResultV0<T> => (reason === undefined ? { ok: false, code } : { ok: false, code, reason });
 
 /**
- * An argument as the page shows it: a control, bidirectional or separator character becomes U+FFFD, and a long one is cut, so the
- * operator's own odd argument cannot make the page refuse the whole view. The receipt file keeps the argument exactly.
+ * Text from a receipt as the page shows it (an argument, a branch name): a control, bidirectional or separator character becomes U+FFFD,
+ * and a long one is cut, so an odd argument or branch name cannot make the page refuse the whole view. The receipt file keeps it exactly.
  */
-const shownArgument = (arg: string): string => {
-	const safe = arg.replace(
+const shownText = (text: string, max: number): string => {
+	const safe = text.replace(
 		/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g,
 		"\ufffd",
 	);
-	return safe.length > 400 ? `${safe.slice(0, 399)}\u2026` : safe;
+	return safe.length > max ? `${safe.slice(0, max - 1)}\u2026` : safe;
 };
 
 /** One attempt's receipts as the workbench shows them: no path, each related to the reader's working tree. */
@@ -130,9 +130,9 @@ function receiptsOf(
 			id: r.id,
 			startedAtMs: r.startedAtMs,
 			endedAtMs: r.endedAtMs,
-			argv: r.check.argv.map(shownArgument),
+			argv: r.check.argv.map((arg) => shownText(arg, 400)),
 			commit: r.revision.commit,
-			branch: r.revision.branch,
+			branch: r.revision.branch === null ? null : shownText(r.revision.branch, 1024),
 			execution: r.execution,
 			outcome: r.outcome,
 			reasons: [...r.reasons],

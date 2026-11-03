@@ -208,6 +208,9 @@ describe("the frontend's source", () => {
 		// prepare or record one (docs/designs/develop-work-attempts.md).
 		expect(api).toContain('"./api/v0/workbench/workspace/attempts"');
 		expect(api).not.toMatch(/attempts\/(prepare|handoff|report|abandon|send|dispatch)|attempts\?/);
+		// Verification receipts come with the attempts, read-only (docs/designs/develop-verification-receipts.md): the page has no route to run
+		// a check, record a receipt, or name a directory to compare with.
+		expect(api).not.toMatch(/receipt|\/check\b|attempts\/check|cwd=/i);
 		// The project routes: GET only, a snapshot id and a number validated first, never a path, a branch or a command.
 		expect(api).toContain("./api/v0/workbench/project");
 		expect(api).toMatch(/\/diff\?snapshot=\$\{request\.snapshot\}&file=\$\{request\.id\}/);
@@ -300,6 +303,9 @@ describe("the frontend's source", () => {
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(
 			/from "\.\.\/api\.ts"|use-workbench|use-workspace|propose|intervene|withdraw|\.prompt\b|fetch|composer|draft/,
 		);
+		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
+		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
+		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v1"');
 		const tasks = sources["develop/Tasks.tsx"]!;
 		expect(tasks).not.toMatch(/from "\.\.\/api\.ts"|use-workbench|propose|intervene|withdraw|\.prompt\b|fetch/);
 		expect(sources["model/workspace.ts"]).not.toMatch(/prompt|intervene|propose/i);

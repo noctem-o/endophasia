@@ -37,6 +37,19 @@
   [docs/harness-upgrades.md](docs/harness-upgrades.md#changing-the-identity-basis).
 
 ### Added
+- **DEVELOP verification receipts** (`endo attempt check|receipts|receipt`). `check` runs the command you give after `--` (no shell, in a
+  process group Endophasia owns, bounded in time and output). It runs at the top of a clean, committed working tree of the attempt's
+  project. Endophasia observes the tree with read-only Git before and after, and records what it saw once, under
+  `develop/receipts/<attempt>/`:
+  - which command and commit;
+  - how the process ended;
+  - whether HEAD, the tree, the reflog and the ignore rules held still;
+  - an outcome derived from those facts: **Observed check passed**, **Observed check failed** or **Inconclusive**;
+  - the limitations (ignored files and the environment are not examined).
+
+  A receipt is not acceptance: no task status moves. Receipts are never carried forward, and read **Stale** once HEAD moves. The paired
+  workbench shows them read-only under each attempt (`endo.develop-attempts-view.v1`). There is no route to run a check, and `endo
+  studio` serves none of it. See [docs/designs/develop-verification-receipts.md](docs/designs/develop-verification-receipts.md).
 - **DEVELOP work attempts and handoff briefs** (`endo attempt prepare|brief|handoff|report|abandon|list|show`). An attempt is one
   request you prepare on a task. It records an objective, constraints, what to report back, and the task's words as they were. Its brief is
   harness-neutral plain text for you to paste into any coding agent. Preparing, printing or copying a brief sends nothing and starts no

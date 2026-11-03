@@ -2,8 +2,20 @@
 // prepared, its objective, what the operator recorded, and whether the task's words changed since; opening one shows the brief, which the
 // operator can copy and paste into any coding agent themselves. Copying writes the clipboard and nothing else: it never touches the
 // composer, sends nothing, and records nothing. Preparing and recording are the operator's terminal commands (docs/designs/develop-work-attempts.md).
+//
+// Under each attempt, its verification receipts (docs/designs/develop-verification-receipts.md): what Endophasia observed when the operator
+// ran a check in a terminal, at which commit, and how that commit relates to this workbench's working tree now. Read-only: nothing here
+// runs a check, and a receipt is never shown as the task's acceptance.
 import type { ReactElement } from "react";
-import { ATTEMPT_LABELS, type Attempt } from "../model/attempts-wire.ts";
+import {
+	ATTEMPT_LABELS,
+	type Attempt,
+	RECEIPT_LIMITATION_TEXT,
+	RECEIPT_OUTCOME_LABELS,
+	RECEIPT_REASON_TEXT,
+	RECEIPT_RELATION_LABELS,
+	type Receipt,
+} from "../model/attempts-wire.ts";
 import type { Task } from "../model/workspace-wire.ts";
 import { CopyButton, Note } from "../ui/text.tsx";
 import type { AttemptsState } from "../use-attempts.ts";
@@ -103,6 +115,7 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 						</span>
 						<span className="attempt-objective">{first}</span>
 						<span className="dim small">prepared {when(a.preparedAtMs)}</span>
+						<LatestCheck attempt={a} />
 					</span>
 				</summary>
 				<div className="attempt-body">
@@ -152,7 +165,139 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 					<pre className="mono task-command">
 						{`endo attempt handoff --root <store> --attempt ${a.id} --to "<agent>"\nendo attempt report  --root <store> --attempt ${a.id} --note "<what was reported>"\nendo attempt abandon --root <store> --attempt ${a.id}`}
 					</pre>
+					<Receipts attempt={a} />
 				</div>
+			</details>
+		</li>
+	);
+}
+
+const commitOf = (sha: string): string => sha.slice(0, 12);
+
+function ended(r: Receipt): string {
+	const e = r.execution;
+	switch (e.kind) {
+		case "exited":
+			return `exited with code ${e.code}`;
+		case "signaled":
+			return `ended by ${e.signal}`;
+		case "timed-out":
+			return "stopped at its time limit";
+		case "interrupted":
+			return "interrupted";
+		case "output-limit":
+			return "went over the output limit";
+		case "spawn-failed":
+			return "could not be started";
+	}
+}
+
+/** Why a receipt is inconclusive, beyond how it ended (which the sentence already says). */
+function because(r: Receipt): string {
+	if (r.outcome !== "inconclusive") return "";
+	const rest = r.reasons.filter((x) => x !== r.execution.kind);
+	return rest.length === 0
+		? "; inconclusive"
+		: `; inconclusive because ${rest.map((x) => RECEIPT_REASON_TEXT[x]).join("; ")}`;
+}
+
+/** A relation in a few words, for the summary line; the full label is in the receipt's own row. */
+const SHORT_RELATION: Readonly<Record<Receipt["relation"], string>> = {
+	"at-head": "",
+	"at-head-changed": "tree changed since",
+	"head-differs": "stale",
+	"other-worktree": "other working tree",
+	"other-repository": "other repository",
+	unavailable: "not compared",
+};
+
+/** The newest receipt, in the attempt's one-line summary: its outcome and whether it still applies here. */
+function LatestCheck({ attempt: a }: { attempt: Attempt }): ReactElement | null {
+	const last = a.receipts.list.at(-1);
+	if (last === undefined) return null;
+	return (
+		<span className="small" data-testid="attempt-latest-check">
+			<span className="chip-ref" data-outcome={last.outcome}>
+				{RECEIPT_OUTCOME_LABELS[last.outcome]}
+			</span>{" "}
+			{last.relation === "at-head" ? null : (
+				<span className="dim" data-relation={last.relation}>
+					{SHORT_RELATION[last.relation]}
+				</span>
+			)}
+		</span>
+	);
+}
+
+function Receipts({ attempt: a }: { attempt: Attempt }): ReactElement {
+	const { receipts } = a;
+	return (
+		<div className="attempt-receipts" data-testid="attempt-receipts">
+			<h4 className="small">
+				Checks Endophasia observed{" "}
+				<span className="dim task-clause">what ran, at which commit; not the task's acceptance</span>
+			</h4>
+			{receipts.state === "unreadable" ? (
+				<p className="dim small" data-testid="receipts-unreadable">
+					This attempt's receipts cannot be read now. Nothing was changed.
+				</p>
+			) : receipts.list.length === 0 ? (
+				<p className="dim small" data-testid="receipts-none">
+					No checks recorded for this attempt.
+				</p>
+			) : (
+				<ul className="plain task-refs" data-testid="receipt-list">
+					{receipts.list.map((r) => (
+						<ReceiptItem key={r.id} receipt={r} />
+					))}
+				</ul>
+			)}
+			{receipts.problems > 0 ? (
+				<p className="dim small" data-testid="receipts-problems">
+					{receipts.problems === 1 ? "One file" : `${receipts.problems} files`} in this attempt's receipts could
+					not be used and {receipts.problems === 1 ? "is" : "are"} not shown (endo attempt receipts names them).
+				</p>
+			) : null}
+			<p className="dim small">
+				Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs your command, not
+				one from a brief or an agent:
+			</p>
+			<pre className="mono task-command">
+				{`endo attempt check --root <store> --attempt ${a.id} -- <command> [args...]\nendo attempt receipts --root <store> --attempt ${a.id}`}
+			</pre>
+		</div>
+	);
+}
+
+function ReceiptItem({ receipt: r }: { receipt: Receipt }): ReactElement {
+	return (
+		<li data-testid="receipt" data-outcome={r.outcome} data-relation={r.relation}>
+			<span className="task-ref-head">
+				<span className="chip-ref" data-outcome={r.outcome}>
+					{RECEIPT_OUTCOME_LABELS[r.outcome]}
+				</span>
+				<span className="mono small" title={r.commit}>
+					{commitOf(r.commit)}
+				</span>
+				<span className="dim small">{when(r.startedAtMs)}</span>
+			</span>
+			<p className="small mono receipt-argv" data-testid="receipt-argv">
+				{r.argv.join(" ")}
+			</p>
+			<p className="small" data-testid="receipt-facts">
+				It {ended(r)}
+				{because(r)}.
+			</p>
+			<p className={r.relation === "at-head" ? "dim small" : "small attempt-changed"} data-testid="receipt-relation">
+				{RECEIPT_RELATION_LABELS[r.relation]}.
+			</p>
+			<details className="receipt-limits">
+				<summary className="dim small">What this does not show</summary>
+				<ul className="small">
+					{r.limitations.map((l) => (
+						<li key={l}>{RECEIPT_LIMITATION_TEXT[l]}</li>
+					))}
+				</ul>
 			</details>
 		</li>
 	);

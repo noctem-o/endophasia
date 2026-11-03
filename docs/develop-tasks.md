@@ -111,7 +111,7 @@ code. There is no new route family and no new capability:
 | :-- | :-- |
 | `GET workspace` | the registered project, its tasks, references; or one constant when no project was named |
 | `POST workspace/tasks/create`, `update`, `status`, `select`, `link-session`, `unlink-session` | closed bodies, a task id and the revision it saw |
-| `GET workspace/attempts` | the selected task's work attempts and their briefs, read-only (no query; nothing prepares or records one) |
+| `GET workspace/attempts` | the selected task's work attempts, their briefs and their verification receipts, read-only (no query; nothing prepares or records one, and nothing runs a check) |
 
 None of them sends a prompt, steers, queues or stops, starts, resumes or selects a session, runs Git or a shell, opens or writes any file but
 `develop/tasks.json`, reads the transcript, or approves anything. The terminal approval, the pairing grant, capability admission and STOP are unchanged,
@@ -236,6 +236,33 @@ endo attempt list    --root ./recordings --project endo.project.<id> [--task end
   `endo studio` has no route to attempts.
 - A copied brief carries your private task text to the clipboard, where a clipboard manager may keep it. To remove an attempt, delete its
   files (`develop/attempts/<id>.*`); nothing else is affected.
+
+## Verification receipts
+
+A **verification receipt** records what Endophasia itself observed when you asked it to run a check against an attempt: which command,
+in which working tree, at which commit, how the process ended, and whether the tree held still. It is evidence, not acceptance. Design,
+trust boundary and review record: [designs/develop-verification-receipts.md](designs/develop-verification-receipts.md).
+
+```sh
+endo attempt check    --root ./recordings --attempt endo.attempt.<id> [--cwd <worktree>] [--timeout <s>] -- npm test
+endo attempt receipts --root ./recordings --attempt endo.attempt.<id> [--cwd <worktree>]
+endo attempt receipt  --root ./recordings --receipt endo.receipt.<id>
+```
+
+- `check` runs **your** command, exactly what follows `--`, with no shell. It runs at the top of a clean, committed working tree of the
+  attempt's project (default: the registered path). A dirty, untracked, sparse or submodule tree is refused, and nothing runs. Nothing
+  runs a check for you: not a task, an attempt, a brief, an agent or the page.
+- It runs with your permissions and environment, and whatever it invokes from the repository is the repository's code, which an agent
+  may have written. Stop anything else that writes the tree (an agent still working) first: Endophasia cannot tell.
+- **Observed check passed** means the command exited 0 and Git saw the same commit and a clean tree before and after. **Observed check
+  failed** means another exit code under the same conditions. **Inconclusive** means anything else: a timeout, an interruption, a
+  signal, too much output, a process that escaped, or the tree, HEAD or ignore rules changing. Every receipt lists what it does not show:
+  ignored files (`node_modules/`, build output) and the environment are not recorded.
+- Exit codes: 0 passed, 3 failed, 4 inconclusive, 130 interrupted (recorded), 2 refused (nothing ran), 5 ran but could not be recorded.
+- A receipt is never carried forward. When HEAD moves, it reads **Stale**. A receipt from another worktree or repository is "not
+  compared". Nothing changes the task's status: accepting the work is still your `endo task status`.
+- Receipts live in `develop/receipts/<attempt id>/`, one write-once file each. A failed receipt stays beside the pass that followed it.
+  The paired workbench shows them under each attempt, read-only, without paths. To remove an attempt's receipts, delete that directory.
 
 ## Versions and the upgrade
 

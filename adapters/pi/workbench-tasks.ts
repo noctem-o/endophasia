@@ -68,7 +68,29 @@ export class WorkbenchTasksV0 {
 		return this.#workspace.view();
 	}
 
-	/** A route under `workspace/`. The broker has already checked the grant. */
+	/**
+	 * A route under `workspace/`, as the broker serves it: the attempts read here, everything else by `handle`. The broker has already
+	 * checked the grant. The attempts: GET only, no query, no further path, and nothing in the request chooses the project, the task or the
+	 * directory their receipts are compared with (the launch's project, the task selected in the file, the launch's own directory). A
+	 * launch given no attempt records has no such route. Asynchronous only because the receipts are compared with the launch directory's
+	 * HEAD, read now (read-only Git).
+	 */
+	async route(
+		route: readonly string[],
+		method: "GET" | "POST",
+		query: string,
+		body: unknown,
+	): Promise<{ status: number; body: unknown }> {
+		const [, a, b] = route;
+		if (method === "GET" && a === "attempts" && b === undefined) {
+			const attempts = await this.#workspace.attemptsView();
+			if (attempts === null) return refuse(404, "not-found");
+			return query === "" ? reply(200, attempts) : refuse(400, "bad-request");
+		}
+		return this.handle(route, method, query, body);
+	}
+
+	/** A route under `workspace/` other than the attempts (see `route`). The broker has already checked the grant. */
 	handle(
 		route: readonly string[],
 		method: "GET" | "POST",
@@ -79,11 +101,8 @@ export class WorkbenchTasksV0 {
 		if (method === "GET") {
 			// The attempts: no query, no further path, and nothing in the request chooses the project or the task (the launch's project, and the
 			// task selected in the file). A launch given no attempt records has no such route.
-			if (a === "attempts" && b === undefined) {
-				const attempts = this.#workspace.attemptsView();
-				if (attempts === null) return refuse(404, "not-found");
-				return query === "" ? reply(200, attempts) : refuse(400, "bad-request");
-			}
+			// The attempts are served by `route` (asynchronously); `handle` alone does not serve them.
+			if (a === "attempts" && b === undefined) return refuse(404, "not-found");
 			if (a !== undefined || query !== "")
 				return refuse(a === undefined ? 400 : 404, a === undefined ? "bad-request" : "not-found");
 			return reply(200, this.view());

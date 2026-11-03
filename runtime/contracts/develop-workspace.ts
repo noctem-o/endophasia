@@ -28,7 +28,8 @@
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
-import type { EndoDevelopAttemptsViewV0 } from "../../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV1 } from "../../protocol/develop-attempts.ts";
+import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import {
 	ENDO_DEVELOP_OMP_FORMAT_V1,
 	ENDO_DEVELOP_OMP_SCOPE_PATTERN_V1,
@@ -50,6 +51,7 @@ import {
 	isEndoDevelopSessionIdV0,
 } from "../../protocol/develop-tasks.ts";
 import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
+import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type {
 	DevelopTasksStoreV0,
 	EndoDevelopTasksFormatV1,
@@ -121,6 +123,15 @@ export interface DevelopWorkspaceServiceOptionsV0 {
 	 * launch project's selected task's attempts; not given, it offers none (`null`), and the workbench's attempts route is not found.
 	 */
 	attempts?: DevelopAttemptsStoreV0;
+	/**
+	 * The verification receipts (storage/develop-receipts.ts), shown read-only under each attempt in `attemptsView()`, and how the launch
+	 * directory's HEAD is observed to compare them with (the caller gives the read-only Git revision observer; this module reaches no
+	 * adapter). The directory observed is always the launch's own, never one a request or a receipt names.
+	 */
+	receipts?: {
+		store: DevelopReceiptsStoreV0;
+		current: (directory: string) => Promise<EndoReceiptCurrentV0 | null>;
+	};
 }
 
 const realpath = (path: string): string | null => {
@@ -168,11 +179,13 @@ export class DevelopWorkspaceServiceV0 {
 	readonly #store: DevelopTasksStoreV0;
 	readonly #observeGitRoot: (directory: string) => Promise<string | null>;
 	readonly #attempts: DevelopAttemptsStoreV0 | null;
+	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
 
 	constructor(store: DevelopTasksStoreV0, options: DevelopWorkspaceServiceOptionsV0 = {}) {
 		this.#store = store;
 		this.#observeGitRoot = options.observeGitRoot ?? (async () => null);
 		this.#attempts = options.attempts ?? null;
+		this.#receipts = options.receipts ?? null;
 	}
 
 	/** The whole file (as the v1 model), read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
@@ -307,7 +320,7 @@ export class DevelopWorkspaceServiceV0 {
 	 * knows. The scope can change only that project, and only while the launch directory is the project's registered one.
 	 */
 	forLaunch(config: DevelopLaunchConfigV0, host: DevelopLaunchHostV0): DevelopLaunchWorkspaceV0 {
-		return new DevelopLaunchWorkspaceV0(OPEN, this.#store, config, host, this.#attempts);
+		return new DevelopLaunchWorkspaceV0(OPEN, this.#store, config, host, this.#attempts, this.#receipts);
 	}
 }
 
@@ -320,6 +333,7 @@ export class DevelopLaunchWorkspaceV0 {
 	readonly #config: Readonly<DevelopLaunchConfigV0>;
 	readonly #host: DevelopLaunchHostV0;
 	readonly #attempts: DevelopAttemptsServiceV0 | null;
+	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
 
 	/** Opened only by `DevelopWorkspaceServiceV0.forLaunch`: the token is private to this module. */
 	constructor(
@@ -328,21 +342,28 @@ export class DevelopLaunchWorkspaceV0 {
 		config: DevelopLaunchConfigV0,
 		host: DevelopLaunchHostV0,
 		attempts: DevelopAttemptsStoreV0 | null = null,
+		receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null = null,
 	) {
 		if (token !== OPEN) throw new TypeError("a launch scope is opened by DevelopWorkspaceServiceV0.forLaunch");
 		this.#store = store;
 		this.#config = Object.freeze({ ...config });
 		this.#host = host;
 		this.#attempts = attempts === null ? null : new DevelopAttemptsServiceV0(store, attempts);
+		this.#receipts = receipts;
 	}
 
 	/**
 	 * The attempts of the task this launch's project has selected (docs/designs/develop-work-attempts.md), read now; null when this launch
 	 * was given no attempt records. Read-only, in every state of the workspace: a launch scope cannot prepare or record an attempt. The project
-	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either.
+	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either. Each attempt's receipts are
+	 * compared with the HEAD of this launch's own directory, observed now (read-only Git), when this launch was given receipts.
 	 */
-	attemptsView(): EndoDevelopAttemptsViewV0 | null {
-		return this.#attempts?.viewFor(this.#config.projectId) ?? null;
+	async attemptsView(): Promise<EndoDevelopAttemptsViewV1 | null> {
+		if (this.#attempts === null) return null;
+		const receipts = this.#receipts;
+		if (receipts === null || receipts === undefined) return this.#attempts.viewFor(this.#config.projectId);
+		const current = await receipts.current(this.#config.launchDirectory).catch(() => null);
+		return this.#attempts.viewFor(this.#config.projectId, { store: receipts.store, current });
 	}
 
 	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */

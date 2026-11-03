@@ -1,5 +1,5 @@
 /**
- * `endo attempt prepare|brief|handoff|report|abandon|list|show`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
+ * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
  * kept in the store root's `develop/attempts/` as write-once records (storage/develop-attempts.ts).
  *
  * An attempt is one request the operator prepared on one task. `brief` prints it as plain text for the operator to copy into any coding
@@ -7,10 +7,28 @@
  * own statements, once each: that they handed it over, what was reported (never verified here), or that they stopped. None of them changes
  * the task: its status moves only by `endo task status` or the workbench's buttons. The task file is read, never written.
  *
- * These commands are a translation of flags and refusals around the shared attempts service (runtime/contracts/develop-attempts.ts).
+ * `check` is the one command that runs anything (docs/designs/develop-verification-receipts.md): the executable and arguments the operator
+ * typed after `--`, nothing else, never from a record. It records what Endophasia observed as a receipt (develop/receipts/), which is
+ * neither the task's acceptance nor a change of anything's status. `receipts` and `receipt` read receipts back, each compared with the HEAD
+ * of a working tree the operator chose.
+ *
+ * These commands are a translation of flags and refusals around the shared services (runtime/contracts/develop-attempts.ts and
+ * develop-receipts.ts).
  */
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
+import { runCheckV0 } from "../adapters/develop/check-runner.ts";
+import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { ENDO_DEVELOP_ATTEMPT_LABELS_V0, ENDO_DEVELOP_ATTEMPT_LIMITS_V0 } from "../protocol/develop-attempts.ts";
+import {
+	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
+	ENDO_RECEIPT_LIMITATION_TEXT_V0,
+	ENDO_RECEIPT_OUTCOME_LABELS_V0,
+	ENDO_RECEIPT_REASON_TEXT_V0,
+	ENDO_RECEIPT_RELATION_LABELS_V0,
+	type EndoDevelopReceiptV0,
+	type EndoReceiptRelationV0,
+	endoReceiptRelationV0,
+} from "../protocol/develop-receipts.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	type DevelopAttemptReportV0,
@@ -18,12 +36,19 @@ import {
 	type DevelopAttemptsResultV0,
 	DevelopAttemptsServiceV0,
 } from "../runtime/contracts/develop-attempts.ts";
+import {
+	type DevelopCheckRefusalV0,
+	type DevelopReceiptsReadResultV0,
+	DevelopReceiptsServiceV0,
+} from "../runtime/contracts/develop-receipts.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { flagsOf } from "./develop-tasks.ts";
+import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id>";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -197,6 +222,194 @@ function show(argv: readonly string[]): void {
 	print({ attempt: shown(unwrap(serviceAt(root).get(attemptOf(flags)))) });
 }
 
+// ---- verification receipts ------------------------------------------------------------------------------------------------------------
+
+const receiptsAt = (root: string) => {
+	const observer = new GitRevisionObserverV0();
+	return new DevelopReceiptsServiceV0(
+		new DevelopTasksStoreV0(root),
+		new DevelopAttemptsStoreV0(root),
+		new DevelopReceiptsStoreV0(root),
+		{
+			observe: (directory, options) => observer.observe(directory, options),
+			run: runCheckV0,
+			version: endoVersionV0(),
+		},
+	);
+};
+
+const CHECK_REFUSALS: Readonly<Record<DevelopCheckRefusalV0, string>> = {
+	"bad-request": `the check was not acceptable: give the executable and its arguments after --, at most ${ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxArgs} of them, and a --timeout of 1 to ${ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxTimeoutMs / 1000} seconds`,
+	"not-found": "no such attempt in this store, or its project is not in the task file",
+	"tasks-unreadable": "the task file cannot be used, so the attempt's project cannot be found; it was not changed",
+	unreadable: "the attempts or receipts directory cannot be used; nothing was changed",
+	limit: `that attempt already has ${ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxPerAttempt} receipts; remove ones you no longer need by deleting their files (develop/receipts/<attempt>/)`,
+	"unsupported-platform": "checks need process groups, which this platform does not have",
+	"executable-not-found":
+		"no executable file by that name (PATH entries that are empty, relative or inside the working tree are skipped; give a path to use one there)",
+	repository: "that directory cannot be observed as the top of a Git working tree",
+	"project-repository": "the attempt's project's registered path is not in a Git repository",
+	"other-repository": "that directory is a working tree of a different repository from the attempt's project",
+	"not-clean":
+		"the working tree is not a clean, committed state; commit or remove the changes (checks are only recorded against a commit)",
+	unrecordable:
+		"a receipt for this check could not be recorded (an argument list, a path or the branch name is too long, or not plain text)",
+};
+
+const RISK =
+	"endo attempt check: this runs the command below with your permissions and your environment. Whatever it invokes from the repository (package.json scripts, test files, a Makefile) is the repository's code, which an agent may have written: running a repository's tests is running that repository. Endophasia cannot tell whether anything else (an agent still working, an editor) writes the tree while it runs; stop them first.";
+
+const receiptSummary = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRelationV0) => ({
+	id: receipt.id,
+	attemptId: receipt.attemptId,
+	startedAtMs: receipt.startedAtMs,
+	argv: receipt.check.argv,
+	commit: receipt.revision.commit,
+	branch: receipt.revision.branch,
+	execution: receipt.execution,
+	outcome: receipt.outcome,
+	label: ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome],
+	reasons: receipt.reasons.map((r) => ENDO_RECEIPT_REASON_TEXT_V0[r]),
+	relation,
+	relationLabel: ENDO_RECEIPT_RELATION_LABELS_V0[relation],
+});
+
+const receiptShown = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRelationV0) => ({
+	...receiptSummary(receipt, relation),
+	limitations: receipt.limitations.map((l) => ENDO_RECEIPT_LIMITATION_TEXT_V0[l]),
+	receipt,
+});
+
+/** Exit codes of `check`: what was observed, or that nothing ran. */
+export const ENDO_CHECK_EXIT_CODES_V0 = Object.freeze({
+	passed: 0,
+	refused: 2,
+	failed: 3,
+	inconclusive: 4,
+	notRecorded: 5,
+	interrupted: 130,
+});
+
+async function check(argv: readonly string[]): Promise<void> {
+	const split = argv.indexOf("--");
+	if (split === -1) throw new TypeError(`endo attempt check needs the command after --\n${USAGE}`);
+	const command = argv.slice(split + 1);
+	if (command.length === 0) throw new TypeError(`endo attempt check needs an executable after --\n${USAGE}`);
+	const { root, flags } = flagsOf(argv.slice(0, split), ["--attempt", "--cwd", "--timeout"], USAGE);
+	const timeout = flags.get("--timeout");
+	if (timeout !== undefined && !/^[1-9][0-9]{0,5}$/.test(timeout))
+		throw new TypeError("--timeout takes whole seconds");
+	const service = receiptsAt(root);
+	const cwd = flags.get("--cwd");
+	const planned = await service.plan(attemptOf(flags), {
+		argv: command,
+		...(cwd === undefined ? {} : { cwd }),
+		...(timeout === undefined ? {} : { timeoutMs: Number(timeout) * 1000 }),
+	});
+	if (!planned.ok) {
+		const why = [planned.reason, ...(planned.dirty ?? [])].filter((x) => x !== undefined).join(", ");
+		process.stderr.write(
+			`${CHECK_REFUSALS[planned.code]}${why === "" ? "" : ` (${why})`}. Nothing was run and nothing was recorded.\n`,
+		);
+		process.exitCode = ENDO_CHECK_EXIT_CODES_V0.refused;
+		return;
+	}
+	const plan = planned.plan;
+	process.stderr.write(
+		`${RISK}\n  command:   ${JSON.stringify(plan.argv)}\n  spawned:   ${plan.executable}${plan.realExecutable === plan.executable ? "" : ` (${plan.realExecutable})`}\n  in:        ${plan.before.worktree}\n  at:        ${plan.before.commit} (tree ${plan.before.tree})\n  time limit ${plan.timeoutMs / 1000} s\n--- the check's own output follows ---\n`,
+	);
+	// The check's output goes to this process's stderr. If that goes away (the terminal closed, a pipe reader exited), writing to it fails:
+	// the failure must not end this process before the receipt is written.
+	process.stderr.on("error", () => {});
+	process.stdout.on("error", () => {});
+	const interrupt = new AbortController();
+	const hurry = new AbortController();
+	let interrupted = false;
+	const onSignal = (): void => {
+		if (interrupted) hurry.abort();
+		interrupted = true;
+		interrupt.abort();
+	};
+	const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+	for (const signal of signals) process.on(signal, onSignal);
+	let done: Awaited<ReturnType<typeof service.run>>;
+	try {
+		done = await service.run(plan, {
+			stdout: process.stderr,
+			stderr: process.stderr,
+			interrupt: interrupt.signal,
+			hurry: hurry.signal,
+		});
+	} finally {
+		for (const signal of signals) process.off(signal, onSignal);
+	}
+	const { receipt, written } = done;
+	process.stderr.write("--- end of the check's output ---\n");
+	if (written !== "created") {
+		process.stderr.write(
+			`the check ran, but its receipt could not be written (${written}); NOTHING WAS RECORDED. What was observed: ${ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome]}, ${JSON.stringify(receipt.execution)}.\n`,
+		);
+		process.exitCode = ENDO_CHECK_EXIT_CODES_V0.notRecorded;
+		return;
+	}
+	// Its relation to the tree as it is now, observed again (the same working tree): never assumed.
+	const now = await service.current(plan.before.worktree);
+	print({ receipt: receiptShown(receipt, endoReceiptRelationV0(receipt, now)) });
+	process.stderr.write(
+		`recorded: ${ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome]}${receipt.reasons.length === 0 ? "" : ` (${receipt.reasons.map((r) => ENDO_RECEIPT_REASON_TEXT_V0[r]).join("; ")})`}, at ${receipt.revision.commit}. This is what Endophasia observed of that command in that working tree; it is not acceptance of the task, whose status is unchanged.\n`,
+	);
+	// 130 only when the check itself was stopped by the interruption: a signal after it ended does not change what was recorded.
+	process.exitCode =
+		receipt.execution.kind === "interrupted"
+			? ENDO_CHECK_EXIT_CODES_V0.interrupted
+			: receipt.outcome === "passed"
+				? ENDO_CHECK_EXIT_CODES_V0.passed
+				: receipt.outcome === "failed"
+					? ENDO_CHECK_EXIT_CODES_V0.failed
+					: ENDO_CHECK_EXIT_CODES_V0.inconclusive;
+}
+
+const READ_REFUSALS: Readonly<Record<Exclude<DevelopReceiptsReadResultV0, { ok: true }>["code"], string>> = {
+	"bad-request": "a malformed id",
+	"not-found": "no such attempt or receipt in this store",
+	unreadable: "the attempts or receipts directory cannot be used; nothing was changed",
+};
+
+async function readReceipts(
+	service: DevelopReceiptsServiceV0,
+	attemptId: string,
+	cwd: string | undefined,
+): Promise<{ directory: string | null; read: Extract<DevelopReceiptsReadResultV0, { ok: true }> }> {
+	const directory = cwd ?? service.defaultDirectory(attemptId);
+	const current = directory === null ? null : await service.current(directory);
+	const read = service.list(attemptId, current);
+	if (!read.ok) throw new Error(`${READ_REFUSALS[read.code]}${read.reason === undefined ? "" : ` (${read.reason})`}`);
+	return { directory, read };
+}
+
+async function receipts(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
+	const { directory, read } = await readReceipts(receiptsAt(root), attemptOf(flags), flags.get("--cwd"));
+	print({
+		comparedWith: directory,
+		receipts: read.receipts.map((r) => receiptSummary(r.receipt, r.relation)),
+		problems: read.problems,
+	});
+}
+
+async function receipt(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--receipt", "--cwd"], USAGE);
+	const id = flags.get("--receipt");
+	if (id === undefined) throw new TypeError(USAGE);
+	const service = receiptsAt(root);
+	const found = service.find(id);
+	if (found === null) throw new Error(READ_REFUSALS["not-found"]);
+	const { directory, read } = await readReceipts(service, found.attemptId, flags.get("--cwd"));
+	const one = read.receipts.find((r) => r.receipt.id === id);
+	if (one === undefined) throw new Error(READ_REFUSALS["not-found"]);
+	print({ comparedWith: directory, receipt: receiptShown(one.receipt, one.relation) });
+}
+
 export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	prepare,
 	brief,
@@ -205,4 +418,7 @@ export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => vo
 	abandon,
 	list,
 	show,
+	check,
+	receipts,
+	receipt,
 };

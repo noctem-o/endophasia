@@ -7,10 +7,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { piEndoSessionIdV0 } from "../adapters/pi/mapping.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
+import { type EndoReceiptFactsV0, endoReceiptVerdictV0 } from "../protocol/develop-receipts.ts";
 import type { EndoDevelopWorkspaceViewV0 } from "../protocol/develop-tasks.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { event, ingestAll, removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
 import { capabilityOf, get, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
@@ -617,6 +619,33 @@ describe("over HTTP: the same guards as every workbench route, and nothing on th
 			{ objective: CANARY, constraints: CANARY, reportBack: CANARY },
 		);
 		if (!attempt.ok) throw new Error(attempt.code);
+		// And a verification receipt whose argument is the canary (docs/designs/develop-verification-receipts.md): no Studio route serves it.
+		const facts: EndoReceiptFactsV0 = {
+			repository: { worktree: "/w", commonDir: "/w/.git", linked: false },
+			revision: { commit: "1".repeat(40), tree: "2".repeat(40), branch: null },
+			reflog: "compared",
+			check: { argv: ["sh", CANARY], executable: "/bin/sh", realExecutable: "/bin/sh", timeoutMs: 600_000 },
+			execution: { kind: "exited", code: 0 },
+			strayProcesses: false,
+			escapedProcess: false,
+			after: { state: "unavailable" },
+		};
+		const written = new DevelopReceiptsStoreV0(root).write({
+			schemaVersion: "endo.develop-receipt.v0",
+			id: `endo.receipt.${"3".repeat(32)}`,
+			attemptId: attempt.value.id,
+			projectId: project.value.id,
+			requestedBy: "operator",
+			via: "cli",
+			observer: { tool: "endo", version: "0.0.0-test" },
+			startedAtMs: 1,
+			endedAtMs: 2,
+			durationMs: 1,
+			...facts,
+			output: { stdoutBytes: 0, stderrBytes: 0 },
+			...endoReceiptVerdictV0(facts),
+		});
+		if (written !== "created") throw new Error(written);
 		const server = await serve(root);
 		const base = `${capabilityOf(server)}/api/v0/`;
 		// Every read route family the page uses, each one ANSWERED (a refusal would prove nothing): the snapshot, the session list and one

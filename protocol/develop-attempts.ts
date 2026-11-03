@@ -13,13 +13,15 @@
 //
 // What is never stored here: a transcript, model output, a prompt sent to a model, a session handle, a path, a credential.
 
+import type { EndoDevelopReceiptViewV0 } from "./develop-receipts.ts";
 import { checkEndoDevelopTextV0, ENDO_PROJECT_ID_PATTERN_V0, ENDO_TASK_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
 
 export const ENDO_DEVELOP_ATTEMPT_SCHEMA_V0 = "endo.develop-attempt.v0";
 export const ENDO_DEVELOP_ATTEMPT_HANDOFF_SCHEMA_V0 = "endo.develop-attempt-handoff.v0";
 export const ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0 = "endo.develop-attempt-outcome.v0";
-export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V0 = "endo.develop-attempts-view.v0";
+/** v1 (Slice F): each attempt carries its verification receipts. v0 (Slice E, unreleased) is no longer served. */
+export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1 = "endo.develop-attempts-view.v1";
 /** The renderer an attempt is shown with. A later renderer is a new value: an old attempt's brief never changes under it. */
 export const ENDO_DEVELOP_BRIEF_V0 = "endo.develop-brief.v0";
 
@@ -303,7 +305,7 @@ export function renderEndoDevelopBriefV0(attempt: EndoDevelopAttemptV0): string 
 
 // ---- the workbench's read model -----------------------------------------------------------------------------------------------------
 
-export interface EndoDevelopAttemptViewV0 {
+export interface EndoDevelopAttemptViewV1 {
 	id: string;
 	state: EndoDevelopAttemptStateV0;
 	preparedAtMs: number;
@@ -314,16 +316,22 @@ export interface EndoDevelopAttemptViewV0 {
 	/** The task's words that changed since preparation (empty when none did, or when the task cannot be read now). */
 	taskWordsChanged: EndoDevelopTaskWordV0[];
 	brief: string;
+	/**
+	 * The attempt's verification receipts (docs/designs/develop-verification-receipts.md), oldest first, each related to the launch
+	 * directory's HEAD at this read. `unreadable`: the attempt's receipt directory could not be read (none are shown). `problems`: files in
+	 * it that are not usable receipts.
+	 */
+	receipts: { state: "ready" | "unreadable"; list: EndoDevelopReceiptViewV0[]; problems: number };
 }
 
 /**
  * `GET workspace/attempts`: the attempts of the task the project has SELECTED (chosen from the task file, never from the request). No path,
  * session id or scope: attempts carry none. `problems` counts files in the directory that could not be used (they are not shown).
  */
-export interface EndoDevelopAttemptsViewV0 {
-	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V0;
+export interface EndoDevelopAttemptsViewV1 {
+	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1;
 	state: "ready" | "no-task" | "unreadable";
 	taskId: string | null;
-	attempts: EndoDevelopAttemptViewV0[];
+	attempts: EndoDevelopAttemptViewV1[];
 	problems: number;
 }

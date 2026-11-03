@@ -8,11 +8,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
+import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
+import {
+	type EndoDevelopReceiptV0,
+	type EndoReceiptCurrentV0,
+	type EndoReceiptFactsV0,
+	endoReceiptVerdictV0,
+} from "../protocol/develop-receipts.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { removeTempRoots } from "./cockpit-fixtures.ts";
@@ -111,6 +119,7 @@ async function launch(
 							// As cli/workbench.ts constructs it: the attempts are served read-only beside the tasks.
 							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(root), {
 								attempts: new DevelopAttemptsStoreV0(root),
+								receipts: { store: new DevelopReceiptsStoreV0(root), current: currentOf },
 							}).forLaunch(
 								{
 									projectId: mode === "unknown" ? `endo.project.${"0".repeat(32)}` : project,
@@ -597,6 +606,64 @@ suite("a saved OMP reference beside a live Pi one", () => {
 		});
 });
 
+/** As cli/workbench.ts observes it: the launch directory's HEAD, read-only. */
+const revisions = new GitRevisionObserverV0();
+async function currentOf(directory: string): Promise<EndoReceiptCurrentV0 | null> {
+	const seen = await revisions.observe(directory, { within: true });
+	if (!seen.ok) return null;
+	const o = seen.observation;
+	return { worktree: o.worktree, commonDir: o.commonDir, commit: o.commit, clean: o.dirty.length === 0 };
+}
+
+/** A receipt as `endo attempt check` would have written it, observed in `cwd`, with the facts given. */
+function receiptIn(
+	current: EndoReceiptCurrentV0,
+	attemptId: string,
+	projectId: string,
+	n: number,
+	change: Partial<EndoReceiptFactsV0>,
+): EndoDevelopReceiptV0 {
+	const facts: EndoReceiptFactsV0 = {
+		repository: { worktree: current.worktree, commonDir: current.commonDir, linked: false },
+		revision: { commit: current.commit, tree: "e".repeat(40), branch: "refs/heads/main" },
+		reflog: "compared",
+		check: {
+			argv: ["npm", "test"],
+			executable: "/usr/bin/npm",
+			realExecutable: "/usr/lib/npm/bin/npm-cli.js",
+			timeoutMs: 600_000,
+		},
+		execution: { kind: "exited", code: 0 },
+		strayProcesses: false,
+		escapedProcess: false,
+		after: {
+			state: "observed",
+			sameRepository: true,
+			commit: current.commit,
+			tree: "e".repeat(40),
+			clean: true,
+			reflogsUnchanged: true,
+			rulesUnchanged: true,
+		},
+		...change,
+	};
+	return {
+		schemaVersion: "endo.develop-receipt.v0",
+		id: `endo.receipt.${String(n).repeat(32)}`,
+		attemptId,
+		projectId,
+		requestedBy: "operator",
+		via: "cli",
+		observer: { tool: "endo", version: "0.0.0-test" },
+		startedAtMs: 1_790_000_000_000 + n * 60_000,
+		endedAtMs: 1_790_000_000_000 + n * 60_000 + 42_000,
+		durationMs: 42_000,
+		...facts,
+		output: { stdoutBytes: 2048, stderrBytes: 12 },
+		...endoReceiptVerdictV0(facts),
+	};
+}
+
 suite("work attempts in the Task view: read-only, copyable, honest about what was recorded", () => {
 	const attemptsOf = (root: string) =>
 		new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
@@ -683,6 +750,62 @@ suite("work attempts in the Task view: read-only, copyable, honest about what wa
 			);
 			expect(await noOverflow(page)).toBe(true);
 			await shot(page, `attempts-${appearance}-reported-${width}`);
+			// Checks the operator ran in a terminal (endo attempt check): shown read-only, each with what ended it and how its commit relates
+			// to this launch's working tree now. A stale pass is never shown as current, and none is shown as the task's acceptance.
+			const current = await currentOf(api.state.cwd);
+			if (current === null) throw new Error("the demo repository cannot be observed");
+			const receipts = new DevelopReceiptsStoreV0(api.state.root);
+			for (const [n, change] of [
+				[
+					1,
+					{
+						revision: { commit: "f".repeat(40), tree: "e".repeat(40), branch: "refs/heads/main" },
+						execution: { kind: "exited", code: 0 },
+						after: {
+							state: "observed",
+							sameRepository: true,
+							commit: "f".repeat(40),
+							tree: "e".repeat(40),
+							clean: true,
+							reflogsUnchanged: true,
+							rulesUnchanged: true,
+						},
+					},
+				],
+				[2, { execution: { kind: "exited", code: 1 } }],
+				[3, { execution: { kind: "timed-out" } }],
+			] as const)
+				expect(
+					receipts.write(
+						receiptIn(current, attempt.value.id, task.projectId, n, change as Partial<EndoReceiptFactsV0>),
+					),
+				).toBe("created");
+			await refresh(page);
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 3");
+			expect(
+				await page.eval<string[]>(
+					"[...document.querySelectorAll('[data-testid=receipt]')].map((r) => r.dataset.outcome + ':' + r.dataset.relation)",
+				),
+			).toEqual([
+				"passed:head-differs",
+				`failed:${current.clean ? "at-head" : "at-head-changed"}`,
+				`inconclusive:${current.clean ? "at-head" : "at-head-changed"}`,
+			]);
+			expect(await page.text("[data-testid=attempt-latest-check]")).toContain("Inconclusive");
+			const section = await page.text("[data-testid=attempt-receipts]");
+			expect(section).toContain("Observed check passed");
+			expect(section).toContain("Stale: this working tree's HEAD is now a different commit");
+			expect(section).toContain("exited with code 1");
+			expect(section).toContain("It stopped at its time limit; inconclusive.");
+			expect(section).toContain("not the task's acceptance");
+			expect(section).not.toMatch(/verified|succeeded/i);
+			expect(section).not.toContain(api.state.cwd);
+			expect(section).not.toContain(api.state.root);
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval(
+				"document.querySelector('[data-testid=attempt-receipts]').scrollIntoView({ block: 'center' })",
+			);
+			await shot(page, `attempts-${appearance}-receipts-${width}`);
 			// No status moved, no draft was touched, nothing reached the agent, and the store path is not on the page.
 			expect(await statusOf(page)).toBe("open");
 			await page.click("[data-testid=tab-conversation]");

@@ -44,6 +44,8 @@ interface Opened {
 	cwd: string;
 	projectId: string;
 	host: EndoWorkspaceHostV0;
+	/** The fixture's attempts by role (seedAttention), when seeded. */
+	attempts: Record<string, string>;
 	server: Awaited<ReturnType<typeof serve>>;
 	clock: { now: number };
 	call(
@@ -64,10 +66,11 @@ async function open(
 	const root = tempRoot("endo-workspace-host-");
 	const cwd = demoRepo();
 	const projectId = register(root, cwd);
+	let attempts: Record<string, string> = {};
 	if (options.seed !== false) {
 		const current = await endoReceiptCurrentV0(cwd);
 		if (current === null) throw new Error("the demo repository cannot be observed");
-		seedAttention(root, projectId, current);
+		attempts = seedAttention(root, projectId, current).attempts;
 	}
 	const clock = { now: Date.now() };
 	const service =
@@ -106,7 +109,7 @@ async function open(
 		held = (JSON.parse(reply.body) as { grant: string }).grant;
 		return held;
 	};
-	return { root, cwd, projectId, host, server, clock, call, pair };
+	return { root, cwd, projectId, host, attempts, server, clock, call, pair };
 }
 
 const json = <T = Record<string, unknown>>(reply: Reply): T => JSON.parse(reply.body) as T;
@@ -428,11 +431,16 @@ suite("the workspace host: reads and changes the project's work with no agent", 
 	it("shows evidence it could not read as a limitation, never as an empty or passing read", async () => {
 		const w = await open();
 		await w.pair();
-		const receipts = join(w.root, "develop", "receipts");
-		const dir = readdirSync(receipts).find((name) => statSync(join(receipts, name)).isDirectory())!;
-		writeFileSync(join(receipts, dir, "torn.json"), "{ not a receipt");
-		const attention = json<{ tasks: { problems: number }[] }>(await w.call("workspace/attention"));
-		expect(attention.tasks.reduce((sum, t) => sum + t.problems, 0)).toBeGreaterThanOrEqual(1);
+		// The receipts of an OPEN task's attempt (a done task's receipts are not read at all, by design): named, never "the first directory".
+		const attempt = w.attempts.regressed!;
+		writeFileSync(join(w.root, "develop", "receipts", attempt, "torn.json"), "{ not a receipt");
+		const attention = json<{ tasks: { taskId: string; problems: number; checks: unknown[] }[] }>(
+			await w.call("workspace/attention"),
+		);
+		const regressed = attention.tasks.find((t) => t.problems > 0);
+		expect(regressed?.problems).toBe(1);
+		// The usable receipts beside it are still read: a torn file is counted, not taken as "no checks".
+		expect(regressed?.checks.length).toBeGreaterThan(0);
 		// The task file damaged: an explicit unreadable state, not an empty project.
 		writeFileSync(join(w.root, "develop", "tasks.json"), "{ torn");
 		const view = json<{ state: string; reason: string; tasks: unknown[] }>(await w.call("workspace"));

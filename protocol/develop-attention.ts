@@ -20,8 +20,8 @@ export const ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0 = "endo.develop-attention-vie
 
 /**
  * Closed bounds on one read. `maxReceiptFiles` and `maxReceiptBytes`: receipt files (usable or not) read in all, across the project; once reached, the attempts
- * not yet read are counted as `skipped` and the view is `truncated`. `maxChecksPerTask`: distinct commands listed per task (the ones whose
- * latest receipt did not pass first); the rest are counted. `maxCommandChars`: a command as shown, cut.
+ * not yet read are counted as `skipped` and the view is `truncated`. `maxChecksPerTask`: distinct commands listed per task (failed first,
+ * then inconclusive, then passed); the rest are counted. `maxCommandChars`: a command as shown, cut.
  */
 export const ENDO_DEVELOP_ATTENTION_LIMITS_V0 = Object.freeze({
 	maxReceiptFiles: 1000,

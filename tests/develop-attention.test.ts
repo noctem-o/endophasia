@@ -312,6 +312,29 @@ describe("the projection: the latest check of each command, per task", () => {
 		);
 	});
 
+	it("never lets the per-task limit cut a failure while keeping newer inconclusive checks", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "One failure, many timeouts", "in-progress");
+		const a = p.attempt(task);
+		p.check(a, 1, { check: { ...lint, argv: ["npm", "test"] }, ...failing });
+		for (let i = 0; i < 5; i += 1)
+			p.check(a, 10 + i, {
+				check: { ...lint, argv: ["npm", "run", `slow-${i}`] },
+				execution: { kind: "timed-out" },
+			});
+		const t = p.view().tasks[0] as EndoDevelopAttentionTaskV0;
+		expect(t.checks.map((c) => c.outcome)).toEqual([
+			"failed",
+			"inconclusive",
+			"inconclusive",
+			"inconclusive",
+			"inconclusive",
+		]);
+		expect(t.more).toEqual({ commands: 1, notPassing: 1 });
+		const o = overviewOf(p.workspaceTasks(), "shown", p.view(), p.view().taskRevision);
+		expect(itemOf(o, task).flags).toEqual(["failed", "inconclusive"]);
+	});
+
 	it("says when the task file or the attempt records cannot be read, or the project is not in the file, and claims nothing", () => {
 		const p = project();
 		taskIn(p.root, p.projectId, "Anything", "in-progress");

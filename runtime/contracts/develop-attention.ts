@@ -82,10 +82,12 @@ export function endoLatestChecksV0(
 			others,
 		});
 	}
-	// What did not pass first, then the most recent; the receipt id last, so the order is total.
+	// Failed first, then inconclusive, then passed (the attention precedence, so the per-task limit can never cut a failure while keeping a
+	// lesser check), then the most recent; the receipt id last, so the order is total.
+	const RANK = { failed: 0, inconclusive: 1, passed: 2 } as const;
 	return checks.sort(
 		(a, b) =>
-			Number(a.outcome === "passed") - Number(b.outcome === "passed") ||
+			RANK[a.outcome] - RANK[b.outcome] ||
 			b.startedAtMs - a.startedAtMs ||
 			(a.receiptId < b.receiptId ? -1 : a.receiptId > b.receiptId ? 1 : 0),
 	);

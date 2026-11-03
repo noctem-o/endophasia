@@ -59,6 +59,8 @@ export interface Overview {
 	open: Item[];
 	done: Item[];
 	evidence: EvidenceState;
+	/** Some task's checks were not all read (unreadable, unusable, over the limit, or not in the projection): "none failed" is only of what was read. */
+	gaps: boolean;
 	/** Sentences about the read as a whole (HEAD not observed, a limit reached, the tasks changed since). */
 	notes: string[];
 }
@@ -105,14 +107,14 @@ function where(c: AttentionCheck): string {
 	}
 }
 
-function earlierWords(c: AttentionCheck): string {
-	const { passed, failed, inconclusive } = c.earlier;
+function otherWords(c: AttentionCheck): string {
+	const { passed, failed, inconclusive } = c.others;
 	const bits: string[] = [];
 	if (c.outcome === "passed") {
 		if (failed > 0) bits.push(`${failed} failed`);
 		if (inconclusive > 0) bits.push(`${inconclusive} inconclusive`);
 	} else if (passed > 0) bits.push(`${passed} passed`);
-	return bits.length === 0 ? "" : ` Earlier runs of it: ${bits.join(", ")}.`;
+	return bits.length === 0 ? "" : ` Other runs of it here: ${bits.join(", ")}.`;
 }
 
 const at = (c: AttentionCheck) => ({ attemptId: c.attemptId, receiptId: c.receiptId });
@@ -122,7 +124,7 @@ function checkLine(c: AttentionCheck, review: boolean, head: string | null): Lin
 	if (c.outcome === "failed")
 		return {
 			kind: "failed",
-			parts: ["Latest observed ", { code: c.command }, ` ${ended(c)}${where(c)}${earlierWords(c)}`],
+			parts: ["Latest observed ", { code: c.command }, ` ${ended(c)}${where(c)}${otherWords(c)}`],
 			receipt: at(c),
 		};
 	if (c.outcome === "inconclusive") {
@@ -133,7 +135,7 @@ function checkLine(c: AttentionCheck, review: boolean, head: string | null): Lin
 				: ended(c);
 		return {
 			kind: "inconclusive",
-			parts: ["Latest observed ", { code: c.command }, ` ${why}${where(c)}${earlierWords(c)}`],
+			parts: ["Latest observed ", { code: c.command }, ` ${why}${where(c)}${otherWords(c)}`],
 			receipt: at(c),
 		};
 	}
@@ -149,7 +151,7 @@ function checkLine(c: AttentionCheck, review: boolean, head: string | null): Lin
 	}
 	return {
 		kind: "evidence",
-		parts: ["Latest observed ", { code: c.command }, ` passed${where(c)}${earlierWords(c)}`],
+		parts: ["Latest observed ", { code: c.command }, ` passed${where(c)}${otherWords(c)}`],
 		receipt: at(c),
 	};
 }
@@ -251,10 +253,17 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 					kind: "note",
 					parts: [`Latest attempt: ${ATTEMPT_LABELS[e.latestAttempt.state]}.`],
 				});
+			// Absence is claimed only where everything was read; otherwise the gap lines below say what was not.
 			if (review && e.checks.length === 0)
 				lines.push({
 					kind: "note",
-					parts: [e.attempts === 0 ? "No attempts or observed checks recorded." : "No observed checks recorded."],
+					parts: [
+						e.attempts === 0
+							? "No attempts or observed checks recorded."
+							: e.unreadable + e.skipped + e.problems === 0
+								? "No observed checks recorded."
+								: "No observed checks were read.",
+					],
 				});
 			if (task.status === "open" && e.attempts > 0)
 				lines.push({ kind: "note", parts: [`${plural(e.attempts, "One attempt", "attempts")} prepared.`] });
@@ -314,6 +323,7 @@ export function overviewOf(
 		open: pick("open"),
 		done: pick("done"),
 		evidence: usable ? "shown" : state,
+		gaps: items.some((i) => i.lines.some((l) => l.kind === "warn")),
 		notes,
 	};
 }

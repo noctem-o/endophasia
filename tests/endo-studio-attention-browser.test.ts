@@ -153,10 +153,6 @@ async function pair(api: { page: Page; broker: WorkbenchBrokerV0 }) {
 }
 const ready = (page: Page) =>
 	page.waitFor("document.querySelector('[data-testid=task-cluster]')?.dataset.state === 'ready'");
-const openTab = async (page: Page) => {
-	await page.click("[data-testid=tab-task]");
-	await page.waitFor("document.querySelector('#develop-live').dataset.view === 'task'");
-};
 
 const draftOf = (page: Page) => page.eval<string>("document.querySelector('[data-testid=composer]').value");
 const noOverflow = (page: Page) => page.eval<boolean>("document.documentElement.scrollWidth <= window.innerWidth");
@@ -216,7 +212,7 @@ suite("the overview: what needs the operator, and why", () => {
 		expect(needs.slice(3).map(([title]) => title)).toEqual(["Normalize CRLF line endings", "Unicode identifiers"]);
 		const text = await page.text("[data-testid=attention-needs]");
 		expect(text).toContain("Latest observed npm test exited with code 1");
-		expect(text).toContain("Earlier runs of it: 1 passed.");
+		expect(text).toContain("Other runs of it here: 1 passed.");
 		expect(text).toContain("Passing npm test belongs to an earlier commit (fffffff)");
 		expect(text).toContain("Latest attempt: Result reported, not verified.");
 		expect(text).toContain("No attempts or observed checks recorded.");
@@ -230,7 +226,7 @@ suite("the overview: what needs the operator, and why", () => {
 		const under = await page.text("[data-testid=attention-waiting]");
 		expect(under).toContain("waiting on the CI runner image");
 		expect(under).toContain("in a different working tree; not compared with this one");
-		expect(under).toContain("Earlier runs of it: 1 failed.");
+		expect(under).toContain("Other runs of it here: 1 failed.");
 		expect((await rowsOf(page, "open")).map(([title]) => title).sort()).toEqual([
 			"Document the streaming API",
 			"Tighten the lint configuration",

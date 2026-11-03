@@ -63,8 +63,10 @@ function project(root = tempRoot("endo-attention-")) {
 		const written = receipts.write(receiptAt(CURRENT, attemptId, projectId, at(minutes), change));
 		if (written !== "created") throw new Error(written);
 	};
-	const view = (current: EndoReceiptCurrentV0 | null = CURRENT, limits?: { maxReceiptFiles: number }) =>
-		endoDevelopAttentionViewV0({ tasks, attempts, receipts }, { projectId, launchId: LAUNCH }, current, limits);
+	const view = (
+		current: EndoReceiptCurrentV0 | null = CURRENT,
+		limits?: { maxReceiptFiles: number; maxReceiptBytes: number },
+	) => endoDevelopAttentionViewV0({ tasks, attempts, receipts }, { projectId, launchId: LAUNCH }, current, limits);
 	const workspaceTasks = (): Task[] => {
 		const scope = new DevelopWorkspaceServiceV0(tasks).forLaunch(
 			{ projectId, launchDirectory: "/nonexistent" },
@@ -129,10 +131,10 @@ describe("the projection: the latest check of each command, per task", () => {
 		p.check(b, 2, failing);
 		const view = p.view();
 		const of = (id: string) => view.tasks.find((t) => t.taskId === id) as EndoDevelopAttentionTaskV0;
-		expect(of(resolved).checks.map((c) => [c.command, c.outcome, c.earlier])).toEqual([
+		expect(of(resolved).checks.map((c) => [c.command, c.outcome, c.others])).toEqual([
 			["npm test", "passed", { passed: 0, failed: 1, inconclusive: 0 }],
 		]);
-		expect(of(regressed).checks.map((c) => [c.command, c.outcome, c.earlier])).toEqual([
+		expect(of(regressed).checks.map((c) => [c.command, c.outcome, c.others])).toEqual([
 			["npm test", "failed", { passed: 1, failed: 0, inconclusive: 0 }],
 		]);
 	});
@@ -153,6 +155,28 @@ describe("the projection: the latest check of each command, per task", () => {
 		]);
 		expect(view.tasks[0]?.latestAttempt?.id).toBe(second);
 		expect(view.tasks[0]?.attempts).toBe(2);
+	});
+
+	it("a later pass in another worktree or repository, or at an older commit, never hides a failure at this HEAD", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Bisected", "in-progress");
+		const a = p.attempt(task);
+		p.check(a, 1, failing);
+		// Later: the same command passes in a linked worktree, in another clone, and at an older commit here.
+		p.check(a, 2, { repository: { worktree: "/work/linked", commonDir: CURRENT.commonDir, linked: true } });
+		p.check(a, 3, { repository: { worktree: "/clone", commonDir: "/clone/.git", linked: false } });
+		p.check(a, 4, elsewhere("f".repeat(40)));
+		const checks = p.view().tasks[0]?.checks ?? [];
+		expect(checks.map((c) => [c.outcome, c.relation])).toEqual([
+			["failed", "at-head"],
+			["passed", "other-repository"],
+			["passed", "other-worktree"],
+		]);
+		// The pass at the older commit is counted beside the failure, never put in its place.
+		expect(checks[0]?.others).toEqual({ passed: 1, failed: 0, inconclusive: 0 });
+		// Once HEAD has moved on, the newest run of the check is the latest again.
+		const moved = p.view({ ...CURRENT, commit: "b".repeat(40) }).tasks[0]?.checks ?? [];
+		expect(moved[0]).toMatchObject({ outcome: "passed", relation: "head-differs", commit: "f".repeat(40) });
 	});
 
 	it("relates each latest check to the HEAD observed once for the read, and says when HEAD was not observed", () => {
@@ -184,7 +208,7 @@ describe("the projection: the latest check of each command, per task", () => {
 		p.check(p.attempt(done), 1, failing);
 		const reads: string[] = [];
 		const receipts = {
-			readAtMost: (id: string, max: number) => {
+			readAtMost: (id: string, max: { files: number; bytes: number }) => {
 				reads.push(id);
 				return p.receipts.readAtMost(id, max);
 			},
@@ -221,15 +245,22 @@ describe("the projection: the latest check of each command, per task", () => {
 		for (let i = 0; i < 3; i += 1) p.check(o, i);
 		const r = p.attempt(review);
 		for (let i = 0; i < 3; i += 1) p.check(r, i);
-		const view = p.view(CURRENT, { maxReceiptFiles: 4 });
+		const view = p.view(CURRENT, { maxReceiptFiles: 4, maxReceiptBytes: 1 << 30 });
 		expect(view.truncated).toBe(true);
 		const of = (id: string) => view.tasks.find((t) => t.taskId === id) as EndoDevelopAttentionTaskV0;
 		expect([of(review).checks.length, of(review).skipped]).toEqual([1, 0]);
 		expect([of(open).checks.length, of(open).skipped]).toEqual([0, 1]);
 		// File order in the answer, whatever order they were read in.
 		expect(view.tasks.map((t) => t.taskId)).toEqual([open, review]);
-		// And the default limit holds for the whole project, not per task.
-		expect(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxReceiptFiles).toBe(2000);
+		// The byte budget bounds it the same way: a directory whose files add up to more than is left is not read at all.
+		const bytes = p.view(CURRENT, { maxReceiptFiles: 1000, maxReceiptBytes: 1024 });
+		expect(bytes.truncated).toBe(true);
+		expect(bytes.tasks.every((t) => t.checks.length === 0 && t.skipped === 1)).toBe(true);
+		// And the default limits hold for the whole project, not per task.
+		expect(ENDO_DEVELOP_ATTENTION_LIMITS_V0).toMatchObject({
+			maxReceiptFiles: 1000,
+			maxReceiptBytes: 8 * 1024 * 1024,
+		});
 	});
 
 	it("lists at most five commands per task, the ones that did not pass first, and counts the rest; a command is shown cut and safe", () => {
@@ -414,7 +445,7 @@ function evidence(
 			execution: { kind: "exited", code: 0 },
 			reasons: [],
 			relation: "at-head",
-			earlier: { passed: 0, failed: 0, inconclusive: 0 },
+			others: { passed: 0, failed: 0, inconclusive: 0 },
 			...c,
 		};
 	};
@@ -466,7 +497,7 @@ describe("the classification: what needs the operator, and why", () => {
 		const view = evidence(tasks, {
 			[ids.reviewStale]: [{ relation: "head-differs", commit: "f".repeat(40) }],
 			[ids.failed]: [{ outcome: "failed", execution: { kind: "exited", code: 1 } }],
-			[ids.resolved]: [{ earlier: { passed: 0, failed: 1, inconclusive: 0 } }],
+			[ids.resolved]: [{ others: { passed: 0, failed: 1, inconclusive: 0 } }],
 			[ids.inconclusive]: [{ outcome: "inconclusive", execution: { kind: "timed-out" }, reasons: ["timed-out"] }],
 			[ids.stalePass]: [{ relation: "head-differs", commit: "f".repeat(40) }],
 			[ids.done]: [{ outcome: "failed", execution: { kind: "exited", code: 2 } }],
@@ -503,7 +534,7 @@ describe("the classification: what needs the operator, and why", () => {
 			"Latest observed `npm test` was stopped at its time limit at the current HEAD.",
 		);
 		expect(textsOf(itemOf(o, ids.resolved))).toContain(
-			"Latest observed `npm test` passed at the current HEAD. Earlier runs of it: 1 failed.",
+			"Latest observed `npm test` passed at the current HEAD. Other runs of it here: 1 failed.",
 		);
 		expect(textsOf(itemOf(o, ids.stalePass))).toContain(
 			"Latest observed `npm test` passed at an earlier commit (fffffff).",
@@ -606,6 +637,25 @@ describe("the classification: what needs the operator, and why", () => {
 			"2 files among its checks could not be used.",
 			"One attempt's checks were not read: the overview's read limit was reached.",
 		]);
+		expect(o.gaps).toBe(true);
+		// A review task whose checks were not all read never says it has none.
+		const review = evidence(
+			tasks,
+			{},
+			{
+				extra: {
+					[ids.review]: {
+						attempts: 1,
+						latestAttempt: { id: `endo.attempt.${"3".repeat(32)}`, state: "prepared", preparedAtMs: at(0) },
+						unreadable: 1,
+					},
+				},
+			},
+		);
+		expect(textsOf(itemOf(overviewOf(tasks, "shown", review, 7), ids.review))).toContain(
+			"No observed checks were read.",
+		);
+		expect(overviewOf(tasks, "shown", evidence(tasks, {}), 7).gaps).toBe(false);
 		expect(o.notes).toEqual([
 			"Not every check was read: the overview's read limit was reached. The tasks affected say so.",
 			"The tasks changed after the checks were read. Refresh to read them together.",

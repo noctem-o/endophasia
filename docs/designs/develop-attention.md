@@ -72,11 +72,19 @@ one "stale":
 
 ### Which receipt is summarised
 
-For each task, receipts are grouped by **exact argv**. The latest of each group is the one with the greatest start time, then end time,
-then id. The older receipts in the group are only counted ("Earlier runs of it: 1 failed"). Three consequences:
+For each task, receipts are grouped into **checks**: one exact argv, run in one working tree of one repository. Within a check, the
+latest is chosen in two steps:
+
+1. If any receipt is at the current HEAD (`at-head` or `at-head-changed`), only those receipts are candidates.
+2. Among the candidates, the latest is the one with the greatest start time, then end time, then id.
+
+The check's other receipts are only counted ("Other runs of it here: 1 failed"). Consequences:
 
 - an older pass never hides a newer failure of the same command;
 - a later pass of **another** command (`npm run lint`) never hides a failure of `npm test`;
+- a pass in **another worktree or clone** is a separate check, listed with its own relation, and never hides a failure here;
+- a pass recorded later at an **older commit** (a bisect, an old checkout) never hides a failure at HEAD. Once HEAD moves past both,
+  the newest run is the latest again;
 - receipts are grouped across the task's attempts, because a check is about the code, not about the attempt.
 
 A command whose latest run passed after an earlier failure is resolved. It is not attention.
@@ -95,7 +103,9 @@ A task appears **once**, in the first section that applies:
 **What does not raise attention, on purpose:**
 
 - **A stale or uncompared pass on a task that is not in review.** Work moves HEAD constantly, so every pass would go stale after every
-  commit. That would be fabricated urgency. The row still says it ("passed at an earlier commit").
+  commit. That would be fabricated urgency. The row still says it ("passed at an earlier commit"). The asymmetry is deliberate: a
+  **failure** at an earlier commit still raises "Check failed", because it is the latest thing known about that command and nothing
+  newer contradicts it. The line names the commit, so the operator can judge whether it still applies.
 - **No receipts.** Missing evidence is shown as missing, never as a failure.
 - **A handoff.** It is the operator's statement, never a sign that anyone is working.
 - **A blocked task.** It is the operator's status and may be waiting on someone else. It leads its section, but is not "attention".
@@ -122,14 +132,15 @@ projection:
   good workspace read (the first one, the operator's Refresh, or their own change).
 - **What it carries.** For each task that is not done: the attempt count, the newest attempt's id, state and time, and the latest
   receipt of up to 5 distinct commands (failing first). For each check: the command shown at most 160 characters, ids, commit, times,
-  execution, reasons, relation, and earlier-outcome counts. Plus the counts of unreadable attempts, unusable files and skipped attempts.
+  execution, reasons, relation, and the counts of the check's other runs by outcome. Plus the counts of unreadable attempts, unusable files and skipped attempts.
   It carries no path, executable, branch, objective, brief or note. The task's words and statuses come from the workspace read the page
   already has, so there is one source of truth for status. If the two reads disagree (`taskRevision`), the overview says so.
 
 ### Bounds
 
-Done tasks are not read. At most **2,000 receipt files** are read for the whole project. An attempt directory holding more than what is
-left is not read at all: the new `DevelopReceiptsStoreV0.readAtMost` refuses before reading any file. Reading goes in a fixed order:
+Done tasks are not read. At most **1,000 receipt files**, and **8 MiB** of them by their sizes, are read for the whole project. An attempt
+directory holding more files or bytes than what is left is not read at all: the new `DevelopReceiptsStoreV0.readAtMost` checks the
+entries' sizes and refuses before reading any file. Reading goes in a fixed order:
 
 - review, then in progress, then blocked, then open;
 - newest attempt first.
@@ -240,6 +251,28 @@ In the workbench:
 
 ## 9. Review
 
-A fresh-context reviewer assessed this change; findings and their resolution are recorded below.
+A fresh-context reviewer (a separate agent with no part in writing the change; not the Elephant–Goldfish plugin, which is not installed)
+read the design, the code, the tests and the screenshots. They ran the new tests, and assessed four questions: whether every label is
+justified by the data, the boundaries, cognitive load, and complexity.
 
-(see §9 table, filled in after the review)
+On the boundaries, they found:
+
+- the route takes no query or path;
+- the page uses a projection only from the launch that served the tasks;
+- a launch or pairing change makes a read in flight obsolete;
+- the broker re-checks the grant after the awaited read;
+- `endo studio` has no such route;
+- nothing is written.
+
+On the UI, they found that it replaces the empty pane rather than adding a dashboard, and that every coloured rule has a word.
+
+| # | Finding | Severity | Resolution |
+| --- | --- | --- | --- |
+| 1 | A later pass in another worktree or clone, or at an older commit, became the command's "latest" and hid a failure at the current HEAD | material | Fixed. Checks are grouped by argv, repository and worktree, and a receipt at the current HEAD outranks any at another commit. Test added; both halves of the fix were mutation-checked (each reverted alone fails it). |
+| 2 | "No observed checks recorded." was said even when some checks could not be read | minor | Fixed: said only when everything was read; otherwise "No observed checks were read." |
+| 3 | The empty attention sentence read as "all clear" even when some tasks had unread checks | minor | Fixed: it says "among the checks that were read" and points to the tasks that say what was not read. |
+| 4 | The bar's count stayed after a refused or failed read, with no qualifier | minor | Fixed: the count is shown only when both reads are current and the page is paired. |
+| 5 | "Read HH:MM" was the tasks' read time, shown beside possibly older checks | minor | Fixed: it now reads "Tasks read HH:MM", and the "As last read" note covers the checks. |
+| 6 | Up to about 128 MiB of synchronous reads after every workspace read | minor | Fixed: 1,000 files and an 8 MiB byte budget, checked from the entries' sizes before any file is read. Test added. |
+| 7 | The asymmetry between a stale failure and a stale pass was not stated | nit | Stated in §3. |
+| 8 | Reader duplication and casts | nit | The duplicate initial state was removed. The reply union keeps `kind: string` so that the attempts reply shape is unchanged. |

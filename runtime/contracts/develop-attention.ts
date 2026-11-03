@@ -42,22 +42,32 @@ const later = (a: EndoDevelopReceiptV0, b: EndoDevelopReceiptV0): boolean =>
 			? a.endedAtMs > b.endedAtMs
 			: a.id > b.id;
 
-/** The latest receipt of each distinct argv, with the older ones of that argv counted. */
+/**
+ * The latest receipt of each distinct check, with the other receipts of that check counted. A check is one argv run in one working tree
+ * of one repository: a pass in another worktree or clone is a different check, and never stands for this one. Within a check, a receipt
+ * at the current HEAD outranks every receipt at another commit, however recent: a pass recorded later at an older commit (a bisect, an
+ * old checkout) never hides a failure at HEAD.
+ */
 export function endoLatestChecksV0(
 	receipts: readonly EndoDevelopReceiptV0[],
 	current: EndoReceiptCurrentV0 | null,
 ): EndoDevelopAttentionCheckV0[] {
 	const groups = new Map<string, EndoDevelopReceiptV0[]>();
 	for (const r of receipts) {
-		const key = JSON.stringify(r.check.argv);
+		const key = JSON.stringify([r.check.argv, r.repository.commonDir, r.repository.worktree]);
 		groups.set(key, [...(groups.get(key) ?? []), r]);
 	}
 	const checks: EndoDevelopAttentionCheckV0[] = [];
 	for (const group of groups.values()) {
-		let latest = group[0] as EndoDevelopReceiptV0;
-		for (const r of group) if (later(r, latest)) latest = r;
-		const earlier = { passed: 0, failed: 0, inconclusive: 0 };
-		for (const r of group) if (r !== latest) earlier[r.outcome] += 1;
+		const atHead = group.filter((r) => {
+			const relation = endoReceiptRelationV0(r, current);
+			return relation === "at-head" || relation === "at-head-changed";
+		});
+		const pool = atHead.length > 0 ? atHead : group;
+		let latest = pool[0] as EndoDevelopReceiptV0;
+		for (const r of pool) if (later(r, latest)) latest = r;
+		const others = { passed: 0, failed: 0, inconclusive: 0 };
+		for (const r of group) if (r !== latest) others[r.outcome] += 1;
 		checks.push({
 			command: endoShownTextV0(latest.check.argv.join(" "), ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars),
 			attemptId: latest.attemptId,
@@ -69,7 +79,7 @@ export function endoLatestChecksV0(
 			execution: latest.execution,
 			reasons: [...latest.reasons],
 			relation: endoReceiptRelationV0(latest, current),
-			earlier,
+			others,
 		});
 	}
 	// What did not pass first, then the most recent; the receipt id last, so the order is total.
@@ -95,7 +105,7 @@ export function endoDevelopAttentionViewV0(
 	sources: DevelopAttentionSourcesV0,
 	scope: { projectId: string; launchId: string },
 	current: EndoReceiptCurrentV0 | null,
-	limits: { maxReceiptFiles: number } = ENDO_DEVELOP_ATTENTION_LIMITS_V0,
+	limits: { maxReceiptFiles: number; maxReceiptBytes: number } = ENDO_DEVELOP_ATTENTION_LIMITS_V0,
 ): EndoDevelopAttentionViewV0 {
 	const base = {
 		schemaVersion: ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0,
@@ -120,6 +130,7 @@ export function endoDevelopAttentionViewV0(
 		byTask.set(e.attempt.taskId, [...(byTask.get(e.attempt.taskId) ?? []), e]);
 	}
 	let left = limits.maxReceiptFiles;
+	let leftBytes = limits.maxReceiptBytes;
 	let truncated = false;
 	const order = open
 		.map((task, at) => ({ task, at }))
@@ -146,7 +157,7 @@ export function endoDevelopAttentionViewV0(
 					skipped += 1;
 					continue;
 				}
-				const got = sources.receipts.readAtMost(e.attempt.id, left);
+				const got = sources.receipts.readAtMost(e.attempt.id, { files: left, bytes: leftBytes });
 				if (!got.ok) {
 					if (got.reason === "too-many") {
 						truncated = true;
@@ -155,6 +166,7 @@ export function endoDevelopAttentionViewV0(
 					continue;
 				}
 				left -= got.receipts.length + got.problems.length;
+				leftBytes -= got.bytes ?? 0;
 				problems += got.problems.length;
 				receipts.push(...got.receipts);
 			}

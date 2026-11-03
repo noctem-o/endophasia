@@ -225,7 +225,9 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 				items={overview.attention}
 				empty={
 					overview.evidence === "shown"
-						? "Nothing is in review, and no command's latest observed check failed or was inconclusive."
+						? overview.gaps
+							? "Nothing is in review, and among the checks that were read, no command's latest observed check failed or was inconclusive. Some tasks below say what could not be read."
+							: "Nothing is in review, and no command's latest observed check failed or was inconclusive."
 						: "Nothing is in review. Checks are not shown (see above), so this says nothing about them."
 				}
 				onOpen={onOpen}
@@ -264,7 +266,7 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 				A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing
 				here changes a task or runs anything.{" "}
 				<span data-testid="attention-read-at">
-					{state.readAt === null ? "" : `Read ${clock(state.readAt.getTime())} (browser clock).`}
+					{state.readAt === null ? "" : `Tasks read ${clock(state.readAt.getTime())} (browser clock).`}
 				</span>{" "}
 				<button
 					type="button"
@@ -283,8 +285,10 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 /** In the worktree bar: how many tasks need the operator, as a way to the overview. Words only, never a colour alone. */
 export function AttentionLink({ workspace, onOpen }: { workspace: WorkspaceApi; onOpen(): void }): ReactElement | null {
 	const overview = overviewFor(workspace);
-	// Not while the checks are being read: a count that grows as they arrive would say less than it seems to.
+	// Not while the checks are being read (a count that grows as they arrive would say less than it seems to), and not from a read that is
+	// no longer current (the overview itself says "as last read"; a bare count in the bar could not).
 	if (overview === null || overview.evidence === "pending" || overview.attention.length === 0) return null;
+	if (!workspace.state.current || !workspace.attention.current || !workspace.paired) return null;
 	const n = overview.attention.length;
 	return (
 		<button

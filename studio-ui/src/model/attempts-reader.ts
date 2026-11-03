@@ -25,8 +25,8 @@ export type LaunchReply<V> =
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: string };
 
-export const INITIAL_ATTEMPTS: AttemptsState = { view: null, current: false, busy: false, problem: null };
 const INITIAL = { view: null, current: false, busy: false, problem: null } as const;
+export const INITIAL_ATTEMPTS: AttemptsState = INITIAL;
 
 /**
  * What the reader is told on every render. `trigger` changes on every good workspace read (its time); `ready` says the workspace is one this

@@ -45,7 +45,7 @@ const check: Check = (v) =>
 		execution,
 		reasons: (x) => list(one(...keysOf(RECEIPT_REASON_TEXT)))(x) && distinct(x),
 		relation: one(...keysOf(RECEIPT_RELATION_LABELS)),
-		earlier: (x) => shape(x, { passed: count, failed: count, inconclusive: count }),
+		others: (x) => shape(x, { passed: count, failed: count, inconclusive: count }),
 	});
 
 const task: Check = (v) =>

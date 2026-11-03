@@ -45,7 +45,7 @@
   the task, as the picker does, and opens the receipt it is about; it changes no status and sends nothing.
 
   The overview reads one new route, `GET workspace/attention` (`endo.develop-attention-view.v0`), behind the grant. It is a bounded,
-  read-only projection of the existing attempt and receipt stores: one Git observation per read, at most 2,000 receipt files, and done
+  read-only projection of the existing attempt and receipt stores: one Git observation per read, at most 1,000 receipt files (8 MiB), and done
   tasks not read. `endo studio` does not serve it. The broker now re-checks the grant after a read that waited, so a pairing revoked
   during the read gets a refusal, not data. This also applies to `GET workspace/attempts`. See
   [docs/designs/develop-attention.md](docs/designs/develop-attention.md).

@@ -4,9 +4,9 @@
 // deterministic classification (studio-ui/src/model/attention.ts) of the operator's own statuses and these observed facts.
 //
 // What it carries per task that is not done: how many attempts it has and the state of the newest, and for each distinct command ever
-// checked on it, the LATEST receipt of that command (by start time), related to the launch directory's HEAD observed once for the whole
-// read. "Latest" is per command: a later pass of `npm run lint` never hides an earlier failure of `npm test`, and an older pass never hides a
-// newer failure of the same command. What could not be read is counted, never dropped silently.
+// checked on it, the LATEST receipt of that command in each working tree (by start time, a receipt at the current HEAD first), related to
+// the launch directory's HEAD observed once for the whole read. "Latest" is per check: a later pass of `npm run lint` never hides a failure
+// of `npm test`, a pass in another worktree never hides one here, and a pass at an older commit never hides a failure at HEAD. What could not be read is counted, never dropped silently.
 
 import type { EndoDevelopAttemptStateV0 } from "./develop-attempts.ts";
 import type {
@@ -19,17 +19,22 @@ import type {
 export const ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0 = "endo.develop-attention-view.v0";
 
 /**
- * Closed bounds on one read. `maxReceiptFiles`: receipt files (usable or not) read in all, across the project; once reached, the attempts
+ * Closed bounds on one read. `maxReceiptFiles` and `maxReceiptBytes`: receipt files (usable or not) read in all, across the project; once reached, the attempts
  * not yet read are counted as `skipped` and the view is `truncated`. `maxChecksPerTask`: distinct commands listed per task (the ones whose
  * latest receipt did not pass first); the rest are counted. `maxCommandChars`: a command as shown, cut.
  */
 export const ENDO_DEVELOP_ATTENTION_LIMITS_V0 = Object.freeze({
-	maxReceiptFiles: 2000,
+	maxReceiptFiles: 1000,
+	/** The receipt bytes read in all (by the files' sizes before they are read): a receipt is a few KiB, its bound 64 KiB. */
+	maxReceiptBytes: 8 * 1024 * 1024,
 	maxChecksPerTask: 5,
 	maxCommandChars: 160,
 });
 
-/** The latest receipt of one command on one task, and how many older receipts of that same command there are, by outcome. */
+/**
+ * The latest receipt of one check on one task (one argv, in one working tree of one repository; a receipt at the current HEAD outranks
+ * any at another commit), and how many other receipts of that same check there are, by outcome.
+ */
 export interface EndoDevelopAttentionCheckV0 {
 	/** The argv joined with spaces, display-safe and cut (the receipt keeps it exactly). Two commands are the same only when their argv are equal. */
 	command: string;
@@ -43,7 +48,7 @@ export interface EndoDevelopAttentionCheckV0 {
 	reasons: EndoReceiptReasonV0[];
 	/** Against the launch directory's HEAD observed for this read (`unavailable` when it could not be). */
 	relation: EndoReceiptRelationV0;
-	earlier: { passed: number; failed: number; inconclusive: number };
+	others: { passed: number; failed: number; inconclusive: number };
 }
 
 export interface EndoDevelopAttentionTaskV0 {

@@ -234,6 +234,14 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 		else {
 			const head = view?.head?.commit ?? null;
 			const checks = e.checks.map((c) => checkLine(c, review, head));
+			// A pass that is not current was cut by the per-task limit: a review still has to recheck it, and says so.
+			if (review && e.more.notCurrent > 0)
+				checks.push({
+					kind: "reconsider",
+					parts: [
+						`${plural(e.more.notCurrent, "One more passing command was", "more passing commands were")} not recorded at the current, clean HEAD; open the task to see ${e.more.notCurrent === 1 ? "it" : "them"}.`,
+					],
+				});
 			for (const kind of ["failed", "inconclusive", "reconsider"] as const)
 				if (checks.some((l) => l.kind === kind)) flags.push(kind);
 			// A row ranked by a check is ordered by when that kind of check last ended; a decision, by when the task entered review.

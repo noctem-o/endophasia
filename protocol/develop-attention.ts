@@ -65,8 +65,11 @@ export interface EndoDevelopAttentionTaskV0 {
 	/** Its attempts' own record files (a handoff, an outcome) that are not usable: the latest attempt's state may be wrong. */
 	records: number;
 	checks: EndoDevelopAttentionCheckV0[];
-	/** Further commands not listed, and how many of those did not pass. */
-	more: { commands: number; notPassing: number };
+	/**
+	 * Further commands not listed: how many, how many of those did not pass, and how many passed but not at the current clean HEAD (so a
+	 * review can still say "Recheck" when the limit cut one).
+	 */
+	more: { commands: number; notPassing: number; notCurrent: number };
 }
 
 /**

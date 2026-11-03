@@ -275,7 +275,7 @@ describe("the projection: the latest check of each command, per task", () => {
 		const t = p.view().tasks[0] as EndoDevelopAttentionTaskV0;
 		expect(t.checks).toHaveLength(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxChecksPerTask);
 		expect(t.checks.slice(0, 2).map((c) => c.outcome)).toEqual(["failed", "failed"]);
-		expect(t.more).toEqual({ commands: 2, notPassing: 0 });
+		expect(t.more).toEqual({ commands: 2, notPassing: 0, notCurrent: 0 });
 		const cut = t.checks.find((c) => c.command.startsWith("npm run job-0")) as EndoDevelopAttentionCheckV0;
 		expect(cut.command.length).toBe(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars);
 		expect(cut.command).not.toContain("\u202e");
@@ -330,9 +330,48 @@ describe("the projection: the latest check of each command, per task", () => {
 			"inconclusive",
 			"inconclusive",
 		]);
-		expect(t.more).toEqual({ commands: 1, notPassing: 1 });
+		expect(t.more).toEqual({ commands: 1, notPassing: 1, notCurrent: 0 });
 		const o = overviewOf(p.workspaceTasks(), "shown", p.view(), p.view().taskRevision);
 		expect(itemOf(o, task).flags).toEqual(["failed", "inconclusive"]);
+	});
+
+	it("never lets the per-task limit cut a review's recheck: a pass not at the current HEAD outranks current passes, and a cut one is still said", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Review with many passes", "review");
+		const a = p.attempt(task);
+		p.check(a, 1, elsewhere("f".repeat(40)));
+		for (let i = 0; i < 5; i += 1) p.check(a, 10 + i, { check: { ...lint, argv: ["npm", "run", `job-${i}`] } });
+		const view = p.view();
+		const t = view.tasks[0] as EndoDevelopAttentionTaskV0;
+		expect(t.checks[0]).toMatchObject({ command: "npm test", relation: "head-differs" });
+		expect(t.more).toEqual({ commands: 1, notPassing: 0, notCurrent: 0 });
+		expect(itemOf(overviewOf(p.workspaceTasks(), "shown", view, view.taskRevision), task).flags).toEqual([
+			"decision",
+			"reconsider",
+		]);
+		// With more stale passes than the limit, the ones cut are counted, and the review still says Recheck for them.
+		const many = project();
+		const busy = taskIn(many.root, many.projectId, "Review, all stale", "review");
+		const b = many.attempt(busy);
+		for (let i = 0; i < 7; i += 1)
+			many.check(b, i, { ...elsewhere("f".repeat(40)), check: { ...lint, argv: ["npm", "run", `old-${i}`] } });
+		const cut = many.view();
+		expect(cut.tasks[0]?.more).toEqual({ commands: 2, notPassing: 0, notCurrent: 2 });
+		const row = itemOf(overviewOf(many.workspaceTasks(), "shown", cut, cut.taskRevision), busy);
+		expect(textsOf(row)).toContain(
+			"2 more passing commands were not recorded at the current, clean HEAD; open the task to see them.",
+		);
+		// The cut count alone raises it: five current passes kept, one stale pass cut.
+		const alone = evidence(
+			many.workspaceTasks(),
+			{ [busy]: Array.from({ length: 5 }, (_, n) => ({ command: `npm run now-${n}` })) },
+			{ extra: { [busy]: { more: { commands: 1, notPassing: 0, notCurrent: 1 } } } },
+		);
+		const lone = itemOf(overviewOf(many.workspaceTasks(), "shown", alone, 7), busy);
+		expect(lone.flags).toEqual(["decision", "reconsider"]);
+		expect(textsOf(lone)).toContain(
+			"One more passing command was not recorded at the current, clean HEAD; open the task to see it.",
+		);
 	});
 
 	it("says when the task file or the attempt records cannot be read, or the project is not in the file, and claims nothing", () => {
@@ -524,7 +563,7 @@ function evidence(
 				problems: 0,
 				records: 0,
 				checks: (checks[t.id] ?? []).map(check),
-				more: { commands: 0, notPassing: 0 },
+				more: { commands: 0, notPassing: 0, notCurrent: 0 },
 				...options.extra?.[t.id],
 			})),
 	};

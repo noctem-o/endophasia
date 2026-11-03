@@ -59,7 +59,7 @@ const task: Check = (v) =>
 		problems: count,
 		records: count,
 		checks: (x) => list(check)(x) && (x as unknown[]).length <= ATTENTION_LIMITS.maxChecksPerTask,
-		more: (x) => shape(x, { commands: count, notPassing: count }),
+		more: (x) => shape(x, { commands: count, notPassing: count, notCurrent: count }),
 	});
 
 export function readAttention(v: unknown): EndoDevelopAttentionViewV0 | null {
@@ -83,7 +83,7 @@ export function readAttention(v: unknown): EndoDevelopAttentionViewV0 | null {
 		if ((t.attempts === 0) !== (t.latestAttempt === null)) return null;
 		if (t.unreadable + t.skipped > t.attempts) return null;
 		if (t.skipped > 0 && !view.truncated) return null;
-		if (t.more.notPassing > t.more.commands) return null;
+		if (t.more.notPassing + t.more.notCurrent > t.more.commands) return null;
 		if (t.more.commands > 0 && t.checks.length < ATTENTION_LIMITS.maxChecksPerTask) return null;
 		if (new Set(t.checks.map((c) => c.receiptId)).size !== t.checks.length) return null;
 		for (const c of t.checks) {

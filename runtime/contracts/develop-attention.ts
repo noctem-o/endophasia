@@ -82,12 +82,14 @@ export function endoLatestChecksV0(
 			others,
 		});
 	}
-	// Failed first, then inconclusive, then passed (the attention precedence, so the per-task limit can never cut a failure while keeping a
-	// lesser check), then the most recent; the receipt id last, so the order is total.
-	const RANK = { failed: 0, inconclusive: 1, passed: 2 } as const;
+	// The attention precedence, so the per-task limit always cuts the least telling checks first: failed, inconclusive, a pass that is not at
+	// the current clean HEAD (a review waits on rechecking it), then a current pass; then the most recent; the receipt id last, so the
+	// order is total.
+	const rank = (c: EndoDevelopAttentionCheckV0): number =>
+		c.outcome === "failed" ? 0 : c.outcome === "inconclusive" ? 1 : c.relation === "at-head" ? 3 : 2;
 	return checks.sort(
 		(a, b) =>
-			RANK[a.outcome] - RANK[b.outcome] ||
+			rank(a) - rank(b) ||
 			b.startedAtMs - a.startedAtMs ||
 			(a.receiptId < b.receiptId ? -1 : a.receiptId > b.receiptId ? 1 : 0),
 	);
@@ -203,7 +205,11 @@ export function endoDevelopAttentionViewV0(
 			problems,
 			records: records.get(task.id) ?? 0,
 			checks: shown,
-			more: { commands: rest.length, notPassing: rest.filter((c) => c.outcome !== "passed").length },
+			more: {
+				commands: rest.length,
+				notPassing: rest.filter((c) => c.outcome !== "passed").length,
+				notCurrent: rest.filter((c) => c.outcome === "passed" && c.relation !== "at-head").length,
+			},
 		});
 	}
 	return {

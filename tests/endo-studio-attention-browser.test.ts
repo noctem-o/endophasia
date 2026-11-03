@@ -203,9 +203,16 @@ suite("the overview: what needs the operator, and why", () => {
 		// From the conversation: one quiet line in the bar says how many tasks need the operator, and leads to the overview.
 		await page.waitFor("document.querySelector('[data-testid=attention-link]')");
 		expect(await page.text("[data-testid=attention-link]")).toBe("5 need attention");
+		// Even from an unfinished new task: the link leaves the form (its words are kept) and opens the overview.
+		await page.click("[data-testid=task-picker]");
+		await page.click("[data-testid=task-new-option]");
+		await page.waitFor("document.querySelector('[data-testid=task-create-form]')");
+		await fill(page, "[data-testid=task-title-input]", "half-written task");
+		await page.click("[data-testid=tab-conversation]");
 		await page.click("[data-testid=attention-link]");
 		await overview(page);
 		expect(await page.eval<string>("document.querySelector('#develop-live').dataset.view")).toBe("task");
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=task-create-form]') === null")).toBe(true);
 		const needs = await rowsOf(page, "needs");
 		// Decisions first (most recently marked for review first), then the failure, then the inconclusive check.
 		expect(needs.map(([, flag]) => flag)).toEqual(["decision", "decision", "decision", "failed", "inconclusive"]);
@@ -235,6 +242,15 @@ suite("the overview: what needs the operator, and why", () => {
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=attention-done]').open")).toBe(false);
 		expect(await page.text("[data-testid=attention-done]")).toContain("Done (2)");
 		expect(await page.text("[data-testid=attention-overview]")).not.toContain("exited with code 2");
+		// The new task's words were kept: asking for a new task again shows them.
+		await page.click("[data-testid=task-picker]");
+		await page.click("[data-testid=task-new-option]");
+		await page.waitFor("document.querySelector('[data-testid=task-create-form]')");
+		expect(await page.eval<string>("document.querySelector('[data-testid=task-title-input]').value")).toBe(
+			"half-written task",
+		);
+		await page.click("[data-testid=task-cancel]");
+		await overview(page);
 		// Words, never colour alone; nothing called verified or accepted; no path on the page.
 		const all = await page.text("[data-testid=attention-overview]");
 		expect(all).not.toMatch(/\bverified\b(?<!not verified)|accepted|approved|priority|score/i);

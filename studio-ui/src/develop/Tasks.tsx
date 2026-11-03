@@ -172,6 +172,8 @@ export function TaskCluster({
 			<AttentionLink
 				workspace={workspace}
 				onOpen={() => {
+					// Leave the new-task form (its words stay in the drafts, as when a task is chosen) so the overview is what opens.
+					workspace.setComposing(false);
 					workspace.setPane("overview");
 					onDetails();
 				}}

@@ -62,6 +62,8 @@ export interface EndoDevelopAttentionTaskV0 {
 	skipped: number;
 	/** Files among its receipts that are not usable receipts. */
 	problems: number;
+	/** Its attempts' own record files (a handoff, an outcome) that are not usable: the latest attempt's state may be wrong. */
+	records: number;
 	checks: EndoDevelopAttentionCheckV0[];
 	/** Further commands not listed, and how many of those did not pass. */
 	more: { commands: number; notPassing: number };
@@ -81,4 +83,9 @@ export interface EndoDevelopAttentionViewV0 {
 	head: { commit: string; clean: boolean } | null;
 	tasks: EndoDevelopAttentionTaskV0[];
 	truncated: boolean;
+	/**
+	 * Files in the attempt records that are not usable and name no attempt this read could place (a damaged prepared record, an orphan, an
+	 * unknown file): any task's attempts and checks may be incomplete, since which task such a file belonged to cannot be known.
+	 */
+	unattributed: number;
 }

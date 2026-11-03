@@ -113,6 +113,7 @@ export function endoDevelopAttentionViewV0(
 		head: current === null ? null : { commit: current.commit, clean: current.clean },
 		tasks: [],
 		truncated: false,
+		unattributed: 0,
 	} as const;
 	const file = sources.tasks.read();
 	if (!file.ok) return { ...base, state: "unreadable", taskRevision: 0, tasks: [] };
@@ -128,6 +129,17 @@ export function endoDevelopAttentionViewV0(
 	for (const e of read.entries) {
 		if (e.attempt.projectId !== scope.projectId) continue;
 		byTask.set(e.attempt.taskId, [...(byTask.get(e.attempt.taskId) ?? []), e]);
+	}
+	// A damaged attempt record is a problem of the attempts directory, not a failure of the read: those naming an attempt that was read are
+	// counted on its task; the rest cannot be placed, and are counted for the whole read (never dropped).
+	const owner = new Map(read.entries.map((e) => [e.attempt.id, e.attempt] as const));
+	const records = new Map<string, number>();
+	let unattributed = 0;
+	for (const problem of read.problems) {
+		const attempt = owner.get(problem.name.split(".").slice(0, 3).join("."));
+		if (attempt === undefined) unattributed += 1;
+		else if (attempt.projectId === scope.projectId)
+			records.set(attempt.taskId, (records.get(attempt.taskId) ?? 0) + 1);
 	}
 	let left = limits.maxReceiptFiles;
 	let leftBytes = limits.maxReceiptBytes;
@@ -187,6 +199,7 @@ export function endoDevelopAttentionViewV0(
 			unreadable,
 			skipped,
 			problems,
+			records: records.get(task.id) ?? 0,
 			checks: shown,
 			more: { commands: rest.length, notPassing: rest.filter((c) => c.outcome !== "passed").length },
 		});
@@ -198,5 +211,6 @@ export function endoDevelopAttentionViewV0(
 		// In the task file's order, whatever order they were read in.
 		tasks: open.map((t) => views.get(t.id) as EndoDevelopAttentionTaskV0),
 		truncated,
+		unattributed,
 	};
 }

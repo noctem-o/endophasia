@@ -282,6 +282,36 @@ describe("the projection: the latest check of each command, per task", () => {
 		expect(cut.command.endsWith("…")).toBe(true);
 	});
 
+	it("counts unusable attempt records: on the task when they name a known attempt, for the whole read when they cannot be placed", () => {
+		const p = project();
+		const review = taskIn(p.root, p.projectId, "Review", "review");
+		const failed = taskIn(p.root, p.projectId, "Failing", "in-progress");
+		const handedOff = taskIn(p.root, p.projectId, "Handed off", "in-progress");
+		const lost = p.attempt(failed);
+		p.check(lost, 1, failing);
+		const known = p.attempt(handedOff);
+		if (!p.service.handoff(known, { target: "Codex" }).ok) throw new Error("handoff");
+		// The failing task's prepared record is torn: its attempt (and so its receipt) can no longer be placed with any task.
+		writeFileSync(join(p.root, "develop", "attempts", `${lost}.prepared.json`), "{ torn");
+		// The other attempt's handoff is torn: its attempt is still known, and its state may now read wrong.
+		writeFileSync(join(p.root, "develop", "attempts", `${known}.handoff.json`), "{ torn");
+		const view = p.view();
+		expect(view.unattributed).toBe(1);
+		const of = (id: string) => view.tasks.find((t) => t.taskId === id) as EndoDevelopAttentionTaskV0;
+		expect([of(failed).attempts, of(failed).checks.length, of(failed).records]).toEqual([0, 0, 0]);
+		expect(of(handedOff).records).toBe(1);
+		expect(readAttention(JSON.parse(JSON.stringify(view)))).not.toBeNull();
+		const o = overviewOf(p.workspaceTasks(), "shown", view, view.taskRevision);
+		// Never "nothing recorded", never all clear: the read says what it could not place, and the review row claims only what was read.
+		expect(o.gaps).toBe(true);
+		expect(o.notes.join("\n")).toContain("One attempt record could not be used and cannot be placed with a task");
+		expect(textsOf(itemOf(o, review))).toContain("No attempts or observed checks were read.");
+		expect(textsOf(itemOf(o, review))).not.toContain("No attempts or observed checks recorded.");
+		expect(textsOf(itemOf(o, handedOff))).toContain(
+			"One of its attempt records could not be used; its latest attempt's state may be wrong.",
+		);
+	});
+
 	it("says when the task file or the attempt records cannot be read, or the project is not in the file, and claims nothing", () => {
 		const p = project();
 		taskIn(p.root, p.projectId, "Anything", "in-progress");
@@ -456,6 +486,7 @@ function evidence(
 		taskRevision: 7,
 		head: options.head === undefined ? { commit: HEAD, clean: true } : options.head,
 		truncated: false,
+		unattributed: 0,
 		tasks: tasks
 			.filter((t) => t.status !== "done")
 			.map((t) => ({
@@ -468,6 +499,7 @@ function evidence(
 				unreadable: 0,
 				skipped: 0,
 				problems: 0,
+				records: 0,
 				checks: (checks[t.id] ?? []).map(check),
 				more: { commands: 0, notPassing: 0 },
 				...options.extra?.[t.id],

@@ -173,6 +173,13 @@ function gaps(e: AttentionTask): Line[] {
 			kind: "warn",
 			parts: [`${plural(e.problems, "One file", "files")} among its checks could not be used.`],
 		});
+	if (e.records > 0)
+		lines.push({
+			kind: "warn",
+			parts: [
+				`${plural(e.records, "One of its attempt records", "of its attempt records")} could not be used; its latest attempt's state may be wrong.`,
+			],
+		});
 	if (e.skipped > 0)
 		lines.push({
 			kind: "warn",
@@ -254,14 +261,18 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 					parts: [`Latest attempt: ${ATTEMPT_LABELS[e.latestAttempt.state]}.`],
 				});
 			// Absence is claimed only where everything was read; otherwise the gap lines below say what was not.
+			// An attempt record that could not be placed may be this task's, so even "no attempts" is then only "none read".
+			const complete = e.unreadable + e.skipped + e.problems + e.records === 0 && (view?.unattributed ?? 0) === 0;
 			if (review && e.checks.length === 0)
 				lines.push({
 					kind: "note",
 					parts: [
-						e.attempts === 0
-							? "No attempts or observed checks recorded."
-							: e.unreadable + e.skipped + e.problems === 0
-								? "No observed checks recorded."
+						complete
+							? e.attempts === 0
+								? "No attempts or observed checks recorded."
+								: "No observed checks recorded."
+							: e.attempts === 0
+								? "No attempts or observed checks were read."
 								: "No observed checks were read.",
 					],
 				});
@@ -314,6 +325,10 @@ export function overviewOf(
 		if (view.head === null) notes.push("This worktree's HEAD could not be read, so no check is compared with it.");
 		if (view.truncated)
 			notes.push("Not every check was read: the overview's read limit was reached. The tasks affected say so.");
+		if (view.unattributed > 0)
+			notes.push(
+				`${plural(view.unattributed, "One attempt record", "attempt records")} could not be used and cannot be placed with a task, so any task's attempts and checks may be incomplete (endo attempt list names ${view.unattributed === 1 ? "it" : "them"}).`,
+			);
 		if (revision !== null && view.taskRevision !== revision)
 			notes.push("The tasks changed after the checks were read. Refresh to read them together.");
 	}
@@ -323,7 +338,7 @@ export function overviewOf(
 		open: pick("open"),
 		done: pick("done"),
 		evidence: usable ? "shown" : state,
-		gaps: items.some((i) => i.lines.some((l) => l.kind === "warn")),
+		gaps: (usable && view.unattributed > 0) || items.some((i) => i.lines.some((l) => l.kind === "warn")),
 		notes,
 	};
 }

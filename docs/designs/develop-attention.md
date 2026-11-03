@@ -109,7 +109,8 @@ A task appears **once**, in the first section that applies:
 - **No receipts.** Missing evidence is shown as missing, never as a failure.
 - **A handoff.** It is the operator's statement, never a sign that anyone is working.
 - **A blocked task.** It is the operator's status and may be waiting on someone else. It leads its section, but is not "attention".
-- **Unreadable or truncated evidence.** It is said on the row and on the read ("Incomplete"). It neither raises nor lowers the task.
+- **Unreadable or truncated evidence**, including attempt records that cannot be used. It is said on the row, or for the whole read
+  when a damaged record cannot be placed with a task ("Incomplete"). It neither raises nor lowers the task.
 
 The classification is `overviewOf` in `studio-ui/src/model/attention.ts`. It is pure, with no clock, network, React or randomness, so
 the same tasks and evidence always give the same sections in the same order (tested by shuffling).
@@ -276,3 +277,10 @@ On the UI, they found that it replaces the empty pane rather than adding a dashb
 | 6 | Up to about 128 MiB of synchronous reads after every workspace read | minor | Fixed: 1,000 files and an 8 MiB byte budget, checked from the entries' sizes before any file is read. Test added. |
 | 7 | The asymmetry between a stale failure and a stale pass was not stated | nit | Stated in §3. |
 | 8 | Reader duplication and casts | nit | The duplicate initial state was removed. The reply union keeps `kind: string` so that the attempts reply shape is unchanged. |
+
+### Codex review of the PR
+
+| # | Finding | Resolution |
+| --- | --- | --- |
+| 1 | An unusable attempt record is reported by the attempts store as a problem of the directory, and the projection dropped it. A torn prepared record hid its attempt and failing receipt, and the overview said "No attempts or observed checks recorded." with no gap. | Fixed. Problems naming a known attempt are counted on its task (`records`): "its latest attempt's state may be wrong". The rest cannot be placed and are counted for the read (`unattributed`), with a note saying any task may be incomplete. Absence is then claimed only as "…were read", and the empty state is qualified. Test added; mutation-checked. |
+| 2 | The bar's attention link left the new-task form open, which took precedence over the overview. | Fixed. The link leaves composing (its words stay in the drafts, as choosing a task already does). Browser test added: the overview opens, and "+ New task…" shows the kept words. Mutation-checked. |

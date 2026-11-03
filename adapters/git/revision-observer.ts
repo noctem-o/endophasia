@@ -9,7 +9,7 @@
 // caller decides what to record.
 import { createHash } from "node:crypto";
 import { lstat, realpath, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
 	failureReasonV0,
 	GIT_LIMITS_V0,
@@ -229,6 +229,9 @@ export class GitRevisionObserverV0 {
 		} catch {
 			return fail("scope-mismatch");
 		}
+		// Everything below reads the whole tree, from its top, whichever directory inside it was given: the index, the status, the ignore
+		// rules and the reflogs are the worktree's, and a relative path in the configuration is resolved there.
+		cwd = root;
 
 		const overrides = await repositoryOverridesV0((args, maxBytes) => this.#read(cwd, args, maxBytes));
 		if (typeof overrides === "string") return fail(asUnavailable(overrides));
@@ -241,7 +244,9 @@ export class GitRevisionObserverV0 {
 			true,
 		);
 		const rawExcludes = global.code === 0 ? global.stdout.toString("utf8") : "";
-		const excludes = rawExcludes.includes("\0") ? rawExcludes.slice(0, rawExcludes.indexOf("\0")) : "";
+		const configured = rawExcludes.includes("\0") ? rawExcludes.slice(0, rawExcludes.indexOf("\0")) : "";
+		// One path for both Git and the stamp below: a relative one is made absolute against the top of the tree, and passed on so.
+		const excludes = configured === "" || isAbsolute(configured) ? configured : resolve(root, configured);
 		const keys: (readonly [string, string])[] = [
 			...overrides.keys,
 			...OBSERVER_CONFIG,

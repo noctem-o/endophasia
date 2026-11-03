@@ -615,6 +615,15 @@ describe.skipIf(!haveGit)("the revision observer", () => {
 		});
 	});
 
+	it("looking from a subdirectory still observes the whole tree: a flagged entry elsewhere is seen", async () => {
+		const dir = repo();
+		mkdirSync(join(dir, "deep", "er"), { recursive: true });
+		git(dir, "update-index", "--assume-unchanged", "check.sh");
+		writeFileSync(join(dir, "check.sh"), "exit 9\n");
+		const fromBelow = await observe(join(dir, "deep", "er"), true);
+		expect(fromBelow.ok && fromBelow.observation.dirty).toEqual(["flagged-entries"]);
+	});
+
 	it("a repository that writes no reflog has none to compare: null, never a value that looks compared", async () => {
 		const dir = fresh("nolog");
 		git(dir, "init", "-q", "-b", "main");
@@ -866,6 +875,27 @@ describe.skipIf(!haveGit)("checks against a real repository", () => {
 		git(w.project, "config", "core.excludesFile", link);
 		const viaLink = await check(w, ["sh", "-c", `echo payload3.js >> ${target} && echo evil > payload3.js`]);
 		expect([viaLink.outcome, viaLink.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+	});
+
+	it("a relative core.excludesFile is the one Git reads, at the top of the tree: a check that adds to it to hide a file is caught", async () => {
+		const w = seeded();
+		git(w.project, "config", "core.excludesFile", ".git/relative-ignore");
+		writeFileSync(join(w.project, ".git", "relative-ignore"), "");
+		// The service's own directory is elsewhere, so a path resolved there would name some other (absent) file.
+		expect(process.cwd()).not.toBe(w.project);
+		const r = await check(w, ["sh", "-c", "echo payload.js >> .git/relative-ignore && echo evil > payload.js"]);
+		expect([r.outcome, r.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+		expect(git(w.project, "status", "--porcelain")).toBe("");
+	});
+
+	it("a receipt read from a subdirectory relates to the whole tree: a hidden change elsewhere is not 'at current HEAD'", async () => {
+		const w = seeded();
+		await check(w, ["sh", "check.sh"]);
+		mkdirSync(join(w.project, "deep"));
+		git(w.project, "update-index", "--assume-unchanged", "fail.sh");
+		writeFileSync(join(w.project, "fail.sh"), "exit 0 # changed\n");
+		const list = w.service.list(w.attemptId, await w.service.current(join(w.project, "deep")));
+		expect(list.ok && list.receipts.map((x) => x.relation)).toEqual(["at-head-changed"]);
 	});
 
 	it("a check in a repository that writes no reflog says so: reflog unavailable, with its limitation", async () => {

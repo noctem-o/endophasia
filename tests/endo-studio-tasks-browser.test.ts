@@ -168,6 +168,13 @@ const openTab = async (page: Page) => {
 	await page.click("[data-testid=tab-task]");
 	await page.waitFor("document.querySelector('#develop-live').dataset.view === 'task'");
 };
+/** The Task view opens on the overview; the task chosen before is shown again from the picker, as an operator would. */
+const showChosen = async (page: Page) => {
+	await page.click("[data-testid=task-picker]");
+	await page.waitFor("document.querySelector('[data-testid=task-option][aria-selected=true]')");
+	await page.click("[data-testid=task-option][aria-selected=true]");
+	await page.waitFor("document.querySelector('[data-testid=task-detail]')");
+};
 const draftOf = (page: Page) => page.eval<string>("document.querySelector('[data-testid=composer]').value");
 const noOverflow = (page: Page) => page.eval<boolean>("document.documentElement.scrollWidth <= window.innerWidth");
 const inViewport = (page: Page, selector: string) =>
@@ -271,6 +278,10 @@ suite("the operator's journey through a project and its tasks (Instrument)", () 
 		await ready(page);
 		expect(await page.text("[data-testid=task-current-title]")).toBe("Stream the parser");
 		await openTab(page);
+		// After a reload the Task view opens on the overview, where a done task is folded away with nothing flagged.
+		await page.waitFor("document.querySelector('[data-testid=attention-overview]')");
+		expect(await page.text("[data-testid=attention-done]")).toContain("Done (1)");
+		await showChosen(page);
 		expect(await statusOf(page)).toBe("done");
 		expect(await page.text("[data-testid=task-description]")).toContain("Keep tokenize() working.");
 		noAgentTraffic(api);
@@ -525,6 +536,7 @@ suite("the operator's journey through a project and its tasks (Instrument)", () 
 		await ready(second.page);
 		expect(second.broker.launchId).not.toBe(first.broker.launchId);
 		await openTab(second.page);
+		await showChosen(second.page);
 		expect(
 			await second.page.eval<string>("document.querySelector('[data-testid=task-session-ref]').dataset.relation"),
 		).toBe("historical");
@@ -880,8 +892,9 @@ suite("what the page says when it cannot show or change tasks", () => {
 		);
 		await openTab(api.page);
 		expect(await api.page.text("[data-testid=tasks-read-only]")).toContain("different directory");
-		// Nothing is selected for the operator; they can look at a task (the choice is local: a read-only workspace remembers nothing).
-		expect(await api.page.text("[data-testid=task-none-selected]")).toContain("No task selected");
+		// Nothing is selected for the operator: the overview lists the task; they can look at it (the choice is local: a read-only workspace
+		// remembers nothing).
+		expect(await api.page.text("[data-testid=attention-overview]")).toContain("Registered elsewhere");
 		await api.page.click("[data-testid=task-picker]");
 		await api.page.waitFor("document.querySelector('[data-testid=task-option]')");
 		await api.page.click("[data-testid=task-option]");

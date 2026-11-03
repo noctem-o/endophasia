@@ -112,6 +112,7 @@ code. There is no new route family and no new capability:
 | `GET workspace` | the registered project, its tasks, references; or one constant when no project was named |
 | `POST workspace/tasks/create`, `update`, `status`, `select`, `link-session`, `unlink-session` | closed bodies, a task id and the revision it saw |
 | `GET workspace/attempts` | the selected task's work attempts, their briefs and their verification receipts, read-only (no query; nothing prepares or records one, and nothing runs a check) |
+| `GET workspace/attention` | every open task's attempt count and the latest check of each command, for the overview, read-only (no query; nothing is decided, written or run) |
 
 None of them sends a prompt, steers, queues or stops, starts, resumes or selects a session, runs Git or a shell, opens or writes any file but
 `develop/tasks.json`, reads the transcript, or approves anything. The terminal approval, the pairing grant, capability admission and STOP are unchanged,
@@ -263,6 +264,22 @@ endo attempt receipt  --root ./recordings --receipt endo.receipt.<id>
   compared". Nothing changes the task's status: accepting the work is still your `endo task status`.
 - Receipts live in `develop/receipts/<attempt id>/`, one write-once file each. A failed receipt stays beside the pass that followed it.
   The paired workbench shows them under each attempt, read-only, without paths. To remove an attempt's receipts, delete that directory.
+
+## The overview: what needs you, and why
+
+The **Task** tab opens on an overview of the project's tasks (design: [designs/develop-attention.md](designs/develop-attention.md)). When
+any task needs you, a line in the bar ("3 need attention") leads there. The overview has four sections:
+
+- **Needs your attention**: tasks you marked ready for review (a decision is yours), and tasks where the latest observed run of some
+  command failed or was inconclusive. A review task whose passing check is not at the current, clean HEAD says **Recheck**.
+- **In progress or blocked**: your statuses. A blocked task may be waiting on someone else.
+- **Open**: not started.
+- **Done**: folded away. Finished tasks are never urgent, and their old checks are not read.
+
+Each row says why it is there in words, with each check related to this worktree's HEAD ("at an earlier commit", "in a different
+working tree; not compared"). Opening a row chooses its task as the picker does, and opens the check the row is about. Nothing on the
+overview changes a status, runs a check or sends anything. What could not be read is said, never taken as "nothing to see". The
+overview is read when the tasks are, so press **Refresh** after a commit.
 
 ## Versions and the upgrade
 

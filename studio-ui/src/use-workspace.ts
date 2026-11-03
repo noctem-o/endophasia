@@ -6,6 +6,7 @@
 // here is memory only, and goes with the page or with the launch.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { fetchWorkspace } from "./api.ts";
+import type { ReceiptFocus } from "./model/attention.ts";
 import {
 	changedFields,
 	initialWorkspace,
@@ -16,6 +17,7 @@ import {
 } from "./model/workspace.ts";
 import type { Task, TaskStatus, WorkspaceRequest } from "./model/workspace-wire.ts";
 import { type AttemptsState, useAttempts } from "./use-attempts.ts";
+import { type AttentionState, useAttention } from "./use-attention.ts";
 
 /** Unsaved words are kept here, not in the form, so switching tasks does not lose them. Memory only. */
 export type { TaskDraft };
@@ -42,7 +44,22 @@ export interface WorkspaceApi {
 	unlink(task: Task, linkId: string): Promise<boolean>;
 	/** The selected task's work attempts, read after each good workspace read. Read-only: nothing here makes or records one. */
 	attempts: AttemptsState;
+	/** The project's attention projection, read after each good workspace read, beside the attempts. Read-only. */
+	attention: AttentionState;
+	/** What the Task view shows: the overview of every task, or the chosen task. Memory only. */
+	pane: TaskPane;
+	setPane(pane: TaskPane): void;
+	/**
+	 * Open a task from the overview: choose it (exactly as the picker does: no prompt, no session, no status) and show it, with the receipt
+	 * the row was about opened when the attempts beside it arrive.
+	 */
+	open(taskId: string, receipt: ReceiptFocus | null): void;
+	/** The receipt to open in the Task view once (cleared when shown, or when another task is chosen). */
+	focus: ReceiptFocus | null;
+	clearFocus(): void;
 }
+
+export type TaskPane = "overview" | "task";
 
 export function useWorkspace(grant: string | null, launchId: string | null, active: boolean): WorkspaceApi {
 	const [state, dispatch] = useReducer(reduceWorkspace, undefined, initialWorkspace);
@@ -57,6 +74,9 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 	const pendingChoice = useRef<{ taskId: string | null } | null>(null);
 	const [drafts, setDrafts] = useState<Readonly<Record<string, TaskDraft>>>({});
 	const [composing, setComposing] = useState(false);
+	// The overview first: the Task view opens on it until the operator chooses a task (here, in the picker, or by creating one).
+	const [pane, setPane] = useState<TaskPane>("overview");
+	const [focus, setFocus] = useState<ReceiptFocus | null>(null);
 
 	const abort = useCallback((): AbortSignal => {
 		controller.current ??= new AbortController();
@@ -114,6 +134,8 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 			dispatch({ type: "reset" });
 			setDrafts({});
 			setComposing(false);
+			setPane("overview");
+			setFocus(null);
 			automatic.current = null;
 		}
 		if (launchId !== null) launch.current = launchId;
@@ -162,13 +184,42 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 		state.readAt === null ? null : state.readAt.getTime(),
 	);
 
+	const attention = useAttention(
+		grant,
+		launchId,
+		active,
+		state.view?.state === "ready",
+		state.readAt === null ? null : state.readAt.getTime(),
+	);
+
+	const choose = (taskId: string | null) => {
+		dispatch({ type: "choose", taskId });
+		if (latest.current.view?.writable !== true) return;
+		if (running.current) pendingChoice.current = { taskId };
+		else void run({ kind: "select", taskId }, { change: true });
+	};
+
 	return {
 		state,
 		attempts,
+		attention,
+		pane,
+		setPane,
+		focus,
+		clearFocus: () => setFocus(null),
+		open: (taskId, receipt) => {
+			setComposing(false);
+			setFocus(receipt);
+			setPane("task");
+			choose(taskId);
+		},
 		paired: grant !== null,
 		drafts,
 		composing,
-		setComposing,
+		setComposing: (on) => {
+			setComposing(on);
+			if (on) setPane("task");
+		},
 		setDraft: (key, draft) =>
 			setDrafts((now) => {
 				if (draft === null) {
@@ -180,17 +231,20 @@ export function useWorkspace(grant: string | null, launchId: string | null, acti
 			}),
 		refresh: () => void run({ kind: "read" }, { change: false }),
 		choose: (taskId) => {
-			dispatch({ type: "choose", taskId });
-			if (latest.current.view?.writable !== true) return;
-			if (running.current) pendingChoice.current = { taskId };
-			else void run({ kind: "select", taskId }, { change: true });
+			setFocus(null);
+			if (taskId !== null) setPane("task");
+			choose(taskId);
 		},
 		dismiss: () => dispatch({ type: "dismiss" }),
 		create: (input) =>
+			// A new task is shown once made (the reply adopts it).
 			run(
 				{ kind: "create", title: input.title, description: input.description, acceptance: input.acceptance },
 				{ change: true, adopt: true },
-			),
+			).then((ok) => {
+				if (ok) setPane("task");
+				return ok;
+			}),
 		update: (task, input) => {
 			// Only what the operator changed is sent, against the revision their words were read at (rebased when the task was read
 			// again): a field they did not touch is never written back from an old copy.

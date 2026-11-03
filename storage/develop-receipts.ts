@@ -9,7 +9,7 @@
 // malformed, invalid (its verdict does not follow from its facts, among others), over its bound, misnamed, of another attempt or not a
 // receipt at all is reported as a problem by name and left exactly as found.
 
-import { readdirSync } from "node:fs";
+import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../protocol/develop-attempts.ts";
 import {
@@ -67,6 +67,24 @@ export class DevelopReceiptsStoreV0 {
 
 	/** One attempt's receipts, oldest first, read now. A missing directory is no receipts (nothing is created). */
 	read(attemptId: string): EndoReceiptsReadV0 {
+		return this.#read(attemptId, undefined) as EndoReceiptsReadV0;
+	}
+
+	/**
+	 * As `read`, bounded: refused (`too-many`) before any file is read when the directory holds more than `max.files` entries (temporary
+	 * files aside), or entries whose sizes add up to more than `max.bytes`, so a caller reading many attempts can bound the whole read.
+	 */
+	readAtMost(
+		attemptId: string,
+		max: { files: number; bytes: number },
+	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
+		return this.#read(attemptId, max);
+	}
+
+	#read(
+		attemptId: string,
+		max: { files: number; bytes: number } | undefined,
+	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
 		const dir = this.#attemptDir(attemptId);
 		if (dir === null) return { ok: false, reason: "unsafe-path" };
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir, dir]);
@@ -78,6 +96,13 @@ export class DevelopReceiptsStoreV0 {
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException | undefined)?.code;
 			return { ok: false, reason: code === "ENOTDIR" || code === "ELOOP" ? "unsafe-path" : "io" };
+		}
+		let bytes = 0;
+		if (max !== undefined) {
+			const entries = names.filter((n) => !WRITE_ONCE_TEMPORARY_V0.test(n));
+			if (entries.length > max.files) return { ok: false, reason: "too-many" };
+			for (const name of entries) bytes += lstatSync(join(dir, name), { throwIfNoEntry: false })?.size ?? 0;
+			if (bytes > max.bytes) return { ok: false, reason: "too-many" };
 		}
 		const receipts: EndoDevelopReceiptV0[] = [];
 		const problems: EndoReceiptProblemV0[] = [];
@@ -108,7 +133,7 @@ export class DevelopReceiptsStoreV0 {
 			receipts.push(receipt);
 		}
 		receipts.sort((a, b) => a.startedAtMs - b.startedAtMs || (a.id < b.id ? -1 : 1));
-		return { ok: true, receipts, problems };
+		return max === undefined ? { ok: true, receipts, problems } : { ok: true, receipts, problems, bytes };
 	}
 
 	/** The bytes a receipt is written as, or null when it does not fit its bound. */

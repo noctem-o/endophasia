@@ -20,6 +20,8 @@
 //                               select|link-session|unlink-session>: see workbench-tasks.ts. Needs the grant. METADATA ONLY: none of them sends a command.
 //   GET  workspace/attempts     the selected task's work attempts and their briefs (docs/designs/develop-work-attempts.md). Needs the grant.
 //                               READ ONLY: no attempt is made or recorded here, and no brief is sent anywhere.
+//   GET  workspace/attention    every open task's attempts and latest checks, summarised for triage (docs/designs/develop-attention.md).
+//                               Needs the grant. READ ONLY: nothing is decided, written or run here.
 //   POST intervention/check {proposalId}     start a bounded check of whether the capture shows a STEER or QUEUE was consumed; the answer is read
 //                                             back from the request's view. Needs the grant.
 //
@@ -439,7 +441,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				return b === undefined && request.method === "GET" && request.query === ""
 					? reply(200, ENDO_DEVELOP_WORKSPACE_ABSENT_V1)
 					: refuse(404, "not-found");
-			return this.#tasks.route(request.route, request.method, request.query, request.body);
+			const answer = await this.#tasks.route(request.route, request.method, request.query, request.body);
+			// A read that waited (the attempts and the attention overview read the launch directory's HEAD) answers only if the grant it was
+			// asked under still holds: a pairing revoked meanwhile gets the refusal, never data that would look current.
+			return this.#granted(request.grant) ? answer : refuse(401, "grant-required");
 		}
 		// A workbench with no project context says so with one constant answer (as the read-only server does for status), so a page can ask
 		// quietly: a 404 would be logged by every browser as a failed request.

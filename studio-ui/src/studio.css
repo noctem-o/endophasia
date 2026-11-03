@@ -4643,6 +4643,241 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	margin-top: 18px;
 }
 
+/* The overview (develop/Attention.tsx): every task, attention first. Rows are calm: a title, the status in words, and a few short lines.
+   Emphasis is a 2px rule at the row's edge plus a word in each line (Decision, Check failed, Inconclusive, Recheck), so nothing depends on
+   colour alone. No motion: a row neither animates in nor moves while it is read. */
+.task-back {
+	margin: 0 0 6px;
+}
+
+.attn {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.attn-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 12px;
+}
+
+.attn-head h2 {
+	margin: 0;
+	font-size: 15px;
+}
+
+.attn-group h3 {
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fg-3);
+	margin: 0 0 4px;
+}
+
+.attn-count {
+	letter-spacing: 0;
+}
+
+.attn-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.attn-row {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 7px 10px 8px 12px;
+	border: 0;
+	border-left: 2px solid transparent;
+	border-bottom: 1px solid var(--line-subtle);
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.attn-row:hover {
+	background: var(--surface-2);
+}
+
+.attn-row:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: -2px;
+}
+
+.attn-row[data-flag="decision"] {
+	border-left-color: var(--select);
+}
+
+.attn-row[data-flag="failed"] {
+	border-left-color: var(--fault);
+}
+
+.attn-row[data-flag="inconclusive"],
+.attn-row[data-flag="reconsider"] {
+	border-left-color: var(--attention);
+	border-left-style: dashed;
+}
+
+.attn-top {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.attn-title {
+	min-width: 0;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.attn-lines {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--fg-2);
+}
+
+.attn-line {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.attn-line[data-kind="note"] {
+	color: var(--fg-3);
+}
+
+.attn-tag {
+	flex: 0 0 6.75rem;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--fg-3);
+}
+
+.attn-line[data-kind="decision"] .attn-tag {
+	color: var(--select);
+}
+
+.attn-line[data-kind="failed"] .attn-tag {
+	color: var(--fault);
+}
+
+.attn-line[data-kind="inconclusive"] .attn-tag,
+.attn-line[data-kind="reconsider"] .attn-tag,
+.attn-line[data-kind="warn"] .attn-tag {
+	color: var(--attention);
+}
+
+/* Lines without a word of their own line up with the words of those that have one. */
+.attn-line:not(:has(.attn-tag)) .attn-words {
+	padding-left: calc(6.75rem + 8px);
+}
+
+/* As last read (a failed or refused read, or no pairing): still readable, visibly not current; the note above says why. */
+.attn[data-current="false"] .attn-group,
+.attn[data-current="false"] .attn-done {
+	opacity: 0.72;
+}
+
+.attn-words {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.attn-words code {
+	font-size: 11.5px;
+	padding: 0 3px;
+	border-radius: 3px;
+	background: var(--surface-3);
+	color: var(--fg-1);
+}
+
+.attn-done summary {
+	cursor: pointer;
+	font-size: 12px;
+	color: var(--fg-2);
+}
+
+.attn-foot {
+	margin: 0;
+}
+
+.attn-link {
+	white-space: nowrap;
+}
+
+/* The receipt an overview row opened. */
+.attempt-receipts li[data-focused="true"] {
+	outline: 1px solid var(--line-strong);
+	outline-offset: 2px;
+	border-radius: var(--radius);
+}
+
+@media (max-width: 1023.98px) {
+	.attn-line {
+		flex-direction: column;
+		gap: 0;
+	}
+	.attn-line:not(:has(.attn-tag)) .attn-words {
+		padding-left: 0;
+	}
+	.attn-tag {
+		flex-basis: auto;
+	}
+}
+
+.develop[data-appearance="field"] .attn-row {
+	border-bottom-color: var(--f-hair);
+}
+
+.develop[data-appearance="field"] .attn-row:hover {
+	background: rgba(206, 218, 238, 0.05);
+}
+
+.develop[data-appearance="field"] .attn-row[data-flag="decision"] {
+	border-left-color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .attn-row[data-flag="inconclusive"],
+.develop[data-appearance="field"] .attn-row[data-flag="reconsider"] {
+	border-left-color: var(--f-amber);
+}
+
+.develop[data-appearance="field"] .attn-title,
+.develop[data-appearance="field"] .attn-words code {
+	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .attn-lines,
+.develop[data-appearance="field"] .attn-group h3 {
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .attn-words code {
+	background: var(--f-slab);
+}
+
+.develop[data-appearance="field"] .attn-line[data-kind="decision"] .attn-tag {
+	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .attn-line[data-kind="inconclusive"] .attn-tag,
+.develop[data-appearance="field"] .attn-line[data-kind="reconsider"] .attn-tag,
+.develop[data-appearance="field"] .attn-line[data-kind="warn"] .attn-tag {
+	color: var(--f-amber);
+}
+
 /* On a phone the tabs are one page; the composer is not stuck to the bottom while a task is read or edited. */
 @media (max-width: 1023.98px) {
 	.develop-live[data-view="task"] .composer {

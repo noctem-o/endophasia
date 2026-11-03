@@ -4,18 +4,29 @@
 // becomes OBSOLETE, and its answer or failure changes nothing (it can mark nothing current, clear no newer `busy`, take no queued refresh).
 // A refresh queued meanwhile is kept and runs with the inputs as they are then, never with the ones a closure captured. The request
 // function is injected: in the page it is the api's one GET, with no body and no query; nothing here can prepare or record an attempt.
+//
+// The same reader serves the attention projection (use-attention.ts): `LaunchReader` is generic over the view it reads, and both reads
+// follow the same rules.
 import type { AttemptsReply, AttemptsView } from "./attempts-wire.ts";
 
-export interface AttemptsState {
+export interface LaunchReadState<V> {
 	/** The last good read, kept through failures and marked by `current`. Null until one arrived (or after a different launch). */
-	view: AttemptsView | null;
+	view: V | null;
 	current: boolean;
 	busy: boolean;
-	/** Why the last read did not replace the view. `absent`: this workbench serves no attempts. */
+	/** Why the last read did not replace the view. `absent`: this workbench does not serve it. */
 	problem: "absent" | "unpaired" | "invalid" | "unreachable" | "refused" | null;
 }
+export type AttemptsState = LaunchReadState<AttemptsView>;
 
-export const INITIAL_ATTEMPTS: AttemptsState = { view: null, current: false, busy: false, problem: null };
+/** A reply: the record (any kind that carries one), or that the route is absent, or a failure. */
+export type LaunchReply<V> =
+	| { kind: string; record: V }
+	| { kind: "absent" }
+	| { kind: "failure"; status: number; code: string };
+
+const INITIAL = { view: null, current: false, busy: false, problem: null } as const;
+export const INITIAL_ATTEMPTS: AttemptsState = INITIAL;
 
 /**
  * What the reader is told on every render. `trigger` changes on every good workspace read (its time); `ready` says the workspace is one this
@@ -32,30 +43,31 @@ export interface AttemptsContext {
 const NONE: AttemptsContext = { grant: null, launchId: null, active: false, ready: false, trigger: null };
 
 export type AttemptsFetch = (grant: string, signal: AbortSignal) => Promise<AttemptsReply>;
+export type LaunchFetch<V> = (grant: string, signal: AbortSignal) => Promise<LaunchReply<V>>;
 
-const UNREACHABLE: AttemptsReply = { kind: "failure", status: 0, code: "unreachable" };
+const UNREACHABLE = { kind: "failure", status: 0, code: "unreachable" } as const;
 
-const answered = (s: AttemptsState, reply: AttemptsReply): AttemptsState =>
-	reply.kind === "attempts"
-		? { view: reply.record, current: true, busy: false, problem: null }
-		: {
-				...s,
-				busy: false,
-				current: false,
-				problem:
-					reply.kind === "absent"
-						? "absent"
-						: reply.code === "invalid"
-							? "invalid"
-							: reply.code === "unreachable"
-								? "unreachable"
-								: "refused",
-			};
+function answered<V>(s: LaunchReadState<V>, reply: LaunchReply<V>): LaunchReadState<V> {
+	if ("record" in reply) return { view: reply.record, current: true, busy: false, problem: null };
+	return {
+		...s,
+		busy: false,
+		current: false,
+		problem:
+			reply.kind === "absent"
+				? "absent"
+				: (reply as { code: string }).code === "invalid"
+					? "invalid"
+					: (reply as { code: string }).code === "unreachable"
+						? "unreachable"
+						: "refused",
+	};
+}
 
-export class AttemptsReader {
-	readonly #get: AttemptsFetch;
-	readonly #publish: (state: AttemptsState) => void;
-	#state: AttemptsState = INITIAL_ATTEMPTS;
+export class LaunchReader<V> {
+	readonly #get: LaunchFetch<V>;
+	readonly #publish: (state: LaunchReadState<V>) => void;
+	#state: LaunchReadState<V> = INITIAL;
 	#context: AttemptsContext = NONE;
 	/** The last launch seen (a launch is "changed" only from one known launch to another, as the workspace hook counts it). */
 	#launch: string | null = null;
@@ -64,12 +76,12 @@ export class AttemptsReader {
 	/** A read was asked for while one was in flight. */
 	#queued = false;
 
-	constructor(get: AttemptsFetch, publish: (state: AttemptsState) => void) {
+	constructor(get: LaunchFetch<V>, publish: (state: LaunchReadState<V>) => void) {
 		this.#get = get;
 		this.#publish = publish;
 	}
 
-	get state(): AttemptsState {
+	get state(): LaunchReadState<V> {
 		return this.#state;
 	}
 
@@ -88,7 +100,7 @@ export class AttemptsReader {
 		if (launchChanged || grantChanged) {
 			// A refresh asked for under the old context is not dropped with it: it is run now, with the new one.
 			wanted = this.#abandon() || wanted;
-			if (launchChanged) this.#set(() => INITIAL_ATTEMPTS);
+			if (launchChanged) this.#set(() => INITIAL);
 			else
 				this.#set((s) =>
 					s.view === null
@@ -119,7 +131,7 @@ export class AttemptsReader {
 		return c.active && c.ready && c.trigger !== null && c.grant !== null;
 	}
 
-	#set(change: (s: AttemptsState) => AttemptsState): void {
+	#set(change: (s: LaunchReadState<V>) => LaunchReadState<V>): void {
 		this.#state = change(this.#state);
 		this.#publish(this.#state);
 	}
@@ -135,7 +147,7 @@ export class AttemptsReader {
 		const flight = { controller: new AbortController() };
 		this.#flight = flight;
 		this.#set((s) => ({ ...s, busy: true }));
-		let reply: Promise<AttemptsReply>;
+		let reply: Promise<LaunchReply<V>>;
 		try {
 			reply = this.#get(grant, flight.controller.signal);
 		} catch {
@@ -148,7 +160,7 @@ export class AttemptsReader {
 		);
 	}
 
-	#settle(flight: { controller: AbortController }, reply: AttemptsReply): void {
+	#settle(flight: { controller: AbortController }, reply: LaunchReply<V>): void {
 		// An obsolete read (its launch or pairing has gone, or the component has): nothing it says is shown, and nothing newer is touched.
 		if (this.#flight !== flight) return;
 		this.#flight = null;
@@ -159,3 +171,6 @@ export class AttemptsReader {
 		}
 	}
 }
+
+/** The selected task's attempts (use-attempts.ts). */
+export class AttemptsReader extends LaunchReader<AttemptsView> {}

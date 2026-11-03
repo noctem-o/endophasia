@@ -97,28 +97,28 @@ export const RECEIPT_RELATION_LABELS: Readonly<Record<EndoReceiptRelationV0, str
 	"other-repository": "Recorded in a different repository; not compared",
 	unavailable: "Current revision unavailable; not compared",
 };
-const keysOf = <T extends string>(record: Readonly<Record<T, string>>): T[] => Object.keys(record) as T[];
+export const keysOf = <T extends string>(record: Readonly<Record<T, string>>): T[] => Object.keys(record) as T[];
 
 const UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
 const multiline =
 	(max: number): Check =>
 	(v) =>
 		typeof v === "string" && v.length <= max && !UNSAFE.test(v);
-const oneLine =
+export const oneLine =
 	(max: number): Check =>
 	(v) =>
 		typeof v === "string" && v.length <= max && !/[\u0000-\u001f]/.test(v) && !UNSAFE.test(v);
-const stamp: Check = (v) => count(v) && v <= 8.64e15;
-const attemptId: Check = (v) => typeof v === "string" && /^endo\.attempt\.[0-9a-f]{32}$/.test(v);
-const taskId: Check = (v) => typeof v === "string" && /^endo\.task\.[0-9a-f]{32}$/.test(v);
+export const stamp: Check = (v) => count(v) && v <= 8.64e15;
+export const attemptId: Check = (v) => typeof v === "string" && /^endo\.attempt\.[0-9a-f]{32}$/.test(v);
+export const taskId: Check = (v) => typeof v === "string" && /^endo\.task\.[0-9a-f]{32}$/.test(v);
 
-const receiptId: Check = (v) => typeof v === "string" && /^endo\.receipt\.[0-9a-f]{32}$/.test(v);
-const objectId: Check = (v) => typeof v === "string" && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(v);
-const execution: Check = (v) =>
+export const receiptId: Check = (v) => typeof v === "string" && /^endo\.receipt\.[0-9a-f]{32}$/.test(v);
+export const objectId: Check = (v) => typeof v === "string" && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(v);
+export const execution: Check = (v) =>
 	shape(v, { kind: one("exited"), code: (x) => count(x) && x <= 255 }) ||
 	shape(v, { kind: one("signaled"), signal: (x) => typeof x === "string" && /^SIG[A-Z0-9]{1,12}$/.test(x) }) ||
 	shape(v, { kind: one("timed-out", "interrupted", "output-limit", "spawn-failed") });
-const distinct = (x: unknown): boolean => new Set(x as unknown[]).size === (x as unknown[]).length;
+export const distinct = (x: unknown): boolean => new Set(x as unknown[]).size === (x as unknown[]).length;
 
 const receipt: Check = (v) =>
 	shape(v, {
@@ -136,7 +136,9 @@ const receipt: Check = (v) =>
 	});
 
 /** Whether a receipt's outcome is the one its execution and reasons imply. */
-function coherent(r: EndoDevelopReceiptViewV0): boolean {
+export function coherent(
+	r: Pick<EndoDevelopReceiptViewV0, "startedAtMs" | "endedAtMs" | "execution" | "reasons" | "outcome">,
+): boolean {
 	if (r.endedAtMs < r.startedAtMs) return false;
 	const exited = r.execution.kind === "exited";
 	if (!exited && !r.reasons.includes(r.execution.kind as EndoReceiptReasonV0)) return false;

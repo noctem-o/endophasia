@@ -37,6 +37,18 @@
   [docs/harness-upgrades.md](docs/harness-upgrades.md#changing-the-identity-basis).
 
 ### Added
+- **DEVELOP attention overview.** The workbench's **Task** tab now opens on an overview of the project. It answers "what needs me,
+  and why?" from your statuses and from the checks Endophasia observed, with no model or score. **Needs your attention** lists tasks in
+  review (a decision is yours) and tasks where the latest observed run of a command failed or was inconclusive. Each row says why, and
+  says where each check was recorded relative to HEAD now, in that relation's own words. Then come **In progress or blocked**, **Open**,
+  and **Done** (folded away; finished work is never urgent). A line in the bar ("3 need attention") leads there. Opening a row chooses
+  the task, as the picker does, and opens the receipt it is about; it changes no status and sends nothing.
+
+  The overview reads one new route, `GET workspace/attention` (`endo.develop-attention-view.v0`), behind the grant. It is a bounded,
+  read-only projection of the existing attempt and receipt stores: one Git observation per read, at most 1,000 receipt files (8 MiB), and done
+  tasks not read. `endo studio` does not serve it. The broker now re-checks the grant after a read that waited, so a pairing revoked
+  during the read gets a refusal, not data. This also applies to `GET workspace/attempts`. See
+  [docs/designs/develop-attention.md](docs/designs/develop-attention.md).
 - **DEVELOP verification receipts** (`endo attempt check|receipts|receipt`). `check` runs the command you give after `--` (no shell, in a
   process group Endophasia owns, bounded in time and output). It runs at the top of a clean, committed working tree of the attempt's
   project. Endophasia observes the tree with read-only Git before and after, and records what it saw once, under

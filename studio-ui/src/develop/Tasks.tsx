@@ -24,6 +24,7 @@ import type { SessionRef, Task, TaskStatus, Workspace } from "../model/workspace
 import { Note } from "../ui/text.tsx";
 import { NEW_TASK, type WorkspaceApi } from "../use-workspace.ts";
 import { AttemptsSection } from "./Attempts.tsx";
+import { AttentionLink, AttentionOverview } from "./Attention.tsx";
 
 const LIMITS = { title: 120, text: 4000, note: 280 } as const;
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour12: false });
@@ -168,6 +169,15 @@ export function TaskCluster({
 			</span>
 			<TaskPicker workspace={workspace} onDetails={onDetails} />
 			{current === null ? null : <StatusChip status={current.status} />}
+			<AttentionLink
+				workspace={workspace}
+				onOpen={() => {
+					// Leave the new-task form (its words stay in the drafts, as when a task is chosen) so the overview is what opens.
+					workspace.setComposing(false);
+					workspace.setPane("overview");
+					onDetails();
+				}}
+			/>
 			{!state.current ? (
 				<span
 					className="chip-stale"
@@ -498,24 +508,34 @@ export function TaskPanel({
 				</Note>
 			)}
 			{showNew ? <TaskForm workspace={workspace} first={view.tasks.length === 0} locked={!writable} /> : null}
-			{showNew && writable ? null : view.tasks.length === 0 ? (
+			{showNew && writable ? null : view.tasks.length > 0 && (workspace.pane === "overview" || task === null) ? (
+				<AttentionOverview workspace={workspace} />
+			) : view.tasks.length === 0 ? (
 				showNew ? null : (
 					<p className="dim" data-testid="task-none">
 						No tasks yet for {view.project?.name}.
 					</p>
 				)
-			) : task === null ? (
-				<div className="task-empty" data-testid="task-none-selected">
-					<h3>No task selected</h3>
-					<p className="dim">
-						Choose one from the Task list in the bar (press <kbd>T</kbd>). A task is what you intend to get done;
-						it is not a conversation, and choosing one sends nothing.
-					</p>
-				</div>
-			) : (
+			) : task === null ? null : (
 				<>
+					<p className="task-back">
+						<button
+							type="button"
+							className="btn quiet small-btn"
+							data-testid="task-overview"
+							onClick={() => workspace.setPane("overview")}
+						>
+							‹ Overview
+						</button>
+					</p>
 					<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} connected={connected} />
-					<AttemptsSection attempts={workspace.attempts} task={task} tasksCurrent={state.current} />
+					<AttemptsSection
+						attempts={workspace.attempts}
+						task={task}
+						tasksCurrent={state.current}
+						focus={workspace.focus}
+						onFocused={workspace.clearFocus}
+					/>
 				</>
 			)}
 			<p className="dim small task-foot" data-testid="task-foot">

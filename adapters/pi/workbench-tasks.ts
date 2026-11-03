@@ -4,6 +4,7 @@
 //
 //   GET  workspace                      the registered project, its tasks and the explicit session references. Needs the grant.
 //   GET  workspace/attempts             the work attempts of the SELECTED task, with their briefs (read-only; none are made here).
+//   GET  workspace/attention            every open task's attempt and check summary, for triage (read-only; nothing is decided here).
 //   POST workspace/tasks/create         {title, description?, acceptance?}              add a task (and select it).
 //   POST workspace/tasks/update         {taskId, expectedRevision, title?, description?, acceptance?}
 //   POST workspace/tasks/status         {taskId, expectedRevision, to, note?}           the operator's own status change.
@@ -87,6 +88,12 @@ export class WorkbenchTasksV0 {
 			if (attempts === null) return refuse(404, "not-found");
 			return query === "" ? reply(200, attempts) : refuse(400, "bad-request");
 		}
+		// The attention projection: the same rules. Nothing in the request chooses the project, a task or the directory compared with.
+		if (method === "GET" && a === "attention" && b === undefined) {
+			if (query !== "") return refuse(400, "bad-request");
+			const attention = await this.#workspace.attentionView();
+			return attention === null ? refuse(404, "not-found") : reply(200, attention);
+		}
 		return this.handle(route, method, query, body);
 	}
 
@@ -102,7 +109,7 @@ export class WorkbenchTasksV0 {
 			// The attempts: no query, no further path, and nothing in the request chooses the project or the task (the launch's project, and the
 			// task selected in the file). A launch given no attempt records has no such route.
 			// The attempts are served by `route` (asynchronously); `handle` alone does not serve them.
-			if (a === "attempts" && b === undefined) return refuse(404, "not-found");
+			if ((a === "attempts" || a === "attention") && b === undefined) return refuse(404, "not-found");
 			if (a !== undefined || query !== "")
 				return refuse(a === undefined ? 400 : 404, a === undefined ? "bad-request" : "not-found");
 			return reply(200, this.view());

@@ -171,7 +171,9 @@ Otherwise it is `inconclusive`, with every reason that applies.
     taken for an escaped process.
   - If the terminal or pipe goes away during a check, writing to it stops. The check is still observed, counted and recorded.
   - Byte counts are recorded. Contents and digests are not: nothing could check a digest of output that is not kept.
-  - At 64 MiB in total the check is stopped (`output-limit`).
+  - At 64 MiB in total the check is stopped (`output-limit`). The limit holds for the whole run, including output that a process
+    outside the group writes while the pipes drain: reading then stops, and the receipt is `output-limit`. In that case the command's
+    own exit code is not recorded.
 - **Time.** `--timeout <seconds>`, 1 to 7200, default 600.
 - **Interruption.** While a check runs, SIGINT, SIGTERM and SIGHUP to `endo` stop the group as a timeout does.
   - The receipt is written as `interrupted`, and `endo` exits 130.
@@ -339,7 +341,7 @@ covers that.
 
 ## Testing
 
-`tests/develop-receipts.test.ts` (52 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
+`tests/develop-receipts.test.ts` (54 tests). Real Git and real processes in temporary directories. Fake `pi`, `omp`, `claude` and
 `codex` are first on PATH for the whole file, and are checked never to run.
 
 | Brief case | Test |
@@ -364,7 +366,7 @@ Also covered:
 - `tests/endo-studio-ui-source.test.ts`: the page has no receipt or check route.
 - The existing attempts tests run against the `v1` view.
 
-Eighteen deliberate mutations were reintroduced one at a time, and each made at least one test fail:
+Twenty deliberate mutations were reintroduced one at a time, and each made at least one test fail:
 - the verdict ignoring a changed tree;
 - the observer ignoring flagged entries;
 - PATH resolution not skipping in-tree entries;
@@ -382,7 +384,9 @@ Eighteen deliberate mutations were reintroduced one at a time, and each made at 
 - an empty reflog counted as compared;
 - a branch name not made display-safe for the page;
 - a subdirectory's view of the index used instead of the whole tree's;
-- a relative `core.excludesFile` resolved against `endo`'s own directory.
+- a relative `core.excludesFile` resolved against `endo`'s own directory;
+- an ignored `.gitignore`'s name decoded as text instead of kept as bytes;
+- output over the limit while the pipes drain not counted.
 
 One more mutation, skipping writes to a sink that has already failed, made no test fail. That line only avoids pointless writes once
 the error listener has done its work. The listener is what keeps the run alive, and removing it is caught.
@@ -493,4 +497,14 @@ A second Codex round on `d2e22b89f` left two more findings, both reproduced by t
 | Observing from a subdirectory (the workbench's launch directory, or `--cwd` for reading) ran `ls-files` there, missing a flagged entry elsewhere. An old pass could then read "at current HEAD". | **Fixed.** Every read after the scope checks runs from the top of the tree. Tested in the observer and through the relation (`at-head-changed`). |
 
 Codex also restated the empty-reflog finding against the new commit; it was already fixed there.
+
+A third Codex round on `3ea76135e` left two more findings (and restated three already fixed), both reproduced by tests and fixed:
+
+| Finding | Disposition |
+| :-- | :-- |
+| An ignored `.gitignore` under a directory whose name is not UTF-8 was stamped by a decoded, different path. Adding to it to hide a file went unseen. | **Fixed.** Names from Git are kept as bytes through the stamp. Tested with a `0xFF` directory name. |
+| Output from a process outside the group, written after the group ended, was not counted against the limit. A check could pass after 70 MB of such output. | **Fixed.** Going over the limit at any time stops reading and records `output-limit`. Tested with a detached writer that starts after the command exits. |
+
+The full run also showed that the "sink never drains" test wrote too little: 300 KB can fit in the socket buffers between the check and
+`endo`, so the check could finish without ever waiting. It now writes 20 MB.
 

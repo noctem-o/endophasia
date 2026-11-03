@@ -722,6 +722,18 @@ describe("the check runner", () => {
 		});
 	});
 
+	it("output over the limit from a process that outlived the group, written while the pipes drain, still counts", async () => {
+		const ready = join(base, `late-writer-${made}`);
+		const r = await run(
+			[
+				"-c",
+				`setsid sh -c 'touch ${ready}; sleep 0.3; head -c 3000000 /dev/zero' & while [ ! -e ${ready} ]; do sleep 0.01; done; exit 0`,
+			],
+			{ maxOutputBytes: 1_000_000, pipeWaitMs: 5_000 },
+		);
+		expect(r.execution).toEqual({ kind: "output-limit" });
+	});
+
 	it("a sink that fails (the terminal closed) does not end the run: the check is still observed and counted", async () => {
 		const failing = new Writable({
 			write(_chunk, _encoding, callback) {
@@ -738,7 +750,12 @@ describe("the check runner", () => {
 
 	it("a sink that never drains holds the check back while it runs, but is never taken for an escaped process", async () => {
 		const stuck = new Writable({ highWaterMark: 16, write() {} });
-		const r = await run(["-c", "head -c 300000 /dev/zero; exit 0"], { stdout: stuck, timeoutMs: 2_000 });
+		// Far more than any pipe or socket buffer between the check and this process can hold, so the check must wait on the sink.
+		const r = await run(["-c", "head -c 20000000 /dev/zero; exit 0"], {
+			stdout: stuck,
+			timeoutMs: 2_000,
+			maxOutputBytes: 100_000_000,
+		});
 		// The pipe filled and the command waited on it: stopped at its time limit, all inside its group; nothing escaped.
 		expect(r).toMatchObject({ execution: { kind: "timed-out" }, escapedProcess: false });
 	});
@@ -896,6 +913,24 @@ describe.skipIf(!haveGit)("checks against a real repository", () => {
 		writeFileSync(join(w.project, "fail.sh"), "exit 0 # changed\n");
 		const list = w.service.list(w.attemptId, await w.service.current(join(w.project, "deep")));
 		expect(list.ok && list.receipts.map((x) => x.relation)).toEqual(["at-head-changed"]);
+	});
+
+	it("an ignored .gitignore under a directory whose name is not UTF-8 is stamped by its bytes: adding to it to hide a file is caught", async () => {
+		const w = seeded();
+		const odd = Buffer.concat([Buffer.from(`${w.project}/odd-`), Buffer.from([0xff])]);
+		mkdirSync(odd);
+		const ignore = Buffer.concat([odd, Buffer.from("/.gitignore")]);
+		writeFileSync(ignore, ".gitignore\n");
+		expect(git(w.project, "status", "--porcelain")).toBe("");
+		const script = join(fresh("script"), "hide.sh");
+		// The script finds the directory by its prefix, so no invalid byte has to pass through an argument.
+		writeFileSync(
+			script,
+			'for d in odd-*; do echo payload.js >> "$d/.gitignore"; echo evil > "$d/payload.js"; done\n',
+		);
+		const r = await check(w, ["sh", script]);
+		expect([r.outcome, r.reasons]).toEqual(["inconclusive", ["rules-changed"]]);
+		expect(git(w.project, "status", "--porcelain")).toBe("");
 	});
 
 	it("a check in a repository that writes no reflog says so: reflog unavailable, with its limitation", async () => {

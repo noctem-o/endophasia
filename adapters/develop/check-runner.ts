@@ -64,6 +64,8 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 	let stopped: Stop | null = null;
 	/** Set once the command has exited: from then on nothing is stopped, and a late reason is never given to an ended check. */
 	let finished = false;
+	/** The output went over the limit, whenever that was. */
+	let overLimit = false;
 	let graceTimer: ReturnType<typeof setTimeout> | undefined;
 	const stop = (why: Stop): void => {
 		if (stopped !== null || finished) return;
@@ -103,7 +105,14 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 		from.on("data", (chunk: Buffer) => {
 			counts[key] += chunk.length;
 			if (counts.stdoutBytes + counts.stderrBytes > options.maxOutputBytes) {
-				stop("output-limit");
+				// Over the limit at any time, also while the pipes drain after the group is gone (a process outside it still writing): the
+				// check is stopped if it runs, its output is no longer read, and the receipt says so.
+				overLimit = true;
+				if (!finished) stop("output-limit");
+				else {
+					group.stdout?.destroy();
+					group.stderr?.destroy();
+				}
 				return;
 			}
 			if (broken.has(to)) return;
@@ -161,8 +170,10 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 		? { kind: "spawn-failed" }
 		: why !== null
 			? { kind: why }
-			: exit.code !== null
-				? { kind: "exited", code: exit.code }
-				: { kind: "signaled", signal: exit.signal ?? "SIGKILL" };
+			: overLimit
+				? { kind: "output-limit" }
+				: exit.code !== null
+					? { kind: "exited", code: exit.code }
+					: { kind: "signaled", signal: exit.signal ?? "SIGKILL" };
 	return { execution, output: counts, strayProcesses, escapedProcess: !closed, durationMs };
 }

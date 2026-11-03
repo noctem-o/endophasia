@@ -186,7 +186,7 @@ function ended(r: Receipt): string {
 		case "interrupted":
 			return "interrupted";
 		case "output-limit":
-			return "stopped at the output limit";
+			return "went over the output limit";
 		case "spawn-failed":
 			return "could not be started";
 	}

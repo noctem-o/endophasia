@@ -99,7 +99,7 @@ const sha256 = (text: string | Buffer): string => createHash("sha256").update(te
  * ignore file through a symbolic link, so editing the link's target must change the stamp as surely as replacing the link. Nothing is
  * read from the file. A word stands for what cannot be stamped.
  */
-async function stampOf(path: string): Promise<string> {
+async function stampOf(path: string | Buffer): Promise<string> {
 	const one = (s: Awaited<ReturnType<typeof lstat>> & { mtimeNs: bigint; ctimeNs: bigint }) =>
 		`${s.isFile() ? "f" : s.isSymbolicLink() ? "l" : "o"}:${s.size}:${s.mtimeNs}:${s.ctimeNs}:${s.ino}`;
 	let own: string;
@@ -278,9 +278,19 @@ export class GitRevisionObserverV0 {
 		);
 		const hiddenFailure = failed(hidden);
 		if (hiddenFailure !== null) return hiddenFailure;
+		// The names are taken as BYTES (a directory name need not be UTF-8): decoded, a name with an invalid byte would stamp some other,
+		// absent path, and a change to the file Git reads would go unseen.
 		const hiddenStamps: string[] = [];
-		for (const name of hidden.stdout.toString("utf8").split("\0"))
-			if (name !== "") hiddenStamps.push(`${name}\0${await stampOf(join(root, name))}`);
+		const rootBytes = Buffer.from(`${root}/`, "utf8");
+		for (
+			let start = 0, at = hidden.stdout.indexOf(0);
+			at !== -1;
+			start = at + 1, at = hidden.stdout.indexOf(0, start)
+		) {
+			const name = hidden.stdout.subarray(start, at);
+			if (name.length > 0)
+				hiddenStamps.push(`${name.toString("hex")}:${await stampOf(Buffer.concat([rootBytes, name]))}`);
+		}
 		const rules = sha256(
 			[
 				sha256(listing.stdout),

@@ -229,7 +229,8 @@ export const ENDO_RECEIPT_REASON_TEXT_V0: Readonly<Record<EndoReceiptReasonV0, s
 	"timed-out": "it ran past its time limit and was stopped",
 	interrupted: "endo was interrupted while it ran (Ctrl-C, a hangup or a termination signal), and stopped it",
 	signaled: "it was ended by a signal it did not get from Endophasia",
-	"output-limit": "it wrote more output than the limit and was stopped",
+	"output-limit":
+		"it, or a process it started, wrote more output than the limit; it was stopped or its output cut off",
 	"spawn-failed": "it could not be started",
 	"escaped-process": "a process outside its group still held its output",
 	"after-unavailable": "the working tree could not be observed afterwards",

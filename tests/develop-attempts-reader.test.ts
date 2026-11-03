@@ -180,7 +180,7 @@ describe("failures, unpairing and pairing again", () => {
 		expect(h.reader.state).toMatchObject({ current: false, busy: false, problem: "unpaired" });
 		// Any other refusal (a busy or failing host) is a refusal, and says nothing about the pairing.
 		h.set({ trigger: 3 });
-		h.calls[2]!.resolve({ kind: "failure", status: 503, code: "unavailable" });
+		h.calls[2]!.resolve({ kind: "failure", status: 503, code: "other" });
 		await flush();
 		expect(h.reader.state).toMatchObject({ current: false, busy: false, problem: "refused" });
 		h.set({ trigger: 4 });

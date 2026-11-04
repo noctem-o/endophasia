@@ -8,9 +8,14 @@
 // A receipt's outcome must be the one its execution and reasons imply ("passed" only for exit 0 with no reason; "failed" only for another
 // exit code with no reason; anything else "inconclusive"); a receipt that claims more is refused with the whole body. There is no path.
 import type {
+	EndoAttemptRunStateV0,
+	EndoAttemptSendStateV0,
+	EndoDevelopAttemptExecutionViewV0,
+} from "../../../protocol/develop-attempt-execution.ts";
+import type {
 	EndoDevelopAttemptStateV0,
-	EndoDevelopAttemptsViewV1,
-	EndoDevelopAttemptViewV1,
+	EndoDevelopAttemptsViewV2,
+	EndoDevelopAttemptViewV2,
 } from "../../../protocol/develop-attempts.ts";
 import type {
 	EndoDevelopReceiptViewV0,
@@ -21,17 +26,18 @@ import type {
 } from "../../../protocol/develop-receipts.ts";
 import { type Check, count, eitherNull, list, one, shape } from "./compare-wire.ts";
 
+export type { EndoDevelopAttemptExecutionViewV0 as Execution } from "../../../protocol/develop-attempt-execution.ts";
 export type {
 	EndoDevelopAttemptStateV0 as AttemptState,
-	EndoDevelopAttemptsViewV1 as AttemptsView,
-	EndoDevelopAttemptViewV1 as Attempt,
+	EndoDevelopAttemptsViewV2 as AttemptsView,
+	EndoDevelopAttemptViewV2 as Attempt,
 } from "../../../protocol/develop-attempts.ts";
 export type {
 	EndoDevelopReceiptViewV0 as Receipt,
 	EndoReceiptRelationV0 as ReceiptRelation,
 } from "../../../protocol/develop-receipts.ts";
 
-export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v1";
+export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v2";
 
 /** These mirror the protocol's closed lists and labels; a contract test holds them equal. */
 export const ATTEMPT_STATES: readonly EndoDevelopAttemptStateV0[] = ["prepared", "handed-off", "reported", "abandoned"];
@@ -97,6 +103,44 @@ export const RECEIPT_RELATION_LABELS: Readonly<Record<EndoReceiptRelationV0, str
 	"other-repository": "Recorded in a different repository; not compared",
 	unavailable: "Current revision unavailable; not compared",
 };
+/** These mirror protocol/develop-attempt-execution.ts; a contract test holds them equal. None of them says the work succeeded. */
+export const EXECUTION_SEND_LABELS: Readonly<Record<EndoAttemptSendStateV0, string>> = {
+	"evidence-unavailable":
+		"Authorised to send to Pi; the session's log could not be read, so what happened next is unknown",
+	"not-attributable":
+		"Authorised to send to Pi, but the session's log does not hold that request as recorded; nothing after it is attributed",
+	"not-sent": "Authorised, then not sent (the workbench refused it before sending)",
+	"no-send-recorded":
+		"Authorised; no send recorded. It is recorded before it is sent, so it had not been sent as of this read",
+	"sent-no-reply": "Sent to Pi; Pi's reply was not recorded. Work may have started; the outcome is unknown",
+	"runtime-accepted": "Sent to Pi, and Pi acknowledged it. That is a reply, not completion",
+	"refused-by-runtime": "Sent to Pi, and Pi refused it",
+};
+export const EXECUTION_RUN_LABELS: Readonly<Record<EndoAttemptRunStateV0, string>> = {
+	"not-observed": "No run observed after the send",
+	open: "A run started; no end is recorded (it may still be running, or its end was not recorded)",
+	completed: "Pi reported the run completed. Not verified",
+	failed: "Pi reported the run failed",
+	aborted: "Pi reported the run aborted",
+	unclassified: "The run ended with no stop reason Pi reported",
+	interrupted: "Interrupted: the Pi process or its observer ended with the run open; no outcome was reported",
+	"process-ended": "The Pi process ended before a run was observed",
+};
+/** The workbench's prompt refusal reasons an execution can carry (protocol/workbench.ts). */
+export const EXECUTION_REFUSALS = [
+	"not-authorized",
+	"authorization-denied",
+	"approval-timed-out",
+	"authorization-expired",
+	"session-ended",
+	"run-active",
+	"capability-unavailable",
+	"duplicate",
+	"runtime-refused",
+	"attempt-changed",
+	"attempt-not-recorded",
+] as const;
+
 export const keysOf = <T extends string>(record: Readonly<Record<T, string>>): T[] => Object.keys(record) as T[];
 
 const UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
@@ -146,6 +190,41 @@ export function coherent(
 	return r.outcome === ((r.execution as { code: number }).code === 0 ? "passed" : "failed");
 }
 
+const execution_: Check = (v) =>
+	shape(v, {
+		authorizedAtMs: stamp,
+		session: oneLine(256),
+		attachment: oneLine(256),
+		taskRevision: count,
+		send: one(...keysOf(EXECUTION_SEND_LABELS)),
+		refusal: eitherNull(one(...EXECUTION_REFUSALS)),
+		disposition: eitherNull(one("started", "queued", "handled")),
+		run: one(...keysOf(EXECUTION_RUN_LABELS)),
+		evidence: one("complete", "partial", "unavailable"),
+		brief: one("matches", "differs"),
+	});
+
+/** Whether the session's log shows the brief was sent (whatever Pi then said). */
+export const executionSent = (e: Pick<EndoDevelopAttemptExecutionViewV0, "send">): boolean =>
+	e.send === "sent-no-reply" || e.send === "runtime-accepted" || e.send === "refused-by-runtime";
+
+/**
+ * Whether an execution's parts agree: a refusal only with a refusal state, a disposition only with an acceptance, a run only after a send,
+ * and nothing read from a log that could not be read.
+ */
+export function executionCoherent(e: EndoDevelopAttemptExecutionViewV0): boolean {
+	const sent = executionSent(e);
+	// A refusal reason only with a refusal. `not-sent` may carry none: a reason this build does not know is read as unknown, not invalid.
+	if (e.refusal !== null && e.send !== "not-sent" && e.send !== "refused-by-runtime") return false;
+	if (e.send === "refused-by-runtime" && e.refusal !== "runtime-refused") return false;
+	if ((e.disposition !== null) !== (e.send === "runtime-accepted")) return false;
+	if (!sent && e.run !== "not-observed") return false;
+	// An unreadable log decides nothing; a complete one always decides something.
+	if (e.evidence === "unavailable" && e.send !== "evidence-unavailable") return false;
+	if (e.evidence === "complete" && e.send === "evidence-unavailable") return false;
+	return true;
+}
+
 const attempt: Check = (v) =>
 	shape(v, {
 		id: attemptId,
@@ -173,9 +252,10 @@ const attempt: Check = (v) =>
 				list: (l) => list(receipt)(l) && (l as unknown[]).length <= 500,
 				problems: count,
 			}),
+		execution: eitherNull(execution_),
 	});
 
-export function readAttempts(v: unknown): EndoDevelopAttemptsViewV1 | null {
+export function readAttempts(v: unknown): EndoDevelopAttemptsViewV2 | null {
 	if (
 		!shape(v, {
 			schemaVersion: one(ATTEMPTS_SCHEMA),
@@ -187,12 +267,12 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV1 | null {
 		})
 	)
 		return null;
-	const view = v as unknown as EndoDevelopAttemptsViewV1;
+	const view = v as unknown as EndoDevelopAttemptsViewV2;
 	if (view.state !== "ready" && view.attempts.length > 0) return null;
 	if ((view.state === "ready" || view.state === "no-task") && (view.taskId === null) !== (view.state === "no-task"))
 		return null;
 	if (new Set(view.attempts.map((a) => a.id)).size !== view.attempts.length) return null;
-	for (const a of view.attempts as EndoDevelopAttemptViewV1[]) {
+	for (const a of view.attempts as EndoDevelopAttemptViewV2[]) {
 		const implied = a.outcome !== null ? a.outcome.kind : a.handoff !== null ? "handed-off" : "prepared";
 		if (a.state !== implied) return null;
 		if (a.outcome?.kind === "reported" && a.outcome.note.trim() === "") return null;
@@ -200,11 +280,12 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV1 | null {
 		if (a.receipts.state === "unreadable" && a.receipts.list.length > 0) return null;
 		if (new Set(a.receipts.list.map((r) => r.id)).size !== a.receipts.list.length) return null;
 		if (!a.receipts.list.every(coherent)) return null;
+		if (a.execution !== null && !executionCoherent(a.execution)) return null;
 	}
 	return view;
 }
 
 export type AttemptsReply =
-	| { kind: "attempts"; record: EndoDevelopAttemptsViewV1 }
+	| { kind: "attempts"; record: EndoDevelopAttemptsViewV2 }
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: "grant-required" | "invalid" | "unreachable" | "other" };

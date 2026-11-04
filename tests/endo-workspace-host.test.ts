@@ -275,6 +275,11 @@ suite("the workspace host: reads and changes the project's work with no agent", 
 		for (const [route, body] of [
 			["transcript", undefined],
 			["prompt/propose", { message: "run the tests" }],
+			// Sending a work attempt is the live workbench terminal's request only (docs/designs/develop-attempt-execution.md).
+			["prompt/propose", { attemptId: "endo.attempt.0123456789abcdef0123456789abcdef" }],
+			["attempt/propose", { attemptId: "endo.attempt.0123456789abcdef0123456789abcdef" }],
+			["workspace/attempts/send", { attemptId: "endo.attempt.0123456789abcdef0123456789abcdef" }],
+			["workspace/attempts", { attemptId: "endo.attempt.0123456789abcdef0123456789abcdef" }],
 			["prompt/discard", { proposalId: "x" }],
 			["intervention/propose", { operation: "stop" }],
 			["intervention/check", { proposalId: "x" }],
@@ -528,6 +533,10 @@ describe("harness neutrality of `endo workspace open`", () => {
 			expect(f).not.toMatch(/^cli\/(harness|workbench|steer|experiment|replay)\.ts$/);
 			expect(f).not.toMatch(/^research\//);
 		}
+		// Neither this host nor Studio can write an attempt's send authorisation: the module that does is the live workbench's alone.
+		expect(reached.has("runtime/contracts/develop-attempt-dispatch.ts")).toBe(false);
+		expect(studio.has("runtime/contracts/develop-attempt-dispatch.ts")).toBe(false);
+		expect(closure(["cli/workbench.ts"]).has("runtime/contracts/develop-attempt-dispatch.ts")).toBe(true);
 		// And the host module itself imports nothing from any adapter.
 		expect([...closure(["cockpit-http/workspace-host.ts"])].filter((f) => f.startsWith("adapters/"))).toEqual([]);
 	});

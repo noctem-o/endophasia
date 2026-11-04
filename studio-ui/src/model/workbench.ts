@@ -274,6 +274,8 @@ export const REFUSAL_WORDS: Readonly<Record<string, string>> = {
 	"capability-unavailable": "the runtime does not offer it",
 	duplicate: "it duplicated another prompt",
 	"runtime-refused": "the runtime did not accept it",
+	"attempt-changed": "the work attempt it carried no longer allowed it (see the attached terminal)",
+	"attempt-not-recorded": "the work attempt's authorisation could not be recorded, so it was not sent",
 };
 
 export const OPERATION_WORDS: Readonly<Record<InterventionOperation, { name: string; delivery: string }>> = {

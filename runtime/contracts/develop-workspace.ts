@@ -28,7 +28,7 @@
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
-import type { EndoDevelopAttemptsViewV1 } from "../../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV2 } from "../../protocol/develop-attempts.ts";
 import type { EndoDevelopAttentionViewV0 } from "../../protocol/develop-attention.ts";
 import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import {
@@ -60,6 +60,7 @@ import type {
 	EndoTasksResultV0,
 	EndoTasksUpgradeV1,
 } from "../../storage/develop-tasks.ts";
+import type { EndoSessionLogReadV0 } from "./develop-attempt-execution.ts";
 import { DevelopAttemptsServiceV0 } from "./develop-attempts.ts";
 import { endoDevelopAttentionViewV0 } from "./develop-attention.ts";
 
@@ -134,6 +135,11 @@ export interface DevelopWorkspaceServiceOptionsV0 {
 		store: DevelopReceiptsStoreV0;
 		current: (directory: string) => Promise<EndoReceiptCurrentV0 | null>;
 	};
+	/**
+	 * The store's event log, read-only, for the attempts that were authorised to be sent to Pi (docs/designs/develop-attempt-execution.md):
+	 * what their sessions recorded is shown under them. Not given, their execution reads as `evidence-unavailable`.
+	 */
+	sessionLog?: () => EndoSessionLogReadV0;
 }
 
 const realpath = (path: string): string | null => {
@@ -182,12 +188,14 @@ export class DevelopWorkspaceServiceV0 {
 	readonly #observeGitRoot: (directory: string) => Promise<string | null>;
 	readonly #attempts: DevelopAttemptsStoreV0 | null;
 	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
+	readonly #sessionLog: (() => EndoSessionLogReadV0) | null;
 
 	constructor(store: DevelopTasksStoreV0, options: DevelopWorkspaceServiceOptionsV0 = {}) {
 		this.#store = store;
 		this.#observeGitRoot = options.observeGitRoot ?? (async () => null);
 		this.#attempts = options.attempts ?? null;
 		this.#receipts = options.receipts ?? null;
+		this.#sessionLog = options.sessionLog ?? null;
 	}
 
 	/** The whole file (as the v1 model), read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
@@ -322,7 +330,15 @@ export class DevelopWorkspaceServiceV0 {
 	 * knows. The scope can change only that project, and only while the launch directory is the project's registered one.
 	 */
 	forLaunch(config: DevelopLaunchConfigV0, host: DevelopLaunchHostV0): DevelopLaunchWorkspaceV0 {
-		return new DevelopLaunchWorkspaceV0(OPEN, this.#store, config, host, this.#attempts, this.#receipts);
+		return new DevelopLaunchWorkspaceV0(
+			OPEN,
+			this.#store,
+			config,
+			host,
+			this.#attempts,
+			this.#receipts,
+			this.#sessionLog,
+		);
 	}
 }
 
@@ -346,12 +362,16 @@ export class DevelopLaunchWorkspaceV0 {
 		host: DevelopLaunchHostV0,
 		attempts: DevelopAttemptsStoreV0 | null = null,
 		receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null = null,
+		sessionLog: (() => EndoSessionLogReadV0) | null = null,
 	) {
 		if (token !== OPEN) throw new TypeError("a launch scope is opened by DevelopWorkspaceServiceV0.forLaunch");
 		this.#store = store;
 		this.#config = Object.freeze({ ...config });
 		this.#host = host;
-		this.#attempts = attempts === null ? null : new DevelopAttemptsServiceV0(store, attempts);
+		this.#attempts =
+			attempts === null
+				? null
+				: new DevelopAttemptsServiceV0(store, attempts, sessionLog === null ? {} : { sessionLog });
 		this.#attemptRecords = attempts;
 		this.#receipts = receipts;
 	}
@@ -385,11 +405,17 @@ export class DevelopLaunchWorkspaceV0 {
 	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either. Each attempt's receipts are
 	 * compared with the HEAD of this launch's own directory, observed now (read-only Git), when this launch was given receipts.
 	 */
-	async attemptsView(): Promise<EndoDevelopAttemptsViewV1 | null> {
+	async attemptsView(): Promise<EndoDevelopAttemptsViewV2 | null> {
 		if (this.#attempts === null) return null;
 		const receipts = this.#receipts;
-		if (receipts === null || receipts === undefined) return this.#attempts.viewFor(this.#config.projectId);
-		return this.#attempts.viewFor(this.#config.projectId, { store: receipts.store, current: await this.#current() });
+		const aliasOf = this.#host.aliasOf;
+		if (receipts === null || receipts === undefined)
+			return this.#attempts.viewFor(this.#config.projectId, null, aliasOf);
+		return this.#attempts.viewFor(
+			this.#config.projectId,
+			{ store: receipts.store, current: await this.#current() },
+			aliasOf,
+		);
 	}
 
 	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */

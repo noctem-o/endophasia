@@ -314,7 +314,7 @@ describe("the frontend's source", () => {
 		);
 		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
-		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v1"');
+		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v2"');
 		// The attention hook: no timer, read beside the attempts by the same reader (one at a time, obsolete when the launch or pairing goes);
 		// it is the only caller of its route. The overview imports no api, no workbench command and no composer: a row only chooses a task.
 		const attentionHook = sources["use-attention.ts"]!;

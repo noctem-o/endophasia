@@ -13,6 +13,10 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+	type EndoDevelopAttemptAuthorizationV0,
+	validateEndoDevelopAttemptAuthorizationV0,
+} from "../protocol/develop-attempt-execution.ts";
+import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
@@ -32,15 +36,27 @@ import {
 } from "./write-once.ts";
 
 export const ENDO_DEVELOP_ATTEMPTS_DIRECTORY_V0 = "attempts";
-const RECORD = /^(endo\.attempt\.[0-9a-f]{32})\.(prepared|handoff|outcome)\.json$/;
+const RECORD = /^(endo\.attempt\.[0-9a-f]{32})\.(prepared|handoff|outcome|authorized)\.json$/;
 
-export type EndoAttemptRecordKindV0 = "prepared" | "handoff" | "outcome";
+/**
+ * `authorized` (protocol/develop-attempt-execution.ts) is written only by the live workbench, after the operator approved sending the brief
+ * to its Pi session on the attached terminal. A build that predates it lists such a file as an `unknown-file` problem and still shows the
+ * attempt.
+ */
+export type EndoAttemptRecordKindV0 = "prepared" | "handoff" | "outcome" | "authorized";
 
-/** One attempt as found: its prepared record and, when the operator recorded them, its handoff and outcome. */
+type AnyAttemptRecordV0 =
+	| EndoDevelopAttemptV0
+	| EndoDevelopAttemptHandoffV0
+	| EndoDevelopAttemptOutcomeV0
+	| EndoDevelopAttemptAuthorizationV0;
+
+/** One attempt as found: its prepared record and, when they were recorded, its handoff, outcome and send authorisation. */
 export interface EndoAttemptEntryV0 {
 	attempt: EndoDevelopAttemptV0;
 	handoff: EndoDevelopAttemptHandoffV0 | null;
 	outcome: EndoDevelopAttemptOutcomeV0 | null;
+	authorized: EndoDevelopAttemptAuthorizationV0 | null;
 }
 
 /** A file that is not a usable record, with a closed reason. It is never shown as an attempt and never written over. */
@@ -107,14 +123,16 @@ export class DevelopAttemptsStoreV0 {
 				problems.push({ name, reason: read.reason });
 				continue;
 			}
-			let record: EndoDevelopAttemptV0 | EndoDevelopAttemptHandoffV0 | EndoDevelopAttemptOutcomeV0;
+			let record: AnyAttemptRecordV0;
 			try {
 				record =
 					kind === "prepared"
 						? validateEndoDevelopAttemptV0(read.value)
 						: kind === "handoff"
 							? validateEndoDevelopAttemptHandoffV0(read.value)
-							: validateEndoDevelopAttemptOutcomeV0(read.value);
+							: kind === "outcome"
+								? validateEndoDevelopAttemptOutcomeV0(read.value)
+								: validateEndoDevelopAttemptAuthorizationV0(read.value);
 			} catch {
 				problems.push({ name, reason: "invalid" });
 				continue;
@@ -130,7 +148,7 @@ export class DevelopAttemptsStoreV0 {
 		for (const [id, records] of found) {
 			if (records.prepared === undefined) {
 				// A handoff or outcome without its attempt (the prepared file was removed): listed as a problem, never shown as an attempt.
-				for (const kind of ["handoff", "outcome"] as const)
+				for (const kind of ["handoff", "outcome", "authorized"] as const)
 					if (records[kind] !== undefined) problems.push({ name: `${id}.${kind}.json`, reason: "orphan" });
 				continue;
 			}
@@ -138,6 +156,7 @@ export class DevelopAttemptsStoreV0 {
 				attempt: records.prepared as EndoDevelopAttemptV0,
 				handoff: (records.handoff as EndoDevelopAttemptHandoffV0 | undefined) ?? null,
 				outcome: (records.outcome as EndoDevelopAttemptOutcomeV0 | undefined) ?? null,
+				authorized: (records.authorized as EndoDevelopAttemptAuthorizationV0 | undefined) ?? null,
 			});
 		}
 		entries.sort((a, b) => a.attempt.preparedAtMs - b.attempt.preparedAtMs || (a.attempt.id < b.attempt.id ? -1 : 1));
@@ -151,7 +170,7 @@ export class DevelopAttemptsStoreV0 {
 	write(
 		id: string,
 		kind: EndoAttemptRecordKindV0,
-		record: EndoDevelopAttemptV0 | EndoDevelopAttemptHandoffV0 | EndoDevelopAttemptOutcomeV0,
+		record: AnyAttemptRecordV0,
 	): "created" | "exists" | "unsafe-path" | "failed" {
 		const name = `${id}.${kind}.json`;
 		if (!RECORD.test(name)) return "failed";

@@ -271,6 +271,10 @@ cannot name a project, task or attempt: the route takes none.
 Browser prepare or record actions; a session pointer from an attempt to a task's session reference (the task's own references remain the
 place for that); verification records; links to commits or PRs; a delete command; retries, watchdogs, schedulers; a coordinator.
 
+*Later:* sending an attempt's brief to Pi through the live workbench, and the record that binds the attempt to that send, are Slice I
+([develop-attempt-execution.md](develop-attempt-execution.md)). It adds a fourth write-once file, `<id>.authorized.json`, written by the
+workbench broker only.
+
 ## Phases
 
 1. Protocol, store and their tests. 2. Service, CLI, help and tests. 3. Launch-scope view, route, `cli/workbench.ts` wiring and tests.

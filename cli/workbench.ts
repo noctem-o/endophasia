@@ -16,6 +16,12 @@ import type { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { cockpitAliasesV0 } from "../cockpit/index.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
+import {
+	DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0,
+	DevelopAttemptDispatchV0,
+} from "../runtime/contracts/develop-attempt-dispatch.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { endoDevelopServiceV0 } from "./develop-service.ts";
 import { endoStudioUiDirectoryV0 } from "./studio.ts";
@@ -55,9 +61,11 @@ export interface WorkbenchHandleV0 {
 }
 
 /** What approving each operation does, in the operator's own terminal. The page cannot approve any of them; only the operator can. */
-const EFFECT_WORDS: Readonly<Record<"prompt" | "steer" | "queue" | "stop", string>> = {
+const EFFECT_WORDS: Readonly<Record<"prompt" | "attempt" | "steer" | "queue" | "stop", string>> = {
 	prompt:
 		"Approving starts agent work, which may use the model and cost money. The page cannot approve this; only you can.",
+	attempt:
+		"Approving records that you authorised this attempt to be sent once, then sends its brief to this Pi session as a new prompt. That starts agent work in this directory, which may use the model and cost money. It is not retried: to try again, prepare a new attempt. Pi finishing a run does not mean the attempt succeeded; check it with `endo attempt check` and decide the task yourself. Terminal approval is not a sandbox: Pi runs with its own tools and permissions.",
 	steer: "Approving sends this to the run that is open, after its current turn's tool calls and before the next model request. That may use the model and cost money. The page cannot approve this; only you can.",
 	queue: "Approving sends this to the run that is open, to be delivered when the agent has no more tool calls or steering. That may use the model and cost money. The page cannot approve this; only you can.",
 	stop: "Approving asks Pi to abort the run that is open. Pi answers only once it is idle, so this is a request, not an immediate stop. The page cannot approve this; only you can.",
@@ -115,6 +123,12 @@ export async function startWorkbenchV0(
 				request.message === null
 					? `expires ${hhmmss(request.expiresAtMs)}`
 					: `size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
+				...(request.attempt === undefined
+					? []
+					: [
+							`attempt     ${request.attempt.attemptId}`,
+							`task        ${request.attempt.taskId} (revision ${request.attempt.taskRevision}; the brief was prepared on revision ${request.attempt.preparedOnRevision}, and its words are unchanged)`,
+						]),
 				...(request.supersedes === undefined || request.supersedes === null
 					? []
 					: [
@@ -122,9 +136,11 @@ export async function startWorkbenchV0(
 						]),
 				...(request.message === null
 					? []
-					: [`--- the exact ${what} ---`, request.message, `--- end of ${what} ---`]),
+					: what === "attempt"
+						? ["--- the exact brief, sent as the prompt ---", request.message, "--- end of brief ---"]
+						: [`--- the exact ${what} ---`, request.message, `--- end of ${what} ---`]),
 				EFFECT_WORDS[what],
-				`Type ${request.phrase} to ${request.message === null ? "send it" : `send exactly this ${what}`}; anything else declines.`,
+				`Type ${request.phrase} to ${request.message === null ? "send it" : what === "attempt" ? "send exactly this brief" : `send exactly this ${what}`}; anything else declines.`,
 				"",
 			].join("\n"),
 		);
@@ -165,6 +181,16 @@ export async function startWorkbenchV0(
 							),
 					},
 				}),
+		...(projectId === undefined
+			? {}
+			: {
+					// Sending an attempt's brief: requested only by the `attempt <id>` line below, on this terminal.
+					attempts: new DevelopAttemptDispatchV0(
+						new DevelopTasksStoreV0(session.owner.options.root),
+						new DevelopAttemptsStoreV0(session.owner.options.root),
+						{ projectId, launchDirectory: options.cwd },
+					),
+				}),
 		aliasOf: (id) => aliasOf(id),
 	});
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;
@@ -200,10 +226,50 @@ export async function startWorkbenchV0(
 		() => broker.endSession(),
 		() => broker.endSession(),
 	);
+	// `attempt <id>`: the operator asks, HERE, to send a prepared work attempt's brief to this Pi session. It is only a request: the brief is
+	// shown whole and nothing is sent unless its own phrase is typed. The page has no way to make this request.
+	const requestAttempt = (attemptId: string): void => {
+		const asked = broker.requestAttempt(attemptId);
+		if (!asked.ok) {
+			const why =
+				asked.reason ??
+				(asked.code in DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0
+					? DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0[
+							asked.code as keyof typeof DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0
+						]
+					: asked.code);
+			write(
+				`workbench: attempt not requested (${asked.code}): ${why}. Nothing was recorded for the attempt or sent.\n`,
+			);
+			return;
+		}
+		const id = asked.view.proposalId;
+		void broker.settled(id).then((view) => {
+			if (view === null) return;
+			const binding = broker.attemptBindingOf(id);
+			const refusal = binding?.refusal ?? null;
+			if (view.state === "refused")
+				write(
+					`workbench: attempt ${attemptId} was not sent (${view.reason}${refusal === null ? "" : `: ${DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0[refusal]}`}). ${binding?.bound === true ? "Its authorisation was recorded, so it will not be sent again; prepare a new attempt to try again." : "This request recorded no authorisation for the attempt."}\n`,
+				);
+			else if (view.state === "accepted")
+				write(
+					`workbench: attempt ${attemptId} was sent and Pi accepted it (${view.disposition}). That is not completion; \`endo attempt show --attempt ${attemptId}\` shows what the session recorded.\n`,
+				);
+			else if (view.state === "unknown")
+				write(
+					`workbench: attempt ${attemptId} was sent; Pi's reply was not seen. Work may have started. It will not be retried.\n`,
+				);
+		});
+	};
 	input.on("line", (line) => {
+		const words = line.trim().split(/\s+/);
 		if (line.trim() === "pair") showCode();
+		else if (words[0] === "attempt" && words.length === 2) requestAttempt(words[1] as string);
 		else if (line.trim() !== "")
-			write("workbench: type `pair` for a new pairing code; approvals are typed when a prompt is waiting\n");
+			write(
+				"workbench: type `pair` for a new pairing code, or `attempt <id>` to ask to send a prepared attempt's brief; approvals are typed when a request is waiting\n",
+			);
 	});
 	write(
 		"workbench: the address below is private to this launch; anyone who can read it can read what this store records. It lets a page READ and ask; only you, here, can approve a prompt or an intervention.\n",

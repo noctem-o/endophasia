@@ -13,6 +13,7 @@
 //
 // What is never stored here: a transcript, model output, a prompt sent to a model, a session handle, a path, a credential.
 
+import type { EndoDevelopAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
 import type { EndoDevelopReceiptViewV0 } from "./develop-receipts.ts";
 import { checkEndoDevelopTextV0, ENDO_PROJECT_ID_PATTERN_V0, ENDO_TASK_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
@@ -20,8 +21,11 @@ import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
 export const ENDO_DEVELOP_ATTEMPT_SCHEMA_V0 = "endo.develop-attempt.v0";
 export const ENDO_DEVELOP_ATTEMPT_HANDOFF_SCHEMA_V0 = "endo.develop-attempt-handoff.v0";
 export const ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0 = "endo.develop-attempt-outcome.v0";
-/** v1 (Slice F): each attempt carries its verification receipts. v0 (Slice E, unreleased) is no longer served. */
-export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1 = "endo.develop-attempts-view.v1";
+/**
+ * v2 (Slice I): each attempt carries its execution, when it was sent to Pi through the workbench (protocol/develop-attempt-execution.ts).
+ * v1 (Slice F) added verification receipts; v0 (Slice E) and v1 are no longer served.
+ */
+export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2 = "endo.develop-attempts-view.v2";
 /** The renderer an attempt is shown with. A later renderer is a new value: an old attempt's brief never changes under it. */
 export const ENDO_DEVELOP_BRIEF_V0 = "endo.develop-brief.v0";
 
@@ -305,7 +309,7 @@ export function renderEndoDevelopBriefV0(attempt: EndoDevelopAttemptV0): string 
 
 // ---- the workbench's read model -----------------------------------------------------------------------------------------------------
 
-export interface EndoDevelopAttemptViewV1 {
+export interface EndoDevelopAttemptViewV2 {
 	id: string;
 	state: EndoDevelopAttemptStateV0;
 	preparedAtMs: number;
@@ -322,16 +326,21 @@ export interface EndoDevelopAttemptViewV1 {
 	 * it that are not usable receipts.
 	 */
 	receipts: { state: "ready" | "unreadable"; list: EndoDevelopReceiptViewV0[]; problems: number };
+	/**
+	 * When the operator authorised sending this attempt's brief to a Pi session through the workbench: what the session's own records say
+	 * happened (docs/designs/develop-attempt-execution.md). Null when no authorisation is recorded. Never a verdict on the work.
+	 */
+	execution: EndoDevelopAttemptExecutionViewV0 | null;
 }
 
 /**
  * `GET workspace/attempts`: the attempts of the task the project has SELECTED (chosen from the task file, never from the request). No path,
  * session id or scope: attempts carry none. `problems` counts files in the directory that could not be used (they are not shown).
  */
-export interface EndoDevelopAttemptsViewV1 {
-	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1;
+export interface EndoDevelopAttemptsViewV2 {
+	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2;
 	state: "ready" | "no-task" | "unreadable";
 	taskId: string | null;
-	attempts: EndoDevelopAttemptViewV1[];
+	attempts: EndoDevelopAttemptViewV2[];
 	problems: number;
 }

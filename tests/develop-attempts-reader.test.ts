@@ -14,7 +14,7 @@ interface Call {
 }
 
 const view = (taskId: string): AttemptsView => ({
-	schemaVersion: "endo.develop-attempts-view.v1",
+	schemaVersion: "endo.develop-attempts-view.v2",
 	state: "ready",
 	taskId,
 	attempts: [],

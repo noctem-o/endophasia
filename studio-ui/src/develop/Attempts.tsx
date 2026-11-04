@@ -6,10 +6,18 @@
 // Under each attempt, its verification receipts (docs/designs/develop-verification-receipts.md): what Endophasia observed when the operator
 // ran a check in a terminal, at which commit, and how that commit relates to this workbench's working tree now. Read-only: nothing here
 // runs a check, and a receipt is never shown as the task's acceptance.
+//
+// Above them, when the operator authorised sending the attempt's brief to Pi from the live workbench's terminal, what the session's own
+// records say happened (docs/designs/develop-attempt-execution.md): sent or not, Pi's reply, and how the run after it ended, as Pi reported
+// it. It is a historical reading: nothing here reaches the session, and nothing here can send, re-send or retry an attempt.
 import { type ReactElement, useEffect, useRef } from "react";
 import {
 	ATTEMPT_LABELS,
 	type Attempt,
+	EXECUTION_RUN_LABELS,
+	EXECUTION_SEND_LABELS,
+	type Execution,
+	executionSent,
 	RECEIPT_LIMITATION_TEXT,
 	RECEIPT_OUTCOME_LABELS,
 	RECEIPT_REASON_TEXT,
@@ -139,6 +147,11 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 						</span>
 						<span className="attempt-objective">{first}</span>
 						<span className="dim small">prepared {when(a.preparedAtMs)}</span>
+						{a.execution === null ? null : (
+							<span className="chip-ref" data-send={a.execution.send} data-testid="attempt-sent-chip">
+								{executionSent(a.execution) ? "Sent to Pi" : "Authorised for Pi"}
+							</span>
+						)}
 						<LatestCheck attempt={a} />
 					</span>
 				</summary>
@@ -167,6 +180,7 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 							{a.outcome.note === "" ? null : <p className="task-text">{a.outcome.note}</p>}
 						</div>
 					)}
+					{a.execution === null ? null : <ExecutionBlock execution={a.execution} />}
 					<div className="attempt-brief-head">
 						<span className="dim small">
 							Brief: select it, or copy it, and paste it into your agent yourself.
@@ -193,6 +207,34 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 				</div>
 			</details>
 		</li>
+	);
+}
+
+/** What the session recorded after the operator authorised sending this attempt to Pi. A reading of records, never a live control. */
+function ExecutionBlock({ execution: e }: { execution: Execution }): ReactElement {
+	return (
+		<div className="small attempt-execution" data-testid="attempt-execution" data-send={e.send} data-run={e.run}>
+			<p>
+				<strong>{EXECUTION_SEND_LABELS[e.send]}</strong>
+				{e.refusal === null ? null : <span className="dim"> ({e.refusal})</span>}
+				{e.disposition === null ? null : <span className="dim"> (Pi: {e.disposition})</span>}.
+			</p>
+			{executionSent(e) ? <p data-testid="attempt-run">{EXECUTION_RUN_LABELS[e.run]}.</p> : null}
+			<p className="dim">
+				You authorised it on the workbench's terminal ({when(e.authorizedAtMs)}), for session{" "}
+				<span className="mono">{e.session}</span> on task revision {e.taskRevision}. This is what that session
+				recorded, read now: it does not reach the session, and a run Pi reports as completed is not verification.
+				{e.evidence === "partial"
+					? " Part of the session log could not be read, so later records may be missing."
+					: ""}
+			</p>
+			{e.brief === "differs" ? (
+				<p className="attempt-changed" data-testid="attempt-brief-differs">
+					This attempt's brief no longer renders as the text that was approved: its record was changed after it was
+					authorised.
+				</p>
+			) : null}
+		</div>
 	);
 }
 

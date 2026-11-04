@@ -15,6 +15,7 @@
 // CLI is the operator's own process; the workbench reaches only `viewFor`, for its launch's project, after the broker's grant check).
 
 import { randomBytes } from "node:crypto";
+import type { EndoDevelopAttemptExecutionViewV0 } from "../../protocol/develop-attempt-execution.ts";
 import {
 	checkEndoDevelopAttemptInputV0,
 	ENDO_ATTEMPT_ID_PATTERN_V0,
@@ -22,14 +23,14 @@ import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
-	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
+	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
 	ENDO_DEVELOP_BRIEF_V0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
 	type EndoDevelopAttemptStateV0,
-	type EndoDevelopAttemptsViewV1,
+	type EndoDevelopAttemptsViewV2,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV1,
+	type EndoDevelopAttemptViewV2,
 	type EndoDevelopTaskWordV0,
 	endoDevelopAttemptStateV0,
 	endoDevelopTaskWordsChangedV0,
@@ -54,6 +55,7 @@ import type {
 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
+import { type EndoSessionLogReadV0, endoAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
 
 /**
  * Why an operation was refused. Nothing was written for any of them.
@@ -85,6 +87,8 @@ export type DevelopAttemptsResultV0<T> =
 /** An attempt as the operator's terminal shows it: its records, its derived state, and what is known now of its task. */
 export interface DevelopAttemptReportV0 extends EndoAttemptEntryV0 {
 	state: EndoDevelopAttemptStateV0;
+	/** What the session's records say happened after the operator authorised sending it to Pi; null when that was never authorised. */
+	execution: EndoDevelopAttemptExecutionViewV0 | null;
 	/**
 	 * The task now: `present` (in the attempt's project), `not-found` (the task file is readable and has no such task in that project),
 	 * `unavailable` (the task file cannot be read now). Only `present` compares words.
@@ -120,7 +124,7 @@ export const endoShownTextV0 = (text: string, max: number): string => {
 function receiptsOf(
 	attemptId: string,
 	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
-): EndoDevelopAttemptViewV1["receipts"] {
+): EndoDevelopAttemptViewV2["receipts"] {
 	if (receipts === null) return { state: "ready", list: [], problems: 0 };
 	const read = receipts.store.read(attemptId);
 	if (!read.ok) return { state: "unreadable", list: [], problems: 0 };
@@ -147,11 +151,46 @@ export class DevelopAttemptsServiceV0 {
 	readonly #tasks: DevelopTasksStoreV0;
 	readonly #attempts: DevelopAttemptsStoreV0;
 	readonly #now: () => number;
+	readonly #sessionLog: () => EndoSessionLogReadV0;
 
-	constructor(tasks: DevelopTasksStoreV0, attempts: DevelopAttemptsStoreV0, options: { now?: () => number } = {}) {
+	/**
+	 * `sessionLog` reads the store's event log, read-only, for attempts that were authorised to be sent to Pi. It is called at most once per
+	 * read, and only when such an attempt is in it. Without it, their execution is shown as `evidence-unavailable`.
+	 */
+	constructor(
+		tasks: DevelopTasksStoreV0,
+		attempts: DevelopAttemptsStoreV0,
+		options: { now?: () => number; sessionLog?: () => EndoSessionLogReadV0 } = {},
+	) {
 		this.#tasks = tasks;
 		this.#attempts = attempts;
 		this.#now = options.now ?? Date.now;
+		this.#sessionLog = options.sessionLog ?? (() => ({ state: "unavailable" }));
+	}
+
+	/** One read of the session log, shared by every attempt of one answer, made only if one of them needs it. */
+	#logOnce(): () => EndoSessionLogReadV0 {
+		let read: EndoSessionLogReadV0 | null = null;
+		return () => {
+			if (read === null) {
+				try {
+					read = this.#sessionLog();
+				} catch {
+					read = { state: "unavailable" };
+				}
+			}
+			return read;
+		};
+	}
+
+	#execution(
+		entry: EndoAttemptEntryV0,
+		log: () => EndoSessionLogReadV0,
+		aliasOf?: (sessionId: string) => string,
+	): EndoDevelopAttemptExecutionViewV0 | null {
+		return entry.authorized === null
+			? null
+			: endoAttemptExecutionViewV0(entry.authorized, log(), renderEndoDevelopBriefV0(entry.attempt), aliasOf);
 	}
 
 	// ---- reading ---------------------------------------------------------------------------------------------------------------------
@@ -162,7 +201,11 @@ export class DevelopAttemptsServiceV0 {
 		return read.ok ? read.file : null;
 	}
 
-	#report(entry: EndoAttemptEntryV0, file: EndoDevelopTasksFileV1 | null): DevelopAttemptReportV0 {
+	#report(
+		entry: EndoAttemptEntryV0,
+		file: EndoDevelopTasksFileV1 | null,
+		log: () => EndoSessionLogReadV0 = this.#logOnce(),
+	): DevelopAttemptReportV0 {
 		const { attempt } = entry;
 		const task =
 			file === null
@@ -171,6 +214,7 @@ export class DevelopAttemptsServiceV0 {
 		return {
 			...entry,
 			state: endoDevelopAttemptStateV0(entry.handoff, entry.outcome),
+			execution: this.#execution(entry, log),
 			task: file === null ? "unavailable" : task === undefined ? "not-found" : "present",
 			taskWordsChanged: task === undefined ? [] : endoDevelopTaskWordsChangedV0(attempt, task),
 		};
@@ -188,6 +232,7 @@ export class DevelopAttemptsServiceV0 {
 		const file = this.#taskFile();
 		// A project the readable task file does not have is said, not answered with an empty list (a mistyped id would look like "none").
 		if (file !== null && !file.projects.some((p) => p.id === projectId)) return refuse("not-found");
+		const log = this.#logOnce();
 		return {
 			ok: true,
 			value: {
@@ -195,7 +240,7 @@ export class DevelopAttemptsServiceV0 {
 					.filter(
 						(e) => e.attempt.projectId === projectId && (taskId === undefined || e.attempt.taskId === taskId),
 					)
-					.map((e) => this.#report(e, file)),
+					.map((e) => this.#report(e, file, log)),
 				problems: read.problems,
 			},
 		};
@@ -225,9 +270,10 @@ export class DevelopAttemptsServiceV0 {
 	viewFor(
 		projectId: string,
 		receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null = null,
-	): EndoDevelopAttemptsViewV1 {
-		const empty = (state: EndoDevelopAttemptsViewV1["state"], taskId: string | null): EndoDevelopAttemptsViewV1 => ({
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
+		aliasOf?: (sessionId: string) => string,
+	): EndoDevelopAttemptsViewV2 {
+		const empty = (state: EndoDevelopAttemptsViewV2["state"], taskId: string | null): EndoDevelopAttemptsViewV2 => ({
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
 			state,
 			taskId,
 			attempts: [],
@@ -240,14 +286,15 @@ export class DevelopAttemptsServiceV0 {
 		if (taskId === null) return empty("no-task", null);
 		const read = this.#attempts.read();
 		if (!read.ok) return empty("unreadable", taskId);
+		const log = this.#logOnce();
 		return {
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V1,
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
 			state: "ready",
 			taskId,
 			attempts: read.entries
 				.filter((e) => e.attempt.projectId === projectId && e.attempt.taskId === taskId)
 				.map((e) => {
-					const r = this.#report(e, file);
+					const r = this.#report(e, file, () => ({ state: "unavailable" }));
 					return {
 						id: e.attempt.id,
 						state: r.state,
@@ -265,6 +312,8 @@ export class DevelopAttemptsServiceV0 {
 						taskWordsChanged: r.taskWordsChanged,
 						brief: renderEndoDevelopBriefV0(e.attempt),
 						receipts: receiptsOf(e.attempt.id, receipts),
+						// The session is shown by its presented alias: a label, never a handle to it.
+						execution: this.#execution(e, log, aliasOf),
 					};
 				}),
 			problems: read.problems.length,

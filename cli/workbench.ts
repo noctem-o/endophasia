@@ -120,6 +120,13 @@ export async function startWorkbenchV0(
 				`=== WORKBENCH: approve this ${what}? ===`,
 				`session     ${request.session}`,
 				`attachment  ${request.attachment}`,
+				...(request.requestedFrom === undefined
+					? []
+					: [
+							request.requestedFrom === "page"
+								? "requested   from the paired page (it can only ask: nothing is sent unless you type the phrase here)"
+								: "requested   on this terminal",
+						]),
 				request.message === null
 					? `expires ${hhmmss(request.expiresAtMs)}`
 					: `size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
@@ -184,7 +191,7 @@ export async function startWorkbenchV0(
 		...(projectId === undefined
 			? {}
 			: {
-					// Sending an attempt's brief: requested only by the `attempt <id>` line below, on this terminal.
+					// Sending an attempt's brief: requested by the `attempt <id>` line below or by the paired page; approved only on this terminal.
 					attempts: new DevelopAttemptDispatchV0(
 						new DevelopTasksStoreV0(session.owner.options.root),
 						new DevelopAttemptsStoreV0(session.owner.options.root),
@@ -227,7 +234,7 @@ export async function startWorkbenchV0(
 		() => broker.endSession(),
 	);
 	// `attempt <id>`: the operator asks, HERE, to send a prepared work attempt's brief to this Pi session. It is only a request: the brief is
-	// shown whole and nothing is sent unless its own phrase is typed. The page has no way to make this request.
+	// shown whole and nothing is sent unless its own phrase is typed. The paired page can make the same request (attempt/propose); it is approved here too.
 	const requestAttempt = (attemptId: string): void => {
 		const asked = broker.requestAttempt(attemptId);
 		if (!asked.ok) {

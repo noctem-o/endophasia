@@ -10,7 +10,7 @@
 // Above them, when the operator authorised sending the attempt's brief to Pi from the live workbench's terminal, what the session's own
 // records say happened (docs/designs/develop-attempt-execution.md): sent or not, Pi's reply, and how the run after it ended, as Pi reported
 // it. It is a historical reading: nothing here reaches the session, and nothing here can send, re-send or retry an attempt.
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
 import {
 	ATTEMPT_LABELS,
 	type Attempt,
@@ -43,6 +43,7 @@ export function AttemptsSection({
 	tasksCurrent,
 	focus = null,
 	onFocused,
+	request,
 }: {
 	attempts: AttemptsState;
 	task: Task;
@@ -51,6 +52,11 @@ export function AttemptsSection({
 	/** A receipt to open once it is shown (from the overview): its attempt is opened and the receipt scrolled to and focused. */
 	focus?: ReceiptFocus | null;
 	onFocused?(): void;
+	/**
+	 * Only on the live Pi workbench: the control that asks the attached terminal to approve sending an attempt's brief
+	 * (develop/AttemptRequest.tsx). Absent on the workspace host and in Studio, where nothing here can ask for anything.
+	 */
+	request?: (attempt: Attempt) => ReactNode;
 }): ReactElement | null {
 	const { view, problem } = attempts;
 	const list = useRef<HTMLUListElement>(null);
@@ -76,8 +82,19 @@ export function AttemptsSection({
 	const prepare = `endo attempt prepare --root <store> --project ${task.projectId} --task ${task.id} --objective "…"`;
 	return (
 		<section className="task-block" aria-label="Attempts" data-testid="task-attempts">
-			<h3 title="One request you prepared on this task, with its brief. Recorded by you; nothing here sends it or checks a result.">
-				Attempts <span className="dim task-clause">briefs you prepared; nothing here sends one</span>
+			<h3
+				title={
+					request === undefined
+						? "One request you prepared on this task, with its brief. Recorded by you; nothing here sends it or checks a result."
+						: "One request you prepared on this task, with its brief. This page can ask to send it; only the attached terminal approves. Nothing here checks a result."
+				}
+			>
+				Attempts{" "}
+				<span className="dim task-clause">
+					{request === undefined
+						? "briefs you prepared; nothing here sends one"
+						: "briefs you prepared; sending one is approved in the attached terminal"}
+				</span>
 			</h3>
 			{view === null ? (
 				<p className="dim small" data-testid="attempts-pending">
@@ -115,7 +132,7 @@ export function AttemptsSection({
 					) : (
 						<ul className="plain task-refs" data-testid="attempt-list" ref={list}>
 							{view.attempts.map((a) => (
-								<AttemptItem key={a.id} attempt={a} />
+								<AttemptItem key={a.id} attempt={a} request={request} />
 							))}
 						</ul>
 					)}
@@ -132,7 +149,13 @@ export function AttemptsSection({
 	);
 }
 
-function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
+function AttemptItem({
+	attempt: a,
+	request,
+}: {
+	attempt: Attempt;
+	request: ((attempt: Attempt) => ReactNode) | undefined;
+}): ReactElement {
 	const first = a.objective.split("\n", 1)[0] ?? "";
 	return (
 		<li data-testid="attempt" data-state={a.state} data-attempt-id={a.id}>
@@ -196,6 +219,7 @@ function AttemptItem({ attempt: a }: { attempt: Attempt }): ReactElement {
 						spellCheck={false}
 						value={a.brief}
 					/>
+					{request?.(a)}
 					<p className="dim small">
 						A copied brief holds your private task text; a clipboard manager may keep it. Record what happened in
 						a terminal:

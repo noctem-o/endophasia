@@ -24,6 +24,9 @@
 //                               Needs the grant. READ ONLY: nothing is decided, written or run here.
 //   POST intervention/check {proposalId}     start a bounded check of whether the capture shows a STEER or QUEUE was consumed; the answer is read
 //                                             back from the request's view. Needs the grant.
+//   POST attempt/propose {attemptId}   ask to send a prepared work attempt's brief as ONE new prompt. Needs the grant. Only REQUESTS: the
+//                                      page names the attempt and nothing else; the brief is read from the attempt's own record here. Its
+//                                      state is read, and it is withdrawn, through prompt/<id> and prompt/discard, as any prompt.
 //
 // Authority. The browser can request and can never authorise. A prompt is sent only after the operator types its exact digest on the
 // attached process's CONTROLLING TERMINAL (the `approver` below); a page script cannot do that. The grant (obtained by typing the
@@ -34,11 +37,12 @@
 // proposed → authorized → dispatched → accepted, or refused with a closed reason. HTTP acceptance of a request means only that it was
 // REQUESTED. The prompt text is never recorded; it is held in memory until the prompt is dispatched or refused, then dropped.
 //
-// A DEVELOP work attempt's brief can be sent as such a prompt (docs/designs/develop-attempt-execution.md), but only when the operator asks
-// for it ON THE ATTACHED TERMINAL (`attempt <id>`, cli/workbench.ts): there is no page route for it. The broker renders the brief from the
-// attempt's own record, shows it whole for approval under its own phrase (`APPROVE ATTEMPT <16 hex>`), and, once approved and gated, writes
-// the attempt's one authorisation record (runtime/contracts/develop-attempt-dispatch.ts) BEFORE it records the send. The prompt chain is
-// the same chain; nothing else changes.
+// A DEVELOP work attempt's brief can be sent as such a prompt (docs/designs/develop-attempt-execution.md). The operator asks for it on the
+// attached terminal (`attempt <id>`, cli/workbench.ts) or from the paired page (`attempt/propose`, docs/designs/develop-attempt-workbench.md):
+// either way it is only a REQUEST, and the page's request is one more thing a grant may ask, never approve. The broker renders the brief
+// from the attempt's own record (never text from a page), shows it whole on the terminal for approval under its own phrase (`APPROVE
+// ATTEMPT <16 hex>`) with where it was requested from, and, once approved and gated, writes the attempt's one authorisation record
+// (runtime/contracts/develop-attempt-dispatch.ts) BEFORE it records the send. The prompt chain is the same chain; nothing else changes.
 //
 // STEER, QUEUE and STOP are not new machinery: they go through the existing intervention desk and its chain (adapters/pi/
 // workbench-interventions.ts), behind the same terminal approval. Not here: a shell, a PTY, a raw Pi RPC passthrough, or any store read
@@ -118,6 +122,8 @@ export interface WorkbenchApprovalRequestV0 {
 	supersedes?: "steer" | "queue" | null;
 	/** For an attempt: which one, and its task as checked when it was requested. The message is its brief. */
 	attempt?: { attemptId: string; taskId: string; taskRevision: number; preparedOnRevision: number };
+	/** For a prompt or an attempt: where it was requested, on this terminal or from the paired page. Either way only the terminal approves. */
+	requestedFrom?: "terminal" | "page";
 }
 /** "allow" only for the exact phrase; "deny" for any other answer; null when there was no answer in time or it was withdrawn. */
 export type WorkbenchApproverV0 = (
@@ -153,7 +159,8 @@ export interface WorkbenchOptionsV0 {
 	aliasOf?: (sessionId: string) => string;
 	/**
 	 * Sending a work attempt's brief (runtime/contracts/develop-attempt-dispatch.ts), for the project named with `--project`. Reached only by
-	 * `requestAttempt`, which only the attached terminal calls. Without it, attempts cannot be sent from this workbench.
+	 * `requestAttempt` (the attached terminal's `attempt <id>`) and the page's `attempt/propose` (under its grant); both only request.
+	 * Without it, attempts cannot be sent from this workbench.
 	 */
 	attempts?: Pick<DevelopAttemptDispatchV0, "check" | "authorize">;
 	now?: () => number;
@@ -186,6 +193,17 @@ export interface WorkbenchCommandViewV0 {
 	/** The first 16 hex characters of the digest the operator types to approve. */
 	digestPrefix: string;
 	expiresAtMs: number;
+	/**
+	 * For a work attempt's brief: which attempt and task, as checked when it was requested, and whether its one authorisation record was
+	 * written for this request (from then on the attempt can never be sent again, whatever happened next). Null for a typed prompt.
+	 */
+	attempt: {
+		attemptId: string;
+		taskId: string;
+		bound: boolean;
+		/** Why it could not be bound at the moment of sending (a closed code), when it could not. */
+		refusal: DevelopAttemptDispatchRefusalV0 | null;
+	} | null;
 }
 
 interface Proposal {
@@ -343,6 +361,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			attachment: this.#o.attachment,
 			offers: {
 				prompt,
+				attempt: this.#attemptOffer(prompt),
 				...Object.fromEntries(
 					(["steer", "queue", "stop"] as const).map((operation) => [
 						operation,
@@ -361,6 +380,13 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				firstSeq: this.transcript.firstSeq,
 			},
 		};
+	}
+
+	/** Whether a work attempt's brief can be requested now: as a prompt can, on a workbench started with `--project`. */
+	#attemptOffer(prompt: { offered: boolean; reason: string | null }): { offered: boolean; reason: string | null } {
+		if (this.#o.attempts === undefined)
+			return { offered: false, reason: "Attempts can be sent only from a workbench started with --project." };
+		return prompt;
 	}
 
 	/** Whether a new prompt can be proposed now, and if not, why (fixed sentences). */
@@ -452,6 +478,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		}
 		if (a === "prompt" && b === "propose" && more.length === 0 && request.method === "POST" && request.query === "")
 			return this.#propose(request.grant as string, isRecord(request.body) ? request.body : null);
+		if (a === "attempt" && b === "propose" && more.length === 0 && request.method === "POST" && request.query === "")
+			return this.#proposeAttempt(request.grant as string, isRecord(request.body) ? request.body : null);
 		if (a === "prompt" && b === "discard" && more.length === 0 && request.method === "POST" && request.query === "")
 			return this.#discard(isRecord(request.body) ? request.body.proposalId : undefined);
 		if (a === "prompt" && b !== undefined && more.length === 0 && request.method === "GET" && request.query === "") {
@@ -495,9 +523,38 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	/**
 	 * The operator typed `attempt <id>` on the attached terminal: request that attempt's brief as a new prompt. The same chain, offer and
 	 * approval as a prompt from the page, with the brief rendered here from the attempt's own record (never text from a page), shown whole
-	 * on the terminal under its own phrase. Only the terminal calls this; no route reaches it. It sends nothing: it only REQUESTS.
+	 * on the terminal under its own phrase. The terminal calls this (no grant); the page's route is `#proposeAttempt`. It sends nothing: it only REQUESTS.
 	 */
 	requestAttempt(attemptId: string): WorkbenchTerminalRequestV0 {
+		return this.#requestAttempt(null, attemptId);
+	}
+
+	/**
+	 * The paired page asks to send a prepared attempt's brief. The body names the attempt and nothing else: no text, task, session or
+	 * project is taken from the page. The same checks and the same chain as the terminal's `attempt <id>`, under the page's grant (which
+	 * must still hold when it is sent). It only REQUESTS: the operator approves it on the terminal, where it is shown whole.
+	 */
+	#proposeAttempt(grant: string, body: Record<string, unknown> | null): { status: number; body: unknown } {
+		if (body === null || Object.keys(body).join() !== "attemptId" || typeof body.attemptId !== "string")
+			return refuse(400, "bad-request");
+		const asked = this.#requestAttempt(grant, body.attemptId);
+		if (asked.ok) return reply(202, asked.view);
+		switch (asked.code) {
+			case "not-configured":
+				return refuse(404, "not-found");
+			case "not-offered":
+				return refuse(409, "not-offered");
+			case "not-recording":
+				return refuse(503, "not-recording");
+			case "bad-request":
+				return refuse(400, "bad-request");
+			default:
+				// Why this attempt cannot be requested, as a closed code: the page words it; nothing was recorded or sent.
+				return refuse(409, `attempt-${asked.code}`);
+		}
+	}
+
+	#requestAttempt(grant: string | null, attemptId: string): WorkbenchTerminalRequestV0 {
 		const attempts = this.#o.attempts;
 		if (attempts === undefined)
 			return {
@@ -515,7 +572,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (brief.trim().length === 0 || bytes > ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0)
 			return { ok: false, code: "brief-too-large", reason: null };
 		if (UNSAFE_PROMPT_CHARS.test(brief)) return { ok: false, code: "brief-unsafe", reason: null };
-		const opened = this.#open(null, brief, checked.value);
+		const opened = this.#open(grant, brief, checked.value);
 		return opened === null
 			? { ok: false, code: "not-recording", reason: "The session is not recording." }
 			: { ok: true, view: opened.view };
@@ -564,6 +621,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				bytes,
 				digestPrefix: proposalDigest.slice(0, 16),
 				expiresAtMs,
+				attempt:
+					attempt === null
+						? null
+						: { attemptId: attempt.attemptId, taskId: attempt.taskId, bound: false, refusal: null },
 			},
 			proposalDigest,
 			proposedEventId: proposed.id,
@@ -639,6 +700,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					bytes: p.view.bytes,
 					message: p.message as string,
 					expiresAtMs: p.view.expiresAtMs,
+					requestedFrom: p.grant === null ? "terminal" : "page",
 					...(p.attempt === null
 						? {}
 						: {
@@ -707,6 +769,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			}
 			if (!bound.ok) {
 				p.attemptRefusal = bound.code;
+				p.view = {
+					...p.view,
+					attempt: { ...(p.view.attempt as NonNullable<WorkbenchCommandViewV0["attempt"]>), refusal: bound.code },
+				};
 				return settle(
 					bound.code === "already-authorized"
 						? "duplicate"
@@ -717,6 +783,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				);
 			}
 			p.attemptBound = true;
+			p.view = {
+				...p.view,
+				attempt: { ...(p.view.attempt as NonNullable<WorkbenchCommandViewV0["attempt"]>), bound: true },
+			};
 		}
 		p.view = { ...p.view, state: "dispatching" };
 		let dispatched: EndoEventV0;

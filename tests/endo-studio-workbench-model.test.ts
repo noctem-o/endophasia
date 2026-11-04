@@ -30,6 +30,7 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	attachment: "pi.default",
 	offers: {
 		prompt: { offered: true, reason: null },
+		attempt: { offered: true, reason: null },
 		steer: { offered: false, reason: "No run is open." },
 		queue: { offered: false, reason: "No run is open." },
 		stop: { offered: false, reason: "No run is open." },

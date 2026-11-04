@@ -274,10 +274,12 @@ The operator approved (1) the broker serves the workbench page itself, (2) termi
 - **A real model run is not part of the automated tests.** They use the fake Pi (a real child process speaking Pi's RPC) and a stand-in
   model endpoint. A run against a real Pi and model needs the operator's explicit approval and may cost money.
 
-**Attempts (DEVELOP Slice I).** A prepared work attempt's brief can be sent as a prompt on this same chain. The operator asks on the attached
-terminal (`attempt <id>`), not from the page, and approves it with its own phrase (`APPROVE ATTEMPT <16 hex>`). The broker writes the
-attempt's authorisation record after the approval and before it records the send. See
-[designs/develop-attempt-execution.md](designs/develop-attempt-execution.md).
+**Attempts (DEVELOP Slices I and J).** A prepared work attempt's brief can be sent as a prompt on this same chain. The operator asks on the
+attached terminal (`attempt <id>`) or from the paired page (Task → the attempt → **Request sending**, `POST attempt/propose {attemptId}`:
+the attempt's id only, never its text), and approves it on the terminal, with its own phrase (`APPROVE ATTEMPT <16 hex>`). The grant only
+lets the page ask. The broker writes the attempt's authorisation record after the approval and before it records the send. See
+[designs/develop-attempt-execution.md](designs/develop-attempt-execution.md) and
+[designs/develop-attempt-workbench.md](designs/develop-attempt-workbench.md).
 
 ## 13. Slice B: STEER, QUEUE and STOP through the broker
 

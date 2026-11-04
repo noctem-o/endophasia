@@ -54,6 +54,8 @@ describe("the frontend's source", () => {
 				"model/workspace-wire.ts",
 				"use-workspace.ts",
 				"develop/Attempts.tsx",
+				"develop/AttemptRequest.tsx",
+				"model/attempt-request.ts",
 				"model/attempts-wire.ts",
 				"use-attempts.ts",
 				"model/attempts-reader.ts",
@@ -193,15 +195,20 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(19);
+		expect(api.match(/\/api\//g)?.length).toBe(20);
 		// Oh My Pi's saved sessions: two fixed GET routes, the second named only by an opaque selector the list gave, gated first.
 		expect(api).toContain("./api/v0/develop/omp/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(12);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(13);
 		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
+		// Asking to send a prepared attempt (docs/designs/develop-attempt-workbench.md): one fixed route, its body the attempt's id alone,
+		// gated to the id's shape first. No brief, task, session or project travels from the page.
+		expect(api).toContain('"./api/v0/workbench/attempt/propose"');
+		expect(api).toContain("body = JSON.stringify({ attemptId: request.attemptId });");
+		expect(api).toMatch(/if \(!\/\^endo\\\.attempt\\\.\[0-9a-f\]\{32\}\$\/\.test\(request\.attemptId\)\)/);
 		expect(api).toMatch(/\.\/api\/v0\/workbench\/prompt\/\$\{request\.proposalId\}/);
 		// The workspace routes (the operator's tasks): one GET, and a closed list of six POSTs built from a task id and a revision the page
 		// holds, plus the operator's words. Nothing names a project, a path, a session, a launch or a command.
@@ -312,6 +319,17 @@ describe("the frontend's source", () => {
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(
 			/from "\.\.\/api\.ts"|use-workbench|use-workspace|propose|intervene|withdraw|\.prompt\b|fetch|composer|draft/,
 		);
+		// The one control that can ask to send an attempt: only the live conversation renders it (the workspace host's desk and Studio
+		// cannot), it asks by the attempt's id, withdraws only that request, and touches no composer, draft, prompt or intervention.
+		const request = sources["develop/AttemptRequest.tsx"]!;
+		for (const [name, text] of Object.entries(sources))
+			if (!["develop/Live.tsx", "develop/AttemptRequest.tsx", "use-workbench.ts"].includes(name))
+				expect(text, name).not.toMatch(/AttemptRequest\b(?!s)|requestAttempt/);
+		expect(sources["develop/Live.tsx"]).toContain('import { AttemptRequest } from "./AttemptRequest.tsx";');
+		expect(request.match(/wb\.[a-zA-Z]+\(/g)?.sort()).toEqual(["wb.discard(", "wb.requestAttempt("]);
+		expect(request).not.toMatch(/from "\.\.\/api\.ts"|fetch|propose|intervene|setDraft|composer|\.prompt\b/);
+		expect(request).not.toMatch(/verified (task|work)|agent succeeded|task (is )?(done|complete)/i);
+		expect(sources["model/attempt-request.ts"]).not.toMatch(/Date\.now|new Date|fetch|from "react"|localStorage/);
 		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
 		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v2"');

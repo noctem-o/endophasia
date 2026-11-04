@@ -159,6 +159,12 @@ export function useWorkbench(active: boolean) {
 			if (reply.kind === "command") void read();
 			return reply;
 		},
+		/** Ask to send a prepared attempt's brief, by its id. Only a request: it is approved in the attached terminal, or not at all. */
+		requestAttempt: async (attemptId: string) => {
+			const reply = await send({ kind: "attempt", attemptId });
+			if (reply.kind === "command") void read();
+			return reply;
+		},
 		intervene: async (operation: InterventionOperation, message: string | null) => {
 			const reply = await send({ kind: "intervene", operation, message });
 			if (reply.kind === "intervention") {

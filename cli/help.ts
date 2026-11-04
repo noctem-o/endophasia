@@ -95,10 +95,11 @@ Commands that write to a store:
 
 Commands that run a prompted agent session or an experiment:
   harness attach <root> ...          start a Pi session
-                                     with --control --workbench --project <id>, type "attempt <id>" on that terminal to ask to send
-                                     a prepared attempt's brief to this Pi session as a new prompt: it is shown whole and sent only
-                                     after you type its APPROVE ATTEMPT phrase, at most once per attempt, never retried
-                                     (docs/designs/develop-attempt-execution.md). "attempt show" then reads what the session recorded
+                                     with --control --workbench --project <id>, type "attempt <id>" on that terminal, or use the
+                                     paired page's Task view, to ask to send a prepared attempt's brief to this Pi session as a new
+                                     prompt: it is shown whole on that terminal and sent only after you type its APPROVE ATTEMPT
+                                     phrase there, at most once per attempt, never retried (docs/designs/develop-attempt-execution.md,
+                                     docs/designs/develop-attempt-workbench.md). "attempt show" then reads what the session recorded
   harness study <root> ...           a live study: requires --authorize-live-study
   experiment <run|report> ...
   replay, proxy <record|replay> ...

@@ -15,9 +15,11 @@
  * These commands are a translation of flags and refusals around the shared services (runtime/contracts/develop-attempts.ts and
  * develop-receipts.ts).
  */
+
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
+import { ENDO_ATTEMPT_RUN_LABELS_V0, ENDO_ATTEMPT_SEND_LABELS_V0 } from "../protocol/develop-attempt-execution.ts";
 import { ENDO_DEVELOP_ATTEMPT_LABELS_V0, ENDO_DEVELOP_ATTEMPT_LIMITS_V0 } from "../protocol/develop-attempts.ts";
 import {
 	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
@@ -44,6 +46,7 @@ import {
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
+import { endoSessionLogV0 } from "./develop-service.ts";
 import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
@@ -68,7 +71,9 @@ function unwrap<T>(result: DevelopAttemptsResultV0<T>): T {
 }
 
 const serviceAt = (root: string) =>
-	new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
+	new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root), {
+		sessionLog: () => endoSessionLogV0(root),
+	});
 
 const print = (value: unknown): void => {
 	process.stdout.write(`${canonicalEndoJsonV0(value as never)}\n`);
@@ -126,6 +131,16 @@ const summary = (r: DevelopAttemptReportV0) => ({
 	target: r.handoff?.target ?? null,
 	task: r.task,
 	taskWordsChanged: r.taskWordsChanged,
+	// Sent to Pi through the workbench? What the session's own records say, in the words shown everywhere. Never a verdict on the work.
+	execution:
+		r.execution === null
+			? null
+			: {
+					send: r.execution.send,
+					sendLabel: ENDO_ATTEMPT_SEND_LABELS_V0[r.execution.send],
+					run: r.execution.run,
+					runLabel: ENDO_ATTEMPT_RUN_LABELS_V0[r.execution.run],
+				},
 });
 
 const shown = (r: DevelopAttemptReportV0) => ({
@@ -133,6 +148,16 @@ const shown = (r: DevelopAttemptReportV0) => ({
 	attempt: r.attempt,
 	handoff: r.handoff,
 	outcome: r.outcome,
+	// The authorisation record as written (ids to look up in the session's log), and the full reading of that log.
+	authorized: r.authorized,
+	execution:
+		r.execution === null
+			? null
+			: {
+					...r.execution,
+					sendLabel: ENDO_ATTEMPT_SEND_LABELS_V0[r.execution.send],
+					runLabel: ENDO_ATTEMPT_RUN_LABELS_V0[r.execution.run],
+				},
 });
 
 function attemptOf(flags: Map<string, string>): string {
@@ -219,7 +244,12 @@ function list(argv: readonly string[]): void {
 
 function show(argv: readonly string[]): void {
 	const { root, flags } = flagsOf(argv, ["--attempt"], USAGE);
-	print({ attempt: shown(unwrap(serviceAt(root).get(attemptOf(flags)))) });
+	const report = unwrap(serviceAt(root).get(attemptOf(flags)));
+	print({ attempt: shown(report) });
+	if (report.execution !== null)
+		process.stderr.write(
+			`execution: ${ENDO_ATTEMPT_SEND_LABELS_V0[report.execution.send]}. ${ENDO_ATTEMPT_RUN_LABELS_V0[report.execution.run]}. This is what the session recorded, read now; it is not verification. Check the work with \`endo attempt check\`, and set the task's status yourself.\n`,
+		);
 }
 
 // ---- verification receipts ------------------------------------------------------------------------------------------------------------

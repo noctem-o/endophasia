@@ -34,6 +34,12 @@
 // proposed → authorized → dispatched → accepted, or refused with a closed reason. HTTP acceptance of a request means only that it was
 // REQUESTED. The prompt text is never recorded; it is held in memory until the prompt is dispatched or refused, then dropped.
 //
+// A DEVELOP work attempt's brief can be sent as such a prompt (docs/designs/develop-attempt-execution.md), but only when the operator asks
+// for it ON THE ATTACHED TERMINAL (`attempt <id>`, cli/workbench.ts): there is no page route for it. The broker renders the brief from the
+// attempt's own record, shows it whole for approval under its own phrase (`APPROVE ATTEMPT <16 hex>`), and, once approved and gated, writes
+// the attempt's one authorisation record (runtime/contracts/develop-attempt-dispatch.ts) BEFORE it records the send. The prompt chain is
+// the same chain; nothing else changes.
+//
 // STEER, QUEUE and STOP are not new machinery: they go through the existing intervention desk and its chain (adapters/pi/
 // workbench-interventions.ts), behind the same terminal approval. Not here: a shell, a PTY, a raw Pi RPC passthrough, or any store read
 // or write other than those two record chains.
@@ -51,6 +57,11 @@ import {
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
+import type {
+	DevelopAttemptCandidateV0,
+	DevelopAttemptDispatchRefusalV0,
+	DevelopAttemptDispatchV0,
+} from "../../runtime/contracts/develop-attempt-dispatch.ts";
 import type { DevelopLaunchHostV0, DevelopLaunchWorkspaceV0 } from "../../runtime/contracts/develop-workspace.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { EndoPairingV0 } from "../../runtime/contracts/workbench-pairing.ts";
@@ -89,8 +100,11 @@ export interface WorkbenchSessionV0 {
 
 /** What the operator is shown on the controlling terminal to decide. */
 export interface WorkbenchApprovalRequestV0 {
-	/** What the operator is being asked to approve. A prompt starts a run; the others act on the run that is open. */
-	operation: "prompt" | "steer" | "queue" | "stop";
+	/**
+	 * What the operator is being asked to approve. A prompt starts a run, and so does an attempt (a prompt whose text is a work attempt's
+	 * brief); the others act on the run that is open.
+	 */
+	operation: "prompt" | "attempt" | "steer" | "queue" | "stop";
 	proposalId: string;
 	/** The exact phrase that approves this request. Anything else declines. */
 	phrase: string;
@@ -102,6 +116,8 @@ export interface WorkbenchApprovalRequestV0 {
 	expiresAtMs: number;
 	/** For a STOP: the steer or queue it superseded while that was still awaiting approval (it was cancelled unapproved), else null. */
 	supersedes?: "steer" | "queue" | null;
+	/** For an attempt: which one, and its task as checked when it was requested. The message is its brief. */
+	attempt?: { attemptId: string; taskId: string; taskRevision: number; preparedOnRevision: number };
 }
 /** "allow" only for the exact phrase; "deny" for any other answer; null when there was no answer in time or it was withdrawn. */
 export type WorkbenchApproverV0 = (
@@ -135,6 +151,11 @@ export interface WorkbenchOptionsV0 {
 	tasks?: { open(host: DevelopLaunchHostV0): DevelopLaunchWorkspaceV0 };
 	/** The presented alias of a session id (the cockpit's own), so the page can link the live session to its recording. */
 	aliasOf?: (sessionId: string) => string;
+	/**
+	 * Sending a work attempt's brief (runtime/contracts/develop-attempt-dispatch.ts), for the project named with `--project`. Reached only by
+	 * `requestAttempt`, which only the attached terminal calls. Without it, attempts cannot be sent from this workbench.
+	 */
+	attempts?: Pick<DevelopAttemptDispatchV0, "check" | "authorize">;
 	now?: () => number;
 	/** How long the operator has to approve a prompt. Default 5 minutes. */
 	approvalWindowMs?: number;
@@ -172,12 +193,30 @@ interface Proposal {
 	proposalDigest: string;
 	proposedEventId: string;
 	message: string | null;
+	/** The message's keyed digest and length, as the proposal recorded them. */
+	ref: { digest: { algorithm: "hmac-sha256"; keyId: string; value: string }; bytes: number };
 	session: string;
 	attachment: string;
-	grant: string;
+	/** The page grant it was requested under, or null when the operator requested it on the attached terminal itself. */
+	grant: string | null;
+	/** The work attempt whose brief this is, as checked when it was requested; null for a typed prompt. */
+	attempt: DevelopAttemptCandidateV0 | null;
+	/** Why the attempt could not be bound at the moment of sending, when it could not. For the terminal's own account. */
+	attemptRefusal: DevelopAttemptDispatchRefusalV0 | null;
+	/** The attempt's authorisation record was written for this request (so the attempt can never be sent again). */
+	attemptBound: boolean;
 	abort: AbortController;
 	done: Promise<void>;
 }
+
+/** The answer to a request made on the attached terminal: the request's view, or why nothing was requested. */
+export type WorkbenchTerminalRequestV0 =
+	| { ok: true; view: WorkbenchCommandViewV0 }
+	| {
+			ok: false;
+			code: DevelopAttemptDispatchRefusalV0 | "not-offered" | "not-configured" | "not-recording";
+			reason: string | null;
+	  };
 
 /**
  * What a prompt may not contain, because the operator reads it on a terminal to approve it: every control character except a newline and a
@@ -449,10 +488,46 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return refuse(400, "bad-request");
 		const offer = this.#promptOffer();
 		if (!offer.offered) return refuse(409, "not-offered");
+		const opened = this.#open(grant, message, null);
+		return opened === null ? refuse(503, "not-recording") : reply(202, opened.view);
+	}
+
+	/**
+	 * The operator typed `attempt <id>` on the attached terminal: request that attempt's brief as a new prompt. The same chain, offer and
+	 * approval as a prompt from the page, with the brief rendered here from the attempt's own record (never text from a page), shown whole
+	 * on the terminal under its own phrase. Only the terminal calls this; no route reaches it. It sends nothing: it only REQUESTS.
+	 */
+	requestAttempt(attemptId: string): WorkbenchTerminalRequestV0 {
+		const attempts = this.#o.attempts;
+		if (attempts === undefined)
+			return {
+				ok: false,
+				code: "not-configured",
+				reason: "Attempts can be sent only from a workbench started with --project.",
+			};
+		const offer = this.#promptOffer();
+		if (!offer.offered) return { ok: false, code: "not-offered", reason: offer.reason };
+		const checked = attempts.check(attemptId);
+		if (!checked.ok) return { ok: false, code: checked.code, reason: null };
+		// The checks the page's prompts get: a brief is the operator's own text, but the terminal must still show it faithfully.
+		const brief = checked.value.brief;
+		const bytes = Buffer.byteLength(brief, "utf8");
+		if (brief.trim().length === 0 || bytes > ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0)
+			return { ok: false, code: "brief-too-large", reason: null };
+		if (UNSAFE_PROMPT_CHARS.test(brief)) return { ok: false, code: "brief-unsafe", reason: null };
+		const opened = this.#open(null, brief, checked.value);
+		return opened === null
+			? { ok: false, code: "not-recording", reason: "The session is not recording." }
+			: { ok: true, view: opened.view };
+	}
+
+	/** Record the proposal and start asking. The caller has checked the message and the offer. Null when the proposal cannot be recorded. */
+	#open(grant: string | null, message: string, attempt: DevelopAttemptCandidateV0 | null): Proposal | null {
 		const session = this.#o.session;
 		const piId = session.piSessionId as string;
 		const sessionId = `endo.session.pi.${piId}`;
 		const proposedAt = new Date(this.#now()).toISOString();
+		const bytes = Buffer.byteLength(message, "utf8");
 		const ref = {
 			digest: this.#o.key.digest({ purpose: "endo.workbench.prompt-message.v0", message }),
 			bytes,
@@ -475,7 +550,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				...content,
 			} as unknown as Record<string, JsonValueV0>);
 		} catch {
-			return refuse(503, "not-recording");
+			return null;
 		}
 		const abort = new AbortController();
 		const expiresAtMs = this.#now() + this.#o.approvalWindowMs;
@@ -493,15 +568,37 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			proposalDigest,
 			proposedEventId: proposed.id,
 			message,
+			ref: ref as Proposal["ref"],
 			session: sessionId,
 			attachment: this.#o.attachment,
 			grant,
+			attempt,
+			attemptRefusal: null,
+			attemptBound: false,
 			abort,
 			done: Promise.resolve(),
 		};
 		this.#command = proposal;
 		proposal.done = this.#run(proposal);
-		return reply(202, proposal.view);
+		return proposal;
+	}
+
+	/** For the terminal: whether the attempt request with this id was bound to its attempt, and if binding was refused, why. */
+	attemptBindingOf(proposalId: string): { bound: boolean; refusal: DevelopAttemptDispatchRefusalV0 | null } | null {
+		const p = this.#command;
+		return p !== null && p.view.proposalId === proposalId && p.attempt !== null
+			? { bound: p.attemptBound, refusal: p.attemptRefusal }
+			: null;
+	}
+
+	/** Settles when the request with this id has settled (for the terminal's own account of what happened). */
+	settled(proposalId: string): Promise<WorkbenchCommandViewV0 | null> {
+		const p = this.#command;
+		if (p === null || p.view.proposalId !== proposalId) return Promise.resolve(null);
+		return p.done.then(
+			() => p.view,
+			() => p.view,
+		);
 	}
 
 	#discard(proposalId: unknown): { status: number; body: unknown } {
@@ -528,12 +625,13 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				// the store is closed: the view still says refused
 			}
 		};
-		const phrase = `APPROVE PROMPT ${p.proposalDigest.slice(0, 16)}`;
+		// An attempt has its own phrase: a prompt's approval, typed into an attempt's question, declines it, and the other way round.
+		const phrase = `APPROVE ${p.attempt === null ? "PROMPT" : "ATTEMPT"} ${p.proposalDigest.slice(0, 16)}`;
 		let answer: "allow" | "deny" | null = null;
 		try {
 			answer = await this.#o.approver(
 				{
-					operation: "prompt",
+					operation: p.attempt === null ? "prompt" : "attempt",
 					proposalId: p.view.proposalId,
 					phrase,
 					session: p.session,
@@ -541,6 +639,16 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					bytes: p.view.bytes,
 					message: p.message as string,
 					expiresAtMs: p.view.expiresAtMs,
+					...(p.attempt === null
+						? {}
+						: {
+								attempt: {
+									attemptId: p.attempt.attemptId,
+									taskId: p.attempt.taskId,
+									taskRevision: p.attempt.taskRevision,
+									preparedOnRevision: p.attempt.preparedOnRevision,
+								},
+							}),
 				},
 				p.abort.signal,
 			);
@@ -575,8 +683,35 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
 		if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
 			return settle("session-ended", authorized.id);
-		if (!this.#granted(p.grant)) return settle("not-authorized", authorized.id);
+		// A page's request needs its grant still held; a request the operator made on the terminal needs none.
+		if (p.grant !== null && !this.#granted(p.grant)) return settle("not-authorized", authorized.id);
 		if (session.runActive) return settle("run-active", authorized.id);
+		// An attempt is bound to this request now: after the approval and the gate, BEFORE the send is recorded. The attempt is checked again
+		// (its task, project and brief may have changed while the operator read it), and its authorisation is written once. From here a send
+		// may follow; the log, which records the send before it is made, says whether one was.
+		if (p.attempt !== null) {
+			const bound = this.#o.attempts?.authorize(p.attempt, {
+				session: p.session,
+				attachment: p.attachment,
+				launchId: this.launchId,
+				proposalId: p.view.proposalId,
+				proposalDigest: p.proposalDigest,
+				authorizationEventId: authorized.id,
+				message: p.ref,
+			}) ?? { ok: false as const, code: "storage-failed" as const };
+			if (!bound.ok) {
+				p.attemptRefusal = bound.code;
+				return settle(
+					bound.code === "already-authorized"
+						? "duplicate"
+						: bound.code === "storage-failed" || bound.code === "unreadable"
+							? "attempt-not-recorded"
+							: "attempt-changed",
+					authorized.id,
+				);
+			}
+			p.attemptBound = true;
+		}
 		p.view = { ...p.view, state: "dispatching" };
 		let dispatched: EndoEventV0;
 		try {

@@ -41,6 +41,12 @@ export const ENDO_WORKBENCH_REFUSAL_REASONS_V0 = [
 	"capability-unavailable",
 	"duplicate",
 	"runtime-refused",
+	// A prompt that carries a DEVELOP work attempt's brief (docs/designs/develop-attempt-execution.md), refused before it was sent:
+	// the attempt, its task or its project no longer allowed it when the approval came back, or its authorisation record could not be
+	// written. (`duplicate` is used when the attempt had already been authorised.) Readers never validate these payloads; a build that
+	// predates them shows an unknown reason as it would any other.
+	"attempt-changed",
+	"attempt-not-recorded",
 ] as const;
 export type EndoWorkbenchRefusalReasonV0 = (typeof ENDO_WORKBENCH_REFUSAL_REASONS_V0)[number];
 

@@ -3,6 +3,19 @@
 ## Unreleased
 
 ### Added
+- **Send a prepared work attempt to Pi from the live workbench, and read later what happened.** In `endo harness attach --control
+  --workbench --project <id>`, type `attempt <id>` on the attached terminal. The brief is rendered from the attempt's own record, shown
+  whole, and sent as a new prompt on the existing prompt chain only after you type its own phrase (`APPROVE ATTEMPT <16 hex>`). After the
+  approval and the final checks (same project, Pi launched in its registered directory, task words unchanged, not done, no outcome, not
+  sent before), the broker writes one write-once record, `develop/attempts/<id>.authorized.json` (`endo.develop-attempt-authorization.v0`),
+  **before** it records the send. An attempt is sent at most once and never retried. `endo attempt show`, the workbench page and `endo
+  workspace open` join that record to the session's event log by exact ids. They show whether the brief was sent, Pi's reply, and how the
+  run after it ended as Pi reported it, with an outcome-unknown state for a send with no recorded reply. None of this is verification or
+  acceptance: the attempt's own state and the task's status do not move. The page cannot request a send, and Studio and the workspace host
+  cannot write one. The attempts view is now `endo.develop-attempts-view.v2`, and the prompt chain gains two refusal reasons
+  (`attempt-changed`, `attempt-not-recorded`). A build that predates this lists the new file as an unknown file and still shows the
+  attempt. Tested against the fake Pi under a real pseudo-terminal, and opt-in against an installed Pi (1.5.0) with a fake model endpoint.
+  See [docs/designs/develop-attempt-execution.md](docs/designs/develop-attempt-execution.md).
 - **`endo workspace open --project <id>`: DEVELOP without a running agent.** A foreground host on 127.0.0.1 serves the same page and the
   same task routes as the live workbench, behind its own pairing code, with **no harness**: no Pi, model or provider is needed or started.
   A paired page sees the attention overview, each task's attempts, briefs and verification receipts, and the worktree's changes. It

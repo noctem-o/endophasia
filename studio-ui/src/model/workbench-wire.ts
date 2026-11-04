@@ -146,6 +146,8 @@ const REASONS = [
 	"capability-unavailable",
 	"duplicate",
 	"runtime-refused",
+	"attempt-changed",
+	"attempt-not-recorded",
 ];
 
 const command: Check = (v) =>

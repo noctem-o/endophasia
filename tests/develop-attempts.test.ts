@@ -23,7 +23,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
 	ENDO_DEVELOP_ATTEMPT_LABELS_V0,
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
-	type EndoDevelopAttemptsViewV1,
+	type EndoDevelopAttemptsViewV2,
 	type EndoDevelopAttemptV0,
 	renderEndoDevelopBriefV0,
 	validateEndoDevelopAttemptV0,
@@ -590,7 +590,7 @@ describe("the workbench route and the page's gate", () => {
 		const call = route(w);
 		const reply = await call("GET", "attempts");
 		expect(reply.status).toBe(200);
-		const view = reply.body as EndoDevelopAttemptsViewV1;
+		const view = reply.body as EndoDevelopAttemptsViewV2;
 		expect([view.state, view.taskId, view.attempts.map((x) => x.id)]).toEqual(["ready", w.taskId, [a.id]]);
 		expect(readAttempts(JSON.parse(JSON.stringify(view)))).toEqual(view);
 		const text = JSON.stringify(view);
@@ -619,7 +619,7 @@ describe("the workbench route and the page's gate", () => {
 		const w = seeded();
 		const a = ok(w.service.prepare(w.projectId, w.taskId, { objective: "o" }));
 		ok(w.service.handoff(a.id, { target: "Codex" }));
-		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV1;
+		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV2;
 		expect(readAttempts(good)).not.toBeNull();
 		const bad = (mutate: (v: any) => void) => {
 			const copy = JSON.parse(JSON.stringify(good));

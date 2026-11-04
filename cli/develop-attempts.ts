@@ -248,7 +248,7 @@ function show(argv: readonly string[]): void {
 	print({ attempt: shown(report) });
 	if (report.execution !== null)
 		process.stderr.write(
-			`execution: ${ENDO_ATTEMPT_SEND_LABELS_V0[report.execution.send]}. ${ENDO_ATTEMPT_RUN_LABELS_V0[report.execution.run]}. This is what the session recorded, read now; it is not verification. Check the work with \`endo attempt check\`, and set the task's status yourself.\n`,
+			`execution: ${ENDO_ATTEMPT_SEND_LABELS_V0[report.execution.send]}. ${ENDO_ATTEMPT_RUN_LABELS_V0[report.execution.run]}. This is what the session recorded, read now${report.execution.evidence === "partial" ? " (part of the session log could not be read, so later records may be missing)" : ""}; it is not verification. Check the work with \`endo attempt check\`, and set the task's status yourself.\n`,
 		);
 }
 

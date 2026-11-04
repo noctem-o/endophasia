@@ -263,6 +263,34 @@ describe("the broker: an attempt is requested on the terminal and approved as it
 		expect(lost.broker.requestAttempt(lost.attempt.id)).toMatchObject({ ok: false, code: "already-authorized" });
 	});
 
+	it("an authorisation write that throws settles the request as not recorded, sends nothing, and frees the approval slot", async () => {
+		const w = fakeBroker();
+		const throwing = {
+			check: (id: string) => w.dispatch.check(id),
+			authorize: () => {
+				throw new Error("disk vanished");
+			},
+		};
+		const broker = new WorkbenchBrokerV0({
+			session: w.session,
+			key: KEY,
+			attachment: "pi.default",
+			approver: w.approval.approver,
+			attempts: throwing,
+		});
+		cleanup.push(() => broker.dispose());
+		const a = broker.requestAttempt(w.attempt.id);
+		if (!a.ok) throw new Error(a.code);
+		await w.approval.waitForRequest();
+		w.approval.answer("allow");
+		expect(await broker.settled(a.view.proposalId)).toMatchObject({
+			state: "refused",
+			reason: "attempt-not-recorded",
+		});
+		expect(w.session.promptCalls).toEqual([]);
+		expect(broker.requestAttempt(w.attempt.id).ok).toBe(true);
+	});
+
 	it("only the terminal can request one: no page route takes an attempt, and without --project nothing can", async () => {
 		const w = fakeBroker();
 		const pair = await w.call("POST", "pair", { code: w.broker.issuePairingCode().code });

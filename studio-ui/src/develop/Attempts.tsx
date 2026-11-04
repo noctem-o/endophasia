@@ -231,7 +231,7 @@ function ExecutionBlock({ execution: e }: { execution: Execution }): ReactElemen
 			{e.brief === "differs" ? (
 				<p className="attempt-changed" data-testid="attempt-brief-differs">
 					This attempt's brief no longer renders as the text that was approved: its record was changed after it was
-					sent.
+					authorised.
 				</p>
 			) : null}
 		</div>

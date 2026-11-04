@@ -80,7 +80,11 @@ function runAfter(
 	let started = false;
 	for (let i = from + 1; i < events.length; i++) {
 		const e = events[i] as EndoEventV0;
-		if (e.coordinates.sessionId !== session || !e.kind.startsWith("lifecycle.")) continue;
+		if (e.coordinates.sessionId !== session) continue;
+		// Another prompt sent to this session closes the window: a run that starts after it may be that prompt's, so it is not attributed
+		// (a run already started before it stays this one's, and its end is still read).
+		if (!started && e.kind === "workbench.prompt-dispatched") return "not-observed";
+		if (!e.kind.startsWith("lifecycle.")) continue;
 		if (!started) {
 			if (e.kind === "lifecycle.run-started") {
 				// A run of another process (the session resumed elsewhere after this one ended) is not the one the brief was sent to.
@@ -183,7 +187,12 @@ export function endoAttemptExecutionFindingV0(
 		return log.state === "partial" ? none("evidence-unavailable") : none("no-send-recorded");
 	}
 	const dispatch = events[dispatchAt] as EndoEventV0;
-	const run = runAfter(events, dispatchAt, record.session, instanceAt(events, dispatchAt, record.session));
+	// Pi refused it, so no run is this one's; otherwise the first run in the window after the send (see runAfter).
+	const runtimeRefused =
+		refused !== undefined && refusal === "runtime-refused" && refused.derivedFrom.includes(dispatch.id);
+	const run = runtimeRefused
+		? "not-observed"
+		: runAfter(events, dispatchAt, record.session, instanceAt(events, dispatchAt, record.session));
 	const accepted = events.find(
 		(e) => e.kind === "workbench.prompt-accepted" && forProposal(e) && e.derivedFrom.includes(dispatch.id),
 	);
@@ -193,8 +202,7 @@ export function endoAttemptExecutionFindingV0(
 		return { send: "runtime-accepted", refusal: null, disposition, run };
 	}
 	// After the send, the only refusal the broker records is Pi's own.
-	if (refused !== undefined && refusal === "runtime-refused")
-		return { send: "refused-by-runtime", refusal, disposition: null, run };
+	if (runtimeRefused) return { send: "refused-by-runtime", refusal, disposition: null, run };
 	return { send: "sent-no-reply", refusal: null, disposition: null, run };
 }
 

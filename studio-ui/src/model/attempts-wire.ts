@@ -214,7 +214,8 @@ export const executionSent = (e: Pick<EndoDevelopAttemptExecutionViewV0, "send">
  */
 export function executionCoherent(e: EndoDevelopAttemptExecutionViewV0): boolean {
 	const sent = executionSent(e);
-	if ((e.refusal !== null) !== (e.send === "not-sent" || e.send === "refused-by-runtime")) return false;
+	// A refusal reason only with a refusal. `not-sent` may carry none: a reason this build does not know is read as unknown, not invalid.
+	if (e.refusal !== null && e.send !== "not-sent" && e.send !== "refused-by-runtime") return false;
 	if (e.send === "refused-by-runtime" && e.refusal !== "runtime-refused") return false;
 	if ((e.disposition !== null) !== (e.send === "runtime-accepted")) return false;
 	if (!sent && e.run !== "not-observed") return false;

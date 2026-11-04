@@ -35,6 +35,7 @@ import { endoBriefSha256V0 } from "./develop-attempt-execution.ts";
  * - `launch-not-registered`: Pi was not started in the project's registered directory (or that directory is gone).
  * - `task-not-found` / `task-done` / `task-words-changed`: the task is gone from the project, done, or its words changed since preparation.
  * - `outcome-recorded`: the operator already recorded an outcome (reported or abandoned).
+ * - `handed-off`: the operator recorded handing it to another agent: one attempt is not given to two executors.
  * - `already-authorized`: this attempt was already authorised to be sent (by this or another workbench). Retrying is a new attempt.
  * - `brief-too-large` / `brief-unsafe`: the brief exceeds a workbench prompt, or holds characters the terminal cannot show faithfully.
  * - `storage-failed`: the record could not be written.
@@ -50,6 +51,7 @@ export type DevelopAttemptDispatchRefusalV0 =
 	| "task-done"
 	| "task-words-changed"
 	| "outcome-recorded"
+	| "handed-off"
 	| "already-authorized"
 	| "brief-too-large"
 	| "brief-unsafe"
@@ -69,6 +71,7 @@ export const DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0: Readonly<Record<DevelopA
 	"task-words-changed":
 		"the task's title, description or acceptance changed since the brief was prepared; prepare a new attempt",
 	"outcome-recorded": "an outcome (reported or abandoned) is already recorded for this attempt",
+	"handed-off": "you recorded handing this attempt to another agent; to send it to Pi as well, prepare a new attempt",
 	"already-authorized": "this attempt was already authorised to be sent once; to try again, prepare a new attempt",
 	"brief-too-large": `the brief is longer than a workbench prompt (${ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0} bytes)`,
 	"brief-unsafe": "the brief holds characters that cannot be shown faithfully on the terminal for approval",
@@ -148,6 +151,7 @@ export class DevelopAttemptDispatchV0 {
 		if (attempt.projectId !== this.#projectId) return refuse("other-project");
 		if (entry.authorized !== null) return refuse("already-authorized");
 		if (entry.outcome !== null) return refuse("outcome-recorded");
+		if (entry.handoff !== null) return refuse("handed-off");
 		const tasks = this.#tasks.read();
 		if (!tasks.ok) return refuse("tasks-unreadable");
 		const project = tasks.file.projects.find((p) => p.id === this.#projectId);

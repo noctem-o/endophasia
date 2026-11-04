@@ -253,6 +253,10 @@ describe("the dispatcher: may this attempt be sent from this launch?", () => {
 		const b = ok(w.service.prepare(w.projectId, w.taskId, { objective: "Another go" }));
 		ok(w.service.abandon(b.id));
 		expect(code(w.dispatch, b.id)).toBe("outcome-recorded");
+		// One attempt is not given to two executors: one handed to another agent is not also sent to Pi.
+		const h = ok(w.service.prepare(w.projectId, w.taskId, { objective: "Handed elsewhere" }));
+		ok(w.service.handoff(h.id, { target: "Codex" }));
+		expect(code(w.dispatch, h.id)).toBe("handed-off");
 		// An unreadable file at one of the attempt's names blocks it: it might be a record this build cannot read.
 		const c = ok(w.service.prepare(w.projectId, w.taskId, { objective: "Third" }));
 		writeFileSync(join(w.attempts.directory, `${c.id}.authorized.json`), "{not json", { mode: 0o600 });
@@ -505,6 +509,58 @@ describe("the projection: what the session log says happened", () => {
 		void p;
 	});
 
+	it("a later prompt's run is never this attempt's (review finding: the run window ends at the next send)", () => {
+		const { p, events } = chain();
+		const other = proposalFor(
+			SESSION,
+			"pi.default",
+			{ ...MESSAGE, digest: { ...MESSAGE.digest, value: "d".repeat(64) } },
+			"2026-11-04T10:05:00.000Z",
+		);
+		const laterPrompt = [
+			ev("endo.event.t.prop-b", "workbench.prompt-proposed", {
+				proposalId: other.proposalId,
+				proposalDigest: other.proposalDigest,
+				...other.content,
+			}),
+			ev("endo.event.t.disp-b", "workbench.prompt-dispatched", { proposalId: other.proposalId }, [
+				"endo.event.t.auth-b",
+			]),
+			ev("endo.event.t.run-b", "lifecycle.run-started", { instance: "inst-1" }),
+			ev("endo.event.t.end-b", "lifecycle.run-failed", { turns: 1 }),
+		];
+		// (a) Pi refused the attempt; prompt B then ran.
+		const refusedThenB = [
+			...events.slice(0, 4),
+			ev("endo.event.t.ref", "workbench.prompt-refused", { proposalId: p.proposalId, reason: "runtime-refused" }, [
+				"endo.event.t.disp",
+			]),
+			...laterPrompt,
+		];
+		expect(find(refusedThenB)).toMatchObject({ send: "refused-by-runtime", run: "not-observed" });
+		// Even a run that follows a runtime refusal directly is not this attempt's.
+		expect(
+			find([
+				...events.slice(0, 4),
+				ev(
+					"endo.event.t.ref",
+					"workbench.prompt-refused",
+					{ proposalId: p.proposalId, reason: "runtime-refused" },
+					["endo.event.t.disp"],
+				),
+				ev("endo.event.t.run2", "lifecycle.run-started", { instance: "inst-1" }),
+				ev("endo.event.t.end2", "lifecycle.run-completed", { turns: 1 }),
+			]).run,
+		).toBe("not-observed");
+		// (b) The attempt's reply was lost, and B was sent and ran: B's run is not the attempt's.
+		expect(find([...events.slice(0, 4), ...laterPrompt])).toMatchObject({
+			send: "sent-no-reply",
+			run: "not-observed",
+		});
+		// A run that had already started before B was sent is still the attempt's, and its end is read.
+		expect(find([...events.slice(0, 6), ...laterPrompt.slice(0, 2), events[7] as EndoEventV0]).run).toBe("completed");
+	});
+
 	it("says whether the brief rendered now is the one that was approved", () => {
 		const { p, events } = chain();
 		const record = recordFor(p, brief, ATTEMPT);
@@ -552,9 +608,13 @@ describe("contracts between the protocol and the page", () => {
 		};
 		expect(broken({ disposition: null })).toBeNull(); // accepted without Pi's disposition
 		expect(broken({ send: "no-send-recorded", disposition: null })).toBeNull(); // a run without a send
-		expect(broken({ send: "not-sent", disposition: null, run: "not-observed" })).toBeNull(); // not sent without a reason
 		expect(broken({ evidence: "unavailable" })).toBeNull(); // an answer from a log that could not be read
 		expect(broken({ extra: 1 })).toBeNull();
+		// A refusal reason this build does not know is read as unknown (null), and does not invalidate the whole section.
+		expect(broken({ send: "not-sent", disposition: null, run: "not-observed", refusal: null })).not.toBeNull();
+		expect(
+			broken({ send: "no-send-recorded", disposition: null, run: "not-observed", refusal: "duplicate" }),
+		).toBeNull();
 		expect(broken({ session: "a\u202eb" })).toBeNull();
 	});
 

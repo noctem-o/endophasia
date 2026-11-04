@@ -690,15 +690,21 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// (its task, project and brief may have changed while the operator read it), and its authorisation is written once. From here a send
 		// may follow; the log, which records the send before it is made, says whether one was.
 		if (p.attempt !== null) {
-			const bound = this.#o.attempts?.authorize(p.attempt, {
-				session: p.session,
-				attachment: p.attachment,
-				launchId: this.launchId,
-				proposalId: p.view.proposalId,
-				proposalDigest: p.proposalDigest,
-				authorizationEventId: authorized.id,
-				message: p.ref,
-			}) ?? { ok: false as const, code: "storage-failed" as const };
+			let bound: ReturnType<DevelopAttemptDispatchV0["authorize"]>;
+			try {
+				bound = this.#o.attempts?.authorize(p.attempt, {
+					session: p.session,
+					attachment: p.attachment,
+					launchId: this.launchId,
+					proposalId: p.view.proposalId,
+					proposalDigest: p.proposalDigest,
+					authorizationEventId: authorized.id,
+					message: p.ref,
+				}) ?? { ok: false as const, code: "storage-failed" as const };
+			} catch {
+				// A failure here must settle the request (never leave it holding the one approval slot): nothing was sent.
+				bound = { ok: false, code: "storage-failed" };
+			}
 			if (!bound.ok) {
 				p.attemptRefusal = bound.code;
 				return settle(

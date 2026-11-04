@@ -70,7 +70,7 @@ session's own event log by exact identifiers and shows what was recorded: sent o
  attached terminal (controlling tty)            broker (adapters/pi/workbench.ts)                 files
  ───────────────────────────────────            ─────────────────────────────────                 ─────
  operator types: attempt <id>  ───────────▶  check(id): project, launch dir, task, words,      reads develop/tasks.json, attempts/
-                                              outcome, not yet authorised, size, characters
+                                              outcome or handoff, not yet authorised, size, characters
                                               record workbench.prompt-proposed  ──────────────▶ events.log (fsync)
  brief shown whole, APPROVE ATTEMPT <hex> ◀──  ask (one question at a time)
  operator types the phrase  ──────────────▶  record workbench.prompt-authorized (allow) ─────▶ events.log (fsync)
@@ -123,8 +123,9 @@ problem and still shows the attempt.
 - the proposal: same id, session, attachment, origin and message, and its digest **recomputed** from its recorded content;
 - the authorisation: the named event, an `allow`, for that proposal, derived from it;
 - the dispatch: derived from that authorisation, and its acceptance or refusal;
-- the run: the first `lifecycle.run-started` **in the same session and Pi process instance, after the dispatch in log order**, and that
-  run's end. A process ending first, or a run of a later process that resumed the session, is never attributed.
+- the run: the first `lifecycle.run-started` **in the same session and Pi process instance, after the dispatch in log order and before
+  any later dispatch to that session**, and that run's end. A process ending first, a run of a later process that resumed the session, a
+  run that starts after another prompt was sent, and any run after Pi refused the attempt are never attributed.
 
 | `send` | Means |
 | :-- | :-- |
@@ -220,6 +221,8 @@ ENDO_PI_EXECUTABLE=$(command -v pi) [ENDO_ATTEMPT_EVIDENCE_DIR=dir] npx vitest -
   while idle, but `--prompt` on the same `attach` line, or a run Pi starts by itself, could in principle start first. Do not combine
   `--prompt` with sending attempts.
 - **The request is typed, not clicked.** The page cannot ask. That is deliberate in this slice, but it is less convenient.
+- **A handoff and a send do not mix in one direction only.** An attempt with a recorded handoff cannot be sent (`handed-off`), but
+  `endo attempt handoff` is not refused after a send. Handoffs are the operator's own statements, and that path is unchanged.
 - **A declined approval is attributed to the session's prompt chain only**, not to the attempt: the attempt stays prepared.
 - **One send per attempt.** A brief over 16 KiB (a workbench prompt) is refused, not cut.
 - **The reading opens the whole event log** for each view that includes an authorised attempt. That is linear in the log, as the
@@ -229,7 +232,31 @@ ENDO_PI_EXECUTABLE=$(command -v pi) [ENDO_ATTEMPT_EVIDENCE_DIR=dir] npx vitest -
 - **Not tested:** STEER, QUEUE or STOP during an attempt's run against real Pi (they are the existing chains, unchanged); real Pi with a real
   provider (the fake endpoint only); macOS (the workbench needs Linux `/proc` to verify the controlling terminal).
 
-## 9. Next
+## 9. Independent review
+
+A fresh-context subagent reviewed the commit adversarially. It did not write the code. It ran the targeted suites and wrote its own probe
+scripts. This was **not** the Elephant–Goldfish plugin, which is not installed here.
+
+| Finding | Severity | Resolution |
+| :-- | :-- | :-- |
+| The run search had no end. When Pi refused the attempt, or its reply was lost, a later prompt's run was attributed to the attempt. The reviewer reproduced this with probe scripts. | material | **Fixed.** The window ends at the next dispatch to that session, and an attempt Pi refused gets no run. Regression test. Removing the bound makes it fail. |
+| A refusal reason this build does not know made the page's gate refuse the whole Attempts section | minor | **Fixed.** It reads as `not-sent` with an unknown reason. Gate test. |
+| "Brief differs" said the record changed "after it was sent", even when no send was recorded | minor | **Fixed.** It now says "after it was authorised". |
+| On a partial log, states after the dispatch were stated without a caveat on the CLI | minor | **Fixed.** `attempt show` says so, as the page already did. The state values are unchanged, because a dispatch was observed. |
+| An attempt handed off to another agent could also be sent to Pi | minor | **Fixed** in that direction: `handed-off`. The reverse is recorded in §8. |
+| `authorize` throwing would leave the request holding the approval slot | nit | **Fixed.** It settles as `attempt-not-recorded`. Regression test. |
+| An empty brief is reported as `brief-too-large` | nit | **Kept.** It cannot happen, because a brief always names its attempt. |
+
+It found these sound:
+
+- Only the terminal reaches `requestAttempt`. Phrases do not cross between attempts and prompts.
+- There is no await between the final gate, the binding and the recorded dispatch.
+- Write-once and `EEXIST` are handled correctly, and problem files block sending.
+- The reading's joins are exact and the proposal digest is recomputed.
+- No brief text appears in the event log.
+- Studio and the workspace host are unchanged.
+
+## 10. Next
 
 **A page request for an attempt.** The page asks (`POST prompt/propose {attemptId}` behind the grant), the broker renders the brief from the
 record, and the terminal approves under the same `APPROVE ATTEMPT` phrase. That adds no authority. After it, show the attempt's execution in

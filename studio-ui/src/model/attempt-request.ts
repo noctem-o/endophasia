@@ -4,7 +4,12 @@
 // workspace routes). A session is never related to an attempt by its title, its text or its timing.
 import { type Attempt, type AttemptsView, EXECUTION_RUN_LABELS, EXECUTION_SEND_LABELS } from "./attempts-wire.ts";
 import { commandOpen, REFUSAL_WORDS } from "./workbench.ts";
-import { ATTEMPT_REFUSAL_WORDS, type WorkbenchCommand } from "./workbench-wire.ts";
+import {
+	ATTEMPT_REFUSAL_WORDS,
+	type AttemptRefusal,
+	type WorkbenchCommand,
+	type WorkbenchReply,
+} from "./workbench-wire.ts";
 
 export const shortAttempt = (id: string): string => id.slice(-8);
 
@@ -53,19 +58,20 @@ export function requestWords(c: WorkbenchCommand): RequestWords {
 						head: "Approved in the terminal. Authorisation recorded; sending to Pi",
 						detail: "From here it is never sent again, whatever happens next.",
 					}
-				: {
+				: // Defensive: the broker binds an attempt before it reports `dispatching`, so this is not expected to be shown.
+					{
 						head: "Approved in the terminal. Checking the attempt again before sending",
 						detail: "Nothing has been recorded for the attempt yet.",
 					};
 		case "accepted":
 			return {
-				head: `Sent once. Pi replied: ${c.disposition ?? "a reply"}`,
+				head: `Recorded as sent, once. Pi replied: ${c.disposition ?? "a reply"}`,
 				detail:
 					"A reply from Pi, not a result. Follow the run in the conversation; a run Pi reports as completed is not verification, and the task's status is yours.",
 			};
 		case "unknown":
 			return {
-				head: "Sent once. Pi's reply was not seen",
+				head: "Recorded as sent, once. Pi's reply was not seen or not recognised",
 				detail:
 					"Work may have started: this is not a failure, and not a success. It will not be sent again; the session's records show what followed.",
 			};
@@ -78,15 +84,25 @@ export function requestWords(c: WorkbenchCommand): RequestWords {
 						: c.reason === null
 							? "no reason was given"
 							: (REFUSAL_WORDS[c.reason] ?? c.reason);
+			const blocked = c.attempt?.refusal != null && !TRANSIENT.has(c.attempt.refusal);
 			return {
-				head: c.reason === "runtime-refused" ? "Sent once. Pi refused it" : `Not sent: ${why}`,
+				head: c.reason === "runtime-refused" ? "Recorded as sent, once. Pi refused it" : `Not sent: ${why}`,
 				detail: bound
 					? "Its authorisation was recorded, so it will not be sent again; prepare a new attempt to try again."
-					: "Nothing was recorded for the attempt: it can be requested again.",
+					: blocked
+						? "Nothing was recorded for this request, and the attempt cannot be sent as it stands; prepare a new attempt if you still want one sent."
+						: "Nothing was recorded for the attempt: it can be requested again.",
 			};
 		}
 	}
 }
+
+/**
+ * The attempt refusals at binding that may clear by themselves (a file that could not be read or written this time). Every other one
+ * means the attempt cannot be sent as it stands: already authorised elsewhere, handed off, an outcome recorded, the task done or changed,
+ * or the launch not in the project's directory.
+ */
+const TRANSIENT: ReadonlySet<AttemptRefusal> = new Set(["tasks-unreadable", "unreadable", "storage-failed"]);
 
 export type NextStepKind =
 	| "awaiting-approval"
@@ -126,12 +142,24 @@ export function nextStep(view: AttemptsView | null, command: WorkbenchCommand | 
 			return {
 				kind: "awaiting-evidence",
 				attemptId: command.attempt.attemptId,
-				text: "Sent to Pi; its records are read with the task's attempts. Follow the run in the conversation.",
+				text: "Recorded as sent; its records are read with the task's attempts. Follow the run in the conversation.",
 			};
 		return null;
 	}
 	const latest = [...view.attempts].sort((a, b) => b.preparedAtMs - a.preparedAtMs)[0] as Attempt;
 	const e = latest.execution;
+	// The broker says this attempt was bound (or sent) and the attempts were read before that: the records are awaited, never "not sent".
+	if (
+		e === null &&
+		command?.attempt != null &&
+		command.attempt.attemptId === latest.id &&
+		(command.attempt.bound || command.state === "accepted" || command.state === "unknown")
+	)
+		return {
+			kind: "awaiting-evidence",
+			attemptId: latest.id,
+			text: "Recorded as sent; its records are read with the task's attempts. Follow the run in the conversation.",
+		};
 	if (e !== null) {
 		// Sent, by the session's records (a reply seen or not). A send Pi refused ran nothing.
 		const sent = e.send === "runtime-accepted" || e.send === "sent-no-reply";
@@ -176,4 +204,24 @@ export function nextStep(view: AttemptsView | null, command: WorkbenchCommand | 
 			text: "Prepared and not sent. Read its brief in Task; you can request it there, or copy it.",
 		};
 	return null;
+}
+
+/**
+ * What a failed request means for the attempt. Only the broker's own refusal (a 4xx or 503 with a code it names) establishes that nothing
+ * was requested. A request that timed out, could not be read back, or got a malformed answer may have reached the broker and be waiting
+ * on the terminal now: the page says so and reads the workbench again rather than claiming nothing happened.
+ */
+export function failureWords(f: Extract<WorkbenchReply, { kind: "failure" }>): { text: string; uncertain: boolean } {
+	const refused = f.code !== "" && (f.status === 503 || (f.status >= 400 && f.status < 500));
+	if (refused)
+		return {
+			text: /nothing was requested|nothing was recorded/i.test(f.message)
+				? f.message
+				: `${f.message} Nothing was recorded or sent.`,
+			uncertain: false,
+		};
+	return {
+		text: `${f.message} It may still have been requested: the terminal is the place to check. Reading the workbench again.`,
+		uncertain: true,
+	};
 }

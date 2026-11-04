@@ -189,14 +189,16 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		await page.waitFor(
 			`document.querySelector('[data-testid=command-card]')?.dataset.attempt === ${JSON.stringify(api.attempt.id)}`,
 		);
-		expect(await page.text("[data-testid=command-card]")).toContain("they are not this attempt");
+		expect(await page.text("[data-testid=command-card]")).toContain(
+			"A later prompt is your own message, not this attempt",
+		);
 		expect(await draft(page)).toBe("a note I am still writing");
 		// While it waits, the composer cannot send another prompt.
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=send]').disabled")).toBe(true);
 
 		api.approval.answer("allow");
 		await page.waitFor("document.querySelector('[data-testid=command-card]')?.dataset.state === 'accepted'", 20_000);
-		expect(await page.text("[data-testid=command-card]")).toContain("Sent once. Pi replied: started");
+		expect(await page.text("[data-testid=command-card]")).toContain("Recorded as sent, once. Pi replied: started");
 		expect(await draft(page)).toBe("a note I am still writing");
 
 		// Back in Task: once the attempts are read again, the attempt shows what the session recorded, and can no longer be requested.
@@ -237,6 +239,8 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		await page.click("[data-testid=attempt-request-withdraw]");
 		await page.waitFor("document.querySelector('[data-testid=attempt-request-status]')?.dataset.state === 'refused'");
 		expect(await page.text("[data-testid=attempt-request-status]")).toContain("it can be requested again");
+		// The Withdraw button is gone; focus is on the attempt's request region, not lost to the page.
+		await page.waitFor("document.activeElement?.dataset.testid === 'attempt-request-region'");
 		expect(ok(api.service.get(api.attempt.id)).authorized).toBeNull();
 
 		// The attempt is as it was: it can be requested again, and the second request is a new one, shown whole again on the terminal.
@@ -267,6 +271,10 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		await page.waitFor(
 			"document.querySelector('[data-testid=attempt-request-status]')?.dataset.state === 'awaiting-approval'",
 		);
+		// The button it was on is replaced by the request's status: focus moves to the request's region, and Tab reaches Withdraw.
+		await page.waitFor("document.activeElement?.dataset.testid === 'attempt-request-region'");
+		await page.press("Tab");
+		await page.waitFor("document.activeElement?.dataset.testid === 'attempt-request-withdraw'");
 		expect(await page.eval<boolean>("document.documentElement.scrollWidth <= window.innerWidth")).toBe(true);
 		await shot(page, "attempt-narrow-awaiting");
 		api.approval.answer("deny");

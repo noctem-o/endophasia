@@ -155,7 +155,13 @@ export async function startWorkbenchV0(
 			const answer = await input.question("> ", {
 				signal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, request.expiresAtMs - Date.now()))]),
 			});
-			return answer === request.phrase ? "allow" : "deny";
+			const decided = answer === request.phrase ? "allow" : "deny";
+			// An attempt the PAGE asked for: the operator typed here, so its outcome is told here too, as for `attempt <id>` typed here.
+			if (request.operation === "attempt" && request.requestedFrom === "page" && request.attempt !== undefined) {
+				const attemptId = request.attempt.attemptId;
+				queueMicrotask(() => reportAttempt(attemptId, request.proposalId));
+			}
+			return decided;
 		} catch {
 			// Cancelled or out of time: the question is gone; so is any half-typed answer to it.
 			input.write(null, { ctrl: true, name: "u" });
@@ -250,7 +256,10 @@ export async function startWorkbenchV0(
 			);
 			return;
 		}
-		const id = asked.view.proposalId;
+		reportAttempt(attemptId, asked.view.proposalId);
+	};
+	/** Tell the terminal how an attempt request ended: sent and Pi's reply, or why not and whether the attempt is spent. */
+	function reportAttempt(attemptId: string, id: string): void {
 		void broker.settled(id).then((view) => {
 			if (view === null) return;
 			const binding = broker.attemptBindingOf(id);
@@ -268,7 +277,7 @@ export async function startWorkbenchV0(
 					`workbench: attempt ${attemptId} was sent; Pi's reply was not seen. Work may have started. It will not be retried.\n`,
 				);
 		});
-	};
+	}
 	input.on("line", (line) => {
 		const words = line.trim().split(/\s+/);
 		if (line.trim() === "pair") showCode();

@@ -82,9 +82,9 @@ GET prompt/<id>            ◀──  accepted | unknown | refused (+ bound, ref
 | Refused when asked | `409 attempt-<reason>` / `not-offered` (nothing recorded) | depends on the reason |
 | Waiting for approval | `awaiting-approval`, `bound: false` | yes, once settled |
 | Withdrawn or declined | `refused`, `not-authorized` or `authorization-denied`, `bound: false` | yes |
-| Approved, not sent | `approved: true`, `refused` (`attempt-changed`, `run-active`, `session-ended`, `not-authorized`, `duplicate`), `bound: false`, with `attempt.refusal` naming the attempt's reason | yes |
+| Approved, not sent | `approved: true`, `refused`, `bound: false`. A gate reason (`run-active`, `session-ended`, `not-authorized`, `authorization-expired`) or a passing storage fault (`attempt.refusal` `tasks-unreadable`, `unreadable`, `storage-failed`) leaves the attempt sendable. A lasting `attempt.refusal` (`already-authorized`, `handed-off`, `outcome-recorded`, `task-done`, `task-words-changed`, …) means it cannot be sent as it stands, and the page says so | depends on the reason |
 | Approved, bound, send not recorded | `refused`, `session-ended`, `bound: true` | no (Slice I: "not sent", by the log) |
-| Sent, reply unknown | `unknown`, `bound: true` | no, never retried |
+| Recorded as sent, reply unknown | `unknown`, `bound: true` (Pi's reply was not seen or not recognised) | no, never retried |
 | Pi acknowledged it | `accepted` (disposition) | no |
 | Pi refused it | `refused`, `runtime-refused` | no |
 | Execution observed | the attempt's `execution.run` (Slice I) | no |
@@ -99,7 +99,8 @@ All of these are additive in the broker. The page and broker ship in one package
   `--project`.
 - `POST attempt/propose {attemptId}`: 202 with the prompt view. Refusals: 400 `bad-request`, 401 `grant-required`, 404 `not-found`
   (no `--project`), 409 `not-offered`, 409 `attempt-<reason>` (the closed `DevelopAttemptDispatchRefusalV0` list), 503 `not-recording`.
-- The prompt view gains `attempt: {attemptId, taskId, bound, refusal} | null`. It is null for a typed prompt.
+- The prompt view gains `attempt: {attemptId, taskId, bound, refusal} | null`. It is null for a typed prompt. `GET status` needs no grant, so
+  without one it reports `attempt: null`: which attempt and task are in flight is told only to the paired page.
 - `WorkbenchApprovalRequestV0.requestedFrom: "terminal" | "page"`, shown on the terminal.
 
 A page older than this broker refuses the new status (its gate is closed). The two are never mixed, because the CLI serves its own built
@@ -133,7 +134,7 @@ endo harness attach <root> --cwd ~/src/demo --control --workbench --project P
 #   the terminal shows: requested from the paired page, the attempt, the task revision, the whole brief, and
 #   Type APPROVE ATTEMPT 1153af27… to send exactly this brief
 #   type it there (anything else declines; the attempt stays sendable)
-#   the page: "Sent once. Pi replied: started", then Conversation to follow the run, Task to read what was recorded
+#   the page: "Recorded as sent, once. Pi replied: started", then Conversation to follow the run, Task to read what was recorded
 endo attempt show --attempt A          # later, from the files alone
 endo attempt check --attempt A -- npm test    # a separate act: a receipt, not acceptance
 endo task status --project P --task T --to done    # the operator's own decision
@@ -169,8 +170,7 @@ Model: `tests/endo-studio-attempt-request-model.test.ts` covers the words and th
 
 `ENDO_PI_EXECUTABLE=$(which pi) npx vitest --run tests/endo-workbench-attempt-page.test.ts` was run with Pi 1.5.0. It used a scratch
 HOME, `PI_OFFLINE=1`, and the local fake OpenAI-compatible endpoint as the only provider, so it needed no credentials and cost nothing.
-Asked from the page and approved on the PTY: `send: runtime-accepted`, `run: completed`, `brief: matches`. The page said "Sent once. Pi
-replied: started", then "Pi reported the run completed. Not verified". The task stayed `open`.
+Asked from the page and approved on the PTY: `send: runtime-accepted`, `run: completed`, `brief: matches`. The page said "Recorded as sent, once. Pi replied: started", then "Pi reported the run completed. Not verified". The task stayed `open`.
 
 ## 8. Limitations
 
@@ -183,7 +183,29 @@ replied: started", then "Pi reported the run completed. Not verified". The task 
 - **Focus mode** is still Field-only. Instrument keeps its three columns at desktop widths.
 - One request at a time per workbench, as before. There is no queue of attempts and no parallel attempts.
 
-## 9. Next
+## 9. Independent review
+
+A fresh-context reviewer read `git diff main...HEAD` adversarially. It found **no material defects**. It found sound: authority (the
+body is exactly `{attemptId}`, the grant is re-checked at the gate, the page has no path to approve), no duplicate dispatch (a single slot
+set synchronously; `authorize` re-checks and writes once), identity (only from the broker's candidate), the wire gate's limits, and privacy
+(the brief is only a digest in the log). All of its minor findings and nits were fixed, each with a regression test:
+
+| Finding | Severity | Resolution |
+| :-- | :-- | :-- |
+| After approval, a binding refusal for a lasting reason (for example `already-authorized` by another writer, or `handed-off`) still said "it can be requested again" | minor | **Fixed.** The wording depends on the refusal, and only passing faults say "requested again". Model test. |
+| Every failed request said "Nothing was recorded or sent", including a timeout or a malformed 202 that may have reached the broker | minor | **Fixed.** That sentence is shown only for the broker's own refusals. Otherwise the page says the request may still have been made and reads the workbench again. Model test. |
+| With the attempts read before the send, the next-step line said "Prepared and not sent" while the request card said it was sent | minor | **Fixed.** A bound or sent request for that attempt reads as awaiting evidence, never ready. Model test. |
+| The first step said "requested from this page" even for a request typed on the terminal | minor | **Fixed.** It now says "requested". |
+| A request refused for a lasting reason disappeared from Task once the attempts were read again | minor | **Fixed.** The outcome stays shown above the "cannot be sent" line. |
+| Focus fell to the page body when the request button or Withdraw was replaced | minor | **Fixed.** A labelled live region stays mounted and takes focus. Browser test: Enter, then focus on the region, then Tab to Withdraw; Withdraw, then focus on the region. |
+| An unpaired `GET status` showed which attempt and task were in flight | minor | **Fixed.** Without the grant, `command.attempt` is null. Broker test. |
+| The terminal said nothing about how a page-requested attempt ended | minor | **Fixed.** After the phrase is answered, the terminal prints the same account as for `attempt <id>`. End-to-end assertion. |
+| The card said steers and queues are "not recorded as part of" the attempt, but Slice I's run reading includes the run they change | minor | **Fixed.** The wording now separates later prompts from steers or queues that change the attempt's run. |
+| Words for `dispatching` before binding can never be shown | nit | **Kept**, marked as defensive. |
+| "Sent once" overstated a send whose reply was lost, or came in a form this version does not recognise | nit | **Fixed.** It now says "Recorded as sent, once", and "not seen or not recognised". |
+| A stale problem message could reappear after a later request | nit | **Fixed.** It is cleared when a request for the attempt appears. |
+
+## 10. Next
 
 1. An `execution` summary per attempt in the attention overview, from the same reading.
 2. An operator decision record that ties an attempt's execution to its receipts when the task is closed. It sends nothing.

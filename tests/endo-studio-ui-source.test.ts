@@ -326,7 +326,7 @@ describe("the frontend's source", () => {
 			if (!["develop/Live.tsx", "develop/AttemptRequest.tsx", "use-workbench.ts"].includes(name))
 				expect(text, name).not.toMatch(/AttemptRequest\b(?!s)|requestAttempt/);
 		expect(sources["develop/Live.tsx"]).toContain('import { AttemptRequest } from "./AttemptRequest.tsx";');
-		expect(request.match(/wb\.[a-zA-Z]+\(/g)?.sort()).toEqual(["wb.discard(", "wb.requestAttempt("]);
+		expect(request.match(/wb\.[a-zA-Z]+\(/g)?.sort()).toEqual(["wb.discard(", "wb.refresh(", "wb.requestAttempt("]);
 		expect(request).not.toMatch(/from "\.\.\/api\.ts"|fetch|propose|intervene|setDraft|composer|\.prompt\b/);
 		expect(request).not.toMatch(/verified (task|work)|agent succeeded|task (is )?(done|complete)/i);
 		expect(sources["model/attempt-request.ts"]).not.toMatch(/Date\.now|new Date|fetch|from "react"|localStorage/);

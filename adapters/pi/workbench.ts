@@ -345,7 +345,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 
 	// --- status --------------------------------------------------------------------------------------------------------------
 
-	#status() {
+	/**
+	 * `paired`: the request carried the grant. Status needs no grant, so what it says of the prompt in flight is only its state: which work
+	 * attempt and task it carries is told to the paired page alone (as the attempts themselves are, behind the grant).
+	 */
+	#status(paired: boolean) {
 		const session = this.#o.session;
 		const id = session.piSessionId;
 		const connected = !this.#disposed && !this.#ended && session.live && id !== null;
@@ -373,7 +377,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				),
 			},
 			paired: this.#pairing.paired(),
-			command: this.#command?.view ?? null,
+			command:
+				this.#command === null
+					? null
+					: paired || this.#command.view.attempt === null
+						? this.#command.view
+						: { ...this.#command.view, attempt: null },
 			interventions: this.#interventions?.views() ?? [],
 			transcript: {
 				watermark: this.transcript.watermark,
@@ -447,7 +456,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (!this.#o.session.live) this.endSession();
 		const [a, b, ...more] = request.route;
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
-			return reply(200, this.#status());
+			return reply(200, this.#status(this.#granted(request.grant)));
 		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "")
 			return this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
 		// Everything below needs the grant.

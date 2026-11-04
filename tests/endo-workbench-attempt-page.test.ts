@@ -186,6 +186,11 @@ async function scenario(subject: { bin: string; env: NodeJS.ProcessEnv; provider
 	await shot(page, `${subject.label}-awaiting-approval`);
 	expect(endo(env, "attempt", "show", "--root", root, "--attempt", attempt).json().attempt.execution).toBeNull();
 	pty.type(phrase);
+	// The operator typed the phrase here, so the terminal also tells how the page's request ended.
+	await pty.waitFor(
+		/workbench: attempt endo\.attempt\.[0-9a-f]{32} was (sent and Pi accepted it \(started\)|sent; Pi's reply was not seen)/,
+		120_000,
+	);
 
 	// The page reads the request as sent and acknowledged, then the attempt's execution from the records as they are written.
 	await page.waitFor(
@@ -251,7 +256,7 @@ describe.runIf(runs)("the page-requested attempt, end to end under a pseudo-term
 		});
 		expect(run).toBe("completed");
 		expect(read.execution.run).toBe("completed");
-		expect(pageSaid.request).toContain("Sent once. Pi replied: started");
+		expect(pageSaid.request).toContain("Recorded as sent, once. Pi replied: started");
 		expect(pageSaid.execution).toContain("Pi reported the run completed. Not verified");
 	}, 300_000);
 });

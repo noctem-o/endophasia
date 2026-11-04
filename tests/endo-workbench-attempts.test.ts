@@ -388,6 +388,11 @@ describe("the broker: the paired page requests an attempt; the terminal still ap
 		});
 		// The record says it was approved on the terminal, as every attempt is.
 		expect(authorizedOf(w.root, w.attempt.id)).toMatchObject({ via: "workbench-terminal", approvedBy: "operator" });
+		// Status needs no grant: an unpaired reader sees that a prompt was handled, never which attempt or task it carried.
+		const unpaired = (await w.call("GET", "status")).body as { command: { attempt: unknown } };
+		expect(unpaired.command.attempt).toBeNull();
+		const paired = (await w.call("GET", "status", null, w.grant)).body as { command: { attempt: unknown } };
+		expect(paired.command.attempt).toMatchObject({ attemptId: w.attempt.id, bound: true });
 		// Asked again from the page: refused by name, nothing recorded or sent.
 		const again = await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant);
 		expect(again).toMatchObject({ status: 409, body: { error: "attempt-already-authorized" } });

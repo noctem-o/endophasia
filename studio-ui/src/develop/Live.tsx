@@ -507,7 +507,7 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 					<li data-done="true">requested</li>
 					<li data-done={c.approved}>approved in the terminal</li>
 					<li data-done={c.attempt.bound}>authorisation recorded</li>
-					<li data-done={sent}>sent</li>
+					<li data-done={sent}>recorded as sent</li>
 					<li data-done={c.state === "accepted" || c.reason === "runtime-refused"}>Pi replied</li>
 				</ol>
 				{c.state === "awaiting-approval" ? (
@@ -527,8 +527,8 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 					</>
 				) : null}
 				<p className="dim small">
-					Later prompts, steers and queues in this conversation are your own messages: they are not this attempt,
-					and are not recorded as part of it.
+					A later prompt is your own message, not this attempt. A steer or queue sent while its run is open changes
+					that run, and so is part of what the run's reading reflects.
 				</p>
 			</section>
 		);

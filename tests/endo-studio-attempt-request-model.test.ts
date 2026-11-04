@@ -2,7 +2,13 @@
 // from the broker's request (which names its attempt) and the attempts' records. No sentence says the work succeeded or the task is done;
 // a lost reply is uncertainty, not failure; a request that bound the attempt is never offered again.
 import { describe, expect, it } from "vitest";
-import { nextStep, requestable, requestFor, requestWords } from "../studio-ui/src/model/attempt-request.ts";
+import {
+	failureWords,
+	nextStep,
+	requestable,
+	requestFor,
+	requestWords,
+} from "../studio-ui/src/model/attempt-request.ts";
 import type { Attempt, AttemptsView, Execution, Receipt } from "../studio-ui/src/model/attempts-wire.ts";
 import type { WorkbenchCommand } from "../studio-ui/src/model/workbench-wire.ts";
 
@@ -75,7 +81,7 @@ describe("the words for a page-requested attempt", () => {
 		expect(all[0]!.detail).toContain("This page cannot approve it");
 		expect(all[1]!.head).toContain("Checking the attempt again");
 		expect(all[2]!.head).toContain("Authorisation recorded");
-		expect(all[3]!.head).toBe("Sent once. Pi replied: started");
+		expect(all[3]!.head).toBe("Recorded as sent, once. Pi replied: started");
 		expect(all[3]!.detail).toContain("not a result");
 		// A lost reply: uncertainty, never failure or success, never a retry.
 		expect(all[4]!.detail).toContain("not a failure, and not a success");
@@ -95,7 +101,7 @@ describe("the words for a page-requested attempt", () => {
 			}),
 		);
 		expect(changed.head).toContain("the task's words changed");
-		expect(changed.detail).toContain("can be requested again");
+		expect(changed.detail).toContain("cannot be sent as it stands");
 		const spent = requestWords(
 			command({
 				state: "refused",
@@ -106,7 +112,7 @@ describe("the words for a page-requested attempt", () => {
 		);
 		expect(spent.detail).toContain("will not be sent again");
 		expect(requestWords(command({ state: "refused", reason: "runtime-refused" })).head).toBe(
-			"Sent once. Pi refused it",
+			"Recorded as sent, once. Pi refused it",
 		);
 	});
 
@@ -181,5 +187,93 @@ describe("the selected task's next step", () => {
 		expect(nextStep(view(), command({ attempt: null }))).toBeNull();
 		for (const a of [attempt(), attempt({ execution: execution() })])
 			expect(nextStep(view(a), null)?.text ?? "").not.toMatch(NEVER);
+	});
+});
+
+describe("review regressions", () => {
+	it("say an attempt refused at binding for a lasting reason cannot be sent as it stands, not that it can be asked again", () => {
+		for (const refusal of [
+			"already-authorized",
+			"handed-off",
+			"outcome-recorded",
+			"task-done",
+			"task-words-changed",
+		] as const) {
+			const w = requestWords(
+				command({
+					state: "refused",
+					approved: true,
+					reason: refusal === "already-authorized" ? "duplicate" : "attempt-changed",
+					attempt: { attemptId: A, taskId: "t", bound: false, refusal },
+				}),
+			);
+			expect(w.detail, refusal).toContain("cannot be sent as it stands");
+			expect(w.detail, refusal).not.toContain("can be requested again");
+		}
+		for (const refusal of ["tasks-unreadable", "storage-failed", "unreadable"] as const)
+			expect(
+				requestWords(
+					command({
+						state: "refused",
+						approved: true,
+						reason: "attempt-not-recorded",
+						attempt: { attemptId: A, taskId: "t", bound: false, refusal },
+					}),
+				).detail,
+				refusal,
+			).toContain("can be requested again");
+	});
+
+	it("never offers an attempt as ready while the broker says it was bound and the attempts were read before that", () => {
+		for (const c of [
+			command({ state: "accepted", approved: true, disposition: "started" }),
+			command({ state: "unknown", approved: true }),
+			command({
+				state: "refused",
+				approved: true,
+				reason: "session-ended",
+				attempt: { attemptId: A, taskId: "t", bound: true, refusal: null },
+			}),
+		]) {
+			const step = nextStep(view(attempt()), c);
+			expect(step?.kind, c.state).toBe("awaiting-evidence");
+			expect(step?.text, c.state).not.toMatch(/not sent|request it/i);
+		}
+		// A request for another attempt changes nothing for this one.
+		expect(
+			nextStep(
+				view(attempt()),
+				command({ state: "accepted", attempt: { attemptId: B, taskId: "t", bound: true, refusal: null } }),
+			)?.kind,
+		).toBe("ready");
+	});
+
+	it("say nothing was requested only when the broker refused; a lost or malformed answer may have been requested", () => {
+		const refused = failureWords({
+			kind: "failure",
+			status: 409,
+			code: "attempt-task-done",
+			message: "M.",
+			retrySeconds: null,
+		});
+		expect(refused).toEqual({ text: "M. Nothing was recorded or sent.", uncertain: false });
+		const notRecording = failureWords({
+			kind: "failure",
+			status: 503,
+			code: "not-recording",
+			message: "The session is not recording, so nothing was requested.",
+			retrySeconds: null,
+		});
+		expect(notRecording.text).toBe("The session is not recording, so nothing was requested.");
+		for (const f of [
+			{ kind: "failure" as const, status: 0, code: "", message: "Unreachable.", retrySeconds: null },
+			{ kind: "failure" as const, status: 202, code: "", message: "Malformed.", retrySeconds: null },
+			{ kind: "failure" as const, status: 500, code: "", message: "Failed.", retrySeconds: null },
+		]) {
+			const w = failureWords(f);
+			expect(w.uncertain, String(f.status)).toBe(true);
+			expect(w.text, String(f.status)).toContain("may still have been requested");
+			expect(w.text, String(f.status)).not.toContain("Nothing was recorded");
+		}
 	});
 });

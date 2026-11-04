@@ -41,6 +41,9 @@
   worktree reads now also re-check the grant after reading Git. See [docs/designs/workspace-host.md](docs/designs/workspace-host.md).
 
 ### Fixed
+- **A late "no worktree" answer no longer moves the operator out of the view they chose.** On a workbench with no Git context, the page's
+  project read reset the whole project state, including the Conversation, Changes or Task view, so someone reading Task could be moved
+  back to the conversation. The view is now kept (Changes, which is not offered then, falls back to the conversation).
 - **A browser test's stand-in servers close their keep-alive connections first.** `close()` alone waited for Chromium's idle connections,
   which on a loaded CI runner outlasted the 10 s hook limit (`tests/endo-studio-observe-browser.test.ts`).
 - **A Ctrl-C at the very end of Studio's shutdown no longer kills it by the default signal action.** Studio keeps its SIGINT and SIGTERM

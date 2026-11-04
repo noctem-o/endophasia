@@ -122,6 +122,11 @@ page.
 
 Unchanged: the composer, its modes and its draft; Changes; the context column; Focus (Field only); keyboard navigation between tabs.
 
+**One existing bug fixed.** When the page learns there is no worktree to read (a late `absent` answer from the project route), it used to
+reset the whole project state, including the view the operator had chosen. Someone reading Task could be moved back to the conversation.
+The view is now kept; only Changes, which is not offered then, falls back to the conversation. The browser tests found this under load,
+and it has a model test (`tests/endo-studio-project-model.test.ts`).
+
 ## 6. Operator walkthrough
 
 ```

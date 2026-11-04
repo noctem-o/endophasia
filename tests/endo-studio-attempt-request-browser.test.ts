@@ -129,6 +129,7 @@ async function launch(width = 1440, height = 900, scenario = "") {
 type Api = Awaited<ReturnType<typeof launch>>;
 
 const openAttempt = async (page: Page) => {
+	// The page's first project read resets the view to Conversation (a new launch's state): a click made before it is undone, so the
 	await page.click("[data-testid=tab-task]");
 	await page.waitFor("document.querySelector('#develop-live').dataset.view === 'task'");
 	// The Task view opens on the overview: the selected task is chosen from the picker, as an operator would.
@@ -138,8 +139,14 @@ const openAttempt = async (page: Page) => {
 	await page.click("[data-testid=task-option][aria-selected=true]");
 	await page.waitFor("document.querySelector('[data-testid=attempt] details')");
 	await page.eval("document.querySelector('[data-testid=attempt] details').open = true");
-	await page.waitFor("document.querySelector('[data-testid=attempt-request-send]')");
+	// Enabled once the broker's status (its offer) has been read: a press before that does nothing, as it should.
+	await page.waitFor("document.querySelector('[data-testid=attempt-request-send]')?.disabled === false", 30_000);
 };
+/** The terminal's question, waited for as long as a loaded machine needs (the fixture's own wait is about a second). */
+async function approvalOf(api: { approval: Api["approval"] }) {
+	for (let i = 0; i < 400 && api.approval.requests.length === 0; i += 1) await new Promise((r) => setTimeout(r, 50));
+	return api.approval.waitForRequest();
+}
 const requestsTo = (page: Page, pattern: RegExp) => page.seen.requests.filter((r) => pattern.test(r));
 const statusOf = (api: Api) => {
 	const file = api.tasks.read();
@@ -163,7 +170,7 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		await shot(page, "attempt-ready");
 
 		await page.click("[data-testid=attempt-request-send]");
-		const request = await api.approval.waitForRequest();
+		const request = await approvalOf(api);
 		expect(request).toMatchObject({
 			operation: "attempt",
 			requestedFrom: "page",
@@ -234,7 +241,7 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		const { page } = api;
 		await openAttempt(page);
 		await page.click("[data-testid=attempt-request-send]");
-		await api.approval.waitForRequest();
+		await approvalOf(api);
 		await page.waitFor("document.querySelector('[data-testid=attempt-request-withdraw]')");
 		await page.click("[data-testid=attempt-request-withdraw]");
 		await page.waitFor("document.querySelector('[data-testid=attempt-request-status]')?.dataset.state === 'refused'");
@@ -267,7 +274,7 @@ suite("requesting a prepared attempt from the live workbench page", () => {
 		expect(described).toContain("Nothing is sent unless you type its APPROVE ATTEMPT phrase there");
 		await page.eval("document.querySelector('[data-testid=attempt-request-send]').focus()");
 		await page.press("Enter");
-		await api.approval.waitForRequest();
+		await approvalOf(api);
 		await page.waitFor(
 			"document.querySelector('[data-testid=attempt-request-status]')?.dataset.state === 'awaiting-approval'",
 		);

@@ -147,7 +147,7 @@ async function scenario(subject: { bin: string; env: NodeJS.ProcessEnv; provider
 		"--objective",
 		"Say hello in one short sentence. Do not use any tools.",
 	).json().attempt.id as string;
-const pty = new Pty(
+	const pty = new Pty(
 		`${process.execPath} ${CLI} harness attach ${root} --pi ${subject.bin} --cwd ${cwd} ${(subject.provider ?? []).join(" ")} --control --workbench --project ${project}`,
 		env,
 	);

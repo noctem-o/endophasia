@@ -20,7 +20,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { WorkbenchTasksV0 } from "../adapters/pi/workbench-tasks.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_LABELS_V0,
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
@@ -31,6 +30,7 @@ import {
 } from "../protocol/develop-attempts.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { type DevelopLaunchHostV0, DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { EndoWorkspaceRoutesV0 } from "../runtime/contracts/workspace-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { ATTEMPT_LABELS, ATTEMPT_STATES, readAttempts } from "../studio-ui/src/model/attempts-wire.ts";
@@ -575,7 +575,7 @@ describe("the workbench route and the page's gate", () => {
 			},
 			host,
 		);
-		const tasks = new WorkbenchTasksV0(scope);
+		const tasks = new EndoWorkspaceRoutesV0(scope);
 		return (method: "GET" | "POST", path: string, query = "", body: unknown = null) =>
 			tasks.route(["workspace", ...path.split("/").filter((p) => p !== "")], method, query, body);
 	}

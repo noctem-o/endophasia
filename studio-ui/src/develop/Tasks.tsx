@@ -387,15 +387,21 @@ function TaskPicker({ workspace, onDetails }: { workspace: WorkspaceApi; onDetai
 
 // ---- the Task view -----------------------------------------------------------------------------------------------------------------
 
+/**
+ * The session the host serving this page speaks for: a live workbench's, connected or not, or none at all (a workspace host runs no agent,
+ * which is a normal mode, never "disconnected").
+ */
+export type HostSession = "connected" | "disconnected" | "none";
+
 export function TaskPanel({
 	workspace,
 	git,
-	connected,
+	session,
 }: {
 	workspace: WorkspaceApi;
 	git: Project | null;
-	/** The workbench's connection to its session, as the run strip reads it. */
-	connected: boolean;
+	/** The host's session, as the run strip reads it; `none` on a workspace host. */
+	session: HostSession;
 }): ReactElement {
 	const shown = shownOf(workspace);
 	const { state } = workspace;
@@ -483,7 +489,7 @@ export function TaskPanel({
 				<Note tone="warn">
 					<span data-testid="tasks-stale-note">
 						{state.problem === "unpaired"
-							? "This page no longer holds a pairing, so these tasks are as last read and cannot be changed here. Your tasks are saved in the store; the next workbench you pair with shows them, and the endo task command reads and edits them from a terminal."
+							? "This page no longer holds a pairing, so these tasks are as last read and cannot be changed here. Your tasks are saved in the store; the next workbench or workspace you pair with shows them, and the endo task command reads and edits them from a terminal."
 							: "Nothing could confirm these are still what the file holds. They are as last read."}
 					</span>
 				</Note>
@@ -493,7 +499,7 @@ export function TaskPanel({
 					<span data-testid="tasks-read-only">{readOnly}</span>
 				</Note>
 			)}
-			{!connected && state.current ? (
+			{session === "disconnected" && state.current ? (
 				<p className="dim small" data-testid="task-disconnected">
 					The session is not connected. Your tasks are unchanged: a disconnected agent has not necessarily finished
 					its work, and nothing here marks a task done.
@@ -523,12 +529,12 @@ export function TaskPanel({
 							type="button"
 							className="btn quiet small-btn"
 							data-testid="task-overview"
-							onClick={() => workspace.setPane("overview")}
+							onClick={() => workspace.back()}
 						>
 							‹ Overview
 						</button>
 					</p>
-					<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} connected={connected} />
+					<TaskDetail key={task.id} task={task} workspace={workspace} writable={writable} session={session} />
 					<AttemptsSection
 						attempts={workspace.attempts}
 						task={task}
@@ -713,12 +719,12 @@ function TaskDetail({
 	task,
 	workspace,
 	writable,
-	connected,
+	session,
 }: {
 	task: Task;
 	workspace: WorkspaceApi;
 	writable: boolean;
-	connected: boolean;
+	session: HostSession;
 }): ReactElement {
 	const editing = workspace.drafts[task.id] !== undefined;
 	const [note, setNote] = useState("");
@@ -828,7 +834,7 @@ function TaskDetail({
 				)}
 			</section>
 
-			<SessionBlock task={task} workspace={workspace} writable={writable} connected={connected} />
+			<SessionBlock task={task} workspace={workspace} writable={writable} session={session} />
 
 			<details className="more task-history" data-testid="task-history">
 				<summary>History ({task.history.length})</summary>
@@ -848,7 +854,12 @@ function TaskDetail({
 	);
 }
 
-function refWords(ref: SessionRef): string {
+function refWords(ref: SessionRef, session: HostSession): string {
+	// A workspace host has no session and no conversation: every reference is a record of earlier work, said as such.
+	if (session === "none")
+		return ref.source === "omp-saved"
+			? "A saved Oh My Pi session you linked from the endo CLI. OMP owns it: this workspace neither connects to nor controls it, and does not look for its file (endo task show --omp-sessions checks)."
+			: "Linked in a live workbench, in an earlier launch: a record of where work happened. This workspace runs no agent and does not connect to that session.";
 	if (ref.source === "omp-saved")
 		return "A saved Oh My Pi session you linked from the endo CLI. OMP owns it: this workbench neither connects to nor controls it, and does not look for its file, so whether it is still there is not checked here (endo task show --omp-sessions checks).";
 	return ref.relation === "current"
@@ -871,12 +882,12 @@ function SessionBlock({
 	task,
 	workspace,
 	writable,
-	connected,
+	session,
 }: {
 	task: Task;
 	workspace: WorkspaceApi;
 	writable: boolean;
-	connected: boolean;
+	session: HostSession;
 }): ReactElement {
 	const linkable = workspace.state.view?.linkable === true && workspace.paired && workspace.state.current;
 	const busy = workspace.state.busy;
@@ -920,12 +931,17 @@ function SessionBlock({
 									</button>
 								) : null}
 							</span>
-							<span className="dim small">{refWords(ref)}</span>
+							<span className="dim small">{refWords(ref, session)}</span>
 						</li>
 					))}
 				</ul>
 			)}
-			{writable ? (
+			{session === "none" ? (
+				<p className="dim small" data-testid="task-link-none">
+					This workspace runs no agent, so it has no session to link. A live workbench links the session it serves;{" "}
+					<span className="mono">endo task link</span> links an Oh My Pi saved session.
+				</p>
+			) : writable ? (
 				<div className="task-actions">
 					<button
 						type="button"
@@ -937,7 +953,7 @@ function SessionBlock({
 					>
 						Link the current session
 					</button>
-					{!connected || !linkable ? (
+					{session !== "connected" || !linkable ? (
 						<span className="dim small">No connected session to link.</span>
 					) : task.sessions.some((s) => s.relation === "current") ? (
 						<span className="dim small">The current session is already linked.</span>

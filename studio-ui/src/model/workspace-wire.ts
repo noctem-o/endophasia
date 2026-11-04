@@ -1,4 +1,4 @@
-// Browser wire gate for the workspace routes (protocol/develop-tasks.ts, served by adapters/pi/workbench-tasks.ts). The broker is
+// Browser wire gate for the workspace routes (protocol/develop-tasks.ts, served by runtime/contracts/workspace-routes.ts). The broker is
 // authoritative for what a project, a task and a reference are; this checks that a body has exactly the shape the renderers read and
 // refuses it whole when it does not. The words are the operator's own: they are only ever shown as text, and are re-checked for the
 // control and bidirectional characters the server already refuses.

@@ -1,6 +1,7 @@
-// The workbench's task routes: the operator's project and task metadata, served to a PAIRED page and nothing else. This module is part of
-// the broker's request surface (adapters/pi/workbench.ts forwards the routes below to it AFTER its grant check), and it is deliberately
-// the opposite of a command surface:
+// The workspace routes: the operator's project and task metadata, and the read-only project context, served to a PAIRED page and nothing
+// else. Shared by every host that serves `api/v0/workbench/*` (the Pi workbench, adapters/pi/workbench.ts, and the workspace host,
+// cockpit-http/workspace-host.ts), which forward the routes below here AFTER their own grant check. It imports no harness adapter, and it
+// is deliberately the opposite of a command surface:
 //
 //   GET  workspace                      the registered project, its tasks and the explicit session references. Needs the grant.
 //   GET  workspace/attempts             the work attempts of the SELECTED task, with their briefs (read-only; none are made here).
@@ -9,23 +10,27 @@
 //   POST workspace/tasks/update         {taskId, expectedRevision, title?, description?, acceptance?}
 //   POST workspace/tasks/status         {taskId, expectedRevision, to, note?}           the operator's own status change.
 //   POST workspace/tasks/select         {taskId | null}                                 remember which task they are working on.
-//   POST workspace/tasks/link-session   {taskId, expectedRevision}                      reference the session THIS workbench serves.
+//   POST workspace/tasks/link-session   {taskId, expectedRevision}                      reference the session THIS host serves (a host
+//                                                                                       with no session answers `no-session`).
 //   POST workspace/tasks/unlink-session {taskId, expectedRevision, linkId}
+//   GET  project                        the launch directory's Git context (`endoProjectRouteV0`). READ ONLY.
+//   GET  project/diff?snapshot=&file=   one changed file's diff, for an entry of that snapshot. READ ONLY.
 //
 // It is a TRANSLATION layer only: it checks the shape of the request (exact keys, an id is a string, a revision is a count), calls the shared
 // workspace service (runtime/contracts/develop-workspace.ts), and turns its answer into a status code. The meaning of every operation (what is
 // writable, what a transition may be, what a stale revision is, how a session reference is built and when it is current) is the service's,
-// the same one the `endo` CLI uses. The authorisation is the broker's grant, checked before this module is reached.
+// the same one the `endo` CLI uses. The authorisation is the host's grant, checked before this module is reached.
 //
 // What none of them can do: send a prompt, steer, queue or stop, start or resume or select a session, open or write a file, run Git or a
-// shell, read the transcript, or approve anything. The page names a task by id and a revision; it never names a project, a path, a session
-// or a launch: those are the launch scope's, fixed by the operator's `--project`, the launch directory and the broker's own state.
+// shell, read a transcript, or approve anything. The page names a task by id and a revision; it never names a project, a path, a session
+// or a launch: those are the launch scope's, fixed by the operator's `--project`, the launch directory and the host's own state.
 
+import type { EndoDiffOutcomeV0, EndoWorkbenchProjectV0 } from "../../protocol/workbench-project.ts";
 import type {
 	DevelopLaunchWorkspaceV0,
 	DevelopWorkspaceRefusalV0,
 	DevelopWorkspaceResultV0,
-} from "../../runtime/contracts/develop-workspace.ts";
+} from "./develop-workspace.ts";
 
 const reply = (status: number, body: unknown) => ({ status, body });
 const refuse = (status: number, error: string) => reply(status, { error });
@@ -57,7 +62,7 @@ const HTTP: Record<DevelopWorkspaceRefusalV0, [number, string]> = {
 	"not-a-directory": [400, "bad-request"],
 };
 
-export class WorkbenchTasksV0 {
+export class EndoWorkspaceRoutesV0 {
 	readonly #workspace: DevelopLaunchWorkspaceV0;
 
 	constructor(workspace: DevelopLaunchWorkspaceV0) {
@@ -70,7 +75,7 @@ export class WorkbenchTasksV0 {
 	}
 
 	/**
-	 * A route under `workspace/`, as the broker serves it: the attempts read here, everything else by `handle`. The broker has already
+	 * A route under `workspace/`, as a host serves it: the attempts read here, everything else by `handle`. The host has already
 	 * checked the grant. The attempts: GET only, no query, no further path, and nothing in the request chooses the project, the task or the
 	 * directory their receipts are compared with (the launch's project, the task selected in the file, the launch's own directory). A
 	 * launch given no attempt records has no such route. Asynchronous only because the receipts are compared with the launch directory's
@@ -97,7 +102,7 @@ export class WorkbenchTasksV0 {
 		return this.handle(route, method, query, body);
 	}
 
-	/** A route under `workspace/` other than the attempts (see `route`). The broker has already checked the grant. */
+	/** A route under `workspace/` other than the attempts (see `route`). The host has already checked the grant. */
 	handle(
 		route: readonly string[],
 		method: "GET" | "POST",
@@ -182,4 +187,54 @@ export class WorkbenchTasksV0 {
 		const [status, error] = HTTP[result.code];
 		return reply(status, result.reason === undefined ? { error } : { error, reason: result.reason });
 	}
+}
+
+/**
+ * The project context a host may serve: two READS about its launch directory (adapters/git/project-inspector.ts). It is not part of any
+ * command surface: it can change nothing, takes no path from the page, and says nothing about who made a change.
+ */
+export interface EndoProjectSourceV0 {
+	overview(): Promise<EndoWorkbenchProjectV0>;
+	diff(snapshot: string, id: number): Promise<EndoDiffOutcomeV0>;
+	/** The host is done with it: drop what was read. */
+	dispose?(): void;
+}
+
+/**
+ * `GET project` and `GET project/diff?snapshot=<16 hex>&file=<n>`, as a host serves them after its grant check; null for any other route
+ * under `project` (the host answers not-found). A host without a project source answers the bare `project` route with one constant (so a
+ * page can ask quietly) and nothing else.
+ */
+export async function endoProjectRouteV0(
+	project: EndoProjectSourceV0 | undefined,
+	route: readonly string[],
+	method: "GET" | "POST",
+	query: string,
+): Promise<{ status: number; body: unknown } | null> {
+	const [a, b, ...more] = route;
+	if (a !== "project" || method !== "GET" || more.length > 0) return null;
+	if (project === undefined)
+		return b === undefined && query === ""
+			? reply(200, { available: false, schemaVersion: "endo.workbench-project.v0" })
+			: null;
+	try {
+		if (b === undefined && query === "") {
+			const overview = await project.overview();
+			// Busy is not a read: it says nothing about the worktree, so it is not served as one (the page keeps what it had).
+			if (overview.state === "unavailable" && overview.reason === "busy") return refuse(429, "busy");
+			return reply(200, overview);
+		}
+		if (b === "diff") {
+			const match = /^snapshot=([0-9a-f]{16})&file=(0|[1-9][0-9]{0,5})$/.exec(query);
+			if (match === null) return refuse(400, "bad-request");
+			const outcome = await project.diff(match[1] as string, Number(match[2]));
+			if (outcome.kind === "diff") return reply(200, outcome.diff);
+			if (outcome.kind === "stale") return refuse(409, "stale-snapshot");
+			if (outcome.kind === "busy") return refuse(429, "busy");
+			return refuse(400, "bad-request");
+		}
+	} catch {
+		return refuse(503, "unavailable");
+	}
+	return null;
 }

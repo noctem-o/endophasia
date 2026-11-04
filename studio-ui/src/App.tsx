@@ -38,7 +38,11 @@ const WORKSPACES = [
 export function App(): ReactElement {
 	const observe = useObserve();
 	const { state } = observe;
-	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>("observe");
+	// The page opens on Observe, or on DEVELOP when the server that served it says so in the page (`data-start`, set by
+	// `endo workspace open`). Read once; no request, and never the page's own address.
+	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>(() =>
+		document.documentElement.dataset.start === "develop" ? "develop" : "observe",
+	);
 	// How DEVELOP is drawn: Instrument (the default) or Field. Only the drawing differs; every hook above and below is the same, so a
 	// switch keeps the draft, the selection and the file being read. Memory only (the page keeps no storage): a reload is Instrument.
 	const [appearance, setAppearance] = useState<"instrument" | "field">("instrument");
@@ -48,12 +52,30 @@ export function App(): ReactElement {
 	const omp = useOmp(workspace === "develop");
 	const workbench = useWorkbench(workspace === "develop");
 	const workbenchOn = workbench.state.availability === "available";
+	// A workspace host: the project's tasks and evidence, writable after pairing, with no harness (`endo workspace open`).
+	const workspaceHost = workbench.state.availability === "workspace";
+	const launchId = workbench.state.launchId;
 	// The worktree context belongs to the live launch, so it is held here beside the workbench's state: switching workspaces does not drop it,
 	// and losing the grant or changing launch does.
-	const project = useProject(workbench.state.grant, workbench.state.status?.launchId ?? null, workspace === "develop");
+	const project = useProject(workbench.state.grant, launchId, workspace === "develop");
 	// The operator's project and tasks: metadata, held beside the workbench for the same reason as the worktree context. Choosing a task here
 	// sends nothing and changes no session, worktree or status.
-	const tasks = useWorkspace(workbench.state.grant, workbench.state.status?.launchId ?? null, workspace === "develop");
+	const tasks = useWorkspace(workbench.state.grant, launchId, workspace === "develop");
+	// A read or change refused for want of a grant: the host has refused THIS page's token (revoked, expired, or replaced because another
+	// page paired). That refusal is the answer, so the page drops its grant and shows the pairing form again; drafts stay. (The host's
+	// status cannot say this: its `paired` means some page holds the grant, which after a replacement is another page.)
+	// Only a refusal that ARRIVES acts, never one still on screen from the grant before: just after a new pairing, the previous grant's
+	// "unpaired" states remain until the first reads under the new one return, and must not drop it.
+	const refused =
+		tasks.state.problem === "unpaired" ||
+		tasks.state.notice === "grant-required" ||
+		tasks.attention.problem === "unpaired" ||
+		tasks.attempts.problem === "unpaired" ||
+		project.state.problem === "unpaired";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only the moment a refusal appears, once; a new grant alone never acts
+	useEffect(() => {
+		if (refused && workbench.state.grant !== null) workbench.unpair();
+	}, [refused]);
 	// How model-provided reasoning is shown, in both appearances: folded (the default) or shown, and the traces opened or folded by hand.
 	// Display only, memory only: it never changes the model's thinking setting, and a reload is the default again.
 	const reasoning = useReasoningView(workbench.state.status?.launchId ?? null);
@@ -193,7 +215,9 @@ export function App(): ReactElement {
 					title={
 						workbenchOn
 							? "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
-							: "This page only reads. It cannot change a store, steer a runtime or start anything."
+							: workspaceHost
+								? "This server is a workspace host. Once paired, the page can read the project's tasks and evidence and change task metadata. It runs no agent and no command, and cannot prompt, steer or stop anything."
+								: "This page only reads. It cannot change a store, steer a runtime or start anything."
 					}
 				>
 					<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -209,10 +233,8 @@ export function App(): ReactElement {
 						/>
 						<path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
 					</svg>
-					{workbenchOn
-						? workbench.state.grant === null
-							? "Workbench · not paired"
-							: "Workbench · paired"
+					{workbenchOn || workspaceHost
+						? `${workspaceHost ? "Workspace" : "Workbench"} · ${workbench.state.grant === null ? "not paired" : "paired"}`
 						: "Read-only"}
 				</span>
 				<span id="read-status" className="read-status" aria-live="polite">
@@ -220,7 +242,9 @@ export function App(): ReactElement {
 						? readStatusText(state)
 						: workbenchOn
 							? "Live workbench"
-							: "Read-only workspace"}
+							: workspaceHost
+								? "Workspace · no agent attached"
+								: "Read-only workspace"}
 				</span>
 				{workspace === "observe" ? (
 					<button

@@ -54,6 +54,25 @@ export interface EndoCockpitLaunchOptionsV0 {
 	 * builds it; this module imports no adapter and reads no session file.
 	 */
 	omp?: { root: string; open(key: EndoDigestKeyV0): EndoOmpObserverV0 };
+	/**
+	 * The workspace the page opens on, said in the page itself (`endo workspace open` gives `develop`; `endo studio` gives nothing and its
+	 * page is served byte for byte as built). It costs no request, and the page never reads its own address to decide.
+	 */
+	start?: "develop";
+}
+
+/**
+ * The page's files with `data-start="develop"` on its root element, so the page opens on DEVELOP. Refuses a page whose root element is not
+ * the one the build writes, rather than serve it unmarked.
+ */
+export function endoStartOnDevelopV0(
+	ui: Readonly<Record<string, string | Uint8Array>>,
+): Record<string, string | Uint8Array> {
+	const page = ui["index.html"];
+	const text = page === undefined ? "" : typeof page === "string" ? page : new TextDecoder().decode(page);
+	const marked = text.replace('<html lang="en">', '<html lang="en" data-start="develop">');
+	if (marked === text) throw new TypeError("the page's root element is not the one this build writes");
+	return { ...ui, "index.html": marked };
 }
 
 export interface EndoCockpitLaunchedV0 {
@@ -192,7 +211,7 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 	const server = await startEndoCockpitServerV0({
 		root: rootPath,
 		digestKey,
-		ui,
+		ui: options.start === "develop" ? endoStartOnDevelopV0(ui) : ui,
 		port: options.port ?? 0,
 		...(options.onError === undefined ? {} : { onError: options.onError }),
 		...(options.workbench === undefined ? {} : { workbench: options.workbench }),

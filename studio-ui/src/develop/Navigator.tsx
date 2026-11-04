@@ -111,6 +111,7 @@ function Row({
 export function Navigator({
 	develop,
 	live,
+	liveTitle = "Attached",
 	onRecorded,
 	external,
 }: {
@@ -119,6 +120,8 @@ export function Navigator({
 	external?: ReactNode;
 	/** The live session's row, offered by a workbench: a "Connected" group above the recorded sessions. */
 	live?: ReactNode;
+	/** The heading of that group: "Attached" for a live session, "Your work" for a workspace host (which attaches nothing). */
+	liveTitle?: string;
 	/** Called when a recorded session is chosen, so the workspace can leave the live view. */
 	onRecorded?: () => void;
 }): ReactElement {
@@ -180,7 +183,7 @@ export function Navigator({
 		>
 			{live === undefined ? null : (
 				<section className="nav-group" aria-labelledby="develop-group-connected">
-					<h3 id="develop-group-connected">Attached (1)</h3>
+					<h3 id="develop-group-connected">{liveTitle} (1)</h3>
 					<ul className="caplist">
 						<li>{live}</li>
 					</ul>

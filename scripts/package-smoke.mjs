@@ -337,6 +337,16 @@ try {
 		studioHelp.status === 0 && studioHelp.stderr === "" && /Endophasia Studio/.test(studioHelp.stdout) && /127\.0\.0\.1 only/.test(studioHelp.stdout) && studioShort.stdout === studioHelp.stdout,
 		"endo studio --help (and -h) exits 0, prints the loopback-only description and creates nothing",
 	);
+	// The workspace host's module graph loads from the install: its help, an argument refusal (status 2) and an unknown project (status 1).
+	// Its full journey (no Pi on PATH: pair, read, change, stop, reopen) runs from source in tests/endo-workspace-cli.test.ts.
+	const workspaceHelp = run(["workspace", "open", "--help"]);
+	const workspaceBare = run(["workspace", "open", emptyStore]);
+	const workspaceUnknown = run(["workspace", "open", emptyStore, "--project", "endo.project.none"]);
+	check(
+		workspaceHelp.status === 0 && /no agent running/.test(workspaceHelp.stdout) && workspaceBare.status === 2 && /--project <id> is required/.test(workspaceBare.stderr) && workspaceUnknown.status === 1 && /names no project/.test(workspaceUnknown.stderr),
+		"endo workspace open --help exits 0; without --project it exits 2; an unknown project exits 1 before anything listens",
+	);
+	check(/workspace open/.test(help.stdout), "endo --help lists endo workspace open");
 	const invalid = [
 		["--port", "65536"], ["--port", "08085"], ["--port", ""], ["--port"], ["--port", "1", "--port", "2"], ["--bogus"], ["-x"], ["--host", "0.0.0.0"], ["--open"],
 		["a", "b"], ["a", "--root", "b"], ["--root", "a", "--root", "b"], ["--root"], ["--key-file"], ["--key-file", "k", "--key-file", "l"],

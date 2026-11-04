@@ -22,7 +22,6 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { OmpSavedSessionObserverV0, ompScopeOfRootV0 } from "../adapters/omp/observer.ts";
-import { WorkbenchTasksV0 } from "../adapters/pi/workbench-tasks.ts";
 import {
 	ENDO_DEVELOP_TASKS_SCHEMA_V0,
 	ENDO_DEVELOP_TASKS_SCHEMA_V1,
@@ -37,6 +36,7 @@ import {
 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { type DevelopLaunchHostV0, DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { EndoWorkspaceRoutesV0 } from "../runtime/contracts/workspace-routes.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { readWorkspace } from "../studio-ui/src/model/workspace-wire.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
@@ -471,7 +471,7 @@ describe("authority: a launch makes only live references, the operator scope onl
 	it("the workbench route accepts no session description: a forged body is refused and nothing is written", () => {
 		const w = seeded();
 		const service = new DevelopWorkspaceServiceV0(w.store);
-		const routes = new WorkbenchTasksV0(
+		const routes = new EndoWorkspaceRoutesV0(
 			service.forLaunch({ projectId: w.projectId, launchDirectory: w.project }, hostOf("pi-live", PI_ID)),
 		);
 		const before = fileOf(w.root);

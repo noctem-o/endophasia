@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|proxy|replay|experiment|steer|project|task|attempt> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -54,6 +54,13 @@ Interactive, read-only with respect to the store (long-running; stop it with Ctr
                                      Endophasia Studio: a read-only browser interface on 127.0.0.1, behind a private address
                                      printed once. Writes nothing to the store; the first launch creates its own digest key.
                                      Prints a human line, not a JSON document. "endo studio --help" for details.
+
+Interactive, writes only DEVELOP task metadata, and only from a paired page (long-running; stop it with Ctrl-C):
+  workspace open [<root> | --root dir] --project <id> [--port n] [--key-file path]
+                                     the project's tasks, attempts, receipts and attention overview in a browser on 127.0.0.1,
+                                     with NO agent running: no Pi, model or provider. After pairing (a code printed here), the page
+                                     can create and edit tasks and set statuses. It cannot prompt, steer or stop an agent, or run
+                                     anything. "endo workspace open --help" for details (docs/designs/workspace-host.md).
 
 Commands that write to a store:
   ingest <root> <file>               append records from a file
@@ -154,5 +161,40 @@ Output: unlike the other commands, Studio prints one human line on stdout (the a
 canonical-JSON document. It runs until interrupted: SIGINT (Ctrl-C) or SIGTERM closes the server, releases the port and exits.
 Exit status: 0 stopped that way (or help); 1 Studio could not start (page files missing, key unusable, port in use); 2 the
 invocation was invalid (nothing was created or started).
+`;
+}
+
+/** `endo workspace open --help`: pure. */
+export function endoWorkspaceHelpV0(): string {
+	return `endo workspace open — the DEVELOP workspace of one registered project, in a browser, with no agent running.
+
+Usage: endo workspace open [<root> | --root dir] --project <id> [--port n] [--key-file path]
+       endo workspace open --help | -h
+
+Starts a server on 127.0.0.1 only, for the one project you name, and prints a private access address for this launch. Open it in a
+browser on this machine and type the pairing code printed here into the page. The paired page shows the project's tasks, what needs
+your attention (decisions in review, failed or inconclusive checks, evidence to recheck), each task's attempts, briefs and
+verification receipts, and the worktree's changed files. It can create and edit tasks, set a task's status, and choose the task you
+are working on, with the same rules and stale-revision protection as "endo task".
+
+It needs no Pi, model, provider or harness, and starts none. It cannot send a prompt, steer, queue or stop an agent, link a session,
+run a command or a check, or open a path the page names. The project and the store are fixed when you start it.
+
+While it runs, type on this terminal:
+  pair      print a new pairing code (one use, 10 minutes); pairing a page replaces any earlier page's grant
+  revoke    end the current page's grant now (it can no longer read tasks or change anything)
+A grant lasts at most an hour. Ctrl-C (or SIGTERM) revokes it, closes the server and exits.
+
+Arguments:
+  <root> | --root dir    the store whose develop/ records are used (as for "endo task"). Default: the default store.
+  --project <id>         the registered project ("endo project list"). Its registered directory is where receipts are compared
+                         with HEAD and whose changes are shown, read-only.
+  --port n               the loopback port, 0 to 65535. Default 0: the operating system picks one.
+  --key-file path        the cockpit comparison key, as for "endo studio".
+
+Writes: task metadata in <root>/develop/tasks.json, only when a paired page asks; the cockpit key on its first creation. Never the
+event store, an attempt, a receipt, or anything in the project's directory.
+Exit status: 0 stopped (or help); 1 could not start (unknown project, unreadable task file, page files missing, port in use);
+2 invalid arguments (nothing was created or started).
 `;
 }

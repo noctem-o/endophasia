@@ -5,7 +5,6 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { WorkbenchTasksV0 } from "../adapters/pi/workbench-tasks.ts";
 import {
 	ENDO_DEVELOP_ATTENTION_LIMITS_V0,
 	type EndoDevelopAttentionCheckV0,
@@ -16,6 +15,7 @@ import type { EndoReceiptCurrentV0, EndoReceiptFactsV0 } from "../protocol/devel
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { endoDevelopAttentionViewV0 } from "../runtime/contracts/develop-attention.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { EndoWorkspaceRoutesV0 } from "../runtime/contracts/workspace-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
@@ -410,7 +410,7 @@ describe("the route: GET workspace/attention, read-only, nothing chosen by the r
 			{ projectId: p.projectId, launchDirectory: "/work/parser" },
 			{ launchId: LAUNCH, attachment: "pi.default", session: null },
 		);
-		return { p, routes: new WorkbenchTasksV0(launch) };
+		return { p, routes: new EndoWorkspaceRoutesV0(launch) };
 	};
 
 	it("serves the projection on a bare GET; refuses a query, a further path and any POST; and changes nothing", async () => {

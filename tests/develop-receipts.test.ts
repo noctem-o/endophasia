@@ -26,7 +26,6 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
-import { WorkbenchTasksV0 } from "../adapters/pi/workbench-tasks.ts";
 import type { EndoDevelopAttemptsViewV1 } from "../protocol/develop-attempts.ts";
 import {
 	ENDO_RECEIPT_LIMITATION_TEXT_V0,
@@ -48,6 +47,7 @@ import {
 	resolveEndoCheckExecutableV0,
 } from "../runtime/contracts/develop-receipts.ts";
 import { type DevelopLaunchHostV0, DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { EndoWorkspaceRoutesV0 } from "../runtime/contracts/workspace-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
@@ -1095,7 +1095,7 @@ describe("what a check may run", () => {
 describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 	const host: DevelopLaunchHostV0 = { launchId: "f".repeat(16), attachment: "pi.default", session: null };
 	const routes = (w: Seeded, launchDirectory: string) =>
-		new WorkbenchTasksV0(
+		new EndoWorkspaceRoutesV0(
 			new DevelopWorkspaceServiceV0(w.tasks, {
 				attempts: w.attempts,
 				receipts: { store: w.receipts, current: (d) => w.service.current(d) },

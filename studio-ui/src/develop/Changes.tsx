@@ -53,10 +53,13 @@ export function WorktreeBar({
 	paired,
 	connected,
 	leading,
+	basis = "the directory Pi was launched in",
 }: {
 	api: ProjectApi;
 	paired: boolean;
 	connected: boolean;
+	/** What directory the worktree is read from, in words (a workspace host reads the project's registered directory). */
+	basis?: string;
 	/** The project and task cluster that shares this row (develop/Tasks.tsx). It is not a Git fact and is not read from Git. */
 	leading?: ReactNode;
 }): ReactElement | null {
@@ -103,10 +106,7 @@ export function WorktreeBar({
 			const unknown = shown.changes.state === "unavailable";
 			body = (
 				<>
-					<span
-						className="wt-repo mono"
-						title={`${repo.root} (the directory Pi was launched in is inside this worktree)`}
-					>
+					<span className="wt-repo mono" title={`${repo.root} (${basis} is inside this worktree)`}>
 						{repo.label}
 						{repo.cwdRelative === "" ? "" : `/${repo.cwdRelative}`}
 					</span>
@@ -165,7 +165,7 @@ export function WorktreeBar({
 			data-testid="project-header"
 			data-state={view.kind}
 			data-current={current ? "yes" : "no"}
-			title="The directory Pi was launched in (configured), read with Git. A worktree is a place, not a session."
+			title={`${basis.charAt(0).toUpperCase()}${basis.slice(1)} (configured), read with Git. A worktree is a place, not a session.`}
 		>
 			{leading}
 			<span className="wt-main">{body}</span>

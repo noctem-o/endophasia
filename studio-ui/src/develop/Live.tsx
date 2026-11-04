@@ -514,7 +514,8 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 	);
 }
 
-function Pairing({ wb }: { wb: Workbench }): ReactElement {
+/** The pairing form. `hint` says what pairing lets this page do on this kind of host. */
+export function Pairing({ wb, hint }: { wb: Workbench; hint?: string }): ReactElement {
 	const [code, setCode] = useState("");
 	const id = useId();
 	return (
@@ -530,8 +531,8 @@ function Pairing({ wb }: { wb: Workbench }): ReactElement {
 		>
 			<label htmlFor={id}>Pairing code</label>
 			<p className="dim small" id={`${id}-hint`}>
-				This page can read and ask. To let it, type the code shown in the terminal that started the workbench (type
-				`pair` there for a new one). Pairing does not approve anything.
+				{hint ??
+					"This page can read and ask. To let it, type the code shown in the terminal that started the workbench (type `pair` there for a new one). Pairing does not approve anything."}
 			</p>
 			<div className="composer-row">
 				<input
@@ -1019,7 +1020,11 @@ export function LiveConversation({
 					aria-labelledby="develop-tab-task"
 					hidden={view !== "task"}
 				>
-					<TaskPanel workspace={workspace} git={project.state.project} connected={connected} />
+					<TaskPanel
+						workspace={workspace}
+						git={project.state.project}
+						session={connected ? "connected" : "disconnected"}
+					/>
 				</div>
 				{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}
 			</section>

@@ -1,5 +1,5 @@
 // Browser wire gate for the work-attempts route (`GET workspace/attempts`, protocol/develop-attempts.ts, served read-only by
-// adapters/pi/workbench-tasks.ts). The broker is authoritative for what an attempt is; this checks that a body has exactly the shape the
+// runtime/contracts/workspace-routes.ts). The broker is authoritative for what an attempt is; this checks that a body has exactly the shape the
 // section reads, that each attempt's state is the one its records imply (an attempt cannot claim "reported" without an outcome, or arrive
 // with an outcome and claim "prepared"), and refuses the body whole when it does not. The words are the operator's own and are only shown
 // as text. There is no request body: the page names no project, task or attempt, and nothing here can make or record one.

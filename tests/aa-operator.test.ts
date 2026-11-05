@@ -410,8 +410,12 @@ describe.runIf(process.platform === "linux")("operator launch boundary", () => {
 	it("an interruption while the server is starting leaves no process or listener", async () => {
 		const config = await rig.newConfig({}, { executablePath: rig.hang, executableSha256: sha256File(rig.hang) });
 		const controller = new AbortController();
-		setTimeout(() => controller.abort(), 500);
-		const outcome = await run(config, new ScriptedTerminal(), { signal: controller.signal });
+		// Interrupt once the launch has begun, not on a wall clock: on a slow runner a fixed delay can land during preparation.
+		const launch: typeof launchTaskOwnedServerV0 = (...args) => {
+			setTimeout(() => controller.abort(), 500);
+			return launchTaskOwnedServerV0(...args);
+		};
+		const outcome = await run(config, new ScriptedTerminal(), { signal: controller.signal, deps: { launch } });
 		expect(outcome).toMatchObject({ verdict: "refused", stage: "server-launch", interrupted: true });
 		expect(outcome.reasons.join()).toContain("cancelled");
 		expect(runningFrom(rig.hang)).toEqual([]);

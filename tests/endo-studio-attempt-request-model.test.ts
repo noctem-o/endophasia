@@ -248,6 +248,19 @@ describe("review regressions", () => {
 		).toBe("ready");
 	});
 
+	it("never says no check is recorded when the receipts could not all be read", () => {
+		for (const receipts of [
+			{ state: "unreadable" as const, list: [], problems: 0 },
+			{ state: "ready" as const, list: [], problems: 2 },
+		]) {
+			const step = nextStep(view(attempt({ execution: execution(), receipts })), null);
+			expect(step?.kind, receipts.state).toBe("unclear");
+			expect(step?.text, receipts.state).toContain("whether one is recorded is unknown");
+			expect(step?.text, receipts.state).not.toMatch(/No check is recorded|run one yourself/);
+			expect(step?.text ?? "", receipts.state).not.toMatch(NEVER);
+		}
+	});
+
 	it("say nothing was requested only when the broker refused; a lost or malformed answer may have been requested", () => {
 		const refused = failureWords({
 			kind: "failure",

@@ -116,7 +116,8 @@ page.
   messages are not the attempt.
 - **Next-step line**, under the run strip, in every view. It is read from the broker's request and the selected task's attempt records:
   waiting for terminal approval, being sent, run open, no run recorded yet, "the run ended as Pi reported, no check recorded, the task's
-  status is yours", checks recorded and the decision is yours, or prepared and not sent. It never quotes model text, and it never says done.
+  status is yours", checks that could not all be read (unknown, never "none"), checks recorded and the decision is yours, or
+  prepared and not sent. It never quotes model text, and it never says done.
 - When a request for an attempt settles, the attempts are read again, so the execution reading appears without a manual refresh. The
   run's end is read when the operator refreshes the tasks. Nothing polls the store.
 
@@ -209,6 +210,7 @@ set synchronously; `authorize` re-checks and writes once), identity (only from t
 | Words for `dispatching` before binding can never be shown | nit | **Kept**, marked as defensive. |
 | "Sent once" overstated a send whose reply was lost, or came in a form this version does not recognise | nit | **Fixed.** It now says "Recorded as sent, once", and "not seen or not recognised". |
 | A stale problem message could reappear after a later request | nit | **Fixed.** It is cleared when a request for the attempt appears. |
+| Codex (PR review): the next-step line said "No check is recorded" when the receipts directory was unreadable or receipt files were rejected, so existing checks could be hidden | minor | **Fixed.** An empty list counts as no check only when every receipt was read; otherwise the line says whether a check is recorded is unknown. Model test. |
 
 ## 10. Next
 

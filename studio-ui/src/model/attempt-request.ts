@@ -179,6 +179,13 @@ export function nextStep(view: AttemptsView | null, command: WorkbenchCommand | 
 						? "Sent; a run started and no end is recorded yet. Follow it in the conversation."
 						: "Sent; no run is recorded for it yet.",
 			};
+		// An empty list proves no check only when every receipt was read: an unreadable directory or rejected files may hide one.
+		if (latest.receipts.list.length === 0 && (latest.receipts.state !== "ready" || latest.receipts.problems > 0))
+			return {
+				kind: "unclear",
+				attemptId: latest.id,
+				text: `${EXECUTION_RUN_LABELS[e.run]}. Its checks could not all be read, so whether one is recorded is unknown. The task's status is yours.`,
+			};
 		if (latest.receipts.list.length === 0)
 			return {
 				kind: "no-check",

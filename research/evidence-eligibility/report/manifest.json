@@ -1,0 +1,1905 @@
+{
+	"corpus": {
+		"id": "endo.corpus.mem-000",
+		"sha256": "bbe2eb9ca71d2f1b7b5dc9d3db50714bf598d73cf7e18bd7a223b808232072f9"
+	},
+	"duplicates": {
+		"count": 504,
+		"sha256": "f5a749a30ca6091566264afe5cbdef02e9b16afda7548a24563214b1b827b42e"
+	},
+	"exclusions": [
+		{
+			"id": "exp:raw/completion-cap/main/c1/booking-conflicts/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/booking-conflicts/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/booking-conflicts/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/config-extends/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/config-extends/arm-e/1",
+			"reasons": [
+				"arm-invalid",
+				"trial-excluded"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/config-extends/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/fetch-cache/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/fetch-cache/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/fetch-cache/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/markup-lite/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/markup-lite/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c1/markup-lite/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/booking-conflicts/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/booking-conflicts/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/booking-conflicts/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/config-extends/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/config-extends/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/config-extends/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/fetch-cache/arm-e/0",
+			"reasons": [
+				"arm-invalid",
+				"trial-excluded"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/fetch-cache/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/fetch-cache/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/markup-lite/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/markup-lite/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c2/markup-lite/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/booking-conflicts/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/booking-conflicts/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/booking-conflicts/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/config-extends/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/config-extends/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/config-extends/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/fetch-cache/arm-b/1",
+			"reasons": [
+				"trial-excluded"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/fetch-cache/arm-e/0",
+			"reasons": [
+				"arm-invalid",
+				"trial-excluded"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/fetch-cache/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/fetch-cache/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/markup-lite/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/markup-lite/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c3/markup-lite/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/booking-conflicts/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/booking-conflicts/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/booking-conflicts/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/config-extends/arm-e/0",
+			"reasons": [
+				"arm-invalid",
+				"trial-excluded"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/config-extends/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/config-extends/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/fetch-cache/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/fetch-cache/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/fetch-cache/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/markup-lite/arm-e/0",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/markup-lite/arm-e/1",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/completion-cap/main/c4/markup-lite/arm-e/2",
+			"reasons": [
+				"arm-invalid"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/0",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/1",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/2",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/3",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/4",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/fetch-cache/default/5",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/0",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/1",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/2",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/3",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/4",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		},
+		{
+			"id": "exp:raw/discriminating-tasks/pilot/report-bugs/default/5",
+			"reasons": [
+				"exclusions-unresolved"
+			]
+		}
+	],
+	"extractor": {
+		"name": "endo.evidence-eligibility",
+		"version": "0.3.0"
+	},
+	"lessonFeasibility": {
+		"applicability": [
+			{
+				"id": "applicable",
+				"passed": true
+			},
+			{
+				"id": "irrelevant",
+				"passed": true
+			},
+			{
+				"id": "superficially-similar",
+				"passed": true
+			},
+			{
+				"id": "no-features",
+				"passed": true
+			},
+			{
+				"id": "other-harness-version",
+				"passed": true
+			},
+			{
+				"id": "other-environment",
+				"passed": true
+			},
+			{
+				"id": "invalid-source",
+				"passed": true
+			},
+			{
+				"id": "binding-cap",
+				"passed": true
+			}
+		],
+		"assessments": [
+			{
+				"claim": "controlled-intervention",
+				"id": "lesson.raise-binding-completion-cap",
+				"lever": "completion-cap",
+				"problems": [],
+				"supported": true,
+				"targetProblems": [
+					"lever-fixed-in-target",
+					"scope-environment"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "controlled-intervention",
+				"id": "lesson.ask-for-brief-reasoning",
+				"lever": "agent-context",
+				"problems": [
+					"contradicted-within-conditions",
+					"contrast-inconclusive"
+				],
+				"supported": false,
+				"targetProblems": [
+					"scope-environment"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "controlled-intervention",
+				"id": "lesson.thinking-off-for-light-tasks",
+				"lever": "reasoning-mode",
+				"problems": [
+					"contrast-arm-invalid",
+					"contrast-inconclusive",
+					"observations-invalid-arm-only"
+				],
+				"supported": false,
+				"targetProblems": [
+					"lever-fixed-in-target"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "diagnostic-hypothesis",
+				"id": "lesson.code-span-content-is-literal",
+				"lever": "agent-context",
+				"problems": [],
+				"supported": true,
+				"targetProblems": [],
+				"usableInTarget": true
+			},
+			{
+				"claim": "diagnostic-hypothesis",
+				"id": "lesson.proto-key-is-plain-data",
+				"lever": "agent-context",
+				"problems": [
+					"observations-invalid-arm-only"
+				],
+				"supported": false,
+				"targetProblems": [
+					"scope-environment"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "diagnostic-hypothesis",
+				"id": "lesson.return-copies-from-cache",
+				"lever": "agent-context",
+				"problems": [
+					"observations-invalid-arm-only"
+				],
+				"supported": false,
+				"targetProblems": [
+					"scope-environment"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "observational",
+				"id": "lesson.isolate-hidden-checks",
+				"lever": "evaluation-infrastructure",
+				"problems": [],
+				"supported": true,
+				"targetProblems": [
+					"generic",
+					"lever-fixed-in-target",
+					"unconditional"
+				],
+				"usableInTarget": false
+			},
+			{
+				"claim": "observational",
+				"id": "lesson.hold-workspace-path-fixed",
+				"lever": "experiment-design",
+				"problems": [],
+				"supported": true,
+				"targetProblems": [
+					"lever-fixed-in-target",
+					"unconditional"
+				],
+				"usableInTarget": false
+			}
+		],
+		"review": {
+			"date": "2026-11-06",
+			"disclosure": "Every card was written by hand after reading the report's recurring-symptom table, the committed RESULTS files and four check outputs (markup-lite, arm B). The reviewer chose which candidates to write, including ones expected to fail the rules, so the set is not a sample of all possible lessons. Diagnoses are the reviewer's reading of failing assertions, not observed causes. Nothing was generated by a model run for this file.",
+			"method": "manual",
+			"reviewer": "Claude Code (an AI agent) working for the operator, reading the studies' committed results and the eligibility report; not yet reviewed by the operator"
+		},
+		"target": {
+			"contextBudgetTokens": 600,
+			"name": "MEM-001 (proposed, not run)",
+			"scope": {
+				"environment": [
+					"completion-cap:32768",
+					"reasoning:on"
+				],
+				"harness": {
+					"name": "pi",
+					"version": "1.0.1"
+				},
+				"model": "endolocal/qwen3.8-27b"
+			},
+			"variedLever": "agent-context"
+		}
+	},
+	"lessons": {
+		"sha256": "fd25535f5c471a3dd5f07af7bfdf3f8c2b7bb70fc9a27ff1e03b6bf572893185"
+	},
+	"problems": [
+		{
+			"detail": "36 of 36 planned trials have no result",
+			"kind": "missing",
+			"path": "trials",
+			"sourceId": "committed/pinned-environment/pilot"
+		},
+		{
+			"detail": "18 of 18 planned trials have no result",
+			"kind": "missing",
+			"path": "trials",
+			"sourceId": "committed/steering/pilot"
+		},
+		{
+			"detail": "180 of 180 planned trials have no result",
+			"kind": "missing",
+			"path": "trials",
+			"sourceId": "committed/variance/main-run-1-invalid"
+		},
+		{
+			"detail": "36 of 36 planned trials have no result",
+			"kind": "missing",
+			"path": "trials",
+			"sourceId": "committed/variance/pilot"
+		},
+		{
+			"detail": "not present at store",
+			"kind": "missing",
+			"path": ".",
+			"sourceId": "develop/store"
+		},
+		{
+			"detail": "114 of 120 planned trials have no result",
+			"kind": "missing",
+			"path": "trials",
+			"sourceId": "raw/steering/posthoc-main-path"
+		}
+	],
+	"readiness": {
+		"evaluator": {
+			"conditions": [
+				"0 of 85 read experiment runs record an execution isolation boundary (endo.experiment-run.v0 has no field for one). This is a fact of the record format, not a measurement: it cannot turn READY until a run can record one.",
+				"Missing boundary 1: the agent process can read the host (the repository, the research archive, hidden checks, other trials); the completion-cap study recorded a hidden-check read and broad deletions in a shared /tmp.",
+				"Missing boundary 2: the success check runs in the agent's own workspace and environment, after the agent, without a separate verifier environment or artifact export.",
+				"Missing boundary 3: no network restriction is applied or recorded for the agent.",
+				"Missing boundary 4: an interrupted trial is rerun and replaced in the counted set (kept aside, not in the denominator)."
+			],
+			"status": "NOT READY"
+		},
+		"evidence": {
+			"conditions": [
+				"1 declared source(s) were not present, so they are unqualified, not empty: develop/store."
+			],
+			"status": "INDETERMINATE"
+		},
+		"lessons": {
+			"conditions": [
+				"8 candidate(s): 4 supported by the evidence as stated, 1 usable as retrieved guidance in MEM-001 (proposed, not run).",
+				"lesson.raise-binding-completion-cap: supported but not usable in the target (lever-fixed-in-target, scope-environment).",
+				"lesson.isolate-hidden-checks: supported but not usable in the target (generic, lever-fixed-in-target, unconditional).",
+				"lesson.hold-workspace-path-fixed: supported but not usable in the target (lever-fixed-in-target, unconditional).",
+				"lesson.ask-for-brief-reasoning: not supported (contradicted-within-conditions, contrast-inconclusive).",
+				"lesson.thinking-off-for-light-tasks: not supported (contrast-arm-invalid, contrast-inconclusive, observations-invalid-arm-only).",
+				"lesson.proto-key-is-plain-data: not supported (observations-invalid-arm-only).",
+				"lesson.return-copies-from-cache: not supported (observations-invalid-arm-only).",
+				"Fewer than two usable cards: there is nothing to select between, so retrieval cannot differ from a checklist."
+			],
+			"status": "NOT READY"
+		},
+		"overall": {
+			"conditions": [
+				"evidence INDETERMINATE, lessons NOT READY, evaluator NOT READY"
+			],
+			"status": "NOT READY"
+		},
+		"suggests": {
+			"because": "1 of 4 supported card(s) are usable; of the rest, 3 act on a lever the target holds fixed and 0 were observed only under a condition the target's setup excludes",
+			"option": "C"
+		}
+	},
+	"report": {
+		"distinct": 1330,
+		"duplicates": 504,
+		"examples": 1834,
+		"file": "report.json",
+		"sha256": "7444558c7cfa2fe935b982ccc24a06fd60b8b26b7601a89f8449b000121223e0"
+	},
+	"roots": {
+		"researchData": "read",
+		"store": "not-given"
+	},
+	"schemaVersion": "endo.evidence-eligibility-manifest.v0",
+	"sources": [
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "17d4860ca83b93324567203b3e335bb6d921b4abc320cb4afb726270824e4830",
+				"plan.json": "fdc5297999c6775729dd598b7d2d5ecaad45b7bf4a57387e5465b3e7a4f051be"
+			},
+			"id": "committed/path-sensitivity/main/p01",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p01",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "24527cad41556f38b9e3bd1554f5839c972ebc2831f86a9351ee8ffbaa0ec03a",
+				"plan.json": "859c2d3e457c3799521229b6a31e89fca4a88a0ee469aaa13797d78a27d2e76a"
+			},
+			"id": "committed/path-sensitivity/main/p02",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p02",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "d2c9fd000d40bdf94f4e6297835f530a467782ef15408d9a4f31823fb299199d",
+				"plan.json": "88f6fee9914e331ca43d9759d4d63f91b9731ab4d918d3e13f35d45853aff7ac"
+			},
+			"id": "committed/path-sensitivity/main/p03",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p03",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "927c3c3068737c5421bd78fd8bf9310ad33d9e1ceab7365dbf358552066b4330",
+				"plan.json": "1868ee897137c954879e735f79977fbae6826b86627533f2854e928bb8f4b593"
+			},
+			"id": "committed/path-sensitivity/main/p04",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p04",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "ff9affe506171987d89defac31f638e7d17568a939d953adf579e88d6dca7e38",
+				"plan.json": "9c750cb97caec4596763ae3826177c7bcfea85af08b4cb10a185db2c7b1ca86d"
+			},
+			"id": "committed/path-sensitivity/main/p05",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p05",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "6788ce69bb8ff3677dada81897e300efb06e69686316ba702a925d3e712a5468",
+				"plan.json": "341a307ae5be31265b1905ec7884edf4ad0cc986e3499a3d5b396394dc7b69aa"
+			},
+			"id": "committed/path-sensitivity/main/p06",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p06",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "d9f5941ccfd5f8db1cc544aae6c80851893ea45b7a2e37491548db9b9facbc82",
+				"plan.json": "9ef5ab17156c1ee1ae39a417e01188c8abed7ff42040e57297aafc28c11ca2cd"
+			},
+			"id": "committed/path-sensitivity/main/p07",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p07",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4d668165b2806fe61eb186a06a563eb7304983c079f44db7d710253a03b78b1c",
+				"plan.json": "739dfb7a5348a5e4e5146e471e9cb0399895bd83014a6bf28e1d7f401c2966b9"
+			},
+			"id": "committed/path-sensitivity/main/p08",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p08",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "f032a1e933be488c480288a2799611e1e199a00ccf40f8f5a72d474a6d80844e",
+				"plan.json": "69b5998c841521d4e96318dabb96e732a5aee20bae86eeb278f4f80a11ddbb71"
+			},
+			"id": "committed/path-sensitivity/main/p09",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p09",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "979311e968fb580f7466d25bfe30b6179bfaccdb0f7c9deb53c9cafbbe4d9f0e",
+				"plan.json": "ffa246d6ed3b6ebe1e1bffb3ee21d0abad35cede6152b210af13f8d72aff5b58"
+			},
+			"id": "committed/path-sensitivity/main/p10",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p10",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "0c92a1c9dff90ae85854d8a631668acc9a44e42cc52c490989c988bd2cfb550f",
+				"plan.json": "4d44f65a581cb60b3db79e8cb20d434bb86b37c4b040dd7a309692b309373650"
+			},
+			"id": "committed/path-sensitivity/main/p11",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p11",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "c7c25e4395b3de36ec8d5ce12e37606088fff291cee9b8ceaf16e652087456b6",
+				"plan.json": "cc66b4da26ecb89b35ece02bbe4ef467c35a665b0b9ab1b8c62763f8ae422982"
+			},
+			"id": "committed/path-sensitivity/main/p12",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p12",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "712ebf167982ae2178654b64ee406533e9cc91c938f318d9b4126b81503591a7",
+				"plan.json": "95d478abde03b61944a5072bcddac5981e72e75794672e18c36b549ac5dc1c74"
+			},
+			"id": "committed/path-sensitivity/main/p13",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p13",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "9d98a525d039161a20b69eeaabf04fa1e01817ba874c4145c300382831850c79",
+				"plan.json": "cba9fbe253cc7337e1e2fcd868d210b886b19db01a61a5cdff9fc179601e7c58"
+			},
+			"id": "committed/path-sensitivity/main/p14",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p14",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4374b4d302f7e9c120488fc4f4a45a8c7109db7e49a4a7dc47b83f07cedabbda",
+				"plan.json": "f67181dfae05a57de97140d18ccb6f6954ab409396f555351944f0a3c3042985"
+			},
+			"id": "committed/path-sensitivity/main/p15",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p15",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "aca87e406f7d8280ff9d2ef08827d8a061b8a232d595f71f557a095f3e9124bd",
+				"plan.json": "fdd8acf147c3003b3a79d925d5206b9b634835d6b569825d792ea2c611ee91be"
+			},
+			"id": "committed/path-sensitivity/main/p16",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p16",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4174c78cb578be22d85058c57738fada986b9538bfbdd1a9c4fd643fee3902b4",
+				"plan.json": "276ce0db19b9a21d06b2eda110fcfc54de87235e48515cd0a6a221861144bb04"
+			},
+			"id": "committed/path-sensitivity/main/p17",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p17",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "bd39bd23d64d60c6519d226315ec106a679c338523fb13614faa86e1eef5655b",
+				"plan.json": "74b64cd10ce911784c7e30eb350a1d582c6c7f50be41cf3ff0229e4bf5e10d06"
+			},
+			"id": "committed/path-sensitivity/main/p18",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p18",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "812f48d76327bd1661a48af0e6c45dbde903842aa02551ce16975976b519abbe",
+				"plan.json": "177d949c2828cc318e84803322ff24ff9f5f0fc791150a7d4af28149470ad43c"
+			},
+			"id": "committed/path-sensitivity/main/p19",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p19",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "7c53e93acb3951a27c4cf039a8adbda960aa45f85855ae31532cbb8fb5641e24",
+				"plan.json": "1647a793c0a372e4edc597dd9cf1520556e7888f0151c0195583b8882f4993be"
+			},
+			"id": "committed/path-sensitivity/main/p20",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p20",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "474f5d0de05fdeabb1e43fa92efe310eb33f29255fc98f43c3ac99160261301e",
+				"plan.json": "ecfc8ef7870d79cd85ae9fefcc33bcc9d394c79d539a199eaa356ba26eba2b9d"
+			},
+			"id": "committed/path-sensitivity/main/p21",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p21",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "55958f29d743b83cab43671c6d47b4c1ffc46dd8557785aa74b1cd3d6d353a06",
+				"plan.json": "134662ef87ba49cf04e654927beb488abc7918d2ebde7c9d11173f978975904e"
+			},
+			"id": "committed/path-sensitivity/main/p22",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p22",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "237bb80254e9ac8beb13ad3787add20b940b6809c6aecd1292e85f0fdf599ecc",
+				"plan.json": "f4e5fe78b93cb7e8a27f582e2ebb9469e3518c49abd21bdd02431e43d57f1a8f"
+			},
+			"id": "committed/path-sensitivity/main/p23",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p23",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "645e77db2ad5a1fd1593faf2f016bb41e5226e0f54de8a81b2ec92b736c7e673",
+				"plan.json": "6ddd3d422a4e04489c51a7552662beeb59448bf8c74f322dffa3fad7cd97ed9b"
+			},
+			"id": "committed/path-sensitivity/main/p24",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p24",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "194e2eafce640d19bc536e2cb1a443ad849956acaf220da030d34dfbacbe4e21",
+				"plan.json": "c1f1b604e634f26fa3bf7fc8e580a86ceb08464355597aa1c137167e62f1ac7d"
+			},
+			"id": "committed/path-sensitivity/main/p25",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p25",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "c8dd58af2ea6d51943e964abcdcae3b39c3aeb92fa5609e3a41fe96981b21e4f",
+				"plan.json": "4fa877fa6e4f4721288ca7b8d4d788acf9207e9c5844635a3a66eb8d57d39132"
+			},
+			"id": "committed/path-sensitivity/main/p26",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p26",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "b37a8374f1b971835582ced19f59adc99978a5e32da28ce88e3f406cee1dfda3",
+				"plan.json": "b591efdb33f3e61513565079cd7b4a4b12bf11b02b346192ef763f09c726443f"
+			},
+			"id": "committed/path-sensitivity/main/p27",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p27",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "a56c905ea4f5c439176786e3c160e5daa4f45687adc017093da2439fa07f7ed9",
+				"plan.json": "fe1c1eca8b41dbe024bb5b8942d96faca8dbc9c45f627489db4713de61e3767c"
+			},
+			"id": "committed/path-sensitivity/main/p28",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p28",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "79d4e9823797ad7acb1946adc691c8d0c0e2db9dc3b2b4811c30de6595beff64",
+				"plan.json": "c7c25faac3ce24b9ef746221d634357da45ca3982ed109451e4d1cd89830ce95"
+			},
+			"id": "committed/path-sensitivity/main/p29",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p29",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "9c83d76606638111b855ec5907510068256a2c53784df9594f6ad3457bb79568",
+				"plan.json": "089e738e1a511592677183351b66e0a42f77d66991dc3cdb4e82a6c3a73477ea"
+			},
+			"id": "committed/path-sensitivity/main/p30",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/main/p30",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "aa1b7dd496066aad61030d020d8d0f7827321485f3992eba0d54e948ff3dc817",
+				"plan.json": "39713ff6da26a1dea9a4bdbdfd8d0c9e014e1f5dbbbd11bdc3d1d919a5eae701"
+			},
+			"id": "committed/path-sensitivity/pilot/pilot-1",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/pilot/pilot-1",
+			"stage": "pilot",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "1ee51c484610bf49b62f883ff83ed8a3274c2453005cdb1158dc29f2272a6130",
+				"plan.json": "fdac5dbe7bcf37dbf2d7b21e30c7aecad26e6d5bea6a66a2fa892837624d3ad7"
+			},
+			"id": "committed/path-sensitivity/pilot/pilot-2",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/path-sensitivity/1.0.1/pilot/pilot-2",
+			"stage": "pilot",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 240,
+			"files": {
+				"experiment.json": "ed1aada814561f0551cf5258632080942ad382cab24572117faaf9c9405c8de0",
+				"plan.json": "5131ce1bd7c8496d8f4a60e0ad68acbe678c53f7349dc1d8a7573347aa1dddc2"
+			},
+			"id": "committed/pinned-environment/main",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/pinned-environment/1.0.1/main",
+			"stage": "main",
+			"status": "read",
+			"study": "pinned-environment"
+		},
+		{
+			"examples": 0,
+			"files": {
+				"experiment.json": "6859ca4421408e18436ef14887570087cb4fc4fb099e57de211c7093f6833e1f",
+				"plan.json": "306afa3919c4700cd208be8319001e700188216f4bcb01eaa8c2d8ca1b19aaaa"
+			},
+			"id": "committed/pinned-environment/pilot",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/pinned-environment/1.0.1/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "pinned-environment"
+		},
+		{
+			"examples": 120,
+			"files": {
+				"experiment.json": "a5c1569c191f05cbf5b57d3856eaa5e5037487979563c8d2f54699c1a4728ccf",
+				"plan.json": "7b400b1f03050e3742a0222ebe69079f74dd0de757bd123b1590c22854e39316"
+			},
+			"id": "committed/steering/main",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/steering/1.0.1/main",
+			"stage": "main",
+			"status": "read",
+			"study": "steering"
+		},
+		{
+			"examples": 0,
+			"files": {
+				"experiment.json": "85cda3bbf1dfb31de3fe9df5a041d14323ffd64f08baea8216cd563fd7eb54dc",
+				"plan.json": "7704db866860c6d62ea002d4bf3b543ca5c4c9ff8f7b5b63f3d03adb01130061"
+			},
+			"id": "committed/steering/pilot",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/steering/1.0.1/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "steering"
+		},
+		{
+			"examples": 180,
+			"files": {
+				"experiment.json": "015d48e8e79c6de8ffa929a9f0a85ead20335e5598114e78445e2340fe8dfb95",
+				"plan.json": "14cf5231c9e5b288abcc82d465d93278b49f4e169c7ceaf15ba40578aec2c16a"
+			},
+			"id": "committed/variance/main",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/variance/1.0.1/main",
+			"stage": "main",
+			"status": "read",
+			"study": "variance"
+		},
+		{
+			"examples": 0,
+			"files": {
+				"experiment.json": "86a29be7266ce74549f4b1ff653bee17e2f738916436f3d1bf1faf1d86b5d582",
+				"plan.json": "7874952c57956ebc639cebd8993f21e11f813d3c1b02c17c9bbef2ad7cb9c167",
+				"repository:research/variance/1.0.1/RESULTS.md": "25252d8cf7eba7fff453c39643f51b896c252d38349a7f63cb8dfd3373e40792"
+			},
+			"id": "committed/variance/main-run-1-invalid",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/variance/1.0.1/main-run-1-invalid",
+			"stage": "main",
+			"status": "read",
+			"study": "variance"
+		},
+		{
+			"examples": 0,
+			"files": {
+				"experiment.json": "dc4d84b44325de9d064fbc2036b661f4f9909628e1cfd6144e5fb16788124340",
+				"plan.json": "b1a278f020116254eff09f77f239511a7d428f291f7182def9d97b17bf7f1b29"
+			},
+			"id": "committed/variance/pilot",
+			"kind": "experiment-run",
+			"location": "repository",
+			"path": "research/variance/1.0.1/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "variance"
+		},
+		{
+			"examples": 0,
+			"files": {},
+			"id": "develop/store",
+			"kind": "develop-store",
+			"location": "store",
+			"path": ".",
+			"stage": null,
+			"status": "missing",
+			"study": null
+		},
+		{
+			"examples": 48,
+			"files": {
+				"experiment.json": "333005cd316db0828b724d9f8f60fbbd4ad89b842c730bad84c47d2422654915",
+				"plan.json": "0418f18671430906962d5b8b42893e8595e143c5dd00f266c0008c6c54178622",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/completion-cap/1.0.1/analysis/main.json": "484472215a916a69be6b4a78cf77f35aa8dd1fe7fe6cc26ecfb66fde569b9645"
+			},
+			"id": "raw/completion-cap/main/c1",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "completion-cap/1.0.1/raw/main/c1",
+			"stage": "main",
+			"status": "read",
+			"study": "completion-cap"
+		},
+		{
+			"examples": 48,
+			"files": {
+				"experiment.json": "a9a10bed548444411b1e46d9635c9091d135418e73c149c52603c04674df32e8",
+				"plan.json": "5e7169754aa81408d07545f10a7de0870dbf91655a0af2ddf6014474e5ded3bb",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/completion-cap/1.0.1/analysis/main.json": "484472215a916a69be6b4a78cf77f35aa8dd1fe7fe6cc26ecfb66fde569b9645"
+			},
+			"id": "raw/completion-cap/main/c2",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "completion-cap/1.0.1/raw/main/c2",
+			"stage": "main",
+			"status": "read",
+			"study": "completion-cap"
+		},
+		{
+			"examples": 48,
+			"files": {
+				"experiment.json": "ecefd0db38399df8ff13064f039aa46c41a253572b9100bb1464e3939617756e",
+				"plan.json": "c6bca815cf4aa14bb39cd4cda19c219219b528eee3ac9dac129de132d61b614a",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/completion-cap/1.0.1/analysis/main.json": "484472215a916a69be6b4a78cf77f35aa8dd1fe7fe6cc26ecfb66fde569b9645"
+			},
+			"id": "raw/completion-cap/main/c3",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "completion-cap/1.0.1/raw/main/c3",
+			"stage": "main",
+			"status": "read",
+			"study": "completion-cap"
+		},
+		{
+			"examples": 48,
+			"files": {
+				"experiment.json": "d8d6ff4e152f9cf9d476418eafea2172365e7c18a045ab5d7b0b67112df37450",
+				"plan.json": "210d54b1588ba518be71fc220e0dbac0b9efd113166d7e66dbed1dde7987f88f",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/completion-cap/1.0.1/analysis/main.json": "484472215a916a69be6b4a78cf77f35aa8dd1fe7fe6cc26ecfb66fde569b9645"
+			},
+			"id": "raw/completion-cap/main/c4",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "completion-cap/1.0.1/raw/main/c4",
+			"stage": "main",
+			"status": "read",
+			"study": "completion-cap"
+		},
+		{
+			"examples": 40,
+			"files": {
+				"experiment.json": "3f3abf82eb1f03c18606ecdfbd0b6e4f781d4671653b79764395851e648255e0",
+				"plan.json": "b69b191a9b18b4a68631cafa453c7ddf550b670bd4c04a0d62c58fb83694d26a",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f"
+			},
+			"id": "raw/completion-cap/pilot",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "completion-cap/1.0.1/raw/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "completion-cap"
+		},
+		{
+			"examples": 15,
+			"files": {
+				"experiment.json": "a1074a4448154f15fb1409e0a8c132a47c2ba47e757c48ad7dd795bfbeb5a4e4",
+				"plan.json": "01043c764ca3b374bd8f3a8b941dcbf05b7eca924b7491e03f55cba3d7688078",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/discriminating-tasks/1.0.1/analysis/confirmation.json": "810cfcddbfbc9fe8fb49a9f2429ffaf65fdf47c7b361ea5cc318bf1eaca7f577"
+			},
+			"id": "raw/discriminating-tasks/confirm/c1",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "discriminating-tasks/1.0.1/raw/confirm/c1",
+			"stage": "confirmation",
+			"status": "read",
+			"study": "discriminating-tasks"
+		},
+		{
+			"examples": 15,
+			"files": {
+				"experiment.json": "4d412e7ffc6a4e5dcc7c49f8f0f39594583f1841e7c8bfcf972983c0ec52c206",
+				"plan.json": "19274d9e999ac9be2f9cc3869f0b2baafa414e640b4a456a9c82ddccafce43ac",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/discriminating-tasks/1.0.1/analysis/confirmation.json": "810cfcddbfbc9fe8fb49a9f2429ffaf65fdf47c7b361ea5cc318bf1eaca7f577"
+			},
+			"id": "raw/discriminating-tasks/confirm/c2",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "discriminating-tasks/1.0.1/raw/confirm/c2",
+			"stage": "confirmation",
+			"status": "read",
+			"study": "discriminating-tasks"
+		},
+		{
+			"examples": 15,
+			"files": {
+				"experiment.json": "e680acd23fbf0461e6646fafde8d4dc91a2382d3402570c950c711cbbc401239",
+				"plan.json": "d6c16902237407db990d991e4e8e7bb535cd7d6ac921e8d05a4937b7faaa2bec",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/discriminating-tasks/1.0.1/analysis/confirmation.json": "810cfcddbfbc9fe8fb49a9f2429ffaf65fdf47c7b361ea5cc318bf1eaca7f577"
+			},
+			"id": "raw/discriminating-tasks/confirm/c3",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "discriminating-tasks/1.0.1/raw/confirm/c3",
+			"stage": "confirmation",
+			"status": "read",
+			"study": "discriminating-tasks"
+		},
+		{
+			"examples": 15,
+			"files": {
+				"experiment.json": "ef7d9fd6fc7afb8fefe7271b31c82279c06bd491fe5e4c59a0174cd1479c7e27",
+				"plan.json": "797f867bb04eca65de5a6cb93557d637177bf28b9055dab16b56502b17fa681b",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/discriminating-tasks/1.0.1/analysis/confirmation.json": "810cfcddbfbc9fe8fb49a9f2429ffaf65fdf47c7b361ea5cc318bf1eaca7f577"
+			},
+			"id": "raw/discriminating-tasks/confirm/c4",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "discriminating-tasks/1.0.1/raw/confirm/c4",
+			"stage": "confirmation",
+			"status": "read",
+			"study": "discriminating-tasks"
+		},
+		{
+			"examples": 72,
+			"files": {
+				"experiment.json": "3e0419dbf9c1bad0d55ca3c032752595c01bc1ff368f6c1ef0da306ce986a04d",
+				"plan.json": "a745ce33390a216ebbaeb607bb6bd43cedd5ba00920932e4ca8bc652684fb2c8",
+				"repository:research/completion-cap/1.0.1/RESULTS.md": "8f03ef902c5f602fcdd85072bbcde3e9234124a1fe156a3bd55092d254c9218f",
+				"repository:research/discriminating-tasks/1.0.1/analysis/pilot-screen.json": "887894f4ffd49fecc6387959a84a254252538968700abde324112581939befaf"
+			},
+			"id": "raw/discriminating-tasks/pilot",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "discriminating-tasks/1.0.1/raw/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "discriminating-tasks"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "17d4860ca83b93324567203b3e335bb6d921b4abc320cb4afb726270824e4830",
+				"plan.json": "fdc5297999c6775729dd598b7d2d5ecaad45b7bf4a57387e5465b3e7a4f051be"
+			},
+			"id": "raw/path-sensitivity/main/p01",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p01",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "24527cad41556f38b9e3bd1554f5839c972ebc2831f86a9351ee8ffbaa0ec03a",
+				"plan.json": "859c2d3e457c3799521229b6a31e89fca4a88a0ee469aaa13797d78a27d2e76a"
+			},
+			"id": "raw/path-sensitivity/main/p02",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p02",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "d2c9fd000d40bdf94f4e6297835f530a467782ef15408d9a4f31823fb299199d",
+				"plan.json": "88f6fee9914e331ca43d9759d4d63f91b9731ab4d918d3e13f35d45853aff7ac"
+			},
+			"id": "raw/path-sensitivity/main/p03",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p03",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "927c3c3068737c5421bd78fd8bf9310ad33d9e1ceab7365dbf358552066b4330",
+				"plan.json": "1868ee897137c954879e735f79977fbae6826b86627533f2854e928bb8f4b593"
+			},
+			"id": "raw/path-sensitivity/main/p04",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p04",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "ff9affe506171987d89defac31f638e7d17568a939d953adf579e88d6dca7e38",
+				"plan.json": "9c750cb97caec4596763ae3826177c7bcfea85af08b4cb10a185db2c7b1ca86d"
+			},
+			"id": "raw/path-sensitivity/main/p05",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p05",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "6788ce69bb8ff3677dada81897e300efb06e69686316ba702a925d3e712a5468",
+				"plan.json": "341a307ae5be31265b1905ec7884edf4ad0cc986e3499a3d5b396394dc7b69aa"
+			},
+			"id": "raw/path-sensitivity/main/p06",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p06",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "d9f5941ccfd5f8db1cc544aae6c80851893ea45b7a2e37491548db9b9facbc82",
+				"plan.json": "9ef5ab17156c1ee1ae39a417e01188c8abed7ff42040e57297aafc28c11ca2cd"
+			},
+			"id": "raw/path-sensitivity/main/p07",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p07",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4d668165b2806fe61eb186a06a563eb7304983c079f44db7d710253a03b78b1c",
+				"plan.json": "739dfb7a5348a5e4e5146e471e9cb0399895bd83014a6bf28e1d7f401c2966b9"
+			},
+			"id": "raw/path-sensitivity/main/p08",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p08",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "f032a1e933be488c480288a2799611e1e199a00ccf40f8f5a72d474a6d80844e",
+				"plan.json": "69b5998c841521d4e96318dabb96e732a5aee20bae86eeb278f4f80a11ddbb71"
+			},
+			"id": "raw/path-sensitivity/main/p09",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p09",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "979311e968fb580f7466d25bfe30b6179bfaccdb0f7c9deb53c9cafbbe4d9f0e",
+				"plan.json": "ffa246d6ed3b6ebe1e1bffb3ee21d0abad35cede6152b210af13f8d72aff5b58"
+			},
+			"id": "raw/path-sensitivity/main/p10",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p10",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "0c92a1c9dff90ae85854d8a631668acc9a44e42cc52c490989c988bd2cfb550f",
+				"plan.json": "4d44f65a581cb60b3db79e8cb20d434bb86b37c4b040dd7a309692b309373650"
+			},
+			"id": "raw/path-sensitivity/main/p11",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p11",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "c7c25e4395b3de36ec8d5ce12e37606088fff291cee9b8ceaf16e652087456b6",
+				"plan.json": "cc66b4da26ecb89b35ece02bbe4ef467c35a665b0b9ab1b8c62763f8ae422982"
+			},
+			"id": "raw/path-sensitivity/main/p12",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p12",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "712ebf167982ae2178654b64ee406533e9cc91c938f318d9b4126b81503591a7",
+				"plan.json": "95d478abde03b61944a5072bcddac5981e72e75794672e18c36b549ac5dc1c74"
+			},
+			"id": "raw/path-sensitivity/main/p13",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p13",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "9d98a525d039161a20b69eeaabf04fa1e01817ba874c4145c300382831850c79",
+				"plan.json": "cba9fbe253cc7337e1e2fcd868d210b886b19db01a61a5cdff9fc179601e7c58"
+			},
+			"id": "raw/path-sensitivity/main/p14",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p14",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4374b4d302f7e9c120488fc4f4a45a8c7109db7e49a4a7dc47b83f07cedabbda",
+				"plan.json": "f67181dfae05a57de97140d18ccb6f6954ab409396f555351944f0a3c3042985"
+			},
+			"id": "raw/path-sensitivity/main/p15",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p15",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "aca87e406f7d8280ff9d2ef08827d8a061b8a232d595f71f557a095f3e9124bd",
+				"plan.json": "fdd8acf147c3003b3a79d925d5206b9b634835d6b569825d792ea2c611ee91be"
+			},
+			"id": "raw/path-sensitivity/main/p16",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p16",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "4174c78cb578be22d85058c57738fada986b9538bfbdd1a9c4fd643fee3902b4",
+				"plan.json": "276ce0db19b9a21d06b2eda110fcfc54de87235e48515cd0a6a221861144bb04"
+			},
+			"id": "raw/path-sensitivity/main/p17",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p17",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "bd39bd23d64d60c6519d226315ec106a679c338523fb13614faa86e1eef5655b",
+				"plan.json": "74b64cd10ce911784c7e30eb350a1d582c6c7f50be41cf3ff0229e4bf5e10d06"
+			},
+			"id": "raw/path-sensitivity/main/p18",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p18",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "812f48d76327bd1661a48af0e6c45dbde903842aa02551ce16975976b519abbe",
+				"plan.json": "177d949c2828cc318e84803322ff24ff9f5f0fc791150a7d4af28149470ad43c"
+			},
+			"id": "raw/path-sensitivity/main/p19",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p19",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "7c53e93acb3951a27c4cf039a8adbda960aa45f85855ae31532cbb8fb5641e24",
+				"plan.json": "1647a793c0a372e4edc597dd9cf1520556e7888f0151c0195583b8882f4993be"
+			},
+			"id": "raw/path-sensitivity/main/p20",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p20",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "474f5d0de05fdeabb1e43fa92efe310eb33f29255fc98f43c3ac99160261301e",
+				"plan.json": "ecfc8ef7870d79cd85ae9fefcc33bcc9d394c79d539a199eaa356ba26eba2b9d"
+			},
+			"id": "raw/path-sensitivity/main/p21",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p21",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "55958f29d743b83cab43671c6d47b4c1ffc46dd8557785aa74b1cd3d6d353a06",
+				"plan.json": "134662ef87ba49cf04e654927beb488abc7918d2ebde7c9d11173f978975904e"
+			},
+			"id": "raw/path-sensitivity/main/p22",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p22",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "237bb80254e9ac8beb13ad3787add20b940b6809c6aecd1292e85f0fdf599ecc",
+				"plan.json": "f4e5fe78b93cb7e8a27f582e2ebb9469e3518c49abd21bdd02431e43d57f1a8f"
+			},
+			"id": "raw/path-sensitivity/main/p23",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p23",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "645e77db2ad5a1fd1593faf2f016bb41e5226e0f54de8a81b2ec92b736c7e673",
+				"plan.json": "6ddd3d422a4e04489c51a7552662beeb59448bf8c74f322dffa3fad7cd97ed9b"
+			},
+			"id": "raw/path-sensitivity/main/p24",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p24",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "194e2eafce640d19bc536e2cb1a443ad849956acaf220da030d34dfbacbe4e21",
+				"plan.json": "c1f1b604e634f26fa3bf7fc8e580a86ceb08464355597aa1c137167e62f1ac7d"
+			},
+			"id": "raw/path-sensitivity/main/p25",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p25",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "c8dd58af2ea6d51943e964abcdcae3b39c3aeb92fa5609e3a41fe96981b21e4f",
+				"plan.json": "4fa877fa6e4f4721288ca7b8d4d788acf9207e9c5844635a3a66eb8d57d39132"
+			},
+			"id": "raw/path-sensitivity/main/p26",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p26",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "b37a8374f1b971835582ced19f59adc99978a5e32da28ce88e3f406cee1dfda3",
+				"plan.json": "b591efdb33f3e61513565079cd7b4a4b12bf11b02b346192ef763f09c726443f"
+			},
+			"id": "raw/path-sensitivity/main/p27",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p27",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "a56c905ea4f5c439176786e3c160e5daa4f45687adc017093da2439fa07f7ed9",
+				"plan.json": "fe1c1eca8b41dbe024bb5b8942d96faca8dbc9c45f627489db4713de61e3767c"
+			},
+			"id": "raw/path-sensitivity/main/p28",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p28",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "79d4e9823797ad7acb1946adc691c8d0c0e2db9dc3b2b4811c30de6595beff64",
+				"plan.json": "c7c25faac3ce24b9ef746221d634357da45ca3982ed109451e4d1cd89830ce95"
+			},
+			"id": "raw/path-sensitivity/main/p29",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p29",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "9c83d76606638111b855ec5907510068256a2c53784df9594f6ad3457bb79568",
+				"plan.json": "089e738e1a511592677183351b66e0a42f77d66991dc3cdb4e82a6c3a73477ea"
+			},
+			"id": "raw/path-sensitivity/main/p30",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/main/p30",
+			"stage": "main",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "aa1b7dd496066aad61030d020d8d0f7827321485f3992eba0d54e948ff3dc817",
+				"plan.json": "39713ff6da26a1dea9a4bdbdfd8d0c9e014e1f5dbbbd11bdc3d1d919a5eae701"
+			},
+			"id": "raw/path-sensitivity/pilot/pilot-1",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/pilot/pilot-1",
+			"stage": "pilot",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 12,
+			"files": {
+				"experiment.json": "1ee51c484610bf49b62f883ff83ed8a3274c2453005cdb1158dc29f2272a6130",
+				"plan.json": "fdac5dbe7bcf37dbf2d7b21e30c7aecad26e6d5bea6a66a2fa892837624d3ad7"
+			},
+			"id": "raw/path-sensitivity/pilot/pilot-2",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "path-sensitivity/1.0.1/raw/pilot/pilot-2",
+			"stage": "pilot",
+			"status": "read",
+			"study": "path-sensitivity"
+		},
+		{
+			"examples": 120,
+			"files": {
+				"experiment.json": "a5c1569c191f05cbf5b57d3856eaa5e5037487979563c8d2f54699c1a4728ccf",
+				"plan.json": "7b400b1f03050e3742a0222ebe69079f74dd0de757bd123b1590c22854e39316"
+			},
+			"id": "raw/steering/main",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "steering/1.0.1/raw/main",
+			"stage": "main",
+			"status": "read",
+			"study": "steering"
+		},
+		{
+			"examples": 18,
+			"files": {
+				"experiment.json": "85cda3bbf1dfb31de3fe9df5a041d14323ffd64f08baea8216cd563fd7eb54dc",
+				"plan.json": "7704db866860c6d62ea002d4bf3b543ca5c4c9ff8f7b5b63f3d03adb01130061"
+			},
+			"id": "raw/steering/pilot",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "steering/1.0.1/raw/pilot",
+			"stage": "pilot",
+			"status": "read",
+			"study": "steering"
+		},
+		{
+			"examples": 6,
+			"files": {
+				"experiment.json": "dc056ad455ec9e1fcb8e7b090e231967fb511fb32cea3929290a40632f19ef44",
+				"plan.json": "9858d0edc478197285a5c8e19d755d644f7ae1258fb591ff41d79746e8f10180"
+			},
+			"id": "raw/steering/posthoc-main-path",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "steering/1.0.1/raw/posthoc-main-path",
+			"stage": "posthoc",
+			"status": "read",
+			"study": "steering"
+		},
+		{
+			"examples": 18,
+			"files": {
+				"experiment.json": "157c970a9dc132717e2cf75b60ac1c10c399429c2c4effff63bb38332356e6e7",
+				"plan.json": "8acf4d137ac97c989fb5f4ece5fad9b402d451db62160cd1b711db7403368578"
+			},
+			"id": "raw/steering/posthoc-pilot-path",
+			"kind": "experiment-run",
+			"location": "research-data",
+			"path": "steering/1.0.1/raw/posthoc-pilot-path",
+			"stage": "posthoc",
+			"status": "read",
+			"study": "steering"
+		}
+	],
+	"totals": {
+		"causal-policy": {
+			"eligible": 143,
+			"ineligible": 1187,
+			"reasons": {
+				"arm-invalid": 48,
+				"exclusions-unresolved": 12,
+				"single-condition": 132,
+				"trial-attrition": 6,
+				"trial-excluded": 5,
+				"validity-checks-incomplete": 72,
+				"validity-undeclared": 1006
+			}
+		},
+		"descriptive": {
+			"eligible": 1330,
+			"ineligible": 0,
+			"reasons": {}
+		},
+		"lesson": {
+			"eligible": 307,
+			"ineligible": 1023,
+			"reasons": {
+				"check-output-absent": 420,
+				"content-unavailable": 420,
+				"exclusions-unresolved": 12,
+				"trial-excluded": 5,
+				"validity-undeclared": 1006
+			}
+		},
+		"symptom": {
+			"eligible": 893,
+			"ineligible": 437,
+			"reasons": {
+				"check-output-absent": 420,
+				"exclusions-unresolved": 12,
+				"trial-excluded": 5
+			}
+		}
+	}
+}

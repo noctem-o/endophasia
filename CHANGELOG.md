@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### Added
+- **EVAL-ISO-001: protected experiment execution and an independent evaluator (offline).** `endo experiment protected-run <spec>
+  --out <dir>` plans trials with the same blocked randomization as `endo experiment run`. Each attempt runs as an untrusted process in a
+  Bubblewrap sandbox: new user, mount, PID, network, IPC, UTS and cgroup namespaces; an empty read-only root holding only the declared
+  runtime files (each root-owned and digested), a read-only agent directory and the attempt's own workspace; private tmpfs; a cleared
+  environment; no network. Before each attempt a probe checks from inside that the host's home, the repository, the archives, other trials,
+  the evaluator, host sockets, loopback services and the network are unreachable, and the agent starts only if every probe passes. The
+  submission is collected after the sandbox's PID namespace is confirmed empty: declared regular files only, with links, hard links, special
+  files, traversal, oversize and changes during reading refused. It is judged in a second sandbox by a trusted driver from the cases'
+  inputs, while the expected results stay with the controller; the evaluator is qualified first against a reference and a negative. Each
+  attempt leaves a sealed `endo.protected-trial.v0` record with a strict, digest-checked reader. Interrupted attempts stay visible, a retry
+  names the attempt it retries, and a resume with a changed spec, isolation, agent or evaluator is refused. `endo experiment
+  protected-report <dir>` accounts for every planned trial. Missing isolation is a refusal, never an unprotected fallback. Model-connected
+  studies (a narrow relay to the capture proxy, Pi in the sandbox) are EVAL-ISO-002. See
+  [docs/protected-experiments.md](docs/protected-experiments.md).
 - **MEM-000: what the recorded evidence permits us to learn, before any memory selector is built.** `node
   research/evidence-eligibility/report.ts --out <dir>` reads every experiment run and an optional DEVELOP store, read-only, through the
   existing version-directed readers. It reports, per decision, which learning objectives (descriptive, symptom, lesson, causal policy)

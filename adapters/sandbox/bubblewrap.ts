@@ -1,0 +1,445 @@
+// The one isolation mechanism of protected experiments (docs/protected-experiments.md): Bubblewrap, run unprivileged in fresh user,
+// mount, PID, network, IPC, UTS and cgroup namespaces, with an empty read-only root into which only declared files and directories are
+// mounted. Nothing here accepts a flag, a host path or a network destination from trial content: the profile is built by trusted code from
+// the operator's spec, and every host path in it has a role.
+//
+// What this enforces is checked from inside by the preflight probes (preflight.ts), never assumed from the arguments. What it does not
+// cover (kernel exploits, resource exhaustion of the host disk, side channels) is in the documentation.
+
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { dirname } from "node:path";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+
+/** The only places the executable is looked for: never PATH, which trial content or the operator's shell could shape. */
+export const ENDO_BUBBLEWRAP_CANDIDATES_V0 = ["/usr/bin/bwrap"] as const;
+
+export interface EndoBubblewrapV0 {
+	path: string;
+	version: string;
+	sha256: string;
+}
+
+export type EndoIsolationRefusalV0 =
+	| { ok: false; reason: "missing"; detail: string }
+	| { ok: false; reason: "untrusted-executable"; detail: string }
+	| { ok: false; reason: "setuid-unsupported"; detail: string }
+	| { ok: false; reason: "namespaces-unavailable"; detail: string }
+	| { ok: false; reason: "runtime-unacceptable"; detail: string };
+
+const sha256File = (path: string): string => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+/** A file the sandbox may execute or load: a regular file owned by root, writable by no one else, in directories owned by root. */
+function trustedFileProblem(path: string): string | null {
+	const s = lstatSync(path, { throwIfNoEntry: false });
+	if (s === undefined) return `${path} does not exist`;
+	if (!s.isFile()) return `${path} is not a regular file`;
+	if (s.uid !== 0) return `${path} is not owned by root`;
+	if ((s.mode & 0o022) !== 0) return `${path} is writable by group or others`;
+	for (let dir = dirname(path); ; dir = dirname(dir)) {
+		const d = statSync(dir);
+		if (d.uid !== 0 || (d.mode & 0o022) !== 0)
+			return `${dir} (a parent of ${path}) is not a root-owned, non-writable directory`;
+		if (dir === "/") break;
+	}
+	return null;
+}
+
+/**
+ * Find Bubblewrap and check that this host can enforce the profile: a trusted executable, not setuid (its privileged mode behaves
+ * differently and is not supported), and a real sandbox started with every namespace this profile needs.
+ */
+export function detectBubblewrapV0(
+	candidates: readonly string[] = ENDO_BUBBLEWRAP_CANDIDATES_V0,
+): { ok: true; bwrap: EndoBubblewrapV0 } | EndoIsolationRefusalV0 {
+	const path = candidates.find((c) => existsSync(c));
+	if (path === undefined)
+		return { ok: false, reason: "missing", detail: `bubblewrap was not found at ${candidates.join(", ")}` };
+	const problem = trustedFileProblem(path);
+	if (problem !== null) return { ok: false, reason: "untrusted-executable", detail: problem };
+	if ((lstatSync(path).mode & 0o6000) !== 0)
+		return { ok: false, reason: "setuid-unsupported", detail: `${path} is setuid or setgid` };
+	const version = spawnSync(path, ["--version"], { env: {}, encoding: "utf8", timeout: 5000 });
+	const v = /^bubblewrap ([0-9][0-9.]*)\s*$/.exec(version.stdout ?? "");
+	if (version.status !== 0 || v === null)
+		return { ok: false, reason: "missing", detail: `${path} --version did not report a bubblewrap version` };
+	// A real sandbox, with the same namespace flags as every profile: refused here if the kernel or its policy does not allow them. This
+	// capability check alone mounts the host's /usr read-only, to run a trusted /usr/bin/true; no trial profile does.
+	const probe = spawnSync(
+		path,
+		[
+			...NAMESPACE_FLAGS,
+			"--ro-bind",
+			"/usr",
+			"/usr",
+			"--symlink",
+			"usr/lib",
+			"/lib",
+			"--symlink",
+			"usr/lib64",
+			"/lib64",
+			"--remount-ro",
+			"/",
+			"--",
+			"/usr/bin/true",
+		],
+		{
+			env: {},
+			encoding: "utf8",
+			timeout: 10_000,
+		},
+	);
+	if (probe.status !== 0)
+		return {
+			ok: false,
+			reason: "namespaces-unavailable",
+			detail: `a sandbox could not be started: ${(probe.stderr ?? "").trim().slice(0, 300) || `exit ${probe.status}`}`,
+		};
+	return { ok: true, bwrap: { path, version: v[1] as string, sha256: sha256File(path) } };
+}
+
+// ---- the runtime ---------------------------------------------------------------------------------------------------------------------------
+
+/** One file of the runtime: where it appears inside, where it comes from, and its content digest. */
+export interface EndoRuntimeFileV0 {
+	target: string;
+	source: string;
+	sha256: string;
+}
+
+/**
+ * The executables and every shared library they load (by `ldd`, run on the trusted executables only), each a trusted file. Each library is
+ * mounted at the path the loader asks for, from its real file: a link in the host's library directory is followed here, never inside.
+ */
+export function resolveRuntimeV0(
+	executables: readonly string[],
+): { ok: true; files: EndoRuntimeFileV0[] } | EndoIsolationRefusalV0 {
+	const files = new Map<string, EndoRuntimeFileV0>();
+	const add = (target: string, source: string): string | null => {
+		const real = realpathSync(source);
+		const problem = trustedFileProblem(real);
+		if (problem !== null) return problem;
+		if (!files.has(target)) files.set(target, { target, source: real, sha256: sha256File(real) });
+		return null;
+	};
+	for (const exe of executables) {
+		const s = lstatSync(exe, { throwIfNoEntry: false });
+		if (s === undefined || s.isSymbolicLink())
+			return {
+				ok: false,
+				reason: "runtime-unacceptable",
+				detail: `${exe} must be the executable's real path, not a link`,
+			};
+		const problem = add(exe, exe);
+		if (problem !== null) return { ok: false, reason: "runtime-unacceptable", detail: problem };
+		const ldd = spawnSync("/usr/bin/ldd", [exe], { env: {}, encoding: "utf8", timeout: 10_000 });
+		if (ldd.status !== 0)
+			return { ok: false, reason: "runtime-unacceptable", detail: `ldd could not list ${exe}'s libraries` };
+		for (const line of (ldd.stdout ?? "").split("\n")) {
+			const linked = /^\s*(\S+) => (\/\S+) \(0x[0-9a-f]+\)\s*$/.exec(line);
+			const direct = /^\s*(\/\S+) \(0x[0-9a-f]+\)\s*$/.exec(line);
+			const pairs: [string, string][] = [];
+			if (linked !== null) {
+				const [, name, path] = linked as unknown as [string, string, string];
+				pairs.push([path, path]);
+				if (name.startsWith("/")) pairs.push([name, path]);
+			} else if (direct !== null) pairs.push([direct[1] as string, direct[1] as string]);
+			else if (/^\s*linux-vdso\.so\.1 \(0x[0-9a-f]+\)\s*$/.test(line) || line.trim() === "") continue;
+			else return { ok: false, reason: "runtime-unacceptable", detail: `unexpected ldd line for ${exe}` };
+			for (const [target, source] of pairs) {
+				const p = add(target, source);
+				if (p !== null) return { ok: false, reason: "runtime-unacceptable", detail: p };
+			}
+		}
+	}
+	return { ok: true, files: [...files.values()].sort((a, b) => (a.target < b.target ? -1 : 1)) };
+}
+
+// ---- the profile ---------------------------------------------------------------------------------------------------------------------------
+
+/** Every namespace, no new user namespaces inside, no capabilities, a new session (no terminal injection), killed with its parent. */
+const NAMESPACE_FLAGS = [
+	"--unshare-all",
+	"--unshare-user",
+	"--disable-userns",
+	"--assert-userns-disabled",
+	"--die-with-parent",
+	"--new-session",
+	"--cap-drop",
+	"ALL",
+	"--clearenv",
+] as const;
+export const ENDO_SANDBOX_NAMESPACES_V0 = ["cgroup", "ipc", "mnt", "net", "pid", "user", "uts"] as const;
+
+export interface EndoSandboxMountV0 {
+	target: string;
+	kind: "ro-file" | "ro-dir" | "rw-dir";
+	/** The role of the host source: recorded and digested instead of its path. */
+	role: string;
+	source: string;
+	/** For a read-only file, its content digest; for a read-only directory, the digest of its tree (endoTreeDigestV0). */
+	sha256?: string;
+}
+
+/**
+ * The digest of a directory tree a sandbox mounts read-only: every entry by relative path, kind, size and content digest, sorted. A link or
+ * special file is refused (a mounted link would point at the host's namespace, not the sandbox's).
+ */
+export function endoTreeDigestV0(root: string): string {
+	const entries: [string, string, number, string][] = [];
+	const walk = (dir: string, prefix: string) => {
+		for (const name of readdirSync(dir).sort()) {
+			const path = `${dir}/${name}`;
+			const s = lstatSync(path);
+			if (s.isDirectory()) {
+				entries.push([`${prefix}${name}`, "dir", 0, ""]);
+				walk(path, `${prefix}${name}/`);
+			} else if (s.isFile()) entries.push([`${prefix}${name}`, "file", s.size, sha256File(path)]);
+			else throw new TypeError(`${path} is not a regular file or directory`);
+		}
+	};
+	walk(root, "");
+	return sha256HexV0(canonicalEndoJsonV0(entries));
+}
+
+export interface EndoSandboxProfileInputV0 {
+	runtime: readonly EndoRuntimeFileV0[];
+	mounts: readonly EndoSandboxMountV0[];
+	env: Readonly<Record<string, string>>;
+	cwd: string;
+	tmpfsBytes: number;
+	/** Test-only weakenings, used to show that each probe detects its restriction's removal. Never reachable from a spec or the CLI. */
+	unsafeForTests?: {
+		shareNet?: boolean;
+		extraRoBind?: { source: string; target: string };
+		extraEnv?: Record<string, string>;
+		writableRoot?: boolean;
+	};
+}
+
+export interface EndoSandboxProfileV0 {
+	args: string[];
+	/** What the profile requests, as recorded: no host path, every file by digest. */
+	logical: {
+		namespaces: string[];
+		network: "none";
+		rootReadOnly: true;
+		userNamespacesDisabled: true;
+		environment: string[];
+		mounts: { target: string; kind: string; role: string | null; sha256: string | null }[];
+	};
+	/** sha256 of the canonical logical profile, with the environment's values and the working directory. */
+	sha256: string;
+}
+
+const LOGICAL_PATH = /^\/(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9._+\-/]{1,200}$/;
+const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
+
+/** The arguments for one sandbox, from trusted inputs. Pure: the same inputs give the same arguments and digest. */
+export function buildSandboxProfileV0(input: EndoSandboxProfileInputV0): EndoSandboxProfileV0 {
+	const args: string[] = [...NAMESPACE_FLAGS];
+	if (input.unsafeForTests?.shareNet === true) args.splice(1, 0, "--share-net");
+	const mounts: EndoSandboxProfileV0["logical"]["mounts"] = [];
+	const check = (target: string) => {
+		if (!LOGICAL_PATH.test(target)) throw new TypeError(`sandbox target ${target} is not a plain absolute path`);
+	};
+	for (const [name, value] of Object.entries(input.env)) {
+		if (!ENV_NAME.test(name) || value.includes("\0"))
+			throw new TypeError(`environment variable ${name} is not acceptable`);
+		args.push("--setenv", name, value);
+	}
+	args.push("--proc", "/proc", "--dev", "/dev");
+	mounts.push(
+		{ target: "/proc", kind: "proc", role: null, sha256: null },
+		{ target: "/dev", kind: "dev", role: null, sha256: null },
+	);
+	for (const target of ["/tmp", "/home/agent"]) {
+		args.push("--size", String(input.tmpfsBytes), "--tmpfs", target);
+		mounts.push({ target, kind: "tmpfs", role: null, sha256: null });
+	}
+	for (const f of input.runtime) {
+		check(f.target);
+		args.push("--ro-bind", f.source, f.target);
+		mounts.push({ target: f.target, kind: "ro-file", role: "runtime", sha256: f.sha256 });
+	}
+	// The loader's own path on this layout: /lib64 is a link into /usr/lib64 on the host; inside, it is a link too, to the mounted file.
+	if (
+		input.runtime.some((f) => f.target.startsWith("/usr/lib64/")) &&
+		!input.runtime.some((f) => f.target.startsWith("/lib64/"))
+	) {
+		args.push("--symlink", "usr/lib64", "/lib64");
+		mounts.push({ target: "/lib64", kind: "symlink", role: null, sha256: null });
+	}
+	for (const m of input.mounts) {
+		check(m.target);
+		if (m.kind === "ro-file" && m.sha256 === undefined)
+			throw new TypeError(`read-only file ${m.target} needs its digest`);
+		args.push(m.kind === "rw-dir" ? "--bind" : "--ro-bind", m.source, m.target);
+		mounts.push({
+			target: m.target,
+			kind: m.kind,
+			role: m.role,
+			sha256: m.kind === "ro-file" ? (m.sha256 as string) : null,
+		});
+	}
+	if (input.unsafeForTests?.extraRoBind !== undefined)
+		args.push("--ro-bind", input.unsafeForTests.extraRoBind.source, input.unsafeForTests.extraRoBind.target);
+	check(input.cwd);
+	args.push("--chdir", input.cwd);
+	for (const [name, value] of Object.entries(input.unsafeForTests?.extraEnv ?? {})) args.push("--setenv", name, value);
+	// Last: everything not mounted writable above is read-only, including the sandbox's own root.
+	if (input.unsafeForTests?.writableRoot !== true) args.push("--remount-ro", "/");
+	const logical: EndoSandboxProfileV0["logical"] = {
+		namespaces: [...ENDO_SANDBOX_NAMESPACES_V0],
+		network: "none",
+		rootReadOnly: true,
+		userNamespacesDisabled: true,
+		environment: Object.keys(input.env).sort(),
+		mounts: [...mounts].sort((a, b) => (a.target < b.target ? -1 : a.target > b.target ? 1 : 0)),
+	};
+	const sha256 = sha256HexV0(
+		canonicalEndoJsonV0({
+			logical,
+			env: Object.fromEntries(Object.entries(input.env).sort()),
+			cwd: input.cwd,
+			tmpfsBytes: input.tmpfsBytes,
+			directories: input.mounts.filter((m) => m.kind === "ro-dir").map((m) => [m.target, m.sha256 ?? null]),
+			unsafe: input.unsafeForTests === undefined ? null : "weakened-for-tests",
+		}),
+	);
+	return { args, logical, sha256 };
+}
+
+// ---- running -------------------------------------------------------------------------------------------------------------------------------
+
+export interface EndoSandboxRunV0 {
+	/** Whether bubblewrap started the command (it reported the child's pid). */
+	started: boolean;
+	exitCode: number | null;
+	signal: string | null;
+	timedOut: boolean;
+	durationMs: number;
+	stdout: Buffer;
+	stderr: Buffer;
+	/** Bytes the controller did not keep because of the bound. */
+	truncated: { stdout: number; stderr: number };
+	pidNamespace: number | null;
+	/** Whether no process of the sandbox's PID namespace remained afterwards (checked on /proc, after killing any found). */
+	termination: "confirmed" | "unconfirmed";
+	survivors: number;
+}
+
+/** Processes on this host whose PID namespace is `ns` (readable for this user's own processes). */
+export function processesInNamespaceV0(ns: number): number[] {
+	const found: number[] = [];
+	for (const name of readdirSync("/proc")) {
+		if (!/^[0-9]+$/.test(name)) continue;
+		try {
+			if (readlinkSync(`/proc/${name}/ns/pid`) === `pid:[${ns}]`) found.push(Number(name));
+		} catch {
+			// gone, or another user's: not this sandbox's (its processes are this user's)
+		}
+	}
+	return found;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Run one command in one sandbox. The command is an argument array; bubblewrap gets no environment of its own; stdio is three pipes and
+ * nothing else is inherited. On timeout bubblewrap is killed, which kills the sandbox (it dies with its parent, and a PID namespace dies
+ * with its first process). Afterwards the namespace is checked on /proc: any process found is killed, and termination is confirmed only
+ * when none remains.
+ */
+export async function runSandboxV0(
+	bwrap: EndoBubblewrapV0,
+	profile: EndoSandboxProfileV0,
+	argv: readonly string[],
+	options: { timeoutMs: number; outputBytes: number; stdin?: Buffer; onStarted?: (pidNamespace: number) => void },
+): Promise<EndoSandboxRunV0> {
+	const start = performance.now();
+	const child = spawn(bwrap.path, ["--json-status-fd", "3", ...profile.args, "--", ...argv], {
+		env: {},
+		stdio: ["pipe", "pipe", "pipe", "pipe"],
+	});
+	const bounded = () => {
+		const chunks: Buffer[] = [];
+		let kept = 0;
+		let dropped = 0;
+		return {
+			push: (b: Buffer) => {
+				const room = Math.max(0, options.outputBytes - kept);
+				if (room > 0) chunks.push(b.subarray(0, room));
+				kept += Math.min(room, b.length);
+				dropped += Math.max(0, b.length - room);
+			},
+			value: () => ({ bytes: Buffer.concat(chunks), dropped }),
+		};
+	};
+	const out = bounded();
+	const err = bounded();
+	let status = "";
+	let pidNamespace: number | null = null;
+	let started = false;
+	child.stdout.on("data", out.push);
+	child.stderr.on("data", err.push);
+	(child.stdio[3] as NodeJS.ReadableStream).on("data", (b: Buffer) => {
+		status += b.toString("utf8");
+		for (const line of status.split("\n")) {
+			const m = /"child-pid":\s*([0-9]+)/.exec(line);
+			const n = /"pid-namespace":\s*([0-9]+)/.exec(line);
+			if (m !== null && n !== null && !started) {
+				started = true;
+				pidNamespace = Number(n[1]);
+				options.onStarted?.(pidNamespace);
+			}
+		}
+	});
+	child.stdin.on("error", () => {});
+	child.stdin.end(options.stdin ?? Buffer.alloc(0));
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		child.kill("SIGKILL");
+	}, options.timeoutMs);
+	const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+		child.on("error", () => resolve([null, null]));
+		child.on("close", (c, s) => resolve([c, s]));
+	});
+	clearTimeout(timer);
+	// bubblewrap reports the command's own exit code on the status fd; its own exit code mirrors it.
+	const exitStatus = /"exit-code":\s*([0-9]+)/.exec(status);
+	let survivors = 0;
+	let termination: EndoSandboxRunV0["termination"] = "confirmed";
+	if (pidNamespace !== null) {
+		for (let i = 0; i < 20; i++) {
+			const left = processesInNamespaceV0(pidNamespace);
+			if (left.length === 0) break;
+			survivors = Math.max(survivors, left.length);
+			for (const pid of left)
+				try {
+					process.kill(pid, "SIGKILL");
+				} catch {
+					// already gone
+				}
+			await sleep(50);
+		}
+		if (processesInNamespaceV0(pidNamespace).length > 0) termination = "unconfirmed";
+	}
+	const o = out.value();
+	const e = err.value();
+	return {
+		started,
+		exitCode: exitStatus !== null ? Number(exitStatus[1]) : started ? null : code,
+		signal: timedOut ? "SIGKILL" : signal,
+		timedOut,
+		durationMs: Math.round(performance.now() - start),
+		stdout: o.bytes,
+		stderr: e.bytes,
+		truncated: { stdout: o.dropped, stderr: e.dropped },
+		pidNamespace,
+		termination,
+		survivors,
+	};
+}

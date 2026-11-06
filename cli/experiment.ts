@@ -118,8 +118,14 @@ export const ENDO_EXPERIMENT_REPORT_SCHEMA_V0 = "endo.experiment-report.v2";
 export const ENDO_EXPERIMENT_ORDERING_V0 =
 	"blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)";
 
-/** The run order for a spec and a seed. Pure: the same spec and seed always give the same plan. */
-export function planEndoExperimentV0(spec: EndoExperimentSpecV0, seed: number): EndoExperimentTrialKeyV0[] {
+/**
+ * The run order for a spec and a seed. Pure: the same spec and seed always give the same plan. It reads only the task and condition ids
+ * and the trial count, so protected experiments (cli/experiment-protected.ts) are planned by exactly the same ordering.
+ */
+export function planEndoExperimentV0(
+	spec: { tasks: readonly { id: string }[]; conditions: readonly { id: string }[]; trials: number },
+	seed: number,
+): EndoExperimentTrialKeyV0[] {
 	const random = mulberry32V0(seed);
 	const cells = spec.tasks.flatMap((task) =>
 		spec.conditions.map((condition) => ({ task: task.id, condition: condition.id })),

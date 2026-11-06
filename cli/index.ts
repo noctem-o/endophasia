@@ -13,7 +13,7 @@
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path]
  *   node cli/index.ts workspace open [<root>] [--root dir] --project <id> [--port n]   (the workspace host: no agent; docs/designs/workspace-host.md)
  *   node cli/index.ts proxy <record|replay> ...
- *   node cli/index.ts experiment <run|report> ...
+ *   node cli/index.ts experiment <run|report|protected-run|protected-report> ...
  *   node cli/index.ts replay <store> <session> --pi <path> --timing <as-recorded|immediate> ...
  *
  * The command functions print one canonical-JSON document on success; any throw becomes a one-line error on stderr
@@ -30,6 +30,7 @@ import { digestKeyCommand } from "./digest-key.ts";
 import { doctorCommand } from "./doctor.ts";
 import { DSH_COMMANDS_V0 } from "./dsh.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
+import { experimentProtectedReportCommand, experimentProtectedRunCommand } from "./experiment-protected.ts";
 import { HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
@@ -78,7 +79,14 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		"usage: endo attempt <prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt> ...",
 	),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
-	experiment: family(EXPERIMENT_COMMANDS_V0, "usage: endo experiment <run|report> ..."),
+	experiment: family(
+		{
+			...EXPERIMENT_COMMANDS_V0,
+			"protected-run": experimentProtectedRunCommand,
+			"protected-report": experimentProtectedReportCommand,
+		},
+		"usage: endo experiment <run|report|protected-run|protected-report> ...",
+	),
 	trajectory: family(TRAJECTORY_COMMANDS_V0, "usage: endo trajectory <show|diff> <store> <session> ..."),
 };
 

@@ -1,0 +1,280 @@
+# Protected experiments (EVAL-ISO-001)
+
+An opt-in, Linux-first experiment path. An untrusted agent works on a disposable workspace inside a Bubblewrap sandbox; the boundary is
+checked from inside before the agent starts. Its submission is collected only after its processes are confirmed gone, and it is judged by an
+independent evaluator in a second sandbox, from cases the agent never sees. Every attempt leaves a sealed, versioned record
+(`endo.protected-trial.v0`) that a reader can check without trusting the agent or its transcript.
+
+```sh
+endo experiment protected-run <spec.json> --out <dir> [--retry-interrupted] [--max-attempts n]
+endo experiment protected-report <dir>
+```
+
+**This version is offline.** The agent has no network at all, so it cannot call a model; Pi with a local model is the subject of
+EVAL-ISO-002 (§9). The unprotected `endo experiment run` is unchanged.
+
+## 1. Audit: what existed, and what this changes
+
+| Existing (reused unchanged) | Where |
+| :-- | :-- |
+| Blocked randomization and its ordering text | `planEndoExperimentV0`, `ENDO_EXPERIMENT_ORDERING_V0` in `cli/experiment.ts`. Its parameter is widened to the three fields it reads, so both runners share one planner; a test checks a committed run's plan is reproduced exactly |
+| Version-directed reading of self-describing records | `protocol/versioned.ts` (`defineEndoVersionTableV0`, `readEndoVersionedV0`) |
+| Canonical JSON and digests | `runtime/contracts/canonical-json.ts` |
+| Same fixed working directory for every trial | kept: every protected agent works in `/work` |
+| Historical records | `endo.experiment-run.v0`, `endo.experiment-trial.v0/v1` are not touched; protected runs write their own records |
+
+**Trust boundaries today, in `endo experiment run`:**
+- Pi runs as an ordinary host process: the whole filesystem, the whole network, and `PATH` inherited (`piCassetteEnvV0`, `cli/cassette-session.ts`).
+- `runCheck` (`cli/experiment.ts`) runs the hidden check with `cwd` in the agent's own `work/`, with the agent's environment, after the agent.
+  The agent could have changed the files the check imports, or have left processes running.
+- The hidden check's argv is in the spec, which `experiment.json` embeds, in a run directory that any process on the host can read.
+- An interrupted trial is moved to `interrupted/` and rerun into the counted set.
+
+MEM-000 found that no historical run records an isolation boundary, and the completion-cap study recorded a hidden-check read and broad
+deletions in a shared `/tmp`.
+
+**What this adds, and the boundary it moves:**
+
+```mermaid
+flowchart LR
+    subgraph host["Host: trusted controller (endo experiment protected-run)"]
+        spec["spec + evaluator definition<br/>(cases with expected results)"]
+        rec["records, run directory"]
+        stage["submission copy<br/>(exported, digested)"]
+        cmp["comparison of results<br/>with expected"]
+    end
+    subgraph agent["Sandbox A: untrusted agent"]
+        work["/work (rw, this attempt only)"]
+        ag["/agent (ro)"]
+        rt["runtime files (ro)"]
+    end
+    subgraph evals["Sandbox B: evaluation"]
+        sub["/submission (ro copy)"]
+        drv["/eval/driver.mjs, /eval/inputs.json (ro)"]
+    end
+    spec -- "workspace files" --> work
+    work -- "after the PID namespace is empty:<br/>declared regular files only" --> stage
+    stage --> sub
+    spec -- "inputs only" --> drv
+    evals -- "results on stdout" --> cmp
+    spec -- "expected results" --> cmp
+    cmp --> rec
+```
+
+The agent sees `/work`, `/agent`, the runtime's own files, a private `/tmp`, HOME, `/proc` and `/dev`, and nothing else. The evaluator
+sandbox sees the exported copy, the trusted driver and the case inputs. Expected results exist only in the controller.
+
+**Mechanism chosen: Bubblewrap** (0.13.1 here), unprivileged, no setuid.
+
+| Considered | Why not, for this slice |
+| :-- | :-- |
+| Rootless OCI (podman) | Not installed on the target host, and a container image is a larger, separately maintained trust base than a list of mounted files. |
+| systemd user scopes | Bound resources and give cgroup-based process cleanup, but no filesystem or network view of their own. A complement (§8), not a boundary. |
+| Anthropic's `sandbox-runtime` | Also Bubblewrap on Linux, but **reads are allowed everywhere by default**: it denies writes and chosen paths. A hidden-test boundary needs the opposite: an empty view with only declared files. Its network design (no network namespace inside, host-side proxies over a bind-mounted Unix socket bridged with socat, deny by default, a resolved-address check) is the reference for EVAL-ISO-002. |
+
+**Explicit exclusions:** no model connection or relay, no Pi, no seccomp filter, no resource limits beyond tmpfs sizes and timeouts, no
+evaluator for node:test suites (only function cases), and no change to DEVELOP, Studio or the default runner.
+
+## 2. The profile
+
+Built by trusted code (`adapters/sandbox/bubblewrap.ts`) from the operator's spec. A spec cannot supply a flag, a mount, a host path for the
+sandbox or a network destination (the spec reader is closed; see `tests/protected-records.test.ts`).
+
+- **Namespaces:** user, mount, PID, network, IPC, UTS and cgroup are all new (`--unshare-all --unshare-user`). Further user namespaces are
+  disabled (`--disable-userns --assert-userns-disabled`), capabilities are dropped, and there is a new session (`--new-session`, so no
+  terminal injection). The sandbox dies with its parent (`--die-with-parent`).
+- **Filesystem:** an empty root, remounted read-only last. Inside it:
+  - each runtime executable and each shared library `ldd` lists for it, read-only, every one checked to be a root-owned regular file in
+    root-owned, non-writable directories (no links);
+  - `/agent` (the condition's directory, read-only, pinned by a tree digest);
+  - `/work` (this attempt's workspace, the only writable host directory);
+  - private, size-limited tmpfs at `/tmp` and `/home/agent`;
+  - a new `/proc` (this PID namespace only) and a minimal `/dev`.
+  The host root, `/etc`, the repository, the archives and every other trial are simply not there.
+- **Environment:** cleared, then only `HOME`, `PATH` and `TMPDIR` (bubblewrap adds `PWD`). Bubblewrap itself is started with an empty
+  environment, and only three pipes are passed as file descriptors.
+- **Network:** a new namespace with only `lo`, so there is no route out. The host's loopback services and its abstract Unix sockets
+  belong to another namespace and are unreachable. No host socket path is mounted.
+- **Lifetime:** on timeout the controller kills bubblewrap, which kills the sandbox. Afterwards the controller lists every process on the
+  host in the sandbox's PID namespace (`/proc/*/ns/pid`), kills any it finds, and records termination as confirmed only when none remains.
+- **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree) by content
+  digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
+
+## 3. The preflight: enforcement checked, not assumed
+
+Before each attempt the controller runs a probe in **that attempt's own profile** (`adapters/sandbox/preflight.ts`). The probe reports
+observations only: error codes, counts and fixed words. The controller decides each probe from its own expectations, and the agent starts
+only if every probe passes. Otherwise the attempt is recorded with `preflight: failed` and `agent: not-run`.
+
+| Probe | Attempt from inside | Must observe |
+| :-- | :-- | :-- |
+| `fs-hidden-*` | stat the host home, the repository, the research data, the run directory, every trial, the evaluator directory and the agent's host path | `ENOENT` |
+| `fs-canary-read` | read a canary the controller just wrote in a private host directory | `ENOENT` |
+| `fs-root-readonly`, `fs-readonly-*` | write `/`, the runtime executables, `/agent`, `/usr` | `EROFS` or `EACCES` (the executable's own mode answers `EACCES` before the read-only mount is reached) |
+| `fs-workspace-writable` | write and remove a file in `/work` | `ok` (positive control) |
+| `fs-tmp-private` | list `/tmp` | empty |
+| `proc-private` | list `/proc` | at most 4 PIDs, the controller's not among them |
+| `env-minimal`, `fds-inherited` | the environment's names; every descriptor above 2 | nothing beyond the declared names; only pipes and anonymous inodes |
+| `net-interfaces` | list interfaces | `lo` only |
+| `net-host-loopback`, `net-host-abstract-socket` | connect to a TCP listener and an abstract socket the controller opened on the host | `ECONNREFUSED` |
+| `net-external`, `net-host-path-socket` | connect to 192.0.2.1:80; to a socket file the controller opened | `ENETUNREACH`; `ENOENT` |
+| `socket-hidden-*` | stat `/run/user/<uid>`, D-Bus, Docker, systemd private, X11, `$SSH_AUTH_SOCK` | `ENOENT` |
+
+**Each restriction has a negative probe.** `tests/protected-isolation.test.ts` removes one restriction at a time, through a test-only option
+that no spec or command can reach:
+- the network shared with the host;
+- a protected directory mounted;
+- an extra environment variable;
+- a writable root.
+
+Each time the matching probes fail, the preflight fails, and the agent does not run.
+
+## 4. Collection and independent evaluation
+
+**Collection** (`adapters/sandbox/submission.ts`) runs only after termination is confirmed. For each declared path:
+- every directory on the way must be a real directory, and the file a regular file with one link, within the size bounds;
+- the file is opened with `O_NOFOLLOW`, compared with what `lstat` saw (device, inode, size, change time), read to its end, and compared
+  again with a fresh `lstat`;
+- the bytes are written into a new staging directory the controller creates, with each file created exclusively.
+
+Any symbolic link, hard link, directory, socket, FIFO, oversize file, traversal or change during reading refuses the whole submission, by
+reason, and the evaluator never runs.
+
+Node has no `openat`, so these checks detect a change but cannot prevent a *live* writer swapping a directory between steps. That is why
+collection waits until no sandboxed process exists.
+
+**Evaluation** (`adapters/sandbox/evaluator.ts`, `endo.function-evaluator.v0`):
+- **Sandbox:** a second sandbox holds the read-only copy, a trusted driver pinned by digest, and the case inputs.
+- **Driver:** it imports the submitted module and calls its export once per input.
+- **Comparison:** the controller compares the printed results with the expected results, which never left it.
+- **Ambiguous output:** a submission that prints a forged result frame produces two frames, and fails.
+- **Exiting early:** a submission that exits before the driver prints fails as `no-result`.
+- **Faked evidence:** visible tests or result files the agent wrote play no part.
+
+**Qualification:** before any trial, the evaluator must pass its reference solution and fail its declared negative. Both are exported
+under the same policy.
+
+## 5. The record, and how to verify it independently
+
+One `endo.protected-trial.v0` per attempt (`protocol/protected-experiment.ts`). It holds:
+- the trial's coordinates in the plan, its attempt number and the attempt it retries;
+- bubblewrap's version and executable digest, the profile digest, and the requested profile (namespaces, read-only root, environment
+  names, and every mount by target, kind, role and file digest);
+- every preflight probe with its observation;
+- the network mode (`none`, no relay);
+- the agent's status, exit, duration, termination and output digest;
+- the submission manifest (path, bytes, sha256) and its digest, or the refusals;
+- the evaluator's definition and driver digests, its status, the case counts and the output digest;
+- how the record was finalized, and the invalidating conditions.
+
+The record holds no host path, environment value, case content or output. It is sealed with the digest of its own canonical JSON.
+
+**The reader refuses, rather than half-reading:**
+- an unknown version or field;
+- a wrong digest;
+- a record whose facts contradict each other, for example:
+  - an evaluation result without a collected submission;
+  - an agent that ran without an established boundary;
+  - a submission collected before termination was confirmed;
+  - a missing or invented invalidating condition.
+
+To verify a run:
+1. `endo experiment protected-report <dir>` reads `protected-run.json` (spec digest checked) and every attempt's record independently,
+   by its own version and digests. It checks each record's coordinates against the plan and lists any record it refused.
+2. For an attempt, the sha256 of each file in `attempt-<n>/submission/` equals the record's manifest, and the manifest's digest equals
+   `submission.sha256`: that copy is exactly what was evaluated.
+3. The evaluator definition's sha256 equals the spec's pin and the record's `definitionSha256`. Re-running its cases against the copy
+   reproduces the result.
+
+**Analysis rules** (printed in every report):
+- every planned trial stays in the denominator;
+- **qualified** means the boundary was established, termination confirmed, the submission collected and the evaluator run;
+- passed and failed are counted among qualified trials only;
+- attrition, by its first invalidating condition, and trials not attempted are reported beside them, never as failures;
+- a retry (`--retry-interrupted` only) is a new attempt that names the one it retries, and every attempt stays counted.
+
+A resumed run with a different spec, isolation executable, agent profile (including agent code) or evaluator is refused. A controller that
+was killed leaves its attempt finalized on the next run as `controller-interrupted`, from what the directory shows: nothing is assumed.
+
+## 6. Running the offline example
+
+Host prerequisites: Linux with unprivileged user namespaces enabled, Bubblewrap at `/usr/bin/bwrap` (root-owned, not setuid), `ldd`, and
+`/usr/bin/node`. No root, no daemon, no kernel setting changed.
+
+```sh
+node research/protected-eval/example/make-spec.ts > /tmp/protected-spec.json
+endo experiment protected-run /tmp/protected-spec.json --out ../protected-runs/example
+endo experiment protected-report ../protected-runs/example
+```
+
+The example (`research/protected-eval/example/`) is one function task (`mergeIntervals`) and one cooperative agent. Its evaluator
+definition holds seven cases, a reference that passes and a plausible wrong negative that fails. The report shows two planned trials, both
+qualified and passed. On this host the run takes under a second.
+
+**When enforcement is unavailable** (no bubblewrap, a non-root-owned or setuid one, user namespaces refused, a runtime file that is a link
+or writable by others), the command refuses before creating anything: `isolation unavailable (<reason>): <detail>`. It never runs the agent
+another way. A probe that fails at an attempt refuses that attempt, which stays in the accounting.
+
+## 7. Tests: what runs real isolation
+
+| File | Real kernel isolation | Covers |
+| :-- | :-- | :-- |
+| `tests/protected-isolation.test.ts` | **yes** (skipped, and says so, where `detectBubblewrapV0` refuses) | see the list below |
+| `tests/protected-isolation.test.ts`, "refusal instead of an unprotected fallback" | no | a missing or untrusted bubblewrap, a linked or non-root runtime, an undeclared executable: refused, nothing run |
+| `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
+
+The real-isolation tests cover:
+- a positive control: an honest agent passes the independent evaluator;
+- an adversarial agent that tries to:
+  - read the evaluator, the reference, a host secret, the repository, the archive, another trial, the run directory, `/etc` and a socket;
+  - write outside `/work`;
+  - spawn a shell;
+  - reach loopback, `::1`, the LAN, the internet and DNS;
+- forged evaluator frames, faked local results, and a submission that exits early;
+- malicious submissions: a link, a linked directory, a hard link, a directory, a socket, oversize and missing;
+- a timed-out agent with a detached descendant;
+- a controller killed with `SIGKILL`, then resume and an explicit retry;
+- each probe failing when its restriction is removed;
+- a resume refused after the agent code or the evaluator changed.
+
+GitHub's Ubuntu runners restrict unprivileged user namespaces through AppArmor, so the real-isolation tests are expected to skip there.
+Only the refusal and logic tests run there. They are run on a host that supports them; the results are in the PR.
+
+## 8. Limitations and residual risk
+
+- **Not protected:**
+  - a kernel exploit, or a bug in bubblewrap;
+  - an attacker who already controls the host account (who can also edit the records: the digests detect accidents, not forgery);
+  - side channels (timing, `/proc/sys`, the CPU).
+- **No seccomp filter.** The agent can make any system call the kernel allows an unprivileged user in its own namespaces.
+- **No resource limits beyond the bounds.** The bounds are the timeouts, the tmpfs sizes, and the read-back bounds on output and on
+  submissions. The agent can exhaust CPU and memory during its time, and fill the host disk through `/work`, which is a host directory.
+  A systemd user scope (MemoryMax, TasksMax, CPU) is the natural addition.
+- **The runtime is what `ldd` lists.** A runtime that loads files at run time (plugins, ICU data elsewhere) would fail inside. That is safe,
+  but limiting.
+- **Collection races** are detected, not prevented (no `openat` in Node). Collection runs only after confirmed termination.
+- **The evaluator runs the submission's code.** That code sees the case inputs (not the expected results) and can waste the evaluation's
+  time; it cannot reach the network or the host.
+- **One evaluator kind:** functions with JSON cases. node:test suites, which mix candidate and test code in one process, are not supported.
+- **Termination** is confirmed by PID namespace on `/proc`, readable for this user's own processes only. That covers every sandboxed
+  process, since they all run as this user.
+
+## 9. EVAL-ISO-002: what model-connected studies need
+
+- **Relay:** a host-side relay listening on a Unix socket bind-mounted into the agent's sandbox, forwarding to the existing recording proxy
+  (so capture and cassettes are unchanged). It allows only the methods and paths Pi actually uses, measured from Pi itself, bounds request
+  sizes, and denies everything else, including llama.cpp's administration endpoints. It is never a general HTTP or CONNECT proxy.
+- **Pi in the sandbox:** its runtime closure, its agent directory, `models.json` pointing at the relay, and its session files kept inside
+  `/work` or a private directory.
+- **Tests:** probes and negative tests for the relay (other loopback ports, other paths and methods, LAN, public hosts, oversized
+  requests), and a real Pi with a local llama.cpp smoke run, separate from CI.
+- **Record:** a new trial version, or a sidecar, naming the relay, its allowed routes and its digest. `endo.protected-trial.v0` refuses
+  any relay.
+
+## Verdicts
+
+| Dimension | Status | Evidence |
+| :-- | :-- | :-- |
+| Execution isolation | **READY** (offline, on a host where bubblewrap and user namespaces are available) | 28 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test, and the adversarial agent's observations, on this host; refusal elsewhere |
+| Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
+| Protected model-connected studies | **NOT READY** | there is no network inside, by design; the relay and Pi integration are EVAL-ISO-002 |

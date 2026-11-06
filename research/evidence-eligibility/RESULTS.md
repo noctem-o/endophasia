@@ -2,11 +2,11 @@
 
 Run on 2026-11-06 over the committed corpus ([corpus.v0.json](corpus.v0.json)): every experiment run in the repository and the raw run
 directories of the four studies kept beside it (`../endophasia-research`, [research/DATA.md](../DATA.md)). Main at `74106f925` (the merge of
-#125). Report sha256 `eef9c89a3db26445…`; the manifest and summary are in [report/](report/) and are reproduced byte for byte by
+#125). Report sha256 `2b6f01a21664f91b…`; the manifest and summary are in [report/](report/) and are reproduced byte for byte by
 `tests/evidence-eligibility-corpus.test.ts` where the archives are present. The rules are in [README.md](README.md).
 
-**The raw archives were read** (they are on the maintainer's machine, not publicly hosted). No DEVELOP store exists on this machine, so the
-operational corpus is unqualified, not empty.
+**The raw archives were read** (they are on the maintainer's machine, not publicly hosted). No DEVELOP store was given: none was found under
+the home directory (no `develop/attempts` within six levels), so the operational corpus is unqualified, not empty.
 
 ## The decision
 
@@ -20,8 +20,8 @@ Keeping the memory objective would first need new failure material, not a better
 | Judgement | Status | Deciding conditions |
 | :-- | :-- | :-- |
 | Evidence readiness | **INDETERMINATE** | The experiment corpus is fully read with provenance: 85 runs, every governing file digested, 0 refused, 0 conflicting copies, every exclusion named. But the declared DEVELOP store is absent, so operational attempts are unqualified. Four studies have no machine-readable validity reading. |
-| Lesson readiness | **NOT READY** | 8 candidates, 6 supported as stated, **1 usable** in MEM-001. With fewer than two usable cards there is nothing to select between. |
-| Evaluator readiness | **NOT READY** | 0 of 85 runs record an isolation boundary, and the run record has no field for one. The missing boundaries are listed below. |
+| Lesson readiness | **NOT READY** | 8 candidates. 4 are supported: 2 by evidence, 2 by a citation only. **1 is usable** in MEM-001. With fewer than two usable cards there is nothing to select between. |
+| Evaluator readiness | **NOT READY** | 0 of 85 runs record an isolation boundary. This is a fact of the record format, which has no field for one, not a measurement: it cannot turn READY until a run can record one. The missing boundaries are listed below. |
 | **Overall** | **NOT READY** | Lessons and evaluator. |
 
 ## 1. Which observations are eligible for what
@@ -66,19 +66,24 @@ recorded no failed check in 546 readable outputs.
 
 **The candidates** ([lessons.v0.json](lessons.v0.json), written by hand and disclosed as such):
 
-| Card | Lever | Claim | Supported | Usable in MEM-001 | Why not |
+| Card | Lever | Claim | Support | Usable in MEM-001 | Why not |
 | :-- | :-- | :-- | :-- | :-- | :-- |
-| raise-binding-completion-cap | completion cap | controlled | yes (B − A +0.41, [+0.09, +0.73]) | no | MEM-001 fixes the cap at 32,768 |
-| ask-for-brief-reasoning | agent context | controlled | **no**: interval [−0.13, +0.54] includes 0 | no | its mechanism, fewer cut-offs under a binding cap, is removed by MEM-001's cap |
-| thinking-off-for-light-tasks | reasoning mode | controlled | **no**: arm E is invalid | no | lever fixed |
-| code-span-content-is-literal | agent context | diagnostic hypothesis | yes (6 specific failures) | **yes** | (see below) |
-| proto-key-is-plain-data | agent context | diagnostic hypothesis | yes (2) | no | observed only with thinking off |
-| return-copies-from-cache | agent context | diagnostic hypothesis | yes (2) | no | observed only with thinking off |
-| isolate-hidden-checks | evaluation | observational | yes | no | a requirement on the evaluator; generic |
-| hold-workspace-path-fixed | experiment design | observational | yes | no | a design rule; MEM-001 already blocks on path |
+| raise-binding-completion-cap | completion cap | controlled | evidence (B − A +0.41, [+0.09, +0.73]) | no | MEM-001 fixes the cap at 32,768 |
+| ask-for-brief-reasoning | agent context | controlled | **none**: the interval [−0.13, +0.54] includes 0, and 8 markup-lite failures inside its own conditions contradict it | no | its mechanism, fewer cut-offs under a binding cap, is removed by MEM-001's cap |
+| thinking-off-for-light-tasks | reasoning mode | controlled | **none**: arm E is invalid | no | lever fixed |
+| code-span-content-is-literal | agent context | diagnostic hypothesis | evidence (6 specific failures) | **yes** | (see below) |
+| proto-key-is-plain-data | agent context | diagnostic hypothesis | **none**: observed only in the invalid arm E | no | and only with thinking off |
+| return-copies-from-cache | agent context | diagnostic hypothesis | **none**: observed only in the invalid arm E | no | and only with thinking off |
+| isolate-hidden-checks | evaluation | observational | citation only | no | a requirement on the evaluator; generic |
+| hold-workspace-path-fixed | experiment design | observational | citation only | no | a design rule; MEM-001 already blocks on path |
 
 - **The only controlled agent-context intervention in the corpus** (arm D, one sentence asking for brief reasoning) is not a supported
-  lesson. Its pooled interval includes zero, it helped one task and not the other, and it worked by avoiding the cut-off that MEM-001 removes.
+  lesson. Its pooled interval includes zero, its failures on markup-lite fall inside its own conditions, and it worked by avoiding the
+  cut-off that MEM-001 removes.
+- **The diagnostic cards about JSON merging and cache copies rest on arm E alone.** That arm failed its manipulation check, so its failures
+  describe what happened there and support no lesson.
+- **"Citation only"** means a cited number was found in a committed analysis, and nothing more: the two infrastructure and design cards
+  show that their source exists, not that the guidance follows.
 - **The one usable card is weak on every axis that matters for MEM-001.** All of its evidence is markup-lite, which is development data:
   it was the discriminating-task study's designated holdout, and the cap study read it. The task's own brief already states the rule
   ("inside a code span … no backslash handling"; "any backslash inside a code span is plain text"). Its one visible code-span test has no
@@ -108,6 +113,30 @@ whose answer is fixed in advance.
 2. The success check runs in the agent's own workspace and environment, with no separate verifier environment or artifact export.
 3. No network restriction is applied or recorded.
 4. An interrupted trial is rerun into the counted set and kept aside, outside the denominator.
+
+## Independent review
+
+A fresh-context reviewer reproduced the report byte for byte and confirmed every number above against `report.json`. It found three rules
+that could call a harmful or contradicted card supported:
+- an interval wholly on the wrong side of zero;
+- counterexamples inside a card's own conditions;
+- observations from an invalid arm only.
+
+All three are fixed, with regression tests. They did not change the decision; they correct the support labels above (6 supported became 4,
+2 of them citation only). It also found 12 minor issues and 5 nits, fixed as well:
+- the option text now states what decided it;
+- the evaluator judgement is labelled a fact of the format;
+- support resting on a citation alone is labelled so, and never usable;
+- scope must be observed in the evidence;
+- attrition removes causal use;
+- interrupted executions are identified by their files and session;
+- no plain digest of private DEVELOP words;
+- an unauthorised attempt is never "executed";
+- a malformed analysis is a problem, not a crash;
+- the cases file is read strictly;
+- the output guard resolves links;
+- the README matches the duplicate rule;
+- the injection test compares two cards identical but for their guidance.
 
 ## What this establishes, and what remains a hypothesis
 

@@ -39,6 +39,8 @@ export interface TrialContext {
 	/** Tasks a later analysis examined (declared). */
 	examinedTasks: ReadonlySet<string>;
 	conditions: number;
+	/** Some planned trials of the run have no usable result. */
+	attrition: boolean;
 }
 
 /** One experiment trial (or interrupted execution) as an example. */
@@ -82,9 +84,13 @@ export function experimentExample(ctx: TrialContext, t: TrialFacts): Example {
 		else if (arm === "invalid") {
 			add(r, "arm-invalid", "causal-policy");
 			caveats.add("arm-invalid");
-		} else if (arm === "checks-incomplete") add(r, "validity-checks-incomplete", "causal-policy");
+		} else if (arm === "checks-incomplete") {
+			add(r, "validity-checks-incomplete", "causal-policy");
+			caveats.add("validity-checks-incomplete");
+		}
 	}
 	if (ctx.conditions < 2) add(r, "single-condition", "causal-policy");
+	if (ctx.attrition) add(r, "trial-attrition", "causal-policy");
 	if (t.harness === null || t.harness.identityDigest === null) add(r, "harness-identity-unavailable", "causal-policy");
 	if (ctx.stage === "pilot") caveats.add("pilot-stage");
 	if (ctx.examinedTasks.has(entry.task)) caveats.add("task-examined");
@@ -155,11 +161,12 @@ export function attemptExample(ctx: { sourceId: string; location: string }, a: A
 		add(r, "outcome-declared-only", ...learning);
 	} else if (authorized === null && handoff === null) {
 		outcome = { kind: "none", why: "not-executed" };
-		add(r, "not-executed", ...learning);
 	} else {
 		outcome = { kind: "none", why: "missing" };
 		add(r, "outcome-missing", ...learning);
 	}
+	// Whatever receipts or notes exist, an attempt Endophasia never authorised has no observed execution: verification is not dispatch.
+	if (authorized === null) add(r, "not-executed", ...learning);
 	if (!a.receiptsReadable || a.receiptProblems > 0) add(r, "source-problems", ...learning);
 	return {
 		id: `dev:${ctx.sourceId}/${attempt.id}`,

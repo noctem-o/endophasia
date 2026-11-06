@@ -104,7 +104,10 @@ function discriminatingTasks(value: unknown, file: { path: string; sha256: strin
 		if ((t.invalid as number) > 0) unresolved.push(t.task);
 	}
 	// Either one set of checks for the single run (the screen), or one per path label (the confirmation).
-	const single = Object.keys(validity).every((k) => /^M/.test(k));
+	// One run's checks are a map of check names to statuses; per path, every value is itself such a map.
+	const single = Object.values(validity).some(
+		(v) => typeof v === "string" || (isObject(v) && typeof v.status === "string"),
+	);
 	const status = (checks: unknown): ArmStatus => {
 		if (!isObject(checks) || Object.keys(checks).length === 0) return fail(r, "a validity entry");
 		return Object.values(checks).every(PASS) ? "valid" : "checks-incomplete";

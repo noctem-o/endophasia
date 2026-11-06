@@ -231,6 +231,21 @@ function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | nu
 	return { store, capture, checkOutput, symptoms, checksNamed, symptomsWithheld };
 }
 
+/** Every file under a directory, by relative path, with its size and sha256: links are listed, never followed. */
+function filesOf(dir: string): [string, number, string][] {
+	const out: [string, number, string][] = [];
+	const walk = (d: string, prefix: string) => {
+		for (const name of readdirSync(d).sort()) {
+			const p = join(d, name);
+			const s = lstatSync(p);
+			if (s.isDirectory()) walk(p, `${prefix}${name}/`);
+			else out.push([`${prefix}${name}`, s.size, s.isFile() ? sha256File(p) : "not-a-file"]);
+		}
+	};
+	walk(dir, "");
+	return out;
+}
+
 const problemOf = (path: string, error: unknown): Omit<SourceProblem, "sourceId"> => ({
 	path,
 	kind:
@@ -309,15 +324,19 @@ export function readExperimentRun(dir: string): RunFacts | { problem: Omit<Sourc
 				continue;
 			}
 			const content = contentOf(join(aside, name), null);
+			// Its own session (the runner names the directory `…-session-<n>`), not the rerun's; its identity is its files, not its name.
+			const session = /-session-([0-9]+)$/.exec(name);
 			trials.push({
 				entry,
 				path: rel,
 				kind: "interrupted",
 				result: null,
-				recordSha256: sha256HexV0(canonicalEndoJsonV0({ movedTo: rel, ...entry })),
+				recordSha256: sha256HexV0(
+					canonicalEndoJsonV0({ movedTo: rel, ...entry, files: filesOf(join(aside, name)) }),
+				),
 				schemaVersion: "interrupted",
 				...content,
-				harness: harnessOf(dir, sessions.get(`${entry.task}/${entry.condition}/${entry.trial}`)),
+				harness: harnessOf(dir, session === null ? undefined : Number(session[1])),
 				wireModels: null,
 			});
 		}

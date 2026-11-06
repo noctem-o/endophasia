@@ -42,13 +42,14 @@ when it has no reason against it.
 
 **Examples.** An experiment trial: the decision is the randomized condition assignment, known from the run record and the trial's plan entry
 alone (`decisionOfTrial` takes no result, so nothing recorded later can enter a decision-time feature). A DEVELOP attempt: the decision is
-the operator's prepared brief, kept as its sha256 (`decisionOfAttempt` takes the prepared record alone).
+the operator's prepared brief, kept as its length only (`decisionOfAttempt` takes the prepared record alone). A plain digest of private words
+would let a reader confirm a guess, so none is kept; an attempt's record identity is a digest of its ids, versions, times and revisions.
 
 **Reasons** (each defined in `REASONS`; the rules say which objectives each removes):
 
 | Reason | Removes | Rule |
 | :-- | :-- | :-- |
-| `duplicate-record`, `conflicting-duplicate` | all | the same run read from two locations: identical bytes are counted once (the copy with most content is canonical); different bytes, neither |
+| `duplicate-record`, `conflicting-duplicate` | all | the same run read from two locations: identical bytes are counted once, and different bytes mean neither copy is used. The canonical copy is the raw archive's, then a store's, then the repository's; content present breaks ties |
 | `interrupted-execution` | learning | the runner moved it aside and never counted it; kept as an operational outcome, linked from the counted rerun |
 | `outcome-missing`, `no-check` | learning | a runner error, or a task with no check: no outcome measure. Never a failure |
 | `check-output-absent`, `-mismatch`, `-unverifiable` | symptom, lesson | the output beside the result is missing, is not the digested output, or is under a key this projection does not hold |
@@ -56,30 +57,41 @@ the operator's prepared brief, kept as its sha256 (`decisionOfAttempt` takes the
 | `trial-excluded`, `exclusions-unresolved`, `run-invalid` | learning | the study excluded it by name; excluded trials were counted but not named for its task; a document declares the run invalid |
 | `validity-undeclared` | lesson, causal | no machine-readable validity reading: contamination unknown |
 | `arm-invalid`, `validity-checks-incomplete` | causal | the study reported the condition invalid, or its checks did not all pass |
-| `single-condition`, `harness-identity-unavailable` | causal | no contrast between actions; no recorded runtime identity |
+| `single-condition`, `harness-identity-unavailable`, `trial-attrition` | causal | no contrast between actions; no recorded runtime identity; some planned trials of the run have no usable result |
 | `assignment-not-randomized`, `artifact-unbound` | causal (and learning) | DEVELOP: the operator chose; nothing binds an artifact to the attempt |
-| `receipt-*`, `outcome-declared-only`, `not-executed`, `source-problems` | learning | DEVELOP: receipts keep byte counts not output, their link is the operator's, they disagree on the commit, predate the attempt or name another project; only a declaration; never sent; problem files |
+| `receipt-*`, `outcome-declared-only`, `not-executed`, `source-problems` | learning | DEVELOP: receipts keep byte counts not output, their link is the operator's, they disagree on the commit, predate the attempt or name another project; only a declaration; never authorised to be sent (whatever receipts or notes exist: verification is not dispatch); problem files |
 
 **Caveats** travel with an example without removing it: `pilot-stage`, `task-examined` (development data now, never a holdout),
-`arm-invalid`, `rerun-after-interruption`, `symptoms-withheld`.
+`arm-invalid`, `validity-checks-incomplete`, `rerun-after-interruption`, `symptoms-withheld`.
 
 **Symptoms.** From a check output that matches its recorded digest under a committed public key, the projection lists the failing tests it
 names (`✖ name`, `not ok N - name`) and how many tests it names in all. A failure where every named test failed means nothing working was
 produced; it is counted separately and is never evidence of one specific rule. Names are data: bounded, with control and bidirectional
-characters replaced, never interpreted.
+characters replaced, never interpreted. (node:test also prints a line per suite; a suite counts as a named test, so a task with suites names
+more tests than it has rules.)
 
 ## 3. Lesson candidates and readiness
 
 `lessons.v0.json` (`endo.lesson-candidates.v0`) is a research-only card format, not a production memory schema. Each card states the
 guidance, the **lever** it acts on, the kind of **claim** (observational, diagnostic hypothesis, controlled intervention), its model,
 harness and environment **scope**, where it **applies** and where it is **excluded**, and its evidence: selectors over eligible examples,
-counterexamples, numbers cited from committed analyses (checked against the file), and for a controlled claim the randomized contrast and the
-pointer to its interval. The cards were written by hand and the file says by whom (`review`).
+counterexamples, numbers cited from committed analyses (checked against the file), and for a controlled claim the randomized contrast, the
+direction it claims and the pointer to its interval. The cards were written by hand and the file says by whom (`review`).
 
-A card is **supported** when every selector finds lesson-eligible examples, every cited number is found and equal, a diagnosis states its
-alternatives, and a controlled claim rests on valid arms with an interval that excludes zero. It is **usable in the target** (MEM-001, as
-`target` describes it) when it is supported, conditional, not a generic default, on the lever the target varies (the agent's context), and
-within the target's model, harness version and environment.
+A card is **supported** when all of the following hold:
+- every selector finds lesson-eligible examples, and they are not all from an arm the study reported invalid;
+- some matched example ran the card's declared model and harness release;
+- every cited number is found and equal;
+- every counterexample is found and names a feature the card `excludes`. A found counterexample inside the card's own conditions removes
+  its support;
+- a diagnosis states its alternatives;
+- a controlled claim rests on valid arms, with an interval wholly on the side of zero its `direction` claims.
+
+What support rests on is reported as `evidence` or, for an observational card whose only support is a number found in a committed analysis,
+`citation-only`: the citation resolves, and that is all it shows.
+
+A card is **usable in the target** (MEM-001, as `target` describes it) when its support is `evidence` and it is conditional, not a generic
+default, on the lever the target varies (the agent's context), and within the target's model, harness version and environment.
 
 The **selector** (`selectCards`) the applicability checks exercise: a card is a candidate only when it is agent guidance, supported, not
 revoked, exactly in scope, has every `applies` feature and no `excludes` feature; ranked by matched features, then id; at most three;
@@ -91,11 +103,18 @@ reviewer and are not blinded; they check the selector's behaviour, not coding pe
 
 - **Evidence:** NOT READY if a source was refused, copies conflict, or a cited study stage has no validity reading; INDETERMINATE if a
   declared source was absent (absent is unqualified, not empty) or the raw archives were not read; otherwise READY.
-- **Lessons:** NOT READY with fewer than two usable cards, or when **selection does not matter**: no case selects one usable card and not
-  another, or every usable card fits in the shared allowance (600 tokens, approximated as UTF-8 bytes / 4) and none is shown to mislead
-  outside its conditions. Then a checklist holding every usable card carries the same guidance, and an R − S contrast has no mechanism.
-- **Evaluator:** NOT READY until a run records an isolation boundary; no run record has a field for one (`endo.experiment-run.v0`).
-- **Overall:** the worst of the three.
+- **Lessons:** NOT READY with fewer than two usable cards, or when **selection does not matter**. That is decided structurally from the
+  cards' `applies` and `excludes` (the applicability cases are not used), and it fails in either of two ways:
+  - no two usable cards are separable (neither excludes what the other requires, and one's requirements imply the other's);
+  - or every usable card fits in the shared allowance (600 tokens, approximated as UTF-8 bytes / 4) and none has a found counterexample
+    naming a feature it excludes.
+
+  Then a checklist holding every usable card carries the same guidance, and an R − S contrast has no mechanism.
+- **Evaluator:** NOT READY until a run records an isolation boundary. No run record has a field for one (`endo.experiment-run.v0`), so this
+  judgement is a fact of the record format, not a measurement, and the overall judgement cannot be READY until that changes. The missing
+  boundaries it lists are cited from the studies, not read from data.
+- **Overall:** the worst of the three. The suggested option is A only when all are READY. It is C when every supported card is kept out of the
+  target by something the target holds fixed (a lever it does not vary, or a condition its setup excludes); otherwise it is B.
 
 ## 4. Gaps this found in the existing records
 
@@ -128,10 +147,10 @@ no time of generation in the output. The output directory may not be inside any 
 
 **Repeating it on your own archives without publishing them:**
 - Write the output **outside the repository** (as above). `report.json` holds every example's ids, digests and failing-test names; keep it
-  with the data.
+  with the data. The output directory is checked through links: one inside a source is refused.
 - It contains no prompt, system text, reasoning, request body, tool argument or tool result. Failing-test names are read only from outputs
   under a committed **public** fixture key (synthetic studies); under an installation key the output is never read and is marked
-  `symptoms-withheld`. A DEVELOP brief appears only as its sha256; receipt arguments are not copied.
+  `symptoms-withheld`. A DEVELOP brief appears only as its length, with no digest of its words; receipt arguments are not copied.
 - Paths appear relative to their role (`research-data/…`, `repository/…`, `store/…`). A reader's message that named an absolute path is
   rewritten the same way.
 - To publish a result, commit `manifest.json` and `summary.md` only, as `report/` does; the manifest's `report.sha256` lets anyone holding
@@ -144,7 +163,11 @@ no time of generation in the output. The output directory may not be inside any 
 `tests/evidence-eligibility.test.ts` (hermetic; fixtures copied from a committed run): deterministic bytes and order; unknown versions of a
 trial, run record, corpus, lesson file and analysis; digests without content; outputs under another key or an installation key; invalid
 arms, excluded and unresolved trials, an invalid run, a contrast on an invalid arm or an inconclusive interval; interrupted executions,
-duplicate and conflicting copies; a runner error against a failed check; DEVELOP receipts at two commits, before preparation, for another
-project or filed under another attempt; a removed or invalid source; decision features unchanged by any later fact; injected instructions in a
-check output and in a card; abstention and exclusion; and no change to any source byte or time. `tests/evidence-eligibility-corpus.test.ts`
+duplicate and conflicting copies; attrition; a runner error against a failed check; DEVELOP receipts at two commits, before preparation, for
+another project or filed under another attempt, and an unauthorised attempt with receipts; a removed or invalid source; a contrast in the
+opposite direction; observations from an invalid arm only; an unobserved scope; counterexamples inside and outside a card's conditions;
+decision features unchanged by any later fact; injected instructions in a check output, and two cards identical but for their guidance;
+abstention and exclusion; an output reached through a link into a source; an analysis that is not JSON; cases of another version; and no
+change to any source byte or time. A receipt at a revision other than the attempt's cannot be tested: a prepared attempt records no
+baseline commit (§4). `tests/evidence-eligibility-corpus.test.ts`
 checks the committed files everywhere, and where the archives are present reproduces the committed manifest and summary byte for byte.

@@ -52,6 +52,8 @@ export const REASONS = {
 		"The study reports excluded trials in this cell without naming them, so which trials are valid cannot be determined.",
 	"validity-checks-incomplete":
 		"The study's own manipulation checks did not all pass for this run; reported as the study recorded them, not reinterpreted.",
+	"trial-attrition":
+		"Some planned trials of this run have no usable result (never run, refused or missing): the counted ones are not the randomized set.",
 	"single-condition":
 		"The run assigned one condition only: there is no contrast between actions to evaluate a policy on.",
 	"harness-identity-unavailable":
@@ -71,7 +73,8 @@ export const REASONS = {
 	"receipt-predates-attempt":
 		"A receipt was taken before the attempt was prepared: it cannot be evidence of the attempt's work.",
 	"receipt-project-mismatch": "A receipt names a different project from its attempt.",
-	"not-executed": "The attempt was never authorised to be sent, so there is no execution to learn from.",
+	"not-executed":
+		"Endophasia never authorised sending the attempt, so no execution of it was observed (a handoff elsewhere is only a declaration).",
 	"source-problems":
 		"The source directory holds files that are not usable records; the example's completeness is in doubt.",
 } as const;
@@ -83,6 +86,8 @@ export const CAVEATS = {
 	"task-examined": "The task was examined by a later analysis: it is development data now, never a holdout.",
 	"arm-invalid": "Its condition was reported invalid: observations stand, causal estimates do not.",
 	"rerun-after-interruption": "The counted trial is a rerun of an interrupted execution (kept separately).",
+	"validity-checks-incomplete":
+		"The study's manipulation checks did not all pass for this run; observations stand, causal use does not.",
 	"symptoms-withheld": "Failure symptoms exist but are withheld from the report (not a public fixture digest domain).",
 } as const;
 export type Caveat = keyof typeof CAVEATS;
@@ -121,8 +126,8 @@ export type DecisionFeatures =
 			projectId: string;
 			taskId: string;
 			taskRevision: number;
-			/** sha256 of the brief rendered from the prepared record: the exact text, never the text itself. */
-			briefSha256: string;
+			/** The length of the brief rendered from the prepared record. Neither the text nor a plain digest of it is kept. */
+			briefBytes: number;
 	  };
 
 export type Availability = "present" | "absent";

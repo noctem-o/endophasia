@@ -1,6 +1,6 @@
 # Evidence eligibility (MEM-000)
 
-Corpus `endo.corpus.mem-000` (sha256 `bbe2eb9ca71d2f1b…`), report sha256 `eef9c89a3db26445…`.
+Corpus `endo.corpus.mem-000` (sha256 `bbe2eb9ca71d2f1b…`), report sha256 `2b6f01a21664f91b…`.
 Research data: **read**. DEVELOP store: **not-given**.
 
 Sources: 86 (85 read, 1 missing, 0 refused). Planned trials with no result in the copy read: 384. Other problems: 0. Examples with a named exclusion: 61.
@@ -23,7 +23,7 @@ Duplicates are counted once, at their canonical copy (here and below).
 - **descriptive**: 1330 eligible, 0 not.
 - **symptom**: 893 eligible, 437 not: `check-output-absent` 420, `exclusions-unresolved` 12, `trial-excluded` 5.
 - **lesson**: 307 eligible, 1023 not: `check-output-absent` 420, `content-unavailable` 420, `exclusions-unresolved` 12, `trial-excluded` 5, `validity-undeclared` 1006.
-- **causal-policy**: 143 eligible, 1187 not: `arm-invalid` 48, `exclusions-unresolved` 12, `single-condition` 132, `trial-excluded` 5, `validity-checks-incomplete` 72, `validity-undeclared` 1006.
+- **causal-policy**: 143 eligible, 1187 not: `arm-invalid` 48, `exclusions-unresolved` 12, `single-condition` 132, `trial-attrition` 6, `trial-excluded` 5, `validity-checks-incomplete` 72, `validity-undeclared` 1006.
 
 ## Recurring failure symptoms (symptom-eligible trials with a failed check)
 
@@ -55,16 +55,16 @@ Every check failed means every test the output names failed: nothing working was
 
 ## Lesson candidates
 
-| Card | Lever | Claim | Supported | Usable in target | Problems |
+| Card | Lever | Claim | Support | Usable in target | Problems |
 | :-- | :-- | :-- | :-- | :-- | :-- |
-| lesson.raise-binding-completion-cap | completion-cap | controlled-intervention | yes | no | lever-fixed-in-target, scope-environment |
-| lesson.ask-for-brief-reasoning | agent-context | controlled-intervention | no | no | contrast-inconclusive, scope-environment |
-| lesson.thinking-off-for-light-tasks | reasoning-mode | controlled-intervention | no | no | contrast-arm-invalid, contrast-inconclusive, lever-fixed-in-target |
-| lesson.code-span-content-is-literal | agent-context | diagnostic-hypothesis | yes | yes | none |
-| lesson.proto-key-is-plain-data | agent-context | diagnostic-hypothesis | yes | no | scope-environment |
-| lesson.return-copies-from-cache | agent-context | diagnostic-hypothesis | yes | no | scope-environment |
-| lesson.isolate-hidden-checks | evaluation-infrastructure | observational | yes | no | generic, lever-fixed-in-target, unconditional |
-| lesson.hold-workspace-path-fixed | experiment-design | observational | yes | no | lever-fixed-in-target, unconditional |
+| lesson.raise-binding-completion-cap | completion-cap | controlled-intervention | evidence | no | lever-fixed-in-target, scope-environment |
+| lesson.ask-for-brief-reasoning | agent-context | controlled-intervention | no | no | contradicted-within-conditions, contrast-inconclusive, scope-environment |
+| lesson.thinking-off-for-light-tasks | reasoning-mode | controlled-intervention | no | no | contrast-arm-invalid, contrast-inconclusive, observations-invalid-arm-only, lever-fixed-in-target |
+| lesson.code-span-content-is-literal | agent-context | diagnostic-hypothesis | evidence | yes | none |
+| lesson.proto-key-is-plain-data | agent-context | diagnostic-hypothesis | no | no | observations-invalid-arm-only, scope-environment |
+| lesson.return-copies-from-cache | agent-context | diagnostic-hypothesis | no | no | observations-invalid-arm-only, scope-environment |
+| lesson.isolate-hidden-checks | evaluation-infrastructure | observational | citation-only | no | generic, lever-fixed-in-target, unconditional |
+| lesson.hold-workspace-path-fixed | experiment-design | observational | citation-only | no | lever-fixed-in-target, unconditional |
 
 Applicability checks: 8 of 8 behaved as specified.
 
@@ -76,19 +76,19 @@ Applicability checks: 8 of 8 behaved as specified.
 
 **Lessons: NOT READY**
 
-- 8 candidate(s): 6 supported by the evidence as stated, 1 usable as retrieved guidance in MEM-001 (proposed, not run).
+- 8 candidate(s): 4 supported by the evidence as stated, 1 usable as retrieved guidance in MEM-001 (proposed, not run).
 - lesson.raise-binding-completion-cap: supported but not usable in the target (lever-fixed-in-target, scope-environment).
-- lesson.proto-key-is-plain-data: supported but not usable in the target (scope-environment).
-- lesson.return-copies-from-cache: supported but not usable in the target (scope-environment).
 - lesson.isolate-hidden-checks: supported but not usable in the target (generic, lever-fixed-in-target, unconditional).
 - lesson.hold-workspace-path-fixed: supported but not usable in the target (lever-fixed-in-target, unconditional).
-- lesson.ask-for-brief-reasoning: not supported (contrast-inconclusive).
-- lesson.thinking-off-for-light-tasks: not supported (contrast-arm-invalid, contrast-inconclusive).
+- lesson.ask-for-brief-reasoning: not supported (contradicted-within-conditions, contrast-inconclusive).
+- lesson.thinking-off-for-light-tasks: not supported (contrast-arm-invalid, contrast-inconclusive, observations-invalid-arm-only).
+- lesson.proto-key-is-plain-data: not supported (observations-invalid-arm-only).
+- lesson.return-copies-from-cache: not supported (observations-invalid-arm-only).
 - Fewer than two usable cards: there is nothing to select between, so retrieval cannot differ from a checklist.
 
 **Evaluator: NOT READY**
 
-- 0 of 85 read experiment runs record an execution isolation boundary (endo.experiment-run.v0 has no field for one).
+- 0 of 85 read experiment runs record an execution isolation boundary (endo.experiment-run.v0 has no field for one). This is a fact of the record format, not a measurement: it cannot turn READY until a run can record one.
 - Missing boundary 1: the agent process can read the host (the repository, the research archive, hidden checks, other trials); the completion-cap study recorded a hidden-check read and broad deletions in a shared /tmp.
 - Missing boundary 2: the success check runs in the agent's own workspace and environment, after the agent, without a separate verifier environment or artifact export.
 - Missing boundary 3: no network restriction is applied or recorded for the agent.
@@ -98,4 +98,4 @@ Applicability checks: 8 of 8 behaved as specified.
 
 - evidence INDETERMINATE, lessons NOT READY, evaluator NOT READY
 
-The rules point to option **C**: the supported lessons act on levers the target holds fixed (configuration, evaluation, design), not on the agent's context.
+The rules point to option **C**: 1 of 4 supported card(s) are usable; of the rest, 3 act on a lever the target holds fixed and 0 were observed only under a condition the target's setup excludes.

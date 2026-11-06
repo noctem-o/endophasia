@@ -36,7 +36,8 @@ export function decisionOfAttempt(attempt: EndoAttemptEntryV0["attempt"]): Decis
 		projectId: attempt.projectId,
 		taskId: attempt.taskId,
 		taskRevision: attempt.task.revision,
-		briefSha256: sha256HexV0(renderEndoDevelopBriefV0(attempt)),
+		// The brief's length, not a digest: a plain sha256 of guessable private text would let a reader confirm a guess.
+		briefBytes: Buffer.byteLength(renderEndoDevelopBriefV0(attempt), "utf8"),
 	};
 }
 
@@ -68,8 +69,23 @@ export function readDevelopStore(root: string): StoreFacts | { problem: Omit<Sou
 					: [],
 				receiptProblems: r.ok ? r.problems.length : 0,
 				receiptsReadable: r.ok,
-				// The records as the store validated them (it holds them whole or not at all), in a stable form.
-				recordSha256: sha256HexV0(canonicalEndoJsonV0(entry as unknown as Record<string, unknown>)),
+				// Identity without private text: ids, versions, times and revisions only (a digest of the words would let a reader confirm a guess).
+				recordSha256: sha256HexV0(
+					canonicalEndoJsonV0({
+						id: entry.attempt.id,
+						projectId: entry.attempt.projectId,
+						taskId: entry.attempt.taskId,
+						preparedAtMs: entry.attempt.preparedAtMs,
+						taskRevision: entry.attempt.task.revision,
+						schemaVersion: entry.attempt.schemaVersion,
+						handoffAtMs: entry.handoff?.recordedAtMs ?? null,
+						outcome: entry.outcome === null ? null : { at: entry.outcome.recordedAtMs, kind: entry.outcome.kind },
+						authorized:
+							entry.authorized === null
+								? null
+								: { at: entry.authorized.recordedAtMs, event: entry.authorized.authorizationEventId },
+					}),
+				),
 			};
 		});
 	return { attempts, problems };

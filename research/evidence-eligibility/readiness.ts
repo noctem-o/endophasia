@@ -40,7 +40,14 @@ export function selectionMatters(cards: readonly Card[], usable: readonly CardAs
 			if (aExcludesB || bExcludesA || (!aImpliesB && !bImpliesA)) separable = true;
 		}
 	const tokens = usable.reduce((n, a) => n + a.tokens, 0);
-	const misleads = usable.some((a) => a.contradicting.length > 0 && a.contradicting.every((c) => c.eligible > 0));
+	// Shown to mislead outside its conditions: a found counterexample naming a feature the card excludes (assessCard removes support for
+	// any found counterexample inside the card's conditions, so a usable card's counterexamples are all of this kind).
+	const misleads = usable.some((a) => {
+		const card = byId.get(a.id);
+		return a.contradicting.some(
+			(c) => c.eligible > 0 && c.shows !== null && (card?.excludes ?? []).includes(c.shows),
+		);
+	});
 	return separable && (tokens > budget || misleads);
 }
 
@@ -134,12 +141,13 @@ export function judgeReadiness(input: {
 	}
 
 	// ---- evaluator ----
-	// No experiment run record has a field for an isolation boundary: none can say one was in force. The rest is cited (README.md).
+	// Not a measurement: no experiment run record has a field for an isolation boundary, so none can say one was in force, and this judgement
+	// stays NOT READY until such a record exists (README.md). The listed boundaries are cited from the studies, not read from data.
 	const runs = sources.filter((s) => s.kind === "experiment-run" && s.status === "read").length;
 	const evaluator: Judgement = {
 		status: "NOT READY",
 		conditions: [
-			`0 of ${runs} read experiment runs record an execution isolation boundary (endo.experiment-run.v0 has no field for one).`,
+			`0 of ${runs} read experiment runs record an execution isolation boundary (endo.experiment-run.v0 has no field for one). This is a fact of the record format, not a measurement: it cannot turn READY until a run can record one.`,
 			"Missing boundary 1: the agent process can read the host (the repository, the research archive, hidden checks, other trials); the completion-cap study recorded a hidden-check read and broad deletions in a shared /tmp.",
 			"Missing boundary 2: the success check runs in the agent's own workspace and environment, after the agent, without a separate verifier environment or artifact export.",
 			"Missing boundary 3: no network restriction is applied or recorded for the agent.",
@@ -154,16 +162,27 @@ export function judgeReadiness(input: {
 		: all.includes("INDETERMINATE")
 			? "INDETERMINATE"
 			: "READY";
+	// C: the cards the evidence supports are kept out of the target by what the target holds fixed (a lever it does not vary, or a condition
+	// its setup excludes), not by missing evidence. B: evidence or attribution is what is missing. The text says which, with the counts.
+	const kept = supported.filter((a) => !a.usableInTarget);
+	const fixedLever = kept.filter((a) => a.targetProblems.includes("lever-fixed-in-target")).length;
+	const outOfScope = kept.filter(
+		(a) =>
+			!a.targetProblems.includes("lever-fixed-in-target") &&
+			a.targetProblems.some((p) => p === "scope-environment" || p === "scope-harness" || p === "scope-model"),
+	).length;
 	const suggests: ReadinessReport["suggests"] =
 		overall === "READY"
 			? { option: "A", because: "evidence, lessons and evaluator are all ready" }
-			: lessons === "NOT READY" && supported.some((a) => a.lever !== target.variedLever)
+			: lessons === "NOT READY" && supported.length > 0 && fixedLever + outOfScope === kept.length && kept.length > 0
 				? {
 						option: "C",
-						because:
-							"the supported lessons act on levers the target holds fixed (configuration, evaluation, design), not on the agent's context",
+						because: `${usable.length} of ${supported.length} supported card(s) are usable; of the rest, ${fixedLever} act on a lever the target holds fixed and ${outOfScope} were observed only under a condition the target's setup excludes`,
 					}
-				: { option: "B", because: "specific evidence or attribution gaps remain (see the evidence conditions)" };
+				: {
+						option: "B",
+						because: "specific evidence or attribution gaps remain (see the evidence and lesson conditions)",
+					};
 	return {
 		evidence: { status: evidence, conditions: ev },
 		lessons: { status: lessons, conditions: ls },

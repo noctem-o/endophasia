@@ -36,7 +36,8 @@
 					"tasks": ["fetch-cache", "markup-lite"],
 					"treatment": "arm-b",
 					"control": "arm-a",
-					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/primary/cluster/low", "high": "/primary/cluster/high" }
+					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/primary/cluster/low", "high": "/primary/cluster/high" },
+					"direction": "increase"
 				},
 				"analysis": [{ "file": "research/completion-cap/1.0.1/analysis/main.json", "pointer": "/primary/difference", "value": 0.40942 }]
 			},
@@ -58,7 +59,7 @@
 					{ "study": "completion-cap", "stage": "main", "task": "fetch-cache", "condition": "arm-d", "outcome": "passed", "symptom": null }
 				],
 				"contradicting": [
-					{ "study": "completion-cap", "stage": "main", "task": "markup-lite", "condition": "arm-d", "outcome": "failed", "symptom": null }
+					{ "study": "completion-cap", "stage": "main", "task": "markup-lite", "condition": "arm-d", "outcome": "failed", "symptom": null, "shows": null }
 				],
 				"contrast": {
 					"study": "completion-cap",
@@ -66,7 +67,8 @@
 					"tasks": ["fetch-cache", "markup-lite"],
 					"treatment": "arm-d",
 					"control": "arm-a",
-					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/secondary/1/vsA/cluster/low", "high": "/secondary/1/vsA/cluster/high" }
+					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/secondary/1/vsA/cluster/low", "high": "/secondary/1/vsA/cluster/high" },
+					"direction": "increase"
 				},
 				"analysis": [{ "file": "research/completion-cap/1.0.1/analysis/main.json", "pointer": "/secondary/1/vsA/difference", "value": 0.208333 }]
 			},
@@ -94,7 +96,8 @@
 					"tasks": ["booking-conflicts"],
 					"treatment": "arm-e",
 					"control": "arm-a",
-					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/secondary/2/vsA/cluster/low", "high": "/secondary/2/vsA/cluster/high" }
+					"interval": { "file": "research/completion-cap/1.0.1/analysis/main.json", "low": "/secondary/2/vsA/cluster/low", "high": "/secondary/2/vsA/cluster/high" },
+					"direction": "increase"
 				},
 				"analysis": []
 			},

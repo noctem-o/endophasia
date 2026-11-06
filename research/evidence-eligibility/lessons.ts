@@ -39,6 +39,10 @@ export interface Selector {
 	symptom: string | null;
 }
 
+export interface Contradiction extends Selector {
+	shows: string | null;
+}
+
 export interface Card {
 	id: string;
 	guidance: string;
@@ -51,7 +55,11 @@ export interface Card {
 	excludes: string[];
 	evidence: {
 		observations: Selector[];
-		contradicting: Selector[];
+		/**
+		 * Counterexamples. Each names the `excludes` feature it shows the card must not apply under (`shows`); one with no such feature, or a
+		 * feature the card does not exclude, falls inside the card's own conditions and removes its support.
+		 */
+		contradicting: Contradiction[];
 		/**
 		 * The randomized contrast a controlled claim rests on, and where its committed analysis gives the interval of the difference: a
 		 * controlled claim is supported only when that interval excludes zero.
@@ -63,6 +71,8 @@ export interface Card {
 			treatment: string;
 			control: string;
 			interval: { file: string; low: string; high: string };
+			/** The direction of treatment − control the guidance claims: supported only when the whole interval lies on that side of zero. */
+			direction: "increase" | "decrease";
 		} | null;
 		analysis: { file: string; pointer: string; value: number | string | boolean }[];
 	};
@@ -177,7 +187,7 @@ export function readLessonFile(value: unknown): LessonFile {
 		if (e.contrast !== null) {
 			const k = closed(
 				e.contrast,
-				["study", "stage", "tasks", "treatment", "control", "interval"],
+				["study", "stage", "tasks", "treatment", "control", "interval", "direction"],
 				`${w}.evidence.contrast`,
 			);
 			if (!Array.isArray(k.tasks) || k.tasks.length === 0) throw new TypeError(`${w}.evidence.contrast.tasks`);
@@ -188,6 +198,7 @@ export function readLessonFile(value: unknown): LessonFile {
 				tasks: k.tasks.map((x) => str(x, "task", 120)),
 				treatment: str(k.treatment, "treatment", 80),
 				control: str(k.control, "control", 80),
+				direction: oneOf(k.direction, ["increase", "decrease"] as const, `${w}.evidence.contrast.direction`),
 				interval: {
 					file: str(iv.file, "file", 400),
 					low: str(iv.low, "low", 400),
@@ -215,7 +226,16 @@ export function readLessonFile(value: unknown): LessonFile {
 			excludes: tags(o.excludes, `${w}.excludes`),
 			evidence: {
 				observations: e.observations.map((s, j) => selectorOf(s, `${w}.evidence.observations[${j}]`)),
-				contradicting: e.contradicting.map((s, j) => selectorOf(s, `${w}.evidence.contradicting[${j}]`)),
+				contradicting: e.contradicting.map((s, j): Contradiction => {
+					const what = `${w}.evidence.contradicting[${j}]`;
+					if (!isObject(s)) throw new TypeError(`${what} is not an object`);
+					if (!("shows" in s)) throw new TypeError(`${what}: missing field "shows"`);
+					const { shows, ...rest } = s;
+					return {
+						...selectorOf(rest, what),
+						shows: shows === null ? null : (tags([shows], `${what}.shows`)[0] as string),
+					};
+				}),
 				contrast,
 				analysis: e.analysis.map((a, j) => {
 					const x = closed(a, ["file", "pointer", "value"], `${w}.evidence.analysis[${j}]`);
@@ -260,6 +280,10 @@ export type CardProblem =
 	| "revoked"
 	| "observation-unsupported"
 	| "contradiction-unresolved"
+	| "contradicted-within-conditions"
+	| "observations-invalid-arm-only"
+	| "scope-unobserved"
+	| "contrast-opposite"
 	| "analysis-missing"
 	| "analysis-mismatch"
 	| "contrast-missing"
@@ -282,10 +306,15 @@ export interface CardAssessment {
 	lever: Lever;
 	claim: Claim;
 	supported: boolean;
+	/**
+	 * What support rests on: `evidence` (eligible examples, and a valid contrast when controlled), `citation-only` (an observational card whose
+	 * only support is a number found in a committed analysis: the citation resolves, which is all it shows), or `none`.
+	 */
+	support: "evidence" | "citation-only" | "none";
 	problems: CardProblem[];
-	/** Per selector: lesson-eligible matches, and matches excluded with their reasons. */
-	observations: { eligible: number; ineligible: Record<string, number> }[];
-	contradicting: { eligible: number; ineligible: Record<string, number> }[];
+	/** Per selector: lesson-eligible matches (and how many of them carry the arm-invalid caveat), and matches excluded with their reasons. */
+	observations: { eligible: number; armInvalid: number; ineligible: Record<string, number> }[];
+	contradicting: { eligible: number; armInvalid: number; ineligible: Record<string, number>; shows: string | null }[];
 	contrast: {
 		treatment: number;
 		control: number;
@@ -319,19 +348,24 @@ const specificFailure = (e: Example, symptom: string): boolean => {
 	return failing.includes(symptom) && !(failing.length > 1 && failing.length === e.checksNamed);
 };
 
-function resolve(examples: readonly Example[], s: Selector) {
+/** The lesson-eligible examples a selector matches (duplicates never counted twice), and the excluded matches by reason. */
+function matching(examples: readonly Example[], s: Selector) {
 	const ineligible: Record<string, number> = {};
-	let eligible = 0;
+	const eligible: Example[] = [];
 	for (const e of examples) {
 		if (!matchesSelector(e, s)) continue;
-		// Duplicates are the same record: never counted twice, as support or as anything else.
 		if (e.links.duplicateOf !== undefined) continue;
 		const v = e.eligibility.lesson;
-		if (v.eligible) eligible++;
+		if (v.eligible) eligible.push(e);
 		else for (const r of v.reasons) ineligible[r] = (ineligible[r] ?? 0) + 1;
 	}
 	return { eligible, ineligible: Object.fromEntries(Object.entries(ineligible).sort()) };
 }
+const counted = (m: ReturnType<typeof matching>) => ({
+	eligible: m.eligible.length,
+	armInvalid: m.eligible.filter((e) => e.caveats.includes("arm-invalid")).length,
+	ineligible: m.ineligible,
+});
 
 /** A committed analysis file (repository-relative), parsed, with its sha256; null when absent, outside the repository or not JSON. */
 function readAnalysis(repository: string, file: string): { value: unknown; sha256: string } | null {
@@ -367,14 +401,37 @@ export function assessCard(
 ): CardAssessment {
 	const problems = new Set<CardProblem>();
 	if (card.revoked) problems.add("revoked");
-	const observations = card.evidence.observations.map((s) => resolve(examples, s));
+	const matched = card.evidence.observations.map((s) => matching(examples, s));
+	const observations = matched.map(counted);
 	// An observation is either a selector over eligible examples, or (with no selector) a number cited from a committed analysis.
-	const cited = card.evidence.analysis.length > 0 && card.claim === "observational";
-	if ((observations.length === 0 && !cited) || observations.some((o) => o.eligible === 0))
+	const citationOnly =
+		observations.length === 0 && card.evidence.analysis.length > 0 && card.claim === "observational";
+	if ((observations.length === 0 && !citationOnly) || observations.some((o) => o.eligible === 0))
 		problems.add("observation-unsupported");
-	const contradicting = card.evidence.contradicting.map((s) => resolve(examples, s));
+	// Observations made only under a condition the study reported invalid describe what happened there, and support nothing more.
+	if (observations.length > 0 && observations.every((o) => o.eligible > 0 && o.armInvalid === o.eligible))
+		problems.add("observations-invalid-arm-only");
+	// The declared scope must be one the evidence was observed in: some matched example ran that model on that harness release.
+	const all = matched.flatMap((m) => m.eligible);
+	if (
+		all.length > 0 &&
+		!all.some(
+			(e) =>
+				e.identity.configuredModel === card.scope.model &&
+				e.identity.harness?.name === card.scope.harness.name &&
+				e.identity.harness?.version === card.scope.harness.version,
+		)
+	)
+		problems.add("scope-unobserved");
+	const contradicting = card.evidence.contradicting.map((s) => ({
+		...counted(matching(examples, s)),
+		shows: s.shows,
+	}));
 	// A cited contradiction must be found too: a counterexample that cannot be checked is not one.
 	if (contradicting.some((o) => o.eligible === 0)) problems.add("contradiction-unresolved");
+	// A found counterexample inside the card's own conditions (it shows no feature the card excludes) is evidence against the card.
+	if (contradicting.some((o) => o.eligible > 0 && (o.shows === null || !card.excludes.includes(o.shows))))
+		problems.add("contradicted-within-conditions");
 	const analysis = card.evidence.analysis.map((a) => {
 		const file = readAnalysis(repository, a.file);
 		if (file === null) {
@@ -422,8 +479,9 @@ export function assessCard(
 			};
 			if (armInvalid > 0) problems.add("contrast-arm-invalid");
 			else if (contrast.treatment === 0 || contrast.control === 0) problems.add("contrast-unsupported");
-			if (low === null || high === null) problems.add("analysis-missing");
+			if (low === null || high === null || low > high) problems.add("analysis-missing");
 			else if (low <= 0 && high >= 0) problems.add("contrast-inconclusive");
+			else if ((k.direction === "increase") !== low > 0) problems.add("contrast-opposite");
 		}
 	}
 	if (card.claim === "diagnostic-hypothesis") {
@@ -431,6 +489,7 @@ export function assessCard(
 		else if (card.diagnosis.alternatives.length === 0) problems.add("alternatives-missing");
 	}
 	const supported = problems.size === 0;
+	const support: CardAssessment["support"] = !supported ? "none" : citationOnly ? "citation-only" : "evidence";
 	const conditional = !card.generic && card.applies.length + card.excludes.length > 0;
 	const targetProblems = new Set<TargetProblem>();
 	if (card.lever !== target.variedLever) targetProblems.add("lever-fixed-in-target");
@@ -449,6 +508,7 @@ export function assessCard(
 		lever: card.lever,
 		claim: card.claim,
 		supported,
+		support,
 		problems: [...problems].sort(),
 		observations,
 		contradicting,
@@ -456,7 +516,8 @@ export function assessCard(
 		analysis,
 		conditional,
 		tokens: approxTokens(card.guidance),
-		usableInTarget: supported && targetProblems.size === 0,
+		// Guidance resting on a citation alone is never put in an agent's context.
+		usableInTarget: support === "evidence" && targetProblems.size === 0,
 		targetProblems: [...targetProblems].sort(),
 	};
 }

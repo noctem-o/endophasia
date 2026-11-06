@@ -128,10 +128,15 @@ export function buildEligibility(
 			if (v !== undefined) {
 				if (!validityFiles.has(v.file)) {
 					const p = join(roots.repository, v.file);
-					validityFiles.set(
-						v.file,
-						existsSync(p) ? { value: JSON.parse(readFileSync(p, "utf8")), sha256: sha256File(p) } : null,
-					);
+					let parsed: { value: unknown; sha256: string } | null = null;
+					if (existsSync(p))
+						try {
+							parsed = { value: JSON.parse(readFileSync(p, "utf8")), sha256: sha256File(p) };
+						} catch {
+							// Not JSON: the reader below refuses it as it refuses any other shape.
+							parsed = { value: undefined, sha256: sha256File(p) };
+						}
+					validityFiles.set(v.file, parsed);
 				}
 				const f = validityFiles.get(v.file) ?? null;
 				if (f === null)
@@ -183,6 +188,7 @@ export function buildEligibility(
 				runInvalid: declared.some((d) => d.kind === "run-invalid"),
 				examinedTasks: new Set(declared.flatMap((d) => (d.kind === "task-examined" ? [d.task] : []))),
 				conditions: read.conditions,
+				attrition: read.problems.some((p) => p.path === "trials" || p.path.startsWith("trials/")),
 			};
 			const made = read.trials.map((t) => experimentExample(ctx, t));
 			examples.push(...made);
@@ -497,12 +503,12 @@ function summaryOf(
 			"",
 			"## Lesson candidates",
 			"",
-			"| Card | Lever | Claim | Supported | Usable in target | Problems |",
+			"| Card | Lever | Claim | Support | Usable in target | Problems |",
 			"| :-- | :-- | :-- | :-- | :-- | :-- |",
 		);
 		for (const a of r.lessonFeasibility.assessments)
 			L.push(
-				`| ${a.id} | ${a.lever} | ${a.claim} | ${a.supported ? "yes" : "no"} | ${a.usableInTarget ? "yes" : "no"} | ${[...a.problems, ...a.targetProblems].join(", ") || "none"} |`,
+				`| ${a.id} | ${a.lever} | ${a.claim} | ${a.support === "none" ? "no" : a.support} | ${a.usableInTarget ? "yes" : "no"} | ${[...a.problems, ...a.targetProblems].join(", ") || "none"} |`,
 			);
 		const passed = r.lessonFeasibility.applicability.filter((c) => c.passed).length;
 		L.push(
@@ -533,7 +539,60 @@ const within = (parent: string, child: string): boolean => {
 	const rel = relative(parent, child);
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
-const real = (p: string): string => (existsSync(p) ? realpathSync(p) : resolve(p));
+/** The real path, resolving links through the nearest existing ancestor when the path does not exist yet. */
+const real = (p: string): string => {
+	let head = resolve(p);
+	const rest: string[] = [];
+	while (!existsSync(head)) {
+		const parent = resolve(head, "..");
+		if (parent === head) break;
+		rest.unshift(head.slice(parent.length).replace(/^\/+/, ""));
+		head = parent;
+	}
+	return join(existsSync(head) ? realpathSync(head) : head, ...rest);
+};
+
+/** `endo.applicability-cases.v0`, strictly: closed records, a known version, the selector's case shape. */
+export function readCases(value: unknown): ApplicabilityCase[] {
+	const obj = (v: unknown, keys: string[], what: string): Record<string, unknown> => {
+		if (typeof v !== "object" || v === null || Array.isArray(v)) throw new TypeError(`${what} is not an object`);
+		const o = v as Record<string, unknown>;
+		for (const k of Object.keys(o))
+			if (!keys.includes(k)) throw new TypeError(`${what}: unknown field ${JSON.stringify(k)}`);
+		for (const k of keys) if (!(k in o)) throw new TypeError(`${what}: missing field ${JSON.stringify(k)}`);
+		return o;
+	};
+	const strings = (v: unknown, what: string): string[] => {
+		if (!Array.isArray(v) || !v.every((x) => typeof x === "string"))
+			throw new TypeError(`${what} is not a list of strings`);
+		return [...v] as string[];
+	};
+	const root = obj(value, ["schemaVersion", "disclosure", "cases"], "cases");
+	if (root.schemaVersion !== "endo.applicability-cases.v0")
+		throw new TypeError(`cases: unsupported version ${JSON.stringify(root.schemaVersion)}`);
+	if (!Array.isArray(root.cases)) throw new TypeError("cases.cases is not an array");
+	return root.cases.map((c, i) => {
+		const o = obj(c, ["id", "purpose", "case", "expect"], `cases[${i}]`);
+		const k = obj(o.case, ["model", "harness", "environment", "features"], `cases[${i}].case`);
+		const h = obj(k.harness, ["name", "version"], `cases[${i}].case.harness`);
+		const x = obj(o.expect, ["selected", "abstained"], `cases[${i}].expect`);
+		if (typeof o.id !== "string" || typeof o.purpose !== "string" || typeof k.model !== "string")
+			throw new TypeError(`cases[${i}]`);
+		if (typeof h.name !== "string" || typeof h.version !== "string" || typeof x.abstained !== "boolean")
+			throw new TypeError(`cases[${i}]`);
+		return {
+			id: o.id,
+			purpose: o.purpose,
+			case: {
+				model: k.model,
+				harness: { name: h.name, version: h.version },
+				environment: strings(k.environment, `cases[${i}].case.environment`),
+				features: strings(k.features, `cases[${i}].case.features`),
+			},
+			expect: { selected: strings(x.selected, `cases[${i}].expect.selected`), abstained: x.abstained },
+		};
+	});
+}
 
 export function writeOutputs(built: Built, out: string, sourceDirs: readonly string[]): void {
 	const target = real(out);
@@ -565,14 +624,12 @@ function main(argv: string[]): void {
 	const lessonsPath = arg("--lessons") ?? join(here, "lessons.v0.json");
 	const lessons = existsSync(lessonsPath) ? readLessonFile(JSON.parse(readFileSync(lessonsPath, "utf8"))) : null;
 	const casesPath = arg("--cases") ?? join(here, "applicability-cases.v0.json");
-	const cases = existsSync(casesPath)
-		? (JSON.parse(readFileSync(casesPath, "utf8")).cases as ApplicabilityCase[])
-		: [];
+	const cases = existsSync(casesPath) ? readCases(JSON.parse(readFileSync(casesPath, "utf8"))) : [];
 	const data = arg("--data") ?? researchDataRoot();
 	const store = arg("--store");
 	const roots: Roots = {
 		repository: REPOSITORY,
-		researchData: isDirectory(data) ? data : null,
+		researchData: isDirectory(data) ? resolve(data) : null,
 		store: store === undefined ? null : resolve(store),
 	};
 	const built = buildEligibility(corpus, roots, lessons, cases);

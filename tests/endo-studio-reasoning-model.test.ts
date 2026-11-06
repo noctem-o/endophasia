@@ -124,6 +124,7 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	attachment: "pi.default",
 	offers: {
 		prompt: { offered: false, reason: "busy" },
+		attempt: { offered: false, reason: "busy" },
 		steer: { offered: true, reason: null },
 		queue: { offered: true, reason: null },
 		stop: { offered: true, reason: null },

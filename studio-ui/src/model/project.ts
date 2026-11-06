@@ -126,7 +126,15 @@ export function reduceProject(state: ProjectState, action: ProjectAction): Proje
 		case "read-done": {
 			if (action.seq !== state.readSeq) return state;
 			const { reply } = action;
-			if (reply.kind === "absent") return { ...initialProject(), availability: "absent", readSeq: state.readSeq };
+			// No worktree context here: nothing of a worktree is kept, but the view is the operator's choice and is never switched for them
+			// (a late answer once moved them out of Task); only Changes, which is not offered without a worktree, falls back.
+			if (reply.kind === "absent")
+				return {
+					...initialProject(),
+					availability: "absent",
+					readSeq: state.readSeq,
+					view: state.view === "changes" ? "conversation" : state.view,
+				};
 			if (reply.kind === "project") {
 				const project = reply.record;
 				// The broker answered, but Git could not read the worktree (it failed, timed out, was missing, said too much, or was busy).

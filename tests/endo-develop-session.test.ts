@@ -44,6 +44,7 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	attachment: "pi.default",
 	offers: {
 		prompt: { offered: true, reason: null },
+		attempt: { offered: true, reason: null },
 		steer: { offered: false, reason: "No run is open." },
 		queue: { offered: false, reason: "No run is open." },
 		stop: { offered: false, reason: "No run is open." },
@@ -84,6 +85,7 @@ describe("the live Pi workbench, presented", () => {
 				run: "active",
 				offers: {
 					prompt: { offered: false, reason: "A run is open." },
+					attempt: { offered: false, reason: "A run is open." },
 					steer: { offered: true, reason: null },
 					queue: { offered: true, reason: null },
 					stop: { offered: true, reason: null },
@@ -155,6 +157,7 @@ describe("the live Pi workbench, presented", () => {
 				bytes: 12,
 				digestPrefix: "feedfacefeedface",
 				expiresAtMs: 1,
+				attempt: null,
 			},
 		});
 		const text = JSON.stringify(presentLivePi(busy, false));

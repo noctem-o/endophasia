@@ -287,6 +287,10 @@ export async function fetchWorkbench(
 	} else if (request.kind === "propose") {
 		route = "./api/v0/workbench/prompt/propose";
 		body = JSON.stringify({ message: request.message });
+	} else if (request.kind === "attempt") {
+		if (!/^endo\.attempt\.[0-9a-f]{32}$/.test(request.attemptId)) return bad("Invalid attempt reference.");
+		route = "./api/v0/workbench/attempt/propose";
+		body = JSON.stringify({ attemptId: request.attemptId });
 	} else if (request.kind === "intervene") {
 		const stop = request.operation === "stop";
 		if (stop !== (request.message === null)) return bad("Steer and queue need a message; stop carries none.");

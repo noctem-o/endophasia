@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### Added
+- **Request a prepared attempt from the paired workbench page, and see where it stands from any view.** In the live workbench (`endo
+  harness attach --control --workbench --project <id>`), Task → an attempt → **Request sending ‹id› to Pi** asks the attached terminal to
+  approve sending that attempt's brief. It uses a new grant-gated route, `POST attempt/propose {attemptId}`, which names the attempt and
+  nothing else: the broker reads the brief from the attempt's record, runs Slice I's checks, and the terminal shows the whole brief,
+  marked "requested from the paired page". It is sent only after the attempt's own `APPROVE ATTEMPT` phrase is typed there. The pairing
+  grant lets the page ask, never approve, and it must still be held when the brief is sent. A withdrawn, declined or refused-before-binding
+  request leaves the attempt sendable. A bound attempt is never sent again, and a lost reply is shown as unknown, not failure. The
+  request card in the conversation now names its attempt and the steps it reached (approved, authorisation recorded, sent, Pi replied).
+  A one-line **next step** under the run strip, in every view, reads the request and the selected task's records: waiting for terminal
+  approval, run open, run ended with no check recorded, checks recorded and the decision is yours. Status gains `offers.attempt`, the
+  prompt view gains `attempt`, and the terminal question gains `requestedFrom`. Studio and `endo workspace open` are unchanged and cannot
+  ask. Tested in a real browser over a real attachment to the fake Pi; end to end under a pseudo-terminal with the real CLI and browser;
+  and opt-in against an installed Pi (1.5.0) with a fake model endpoint. See
+  [docs/designs/develop-attempt-workbench.md](docs/designs/develop-attempt-workbench.md).
 - **Send a prepared work attempt to Pi from the live workbench, and read later what happened.** In `endo harness attach --control
   --workbench --project <id>`, type `attempt <id>` on the attached terminal. The brief is rendered from the attempt's own record, shown
   whole, and sent as a new prompt on the existing prompt chain only after you type its own phrase (`APPROVE ATTEMPT <16 hex>`). After the
@@ -27,6 +41,9 @@
   worktree reads now also re-check the grant after reading Git. See [docs/designs/workspace-host.md](docs/designs/workspace-host.md).
 
 ### Fixed
+- **A late "no worktree" answer no longer moves the operator out of the view they chose.** On a workbench with no Git context, the page's
+  project read reset the whole project state, including the Conversation, Changes or Task view, so someone reading Task could be moved
+  back to the conversation. The view is now kept (Changes, which is not offered then, falls back to the conversation).
 - **A browser test's stand-in servers close their keep-alive connections first.** `close()` alone waited for Chromium's idle connections,
   which on a loaded CI runner outlasted the 10 s hook limit (`tests/endo-studio-observe-browser.test.ts`).
 - **A Ctrl-C at the very end of Studio's shutdown no longer kills it by the default signal action.** Studio keeps its SIGINT and SIGTERM

@@ -1842,6 +1842,40 @@ table.fields thead th {
 	font-size: 12.5px;
 }
 
+/* The selected task's next decision, under the run strip in every view (Conversation, Changes, Task): one line, wrapping on a narrow
+   screen, never a column of its own. */
+.next-step {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	padding: 4px 8px;
+	margin: -4px 0 8px;
+	border-left: 2px solid var(--line-strong);
+	min-width: 0;
+}
+
+.next-step[data-kind="awaiting-approval"] {
+	border-left-color: var(--attention);
+}
+
+.next-step .btn {
+	margin-left: auto;
+}
+
+/* The request control and its status, inside an opened attempt, under its brief. */
+.attempt-request {
+	margin: 8px 0;
+	padding: 8px 10px;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+}
+
+.attempt-request[data-state="refused"] {
+	border-color: var(--attention);
+}
+
 .run-strip[data-connection="unknown"] {
 	border-style: dashed;
 }

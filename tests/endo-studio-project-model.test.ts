@@ -381,6 +381,11 @@ describe("what stays on the screen", () => {
 		const absent = read(initialProject(), { kind: "absent" });
 		expect(absent.availability).toBe("absent");
 		expect(reduceProject(absent, { type: "reset" }).availability).toBe("absent");
+		// A late "no worktree" answer keeps the view the operator chose (it once moved them out of Task); Changes alone falls back.
+		const onTask = reduceProject(initialProject(), { type: "view", view: "task" });
+		expect(read(onTask, { kind: "absent" }).view).toBe("task");
+		const onChanges = reduceProject(initialProject(), { type: "view", view: "changes" });
+		expect(read(onChanges, { kind: "absent" }).view).toBe("conversation");
 	});
 });
 

@@ -14,6 +14,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { nextStep, requestWords, shortAttempt } from "../model/attempt-request.ts";
 import { presentLivePi } from "../model/develop-session.ts";
 import { REASON_WORDS } from "../model/project.ts";
 import {
@@ -49,6 +50,7 @@ import { useNarrow } from "../ui/use-narrow.ts";
 import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
+import { AttemptRequest } from "./AttemptRequest.tsx";
 import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
 import { ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
@@ -483,6 +485,54 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 	const c = wb.state.command;
 	if (c === null) return null;
 	const expires = new Date(c.expiresAtMs).toLocaleTimeString([], { hour12: false });
+	if (c.attempt !== null) {
+		// A prepared attempt's brief, requested as a prompt: its own words and steps (the attempt's authorisation is one of them). The brief
+		// is not repeated here: it is the attempt's record, in Task, and the terminal showed it whole for approval.
+		const words = requestWords(c);
+		const sent = c.state === "accepted" || c.state === "unknown" || c.reason === "runtime-refused";
+		return (
+			<section
+				className="command-card"
+				data-testid="command-card"
+				data-state={c.state}
+				data-attempt={c.attempt.attemptId}
+				aria-label="Attempt request status"
+			>
+				<p>
+					<span className="chip-ref">Attempt {shortAttempt(c.attempt.attemptId)}</span>{" "}
+					<strong>{words.head}.</strong>
+				</p>
+				<p className="small">{words.detail}</p>
+				<ol className="chain" aria-label="Steps">
+					<li data-done="true">requested</li>
+					<li data-done={c.approved}>approved in the terminal</li>
+					<li data-done={c.attempt.bound}>authorisation recorded</li>
+					<li data-done={sent}>recorded as sent</li>
+					<li data-done={c.state === "accepted" || c.reason === "runtime-refused"}>Pi replied</li>
+				</ol>
+				{c.state === "awaiting-approval" ? (
+					<>
+						<p className="small">
+							{c.bytes} bytes · expires {expires} (browser clock) · single use. A local confirmation, not proof
+							of identity.
+						</p>
+						<button
+							type="button"
+							className="btn small-btn"
+							data-testid="discard"
+							onClick={() => void wb.discard()}
+						>
+							Withdraw
+						</button>
+					</>
+				) : null}
+				<p className="dim small">
+					A later prompt is your own message, not this attempt. A steer or queue sent while its run is open changes
+					that run, and so is part of what the run's reading reflects.
+				</p>
+			</section>
+		);
+	}
 	return (
 		<section className="command-card" data-testid="command-card" data-state={c.state} aria-label="Prompt status">
 			<p>
@@ -511,6 +561,38 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 				</>
 			) : null}
 		</section>
+	);
+}
+
+/**
+ * The selected task's next decision, beside the conversation in every view: read from the broker's one request (which names its attempt)
+ * and the attempts' records, never inferred from the conversation. A line, not a control: the request and its withdrawal are in Task and
+ * in the conversation's card, and approval is the terminal's.
+ */
+function NextStepStrip({
+	wb,
+	workspace,
+	view,
+	onTask,
+}: {
+	wb: Workbench;
+	workspace: WorkspaceApi;
+	view: string;
+	onTask(): void;
+}): ReactElement | null {
+	const step = nextStep(workspace.attempts.view, wb.state.command);
+	if (step === null) return null;
+	return (
+		<div className="next-step" data-testid="next-step" data-kind={step.kind} aria-live="polite">
+			<span className="chip-ref">Attempt {shortAttempt(step.attemptId)}</span>{" "}
+			<span className="small">{step.text}</span>
+			{workspace.attempts.current ? null : <span className="dim small"> (attempts as last read)</span>}
+			{view === "task" ? null : (
+				<button type="button" className="btn quiet small-btn" data-testid="next-step-task" onClick={onTask}>
+					Open in Task
+				</button>
+			)}
+		</div>
 	);
 }
 
@@ -964,6 +1046,7 @@ export function LiveConversation({
 					</span>
 					<StopControl wb={wb} />
 				</div>
+				<NextStepStrip wb={wb} workspace={workspace} view={view} onTask={() => project.setView("task")} />
 				{beacon}
 				<div
 					className="live-view"
@@ -1024,6 +1107,7 @@ export function LiveConversation({
 						workspace={workspace}
 						git={project.state.project}
 						session={connected ? "connected" : "disconnected"}
+						request={(attempt) => <AttemptRequest wb={wb} attempt={attempt} onSettled={workspace.refresh} />}
 					/>
 				</div>
 				{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}

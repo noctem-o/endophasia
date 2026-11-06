@@ -1,6 +1,7 @@
 // Sending a prepared work attempt through the live workbench (docs/designs/develop-attempt-execution.md).
 //
-// Part 1, the broker with a stand-in session and REAL attempt and task stores: the request is the terminal's only (no page route, no grant),
+// Part 1, the broker with a stand-in session and REAL attempt and task stores: the request is the terminal's `attempt <id>` or the paired
+// page's `attempt/propose` (by name only, under its grant), approved only on the terminal (docs/designs/develop-attempt-workbench.md);
 // the approval is bound to the exact brief under its own phrase, the authorisation record is written after the approval and BEFORE the send
 // is recorded, and every refusal, change and race in between sends nothing.
 //
@@ -291,33 +292,220 @@ describe("the broker: an attempt is requested on the terminal and approved as it
 		expect(broker.requestAttempt(w.attempt.id).ok).toBe(true);
 	});
 
-	it("only the terminal can request one: no page route takes an attempt, and without --project nothing can", async () => {
+	it("the page asks only by name, under its grant, on one closed route; without --project nothing can be asked", async () => {
 		const w = fakeBroker();
+		// No grant, no request.
+		expect((await w.call("POST", "attempt/propose", { attemptId: w.attempt.id })).status).toBe(401);
 		const pair = await w.call("POST", "pair", { code: w.broker.issuePairingCode().code });
 		const grant = (pair.body as { grant: string }).grant;
+		// The prompt route does not take an attempt, and the attempt route takes nothing but its name: no brief, task or session from a page.
 		expect((await w.call("POST", "prompt/propose", { attemptId: w.attempt.id }, grant)).status).toBe(400);
-		expect((await w.call("POST", "prompt/propose", { message: "x", attemptId: w.attempt.id }, grant)).status).toBe(
-			400,
-		);
+		for (const body of [
+			{ attemptId: w.attempt.id, message: "something else" },
+			{ attemptId: w.attempt.id, session: "endo.session.pi.other" },
+			{ attemptId: [w.attempt.id] },
+			{},
+			null,
+		])
+			expect((await w.call("POST", "attempt/propose", body, grant)).status, JSON.stringify(body)).toBe(400);
 		for (const route of [
-			"attempt/propose",
 			"attempt",
 			`attempt/${w.attempt.id}`,
+			"attempt/propose/again",
 			"workspace/attempts/send",
 			"prompt/attempt",
 		])
 			expect((await w.call("POST", route, { attemptId: w.attempt.id }, grant)).status, route).toBe(404);
+		expect((await w.call("GET", "attempt/propose", null, grant)).status).toBe(404);
 		expect(w.approval.requests).toEqual([]);
 		expect(existsSync(authorizedFile(w.root, w.attempt.id))).toBe(false);
 
 		const none = fakeBroker({ attempts: false });
 		expect(none.broker.requestAttempt(none.attempt.id)).toMatchObject({ ok: false, code: "not-configured" });
+		const nonePair = await none.call("POST", "pair", { code: none.broker.issuePairingCode().code });
+		const noneGrant = (nonePair.body as { grant: string }).grant;
+		expect(await none.call("POST", "attempt/propose", { attemptId: none.attempt.id }, noneGrant)).toMatchObject({
+			status: 404,
+		});
+		const noneStatus = (await none.call("GET", "status")).body as { offers: { attempt: { offered: boolean } } };
+		expect(noneStatus.offers.attempt.offered).toBe(false);
 		// The check's own refusals pass through, and an attempt waits its turn behind another request.
 		expect(w.broker.requestAttempt("endo.attempt.0000")).toMatchObject({ ok: false, code: "bad-request" });
 		const first = w.broker.requestAttempt(w.attempt.id);
 		expect(first.ok).toBe(true);
 		const second = ok(w.service.prepare(w.projectId, w.taskId, { objective: "Another" }));
 		expect(w.broker.requestAttempt(second.id)).toMatchObject({ ok: false, code: "not-offered" });
+		expect(await w.call("POST", "attempt/propose", { attemptId: second.id }, grant)).toMatchObject({
+			status: 409,
+			body: { error: "not-offered" },
+		});
+	});
+});
+
+describe("the broker: the paired page requests an attempt; the terminal still approves it", () => {
+	async function paged() {
+		const w = fakeBroker();
+		const pair = await w.call("POST", "pair", { code: w.broker.issuePairingCode().code });
+		const grant = (pair.body as { grant: string }).grant;
+		return { ...w, grant };
+	}
+	type View = { proposalId: string; state: string; approved: boolean; reason: string | null; attempt: unknown };
+
+	it("approved on the terminal: the exact brief from the attempt's record is sent once, and the page reads every step", async () => {
+		const w = await paged();
+		const status = (await w.call("GET", "status")).body as { offers: { attempt: unknown } };
+		expect(status.offers.attempt).toEqual({ offered: true, reason: null });
+		const asked = await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant);
+		expect(asked.status).toBe(202);
+		const view = asked.body as View;
+		expect(view).toMatchObject({
+			state: "awaiting-approval",
+			approved: false,
+			attempt: { attemptId: w.attempt.id, taskId: w.taskId, bound: false },
+		});
+		const request = await w.approval.waitForRequest();
+		const brief = renderEndoDevelopBriefV0(w.attempt);
+		// The terminal is told the page asked, and is shown the brief rendered here, under the attempt's own phrase.
+		expect(request).toMatchObject({ operation: "attempt", requestedFrom: "page", message: brief });
+		expect(request.phrase).toMatch(/^APPROVE ATTEMPT [0-9a-f]{16}$/);
+		// The page cannot approve: the request's own view, read by the page, says it is waiting; nothing was sent or bound.
+		expect((await w.call("GET", `prompt/${view.proposalId}`, null, w.grant)).body).toMatchObject({
+			state: "awaiting-approval",
+		});
+		expect(w.session.promptCalls).toEqual([]);
+		expect(existsSync(authorizedFile(w.root, w.attempt.id))).toBe(false);
+		// While it waits, no other prompt or attempt can be asked.
+		expect((await w.call("POST", "prompt/propose", { message: "hello" }, w.grant)).status).toBe(409);
+		w.approval.answer("allow");
+		await settle(30);
+		expect(w.session.promptCalls).toEqual([brief]);
+		expect(w.session.boundWhenDispatched).toBe(true);
+		expect((await w.call("GET", `prompt/${view.proposalId}`, null, w.grant)).body).toMatchObject({
+			state: "accepted",
+			approved: true,
+			disposition: "started",
+			attempt: { attemptId: w.attempt.id, bound: true },
+		});
+		// The record says it was approved on the terminal, as every attempt is.
+		expect(authorizedOf(w.root, w.attempt.id)).toMatchObject({ via: "workbench-terminal", approvedBy: "operator" });
+		// Status needs no grant: an unpaired reader sees that a prompt was handled, never which attempt or task it carried.
+		const unpaired = (await w.call("GET", "status")).body as { command: { attempt: unknown } };
+		expect(unpaired.command.attempt).toBeNull();
+		const paired = (await w.call("GET", "status", null, w.grant)).body as { command: { attempt: unknown } };
+		expect(paired.command.attempt).toMatchObject({ attemptId: w.attempt.id, bound: true });
+		// Asked again from the page: refused by name, nothing recorded or sent.
+		const again = await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant);
+		expect(again).toMatchObject({ status: 409, body: { error: "attempt-already-authorized" } });
+		expect(w.session.promptCalls).toHaveLength(1);
+		// Sending is not an outcome, and the task's status is not touched.
+		expect(ok(w.service.get(w.attempt.id)).state).toBe("prepared");
+		const file = w.tasks.read();
+		if (!file.ok) throw new Error(file.reason);
+		expect(file.file.tasks.find((t) => t.id === w.taskId)?.status).toBe("open");
+	});
+
+	it("a wrong phrase, a withdrawal, an unpairing or a re-pairing sends nothing and leaves the attempt sendable", async () => {
+		for (const ending of ["deny", "withdraw", "repair"] as const) {
+			const w = await paged();
+			const asked = await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant);
+			const view = asked.body as View;
+			await w.approval.waitForRequest();
+			if (ending === "deny") w.approval.answer("deny");
+			else if (ending === "withdraw")
+				expect((await w.call("POST", "prompt/discard", { proposalId: view.proposalId }, w.grant)).status).toBe(200);
+			else {
+				// The page is paired again (a new grant replaces the one the request was made under) before the operator approves: the
+				// terminal's phrase alone does not send a request whose grant no longer holds.
+				await w.call("POST", "pair", { code: w.broker.issuePairingCode().code });
+				w.approval.answer("allow");
+			}
+			const settled = await w.broker.settled(view.proposalId);
+			expect(settled?.state, ending).toBe("refused");
+			expect(settled?.reason, ending).toBe(ending === "deny" ? "authorization-denied" : "not-authorized");
+			expect(w.session.promptCalls, ending).toEqual([]);
+			expect(existsSync(authorizedFile(w.root, w.attempt.id)), ending).toBe(false);
+			expect(settled?.attempt, ending).toMatchObject({ bound: false });
+			expect(w.dispatch.check(w.attempt.id).ok, ending).toBe(true);
+		}
+	});
+
+	it("an attempt that cannot be sent is refused by name when asked, with nothing recorded; a change after asking refuses at sending", async () => {
+		const w = await paged();
+		ok(w.service.handoff(w.attempt.id, { target: "Claude" }));
+		expect(await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant)).toMatchObject({
+			status: 409,
+			body: { error: "attempt-handed-off" },
+		});
+		const missing = "endo.attempt.0123456789abcdef0123456789abcdef";
+		expect(await w.call("POST", "attempt/propose", { attemptId: missing }, w.grant)).toMatchObject({
+			status: 409,
+			body: { error: "attempt-not-found" },
+		});
+		expect(await w.call("POST", "attempt/propose", { attemptId: "../../etc/passwd" }, w.grant)).toMatchObject({
+			status: 400,
+		});
+		expect(w.session.records).toEqual([]);
+
+		const c = await paged();
+		const asked = (await c.call("POST", "attempt/propose", { attemptId: c.attempt.id }, c.grant)).body as View;
+		await c.approval.waitForRequest();
+		ok(c.tasks.updateTask(c.projectId, c.taskId, 0, { title: "Fix the parser, differently" }));
+		c.approval.answer("allow");
+		expect(await c.broker.settled(asked.proposalId)).toMatchObject({
+			state: "refused",
+			reason: "attempt-changed",
+			approved: true,
+			attempt: { bound: false },
+		});
+		expect(c.session.promptCalls).toEqual([]);
+
+		// A run already open: not offered, and nothing is recorded.
+		const busy = await paged();
+		busy.session.runActive = true;
+		expect(await busy.call("POST", "attempt/propose", { attemptId: busy.attempt.id }, busy.grant)).toMatchObject({
+			status: 409,
+			body: { error: "not-offered" },
+		});
+		// A session with no connection: not offered either.
+		const gone = await paged();
+		gone.session.piSessionId = null;
+		expect((await gone.call("POST", "attempt/propose", { attemptId: gone.attempt.id }, gone.grant)).status).toBe(409);
+		expect(busy.session.records).toEqual([]);
+		expect(gone.session.records).toEqual([]);
+	});
+
+	it("a lost reply after the send is shown as unknown, bound, and never asked again", async () => {
+		const w = await paged();
+		w.session.promptResult = () => Promise.reject(new Error("connection lost"));
+		const asked = (await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant)).body as View;
+		await w.approval.waitForRequest();
+		w.approval.answer("allow");
+		await w.broker.settled(asked.proposalId);
+		expect((await w.call("GET", `prompt/${asked.proposalId}`, null, w.grant)).body).toMatchObject({
+			state: "unknown",
+			approved: true,
+			reason: null,
+			attempt: { bound: true },
+		});
+		expect(w.session.promptCalls).toHaveLength(1);
+		expect((await w.call("POST", "attempt/propose", { attemptId: w.attempt.id }, w.grant)).body).toEqual({
+			error: "attempt-already-authorized",
+		});
+	});
+
+	it("a typed prompt from the page is unchanged: same phrase, no attempt, nothing bound", async () => {
+		const w = await paged();
+		const asked = (await w.call("POST", "prompt/propose", { message: "hello" }, w.grant)).body as View;
+		expect(asked.attempt).toBeNull();
+		const request = await w.approval.waitForRequest();
+		expect(request).toMatchObject({ operation: "prompt", requestedFrom: "page", message: "hello" });
+		expect(request.attempt).toBeUndefined();
+		expect(request.phrase).toMatch(/^APPROVE PROMPT [0-9a-f]{16}$/);
+		w.approval.answer("allow");
+		await settle(30);
+		expect(w.session.promptCalls).toEqual(["hello"]);
+		expect(existsSync(authorizedFile(w.root, w.attempt.id))).toBe(false);
+		expect(w.dispatch.check(w.attempt.id).ok).toBe(true);
 	});
 });
 

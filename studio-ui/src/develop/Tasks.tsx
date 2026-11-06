@@ -4,7 +4,8 @@
 // worktree is not an agent, and an agent finishing is not a task done: no control in this file sends a prompt, steers, stops, approves,
 // links a session on its own, or moves a status except because the operator pressed the button that asks for exactly that status.
 // Choosing a task changes nothing but which task is shown.
-import { type KeyboardEvent, type ReactElement, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import type { Attempt } from "../model/attempts-wire.ts";
 import type { Project } from "../model/project-wire.ts";
 import {
 	associationOf,
@@ -397,11 +398,14 @@ export function TaskPanel({
 	workspace,
 	git,
 	session,
+	request,
 }: {
 	workspace: WorkspaceApi;
 	git: Project | null;
 	/** The host's session, as the run strip reads it; `none` on a workspace host. */
 	session: HostSession;
+	/** Only on the live Pi workbench: the attempt request control (develop/AttemptRequest.tsx), passed through to the attempts. */
+	request?: (attempt: Attempt) => ReactNode;
 }): ReactElement {
 	const shown = shownOf(workspace);
 	const { state } = workspace;
@@ -541,6 +545,7 @@ export function TaskPanel({
 						tasksCurrent={state.current}
 						focus={workspace.focus}
 						onFocused={workspace.clearFocus}
+						{...(request === undefined ? {} : { request })}
 					/>
 				</>
 			)}

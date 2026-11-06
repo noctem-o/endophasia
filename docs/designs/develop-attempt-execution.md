@@ -258,6 +258,7 @@ It found these sound:
 
 ## 10. Next
 
-**A page request for an attempt.** The page asks (`POST prompt/propose {attemptId}` behind the grant), the broker renders the brief from the
-record, and the terminal approves under the same `APPROVE ATTEMPT` phrase. That adds no authority. After it, show the attempt's execution in
-the attention overview.
+**A page request for an attempt.** Implemented in Slice J ([develop-attempt-workbench.md](develop-attempt-workbench.md)) on its own route,
+`POST attempt/propose {attemptId}`, rather than on `prompt/propose`: a route that carries text never carries an attempt. The terminal
+approves under the same `APPROVE ATTEMPT` phrase. Since then, the terminal is no longer the only caller of the attempt request; it is still
+the only place an attempt is approved. Still to do: show the attempt's execution in the attention overview.

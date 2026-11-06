@@ -14,7 +14,37 @@ export interface WorkbenchCommand {
 	bytes: number;
 	digestPrefix: string;
 	expiresAtMs: number;
+	/**
+	 * For a prepared work attempt's brief: which attempt and task, whether its one authorisation was written for this request (from then
+	 * on it is never sent again), and why it could not be, when it could not. Null for a typed prompt.
+	 */
+	attempt: CommandAttempt | null;
 }
+export interface CommandAttempt {
+	attemptId: string;
+	taskId: string;
+	bound: boolean;
+	refusal: AttemptRefusal | null;
+}
+/** Why an attempt could not be requested or bound (runtime/contracts/develop-attempt-dispatch.ts), as a closed list. */
+export const ATTEMPT_REFUSALS = [
+	"bad-request",
+	"not-found",
+	"other-project",
+	"unreadable",
+	"tasks-unreadable",
+	"launch-not-registered",
+	"task-not-found",
+	"task-done",
+	"task-words-changed",
+	"outcome-recorded",
+	"handed-off",
+	"already-authorized",
+	"brief-too-large",
+	"brief-unsafe",
+	"storage-failed",
+] as const;
+export type AttemptRefusal = (typeof ATTEMPT_REFUSALS)[number];
 export type InterventionOperation = "steer" | "queue" | "stop";
 export type InterventionState = "awaiting-approval" | "dispatching" | "sent" | "accepted" | "refused" | "unknown";
 export interface ScanProgress {
@@ -60,7 +90,8 @@ export interface WorkbenchStatus {
 	run: "active" | "idle" | "unknown";
 	session: string | null;
 	attachment: string;
-	offers: { prompt: Offer; steer: Offer; queue: Offer; stop: Offer };
+	/** `attempt`: whether a prepared work attempt's brief can be requested now (a prompt, on a workbench started with --project). */
+	offers: { prompt: Offer; attempt: Offer; steer: Offer; queue: Offer; stop: Offer };
 	paired: boolean;
 	command: WorkbenchCommand | null;
 	interventions: WorkbenchIntervention[];
@@ -160,6 +191,14 @@ const command: Check = (v) =>
 		bytes: (n) => count(n) && n <= 16384,
 		digestPrefix: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 		expiresAtMs: count,
+		attempt: eitherNull((x) =>
+			shape(x, {
+				attemptId: (y) => typeof y === "string" && /^endo\.attempt\.[0-9a-f]{32}$/.test(y),
+				taskId: (y) => typeof y === "string" && y.length <= 128,
+				bound: bool,
+				refusal: eitherNull(one(...ATTEMPT_REFUSALS)),
+			}),
+		),
 	});
 
 const INTERVENTION_REASONS = [...REASONS, "approval-timed-out", "withdrawn", "superseded-by-stop"];
@@ -227,7 +266,7 @@ export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 		run: one("active", "idle", "unknown"),
 		session: eitherNull((x) => typeof x === "string" && x.length <= 269 && /^endo\.session\./.test(x)),
 		attachment: short,
-		offers: (o) => shape(o, { prompt: offer, steer: offer, queue: offer, stop: offer }),
+		offers: (o) => shape(o, { prompt: offer, attempt: offer, steer: offer, queue: offer, stop: offer }),
 		paired: bool,
 		command: eitherNull(command),
 		interventions: (x) => Array.isArray(x) && x.length <= 40 && list(intervention)(x),
@@ -320,6 +359,8 @@ export type WorkbenchRequest =
 	| { kind: "transcript"; after: number }
 	| { kind: "pair"; code: string }
 	| { kind: "propose"; message: string }
+	/** Ask to send a prepared work attempt's brief: by its id only; the broker reads the brief from the attempt's own record. */
+	| { kind: "attempt"; attemptId: string }
 	| { kind: "command"; proposalId: string }
 	| { kind: "discard"; proposalId: string }
 	| { kind: "intervene"; operation: InterventionOperation; message: string | null }
@@ -338,6 +379,26 @@ export type WorkbenchReply =
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: string; message: string; retrySeconds: number | null };
 
+/** One clause per refusal, in the page's words (the terminal has its own). Nothing was recorded or sent when one is shown. */
+export const ATTEMPT_REFUSAL_WORDS: Readonly<Record<AttemptRefusal, string>> = {
+	"bad-request": "that is not an attempt id",
+	"not-found": "it is not in this store",
+	"other-project": "it belongs to another project than this workbench's",
+	unreadable: "its records cannot be read safely",
+	"tasks-unreadable": "the task file cannot be read now",
+	"launch-not-registered":
+		"Pi was not started in the project's registered directory, so the brief would run somewhere else",
+	"task-not-found": "its task is no longer in this project",
+	"task-done": "its task is done",
+	"task-words-changed": "the task's words changed since the brief was prepared; prepare a new attempt",
+	"outcome-recorded": "an outcome is already recorded for it",
+	"handed-off": "you recorded handing it to another agent; prepare a new attempt to send one to Pi",
+	"already-authorized": "it was already authorised to be sent once; prepare a new attempt to try again",
+	"brief-too-large": "its brief is longer than a workbench prompt",
+	"brief-unsafe": "its brief holds characters the terminal cannot show faithfully",
+	"storage-failed": "its authorisation could not be recorded",
+};
+
 const FIXED: Record<string, string> = {
 	"pairing-refused":
 		"That pairing code was not accepted. Type `pair` in the terminal that started this server for a new one.",
@@ -351,6 +412,12 @@ const FIXED: Record<string, string> = {
 	"not-withdrawable": "That prompt is no longer waiting for approval.",
 	"not-recording": "The session is not recording, so nothing was requested.",
 	forbidden: "The workbench refused this request.",
+	...Object.fromEntries(
+		ATTEMPT_REFUSALS.map((code) => [
+			`attempt-${code}`,
+			`That attempt cannot be requested: ${ATTEMPT_REFUSAL_WORDS[code]}.`,
+		]),
+	),
 };
 
 /** A failure as fixed text. The body's `error` code selects a sentence; nothing else of it is shown. */

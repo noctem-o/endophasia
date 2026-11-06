@@ -120,6 +120,13 @@ export async function startWorkbenchV0(
 				`=== WORKBENCH: approve this ${what}? ===`,
 				`session     ${request.session}`,
 				`attachment  ${request.attachment}`,
+				...(request.requestedFrom === undefined
+					? []
+					: [
+							request.requestedFrom === "page"
+								? "requested   from the paired page (it can only ask: nothing is sent unless you type the phrase here)"
+								: "requested   on this terminal",
+						]),
 				request.message === null
 					? `expires ${hhmmss(request.expiresAtMs)}`
 					: `size        ${request.bytes} bytes   expires ${hhmmss(request.expiresAtMs)}`,
@@ -148,7 +155,13 @@ export async function startWorkbenchV0(
 			const answer = await input.question("> ", {
 				signal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, request.expiresAtMs - Date.now()))]),
 			});
-			return answer === request.phrase ? "allow" : "deny";
+			const decided = answer === request.phrase ? "allow" : "deny";
+			// An attempt the PAGE asked for: the operator typed here, so its outcome is told here too, as for `attempt <id>` typed here.
+			if (request.operation === "attempt" && request.requestedFrom === "page" && request.attempt !== undefined) {
+				const attemptId = request.attempt.attemptId;
+				queueMicrotask(() => reportAttempt(attemptId, request.proposalId));
+			}
+			return decided;
 		} catch {
 			// Cancelled or out of time: the question is gone; so is any half-typed answer to it.
 			input.write(null, { ctrl: true, name: "u" });
@@ -184,7 +197,7 @@ export async function startWorkbenchV0(
 		...(projectId === undefined
 			? {}
 			: {
-					// Sending an attempt's brief: requested only by the `attempt <id>` line below, on this terminal.
+					// Sending an attempt's brief: requested by the `attempt <id>` line below or by the paired page; approved only on this terminal.
 					attempts: new DevelopAttemptDispatchV0(
 						new DevelopTasksStoreV0(session.owner.options.root),
 						new DevelopAttemptsStoreV0(session.owner.options.root),
@@ -227,7 +240,7 @@ export async function startWorkbenchV0(
 		() => broker.endSession(),
 	);
 	// `attempt <id>`: the operator asks, HERE, to send a prepared work attempt's brief to this Pi session. It is only a request: the brief is
-	// shown whole and nothing is sent unless its own phrase is typed. The page has no way to make this request.
+	// shown whole and nothing is sent unless its own phrase is typed. The paired page can make the same request (attempt/propose); it is approved here too.
 	const requestAttempt = (attemptId: string): void => {
 		const asked = broker.requestAttempt(attemptId);
 		if (!asked.ok) {
@@ -243,7 +256,10 @@ export async function startWorkbenchV0(
 			);
 			return;
 		}
-		const id = asked.view.proposalId;
+		reportAttempt(attemptId, asked.view.proposalId);
+	};
+	/** Tell the terminal how an attempt request ended: sent and Pi's reply, or why not and whether the attempt is spent. */
+	function reportAttempt(attemptId: string, id: string): void {
 		void broker.settled(id).then((view) => {
 			if (view === null) return;
 			const binding = broker.attemptBindingOf(id);
@@ -261,7 +277,7 @@ export async function startWorkbenchV0(
 					`workbench: attempt ${attemptId} was sent; Pi's reply was not seen. Work may have started. It will not be retried.\n`,
 				);
 		});
-	};
+	}
 	input.on("line", (line) => {
 		const words = line.trim().split(/\s+/);
 		if (line.trim() === "pair") showCode();

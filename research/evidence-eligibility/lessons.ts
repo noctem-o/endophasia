@@ -343,9 +343,13 @@ const matchesSelector = (e: Example, s: Selector): boolean =>
  * The named check failed, and not as one of every named check: an output where everything failed (nothing working was produced) names every
  * rule, and is evidence of none of them in particular.
  */
+/** Every named test failed (counted from the whole output, never from the bounded symptom list). */
+export const everyCheckFailed = (e: Example): boolean =>
+	e.checksFailed !== null && e.checksFailed > 1 && e.checksFailed === e.checksNamed;
+
 const specificFailure = (e: Example, symptom: string): boolean => {
 	const failing = e.symptoms ?? [];
-	return failing.includes(symptom) && !(failing.length > 1 && failing.length === e.checksNamed);
+	return failing.includes(symptom) && !everyCheckFailed(e);
 };
 
 /** The lesson-eligible examples a selector matches (duplicates never counted twice), and the excluded matches by reason. */
@@ -558,7 +562,8 @@ export function selectCards(
 		if (card.revoked) why = "revoked";
 		// Only guidance for the agent is ever put in its context: a configuration, evaluation or design lesson is the operator's.
 		else if (card.lever !== "agent-context") why = "not-agent-guidance";
-		else if (a === undefined || !a.supported) why = "unsupported";
+		// Supported by a citation alone is not enough to enter an agent's context (as for usability in the target).
+		else if (a === undefined || a.support !== "evidence") why = "unsupported";
 		else if (card.scope.model !== c.model) why = "other-model";
 		else if (card.scope.harness.name !== c.harness.name || card.scope.harness.version !== c.harness.version)
 			why = "other-harness-version";

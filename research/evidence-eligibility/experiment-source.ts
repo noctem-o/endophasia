@@ -42,6 +42,8 @@ export interface TrialFacts {
 	symptoms: string[] | null;
 	/** How many distinct tests the verified output names (failing and passing); null when not read. */
 	checksNamed: number | null;
+	/** How many of them failed: counted from the whole output, before the symptom list is bounded. */
+	checksFailed: number | null;
 	symptomsWithheld: boolean;
 	harness: { name: string; version: string | null; identityDigest: string | null } | null;
 	wireModels: string[] | null;
@@ -164,7 +166,8 @@ function harnessOf(dir: string, session: number | undefined): TrialFacts["harnes
 	let file: string | null = null;
 	if (session !== undefined && existsSync(join(envDir, `session-${session}.json`)))
 		file = join(envDir, `session-${session}.json`);
-	else if (isDirectory(envDir)) {
+	// The sole session file stands in only when the trial's session is unknown: a known session without its file is not another's.
+	else if (session === undefined && isDirectory(envDir)) {
 		const all = readdirSync(envDir).filter((n) => /^session-[0-9]+\.json$/.test(n));
 		if (all.length === 1) file = join(envDir, all[0] as string);
 	}
@@ -205,6 +208,7 @@ function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | nu
 	let checkOutput: TrialFacts["checkOutput"] = "not-applicable";
 	let symptoms: string[] | null = null;
 	let checksNamed: number | null = null;
+	let checksFailed: number | null = null;
 	let symptomsWithheld = false;
 	if (result !== null && result.status === "completed" && result.check.ran) {
 		const out = join(trialDir, "check.txt");
@@ -224,11 +228,12 @@ function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | nu
 					symptoms = failingChecks(text, result.check.passed);
 					const named = namedChecks(text);
 					checksNamed = named.failing.size + named.passing.size;
+					checksFailed = named.failing.size;
 				}
 			}
 		}
 	}
-	return { store, capture, checkOutput, symptoms, checksNamed, symptomsWithheld };
+	return { store, capture, checkOutput, symptoms, checksNamed, checksFailed, symptomsWithheld };
 }
 
 /** Every file under a directory, by relative path, with its size and sha256: links are listed, never followed. */

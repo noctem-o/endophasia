@@ -2,7 +2,7 @@
 
 Run on 2026-11-06 over the committed corpus ([corpus.v0.json](corpus.v0.json)): every experiment run in the repository and the raw run
 directories of the four studies kept beside it (`../endophasia-research`, [research/DATA.md](../DATA.md)). Main at `74106f925` (the merge of
-#125). Report sha256 `2b6f01a21664f91b…`; the manifest and summary are in [report/](report/) and are reproduced byte for byte by
+#125). Report sha256 `e38c41c97529eeda…`; the manifest and summary are in [report/](report/) and are reproduced byte for byte by
 `tests/evidence-eligibility-corpus.test.ts` where the archives are present. The rules are in [README.md](README.md).
 
 **The raw archives were read** (they are on the maintainer's machine, not publicly hosted). No DEVELOP store was given: none was found under
@@ -137,6 +137,13 @@ All three are fixed, with regression tests. They did not change the decision; th
 - the output guard resolves links;
 - the README matches the duplicate rule;
 - the injection test compares two cards identical but for their guidance.
+
+Codex then found five more problems on the PR, each fixed with a regression test. None changed a number here:
+- a runner error now counts as attrition;
+- the selector, like the target check, refuses guidance supported by a citation alone;
+- "every check failed" is counted from the whole output, not the 50-name symptom list;
+- an output file that is a link is refused, and outputs are opened without following links;
+- a trial whose own session file is missing has no harness identity, rather than borrowing another session's.
 
 ## What this establishes, and what remains a hypothesis
 

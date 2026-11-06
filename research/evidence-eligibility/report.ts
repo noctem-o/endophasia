@@ -6,7 +6,18 @@
 // exclusions, the report's digest) and summary.md. The output never holds an absolute path, a timestamp or any prompt, reasoning, request or
 // tool text: the same inputs give the same bytes on any machine. <dir> may not be inside any source it reads.
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	writeSync,
+} from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -28,7 +39,15 @@ import { type Corpus, type CorpusSource, type Location, readCorpus } from "./cor
 import { readDevelopStore } from "./develop-source.ts";
 import { attemptExample, experimentExample, linkExamples } from "./eligibility.ts";
 import { readExperimentRun } from "./experiment-source.ts";
-import { assessCard, type CardAssessment, type Case, type LessonFile, readLessonFile, selectCards } from "./lessons.ts";
+import {
+	assessCard,
+	type CardAssessment,
+	type Case,
+	everyCheckFailed,
+	type LessonFile,
+	readLessonFile,
+	selectCards,
+} from "./lessons.ts";
 import { judgeReadiness, type ReadinessReport } from "./readiness.ts";
 import { type RunValidity, readStudyValidity } from "./validity.ts";
 
@@ -188,7 +207,10 @@ export function buildEligibility(
 				runInvalid: declared.some((d) => d.kind === "run-invalid"),
 				examinedTasks: new Set(declared.flatMap((d) => (d.kind === "task-examined" ? [d.task] : []))),
 				conditions: read.conditions,
-				attrition: read.problems.some((p) => p.path === "trials" || p.path.startsWith("trials/")),
+				// Any planned trial without a usable outcome breaks the randomized set: no result, a refused record, or a runner error.
+				attrition:
+					read.problems.some((p) => p.path === "trials" || p.path.startsWith("trials/")) ||
+					read.trials.some((t) => t.kind === "result" && t.result?.status === "error"),
 			};
 			const made = read.trials.map((t) => experimentExample(ctx, t));
 			examples.push(...made);
@@ -273,7 +295,7 @@ export function buildEligibility(
 			c.failed++;
 			// Every named test failed: nothing working was produced (a cut-off response, no implementation), not a specific rule.
 			const failing = e.symptoms ?? [];
-			if (failing.length > 1 && failing.length === e.checksNamed) c.everyCheck++;
+			if (everyCheckFailed(e)) c.everyCheck++;
 			const family = JSON.stringify(failing);
 			c.families.set(family, (c.families.get(family) ?? 0) + 1);
 		}
@@ -594,14 +616,32 @@ export function readCases(value: unknown): ApplicabilityCase[] {
 	});
 }
 
+/** Open for writing without following a link at the final name, so a link that appears after the check is refused too. */
+const openFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;
+
 export function writeOutputs(built: Built, out: string, sourceDirs: readonly string[]): void {
 	const target = real(out);
 	for (const dir of sourceDirs)
 		if (within(real(dir), target)) throw new TypeError("the output directory is inside a source the report reads");
 	mkdirSync(out, { recursive: true });
-	writeFileSync(join(out, "report.json"), canonicalEndoJsonV0(built.report));
-	writeFileSync(join(out, "manifest.json"), canonicalEndoJsonV0(built.manifest));
-	writeFileSync(join(out, "summary.md"), built.summary);
+	const files: [string, string][] = [
+		["report.json", canonicalEndoJsonV0(built.report)],
+		["manifest.json", canonicalEndoJsonV0(built.manifest)],
+		["summary.md", built.summary],
+	];
+	// A destination that is a link (to a source file or anywhere) is never written through, and nothing is written if any one is.
+	for (const [name] of files) {
+		const s = lstatSync(join(out, name), { throwIfNoEntry: false });
+		if (s !== undefined && !s.isFile()) throw new TypeError(`the output ${name} exists and is not a plain file`);
+	}
+	for (const [name, text] of files) {
+		const fd = openSync(join(out, name), openFlags, 0o644);
+		try {
+			writeSync(fd, text);
+		} finally {
+			closeSync(fd);
+		}
+	}
 }
 
 /** Every directory the corpus resolves to, for the output check. */

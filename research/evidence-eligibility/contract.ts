@@ -172,6 +172,8 @@ export interface Example {
 	symptoms: string[] | null;
 	/** How many distinct tests that output names, failing or passing; null when it was not read. */
 	checksNamed: number | null;
+	/** How many of them failed, counted before `symptoms` is bounded; null when the output was not read. */
+	checksFailed: number | null;
 	caveats: Caveat[];
 	eligibility: Record<Objective, Verdict>;
 	/** Links between examples: the canonical copy of a duplicate; on a counted rerun, the interrupted executions it replaced. */

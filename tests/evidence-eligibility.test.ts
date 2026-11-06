@@ -551,10 +551,37 @@ describe("invalid arms and excluded trials support no positive claim", () => {
 		});
 	});
 
-	it("keeps a run with attrition out of causal use", () => {
+	it("keeps a run with attrition out of causal use: a missing result or a runner error", () => {
 		const f = fixture();
 		rmSync(join(trialDir(f.run, "tool-use", "arm-c", 1), "result.json"));
 		for (const e of examplesOf(f)) expect(e.eligibility["causal-policy"].reasons).toContain("trial-attrition");
+		const g = fixture();
+		editResult(g.run, "implement-function", "arm-a", 0, (r) => {
+			r.status = "error";
+			r.error = "the session did not settle";
+			r.check = { ran: false, reason: "the session failed" };
+		});
+		const ex = examplesOf(g);
+		expect(ex).toHaveLength(12);
+		for (const e of ex) expect(e.eligibility["causal-policy"].reasons).toContain("trial-attrition");
+	});
+
+	it("never borrows another session's harness identity for a trial whose own session file is missing", () => {
+		const f = fixture();
+		const journal = readFileSync(join(f.run, "journal.jsonl"), "utf8")
+			.split("\n")
+			.map((l) => {
+				if (l.trim() === "") return l;
+				const e = JSON.parse(l);
+				if (e.event === "trial-started") e.session = 2;
+				return JSON.stringify(e);
+			})
+			.join("\n");
+		writeFileSync(join(f.run, "journal.jsonl"), journal);
+		for (const e of examplesOf(f)) {
+			expect(e.identity.harness).toBeNull();
+			expect(e.eligibility["causal-policy"].reasons).toContain("harness-identity-unavailable");
+		}
 	});
 
 	it("keeps every trial of a run a document declares invalid out of learning", () => {
@@ -936,6 +963,37 @@ describe("lesson candidates: revoked, unavailable or incompatible cards are neve
 		expect(invalid.observations[0]?.ineligible).toMatchObject({ "run-invalid": 2 });
 	});
 
+	it("recognises every check failing from the whole output, even when the symptom list is bounded", () => {
+		const f = fixture();
+		const many = Array.from({ length: 60 }, (_, i) => `✖ R${String(i).padStart(2, "0")}: rule (1ms)`).join("\n");
+		setCheck(f.run, "tool-use", "arm-b", 0, `${many}\n`, false);
+		const ex = examplesOf(f);
+		const e = byId(ex, T("tool-use", "arm-b", 0));
+		expect(e).toMatchObject({ checksNamed: 60, checksFailed: 60 });
+		expect(e.symptoms).toHaveLength(50);
+		const c = card({
+			id: "lesson.r00",
+			claim: "diagnostic-hypothesis",
+			diagnosis: { hypothesis: "h", alternatives: ["a"] },
+			evidence: {
+				observations: [
+					{
+						study: "s",
+						stage: "main",
+						task: "tool-use",
+						condition: "arm-b",
+						outcome: "failed",
+						symptom: "R00: rule",
+					},
+				],
+				contradicting: [],
+				contrast: null,
+				analysis: [],
+			},
+		});
+		expect(assessCard(c, ex, lessonFile([]).target, f.repo).problems).toContain("observation-unsupported");
+	});
+
 	it("never counts an output where every check failed as evidence of one specific rule", () => {
 		const f = fixture();
 		setCheck(f.run, "tool-use", "arm-b", 0, "✖ R1: a (1ms)\n✖ R2: b (1ms)\n", false);
@@ -1054,6 +1112,31 @@ describe("text in a source or a card is data, never an instruction", () => {
 		expect(failingChecks("✖ failing tests:\n", false)).toEqual(["check-failed-unnamed"]);
 	});
 
+	it("never selects agent guidance supported by a citation alone", () => {
+		const f = fixture();
+		const cited = card({
+			id: "lesson.cited-guidance",
+			evidence: {
+				observations: [],
+				contradicting: [],
+				contrast: null,
+				analysis: [{ file: "analysis/main.json", pointer: "/primary/difference", value: 0.25 }],
+			},
+		});
+		const lessons = lessonFile([cited]);
+		const built = buildEligibility(f.corpus, f.roots, lessons).report;
+		const assessments = new Map(
+			((built.lessonFeasibility as { assessments: { id: string }[] }).assessments as never[]).map(
+				(a: { id: string }) => [a.id, a],
+			),
+		) as never;
+		expect(selectCards(lessons.cards, assessments, { ...CASE, features: ["feature-a"] })).toMatchObject({
+			selected: [],
+			abstained: true,
+			passedOver: [{ id: "lesson.cited-guidance", why: "unsupported" }],
+		});
+	});
+
 	it("selects a card only by its structured fields, whatever its guidance says", () => {
 		const f = fixture();
 		// Two cards identical except for their guidance: they are treated identically.
@@ -1091,6 +1174,13 @@ describe("the command's own inputs and output are guarded", () => {
 			/inside a source/,
 		);
 		expect(existsSync(join(f.run, "new"))).toBe(false);
+		// An output directory outside every source, holding an output file that links into one: nothing is written through it.
+		const out = fresh("out-links");
+		const before = readFileSync(join(f.run, "experiment.json"));
+		symlinkSync(join(f.run, "experiment.json"), join(out, "report.json"));
+		expect(() => writeOutputs(built, out, sourceDirectories(f.corpus, f.roots))).toThrow(/not a plain file/);
+		expect(readFileSync(join(f.run, "experiment.json")).equals(before)).toBe(true);
+		expect(existsSync(join(out, "manifest.json"))).toBe(false);
 		writeFileSync(join(f.repo, "analysis", "main.json"), "{ not json");
 		const refused = buildEligibility(f.corpus, f.roots, null).report;
 		expect(refused.problems).toContainEqual(expect.objectContaining({ path: "analysis/main.json", kind: "refused" }));

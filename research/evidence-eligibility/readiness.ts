@@ -26,6 +26,16 @@ export interface ReadinessReport {
  * given together (they exceed the shared allowance) or one is shown to mislead outside its conditions (it has a resolved contradiction).
  * Otherwise a checklist holding every usable card carries the same guidance, and an R − S contrast has no mechanism to measure.
  */
+/**
+ * Some case selects `a` and not `b`: a case holding exactly `a`'s requirements, plus at most one feature `b` excludes and `a` does not. `b` is
+ * then left out if it requires something `a` does not, or excludes something `a` requires or tolerates. A card that excludes one of its own
+ * requirements is never selected at all.
+ */
+function selectableWithout(a: Card, b: Card): boolean {
+	if (a.applies.some((f) => a.excludes.includes(f))) return false;
+	return b.applies.some((f) => !a.applies.includes(f)) || b.excludes.some((f) => !a.excludes.includes(f));
+}
+
 export function selectionMatters(cards: readonly Card[], usable: readonly CardAssessment[], budget: number): boolean {
 	const byId = new Map(cards.map((c) => [c.id, c]));
 	const u = usable.map((a) => byId.get(a.id)).filter((c): c is Card => c !== undefined);
@@ -33,11 +43,7 @@ export function selectionMatters(cards: readonly Card[], usable: readonly CardAs
 	for (const a of u)
 		for (const b of u) {
 			if (a.id >= b.id) continue;
-			const aExcludesB = a.excludes.some((f) => b.applies.includes(f));
-			const bExcludesA = b.excludes.some((f) => a.applies.includes(f));
-			const aImpliesB = b.applies.every((f) => a.applies.includes(f));
-			const bImpliesA = a.applies.every((f) => b.applies.includes(f));
-			if (aExcludesB || bExcludesA || (!aImpliesB && !bImpliesA)) separable = true;
+			if (selectableWithout(a, b) || selectableWithout(b, a)) separable = true;
 		}
 	const tokens = usable.reduce((n, a) => n + a.tokens, 0);
 	// Shown to mislead outside its conditions: a found counterexample naming a feature the card excludes (assessCard removes support for

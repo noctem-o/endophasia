@@ -2,7 +2,7 @@
 
 Run on 2026-11-06 over the committed corpus ([corpus.v0.json](corpus.v0.json)): every experiment run in the repository and the raw run
 directories of the four studies kept beside it (`../endophasia-research`, [research/DATA.md](../DATA.md)). Main at `74106f925` (the merge of
-#125). Report sha256 `9b5407353280b748…` (extractor 0.2.0); the manifest and summary are in [report/](report/) and are reproduced byte for byte by
+#125). Report sha256 `7444558c7cfa2fe9…` (extractor 0.3.0); the manifest and summary are in [report/](report/) and are reproduced byte for byte by
 `tests/evidence-eligibility-corpus.test.ts` where the archives are present. The rules are in [README.md](README.md).
 
 **The raw archives were read** (they are on the maintainer's machine, not publicly hosted). No DEVELOP store was given: none was found under
@@ -154,6 +154,13 @@ Two further fixes before merge (extractor 0.2.0; no count, exclusion or readines
   `experiment.json`, and a write that fails.
 - **"Zero passing named checks" replaces "nothing working was produced".** Test outcomes alone do not show that no usable artifact, or
   no implementation, was produced.
+
+Codex then found four more problems, each fixed with a regression test (extractor 0.3.0). None changed a count or a judgement here; only the
+report's digest changed:
+- cards that differ only in what they exclude now count as separable;
+- one unreadable check output is a problem of that trial, and no longer stops the whole report;
+- a contrast of a condition with itself is refused;
+- a declared source that holds no run is reported missing, so evidence cannot read READY.
 
 ## What this establishes, and what remains a hypothesis
 

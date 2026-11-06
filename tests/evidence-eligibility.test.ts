@@ -396,6 +396,23 @@ describe("a digest is not content, and digests compare only within their own key
 		expect(e.eligibility.descriptive.eligible).toBe(true);
 	});
 
+	it("reports an unreadable check output as a problem of that trial, and reads the rest of the corpus", () => {
+		const f = fixture();
+		const t = trialDir(f.run, "tool-use", "arm-b", 0);
+		rmSync(join(t, "check.txt"));
+		mkdirSync(join(t, "check.txt"));
+		const built = buildEligibility(f.corpus, f.roots, null).report;
+		const ex = built.examples as Example[];
+		expect(ex).toHaveLength(12);
+		const e = byId(ex, T("tool-use", "arm-b", 0));
+		expect(e.content.checkOutput).toBe("unreadable");
+		expect(e.symptoms).toBeNull();
+		expect(e.eligibility.symptom.reasons).toContain("check-output-unreadable");
+		expect(built.problems).toContainEqual(
+			expect.objectContaining({ path: "trials/tool-use/arm-b/0/check.txt", kind: "unreadable" }),
+		);
+	});
+
 	it("verifies an output under the key it names, and never accepts it under another key or an installation key", () => {
 		const f = fixture();
 		setCheck(f.run, "tool-use", "arm-b", 1, "✖ R2: other (2ms)\n", false, ALT);
@@ -584,6 +601,42 @@ describe("invalid arms and excluded trials support no positive claim", () => {
 			expect(e.identity.harness).toBeNull();
 			expect(e.eligibility["causal-policy"].reasons).toContain("harness-identity-unavailable");
 		}
+	});
+
+	it("refuses a contrast of a condition with itself", () => {
+		const f = fixture();
+		const self = card({
+			id: "lesson.self",
+			claim: "controlled-intervention",
+			evidence: {
+				observations: [
+					{
+						study: "s",
+						stage: "main",
+						task: "implement-function",
+						condition: "arm-b",
+						outcome: "any",
+						symptom: null,
+					},
+				],
+				contradicting: [],
+				contrast: {
+					study: "s",
+					stage: "main",
+					tasks: ["implement-function"],
+					treatment: "arm-b",
+					control: "arm-b",
+					interval: { file: "analysis/main.json", low: "/primary/cluster/low", high: "/primary/cluster/high" },
+					direction: "increase",
+				},
+				analysis: [],
+			},
+		});
+		expect(assessCard(self, examplesOf(f), lessonFile([]).target, f.repo)).toMatchObject({
+			supported: false,
+			problems: ["contrast-same-arm"],
+		});
+		expect(() => lessonFile([self])).toThrow(/compares a condition with itself/);
 	});
 
 	it("keeps every trial of a run a document declares invalid out of learning", () => {
@@ -1030,6 +1083,23 @@ describe("lesson candidates: revoked, unavailable or incompatible cards are neve
 		expect(summary).not.toMatch(/nothing working|no implementation\)/i);
 	});
 
+	it("counts cards that differ only in what they exclude as separable", () => {
+		const f = fixture();
+		const ex = examplesOf(f);
+		const t = lessonFile([]).target;
+		const x = card({ id: "lesson.x", applies: ["common"], excludes: ["x"] });
+		const y = card({ id: "lesson.y", applies: ["common"], excludes: ["y"] });
+		const both = [x, y].map((c) => assessCard(c, ex, t, f.repo));
+		const assessments = new Map(both.map((a) => [a.id, a]));
+		// Each can be selected without the other...
+		expect(selectCards([x, y], assessments, { ...CASE, features: ["common", "x"] }).selected).toEqual(["lesson.y"]);
+		expect(selectCards([x, y], assessments, { ...CASE, features: ["common", "y"] }).selected).toEqual(["lesson.x"]);
+		// ...so with more guidance than fits, selection matters; with identical conditions it never does.
+		expect(selectionMatters([x, y], both, 2)).toBe(true);
+		const same = card({ id: "lesson.same", applies: ["common"], excludes: ["x"] });
+		expect(selectionMatters([x, same], [both[0]!, assessCard(same, ex, t, f.repo)], 2)).toBe(false);
+	});
+
 	it("says selection does not matter when every usable card fits in the shared allowance and none misleads elsewhere", () => {
 		const f = fixture();
 		const ex = examplesOf(f);
@@ -1167,6 +1237,33 @@ describe("text in a source or a card is data, never an instruction", () => {
 			"lesson.loud",
 			"lesson.quiet",
 		]);
+	});
+});
+
+describe("a declared source that holds no run", () => {
+	it("is reported missing, and evidence is not READY because of it", () => {
+		const f = fixture({
+			sources: [
+				{
+					id: "raw/s/empty",
+					kind: "experiment-run",
+					study: "s",
+					stage: "main",
+					location: "research-data",
+					path: "s/raw/empty",
+					children: true,
+				},
+			],
+		});
+		mkdirSync(join(f.data, "s", "raw", "empty", "not-a-run"), { recursive: true });
+		const built = buildEligibility(f.corpus, f.roots, lessonFile([card({ id: "lesson.applies" })])).report;
+		expect(built.sources).toContainEqual(
+			expect.objectContaining({ id: "raw/s/empty", status: "missing", examples: 0 }),
+		);
+		expect(built.problems).toContainEqual(
+			expect.objectContaining({ sourceId: "raw/s/empty", detail: "the declared source holds no experiment run" }),
+		);
+		expect((built.readiness as { evidence: { status: string } }).evidence.status).not.toBe("READY");
 	});
 });
 

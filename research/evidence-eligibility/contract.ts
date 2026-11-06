@@ -13,7 +13,7 @@ export const ENDO_EVIDENCE_ELIGIBILITY_MANIFEST_V0 = "endo.evidence-eligibility-
 export const ENDO_EVIDENCE_CORPUS_V0 = "endo.evidence-corpus.v0";
 export const ENDO_LESSON_CANDIDATES_V0 = "endo.lesson-candidates.v0";
 /** The projection's own version: a change to any rule below is a new version, and an old report keeps its own. */
-export const ENDO_ELIGIBILITY_EXTRACTOR_V0 = { name: "endo.evidence-eligibility", version: "0.2.0" } as const;
+export const ENDO_ELIGIBILITY_EXTRACTOR_V0 = { name: "endo.evidence-eligibility", version: "0.3.0" } as const;
 
 /** What an example may be used for. */
 export const OBJECTIVES = ["descriptive", "symptom", "lesson", "causal-policy"] as const;
@@ -36,6 +36,8 @@ export const REASONS = {
 	"check-output-absent": "The check's output file is not present beside the result, so the symptom cannot be read.",
 	"check-output-mismatch":
 		"The check's output file does not match the digest the result recorded; it is not that trial's output.",
+	"check-output-unreadable":
+		"Something is at the check output's place that is not a readable regular file (a directory, a link, unreadable): it is not read.",
 	"check-output-unverifiable":
 		"The output is under a digest key this projection does not hold (an installation key), so it is not bound to the result.",
 	"content-unavailable":
@@ -160,7 +162,7 @@ export interface Example {
 	content: {
 		store: Availability;
 		capture: Availability;
-		checkOutput: "verified" | "mismatch" | "absent" | "unverifiable" | "not-applicable";
+		checkOutput: "verified" | "mismatch" | "absent" | "unverifiable" | "unreadable" | "not-applicable";
 	};
 	outcome:
 		| { kind: "check"; passed: boolean; timedOut: boolean; scope: string }

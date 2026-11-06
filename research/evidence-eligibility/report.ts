@@ -136,7 +136,31 @@ export function buildEligibility(
 			sources.push({ ...base, id: s.id, path: s.path, status: "read", files: {}, examples: made.length });
 			continue;
 		}
-		for (const run of runsOf(s, dir)) {
+		let runs: ReturnType<typeof runsOf>;
+		try {
+			runs = runsOf(s, dir);
+		} catch {
+			sources.push({ ...base, id: s.id, path: s.path, status: "refused", files: {}, examples: 0 });
+			problems.push({
+				sourceId: s.id,
+				path: s.path,
+				kind: "unreadable",
+				detail: "the declared source could not be listed",
+			});
+			continue;
+		}
+		// A declared source that holds no run (an empty or partly restored archive) is unqualified, never silently qualified.
+		if (runs.length === 0) {
+			sources.push({ ...base, id: s.id, path: s.path, status: "missing", files: {}, examples: 0 });
+			problems.push({
+				sourceId: s.id,
+				path: s.path,
+				kind: "missing",
+				detail: "the declared source holds no experiment run",
+			});
+			continue;
+		}
+		for (const run of runs) {
 			const read = readExperimentRun(run.dir);
 			if ("problem" in read) {
 				sources.push({ ...base, id: run.id, path: run.path, status: "refused", files: {}, examples: 0 });

@@ -52,7 +52,7 @@ would let a reader confirm a guess, so none is kept; an attempt's record identit
 | `duplicate-record`, `conflicting-duplicate` | all | the same run read from two locations: identical bytes are counted once, and different bytes mean neither copy is used. The canonical copy is the raw archive's, then a store's, then the repository's; content present breaks ties |
 | `interrupted-execution` | learning | the runner moved it aside and never counted it; kept as an operational outcome, linked from the counted rerun |
 | `outcome-missing`, `no-check` | learning | a runner error, or a task with no check: no outcome measure. Never a failure |
-| `check-output-absent`, `-mismatch`, `-unverifiable` | symptom, lesson | the output beside the result is missing, is not the digested output, or is under a key this projection does not hold |
+| `check-output-absent`, `-mismatch`, `-unverifiable`, `-unreadable` | symptom, lesson | the output beside the result is missing, is not the digested output, is under a key this projection does not hold, or is not a readable regular file (also reported as a problem of that trial) |
 | `content-unavailable` | lesson | digests and counts only: no capture log and blobs |
 | `trial-excluded`, `exclusions-unresolved`, `run-invalid` | learning | the study excluded it by name; excluded trials were counted but not named for its task; a document declares the run invalid |
 | `validity-undeclared` | lesson, causal | no machine-readable validity reading: contamination unknown |
@@ -103,11 +103,12 @@ reviewer and are not blinded; they check the selector's behaviour, not coding pe
 
 **Readiness rules** (`readiness.ts`), each READY, NOT READY or INDETERMINATE, with no confidence number:
 
-- **Evidence:** NOT READY if a source was refused, copies conflict, or a cited study stage has no validity reading; INDETERMINATE if a
-  declared source was absent (absent is unqualified, not empty) or the raw archives were not read; otherwise READY.
+- **Evidence:** NOT READY if a source was refused, copies conflict, or a cited study stage has no validity reading. INDETERMINATE if a
+  declared source was absent or holds no run (absent is unqualified, not empty), or the raw archives were not read. Otherwise READY.
 - **Lessons:** NOT READY with fewer than two usable cards, or when **selection does not matter**. That is decided structurally from the
   cards' `applies` and `excludes` (the applicability cases are not used), and it fails in either of two ways:
-  - no two usable cards are separable (neither excludes what the other requires, and one's requirements imply the other's);
+  - no two usable cards are separable: no case selects one and not the other. A case can leave `b` out while selecting `a` when `b`
+    requires something `a` does not, or excludes something `a` does not, so cards that differ only in their exclusions are separable;
   - or every usable card fits in the shared allowance (600 tokens, approximated as UTF-8 bytes / 4) and none has a found counterexample
     naming a feature it excludes.
 

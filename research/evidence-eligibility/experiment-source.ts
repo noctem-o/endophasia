@@ -37,7 +37,7 @@ export interface TrialFacts {
 	schemaVersion: string;
 	store: boolean;
 	capture: boolean;
-	checkOutput: "verified" | "mismatch" | "absent" | "unverifiable" | "not-applicable";
+	checkOutput: "verified" | "mismatch" | "absent" | "unverifiable" | "unreadable" | "not-applicable";
 	/** Failing checks the verified output names, only under a public fixture key; null when not read. */
 	symptoms: string[] | null;
 	/** How many distinct tests the verified output names (failing and passing); null when not read. */
@@ -200,11 +200,23 @@ function wireModelsOf(result: EndoExperimentTrialResultAnyV0): string[] | null {
 	return seen;
 }
 
+/** A filesystem probe that reports failure as false, never as an exception that would end the whole corpus. */
+const probe = (f: () => boolean): boolean => {
+	try {
+		return f();
+	} catch {
+		return false;
+	}
+};
+
 function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | null) {
-	const store = isDirectory(join(trialDir, "store"));
-	const capture =
-		nonEmptyDirectory(join(trialDir, "store", "capture", "events")) &&
-		nonEmptyDirectory(join(trialDir, "store", "capture", "blobs"));
+	const store = probe(() => isDirectory(join(trialDir, "store")));
+	const capture = probe(
+		() =>
+			nonEmptyDirectory(join(trialDir, "store", "capture", "events")) &&
+			nonEmptyDirectory(join(trialDir, "store", "capture", "blobs")),
+	);
+	let problem: string | null = null;
 	let checkOutput: TrialFacts["checkOutput"] = "not-applicable";
 	let symptoms: string[] | null = null;
 	let checksNamed: number | null = null;
@@ -213,14 +225,35 @@ function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | nu
 	if (result !== null && result.status === "completed" && result.check.ran) {
 		const out = join(trialDir, "check.txt");
 		const digest = result.check.output;
-		if (!existsSync(out)) checkOutput = "absent";
-		else {
+		let stat: ReturnType<typeof lstatSync> | undefined;
+		let statFailed = false;
+		try {
+			stat = lstatSync(out, { throwIfNoEntry: false });
+		} catch {
+			statFailed = true;
+		}
+		if (statFailed) {
+			checkOutput = "unreadable";
+			problem = "the check output could not be examined";
+		} else if (stat === undefined) checkOutput = "absent";
+		else if (!stat.isFile()) {
+			// A directory, link, device or other non-file where the output should be: not that trial's output, and not read.
+			checkOutput = "unreadable";
+			problem = "the check output is not a regular file";
+		} else {
 			const key = fixtureKey(digest.keyId);
+			let bytes: Buffer | null = null;
+			if (key !== null)
+				try {
+					bytes = readFileSync(out);
+				} catch {
+					problem = "the check output could not be read";
+				}
 			if (key === null) {
 				checkOutput = "unverifiable";
 				symptomsWithheld = true;
-			} else {
-				const bytes = readFileSync(out);
+			} else if (bytes === null) checkOutput = "unreadable";
+			else {
 				const matches = bytes.length === digest.bytes && key.digestBytes(bytes).value === digest.value;
 				checkOutput = matches ? "verified" : "mismatch";
 				if (matches) {
@@ -233,7 +266,7 @@ function contentOf(trialDir: string, result: EndoExperimentTrialResultAnyV0 | nu
 			}
 		}
 	}
-	return { store, capture, checkOutput, symptoms, checksNamed, checksFailed, symptomsWithheld };
+	return { content: { store, capture, checkOutput, symptoms, checksNamed, checksFailed, symptomsWithheld }, problem };
 }
 
 /** Every file under a directory, by relative path, with its size and sha256: links are listed, never followed. */
@@ -294,7 +327,8 @@ export function readExperimentRun(dir: string): RunFacts | { problem: Omit<Sourc
 			unrun += 1;
 			continue;
 		}
-		const content = contentOf(join(dir, rel), result);
+		const { content, problem } = contentOf(join(dir, rel), result);
+		if (problem !== null) problems.push({ path: `${rel}/check.txt`, kind: "unreadable", detail: problem });
 		trials.push({
 			entry,
 			path: rel,
@@ -328,7 +362,14 @@ export function readExperimentRun(dir: string): RunFacts | { problem: Omit<Sourc
 				});
 				continue;
 			}
-			const content = contentOf(join(aside, name), null);
+			const { content } = contentOf(join(aside, name), null);
+			let files: [string, number, string][];
+			try {
+				files = filesOf(join(aside, name));
+			} catch {
+				problems.push({ path: rel, kind: "unreadable", detail: "interrupted execution could not be read" });
+				continue;
+			}
 			// Its own session (the runner names the directory `…-session-<n>`), not the rerun's; its identity is its files, not its name.
 			const session = /-session-([0-9]+)$/.exec(name);
 			trials.push({
@@ -336,9 +377,7 @@ export function readExperimentRun(dir: string): RunFacts | { problem: Omit<Sourc
 				path: rel,
 				kind: "interrupted",
 				result: null,
-				recordSha256: sha256HexV0(
-					canonicalEndoJsonV0({ movedTo: rel, ...entry, files: filesOf(join(aside, name)) }),
-				),
+				recordSha256: sha256HexV0(canonicalEndoJsonV0({ movedTo: rel, ...entry, files })),
 				schemaVersion: "interrupted",
 				...content,
 				harness: harnessOf(dir, session === null ? undefined : Number(session[1])),

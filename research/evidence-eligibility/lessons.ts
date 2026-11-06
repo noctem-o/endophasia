@@ -192,6 +192,7 @@ export function readLessonFile(value: unknown): LessonFile {
 			);
 			if (!Array.isArray(k.tasks) || k.tasks.length === 0) throw new TypeError(`${w}.evidence.contrast.tasks`);
 			const iv = closed(k.interval, ["file", "low", "high"], `${w}.evidence.contrast.interval`);
+			if (k.treatment === k.control) throw new TypeError(`${w}.evidence.contrast compares a condition with itself`);
 			contrast = {
 				study: str(k.study, "study", 120),
 				stage: str(k.stage, "stage", 80),
@@ -284,6 +285,7 @@ export type CardProblem =
 	| "observations-invalid-arm-only"
 	| "scope-unobserved"
 	| "contrast-opposite"
+	| "contrast-same-arm"
 	| "analysis-missing"
 	| "analysis-mismatch"
 	| "contrast-missing"
@@ -484,6 +486,8 @@ export function assessCard(
 				armInvalid,
 				interval: { low, high, sha256: file?.sha256 ?? null },
 			};
+			// A contrast of an arm with itself is no contrast (the reader refuses it; a card built in code is caught here).
+			if (k.treatment === k.control) problems.add("contrast-same-arm");
 			if (armInvalid > 0) problems.add("contrast-arm-invalid");
 			else if (contrast.treatment === 0 || contrast.control === 0) problems.add("contrast-unsupported");
 			if (low === null || high === null || low > high) problems.add("analysis-missing");

@@ -69,6 +69,7 @@ export function experimentExample(ctx: TrialContext, t: TrialFacts): Example {
 		if (t.checkOutput === "absent") add(r, "check-output-absent", "symptom", "lesson");
 		if (t.checkOutput === "mismatch") add(r, "check-output-mismatch", "symptom", "lesson");
 		if (t.checkOutput === "unverifiable") add(r, "check-output-unverifiable", "symptom", "lesson");
+		if (t.checkOutput === "unreadable") add(r, "check-output-unreadable", "symptom", "lesson");
 	}
 	if (!t.capture) add(r, "content-unavailable", "lesson");
 	if (ctx.runInvalid) add(r, "run-invalid", ...learning);

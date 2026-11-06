@@ -1,0 +1,54 @@
+{
+	"schemaVersion": "endo.applicability-cases.v0",
+	"disclosure": "Written by the same reviewer as the cards, after the cards: these are not blinded. They check that the selector behaves as specified; they say nothing about coding performance.",
+	"cases": [
+		{
+			"id": "applicable",
+			"purpose": "A task the code-span card is written for, in the target's setup: the card is selected.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": ["inline-markup-parsing"] },
+			"expect": { "selected": ["lesson.code-span-content-is-literal"], "abstained": false }
+		},
+		{
+			"id": "irrelevant",
+			"purpose": "A task no card is about: abstain.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": ["date-arithmetic"] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "superficially-similar",
+			"purpose": "Inline markup whose own specification defines escapes inside code spans: the code-span card would mislead, and is excluded.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": ["inline-markup-parsing", "code-span-escapes-defined"] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "no-features",
+			"purpose": "Nothing is known about the task: abstain rather than guess.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": [] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "other-harness-version",
+			"purpose": "The same task under Pi 1.5.0: every card is scoped to Pi 1.0.1, so none applies until re-qualified.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.5.0" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": ["inline-markup-parsing"] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "other-environment",
+			"purpose": "A JSON merge task with reasoning on: the __proto__ card was observed only with thinking off, so it does not apply.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:32768", "reasoning:on"], "features": ["json-object-merge"] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "invalid-source",
+			"purpose": "A light task: the thinking-off card cites an invalid arm, so it is unsupported and never selected.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:16384"], "features": ["light-coding-task"] },
+			"expect": { "selected": [], "abstained": true }
+		},
+		{
+			"id": "binding-cap",
+			"purpose": "Under the old binding cap: the cap card is configuration, the operator's to apply, so it never enters the agent's context; the brief-reasoning card is unsupported (its contrast is inconclusive). Abstain.",
+			"case": { "model": "endolocal/qwen3.8-27b", "harness": { "name": "pi", "version": "1.0.1" }, "environment": ["completion-cap:16384", "reasoning:on"], "features": ["multi-step-coding-task"] },
+			"expect": { "selected": [], "abstained": true }
+		}
+	]
+}

@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- **MEM-000: what the recorded evidence permits us to learn, before any memory selector is built.** `node
+  research/evidence-eligibility/report.ts --out <dir>` reads every experiment run and an optional DEVELOP store, read-only, through the
+  existing version-directed readers. It reports, per decision, which learning objectives (descriptive, symptom, lesson, causal policy)
+  the record may serve, with closed reasons for each it may not. The reasons include duplicates, interrupted executions, missing outcomes
+  (never failures), unverified or digest-only content, study exclusions and invalid arms (cited from the studies' committed analyses),
+  operator-only assignment, and receipts' limits. It checks a small hand-written set of lesson candidates against those examples, and
+  judges MEM-001's evidence, lesson and evaluator readiness separately. The output is deterministic and holds no absolute path, prompt or
+  tool text. Over the local archives: 143 examples are usable for causal policy (one study). Reasoning on, there are 11 specific failures,
+  10 of them one rule of one task. One candidate is usable. MEM-001 is NOT READY, and the recommendation is to reconsider the objective.
+  Research-only; no production contract changes. See [research/evidence-eligibility/RESULTS.md](research/evidence-eligibility/RESULTS.md).
 - **Request a prepared attempt from the paired workbench page, and see where it stands from any view.** In the live workbench (`endo
   harness attach --control --workbench --project <id>`), Task → an attempt → **Request sending ‹id› to Pi** asks the attached terminal to
   approve sending that attempt's brief. It uses a new grant-gated route, `POST attempt/propose {attemptId}`, which names the attempt and

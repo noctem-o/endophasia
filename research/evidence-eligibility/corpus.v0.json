@@ -1,0 +1,37 @@
+{
+	"schemaVersion": "endo.evidence-corpus.v0",
+	"id": "endo.corpus.mem-000",
+	"description": "Every experiment run committed to the repository, the raw run directories of the four studies kept outside it (research/DATA.md), and an optional DEVELOP store. Validity is cited from each study's committed analysis where one is machine-readable; facts stated only in a study's prose are declarations, cited by document.",
+	"sources": [
+		{ "id": "committed/variance/main", "kind": "experiment-run", "study": "variance", "stage": "main", "location": "repository", "path": "research/variance/1.0.1/main", "children": false },
+		{ "id": "committed/variance/main-run-1-invalid", "kind": "experiment-run", "study": "variance", "stage": "main", "location": "repository", "path": "research/variance/1.0.1/main-run-1-invalid", "children": false },
+		{ "id": "committed/variance/pilot", "kind": "experiment-run", "study": "variance", "stage": "pilot", "location": "repository", "path": "research/variance/1.0.1/pilot", "children": false },
+		{ "id": "committed/pinned-environment/main", "kind": "experiment-run", "study": "pinned-environment", "stage": "main", "location": "repository", "path": "research/pinned-environment/1.0.1/main", "children": false },
+		{ "id": "committed/pinned-environment/pilot", "kind": "experiment-run", "study": "pinned-environment", "stage": "pilot", "location": "repository", "path": "research/pinned-environment/1.0.1/pilot", "children": false },
+		{ "id": "committed/steering/main", "kind": "experiment-run", "study": "steering", "stage": "main", "location": "repository", "path": "research/steering/1.0.1/main", "children": false },
+		{ "id": "committed/steering/pilot", "kind": "experiment-run", "study": "steering", "stage": "pilot", "location": "repository", "path": "research/steering/1.0.1/pilot", "children": false },
+		{ "id": "committed/path-sensitivity/main", "kind": "experiment-run", "study": "path-sensitivity", "stage": "main", "location": "repository", "path": "research/path-sensitivity/1.0.1/main", "children": true },
+		{ "id": "committed/path-sensitivity/pilot", "kind": "experiment-run", "study": "path-sensitivity", "stage": "pilot", "location": "repository", "path": "research/path-sensitivity/1.0.1/pilot", "children": true },
+		{ "id": "raw/steering/main", "kind": "experiment-run", "study": "steering", "stage": "main", "location": "research-data", "path": "steering/1.0.1/raw/main", "children": false },
+		{ "id": "raw/steering/pilot", "kind": "experiment-run", "study": "steering", "stage": "pilot", "location": "research-data", "path": "steering/1.0.1/raw/pilot", "children": false },
+		{ "id": "raw/steering/posthoc-main-path", "kind": "experiment-run", "study": "steering", "stage": "posthoc", "location": "research-data", "path": "steering/1.0.1/raw/posthoc-main-path", "children": false },
+		{ "id": "raw/steering/posthoc-pilot-path", "kind": "experiment-run", "study": "steering", "stage": "posthoc", "location": "research-data", "path": "steering/1.0.1/raw/posthoc-pilot-path", "children": false },
+		{ "id": "raw/path-sensitivity/main", "kind": "experiment-run", "study": "path-sensitivity", "stage": "main", "location": "research-data", "path": "path-sensitivity/1.0.1/raw/main", "children": true },
+		{ "id": "raw/path-sensitivity/pilot", "kind": "experiment-run", "study": "path-sensitivity", "stage": "pilot", "location": "research-data", "path": "path-sensitivity/1.0.1/raw/pilot", "children": true },
+		{ "id": "raw/discriminating-tasks/pilot", "kind": "experiment-run", "study": "discriminating-tasks", "stage": "pilot", "location": "research-data", "path": "discriminating-tasks/1.0.1/raw/pilot", "children": false },
+		{ "id": "raw/discriminating-tasks/confirm", "kind": "experiment-run", "study": "discriminating-tasks", "stage": "confirmation", "location": "research-data", "path": "discriminating-tasks/1.0.1/raw/confirm", "children": true },
+		{ "id": "raw/completion-cap/pilot", "kind": "experiment-run", "study": "completion-cap", "stage": "pilot", "location": "research-data", "path": "completion-cap/1.0.1/raw/pilot", "children": false },
+		{ "id": "raw/completion-cap/main", "kind": "experiment-run", "study": "completion-cap", "stage": "main", "location": "research-data", "path": "completion-cap/1.0.1/raw/main", "children": true },
+		{ "id": "develop/store", "kind": "develop-store", "study": null, "stage": null, "location": "store", "path": ".", "children": false }
+	],
+	"validity": [
+		{ "study": "completion-cap", "stage": "main", "reader": "completion-cap-analysis.v0", "file": "research/completion-cap/1.0.1/analysis/main.json" },
+		{ "study": "discriminating-tasks", "stage": "pilot", "reader": "discriminating-tasks-analysis.v0", "file": "research/discriminating-tasks/1.0.1/analysis/pilot-screen.json" },
+		{ "study": "discriminating-tasks", "stage": "confirmation", "reader": "discriminating-tasks-analysis.v0", "file": "research/discriminating-tasks/1.0.1/analysis/confirmation.json" }
+	],
+	"declarations": [
+		{ "kind": "run-invalid", "source": "committed/variance/main-run-1-invalid", "document": "research/variance/1.0.1/RESULTS.md", "note": "Deviation 2: the first main run is invalid because of a measurement artifact of the recording proxy." },
+		{ "kind": "task-examined", "study": "discriminating-tasks", "task": "markup-lite", "document": "research/completion-cap/1.0.1/RESULTS.md", "note": "markup-lite was the discriminating-task study's designated holdout; the completion-cap study read it, so it is development data." },
+		{ "kind": "task-examined", "study": "completion-cap", "task": "markup-lite", "document": "research/completion-cap/1.0.1/RESULTS.md", "note": "The completion-cap study examined markup-lite, the earlier study's designated holdout." }
+	]
+}

@@ -381,7 +381,7 @@
 	],
 	"extractor": {
 		"name": "endo.evidence-eligibility",
-		"version": "0.1.0"
+		"version": "0.2.0"
 	},
 	"lessonFeasibility": {
 		"applicability": [
@@ -632,7 +632,7 @@
 		"duplicates": 504,
 		"examples": 1834,
 		"file": "report.json",
-		"sha256": "e38c41c97529eeda97cdd6e590fdf21d1814e4c1200bcf06cc21147049b27709"
+		"sha256": "9b5407353280b748ca3dff46ed252e74edcb05fbb96ce734bb00585b0fec4d57"
 	},
 	"roots": {
 		"researchData": "read",

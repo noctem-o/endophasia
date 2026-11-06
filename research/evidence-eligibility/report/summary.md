@@ -1,6 +1,6 @@
 # Evidence eligibility (MEM-000)
 
-Corpus `endo.corpus.mem-000` (sha256 `bbe2eb9ca71d2f1b…`), report sha256 `e38c41c97529eeda…`.
+Corpus `endo.corpus.mem-000` (sha256 `bbe2eb9ca71d2f1b…`), report sha256 `9b5407353280b748…`.
 Research data: **read**. DEVELOP store: **not-given**.
 
 Sources: 86 (85 read, 1 missing, 0 refused). Planned trials with no result in the copy read: 384. Other problems: 0. Examples with a named exclusion: 61.
@@ -27,9 +27,9 @@ Duplicates are counted once, at their canonical copy (here and below).
 
 ## Recurring failure symptoms (symptom-eligible trials with a failed check)
 
-Every check failed means every test the output names failed: nothing working was produced (a cut-off response or no implementation), not a specific rule.
+Zero passing named checks means every test the output names failed. It does not show that no usable artifact was produced, nor that nothing was implemented: this projection reads no truncation or workspace evidence per trial. It is never counted as evidence of one specific rule.
 
-| Study / stage | Task | Condition | Failed / trials | Every check failed | Most common specific failing checks (count) |
+| Study / stage | Task | Condition | Failed / trials | Zero passing named checks | Most common specific failing checks (count) |
 | :-- | :-- | :-- | --: | --: | :-- |
 | completion-cap / main | booking-conflicts | arm-e | 1/12 | 0 | R1: shape and timestamp validation is a TypeError (1) |
 | completion-cap / main | config-extends | arm-a | 2/12 | 2 | — |

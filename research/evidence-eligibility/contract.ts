@@ -13,7 +13,7 @@ export const ENDO_EVIDENCE_ELIGIBILITY_MANIFEST_V0 = "endo.evidence-eligibility-
 export const ENDO_EVIDENCE_CORPUS_V0 = "endo.evidence-corpus.v0";
 export const ENDO_LESSON_CANDIDATES_V0 = "endo.lesson-candidates.v0";
 /** The projection's own version: a change to any rule below is a new version, and an old report keeps its own. */
-export const ENDO_ELIGIBILITY_EXTRACTOR_V0 = { name: "endo.evidence-eligibility", version: "0.1.0" } as const;
+export const ENDO_ELIGIBILITY_EXTRACTOR_V0 = { name: "endo.evidence-eligibility", version: "0.2.0" } as const;
 
 /** What an example may be used for. */
 export const OBJECTIVES = ["descriptive", "symptom", "lesson", "causal-policy"] as const;

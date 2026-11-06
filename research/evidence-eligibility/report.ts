@@ -6,16 +6,20 @@
 // exclusions, the report's digest) and summary.md. The output never holds an absolute path, a timestamp or any prompt, reasoning, request or
 // tool text: the same inputs give the same bytes on any machine. <dir> may not be inside any source it reads.
 
+import { randomBytes } from "node:crypto";
 import {
 	closeSync,
 	constants,
 	existsSync,
+	fsyncSync,
 	lstatSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
+	rmSync,
 	writeSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -43,8 +47,8 @@ import {
 	assessCard,
 	type CardAssessment,
 	type Case,
-	everyCheckFailed,
 	type LessonFile,
+	noNamedCheckPassed,
 	readLessonFile,
 	selectCards,
 } from "./lessons.ts";
@@ -272,7 +276,7 @@ export function buildEligibility(
 			condition: string;
 			trials: number;
 			failed: number;
-			everyCheck: number;
+			noneNamedPassed: number;
 			families: Map<string, number>;
 		}
 	>();
@@ -287,15 +291,16 @@ export function buildEligibility(
 			condition: e.decision.condition,
 			trials: 0,
 			failed: 0,
-			everyCheck: 0,
+			noneNamedPassed: 0,
 			families: new Map<string, number>(),
 		};
 		c.trials++;
 		if (!e.outcome.passed) {
 			c.failed++;
-			// Every named test failed: nothing working was produced (a cut-off response, no implementation), not a specific rule.
+			// No named test passed. That is all it says: not that no usable artifact exists, nor that nothing was implemented (truncation or a
+			// missing implementation would need its own evidence). It is never evidence of one specific rule.
 			const failing = e.symptoms ?? [];
-			if (everyCheckFailed(e)) c.everyCheck++;
+			if (noNamedCheckPassed(e)) c.noneNamedPassed++;
 			const family = JSON.stringify(failing);
 			c.families.set(family, (c.families.get(family) ?? 0) + 1);
 		}
@@ -310,7 +315,7 @@ export function buildEligibility(
 			condition: c.condition,
 			trials: c.trials,
 			failed: c.failed,
-			everyCheckFailed: c.everyCheck,
+			noNamedCheckPassed: c.noneNamedPassed,
 			families: [...c.families.entries()]
 				.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
 				.map(([family, count]) => ({ failing: JSON.parse(family) as string[], count })),
@@ -458,7 +463,7 @@ function summaryOf(
 			condition: string;
 			trials: number;
 			failed: number;
-			everyCheckFailed: number;
+			noNamedCheckPassed: number;
 			families: { failing: string[]; count: number }[];
 		}[];
 		lessonFeasibility: { assessments: CardAssessment[]; applicability: { id: string; passed: boolean }[] } | null;
@@ -505,14 +510,14 @@ function summaryOf(
 	}
 	L.push("", "## Recurring failure symptoms (symptom-eligible trials with a failed check)", "");
 	L.push(
-		"Every check failed means every test the output names failed: nothing working was produced (a cut-off response or no implementation), not a specific rule.",
+		"Zero passing named checks means every test the output names failed. It does not show that no usable artifact was produced, nor that nothing was implemented: this projection reads no truncation or workspace evidence per trial. It is never counted as evidence of one specific rule.",
 		"",
-		"| Study / stage | Task | Condition | Failed / trials | Every check failed | Most common specific failing checks (count) |",
+		"| Study / stage | Task | Condition | Failed / trials | Zero passing named checks | Most common specific failing checks (count) |",
 		"| :-- | :-- | :-- | --: | --: | :-- |",
 	);
 	for (const s of r.symptoms.filter((x) => x.failed > 0))
 		L.push(
-			`| ${s.study} / ${s.stage} | ${s.task} | ${s.condition} | ${s.failed}/${s.trials} | ${s.everyCheckFailed} | ${
+			`| ${s.study} / ${s.stage} | ${s.task} | ${s.condition} | ${s.failed}/${s.trials} | ${s.noNamedCheckPassed} | ${
 				s.families
 					.filter((f) => f.failing.length <= 3)
 					.slice(0, 2)
@@ -616,31 +621,70 @@ export function readCases(value: unknown): ApplicabilityCase[] {
 	});
 }
 
-/** Open for writing without following a link at the final name, so a link that appears after the check is refused too. */
-const openFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;
+/** A new file only: never an existing name, never through a link. */
+const createFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 
+/**
+ * Write the three outputs without ever writing into an existing inode. Each is written to a new temporary file in the output directory (created
+ * exclusively, never through a link), flushed, and renamed over its name. A rename replaces the directory entry, so an output name that was a
+ * hard link to a source file only loses that name: the source inode is never opened for writing. An output name that is a symbolic link or
+ * not a plain file is refused before anything is written.
+ *
+ * Races: the directory is resolved to its real path once, checked against every source, and its identity (device and inode) is checked again
+ * before the renames. Node has no openat/renameat, so a process able to replace the output directory's parents during the write could still
+ * redirect it; the check narrows that window to the renames themselves. On refusal or failure the temporary files are removed and nothing
+ * else is touched.
+ */
 export function writeOutputs(built: Built, out: string, sourceDirs: readonly string[]): void {
-	const target = real(out);
-	for (const dir of sourceDirs)
-		if (within(real(dir), target)) throw new TypeError("the output directory is inside a source the report reads");
+	const inside = (dir: string) => sourceDirs.some((source) => within(real(source), dir));
+	if (inside(real(out))) throw new TypeError("the output directory is inside a source the report reads");
 	mkdirSync(out, { recursive: true });
+	const dir = realpathSync(out);
+	if (inside(dir)) throw new TypeError("the output directory is inside a source the report reads");
+	const identity = lstatSync(dir);
+	if (!identity.isDirectory()) throw new TypeError("the output directory is not a directory");
 	const files: [string, string][] = [
 		["report.json", canonicalEndoJsonV0(built.report)],
 		["manifest.json", canonicalEndoJsonV0(built.manifest)],
 		["summary.md", built.summary],
 	];
-	// A destination that is a link (to a source file or anywhere) is never written through, and nothing is written if any one is.
 	for (const [name] of files) {
-		const s = lstatSync(join(out, name), { throwIfNoEntry: false });
+		const s = lstatSync(join(dir, name), { throwIfNoEntry: false });
 		if (s !== undefined && !s.isFile()) throw new TypeError(`the output ${name} exists and is not a plain file`);
 	}
-	for (const [name, text] of files) {
-		const fd = openSync(join(out, name), openFlags, 0o644);
-		try {
-			writeSync(fd, text);
-		} finally {
-			closeSync(fd);
+	const temporary: string[] = [];
+	try {
+		const written = files.map(([name, text]) => {
+			const tmp = join(dir, `.${name}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`);
+			const fd = openSync(tmp, createFlags, 0o644);
+			temporary.push(tmp);
+			try {
+				writeSync(fd, text);
+				fsyncSync(fd);
+			} finally {
+				closeSync(fd);
+			}
+			return [tmp, join(dir, name)] as const;
+		});
+		const now = lstatSync(dir, { throwIfNoEntry: false });
+		if (
+			now === undefined ||
+			!now.isDirectory() ||
+			now.dev !== identity.dev ||
+			now.ino !== identity.ino ||
+			realpathSync(dir) !== dir
+		)
+			throw new TypeError("the output directory changed while the report was written");
+		for (const [name] of files) {
+			const s = lstatSync(join(dir, name), { throwIfNoEntry: false });
+			if (s !== undefined && !s.isFile()) throw new TypeError(`the output ${name} exists and is not a plain file`);
 		}
+		for (const [tmp, final] of written) {
+			renameSync(tmp, final);
+			temporary.splice(temporary.indexOf(tmp), 1);
+		}
+	} finally {
+		for (const tmp of temporary) rmSync(tmp, { force: true });
 	}
 }
 

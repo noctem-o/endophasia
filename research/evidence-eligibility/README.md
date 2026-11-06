@@ -65,8 +65,10 @@ would let a reader confirm a guess, so none is kept; an attempt's record identit
 `arm-invalid`, `validity-checks-incomplete`, `rerun-after-interruption`, `symptoms-withheld`.
 
 **Symptoms.** From a check output that matches its recorded digest under a committed public key, the projection lists the failing tests it
-names (`✖ name`, `not ok N - name`) and how many tests it names in all. A failure where every named test failed means nothing working was
-produced; it is counted separately and is never evidence of one specific rule. Names are data: bounded, with control and bidirectional
+names (`✖ name`, `not ok N - name`) and how many tests it names in all. A failure with **zero passing named checks** (every named test
+failed) is counted separately and is never evidence of one specific rule. It is a test outcome only. It does not establish that no usable
+artifact was demonstrated beyond those tests, and still less that no implementation was produced, which would need separate evidence
+(the response's finish reason, or the final workspace). This projection reads neither. Names are data: bounded, with control and bidirectional
 characters replaced, never interpreted. (node:test also prints a line per suite; a suite counts as a named test, so a task with suites names
 more tests than it has rules.)
 

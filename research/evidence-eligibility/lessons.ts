@@ -340,16 +340,19 @@ const matchesSelector = (e: Example, s: Selector): boolean =>
 	(s.symptom === null || specificFailure(e, s.symptom));
 
 /**
- * The named check failed, and not as one of every named check: an output where everything failed (nothing working was produced) names every
+ * The named check failed, and not as one of every named check: an output where no named check passed names every
  * rule, and is evidence of none of them in particular.
  */
-/** Every named test failed (counted from the whole output, never from the bounded symptom list). */
-export const everyCheckFailed = (e: Example): boolean =>
+/**
+ * No named test passed (counted from the whole output, never from the bounded symptom list). This is a test outcome only: it does not show
+ * that no usable artifact exists or that nothing was implemented.
+ */
+export const noNamedCheckPassed = (e: Example): boolean =>
 	e.checksFailed !== null && e.checksFailed > 1 && e.checksFailed === e.checksNamed;
 
 const specificFailure = (e: Example, symptom: string): boolean => {
 	const failing = e.symptoms ?? [];
-	return failing.includes(symptom) && !everyCheckFailed(e);
+	return failing.includes(symptom) && !noNamedCheckPassed(e);
 };
 
 /** The lesson-eligible examples a selector matches (duplicates never counted twice), and the excluded matches by reason. */

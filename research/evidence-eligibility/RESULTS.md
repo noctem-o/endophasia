@@ -2,7 +2,7 @@
 
 Run on 2026-11-06 over the committed corpus ([corpus.v0.json](corpus.v0.json)): every experiment run in the repository and the raw run
 directories of the four studies kept beside it (`../endophasia-research`, [research/DATA.md](../DATA.md)). Main at `74106f925` (the merge of
-#125). Report sha256 `e38c41c97529eeda…`; the manifest and summary are in [report/](report/) and are reproduced byte for byte by
+#125). Report sha256 `9b5407353280b748…` (extractor 0.2.0); the manifest and summary are in [report/](report/) and are reproduced byte for byte by
 `tests/evidence-eligibility-corpus.test.ts` where the archives are present. The rules are in [README.md](README.md).
 
 **The raw archives were read** (they are on the maintainer's machine, not publicly hosted). No DEVELOP store was given: none was found under
@@ -57,10 +57,13 @@ examples:
 
 | Failures | With reasoning on | With thinking off (arm E, invalid) |
 | :-- | --: | --: |
-| every named check failed (nothing working was produced) | 46 | 0 |
+| zero passing named checks (every named test failed) | 46 | 0 |
 | a specific rule failed | **11** | 22 |
 
-The 46 failures where every check failed are what the cap study explains: a response cut off at the cap. Of the 11 specific failures with
+The 46 failures with zero passing named checks are only that: this projection reads no truncation or workspace evidence per trial, so it
+does not say whether a usable artifact or any implementation was produced. The studies' own analyses read the responses, and attribute
+most such failures to a response cut off at the cap. Completion-cap: all seven arm-A failures on fetch-cache. Discriminating-tasks: 18 of
+the 20 confirmation failures ended at the cap. Of the 11 specific failures with
 reasoning on, **10 are one rule of one task** (markup-lite R5, code spans), and one is booking-conflicts R1. Path-sensitivity and steering
 recorded no failed check in 546 readable outputs.
 
@@ -144,6 +147,13 @@ Codex then found five more problems on the PR, each fixed with a regression test
 - "every check failed" is counted from the whole output, not the 50-name symptom list;
 - an output file that is a link is refused, and outputs are opened without following links;
 - a trial whose own session file is missing has no harness identity, rather than borrowing another session's.
+
+Two further fixes before merge (extractor 0.2.0; no count, exclusion or readiness changed, only the report's digest and the wording):
+- **Outputs are never written into an existing inode.** Each is written to a new temporary file and renamed into place, so an output name
+  hard-linked to a source file only loses that name, and the source is unchanged. Regression tests use an output hard-linked to a source
+  `experiment.json`, and a write that fails.
+- **"Zero passing named checks" replaces "nothing working was produced".** Test outcomes alone do not show that no usable artifact, or
+  no implementation, was produced.
 
 ## What this establishes, and what remains a hypothesis
 

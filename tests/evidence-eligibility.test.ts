@@ -5,8 +5,10 @@
 import { createHash } from "node:crypto";
 import {
 	appendFileSync,
+	chmodSync,
 	cpSync,
 	existsSync,
+	linkSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -1019,9 +1021,13 @@ describe("lesson candidates: revoked, unavailable or incompatible cards are neve
 		const symptoms = buildEligibility(f.corpus, f.roots, null).report.symptoms as {
 			condition: string;
 			task: string;
-			everyCheckFailed: number;
+			noNamedCheckPassed: number;
 		}[];
-		expect(symptoms.find((x) => x.task === "tool-use" && x.condition === "arm-b")?.everyCheckFailed).toBe(1);
+		expect(symptoms.find((x) => x.task === "tool-use" && x.condition === "arm-b")?.noNamedCheckPassed).toBe(1);
+		// The summary says only what the test outcomes show: no claim that nothing usable or nothing at all was produced.
+		const summary = buildEligibility(f.corpus, f.roots, null).summary;
+		expect(summary).toContain("Zero passing named checks");
+		expect(summary).not.toMatch(/nothing working|no implementation\)/i);
 	});
 
 	it("says selection does not matter when every usable card fits in the shared allowance and none misleads elsewhere", () => {
@@ -1181,6 +1187,39 @@ describe("the command's own inputs and output are guarded", () => {
 		expect(() => writeOutputs(built, out, sourceDirectories(f.corpus, f.roots))).toThrow(/not a plain file/);
 		expect(readFileSync(join(f.run, "experiment.json")).equals(before)).toBe(true);
 		expect(existsSync(join(out, "manifest.json"))).toBe(false);
+	});
+
+	it("never writes into a source file through an output hard-linked to it, and replaces only the link's name", () => {
+		const f = fixture();
+		const built = buildEligibility(f.corpus, f.roots, null);
+		const out = fresh("out-hardlink");
+		const source = join(f.run, "experiment.json");
+		const bytes = readFileSync(source);
+		linkSync(source, join(out, "report.json"));
+		expect(statSync(source).nlink).toBe(2);
+		writeOutputs(built, out, sourceDirectories(f.corpus, f.roots));
+		expect(readFileSync(source).equals(bytes)).toBe(true);
+		expect(statSync(source).nlink).toBe(1);
+		expect(statSync(join(out, "report.json")).ino).not.toBe(statSync(source).ino);
+		expect(readFileSync(join(out, "report.json"), "utf8")).toBe(canonicalEndoJsonV0(built.report));
+		expect(readdirSync(out).sort()).toEqual(["manifest.json", "report.json", "summary.md"]);
+	});
+
+	it("leaves sources and the output directory as they were when the write fails", () => {
+		const f = fixture();
+		const built = buildEligibility(f.corpus, f.roots, null);
+		const out = fresh("out-readonly");
+		const source = join(f.run, "experiment.json");
+		linkSync(source, join(out, "report.json"));
+		const before = { data: snapshot(f.data), out: readdirSync(out).sort() };
+		chmodSync(out, 0o500);
+		try {
+			expect(() => writeOutputs(built, out, sourceDirectories(f.corpus, f.roots))).toThrow();
+		} finally {
+			chmodSync(out, 0o700);
+		}
+		expect(snapshot(f.data)).toBe(before.data);
+		expect(readdirSync(out).sort()).toEqual(before.out);
 		writeFileSync(join(f.repo, "analysis", "main.json"), "{ not json");
 		const refused = buildEligibility(f.corpus, f.roots, null).report;
 		expect(refused.problems).toContainEqual(expect.objectContaining({ path: "analysis/main.json", kind: "refused" }));

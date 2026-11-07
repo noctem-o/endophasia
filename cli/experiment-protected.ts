@@ -773,8 +773,11 @@ function copyTree(from: string, to: string): void {
 		const source = join(from, name);
 		const s = lstatSync(source);
 		if (s.isDirectory()) copyTree(source, join(to, name));
-		else if (s.isFile()) writeFileSync(join(to, name), readFileSync(source), { flag: "wx", mode: s.mode & 0o755 });
-		else throw new EndoProtectedRefusalV0(`${source} is not a regular file or directory`);
+		else if (s.isFile()) {
+			writeFileSync(join(to, name), readFileSync(source), { flag: "wx", mode: 0o600 });
+			// Exactly the bits the tree digest records, whatever the umask.
+			chmodSync(join(to, name), s.mode & 0o755);
+		} else throw new EndoProtectedRefusalV0(`${source} is not a regular file or directory`);
 	}
 }
 
@@ -797,46 +800,45 @@ function lockRunDirectory(dir: string): () => void {
 		typeof h.pid === "number" &&
 		typeof h.startTime === "string" &&
 		!processAliveV0({ pid: h.pid, startTime: h.startTime });
-	for (let attempt = 0; attempt < 8; attempt++) {
+	const release = () => {
+		const held = holderOf(path);
+		if (held !== null && held.pid === me.pid && held.startTime === me.startTime) unlinkSync(path);
+	};
+	try {
+		const fd = openSync(
+			path,
+			constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+			0o600,
+		);
 		try {
-			const fd = openSync(
-				path,
-				constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-				0o600,
-			);
-			try {
-				writeSync(fd, JSON.stringify(me));
-			} finally {
-				closeSync(fd);
-			}
-			return () => {
-				const held = holderOf(path);
-				if (held !== null && held.pid === me.pid && held.startTime === me.startTime) unlinkSync(path);
-			};
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			if (!dead(holderOf(path))) throw new EndoProtectedRefusalV0("another controller holds this run directory");
-			// Take over a stale lock atomically: rename it to a name only this controller uses (one rename of that name can succeed), and
-			// discard it only if it is still the same dead holder's. Another controller that lost the race finds the name gone and tries again.
-			const aside = join(dir, `.lock.stale.${process.pid}.${randomInt(0, 2 ** 31)}`);
-			try {
-				renameSync(path, aside);
-			} catch {
-				continue;
-			}
-			if (dead(holderOf(aside))) unlinkSync(aside);
-			else {
-				// A live lock was taken by mistake (it replaced the stale one in between): put it back, and refuse.
-				try {
-					linkSync(aside, path);
-				} finally {
-					unlinkSync(aside);
-				}
-				throw new EndoProtectedRefusalV0("another controller holds this run directory");
-			}
+			writeSync(fd, JSON.stringify(me));
+		} finally {
+			closeSync(fd);
 		}
+		return release;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}
-	throw new EndoProtectedRefusalV0("the run directory's lock could not be taken");
+	if (!dead(holderOf(path))) throw new EndoProtectedRefusalV0("another controller holds this run directory");
+	// Taking over a stale lock never leaves the lock name free: one controller at a time may take over (an exclusive directory), and it
+	// replaces the lock file in one rename, so `.lock` exists throughout and no other controller can create it meanwhile.
+	const takeover = join(dir, ".lock.takeover");
+	try {
+		mkdirSync(takeover, { mode: 0o700 });
+	} catch {
+		throw new EndoProtectedRefusalV0(
+			`another controller is taking over this run directory's lock (if none is running, remove ${takeover})`,
+		);
+	}
+	try {
+		if (!dead(holderOf(path))) throw new EndoProtectedRefusalV0("another controller holds this run directory");
+		const mine = join(takeover, "lock");
+		writeFileSync(mine, JSON.stringify(me), { flag: "wx", mode: 0o600 });
+		renameSync(mine, path);
+		return release;
+	} finally {
+		rmSync(takeover, { recursive: true, force: true });
+	}
 }
 
 // ---- the report -----------------------------------------------------------------------------------------------------------------------------

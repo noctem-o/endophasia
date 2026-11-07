@@ -8,6 +8,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
+	chmodSync,
 	existsSync,
 	linkSync,
 	mkdirSync,
@@ -27,6 +28,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
+	endoTreeDigestV0,
 	processAliveV0,
 	processStartTimeV0,
 	resolveRuntimeV0,
@@ -676,6 +678,39 @@ describe.runIf(REAL)("real isolation: review regressions", () => {
 		const spec2 = specWith({ honest: solve });
 		linkSync(spec2.tasks[0]!.evaluator.file, join(spec2.conditions[0]!.agent.directory, "cases.json"));
 		await expect(runProtectedExperimentV0({ spec: spec2, dir: fresh("run") })).rejects.toThrow(/hidden material/);
+	});
+
+	it("Codex: a takeover in progress is refused, and the lock is never left free or replaced", async () => {
+		const out = fresh("run");
+		mkdirSync(out, { recursive: true });
+		const stale = JSON.stringify({ pid: 999999, startTime: "1" });
+		writeFileSync(join(out, ".lock"), stale);
+		mkdirSync(join(out, ".lock.takeover"));
+		await expect(runProtectedExperimentV0({ spec: specWith({ honest: solve }), dir: out })).rejects.toThrow(
+			/taking over this run directory's lock/,
+		);
+		expect(readFileSync(join(out, ".lock"), "utf8")).toBe(stale);
+		expect(existsSync(join(out, "protected-run.json"))).toBe(false);
+	});
+
+	it("Codex: the boundary probe never touches a task's own workspace files", async () => {
+		const keep = `import fs from "node:fs"; fs.writeFileSync("/work/seen", fs.readFileSync("/work/.endo-probe", "utf8")); ${solve}`;
+		const base = specWith({ keep });
+		const spec = {
+			...base,
+			tasks: [{ ...base.tasks[0]!, workspace: { ...base.tasks[0]!.workspace, ".endo-probe": "task fixture\n" } }],
+		};
+		const out = fresh("run");
+		await runProtectedExperimentV0({ spec, dir: out });
+		expect(readFileSync(join(workOf(out, "keep"), "seen"), "utf8")).toBe("task fixture\n");
+	});
+
+	it("Codex: an agent file's executable bit is part of the agent's identity", () => {
+		const dir = fresh("tree");
+		writeFileSync(join(dir, "helper"), "#!/bin/sh\n", { mode: 0o644 });
+		const before = endoTreeDigestV0(dir);
+		chmodSync(join(dir, "helper"), 0o755);
+		expect(endoTreeDigestV0(dir)).not.toBe(before);
 	});
 
 	it("M5: an attempt the controller stopped after the agent ended keeps the agent's facts", async () => {

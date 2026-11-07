@@ -195,7 +195,10 @@ export function endoTreeDigestV0(root: string): string {
 			if (s.isDirectory()) {
 				entries.push([`${prefix}${name}`, "dir", 0, ""]);
 				walk(path, `${prefix}${name}/`);
-			} else if (s.isFile()) entries.push([`${prefix}${name}`, "file", s.size, sha256File(path)]);
+			} else if (s.isFile())
+				// The permission bits a copy keeps (owner, group, others; read and execute; and the owner's write) are part of the identity: an
+				// executable bit changes what a file does.
+				entries.push([`${prefix}${name}`, `file:${(s.mode & 0o755).toString(8)}`, s.size, sha256File(path)]);
 			else throw new TypeError(`${path} is not a regular file or directory`);
 		}
 	};

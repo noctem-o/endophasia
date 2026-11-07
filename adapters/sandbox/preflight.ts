@@ -50,7 +50,7 @@ out["fs-root-readonly"] = code(() => fs.writeFileSync("/.endo-probe", "x"));
 c.readOnlyRuntime.forEach((p, i) => { out["fs-readonly-runtime-" + i] = code(() => fs.appendFileSync(p, "")); });
 c.readOnlyMounts.forEach((p, i) => { out["fs-readonly-mount-" + i] = code(() => fs.appendFileSync(p, "")); });
 out["fs-dev-readonly"] = code(() => fs.writeFileSync("/dev/.endo-probe", "x"));
-out["fs-workspace-writable"] = code(() => { fs.writeFileSync(c.writable + "/.endo-probe", "x"); fs.unlinkSync(c.writable + "/.endo-probe"); });
+out["fs-workspace-writable"] = code(() => { const p = c.writable + "/" + c.probeName; fs.writeFileSync(p, "x", { flag: "wx" }); fs.unlinkSync(p); });
 out["fs-tmp-private"] = (() => { try { return "entries:" + fs.readdirSync("/tmp").length; } catch (e) { return String(e.code); } })();
 out["proc-private"] = (() => { try { const p = fs.readdirSync("/proc").filter((x) => /^[0-9]+$/.test(x)); return "pids:" + p.length + (p.includes(String(c.controllerPid)) ? " controller:visible" : " controller:absent"); } catch (e) { return String(e.code); } })();
 out["env-minimal"] = (() => { const extra = Object.keys(process.env).filter((k) => !c.environment.includes(k)); return extra.length === 0 ? "ok" : "extra:" + extra.length; })();
@@ -131,6 +131,8 @@ export async function preflightV0(
 			loopbackPort: typeof address === "object" && address !== null ? address.port : 0,
 			abstractName,
 			pathSocket,
+			// A new name, created exclusively and removed: a task's own files in the workspace are never touched.
+			probeName: `.endo-preflight-${randomBytes(12).toString("hex")}`,
 		};
 		const run = await runSandboxV0(
 			bwrap,

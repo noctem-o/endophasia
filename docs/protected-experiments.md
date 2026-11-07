@@ -109,8 +109,8 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   process if it still exists, and records termination as confirmed only when it is gone: when a PID namespace's init ends, the kernel kills
   every other process in it (pid_namespaces(7)). No process is ever found or killed by namespace number, which the kernel reuses. A
   sandbox that never reported its init is recorded as `unconfirmed`.
-- **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree) by content
-  digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
+- **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree, each file's
+  content and the permission bits its copy keeps) by digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
 
 ## 3. The preflight: enforcement checked, not assumed
 
@@ -220,9 +220,10 @@ To verify a run:
   report refuses a retry of an attempt that could not be retried.
 
 A resumed run with a different spec, isolation executable, agent profile (including agent code) or evaluator is refused. One controller at a
-time: the run directory is locked (its holder named by pid and start time). A stale lock is taken over atomically: it is renamed to a
-name only one controller can win, and discarded only if it is still the same dead holder's; a test races eight controllers for it and
-exactly one runs. Each attempt's marker names its controller, and an attempt whose controller is still alive is never finalized or ended
+time: the run directory is locked (its holder named by pid and start time). A stale lock is taken over without ever leaving the lock name
+free: one controller at a time may take over (an exclusive `.lock.takeover` directory), it checks again that the holder is dead, and it
+replaces the lock file in a single rename, so `.lock` exists throughout. A test races eight controllers for a stale lock and exactly one
+runs; an abandoned takeover directory is refused with a message, never removed by guesswork. Each attempt's marker names its controller, and an attempt whose controller is still alive is never finalized or ended
 by another. A record, once written, is never replaced. A controller that was killed leaves its attempt finalized on the next run as `controller-interrupted`, from what the
 directory shows: the agent's facts if it had ended (`agent-ended.json`), `interrupted` if it had not. Nothing is assumed: an attempt
 directory always appears with its `started.json`, and one without it is refused. The report also refuses a record that names another

@@ -30,6 +30,18 @@ export interface FakeOpenAiOptions {
 	readonly reasoningContent?: unknown;
 	/** Send a normally terminated stream without a final text answer. */
 	readonly emptyAnswer?: boolean;
+	/**
+	 * A scripted coding run (research/work-cycle/): while the request offers tools and carries fewer tool results than the
+	 * script has steps, answer with the next step's tool call (`arguments` is sent verbatim, so a step can be malformed on
+	 * purpose); once every step has its result, answer `finalText`. The tool is executed by the client (a real Pi), not here.
+	 */
+	readonly toolScript?: { readonly steps: readonly FakeToolStep[]; readonly finalText: string };
+}
+
+/** One scripted tool call: the function name and its raw JSON argument text. */
+export interface FakeToolStep {
+	readonly name: string;
+	readonly arguments: string;
 }
 
 /** One scripted answer to `GET /health`; the last step repeats. Without a script `/health` is a 404, as before. */
@@ -120,19 +132,28 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 		};
 		const model = parsed.model ?? "fake-1";
 		const text = lastUserText(parsed.messages);
-		const hasToolResult =
-			Array.isArray(parsed.messages) && parsed.messages.some((m) => (m as { role?: unknown }).role === "tool");
+		const toolResults = Array.isArray(parsed.messages)
+			? parsed.messages.filter((m) => (m as { role?: unknown }).role === "tool").length
+			: 0;
+		const hasToolResult = toolResults > 0;
+		const offersTools = Array.isArray(parsed.tools) && parsed.tools.length > 0;
+		const scripted =
+			options.toolScript !== undefined && offersTools && toolResults < options.toolScript.steps.length
+				? options.toolScript.steps[toolResults]
+				: undefined;
 		const callTool =
 			options.forceToolCall === true ||
 			(/read tool/.test(text) && Array.isArray(parsed.tools) && parsed.tools.length > 0 && !hasToolResult);
 		const slow = /forty/.test(text);
 		const pieces = options.emptyAnswer
 			? []
-			: slow
-				? Array.from({ length: 40 }, (_, index) => `${index + 1}. word\n`)
-				: hasToolResult
-					? ["Endophasia"]
-					: ["Fake ", "reply."];
+			: options.toolScript !== undefined
+				? [options.toolScript.finalText]
+				: slow
+					? Array.from({ length: 40 }, (_, index) => `${index + 1}. word\n`)
+					: hasToolResult
+						? ["Endophasia"]
+						: ["Fake ", "reply."];
 		const usage = { prompt_tokens: 11, completion_tokens: pieces.length, total_tokens: 11 + pieces.length };
 		const id = "chatcmpl-fake";
 		if (parsed.stream !== true) {
@@ -171,7 +192,22 @@ export async function startFakeOpenAiServer(options: FakeOpenAiOptions = {}): Pr
 			response.end();
 			return;
 		}
-		if (callTool) {
+		if (scripted !== undefined) {
+			const callId = `call_script_${toolResults + 1}`;
+			await write(
+				chunk(
+					{
+						role: "assistant",
+						tool_calls: [
+							{ index: 0, id: callId, type: "function", function: { name: scripted.name, arguments: "" } },
+						],
+					},
+					null,
+				),
+			);
+			await sleep(delay);
+			await write(chunk({ tool_calls: [{ index: 0, function: { arguments: scripted.arguments } }] }, "tool_calls"));
+		} else if (callTool) {
 			await write(
 				chunk(
 					{

@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Added
+- **WORK-CYCLE-001A: one DEVELOP work cycle, reconstructed from the stored evidence.** `research/work-cycle/driver.ts` drives one
+  small coding task through the existing public commands: register, task, attempt, a failing baseline check, the live workbench (the
+  operator approves on its terminal), the candidate diff, a commit the operator chooses to make, `endo attempt check`, and a report a
+  new process rebuilds with no agent running. The report keeps Pi's run, the check and the operator's decision apart, and lists what it
+  cannot establish. It ran against Pi 1.5.0, with its own tools, against a scripted endpoint (which pins 1.5.0's tool-argument
+  validation), and twice with Muse Glimmer 30B under a test-substitute approval. The Ponytail mode is read from the child's actual
+  model requests, with a positive control. The operator-governed run itself is not tested. See
+  [research/work-cycle/README.md](research/work-cycle/README.md).
+- `endo task show` also prints the task's description, acceptance criteria and status history, so a terminal reader can see when and
+  how the operator moved the status.
 - **EVAL-ISO-001: protected experiment execution and an independent evaluator (offline).** `endo experiment protected-run <spec>
   --out <dir>` plans trials with the same blocked randomization as `endo experiment run`. Each attempt runs as an untrusted process in a
   Bubblewrap sandbox: new user, mount, PID, network, IPC, UTS and cgroup namespaces; an empty read-only root holding only the declared

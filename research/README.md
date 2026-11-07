@@ -21,6 +21,7 @@ The numerical probe ran a separate CPU-only llama.cpp executable without Pi.
 | [Governed real same-session continuation](governed-initial-continuation/REAL-ACCEPTANCE.md) | [results](governed-initial-continuation/REAL-ACCEPTANCE.md) | one separately approved Pi 1.0.4/Nanbeige two-turn attempt, two captured exchanges and independently verified receipt |
 | [Numerical execution probe (E4e-G)](#numerical-execution-probe-e4e-g) | [protocol](numerical-execution-probe/FIRST-EXPERIMENT.md), [result](numerical-execution-probe/FIRST-RESULT.md) | CPU-only, four fresh processes; stable logits within schedule and differences across token-submission schedules |
 | [Evidence eligibility (MEM-000)](evidence-eligibility/RESULTS.md) | [tool](evidence-eligibility/README.md), [results](evidence-eligibility/RESULTS.md) | what the recorded evidence permits learning from: 143 causally usable trials (one study), 11 specific failures with reasoning on (10 of one rule), one usable lesson candidate; MEM-001 not ready |
+| [DEVELOP work cycle (WORK-CYCLE-001A)](work-cycle/README.md) | [feature map, procedure, results](work-cycle/README.md) | one coding task from task to operator decision, rebuilt from the stored records alone; Pi 1.5.0 with its own tools and with Muse Glimmer 30B (test-substitute approval); the operator-governed run is not tested |
 | [Fake-only paths](#fake-only-paths) | `tests/fixtures/` | what has been exercised only against the fake Pi |
 
 ## Session lifecycle

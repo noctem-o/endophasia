@@ -37,7 +37,8 @@ endo harness attach ./recordings --cwd /path/to/project --control --workbench --
 5. In **Task**, record progress yourself: **Start work**, **Ready for review**, **Mark done** (with an optional note), **Mark blocked**,
    **Back to open**, **Reopen**. **Link the current session** records a reference from the task to the session this workbench is connected to.
 6. Close the workbench. The tasks are in `<root>/develop/tasks.json`. `endo task list --project <id>` reads them with no workbench; the next
-   workbench started with the same `--project` shows them, with the task you last chose selected.
+   workbench started with the same `--project` shows them, with the task you last chose selected. `endo task show --task <id>` also prints
+   one task's description, acceptance criteria and status history (each move, when, and your note), as the page's Task view does.
 
 Status moves are small and reversible: `open → in-progress | blocked`, `in-progress → review | blocked | open`, `blocked → open | in-progress`,
 `review → done | in-progress | blocked`, `done → open` (an explicit reopening). `done` is reachable only from `review`.

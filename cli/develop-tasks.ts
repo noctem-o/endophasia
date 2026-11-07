@@ -357,6 +357,12 @@ async function taskShow(argv: readonly string[]): Promise<void> {
 	print({
 		task: {
 			...summary(task),
+			// The task's own words and its status history, so a reader with no workbench can tell what was asked and when the operator
+			// moved the status (WORK-CYCLE-001A). The page already shows both; nothing here is new data, and nothing is inferred.
+			description: task.description,
+			acceptance: task.acceptance,
+			createdAtMs: task.createdAtMs,
+			history: task.history.map((h) => ({ atMs: h.atMs, from: h.from, to: h.to, note: h.note })),
 			references: task.sessions.map((r) => ({
 				...referenceOut(r),
 				...(observed === null ? {} : { observedNow: observed(r) }),

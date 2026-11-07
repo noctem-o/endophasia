@@ -268,6 +268,18 @@ endo attempt receipt  --root ./recordings --receipt endo.receipt.<id>
 - Receipts live in `develop/receipts/<attempt id>/`, one write-once file each. A failed receipt stays beside the pass that followed it.
   The paired workbench shows them under each attempt, read-only, without paths. To remove an attempt's receipts, delete that directory.
 
+## One attempt's evidence, in one reading
+
+```sh
+endo attempt evidence --root ./recordings --attempt endo.attempt.<id> [--cwd <worktree>]
+```
+
+It answers, from the records that already exist and without writing anything: was this attempt sent, and what did Pi report? Which
+checks did Endophasia observe, and does the latest of each still apply to the tree now? What did you decide? What is missing? Each line
+says whose statement it is: `[observed]` (Endophasia's records), `[Pi's report]`, `[operator]` (yours), or `[none]`. It never names a
+revision as the attempt's result, because no record does: the commits it lists are the ones you checked. Every gap it reports is a
+fact about the records, not a verdict, and none changes the task. Design: [designs/develop-attempt-evidence.md](designs/develop-attempt-evidence.md).
+
 ## The overview: what needs you, and why
 
 The **Task** tab opens on an overview of the project's tasks (design: [designs/develop-attention.md](designs/develop-attention.md)). When

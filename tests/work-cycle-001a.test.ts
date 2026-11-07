@@ -11,7 +11,7 @@
 //   tier 3 (+ ENDO_WORK_CYCLE_ENDPOINT and ENDO_WORK_CYCLE_MODEL)  the same Pi and a real local model through the recording proxy.
 //                                          Nothing is asserted about the model's success; what happened is kept.
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -32,6 +32,7 @@ import {
 	type RunLayout,
 	reconstruct,
 	renderReconstruction,
+	runDirectoryProblem,
 	runEnv,
 	runGit,
 	startProxy,
@@ -50,6 +51,8 @@ const keep = process.env.ENDO_WORK_CYCLE_EVIDENCE_DIR ?? "";
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cleanup: (() => void | Promise<void>)[] = [];
+/** What Pi 1.5.0 was observed to report for a run whose model connection was cut mid-answer (WORK-CYCLE-001B). */
+const lostConnectionRun = process.env.ENDO_WC_LOST_RUN ?? "failed";
 
 const FIXED = 'return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");';
 const BROKEN = 'return title.toLowerCase().replace(/ /g, "-");';
@@ -108,6 +111,14 @@ function freshRun(prefix: string): RunLayout {
 }
 
 const S = (l: RunLayout) => ["--root", l.store];
+
+/** `endo attempt evidence` (WORK-CYCLE-001B), read in a new process: the JSON view and the gap codes. */
+function evidenceOf(layout: RunLayout, attemptId: string) {
+	const out = endo(layout, runEnv(layout), "attempt", "evidence", ...S(layout), "--attempt", attemptId);
+	expect(out.status).toBe(0);
+	const view = json(out).evidence;
+	return { view, gaps: view.gaps.map((g: { code: string }) => g.code) as string[], text: out.stderr };
+}
 
 /** Drive part 2: ask on the workbench terminal, decline once with the wrong phrase, approve, wait for the run, Ctrl-C. */
 async function driveWorkbench(
@@ -227,6 +238,21 @@ describe("WORK-CYCLE-001A pieces that need no terminal", () => {
 		expect(processesOfRun(layout)).toEqual([]);
 	});
 
+	it("a run directory too deep for the workbench's control socket is refused before anything is created (WORK-CYCLE-001B human run)", () => {
+		const parent = realpathSync(mkdtempSync(join(tmpdir(), "endo-wc-deep-")));
+		cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
+		// "<run>/store/control/endpoint.sock" is the run's path plus 28 bytes; the workbench refuses more than 100 (cli/control.ts).
+		const fits = join(parent, "x".repeat(100 - 28 - parent.length - 1));
+		const deep = `${fits}y`;
+		expect(runDirectoryProblem(fits)).toBeNull();
+		expect(runDirectoryProblem(deep)).toMatch(
+			/too deep for the workbench's control socket .* 101 bytes; at most 100/,
+		);
+		expect(() => launchRun(deep)).toThrow(/Nothing was created/);
+		expect(existsSync(deep)).toBe(false);
+		expect(launchRun(fits).run).toBe(fits);
+	});
+
 	it("`endo task show` gives a terminal reader the acceptance criteria and the operator's status history", () => {
 		const layout = freshRun("endo-wc-show-");
 		const env = runEnv(layout);
@@ -324,6 +350,44 @@ describe.runIf(linuxPty)(
 			expect(r1.run.dispatchSequence).not.toBeNull();
 			expect(r1.run.endKind).toBe("lifecycle.run-completed");
 
+			// WORK-CYCLE-001B: the same cycle read by the product's own attempt-centred reader, after Pi has exited.
+			const e1 = evidenceOf(layout, prepared.attemptId);
+			expect(e1.view.sent).toMatchObject({ send: "runtime-accepted", approvedOn: "workbench-terminal" });
+			expect(e1.view.pi).toMatchObject({ source: "pi-report", run: "completed" });
+			expect(e1.view.candidate).toMatchObject({ recorded: false, checkedCommits: [prepared.baseCommit, candidate] });
+			expect(e1.view.checks.current).toEqual({ commit: candidate, clean: true });
+			expect(e1.view.checks.latest).toHaveLength(1);
+			expect(e1.view.checks.latest[0]).toMatchObject({
+				commit: candidate,
+				outcome: "passed",
+				relation: "at-head",
+				authorization: "after",
+				others: { failed: 1 },
+			});
+			expect(e1.gaps).toEqual(["not-accepted"]);
+			expect(e1.text).toContain("candidate [none] no record names one");
+
+			// An attempt prepared on the same task and never authorised: no send, no run, no check.
+			const second = json(
+				endo(
+					layout,
+					env,
+					"attempt",
+					"prepare",
+					...S(layout),
+					"--project",
+					prepared.projectId,
+					"--task",
+					prepared.taskId,
+					"--objective",
+					"an attempt nobody sends",
+				),
+			).attempt.id as string;
+			const e0 = evidenceOf(layout, second);
+			expect(e0.view.sent).toMatchObject({ send: null });
+			expect(e0.view.pi).toMatchObject({ source: "none", run: null });
+			expect(e0.gaps).toEqual(["not-authorized", "no-check", "not-accepted"]);
+
 			// The decision is the operator's, in its own steps, each against the revision it saw.
 			const T = ["--project", prepared.projectId, "--task", prepared.taskId];
 			for (const to of ["in-progress", "review"])
@@ -345,6 +409,12 @@ describe.runIf(linuxPty)(
 			const r2 = reconstruct(layout, prepared);
 			expect(r2.task.history.map((h) => h.to)).toEqual(["open", "in-progress", "review", "done"]);
 			expect(r2.verdicts.operatorDecision).toContain("review → done by `endo task status` or the paired page");
+			const e2 = evidenceOf(layout, prepared.attemptId);
+			expect(e2.gaps).toEqual([]);
+			expect(e2.view.operator).toMatchObject({
+				status: "done",
+				movedToDone: { note: "read the diff; check passed at the candidate" },
+			});
 
 			// Negative: the revision moves after the receipt. The passing receipt is not carried forward: it reads stale.
 			writeFileSync(join(layout.project, "NOTES"), "a later commit\n");
@@ -357,6 +427,29 @@ describe.runIf(linuxPty)(
 				"no receipt was recorded at the current HEAD: the current revision is unchecked",
 			);
 			expect(r3.task.status).toBe("done"); // and nothing reopened the task on its own
+			const e3 = evidenceOf(layout, prepared.attemptId);
+			expect(e3.view.checks.latest[0]).toMatchObject({
+				commit: candidate,
+				outcome: "passed",
+				relation: "head-differs",
+			});
+			expect(e3.gaps).toEqual(["no-check-at-current-head", "stale-check"]);
+			expect(e3.view.operator.status).toBe("done");
+			// Uncommitted changes on top: the reader says no check covers them.
+			writeFileSync(join(layout.project, "NOTES"), "edited, not committed\n");
+			expect(evidenceOf(layout, prepared.attemptId).gaps).toEqual([
+				"current-tree-changed",
+				"no-check-at-current-head",
+				"stale-check",
+			]);
+			// A damaged receipt file (it might have been a failure) is a gap and a line, never silently dropped (review of e440136c5).
+			writeFileSync(
+				join(layout.store, "develop", "receipts", prepared.attemptId, `endo.receipt.${"f".repeat(32)}.json`),
+				"{garbage",
+			);
+			const damaged = evidenceOf(layout, prepared.attemptId);
+			expect(damaged.gaps).toContain("receipt-files-unusable");
+			expect(damaged.text).toContain("1 file(s) are not usable receipts and are not shown");
 			expect(renderReconstruction(r3)).toContain("## Three separate answers");
 		}, 240_000);
 	},
@@ -477,6 +570,159 @@ describe.runIf(linuxPty && realPi.length > 0)(
 					`${JSON.stringify({ piVersion: version, ponytail, observed: { ...observed }, control, toolTexts, reconstruction: r }, null, 2)}\n`,
 				);
 				writeFileSync(join(keep, "tier2-reconstruction.md"), renderReconstruction(r));
+			}
+		}, 300_000);
+	},
+);
+
+/** Ask and approve on the workbench terminal (TEST SUBSTITUTE), and return once Pi has accepted the send; the caller ends it. */
+async function sendOnWorkbench(
+	layout: RunLayout,
+	prepared: Prepared,
+	subject: { pi: string; provider?: string; model?: string },
+	env: NodeJS.ProcessEnv,
+): Promise<Pty> {
+	const pty = new Pty(attachArgs(layout, prepared, subject), env);
+	await pty.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})/, 120_000);
+	pty.type(`attempt ${prepared.attemptId}`);
+	const phrase = (await pty.waitFor(/Type (APPROVE ATTEMPT [0-9a-f]{16}) to send exactly this brief/))[1] as string;
+	pty.type(phrase); // TEST SUBSTITUTE for the operator typing the phrase.
+	await pty.waitFor(/was sent and Pi accepted it \(started\)/, 120_000);
+	return pty;
+}
+
+async function settledRun(layout: RunLayout, attemptId: string, timeoutMs: number): Promise<any> {
+	let read: any = null;
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		read = json(endo(layout, runEnv(layout), "attempt", "show", ...S(layout), "--attempt", attemptId)).attempt;
+		if (read.execution?.run !== "open" && read.execution?.run !== "not-observed") break;
+		await sleep(250);
+	}
+	return read;
+}
+
+describe.runIf(linuxPty && realPi.length > 0)(
+	"WORK-CYCLE-001B: an installed Pi that fails, against a disposable fake endpoint (opt-in: ENDO_PI_EXECUTABLE)",
+	() => {
+		let server: FakeOpenAiServer;
+		afterEach(async () => {
+			await server?.close();
+		});
+
+		it("Pi losing its model connection mid-answer: the reading says the run did not complete, and nothing is checked or accepted", async () => {
+			const layout = freshRun("endo-wc-lost-");
+			server = await startFakeOpenAiServer({ disconnectAfterFirstChunk: true });
+			writePiAgentDir(layout, {
+				baseUrl: server.baseUrl,
+				provider: "endofake",
+				model: "fake-1",
+				ponytailPackage: null,
+			});
+			const prepared = prepareJourney(layout, runEnv(layout));
+			const env = piEnv(layout, "off");
+			const pty = await sendOnWorkbench(
+				layout,
+				prepared,
+				{ pi: realPi, provider: "endofake", model: "fake-1" },
+				env,
+			);
+			const read = await settledRun(layout, prepared.attemptId, 120_000);
+			pty.child.stdin.write("\x03");
+			expect(await pty.exit).toBe(0);
+			expect(server.completionRequests().length).toBeGreaterThan(0);
+			expect(read.execution).toMatchObject({ send: "runtime-accepted", evidence: "complete" });
+			// Observed with Pi 1.5.0 (README): kept here as what was observed, so a later Pi that reports it differently fails by name.
+			expect(read.execution.run).toBe(lostConnectionRun);
+			expect(processesOfRun(layout)).toEqual([]);
+			const e = evidenceOf(layout, prepared.attemptId);
+			expect(e.view.pi.run).toBe(read.execution.run);
+			// The only check is the failed baseline at this same commit: it started before the send, and it did not pass.
+			expect(e.gaps).toEqual([
+				"run-not-completed",
+				"no-check-after-authorization",
+				"check-not-passed-at-current-head",
+				"not-accepted",
+			]);
+			expect(e.view.checks.latest[0]).toMatchObject({
+				outcome: "failed",
+				relation: "at-head",
+				authorization: "before",
+			});
+			if (keep.length > 0) {
+				mkdirSync(keep, { recursive: true });
+				writeFileSync(
+					join(keep, "lost-connection.json"),
+					`${JSON.stringify({ requests: server.completionRequests().length, execution: read.execution, evidence: e.view }, null, 2)}\n`,
+				);
+			}
+		}, 300_000);
+
+		it("Pi killed while one of its tools runs: the run is not reported completed, and what survived is found", async () => {
+			const layout = freshRun("endo-wc-kill-");
+			server = await startFakeOpenAiServer({
+				toolScript: {
+					steps: [{ name: "bash", arguments: JSON.stringify({ command: "sleep 20" }) }],
+					finalText: "never reached",
+				},
+			});
+			writePiAgentDir(layout, {
+				baseUrl: server.baseUrl,
+				provider: "endofake",
+				model: "fake-1",
+				ponytailPackage: null,
+			});
+			const prepared = prepareJourney(layout, runEnv(layout));
+			const env = piEnv(layout, "off");
+			const pty = await sendOnWorkbench(
+				layout,
+				prepared,
+				{ pi: realPi, provider: "endofake", model: "fake-1" },
+				env,
+			);
+			// Wait until Pi's own bash tool is running the scripted sleep, then kill the Pi process (not the workbench).
+			// Pi 1.5.0 sets its process title to "pi". The workbench, its PTY wrapper and the attachment's launcher can also name Pi's path
+			// (ENDO_PI_EXECUTABLE given as the real cli.js), so they are excluded by what they are, and exactly one Pi must be found.
+			const isPi = (p: { cmd: string }) =>
+				p.cmd === "pi" ||
+				(/pi-coding-agent/.test(p.cmd) && !/harness attach|^script |--no-warnings -e/.test(p.cmd));
+			let pi: { pid: number; cmd: string } | undefined;
+			for (let i = 0; i < 400; i++) {
+				const procs = processesOfRun(layout);
+				const pis = procs.filter(isPi);
+				if (procs.some((p) => /sleep 20/.test(p.cmd) && !isPi(p)) && pis.length === 1) pi = pis[0];
+				if (pi !== undefined) break;
+				await sleep(50);
+			}
+			if (pi === undefined)
+				throw new Error(
+					`no Pi found: ${JSON.stringify(processesOfRun(layout).map((p) => p.cmd.slice(0, 80)))} requests ${server.completionRequests().length} ${JSON.stringify((server.completionRequests().at(-1)?.body as any)?.messages?.slice(-2)).slice(0, 1500)}`,
+				);
+			process.kill((pi as { pid: number }).pid, "SIGKILL");
+			const read = await settledRun(layout, prepared.attemptId, 60_000);
+			pty.child.stdin.write("\x03");
+			await pty.exit;
+			expect(read.execution.send).toBe("runtime-accepted");
+			expect(["interrupted", "open"]).toContain(read.execution.run);
+			// What outlived the kill and the workbench's own exit (observed with Pi 1.5.0): the tool process Pi started, which is not in the
+			// process group the attachment's launcher stops. Pinned here as the known gap (README §5); then stopped by the test.
+			await sleep(500);
+			const left = processesOfRun(layout);
+			expect(left.length).toBeGreaterThan(0);
+			expect(left.every((p) => /sleep 20/.test(p.cmd))).toBe(true);
+			for (const p of left)
+				try {
+					process.kill(p.pid, "SIGKILL");
+				} catch {}
+			const e = evidenceOf(layout, prepared.attemptId);
+			expect(e.gaps).toContain("run-not-completed");
+			expect(e.view.pi.runLabel).toBe(read.execution.runLabel);
+			if (keep.length > 0) {
+				mkdirSync(keep, { recursive: true });
+				writeFileSync(
+					join(keep, "killed.json"),
+					`${JSON.stringify({ killed: pi, execution: read.execution, survivors: left, evidence: e.view }, null, 2)}\n`,
+				);
 			}
 		}, 300_000);
 	},

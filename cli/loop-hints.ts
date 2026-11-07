@@ -18,11 +18,20 @@ export function attachSummaryV0(input: {
 	piSessionId: string | null;
 	prompt: { disposition: string; settled: boolean | null } | null;
 	waitMs: number;
+	/**
+	 * The session served control (`--control`, which the workbench needs): prompts approved on its terminal are sent by the broker, not by
+	 * `--prompt`, so this summary does not know whether any was sent and must not say none was (WORK-CYCLE-001B).
+	 */
+	control?: boolean;
 }): string[] {
 	const root = shellWordV0(input.root);
 	const attachment = input.attachment === undefined ? "" : ` --attachment ${shellWordV0(input.attachment)}`;
 	const lines: string[] = [];
-	if (input.prompt === null)
+	if (input.prompt === null && input.control === true)
+		lines.push(
+			"no --prompt was given; whatever was approved and sent from the workbench or the control socket is in the session's records (endo attempt show, endo harness overview), not in this summary",
+		);
+	else if (input.prompt === null)
 		lines.push("no prompt was sent; the session was opened and closed (observed lifecycle only)");
 	else {
 		const { disposition, settled } = input.prompt;

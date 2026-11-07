@@ -1,5 +1,5 @@
 /**
- * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
+ * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
  * kept in the store root's `develop/attempts/` as write-once records (storage/develop-attempts.ts).
  *
  * An attempt is one request the operator prepared on one task. `brief` prints it as plain text for the operator to copy into any coding
@@ -32,6 +32,7 @@ import {
 	endoReceiptRelationV0,
 } from "../protocol/develop-receipts.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoAttemptEvidenceV0, renderEndoAttemptEvidenceV0 } from "../runtime/contracts/develop-attempt-evidence.ts";
 import {
 	type DevelopAttemptReportV0,
 	type DevelopAttemptsRefusalV0,
@@ -51,7 +52,7 @@ import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -440,6 +441,38 @@ async function receipt(argv: readonly string[]): Promise<void> {
 	print({ comparedWith: directory, receipt: receiptShown(one.receipt, one.relation) });
 }
 
+/**
+ * `evidence`: one attempt's records read together (docs/designs/develop-attempt-evidence.md). Read-only: it writes, stores and runs nothing,
+ * and names no revision as the attempt's result. The working tree compared is the one `receipts` would compare with.
+ */
+async function evidence(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
+	const attemptId = attemptOf(flags);
+	// The records are read one after another, not under a lock: readAtMs is when this reading began.
+	const readAtMs = Date.now();
+	const report = unwrap(serviceAt(root).get(attemptId));
+	const service = receiptsAt(root);
+	const directory = flags.get("--cwd") ?? service.defaultDirectory(attemptId);
+	const current = directory === null ? null : await service.current(directory);
+	const read = service.list(attemptId, current);
+	const tasks = new DevelopTasksStoreV0(root).read();
+	const task = tasks.ok
+		? (tasks.file.tasks.find((t) => t.id === report.attempt.taskId && t.projectId === report.attempt.projectId) ??
+			null)
+		: null;
+	const view = endoAttemptEvidenceV0({
+		report,
+		task,
+		receipts: read.ok ? read.receipts : null,
+		receiptProblems: read.ok ? read.problems.length : 0,
+		comparedWith: directory,
+		current,
+		readAtMs,
+	});
+	print({ evidence: view });
+	process.stderr.write(renderEndoAttemptEvidenceV0(view));
+}
+
 export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	prepare,
 	brief,
@@ -451,4 +484,5 @@ export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => vo
 	check,
 	receipts,
 	receipt,
+	evidence,
 };

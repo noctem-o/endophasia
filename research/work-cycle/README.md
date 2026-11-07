@@ -81,7 +81,10 @@ PONYTAIL_DEFAULT_MODE=off node research/work-cycle/driver.ts run \
 #   the status moves are yours; the driver prints the commands; afterwards: node research/work-cycle/driver.ts reconstruct --run <dir>
 ```
 
-Runs go to `~/projects/endophasia-research/work-cycle-001a/<timestamp>/` by default, outside the repository. The driver starts
+Runs go to `~/projects/endophasia-research/work-cycle-001a/<timestamp>/` by default, outside the repository. (WORK-CYCLE-001B: the
+workbench's control socket lives in the run's store and its path may be at most 100 bytes. The driver now refuses a run directory too
+deep for it before creating anything. Under a long home directory, pass a short `--runs`, as the 001B human run did with
+`~/projects/endophasia-research/wc001b`.) The driver starts
 `endo harness attach` with the terminal inherited and never writes to it. Its only question is whether to commit. The
 recording proxy is stopped whatever happens, including a failure or a Ctrl-C before the workbench starts.
 

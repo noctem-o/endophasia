@@ -26,17 +26,19 @@ import {
 	readFileSync,
 	readlinkSync,
 	realpathSync,
+	rmdirSync,
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+import { endoControlSocketV0 } from "../../cli/control.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ENDO_CLI = resolve(HERE, "../../cli/index.ts");
 export const FIXTURE = join(HERE, "fixture");
-export const DRIVER_VERSION = "work-cycle-001a.1";
+export const DRIVER_VERSION = "work-cycle-001b.1";
 
 /** The task the cycle carries. Its acceptance criterion is a command anyone can rerun at the recorded commit. */
 export const TASK = {
@@ -88,11 +90,35 @@ const git = (cwd: string, ...args: string[]) => {
 export { git as runGit };
 
 /** Launch: a new, self-contained run directory. Refuses to reuse one, so two runs never share a store. */
+/**
+ * The workbench serves control on a Unix socket inside the store (`cli/control.ts`), and refuses a socket path longer than this many bytes
+ * (a Unix socket's path is limited to about 107 bytes). A run directory is checked against it before anything is created.
+ */
+export const CONTROL_SOCKET_MAX_BYTES = 100;
+const socketPathOf = (run: string) => endoControlSocketV0(join(run, "store"));
+
+/** Why `run` cannot host a workbench (its control socket path would be too long), or null. */
+export function runDirectoryProblem(run: string): string | null {
+	const socket = socketPathOf(run);
+	const bytes = Buffer.byteLength(socket);
+	return bytes <= CONTROL_SOCKET_MAX_BYTES
+		? null
+		: `the run directory is too deep for the workbench's control socket (${socket} is ${bytes} bytes; at most ${CONTROL_SOCKET_MAX_BYTES}). Give a shorter --runs directory.`;
+}
+
 export function launchRun(run: string): RunLayout {
 	if (existsSync(run) && readdirSync(run).length > 0)
 		throw new Error(`refusing to reuse a non-empty run directory: ${run}`);
+	const early = runDirectoryProblem(resolve(run));
+	if (early !== null) throw new Error(`${early} Nothing was created.`);
 	mkdirSync(run, { recursive: true });
 	const root = realpathSync(run);
+	// The real path can be longer than the one given (a link in it): checked again, and the empty directory just made is removed.
+	const late = runDirectoryProblem(root);
+	if (late !== null) {
+		rmdirSync(root);
+		throw new Error(`${late} Nothing was kept.`);
+	}
 	const layout: RunLayout = {
 		run: root,
 		store: join(root, "store"),
@@ -1004,7 +1030,8 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 	if (endpointUrl.pathname.replace(/\/$/, "") !== "/v1")
 		throw new TypeError("--endpoint must be an OpenAI-compatible base ending in /v1 (the proxy relays the origin)");
 	const runs = flag(argv, "--runs") ?? join(homedir(), "projects", "endophasia-research", "work-cycle-001a");
-	const layout = launchRun(join(runs, new Date().toISOString().replace(/[:.]/g, "-")));
+	// A compact UTC stamp (20261107T192155Z): the run directory's depth counts against the control socket's path limit.
+	const layout = launchRun(join(runs, new Date().toISOString().replace(/[-:]|\.\d+/g, "")));
 	const say = (line: string) => process.stderr.write(`[work-cycle] ${line}\n`);
 	say(`run directory ${layout.run} (kept as the evidence)`);
 

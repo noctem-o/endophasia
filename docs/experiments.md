@@ -4,6 +4,11 @@
 recorded through the capture proxy, so every trial is also a replayable cassette ([replay.md](replay.md)).
 `endo experiment report` aggregates the trials with the trajectory comparison ([trajectory.md](trajectory.md)).
 
+**Protected experiments** (`endo experiment protected-run`, [protected-experiments.md](protected-experiments.md)) are a separate,
+opt-in path: each attempt runs in a Bubblewrap sandbox checked from inside, its submission is collected after its processes are confirmed
+gone, and an independent evaluator in a second sandbox judges it. They are offline for now (no model connection). This runner is
+unchanged: its trials are not isolated, and its success check runs in the agent's own workspace.
+
 The source-tree [initial-child execution API](initial-child-execution.md) is a separate narrow path: one currently
 pristine prepared child, one exact local approval, one tool-free fresh Pi turn and its own evidence receipt. It does
 not run an experiment task set or apply arbitrary experiment conditions.

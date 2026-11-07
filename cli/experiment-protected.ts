@@ -196,7 +196,16 @@ const realOrResolved = (path: string): string => {
 };
 
 /** Every file's content digest under a tree (links and special files skipped: they are refused where it matters). */
-function contentDigests(root: string, into: Set<string>): void {
+function contentDigests(declared: string, into: Set<string>, top = true): void {
+	// A declared root (a reference or negative directory) is resolved first: qualification follows a link there, so must this. Inside the
+	// tree, links are not followed (the exported copy refuses them anyway).
+	let root = declared;
+	if (top)
+		try {
+			root = realpathSync(declared);
+		} catch {
+			return;
+		}
 	const s = lstatSync(root, { throwIfNoEntry: false });
 	if (s === undefined) return;
 	if (s.isFile()) {
@@ -205,7 +214,7 @@ function contentDigests(root: string, into: Set<string>): void {
 		return;
 	}
 	if (!s.isDirectory()) return;
-	for (const name of readdirSync(root)) contentDigests(join(root, name), into);
+	for (const name of readdirSync(root)) contentDigests(join(root, name), into, false);
 }
 const contains = (outer: string, inner: string): boolean =>
 	inner === outer || inner.startsWith(outer.endsWith("/") ? outer : `${outer}/`);
@@ -492,7 +501,9 @@ async function finalizeOnResume(
 		? (readJson(join(attemptDir, "preflight.json")) as EndoPreflightV0)
 		: { status: "unavailable", probes: [], reason: "the controller stopped before the boundary was checked" };
 	let agent: EndoProtectedTrialV0["agent"];
-	if (preflight.status !== "established")
+	// The agent's scope is recorded synchronously before anything is spawned: without that record, the agent never started (whatever the
+	// preflight said), and the attempt stays retryable.
+	if (preflight.status !== "established" || !existsSync(join(attemptDir, "agent-scope.json")))
 		agent = {
 			status: "not-run",
 			exitCode: null,

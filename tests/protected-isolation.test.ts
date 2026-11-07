@@ -747,6 +747,46 @@ describe.runIf(REAL)("real isolation: review regressions", () => {
 		expect(endoTreeDigestV0(dir)).not.toBe(before);
 	});
 
+	it("Codex: an attempt stopped after its preflight but before its agent's scope was recorded never ran its agent, and can be retried", async () => {
+		const out = fresh("run");
+		const spec = specWith({ honest: solve });
+		await runProtectedExperimentV0({ spec, dir: out });
+		const attempt = join(out, "trials", "merge-intervals", "honest", "0", "attempt-1");
+		// Keep only what exists between the preflight and the agent's launch: the marker, the workspace and an established preflight.
+		for (const name of [
+			"record.json",
+			"agent-scope.json",
+			"agent-started.json",
+			"agent-ended.json",
+			"agent.log",
+			"submission",
+			"evaluation-scope.json",
+		])
+			rmSync(join(attempt, name), { recursive: true, force: true });
+		expect(JSON.parse(readFileSync(join(attempt, "preflight.json"), "utf8")).status).toBe("established");
+		await runProtectedExperimentV0({ spec, dir: out });
+		const r = recordOf(out, "honest");
+		expect(r.agent).toMatchObject({ status: "not-run", termination: "not-applicable", scope: null });
+		expect(r.invalidating).toEqual(["controller-interrupted"]);
+		await runProtectedExperimentV0({ spec, dir: out, retryInterrupted: true });
+		expect(recordOf(out, "honest", 0, 2)).toMatchObject({ trial: { retryOf: 1 }, evaluation: { status: "passed" } });
+	});
+
+	it("Codex: a reference directory reached through a link still counts as hidden material", async () => {
+		const spec = specWith({ honest: solve });
+		const evaluatorDir = join(spec.tasks[0]!.evaluator.file, "..");
+		// The reference lives elsewhere, reached through a link from the evaluator directory.
+		const elsewhere = fresh("reference-elsewhere");
+		renameSync(join(evaluatorDir, "reference"), join(elsewhere, "reference"));
+		symlinkSync(join(elsewhere, "reference"), join(evaluatorDir, "reference"));
+		// The agent directory holds an identical copy of the hidden reference file, under another name.
+		writeFileSync(
+			join(spec.conditions[0]!.agent.directory, "notes.mjs"),
+			readFileSync(join(elsewhere, "reference", "src", "interval.mjs")),
+		);
+		await expect(runProtectedExperimentV0({ spec, dir: fresh("run") })).rejects.toThrow(/hidden material/);
+	});
+
 	it("M5: an attempt the controller stopped after the agent ended keeps the agent's facts", async () => {
 		const out = fresh("run");
 		const spec = specWith({ honest: solve });

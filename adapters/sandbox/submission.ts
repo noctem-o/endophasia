@@ -31,6 +31,10 @@ export interface EndoSubmissionHooksV0 {
 	afterOpen?: (path: string) => void;
 }
 
+/** The filesystem errors an agent can cause in its own workspace: removed access, a vanished entry, a link or directory in the way. */
+const AGENT_CAUSED = ["EACCES", "EPERM", "ENOENT", "ENOTDIR", "ELOOP", "EISDIR"];
+const agentCaused = (code: string | undefined): boolean => AGENT_CAUSED.includes(code ?? "");
+
 const same = (a: { dev: number; ino: number; size: number; ctimeMs: number }, b: typeof a) =>
 	a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.ctimeMs === b.ctimeMs;
 
@@ -65,7 +69,10 @@ function readExactly(
 	try {
 		fd = openSync(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "ELOOP" ? "symbolic-link" : "unreadable";
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ELOOP") return "symbolic-link";
+		if (agentCaused(code)) return "unreadable";
+		throw error;
 	}
 	try {
 		const opened = fstatSync(fd);
@@ -93,8 +100,10 @@ function readExactly(
 		)
 			return "changed-during-collection";
 		return Buffer.concat(chunks);
-	} catch {
-		return "unreadable";
+	} catch (error) {
+		// Removed access or a vanished entry is the agent's doing; the host's I/O (EIO, EMFILE, ...) is not, and propagates.
+		if (agentCaused((error as NodeJS.ErrnoException).code)) return "unreadable";
+		throw error;
 	} finally {
 		closeSync(fd);
 	}
@@ -125,8 +134,7 @@ export function exportSubmissionV0(
 		} catch (error) {
 			// What an agent can cause (removed access, a vanished entry, a link or a directory in the way) is a refusal of this file. Anything
 			// else (the host's I/O, too many open files) is not the agent's: it propagates, and the controller records it as its own failure.
-			const code = (error as NodeJS.ErrnoException).code;
-			if (!["EACCES", "EPERM", "ENOENT", "ENOTDIR", "ELOOP", "EISDIR"].includes(code ?? "")) throw error;
+			if (!agentCaused((error as NodeJS.ErrnoException).code)) throw error;
 			got = "unreadable";
 		}
 		if (typeof got === "string") {

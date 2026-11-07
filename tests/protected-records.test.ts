@@ -486,6 +486,21 @@ describe("submission collection on the host filesystem", () => {
 			exportSubmissionV0(two, ["src/a.mjs", "src/b.mjs", "src/c.mjs"], LIMITS, join(fresh("st"), "c")).refusals,
 		).toEqual([{ path: "src/c.mjs", reason: "total-too-large" }]);
 	});
+	it("refuses what the agent can cause while reading, and propagates what the host causes (EIO, EMFILE)", () => {
+		const fail = (code: string) => () => {
+			throw Object.assign(new Error(code), { code });
+		};
+		const w = ws();
+		expect(
+			exportSubmissionV0(w, ["src/a.mjs"], LIMITS, join(fresh("st"), "c"), { afterOpen: fail("EACCES") }).refusals,
+		).toEqual([{ path: "src/a.mjs", reason: "unreadable" }]);
+		for (const code of ["EIO", "EMFILE"])
+			expect(
+				() => exportSubmissionV0(ws(), ["src/a.mjs"], LIMITS, join(fresh("st"), "c"), { afterOpen: fail(code) }),
+				code,
+			).toThrow(code);
+	});
+
 	it.runIf(spawnSync("/usr/bin/mkfifo", ["--version"]).status === 0)("refuses a FIFO without blocking on it", () => {
 		const w = ws();
 		rmSync(join(w, "src", "a.mjs"));

@@ -42,7 +42,7 @@ Every section of the reading names its source. The categories are never merged.
 endo attempt evidence [--root dir] --attempt <id> [--cwd <dir>]
 ```
 
-It prints canonical JSON (`endo.develop-attempt-evidence.v0`) on stdout and a short labelled summary on stderr. It always exits 0
+It prints canonical JSON (`endo.develop-attempt-evidence.v1`; see [Damaged records](#damaged-records-evidence-integrity-001)) on stdout and a short labelled summary on stderr. It always exits 0
 when the attempt exists. It reads, in one process:
 
 - the attempt and its records (`DevelopAttemptsServiceV0.get`, which already includes the execution reading);
@@ -51,6 +51,7 @@ when the attempt exists. It reads, in one process:
 
 | Field | Meaning | Does not mean |
 | :-- | :-- | :-- |
+| `sent.authorizationRecord` | `recorded` (valid), `absent` (no file at its name, in an attempts directory read whole) or `damaged` (a file at exactly its name is not a usable record) | for `damaged`: anything about whether the send was authorised |
 | `sent.send` / `sendLabel` | the execution reading's send state (Slice I/J), unchanged | that Pi did anything useful |
 | `pi.run` / `runLabel` | the first run of the same Pi process after the send, as Pi reported it (`source: "none"` when nothing was authorised) | that the work is correct, or done |
 | `candidate.recorded: false` | always: no record names a candidate revision | that there is none |
@@ -65,12 +66,14 @@ when the attempt exists. It reads, in one process:
 
 | Code | When |
 | :-- | :-- |
-| `not-authorized` | no authorisation record: never sent through the workbench |
+| `authorization-record-damaged` | a file at this attempt's authorisation record's name is not usable: whether it was authorised is unknown, and nothing in the log is attributed |
+| `not-authorized` | no file at the authorisation record's name, in a directory read whole: never sent through the workbench |
 | `execution-evidence-incomplete` | the session log was `partial` or `unavailable` |
 | `send-not-confirmed` | the send state is anything but `runtime-accepted` |
 | `run-not-completed` | the run state is anything but `completed` |
 | `brief-changed-since-authorization` | the brief's digest no longer matches the approved one |
 | `task-words-changed` | the task's words changed since preparation |
+| `operator-statement-damaged` | a file at this attempt's handoff or outcome name is not usable: that statement cannot be read, and is not shown as absent |
 | `receipts-unreadable` | the receipts directory could not be read |
 | `receipt-files-unusable` | some files in it are not usable receipts (damaged, unreadable): what they recorded, perhaps a failure, is not shown |
 | `no-check` | no receipt |
@@ -127,6 +130,35 @@ check that the reading's `candidate` has exactly its four members, so an inferre
   records; it never attributes a change.
 - **Not on the page.** The workbench's attempts view already shows each attempt's execution and receipts with their relations. This
   reading is the terminal's equivalent plus the gap list. No second page view was added.
+
+## Damaged records (EVIDENCE-INTEGRITY-001)
+
+In v0, a damaged `<id>.authorized.json` read as no authorisation at all. The store reported it as a problem, the attempts service dropped the
+problem, and the reader showed `not-authorized`: a lost record became a categorical claim that the operator never approved. v1 keeps
+three states apart, and the CLI's JSON, its text and its gap list agree on them:
+
+| State | When | Reading |
+| :-- | :-- | :-- |
+| known absent | the attempts directory was read whole and has no file at `<id>.authorized.json` | `authorizationRecord: "absent"`, gap `not-authorized`, `sent [observed] No send … was authorised` |
+| observed present | a valid record at that name, whose `attemptId` is this attempt's | `recorded`; joined to the session log by exact ids, as before |
+| damaged | a file at exactly that name is malformed, invalid, misnamed (another attempt's record), over its bound, a link, or unreadable | `damaged`, with the store's reason (never the contents); gap `authorization-record-damaged`; `sent [unknown] …`; no send, run or Pi report attributed |
+| unknown, no reading | the attempts directory itself cannot be read | the command refuses (`unreadable`); nothing is claimed |
+
+- **Exact names only.** A damaged file of another attempt, or a file merely named like this one's (`….authorized.json.bak`), says nothing
+  about this attempt. This is the rule the service already applied before writing a handoff or outcome.
+- **Surviving events are counted, not joined.** The log's events do not name an attempt: they carry a keyed digest of the message. Without
+  the record there is no exact join. So, for a damaged record and a log read whole, the reading gives `unattributedWorkbenchSends`: the
+  number of `workbench.prompt-dispatched` events whose proposal id no readable authorisation record of any attempt accounts for. They
+  may be plain workbench prompts, or this attempt's send. None is attributed, and the run is not reported. A partial log gives `null`.
+- **The same for statements.** A damaged handoff or outcome gives `operator-statement-damaged`. A damaged prepared record, or later
+  records without one, makes `endo attempt show/evidence` refuse as `unreadable` instead of saying "no such attempt".
+- **Nothing is repaired.** The files are left as found. `endo attempt show` also carries `records`, `damaged` and
+  `unattributedWorkbenchSends`, and says `execution: unknown` on stderr for a damaged authorisation.
+- **Not re-sent.** The broker already refuses to authorise an attempt that has an unusable file at any of its record names
+  (`develop-attempt-dispatch.ts`), so a damaged record never opens a second send.
+- **The page.** The workbench's attempts view (`EndoDevelopAttemptsViewV2`) still has only `execution: null`, so it can offer the send
+  button for such an attempt. That offer is advisory, and the broker refuses it. A page view that shows the damaged state would need a
+  view schema change, and is not made here.
 
 ## Review
 

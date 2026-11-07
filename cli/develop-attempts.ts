@@ -151,6 +151,10 @@ const shown = (r: DevelopAttemptReportV0) => ({
 	outcome: r.outcome,
 	// The authorisation record as written (ids to look up in the session's log), and the full reading of that log.
 	authorized: r.authorized,
+	// Whether each later record is recorded, absent, or damaged (a file at its name that is not usable: not the same as absent).
+	records: r.records,
+	damaged: r.damaged,
+	unattributedWorkbenchSends: r.unattributedWorkbenchSends,
 	execution:
 		r.execution === null
 			? null
@@ -247,6 +251,10 @@ function show(argv: readonly string[]): void {
 	const { root, flags } = flagsOf(argv, ["--attempt"], USAGE);
 	const report = unwrap(serviceAt(root).get(attemptOf(flags)));
 	print({ attempt: shown(report) });
+	if (report.records.authorized === "damaged")
+		process.stderr.write(
+			"execution: unknown. A file at this attempt's authorisation record's name is not a usable record, so whether a send was authorised cannot be read; nothing in the session log is attributed to it. The file was left as found.\n",
+		);
 	if (report.execution !== null)
 		process.stderr.write(
 			`execution: ${ENDO_ATTEMPT_SEND_LABELS_V0[report.execution.send]}. ${ENDO_ATTEMPT_RUN_LABELS_V0[report.execution.run]}. This is what the session recorded, read now${report.execution.evidence === "partial" ? " (part of the session log could not be read, so later records may be missing)" : ""}; it is not verification. Check the work with \`endo attempt check\`, and set the task's status yourself.\n`,

@@ -39,6 +39,10 @@ function report(execution: Partial<EndoDevelopAttemptExecutionViewV0> | null): D
 		state: "prepared",
 		task: "present",
 		taskWordsChanged: [],
+		// As the service reports a directory read whole: the authorisation is recorded exactly when there is an execution reading.
+		records: { handoff: "absent", outcome: "absent", authorized: execution === null ? "absent" : "recorded" },
+		damaged: [],
+		unattributedWorkbenchSends: null,
 		execution:
 			execution === null
 				? null

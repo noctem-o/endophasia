@@ -95,7 +95,23 @@ export interface DevelopAttemptReportV0 extends EndoAttemptEntryV0 {
 	 */
 	task: "present" | "not-found" | "unavailable";
 	taskWordsChanged: EndoDevelopTaskWordV0[];
+	/**
+	 * Each of the attempt's later records as this read found it (EVIDENCE-INTEGRITY-001): `recorded` (valid), `absent` (no file at its name,
+	 * in a directory that was read whole), or `damaged` (a file at exactly that record's name is not a usable record: malformed, invalid,
+	 * misnamed, over its bound, a link, or unreadable). `damaged` never means "absent": whether that record was written is unknown.
+	 */
+	records: Readonly<Record<Exclude<EndoAttemptRecordKindV0, "prepared">, EndoAttemptRecordStateV0>>;
+	/** The problems at this attempt's own record names, as the store reported them (name and reason only; contents are never read out). */
+	damaged: EndoAttemptProblemV0[];
+	/**
+	 * Only when the authorisation record is damaged and the session log was read whole: how many workbench sends in the log no readable
+	 * authorisation record (of any attempt) accounts for, by exact proposal id. They may be plain workbench prompts, or this attempt's send;
+	 * none is attributed. Null otherwise.
+	 */
+	unattributedWorkbenchSends: number | null;
 }
+
+export type EndoAttemptRecordStateV0 = "recorded" | "absent" | "damaged";
 
 export interface DevelopAttemptsListV0 {
 	attempts: DevelopAttemptReportV0[];
@@ -205,8 +221,19 @@ export class DevelopAttemptsServiceV0 {
 		entry: EndoAttemptEntryV0,
 		file: EndoDevelopTasksFileV1 | null,
 		log: () => EndoSessionLogReadV0 = this.#logOnce(),
+		problems: readonly EndoAttemptProblemV0[] = [],
 	): DevelopAttemptReportV0 {
 		const { attempt } = entry;
+		// Exact names only: a damaged file of another attempt says nothing about this one (the rule #record uses before writing).
+		const damaged = problems.filter(
+			(p) => p.name.startsWith(`${attempt.id}.`) && /\.(handoff|outcome|authorized)\.json$/.test(p.name),
+		);
+		const stateOf = (kind: "handoff" | "outcome" | "authorized"): EndoAttemptRecordStateV0 =>
+			entry[kind] !== null
+				? "recorded"
+				: damaged.some((p) => p.name === `${attempt.id}.${kind}.json`)
+					? "damaged"
+					: "absent";
 		const task =
 			file === null
 				? undefined
@@ -217,7 +244,24 @@ export class DevelopAttemptsServiceV0 {
 			execution: this.#execution(entry, log),
 			task: file === null ? "unavailable" : task === undefined ? "not-found" : "present",
 			taskWordsChanged: task === undefined ? [] : endoDevelopTaskWordsChangedV0(attempt, task),
+			records: { handoff: stateOf("handoff"), outcome: stateOf("outcome"), authorized: stateOf("authorized") },
+			damaged,
+			unattributedWorkbenchSends: null,
 		};
+	}
+
+	/**
+	 * Workbench sends in a whole log that no readable authorisation record accounts for (exact proposal ids). Null for a log not read whole:
+	 * what is missing from it could be either.
+	 */
+	#unattributedSends(entries: readonly EndoAttemptEntryV0[], log: EndoSessionLogReadV0): number | null {
+		if (log.state !== "complete") return null;
+		const accounted = new Set(entries.flatMap((e) => (e.authorized === null ? [] : [e.authorized.proposalId])));
+		return log.events.filter((e) => {
+			if (e.kind !== "workbench.prompt-dispatched") return false;
+			const payload = e.payload as { proposalId?: unknown } | null;
+			return typeof payload?.proposalId !== "string" || !accounted.has(payload.proposalId);
+		}).length;
 	}
 
 	/** Every attempt of a project (and, when given, one task), oldest first, with the directory's problems. */
@@ -240,7 +284,7 @@ export class DevelopAttemptsServiceV0 {
 					.filter(
 						(e) => e.attempt.projectId === projectId && (taskId === undefined || e.attempt.taskId === taskId),
 					)
-					.map((e) => this.#report(e, file, log)),
+					.map((e) => this.#report(e, file, log, read.problems)),
 				problems: read.problems,
 			},
 		};
@@ -252,7 +296,17 @@ export class DevelopAttemptsServiceV0 {
 		const read = this.#attempts.read();
 		if (!read.ok) return refuse("unreadable", read.reason);
 		const entry = read.entries.find((e) => e.attempt.id === attemptId);
-		return entry === undefined ? refuse("not-found") : { ok: true, value: this.#report(entry, this.#taskFile()) };
+		if (entry === undefined) {
+			// Files at this attempt's names that are not usable (its prepared record damaged, or later records without it): the attempt may
+			// exist, so it is not "not found" (EVIDENCE-INTEGRITY-001).
+			const at = read.problems.find((p) => p.name.startsWith(`${attemptId}.`));
+			return at === undefined ? refuse("not-found") : refuse("unreadable", at.reason);
+		}
+		const log = this.#logOnce();
+		const report = this.#report(entry, this.#taskFile(), log, read.problems);
+		if (report.records.authorized === "damaged")
+			report.unattributedWorkbenchSends = this.#unattributedSends(read.entries, log());
+		return { ok: true, value: report };
 	}
 
 	/** The brief of one attempt: a pure rendering of its prepared record. Reading it sends nothing and writes nothing. */

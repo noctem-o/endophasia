@@ -88,7 +88,16 @@ export function endoAttemptProblemsOfV0(
 }
 
 export type EndoAttemptsReadV0 =
-	| { ok: true; entries: EndoAttemptEntryV0[]; problems: EndoAttemptProblemV0[] }
+	| {
+			ok: true;
+			entries: EndoAttemptEntryV0[];
+			problems: EndoAttemptProblemV0[];
+			/**
+			 * The proposal id of every valid authorisation record under its own name, its attempt's prepared record readable or not (orphans
+			 * included). For accounting for sends only: an orphan is still a problem, never an attempt, and never joined to an execution.
+			 */
+			authorizedProposalIds: string[];
+	  }
 	| { ok: false; reason: "unsafe-path" | "io" };
 
 export interface EndoDevelopAttemptsStoreOptionsV0 {
@@ -117,7 +126,7 @@ export class DevelopAttemptsStoreV0 {
 	/** Every attempt in the directory, read now. A missing directory is no attempts (nothing is created). */
 	read(): EndoAttemptsReadV0 {
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir]);
-		if (dirs === "missing") return { ok: true, entries: [], problems: [] };
+		if (dirs === "missing") return { ok: true, entries: [], problems: [], authorizedProposalIds: [] };
 		if (dirs !== "ok") return { ok: false, reason: dirs };
 		let names: string[];
 		try {
@@ -167,6 +176,9 @@ export class DevelopAttemptsStoreV0 {
 			}
 			found.set(id, { ...found.get(id), [kind]: record });
 		}
+		const authorizedProposalIds = [...found.values()].flatMap((r) =>
+			r.authorized === undefined ? [] : [(r.authorized as EndoDevelopAttemptAuthorizationV0).proposalId],
+		);
 		const entries: EndoAttemptEntryV0[] = [];
 		for (const [id, records] of found) {
 			if (records.prepared === undefined) {
@@ -183,7 +195,7 @@ export class DevelopAttemptsStoreV0 {
 			});
 		}
 		entries.sort((a, b) => a.attempt.preparedAtMs - b.attempt.preparedAtMs || (a.attempt.id < b.attempt.id ? -1 : 1));
-		return { ok: true, entries, problems };
+		return { ok: true, entries, problems, authorizedProposalIds };
 	}
 
 	/**

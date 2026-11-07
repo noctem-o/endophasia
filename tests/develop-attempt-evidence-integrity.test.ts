@@ -361,6 +361,33 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 		expect(evidenceOf(partial, partial.a.id).view.sent.unattributedWorkbenchSends).toBeNull();
 	});
 
+	it("a valid authorisation whose prepared record is damaged still accounts for its send; a malformed one never does", () => {
+		const theirs = chain("8");
+		const other = chain("9");
+		const s = seeded(() => ({ state: "complete", events: [...theirs.events, ...other.events] }));
+		expect(s.attempts.write(s.b.id, "authorized", authorization(theirs.p, brief(s, s.b.id), s.b.id, "8"))).toBe(
+			"created",
+		);
+		writeFileSync(s.at(s.a.id, "authorized"), "{garbage");
+		// Only "other" is unaccounted: B's valid record accounts for "theirs".
+		expect(evidenceOf(s, s.a.id).view.sent.unattributedWorkbenchSends).toBe(1);
+		// Damage only B's prepared record. B is no longer an attempt (an orphan problem), but its authorisation is still valid and its send
+		// still accounted for: the count does not change.
+		writeFileSync(s.at(s.b.id, "prepared"), "{garbage");
+		const read = s.attempts.read();
+		expect(read.ok && read.entries.map((e) => e.attempt.id)).toEqual([s.a.id]);
+		expect(read.ok && read.problems).toContainEqual({ name: `${s.b.id}.authorized.json`, reason: "orphan" });
+		expect(evidenceOf(s, s.a.id).view.sent.unattributedWorkbenchSends).toBe(1);
+		// B is still not shown as an attempt, nor given an execution.
+		expect(s.service.get(s.b.id)).toMatchObject({ ok: false, code: "unreadable" });
+		// A malformed authorisation naming "other"'s proposal id (fails validation) accounts for nothing.
+		const bad = { ...authorization(other.p, brief(s, s.a.id), s.a.id, "9"), via: "not-a-channel" };
+		writeFileSync(s.at(s.a.id, "authorized"), JSON.stringify(bad));
+		const after = evidenceOf(s, s.a.id);
+		expect(after.report.records.authorized).toBe("damaged");
+		expect(after.view.sent.unattributedWorkbenchSends).toBe(1);
+	});
+
 	it("a stray file merely starting with this attempt's id is not its record: absent, and nothing listed as damaged (review #2)", () => {
 		const s = seeded();
 		for (const stray of ["extra.authorized.json", "prepared.authorized.json"])
@@ -463,15 +490,17 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 			"gap       A file at this attempt's authorisation record's name is not a usable record. Whether a send was authorised is unknown",
 		);
 		const listed = run("attempt", "list", "--root", s.root, "--project", s.a.projectId);
+		// Sorted by id: A and B are often prepared in the same millisecond, so the list's own order between them follows their random ids.
 		expect(
-			JSON.parse(listed.stdout).attempts.map((x: { id: string; records: { authorized: string } }) => [
-				x.id,
-				x.records.authorized,
-			]),
-		).toEqual([
-			[s.a.id, "damaged"],
-			[s.b.id, "absent"],
-		]);
+			JSON.parse(listed.stdout)
+				.attempts.map((x: { id: string; records: { authorized: string } }) => [x.id, x.records.authorized])
+				.sort(),
+		).toEqual(
+			[
+				[s.a.id, "damaged"],
+				[s.b.id, "absent"],
+			].sort(),
+		);
 		const show = run("attempt", "show", "--root", s.root, "--attempt", s.a.id);
 		expect(show.status).toBe(0);
 		expect(JSON.parse(show.stdout).attempt).toMatchObject({

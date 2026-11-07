@@ -250,12 +250,13 @@ export class DevelopAttemptsServiceV0 {
 	}
 
 	/**
-	 * Workbench sends in a whole log that no readable authorisation record accounts for (exact proposal ids). Null for a log not read whole:
-	 * what is missing from it could be either.
+	 * Workbench sends in a whole log that no readable authorisation record accounts for (exact proposal ids). Every valid authorisation
+	 * counts, including one whose prepared record is damaged or missing: its send happened, and is accounted for, even though no attempt
+	 * can be shown for it. Null for a log not read whole: what is missing from it could be either.
 	 */
-	#unattributedSends(entries: readonly EndoAttemptEntryV0[], log: EndoSessionLogReadV0): number | null {
+	#unattributedSends(authorizedProposalIds: readonly string[], log: EndoSessionLogReadV0): number | null {
 		if (log.state !== "complete") return null;
-		const accounted = new Set(entries.flatMap((e) => (e.authorized === null ? [] : [e.authorized.proposalId])));
+		const accounted = new Set(authorizedProposalIds);
 		return log.events.filter((e) => {
 			if (e.kind !== "workbench.prompt-dispatched") return false;
 			const payload = e.payload as { proposalId?: unknown } | null;
@@ -304,7 +305,7 @@ export class DevelopAttemptsServiceV0 {
 		const log = this.#logOnce();
 		const report = this.#report(entry, this.#taskFile(), log, read.problems);
 		if (report.records.authorized === "damaged")
-			report.unattributedWorkbenchSends = this.#unattributedSends(read.entries, log());
+			report.unattributedWorkbenchSends = this.#unattributedSends(read.authorizedProposalIds, log());
 		return { ok: true, value: report };
 	}
 

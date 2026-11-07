@@ -17,8 +17,13 @@ import { type EndoBubblewrapV0, type EndoSandboxProfileV0, runSandboxV0 } from "
 /** Host paths the sandbox must not see, by role (their paths are not secret; their absence inside is what is checked). */
 export interface EndoPreflightTargetsV0 {
 	protectedPaths: Record<string, string>;
-	/** Inside paths that must be read-only (the runtime's executables, the agent directory). */
-	readOnly: string[];
+	/**
+	 * The runtime's executables: a write must fail. They are root-owned, so their own mode may answer (EACCES) before the read-only mount is
+	 * reached; this shows they cannot be changed, not by which mechanism.
+	 */
+	readOnlyRuntime: string[];
+	/** Inside paths on read-only mounts (a file to create under /agent, /usr): a write must fail with EROFS, the mount's own answer. */
+	readOnlyMounts: string[];
 	/** An inside directory that must be writable (the workspace). */
 	writable: string;
 	/** Environment variable names the sandbox may have. */
@@ -42,7 +47,9 @@ const code = (f) => { try { f(); return "ok"; } catch (e) { return String(e && e
 for (const [role, path] of Object.entries(c.protectedPaths)) out["fs-hidden-" + role] = code(() => fs.lstatSync(path));
 out["fs-canary-read"] = code(() => fs.readFileSync(c.canary));
 out["fs-root-readonly"] = code(() => fs.writeFileSync("/.endo-probe", "x"));
-c.readOnly.forEach((p, i) => { out["fs-readonly-" + i] = code(() => fs.appendFileSync(p, "")); });
+c.readOnlyRuntime.forEach((p, i) => { out["fs-readonly-runtime-" + i] = code(() => fs.appendFileSync(p, "")); });
+c.readOnlyMounts.forEach((p, i) => { out["fs-readonly-mount-" + i] = code(() => fs.appendFileSync(p, "")); });
+out["fs-dev-readonly"] = code(() => fs.writeFileSync("/dev/.endo-probe", "x"));
 out["fs-workspace-writable"] = code(() => { fs.writeFileSync(c.writable + "/.endo-probe", "x"); fs.unlinkSync(c.writable + "/.endo-probe"); });
 out["fs-tmp-private"] = (() => { try { return "entries:" + fs.readdirSync("/tmp").length; } catch (e) { return String(e.code); } })();
 out["proc-private"] = (() => { try { const p = fs.readdirSync("/proc").filter((x) => /^[0-9]+$/.test(x)); return "pids:" + p.length + (p.includes(String(c.controllerPid)) ? " controller:visible" : " controller:absent"); } catch (e) { return String(e.code); } })();
@@ -64,7 +71,9 @@ const OBSERVED = /^[A-Za-z0-9_:.\- ]{1,80}$/;
 function passes(id: string, observed: string): boolean {
 	if (id.startsWith("fs-hidden-") || id.startsWith("socket-hidden-") || id === "fs-canary-read")
 		return observed === "ENOENT";
-	if (id === "fs-root-readonly" || id.startsWith("fs-readonly-")) return observed === "EROFS" || observed === "EACCES";
+	if (id.startsWith("fs-readonly-runtime-")) return observed === "EROFS" || observed === "EACCES";
+	if (id === "fs-root-readonly" || id === "fs-dev-readonly" || id.startsWith("fs-readonly-mount-"))
+		return observed === "EROFS";
 	if (id === "fs-workspace-writable") return observed === "ok";
 	if (id === "fs-tmp-private") return observed === "entries:0";
 	if (id === "proc-private") {
@@ -113,7 +122,8 @@ export async function preflightV0(
 		const config = {
 			protectedPaths: targets.protectedPaths,
 			canary,
-			readOnly: targets.readOnly,
+			readOnlyRuntime: targets.readOnlyRuntime,
+			readOnlyMounts: targets.readOnlyMounts,
 			writable: targets.writable,
 			environment: targets.environment,
 			sockets: targets.sockets,
@@ -156,7 +166,11 @@ export async function preflightV0(
 			})
 			.sort((a, b) => (a.id < b.id ? -1 : 1));
 		const expectedCount =
-			Object.keys(targets.protectedPaths).length + targets.readOnly.length + targets.sockets.length + 12;
+			Object.keys(targets.protectedPaths).length +
+			targets.readOnlyRuntime.length +
+			targets.readOnlyMounts.length +
+			targets.sockets.length +
+			13;
 		if (probes.length !== expectedCount)
 			return { status: "failed", probes, reason: "the probe did not report every check" };
 		return probes.every((p) => p.passed)

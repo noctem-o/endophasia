@@ -8,7 +8,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 
@@ -288,8 +288,9 @@ export function buildSandboxProfileV0(input: EndoSandboxProfileInputV0): EndoSan
 	check(input.cwd);
 	args.push("--chdir", input.cwd);
 	for (const [name, value] of Object.entries(input.unsafeForTests?.extraEnv ?? {})) args.push("--setenv", name, value);
-	// Last: everything not mounted writable above is read-only, including the sandbox's own root.
-	if (input.unsafeForTests?.writableRoot !== true) args.push("--remount-ro", "/");
+	// Last: everything not mounted writable above is read-only, including the sandbox's own root and its /dev (writable, /dev would be an
+	// unbounded tmpfs; its device nodes stay usable).
+	if (input.unsafeForTests?.writableRoot !== true) args.push("--remount-ro", "/", "--remount-ro", "/dev");
 	const logical: EndoSandboxProfileV0["logical"] = {
 		namespaces: [...ENDO_SANDBOX_NAMESPACES_V0],
 		network: "none",
@@ -314,7 +315,7 @@ export function buildSandboxProfileV0(input: EndoSandboxProfileInputV0): EndoSan
 // ---- running -------------------------------------------------------------------------------------------------------------------------------
 
 export interface EndoSandboxRunV0 {
-	/** Whether bubblewrap started the command (it reported the child's pid). */
+	/** Whether bubblewrap started the sandbox (it reported its first process, and that process could be identified). */
 	started: boolean;
 	exitCode: number | null;
 	signal: string | null;
@@ -324,45 +325,85 @@ export interface EndoSandboxRunV0 {
 	stderr: Buffer;
 	/** Bytes the controller did not keep because of the bound. */
 	truncated: { stdout: number; stderr: number };
-	pidNamespace: number | null;
-	/** Whether no process of the sandbox's PID namespace remained afterwards (checked on /proc, after killing any found). */
+	/** The sandbox's first process (the init of its PID namespace), by host pid and start time: an identity, unlike a namespace number. */
+	init: EndoProcessIdentityV0 | null;
+	/**
+	 * `confirmed`: the sandbox's init (that pid with that start time) no longer exists. When a PID namespace's init ends, the kernel kills
+	 * every other process in it (pid_namespaces(7)), so none of the sandbox's processes can run again. `unconfirmed`: the init still existed
+	 * after it was killed, or the sandbox never reported its init (nothing can be said about what it started).
+	 */
 	termination: "confirmed" | "unconfirmed";
-	survivors: number;
 }
 
-/** Processes on this host whose PID namespace is `ns` (readable for this user's own processes). */
-export function processesInNamespaceV0(ns: number): number[] {
-	const found: number[] = [];
-	for (const name of readdirSync("/proc")) {
-		if (!/^[0-9]+$/.test(name)) continue;
-		try {
-			if (readlinkSync(`/proc/${name}/ns/pid`) === `pid:[${ns}]`) found.push(Number(name));
-		} catch {
-			// gone, or another user's: not this sandbox's (its processes are this user's)
-		}
-	}
-	return found;
+/** A host process by pid and kernel start time (/proc/<pid>/stat, field 22): a pid is reused, the pair is not. */
+export interface EndoProcessIdentityV0 {
+	pid: number;
+	startTime: string;
 }
+
+/** The start time of a host process, or null when there is no such process. */
+export function processStartTimeV0(pid: number): string | null {
+	try {
+		const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+		// The command name (field 2) is in parentheses and may contain spaces: count the fields after its closing parenthesis.
+		const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+		const start = rest[19];
+		return start !== undefined && /^[0-9]+$/.test(start) ? start : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Whether exactly this process (pid and start time) still exists. */
+export const processAliveV0 = (p: EndoProcessIdentityV0): boolean => processStartTimeV0(p.pid) === p.startTime;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Run one command in one sandbox. The command is an argument array; bubblewrap gets no environment of its own; stdio is three pipes and
- * nothing else is inherited. On timeout bubblewrap is killed, which kills the sandbox (it dies with its parent, and a PID namespace dies
- * with its first process). Afterwards the namespace is checked on /proc: any process found is killed, and termination is confirmed only
- * when none remains.
+ * End a sandbox for certain: kill its init, identified by pid and start time (never a process found by namespace number, which the kernel
+ * reuses), and wait until it is gone. Confirmed only when it is.
+ */
+export async function endSandboxV0(init: EndoProcessIdentityV0): Promise<"confirmed" | "unconfirmed"> {
+	// Up to ten seconds: a namespace with many processes or much memory takes time to tear down.
+	for (let i = 0; i < 200 && processAliveV0(init); i++) {
+		try {
+			process.kill(init.pid, "SIGKILL");
+		} catch {
+			// already gone
+		}
+		await sleep(50);
+	}
+	return processAliveV0(init) ? "unconfirmed" : "confirmed";
+}
+
+/**
+ * Run one command in one sandbox. Bubblewrap's options are passed through a pipe (`--args`), so no host path appears in the sandbox's
+ * /proc/1/cmdline; the command itself (logical paths only) follows `--`. Bubblewrap gets no environment; stdio is three pipes, and the
+ * status and option pipes are bubblewrap's own. On timeout bubblewrap is killed, which kills the sandbox (it dies with its parent), and
+ * afterwards the sandbox's init is ended for certain (endSandboxV0).
  */
 export async function runSandboxV0(
 	bwrap: EndoBubblewrapV0,
 	profile: EndoSandboxProfileV0,
 	argv: readonly string[],
-	options: { timeoutMs: number; outputBytes: number; stdin?: Buffer; onStarted?: (pidNamespace: number) => void },
+	options: {
+		timeoutMs: number;
+		outputBytes: number;
+		stdin?: Buffer;
+		onStarted?: (init: EndoProcessIdentityV0) => void;
+	},
 ): Promise<EndoSandboxRunV0> {
 	const start = performance.now();
-	const child = spawn(bwrap.path, ["--json-status-fd", "3", ...profile.args, "--", ...argv], {
+	const opts = ["--json-status-fd", "3", ...profile.args];
+	if ([...opts, ...argv].some((a) => a.includes("\0")))
+		throw new TypeError("a sandbox argument holds a NUL character");
+	const child = spawn(bwrap.path, ["--args", "4", "--", ...argv], {
 		env: {},
-		stdio: ["pipe", "pipe", "pipe", "pipe"],
+		stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
 	});
+	const argsPipe = child.stdio[4] as NodeJS.WritableStream;
+	argsPipe.on("error", () => {});
+	argsPipe.end(Buffer.from(`${opts.join("\0")}\0`, "utf8"));
 	const bounded = () => {
 		const chunks: Buffer[] = [];
 		let kept = 0;
@@ -380,19 +421,19 @@ export async function runSandboxV0(
 	const out = bounded();
 	const err = bounded();
 	let status = "";
-	let pidNamespace: number | null = null;
-	let started = false;
+	let init: EndoProcessIdentityV0 | null = null;
 	child.stdout.on("data", out.push);
 	child.stderr.on("data", err.push);
 	(child.stdio[3] as NodeJS.ReadableStream).on("data", (b: Buffer) => {
 		status += b.toString("utf8");
-		for (const line of status.split("\n")) {
-			const m = /"child-pid":\s*([0-9]+)/.exec(line);
-			const n = /"pid-namespace":\s*([0-9]+)/.exec(line);
-			if (m !== null && n !== null && !started) {
-				started = true;
-				pidNamespace = Number(n[1]);
-				options.onStarted?.(pidNamespace);
+		const m = /"child-pid":\s*([0-9]+)/.exec(status);
+		if (m !== null && init === null) {
+			const pid = Number(m[1]);
+			// Read while the sandbox runs (bubblewrap waits on its init): that pid cannot belong to another process yet.
+			const startTime = processStartTimeV0(pid);
+			if (startTime !== null) {
+				init = { pid, startTime };
+				options.onStarted?.(init);
 			}
 		}
 	});
@@ -408,38 +449,22 @@ export async function runSandboxV0(
 		child.on("close", (c, s) => resolve([c, s]));
 	});
 	clearTimeout(timer);
-	// bubblewrap reports the command's own exit code on the status fd; its own exit code mirrors it.
+	// bubblewrap reports the command's own exit code on the status fd.
 	const exitStatus = /"exit-code":\s*([0-9]+)/.exec(status);
-	let survivors = 0;
-	let termination: EndoSandboxRunV0["termination"] = "confirmed";
-	if (pidNamespace !== null) {
-		for (let i = 0; i < 20; i++) {
-			const left = processesInNamespaceV0(pidNamespace);
-			if (left.length === 0) break;
-			survivors = Math.max(survivors, left.length);
-			for (const pid of left)
-				try {
-					process.kill(pid, "SIGKILL");
-				} catch {
-					// already gone
-				}
-			await sleep(50);
-		}
-		if (processesInNamespaceV0(pidNamespace).length > 0) termination = "unconfirmed";
-	}
+	const known = init as EndoProcessIdentityV0 | null;
+	const termination = known === null ? "unconfirmed" : await endSandboxV0(known);
 	const o = out.value();
 	const e = err.value();
 	return {
-		started,
-		exitCode: exitStatus !== null ? Number(exitStatus[1]) : started ? null : code,
+		started: known !== null,
+		exitCode: exitStatus !== null ? Number(exitStatus[1]) : known !== null ? null : code,
 		signal: timedOut ? "SIGKILL" : signal,
 		timedOut,
 		durationMs: Math.round(performance.now() - start),
 		stdout: o.bytes,
 		stderr: e.bytes,
 		truncated: { stdout: o.dropped, stderr: e.dropped },
-		pidNamespace,
+		init: known,
 		termination,
-		survivors,
 	};
 }

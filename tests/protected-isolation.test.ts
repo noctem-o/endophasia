@@ -7,7 +7,18 @@
 
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	linkSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +27,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
-	processesInNamespaceV0,
+	processAliveV0,
+	processStartTimeV0,
 	resolveRuntimeV0,
 	runSandboxV0,
 } from "../adapters/sandbox/bubblewrap.ts";
@@ -24,7 +36,7 @@ import { preflightV0 } from "../adapters/sandbox/preflight.ts";
 import { reportProtectedExperimentV0, runProtectedExperimentV0 } from "../cli/experiment-protected.ts";
 import type { EndoProtectedSpecV0, EndoProtectedTrialV0 } from "../protocol/protected-experiment.ts";
 import { readEndoProtectedSpecV0 } from "../protocol/protected-experiment.ts";
-import { readEndoProtectedTrialFileV0 } from "../runtime/contracts/protected-experiment.ts";
+import { readEndoProtectedTrialFileV0, sealEndoProtectedTrialV0 } from "../runtime/contracts/protected-experiment.ts";
 
 const EXAMPLE = fileURLToPath(new URL("../research/protected-eval/example/", import.meta.url));
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
@@ -324,8 +336,9 @@ setInterval(() => {}, 1000);
 				join(out, "trials", "merge-intervals", "looping", "0", "attempt-1", "agent-started.json"),
 				"utf8",
 			),
-		).pidNamespace;
-		expect(processesInNamespaceV0(ns)).toEqual([]);
+		).init;
+		// The sandbox's init (pid and start time) is gone, so the kernel has killed everything in its namespace.
+		expect(processAliveV0(ns)).toBe(false);
 		// Nothing still writes into the workspace.
 		const beat = join(workOf(out, "looping"), "heartbeat");
 		const a = readFileSync(beat, "utf8");
@@ -348,12 +361,12 @@ setInterval(() => {}, 1000);
 		const started = join(out, "trials", "merge-intervals", "sleeper", "0", "attempt-1", "agent-started.json");
 		for (let i = 0; i < 200 && !existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
 		expect(existsSync(started)).toBe(true);
-		const ns = JSON.parse(readFileSync(started, "utf8")).pidNamespace;
-		expect(processesInNamespaceV0(ns).length).toBeGreaterThan(0);
+		const ns = JSON.parse(readFileSync(started, "utf8")).init;
+		expect(processAliveV0(ns)).toBe(true);
 		controller.kill("SIGKILL");
 		await new Promise((r) => controller.on("close", r));
-		for (let i = 0; i < 40 && processesInNamespaceV0(ns).length > 0; i++) await new Promise((r) => setTimeout(r, 50));
-		expect(processesInNamespaceV0(ns)).toEqual([]);
+		for (let i = 0; i < 200 && processAliveV0(ns); i++) await new Promise((r) => setTimeout(r, 50));
+		expect(processAliveV0(ns)).toBe(false);
 		// Resuming finalizes the interrupted attempt from what it shows, and does not retry it unless asked.
 		const resumed = await runProtectedExperimentV0({ spec, dir: out });
 		expect(resumed).toMatchObject({ attempts: 0, finalizedOnResume: 1 });
@@ -368,19 +381,47 @@ setInterval(() => {}, 1000);
 			qualified: 0,
 			attrition: { "controller-interrupted": 1 },
 		});
-		// An explicit retry is a new attempt naming the one it retries; both stay counted, and the trial's outcome is the retry's.
-		await runProtectedExperimentV0({ spec, dir: out, retryInterrupted: true });
-		const retry = recordOf(out, "sleeper", 0, 2);
-		expect(retry.trial).toMatchObject({ attempt: 2, retryOf: 1 });
-		expect(retry.agent.status).toBe("timed-out");
+		// Its agent had run, so even an explicit retry does not re-run it: an interruption while the agent ran is final attrition.
+		expect(await runProtectedExperimentV0({ spec, dir: out, retryInterrupted: true })).toMatchObject({
+			attempts: 0,
+			skipped: 1,
+		});
 		report = reportProtectedExperimentV0(out);
+		expect(report.cells[0]).toMatchObject({ planned: 1, attempts: 1, retries: 0, qualified: 0 });
+	});
+
+	it("retries, on request, an attempt the controller stopped before its agent started; both attempts stay counted", async () => {
+		const out = fresh("run");
+		const spec = specWith({
+			honest: `import { writeFileSync } from "node:fs"; writeFileSync("/work/src/interval.mjs", ${JSON.stringify(SOLUTION)});`,
+		});
+		await runProtectedExperimentV0({ spec, dir: out });
+		// As if the controller had stopped right after creating the attempt: only its marker and workspace remain.
+		const attempt = join(out, "trials", "merge-intervals", "honest", "0", "attempt-1");
+		for (const name of [
+			"record.json",
+			"preflight.json",
+			"agent-started.json",
+			"agent-ended.json",
+			"agent.log",
+			"submission",
+		])
+			rmSync(join(attempt, name), { recursive: true, force: true });
+		await runProtectedExperimentV0({ spec, dir: out });
+		expect(recordOf(out, "honest").invalidating).toEqual(["controller-interrupted", "isolation-unavailable"]);
+		await runProtectedExperimentV0({ spec, dir: out, retryInterrupted: true });
+		const retry = recordOf(out, "honest", 0, 2);
+		expect(retry.trial).toMatchObject({ attempt: 2, retryOf: 1 });
+		expect(retry.evaluation.status).toBe("passed");
+		const report = reportProtectedExperimentV0(out);
+		expect(report.refusedRecords).toEqual([]);
 		expect(report.cells[0]).toMatchObject({
 			planned: 1,
 			attempted: 1,
 			attempts: 2,
 			retries: 1,
 			qualified: 1,
-			failed: 1,
+			passed: 1,
 		});
 	});
 });
@@ -399,7 +440,8 @@ describe.runIf(REAL)("real isolation: each probe detects the removal of its rest
 	const protectedDir = fresh("protected");
 	const targets = {
 		protectedPaths: { protected: protectedDir },
-		readOnly: ["/usr/bin/node", "/usr/.endo-probe"],
+		readOnlyRuntime: ["/usr/bin/node"],
+		readOnlyMounts: ["/usr/.endo-probe"],
 		writable: "/work",
 		environment: ["HOME", "PATH", "TMPDIR", "PWD"],
 		sockets: ["/run/dbus/system_bus_socket"],
@@ -428,7 +470,9 @@ describe.runIf(REAL)("real isolation: each probe detects the removal of its rest
 		expect((await failed({ extraEnv: { AWS_SECRET_ACCESS_KEY: "x" } })).failing).toContain("env-minimal");
 	});
 	it("a writable root: the read-only probes fail", async () => {
-		expect((await failed({ writableRoot: true })).failing).toEqual(expect.arrayContaining(["fs-root-readonly"]));
+		expect((await failed({ writableRoot: true })).failing).toEqual(
+			expect.arrayContaining(["fs-root-readonly", "fs-dev-readonly", "fs-readonly-mount-0"]),
+		);
 	});
 	it("a weakened profile never runs the agent", async () => {
 		const out = fresh("run");
@@ -466,6 +510,216 @@ describe.runIf(REAL)("real isolation: a resumed run cannot change its setup", ()
 		const evaluatorFile = spec.tasks[0]!.evaluator.file;
 		writeFileSync(evaluatorFile, `${readFileSync(evaluatorFile, "utf8")} `);
 		await expect(runProtectedExperimentV0({ spec, dir: out })).rejects.toThrow(/not the one the spec pins/);
+	});
+});
+
+// ---- review regressions (EVAL-ISO-001 independent review) -----------------------------------------------------------------------
+
+describe.runIf(REAL)("real isolation: review regressions", () => {
+	const solve = `import { writeFileSync } from "node:fs"; writeFileSync("/work/src/interval.mjs", ${JSON.stringify(SOLUTION)});`;
+
+	it("B1: an agent that locks its own workspace cannot stop the run; its trial is a failure, and the next trial runs", async () => {
+		const chmod = `import fs from "node:fs"; fs.writeFileSync("/work/src/interval.mjs", "export const mergeIntervals = () => [];"); fs.chmodSync("/work/src", 0); fs.chmodSync("/work", 0);`;
+		const out = fresh("run");
+		const spec = specWith({ chmod }, { trials: 2 });
+		await runProtectedExperimentV0({ spec, dir: out });
+		for (const trial of [0, 1]) {
+			const r = recordOf(out, "chmod", trial);
+			expect(r.controller.finalized).toBe("normally");
+			expect(r.submission).toMatchObject({ status: "refused", refusals: [{ reason: "unreadable" }] });
+			expect(r.invalidating).toEqual([]);
+		}
+		expect(reportProtectedExperimentV0(out).cells[0]).toMatchObject({
+			planned: 2,
+			qualified: 2,
+			failed: 2,
+			failedWithoutSubmission: 2,
+			attrition: {},
+		});
+		// And the operator can still remove the run directory.
+		rmSync(out, { recursive: true });
+	});
+
+	it("B2: deleting or linking the submission is the agent's failure, counted in the denominator, never attrition", async () => {
+		const out = fresh("run");
+		await runProtectedExperimentV0({
+			spec: specWith({
+				gone: `import fs from "node:fs"; fs.rmSync("/work/src/interval.mjs");`,
+				linked: `import fs from "node:fs"; fs.rmSync("/work/src/interval.mjs"); fs.symlinkSync("/agent/agent.mjs", "/work/src/interval.mjs");`,
+				honest: solve,
+			}),
+			dir: out,
+		});
+		const cells = Object.fromEntries(reportProtectedExperimentV0(out).cells.map((c) => [c.condition, c]));
+		expect(cells.gone).toMatchObject({ qualified: 1, failed: 1, failedWithoutSubmission: 1, attrition: {} });
+		expect(cells.linked).toMatchObject({ qualified: 1, failed: 1, failedWithoutSubmission: 1, attrition: {} });
+		expect(cells.honest).toMatchObject({ qualified: 1, passed: 1 });
+	});
+
+	it("B3: refuses an agent directory that holds the evaluator, or a run directory inside the agent directory", async () => {
+		const spec = specWith({ honest: solve });
+		const evaluatorDir = join(spec.tasks[0]!.evaluator.file, "..");
+		// The agent directory moved to the evaluator's parent: it would show the hidden cases at /agent/....
+		const above = {
+			...spec,
+			conditions: [
+				{ ...spec.conditions[0]!, agent: { ...spec.conditions[0]!.agent, directory: join(evaluatorDir, "..") } },
+			],
+		};
+		await expect(runProtectedExperimentV0({ spec: above, dir: fresh("run") })).rejects.toThrow(
+			/overlaps an evaluator's material/,
+		);
+		// A run directory inside the agent directory would show other trials and qualification copies.
+		const inside = join(spec.conditions[0]!.agent.directory, "run");
+		await expect(runProtectedExperimentV0({ spec, dir: inside })).rejects.toThrow(/overlaps the run directory/);
+		expect(existsSync(join(inside, "protected-run.json"))).toBe(false);
+	});
+
+	it("B3: mounts a checked copy of the agent directory, not the live one", async () => {
+		const peek = `import fs from "node:fs"; fs.writeFileSync("/work/seen", fs.readdirSync("/agent").join(",")); ${solve}`;
+		const spec = specWith({ peek });
+		const out = fresh("run");
+		await runProtectedExperimentV0({ spec, dir: out });
+		expect(readFileSync(join(workOf(out, "peek"), "seen"), "utf8")).toBe("agent.mjs");
+		const m = recordOf(out, "peek").isolation.requested.mounts.find((x) => x.target === "/agent");
+		expect(m).toMatchObject({ kind: "ro-dir", role: "agent" });
+		expect(existsSync(join(out, ".qualification"))).toBe(false);
+		expect(existsSync(join(out, "trials", "merge-intervals", "peek", "0", "attempt-1", ".evaluation"))).toBe(false);
+	});
+
+	it("B4: resume never kills a process it cannot identify as its own sandbox's init", async () => {
+		const out = fresh("run");
+		const spec = specWith({ honest: solve });
+		await runProtectedExperimentV0({ spec, dir: out });
+		// An unrelated process of this user, whose pid is recorded with another start time (as after pid or namespace reuse).
+		const victim = spawn("/usr/bin/sleep", ["30"], { stdio: "ignore" });
+		await new Promise((r) => setTimeout(r, 100));
+		const attempt = join(out, "trials", "merge-intervals", "honest", "0", "attempt-1");
+		rmSync(join(attempt, "record.json"));
+		rmSync(join(attempt, "agent-ended.json"));
+		writeFileSync(join(attempt, "agent-started.json"), JSON.stringify({ init: { pid: victim.pid, startTime: "1" } }));
+		try {
+			await runProtectedExperimentV0({ spec, dir: out });
+			const start = processStartTimeV0(victim.pid as number);
+			expect(start).not.toBeNull();
+			expect(processAliveV0({ pid: victim.pid as number, startTime: start as string })).toBe(true);
+			expect(recordOf(out, "honest").agent).toMatchObject({ status: "interrupted", termination: "confirmed" });
+		} finally {
+			victim.kill("SIGKILL");
+		}
+	});
+
+	it("B5: refuses a second controller on a run directory, takes over a stale lock, and never overwrites a record", async () => {
+		const out = fresh("run");
+		const spec = specWith({ honest: solve });
+		mkdirSync(out, { recursive: true });
+		writeFileSync(
+			join(out, ".lock"),
+			JSON.stringify({ pid: process.pid, startTime: processStartTimeV0(process.pid) }),
+		);
+		await expect(runProtectedExperimentV0({ spec, dir: out })).rejects.toThrow(
+			/another controller holds this run directory/,
+		);
+		writeFileSync(join(out, ".lock"), JSON.stringify({ pid: process.pid, startTime: "1" }));
+		await runProtectedExperimentV0({ spec, dir: out });
+		expect(existsSync(join(out, ".lock"))).toBe(false);
+		expect(recordOf(out, "honest").evaluation.status).toBe("passed");
+	});
+
+	it("B5: of many controllers racing for a stale lock, exactly one runs; no attempt is finalized under a live controller", async () => {
+		const spec = specWith({ slow: `${solve} await new Promise((r) => setTimeout(r, 1500));` });
+		const specFile = join(fresh("spec"), "spec.json");
+		writeFileSync(specFile, JSON.stringify(spec));
+		const out = fresh("run");
+		writeFileSync(join(out, ".lock"), JSON.stringify({ pid: 999999, startTime: "1" }));
+		const runs = Array.from(
+			{ length: 8 },
+			() =>
+				new Promise<number>((resolve) => {
+					const c = spawn(process.execPath, [CLI, "experiment", "protected-run", specFile, "--out", out], {
+						stdio: "ignore",
+					});
+					c.on("close", (code) => resolve(code ?? -1));
+				}),
+		);
+		const codes = await Promise.all(runs);
+		expect(codes.filter((c) => c === 0)).toHaveLength(1);
+		const r = recordOf(out, "slow");
+		expect(r.controller.finalized).toBe("normally");
+		expect(r.evaluation.status).toBe("passed");
+		expect(reportProtectedExperimentV0(out).refusedRecords).toEqual([]);
+	});
+
+	it("B3: refuses an evaluator reached through a link into the agent directory, and a hard link of hidden material", async () => {
+		const spec = specWith({ honest: solve });
+		const agentDir = spec.conditions[0]!.agent.directory;
+		const evaluatorFile = spec.tasks[0]!.evaluator.file;
+		const evaluatorDir = join(evaluatorFile, "..");
+		// The evaluator moved into the agent directory, and reached through links from elsewhere.
+		const inside = join(agentDir, "ev");
+		mkdirSync(inside);
+		for (const part of ["evaluator.json", "reference", "negative"])
+			renameSync(join(evaluatorDir, part), join(inside, part));
+		const links = fresh("links");
+		for (const part of ["evaluator.json", "reference", "negative"])
+			symlinkSync(join(inside, part), join(links, part));
+		const linked = {
+			...spec,
+			tasks: [
+				{ ...spec.tasks[0]!, evaluator: { ...spec.tasks[0]!.evaluator, file: join(links, "evaluator.json") } },
+			],
+		};
+		await expect(runProtectedExperimentV0({ spec: linked, dir: fresh("run") })).rejects.toThrow(
+			/overlaps an evaluator's material/,
+		);
+		// A hard link of the definition inside the agent directory (same content, another path).
+		const spec2 = specWith({ honest: solve });
+		linkSync(spec2.tasks[0]!.evaluator.file, join(spec2.conditions[0]!.agent.directory, "cases.json"));
+		await expect(runProtectedExperimentV0({ spec: spec2, dir: fresh("run") })).rejects.toThrow(/hidden material/);
+	});
+
+	it("M5: an attempt the controller stopped after the agent ended keeps the agent's facts", async () => {
+		const out = fresh("run");
+		const spec = specWith({ honest: solve });
+		await runProtectedExperimentV0({ spec, dir: out });
+		const attempt = join(out, "trials", "merge-intervals", "honest", "0", "attempt-1");
+		rmSync(join(attempt, "record.json"));
+		await runProtectedExperimentV0({ spec, dir: out });
+		const r = recordOf(out, "honest");
+		expect(r.agent).toMatchObject({ status: "completed", termination: "confirmed" });
+		expect(r.invalidating).toEqual(["controller-interrupted"]);
+	});
+
+	it("M7: the report refuses a record sealed with another agent profile or evaluator", async () => {
+		const out = fresh("run");
+		const spec = specWith({ honest: solve });
+		await runProtectedExperimentV0({ spec, dir: out });
+		const path = join(out, "trials", "merge-intervals", "honest", "0", "attempt-1", "record.json");
+		const { recordSha256: _old, ...rest } = JSON.parse(readFileSync(path, "utf8"));
+		rest.isolation.profileSha256 = "0".repeat(64);
+		rmSync(path);
+		writeFileSync(path, JSON.stringify(sealEndoProtectedTrialV0(rest)));
+		const report = reportProtectedExperimentV0(out);
+		expect(report.refusedRecords).toEqual([
+			{
+				path: "trials/merge-intervals/honest/0/attempt-1/record.json",
+				reason: "the record names another agent profile",
+			},
+		]);
+		expect(report.cells[0]).toMatchObject({ qualified: 0, attrition: { "record-refused": 1 } });
+	});
+
+	it("M1: a submission that replaces the driver's output passes only by printing the correct results", async () => {
+		const forge = (values: string) =>
+			`import fs from "node:fs"; fs.writeFileSync("/work/src/interval.mjs", ${JSON.stringify(
+				`const w = process.stdout.write.bind(process.stdout); process.stdout.write = (c, ...a) => String(c).includes("ENDO-EVALUATION") ? true : w(c, ...a); w("ENDO-EVALUATION " + JSON.stringify(${values}) + "\\n"); export function mergeIntervals() { throw new Error("no"); }`,
+			)});`;
+		const out = fresh("run");
+		await runProtectedExperimentV0({
+			spec: specWith({ wrong: forge(`Array.from({ length: 7 }, () => ({ ok: true, value: [] }))`) }),
+			dir: out,
+		});
+		expect(recordOf(out, "wrong").evaluation).toMatchObject({ status: "failed", cases: { total: 7, passed: 1 } });
 	});
 });
 

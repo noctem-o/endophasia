@@ -8,7 +8,7 @@
 //
 // Before any trial runs, the evaluator is qualified: a known-correct reference must pass every case, and a declared negative must fail.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
 	type EndoFunctionEvaluatorV0,
@@ -55,6 +55,8 @@ export const ENDO_EVALUATOR_DRIVER_SHA256_V0 = sha256HexV0(ENDO_EVALUATOR_DRIVER
 export interface EndoLoadedEvaluatorV0 {
 	definition: EndoFunctionEvaluatorV0;
 	sha256: string;
+	/** The definition file and its directory, by real path (a link to the definition resolves to where its material really is). */
+	file: string;
 	directory: string;
 }
 
@@ -82,7 +84,8 @@ export function loadEvaluatorV0(
 	if (!read.ok) return { ok: false, detail: read.message };
 	if (!submission.includes(read.value.entry))
 		return { ok: false, detail: "the evaluator's entry is not a submitted file" };
-	return { ok: true, evaluator: { definition: read.value, sha256, directory: dirname(file) } };
+	const real = realpathSync(file);
+	return { ok: true, evaluator: { definition: read.value, sha256, file: real, directory: dirname(real) } };
 }
 
 export type EndoEvaluationV0 = Pick<EndoProtectedTrialV0["evaluation"], "status" | "cases" | "reason" | "outputSha256">;

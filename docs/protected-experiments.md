@@ -86,17 +86,29 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
 - **Filesystem:** an empty root, remounted read-only last. Inside it:
   - each runtime executable and each shared library `ldd` lists for it, read-only, every one checked to be a root-owned regular file in
     root-owned, non-writable directories (no links);
-  - `/agent` (the condition's directory, read-only, pinned by a tree digest);
+  - `/agent`: a copy of the condition's directory that the controller makes once the run directory is locked, checks against the
+    directory's tree digest, and mounts read-only (never the live directory). Compared by real path (links resolved, including through a
+    run directory that does not exist yet), an agent directory that holds, or lies inside, any evaluator material (the definition, its
+    directory, its reference or negative) or the run directory is refused, as is one that holds the repository, the research archive or
+    the home directory. The copy is also refused if any of its files has the content of a hidden file (a hard link or a copy of a definition,
+    reference or negative), whatever its path;
   - `/work` (this attempt's workspace, the only writable host directory);
   - private, size-limited tmpfs at `/tmp` and `/home/agent`;
-  - a new `/proc` (this PID namespace only) and a minimal `/dev`.
+  - a new `/proc` (this PID namespace only) and a minimal `/dev`, itself remounted read-only (its device nodes still work).
   The host root, `/etc`, the repository, the archives and every other trial are simply not there.
+
+  The agent can still run executables it writes into `/work` or `/tmp` (or copies from the runtime), and load native modules: the declared
+  runtime is what is mounted, not a limit on what can execute.
 - **Environment:** cleared, then only `HOME`, `PATH` and `TMPDIR` (bubblewrap adds `PWD`). Bubblewrap itself is started with an empty
-  environment, and only three pipes are passed as file descriptors.
+  environment. Its options arrive through a pipe (`--args`), so the sandbox's `/proc/1/cmdline` holds no host path; stdin, stdout and
+  stderr are the only descriptors the sandboxed command inherits.
 - **Network:** a new namespace with only `lo`, so there is no route out. The host's loopback services and its abstract Unix sockets
   belong to another namespace and are unreachable. No host socket path is mounted.
-- **Lifetime:** on timeout the controller kills bubblewrap, which kills the sandbox. Afterwards the controller lists every process on the
-  host in the sandbox's PID namespace (`/proc/*/ns/pid`), kills any it finds, and records termination as confirmed only when none remains.
+- **Lifetime:** on timeout the controller kills bubblewrap, which kills the sandbox (it dies with its parent). The sandbox's first process,
+  the init of its PID namespace, is identified by host pid and start time when it starts. Afterwards the controller kills that exact
+  process if it still exists, and records termination as confirmed only when it is gone: when a PID namespace's init ends, the kernel kills
+  every other process in it (pid_namespaces(7)). No process is ever found or killed by namespace number, which the kernel reuses. A
+  sandbox that never reported its init is recorded as `unconfirmed`.
 - **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree) by content
   digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
 
@@ -108,13 +120,14 @@ only if every probe passes. Otherwise the attempt is recorded with `preflight: f
 
 | Probe | Attempt from inside | Must observe |
 | :-- | :-- | :-- |
-| `fs-hidden-*` | stat the host home, the repository, the research data, the run directory, every trial, the evaluator directory and the agent's host path | `ENOENT` |
+| `fs-hidden-*` | stat the host home, the repository, the research data, the run directory, every trial, the evaluator directory and the agent's host path | `ENOENT`. These paths cannot exist in an empty root whatever is mounted, so these probes alone show little; what keeps those trees out is structural: only `/work` and the agent copy come from the host, and the agent directory is refused when it overlaps them (above). `fs-canary-read` is the probe that fails when a host directory is mounted at its own path |
 | `fs-canary-read` | read a canary the controller just wrote in a private host directory | `ENOENT` |
-| `fs-root-readonly`, `fs-readonly-*` | write `/`, the runtime executables, `/agent`, `/usr` | `EROFS` or `EACCES` (the executable's own mode answers `EACCES` before the read-only mount is reached) |
+| `fs-root-readonly`, `fs-dev-readonly`, `fs-readonly-mount-*` | write `/`, `/dev`, `/agent`, `/usr` | `EROFS`: the mount's own answer |
+| `fs-readonly-runtime-*` | write each runtime executable | `EROFS` or `EACCES`. They are root-owned, so their mode may answer first: this shows they cannot be changed, not which mechanism stops it |
 | `fs-workspace-writable` | write and remove a file in `/work` | `ok` (positive control) |
 | `fs-tmp-private` | list `/tmp` | empty |
 | `proc-private` | list `/proc` | at most 4 PIDs, the controller's not among them |
-| `env-minimal`, `fds-inherited` | the environment's names; every descriptor above 2 | nothing beyond the declared names; only pipes and anonymous inodes |
+| `env-minimal`, `fds-inherited` | the environment's names; every descriptor above 2 | nothing beyond the declared names; only pipes and anonymous inodes (node's own; a leaked host pipe would look the same, which is why bubblewrap is given nothing but its stdio, status and option pipes) |
 | `net-interfaces` | list interfaces | `lo` only |
 | `net-host-loopback`, `net-host-abstract-socket` | connect to a TCP listener and an abstract socket the controller opened on the host | `ECONNREFUSED` |
 | `net-external`, `net-host-path-socket` | connect to 192.0.2.1:80; to a socket file the controller opened | `ENETUNREACH`; `ENOENT` |
@@ -147,8 +160,13 @@ collection waits until no sandboxed process exists.
 - **Sandbox:** a second sandbox holds the read-only copy, a trusted driver pinned by digest, and the case inputs.
 - **Driver:** it imports the submitted module and calls its export once per input.
 - **Comparison:** the controller compares the printed results with the expected results, which never left it.
-- **Ambiguous output:** a submission that prints a forged result frame produces two frames, and fails.
+- **Forged output:** a submission that prints its own result frame beside the driver's produces two frames, and fails. One that also hides
+  the driver's frame passes only if the results it prints are the expected ones, which it never sees: what is measured is that the
+  submission's process produced the correct results for the inputs, not strictly that its export returned them. It sees every case's
+  inputs at once; for a task where seeing the inputs is itself an advantage, this evaluator is not suitable.
 - **Exiting early:** a submission that exits before the driver prints fails as `no-result`.
+- **Comparison is of JSON:** results are compared after a JSON round trip, so `NaN`, `undefined` and `-0` compare as `null` and `0`, and a
+  `Map` as `{}`. Write cases with that in mind.
 - **Faked evidence:** visible tests or result files the agent wrote play no part.
 
 **Qualification:** before any trial, the evaluator must pass its reference solution and fail its declared negative. Both are exported
@@ -188,13 +206,27 @@ To verify a run:
 
 **Analysis rules** (printed in every report):
 - every planned trial stays in the denominator;
-- **qualified** means the boundary was established, termination confirmed, the submission collected and the evaluator run;
-- passed and failed are counted among qualified trials only;
+- **qualified** (judged) means the boundary was established and the agent's termination confirmed, and then either the evaluator ran or
+  the agent left no acceptable submission;
+- passed and failed are counted among qualified trials only. A missing or unacceptable submission (deleted, a link, a hard link, a special
+  file, access removed, too large) is the agent's own doing, so it is a **failure** (`failedWithoutSubmission`), never attrition. Only the
+  errors an agent can cause (access, missing entries, links, directories in the way) are read that way; the controller's own faults while
+  collecting (its staging copy, the host's I/O) are attrition (`evaluation-could-not-run`), as are the boundary, the controller, the host
+  (`collection-disturbed`: a file changed while it was read after the agent was gone) and the evaluator's infrastructure;
 - attrition, by its first invalidating condition, and trials not attempted are reported beside them, never as failures;
-- a retry (`--retry-interrupted` only) is a new attempt that names the one it retries, and every attempt stays counted.
+- a retry (`--retry-interrupted` only) is a new attempt that names the one it retries, and every attempt stays counted. **Only an attempt
+  whose agent never started can be retried** (the controller stopped before it). An interruption while or after the agent ran is final
+  attrition: otherwise an agent could re-roll its own attempt by making the controller fail (filling the disk, exhausting memory). The
+  report refuses a retry of an attempt that could not be retried.
 
-A resumed run with a different spec, isolation executable, agent profile (including agent code) or evaluator is refused. A controller that
-was killed leaves its attempt finalized on the next run as `controller-interrupted`, from what the directory shows: nothing is assumed.
+A resumed run with a different spec, isolation executable, agent profile (including agent code) or evaluator is refused. One controller at a
+time: the run directory is locked (its holder named by pid and start time). A stale lock is taken over atomically: it is renamed to a
+name only one controller can win, and discarded only if it is still the same dead holder's; a test races eight controllers for it and
+exactly one runs. Each attempt's marker names its controller, and an attempt whose controller is still alive is never finalized or ended
+by another. A record, once written, is never replaced. A controller that was killed leaves its attempt finalized on the next run as `controller-interrupted`, from what the
+directory shows: the agent's facts if it had ended (`agent-ended.json`), `interrupted` if it had not. Nothing is assumed: an attempt
+directory always appears with its `started.json`, and one without it is refused. The report also refuses a record that names another
+run, isolation executable, agent profile or evaluator, a gap in attempt numbers, or a retry that does not name the attempt before it.
 
 ## 6. Running the offline example
 
@@ -236,6 +268,18 @@ The real-isolation tests cover:
 - a controller killed with `SIGKILL`, then resume and an explicit retry;
 - each probe failing when its restriction is removed;
 - a resume refused after the agent code or the evaluator changed.
+- the independent review's attacks, each now a regression test:
+  - an agent that locks its own workspace (`chmod 000`): the run continues, the trial is a failure, the directory stays removable;
+  - deleting or linking the submission: a failure in the denominator, never attrition;
+  - an agent directory above the evaluator, and a run directory inside the agent directory: refused;
+  - the agent sees a checked copy of its directory, and no hidden material stays in the run directory;
+  - a resume never kills a process it cannot identify (pid with a different start time);
+  - a second controller is refused, a stale lock is taken over, and of eight controllers racing for a stale lock exactly one runs;
+  - an evaluator reached through links into the agent directory, and a hard link of the definition inside it, are refused;
+  - an attempt stopped before its agent started can be retried, and both attempts are counted; one stopped while its agent ran cannot;
+  - an attempt stopped after the agent ended keeps the agent's facts;
+  - a record sealed with another agent profile is refused by the report;
+  - a submission that hides the driver's output and prints wrong results fails.
 
 GitHub's Ubuntu runners restrict unprivileged user namespaces through AppArmor, so the real-isolation tests are expected to skip there.
 Only the refusal and logic tests run there. They are run on a host that supports them; the results are in the PR.
@@ -248,16 +292,27 @@ Only the refusal and logic tests run there. They are run on a host that supports
   - side channels (timing, `/proc/sys`, the CPU).
 - **No seccomp filter.** The agent can make any system call the kernel allows an unprivileged user in its own namespaces.
 - **No resource limits beyond the bounds.** The bounds are the timeouts, the tmpfs sizes, and the read-back bounds on output and on
-  submissions. The agent can exhaust CPU and memory during its time, and fill the host disk through `/work`, which is a host directory.
-  A systemd user scope (MemoryMax, TasksMax, CPU) is the natural addition.
+  submissions. The agent can exhaust CPU and memory during its time, fill the host disk through `/work` (a host directory), and start
+  processes up to the user's own process limit (a fork bomb is not bounded by the sandbox). A systemd user scope (MemoryMax, TasksMax,
+  CPU) and a size-bounded workspace are the natural additions. If such exhaustion makes the controller fail after the agent started, the
+  attempt is final attrition (`controller-interrupted`), never retried; a study should report that attrition by condition.
+- **Host paths are visible to the agent, though no host content is:** `/proc/self/mountinfo` names the sources of the mounts, so the run
+  directory's path (and so the user name) can be read. `/proc/1/cmdline` no longer shows them.
 - **The runtime is what `ldd` lists.** A runtime that loads files at run time (plugins, ICU data elsewhere) would fail inside. That is safe,
   but limiting.
 - **Collection races** are detected, not prevented (no `openat` in Node). Collection runs only after confirmed termination.
 - **The evaluator runs the submission's code.** That code sees the case inputs (not the expected results) and can waste the evaluation's
   time; it cannot reach the network or the host.
 - **One evaluator kind:** functions with JSON cases. node:test suites, which mix candidate and test code in one process, are not supported.
-- **Termination** is confirmed by PID namespace on `/proc`, readable for this user's own processes only. That covers every sandboxed
-  process, since they all run as this user.
+- **Termination** is confirmed by the sandbox init's identity (pid and start time) and the kernel's rule that a PID namespace ends with its
+  init. A process that leaves the sandbox's PID namespace is not something an unprivileged process can do; a kernel exploit could. Node has
+  no pidfd, so two narrow windows remain: the init's start time is read when bubblewrap reports it (if the init had already ended and its
+  pid been reused in between, another process could be recorded), and between checking and killing it. A pidfd-based helper would close
+  both. A sandbox whose teardown takes more than ten seconds is recorded as `unconfirmed`.
+- **Where the hidden material lives:** the evaluator definition and its reference and negative stay where the operator put them. The
+  controller's own copies of the reference, the negative and the cases' inputs are removed as soon as they are used, and on resume after a
+  stop during evaluation, so a run directory keeps no hidden material between runs. While a controller is stopped mid-evaluation, that
+  attempt's inputs are on disk until the next run.
 
 ## 9. EVAL-ISO-002: what model-connected studies need
 
@@ -275,6 +330,6 @@ Only the refusal and logic tests run there. They are run on a host that supports
 
 | Dimension | Status | Evidence |
 | :-- | :-- | :-- |
-| Execution isolation | **READY** (offline, on a host where bubblewrap and user namespaces are available) | 28 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test, and the adversarial agent's observations, on this host; refusal elsewhere |
+| Execution isolation | **READY** (offline, on a host where bubblewrap and user namespaces are available) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
 | Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
 | Protected model-connected studies | **NOT READY** | there is no network inside, by design; the relay and Pi integration are EVAL-ISO-002 |

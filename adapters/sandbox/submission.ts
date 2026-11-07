@@ -128,7 +128,16 @@ export function exportSubmissionV0(
 			refusals.push({ path, reason: "unsafe-path" });
 			continue;
 		}
-		const got = readExactly(path, workspace, limits.maxFileBytes, hooks);
+		let got: Buffer | EndoProtectedRefusalV0;
+		try {
+			got = readExactly(path, workspace, limits.maxFileBytes, hooks);
+		} catch (error) {
+			// What an agent can cause (removed access, a vanished entry, a link or a directory in the way) is a refusal of this file. Anything
+			// else (the host's I/O, too many open files) is not the agent's: it propagates, and the controller records it as its own failure.
+			const code = (error as NodeJS.ErrnoException).code;
+			if (!["EACCES", "EPERM", "ENOENT", "ENOTDIR", "ELOOP", "EISDIR"].includes(code ?? "")) throw error;
+			got = "unreadable";
+		}
 		if (typeof got === "string") {
 			refusals.push({ path, reason: got });
 			continue;

@@ -27,6 +27,7 @@ import {
 } from "../cli/experiment-artifacts.ts";
 import {
 	type EndoProtectedTrialV0,
+	endoProtectedTrialOutcomeV0,
 	endoProtectedTrialQualifiesV0,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
@@ -148,7 +149,6 @@ describe("the protected-trial record and its independent reader", () => {
 						sha256: null,
 						refusals: [{ path: "src/a.mjs", reason: "missing" }],
 					};
-					r.invalidating = ["submission-missing"];
 				},
 				/collected submission/,
 			],
@@ -212,6 +212,39 @@ describe("the protected-trial record and its independent reader", () => {
 			change(r);
 			expect(() => sealEndoProtectedTrialV0(r), name).toThrow(why);
 		}
+	});
+
+	it("counts a missing or unacceptable submission as the agent's failure, and a disturbed collection as attrition", () => {
+		const missing = passedRecord();
+		missing.submission = {
+			status: "missing",
+			files: [],
+			sha256: null,
+			refusals: [{ path: "src/a.mjs", reason: "missing" }],
+		};
+		missing.evaluation = { ...missing.evaluation, status: "not-run", cases: null, outputSha256: null };
+		const m = sealEndoProtectedTrialV0(missing);
+		expect(m.invalidating).toEqual([]);
+		expect(endoProtectedTrialOutcomeV0(m)).toEqual({ outcome: "failed", reason: "submission-missing" });
+		expect(endoProtectedTrialQualifiesV0(m)).toBe(true);
+		const linked = clone(missing);
+		linked.submission = {
+			...linked.submission,
+			status: "refused",
+			refusals: [{ path: "src/a.mjs", reason: "symbolic-link" }],
+		};
+		expect(endoProtectedTrialOutcomeV0(sealEndoProtectedTrialV0(linked))).toEqual({
+			outcome: "failed",
+			reason: "submission-symbolic-link",
+		});
+		const disturbed = clone(missing);
+		disturbed.submission = {
+			...disturbed.submission,
+			status: "refused",
+			refusals: [{ path: "src/a.mjs", reason: "changed-during-collection" }],
+		};
+		disturbed.invalidating = ["collection-disturbed"];
+		expect(endoProtectedTrialOutcomeV0(sealEndoProtectedTrialV0(disturbed)).outcome).toBe("attrition");
 	});
 
 	it("never qualifies attrition, and keeps an interrupted record readable", () => {

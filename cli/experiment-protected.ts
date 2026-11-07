@@ -13,14 +13,20 @@
 
 import { randomInt } from "node:crypto";
 import {
+	chmodSync,
 	closeSync,
 	constants,
 	existsSync,
+	linkSync,
+	lstatSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	renameSync,
+	rmSync,
+	unlinkSync,
 	writeFileSync,
 	writeSync,
 } from "node:fs";
@@ -31,11 +37,14 @@ import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
 	type EndoBubblewrapV0,
+	type EndoProcessIdentityV0,
 	type EndoRuntimeFileV0,
 	type EndoSandboxProfileInputV0,
 	type EndoSandboxProfileV0,
 	endoTreeDigestV0,
-	processesInNamespaceV0,
+	endSandboxV0,
+	processAliveV0,
+	processStartTimeV0,
 	resolveRuntimeV0,
 	runSandboxV0,
 } from "../adapters/sandbox/bubblewrap.ts";
@@ -52,7 +61,7 @@ import {
 	type EndoProtectedRunV0,
 	type EndoProtectedSpecV0,
 	type EndoProtectedTrialV0,
-	endoProtectedTrialQualifiesV0,
+	endoProtectedTrialOutcomeV0,
 	expectedInvalidating,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
@@ -102,12 +111,27 @@ const writeJsonAtomically = (path: string, value: unknown) => {
 	const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
 	try {
 		writeSync(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
-	} finally {
 		closeSync(fd);
+		renameSync(tmp, path);
+	} catch (error) {
+		rmSync(tmp, { force: true });
+		throw error;
 	}
-	renameSync(tmp, path);
 };
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
+
+/** Write a record that must never be replaced: linked into place, which fails if the name exists. */
+const writeJsonOnce = (path: string, value: unknown) => {
+	const tmp = `${path}.${process.pid}.tmp`;
+	const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+	try {
+		writeSync(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
+		closeSync(fd);
+		linkSync(tmp, path);
+	} finally {
+		rmSync(tmp, { force: true });
+	}
+};
 
 const AGENT_ENV = { HOME: "/home/agent", PATH: "/usr/bin", TMPDIR: "/tmp" } as const;
 
@@ -118,6 +142,8 @@ interface Prepared {
 	evaluators: Map<string, EndoLoadedEvaluatorV0>;
 	/** Per condition, the digest of its agent directory's tree: part of the profile, so changed agent code is a different profile. */
 	agents: Map<string, string>;
+	/** Per condition, the controller-private copy that is mounted (made once the run directory is locked). */
+	agentCopies: Map<string, string>;
 }
 
 /** The agent's profile for one attempt. Its digest depends on roles, not paths, so it is the same for every attempt of a condition. */
@@ -135,7 +161,7 @@ function agentProfile(
 				target: "/agent",
 				kind: "ro-dir",
 				role: "agent",
-				source: condition.agent.directory,
+				source: p.agentCopies.get(condition.id) ?? condition.agent.directory,
 				sha256: p.agents.get(condition.id) as string,
 			},
 			{ target: "/work", kind: "rw-dir", role: "workspace", source: work },
@@ -148,7 +174,63 @@ function agentProfile(
 }
 
 /** Detect and check everything a run needs, before anything runs. Refuses with the reason; never falls back. */
-function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | undefined): Prepared {
+/** The real path, through the nearest existing ancestor when the path does not exist yet (so a link on the way is still resolved). */
+const realOrResolved = (path: string): string => {
+	let head = resolve(path);
+	const rest: string[] = [];
+	while (!existsSync(head)) {
+		const parent = resolve(head, "..");
+		if (parent === head) break;
+		rest.unshift(head.slice(parent.length).replace(/^\/+/, ""));
+		head = parent;
+	}
+	try {
+		return join(realpathSync(head), ...rest);
+	} catch {
+		return resolve(path);
+	}
+};
+
+/** Every file's content digest under a tree (links and special files skipped: they are refused where it matters). */
+function contentDigests(root: string, into: Set<string>): void {
+	const s = lstatSync(root, { throwIfNoEntry: false });
+	if (s === undefined) return;
+	if (s.isFile()) {
+		// Empty files carry nothing hidden, and would match any other empty file.
+		if (s.size > 0) into.add(sha256HexV0(readFileSync(root)));
+		return;
+	}
+	if (!s.isDirectory()) return;
+	for (const name of readdirSync(root)) contentDigests(join(root, name), into);
+}
+const contains = (outer: string, inner: string): boolean =>
+	inner === outer || inner.startsWith(outer.endsWith("/") ? outer : `${outer}/`);
+
+/**
+ * The agent's directory is the one host tree, besides its own workspace, that its sandbox shows. It must not hold, or be held in, anything
+ * the agent must not see: an evaluator (cases, reference, negative), or the run directory (other trials, records, qualification copies);
+ * and it must not hold the repository, the research archive or the home directory. Compared by real path, both ways.
+ */
+function agentOverlap(agentDir: string, dir: string, evaluatorPaths: readonly string[]): string | null {
+	const agent = realOrResolved(agentDir);
+	const both: [string, string][] = [
+		...evaluatorPaths.map((e): [string, string] => ["an evaluator's material", realOrResolved(e)]),
+		["the run directory", realOrResolved(dir)],
+	];
+	for (const [what, path] of both) if (contains(agent, path) || contains(path, agent)) return `it overlaps ${what}`;
+	const held: [string, string][] = [
+		["the repository", realOrResolved(REPOSITORY)],
+		["the research archive", realOrResolved(researchData())],
+		["the home directory", realOrResolved(homedir())],
+	];
+	for (const [what, path] of held) if (contains(agent, path)) return `it contains ${what}`;
+	return null;
+}
+
+/** The research archive (research/DATA.md), resolved as research/data.ts does; production code does not import research. */
+const researchData = () => resolve(process.env.ENDO_RESEARCH_DATA ?? join(REPOSITORY, "..", "endophasia-research"));
+
+function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | undefined, dir: string): Prepared {
 	const detected = detectBubblewrapV0(candidates);
 	if (!detected.ok) throw new EndoProtectedRefusalV0(`isolation unavailable (${detected.reason}): ${detected.detail}`);
 	const runtime = resolveRuntimeV0(spec.runtime.executables);
@@ -158,6 +240,24 @@ function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | unde
 		throw new EndoProtectedRefusalV0(
 			"runtime.executables must include node: the boundary probe and the evaluator run on it",
 		);
+	const evaluators = new Map<string, EndoLoadedEvaluatorV0>();
+	for (const t of spec.tasks) {
+		const loaded = loadEvaluatorV0(t.evaluator.file, t.evaluator.sha256, t.submission);
+		if (!loaded.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${loaded.detail}`);
+		evaluators.set(t.id, loaded.evaluator);
+	}
+	for (const c of spec.conditions) {
+		// The evaluator's material by real path: the definition, its directory, and its reference and negative (each may be a link).
+		const material = [...evaluators.values()].flatMap((e) => [
+			e.file,
+			e.directory,
+			join(e.directory, e.definition.reference),
+			...(e.definition.negative === null ? [] : [join(e.directory, e.definition.negative)]),
+		]);
+		const overlap = agentOverlap(c.agent.directory, dir, material);
+		if (overlap !== null)
+			throw new EndoProtectedRefusalV0(`condition ${c.id}: the agent directory is refused: ${overlap}`);
+	}
 	const agents = new Map<string, string>();
 	for (const c of spec.conditions) {
 		if (!existsSync(c.agent.directory))
@@ -168,13 +268,7 @@ function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | unde
 			throw new EndoProtectedRefusalV0(`condition ${c.id}: ${(error as Error).message}`);
 		}
 	}
-	const evaluators = new Map<string, EndoLoadedEvaluatorV0>();
-	for (const t of spec.tasks) {
-		const loaded = loadEvaluatorV0(t.evaluator.file, t.evaluator.sha256, t.submission);
-		if (!loaded.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${loaded.detail}`);
-		evaluators.set(t.id, loaded.evaluator);
-	}
-	return { bwrap: detected.bwrap, runtime: runtime.files, node, evaluators, agents };
+	return { bwrap: detected.bwrap, runtime: runtime.files, node, evaluators, agents, agentCopies: new Map() };
 }
 
 const attemptsOf = (trialDir: string): number[] =>
@@ -195,13 +289,14 @@ function protectedTargets(dir: string, task: EndoLoadedEvaluatorV0, spec: EndoPr
 			"host-home": homedir(),
 			repository: resolve(REPOSITORY),
 			// The research archive (research/DATA.md), resolved as research/data.ts does; production code does not import research.
-			"research-data": resolve(process.env.ENDO_RESEARCH_DATA ?? join(REPOSITORY, "..", "endophasia-research")),
+			"research-data": researchData(),
 			"run-directory": dir,
 			"other-trials": join(dir, "trials"),
 			"evaluator-directory": task.directory,
 			"agent-source": agentSource,
 		},
-		readOnly: [...spec.runtime.executables, "/agent/.endo-probe", "/usr/.endo-probe"],
+		readOnlyRuntime: [...spec.runtime.executables],
+		readOnlyMounts: ["/agent/.endo-probe", "/usr/.endo-probe"],
 		writable: "/work",
 		environment: [...Object.keys(AGENT_ENV), "PWD"],
 		sockets: [
@@ -282,20 +377,47 @@ function finish(
 			facts.controller.finalized,
 			facts.preflight.status,
 			facts.agent,
-			facts.submission.status,
+			facts.submission,
 			facts.evaluation.status,
 		),
 		recordedAt: new Date().toISOString(),
 	});
-	writeJsonAtomically(path, record);
+	writeJsonOnce(path, record);
 	return record;
 }
 
 const NOT_COLLECTED = { status: "not-collected" as const, files: [], sha256: null, refusals: [] };
+
+/** An attempt that may be retried: the controller was interrupted before the agent started. */
+export const retryable = (r: EndoProtectedTrialV0): boolean =>
+	r.invalidating.includes("controller-interrupted") && r.agent.status === "not-run";
+
+/**
+ * After collection, give the operator back the access an agent may have removed (`chmod 000` on its own directories), so the run directory
+ * can be inspected and removed. Directories only, never through a link; best effort.
+ */
+function restoreOwnerAccess(dir: string): void {
+	const walk = (d: string) => {
+		try {
+			const s = lstatSync(d);
+			if (!s.isDirectory()) return;
+			chmodSync(d, (s.mode & 0o777) | 0o700);
+			for (const name of readdirSync(d)) walk(join(d, name));
+		} catch {
+			// not this user's, or gone
+		}
+	};
+	walk(dir);
+}
 const NOT_RUN = { status: "not-run" as const, cases: null, reason: null, outputSha256: null };
 
 /** An attempt the controller stopped during: written from what its directory shows, nothing assumed. */
-function finalizeOnResume(attemptDir: string, base: ReturnType<typeof recordBase>): EndoProtectedTrialV0 {
+async function finalizeOnResume(
+	attemptDir: string,
+	base: ReturnType<typeof recordBase>,
+): Promise<EndoProtectedTrialV0> {
+	// An evaluation the controller stopped during left the cases' inputs behind: removed, like every evaluation's.
+	rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
 	const preflight: EndoPreflightV0 = existsSync(join(attemptDir, "preflight.json"))
 		? (readJson(join(attemptDir, "preflight.json")) as EndoPreflightV0)
 		: { status: "unavailable", probes: [], reason: "the controller stopped before the boundary was checked" };
@@ -309,18 +431,16 @@ function finalizeOnResume(attemptDir: string, base: ReturnType<typeof recordBase
 			termination: "not-applicable",
 			outputSha256: null,
 		};
+	else if (existsSync(join(attemptDir, "agent-ended.json")))
+		// The agent had ended, and the controller stopped later (collecting or evaluating): its facts are known, so they are kept.
+		agent = readJson(join(attemptDir, "agent-ended.json")) as EndoProtectedTrialV0["agent"];
 	else {
-		// The agent may have started. Its sandbox died with the controller (it dies with its parent); check, and kill anything left.
+		// The agent may have started. Its sandbox dies with the controller (it dies with its parent); its init, identified by pid and start
+		// time (never a process found by namespace number, which the kernel reuses), is ended for certain or the record says it was not.
 		let termination: "confirmed" | "unconfirmed" = "unconfirmed";
 		if (existsSync(join(attemptDir, "agent-started.json"))) {
-			const ns = (readJson(join(attemptDir, "agent-started.json")) as { pidNamespace: number }).pidNamespace;
-			for (const pid of processesInNamespaceV0(ns))
-				try {
-					process.kill(pid, "SIGKILL");
-				} catch {
-					// gone
-				}
-			termination = processesInNamespaceV0(ns).length === 0 ? "confirmed" : "unconfirmed";
+			const init = (readJson(join(attemptDir, "agent-started.json")) as { init: EndoProcessIdentityV0 }).init;
+			termination = await endSandboxV0(init);
 		}
 		agent = {
 			status: "interrupted",
@@ -380,8 +500,8 @@ async function runAttempt(
 	const ran = await runSandboxV0(p.bwrap, profile, condition.agent.argv, {
 		timeoutMs: spec.limits.agentTimeoutMs,
 		outputBytes: spec.limits.outputBytes,
-		onStarted: (pidNamespace) => {
-			writeJsonAtomically(join(attemptDir, "agent-started.json"), { pidNamespace });
+		onStarted: (init) => {
+			writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
 			options.onAgentStarted?.(attemptDir);
 		},
 	});
@@ -401,6 +521,7 @@ async function runAttempt(
 		termination: ran.termination,
 		outputSha256: sha256HexV0(output),
 	};
+	writeJsonAtomically(join(attemptDir, "agent-ended.json"), agent);
 	if (agent.termination !== "confirmed" || !ran.started)
 		return finish(record, base, {
 			preflight,
@@ -409,16 +530,48 @@ async function runAttempt(
 			evaluation: NOT_RUN,
 			controller: { finalized: "normally" },
 		});
-	const submission = exportSubmissionV0(work, task.submission, spec.limits, join(attemptDir, "submission"));
-	const evaluation =
-		submission.status === "collected"
-			? await evaluateV0(
-					{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
-					evaluator,
-					join(attemptDir, "submission"),
-					join(attemptDir, ".evaluation"),
-				)
-			: NOT_RUN;
+	// Nothing the agent left in its workspace can stop the controller: collection maps every filesystem error to a refusal, and any
+	// other failure here is the controller's, recorded as an evaluation that could not run (never as an interruption to retry).
+	let submission: EndoProtectedTrialV0["submission"];
+	let evaluation: Parameters<typeof finish>[2]["evaluation"];
+	let collectionFailed = false;
+	try {
+		submission = exportSubmissionV0(work, task.submission, spec.limits, join(attemptDir, "submission"));
+	} catch {
+		// Collection maps the errors an agent can cause (access, missing, links) to refusals itself; anything that still throws is the
+		// controller's (its staging copy, the host's I/O): attrition, never counted as the agent's failure.
+		submission = NOT_COLLECTED;
+		collectionFailed = true;
+	}
+	// After collection (so what was judged is what the agent left), the operator gets back access the agent removed.
+	restoreOwnerAccess(work);
+	try {
+		evaluation = collectionFailed
+			? {
+					status: "could-not-run",
+					cases: null,
+					reason: "the controller failed while collecting",
+					outputSha256: null,
+				}
+			: submission.status === "collected"
+				? await evaluateV0(
+						{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
+						evaluator,
+						join(attemptDir, "submission"),
+						join(attemptDir, ".evaluation"),
+					)
+				: NOT_RUN;
+	} catch {
+		evaluation = {
+			status: "could-not-run",
+			cases: null,
+			reason: "the controller failed while evaluating",
+			outputSha256: null,
+		};
+	} finally {
+		// The job directory holds the cases' inputs: removed once evaluated, so no run directory keeps hidden material.
+		rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
+	}
 	return finish(record, base, { preflight, agent, submission, evaluation, controller: { finalized: "normally" } });
 }
 
@@ -426,7 +579,7 @@ async function runAttempt(
 export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV0): Promise<EndoProtectedRunSummaryV0> {
 	const spec = options.spec;
 	const dir = resolve(options.dir);
-	const p = prepare(spec, options.bwrapCandidates);
+	const p = prepare(spec, options.bwrapCandidates, dir);
 	const specSha256 = sha256HexV0(canonicalEndoJsonV0(spec as unknown as Record<string, unknown>));
 	const profiles = spec.conditions.map((c) => ({
 		condition: c.id,
@@ -437,120 +590,253 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 	const scratch = join(dir, ".qualification", `session-${process.pid}-${Date.now()}`);
 	const qualify = async () => {
 		const out: EndoProtectedRunV0["evaluators"] = [];
-		for (const t of spec.tasks) {
-			const ev = p.evaluators.get(t.id)!;
-			const q = await qualifyEvaluatorV0(
-				{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
-				ev,
-				t.submission,
-				join(scratch, t.id),
-			);
-			if (!q.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${q.detail}`);
-			out.push({
-				task: t.id,
-				definitionSha256: ev.sha256,
-				driverSha256: ENDO_EVALUATOR_DRIVER_SHA256_V0,
-				reference: "passed",
-				negative: q.negative,
-			});
+		try {
+			for (const t of spec.tasks) {
+				const ev = p.evaluators.get(t.id)!;
+				const q = await qualifyEvaluatorV0(
+					{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
+					ev,
+					t.submission,
+					join(scratch, t.id),
+				);
+				if (!q.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${q.detail}`);
+				out.push({
+					task: t.id,
+					definitionSha256: ev.sha256,
+					driverSha256: ENDO_EVALUATOR_DRIVER_SHA256_V0,
+					reference: "passed",
+					negative: q.negative,
+				});
+			}
+		} finally {
+			// The qualification copies are the reference, the negative and the cases' inputs: no run directory keeps them (the lock makes
+			// this controller the only one using the directory).
+			rmSync(join(dir, ".qualification"), { recursive: true, force: true });
 		}
 		return out;
 	};
 	mkdirSync(dir, { recursive: true });
-	if (existsSync(runPath)) {
-		const read = checkEndoProtectedRunV0(readJson(runPath));
-		if (!read.ok) throw new EndoProtectedRefusalV0(`the existing run record is not readable: ${read.reason}`);
-		run = read.value;
-		const same =
-			run.specSha256 === specSha256 &&
-			run.isolation.executableSha256 === p.bwrap.sha256 &&
-			run.isolation.version === p.bwrap.version &&
-			canonicalEndoJsonV0(run.profiles) === canonicalEndoJsonV0(profiles) &&
-			run.evaluators.every(
-				(e) =>
-					e.definitionSha256 === p.evaluators.get(e.task)?.sha256 &&
-					e.driverSha256 === ENDO_EVALUATOR_DRIVER_SHA256_V0,
-			);
-		if (!same)
-			throw new EndoProtectedRefusalV0(
-				"a protected run resumes only under the identical spec, isolation, agent profiles and evaluators; start a new run directory",
-			);
-		const evaluators = await qualify();
-		if (canonicalEndoJsonV0(evaluators) !== canonicalEndoJsonV0(run.evaluators))
-			throw new EndoProtectedRefusalV0("the evaluators no longer qualify as they did when the run began");
-	} else {
-		const seed = spec.seed ?? randomInt(0, 0x100000000);
-		const evaluators = await qualify();
-		run = {
-			schemaVersion: "endo.protected-run.v0",
-			runner: ENDO_PROTECTED_RUNNER_V0,
-			spec,
-			specSha256,
-			seed,
-			seedSource: spec.seed === null ? "drawn" : "spec",
-			ordering: ENDO_EXPERIMENT_ORDERING_V0,
-			plan: planEndoExperimentV0(spec, seed),
-			isolation: { mechanism: "bubblewrap", version: p.bwrap.version, executableSha256: p.bwrap.sha256 },
-			profiles,
-			evaluators,
-			createdAt: new Date().toISOString(),
-		};
-		const back = checkEndoProtectedRunV0(run);
-		if (!back.ok) throw new EndoProtectedRefusalV0(`refusing to write an unreadable run record: ${back.reason}`);
-		writeJsonAtomically(runPath, run);
-	}
-	const summary: EndoProtectedRunSummaryV0 = { dir, attempts: 0, finalizedOnResume: 0, skipped: 0 };
-	for (const entry of run.plan) {
-		const task = spec.tasks.find((t) => t.id === entry.task)!;
-		const condition = spec.conditions.find((c) => c.id === entry.condition)!;
-		const evaluator = p.evaluators.get(task.id)!;
-		const trialDir = join(dir, "trials", entry.task, entry.condition, String(entry.trial));
-		const attempts = attemptsOf(trialDir);
-		const unsafe = options.unsafeForTests?.[condition.id];
-		let retryOf: number | null = null;
-		const latest = attempts.at(-1);
-		if (latest !== undefined) {
-			const latestDir = join(trialDir, `attempt-${latest}`);
-			let rec: EndoProtectedTrialV0;
-			if (existsSync(join(latestDir, "record.json"))) {
-				const read = readEndoProtectedTrialFileV0(join(latestDir, "record.json"));
-				if (!read.ok) throw new EndoProtectedRefusalV0(`attempt ${latestDir}: ${read.reason}`);
-				rec = read.value;
-			} else {
-				const profile = agentProfile(p, spec, condition, join(latestDir, "work"), unsafe);
-				const started = existsSync(join(latestDir, "started.json"))
-					? (readJson(join(latestDir, "started.json")) as { retryOf: number | null }).retryOf
-					: latest > 1
-						? latest - 1
-						: null;
-				rec = finalizeOnResume(latestDir, recordBase(run, entry, latest, started, profile, evaluator));
-				summary.finalizedOnResume++;
+	const releaseLock = lockRunDirectory(dir);
+	try {
+		// The agent directory is mounted as a copy the controller makes now and checks against its digest, never the live directory.
+		for (const c of spec.conditions) {
+			const copy = join(dir, ".agents", c.id);
+			rmSync(copy, { recursive: true, force: true });
+			mkdirSync(join(dir, ".agents"), { recursive: true, mode: 0o700 });
+			copyTree(c.agent.directory, copy);
+			if (endoTreeDigestV0(copy) !== p.agents.get(c.id))
+				throw new EndoProtectedRefusalV0(`condition ${c.id}: the agent directory changed while it was copied`);
+			// Whatever its paths, the copy must not hold the hidden material itself (a hard link or a copy of a definition, a reference or a
+			// negative).
+			const hidden = new Set<string>();
+			for (const e of p.evaluators.values()) {
+				hidden.add(e.sha256);
+				contentDigests(join(e.directory, e.definition.reference), hidden);
+				if (e.definition.negative !== null) contentDigests(join(e.directory, e.definition.negative), hidden);
 			}
-			const interrupted = rec.invalidating.includes("controller-interrupted") || rec.agent.status === "interrupted";
-			if (!(interrupted && options.retryInterrupted === true)) {
-				summary.skipped++;
+			const held = new Set<string>();
+			contentDigests(copy, held);
+			if ([...held].some((d) => hidden.has(d)))
+				throw new EndoProtectedRefusalV0(
+					`condition ${c.id}: the agent directory holds a file of an evaluator's hidden material`,
+				);
+			p.agentCopies.set(c.id, copy);
+		}
+		if (existsSync(runPath)) {
+			const read = checkEndoProtectedRunV0(readJson(runPath));
+			if (!read.ok) throw new EndoProtectedRefusalV0(`the existing run record is not readable: ${read.reason}`);
+			run = read.value;
+			const same =
+				run.specSha256 === specSha256 &&
+				run.isolation.executableSha256 === p.bwrap.sha256 &&
+				run.isolation.version === p.bwrap.version &&
+				canonicalEndoJsonV0(run.profiles) === canonicalEndoJsonV0(profiles) &&
+				run.evaluators.every(
+					(e) =>
+						e.definitionSha256 === p.evaluators.get(e.task)?.sha256 &&
+						e.driverSha256 === ENDO_EVALUATOR_DRIVER_SHA256_V0,
+				);
+			if (!same)
+				throw new EndoProtectedRefusalV0(
+					"a protected run resumes only under the identical spec, isolation, agent profiles and evaluators; start a new run directory",
+				);
+			const evaluators = await qualify();
+			if (canonicalEndoJsonV0(evaluators) !== canonicalEndoJsonV0(run.evaluators))
+				throw new EndoProtectedRefusalV0("the evaluators no longer qualify as they did when the run began");
+		} else {
+			const seed = spec.seed ?? randomInt(0, 0x100000000);
+			const evaluators = await qualify();
+			run = {
+				schemaVersion: "endo.protected-run.v0",
+				runner: ENDO_PROTECTED_RUNNER_V0,
+				spec,
+				specSha256,
+				seed,
+				seedSource: spec.seed === null ? "drawn" : "spec",
+				ordering: ENDO_EXPERIMENT_ORDERING_V0,
+				plan: planEndoExperimentV0(spec, seed),
+				isolation: { mechanism: "bubblewrap", version: p.bwrap.version, executableSha256: p.bwrap.sha256 },
+				profiles,
+				evaluators,
+				createdAt: new Date().toISOString(),
+			};
+			const back = checkEndoProtectedRunV0(run);
+			if (!back.ok) throw new EndoProtectedRefusalV0(`refusing to write an unreadable run record: ${back.reason}`);
+			writeJsonAtomically(runPath, run);
+		}
+		const summary: EndoProtectedRunSummaryV0 = { dir, attempts: 0, finalizedOnResume: 0, skipped: 0 };
+		for (const entry of run.plan) {
+			const task = spec.tasks.find((t) => t.id === entry.task)!;
+			const condition = spec.conditions.find((c) => c.id === entry.condition)!;
+			const evaluator = p.evaluators.get(task.id)!;
+			const trialDir = join(dir, "trials", entry.task, entry.condition, String(entry.trial));
+			const attempts = attemptsOf(trialDir);
+			const unsafe = options.unsafeForTests?.[condition.id];
+			let retryOf: number | null = null;
+			const latest = attempts.at(-1);
+			if (latest !== undefined) {
+				const latestDir = join(trialDir, `attempt-${latest}`);
+				let rec: EndoProtectedTrialV0;
+				if (existsSync(join(latestDir, "record.json"))) {
+					const read = readEndoProtectedTrialFileV0(join(latestDir, "record.json"));
+					if (!read.ok) throw new EndoProtectedRefusalV0(`attempt ${latestDir}: ${read.reason}`);
+					rec = read.value;
+				} else {
+					const profile = agentProfile(p, spec, condition, join(latestDir, "work"), unsafe);
+					// What the attempt retried is what its marker says; an attempt without one is not this controller's, and is not guessed at.
+					if (!existsSync(join(latestDir, "started.json")))
+						throw new EndoProtectedRefusalV0(`${latestDir} has no started.json: refusing to guess what it was`);
+					const marker = readJson(join(latestDir, "started.json")) as {
+						retryOf: number | null;
+						controller?: { pid?: unknown; startTime?: unknown };
+					};
+					// Never finalize (or end the sandbox of) an attempt whose controller is still running it.
+					const owner = marker.controller;
+					if (
+						owner !== undefined &&
+						typeof owner.pid === "number" &&
+						typeof owner.startTime === "string" &&
+						// This controller holds the lock, so an attempt it started itself earlier is not being run by anyone now.
+						!(owner.pid === process.pid && owner.startTime === processStartTimeV0(process.pid)) &&
+						processAliveV0({ pid: owner.pid, startTime: owner.startTime })
+					)
+						throw new EndoProtectedRefusalV0(`${latestDir} is still being run by another controller`);
+					const started = marker.retryOf;
+					rec = await finalizeOnResume(latestDir, recordBase(run, entry, latest, started, profile, evaluator));
+					summary.finalizedOnResume++;
+				}
+				// Only an attempt whose agent never started may be retried: an interruption while or after the agent ran is final attrition, so
+				// an agent cannot re-roll its own attempt by making the controller fail (filling the disk, exhausting memory).
+				if (!(retryable(rec) && options.retryInterrupted === true)) {
+					summary.skipped++;
+					continue;
+				}
+				retryOf = latest;
+			}
+			if (options.maxAttempts !== undefined && summary.attempts >= options.maxAttempts) break;
+			const attempt = (latest ?? 0) + 1;
+			const attemptDir = join(trialDir, `attempt-${attempt}`);
+			mkdirSync(trialDir, { recursive: true });
+			// The attempt directory appears with its started.json already inside (made aside, then renamed into place, which fails if the
+			// name exists): an attempt is never without its marker, so a resume never has to guess what it retried.
+			const aside = join(trialDir, `.attempt-${attempt}.${process.pid}`);
+			mkdirSync(aside);
+			writeJsonAtomically(join(aside, "started.json"), {
+				attempt,
+				retryOf,
+				startedAt: new Date().toISOString(),
+				controller: { pid: process.pid, startTime: processStartTimeV0(process.pid) },
+			});
+			if (existsSync(attemptDir)) throw new EndoProtectedRefusalV0(`${attemptDir} exists: refusing to reuse it`);
+			renameSync(aside, attemptDir);
+			const work = join(attemptDir, "work");
+			mkdirSync(work);
+			for (const [path, content] of Object.entries(task.workspace)) {
+				mkdirSync(dirname(join(work, path)), { recursive: true });
+				writeFileSync(join(work, path), content, { flag: "wx" });
+			}
+			const profile = agentProfile(p, spec, condition, work, unsafe);
+			const base = recordBase(run, entry, attempt, retryOf, profile, evaluator);
+			await runAttempt(p, run, entry, attemptDir, base, profile, options);
+			summary.attempts++;
+		}
+		return summary;
+	} finally {
+		releaseLock();
+	}
+}
+
+/** A copy of a tree of regular files and directories (anything else refused), into a new directory. */
+function copyTree(from: string, to: string): void {
+	mkdirSync(to, { mode: 0o700 });
+	for (const name of readdirSync(from).sort()) {
+		const source = join(from, name);
+		const s = lstatSync(source);
+		if (s.isDirectory()) copyTree(source, join(to, name));
+		else if (s.isFile()) writeFileSync(join(to, name), readFileSync(source), { flag: "wx", mode: s.mode & 0o755 });
+		else throw new EndoProtectedRefusalV0(`${source} is not a regular file or directory`);
+	}
+}
+
+/**
+ * One controller per run directory: an exclusive lock file naming its holder by pid and start time. A lock whose holder no longer exists
+ * is stale and taken over; a live one refuses the run.
+ */
+function lockRunDirectory(dir: string): () => void {
+	const path = join(dir, ".lock");
+	const me = { pid: process.pid, startTime: processStartTimeV0(process.pid) };
+	const holderOf = (file: string): { pid?: unknown; startTime?: unknown } | null => {
+		try {
+			return JSON.parse(readFileSync(file, "utf8"));
+		} catch {
+			return null;
+		}
+	};
+	const dead = (h: { pid?: unknown; startTime?: unknown } | null) =>
+		h !== null &&
+		typeof h.pid === "number" &&
+		typeof h.startTime === "string" &&
+		!processAliveV0({ pid: h.pid, startTime: h.startTime });
+	for (let attempt = 0; attempt < 8; attempt++) {
+		try {
+			const fd = openSync(
+				path,
+				constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+				0o600,
+			);
+			try {
+				writeSync(fd, JSON.stringify(me));
+			} finally {
+				closeSync(fd);
+			}
+			return () => {
+				const held = holderOf(path);
+				if (held !== null && held.pid === me.pid && held.startTime === me.startTime) unlinkSync(path);
+			};
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			if (!dead(holderOf(path))) throw new EndoProtectedRefusalV0("another controller holds this run directory");
+			// Take over a stale lock atomically: rename it to a name only this controller uses (one rename of that name can succeed), and
+			// discard it only if it is still the same dead holder's. Another controller that lost the race finds the name gone and tries again.
+			const aside = join(dir, `.lock.stale.${process.pid}.${randomInt(0, 2 ** 31)}`);
+			try {
+				renameSync(path, aside);
+			} catch {
 				continue;
 			}
-			retryOf = latest;
+			if (dead(holderOf(aside))) unlinkSync(aside);
+			else {
+				// A live lock was taken by mistake (it replaced the stale one in between): put it back, and refuse.
+				try {
+					linkSync(aside, path);
+				} finally {
+					unlinkSync(aside);
+				}
+				throw new EndoProtectedRefusalV0("another controller holds this run directory");
+			}
 		}
-		if (options.maxAttempts !== undefined && summary.attempts >= options.maxAttempts) break;
-		const attempt = (latest ?? 0) + 1;
-		const attemptDir = join(trialDir, `attempt-${attempt}`);
-		mkdirSync(dirname(attemptDir), { recursive: true });
-		mkdirSync(attemptDir);
-		writeJsonAtomically(join(attemptDir, "started.json"), { attempt, retryOf, startedAt: new Date().toISOString() });
-		const work = join(attemptDir, "work");
-		mkdirSync(work);
-		for (const [path, content] of Object.entries(task.workspace)) {
-			mkdirSync(dirname(join(work, path)), { recursive: true });
-			writeFileSync(join(work, path), content, { flag: "wx" });
-		}
-		const profile = agentProfile(p, spec, condition, work, unsafe);
-		const base = recordBase(run, entry, attempt, retryOf, profile, evaluator);
-		await runAttempt(p, run, entry, attemptDir, base, profile, options);
-		summary.attempts++;
 	}
-	return summary;
+	throw new EndoProtectedRefusalV0("the run directory's lock could not be taken");
 }
 
 // ---- the report -----------------------------------------------------------------------------------------------------------------------------
@@ -571,6 +857,8 @@ export interface EndoProtectedReportV0 {
 		qualified: number;
 		passed: number;
 		failed: number;
+		/** Of `failed`: the agent left no acceptable submission (missing, a link, a special file, unreadable, too large). */
+		failedWithoutSubmission: number;
 		attrition: Record<string, number>;
 	}[];
 	refusedRecords: { path: string; reason: string }[];
@@ -597,6 +885,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 				qualified: 0,
 				passed: 0,
 				failed: 0,
+				failedWithoutSubmission: 0,
 				attrition: {},
 			});
 	for (const entry of run.plan) {
@@ -613,6 +902,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 		for (const n of attempts) {
 			cell.attempts++;
 			// The trial's outcome is its last attempt's; an unreadable last record is attrition, never replaced by an earlier one.
+			const previous = final;
 			final = null;
 			const path = join(trialDir, `attempt-${n}`, "record.json");
 			const rel = path.slice(dir.length + 1);
@@ -626,16 +916,35 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 				continue;
 			}
 			const v = r.value;
-			const coordinates =
-				v.trial.position === entry.position &&
-				v.trial.task === entry.task &&
-				v.trial.condition === entry.condition &&
-				v.trial.trial === entry.trial &&
-				v.trial.attempt === n &&
-				v.run.specSha256 === run.specSha256 &&
-				v.run.seed === run.seed;
-			if (!coordinates) {
-				refusedRecords.push({ path: rel, reason: "the record is not this run's attempt at these coordinates" });
+			// Each record must be this run's attempt, at these coordinates, under this run's isolation, profile and evaluator.
+			const profile = run.profiles.find((x) => x.condition === entry.condition)?.sha256;
+			const ev = run.evaluators.find((x) => x.task === entry.task);
+			const problem =
+				v.trial.position !== entry.position ||
+				v.trial.task !== entry.task ||
+				v.trial.condition !== entry.condition ||
+				v.trial.trial !== entry.trial ||
+				v.trial.attempt !== n
+					? "the record is not this run's attempt at these coordinates"
+					: v.run.specSha256 !== run.specSha256 || v.run.seed !== run.seed || v.run.id !== run.spec.id
+						? "the record names another run"
+						: v.isolation.version !== run.isolation.version ||
+								v.isolation.executableSha256 !== run.isolation.executableSha256
+							? "the record names another isolation executable"
+							: v.isolation.profileSha256 !== profile
+								? "the record names another agent profile"
+								: v.evaluation.definitionSha256 !== ev?.definitionSha256 ||
+										v.evaluation.driverSha256 !== ev?.driverSha256
+									? "the record names another evaluator"
+									: n !== attempts.indexOf(n) + 1
+										? "the attempts are not numbered from 1 without gaps"
+										: (n === 1) !== (v.trial.retryOf === null) || (n > 1 && v.trial.retryOf !== n - 1)
+											? "the attempt does not retry the attempt before it"
+											: n > 1 && (previous === null || !retryable(previous))
+												? "the attempt retries one that may not be retried (its agent ran, or its record is unreadable)"
+												: null;
+			if (problem !== null) {
+				refusedRecords.push({ path: rel, reason: problem });
 				continue;
 			}
 			if (v.trial.retryOf !== null) cell.retries++;
@@ -645,13 +954,15 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			cell.attrition["record-refused"] = (cell.attrition["record-refused"] ?? 0) + 1;
 			continue;
 		}
-		if (endoProtectedTrialQualifiesV0(final)) {
+		const o = endoProtectedTrialOutcomeV0(final);
+		if (o.outcome === "attrition") cell.attrition[o.reason as string] = (cell.attrition[o.reason as string] ?? 0) + 1;
+		else {
 			cell.qualified++;
-			if (final.evaluation.status === "passed") cell.passed++;
-			else cell.failed++;
-		} else {
-			const reason = final.invalidating[0] ?? final.evaluation.status;
-			cell.attrition[reason] = (cell.attrition[reason] ?? 0) + 1;
+			if (o.outcome === "passed") cell.passed++;
+			else {
+				cell.failed++;
+				if (final.evaluation.status !== "failed") cell.failedWithoutSubmission++;
+			}
 		}
 	}
 	return {
@@ -659,8 +970,8 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 		run: { id: run.spec.id, specSha256: run.specSha256, seed: run.seed, isolation: run.isolation },
 		rules: [
 			"planned counts every randomized trial; none is ever removed",
-			"qualified: the boundary was established and checked, the agent's termination confirmed, the submission collected, and the independent evaluator ran",
-			"passed and failed are counted among qualified trials only; a failure is the evaluator's, never inferred from missing evidence",
+			"qualified (judged): the boundary was established and checked and the agent's termination confirmed, and then either the independent evaluator ran, or the agent left no acceptable submission",
+			"passed and failed are counted among qualified trials only; a failure is the evaluator's, or the agent's own missing or unacceptable submission (failedWithoutSubmission), never inferred from missing evidence",
 			"attrition (by its first invalidating condition) and notAttempted are reported beside them, never as failures, and stay in the planned denominator",
 			"a retry is a new attempt naming the one it retries; the trial's outcome is its last attempt's (an unreadable one is attrition), and every attempt stays counted",
 		],
@@ -700,7 +1011,15 @@ export async function experimentProtectedRunCommand(argv: readonly string[]): Pr
 		spec: read.value,
 		dir: out,
 		retryInterrupted,
-		...(max === undefined ? {} : { maxAttempts: Number(max) }),
+		...(max === undefined
+			? {}
+			: {
+					maxAttempts: /^(0|[1-9][0-9]{0,6})$/.test(max)
+						? Number(max)
+						: (() => {
+								throw new TypeError("--max-attempts must be a whole number");
+							})(),
+				}),
 	});
 	process.stdout.write(canonicalEndoJsonV0(summary as unknown as Record<string, unknown>));
 }

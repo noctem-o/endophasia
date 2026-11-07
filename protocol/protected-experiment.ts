@@ -60,7 +60,10 @@ export interface EndoProtectedSpecV0 {
 	seed: number | null;
 	trials: number;
 	limits: EndoProtectedLimitsV0;
-	/** The only executables a sandbox may hold (absolute paths); each is mounted with its shared-library closure. */
+	/**
+	 * The executables mounted in every sandbox (absolute paths), each with its shared-library closure. They are what the host provides; an
+	 * agent can still run executables it writes into its own writable directories.
+	 */
 	runtime: { executables: string[] };
 	tasks: EndoProtectedTaskV0[];
 	conditions: EndoProtectedConditionV0[];
@@ -121,8 +124,7 @@ export const ENDO_PROTECTED_INVALIDATING_V0 = [
 	"agent-interrupted",
 	"agent-failed-to-start",
 	"termination-unconfirmed",
-	"submission-missing",
-	"submission-refused",
+	"collection-disturbed",
 	"evaluation-could-not-run",
 ] as const;
 export type EndoProtectedInvalidatingV0 = (typeof ENDO_PROTECTED_INVALIDATING_V0)[number];
@@ -610,13 +612,7 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 	);
 	if (new Set(invalidating).size !== invalidating.length) fail("invalidating repeats a condition");
 	// The invalidating conditions follow from the facts above: none may be omitted, and none may be invented.
-	const expected = expectedInvalidating(
-		controller.finalized,
-		preflight.status,
-		agent,
-		submission.status,
-		evaluation.status,
-	);
+	const expected = expectedInvalidating(controller.finalized, preflight.status, agent, submission, evaluation.status);
 	if ([...invalidating].sort().join() !== [...expected].sort().join())
 		fail(`invalidating is not what the record's facts imply (${expected.join(", ") || "none"})`);
 	return {
@@ -667,7 +663,7 @@ export function expectedInvalidating(
 	finalized: EndoProtectedTrialV0["controller"]["finalized"],
 	preflight: EndoProtectedTrialV0["preflight"]["status"],
 	agent: Pick<EndoProtectedTrialV0["agent"], "status" | "termination">,
-	submission: EndoProtectedTrialV0["submission"]["status"],
+	submission: Pick<EndoProtectedTrialV0["submission"], "status" | "refusals">,
 	evaluation: EndoProtectedTrialV0["evaluation"]["status"],
 ): EndoProtectedInvalidatingV0[] {
 	const out: EndoProtectedInvalidatingV0[] = [];
@@ -677,8 +673,9 @@ export function expectedInvalidating(
 	if (agent.status === "interrupted") out.push("agent-interrupted");
 	if (agent.status === "failed-to-start") out.push("agent-failed-to-start");
 	if (agent.termination === "unconfirmed") out.push("termination-unconfirmed");
-	if (submission === "missing") out.push("submission-missing");
-	if (submission === "refused") out.push("submission-refused");
+	// A missing or unacceptable submission is the agent's own doing (it can delete, link or lock its files at will): a failure, not
+	// attrition. The one exception is a file that changed while it was read after the agent was confirmed gone: not the agent's.
+	if (submission.refusals.some((r) => r.reason === "changed-during-collection")) out.push("collection-disturbed");
 	if (evaluation === "could-not-run") out.push("evaluation-could-not-run");
 	return out;
 }
@@ -708,9 +705,23 @@ export const readEndoFunctionEvaluatorV0 = (v: unknown): EndoVersionedReadV0<End
 	readEndoVersionedV0(ENDO_FUNCTION_EVALUATOR_VERSIONS_V0, v);
 
 /**
- * Whether a trial may enter a qualified comparison: the boundary was established and checked, the agent's termination confirmed, the
- * submission collected, and the independent evaluator ran. Anything else is attrition, counted, never a failure.
+ * A trial's outcome for analysis. `attrition`: something outside the agent's control kept it from being judged (the boundary, the
+ * controller, the host, the evaluator infrastructure). Otherwise it is judged: `passed` or `failed` by the independent evaluator, or
+ * `failed` because the agent left no acceptable submission (missing, a link, a special file, unreadable, too large), which it chose.
  */
+export function endoProtectedTrialOutcomeV0(r: EndoProtectedTrialV0): {
+	outcome: "passed" | "failed" | "attrition";
+	reason: string | null;
+} {
+	if (r.invalidating.length > 0) return { outcome: "attrition", reason: r.invalidating[0] as string };
+	if (r.evaluation.status === "passed") return { outcome: "passed", reason: null };
+	if (r.evaluation.status === "failed") return { outcome: "failed", reason: r.evaluation.reason };
+	if (r.submission.status === "missing" || r.submission.status === "refused")
+		return { outcome: "failed", reason: `submission-${r.submission.refusals[0]?.reason ?? r.submission.status}` };
+	return { outcome: "attrition", reason: `evaluation-${r.evaluation.status}` };
+}
+
+/** Whether a trial enters a qualified comparison: it was judged (passed or failed), not lost to attrition. */
 export function endoProtectedTrialQualifiesV0(r: EndoProtectedTrialV0): boolean {
-	return r.invalidating.length === 0 && (r.evaluation.status === "passed" || r.evaluation.status === "failed");
+	return endoProtectedTrialOutcomeV0(r).outcome !== "attrition";
 }

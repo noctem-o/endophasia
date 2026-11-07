@@ -477,7 +477,11 @@ describe("governed initial child execution", () => {
 		},
 		120_000,
 	);
-	it.each(["stdout-overflow-after-settled", "stdout-overflow-after-exit"])(
+	it.each([
+		"stdout-overflow-after-settled",
+		"stdout-overflow-after-exit",
+		"stdout-overflow-after-exit,input-closed-before-exit",
+	])(
 		"rejects %s",
 		async (scenario) => {
 			fixture.pi.setScenario(`model-endpoint,${scenario}`);
@@ -490,7 +494,7 @@ describe("governed initial child execution", () => {
 				if ("area" in result) {
 					const events = readEndoStoreEventsV0(join(result.area, "evidence"));
 					const violations = events.filter((event) => event.kind === "harness.output-limit-exceeded");
-					// One CI run (2026-11-07) recorded no violation here, unreproduced locally: on failure, say what the run did instead.
+					// Whichever of Pi's exit and its closed input the controller notices first, the overflow is what it records.
 					expect(violations, JSON.stringify({ result, kinds: events.map((e) => e.kind) })).toHaveLength(1);
 					expect((violations[0]!.payload as { bytes: number }).bytes).toBeGreaterThan(2 * 1024 * 1024);
 					expect(

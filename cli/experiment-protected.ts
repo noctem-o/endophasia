@@ -309,7 +309,7 @@ const attemptsOf = (trialDir: string): number[] =>
 				.sort((a, b) => a - b)
 		: [];
 
-/** Host paths whose absence inside the sandbox the preflight checks. */
+/** Host paths whose objects the sandbox must not see (by identity: an unrelated inside path of the same name, such as /work, passes). */
 function protectedTargets(dir: string, task: EndoLoadedEvaluatorV0, spec: EndoProtectedSpecV0, condition: string) {
 	const uid = process.getuid?.() ?? 0;
 	const agentSource = spec.conditions.find((c) => c.id === condition)?.agent.directory ?? "/";

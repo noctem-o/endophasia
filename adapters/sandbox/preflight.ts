@@ -7,7 +7,7 @@
 // (tests/protected-isolation.test.ts), so a probe that cannot detect its own restriction's absence is caught.
 
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,7 +45,12 @@ import fs from "node:fs"; import net from "node:net"; import os from "node:os";
 const c = JSON.parse(process.argv[1]);
 const out = {};
 const code = (f) => { try { f(); return "ok"; } catch (e) { return String(e && e.code || "error"); } };
-for (const [role, path] of Object.entries(c.protectedPaths)) out["fs-hidden-" + role] = code(() => fs.lstatSync(path));
+// What is at each protected path, if anything: its filesystem identity, so that the controller can tell the host's own object from an
+// unrelated one that only shares its name (a host home of /home/agent, a checkout at /work).
+for (const [role, path] of Object.entries(c.protectedPaths)) {
+	try { const s = fs.lstatSync(path, { bigint: true }); out["fs-hidden-" + role] = "ok:" + s.dev + ":" + s.ino; }
+	catch (e) { out["fs-hidden-" + role] = String(e && e.code || "error"); }
+}
 out["fs-canary-read"] = code(() => fs.readFileSync(c.canary));
 out["fs-root-readonly"] = code(() => fs.writeFileSync("/.endo-probe", "x"));
 c.readOnlyRuntime.forEach((p, i) => { out["fs-readonly-runtime-" + i] = code(() => fs.appendFileSync(p, "")); });
@@ -69,9 +74,23 @@ process.stdout.write("ENDO-PREFLIGHT " + JSON.stringify(out) + "\n");
 const OBSERVED = /^[A-Za-z0-9_:.\- ]{1,80}$/;
 
 /** Whether one observation is what an enforced boundary gives. Unknown probes fail. */
+/**
+ * What a protected path's raw observation from inside (`ok:<dev>:<ino>` or an error code) means for the host: `host-object` when the
+ * sandbox sees the host's own object there (same device and inode, as any bind mount of it would be), `other-object` when it sees an
+ * unrelated one that only shares the name, `unknown-object` when the host has nothing at that path to compare with (conservatively a
+ * failure). An error code is kept as it is.
+ */
+export function identityOfHostV0(raw: string, host: string | null | undefined): string {
+	const m = /^ok:([0-9]+:[0-9]+)$/.exec(raw);
+	if (m === null) return raw === "ok" ? "unknown-object" : raw;
+	if (host === null || host === undefined) return "unknown-object";
+	return m[1] === host ? "host-object" : "other-object";
+}
+
 export function preflightPassesV0(id: string, observed: string): boolean {
-	if (id.startsWith("fs-hidden-") || id.startsWith("socket-hidden-") || id === "fs-canary-read")
-		return observed === "ENOENT";
+	// A protected path passes when nothing is there, or when what is there is not the host's object (identityOfHostV0 decides which).
+	if (id.startsWith("fs-hidden-")) return observed === "ENOENT" || observed === "other-object";
+	if (id.startsWith("socket-hidden-") || id === "fs-canary-read") return observed === "ENOENT";
 	if (id.startsWith("fs-readonly-runtime-")) return observed === "EROFS" || observed === "EACCES";
 	if (id === "fs-root-readonly" || id === "fs-dev-readonly" || id.startsWith("fs-readonly-mount-"))
 		return observed === "EROFS";
@@ -116,6 +135,12 @@ export async function preflightV0(
 		controllerPidNamespace = readlinkSync("/proc/self/ns/pid");
 	} catch {
 		return { status: "unavailable", probes: [], reason: "the controller's own PID namespace could not be read" };
+	}
+	// Each protected path's identity on the host, taken before the sandbox starts; null where the host has nothing there.
+	const host: Record<string, string | null> = {};
+	for (const [role, path] of Object.entries(targets.protectedPaths)) {
+		const s = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+		host[role] = s === undefined ? null : `${s.dev}:${s.ino}`;
 	}
 	const scratch = mkdtempSync(join(tmpdir(), "endo-preflight-"));
 	const canary = join(scratch, `canary-${randomBytes(8).toString("hex")}`);
@@ -176,7 +201,8 @@ export async function preflightV0(
 		}
 		const probes: EndoProtectedProbeV0[] = Object.entries(observed as Record<string, unknown>)
 			.map(([id, value]) => {
-				const o = typeof value === "string" && OBSERVED.test(value) ? value : "unreadable";
+				const raw = typeof value === "string" && OBSERVED.test(value) ? value : "unreadable";
+				const o = id.startsWith("fs-hidden-") ? identityOfHostV0(raw, host[id.slice("fs-hidden-".length)]) : raw;
 				return { id, passed: preflightPassesV0(id, o), observed: o };
 			})
 			.sort((a, b) => (a.id < b.id ? -1 : 1));

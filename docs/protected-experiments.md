@@ -109,6 +109,11 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   -p TasksMax=512 -- bwrap …`.
   - *Established before bubblewrap runs:* `systemd-run --scope` registers the scope with the user manager, with itself in it, and only
     then execs bubblewrap. The controller also checks, from `/proc/<pid>/cgroup`, that bubblewrap is in the named scope.
+  - *Identified before the command runs:* bubblewrap is started with `--block-fd`, so the sandbox's first process waits, before it execs
+    the command, until the controller releases it. The controller does that only after it read the init's identity and found bubblewrap
+    inside the scope, both of which are then certainly alive; otherwise it stops the scope and the command never runs (`started: false`).
+    A command, however short, cannot finish before it was identified, and `started` means "released to run". The release pipe is closed
+    only after the scope has been stopped, since an EOF on it would also release the init.
   - *Recorded durably:* for each of an attempt's sandboxes (the preflight, the agent, the evaluation), the controller chooses the unit
     name and writes it to the attempt directory (`<sandbox>-scope.json`) before anything is started. Right after the launch it adds the
     launcher's identity (pid and start time).
@@ -163,7 +168,7 @@ only if every probe passes. Otherwise the attempt is recorded with `preflight: f
 
 | Probe | Attempt from inside | Must observe |
 | :-- | :-- | :-- |
-| `fs-hidden-*` | stat the host home, the repository, the research data, the run directory, every trial, the evaluator directory and the agent's host path | `ENOENT`. These paths cannot exist in an empty root whatever is mounted, so these probes alone show little; what keeps those trees out is structural: only `/work` and the agent copy come from the host, and the agent directory is refused when it overlaps them (above). `fs-canary-read` is the probe that fails when a host directory is mounted at its own path |
+| `fs-hidden-*` | stat the host home, the repository, the research data, the run directory, every trial, the evaluator directory and the agent's host path, and compare what is there with the host's object at that path (device and inode, which a bind mount keeps) | `ENOENT`, or `other-object`: an unrelated inside object that only shares the name passes (a controller whose home is `/home/agent`, a checkout at `/work`). `host-object` (the host's own directory) fails, and so does `unknown-object` (something is there but the host has nothing to compare with). These paths do not exist in an empty root unless something is mounted there, so these probes alone show little; what keeps those trees out is structural: only `/work` and the agent copy come from the host, and the agent directory is refused when it overlaps them (above). `fs-canary-read` is the probe that fails when a host directory is mounted at its own path |
 | `fs-canary-read` | read a canary the controller just wrote in a private host directory | `ENOENT` |
 | `fs-root-readonly`, `fs-dev-readonly`, `fs-readonly-mount-*` | write `/`, `/dev`, `/agent`, `/usr` | `EROFS`: the mount's own answer |
 | `fs-readonly-runtime-*` | write each runtime executable | `EROFS` or `EACCES`. They are root-owned, so their mode may answer first: this shows they cannot be changed, not which mechanism stops it |

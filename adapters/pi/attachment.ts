@@ -35,7 +35,13 @@ import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
 import { endoDigestKeyFromEnvironmentV0 } from "../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 import { type EndoHarnessRegistryV0, openEndoHarnessRegistryV0 } from "../../storage/harness-registry.ts";
-import type { RpcDiagnosticV0, RpcEventV0, RpcExitV0 } from "../rpc-jsonl/rpc-connection.ts";
+import {
+	type RpcDiagnosticV0,
+	type RpcEventV0,
+	RpcExitErrorV0,
+	type RpcExitV0,
+	RpcInputFailedErrorV0,
+} from "../rpc-jsonl/rpc-connection.ts";
 import { piCapabilityV0 } from "./capabilities.ts";
 import {
 	PI_CHECK_DEFINITIONS_V0,
@@ -533,6 +539,27 @@ function acquireWriterLock(root: string, attachment: string): () => void {
 }
 
 /** One recorded Pi session: a persistent Pi session id that survives process restarts. */
+/** How long a read that failed on Pi's closed input waits for Pi's exit to be reported before the failure stands. */
+const EXIT_AFTER_INPUT_FAILURE_MS = 2000;
+
+/**
+ * Whether a failed read failed only because Pi ended: it exited before answering, or its input failed (EPIPE) and its exit
+ * follows within a short bound. A process that closed its input but keeps running is not "ended": that failure stands.
+ */
+async function exitedMeanwhile(client: PiRpcClientV0, error: unknown): Promise<boolean> {
+	if (error instanceof RpcExitErrorV0) return true;
+	if (!(error instanceof RpcInputFailedErrorV0)) return false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const exited = await Promise.race([
+		client.connection.exited.then(() => true),
+		new Promise<false>((resolve) => {
+			timer = setTimeout(() => resolve(false), EXIT_AFTER_INPUT_FAILURE_MS);
+		}),
+	]);
+	clearTimeout(timer);
+	return exited;
+}
+
 export class PiSessionAttachmentV0 {
 	readonly owner: PiAttachmentV0;
 	readonly store: EndoDurableEventStoreV0;
@@ -1026,6 +1053,10 @@ export class PiSessionAttachmentV0 {
 				} else if (error instanceof PiRpcProtocolErrorV0) {
 					this.counters.protocolFaults += 1;
 					this.#attachmentEvent("harness.protocol-fault", { fault: "malformed-entries" });
+					return;
+				} else if (await exitedMeanwhile(client, error)) {
+					// Pi ended while this read was being sent: the same as finding it already gone (above). Which the controller
+					// notices first, its exit or its closed input (EPIPE), is scheduling, and must not change what is recorded.
 					return;
 				} else throw error;
 			}

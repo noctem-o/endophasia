@@ -502,6 +502,36 @@ describe.runIf(REAL)("real isolation: each probe detects the removal of its rest
 			"fs-hidden-protected",
 		);
 	});
+	it("an unrelated directory that only shares a protected path's name (a host home of /home/agent, a checkout at /work) passes", async () => {
+		// Codex 4501423401: the raw name inside is not the host's object. Bind a different host directory at the protected name.
+		if (!detected.ok) throw new Error("unreachable");
+		const unsafe = { extraRoBind: { source: fresh("unrelated"), target: protectedDir } };
+		const p = await preflightV0(
+			detected.bwrap,
+			profileWith(fresh("work"), unsafe),
+			"/usr/bin/node",
+			targets,
+			containment,
+		);
+		expect(p.probes.find((x) => x.id === "fs-hidden-protected")).toEqual({
+			id: "fs-hidden-protected",
+			passed: true,
+			observed: "other-object",
+		});
+		// The only other failure is this test's own mount point, which lies under the host's /tmp and so shows in the sandbox's.
+		expect(p.probes.filter((x) => !x.passed).map((x) => x.id)).toEqual(
+			protectedDir.startsWith("/tmp/") ? ["fs-tmp-private"] : [],
+		);
+		// The host's own object at that name is still found, whatever else is mounted.
+		const own = await preflightV0(
+			detected.bwrap,
+			profileWith(fresh("work"), { extraRoBind: { source: protectedDir, target: protectedDir } }),
+			"/usr/bin/node",
+			targets,
+			containment,
+		);
+		expect(own.probes.find((x) => x.id === "fs-hidden-protected")?.observed).toBe("host-object");
+	});
 	it("an extra environment variable: the environment probe fails", async () => {
 		expect((await failed({ extraEnv: { AWS_SECRET_ACCESS_KEY: "x" } })).failing).toContain("env-minimal");
 	});
@@ -867,6 +897,49 @@ describe.runIf(REAL)("real isolation: every sandbox runs in its own scope", () =
 		expect(scopeLoaded(recorded)).toBe("not-found");
 	});
 
+	it("identifies the sandbox before its command can run, so even an instant command is reported started and ended", async () => {
+		// Codex 4501423402: a command that finished before the controller handled bubblewrap's status was reported not started, and its
+		// scope not established. The init now waits on a release pipe until it is identified.
+		const runtime = resolveRuntimeV0(["/usr/bin/node"]);
+		if (!runtime.ok || !detected.ok) throw new Error("unreachable");
+		for (let i = 0; i < 5; i++) {
+			const work = fresh("instant");
+			const profile = buildSandboxProfileV0({
+				runtime: runtime.files,
+				mounts: [{ target: "/work", kind: "rw-dir", role: "workspace", source: work }],
+				env: { PATH: "/usr/bin" },
+				cwd: "/work",
+				tmpfsBytes: 1 << 20,
+			});
+			const seen: { ranEarly: boolean; aliveAtIdentification: boolean }[] = [];
+			const r = await runSandboxV0(
+				detected.bwrap,
+				profile,
+				["/usr/bin/node", "-e", 'require("node:fs").writeFileSync("/work/RAN", "1")'],
+				{
+					timeoutMs: 10_000,
+					outputBytes: 4096,
+					containment,
+					onStarted: (init) => {
+						const alive = processAliveV0(init);
+						// Held here for 300 ms: a command that were already running would have written its file by now.
+						const until = Date.now() + 300;
+						while (Date.now() < until) {
+							/* hold the controller */
+						}
+						seen.push({ ranEarly: existsSync(join(work, "RAN")), aliveAtIdentification: alive });
+					},
+				},
+			);
+			expect(seen).toEqual([{ ranEarly: false, aliveAtIdentification: true }]);
+			expect(existsSync(join(work, "RAN"))).toBe(true);
+			expect(r.started).toBe(true);
+			expect(r.exitCode).toBe(0);
+			expect(r.init).not.toBeNull();
+			expect(r.scope.established).toBe(true);
+			expect(r.termination).toBe("confirmed");
+		}
+	});
 	it("runs bubblewrap inside the scope it named, from its first instruction", async () => {
 		const runtime = resolveRuntimeV0(["/usr/bin/node"]);
 		if (!runtime.ok || !detected.ok) throw new Error("unreachable");

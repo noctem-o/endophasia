@@ -143,6 +143,14 @@ export class RpcErrorV0 extends Error {
 	}
 }
 
+/** The runtime's input failed (EPIPE: it closed stdin or is exiting): the command never reached it, or got no response. */
+export class RpcInputFailedErrorV0 extends RpcErrorV0 {
+	constructor(message: string) {
+		super(message);
+		this.name = "RpcInputFailedErrorV0";
+	}
+}
+
 export class RpcExitErrorV0 extends RpcErrorV0 {
 	readonly exit: RpcExitV0;
 	constructor(command: string, exit: RpcExitV0, label = "Runtime") {
@@ -483,7 +491,7 @@ export class RpcConnectionV0 {
 		if (this.#exit !== undefined) return new RpcExitErrorV0(type, this.#exit, this.#label);
 		if (this.#closing !== undefined)
 			return new RpcErrorV0(`${this.#label} RPC connection is closing; ${type} was not sent`);
-		if (this.#stdinFailed) return new RpcErrorV0(`${this.#label} RPC input failed; ${type} was not sent`);
+		if (this.#stdinFailed) return new RpcInputFailedErrorV0(`${this.#label} RPC input failed; ${type} was not sent`);
 		// Every record is written as a Buffer, so writableLength is a byte count.
 		const backlog = this.#group.stdin?.writableLength ?? 0;
 		const maxBacklog = this.#maxInputBacklogBytes;
@@ -599,7 +607,9 @@ export class RpcConnectionV0 {
 		for (const [id, pending] of this.#pending) {
 			clearTimeout(pending.timer);
 			this.#pending.delete(id);
-			pending.reject(new RpcErrorV0(`${this.#label} RPC input failed before responding to ${pending.command}`));
+			pending.reject(
+				new RpcInputFailedErrorV0(`${this.#label} RPC input failed before responding to ${pending.command}`),
+			);
 		}
 	}
 

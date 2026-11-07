@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { preflightPassesV0 } from "../adapters/sandbox/preflight.ts";
+import { identityOfHostV0, preflightPassesV0 } from "../adapters/sandbox/preflight.ts";
 import { endoSubmissionDigestV0, exportSubmissionV0 } from "../adapters/sandbox/submission.ts";
 import { planEndoExperimentV0 } from "../cli/experiment.ts";
 import {
@@ -400,6 +400,22 @@ describe("Codex review regressions", () => {
 		expect(preflightPassesV0("proc-private", "pids:2 pidns:own")).toBe(true);
 		expect(preflightPassesV0("proc-private", "pids:2 pidns:controller")).toBe(false);
 		expect(preflightPassesV0("proc-private", "pids:9 pidns:own")).toBe(false);
+	});
+
+	it("judges a protected path by the host object's identity, not by whether its name exists inside", () => {
+		// Codex 4501423401: a controller whose home is /home/agent, or a checkout at /work, shares a name with the sandbox's own paths.
+		expect(identityOfHostV0("ok:41:7", "41:7")).toBe("host-object");
+		expect(identityOfHostV0("ok:12:7", "41:7")).toBe("other-object");
+		expect(identityOfHostV0("ok:41:8", "41:7")).toBe("other-object");
+		expect(identityOfHostV0("ok:41:7", null)).toBe("unknown-object");
+		expect(identityOfHostV0("ok", "41:7")).toBe("unknown-object");
+		expect(identityOfHostV0("ENOENT", "41:7")).toBe("ENOENT");
+		expect(preflightPassesV0("fs-hidden-host-home", "ENOENT")).toBe(true);
+		expect(preflightPassesV0("fs-hidden-host-home", "other-object")).toBe(true);
+		for (const o of ["host-object", "unknown-object", "EACCES", "ok", "ok:41:7"])
+			expect(preflightPassesV0("fs-hidden-host-home", o)).toBe(false);
+		// The canary and host sockets are still judged by absence alone.
+		expect(preflightPassesV0("fs-canary-read", "other-object")).toBe(false);
 	});
 });
 

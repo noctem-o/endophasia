@@ -389,8 +389,9 @@ export async function endSandboxV0(init: EndoProcessIdentityV0): Promise<"confir
 /**
  * Run one command in one sandbox. Bubblewrap's options are passed through a pipe (`--args`), so no host path appears in the sandbox's
  * /proc/1/cmdline; the command itself (logical paths only) follows `--`. Bubblewrap gets no environment; stdio is three pipes, and the
- * status and option pipes are bubblewrap's own. On timeout bubblewrap is killed, which kills the sandbox (it dies with its parent), and
- * afterwards the sandbox's init is ended for certain (endSandboxV0).
+ * status, option and release pipes are bubblewrap's own. The command runs only once the controller identified the sandbox (--block-fd).
+ * On timeout bubblewrap is killed, which kills the sandbox (it dies with its parent); the sandbox's scope is then stopped, which is what
+ * confirms termination, and the init is also ended by identity as a supplementary check (endSandboxV0).
  */
 export async function runSandboxV0(
 	bwrap: EndoBubblewrapV0,
@@ -412,7 +413,10 @@ export async function runSandboxV0(
 	const start = performance.now();
 	const unit = newScopeUnitV0();
 	options.onScope?.(unit);
-	const opts = ["--json-status-fd", "3", ...profile.args];
+	// --block-fd 5: the sandbox's first process waits, before it execs the command, until the controller releases it, which it does only
+	// once it has identified the sandbox (its init's identity, and bubblewrap inside the scope). However short the command, it cannot
+	// finish before it was identified. EOF would release it too, so the pipe is never closed while the sandbox may still run.
+	const opts = ["--json-status-fd", "3", "--block-fd", "5", ...profile.args];
 	if ([...opts, ...argv].some((a) => a.includes("\0")))
 		throw new TypeError("a sandbox argument holds a NUL character");
 	// Its own process group (bubblewrap issue #633): until the sandbox's first process calls setsid (after bubblewrap releases it), it is
@@ -425,7 +429,7 @@ export async function runSandboxV0(
 		scopeArgsV0(options.containment, unit, runtimeMaxSec, [bwrap.path, "--args", "4", "--", ...argv]),
 		{
 			env: { ...options.containment.env },
-			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe"],
 			detached: true,
 		},
 	);
@@ -462,21 +466,30 @@ export async function runSandboxV0(
 	let status = "";
 	let init: EndoProcessIdentityV0 | null = null;
 	let established = false;
+	let identified = false;
+	let released = false;
+	const release = (child.stdio as unknown as NodeJS.WritableStream[])[5] as NodeJS.WritableStream;
+	release.on("error", () => {});
 	child.stdout.on("data", out.push);
 	child.stderr.on("data", err.push);
 	(child.stdio[3] as NodeJS.ReadableStream).on("data", (b: Buffer) => {
 		status += b.toString("utf8");
 		const m = /"child-pid":\s*([0-9]+)/.exec(status);
-		if (m !== null && !established && child.pid !== undefined) established = processInScopeV0(child.pid, unit);
-		if (m !== null && init === null) {
-			const pid = Number(m[1]);
-			// Read while the sandbox runs (bubblewrap waits on its init): that pid cannot belong to another process yet.
-			const startTime = processStartTimeV0(pid);
-			if (startTime !== null) {
-				init = { pid, startTime };
-				options.onStarted?.(init);
-			}
+		if (m === null || identified) return;
+		identified = true;
+		// Both are alive here, whatever the command does: the init is blocked on the release pipe, and bubblewrap waits on it.
+		established = child.pid !== undefined && processInScopeV0(child.pid, unit);
+		const pid = Number(m[1]);
+		const startTime = processStartTimeV0(pid);
+		if (startTime !== null) init = { pid, startTime };
+		if (!established || init === null) {
+			// Not identified: the command never runs. The scope is stopped (with the init still blocked in it) before the pipe can close.
+			void stopScopeV0(options.containment, unit);
+			return;
 		}
+		options.onStarted?.(init);
+		released = true;
+		release.end(Buffer.from("1"));
 	});
 	child.stdin.on("error", () => {});
 	child.stdin.end(options.stdin ?? Buffer.alloc(0));
@@ -511,13 +524,16 @@ export async function runSandboxV0(
 	const known = init as EndoProcessIdentityV0 | null;
 	// The guarantee: the user manager confirms the scope ended. The init's identity is kept as a supplementary observation.
 	const ended = await stopScopeV0(options.containment, unit);
+	// Only now, with the scope stopped, may the release pipe close (an EOF on it would release a blocked init).
+	(release as NodeJS.WritableStream & { destroy?: () => void }).destroy?.();
 	const initGone = known === null ? null : (await endSandboxV0(known)) === "confirmed";
 	const termination = established && ended === "confirmed" ? "confirmed" : "unconfirmed";
 	const o = out.value();
 	const e = err.value();
 	return {
-		started: known !== null,
-		exitCode: exitStatus !== null ? Number(exitStatus[1]) : known !== null ? null : code,
+		// Started: the command was released to run, which happens only once the sandbox was identified (above).
+		started: released,
+		exitCode: exitStatus !== null ? Number(exitStatus[1]) : released ? null : code,
 		signal: timedOut ? "SIGKILL" : signal,
 		timedOut,
 		durationMs: Math.round(performance.now() - start),

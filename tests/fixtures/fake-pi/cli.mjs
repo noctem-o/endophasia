@@ -34,7 +34,7 @@
 //                       resultText replaces the fixed result text)
 //   FAKE_PI_LOG         a file that receives one line per command received (for assertions)
 import { spawn } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -556,12 +556,19 @@ async function handle(command) {
 		case "get_entries": {
 			if (has("hang-entries-after-prompt") && entries.some((entry) => entry.message?.role === "user")) return;
 			if (has("stdout-overflow-after-exit") && hasSettled) {
+				// Pi's input closes before its exit is reported: the controller's next write fails (EPIPE) while the
+				// process is still running, the ordering CI met on 2026-11-07 that a local run otherwise never does.
+				const inputFirst = has("input-closed-before-exit");
+				if (inputFirst) {
+					process.stdin.destroy();
+					closeSync(0);
+				}
 				respond(id, type, { entries, leafId: entries.at(-1)?.id ?? null });
 				flush();
 				// A descendant in the owned group holds stdout after the Pi leader has exited.
 				spawn(process.execPath, ["-e", "setTimeout(() => process.stdout.write(Buffer.alloc(3 * 1024 * 1024, 32)), 250)"],
 					{ stdio: ["ignore", 1, "ignore"] });
-				process.stdout.write("", () => process.exit(0));
+				process.stdout.write("", () => (inputFirst ? setTimeout(() => process.exit(0), 100) : process.exit(0)));
 				return;
 			}
 			if (has("stdout-overflow-after-settled") && hasSettled) {

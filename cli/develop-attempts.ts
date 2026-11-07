@@ -132,6 +132,8 @@ const summary = (r: DevelopAttemptReportV0) => ({
 	target: r.handoff?.target ?? null,
 	task: r.task,
 	taskWordsChanged: r.taskWordsChanged,
+	// Each later record: recorded, absent, or damaged (a file at its name that is not usable; never the same as absent).
+	records: r.records,
 	// Sent to Pi through the workbench? What the session's own records say, in the words shown everywhere. Never a verdict on the work.
 	execution:
 		r.execution === null
@@ -251,6 +253,11 @@ function show(argv: readonly string[]): void {
 	const { root, flags } = flagsOf(argv, ["--attempt"], USAGE);
 	const report = unwrap(serviceAt(root).get(attemptOf(flags)));
 	print({ attempt: shown(report) });
+	for (const kind of ["handoff", "outcome"] as const)
+		if (report.records[kind] === "damaged")
+			process.stderr.write(
+				`${kind}: unknown. A file at this attempt's ${kind} record's name is not a usable record; what the operator recorded there cannot be read. The file was left as found.\n`,
+			);
 	if (report.records.authorized === "damaged")
 		process.stderr.write(
 			"execution: unknown. A file at this attempt's authorisation record's name is not a usable record, so whether a send was authorised cannot be read; nothing in the session log is attributed to it. The file was left as found.\n",

@@ -141,21 +141,32 @@ three states apart, and the CLI's JSON, its text and its gap list agree on them:
 | :-- | :-- | :-- |
 | known absent | the attempts directory was read whole and has no file at `<id>.authorized.json` | `authorizationRecord: "absent"`, gap `not-authorized`, `sent [observed] No send … was authorised` |
 | observed present | a valid record at that name, whose `attemptId` is this attempt's | `recorded`; joined to the session log by exact ids, as before |
-| damaged | a file at exactly that name is malformed, invalid, misnamed (another attempt's record), over its bound, a link, or unreadable | `damaged`, with the store's reason (never the contents); gap `authorization-record-damaged`; `sent [unknown] …`; no send, run or Pi report attributed |
+| damaged | a file at exactly that name is malformed, invalid, misnamed (another attempt's record), over its bound, a link, a directory, a FIFO, or unreadable; or this attempt's record is found misnamed under another attempt's name | `damaged`, with the store's reason (never the contents); gap `authorization-record-damaged`; `sent [unknown] …`; `pi.source: "unknown"`; no send, run or Pi report attributed |
 | unknown, no reading | the attempts directory itself cannot be read | the command refuses (`unreadable`); nothing is claimed |
 
-- **Exact names only.** A damaged file of another attempt, or a file merely named like this one's (`….authorized.json.bak`), says nothing
-  about this attempt. This is the rule the service already applied before writing a handoff or outcome.
+- **Exact names only, plus a record's own claim.**
+  - A damaged file of another attempt, or a stray file merely named like this one's (`….authorized.json.bak`,
+    `<id>.x.authorized.json`), is not this attempt's record.
+  - A *misnamed* file is different: a valid record whose `attemptId` differs from its file name's. The store now carries the attempt it
+    `claims`, and the file counts as damaged for that attempt too. So this attempt's valid authorisation, found under another attempt's
+    name, makes both read `damaged`, and the broker refuses to send either one again.
+  - One rule (`endoAttemptProblemsOfV0`) is shared by `get`, `handoff`/`report`/`abandon` and the broker's check. Each refuses
+    `unreadable`, never `not-found`, when a file at the attempt's names is unusable.
 - **Surviving events are counted, not joined.** The log's events do not name an attempt: they carry a keyed digest of the message. Without
   the record there is no exact join. So, for a damaged record and a log read whole, the reading gives `unattributedWorkbenchSends`: the
   number of `workbench.prompt-dispatched` events whose proposal id no readable authorisation record of any attempt accounts for. They
   may be plain workbench prompts, or this attempt's send. None is attributed, and the run is not reported. A partial log gives `null`.
+  The count covers the whole log, every session and the time before this attempt existed, and a dispatch without a usable proposal id
+  counts. **A count of 0 does not mean "not sent"**: the authorisation may have been recorded with the send then refused.
 - **The same for statements.** A damaged handoff or outcome gives `operator-statement-damaged`. A damaged prepared record, or later
   records without one, makes `endo attempt show/evidence` refuse as `unreadable` instead of saying "no such attempt".
 - **Nothing is repaired.** The files are left as found. `endo attempt show` also carries `records`, `damaged` and
   `unattributedWorkbenchSends`, and says `execution: unknown` on stderr for a damaged authorisation.
 - **Not re-sent.** The broker already refuses to authorise an attempt that has an unusable file at any of its record names
   (`develop-attempt-dispatch.ts`), so a damaged record never opens a second send.
+- **Case-insensitive file systems.** Names are compared exactly, as the store writes them. On a case-insensitive file system (macOS by
+  default), a file `<id>.AUTHORIZED.json` would block the broker's write but read here as absent. Endophasia's supported host is Linux.
+- **`endo attempt list`** carries each attempt's `records` too, so it no longer shows a damaged authorisation as a plain `execution: null`.
 - **The page.** The workbench's attempts view (`EndoDevelopAttemptsViewV2`) still has only `execution: null`, so it can offer the send
   button for such an attempt. That offer is advisory, and the broker refuses it. A page view that shows the damaged state would need a
   view schema change, and is not made here.

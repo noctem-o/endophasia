@@ -173,7 +173,8 @@ export interface EndoAttemptEvidenceV0 {
 	};
 	/** What Pi reported, as the session log holds it: its reply to the send, and how the attributed run ended. Not verification. */
 	pi: {
-		source: "pi-report" | "none";
+		/** `unknown`: the authorisation record is damaged, so whether there was anything for Pi to report is unknown. */
+		source: "pi-report" | "none" | "unknown";
 		disposition: EndoDevelopAttemptExecutionViewV0["disposition"];
 		run: EndoDevelopAttemptExecutionViewV0["run"] | null;
 		runLabel: string;
@@ -344,7 +345,7 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			brief: x?.brief ?? null,
 		},
 		pi: {
-			source: x === null ? "none" : "pi-report",
+			source: authorizationRecord === "damaged" ? "unknown" : x === null ? "none" : "pi-report",
 			disposition: x?.disposition ?? null,
 			run: x?.run ?? null,
 			runLabel:
@@ -415,7 +416,7 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 			: [
 					`  log       [observed] ${e.sent.unattributedWorkbenchSends} workbench send(s) in the session log are accounted for by no readable authorisation; none is attributed to this attempt`,
 				]),
-		`  run       [${e.pi.source === "none" ? "none" : "Pi's report"}] ${e.pi.runLabel}.`,
+		`  run       [${e.pi.source === "pi-report" ? "Pi's report" : e.pi.source}] ${e.pi.runLabel}.`,
 		`  candidate [none] no record names one; checked at: ${e.candidate.checkedCommits.length === 0 ? "nothing" : e.candidate.checkedCommits.map(short).join(", ")}`,
 		`  tree now  [observed] ${e.checks.current === null ? "unavailable" : `${short(e.checks.current.commit)}${e.checks.current.clean ? ", clean" : ", with uncommitted changes"}`}${e.checks.comparedWith === null ? "" : ` (${e.checks.comparedWith})`}`,
 		...e.checks.latest.map(

@@ -810,7 +810,12 @@ export function reconstruct(
 		unknowns.push("the working tree has uncommitted changes now: they are in no commit and no receipt covers them");
 
 	const exec = shown.execution as Record<string, unknown> | null;
-	if (exec === null) unknowns.push("no authorisation record: nothing shows this attempt was sent to an agent");
+	const authorizationRecord = (shown.records as { authorized?: string } | undefined)?.authorized;
+	if (authorizationRecord === "damaged")
+		unknowns.push(
+			"the authorisation record is damaged: whether this attempt was sent is unknown, and nothing is attributed to it",
+		);
+	else if (exec === null) unknowns.push("no authorisation record: nothing shows this attempt was sent to an agent");
 	else if (exec.evidence !== "complete") unknowns.push(`the event log was read as ${String(exec.evidence)}`);
 	if (run.dispatchSequence !== null && run.endKind === null) unknowns.push("no run end was found after the dispatch");
 	if (exec !== null && run.endKind !== null && END_AS_RUN[run.endKind] !== exec.run)

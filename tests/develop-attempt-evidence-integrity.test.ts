@@ -22,6 +22,7 @@ import {
 } from "../protocol/develop-attempt-execution.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { DevelopAttemptDispatchV0 } from "../runtime/contracts/develop-attempt-dispatch.ts";
 import { endoAttemptEvidenceV0, renderEndoAttemptEvidenceV0 } from "../runtime/contracts/develop-attempt-evidence.ts";
 import { type EndoSessionLogReadV0, endoBriefSha256V0 } from "../runtime/contracts/develop-attempt-execution.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
@@ -260,10 +261,13 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 			})();
 			const { report, view, gaps, text } = evidenceOf(s, s.a.id);
 			expect(report.records.authorized).toBe("damaged");
-			expect(report.damaged).toEqual([{ name: `${s.a.id}.authorized.json`, reason }]);
+			// A misnamed record also says which attempt it claims (here B's, copied under A's name).
+			expect(report.damaged).toEqual([
+				{ name: `${s.a.id}.authorized.json`, reason, ...(reason === "misnamed" ? { claims: s.b.id } : {}) },
+			]);
 			expect(view.sent).toMatchObject({ authorizationRecord: "damaged", authorizedAtMs: null, send: null });
 			expect(view.sent.damaged).toEqual([{ record: "authorized", reason }]);
-			expect(view.pi).toMatchObject({ source: "none", run: null });
+			expect(view.pi).toMatchObject({ source: "unknown", run: null });
 			expect(gaps[0]).toBe("authorization-record-damaged");
 			expect(gaps).not.toContain("not-authorized");
 			expect(text).toContain("  sent      [unknown] Unknown: this attempt's authorisation record is damaged");
@@ -345,7 +349,7 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 		writeFileSync(s.at(s.a.id, "authorized"), "{garbage");
 		const { view, gaps, text } = evidenceOf(s, s.a.id);
 		expect(view.sent).toMatchObject({ authorizationRecord: "damaged", send: null, unattributedWorkbenchSends: 2 });
-		expect(view.pi).toMatchObject({ source: "none", run: null });
+		expect(view.pi).toMatchObject({ source: "unknown", run: null });
 		expect(gaps).toContain("authorization-record-damaged");
 		expect(gaps).not.toContain("run-not-completed");
 		expect(text).toContain(
@@ -355,6 +359,73 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 		const partial = seeded(() => ({ state: "partial", events }));
 		writeFileSync(partial.at(partial.a.id, "authorized"), "{garbage");
 		expect(evidenceOf(partial, partial.a.id).view.sent.unattributedWorkbenchSends).toBeNull();
+	});
+
+	it("a stray file merely starting with this attempt's id is not its record: absent, and nothing listed as damaged (review #2)", () => {
+		const s = seeded();
+		for (const stray of ["extra.authorized.json", "prepared.authorized.json"])
+			writeFileSync(join(s.dir, `${s.a.id}.${stray}`), "{garbage");
+		const { report, view, gaps, text } = evidenceOf(s, s.a.id);
+		expect(report.records.authorized).toBe("absent");
+		expect(report.damaged).toEqual([]);
+		expect(view.sent.damaged).toEqual([]);
+		expect(gaps).toContain("not-authorized");
+		expect(text).not.toContain("damaged   [observed]");
+		// The broker still refuses it (a file at one of its names might be a record a later build writes).
+		expect(
+			new DevelopAttemptDispatchV0(s.tasks, s.attempts, { projectId: s.a.projectId, launchDirectory: s.root }).check(
+				s.a.id,
+			),
+		).toMatchObject({ ok: false, code: "unreadable" });
+	});
+
+	it("this attempt's valid record found under ANOTHER attempt's name: damaged for both, and no second send (review #3)", () => {
+		const { p } = chain("7");
+		const s = seeded();
+		expect(s.attempts.write(s.a.id, "authorized", authorization(p, brief(s, s.a.id), s.a.id, "7"))).toBe("created");
+		writeFileSync(s.at(s.b.id, "authorized"), readFileSync(s.at(s.a.id, "authorized")));
+		rmSync(s.at(s.a.id, "authorized"));
+		const a = evidenceOf(s, s.a.id);
+		expect(a.report.records.authorized).toBe("damaged");
+		expect(a.report.damaged).toEqual([{ name: `${s.b.id}.authorized.json`, reason: "misnamed", claims: s.a.id }]);
+		expect(a.gaps).toContain("authorization-record-damaged");
+		expect(a.view.pi.source).toBe("unknown");
+		expect(evidenceOf(s, s.b.id).report.records.authorized).toBe("damaged");
+		const dispatch = new DevelopAttemptDispatchV0(s.tasks, s.attempts, {
+			projectId: s.a.projectId,
+			launchDirectory: s.root,
+		});
+		expect(dispatch.check(s.a.id)).toMatchObject({ ok: false, code: "unreadable" });
+		expect(dispatch.check(s.b.id)).toMatchObject({ ok: false, code: "unreadable" });
+	});
+
+	it("every reader that names one attempt says unreadable, not 'not found', when its prepared record is damaged (review #8)", () => {
+		const s = seeded();
+		writeFileSync(s.at(s.a.id, "prepared"), "{garbage");
+		expect(s.service.handoff(s.a.id, { target: "x" })).toMatchObject({ ok: false, code: "unreadable" });
+		expect(s.service.report(s.a.id, "done")).toMatchObject({ ok: false, code: "unreadable" });
+		expect(
+			new DevelopAttemptDispatchV0(s.tasks, s.attempts, { projectId: s.a.projectId, launchDirectory: s.root }).check(
+				s.a.id,
+			),
+		).toMatchObject({ ok: false, code: "unreadable" });
+		// The list still shows the other attempt, and counts the problem.
+		const listed = ok(s.service.list(s.a.projectId));
+		expect(listed.attempts.map((x) => x.attempt.id)).toEqual([s.b.id]);
+		expect(listed.problems).toEqual([{ name: `${s.a.id}.prepared.json`, reason: "malformed" }]);
+	});
+
+	it("dispatches without a usable proposal id are counted as unaccounted, not dropped (review mutation survivor)", () => {
+		const s = seeded(() => ({
+			state: "complete",
+			events: [
+				ev("endo.event.x.1", "workbench.prompt-dispatched", {}),
+				ev("endo.event.x.2", "workbench.prompt-dispatched", { proposalId: 7 }),
+				ev("endo.event.x.3", "workbench.prompt-refused", { reason: "authorization-denied" }),
+			],
+		}));
+		writeFileSync(s.at(s.a.id, "authorized"), "{garbage");
+		expect(evidenceOf(s, s.a.id).view.sent.unattributedWorkbenchSends).toBe(2);
 	});
 
 	it("a damaged handoff or outcome is an unreadable operator statement, not an absent one", () => {
@@ -391,6 +462,16 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 		expect(ev1.stderr).toContain(
 			"gap       A file at this attempt's authorisation record's name is not a usable record. Whether a send was authorised is unknown",
 		);
+		const listed = run("attempt", "list", "--root", s.root, "--project", s.a.projectId);
+		expect(
+			JSON.parse(listed.stdout).attempts.map((x: { id: string; records: { authorized: string } }) => [
+				x.id,
+				x.records.authorized,
+			]),
+		).toEqual([
+			[s.a.id, "damaged"],
+			[s.b.id, "absent"],
+		]);
 		const show = run("attempt", "show", "--root", s.root, "--attempt", s.a.id);
 		expect(show.status).toBe(0);
 		expect(JSON.parse(show.stdout).attempt).toMatchObject({

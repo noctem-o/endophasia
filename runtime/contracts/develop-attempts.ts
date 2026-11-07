@@ -53,6 +53,7 @@ import type {
 	EndoAttemptProblemV0,
 	EndoAttemptRecordKindV0,
 } from "../../storage/develop-attempts.ts";
+import { endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { type EndoSessionLogReadV0, endoAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
@@ -224,16 +225,14 @@ export class DevelopAttemptsServiceV0 {
 		problems: readonly EndoAttemptProblemV0[] = [],
 	): DevelopAttemptReportV0 {
 		const { attempt } = entry;
-		// Exact names only: a damaged file of another attempt says nothing about this one (the rule #record uses before writing).
-		const damaged = problems.filter(
-			(p) => p.name.startsWith(`${attempt.id}.`) && /\.(handoff|outcome|authorized)\.json$/.test(p.name),
+		// Exact record names, or a misnamed record that claims this attempt: a damaged file of another attempt says nothing about this
+		// one, and a stray `<id>.x.authorized.json` is not this attempt's authorisation record.
+		const mine = endoAttemptProblemsOfV0(problems, attempt.id).filter(
+			(x) => x.kind !== null && x.kind !== "prepared",
 		);
+		const damaged = mine.map((x) => x.problem);
 		const stateOf = (kind: "handoff" | "outcome" | "authorized"): EndoAttemptRecordStateV0 =>
-			entry[kind] !== null
-				? "recorded"
-				: damaged.some((p) => p.name === `${attempt.id}.${kind}.json`)
-					? "damaged"
-					: "absent";
+			entry[kind] !== null ? "recorded" : mine.some((x) => x.kind === kind) ? "damaged" : "absent";
 		const task =
 			file === null
 				? undefined
@@ -299,8 +298,8 @@ export class DevelopAttemptsServiceV0 {
 		if (entry === undefined) {
 			// Files at this attempt's names that are not usable (its prepared record damaged, or later records without it): the attempt may
 			// exist, so it is not "not found" (EVIDENCE-INTEGRITY-001).
-			const at = read.problems.find((p) => p.name.startsWith(`${attemptId}.`));
-			return at === undefined ? refuse("not-found") : refuse("unreadable", at.reason);
+			const at = endoAttemptProblemsOfV0(read.problems, attemptId)[0];
+			return at === undefined ? refuse("not-found") : refuse("unreadable", at.problem.reason);
 		}
 		const log = this.#logOnce();
 		const report = this.#report(entry, this.#taskFile(), log, read.problems);
@@ -498,7 +497,10 @@ export class DevelopAttemptsServiceV0 {
 		const read = this.#attempts.read();
 		if (!read.ok) return refuse("unreadable", read.reason);
 		const entry = read.entries.find((e) => e.attempt.id === attemptId);
-		if (entry === undefined) return refuse("not-found");
+		if (entry === undefined) {
+			const at = endoAttemptProblemsOfV0(read.problems, attemptId)[0];
+			return at === undefined ? refuse("not-found") : refuse("unreadable", at.problem.reason);
+		}
 		if (entry[kind] !== null) return refuse("already-recorded");
 		const blocked = read.problems.find((p) => p.name === `${attemptId}.${kind}.json`);
 		if (blocked !== undefined) return refuse("unreadable", blocked.reason);

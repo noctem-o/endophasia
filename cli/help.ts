@@ -91,6 +91,10 @@ Commands that write to a store:
                                      (docs/designs/develop-verification-receipts.md)
   attempt receipts ... --attempt <id> [--cwd <dir>] | attempt receipt ... --receipt <id> [--cwd <dir>]
                                      read receipts, each compared with HEAD of --cwd (default: the project's registered path)
+  attempt evidence ... --attempt <id> [--cwd <dir>]
+                                     read one attempt's records together: what was sent, what Pi reported, the latest check of each
+                                     command and whether it still applies to --cwd, the task's status moves, and what is missing.
+                                     Read-only; names no revision as the attempt's result (docs/designs/develop-attempt-evidence.md)
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

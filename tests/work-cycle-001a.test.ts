@@ -34,6 +34,7 @@ import {
 	renderReconstruction,
 	runEnv,
 	runGit,
+	startProxy,
 	TASK,
 	writePiAgentDir,
 } from "../research/work-cycle/driver.ts";
@@ -211,6 +212,19 @@ describe("WORK-CYCLE-001A pieces that need no terminal", () => {
 		expect(
 			(await doctor({ pi: install.bin, expectPiVersion: "1.0.0" })).find((f) => f.check === "pi --version")?.status,
 		).toBe("ok");
+	});
+
+	it("a recording proxy whose startup is interrupted or times out is stopped, not left running", async () => {
+		const layout = freshRun("endo-wc-proxy-");
+		// The upstream is never contacted: the proxy only has to start (or not) and be stopped.
+		await expect(startProxy(layout, "http://127.0.0.1:9", () => true)).rejects.toThrow(/interrupted.*stopped/s);
+		expect(processesOfRun(layout)).toEqual([]);
+		await expect(startProxy(layout, "http://127.0.0.1:9", () => false, 0)).rejects.toThrow(/timed out.*stopped/s);
+		expect(processesOfRun(layout)).toEqual([]);
+		const started = await startProxy(layout, "http://127.0.0.1:9");
+		expect(processesOfRun(layout).length).toBeGreaterThan(0);
+		await started.stop();
+		expect(processesOfRun(layout)).toEqual([]);
 	});
 
 	it("`endo task show` gives a terminal reader the acceptance criteria and the operator's status history", () => {

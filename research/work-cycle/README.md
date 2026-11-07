@@ -239,5 +239,6 @@ scripts against the kept run 2. It did not run the opt-in real-Pi or real-model 
 | `processesOfRun` counted wrapper processes (a shell, `npx`, `timeout`), and matched on a bare prefix | minor | **Fixed.** This process's ancestors are excluded, and only path arguments or a working directory inside the run match |
 | `capturedChatBodies` changed `process.env` and could create a key | nit | **Fixed.** The key path is passed explicitly and must exist |
 | A non-`/v1` endpoint path was dropped silently | nit | **Fixed.** Refused |
+| (Codex, on PR #128) A Ctrl-C while the detached proxy was still starting, or a startup timeout, left the proxy running | minor | **Fixed.** The interrupt handler is installed before the proxy is spawned. Every failed startup (interrupted, exited, timed out) stops the proxy and waits for it before throwing. A unit test checks that none survives; it fails when the stop is removed |
 | Tier 2 skips its Ponytail assertions silently when Ponytail is not installed; the tier-3 evidence directory is not checked to be outside the repository | nit | **Kept.** Both are opt-in tiers. This README says where the evidence goes |
 

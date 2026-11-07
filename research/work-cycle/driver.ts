@@ -942,7 +942,16 @@ function waitForExit(child: ReturnType<typeof spawn>): Promise<number | null> {
 	});
 }
 
-async function startProxy(layout: RunLayout, upstream: string): Promise<{ origin: string; stop(): Promise<void> }> {
+/**
+ * Start `endo proxy record` and wait for its address. It runs detached (the terminal's Ctrl-C is the workbench's), so every way out
+ * of startup that is not success (a timeout, an early exit, the operator interrupting) terminates it and waits for it before throwing.
+ */
+export async function startProxy(
+	layout: RunLayout,
+	upstream: string,
+	interrupted: () => boolean = () => false,
+	readyTimeoutMs = 10_000,
+): Promise<{ origin: string; stop(): Promise<void> }> {
 	const child = spawn(
 		process.execPath,
 		[ENDO_CLI, "proxy", "record", "--upstream", upstream, "--store", layout.capture],
@@ -957,17 +966,27 @@ async function startProxy(layout: RunLayout, upstream: string): Promise<{ origin
 		err += String(c);
 	});
 	const exit = waitForExit(child);
-	for (let i = 0; i < 200 && !/recording (http:\/\/\S+) ->/.test(err); i++)
-		await new Promise((r) => setTimeout(r, 50));
-	const origin = /recording (http:\/\/\S+) ->/.exec(err)?.[1];
-	if (origin === undefined) throw new Error(`the recording proxy did not start:\n${err}`);
-	return {
-		origin,
-		async stop() {
-			if (child.exitCode === null) child.kill("SIGTERM");
-			await exit;
-		},
+	const stop = async () => {
+		if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+		await exit;
 	};
+	const ready = /recording (http:\/\/\S+) ->/;
+	const deadline = Date.now() + readyTimeoutMs;
+	while (!ready.test(err)) {
+		const why = interrupted()
+			? "interrupted"
+			: child.exitCode !== null || child.signalCode !== null
+				? "exited"
+				: Date.now() > deadline
+					? "timed out"
+					: null;
+		if (why !== null) {
+			await stop();
+			throw new Error(`the recording proxy did not start (${why}); it was stopped:\n${err}`);
+		}
+		await new Promise((r) => setTimeout(r, 50));
+	}
+	return { origin: ready.exec(err)?.[1] as string, stop };
 }
 
 async function operatorRun(argv: readonly string[]): Promise<void> {
@@ -1012,32 +1031,38 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		`baseline check at the fixture commit: ${prepared.baseline.outcome} (exit ${prepared.baseline.exit}); expected: failed`,
 	);
 
-	const proxy = await startProxy(layout, endpointUrl.origin);
 	const ponytail = findPonytail();
 	let code: number | null = null;
-	const ignore = () => {};
+	let proxy: Awaited<ReturnType<typeof startProxy>> | null = null;
+	// Before the workbench runs, Ctrl-C cancels the run; once it runs, Ctrl-C is the workbench's and this driver continues after it.
+	// Either way the handler is installed before the proxy exists, and the proxy is stopped whatever happens.
+	let interrupted = false;
+	const onInterrupt = () => {
+		interrupted = true;
+	};
+	process.on("SIGINT", onInterrupt);
 	try {
+		proxy = await startProxy(layout, endpointUrl.origin, () => interrupted);
 		writePiAgentDir(layout, {
 			baseUrl: `${proxy.origin}/v1`,
 			provider: "work-cycle",
 			model,
 			ponytailPackage: ponytail?.dir ?? null,
 		});
+		if (interrupted) throw new Error("interrupted before the workbench started; nothing was sent");
 		say("starting the workbench. On ITS terminal (this one), type:");
 		say(`    attempt ${prepared.attemptId}`);
 		say(
 			"then read the brief and type the APPROVE ATTEMPT phrase it shows if you approve. When the run has ended, press Ctrl-C.",
 		);
-		// Ctrl-C belongs to the workbench; this driver continues after it ends (and stops the proxy whatever happens).
-		process.on("SIGINT", ignore);
 		const attach = spawn(process.execPath, attachArgs(layout, prepared, { pi, provider: "work-cycle", model }), {
 			env: piEnv(layout, declared),
 			stdio: "inherit",
 		});
 		code = await waitForExit(attach);
 	} finally {
-		process.off("SIGINT", ignore);
-		await proxy.stop();
+		process.off("SIGINT", onInterrupt);
+		await proxy?.stop();
 	}
 	say(`the workbench ended (exit ${code})`);
 

@@ -24,7 +24,7 @@ import {
 	renderEndoDevelopBriefV0,
 } from "../../protocol/develop-attempts.ts";
 import { ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0 } from "../../protocol/workbench.ts";
-import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
+import { type DevelopAttemptsStoreV0, endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { endoBriefSha256V0 } from "./develop-attempt-execution.ts";
 
@@ -143,9 +143,9 @@ export class DevelopAttemptDispatchV0 {
 		const read = this.#attempts.read();
 		if (!read.ok) return refuse("unreadable");
 		const entry = read.entries.find((e) => e.attempt.id === attemptId);
-		// A file at one of the attempt's names that is not a usable record blocks it: it might be a record this build cannot read.
-		if (read.problems.some((p) => p.name.startsWith(`${attemptId}.`)))
-			return refuse(entry === undefined ? "not-found" : "unreadable");
+		// A file at one of the attempt's names that is not a usable record, or a misnamed record that claims this attempt, blocks it: it
+		// might be this attempt's authorisation (EVIDENCE-INTEGRITY-001). Never "not found": the attempt may exist.
+		if (endoAttemptProblemsOfV0(read.problems, attemptId).length > 0) return refuse("unreadable");
 		if (entry === undefined) return refuse("not-found");
 		const { attempt } = entry;
 		if (attempt.projectId !== this.#projectId) return refuse("other-project");

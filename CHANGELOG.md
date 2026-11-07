@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+- **EVIDENCE-INTEGRITY-001: a damaged authorisation record no longer reads as "never authorised".**
+  - Before: `endo attempt evidence` read a malformed, invalid, misnamed, oversized, linked or unreadable `<id>.authorized.json` as no
+    authorisation (`not-authorized`).
+  - Now it says `authorizationRecord: "damaged"`, gives the gap `authorization-record-damaged` and the text `[unknown]`, and attributes
+    no send or run. It counts the workbench sends in the log that no readable authorisation accounts for, and joins none of them.
+  - The schema is now `endo.develop-attempt-evidence.v1`.
+  - A damaged handoff or outcome is reported as damaged, not absent.
+  - A damaged prepared record makes `attempt show/evidence` refuse as unreadable instead of saying "no such attempt".
+  - `endo attempt show` carries the same record states. Damaged files are left as found.
+
 ### Added
 - **`endo attempt evidence --attempt <id> [--cwd <dir>]` (WORK-CYCLE-001B).** One attempt's records, read together and read-only. It
   shows what was sent and what Pi reported, the latest check of each command with its relation to the working tree now, the operator's

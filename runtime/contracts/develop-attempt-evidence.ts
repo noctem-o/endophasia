@@ -33,19 +33,26 @@ import type { EndoDevelopStatusChangeV0, EndoDevelopTaskStatusV0 } from "../../p
 import type { DevelopAttemptReportV0 } from "./develop-attempts.ts";
 import { endoLatestChecksV0 } from "./develop-attention.ts";
 
-export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v0";
+/**
+ * v1 (EVIDENCE-INTEGRITY-001): `sent.authorizationRecord` says whether the authorisation record is recorded, absent or damaged. In v0 a
+ * damaged record read as absent, so `authorizedAtMs: null` claimed "never authorised"; in v1 it means only "no readable record", and the
+ * record's state says which. A new major version, so a v0 reader is not silently given the wider meaning.
+ */
+export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v1";
 
 /**
  * What this reading found missing, stale, unconfirmed or not yet decided, in a fixed order. Each is a fact about the records, never a
  * verdict on the work.
  */
 export const ENDO_ATTEMPT_EVIDENCE_GAPS_V0 = [
+	"authorization-record-damaged",
 	"not-authorized",
 	"execution-evidence-incomplete",
 	"send-not-confirmed",
 	"run-not-completed",
 	"brief-changed-since-authorization",
 	"task-words-changed",
+	"operator-statement-damaged",
 	"receipts-unreadable",
 	"receipt-files-unusable",
 	"no-check",
@@ -62,6 +69,8 @@ export const ENDO_ATTEMPT_EVIDENCE_GAPS_V0 = [
 export type EndoAttemptEvidenceGapV0 = (typeof ENDO_ATTEMPT_EVIDENCE_GAPS_V0)[number];
 
 export const ENDO_ATTEMPT_EVIDENCE_GAP_TEXT_V0: Readonly<Record<EndoAttemptEvidenceGapV0, string>> = Object.freeze({
+	"authorization-record-damaged":
+		"A file at this attempt's authorisation record's name is not a usable record. Whether a send was authorised is unknown, and nothing in the session log is attributed to this attempt.",
 	"not-authorized":
 		"No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.",
 	"execution-evidence-incomplete":
@@ -71,6 +80,8 @@ export const ENDO_ATTEMPT_EVIDENCE_GAP_TEXT_V0: Readonly<Record<EndoAttemptEvide
 	"brief-changed-since-authorization":
 		"The brief rendered now differs from the one the operator approved (its digest does not match).",
 	"task-words-changed": "The task's words have changed since the attempt was prepared.",
+	"operator-statement-damaged":
+		"A file at this attempt's handoff or outcome record's name is not a usable record: what the operator recorded there cannot be read, and is not shown as absent.",
 	"receipts-unreadable": "This attempt's receipts could not be read; no check is shown.",
 	"receipt-files-unusable":
 		"Some files in this attempt's receipts directory are not usable receipts (damaged or unreadable): a check they recorded, a failure among them, is not shown.",
@@ -139,8 +150,20 @@ export interface EndoAttemptEvidenceV0 {
 	/** The broker's records: the operator's authorisation on the workbench terminal, and the send as recorded. */
 	sent: {
 		source: "observed";
-		/** null: no authorisation record. */
+		/**
+		 * `recorded`: a valid authorisation record. `absent`: no file at its name, in an attempts directory that was read. `damaged`: a file at
+		 * exactly its name is not a usable record, so whether the send was authorised is unknown.
+		 */
+		authorizationRecord: "recorded" | "absent" | "damaged";
+		/** null: no readable authorisation record (see `authorizationRecord` for which). */
 		authorizedAtMs: number | null;
+		/**
+		 * Only for a damaged record and a whole session log: workbench sends that no readable authorisation accounts for, by exact proposal
+		 * id. Plain prompts or this attempt's send; none is attributed.
+		 */
+		unattributedWorkbenchSends: number | null;
+		/** The store's reasons for the files at this attempt's record names that are not usable (no contents). */
+		damaged: { record: "handoff" | "outcome" | "authorized"; reason: string }[];
 		approvedOn: "workbench-terminal" | null;
 		session: string | null;
 		send: EndoDevelopAttemptExecutionViewV0["send"] | null;
@@ -150,7 +173,8 @@ export interface EndoAttemptEvidenceV0 {
 	};
 	/** What Pi reported, as the session log holds it: its reply to the send, and how the attributed run ended. Not verification. */
 	pi: {
-		source: "pi-report" | "none";
+		/** `unknown`: the authorisation record is damaged, so whether there was anything for Pi to report is unknown. */
+		source: "pi-report" | "none" | "unknown";
 		disposition: EndoDevelopAttemptExecutionViewV0["disposition"];
 		run: EndoDevelopAttemptExecutionViewV0["run"] | null;
 		runLabel: string;
@@ -209,7 +233,9 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 	const x = report.execution;
 	const found = new Set<EndoAttemptEvidenceGapV0>();
 
-	if (x === null) found.add("not-authorized");
+	const authorizationRecord = report.records.authorized;
+	if (authorizationRecord === "damaged") found.add("authorization-record-damaged");
+	else if (x === null) found.add("not-authorized");
 	else {
 		if (x.evidence !== "complete") found.add("execution-evidence-incomplete");
 		if (x.send !== "runtime-accepted") found.add("send-not-confirmed");
@@ -217,6 +243,8 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 		if (x.brief !== "matches") found.add("brief-changed-since-authorization");
 	}
 	if (report.taskWordsChanged.length > 0) found.add("task-words-changed");
+	if (report.records.handoff === "damaged" || report.records.outcome === "damaged")
+		found.add("operator-statement-damaged");
 
 	const all = input.receipts ?? [];
 	const receipts = all.map((r) => r.receipt);
@@ -293,25 +321,39 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 		},
 		sent: {
 			source: "observed",
+			authorizationRecord,
 			authorizedAtMs: x?.authorizedAtMs ?? null,
+			unattributedWorkbenchSends: authorizationRecord === "damaged" ? report.unattributedWorkbenchSends : null,
+			damaged: report.damaged.flatMap((p) => {
+				const kind = /\.(handoff|outcome|authorized)\.json$/.exec(p.name)?.[1] as
+					| "handoff"
+					| "outcome"
+					| "authorized"
+					| undefined;
+				return kind === undefined ? [] : [{ record: kind, reason: p.reason }];
+			}),
 			approvedOn: x === null ? null : "workbench-terminal",
 			session: x?.session ?? null,
 			send: x?.send ?? null,
 			sendLabel:
-				x === null
-					? "No send to Pi through the workbench was authorised for this attempt"
-					: ENDO_ATTEMPT_SEND_LABELS_V0[x.send],
+				authorizationRecord === "damaged"
+					? "Unknown: this attempt's authorisation record is damaged, so whether a send was authorised cannot be read"
+					: x === null
+						? "No send to Pi through the workbench was authorised for this attempt"
+						: ENDO_ATTEMPT_SEND_LABELS_V0[x.send],
 			evidence: x?.evidence ?? null,
 			brief: x?.brief ?? null,
 		},
 		pi: {
-			source: x === null ? "none" : "pi-report",
+			source: authorizationRecord === "damaged" ? "unknown" : x === null ? "none" : "pi-report",
 			disposition: x?.disposition ?? null,
 			run: x?.run ?? null,
 			runLabel:
-				x === null
-					? "No run is attributed: no send through the workbench was authorised"
-					: ENDO_ATTEMPT_RUN_LABELS_V0[x.run],
+				authorizationRecord === "damaged"
+					? "No run is attributed: the authorisation record cannot be read"
+					: x === null
+						? "No run is attributed: no send through the workbench was authorised"
+						: ENDO_ATTEMPT_RUN_LABELS_V0[x.run],
 		},
 		candidate: {
 			source: "none",
@@ -364,8 +406,17 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 			: [
 					`  outcome   [operator] ${e.attempt.outcome.kind === "reported" ? `recorded as reported, not verified: ${e.attempt.outcome.note}` : `recorded as abandoned${e.attempt.outcome.note === "" ? "" : `: ${e.attempt.outcome.note}`}`}`,
 				]),
-		`  sent      [observed] ${e.sent.sendLabel}.`,
-		`  run       [${e.pi.source === "none" ? "none" : "Pi's report"}] ${e.pi.runLabel}.`,
+		`  sent      [${e.sent.authorizationRecord === "damaged" ? "unknown" : "observed"}] ${e.sent.sendLabel}.`,
+		...e.sent.damaged.map(
+			(d) =>
+				`  damaged   [observed] this attempt's ${d.record} record is not usable (${d.reason}); it is not read as absent`,
+		),
+		...(e.sent.unattributedWorkbenchSends === null
+			? []
+			: [
+					`  log       [observed] ${e.sent.unattributedWorkbenchSends} workbench send(s) in the session log are accounted for by no readable authorisation; none is attributed to this attempt`,
+				]),
+		`  run       [${e.pi.source === "pi-report" ? "Pi's report" : e.pi.source}] ${e.pi.runLabel}.`,
 		`  candidate [none] no record names one; checked at: ${e.candidate.checkedCommits.length === 0 ? "nothing" : e.candidate.checkedCommits.map(short).join(", ")}`,
 		`  tree now  [observed] ${e.checks.current === null ? "unavailable" : `${short(e.checks.current.commit)}${e.checks.current.clean ? ", clean" : ", with uncommitted changes"}`}${e.checks.comparedWith === null ? "" : ` (${e.checks.comparedWith})`}`,
 		...e.checks.latest.map(

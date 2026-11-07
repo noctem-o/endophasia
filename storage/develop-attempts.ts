@@ -63,10 +63,41 @@ export interface EndoAttemptEntryV0 {
 export interface EndoAttemptProblemV0 {
 	name: string;
 	reason: "unsafe-path" | "too-large" | "malformed" | "invalid" | "misnamed" | "orphan" | "unknown-file" | "io";
+	/**
+	 * `misnamed` only: the attempt the record inside says it belongs to (a well-formed id), when that differs from its file name's. The
+	 * record is still not used, but it is evidence about that attempt too (EVIDENCE-INTEGRITY-001).
+	 */
+	claims?: string;
+}
+
+/**
+ * The problems that concern one attempt: a file at one of its own names, or a misnamed record that claims it. `kind` is the record kind
+ * the file's name gives (null for a name that is not exactly a record name, such as `<id>.x.authorized.json`).
+ */
+export function endoAttemptProblemsOfV0(
+	problems: readonly EndoAttemptProblemV0[],
+	attemptId: string,
+): { problem: EndoAttemptProblemV0; kind: EndoAttemptRecordKindV0 | null }[] {
+	return problems.flatMap((problem) => {
+		const named = RECORD.exec(problem.name);
+		const own = problem.name.startsWith(`${attemptId}.`);
+		if (!own && problem.claims !== attemptId) return [];
+		const kind = named === null ? null : (named[2] as EndoAttemptRecordKindV0);
+		return [{ problem, kind: own ? (named?.[1] === attemptId ? kind : null) : kind }];
+	});
 }
 
 export type EndoAttemptsReadV0 =
-	| { ok: true; entries: EndoAttemptEntryV0[]; problems: EndoAttemptProblemV0[] }
+	| {
+			ok: true;
+			entries: EndoAttemptEntryV0[];
+			problems: EndoAttemptProblemV0[];
+			/**
+			 * The proposal id of every valid authorisation record under its own name, its attempt's prepared record readable or not (orphans
+			 * included). For accounting for sends only: an orphan is still a problem, never an attempt, and never joined to an execution.
+			 */
+			authorizedProposalIds: string[];
+	  }
 	| { ok: false; reason: "unsafe-path" | "io" };
 
 export interface EndoDevelopAttemptsStoreOptionsV0 {
@@ -95,7 +126,7 @@ export class DevelopAttemptsStoreV0 {
 	/** Every attempt in the directory, read now. A missing directory is no attempts (nothing is created). */
 	read(): EndoAttemptsReadV0 {
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir]);
-		if (dirs === "missing") return { ok: true, entries: [], problems: [] };
+		if (dirs === "missing") return { ok: true, entries: [], problems: [], authorizedProposalIds: [] };
 		if (dirs !== "ok") return { ok: false, reason: dirs };
 		let names: string[];
 		try {
@@ -138,12 +169,16 @@ export class DevelopAttemptsStoreV0 {
 				continue;
 			}
 			// A record is the one its name says: a file copied under another attempt's name is not that attempt's.
-			if (("id" in record ? record.id : record.attemptId) !== id) {
-				problems.push({ name, reason: "misnamed" });
+			const claimed = "id" in record ? record.id : record.attemptId;
+			if (claimed !== id) {
+				problems.push({ name, reason: "misnamed", claims: claimed });
 				continue;
 			}
 			found.set(id, { ...found.get(id), [kind]: record });
 		}
+		const authorizedProposalIds = [...found.values()].flatMap((r) =>
+			r.authorized === undefined ? [] : [(r.authorized as EndoDevelopAttemptAuthorizationV0).proposalId],
+		);
 		const entries: EndoAttemptEntryV0[] = [];
 		for (const [id, records] of found) {
 			if (records.prepared === undefined) {
@@ -160,7 +195,7 @@ export class DevelopAttemptsStoreV0 {
 			});
 		}
 		entries.sort((a, b) => a.attempt.preparedAtMs - b.attempt.preparedAtMs || (a.attempt.id < b.attempt.id ? -1 : 1));
-		return { ok: true, entries, problems };
+		return { ok: true, entries, problems, authorizedProposalIds };
 	}
 
 	/**

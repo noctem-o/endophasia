@@ -400,10 +400,20 @@ export async function runSandboxV0(
 	const opts = ["--json-status-fd", "3", ...profile.args];
 	if ([...opts, ...argv].some((a) => a.includes("\0")))
 		throw new TypeError("a sandbox argument holds a NUL character");
+	// Its own process group (bubblewrap issue #633): until the sandbox's first process calls setsid (after bubblewrap releases it), it is
+	// in this group, so a group kill reaches it even in the launch window where --die-with-parent does not yet hold for it.
 	const child = spawn(bwrap.path, ["--args", "4", "--", ...argv], {
 		env: {},
 		stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+		detached: true,
 	});
+	const killGroup = () => {
+		try {
+			if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+		} catch {
+			// the group is gone
+		}
+	};
 	const argsPipe = child.stdio[4] as NodeJS.WritableStream;
 	argsPipe.on("error", () => {});
 	argsPipe.end(Buffer.from(`${opts.join("\0")}\0`, "utf8"));
@@ -445,11 +455,21 @@ export async function runSandboxV0(
 	let timedOut = false;
 	const timer = setTimeout(() => {
 		timedOut = true;
-		child.kill("SIGKILL");
+		killGroup();
 	}, options.timeoutMs);
 	const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
 		child.on("error", () => resolve([null, null]));
 		child.on("close", (c, s) => resolve([c, s]));
+		// A sandbox process stranded in bubblewrap's launch window (#633) can hold the output pipes open forever. Once bubblewrap itself
+		// has exited, wait a bounded time for the pipes, then stop waiting: termination is then decided below, not by a pipe's end.
+		child.on("exit", (c, s) => {
+			setTimeout(() => {
+				killGroup();
+				for (const stream of [child.stdout, child.stderr, child.stdio[3]])
+					(stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+				resolve([c, s]);
+			}, 2000).unref();
+		});
 	});
 	clearTimeout(timer);
 	// bubblewrap reports the command's own exit code on the status fd.

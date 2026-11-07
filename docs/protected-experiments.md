@@ -109,6 +109,25 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   process if it still exists, and records termination as confirmed only when it is gone: when a PID namespace's init ends, the kernel kills
   every other process in it (pid_namespaces(7)). No process is ever found or killed by namespace number, which the kernel reuses. A
   sandbox that never reported its init is recorded as `unconfirmed`.
+- **The launch window (bubblewrap issue [#633](https://github.com/containers/bubblewrap/issues/633), open; 0.13.1 is affected):**
+  read from the 0.13.1 source.
+  - *The launcher:* bubblewrap clones the sandbox's first process and only then arms its own `--die-with-parent` (`PR_SET_PDEATHSIG`).
+  - *The child:* the sandbox's first process blocks reading an eventfd until the launcher releases it, and arms its own parent-death
+    signal only much later.
+  - *What can go wrong:* if the launcher dies before releasing it, that process waits forever (an eventfd has no end of file). It is
+    reparented to init and holds the caller's output pipes. If the *controller* dies before the launcher has armed its signal, the
+    launcher is orphaned, and arming it then binds it to its new parent, so the sandbox can run on unsupervised.
+
+  What the controller does about it:
+  - it starts bubblewrap in its own process group and kills the **group** on timeout. Until its `setsid` (after the release), the stranded
+    process is still in that group, which is upstream's confirmed workaround;
+  - it stops waiting for the output pipes a bounded time after bubblewrap exits;
+  - it ends the recorded init by identity, as above.
+
+  A sandbox killed by the controller is therefore ended in every window. **Not established:** a sandbox whose *controller* is killed
+  inside the launcher's window. Nothing outside the controller bounds that orphan's lifetime, and a resume can only say `unconfirmed`
+  when no init was recorded. Closing it needs containment that does not depend on the controller: each sandbox in its own transient
+  systemd user scope, ended by `cgroup.kill` and bounded by `RuntimeMaxSec` (see §9).
 - **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree, each file's
   content and the permission bits its copy keeps) by digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
 
@@ -315,7 +334,20 @@ Only the refusal and logic tests run there. They are run on a host that supports
   stop during evaluation, so a run directory keeps no hidden material between runs. While a controller is stopped mid-evaluation, that
   attempt's inputs are on disk until the next run.
 
-## 9. EVAL-ISO-002: what model-connected studies need
+## 9. Before EVAL-ISO-002: process containment
+
+The fix for the launch window (§2) is cgroup-backed, and it is not in this PR. It would:
+- run each sandbox in its own transient systemd user scope (`systemd-run --user --scope --collect`, a unique unit name, with
+  `RuntimeMaxSec`, so that systemd ends it even if the controller dies, and `TasksMax`, which also bounds a fork bomb);
+- end the scope by writing to its `cgroup.kill`, and confirm termination by the cgroup's `populated 0` instead of by pid;
+- record the unit in the attempt's marker, so that a resume ends exactly that cgroup;
+- refuse a protected run where no user manager or cgroup v2 `cgroup.kill` is available.
+
+Its regression would reproduce the window deterministically, with `--userns-block-fd` holding the launcher between its status report and
+the child's release. It would kill the launcher and show that the stranded process is ended by `cgroup.kill`, bounded by the scope's own
+`RuntimeMaxSec`. Running that on the operator's machine needs the operator's permission.
+
+## 10. EVAL-ISO-002: what model-connected studies need
 
 - **Relay:** a host-side relay listening on a Unix socket bind-mounted into the agent's sandbox, forwarding to the existing recording proxy
   (so capture and cassettes are unchanged). It allows only the methods and paths Pi actually uses, measured from Pi itself, bounds request
@@ -331,6 +363,6 @@ Only the refusal and logic tests run there. They are run on a host that supports
 
 | Dimension | Status | Evidence |
 | :-- | :-- | :-- |
-| Execution isolation | **READY** (offline, on a host where bubblewrap and user namespaces are available) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
+| Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap and user namespaces are available). **Process lifetime: NOT ESTABLISHED** when the controller itself dies in bubblewrap's launch window (#633, §2); established when the controller ends the sandbox | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
 | Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
 | Protected model-connected studies | **NOT READY** | there is no network inside, by design; the relay and Pi integration are EVAL-ISO-002 |

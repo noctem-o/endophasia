@@ -208,6 +208,7 @@ function summarize(
 		piSessionId,
 		prompt,
 		waitMs,
+		control: parsed.switches.has("--control"),
 	}))
 		process.stderr.write(`${line}\n`);
 }

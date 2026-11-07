@@ -9,7 +9,9 @@ evidence still applies, and present those facts without inventing authorship, co
   ([design and decision record](../../docs/designs/develop-attempt-evidence.md)).
 - **It cannot identify the revision the attempt produced, and the reading says that instead of guessing.** No record names a candidate.
   The commits shown are the ones the operator checked, linked to the attempt by the operator.
-- **The human-governed run was NOT EXECUTED.** The operator was away. The procedure is unchanged and ready (§2).
+- **The human-governed run was EXECUTED**, the first in any study. A person read the brief and typed the approval on the workbench terminal, reviewed the diff, chose to commit it, and recorded the decision (§2). On the way it found two bugs. Both are fixed here:
+  - the driver's default run directory was too deep for the workbench's control socket;
+  - the attach summary said "no prompt was sent" after the workbench had sent one.
 
 Starting point: `main` at `e10caf9b0` (PR #128 merged).
 
@@ -37,26 +39,55 @@ readers (HEAD now). No event and no record holds Git state at the dispatch or at
 
 None of them is changed by this PR.
 
-## 2. The human-governed run: NOT EXECUTED
+## 2. The human-governed run: EXECUTED (2026-11-07, 19:21–19:31 UTC)
 
 | | |
 | :-- | :-- |
 | Host checked | Pi **1.5.0** (`/usr/bin/pi` → `@earendil-works/pi-coding-agent`); llama.cpp router **b11429-d812350493** at 127.0.0.1:8081, `models_autoload: false`; `Muse-Glimmer-30B-Abliterated-Q4_K_M` present, found **unloaded**; Ponytail **5.3.3**; no `~/.config/ponytail` |
-| What happened | The operator was away, so no person could type the approval. |
-| Then | The operator then asked the agent to do it if it could. An agent-typed approval would not have been a human-governed run, and would have repeated 001A's test-substitute runs. It would have exercised `driver.ts run`, which has never run. The agent's attempt to start it was **refused by the session's permission classifier** before anything was created, and it was not worked around. |
-| Model state | Glimmer was loaded for that attempt and unloaded straight away: the router is back as found |
-| The seven post-run questions | **not answered for a human run.** All seven are answered for the test-substitute and real-Pi runs below (§4). |
+| Earlier, while the operator was away | The operator asked the agent to do it if it could. An agent-typed approval would not have been a human-governed run, and the agent's attempt to drive `driver.ts run` was **refused by the session's permission classifier** before anything was created. It was not worked around. |
+| Who approved | **The operator, typing on the workbench terminal in their own shell.** The agent prepared nothing in that shell, typed nothing in it, and read the records only afterwards |
+| Model state | the operator loaded Glimmer for the run; the agent unloaded it afterwards. The router is back as found |
 
-To run it, unchanged from [README §3](README.md#3-procedures), with `--runs` set so 001A's outputs are not touched:
+### What happened, in order
 
-```sh
-curl -X POST http://127.0.0.1:8081/models/load -H 'content-type: application/json' -d '{"model":"Muse-Glimmer-30B-Abliterated-Q4_K_M"}'
-PONYTAIL_DEFAULT_MODE=off node research/work-cycle/driver.ts run --pi "$(command -v pi)" --expect-pi-version 1.5.0 \
-  --endpoint http://127.0.0.1:8081/v1 --model Muse-Glimmer-30B-Abliterated-Q4_K_M --runs ~/projects/endophasia-research/work-cycle-001b
-# on that terminal: attempt <id> → read the brief → type the APPROVE ATTEMPT phrase yourself → Ctrl-C when the run ends → answer the commit question
-node cli/index.ts attempt evidence --root <run>/store --attempt <id>    # with ENDO_DIGEST_KEY_FILE=<run>/digest-key
-curl -X POST http://127.0.0.1:8081/models/unload -H 'content-type: application/json' -d '{"model":"Muse-Glimmer-30B-Abliterated-Q4_K_M"}'
-```
+1. **First try: the workbench refused to start.** The driver's default run directory (`…/work-cycle-001b/2026-11-07T19-21-55-601Z`) made the store's control socket path 110 bytes, and `endo harness attach` refuses more than 100. Nothing was sent, no proxy or process was left, and the driver committed nothing.
+   - **Fixed in the driver:** the path is checked before anything is created, and again after links are resolved. The run name is now a compact UTC stamp.
+   - Even so, `~/projects/endophasia-research/work-cycle-001b/` is 2 bytes too deep, so the run used `--runs ~/projects/endophasia-research/wc001b`.
+   - That run directory is kept as evidence of the failure.
+2. **Second try.** The operator typed `attempt <id>` and read the whole brief.
+3. **A decline.** They first typed `APPROVE ATTEMPT` without its 16-hex code. That is "anything else", so it was **declined**. The log records a `deny` and a `prompt-refused` (`authorization-denied`). No authorisation record was written and nothing was sent.
+4. **The approval.** They asked again and got a **new** phrase. The old code does not carry over. They typed the full `APPROVE ATTEMPT 90116624b792df68`, and the brief was sent once and Pi accepted it.
+5. **The run.** Pi worked for about a minute and a half. The agent watched `endo attempt show` (read-only) and told the operator when the run had ended. The operator pressed Ctrl-C.
+6. **A false exit message.** The workbench's exit summary said "no prompt was sent". It only knew about `--prompt`.
+   - **Fixed:** with `--control` it now says that no `--prompt` was given, and that anything sent from the workbench is in the session's records.
+7. **Review and commit.** The driver showed `git status` and the diff, with only `src/slug.mjs` changed (+3 −1). The operator answered `yes`, and the driver committed exactly that and ran the check: **exit 0**.
+8. **The decision.** The operator moved the task `in-progress → review → done`, with the note "read the diff; check passed at 7054efe".
+
+### The seven questions, answered from the stored records (new processes, no agent alive)
+
+| Question | Answer | Evidence |
+| :-- | :-- | :-- |
+| 1. Was the intended attempt authorised? | **Yes**, `endo.attempt.bb4942cf…`, `via: workbench-terminal`, `approvedBy: operator`, after one recorded decline | `<id>.authorized.json`; events: 2 `prompt-proposed`, `prompt-authorized` `deny` then `allow`, 1 `prompt-refused` (`authorization-denied`) |
+| 2. Exactly one dispatch? | **Yes**: 1 `prompt-dispatched`, derived from the `allow`, and 1 `prompt-accepted` | `endo events` |
+| 3. Is the Pi run that one's? | **Yes**: 1 `run-started` and 1 `run-completed` in the same session and Pi process after it; `attempt show`: `runtime-accepted` / `completed` | `endo attempt show`. Tools in the window: `bash` × 9 (1 returned an error), `read` × 5, `edit` × 1 |
+| 4. Artifact before and after | before: `aff74a3`, the fixture; the baseline check **failed** (exit 3). After: `7054efe`, the operator's commit, changing only `src/slug.mjs`; `test/` untouched. Which bytes Pi wrote is **not established** | `git log`, `evidence/candidate.diff`, receipts |
+| 5. Did the check run against the expected revision? | **Yes**: passed at `7054efe`, at the current HEAD, clean | `endo attempt evidence` |
+| 6. Is the operator's decision independently readable? | **Yes**: `status done, moved to done ("read the diff; check passed at 7054efe")`; before the decision the only gap was `not-accepted`, after it **none** | `endo attempt evidence`, `endo task show` |
+| 7. Did cleanup leave no owned child or proxy? | **Yes**: 0 processes of the run, including the recording proxy | `evidence/cleanup.json`, `pgrep` |
+
+**Constraints.** These were checked locally in Pi's private session file, and only a yes or no is reported. None of the 9 `bash` calls invoked `git`, and none wrote under `test/`.
+
+**Ponytail.** Declared off; observed off in every request.
+
+**Model identity.** The router's alias only; the weights were not hashed.
+
+Evidence is in `~/projects/endophasia-research/wc001b/20261107T192437Z/`, and the failed first try is in
+`~/projects/endophasia-research/work-cycle-001b/2026-11-07T19-21-55-601Z/`. That directory holds:
+
+- `evidence/attempt-evidence-before-decision.*` and `evidence/attempt-evidence-after-decision.*`;
+- the reconstructions;
+- the candidate diff;
+- `cleanup.json`.
 
 ## 3. What changed
 
@@ -84,7 +115,9 @@ curl -X POST http://127.0.0.1:8081/models/unload -H 'content-type: application/j
 
 | Case | Where | Observed |
 | :-- | :-- | :-- |
-| Normal human-governed run | — | **NOT EXECUTED** (§2) |
+| **Normal human-governed run** | §2: the operator approved on the terminal | one decline, then one approval; one dispatch; run `completed`; check passed at the operator's commit; after `review → done`, **no gaps** |
+| A run directory too deep for the control socket | §2 (found by the human run); no-terminal test | refused before anything is created; the test fails when the check is removed |
+| The attach summary after a workbench send | §2; `tests/loop-hints.test.ts` | it no longer says "no prompt was sent" when control was served |
 | Normal run, test-substitute approval, fake Pi | tier 1 (CI) | after the check at the operator's commit: `send runtime-accepted`, `run completed`, the latest check `passed` / `at-head`, with 1 earlier failure; the only gap is `not-accepted`. After the operator's `review → done`: no gaps |
 | Prepared, never authorised | tier 1; unit | `send: null`, `run: null`; gaps `not-authorized`, `no-check`, `not-accepted` |
 | Authorised, send not confirmed (`no-send-recorded`, `sent-no-reply`) | unit (states come from the execution reading, already covered with fake Pi in `tests/endo-workbench-attempts.test.ts`) | `send-not-confirmed`, `run-not-completed` |
@@ -155,7 +188,9 @@ Evidence is kept outside the repository, under `~/projects/endophasia-research/w
 
 ## 5. Limitations, and what is left (for REVIEW-PILOT-001)
 
-1. **The human-governed run.** No person has approved an attempt on the terminal in any study yet.
+1. **One human-governed run, by one operator, on one task.**
+   - The approval phrase's 16-hex code caught a partial phrase, as designed.
+   - Whether the prompt makes the code obvious enough is a usability question for the review pilot.
 2. **Orphaned tool processes.** When Pi is killed abruptly, a tool process it started (its `bash` tool) survives the workbench's exit. The
    attachment's launcher stops its own process group; Pi's tool child is not in it. This is not fixed here: Endophasia does not own Pi's
    children, and reaching them is a process-ownership design question (a cgroup or a subreaper, for example). The test pins the current

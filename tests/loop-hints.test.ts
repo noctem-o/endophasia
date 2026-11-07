@@ -31,6 +31,13 @@ describe("attachSummaryV0", () => {
 		expect(text).not.toContain("trajectory show");
 	});
 
+	it("with control served, does not claim no prompt was sent: the workbench sends without --prompt (WORK-CYCLE-001B)", () => {
+		const text = attachSummaryV0({ ...base, prompt: null, control: true }).join("\n");
+		expect(text).not.toMatch(/no prompt was sent/);
+		expect(text).toContain("no --prompt was given");
+		expect(text).toContain("endo attempt show");
+	});
+
 	it("repeats a non-default attachment and quotes awkward paths", () => {
 		const text = attachSummaryV0({ ...base, root: "/my data/it's", attachment: "pi.two", prompt: null }).join("\n");
 		expect(text).toContain("--root '/my data/it'\\''s' --attachment pi.two");

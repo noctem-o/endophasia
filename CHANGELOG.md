@@ -8,7 +8,17 @@
   status moves, a fixed list of gaps (missing, unconfirmed, stale or undecided), and what no record establishes. Every section names its
   source: observed, operator-declared, or none. It never names a revision as the attempt's result, because no record does. No record,
   event, schema or page changed. Real-Pi negative runs (lost model connection, Pi killed mid-tool) found that a tool process Pi started can
-  outlive the workbench; this is documented, not fixed. The human-governed run was not executed. See
+  outlive the workbench; this is documented, not fixed. The first human-governed run was executed:
+  - the operator approved on the workbench terminal, after one recorded decline;
+  - one dispatch was recorded, and the run completed;
+  - the check passed at the operator's commit;
+  - after the operator's `done`, the reading reports no gaps.
+
+  That run found two bugs, both fixed:
+  - the work-cycle driver now refuses a run directory too deep for the workbench's control socket;
+  - `endo harness attach --control` no longer says "no prompt was sent" after a workbench send.
+
+  See
   [docs/designs/develop-attempt-evidence.md](docs/designs/develop-attempt-evidence.md) and
   [research/work-cycle/WORK-CYCLE-001B.md](research/work-cycle/WORK-CYCLE-001B.md).
 - **WORK-CYCLE-001A: one DEVELOP work cycle, reconstructed from the stored evidence.** `research/work-cycle/driver.ts` drives one

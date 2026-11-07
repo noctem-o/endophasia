@@ -14,9 +14,9 @@
 //
 // Library use (tests/work-cycle-001a.test.ts) and a command line for the operator-governed run:
 //
-//   node research/work-cycle/driver.ts doctor  [--pi path] [--endpoint url] [--model id]
+//   node research/work-cycle/driver.ts doctor  [--pi path] [--endpoint url] [--model id] [--expect-pi-version x.y.z]
 //   node research/work-cycle/driver.ts run     --pi path --endpoint url --model id [--runs dir]   (interactive; needs a terminal)
-//   node research/work-cycle/driver.ts reconstruct --run dir                                       (read-only)
+//   node research/work-cycle/driver.ts reconstruct --run dir      (reads the run; adds a new evidence/reconstruction-<time> file)
 import { spawn, spawnSync } from "node:child_process";
 import {
 	cpSync,
@@ -385,7 +385,7 @@ export async function doctor(options: {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Ponytail: the effective mode is read from what the child actually sent the model, never from the environment alone.
 
-export type PonytailEffective = "off" | "lite" | "full" | "ultra" | "mixed" | "not-loaded" | "unknown";
+export type PonytailEffective = "off" | "lite" | "full" | "ultra" | "review" | "mixed" | "not-loaded" | "unknown";
 
 export interface PonytailObservation {
 	readonly declared: string | null;
@@ -398,7 +398,9 @@ export interface PonytailObservation {
 }
 
 /** The installed Ponytail's own instruction text per mode, from its own module (so a different release is compared with itself). */
-export async function ponytailInstructions(dir: string): Promise<Record<"lite" | "full" | "ultra", string>> {
+export type PonytailInstructionSet = Record<"lite" | "full" | "ultra" | "review", string>;
+
+export async function ponytailInstructions(dir: string): Promise<PonytailInstructionSet> {
 	const { createRequire } = await import("node:module");
 	const req = createRequire(join(dir, "package.json"));
 	const mod = req("./hooks/ponytail-instructions.js") as { getPonytailInstructions(mode: string): string };
@@ -406,6 +408,7 @@ export async function ponytailInstructions(dir: string): Promise<Record<"lite" |
 		lite: mod.getPonytailInstructions("lite"),
 		full: mod.getPonytailInstructions("full"),
 		ultra: mod.getPonytailInstructions("ultra"),
+		review: mod.getPonytailInstructions("review"),
 	};
 }
 
@@ -424,14 +427,18 @@ function systemText(body: unknown): string | null {
 
 export function classifyPonytail(
 	bodies: readonly unknown[],
-	instructions: Record<"lite" | "full" | "ultra", string> | null,
+	instructions: Partial<PonytailInstructionSet> | null,
 	declared: string | null,
 ): PonytailObservation {
 	const perRequest = bodies.map((body) => {
 		const text = systemText(body);
 		if (text === null || instructions === null) return "unknown";
-		for (const mode of ["ultra", "full", "lite"] as const) if (text.includes(instructions[mode].trim())) return mode;
-		// Ponytail's skills are listed by name whatever its mode; without them the package was not loaded in this child.
+		for (const mode of ["ultra", "full", "lite", "review"] as const) {
+			const block = instructions[mode]?.trim();
+			if (block && text.includes(block)) return mode;
+		}
+		// Ponytail's skills are listed by name whatever its mode; with no mention at all the package was not loaded in this child. A mention
+		// elsewhere (a context file naming Ponytail) would also read as loaded: the positive control is what shows the detector can see.
 		return /ponytail/i.test(text) ? "none" : "not-loaded";
 	});
 	const distinct = [...new Set(perRequest)];
@@ -451,7 +458,7 @@ export function classifyPonytail(
 		effective = only === "none" ? "off" : (only as PonytailEffective);
 		basis =
 			only === "none"
-				? "Ponytail's skills are listed and none of its lite/full/ultra instruction blocks is in any request's system text"
+				? "Ponytail is mentioned (its skills are listed) and none of its lite/full/ultra/review instruction blocks is in any request's system text"
 				: only === "not-loaded"
 					? "no request's system text mentions Ponytail: the package was not loaded"
 					: only === "unknown"
@@ -469,24 +476,18 @@ export async function capturedChatBodies(captureStore: string, digestKeyFile: st
 	const { readEndoCaptureEventsV0, endoCaptureRootV0 } = await import("../../adapters/openai-proxy/capture-log.ts");
 	const { createEndoBlobStoreV0 } = await import("../../storage/blob-store.ts");
 	const { endoDigestKeyFromEnvironmentV0 } = await import("../../storage/digest-key.ts");
-	const previous = process.env.ENDO_DIGEST_KEY_FILE;
-	process.env.ENDO_DIGEST_KEY_FILE = digestKeyFile;
-	try {
-		const key = endoDigestKeyFromEnvironmentV0();
-		const blobs = createEndoBlobStoreV0(endoCaptureRootV0(captureStore), key, { readOnly: true });
-		const out: unknown[] = [];
-		for (const event of readEndoCaptureEventsV0(captureStore)) {
-			if (event.kind !== "capture.request") continue;
-			const p = event.payload as { path?: string; body?: { digest?: any } };
-			if (typeof p.path !== "string" || !p.path.endsWith("/chat/completions") || p.body?.digest === undefined)
-				continue;
-			out.push(JSON.parse(Buffer.from(blobs.get(p.body.digest)).toString("utf8")));
-		}
-		return out;
-	} finally {
-		if (previous === undefined) delete process.env.ENDO_DIGEST_KEY_FILE;
-		else process.env.ENDO_DIGEST_KEY_FILE = previous;
+	// The run's own key, passed explicitly: the reader neither changes this process's environment nor creates a key that is not there.
+	if (!existsSync(digestKeyFile)) throw new Error(`no digest key at ${digestKeyFile}: the capture cannot be read`);
+	const key = endoDigestKeyFromEnvironmentV0({ ENDO_DIGEST_KEY_FILE: digestKeyFile });
+	const blobs = createEndoBlobStoreV0(endoCaptureRootV0(captureStore), key, { readOnly: true });
+	const out: unknown[] = [];
+	for (const event of readEndoCaptureEventsV0(captureStore)) {
+		if (event.kind !== "capture.request") continue;
+		const p = event.payload as { path?: string; body?: { digest?: any } };
+		if (typeof p.path !== "string" || !p.path.endsWith("/chat/completions") || p.body?.digest === undefined) continue;
+		out.push(JSON.parse(Buffer.from(blobs.get(p.body.digest)).toString("utf8")));
 	}
+	return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
@@ -495,16 +496,30 @@ export async function capturedChatBodies(captureStore: string, digestKeyFile: st
 export function processesOfRun(layout: RunLayout): { pid: number; cmd: string }[] {
 	const found: { pid: number; cmd: string }[] = [];
 	if (process.platform !== "linux") return found;
-	for (const entry of readdirSync("/proc")) {
-		if (!/^\d+$/.test(entry) || Number(entry) === process.pid) continue;
+	// This process and its ancestors (a shell, npx or timeout that names the run) are the reader, not the run.
+	const ancestors = new Set<number>([process.pid]);
+	for (let pid = process.ppid; pid > 1 && !ancestors.has(pid); ) {
+		ancestors.add(pid);
 		try {
-			const cmd = readFileSync(`/proc/${entry}/cmdline`, "utf8").replace(/\0/g, " ").trim();
+			pid = Number(/^PPid:\s+(\d+)$/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))?.[1] ?? 0);
+		} catch {
+			break;
+		}
+	}
+	const under = (path: string) => path === layout.run || path.startsWith(`${layout.run}/`);
+	for (const entry of readdirSync("/proc")) {
+		if (!/^\d+$/.test(entry) || ancestors.has(Number(entry))) continue;
+		try {
+			const argv = readFileSync(`/proc/${entry}/cmdline`, "utf8")
+				.split("\0")
+				.filter((arg) => arg.length > 0);
 			let cwd = "";
 			try {
 				cwd = readlinkSync(`/proc/${entry}/cwd`);
 			} catch {}
-			if (cmd.includes(layout.run) || cwd === layout.run || cwd.startsWith(`${layout.run}/`))
-				found.push({ pid: Number(entry), cmd });
+			// An argument that is a path in the run (or names one after `=`), or a working directory in it; never a prefix of another name.
+			if (argv.some((arg) => under(arg) || under(arg.slice(arg.indexOf("=") + 1))) || under(cwd))
+				found.push({ pid: Number(entry), cmd: argv.join(" ") });
 		} catch {}
 	}
 	return found;
@@ -582,7 +597,7 @@ export interface Reconstruction {
 	readonly unknowns: readonly string[];
 }
 
-function allEvents(layout: RunLayout, env: NodeJS.ProcessEnv): any[] {
+function allEvents(layout: RunLayout, env: NodeJS.ProcessEnv, pageSize = 500): any[] {
 	const out: any[] = [];
 	let after: number | undefined;
 	for (let page = 0; page < 10_000; page++) {
@@ -590,38 +605,74 @@ function allEvents(layout: RunLayout, env: NodeJS.ProcessEnv): any[] {
 			"events",
 			layout.store,
 			"--limit",
-			"500",
+			String(pageSize),
 			...(after === undefined ? [] : ["--after", String(after)]),
 		];
 		const r = endo(layout, env, ...args);
-		if (r.status !== 0) break;
-		const body = json(r) as { events?: any[] };
+		if (r.status !== 0) throw new Error(`endo events failed (exit ${r.status}): ${r.stderr}`);
+		// The cursor is the store's position (`nextAfterSequence`), never an event's own `sequence`, which counts per stream.
+		const body = json(r) as { events?: any[]; nextAfterSequence?: unknown };
 		const events = body.events ?? [];
 		out.push(...events);
-		if (events.length < 500) break;
-		after = events[events.length - 1].sequence;
+		if (events.length < pageSize) break;
+		if (typeof body.nextAfterSequence !== "number") throw new Error("endo events gave no nextAfterSequence");
+		after = body.nextAfterSequence;
 	}
 	return out;
 }
 
-/** The tool activity in the attempt's run window, read from the event log: names, counts and error flags only, never arguments. */
+/**
+ * The tool activity in the attempt's run window, read from the event log: names, counts and error flags only, never arguments.
+ * The window is the one `runAfter` uses (runtime/contracts/develop-attempt-execution.ts):
+ *   - the dispatch derived from the authorisation, in the authorised session;
+ *   - then the first `run-started` of the Pi process attached at that dispatch, with no other dispatch to the session before it;
+ *   - then that run's events, up to its end or until the process ends or is replaced.
+ */
 function runActivity(events: readonly any[], authorized: any): Reconstruction["run"] {
 	const source =
 		"endo events (canonical event log: tool names, error flags and keyed digests; no arguments or results)";
 	const derivedBy =
-		"this report, not Endophasia's execution reading: the events of the authorised session after its dispatch, up to the first run end";
+		"this report, following Endophasia's own run window (the first run of the same Pi process after the dispatch); not part of Endophasia's execution reading";
 	const tools: Record<string, { started: number; finished: number; errors: number }> = {};
 	const stops: string[] = [];
-	if (authorized === null)
-		return { source, derivedBy, dispatchSequence: null, endKind: null, tools, assistantStopReasons: stops };
+	const none = { source, derivedBy, dispatchSequence: null, endKind: null, tools, assistantStopReasons: stops };
+	if (authorized === null) return none;
+	const inSession = (e: any) => e.coordinates?.sessionId === authorized.session;
 	const at = events.findIndex(
-		(e) => e.kind === "workbench.prompt-dispatched" && e.payload?.proposalId === authorized.proposalId,
+		(e) =>
+			e.kind === "workbench.prompt-dispatched" &&
+			inSession(e) &&
+			e.payload?.proposalId === authorized.proposalId &&
+			Array.isArray(e.derivedFrom) &&
+			e.derivedFrom.includes(authorized.authorizationEventId),
 	);
-	if (at < 0) return { source, derivedBy, dispatchSequence: null, endKind: null, tools, assistantStopReasons: stops };
+	if (at < 0) return none;
+	let instance: string | null = null;
+	for (let i = at - 1; i >= 0; i--) {
+		const e = events[i];
+		if (inSession(e) && (e.kind === "lifecycle.session-started" || e.kind === "lifecycle.session-resumed")) {
+			instance = typeof e.payload?.instance === "string" ? e.payload.instance : null;
+			break;
+		}
+	}
+	let started = false;
 	let endKind: string | null = null;
 	for (const e of events.slice(at + 1)) {
-		if (e.coordinates?.sessionId !== authorized.session) continue;
-		if (e.kind === "workbench.prompt-dispatched") break;
+		if (!inSession(e)) continue;
+		if (!started) {
+			if (e.kind === "workbench.prompt-dispatched") break; // a later prompt's run is not this attempt's
+			if (e.kind === "lifecycle.run-started") {
+				if (instance === null || e.payload?.instance !== instance) {
+					endKind = "process-ended";
+					break;
+				}
+				started = true;
+			} else if (/^lifecycle\.(interrupted|detached|session-started|session-resumed)$/.test(e.kind)) {
+				endKind = "process-ended";
+				break;
+			}
+			continue;
+		}
 		if (e.kind === "tool.started" || e.kind === "tool.finished") {
 			const name = String(e.payload?.toolName ?? "?");
 			tools[name] ??= { started: 0, finished: 0, errors: 0 };
@@ -633,7 +684,11 @@ function runActivity(events: readonly any[], authorized: any): Reconstruction["r
 			}
 		}
 		if (typeof e.payload?.stopReason === "string" && e.kind.startsWith("message")) stops.push(e.payload.stopReason);
-		if (/^lifecycle\.(run-(completed|failed|aborted|unclassified)|interrupted|detached)$/.test(e.kind)) {
+		if (
+			/^lifecycle\.(run-(completed|failed|aborted|unclassified)|interrupted|detached|session-started|session-resumed)$/.test(
+				e.kind,
+			)
+		) {
 			endKind = e.kind;
 			break;
 		}
@@ -647,6 +702,19 @@ function runActivity(events: readonly any[], authorized: any): Reconstruction["r
 		assistantStopReasons: stops,
 	};
 }
+
+/** Endophasia's run state for the window end this report found, to compare with the execution reading. */
+const END_AS_RUN: Readonly<Record<string, string>> = {
+	"lifecycle.run-completed": "completed",
+	"lifecycle.run-failed": "failed",
+	"lifecycle.run-aborted": "aborted",
+	"lifecycle.run-unclassified": "unclassified",
+	"lifecycle.interrupted": "interrupted",
+	"lifecycle.detached": "interrupted",
+	"lifecycle.session-started": "interrupted",
+	"lifecycle.session-resumed": "interrupted",
+	"process-ended": "process-ended",
+};
 
 function ponytailEntries(store: string): number | null {
 	const dir = join(store, "pi-sessions");
@@ -665,7 +733,12 @@ function ponytailEntries(store: string): number | null {
 	return count;
 }
 
-export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessEnv = runEnv(layout)): Reconstruction {
+export function reconstruct(
+	layout: RunLayout,
+	ids: RunIds,
+	env: NodeJS.ProcessEnv = runEnv(layout),
+	options: { readonly pageSize?: number } = {},
+): Reconstruction {
 	const S = ["--root", layout.store];
 	const unknowns: string[] = [];
 	const task = json(endo(layout, env, "task", "show", ...S, "--project", ids.projectId, "--task", ids.taskId)).task;
@@ -690,7 +763,7 @@ export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessE
 	if ((receiptsRead.problems as unknown[]).length > 0)
 		unknowns.push(`receipt problems reported: ${JSON.stringify(receiptsRead.problems)}`);
 
-	const events = allEvents(layout, env);
+	const events = allEvents(layout, env, options.pageSize);
 	const run = runActivity(events, shown.authorized);
 
 	const head = git(layout.project, "rev-parse", "HEAD").trim();
@@ -703,7 +776,7 @@ export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessE
 			const [commit, committer, subject] = l.split("\t");
 			return { commit: commit as string, committer: committer as string, subject: subject as string };
 		});
-	const changedFiles = git(layout.project, "diff", "--name-only", ids.baseCommit, "HEAD")
+	const changedFiles = git(layout.project, "diff", "--name-only", "--no-renames", ids.baseCommit, "HEAD")
 		.trim()
 		.split("\n")
 		.filter((l) => l.length > 0);
@@ -714,6 +787,10 @@ export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessE
 	if (exec === null) unknowns.push("no authorisation record: nothing shows this attempt was sent to an agent");
 	else if (exec.evidence !== "complete") unknowns.push(`the event log was read as ${String(exec.evidence)}`);
 	if (run.dispatchSequence !== null && run.endKind === null) unknowns.push("no run end was found after the dispatch");
+	if (exec !== null && run.endKind !== null && END_AS_RUN[run.endKind] !== exec.run)
+		unknowns.push(
+			`this report's run window ended ${run.endKind}, but Endophasia's reading says run ${String(exec.run)}: the tool counts may not be this run's`,
+		);
 	const atHead = [...receipts].reverse().find((r) => r.relation === "at-head");
 	if (atHead === undefined)
 		unknowns.push("no receipt was recorded at the current HEAD: the current revision is unchecked");
@@ -761,7 +838,7 @@ export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessE
 			changedFiles,
 			testsChanged: changedFiles.some((f) => f.startsWith("test/")),
 			provenance:
-				"operator-declared only: the receipts name the attempt because the operator ran `endo attempt check --attempt`; no record links the attempt to a commit",
+				"declared, not observed: the receipts (and, in a driver run, the commit message) name the attempt because the operator chose to: the driver runs `endo attempt check --attempt` and commits only on the operator's yes. Nothing Endophasia observed links the attempt's run to these bytes",
 		},
 		receipts,
 		receiptLimitations: limitations,
@@ -778,7 +855,7 @@ export function reconstruct(layout: RunLayout, ids: RunIds, env: NodeJS.ProcessE
 			operatorDecision:
 				decision === undefined
 					? "unknown"
-					: `status ${task.status}${decision.from === null ? " (as created)" : `, moved ${decision.from} → ${decision.to} by the operator's own command`}${decision.note ? `: "${decision.note}"` : ""}`,
+					: `status ${task.status}${decision.from === null ? " (as created)" : `, moved ${decision.from} → ${decision.to} by \`endo task status\` or the paired page (the history records no actor)`}${decision.note ? `: "${decision.note}"` : ""}`,
 		},
 		unknowns,
 	};
@@ -856,8 +933,13 @@ async function ask(question: string): Promise<string> {
 	}
 }
 
+/** The child's exit code; a child that could not be started (a bad path) resolves as null rather than hanging. */
 function waitForExit(child: ReturnType<typeof spawn>): Promise<number | null> {
-	return new Promise((done) => child.once("exit", (code) => done(code)));
+	return new Promise((done) => {
+		if (child.exitCode !== null) return done(child.exitCode);
+		child.once("exit", (code) => done(code));
+		child.once("error", () => done(null));
+	});
 }
 
 async function startProxy(layout: RunLayout, upstream: string): Promise<{ origin: string; stop(): Promise<void> }> {
@@ -892,12 +974,16 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 	const pi = flag(argv, "--pi");
 	const endpoint = flag(argv, "--endpoint");
 	const model = flag(argv, "--model");
+	const expectPiVersion = flag(argv, "--expect-pi-version");
 	if (pi === undefined || endpoint === undefined || model === undefined)
 		throw new TypeError(
-			"usage: driver.ts run --pi <path> --endpoint <http://host:port/v1> --model <id> [--runs dir]",
+			"usage: driver.ts run --pi <path> --endpoint <http://host:port/v1> --model <id> [--expect-pi-version x.y.z] [--runs dir]",
 		);
 	if (!process.stdin.isTTY)
 		throw new Error("the operator-governed run needs a terminal: the workbench approves only there");
+	const endpointUrl = new URL(endpoint);
+	if (endpointUrl.pathname.replace(/\/$/, "") !== "/v1")
+		throw new TypeError("--endpoint must be an OpenAI-compatible base ending in /v1 (the proxy relays the origin)");
 	const runs = flag(argv, "--runs") ?? join(homedir(), "projects", "endophasia-research", "work-cycle-001a");
 	const layout = launchRun(join(runs, new Date().toISOString().replace(/[:.]/g, "-")));
 	const say = (line: string) => process.stderr.write(`[work-cycle] ${line}\n`);
@@ -905,7 +991,12 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 
 	// Doctor
 	const declared = process.env.PONYTAIL_DEFAULT_MODE ?? null;
-	const findings = await doctor({ pi, endpoint, model });
+	const findings = await doctor({
+		pi,
+		endpoint,
+		model,
+		...(expectPiVersion === undefined ? {} : { expectPiVersion }),
+	});
 	writeFileSync(join(layout.evidence, "doctor.json"), `${JSON.stringify(findings, null, 2)}\n`);
 	for (const f of findings) say(`doctor ${f.status.padEnd(7)} ${f.check}: ${f.observed}`);
 	if (findings.some((f) => f.status === "fail"))
@@ -921,45 +1012,60 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		`baseline check at the fixture commit: ${prepared.baseline.outcome} (exit ${prepared.baseline.exit}); expected: failed`,
 	);
 
-	const upstream = new URL(endpoint).origin;
-	const proxy = await startProxy(layout, upstream);
+	const proxy = await startProxy(layout, endpointUrl.origin);
 	const ponytail = findPonytail();
-	writePiAgentDir(layout, {
-		baseUrl: `${proxy.origin}/v1`,
-		provider: "work-cycle",
-		model,
-		ponytailPackage: ponytail?.dir ?? null,
-	});
-	const env = piEnv(layout, declared);
-	say("starting the workbench. On ITS terminal (this one), type:");
-	say(`    attempt ${prepared.attemptId}`);
-	say(
-		"then read the brief and type the APPROVE ATTEMPT phrase it shows if you approve. When the run has ended, press Ctrl-C.",
-	);
-	const attach = spawn(process.execPath, attachArgs(layout, prepared, { pi, provider: "work-cycle", model }), {
-		env,
-		stdio: "inherit",
-	});
+	let code: number | null = null;
 	const ignore = () => {};
-	process.on("SIGINT", ignore); // Ctrl-C belongs to the workbench; this driver continues after it ends.
-	const code = await waitForExit(attach);
-	process.off("SIGINT", ignore);
-	await proxy.stop();
+	try {
+		writePiAgentDir(layout, {
+			baseUrl: `${proxy.origin}/v1`,
+			provider: "work-cycle",
+			model,
+			ponytailPackage: ponytail?.dir ?? null,
+		});
+		say("starting the workbench. On ITS terminal (this one), type:");
+		say(`    attempt ${prepared.attemptId}`);
+		say(
+			"then read the brief and type the APPROVE ATTEMPT phrase it shows if you approve. When the run has ended, press Ctrl-C.",
+		);
+		// Ctrl-C belongs to the workbench; this driver continues after it ends (and stops the proxy whatever happens).
+		process.on("SIGINT", ignore);
+		const attach = spawn(process.execPath, attachArgs(layout, prepared, { pi, provider: "work-cycle", model }), {
+			env: piEnv(layout, declared),
+			stdio: "inherit",
+		});
+		code = await waitForExit(attach);
+	} finally {
+		process.off("SIGINT", ignore);
+		await proxy.stop();
+	}
 	say(`the workbench ended (exit ${code})`);
 
-	// Evidence: the candidate, the operator's decision to commit it, the check, the reconstruction.
+	// Evidence: the candidate (tracked changes, new files and any commit made since the fixture), the operator's decision to commit it,
+	// the check, the reconstruction.
+	const head = git(layout.project, "rev-parse", "HEAD").trim();
+	if (head !== prepared.baseCommit)
+		say(
+			`WARNING: HEAD moved during the run (${prepared.baseCommit.slice(0, 12)} → ${head.slice(0, 12)}): something committed; the brief said not to`,
+		);
 	const status = git(layout.project, "status", "--porcelain=v1", "--untracked-files=all");
-	process.stderr.write(`\n${git(layout.project, "diff", "--stat")}\n${git(layout.project, "diff")}\n`);
-	writeFileSync(join(layout.evidence, "candidate.diff"), git(layout.project, "diff"));
-	if (status.trim().length === 0) say("the working tree is unchanged: there is no candidate to commit");
-	else if ((await ask("[work-cycle] commit this candidate as the operator? (yes/no) ")) === "yes") {
+	// Intent-to-add makes new files part of the diff the operator reads, so nothing is committed that was not shown.
+	if (status.trim().length > 0) git(layout.project, "add", "-A", "-N");
+	const candidate = git(layout.project, "diff", "--no-renames", prepared.baseCommit);
+	process.stderr.write(
+		`\n${status}\n${git(layout.project, "diff", "--no-renames", "--stat", prepared.baseCommit)}\n${candidate}\n`,
+	);
+	writeFileSync(join(layout.evidence, "candidate.diff"), candidate);
+	writeFileSync(join(layout.evidence, "candidate-status.txt"), status);
+	if (status.trim().length === 0) say("the working tree has no uncommitted change: there is nothing to commit");
+	else if ((await ask("[work-cycle] commit exactly what is shown above, as the operator? (yes/no) ")) === "yes") {
 		git(layout.project, "add", "-A");
 		git(
 			layout.project,
 			"commit",
 			"-q",
 			"-m",
-			`candidate for ${prepared.attemptId} (committed by the operator after review)`,
+			`candidate for ${prepared.attemptId} (committed on the operator's yes)`,
 		);
 		const check = endo(
 			layout,
@@ -986,13 +1092,11 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		`${JSON.stringify({ package: ponytail, ...ponytailObserved, perRequest: undefined, requestModes: ponytailObserved.perRequest }, null, 2)}\n`,
 	);
 	say(`Ponytail: declared ${declared ?? "unset"}, observed ${ponytailObserved.effective} (${ponytailObserved.basis})`);
-	const r = reconstruct(layout, prepared);
-	writeFileSync(join(layout.evidence, "reconstruction.json"), `${JSON.stringify(r, null, 2)}\n`);
-	writeFileSync(join(layout.evidence, "reconstruction.md"), renderReconstruction(r));
+	const written = writeReconstruction(layout, prepared);
 	const leaked = processesOfRun(layout);
 	writeFileSync(join(layout.evidence, "cleanup.json"), `${JSON.stringify({ leaked }, null, 2)}\n`);
 	say(`processes of this run still alive: ${leaked.length}`);
-	say(`reconstruction: ${join(layout.evidence, "reconstruction.md")}`);
+	say(`reconstruction: ${written}`);
 	say("The decision is yours, separately. For example:");
 	say(
 		`    ENDO_DIGEST_KEY_FILE=${layout.digestKeyFile} node ${ENDO_CLI} task status --root ${layout.store} --project ${prepared.projectId} --task ${prepared.taskId} --to in-progress`,
@@ -1002,13 +1106,27 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 	);
 }
 
+/** Write a reconstruction beside the earlier ones (never over them), and return the markdown file's path. */
+function writeReconstruction(layout: RunLayout, ids: RunIds): string {
+	const r = reconstruct(layout, ids);
+	const stamp = r.readAt.replace(/[:.]/g, "-");
+	writeFileSync(join(layout.evidence, `reconstruction-${stamp}.json`), `${JSON.stringify(r, null, 2)}\n`, {
+		flag: "wx",
+	});
+	const md = join(layout.evidence, `reconstruction-${stamp}.md`);
+	writeFileSync(md, renderReconstruction(r), { flag: "wx" });
+	return md;
+}
+
 async function main(argv: readonly string[]): Promise<void> {
 	const [command, ...rest] = argv;
 	if (command === "doctor") {
+		const expectPiVersion = flag(rest, "--expect-pi-version");
 		const findings = await doctor({
 			pi: flag(rest, "--pi"),
 			endpoint: flag(rest, "--endpoint"),
 			model: flag(rest, "--model"),
+			...(expectPiVersion === undefined ? {} : { expectPiVersion }),
 		});
 		process.stdout.write(`${JSON.stringify(findings, null, 2)}\n`);
 		process.exitCode = findings.some((f) => f.status === "fail") ? 1 : 0;
@@ -1028,10 +1146,7 @@ async function main(argv: readonly string[]): Promise<void> {
 			capture: join(root, "capture"),
 			evidence: join(root, "evidence"),
 		};
-		const r = reconstruct(layout, ids);
-		writeFileSync(join(layout.evidence, "reconstruction.json"), `${JSON.stringify(r, null, 2)}\n`);
-		writeFileSync(join(layout.evidence, "reconstruction.md"), renderReconstruction(r));
-		process.stdout.write(renderReconstruction(r));
+		process.stdout.write(readFileSync(writeReconstruction(layout, ids), "utf8"));
 	} else throw new TypeError("usage: driver.ts <doctor|run|reconstruct> ...");
 }
 

@@ -173,7 +173,7 @@ function evidenceSteps(layout: RunLayout, prepared: Prepared) {
 
 describe("WORK-CYCLE-001A pieces that need no terminal", () => {
 	it("Ponytail's effective mode is read from the system text, and unknown or mismatched modes are said so", () => {
-		const instructions = { lite: "LITE RULES", full: "FULL RULES", ultra: "ULTRA RULES" };
+		const instructions = { lite: "LITE RULES", full: "FULL RULES", ultra: "ULTRA RULES", review: "REVIEW MODE" };
 		const body = (system: string) => ({
 			messages: [
 				{ role: "system", content: system },
@@ -192,6 +192,10 @@ describe("WORK-CYCLE-001A pieces that need no terminal", () => {
 		expect(classifyPonytail([body(listed), body(`${listed} LITE RULES`)], instructions, "off")).toMatchObject({
 			effective: "mixed",
 			matchesDeclared: null,
+		});
+		expect(classifyPonytail([body(`${listed} REVIEW MODE`)], instructions, "review")).toMatchObject({
+			effective: "review",
+			matchesDeclared: true,
 		});
 		expect(classifyPonytail([body("no skills here")], instructions, "off").effective).toBe("not-loaded");
 		expect(classifyPonytail([], instructions, "off")).toMatchObject({ effective: "unknown", matchesDeclared: null });
@@ -247,7 +251,13 @@ describe.runIf(linuxPty)(
 			cleanup.push(() => install.remove());
 			const env = runEnv(layout, {
 				XDG_DATA_HOME: join(layout.home, "xdg"),
-				...fakePiEnv({ FAKE_PI_STEP_MS: "20" }),
+				...fakePiEnv({
+					FAKE_PI_STEP_MS: "20",
+					// The fake reports one edit call and executes nothing; the edit itself is made by this test below.
+					FAKE_PI_TOOL_CALLS: JSON.stringify([
+						{ toolName: "edit", args: { path: "src/slug.mjs" }, isError: false },
+					]),
+				}),
 			});
 
 			// Drive 1: the baseline check at the fixture commit FAILS, and is recorded as a failure (negative case: verification fails).
@@ -276,6 +286,10 @@ describe.runIf(linuxPty)(
 
 			// Evidence: a new reader, no agent, no workbench. Pi completing and the check passing moved no status.
 			const r1 = reconstruct(layout, prepared);
+			// Paging the event log in small pages reads the same events once each: the store's cursor, not a per-stream sequence.
+			const paged = reconstruct(layout, prepared, runEnv(layout), { pageSize: 7 });
+			expect(paged.run).toEqual(r1.run);
+			expect(r1.run.tools).toEqual({ edit: { started: 1, finished: 1, errors: 0 } });
 			expect(r1.liveProcesses).toEqual([]);
 			expect(r1.task.status).toBe("open");
 			expect(r1.receipts.map((x) => [x.outcome, x.relation])).toEqual([
@@ -288,7 +302,7 @@ describe.runIf(linuxPty)(
 				changedFiles: ["src/slug.mjs"],
 				testsChanged: false,
 			});
-			expect(r1.artifact.provenance).toContain("operator-declared");
+			expect(r1.artifact.provenance).toContain("declared, not observed");
 			expect(r1.receiptLimitations).toContain(
 				"The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.",
 			);
@@ -316,7 +330,7 @@ describe.runIf(linuxPty)(
 			).toBe(0);
 			const r2 = reconstruct(layout, prepared);
 			expect(r2.task.history.map((h) => h.to)).toEqual(["open", "in-progress", "review", "done"]);
-			expect(r2.verdicts.operatorDecision).toContain("review → done by the operator's own command");
+			expect(r2.verdicts.operatorDecision).toContain("review → done by `endo task status` or the paired page");
 
 			// Negative: the revision moves after the receipt. The passing receipt is not carried forward: it reads stale.
 			writeFileSync(join(layout.project, "NOTES"), "a later commit\n");

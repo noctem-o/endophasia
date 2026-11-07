@@ -41,16 +41,20 @@ TESTED.** The procedure for it is below.
 
 ## 2. Feature map: Launch → Doctor → Drive → Evidence → Cleanup
 
-Every step is a public `endo` command or plain Git, run in a new process. `research/work-cycle/driver.ts` composes them. It reads
-nothing that a person could not read with the same commands.
+Every step is a public `endo` command or plain Git, run in a new process. `research/work-cycle/driver.ts` composes them.
+
+The driver also reads two things directly, for the study only, and reports neither verbatim:
+
+- the recording proxy's captured request bodies, from which it reports only a Ponytail classification;
+- Pi's session files, from which it reports only a count of `ponytail-mode` entries.
 
 | Phase | What happens | Command(s) | What it leaves |
 | :-- | :-- | :-- | :-- |
 | Launch | A new run directory: a store, the [fixture](fixture/) copied into a new Git repository and committed, a digest key for this run only, and (for real Pi) a scratch `HOME` and Pi agent directory. A non-empty directory is refused. | `launchRun()` | `run/` |
-| Doctor | Node and `script(1)`; the Pi executable, its real path and version (checked against a declared version); the endpoint's `/v1/models` and whether the model is loaded; the Ponytail package; the declared `PONYTAIL_DEFAULT_MODE`. A `fail` stops the run before anything starts. | `doctor()`, `driver.ts doctor` | `evidence/doctor.json` |
+| Doctor | Node and `script(1)`; the Pi executable, its real path and version (checked against `--expect-pi-version` when given); the endpoint's `/v1/models` and whether the model is loaded; the Ponytail package; the declared `PONYTAIL_DEFAULT_MODE`. A `fail` stops the run before anything starts. | `doctor()`, `driver.ts doctor [--expect-pi-version x.y.z]` | `evidence/doctor.json` |
 | Drive 1 | Register the project, write the task with its acceptance criteria, and prepare the attempt. Run the **baseline check** at the fixture commit: it **fails**, and that is recorded. | `endo project add`, `task add`, `attempt prepare`, `attempt check -- node --test` | `tasks.json`, the attempt, receipt 1 (failed) |
 | Drive 2 | The live workbench starts its own Pi child. The operator types `attempt <id>`, reads the whole brief, and types the `APPROVE ATTEMPT` phrase. Pi works with its own tools. Ctrl-C ends the workbench. | `endo harness attach <store> --pi … --cwd <project> --control --workbench --project <id>` | the authorisation record, events, Pi's session file, the capture log (real model) |
-| Evidence | The candidate diff is shown. A check of the dirty tree is refused (exit 2) and nothing runs. The operator commits **after reviewing**, then the check is run. The run is reconstructed in new processes, with no agent alive. | `git diff`, `endo attempt check`, `reconstruct()` (`task show`, `attempt show`, `attempt receipts/receipt`, `events`, `git log/diff`) | receipt 2, `evidence/reconstruction.{json,md}` |
+| Evidence | The candidate is shown: `git status`, plus the diff from the fixture commit with new files included (intent-to-add). A commit made during the run is warned about. A check of the dirty tree is refused (exit 2) and nothing runs. Only on the operator's `yes` does the driver commit exactly what was shown, then run the check. The run is reconstructed in new processes, with no agent alive. | `git diff`, `endo attempt check`, `reconstruct()` (`task show`, `attempt show`, `attempt receipts/receipt`, `events`, `git log/diff`) | receipt 2, `evidence/reconstruction-<time>.{json,md}`; each read adds one, none is overwritten |
 | Decision | The operator's own status moves, each against the revision it saw. | `endo task status --to in-progress / review / done --note …` | history entries |
 | Cleanup | Processes whose command line or working directory names the run are looked for and reported. The run directory is kept. | `processesOfRun()` | `evidence/cleanup.json` |
 
@@ -69,16 +73,17 @@ It also lists what it cannot establish: which bytes Pi wrote, the served model's
 ```sh
 # Load the model in the router first if `doctor` says it is not loaded (the router runs with --no-models-autoload):
 curl -X POST http://127.0.0.1:8081/models/load -H 'content-type: application/json' -d '{"model":"Muse-Glimmer-30B-Abliterated-Q4_K_M"}'
-node research/work-cycle/driver.ts doctor --pi "$(command -v pi)" --endpoint http://127.0.0.1:8081/v1 --model Muse-Glimmer-30B-Abliterated-Q4_K_M
+node research/work-cycle/driver.ts doctor --pi "$(command -v pi)" --expect-pi-version 1.5.0 --endpoint http://127.0.0.1:8081/v1 --model Muse-Glimmer-30B-Abliterated-Q4_K_M
 PONYTAIL_DEFAULT_MODE=off node research/work-cycle/driver.ts run \
-  --pi "$(command -v pi)" --endpoint http://127.0.0.1:8081/v1 --model Muse-Glimmer-30B-Abliterated-Q4_K_M
+  --pi "$(command -v pi)" --expect-pi-version 1.5.0 --endpoint http://127.0.0.1:8081/v1 --model Muse-Glimmer-30B-Abliterated-Q4_K_M
 #   on that terminal: attempt <id>  → read the brief → type the APPROVE ATTEMPT phrase (or anything else to decline) → Ctrl-C when the run ends
-#   the driver shows the diff and asks whether to commit it; it then runs the check and writes evidence/reconstruction.md
+#   the driver shows the status and the diff (new files included) and asks whether to commit exactly that; then it checks and reconstructs
 #   the status moves are yours; the driver prints the commands; afterwards: node research/work-cycle/driver.ts reconstruct --run <dir>
 ```
 
 Runs go to `~/projects/endophasia-research/work-cycle-001a/<timestamp>/` by default, outside the repository. The driver starts
-`endo harness attach` with the terminal inherited and never writes to it. Its only question is whether to commit.
+`endo harness attach` with the terminal inherited and never writes to it. Its only question is whether to commit. The
+recording proxy is stopped whatever happens, including a failure or a Ctrl-C before the workbench starts.
 
 ### Automated tiers (`tests/work-cycle-001a.test.ts`)
 
@@ -111,7 +116,7 @@ No tier touches the user's store, key, Pi configuration or projects. Every run h
 | Pi agent directory | **Scratch, not the user's.** `models.json`: one `openai-completions` provider pointing at the recording proxy. `settings.json`: that provider and model, and `packages: [<absolute path of the installed Ponytail>]`. Nothing else: the user's other packages (pi-subagents, pi-web-access, pi-mcp-adapter) and extensions were not loaded | `writePiAgentDir()` |
 | Ponytail | `@dietrichgebert/ponytail` **5.3.3**, the only copy on the machine (`~/.pi/agent/npm/node_modules/…`), loaded by path. No `~/.config/ponytail/config.json` exists, so without the variable its default would be `full` | `find /`, its `hooks/ponytail-config.js` |
 | Ponytail mode declared | `PONYTAIL_DEFAULT_MODE=off` in the Pi child's environment. The attachment passes a copy of its own environment to the session child (`adapters/pi/attachment.ts`, `piSessionEnvironmentV0`); only the fingerprint uses a reduced environment | source |
-| Ponytail mode **observed** | **off**, in every model request of every real-Pi run (§5) | its own instruction text searched for in each request's system text |
+| Ponytail mode **observed** | **off**, in every model request of every real-Pi run (§5) | its own instruction text (lite, full, ultra, review) searched for in each request's system text |
 | Global Pi and Ponytail settings | unchanged; `/ponytail` was never sent | |
 
 **Why a scratch agent directory.** The user's `~/.pi/agent` loads five packages and several extensions. Some of them reach other
@@ -135,8 +140,10 @@ validation was observed directly, from the tool results Pi sent back to the mode
 
 These are what tier 2 asserts, so a later Pi that behaves differently fails it by name.
 
-**Ponytail.** With `PONYTAIL_DEFAULT_MODE=off`, Ponytail's skills were listed in the system text, and none of its lite, full or ultra
-instruction blocks appeared in any of the 4 requests: **off**, matching the declaration.
+**Ponytail.** With `PONYTAIL_DEFAULT_MODE=off`, Ponytail's skills were listed in the system text, and none of its lite, full, ultra or
+review instruction blocks appeared in any of the 4 requests: **off**, matching the declaration. Strictly, "off" means "loaded (mentioned)
+and injecting none of its four instruction blocks". The real-model runs were classified the same way; the positive control below is
+what shows the classifier can see a block when one is there.
 
 **Positive control.** The same Pi, the same agent directory and package, and one print-mode prompt with the mode set to `full`. The
 `full` block was found in all 4 requests. So "absent" really is absence, not a detector that cannot see.
@@ -166,7 +173,9 @@ digests. Only Pi's own session file, which is private, has the commands. So cons
 wrote under `test/`. Only that yes or no is reported here. Run 1's directory was not kept, so for run 1 it is unknown.
 
 Run 2 replaced the whole file with `write` instead of using `edit`, and added a `typeof` guard. It is a different candidate from run 1's, and
-it also passes the check. Both are kept, outside the repository, under `~/projects/endophasia-research/work-cycle-001a/`.
+it also passes the check. Both candidates' diffs and reconstructions are kept, outside the repository, under
+`~/projects/endophasia-research/work-cycle-001a/`. Only run 2's whole run directory is kept there. Re-read there with the corrected reader (§8), it gives the same tool counts.
+Its receipts now read "no check at the current HEAD", because the copy is another working tree, which receipts do not compare.
 
 ### Negative cases
 
@@ -178,7 +187,7 @@ it also passes the check. Both are kept, outside the repository, under `~/projec
 | The Git revision changes after a receipt | tier 1 | the passing receipt reads `head-differs`, and the reconstruction says "no check at the current HEAD" |
 | The reader is reopened with no live agent | every tier | each reconstruction runs in new processes after the workbench exited, with 0 processes of the run alive |
 | The status stays the operator's | tier 1 (then every tier at `open`) | Pi completing and the check passing changed nothing. `done` came only from the operator's own `review → done` with a note |
-| The child Pi's version, or its tool schema, is incompatible | the no-terminal tier: `doctor` reports a version other than the declared one as `fail`. Tier 2 pins 1.5.0's validation behaviour | The workbench itself admits by evidence, not by version (`adapters/pi/version.ts`), and was not changed |
+| The child Pi's version, or its tool schema, is incompatible | the no-terminal tier: `doctor` reports a version other than the one given with `--expect-pi-version` as `fail`. Tier 2 pins 1.5.0's validation behaviour | The workbench itself admits by evidence, not by version (`adapters/pi/version.ts`), and was not changed |
 | Ponytail's mode is unknown, or does not match the declaration | the no-terminal tier (`unknown`, `mixed`, `not-loaded`, a mismatch) and tier 2's positive control | real runs: `off`, matching |
 
 ## 6. What changed
@@ -195,7 +204,8 @@ it also passes the check. Both are kept, outside the repository, under `~/projec
 - **The operator-governed run is NOT TESTED.** Every real run here was approved by a test script typing into a real PTY.
 - **No real-Pi negative run**: Pi killed mid-run, or a lost connection to the model, against Pi 1.5.0. Fake-Pi coverage only.
 - **Provenance.** Nothing records which revision an attempt produced. The receipt names the attempt because the operator said so
-  (`attempt-link-is-operator-declared`). The reconstruction reports a diff between two receipts' commits, never "Pi wrote this".
+  (`attempt-link-is-operator-declared`). In a driver run, the driver runs the checks and writes a commit message naming the attempt, on
+  the operator's yes, so the declaration is the operator's answer, carried out by the script. The reconstruction reports a diff between two receipts' commits, never "Pi wrote this".
 - **Constraint compliance is not observable** from canonical evidence ("do not run git" against seven `bash` calls). Showing it needs
   the private Pi session, or a decision to record more. That is a schema question for 001B, not something to add casually.
 - **Ponytail's mode is not part of any Endophasia record.** The configuration digest covers `PI_*` variables and the agent
@@ -203,6 +213,31 @@ it also passes the check. Both are kept, outside the repository, under `~/projec
 - **The model's identity is the router's alias.** The weights were not hashed, and the router's sampling settings come from its
   `/v1/models` listing, not from anything Endophasia records.
 - **The user's full Pi configuration** (all five packages) was not exercised.
-- **The run-window tool summary is this report's.** It follows Endophasia's own window: after the dispatch, up to the run's end. It
-  is not part of `attempt show`, and the attention overview still does not show executions.
+- **The run-window tool summary is this report's.** It follows the window `runAfter` uses: the dispatch derived from the
+  authorisation, then the first run of the same Pi process, then that run's events to its end. Where the end it finds disagrees with
+  `attempt show`'s `run`, the reconstruction lists that as an unknown. The summary is not part of `attempt show`, and the attention
+  overview still does not show executions.
+- **The task history records no actor.** A status move came from `endo task status` or the paired page. The reconstruction says so and
+  does not name a person.
 - **One task, one machine, one model**, two real-model runs. Nothing here estimates how often Glimmer succeeds.
+
+## 8. Independent review
+
+A fresh-context subagent on another model (Sonnet 5.5) reviewed the first commit adversarially. It ran the suites and its own probe
+scripts against the kept run 2. It did not run the opt-in real-Pi or real-model tiers. It found no boundary violation.
+
+| Finding | Severity | Resolution |
+| :-- | :-- | :-- |
+| `allEvents` paged with an event's per-stream `sequence` instead of the store's `nextAfterSequence`. Past 500 events, it re-read events and double-counted tools. The reviewer reproduced this on run 2's store with small pages. | material (latent: no run here passed 500 events) | **Fixed.** Tier 1 now compares a 7-event-page reading with a single-page one. With the old cursor the test does not pass: it hangs re-reading pages until killed. |
+| The tool window did not follow `runAfter`: it had no instance check, matched the dispatch by proposal id only, and treated any later dispatch as the end | minor | **Fixed** to the same joins and window. A disagreement with `attempt show` is reported |
+| The operator was shown `git diff`, but `git add -A` also committed untracked files the diff did not show. A commit made by Pi went unnoticed | minor (material for the operator run) | **Fixed.** The driver shows the status and an intent-to-add diff from the fixture commit, warns when HEAD moved, and commits exactly what was shown. `--no-renames` everywhere |
+| Ponytail's `review` mode would read as "off" | minor | **Fixed.** Review mode is detected; unit test |
+| The version check had no command-line flag | minor | **Fixed.** `--expect-pi-version` on `doctor` and `run` |
+| `reconstruct --run` was labelled read-only but overwrote the earlier report | minor | **Fixed.** Each read adds a time-stamped file, created exclusively |
+| The provenance and decision wording overstated who acted | minor | **Fixed** (§7) |
+| The proxy could outlive a failed run; a spawn error could hang the wait | minor | **Fixed.** `finally` stops the proxy; a spawn `error` settles the wait |
+| `processesOfRun` counted wrapper processes (a shell, `npx`, `timeout`), and matched on a bare prefix | minor | **Fixed.** This process's ancestors are excluded, and only path arguments or a working directory inside the run match |
+| `capturedChatBodies` changed `process.env` and could create a key | nit | **Fixed.** The key path is passed explicitly and must exist |
+| A non-`/v1` endpoint path was dropped silently | nit | **Fixed.** Refused |
+| Tier 2 skips its Ponytail assertions silently when Ponytail is not installed; the tier-3 evidence directory is not checked to be outside the repository | nit | **Kept.** Both are opt-in tiers. This README says where the evidence goes |
+

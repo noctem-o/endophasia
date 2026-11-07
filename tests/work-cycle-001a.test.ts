@@ -11,7 +11,7 @@
 //   tier 3 (+ ENDO_WORK_CYCLE_ENDPOINT and ENDO_WORK_CYCLE_MODEL)  the same Pi and a real local model through the recording proxy.
 //                                          Nothing is asserted about the model's success; what happened is kept.
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -32,6 +32,7 @@ import {
 	type RunLayout,
 	reconstruct,
 	renderReconstruction,
+	runDirectoryProblem,
 	runEnv,
 	runGit,
 	startProxy,
@@ -235,6 +236,21 @@ describe("WORK-CYCLE-001A pieces that need no terminal", () => {
 		expect(processesOfRun(layout).length).toBeGreaterThan(0);
 		await started.stop();
 		expect(processesOfRun(layout)).toEqual([]);
+	});
+
+	it("a run directory too deep for the workbench's control socket is refused before anything is created (WORK-CYCLE-001B human run)", () => {
+		const parent = realpathSync(mkdtempSync(join(tmpdir(), "endo-wc-deep-")));
+		cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
+		// "<run>/store/control/endpoint.sock" is the run's path plus 28 bytes; the workbench refuses more than 100 (cli/control.ts).
+		const fits = join(parent, "x".repeat(100 - 28 - parent.length - 1));
+		const deep = `${fits}y`;
+		expect(runDirectoryProblem(fits)).toBeNull();
+		expect(runDirectoryProblem(deep)).toMatch(
+			/too deep for the workbench's control socket .* 101 bytes; at most 100/,
+		);
+		expect(() => launchRun(deep)).toThrow(/Nothing was created/);
+		expect(existsSync(deep)).toBe(false);
+		expect(launchRun(fits).run).toBe(fits);
 	});
 
 	it("`endo task show` gives a terminal reader the acceptance criteria and the operator's status history", () => {

@@ -47,12 +47,14 @@ export const ENDO_ATTEMPT_EVIDENCE_GAPS_V0 = [
 	"brief-changed-since-authorization",
 	"task-words-changed",
 	"receipts-unreadable",
+	"receipt-files-unusable",
 	"no-check",
 	"no-check-after-authorization",
 	"current-tree-unavailable",
 	"current-tree-changed",
 	"no-check-at-current-head",
 	"check-not-passed-at-current-head",
+	"stale-check",
 	"checked-in-another-tree",
 	"task-unavailable",
 	"not-accepted",
@@ -70,15 +72,19 @@ export const ENDO_ATTEMPT_EVIDENCE_GAP_TEXT_V0: Readonly<Record<EndoAttemptEvide
 		"The brief rendered now differs from the one the operator approved (its digest does not match).",
 	"task-words-changed": "The task's words have changed since the attempt was prepared.",
 	"receipts-unreadable": "This attempt's receipts could not be read; no check is shown.",
+	"receipt-files-unusable":
+		"Some files in this attempt's receipts directory are not usable receipts (damaged or unreadable): a check they recorded, a failure among them, is not shown.",
 	"no-check": "No check has been recorded for this attempt.",
 	"no-check-after-authorization":
-		"Every check recorded for this attempt started before the send was authorised, so none of them ran on anything the send could have changed.",
+		"Every check recorded for this attempt ended before the send was authorised (by the records' clocks): none was run after the send.",
 	"current-tree-unavailable":
 		"The working tree could not be observed now, so no check is related to its current state.",
 	"current-tree-changed": "The working tree has uncommitted changes now; no check covers them.",
 	"no-check-at-current-head":
 		"No check was recorded at the working tree's current HEAD: the current revision is unchecked.",
 	"check-not-passed-at-current-head": "A check at the current HEAD did not pass (it failed, or was inconclusive).",
+	"stale-check":
+		"For at least one command, the latest check was at another commit: that command has not been run at the current HEAD.",
 	"checked-in-another-tree":
 		"Some checks ran in another working tree or repository; they are not compared with this one.",
 	"task-unavailable": "The task could not be read now, so its status and history are not shown.",
@@ -93,6 +99,7 @@ export const ENDO_ATTEMPT_EVIDENCE_NOT_ESTABLISHED_V0 = Object.freeze([
 	"That a passing check satisfies the acceptance criteria: the command decides what is checked.",
 	"That Pi's report of its run is true. It is what Pi reported, not verified.",
 	"Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.",
+	"That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.",
 ] as const);
 
 export interface EndoAttemptEvidenceCheckV0 {
@@ -105,8 +112,11 @@ export interface EndoAttemptEvidenceCheckV0 {
 	reasons: string[];
 	relation: EndoReceiptRelationV0;
 	relationLabel: string;
-	/** By the records' own clocks: true when the check started before the send was authorised; null when nothing was authorised. */
-	startedBeforeAuthorization: boolean | null;
+	/**
+	 * By the records' own clocks, the check against the authorisation: `before` (it ended before), `overlapping` (it started before and ended
+	 * after), `after` (it started after); null when nothing was authorised. Orders records; attributes nothing.
+	 */
+	authorization: "before" | "overlapping" | "after" | null;
 	/** The other receipts of the same check (argv, working tree, repository), by outcome. */
 	others: { passed: number; failed: number; inconclusive: number };
 }
@@ -126,6 +136,7 @@ export interface EndoAttemptEvidenceV0 {
 		handoff: { recordedAtMs: number; target: string } | null;
 		outcome: { recordedAtMs: number; kind: "reported" | "abandoned"; note: string } | null;
 	};
+	/** The broker's records: the operator's authorisation on the workbench terminal, and the send as recorded. */
 	sent: {
 		source: "observed";
 		/** null: no authorisation record. */
@@ -134,12 +145,15 @@ export interface EndoAttemptEvidenceV0 {
 		session: string | null;
 		send: EndoDevelopAttemptExecutionViewV0["send"] | null;
 		sendLabel: string;
-		disposition: EndoDevelopAttemptExecutionViewV0["disposition"];
-		/** What Pi reported of the run attributed to the send; not verification. */
-		run: EndoDevelopAttemptExecutionViewV0["run"] | null;
-		runLabel: string;
 		evidence: EndoDevelopAttemptExecutionViewV0["evidence"] | null;
 		brief: EndoDevelopAttemptExecutionViewV0["brief"] | null;
+	};
+	/** What Pi reported, as the session log holds it: its reply to the send, and how the attributed run ended. Not verification. */
+	pi: {
+		source: "pi-report" | "none";
+		disposition: EndoDevelopAttemptExecutionViewV0["disposition"];
+		run: EndoDevelopAttemptExecutionViewV0["run"] | null;
+		runLabel: string;
 	};
 	candidate: {
 		source: "none";
@@ -148,8 +162,10 @@ export interface EndoAttemptEvidenceV0 {
 		/** The commits the operator ran checks at for this attempt, oldest first: where checks ran, not what the attempt produced. */
 		checkedCommits: string[];
 	};
+	/** Observed by Endophasia; each receipt's link to this attempt is the operator's (`linkedBy`). */
 	checks: {
 		source: "observed";
+		linkedBy: "operator";
 		/** The working tree the checks were compared with, as the reader chose it; null when none could be. */
 		comparedWith: string | null;
 		current: { commit: string; clean: boolean } | null;
@@ -159,13 +175,14 @@ export interface EndoAttemptEvidenceV0 {
 		/** The latest receipt of each distinct check, one at the current HEAD first where there is one (develop-attention.ts). */
 		latest: EndoAttemptEvidenceCheckV0[];
 	};
+	/** The task file: the operator's moves, as far as it records them (no actor is recorded; see notEstablished). */
 	operator: {
 		source: "operator";
 		state: "present" | "unavailable";
 		status: EndoDevelopTaskStatusV0 | null;
 		history: EndoDevelopStatusChangeV0[];
 		/** The last move to `done`, if the task is done now. */
-		accepted: { atMs: number; note: string | null } | null;
+		movedToDone: { atMs: number; note: string | null } | null;
 	};
 	gaps: { code: EndoAttemptEvidenceGapV0; text: string }[];
 	notEstablished: readonly string[];
@@ -204,7 +221,14 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 	const all = input.receipts ?? [];
 	const receipts = all.map((r) => r.receipt);
 	const relationOf = new Map(all.map((r) => [r.receipt.id, r.relation]));
-	const before = (r: EndoDevelopReceiptV0): boolean | null => (x === null ? null : r.startedAtMs < x.authorizedAtMs);
+	const order = (r: EndoDevelopReceiptV0): EndoAttemptEvidenceCheckV0["authorization"] =>
+		x === null
+			? null
+			: r.endedAtMs < x.authorizedAtMs
+				? "before"
+				: r.startedAtMs < x.authorizedAtMs
+					? "overlapping"
+					: "after";
 	const latest: EndoAttemptEvidenceCheckV0[] = endoLatestChecksV0(receipts, current).map((c) => {
 		const r = receipts.find((y) => y.id === c.receiptId) as EndoDevelopReceiptV0;
 		return {
@@ -217,15 +241,16 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			reasons: r.reasons.map((reason) => ENDO_RECEIPT_REASON_TEXT_V0[reason]),
 			relation: c.relation,
 			relationLabel: ENDO_RECEIPT_RELATION_LABELS_V0[c.relation],
-			startedBeforeAuthorization: before(r),
+			authorization: order(r),
 			others: c.others,
 		};
 	});
 
+	if (input.receipts !== null && input.receiptProblems > 0) found.add("receipt-files-unusable");
 	if (input.receipts === null) found.add("receipts-unreadable");
 	else if (receipts.length === 0) found.add("no-check");
 	else {
-		if (x !== null && receipts.every((r) => before(r) === true)) found.add("no-check-after-authorization");
+		if (x !== null && receipts.every((r) => order(r) === "before")) found.add("no-check-after-authorization");
 		if (current === null) found.add("current-tree-unavailable");
 		else {
 			if (!current.clean) found.add("current-tree-changed");
@@ -233,6 +258,7 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			if (atHead.length === 0) found.add("no-check-at-current-head");
 			else if (latest.some((c) => AT_HEAD.includes(c.relation) && c.outcome !== "passed"))
 				found.add("check-not-passed-at-current-head");
+			if (latest.some((c) => c.relation === "head-differs")) found.add("stale-check");
 		}
 		if ([...relationOf.values()].some((r) => r === "other-worktree" || r === "other-repository"))
 			found.add("checked-in-another-tree");
@@ -271,12 +297,21 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			approvedOn: x === null ? null : "workbench-terminal",
 			session: x?.session ?? null,
 			send: x?.send ?? null,
-			sendLabel: x === null ? "Never authorised to be sent to Pi" : ENDO_ATTEMPT_SEND_LABELS_V0[x.send],
-			disposition: x?.disposition ?? null,
-			run: x?.run ?? null,
-			runLabel: x === null ? "No run: nothing was sent" : ENDO_ATTEMPT_RUN_LABELS_V0[x.run],
+			sendLabel:
+				x === null
+					? "No send to Pi through the workbench was authorised for this attempt"
+					: ENDO_ATTEMPT_SEND_LABELS_V0[x.send],
 			evidence: x?.evidence ?? null,
 			brief: x?.brief ?? null,
+		},
+		pi: {
+			source: x === null ? "none" : "pi-report",
+			disposition: x?.disposition ?? null,
+			run: x?.run ?? null,
+			runLabel:
+				x === null
+					? "No run is attributed: no send through the workbench was authorised"
+					: ENDO_ATTEMPT_RUN_LABELS_V0[x.run],
 		},
 		candidate: {
 			source: "none",
@@ -286,6 +321,7 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 		},
 		checks: {
 			source: "observed",
+			linkedBy: "operator",
 			comparedWith: input.comparedWith,
 			current: current === null ? null : { commit: current.commit, clean: current.clean },
 			receipts: receipts.length,
@@ -299,7 +335,7 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			status: task?.status ?? null,
 			history:
 				task === null ? [] : task.history.map((h) => ({ atMs: h.atMs, from: h.from, to: h.to, note: h.note })),
-			accepted: lastDone === undefined ? null : { atMs: lastDone.atMs, note: lastDone.note },
+			movedToDone: lastDone === undefined ? null : { atMs: lastDone.atMs, note: lastDone.note },
 		},
 		gaps: ENDO_ATTEMPT_EVIDENCE_GAPS_V0.filter((g) => found.has(g)).map((code) => ({
 			code,
@@ -311,17 +347,35 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 
 /** The reading as a few lines of plain text for a terminal: each line says whose it is. */
 export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
+	const short = (c: string) => c.slice(0, 12);
+	const order = {
+		before: "; ended before the send was authorised",
+		overlapping: "; ran while the send was authorised",
+		after: "",
+		none: "",
+	};
 	const lines = [
 		`attempt ${e.attempt.id} (task ${e.attempt.taskId}): ${e.attempt.objective}`,
+		...(e.attempt.handoff === null
+			? []
+			: [`  handoff   [operator] said they handed it to ${e.attempt.handoff.target}`]),
+		...(e.attempt.outcome === null
+			? []
+			: [
+					`  outcome   [operator] ${e.attempt.outcome.kind === "reported" ? `recorded as reported, not verified: ${e.attempt.outcome.note}` : `recorded as abandoned${e.attempt.outcome.note === "" ? "" : `: ${e.attempt.outcome.note}`}`}`,
+				]),
 		`  sent      [observed] ${e.sent.sendLabel}.`,
-		`  run       [Pi's report] ${e.sent.runLabel}.`,
-		`  candidate [none] no record names one; checked at: ${e.candidate.checkedCommits.length === 0 ? "nothing" : e.candidate.checkedCommits.map((c) => c.slice(0, 12)).join(", ")}`,
-		`  tree now  [observed] ${e.checks.current === null ? "unavailable" : `${e.checks.current.commit.slice(0, 12)}${e.checks.current.clean ? ", clean" : ", with uncommitted changes"}`}${e.checks.comparedWith === null ? "" : ` (${e.checks.comparedWith})`}`,
+		`  run       [${e.pi.source === "none" ? "none" : "Pi's report"}] ${e.pi.runLabel}.`,
+		`  candidate [none] no record names one; checked at: ${e.candidate.checkedCommits.length === 0 ? "nothing" : e.candidate.checkedCommits.map(short).join(", ")}`,
+		`  tree now  [observed] ${e.checks.current === null ? "unavailable" : `${short(e.checks.current.commit)}${e.checks.current.clean ? ", clean" : ", with uncommitted changes"}`}${e.checks.comparedWith === null ? "" : ` (${e.checks.comparedWith})`}`,
 		...e.checks.latest.map(
 			(c) =>
-				`  check     [observed] ${c.command}: ${c.label} at ${c.commit.slice(0, 12)}; ${c.relationLabel}${c.startedBeforeAuthorization === true ? "; started before the send was authorised" : ""}`,
+				`  check     [observed; linked to this attempt by the operator] ${c.command}: ${c.label} at ${short(c.commit)}; ${c.relationLabel}${order[c.authorization ?? "none"]}`,
 		),
-		`  decision  [operator] ${e.operator.status === null ? "the task cannot be read" : `status ${e.operator.status}`}${e.operator.accepted === null ? "" : `, moved to done${e.operator.accepted.note === null ? "" : ` ("${e.operator.accepted.note}")`}`}`,
+		...(e.checks.problems === 0
+			? []
+			: [`  receipts  [observed] ${e.checks.problems} file(s) are not usable receipts and are not shown`]),
+		`  decision  [operator] ${e.operator.status === null ? "the task cannot be read" : `status ${e.operator.status}`}${e.operator.movedToDone === null ? "" : `, moved to done${e.operator.movedToDone.note === null ? "" : ` ("${e.operator.movedToDone.note}")`}`}`,
 		...e.gaps.map((g) => `  gap       ${g.text}`),
 		"  not established by any record:",
 		...e.notEstablished.map((n) => `    - ${n}`),

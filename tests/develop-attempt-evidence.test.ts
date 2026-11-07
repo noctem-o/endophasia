@@ -150,7 +150,8 @@ describe("endo attempt evidence: the reading", () => {
 		expect(view.notEstablished.join(" ")).toMatch(/not authorship/);
 		expect(view.attempt.source).toBe("operator");
 		expect(view.sent.source).toBe("observed");
-		expect(view.checks.source).toBe("observed");
+		expect(view.pi.source).toBe("pi-report");
+		expect(view.checks).toMatchObject({ source: "observed", linkedBy: "operator" });
 		expect(view.operator.source).toBe("operator");
 		expect(JSON.stringify(view)).not.toMatch(/"produced"|"author"|"verified":/);
 	});
@@ -163,13 +164,13 @@ describe("endo attempt evidence: the reading", () => {
 			commit: B,
 			outcome: "passed",
 			relation: "at-head",
-			startedBeforeAuthorization: false,
+			authorization: "after",
 			others: { passed: 0, failed: 1, inconclusive: 0 },
 		});
 		expect(open.view.candidate.checkedCommits).toEqual([A, B]);
 		const done = read({ receipts: [receipt(B, 0, AUTH_AT + 100)], status: "done" });
 		expect(done.gaps).toEqual([]);
-		expect(done.view.operator).toMatchObject({ status: "done", accepted: { note: "read it" } });
+		expect(done.view.operator).toMatchObject({ status: "done", movedToDone: { note: "read it" } });
 		expect(renderEndoAttemptEvidenceV0(done.view)).toMatch(
 			/decision {2}\[operator\] status done, moved to done \("read it"\)/,
 		);
@@ -177,8 +178,9 @@ describe("endo attempt evidence: the reading", () => {
 
 	it("an attempt prepared but never authorised has no send, no run, and says so", () => {
 		const { view, gaps } = read({ execution: null });
-		expect(view.sent).toMatchObject({ authorizedAtMs: null, send: null, run: null, approvedOn: null });
-		expect(view.sent.sendLabel).toBe("Never authorised to be sent to Pi");
+		expect(view.sent).toMatchObject({ authorizedAtMs: null, send: null, approvedOn: null });
+		expect(view.pi).toMatchObject({ source: "none", run: null });
+		expect(view.sent.sendLabel).toBe("No send to Pi through the workbench was authorised for this attempt");
 		expect(gaps).toEqual(["not-authorized", "no-check", "not-accepted"]);
 	});
 
@@ -193,7 +195,7 @@ describe("endo attempt evidence: the reading", () => {
 			const { gaps, view } = read({ execution: { run } });
 			expect(gaps).toContain("run-not-completed");
 			expect(gaps).not.toContain("send-not-confirmed");
-			expect(view.sent.run).toBe(run);
+			expect(view.pi.run).toBe(run);
 		}
 		expect(read({ execution: { evidence: "partial" } }).gaps).toContain("execution-evidence-incomplete");
 		expect(read({ execution: { brief: "differs" } }).gaps).toContain("brief-changed-since-authorization");
@@ -224,7 +226,7 @@ describe("endo attempt evidence: the reading", () => {
 		});
 		expect(view.checks.latest[0]).toMatchObject({ commit: A, outcome: "passed", relation: "head-differs" });
 		expect(view.checks.latest[0]?.relationLabel).toMatch(/^Stale/);
-		expect(gaps).toEqual(["no-check-at-current-head"]);
+		expect(gaps).toEqual(["no-check-at-current-head", "stale-check"]);
 		// The operator's decision is reported as it is: the stale check does not reopen the task, nor does the done hide the gap.
 		expect(view.operator.status).toBe("done");
 	});
@@ -243,17 +245,110 @@ describe("endo attempt evidence: the reading", () => {
 		);
 	});
 
-	it("checks that all started before the authorisation are said to be so: they cannot cover anything the send changed", () => {
-		const { view, gaps } = read({
-			receipts: [receipt(B, 0, AUTH_AT - 1)],
-			current: { worktree: WT, commonDir: COMMON, commit: B, clean: true },
-		});
-		expect(view.checks.latest[0]?.startedBeforeAuthorization).toBe(true);
-		expect(gaps).toContain("no-check-after-authorization");
+	it("checks are ordered against the authorisation by their start and end: only checks that ended before it are 'before'", () => {
+		// receipt() ends 5 ms after it starts.
+		const before = read({ receipts: [receipt(B, 0, AUTH_AT - 6)] });
+		expect(before.view.checks.latest[0]?.authorization).toBe("before");
+		expect(before.gaps).toContain("no-check-after-authorization");
+		// Started before, ended after (and ending exactly at the authorisation is not "before"): it overlapped the send.
+		for (const start of [AUTH_AT - 3, AUTH_AT - 5]) {
+			const overlap = read({ receipts: [receipt(B, 0, start)] });
+			expect(overlap.view.checks.latest[0]?.authorization).toBe("overlapping");
+			expect(overlap.gaps).not.toContain("no-check-after-authorization");
+		}
+		expect(read({ receipts: [receipt(B, 0, AUTH_AT)] }).view.checks.latest[0]?.authorization).toBe("after");
 		// Without an authorisation there is nothing to order by.
-		expect(
-			read({ execution: null, receipts: [receipt(B, 0, 1)] }).view.checks.latest[0]?.startedBeforeAuthorization,
-		).toBeNull();
+		expect(read({ execution: null, receipts: [receipt(B, 0, 1)] }).view.checks.latest[0]?.authorization).toBeNull();
+	});
+
+	it("receipt files that are not usable are a gap, so a damaged failure cannot leave a clean-looking reading", () => {
+		const pass = [receipt(B, 0, AUTH_AT + 1)];
+		expect(read({ receipts: pass, status: "done" }).gaps).toEqual([]);
+		const damaged = endoAttemptEvidenceV0({
+			report: report({}),
+			task: { status: "done", history: history("open", "review", "done") },
+			receipts: pass.map((r) => ({ receipt: r, relation: "at-head" as const })),
+			receiptProblems: 1,
+			comparedWith: WT,
+			current: { worktree: WT, commonDir: COMMON, commit: B, clean: true },
+			readAtMs: 1,
+		});
+		expect(damaged.gaps.map((g) => g.code)).toEqual(["receipt-files-unusable"]);
+		expect(renderEndoAttemptEvidenceV0(damaged)).toContain("1 file(s) are not usable receipts and are not shown");
+	});
+
+	it("a command whose latest check is stale is a gap even when another command passed at HEAD", () => {
+		const other = receipt(B, 0, AUTH_AT + 9);
+		other.check = { ...other.check, argv: ["node", "-e", "0"] };
+		const { view, gaps } = read({ receipts: [receipt(A, 0, AUTH_AT + 1), other] });
+		expect(view.checks.latest.map((c) => [c.command, c.relation])).toEqual([
+			["node --test", "head-differs"],
+			["node -e 0", "at-head"],
+		]);
+		expect(gaps).toEqual(["stale-check", "not-accepted"]);
+	});
+
+	it("words changed since preparation, and the LAST move to done, are what is shown", () => {
+		const r = report({});
+		(r as { taskWordsChanged: unknown[] }).taskWordsChanged = ["acceptance"];
+		const v = endoAttemptEvidenceV0({
+			report: r,
+			task: {
+				status: "done",
+				history: [
+					{ atMs: 1, from: null, to: "open", note: null },
+					{ atMs: 2, from: "open", to: "done", note: "first" },
+					{ atMs: 3, from: "done", to: "open", note: null },
+					{ atMs: 4, from: "open", to: "done", note: "second" },
+				],
+			},
+			receipts: [],
+			receiptProblems: 0,
+			comparedWith: WT,
+			current: null,
+			readAtMs: 1,
+		});
+		expect(v.gaps.map((g) => g.code)).toEqual(["task-words-changed", "no-check"]);
+		expect(v.operator.movedToDone).toEqual({ atMs: 4, note: "second" });
+	});
+
+	it("the terminal text labels every line with its source, exactly", () => {
+		const r = report({});
+		(r as { handoff: unknown }).handoff = { recordedAtMs: 1, target: "Pi", note: null };
+		(r as { outcome: unknown }).outcome = { recordedAtMs: 2, kind: "reported", note: "all tests pass" };
+		const v = endoAttemptEvidenceV0({
+			report: r,
+			task: { status: "review", history: history("open", "review") },
+			receipts: [receipt(A, 3, AUTH_AT - 50), receipt(B, 0, AUTH_AT + 1)].map((x) => ({
+				receipt: x,
+				relation: x.revision.commit === B ? ("at-head" as const) : ("head-differs" as const),
+			})),
+			receiptProblems: 0,
+			comparedWith: WT,
+			current: { worktree: WT, commonDir: COMMON, commit: B, clean: true },
+			readAtMs: 1,
+		});
+		const text = renderEndoAttemptEvidenceV0(v).split("\n");
+		expect(text.slice(0, 10)).toEqual([
+			"attempt endo.attempt.0123456789abcdef0123456789abcdef (task endo.task.t): Fix slugify",
+			"  handoff   [operator] said they handed it to Pi",
+			"  outcome   [operator] recorded as reported, not verified: all tests pass",
+			"  sent      [observed] Sent to Pi, and Pi acknowledged it. That is a reply, not completion.",
+			"  run       [Pi's report] Pi reported the run completed. Not verified.",
+			`  candidate [none] no record names one; checked at: ${"a".repeat(12)}, ${"b".repeat(12)}`,
+			`  tree now  [observed] ${"b".repeat(12)}, clean (/work/project)`,
+			`  check     [observed; linked to this attempt by the operator] node --test: Observed check passed at ${"b".repeat(12)}; Recorded at this working tree's current HEAD`,
+			"  decision  [operator] status review",
+			"  gap       The task's status is not done: the operator has not recorded accepting it.",
+		]);
+		expect(text).toContain("  not established by any record:");
+		const unsent = renderEndoAttemptEvidenceV0(read({ execution: null }).view);
+		expect(unsent).toContain(
+			"  run       [none] No run is attributed: no send through the workbench was authorised.",
+		);
+		const early = renderEndoAttemptEvidenceV0(read({ receipts: [receipt(B, 0, AUTH_AT - 50)] }).view);
+		expect(early).toContain("; ended before the send was authorised");
+		expect(early).not.toMatch(/verified\]|\[verified/);
 	});
 
 	it("the operator's decision is read as recorded, independent of Pi's report and the checks", () => {

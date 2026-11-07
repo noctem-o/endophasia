@@ -336,11 +336,8 @@ describe.runIf(linuxPty)(
 
 			// WORK-CYCLE-001B: the same cycle read by the product's own attempt-centred reader, after Pi has exited.
 			const e1 = evidenceOf(layout, prepared.attemptId);
-			expect(e1.view.sent).toMatchObject({
-				send: "runtime-accepted",
-				run: "completed",
-				approvedOn: "workbench-terminal",
-			});
+			expect(e1.view.sent).toMatchObject({ send: "runtime-accepted", approvedOn: "workbench-terminal" });
+			expect(e1.view.pi).toMatchObject({ source: "pi-report", run: "completed" });
 			expect(e1.view.candidate).toMatchObject({ recorded: false, checkedCommits: [prepared.baseCommit, candidate] });
 			expect(e1.view.checks.current).toEqual({ commit: candidate, clean: true });
 			expect(e1.view.checks.latest).toHaveLength(1);
@@ -348,7 +345,7 @@ describe.runIf(linuxPty)(
 				commit: candidate,
 				outcome: "passed",
 				relation: "at-head",
-				startedBeforeAuthorization: false,
+				authorization: "after",
 				others: { failed: 1 },
 			});
 			expect(e1.gaps).toEqual(["not-accepted"]);
@@ -371,7 +368,8 @@ describe.runIf(linuxPty)(
 				),
 			).attempt.id as string;
 			const e0 = evidenceOf(layout, second);
-			expect(e0.view.sent).toMatchObject({ send: null, run: null });
+			expect(e0.view.sent).toMatchObject({ send: null });
+			expect(e0.view.pi).toMatchObject({ source: "none", run: null });
 			expect(e0.gaps).toEqual(["not-authorized", "no-check", "not-accepted"]);
 
 			// The decision is the operator's, in its own steps, each against the revision it saw.
@@ -399,7 +397,7 @@ describe.runIf(linuxPty)(
 			expect(e2.gaps).toEqual([]);
 			expect(e2.view.operator).toMatchObject({
 				status: "done",
-				accepted: { note: "read the diff; check passed at the candidate" },
+				movedToDone: { note: "read the diff; check passed at the candidate" },
 			});
 
 			// Negative: the revision moves after the receipt. The passing receipt is not carried forward: it reads stale.
@@ -419,14 +417,23 @@ describe.runIf(linuxPty)(
 				outcome: "passed",
 				relation: "head-differs",
 			});
-			expect(e3.gaps).toEqual(["no-check-at-current-head"]);
+			expect(e3.gaps).toEqual(["no-check-at-current-head", "stale-check"]);
 			expect(e3.view.operator.status).toBe("done");
 			// Uncommitted changes on top: the reader says no check covers them.
 			writeFileSync(join(layout.project, "NOTES"), "edited, not committed\n");
 			expect(evidenceOf(layout, prepared.attemptId).gaps).toEqual([
 				"current-tree-changed",
 				"no-check-at-current-head",
+				"stale-check",
 			]);
+			// A damaged receipt file (it might have been a failure) is a gap and a line, never silently dropped (review of e440136c5).
+			writeFileSync(
+				join(layout.store, "develop", "receipts", prepared.attemptId, `endo.receipt.${"f".repeat(32)}.json`),
+				"{garbage",
+			);
+			const damaged = evidenceOf(layout, prepared.attemptId);
+			expect(damaged.gaps).toContain("receipt-files-unusable");
+			expect(damaged.text).toContain("1 file(s) are not usable receipts and are not shown");
 			expect(renderReconstruction(r3)).toContain("## Three separate answers");
 		}, 240_000);
 	},
@@ -613,7 +620,7 @@ describe.runIf(linuxPty && realPi.length > 0)(
 			expect(read.execution.run).toBe(lostConnectionRun);
 			expect(processesOfRun(layout)).toEqual([]);
 			const e = evidenceOf(layout, prepared.attemptId);
-			expect(e.view.sent.run).toBe(read.execution.run);
+			expect(e.view.pi.run).toBe(read.execution.run);
 			// The only check is the failed baseline at this same commit: it started before the send, and it did not pass.
 			expect(e.gaps).toEqual([
 				"run-not-completed",
@@ -624,7 +631,7 @@ describe.runIf(linuxPty && realPi.length > 0)(
 			expect(e.view.checks.latest[0]).toMatchObject({
 				outcome: "failed",
 				relation: "at-head",
-				startedBeforeAuthorization: true,
+				authorization: "before",
 			});
 			if (keep.length > 0) {
 				mkdirSync(keep, { recursive: true });
@@ -658,12 +665,16 @@ describe.runIf(linuxPty && realPi.length > 0)(
 				env,
 			);
 			// Wait until Pi's own bash tool is running the scripted sleep, then kill the Pi process (not the workbench).
-			// Pi 1.5.0 sets its process title to "pi".
-			const isPi = (p: { cmd: string }) => p.cmd === "pi" || /pi-coding-agent/.test(p.cmd);
+			// Pi 1.5.0 sets its process title to "pi". The workbench, its PTY wrapper and the attachment's launcher can also name Pi's path
+			// (ENDO_PI_EXECUTABLE given as the real cli.js), so they are excluded by what they are, and exactly one Pi must be found.
+			const isPi = (p: { cmd: string }) =>
+				p.cmd === "pi" ||
+				(/pi-coding-agent/.test(p.cmd) && !/harness attach|^script |--no-warnings -e/.test(p.cmd));
 			let pi: { pid: number; cmd: string } | undefined;
 			for (let i = 0; i < 400; i++) {
 				const procs = processesOfRun(layout);
-				if (procs.some((p) => /sleep 20/.test(p.cmd) && !isPi(p))) pi = procs.find(isPi);
+				const pis = procs.filter(isPi);
+				if (procs.some((p) => /sleep 20/.test(p.cmd) && !isPi(p)) && pis.length === 1) pi = pis[0];
 				if (pi !== undefined) break;
 				await sleep(50);
 			}
@@ -689,7 +700,7 @@ describe.runIf(linuxPty && realPi.length > 0)(
 				} catch {}
 			const e = evidenceOf(layout, prepared.attemptId);
 			expect(e.gaps).toContain("run-not-completed");
-			expect(e.view.sent.runLabel).toBe(read.execution.runLabel);
+			expect(e.view.pi.runLabel).toBe(read.execution.runLabel);
 			if (keep.length > 0) {
 				mkdirSync(keep, { recursive: true });
 				writeFileSync(

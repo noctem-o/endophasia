@@ -29,11 +29,12 @@ Every section of the reading names its source. The categories are never merged.
 | | This check belongs to this attempt | the `--attempt` the operator gave to `endo attempt check` (`attempt-link-is-operator-declared`) | `candidate.checkedCommits` |
 | | The task is in review / done, with this note | the task's status history | `operator` (`source: "operator"`) |
 | **B. Endophasia observations** | This exact attempt was authorised on the workbench terminal and the send was recorded | `<id>.authorized.json`, joined exactly to the session log (`develop-attempt-execution.ts`) | `sent` (`source: "observed"`) |
-| | Pi accepted it; Pi reported the run ended thus | the session log (Pi's own lifecycle events) | `sent.send`, `sent.run`: what Pi *reported* |
-| | Git showed commit C, clean, at the start and end of a check, and the command exited with E | a receipt | `checks.latest[]` |
+| | The send state, as the broker recorded it (including Pi's acknowledgement) | the session log | `sent.send` |
+| | Pi reported the run ended thus | the session log (Pi's own lifecycle events) | `pi` (`source: "pi-report"`): what Pi *reported* |
+| | Git showed commit C, clean, at the start and end of a check, and the command exited with E | a receipt; its link to this attempt is the operator's | `checks.latest[]` (`linkedBy: "operator"`) |
 | | The working tree's HEAD is now C', clean or not; each receipt's relation to it | read-only Git, observed once for this reading | `checks.current`, `relation` |
-| | A check started before the send was authorised | two stamps Endophasia wrote on this machine | `startedBeforeAuthorization` |
-| **C. Not established** | which revision the attempt produced; who wrote any byte; that nothing else wrote the tree; that a pass meets the acceptance criteria; that Pi's report is true; which revision the operator looked at when deciding | nothing | `notEstablished` (always shown) |
+| | A check ended before, overlapped, or started after the authorisation | stamps Endophasia wrote on this machine | `authorization` |
+| **C. Not established** | which revision the attempt produced; who wrote any byte; that nothing else wrote the tree; that a pass meets the acceptance criteria; that Pi's report is true; which revision the operator looked at when deciding; that each record was written only by its named writer | nothing | `notEstablished` (always shown) |
 
 ## What `endo attempt evidence` shows
 
@@ -51,13 +52,13 @@ when the attempt exists. It reads, in one process:
 | Field | Meaning | Does not mean |
 | :-- | :-- | :-- |
 | `sent.send` / `sendLabel` | the execution reading's send state (Slice I/J), unchanged | that Pi did anything useful |
-| `sent.run` / `runLabel` | the first run of the same Pi process after the send, as Pi reported it | that the work is correct, or done |
+| `pi.run` / `runLabel` | the first run of the same Pi process after the send, as Pi reported it (`source: "none"` when nothing was authorised) | that the work is correct, or done |
 | `candidate.recorded: false` | always: no record names a candidate revision | that there is none |
 | `candidate.checkedCommits` | the distinct commits the operator ran checks at for this attempt, oldest first | what the attempt produced |
 | `checks.latest[]` | the latest receipt of each distinct check (one argv in one working tree of one repository). One at the current HEAD outranks any later one at another commit (`endoLatestChecksV0`, shared with the attention overview) | acceptance |
 | `relation` | `at-head`, `at-head-changed`, `head-differs` (stale), `other-worktree`, `other-repository`, `unavailable`: the receipt contract's, computed now, never stored | that a pass in another clone stands for this one |
-| `startedBeforeAuthorization` | by the records' own clocks, the check started before the authorisation (a baseline) | anything about who changed what |
-| `operator.status`, `history`, `accepted` | the task's status now, its moves, and the note of the last move to `done` | which revision was looked at; who moved it (no actor is recorded) |
+| `authorization` | by the records' own clocks: `before` (the check ended before the authorisation: a baseline), `overlapping`, `after`; null when nothing was authorised | anything about who changed what |
+| `operator.status`, `history`, `movedToDone` | the task's status now, its moves, and the note of the last move to `done` | which revision was looked at; who moved it (no actor is recorded) |
 | `gaps[]` | facts about missing, unconfirmed, stale or undecided evidence, in a fixed order (below) | a verdict |
 
 ### Gaps
@@ -71,12 +72,14 @@ when the attempt exists. It reads, in one process:
 | `brief-changed-since-authorization` | the brief's digest no longer matches the approved one |
 | `task-words-changed` | the task's words changed since preparation |
 | `receipts-unreadable` | the receipts directory could not be read |
+| `receipt-files-unusable` | some files in it are not usable receipts (damaged, unreadable): what they recorded, perhaps a failure, is not shown |
 | `no-check` | no receipt |
-| `no-check-after-authorization` | the send was authorised and every receipt started before it |
+| `no-check-after-authorization` | the send was authorised and every receipt ended before it |
 | `current-tree-unavailable` | the working tree could not be observed now |
 | `current-tree-changed` | it has uncommitted changes now |
 | `no-check-at-current-head` | no receipt at the current HEAD of the same working tree |
 | `check-not-passed-at-current-head` | a latest check at the current HEAD failed or was inconclusive |
+| `stale-check` | for at least one command, the latest check is at another commit (`head-differs`): that command has not been run at the current HEAD, even if another one has |
 | `checked-in-another-tree` | some receipt is from another working tree or repository |
 | `task-unavailable` | the task cannot be read now |
 | `not-accepted` | the task's status is not `done` |
@@ -113,16 +116,20 @@ check that the reading's `candidate` has exactly its four members, so an inferre
 ## Guarantees and limits
 
 - **Read-only.** It calls `read()` and Git observation only. It writes, stores and runs nothing. It adds no file under the store.
-- **No private content.** It prints the attempt's objective line, the task's notes and argv as the existing readers already do. It never
-  prints a prompt, a reply, a tool argument or a result. The session id is shown as `endo attempt show` shows it.
-- **One moment.** The records are read one after another, not under a lock. A check or status move that lands mid-read can be absent or
-  present. `readAtMs` says when it was read.
-- **Clocks.** `startedBeforeAuthorization` compares two wall-clock stamps from the same machine. A clock step between them can mislabel
-  a check. It orders records; it never attributes a change.
+- **No private model content.** It prints what the existing readers already print: the attempt's objective line, the operator's
+  handoff label and recorded report note (often text pasted from an agent, and the operator's own record), status notes, argv, the
+  session id and the compared directory's path. It never prints a prompt, a reply, a tool argument or a result.
+- **Not one snapshot.** The records are read one after another, not under a lock: the attempt (with one task-file read for its words),
+  the receipts, then the task file again for the status. A check or status move that lands mid-read can be absent or present.
+  `readAtMs` is when the reading began. A task file that cannot be read leaves the project path unknown, so the tree is reported
+  `unavailable` without Git being asked.
+- **Clocks.** `authorization` compares wall-clock stamps from the same machine. A clock step between them can mislabel a check. It orders
+  records; it never attributes a change.
 - **Not on the page.** The workbench's attempts view already shows each attempt's execution and receipts with their relations. This
   reading is the terminal's equivalent plus the gap list. No second page view was added.
 
 ## Review
 
-One fresh-context review (another model, not another family: the reviewer was Sonnet 5.5; Codex reviews the PR on push). Findings and
+One fresh-context review (another model, not another family: the reviewer was Sonnet 5.5; Codex, another family, reviews the PR on push).
+It found one material issue (a damaged receipt file vanished from the reading) and ten minor ones and nits. All are fixed or documented. Findings and
 resolutions are in [research/work-cycle/WORK-CYCLE-001B.md](../../research/work-cycle/WORK-CYCLE-001B.md) §6.

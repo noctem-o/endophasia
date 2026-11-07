@@ -1,5 +1,5 @@
 /**
- * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
+ * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
  * kept in the store root's `develop/attempts/` as write-once records (storage/develop-attempts.ts).
  *
  * An attempt is one request the operator prepared on one task. `brief` prints it as plain text for the operator to copy into any coding
@@ -448,6 +448,8 @@ async function receipt(argv: readonly string[]): Promise<void> {
 async function evidence(argv: readonly string[]): Promise<void> {
 	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
 	const attemptId = attemptOf(flags);
+	// The records are read one after another, not under a lock: readAtMs is when this reading began.
+	const readAtMs = Date.now();
 	const report = unwrap(serviceAt(root).get(attemptId));
 	const service = receiptsAt(root);
 	const directory = flags.get("--cwd") ?? service.defaultDirectory(attemptId);
@@ -465,7 +467,7 @@ async function evidence(argv: readonly string[]): Promise<void> {
 		receiptProblems: read.ok ? read.problems.length : 0,
 		comparedWith: directory,
 		current,
-		readAtMs: Date.now(),
+		readAtMs,
 	});
 	print({ evidence: view });
 	process.stderr.write(renderEndoAttemptEvidenceV0(view));

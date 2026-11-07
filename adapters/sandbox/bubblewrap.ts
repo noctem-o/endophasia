@@ -404,6 +404,8 @@ export async function runSandboxV0(
 		stdin?: Buffer;
 		/** Called with the scope's unit before anything is started, so a caller can record it durably first. */
 		onScope?: (unit: string) => void;
+		/** Called right after the launch with the launcher's identity (pid and start time), so a resume can end exactly it. */
+		onLauncher?: (launcher: EndoProcessIdentityV0) => void;
 		onStarted?: (init: EndoProcessIdentityV0) => void;
 	},
 ): Promise<EndoSandboxRunV0> {
@@ -427,6 +429,10 @@ export async function runSandboxV0(
 			detached: true,
 		},
 	);
+	if (child.pid !== undefined) {
+		const startTime = processStartTimeV0(child.pid);
+		if (startTime !== null) options.onLauncher?.({ pid: child.pid, startTime });
+	}
 	const killGroup = () => {
 		try {
 			if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
@@ -485,6 +491,8 @@ export async function runSandboxV0(
 		// A sandbox process stranded in bubblewrap's launch window (#633) can hold the output pipes open forever. Once bubblewrap itself
 		// has exited, wait a bounded time for the pipes, then stop waiting: termination is then decided below, not by a pipe's end.
 		child.on("exit", (c, s) => {
+			// Bubblewrap is reaped from here on: its group number may be reused, so the timeout's group kill must never fire now.
+			clearTimeout(timer);
 			// Bubblewrap is gone: stop its scope at once, which ends anything left in it (a process stranded in the launch window holds
 			// the pipes open), so the pipes can close.
 			void stopScopeV0(options.containment, unit);

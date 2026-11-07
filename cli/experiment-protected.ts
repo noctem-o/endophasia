@@ -407,6 +407,43 @@ function finish(
 	return record;
 }
 
+/**
+ * Durable scope records for one sandbox of an attempt (`<name>-scope.json`): the unit, written before anything is started, then the
+ * launcher's identity right after the launch. A resume ends that launcher and stops that unit (endAttemptScopes).
+ */
+const SANDBOXES = ["preflight", "agent", "evaluation"] as const;
+function scopeRecorder(attemptDir: string, name: (typeof SANDBOXES)[number]) {
+	const path = join(attemptDir, `${name}-scope.json`);
+	let unit = "";
+	return {
+		onScope: (u: string) => {
+			unit = u;
+			writeJsonAtomically(path, { unit });
+		},
+		onLauncher: (launcher: EndoProcessIdentityV0) => writeJsonAtomically(path, { unit, launcher }),
+	};
+}
+
+/**
+ * On resume, for every sandbox of an attempt that recorded a scope: end its launcher (exactly that pid with that start time: a launcher
+ * that outlived the controller may not have registered its scope yet), then stop its scope and confirm it holds no process.
+ */
+async function endAttemptScopes(
+	p: Prepared,
+	attemptDir: string,
+): Promise<Record<string, { unit: string; ended: "confirmed" | "unconfirmed" }>> {
+	const out: Record<string, { unit: string; ended: "confirmed" | "unconfirmed" }> = {};
+	for (const name of SANDBOXES) {
+		const path = join(attemptDir, `${name}-scope.json`);
+		if (!existsSync(path)) continue;
+		const rec = readJson(path) as { unit: string; launcher?: EndoProcessIdentityV0 };
+		const launcherGone = rec.launcher === undefined ? true : (await endSandboxV0(rec.launcher)) === "confirmed";
+		const ended = await stopScopeV0(p.containment, rec.unit);
+		out[name] = { unit: rec.unit, ended: launcherGone && ended === "confirmed" ? "confirmed" : "unconfirmed" };
+	}
+	return out;
+}
+
 /** What a run and its records name of the containment: the mechanism, the tools' version and digest, and the bound. */
 const containmentRecord = (c: EndoContainmentV0) => ({
 	mechanism: c.mechanism,
@@ -446,6 +483,9 @@ async function finalizeOnResume(
 	attemptDir: string,
 	base: ReturnType<typeof recordBase>,
 ): Promise<EndoProtectedTrialV0> {
+	// Every sandbox of the attempt that recorded a scope (the preflight, the agent, the evaluation) is ended first: its launcher by
+	// identity, its scope through the user manager.
+	const scopes = await endAttemptScopes(p, attemptDir);
 	// An evaluation the controller stopped during left the cases' inputs behind: removed, like every evaluation's.
 	rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
 	const preflight: EndoPreflightV0 = existsSync(join(attemptDir, "preflight.json"))
@@ -470,10 +510,8 @@ async function finalizeOnResume(
 		// ends every process it holds (an orphaned launcher, a process stranded in bubblewrap's launch window, a detached descendant), and
 		// confirms it. The init's identity, when recorded, is ended too, as a supplementary observation only.
 		let scope: EndoProtectedTrialV0["agent"]["scope"] = null;
-		if (existsSync(join(attemptDir, "agent-scope.json"))) {
-			const unit = (readJson(join(attemptDir, "agent-scope.json")) as { unit: string }).unit;
-			scope = { unit, ended: await stopScopeV0(p.containment, unit) };
-		}
+		const ended = scopes.agent;
+		if (ended !== undefined) scope = { unit: ended.unit, established: false, ended: ended.ended };
 		if (existsSync(join(attemptDir, "agent-started.json")))
 			await endSandboxV0((readJson(join(attemptDir, "agent-started.json")) as { init: EndoProcessIdentityV0 }).init);
 		agent = {
@@ -516,6 +554,7 @@ async function runAttempt(
 		p.node,
 		protectedTargets(options.dir, evaluator, spec, condition.id),
 		p.containment,
+		scopeRecorder(attemptDir, "preflight"),
 	);
 	writeJsonAtomically(join(attemptDir, "preflight.json"), preflight);
 	if (preflight.status !== "established")
@@ -539,7 +578,7 @@ async function runAttempt(
 		outputBytes: spec.limits.outputBytes,
 		containment: p.containment,
 		// The scope's unit is recorded before anything is started: a resume can always end exactly that scope.
-		onScope: (unit) => writeJsonAtomically(join(attemptDir, "agent-scope.json"), { unit }),
+		...scopeRecorder(attemptDir, "agent"),
 		onStarted: (init) => {
 			writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
 			options.onAgentStarted?.(attemptDir);
@@ -560,7 +599,7 @@ async function runAttempt(
 		durationMs: ran.durationMs,
 		termination: ran.termination,
 		outputSha256: sha256HexV0(output),
-		scope: { unit: ran.scope.unit, ended: ran.scope.ended },
+		scope: { unit: ran.scope.unit, established: ran.scope.established, ended: ran.scope.ended },
 	};
 	writeJsonAtomically(join(attemptDir, "agent-ended.json"), agent);
 	if (agent.termination !== "confirmed" || !ran.started)
@@ -600,6 +639,7 @@ async function runAttempt(
 						evaluator,
 						join(attemptDir, "submission"),
 						join(attemptDir, ".evaluation"),
+						scopeRecorder(attemptDir, "evaluation"),
 					)
 				: NOT_RUN;
 	} catch {

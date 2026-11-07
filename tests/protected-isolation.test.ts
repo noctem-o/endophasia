@@ -391,7 +391,17 @@ setInterval(() => {}, 1000);
 		const unit = JSON.parse(
 			readFileSync(join(out, "trials", "merge-intervals", "sleeper", "0", "attempt-1", "agent-scope.json"), "utf8"),
 		).unit;
-		expect(r.agent.scope).toEqual({ unit, ended: "confirmed" });
+		// On resume nothing saw bubblewrap inside the scope, so `established` is false; the scope's end is still confirmed.
+		expect(r.agent.scope).toEqual({ unit, established: false, ended: "confirmed" });
+		// The launcher was recorded right after the launch, and every recorded scope of the attempt was ended.
+		expect(
+			JSON.parse(
+				readFileSync(
+					join(out, "trials", "merge-intervals", "sleeper", "0", "attempt-1", "agent-scope.json"),
+					"utf8",
+				),
+			).launcher,
+		).toMatchObject({ pid: expect.any(Number), startTime: expect.any(String) });
 		expect(scopeLoaded(unit)).toBe("not-found");
 		expect(r.invalidating).toEqual(["controller-interrupted", "agent-interrupted"]);
 		let report = reportProtectedExperimentV0(out);
@@ -800,7 +810,18 @@ describe.runIf(REAL)("real isolation: every sandbox runs in its own scope", () =
 		const recorded = JSON.parse(
 			readFileSync(join(out, "trials", "merge-intervals", "honest", "0", "attempt-1", "agent-scope.json"), "utf8"),
 		).unit;
-		expect(r.agent.scope).toEqual({ unit: recorded, ended: "confirmed" });
+		expect(r.agent.scope).toEqual({ unit: recorded, established: true, ended: "confirmed" });
+		// The preflight and evaluation sandboxes' scopes are recorded too, and gone.
+		for (const name of ["preflight", "evaluation"]) {
+			const rec = JSON.parse(
+				readFileSync(
+					join(out, "trials", "merge-intervals", "honest", "0", "attempt-1", `${name}-scope.json`),
+					"utf8",
+				),
+			);
+			expect(rec.unit, name).toMatch(/^endo-sandbox-[0-9a-f]{24}$/);
+			expect(scopeLoaded(rec.unit), name).toBe("not-found");
+		}
 		expect(r.agent.termination).toBe("confirmed");
 		expect(r.isolation.containment).toMatchObject({ mechanism: "systemd-user-scope", tasksMax: 512 });
 		expect(scopeLoaded(recorded)).toBe("not-found");
@@ -849,6 +870,35 @@ describe.runIf(REAL)("real isolation: every sandbox runs in its own scope", () =
 			await stopScopeV0(containment, unit);
 		}
 	}, 30_000);
+
+	it("ends a process that ignores SIGTERM promptly, on stop and at RuntimeMaxSec (SIGKILL, not a 90-second grace)", async () => {
+		for (const how of ["stop", "deadline"] as const) {
+			const unit = newScopeUnitV0();
+			const t0 = Date.now();
+			const child = spawn(
+				containment.systemdRun,
+				scopeArgsV0(containment, unit, how === "deadline" ? 2 : 60, [
+					"/usr/bin/sh",
+					"-c",
+					"trap '' TERM; sleep 60",
+				]),
+				{ env: containment.env, stdio: "ignore" },
+			);
+			const closed = new Promise<void>((r) => child.on("close", () => r()));
+			try {
+				if (how === "stop") {
+					await new Promise((r) => setTimeout(r, 500));
+					expect(await stopScopeV0(containment, unit)).toBe("confirmed");
+				}
+				await closed;
+				expect(Date.now() - t0, how).toBeLessThan(12_000);
+				expect(scopeLoaded(unit), how).toBe("not-found");
+			} finally {
+				child.kill("SIGKILL");
+				await stopScopeV0(containment, unit);
+			}
+		}
+	}, 40_000);
 
 	it("bounds how many tasks a sandbox can start (TasksMax), against the same sandbox under the default bound", async () => {
 		const runtime = resolveRuntimeV0(["/usr/bin/node"]);

@@ -91,7 +91,7 @@ function passedRecord(): Omit<EndoProtectedTrialV0, "recordSha256"> {
 			durationMs: 10,
 			termination: "confirmed",
 			outputSha256: H("5"),
-			scope: { unit: `endo-sandbox-${"a".repeat(24)}`, ended: "confirmed" },
+			scope: { unit: `endo-sandbox-${"a".repeat(24)}`, established: true, ended: "confirmed" },
 		},
 		submission: { status: "collected", files, sha256: endoSubmissionDigestV0(files), refusals: [] },
 		evaluation: {
@@ -199,7 +199,7 @@ describe("the protected-trial record and its independent reader", () => {
 			[
 				"a confirmed termination whose scope was not confirmed ended",
 				(r) => {
-					r.agent.scope = { unit: `endo-sandbox-${"a".repeat(24)}`, ended: "unconfirmed" };
+					r.agent.scope = { unit: `endo-sandbox-${"a".repeat(24)}`, established: true, ended: "unconfirmed" };
 				},
 				/scope confirmed ended/,
 			],
@@ -274,7 +274,7 @@ describe("the protected-trial record and its independent reader", () => {
 			durationMs: null,
 			termination: "confirmed",
 			outputSha256: null,
-			scope: { unit: `endo-sandbox-${"b".repeat(24)}`, ended: "confirmed" },
+			scope: { unit: `endo-sandbox-${"b".repeat(24)}`, established: false, ended: "confirmed" },
 		};
 		r.submission = { status: "not-collected", files: [], sha256: null, refusals: [] };
 		r.evaluation = { ...r.evaluation, status: "not-run", cases: null, outputSha256: null };

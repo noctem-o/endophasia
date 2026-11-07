@@ -18,6 +18,11 @@ export const ENDO_SYSTEMD_RUN_V0 = "/usr/bin/systemd-run";
 export const ENDO_SYSTEMCTL_V0 = "/usr/bin/systemctl";
 /** The most processes and threads one sandbox's scope may hold. */
 export const ENDO_SANDBOX_TASKS_MAX_V0 = 512;
+/**
+ * Scopes end with SIGKILL, not systemd's default SIGTERM and a 90-second grace: a sandbox gets no chance to linger. TimeoutStopSec bounds
+ * how long the manager waits for the kill to take before it gives up on the unit (and the controller then records `unconfirmed`).
+ */
+export const ENDO_SCOPE_STOP_TIMEOUT_SEC_V0 = 5;
 
 export interface EndoContainmentV0 {
 	mechanism: "systemd-user-scope";
@@ -99,6 +104,10 @@ export async function detectContainmentV0(
 			"RuntimeMaxSec=30",
 			"-p",
 			"TasksMax=8",
+			"-p",
+			"KillSignal=SIGKILL",
+			"-p",
+			`TimeoutStopSec=${ENDO_SCOPE_STOP_TIMEOUT_SEC_V0}s`,
 			"--",
 			"/usr/bin/sleep",
 			"20",
@@ -109,7 +118,14 @@ export async function detectContainmentV0(
 	try {
 		let props: Record<string, string> = {};
 		for (let i = 0; i < 100; i++) {
-			props = show(c, unit, ["ActiveState", "RuntimeMaxUSec", "TasksMax", "ControlGroup"]);
+			props = show(c, unit, [
+				"ActiveState",
+				"RuntimeMaxUSec",
+				"TasksMax",
+				"ControlGroup",
+				"KillSignal",
+				"TimeoutStopUSec",
+			]);
 			if (props.ActiveState === "active") break;
 			await new Promise((r) => setTimeout(r, 30));
 		}
@@ -122,6 +138,8 @@ export async function detectContainmentV0(
 		if (
 			props.RuntimeMaxUSec !== "30s" ||
 			props.TasksMax !== "8" ||
+			props.KillSignal !== "9" ||
+			props.TimeoutStopUSec !== `${ENDO_SCOPE_STOP_TIMEOUT_SEC_V0}s` ||
 			!(props.ControlGroup ?? "").endsWith(`/${unit}.scope`)
 		)
 			return {
@@ -172,6 +190,10 @@ export function scopeArgsV0(
 		`RuntimeMaxSec=${Math.max(1, Math.ceil(runtimeMaxSec))}`,
 		"-p",
 		`TasksMax=${c.tasksMax}`,
+		"-p",
+		"KillSignal=SIGKILL",
+		"-p",
+		`TimeoutStopSec=${ENDO_SCOPE_STOP_TIMEOUT_SEC_V0}s`,
 		"--",
 		...command,
 	];
@@ -187,8 +209,10 @@ export function processInScopeV0(pid: number, unit: string): boolean {
 }
 
 /**
- * Stop a scope through the user manager and confirm it is gone: `confirmed` when the manager no longer has the unit loaded or reports it
- * inactive (every process of its cgroup ended), `unconfirmed` otherwise. Stopping a scope that already ended is harmless.
+ * Stop a scope through the user manager and confirm that it holds no process: `confirmed` only when the manager no longer has the unit
+ * running (not-found, inactive or failed) AND the scope's cgroup, read-only, has no process left (`cgroup.events` reports `populated 0`,
+ * or the cgroup no longer exists). A unit the manager gave up on with processes still in it (it can enter `failed` "still around after
+ * SIGKILL") is `unconfirmed`. Nothing is written to the cgroup; stopping a scope that already ended is harmless.
  */
 export async function stopScopeV0(
 	c: Pick<EndoContainmentV0, "systemctl" | "env">,
@@ -196,12 +220,26 @@ export async function stopScopeV0(
 	waitMs = 15_000,
 ): Promise<"confirmed" | "unconfirmed"> {
 	if (!unitPattern.test(unit)) return "unconfirmed";
+	// The cgroup, while the unit is known (it is the unit's own; the name is the controller's, never the sandbox's).
+	const known = show(c, unit, ["ControlGroup"]).ControlGroup ?? "";
 	spawnSync(c.systemctl, ["--user", "stop", `${unit}.scope`], { env: c.env, stdio: "ignore", timeout: waitMs });
 	const until = Date.now() + waitMs;
 	for (;;) {
-		const p = show(c, unit, ["LoadState", "ActiveState"]);
-		if (p.LoadState === "not-found" || p.ActiveState === "inactive" || p.ActiveState === "failed") return "confirmed";
+		const p = show(c, unit, ["LoadState", "ActiveState", "ControlGroup"]);
+		const stopped = p.LoadState === "not-found" || p.ActiveState === "inactive" || p.ActiveState === "failed";
+		if (stopped && cgroupEmpty(p.ControlGroup || known, unit)) return "confirmed";
 		if (Date.now() > until) return "unconfirmed";
 		await new Promise((r) => setTimeout(r, 50));
+	}
+}
+
+/** Read-only: whether a scope's cgroup holds no process. A cgroup that no longer exists holds none. */
+function cgroupEmpty(group: string, unit: string): boolean {
+	if (group === "") return true;
+	if (!group.endsWith(`/${unit}.scope`) || group.includes("..")) return false;
+	try {
+		return /^populated 0$/m.test(readFileSync(`/sys/fs/cgroup${group}/cgroup.events`, "utf8"));
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "ENOENT";
 	}
 }

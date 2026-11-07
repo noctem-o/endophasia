@@ -109,16 +109,24 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   -p TasksMax=512 -- bwrap …`.
   - *Established before bubblewrap runs:* `systemd-run --scope` registers the scope with the user manager, with itself in it, and only
     then execs bubblewrap. The controller also checks, from `/proc/<pid>/cgroup`, that bubblewrap is in the named scope.
-  - *Recorded durably:* the controller chooses the unit name and writes it to the attempt directory (`agent-scope.json`) before anything
-    is started.
-  - *Ended through the user manager:* when bubblewrap exits (or is killed on timeout, with its process group), the controller stops the
-    scope with `systemctl --user stop`. Termination is **confirmed only when the user manager reports the scope gone**: every process the
-    sandbox started, whatever its pid, process group or session, has ended. Submissions are collected only after that.
-  - *Bounded without the controller:* `RuntimeMaxSec` (the timeout plus 30 seconds) makes the user manager end the scope even if no
-    controller remains. `TasksMax` bounds the processes and threads a sandbox can hold (a fork bomb).
-  - *Resume:* a resume stops exactly the recorded scope, never a process found by number.
-  - *Supplementary only:* the sandbox's init is still identified by pid and start time and ended, and the record keeps that observation,
-    but it is not the termination guarantee.
+  - *Recorded durably:* for each of an attempt's sandboxes (the preflight, the agent, the evaluation), the controller chooses the unit
+    name and writes it to the attempt directory (`<sandbox>-scope.json`) before anything is started. Right after the launch it adds the
+    launcher's identity (pid and start time).
+  - *Ended through the user manager:* when bubblewrap exits (or is killed on timeout, with its process group, while it still exists),
+    the controller stops the scope with `systemctl --user stop`. Scopes end with `KillSignal=SIGKILL` and `TimeoutStopSec=5s`, not
+    systemd's default of SIGTERM with a 90-second grace. Termination is **confirmed only when the user manager no longer runs the unit
+    and its cgroup, read without writing, holds no process** (`cgroup.events`: `populated 0`, or the cgroup gone). A unit the manager
+    gave up on with processes still inside is `unconfirmed`. Whatever their pid, process group or session, no process the sandbox
+    started can still run. Submissions are collected only after that.
+  - *Bounded without the controller:* `RuntimeMaxSec` (the timeout plus 30 seconds) makes the user manager kill the scope even if no
+    controller remains. An orphaned sandbox lives at most that long, plus the few seconds the kill takes (`TimeoutStopSec=5s`), unless a
+    process cannot be killed at all (uninterruptible I/O). `TasksMax` bounds the processes and threads a sandbox can hold (a fork bomb).
+  - *Resume:* for every recorded scope of the attempt, a resume ends the recorded launcher (exactly that pid and start time: a launcher
+    that outlived the controller may not have registered its scope yet), then stops the scope and checks its cgroup. It never acts on a
+    process found by number. The agent's record says whether bubblewrap was seen inside its scope (`established`; false on resume, where
+    nothing observed it).
+  - *Supplementary only:* the sandbox's init is still identified by pid and start time (kept in `agent-started.json`) and ended, but it
+    is not the termination guarantee.
   - *Refusal:* where the systemd tools, a user manager (`XDG_RUNTIME_DIR`) or the scope properties are unavailable, protected execution is
     refused. Detection starts a real probe scope, reads back its `RuntimeMaxSec`, `TasksMax` and cgroup, and stops it.
   - *Never written:* no cgroup file is written directly; the lifecycle goes through the user manager.
@@ -354,8 +362,10 @@ Only the refusal and logic tests run there. They are run on a host that supports
 - The stranded-process reproduction (§2) has to be run in a disposable environment before containment of the launch window is claimed.
 - `TasksMax` is fixed at 512, and memory and CPU are not limited. Adding `MemoryMax` and `CPUQuota` to the scope is a property change, not
   a new mechanism.
-- The controller's own death is covered by the scope's `RuntimeMaxSec`. Its own deadline is the agent's timeout plus 30 seconds: until
-  then, an orphaned sandbox can run unsupervised, but no longer.
+- The controller's own death is covered by the scope's `RuntimeMaxSec`: an orphaned sandbox can run unsupervised until the agent's
+  timeout plus 30 seconds, then is killed (within `TimeoutStopSec=5s`), unless a process is stuck in uninterruptible I/O.
+- The scope is established and checked from the status report: a command that ends before bubblewrap reports may not be seen in its
+  scope, and that attempt is then `unconfirmed` (attrition, never a confirmation).
 
 ## 10. EVAL-ISO-002: what model-connected studies need
 
@@ -373,7 +383,7 @@ Only the refusal and logic tests run there. They are run on a host that supports
 
 | Dimension | Status | Evidence |
 | :-- | :-- | :-- |
-| Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap, user namespaces and a systemd user manager are available) |
-| Process lifetime | **READY** for what was verified on this host: each sandbox in its own scope, established before bubblewrap runs, recorded, ended through the user manager and confirmed, bounded by `RuntimeMaxSec` and `TasksMax`, resumed by scope. **NOT DEMONSTRATED** for a process stranded in bubblewrap's launch window (#633): its reproduction exists and runs only in a disposable environment (§2) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
+| Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap, user namespaces and a systemd user manager are available) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and independent reviewers' attacks, on this host; refusal elsewhere |
+| Process lifetime | **READY with limits**: verified on this host, every sandbox in its own scope, established before bubblewrap runs, recorded with its launcher, killed with SIGKILL through the user manager and confirmed by an empty cgroup, bounded by `RuntimeMaxSec` and `TasksMax`, and ended on resume. **NOT DEMONSTRATED** for a process stranded in bubblewrap's launch window (#633): its reproduction exists and runs only in a disposable environment (§2). Not protected: a process in uninterruptible I/O; the user's own account stopping the user manager | non-destructive scope tests on this host (properties, deadline, SIGTERM-ignoring processes, TasksMax, setsid children, resume), each sandbox's scope confirmed ended in every real run |
 | Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
 | Protected model-connected studies | **NOT READY** | there is no network inside, by design; the relay and Pi integration are EVAL-ISO-002 |

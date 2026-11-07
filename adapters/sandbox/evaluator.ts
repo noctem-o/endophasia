@@ -137,6 +137,7 @@ export async function evaluateV0(
 	evaluator: EndoLoadedEvaluatorV0,
 	submissionDir: string,
 	jobDir: string,
+	record: Pick<Parameters<typeof runSandboxV0>[3], "onScope" | "onLauncher"> = {},
 ): Promise<EndoEvaluationV0> {
 	const d = evaluator.definition;
 	mkdirSync(jobDir, { mode: 0o700 });
@@ -153,6 +154,7 @@ export async function evaluateV0(
 				timeoutMs: ctx.limits.evaluationTimeoutMs,
 				outputBytes: ctx.limits.outputBytes,
 				containment: ctx.containment,
+				...record,
 			},
 		);
 	} catch {

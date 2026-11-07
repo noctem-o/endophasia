@@ -109,7 +109,14 @@ export async function preflightV0(
 	node: string,
 	targets: EndoPreflightTargetsV0,
 	containment: EndoContainmentV0,
+	record: Pick<Parameters<typeof runSandboxV0>[3], "onScope" | "onLauncher"> = {},
 ): Promise<EndoPreflightV0> {
+	let controllerPidNamespace: string;
+	try {
+		controllerPidNamespace = readlinkSync("/proc/self/ns/pid");
+	} catch {
+		return { status: "unavailable", probes: [], reason: "the controller's own PID namespace could not be read" };
+	}
 	const scratch = mkdtempSync(join(tmpdir(), "endo-preflight-"));
 	const canary = join(scratch, `canary-${randomBytes(8).toString("hex")}`);
 	writeFileSync(canary, randomBytes(16).toString("hex"), { mode: 0o600 });
@@ -131,7 +138,7 @@ export async function preflightV0(
 			writable: targets.writable,
 			environment: targets.environment,
 			sockets: targets.sockets,
-			controllerPidNamespace: readlinkSync("/proc/self/ns/pid"),
+			controllerPidNamespace,
 			loopbackPort: typeof address === "object" && address !== null ? address.port : 0,
 			abstractName,
 			pathSocket,
@@ -146,6 +153,7 @@ export async function preflightV0(
 				timeoutMs: 30_000,
 				outputBytes: 64 * 1024,
 				containment,
+				...record,
 			},
 		);
 		if (!run.started)

@@ -206,10 +206,11 @@ export interface EndoProtectedTrialV0 {
 		termination: "confirmed" | "unconfirmed" | "not-applicable";
 		outputSha256: string | null;
 		/**
-		 * The agent's systemd user scope: its unit, and whether the user manager confirmed it ended (every process it held gone). Null
+		 * The agent's systemd user scope: its unit, whether bubblewrap was seen running inside it (false when not observed, as on resume),
+		 * and whether the user manager confirmed it ended and its cgroup holds no process. Null
 		 * when the agent never ran. `termination: confirmed` requires `ended: confirmed`.
 		 */
-		scope: { unit: string; ended: "confirmed" | "unconfirmed" } | null;
+		scope: { unit: string; established: boolean; ended: "confirmed" | "unconfirmed" } | null;
 	};
 	submission: {
 		status: "collected" | "refused" | "missing" | "not-collected";
@@ -579,9 +580,10 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 		termination: oneOf(a.termination, ["confirmed", "unconfirmed", "not-applicable"] as const, "agent.termination"),
 		outputSha256: nullable(a.outputSha256, (x) => match(x, HEX64, "agent.outputSha256")),
 		scope: nullable(a.scope, (x) => {
-			const sc = obj(x, ["unit", "ended"], "agent.scope");
+			const sc = obj(x, ["unit", "established", "ended"], "agent.scope");
 			return {
 				unit: match(sc.unit, /^endo-sandbox-[0-9a-f]{24}$/, "agent.scope.unit"),
+				established: bool(sc.established, "agent.scope.established"),
 				ended: oneOf(sc.ended, ["confirmed", "unconfirmed"] as const, "agent.scope.ended"),
 			};
 		}),

@@ -5,7 +5,7 @@
 // Each restriction has a negative probe: a test that removes exactly that restriction (unsafeForTests, unreachable from a spec or the CLI)
 // and shows the preflight then fails and the agent never runs.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
 	chmodSync,
@@ -34,6 +34,13 @@ import {
 	resolveRuntimeV0,
 	runSandboxV0,
 } from "../adapters/sandbox/bubblewrap.ts";
+import {
+	detectContainmentV0,
+	type EndoContainmentV0,
+	newScopeUnitV0,
+	scopeArgsV0,
+	stopScopeV0,
+} from "../adapters/sandbox/containment.ts";
 import { preflightV0 } from "../adapters/sandbox/preflight.ts";
 import { reportProtectedExperimentV0, runProtectedExperimentV0 } from "../cli/experiment-protected.ts";
 import type { EndoProtectedSpecV0, EndoProtectedTrialV0 } from "../protocol/protected-experiment.ts";
@@ -52,9 +59,14 @@ const fresh = (name: string) => {
 	return d;
 };
 const detected = detectBubblewrapV0();
-const REAL = detected.ok;
+// Real isolation needs both the sandbox and the process containment (a systemd user manager): either missing is a refusal.
+const contained = detected.ok ? await detectContainmentV0() : null;
+const REAL = detected.ok && contained?.ok === true;
+const containment = contained?.ok === true ? contained.containment : (null as unknown as EndoContainmentV0);
 if (!REAL)
-	process.stderr.write(`protected-isolation: real isolation tests skipped: ${detected.reason}: ${detected.detail}\n`);
+	process.stderr.write(
+		`protected-isolation: real isolation tests skipped: ${detected.ok ? `containment: ${(contained as { detail: string }).detail}` : `${detected.reason}: ${detected.detail}`}\n`,
+	);
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
 /** The correct solution, as source, for agents that also want to pass. */
@@ -375,6 +387,12 @@ setInterval(() => {}, 1000);
 		const r = recordOf(out, "sleeper");
 		expect(r.controller.finalized).toBe("on-resume");
 		expect(r.agent).toMatchObject({ status: "interrupted", termination: "confirmed" });
+		// The resume stopped exactly the scope recorded before the agent started.
+		const unit = JSON.parse(
+			readFileSync(join(out, "trials", "merge-intervals", "sleeper", "0", "attempt-1", "agent-scope.json"), "utf8"),
+		).unit;
+		expect(r.agent.scope).toEqual({ unit, ended: "confirmed" });
+		expect(scopeLoaded(unit)).toBe("not-found");
 		expect(r.invalidating).toEqual(["controller-interrupted", "agent-interrupted"]);
 		let report = reportProtectedExperimentV0(out);
 		expect(report.cells[0]).toMatchObject({
@@ -450,7 +468,13 @@ describe.runIf(REAL)("real isolation: each probe detects the removal of its rest
 	};
 	const failed = async (unsafe: Parameters<typeof profileWith>[1]) => {
 		if (!detected.ok) throw new Error("unreachable");
-		const p = await preflightV0(detected.bwrap, profileWith(fresh("work"), unsafe), "/usr/bin/node", targets);
+		const p = await preflightV0(
+			detected.bwrap,
+			profileWith(fresh("work"), unsafe),
+			"/usr/bin/node",
+			targets,
+			containment,
+		);
 		return { status: p.status, failing: p.probes.filter((x) => !x.passed).map((x) => x.id) };
 	};
 	it("establishes the unweakened profile", async () => {
@@ -758,6 +782,127 @@ describe.runIf(REAL)("real isolation: review regressions", () => {
 	});
 });
 
+// ---- process containment (systemd user scopes; non-destructive: only this test's own processes, in uniquely named scopes) ----------
+
+const scopeLoaded = (unit: string): string =>
+	spawnSync("/usr/bin/systemctl", ["--user", "show", `${unit}.scope`, "-p", "LoadState", "--value"], {
+		env: containment?.env ?? {},
+		encoding: "utf8",
+	}).stdout.trim();
+
+describe.runIf(REAL)("real isolation: every sandbox runs in its own scope", () => {
+	const solve = `import { writeFileSync } from "node:fs"; writeFileSync("/work/src/interval.mjs", ${JSON.stringify(SOLUTION)});`;
+
+	it("records the agent's scope before starting it, and confirms through the user manager that it ended", async () => {
+		const out = fresh("run");
+		await runProtectedExperimentV0({ spec: specWith({ honest: solve }), dir: out });
+		const r = recordOf(out, "honest");
+		const recorded = JSON.parse(
+			readFileSync(join(out, "trials", "merge-intervals", "honest", "0", "attempt-1", "agent-scope.json"), "utf8"),
+		).unit;
+		expect(r.agent.scope).toEqual({ unit: recorded, ended: "confirmed" });
+		expect(r.agent.termination).toBe("confirmed");
+		expect(r.isolation.containment).toMatchObject({ mechanism: "systemd-user-scope", tasksMax: 512 });
+		expect(scopeLoaded(recorded)).toBe("not-found");
+	});
+
+	it("runs bubblewrap inside the scope it named, from its first instruction", async () => {
+		const runtime = resolveRuntimeV0(["/usr/bin/node"]);
+		if (!runtime.ok || !detected.ok) throw new Error("unreachable");
+		const profile = buildSandboxProfileV0({
+			runtime: runtime.files,
+			mounts: [],
+			env: { PATH: "/usr/bin" },
+			cwd: "/tmp",
+			tmpfsBytes: 1 << 20,
+		});
+		let named = "";
+		const r = await runSandboxV0(detected.bwrap, profile, ["/usr/bin/node", "-e", "0"], {
+			timeoutMs: 10_000,
+			outputBytes: 4096,
+			containment,
+			onScope: (unit) => {
+				named = unit;
+			},
+		});
+		expect(r.scope).toEqual({ unit: named, established: true, ended: "confirmed" });
+		expect(r.termination).toBe("confirmed");
+		expect(scopeLoaded(named)).toBe("not-found");
+	});
+
+	it("is ended by the user manager at its RuntimeMaxSec, whatever the controller does", async () => {
+		const unit = newScopeUnitV0();
+		const t0 = Date.now();
+		const child = spawn(containment.systemdRun, scopeArgsV0(containment, unit, 2, ["/usr/bin/sleep", "60"]), {
+			env: containment.env,
+			stdio: "ignore",
+		});
+		try {
+			const code = await new Promise<number | null>((r) => child.on("close", (c) => r(c)));
+			const elapsed = Date.now() - t0;
+			expect(code).not.toBe(0);
+			expect(elapsed).toBeGreaterThanOrEqual(1500);
+			expect(elapsed).toBeLessThan(15_000);
+			expect(await stopScopeV0(containment, unit)).toBe("confirmed");
+		} finally {
+			child.kill("SIGKILL");
+			await stopScopeV0(containment, unit);
+		}
+	}, 30_000);
+
+	it("bounds how many tasks a sandbox can start (TasksMax), against the same sandbox under the default bound", async () => {
+		const runtime = resolveRuntimeV0(["/usr/bin/node"]);
+		if (!runtime.ok || !detected.ok) throw new Error("unreachable");
+		const profile = buildSandboxProfileV0({
+			runtime: runtime.files,
+			mounts: [],
+			env: { PATH: "/usr/bin" },
+			cwd: "/tmp",
+			tmpfsBytes: 1 << 20,
+		});
+		// Each node child needs several threads once it runs; TasksMax counts threads. What is compared is how many children are still
+		// alive after a moment: all of them under the default bound, fewer under a tight one (fork or thread creation refused).
+		const script = `const cp = require("child_process"); const kids = []; for (let i = 0; i < 8; i++) { try { const c = cp.spawn("/usr/bin/node", ["-e", "setTimeout(() => {}, 3000)"], { stdio: "ignore" }); c.on("error", () => {}); kids.push(c); } catch {} } setTimeout(() => { const ok = kids.filter((c) => c.pid && c.exitCode === null && c.signalCode === null).length; console.log(JSON.stringify({ ok, refused: 8 - ok })); process.exit(0); }, 1500);`;
+		const count = async (c: EndoContainmentV0) => {
+			const r = await runSandboxV0(detected.bwrap, profile, ["/usr/bin/node", "-e", script], {
+				timeoutMs: 20_000,
+				outputBytes: 4096,
+				containment: c,
+			});
+			expect(r.termination).toBe("confirmed");
+			const line = r.stdout.toString("utf8").trim().split("\n").pop() ?? "";
+			return line.startsWith("{")
+				? (JSON.parse(line) as { ok: number; refused: number })
+				: { ok: -1, refused: -1, stderr: r.stderr.toString("utf8").slice(0, 200) };
+		};
+		const free = await count(containment);
+		expect(free).toEqual({ ok: 8, refused: 0 });
+		const bounded = await count({ ...containment, tasksMax: 20 });
+		expect(bounded.ok).toBeGreaterThanOrEqual(0);
+		expect(bounded.ok).toBeLessThan(8);
+	}, 60_000);
+
+	it("refuses protected execution when the user manager or its tools are unavailable, and runs nothing", async () => {
+		const out = fresh("run");
+		const marker = join(fresh("marker"), "RAN");
+		const spec = specWith({ marker: `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(marker)}, "1");` });
+		await expect(
+			runProtectedExperimentV0({ spec, dir: out, containmentTools: { systemdRun: "/nonexistent/systemd-run" } }),
+		).rejects.toThrow(/process containment unavailable/);
+		const saved = process.env.XDG_RUNTIME_DIR;
+		delete process.env.XDG_RUNTIME_DIR;
+		try {
+			await expect(runProtectedExperimentV0({ spec, dir: out })).rejects.toThrow(
+				/process containment unavailable: no user manager/,
+			);
+		} finally {
+			process.env.XDG_RUNTIME_DIR = saved;
+		}
+		expect(existsSync(marker)).toBe(false);
+		expect(existsSync(join(out, "protected-run.json"))).toBe(false);
+	});
+});
+
 // ---- refusal, everywhere -------------------------------------------------------------------------------------------------------------------
 
 describe("refusal instead of an unprotected fallback", () => {
@@ -808,6 +953,7 @@ describe("refusal instead of an unprotected fallback", () => {
 				{
 					timeoutMs: 10_000,
 					outputBytes: 4096,
+					containment,
 				},
 			);
 			expect(JSON.parse(r.stdout.toString("utf8"))).toEqual({ PATH: "/usr/bin", PWD: "/tmp" });

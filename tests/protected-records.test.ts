@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { preflightPassesV0 } from "../adapters/sandbox/preflight.ts";
 import { endoSubmissionDigestV0, exportSubmissionV0 } from "../adapters/sandbox/submission.ts";
 import { planEndoExperimentV0 } from "../cli/experiment.ts";
 import {
@@ -38,6 +39,7 @@ import {
 	readEndoProtectedTrialFileV0,
 	sealEndoProtectedTrialV0,
 } from "../runtime/contracts/protected-experiment.ts";
+import { writeAllSyncV0 } from "../runtime/contracts/write-all.ts";
 
 const base = realpathSync(mkdtempSync(join(tmpdir(), "endo-protected-records-")));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
@@ -62,6 +64,7 @@ function passedRecord(): Omit<EndoProtectedTrialV0, "recordSha256"> {
 			mechanism: "bubblewrap",
 			version: "0.13.1",
 			executableSha256: H("2"),
+			containment: { mechanism: "systemd-user-scope", version: "262", systemdRunSha256: H("9"), tasksMax: 512 },
 			profileSha256: H("3"),
 			requested: {
 				namespaces: ["cgroup", "ipc", "mnt", "net", "pid", "user", "uts"],
@@ -88,6 +91,7 @@ function passedRecord(): Omit<EndoProtectedTrialV0, "recordSha256"> {
 			durationMs: 10,
 			termination: "confirmed",
 			outputSha256: H("5"),
+			scope: { unit: `endo-sandbox-${"a".repeat(24)}`, ended: "confirmed" },
 		},
 		submission: { status: "collected", files, sha256: endoSubmissionDigestV0(files), refusals: [] },
 		evaluation: {
@@ -193,6 +197,20 @@ describe("the protected-trial record and its independent reader", () => {
 				/every one passed/,
 			],
 			[
+				"a confirmed termination whose scope was not confirmed ended",
+				(r) => {
+					r.agent.scope = { unit: `endo-sandbox-${"a".repeat(24)}`, ended: "unconfirmed" };
+				},
+				/scope confirmed ended/,
+			],
+			[
+				"a confirmed termination with no scope at all (a pid observation alone)",
+				(r) => {
+					r.agent.scope = null;
+				},
+				/scope confirmed ended/,
+			],
+			[
 				"a later attempt that names no earlier one",
 				(r) => {
 					r.trial.attempt = 2;
@@ -256,6 +274,7 @@ describe("the protected-trial record and its independent reader", () => {
 			durationMs: null,
 			termination: "confirmed",
 			outputSha256: null,
+			scope: { unit: `endo-sandbox-${"b".repeat(24)}`, ended: "confirmed" },
 		};
 		r.submission = { status: "not-collected", files: [], sha256: null, refusals: [] };
 		r.evaluation = { ...r.evaluation, status: "not-run", cases: null, outputSha256: null };
@@ -336,6 +355,51 @@ describe("the protected spec is closed", () => {
 			],
 		];
 		for (const [name, change] of variants) expect(readEndoProtectedSpecV0(change(spec())).ok, name).toBe(false);
+	});
+});
+
+describe("Codex review regressions", () => {
+	it("keeps a workspace file named __proto__ (or constructor) as a file", () => {
+		const raw = JSON.parse(
+			'{"schemaVersion":"endo.protected-experiment-spec.v0","id":"endo.experiment.t","description":"t","seed":1,"trials":1,' +
+				'"limits":{"agentTimeoutMs":1000,"evaluationTimeoutMs":1000,"outputBytes":4096,"tmpfsBytes":1048576,"maxFileBytes":10,"maxTotalBytes":10},' +
+				'"runtime":{"executables":["/usr/bin/node"]},' +
+				'"tasks":[{"id":"t","workspace":{"__proto__":"fixture","constructor":"other","a.mjs":""},"submission":["a.mjs"],"evaluator":{"file":"/x/e.json","sha256":"' +
+				"a".repeat(64) +
+				'"}}],' +
+				'"conditions":[{"id":"c","description":"c","agent":{"directory":"/x/agent","argv":["/usr/bin/node","/agent/a.mjs"]}}]}',
+		);
+		const read = readEndoProtectedSpecV0(raw);
+		expect(read.ok).toBe(true);
+		if (!read.ok) return;
+		const ws = read.value.tasks[0]!.workspace;
+		expect(Object.keys(ws).sort()).toEqual(["__proto__", "a.mjs", "constructor"]);
+		expect(Object.getOwnPropertyDescriptor(ws, "__proto__")?.value).toBe("fixture");
+		// And it is part of the digest the run records: removing it changes the canonical spec.
+		const without = JSON.parse(JSON.stringify(raw).replace('"__proto__":"fixture",', ""));
+		const other = readEndoProtectedSpecV0(without);
+		expect(other.ok && canonicalEndoJsonV0(other.value as never) !== canonicalEndoJsonV0(read.value as never)).toBe(
+			true,
+		);
+	});
+
+	it("writes every byte through short writes, and refuses a write that makes no progress", () => {
+		const out: number[] = [];
+		const short = (_fd: number, b: Uint8Array, offset: number, length: number) => {
+			const n = Math.min(3, length);
+			out.push(...b.subarray(offset, offset + n));
+			return n;
+		};
+		writeAllSyncV0(0, "a submission of some length", short);
+		expect(Buffer.from(out).toString("utf8")).toBe("a submission of some length");
+		expect(() => writeAllSyncV0(0, "x", () => 0)).toThrow(/no progress/);
+	});
+
+	it("judges the private /proc by PID namespace, not by comparing PID numbers across namespaces", () => {
+		// The sandbox has its own PID 1, which may equal the controller's number (a controller running as PID 1 in a container).
+		expect(preflightPassesV0("proc-private", "pids:2 pidns:own")).toBe(true);
+		expect(preflightPassesV0("proc-private", "pids:2 pidns:controller")).toBe(false);
+		expect(preflightPassesV0("proc-private", "pids:9 pidns:own")).toBe(false);
 	});
 });
 

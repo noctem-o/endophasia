@@ -101,7 +101,12 @@ export interface EndoProtectedRunV0 {
 	seedSource: "spec" | "drawn";
 	ordering: string;
 	plan: EndoProtectedPlanEntryV0[];
-	isolation: { mechanism: "bubblewrap"; version: string; executableSha256: string };
+	isolation: {
+		mechanism: "bubblewrap";
+		version: string;
+		executableSha256: string;
+		containment: EndoProtectedContainmentV0;
+	};
 	/** Per condition, the digest of its agent profile (logical: host paths replaced by their role, file contents by digest). */
 	profiles: { condition: string; sha256: string }[];
 	/** Per task, the evaluator's identity and its qualification before any trial ran. */
@@ -142,6 +147,14 @@ export const ENDO_PROTECTED_REFUSALS_V0 = [
 ] as const;
 export type EndoProtectedRefusalV0 = (typeof ENDO_PROTECTED_REFUSALS_V0)[number];
 
+export interface EndoProtectedContainmentV0 {
+	mechanism: "systemd-user-scope";
+	/** The systemd version of the tools. */
+	version: string;
+	systemdRunSha256: string;
+	tasksMax: number;
+}
+
 export interface EndoProtectedProbeV0 {
 	/** A closed probe id (adapters/sandbox/preflight.ts), what it attempted from inside the sandbox. */
 	id: string;
@@ -167,6 +180,8 @@ export interface EndoProtectedTrialV0 {
 		mechanism: "bubblewrap";
 		version: string;
 		executableSha256: string;
+		/** The process containment every sandbox ran in (adapters/sandbox/containment.ts). */
+		containment: EndoProtectedContainmentV0;
 		profileSha256: string;
 		requested: {
 			namespaces: string[];
@@ -190,6 +205,11 @@ export interface EndoProtectedTrialV0 {
 		durationMs: number | null;
 		termination: "confirmed" | "unconfirmed" | "not-applicable";
 		outputSha256: string | null;
+		/**
+		 * The agent's systemd user scope: its unit, and whether the user manager confirmed it ended (every process it held gone). Null
+		 * when the agent never ran. `termination: confirmed` requires `ended: confirmed`.
+		 */
+		scope: { unit: string; ended: "confirmed" | "unconfirmed" } | null;
 	};
 	submission: {
 		status: "collected" | "refused" | "missing" | "not-collected";
@@ -250,6 +270,16 @@ const list = (v: unknown, what: string, max = 10_000): unknown[] =>
 const nullable = <T>(v: unknown, read: (x: unknown) => T): T | null => (v === null ? null : read(v));
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
+function containmentOf(v: unknown, what: string): EndoProtectedContainmentV0 {
+	const o = obj(v, ["mechanism", "version", "systemdRunSha256", "tasksMax"], what);
+	return {
+		mechanism: oneOf(o.mechanism, ["systemd-user-scope"] as const, `${what}.mechanism`),
+		version: match(o.version, /^[0-9]{1,6}$/, `${what}.version`),
+		systemdRunSha256: match(o.systemdRunSha256, HEX64, `${what}.systemdRunSha256`),
+		tasksMax: count(o.tasksMax, `${what}.tasksMax`, 1, 1_000_000),
+	};
+}
+
 function limitsOf(v: unknown): EndoProtectedLimitsV0 {
 	const o = obj(
 		v,
@@ -286,11 +316,18 @@ function specOf(value: unknown): EndoProtectedSpecV0 {
 		const w = `tasks[${i}]`;
 		const x = obj(t, ["id", "workspace", "submission", "evaluator"], w);
 		if (!isPlainJsonObjectV0(x.workspace)) fail(`${w}.workspace is not an object`);
-		const workspace: Record<string, string> = {};
+		// A dictionary with no prototype, its entries defined as own properties: a file named `__proto__` (or `constructor`) is a file,
+		// never a prototype assignment that silently drops it.
+		const workspace: Record<string, string> = Object.create(null);
 		for (const [path, content] of Object.entries(x.workspace as Shape)) {
 			match(path, REL, `${w}.workspace path`);
 			if (typeof content !== "string") fail(`${w}.workspace content is not text`);
-			workspace[path] = content as string;
+			Object.defineProperty(workspace, path, {
+				value: content,
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 		const submission = list(x.submission, `${w}.submission`, 256).map((p, j) =>
 			match(p, REL, `${w}.submission[${j}]`),
@@ -402,7 +439,7 @@ function runOf(value: unknown): EndoProtectedRunV0 {
 			e.trial >= spec.trials
 		)
 			fail("plan names a cell the spec does not");
-	const iso = obj(o.isolation, ["mechanism", "version", "executableSha256"], "isolation");
+	const iso = obj(o.isolation, ["mechanism", "version", "executableSha256", "containment"], "isolation");
 	const profiles = list(o.profiles, "profiles", 64).map((p, i) => {
 		const x = obj(p, ["condition", "sha256"], `profiles[${i}]`);
 		return { condition: match(x.condition, SLUG, "condition"), sha256: match(x.sha256, HEX64, "sha256") };
@@ -440,6 +477,7 @@ function runOf(value: unknown): EndoProtectedRunV0 {
 			mechanism: oneOf(iso.mechanism, ["bubblewrap"] as const, "isolation.mechanism"),
 			version: text(iso.version, "isolation.version", 80),
 			executableSha256: match(iso.executableSha256, HEX64, "isolation.executableSha256"),
+			containment: containmentOf(iso.containment, "isolation.containment"),
 		},
 		profiles,
 		evaluators,
@@ -477,7 +515,7 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 	if (attempt > 1 && retryOf === null) fail("a later attempt must name the attempt it retries");
 	const iso = obj(
 		o.isolation,
-		["mechanism", "version", "executableSha256", "profileSha256", "requested"],
+		["mechanism", "version", "executableSha256", "containment", "profileSha256", "requested"],
 		"isolation",
 	);
 	const req = obj(
@@ -524,7 +562,11 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 	};
 	if (network.status === "established" && preflight.status !== "established")
 		fail("the network boundary cannot be established when the preflight was not");
-	const a = obj(o.agent, ["status", "exitCode", "signal", "durationMs", "termination", "outputSha256"], "agent");
+	const a = obj(
+		o.agent,
+		["status", "exitCode", "signal", "durationMs", "termination", "outputSha256", "scope"],
+		"agent",
+	);
 	const agent = {
 		status: oneOf(
 			a.status,
@@ -536,7 +578,18 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 		durationMs: nullable(a.durationMs, (x) => count(x, "agent.durationMs")),
 		termination: oneOf(a.termination, ["confirmed", "unconfirmed", "not-applicable"] as const, "agent.termination"),
 		outputSha256: nullable(a.outputSha256, (x) => match(x, HEX64, "agent.outputSha256")),
+		scope: nullable(a.scope, (x) => {
+			const sc = obj(x, ["unit", "ended"], "agent.scope");
+			return {
+				unit: match(sc.unit, /^endo-sandbox-[0-9a-f]{24}$/, "agent.scope.unit"),
+				ended: oneOf(sc.ended, ["confirmed", "unconfirmed"] as const, "agent.scope.ended"),
+			};
+		}),
 	};
+	// Termination is confirmed by the agent's scope having ended, never by a pid alone.
+	if (agent.termination === "confirmed" && agent.scope?.ended !== "confirmed")
+		fail("a confirmed termination needs the agent's scope confirmed ended");
+	if (agent.status === "not-run" && agent.scope !== null) fail("an agent that did not run has no scope");
 	// Never unprotected: an agent that ran (or was started) had an established boundary first.
 	if (agent.status !== "not-run" && preflight.status !== "established")
 		fail("an agent ran without an established boundary");
@@ -634,6 +687,7 @@ function trialOf(value: unknown): EndoProtectedTrialV0 {
 			mechanism: oneOf(iso.mechanism, ["bubblewrap"] as const, "isolation.mechanism"),
 			version: text(iso.version, "isolation.version", 80),
 			executableSha256: match(iso.executableSha256, HEX64, "isolation.executableSha256"),
+			containment: containmentOf(iso.containment, "isolation.containment"),
 			profileSha256: match(iso.profileSha256, HEX64, "isolation.profileSha256"),
 			requested: {
 				namespaces: list(req.namespaces, "namespaces", 16).map((n) => match(n, /^[a-z]{2,10}$/, "namespace")),

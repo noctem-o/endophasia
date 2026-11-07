@@ -488,10 +488,10 @@ describe("governed initial child execution", () => {
 				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
 				expect(result.status, JSON.stringify(result)).toBe("outcome-unknown");
 				if ("area" in result) {
-					const violations = readEndoStoreEventsV0(join(result.area, "evidence")).filter(
-						(event) => event.kind === "harness.output-limit-exceeded",
-					);
-					expect(violations).toHaveLength(1);
+					const events = readEndoStoreEventsV0(join(result.area, "evidence"));
+					const violations = events.filter((event) => event.kind === "harness.output-limit-exceeded");
+					// One CI run (2026-11-07) recorded no violation here, unreproduced locally: on failure, say what the run did instead.
+					expect(violations, JSON.stringify({ result, kinds: events.map((e) => e.kind) })).toHaveLength(1);
 					expect((violations[0]!.payload as { bytes: number }).bytes).toBeGreaterThan(2 * 1024 * 1024);
 					expect(
 						verifyInitialChildExecutionEvidenceV0(

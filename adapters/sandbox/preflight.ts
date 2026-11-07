@@ -7,12 +7,13 @@
 // (tests/protected-isolation.test.ts), so a probe that cannot detect its own restriction's absence is caught.
 
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EndoProtectedProbeV0 } from "../../protocol/protected-experiment.ts";
 import { type EndoBubblewrapV0, type EndoSandboxProfileV0, runSandboxV0 } from "./bubblewrap.ts";
+import type { EndoContainmentV0 } from "./containment.ts";
 
 /** Host paths the sandbox must not see, by role (their paths are not secret; their absence inside is what is checked). */
 export interface EndoPreflightTargetsV0 {
@@ -52,7 +53,7 @@ c.readOnlyMounts.forEach((p, i) => { out["fs-readonly-mount-" + i] = code(() => 
 out["fs-dev-readonly"] = code(() => fs.writeFileSync("/dev/.endo-probe", "x"));
 out["fs-workspace-writable"] = code(() => { const p = c.writable + "/" + c.probeName; fs.writeFileSync(p, "x", { flag: "wx" }); fs.unlinkSync(p); });
 out["fs-tmp-private"] = (() => { try { return "entries:" + fs.readdirSync("/tmp").length; } catch (e) { return String(e.code); } })();
-out["proc-private"] = (() => { try { const p = fs.readdirSync("/proc").filter((x) => /^[0-9]+$/.test(x)); return "pids:" + p.length + (p.includes(String(c.controllerPid)) ? " controller:visible" : " controller:absent"); } catch (e) { return String(e.code); } })();
+out["proc-private"] = (() => { try { const p = fs.readdirSync("/proc").filter((x) => /^[0-9]+$/.test(x)); return "pids:" + p.length + (fs.readlinkSync("/proc/self/ns/pid") === c.controllerPidNamespace ? " pidns:controller" : " pidns:own"); } catch (e) { return String(e.code); } })();
 out["env-minimal"] = (() => { const extra = Object.keys(process.env).filter((k) => !c.environment.includes(k)); return extra.length === 0 ? "ok" : "extra:" + extra.length; })();
 out["fds-inherited"] = (() => { let bad = 0; for (const f of fs.readdirSync("/proc/self/fd")) { if (Number(f) <= 2) continue; try { const l = fs.readlinkSync("/proc/self/fd/" + f); if (!/^(anon_inode:|pipe:)/.test(l)) bad++; } catch { } } return "unexpected:" + bad; })();
 out["net-interfaces"] = Object.keys(os.networkInterfaces()).filter((n) => n !== "lo").length === 0 ? "lo-only" : "other-interfaces";
@@ -68,7 +69,7 @@ process.stdout.write("ENDO-PREFLIGHT " + JSON.stringify(out) + "\n");
 const OBSERVED = /^[A-Za-z0-9_:.\- ]{1,80}$/;
 
 /** Whether one observation is what an enforced boundary gives. Unknown probes fail. */
-function passes(id: string, observed: string): boolean {
+export function preflightPassesV0(id: string, observed: string): boolean {
 	if (id.startsWith("fs-hidden-") || id.startsWith("socket-hidden-") || id === "fs-canary-read")
 		return observed === "ENOENT";
 	if (id.startsWith("fs-readonly-runtime-")) return observed === "EROFS" || observed === "EACCES";
@@ -77,7 +78,9 @@ function passes(id: string, observed: string): boolean {
 	if (id === "fs-workspace-writable") return observed === "ok";
 	if (id === "fs-tmp-private") return observed === "entries:0";
 	if (id === "proc-private") {
-		const m = /^pids:([0-9]+) controller:absent$/.exec(observed);
+		// PID numbers from two namespaces are not comparable (the sandbox has its own PID 1): what is checked is that the probe's PID
+		// namespace is not the controller's, and that the sandbox shows only its few processes.
+		const m = /^pids:([0-9]+) pidns:own$/.exec(observed);
 		return m !== null && Number(m[1]) <= 4;
 	}
 	if (id === "env-minimal") return observed === "ok";
@@ -105,6 +108,7 @@ export async function preflightV0(
 	profile: EndoSandboxProfileV0,
 	node: string,
 	targets: EndoPreflightTargetsV0,
+	containment: EndoContainmentV0,
 ): Promise<EndoPreflightV0> {
 	const scratch = mkdtempSync(join(tmpdir(), "endo-preflight-"));
 	const canary = join(scratch, `canary-${randomBytes(8).toString("hex")}`);
@@ -127,7 +131,7 @@ export async function preflightV0(
 			writable: targets.writable,
 			environment: targets.environment,
 			sockets: targets.sockets,
-			controllerPid: process.pid,
+			controllerPidNamespace: readlinkSync("/proc/self/ns/pid"),
 			loopbackPort: typeof address === "object" && address !== null ? address.port : 0,
 			abstractName,
 			pathSocket,
@@ -141,6 +145,7 @@ export async function preflightV0(
 			{
 				timeoutMs: 30_000,
 				outputBytes: 64 * 1024,
+				containment,
 			},
 		);
 		if (!run.started)
@@ -164,7 +169,7 @@ export async function preflightV0(
 		const probes: EndoProtectedProbeV0[] = Object.entries(observed as Record<string, unknown>)
 			.map(([id, value]) => {
 				const o = typeof value === "string" && OBSERVED.test(value) ? value : "unreadable";
-				return { id, passed: passes(id, o), observed: o };
+				return { id, passed: preflightPassesV0(id, o), observed: o };
 			})
 			.sort((a, b) => (a.id < b.id ? -1 : 1));
 		const expectedCount =

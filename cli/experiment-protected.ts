@@ -28,7 +28,6 @@ import {
 	rmSync,
 	unlinkSync,
 	writeFileSync,
-	writeSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -48,6 +47,7 @@ import {
 	resolveRuntimeV0,
 	runSandboxV0,
 } from "../adapters/sandbox/bubblewrap.ts";
+import { detectContainmentV0, type EndoContainmentV0, stopScopeV0 } from "../adapters/sandbox/containment.ts";
 import {
 	ENDO_EVALUATOR_DRIVER_SHA256_V0,
 	type EndoLoadedEvaluatorV0,
@@ -71,6 +71,7 @@ import {
 	readEndoProtectedTrialFileV0,
 	sealEndoProtectedTrialV0,
 } from "../runtime/contracts/protected-experiment.ts";
+import { writeAllSyncV0 } from "../runtime/contracts/write-all.ts";
 import { ENDO_EXPERIMENT_ORDERING_V0, planEndoExperimentV0 } from "./experiment.ts";
 
 export const ENDO_PROTECTED_RUNNER_V0 = "endo-protected-runner.1";
@@ -93,6 +94,8 @@ export interface EndoProtectedRunOptionsV0 {
 	maxAttempts?: number;
 	/** For tests: where to look for bubblewrap (default: the fixed system path). */
 	bwrapCandidates?: readonly string[];
+	/** For tests: which systemd tools to use (default: the fixed system paths). */
+	containmentTools?: { systemdRun?: string; systemctl?: string };
 	/** For tests only: weaken a condition's agent profile, to show the preflight refuses it. Never reachable from the CLI. */
 	unsafeForTests?: Record<string, EndoSandboxProfileInputV0["unsafeForTests"]>;
 	/** For tests: called with an attempt directory once the agent's sandbox has started. */
@@ -110,7 +113,7 @@ const writeJsonAtomically = (path: string, value: unknown) => {
 	const tmp = `${path}.${process.pid}.tmp`;
 	const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
 	try {
-		writeSync(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
+		writeAllSyncV0(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
 		closeSync(fd);
 		renameSync(tmp, path);
 	} catch (error) {
@@ -125,7 +128,7 @@ const writeJsonOnce = (path: string, value: unknown) => {
 	const tmp = `${path}.${process.pid}.tmp`;
 	const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
 	try {
-		writeSync(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
+		writeAllSyncV0(fd, canonicalEndoJsonV0(value as Record<string, unknown>));
 		closeSync(fd);
 		linkSync(tmp, path);
 	} finally {
@@ -137,6 +140,7 @@ const AGENT_ENV = { HOME: "/home/agent", PATH: "/usr/bin", TMPDIR: "/tmp" } as c
 
 interface Prepared {
 	bwrap: EndoBubblewrapV0;
+	containment: EndoContainmentV0;
 	runtime: EndoRuntimeFileV0[];
 	node: string;
 	evaluators: Map<string, EndoLoadedEvaluatorV0>;
@@ -230,9 +234,17 @@ function agentOverlap(agentDir: string, dir: string, evaluatorPaths: readonly st
 /** The research archive (research/DATA.md), resolved as research/data.ts does; production code does not import research. */
 const researchData = () => resolve(process.env.ENDO_RESEARCH_DATA ?? join(REPOSITORY, "..", "endophasia-research"));
 
-function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | undefined, dir: string): Prepared {
+async function prepare(
+	spec: EndoProtectedSpecV0,
+	candidates: readonly string[] | undefined,
+	dir: string,
+	containmentTools: { systemdRun?: string; systemctl?: string } | undefined,
+): Promise<Prepared> {
 	const detected = detectBubblewrapV0(candidates);
 	if (!detected.ok) throw new EndoProtectedRefusalV0(`isolation unavailable (${detected.reason}): ${detected.detail}`);
+	// Process containment is part of the boundary: without a user manager that can hold each sandbox in its own scope, nothing runs.
+	const contained = await detectContainmentV0(containmentTools);
+	if (!contained.ok) throw new EndoProtectedRefusalV0(`process containment unavailable: ${contained.detail}`);
 	const runtime = resolveRuntimeV0(spec.runtime.executables);
 	if (!runtime.ok) throw new EndoProtectedRefusalV0(`runtime refused (${runtime.reason}): ${runtime.detail}`);
 	const node = spec.runtime.executables.find((e) => e.endsWith("/node"));
@@ -268,7 +280,15 @@ function prepare(spec: EndoProtectedSpecV0, candidates: readonly string[] | unde
 			throw new EndoProtectedRefusalV0(`condition ${c.id}: ${(error as Error).message}`);
 		}
 	}
-	return { bwrap: detected.bwrap, runtime: runtime.files, node, evaluators, agents, agentCopies: new Map() };
+	return {
+		bwrap: detected.bwrap,
+		runtime: runtime.files,
+		node,
+		evaluators,
+		agents,
+		agentCopies: new Map(),
+		containment: contained.containment,
+	};
 }
 
 const attemptsOf = (trialDir: string): number[] =>
@@ -327,6 +347,7 @@ function recordBase(
 			mechanism: "bubblewrap" as const,
 			version: run.isolation.version,
 			executableSha256: run.isolation.executableSha256,
+			containment: { ...run.isolation.containment },
 			profileSha256: profile.sha256,
 			requested: {
 				namespaces: profile.logical.namespaces,
@@ -386,6 +407,14 @@ function finish(
 	return record;
 }
 
+/** What a run and its records name of the containment: the mechanism, the tools' version and digest, and the bound. */
+const containmentRecord = (c: EndoContainmentV0) => ({
+	mechanism: c.mechanism,
+	version: c.version,
+	systemdRunSha256: c.systemdRunSha256,
+	tasksMax: c.tasksMax,
+});
+
 const NOT_COLLECTED = { status: "not-collected" as const, files: [], sha256: null, refusals: [] };
 
 /** An attempt that may be retried: the controller was interrupted before the agent started. */
@@ -413,6 +442,7 @@ const NOT_RUN = { status: "not-run" as const, cases: null, reason: null, outputS
 
 /** An attempt the controller stopped during: written from what its directory shows, nothing assumed. */
 async function finalizeOnResume(
+	p: Prepared,
 	attemptDir: string,
 	base: ReturnType<typeof recordBase>,
 ): Promise<EndoProtectedTrialV0> {
@@ -430,25 +460,30 @@ async function finalizeOnResume(
 			durationMs: null,
 			termination: "not-applicable",
 			outputSha256: null,
+			scope: null,
 		};
 	else if (existsSync(join(attemptDir, "agent-ended.json")))
 		// The agent had ended, and the controller stopped later (collecting or evaluating): its facts are known, so they are kept.
 		agent = readJson(join(attemptDir, "agent-ended.json")) as EndoProtectedTrialV0["agent"];
 	else {
-		// The agent may have started. Its sandbox dies with the controller (it dies with its parent); its init, identified by pid and start
-		// time (never a process found by namespace number, which the kernel reuses), is ended for certain or the record says it was not.
-		let termination: "confirmed" | "unconfirmed" = "unconfirmed";
-		if (existsSync(join(attemptDir, "agent-started.json"))) {
-			const init = (readJson(join(attemptDir, "agent-started.json")) as { init: EndoProcessIdentityV0 }).init;
-			termination = await endSandboxV0(init);
+		// The agent may have started. Its scope was recorded before anything started: the user manager stops exactly that scope, which
+		// ends every process it holds (an orphaned launcher, a process stranded in bubblewrap's launch window, a detached descendant), and
+		// confirms it. The init's identity, when recorded, is ended too, as a supplementary observation only.
+		let scope: EndoProtectedTrialV0["agent"]["scope"] = null;
+		if (existsSync(join(attemptDir, "agent-scope.json"))) {
+			const unit = (readJson(join(attemptDir, "agent-scope.json")) as { unit: string }).unit;
+			scope = { unit, ended: await stopScopeV0(p.containment, unit) };
 		}
+		if (existsSync(join(attemptDir, "agent-started.json")))
+			await endSandboxV0((readJson(join(attemptDir, "agent-started.json")) as { init: EndoProcessIdentityV0 }).init);
 		agent = {
 			status: "interrupted",
 			exitCode: null,
 			signal: null,
 			durationMs: null,
-			termination,
+			termination: scope?.ended === "confirmed" ? "confirmed" : "unconfirmed",
 			outputSha256: null,
+			scope,
 		};
 	}
 	return finish(join(attemptDir, "record.json"), base, {
@@ -480,6 +515,7 @@ async function runAttempt(
 		profile,
 		p.node,
 		protectedTargets(options.dir, evaluator, spec, condition.id),
+		p.containment,
 	);
 	writeJsonAtomically(join(attemptDir, "preflight.json"), preflight);
 	if (preflight.status !== "established")
@@ -492,6 +528,7 @@ async function runAttempt(
 				durationMs: null,
 				termination: "not-applicable",
 				outputSha256: null,
+				scope: null,
 			},
 			submission: NOT_COLLECTED,
 			evaluation: NOT_RUN,
@@ -500,6 +537,9 @@ async function runAttempt(
 	const ran = await runSandboxV0(p.bwrap, profile, condition.agent.argv, {
 		timeoutMs: spec.limits.agentTimeoutMs,
 		outputBytes: spec.limits.outputBytes,
+		containment: p.containment,
+		// The scope's unit is recorded before anything is started: a resume can always end exactly that scope.
+		onScope: (unit) => writeJsonAtomically(join(attemptDir, "agent-scope.json"), { unit }),
 		onStarted: (init) => {
 			writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
 			options.onAgentStarted?.(attemptDir);
@@ -520,6 +560,7 @@ async function runAttempt(
 		durationMs: ran.durationMs,
 		termination: ran.termination,
 		outputSha256: sha256HexV0(output),
+		scope: { unit: ran.scope.unit, ended: ran.scope.ended },
 	};
 	writeJsonAtomically(join(attemptDir, "agent-ended.json"), agent);
 	if (agent.termination !== "confirmed" || !ran.started)
@@ -555,7 +596,7 @@ async function runAttempt(
 				}
 			: submission.status === "collected"
 				? await evaluateV0(
-						{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
+						{ bwrap: p.bwrap, containment: p.containment, runtime: p.runtime, node: p.node, limits: spec.limits },
 						evaluator,
 						join(attemptDir, "submission"),
 						join(attemptDir, ".evaluation"),
@@ -579,7 +620,7 @@ async function runAttempt(
 export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV0): Promise<EndoProtectedRunSummaryV0> {
 	const spec = options.spec;
 	const dir = resolve(options.dir);
-	const p = prepare(spec, options.bwrapCandidates, dir);
+	const p = await prepare(spec, options.bwrapCandidates, dir, options.containmentTools);
 	const specSha256 = sha256HexV0(canonicalEndoJsonV0(spec as unknown as Record<string, unknown>));
 	const profiles = spec.conditions.map((c) => ({
 		condition: c.id,
@@ -594,7 +635,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 			for (const t of spec.tasks) {
 				const ev = p.evaluators.get(t.id)!;
 				const q = await qualifyEvaluatorV0(
-					{ bwrap: p.bwrap, runtime: p.runtime, node: p.node, limits: spec.limits },
+					{ bwrap: p.bwrap, containment: p.containment, runtime: p.runtime, node: p.node, limits: spec.limits },
 					ev,
 					t.submission,
 					join(scratch, t.id),
@@ -650,6 +691,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 				run.specSha256 === specSha256 &&
 				run.isolation.executableSha256 === p.bwrap.sha256 &&
 				run.isolation.version === p.bwrap.version &&
+				canonicalEndoJsonV0(run.isolation.containment) === canonicalEndoJsonV0(containmentRecord(p.containment)) &&
 				canonicalEndoJsonV0(run.profiles) === canonicalEndoJsonV0(profiles) &&
 				run.evaluators.every(
 					(e) =>
@@ -675,7 +717,12 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 				seedSource: spec.seed === null ? "drawn" : "spec",
 				ordering: ENDO_EXPERIMENT_ORDERING_V0,
 				plan: planEndoExperimentV0(spec, seed),
-				isolation: { mechanism: "bubblewrap", version: p.bwrap.version, executableSha256: p.bwrap.sha256 },
+				isolation: {
+					mechanism: "bubblewrap",
+					version: p.bwrap.version,
+					executableSha256: p.bwrap.sha256,
+					containment: containmentRecord(p.containment),
+				},
 				profiles,
 				evaluators,
 				createdAt: new Date().toISOString(),
@@ -722,7 +769,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 					)
 						throw new EndoProtectedRefusalV0(`${latestDir} is still being run by another controller`);
 					const started = marker.retryOf;
-					rec = await finalizeOnResume(latestDir, recordBase(run, entry, latest, started, profile, evaluator));
+					rec = await finalizeOnResume(p, latestDir, recordBase(run, entry, latest, started, profile, evaluator));
 					summary.finalizedOnResume++;
 				}
 				// Only an attempt whose agent never started may be retried: an interruption while or after the agent ran is final attrition, so
@@ -811,7 +858,7 @@ function lockRunDirectory(dir: string): () => void {
 			0o600,
 		);
 		try {
-			writeSync(fd, JSON.stringify(me));
+			writeAllSyncV0(fd, JSON.stringify(me));
 		} finally {
 			closeSync(fd);
 		}

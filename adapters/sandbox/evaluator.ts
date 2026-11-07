@@ -24,6 +24,7 @@ import {
 	type EndoSandboxProfileV0,
 	runSandboxV0,
 } from "./bubblewrap.ts";
+import type { EndoContainmentV0 } from "./containment.ts";
 import { exportSubmissionV0 } from "./submission.ts";
 
 /** The trusted driver. It is the evaluator's control logic; the submission is only ever the module it imports. */
@@ -92,6 +93,7 @@ export type EndoEvaluationV0 = Pick<EndoProtectedTrialV0["evaluation"], "status"
 
 export interface EndoEvaluatorContextV0 {
 	bwrap: EndoBubblewrapV0;
+	containment: EndoContainmentV0;
 	runtime: readonly EndoRuntimeFileV0[];
 	node: string;
 	limits: EndoProtectedLimitsV0;
@@ -150,6 +152,7 @@ export async function evaluateV0(
 			{
 				timeoutMs: ctx.limits.evaluationTimeoutMs,
 				outputBytes: ctx.limits.outputBytes,
+				containment: ctx.containment,
 			},
 		);
 	} catch {

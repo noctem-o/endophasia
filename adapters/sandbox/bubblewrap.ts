@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { type EndoContainmentV0, newScopeUnitV0, processInScopeV0, scopeArgsV0, stopScopeV0 } from "./containment.ts";
 
 /** The only places the executable is looked for: never PATH, which trial content or the operator's shell could shape. */
 export const ENDO_BUBBLEWRAP_CANDIDATES_V0 = ["/usr/bin/bwrap"] as const;
@@ -331,9 +332,15 @@ export interface EndoSandboxRunV0 {
 	/** The sandbox's first process (the init of its PID namespace), by host pid and start time: an identity, unlike a namespace number. */
 	init: EndoProcessIdentityV0 | null;
 	/**
-	 * `confirmed`: the sandbox's init (that pid with that start time) no longer exists. When a PID namespace's init ends, the kernel kills
-	 * every other process in it (pid_namespaces(7)), so none of the sandbox's processes can run again. `unconfirmed`: the init still existed
-	 * after it was killed, or the sandbox never reported its init (nothing can be said about what it started).
+	 * The sandbox's scope (containment.ts): its unit, whether bubblewrap was seen running inside it, and whether the user manager confirmed
+	 * it ended (every process of its cgroup gone).
+	 */
+	scope: { unit: string; established: boolean; ended: "confirmed" | "unconfirmed" };
+	/** Supplementary: whether the sandbox's init (that pid with that start time) is gone. Not, on its own, the termination guarantee. */
+	initGone: boolean | null;
+	/**
+	 * `confirmed` exactly when the sandbox ran in its scope and the user manager confirmed the scope ended: no process the sandbox started,
+	 * whatever its pid, group or session, can still run. `unconfirmed` otherwise.
 	 */
 	termination: "confirmed" | "unconfirmed";
 }
@@ -392,21 +399,34 @@ export async function runSandboxV0(
 	options: {
 		timeoutMs: number;
 		outputBytes: number;
+		/** The containment the sandbox runs in. Required: a protected sandbox never runs outside a scope. */
+		containment: EndoContainmentV0;
 		stdin?: Buffer;
+		/** Called with the scope's unit before anything is started, so a caller can record it durably first. */
+		onScope?: (unit: string) => void;
 		onStarted?: (init: EndoProcessIdentityV0) => void;
 	},
 ): Promise<EndoSandboxRunV0> {
 	const start = performance.now();
+	const unit = newScopeUnitV0();
+	options.onScope?.(unit);
 	const opts = ["--json-status-fd", "3", ...profile.args];
 	if ([...opts, ...argv].some((a) => a.includes("\0")))
 		throw new TypeError("a sandbox argument holds a NUL character");
 	// Its own process group (bubblewrap issue #633): until the sandbox's first process calls setsid (after bubblewrap releases it), it is
 	// in this group, so a group kill reaches it even in the launch window where --die-with-parent does not yet hold for it.
-	const child = spawn(bwrap.path, ["--args", "4", "--", ...argv], {
-		env: {},
-		stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
-		detached: true,
-	});
+	// systemd-run registers the scope (with itself in it) and only then execs bubblewrap: bubblewrap never runs outside the scope. The
+	// scope's own deadline (the timeout and a margin) ends it even if this controller is gone.
+	const runtimeMaxSec = options.timeoutMs / 1000 + 30;
+	const child = spawn(
+		options.containment.systemdRun,
+		scopeArgsV0(options.containment, unit, runtimeMaxSec, [bwrap.path, "--args", "4", "--", ...argv]),
+		{
+			env: { ...options.containment.env },
+			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+			detached: true,
+		},
+	);
 	const killGroup = () => {
 		try {
 			if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
@@ -435,11 +455,13 @@ export async function runSandboxV0(
 	const err = bounded();
 	let status = "";
 	let init: EndoProcessIdentityV0 | null = null;
+	let established = false;
 	child.stdout.on("data", out.push);
 	child.stderr.on("data", err.push);
 	(child.stdio[3] as NodeJS.ReadableStream).on("data", (b: Buffer) => {
 		status += b.toString("utf8");
 		const m = /"child-pid":\s*([0-9]+)/.exec(status);
+		if (m !== null && !established && child.pid !== undefined) established = processInScopeV0(child.pid, unit);
 		if (m !== null && init === null) {
 			const pid = Number(m[1]);
 			// Read while the sandbox runs (bubblewrap waits on its init): that pid cannot belong to another process yet.
@@ -463,8 +485,12 @@ export async function runSandboxV0(
 		// A sandbox process stranded in bubblewrap's launch window (#633) can hold the output pipes open forever. Once bubblewrap itself
 		// has exited, wait a bounded time for the pipes, then stop waiting: termination is then decided below, not by a pipe's end.
 		child.on("exit", (c, s) => {
+			// Bubblewrap is gone: stop its scope at once, which ends anything left in it (a process stranded in the launch window holds
+			// the pipes open), so the pipes can close.
+			void stopScopeV0(options.containment, unit);
 			setTimeout(() => {
-				killGroup();
+				// No group kill here: once bubblewrap is reaped its group number can be reused by an unrelated group. A process stranded in
+				// the launch window is ended with the sandbox's scope (containment.ts), never by a number.
 				for (const stream of [child.stdout, child.stderr, child.stdio[3]])
 					(stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
 				resolve([c, s]);
@@ -475,7 +501,10 @@ export async function runSandboxV0(
 	// bubblewrap reports the command's own exit code on the status fd.
 	const exitStatus = /"exit-code":\s*([0-9]+)/.exec(status);
 	const known = init as EndoProcessIdentityV0 | null;
-	const termination = known === null ? "unconfirmed" : await endSandboxV0(known);
+	// The guarantee: the user manager confirms the scope ended. The init's identity is kept as a supplementary observation.
+	const ended = await stopScopeV0(options.containment, unit);
+	const initGone = known === null ? null : (await endSandboxV0(known)) === "confirmed";
+	const termination = established && ended === "confirmed" ? "confirmed" : "unconfirmed";
 	const o = out.value();
 	const e = err.value();
 	return {
@@ -488,6 +517,8 @@ export async function runSandboxV0(
 		stderr: e.bytes,
 		truncated: { stdout: o.dropped, stderr: e.dropped },
 		init: known,
+		scope: { unit, established, ended },
+		initGone,
 		termination,
 	};
 }

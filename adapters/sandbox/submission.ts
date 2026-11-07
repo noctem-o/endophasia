@@ -11,20 +11,11 @@
 // those steps: that is why collection runs only after the agent's processes are confirmed gone, when no sandboxed process can write.
 
 import { createHash } from "node:crypto";
-import {
-	chmodSync,
-	closeSync,
-	constants,
-	fstatSync,
-	lstatSync,
-	mkdirSync,
-	openSync,
-	readSync,
-	writeSync,
-} from "node:fs";
+import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EndoProtectedRefusalV0, EndoProtectedTrialV0 } from "../../protocol/protected-experiment.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { writeAllSyncV0 } from "../../runtime/contracts/write-all.ts";
 
 export interface EndoSubmissionLimitsV0 {
 	maxFileBytes: number;
@@ -168,7 +159,7 @@ export function exportSubmissionV0(
 			0o600,
 		);
 		try {
-			writeSync(fd, bytes);
+			writeAllSyncV0(fd, bytes);
 		} finally {
 			closeSync(fd);
 		}

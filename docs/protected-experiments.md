@@ -104,30 +104,46 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   stderr are the only descriptors the sandboxed command inherits.
 - **Network:** a new namespace with only `lo`, so there is no route out. The host's loopback services and its abstract Unix sockets
   belong to another namespace and are unreachable. No host socket path is mounted.
-- **Lifetime:** on timeout the controller kills bubblewrap, which kills the sandbox (it dies with its parent). The sandbox's first process,
-  the init of its PID namespace, is identified by host pid and start time when it starts. Afterwards the controller kills that exact
-  process if it still exists, and records termination as confirmed only when it is gone: when a PID namespace's init ends, the kernel kills
-  every other process in it (pid_namespaces(7)). No process is ever found or killed by namespace number, which the kernel reuses. A
-  sandbox that never reported its init is recorded as `unconfirmed`.
+- **Lifetime: each sandbox runs in its own systemd user scope** (`adapters/sandbox/containment.ts`). Every sandbox (the preflight
+  probe, the agent, the evaluation) is started as `systemd-run --user --scope --collect --unit=endo-sandbox-<random> -p RuntimeMaxSec=…
+  -p TasksMax=512 -- bwrap …`.
+  - *Established before bubblewrap runs:* `systemd-run --scope` registers the scope with the user manager, with itself in it, and only
+    then execs bubblewrap. The controller also checks, from `/proc/<pid>/cgroup`, that bubblewrap is in the named scope.
+  - *Recorded durably:* the controller chooses the unit name and writes it to the attempt directory (`agent-scope.json`) before anything
+    is started.
+  - *Ended through the user manager:* when bubblewrap exits (or is killed on timeout, with its process group), the controller stops the
+    scope with `systemctl --user stop`. Termination is **confirmed only when the user manager reports the scope gone**: every process the
+    sandbox started, whatever its pid, process group or session, has ended. Submissions are collected only after that.
+  - *Bounded without the controller:* `RuntimeMaxSec` (the timeout plus 30 seconds) makes the user manager end the scope even if no
+    controller remains. `TasksMax` bounds the processes and threads a sandbox can hold (a fork bomb).
+  - *Resume:* a resume stops exactly the recorded scope, never a process found by number.
+  - *Supplementary only:* the sandbox's init is still identified by pid and start time and ended, and the record keeps that observation,
+    but it is not the termination guarantee.
+  - *Refusal:* where the systemd tools, a user manager (`XDG_RUNTIME_DIR`) or the scope properties are unavailable, protected execution is
+    refused. Detection starts a real probe scope, reads back its `RuntimeMaxSec`, `TasksMax` and cgroup, and stops it.
+  - *Never written:* no cgroup file is written directly; the lifecycle goes through the user manager.
+
+  **Verified on this host** (Arch, systemd 262, cgroup v2), non-destructively, with this suite's own processes only:
+  - the properties are applied;
+  - `RuntimeMaxSec=2` ends a sleeping scope on its own;
+  - a tight `TasksMax` stops a sandbox's children from running, which the default bound allows;
+  - stopping a scope ends a process that had left the starter's process group and session (`setsid`);
+  - bubblewrap runs in the named scope;
+  - every agent's scope is confirmed ended and no longer known to the user manager;
+  - a resume after the controller was killed stops the recorded scope.
 - **The launch window (bubblewrap issue [#633](https://github.com/containers/bubblewrap/issues/633), open; 0.13.1 is affected):**
-  read from the 0.13.1 source.
-  - *The launcher:* bubblewrap clones the sandbox's first process and only then arms its own `--die-with-parent` (`PR_SET_PDEATHSIG`).
-  - *The child:* the sandbox's first process blocks reading an eventfd until the launcher releases it, and arms its own parent-death
-    signal only much later.
-  - *What can go wrong:* if the launcher dies before releasing it, that process waits forever (an eventfd has no end of file). It is
-    reparented to init and holds the caller's output pipes. If the *controller* dies before the launcher has armed its signal, the
-    launcher is orphaned, and arming it then binds it to its new parent, so the sandbox can run on unsupervised.
-
-  What the controller does about it:
-  - it starts bubblewrap in its own process group and kills the **group** on timeout. Until its `setsid` (after the release), the stranded
-    process is still in that group, which is upstream's confirmed workaround;
-  - it stops waiting for the output pipes a bounded time after bubblewrap exits;
-  - it ends the recorded init by identity, as above.
-
-  A sandbox killed by the controller is therefore ended in every window. **Not established:** a sandbox whose *controller* is killed
-  inside the launcher's window. Nothing outside the controller bounds that orphan's lifetime, and a resume can only say `unconfirmed`
-  when no init was recorded. Closing it needs containment that does not depend on the controller: each sandbox in its own transient
-  systemd user scope, ended by `cgroup.kill` and bounded by `RuntimeMaxSec` (see §9).
+  bubblewrap clones the sandbox's first process and only then arms its own `--die-with-parent`. That process blocks on an eventfd until
+  released, and arms its own parent-death signal much later. A launcher killed in between strands it (reparented, waiting forever,
+  holding the caller's pipes). A controller killed before the launcher armed its signal orphans the launcher. Both stay inside the
+  sandbox's scope, which is why the scope, not bubblewrap's signal, is the guarantee.
+  - What the controller does: it kills bubblewrap's process group on timeout, while bubblewrap still exists (the stranded process is in
+    that group until its `setsid`). It stops the scope as soon as bubblewrap exits, which releases the pipes, and stops waiting for them a
+    bounded time later.
+  - **Not demonstrated:** that a process stranded in this window is ended by the scope. The reproduction exists
+    (`tests/protected-launch-window.test.ts`). It holds the launcher inside the window with `--userns-block-fd`, kills it, asserts the
+    stranded state (alive, reparented, blocked on an eventfd read), and shows that stopping the scope ends it. It deliberately strands a
+    process, so it runs only with `ENDO_DISPOSABLE_STRANDED_TEST=1`, in a separately authorised disposable environment, with the scope's
+    own `RuntimeMaxSec=20` as its independent cleanup deadline. It was not run on the operator's workstation.
 - **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree, each file's
   content and the permission bits its copy keeps) by digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
 
@@ -313,8 +329,8 @@ Only the refusal and logic tests run there. They are run on a host that supports
 - **No seccomp filter.** The agent can make any system call the kernel allows an unprivileged user in its own namespaces.
 - **No resource limits beyond the bounds.** The bounds are the timeouts, the tmpfs sizes, and the read-back bounds on output and on
   submissions. The agent can exhaust CPU and memory during its time, fill the host disk through `/work` (a host directory), and start
-  processes up to the user's own process limit (a fork bomb is not bounded by the sandbox). A systemd user scope (MemoryMax, TasksMax,
-  CPU) and a size-bounded workspace are the natural additions. If such exhaustion makes the controller fail after the agent started, the
+  processes up to the scope's `TasksMax` (512). Memory and CPU are not limited yet (`MemoryMax` and `CPUQuota` on the scope are the
+  natural additions), nor is the workspace's size. If such exhaustion makes the controller fail after the agent started, the
   attempt is final attrition (`controller-interrupted`), never retried; a study should report that attrition by condition.
 - **Host paths are visible to the agent, though no host content is:** `/proc/self/mountinfo` names the sources of the mounts, so the run
   directory's path (and so the user name) can be read. `/proc/1/cmdline` no longer shows them.
@@ -324,28 +340,22 @@ Only the refusal and logic tests run there. They are run on a host that supports
 - **The evaluator runs the submission's code.** That code sees the case inputs (not the expected results) and can waste the evaluation's
   time; it cannot reach the network or the host.
 - **One evaluator kind:** functions with JSON cases. node:test suites, which mix candidate and test code in one process, are not supported.
-- **Termination** is confirmed by the sandbox init's identity (pid and start time) and the kernel's rule that a PID namespace ends with its
-  init. A process that leaves the sandbox's PID namespace is not something an unprivileged process can do; a kernel exploit could. Node has
-  no pidfd, so two narrow windows remain: the init's start time is read when bubblewrap reports it (if the init had already ended and its
-  pid been reused in between, another process could be recorded), and between checking and killing it. A pidfd-based helper would close
-  both. A sandbox whose teardown takes more than ten seconds is recorded as `unconfirmed`.
+- **Termination** is confirmed by the user manager reporting the sandbox's scope gone (§2). The pid-and-start-time observation of the
+  sandbox's init is kept as supplementary evidence. It has two narrow windows without a pidfd (when the start time is read, and between
+  check and kill), which no longer decide termination. A scope does not protect against a kernel exploit, or against the user's own
+  account stopping the user manager.
 - **Where the hidden material lives:** the evaluator definition and its reference and negative stay where the operator put them. The
   controller's own copies of the reference, the negative and the cases' inputs are removed as soon as they are used, and on resume after a
   stop during evaluation, so a run directory keeps no hidden material between runs. While a controller is stopped mid-evaluation, that
   attempt's inputs are on disk until the next run.
 
-## 9. Before EVAL-ISO-002: process containment
+## 9. Process containment: what remains
 
-The fix for the launch window (§2) is cgroup-backed, and it is not in this PR. It would:
-- run each sandbox in its own transient systemd user scope (`systemd-run --user --scope --collect`, a unique unit name, with
-  `RuntimeMaxSec`, so that systemd ends it even if the controller dies, and `TasksMax`, which also bounds a fork bomb);
-- end the scope by writing to its `cgroup.kill`, and confirm termination by the cgroup's `populated 0` instead of by pid;
-- record the unit in the attempt's marker, so that a resume ends exactly that cgroup;
-- refuse a protected run where no user manager or cgroup v2 `cgroup.kill` is available.
-
-Its regression would reproduce the window deterministically, with `--userns-block-fd` holding the launcher between its status report and
-the child's release. It would kill the launcher and show that the stranded process is ended by `cgroup.kill`, bounded by the scope's own
-`RuntimeMaxSec`. Running that on the operator's machine needs the operator's permission.
+- The stranded-process reproduction (§2) has to be run in a disposable environment before containment of the launch window is claimed.
+- `TasksMax` is fixed at 512, and memory and CPU are not limited. Adding `MemoryMax` and `CPUQuota` to the scope is a property change, not
+  a new mechanism.
+- The controller's own death is covered by the scope's `RuntimeMaxSec`. Its own deadline is the agent's timeout plus 30 seconds: until
+  then, an orphaned sandbox can run unsupervised, but no longer.
 
 ## 10. EVAL-ISO-002: what model-connected studies need
 
@@ -363,6 +373,7 @@ the child's release. It would kill the launcher and show that the stranded proce
 
 | Dimension | Status | Evidence |
 | :-- | :-- | :-- |
-| Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap and user namespaces are available). **Process lifetime: NOT ESTABLISHED** when the controller itself dies in bubblewrap's launch window (#633, §2); established when the controller ends the sandbox | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
+| Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap, user namespaces and a systemd user manager are available) |
+| Process lifetime | **READY** for what was verified on this host: each sandbox in its own scope, established before bubblewrap runs, recorded, ended through the user manager and confirmed, bounded by `RuntimeMaxSec` and `TasksMax`, resumed by scope. **NOT DEMONSTRATED** for a process stranded in bubblewrap's launch window (#633): its reproduction exists and runs only in a disposable environment (§2) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and an independent reviewer's attacks, on this host; refusal elsewhere |
 | Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
 | Protected model-connected studies | **NOT READY** | there is no network inside, by design; the relay and Pi integration are EVAL-ISO-002 |

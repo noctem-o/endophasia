@@ -271,6 +271,14 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 		String(record.isolation?.requested?.network),
 	);
 	add("termination", record.agent?.termination === "confirmed", String(record.agent?.termination));
+	// The proxy drops a session's connections once the bytes through it exceed the policy's bound, after counting the bytes that crossed
+	// it: a trial that hit the cap did not run to its own end, whatever else it shows (Codex, #134).
+	const transferred = Number(record.relay?.transferredBytes);
+	add(
+		"transfer-within-policy",
+		Number.isSafeInteger(transferred) && transferred <= Number(policy?.maxTransferredBytes),
+		`${transferred} of at most ${policy?.maxTransferredBytes} bytes through the relay`,
+	);
 	const key = endoDigestKeyV0(
 		Buffer.from(readFileSync(join(dir, "digest-key"), "utf8").trim(), "hex"),
 		"installation",

@@ -32,6 +32,14 @@ Date: 2026-11-08. Main at `c7fee52`. Inputs read:
    `causal-policy`), reused as is and extended only by new reasons.
 5. **Content is tiered.** By default a bundle carries digests, lengths, counts and closed vocabularies. Prompt, transcript and output
    text stay in the blob stores they already live in, behind their keys, and are referenced, not copied.
+6. **No plain digest of private words.** A plain sha256 of a record that holds the operator's text lets anyone test a guess against it.
+   Such records are a DEVELOP task's acceptance criteria, a prepared brief, or a note. MEM-000 keeps only a brief's length for this reason
+   (`develop-source.ts`).
+   - Every digest of such content in a bundle is **keyed** (`runtime/contracts/keyed-digest.ts`), under the installation key. That covers
+     a `derivedFrom` source and `acceptance.digest`.
+   - It is labelled with its key id, so it is comparable only within that key's domain.
+   - A source that carries no private text, such as a protected trial record, an evaluator definition or a run spec, may be named by its
+     plain sha256, as its own records already are.
 
 ## 2. Where each dimension lives today
 
@@ -81,8 +89,8 @@ One JSON document per attempt, derived and sealed. Fields, each with a `source` 
 
 ```text
 bundle
-  schemaVersion, extractor, derivedFrom: [{ path, sha256, version }], bundleSha256
-  task        { id, revision?, acceptance: { kind: "evaluator" | "check-argv" | "text", digest },
+  schemaVersion, extractor, derivedFrom: [{ path, version, digest: { sha256 } | { keyed, keyId } }], bundleSha256   // keyed when private (§1.6)
+  task        { id, revision?, acceptance: { kind: "evaluator" | "check-argv" | "text", digest },   // "text": keyed digest only
                 family: { name, catalog: { path, sha256 } } | unknown, difficultyTier?: { tier, catalog } | unknown }
   initial     { workspace: { kind: "archive" | "tree-digest" | "commit" | unknown, digest }, environment: { pinned?, runtimeSet } }
   actor       { harness: { name, version, fingerprint }, model: { name, servedDigest? | unknown }, sampling?: { keyed digest } }
@@ -182,8 +190,10 @@ Either way, every trial needs:
   - The pilot's families are development data (`task-examined`). They are never part of the main sample, so the main bank stays unseen.
   - The main run proceeds only if each model's pilot failure rate is between 20% and 70% overall, so that neither model passes nearly
     everything nor fails nearly everything.
-  - Otherwise the tier rules are revised for the 8 main families, by the author, without running them, and the pilot is repeated on its
-    own families.
+  - Otherwise the author revises the **tier rubric**, the rules that make a task harder, and applies it to both the pilot's 2 families and
+    the 8 main families. The main families are never run in the meantime. The pilot is then repeated on its own families **under the
+    revised rubric**, so the repeat tests the change that the main run will use.
+  - The gate is passed only by a pilot run under the rubric the main run uses.
 
 **Measured, with acceptance criteria fixed in advance:**
 
@@ -193,7 +203,7 @@ Either way, every trial needs:
 | Lesson-eligible examples (MEM-000's rules, with the §3 reasons) | ≥ 120 | comparable to MEM-000's 307, from a fresh bank |
 | Specific failures (a named case failed while others passed) | ≥ 30, from ≥ 5 families, no family over 30% of them | MEM-000 had 11, 10 from one rule |
 | Recurring failure patterns (one stated-rule kind failing in ≥ 2 families) | ≥ 2 | the precondition for a card that transfers |
-| Hand-written candidate cards that pass MEM-000's support and **separability** rules | ≥ 2 usable, separable, or over the shared allowance | MEM-000's own bar for "selection matters" |
+| Hand-written candidate cards for which **selection matters**, by MEM-000's rule (`selectionMatters` in `research/evidence-eligibility/readiness.ts`) | **all of:** at least 2 usable cards; at least one separable pair; and either their total over the shared allowance **or** a found counterexample outside a card's conditions | MEM-000's own bar. A study that meets only part of it has not shown that selection matters |
 | Contamination | 0 hidden-material reads (the boundary makes this structural; the probes record it) | MEM-000's cap study recorded one |
 
 **Reported, not judged:** the per-model failure distributions, the runtime-set misses, and the trajectories' tool use.

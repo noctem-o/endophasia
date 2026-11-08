@@ -21,7 +21,7 @@
     (with what is left and the command that ends it), or `UNVERIFIED` where there is no user manager (with a note before the session).
   - If `endo` is killed, Pi's keeper has the scope stopped. If both are killed, the next attach names the orphaned scope.
   - A deliberate background process started from Pi now ends with the session. No event, record or schema changed.
-  - The work-cycle driver passes `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` to the attach (`DRIVER_VERSION` `work-cycle-001b.2`).
+  - The work-cycle driver passes `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` to the attach (`DRIVER_VERSION` `review-pilot-001.2`).
   - See [docs/live-process-containment.md](docs/live-process-containment.md).
 - **`endo attempt evidence --attempt <id> [--cwd <dir>]` (WORK-CYCLE-001B).** One attempt's records, read together and read-only. It
   shows what was sent and what Pi reported, the latest check of each command with its relation to the working tree now, the operator's

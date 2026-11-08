@@ -15,7 +15,10 @@
 // Library use (tests/work-cycle-001a.test.ts) and a command line for the operator-governed run:
 //
 //   node research/work-cycle/driver.ts doctor  [--pi path] [--endpoint url] [--model id] [--expect-pi-version x.y.z]
-//   node research/work-cycle/driver.ts run     --pi path --endpoint url --model id [--runs dir]   (interactive; needs a terminal)
+//   node research/work-cycle/driver.ts run     --pi path --endpoint url --model id [--runs dir] [--study id]   (interactive; needs a terminal)
+//
+// `--study` picks the fixture and the task: `work-cycle-001a` (the default) or `review-pilot-001` (research/review-pilot/README.md), whose
+// acceptance criteria the check does not cover, so the operator's review decides. A review-pilot run also gets a review worksheet.
 //   node research/work-cycle/driver.ts reconstruct --run dir      (reads the run; adds a new evidence/reconstruction-<time> file)
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -38,7 +41,7 @@ import { endoControlSocketV0 } from "../../cli/control.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ENDO_CLI = resolve(HERE, "../../cli/index.ts");
 export const FIXTURE = join(HERE, "fixture");
-export const DRIVER_VERSION = "work-cycle-001b.2";
+export const DRIVER_VERSION = "review-pilot-001.2";
 
 /** The task the cycle carries. Its acceptance criterion is a command anyone can rerun at the recorded commit. */
 export const TASK = {
@@ -52,6 +55,74 @@ export const TASK = {
 		"Edit only src/slug.mjs. Do not change anything under test/. Do not run git and do not commit; leave the change in the working tree. Do not install packages.",
 	check: ["node", "--test"],
 } as const;
+
+export interface StudyTask {
+	readonly title: string;
+	readonly description: string;
+	readonly acceptance: string;
+	readonly objective: string;
+	readonly constraints: string;
+	readonly check: readonly string[];
+}
+
+/** What one study runs: its fixture, the task it carries, where its runs go, and (for a review study) its worksheet. */
+export interface Study {
+	readonly id: "work-cycle-001a" | "review-pilot-001";
+	readonly fixture: string;
+	readonly fixtureCommitMessage: string;
+	readonly projectName: string;
+	readonly task: StudyTask;
+	/** The default `--runs` directory, under ~/projects/endophasia-research. Short: it counts against the control socket's path. */
+	readonly runsName: string;
+	/** A markdown template written into the run's evidence once the candidate is checked, or null. */
+	readonly worksheet: string | null;
+}
+
+export const WORK_CYCLE_001A: Study = {
+	id: "work-cycle-001a",
+	fixture: FIXTURE,
+	fixtureCommitMessage: "fixture: slugify does not collapse separators",
+	projectName: "WORK-CYCLE-001A fixture",
+	task: TASK,
+	runsName: "work-cycle-001a",
+	worksheet: null,
+};
+
+const REVIEW_PILOT = resolve(HERE, "../review-pilot");
+
+/**
+ * REVIEW-PILOT-001: the check covers only the first acceptance criterion. The others (the README, unchanged behaviour without days, no new
+ * files) are the operator's to judge, so the decision rests on the review, and the pilot records what the evidence did and did not answer.
+ */
+export const REVIEW_PILOT_001: Study = {
+	id: "review-pilot-001",
+	fixture: join(REVIEW_PILOT, "fixture"),
+	fixtureCommitMessage: "fixture: durations have no days",
+	projectName: "REVIEW-PILOT-001 fixture",
+	task: {
+		title: "Support days in durations",
+		description:
+			"src/duration.mjs reads and writes durations such as 1h30m. Add days (d, 86400 seconds) as the largest unit, in both directions, and document it.",
+		acceptance: [
+			"1. `node --test` exits 0 at a clean commit, and nothing under test/ changed.",
+			"2. README.md's Format section documents the d unit.",
+			"3. Durations without d parse and format exactly as before, and every input rejected before is still rejected.",
+			"4. No new files and no new dependencies.",
+		].join("\n"),
+		objective:
+			"Add the d unit (one day, 86400 seconds) to parseDuration and formatDuration in src/duration.mjs as the largest unit, and document it in README.md's Format section.",
+		constraints:
+			"Edit only src/duration.mjs and README.md. Do not change anything under test/. Do not run git and do not commit; leave the change in the working tree. Do not install packages.",
+		check: ["node", "--test"],
+	},
+	runsName: "rp001",
+	worksheet: join(REVIEW_PILOT, "worksheet.md"),
+};
+
+export const STUDIES: Readonly<Record<Study["id"], Study>> = {
+	"work-cycle-001a": WORK_CYCLE_001A,
+	"review-pilot-001": REVIEW_PILOT_001,
+};
 
 export interface RunLayout {
 	readonly run: string;
@@ -106,7 +177,7 @@ export function runDirectoryProblem(run: string): string | null {
 		: `the run directory is too deep for the workbench's control socket (${socket} is ${bytes} bytes; at most ${CONTROL_SOCKET_MAX_BYTES}). Give a shorter --runs directory.`;
 }
 
-export function launchRun(run: string): RunLayout {
+export function launchRun(run: string, study: Study = WORK_CYCLE_001A): RunLayout {
 	if (existsSync(run) && readdirSync(run).length > 0)
 		throw new Error(`refusing to reuse a non-empty run directory: ${run}`);
 	const early = runDirectoryProblem(resolve(run));
@@ -131,10 +202,10 @@ export function launchRun(run: string): RunLayout {
 	};
 	for (const dir of [layout.store, layout.home, layout.agentDir, layout.evidence, dirname(layout.digestKeyFile)])
 		mkdirSync(dir, { recursive: true, mode: 0o700 });
-	cpSync(FIXTURE, layout.project, { recursive: true });
+	cpSync(study.fixture, layout.project, { recursive: true });
 	git(layout.project, "init", "-q", "-b", "main");
 	git(layout.project, "add", "-A");
-	git(layout.project, "commit", "-q", "-m", "fixture: slugify does not collapse separators");
+	git(layout.project, "commit", "-q", "-m", study.fixtureCommitMessage);
 	return layout;
 }
 
@@ -183,10 +254,11 @@ export interface Prepared {
 }
 
 /** Drive, part 1: register, write the task, prepare the attempt, and record the baseline check. Sends nothing to any agent. */
-export function prepareJourney(layout: RunLayout, env: NodeJS.ProcessEnv): Prepared {
+export function prepareJourney(layout: RunLayout, env: NodeJS.ProcessEnv, study: Study = WORK_CYCLE_001A): Prepared {
 	const S = ["--root", layout.store];
+	const task = study.task;
 	const projectId = json(
-		endo(layout, env, "project", "add", ...S, "--name", "WORK-CYCLE-001A fixture", "--path", layout.project),
+		endo(layout, env, "project", "add", ...S, "--name", study.projectName, "--path", layout.project),
 	).project.id as string;
 	const taskId = json(
 		endo(
@@ -198,11 +270,11 @@ export function prepareJourney(layout: RunLayout, env: NodeJS.ProcessEnv): Prepa
 			"--project",
 			projectId,
 			"--title",
-			TASK.title,
+			task.title,
 			"--description",
-			TASK.description,
+			task.description,
 			"--acceptance",
-			TASK.acceptance,
+			task.acceptance,
 		),
 	).task.id as string;
 	const attemptId = json(
@@ -217,12 +289,12 @@ export function prepareJourney(layout: RunLayout, env: NodeJS.ProcessEnv): Prepa
 			"--task",
 			taskId,
 			"--objective",
-			TASK.objective,
+			task.objective,
 			"--constraints",
-			TASK.constraints,
+			task.constraints,
 		),
 	).attempt.id as string;
-	const check = endo(layout, env, "attempt", "check", ...S, "--attempt", attemptId, "--", ...TASK.check);
+	const check = endo(layout, env, "attempt", "check", ...S, "--attempt", attemptId, "--", ...task.check);
 	let receipt: any = null;
 	try {
 		receipt = json(check).receipt;
@@ -560,6 +632,8 @@ export function processesOfRun(layout: RunLayout): { pid: number; cmd: string }[
 // Evidence: reconstruct the cycle from what is stored, in new processes, with no agent running. Every fact says where it came from.
 
 export interface RunIds {
+	/** The study the run carried, as `run.json` records it. Absent in runs made before REVIEW-PILOT-001: those all carried WORK-CYCLE-001A. */
+	readonly study?: Study["id"];
 	readonly projectId: string;
 	readonly taskId: string;
 	readonly attemptId: string;
@@ -568,6 +642,7 @@ export interface RunIds {
 
 export interface Reconstruction {
 	readonly driver: string;
+	readonly study: Study["id"];
 	readonly readAt: string;
 	readonly liveProcesses: readonly { pid: number; cmd: string }[];
 	readonly task: {
@@ -837,6 +912,7 @@ export function reconstruct(
 	);
 	return {
 		driver: DRIVER_VERSION,
+		study: ids.study ?? WORK_CYCLE_001A.id,
 		readAt: new Date().toISOString(),
 		liveProcesses: processesOfRun(layout),
 		task: {
@@ -902,7 +978,7 @@ export function renderReconstruction(r: Reconstruction): string {
 		.map(([name, t]) => `${name} ×${t.started}${t.errors > 0 ? ` (${t.errors} returned an error)` : ""}`)
 		.join(", ");
 	const lines = [
-		`# WORK-CYCLE-001A reconstruction`,
+		`# ${r.study.toUpperCase()} reconstruction`,
 		"",
 		`Read ${r.readAt} by ${r.driver}, from stored records only. Processes of the run still alive: ${r.liveProcesses.length}.`,
 		"",
@@ -1030,18 +1106,21 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 	const endpoint = flag(argv, "--endpoint");
 	const model = flag(argv, "--model");
 	const expectPiVersion = flag(argv, "--expect-pi-version");
+	const studyId = flag(argv, "--study") ?? WORK_CYCLE_001A.id;
+	const study = STUDIES[studyId as Study["id"]];
+	if (study === undefined) throw new TypeError(`--study must be one of: ${Object.keys(STUDIES).join(", ")}`);
 	if (pi === undefined || endpoint === undefined || model === undefined)
 		throw new TypeError(
-			"usage: driver.ts run --pi <path> --endpoint <http://host:port/v1> --model <id> [--expect-pi-version x.y.z] [--runs dir]",
+			"usage: driver.ts run --pi <path> --endpoint <http://host:port/v1> --model <id> [--expect-pi-version x.y.z] [--runs dir] [--study id]",
 		);
 	if (!process.stdin.isTTY)
 		throw new Error("the operator-governed run needs a terminal: the workbench approves only there");
 	const endpointUrl = new URL(endpoint);
 	if (endpointUrl.pathname.replace(/\/$/, "") !== "/v1")
 		throw new TypeError("--endpoint must be an OpenAI-compatible base ending in /v1 (the proxy relays the origin)");
-	const runs = flag(argv, "--runs") ?? join(homedir(), "projects", "endophasia-research", "work-cycle-001a");
+	const runs = flag(argv, "--runs") ?? join(homedir(), "projects", "endophasia-research", study.runsName);
 	// A compact UTC stamp (20261107T192155Z): the run directory's depth counts against the control socket's path limit.
-	const layout = launchRun(join(runs, new Date().toISOString().replace(/[-:]|\.\d+/g, "")));
+	const layout = launchRun(join(runs, new Date().toISOString().replace(/[-:]|\.\d+/g, "")), study);
 	const say = (line: string) => process.stderr.write(`[work-cycle] ${line}\n`);
 	say(`run directory ${layout.run} (kept as the evidence)`);
 
@@ -1059,10 +1138,10 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		throw new Error("doctor failed; nothing was started (see doctor.json)");
 
 	// Drive, part 1
-	const prepared = prepareJourney(layout, runEnv(layout));
+	const prepared = prepareJourney(layout, runEnv(layout), study);
 	writeFileSync(
 		join(layout.run, "run.json"),
-		`${JSON.stringify({ ...prepared, driver: DRIVER_VERSION, model, endpoint, pi, declaredPonytail: declared }, null, 2)}\n`,
+		`${JSON.stringify({ ...prepared, study: study.id, driver: DRIVER_VERSION, model, endpoint, pi, declaredPonytail: declared }, null, 2)}\n`,
 	);
 	say(
 		`baseline check at the fixture commit: ${prepared.baseline.outcome} (exit ${prepared.baseline.exit}); expected: failed`,
@@ -1139,7 +1218,7 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 			"--attempt",
 			prepared.attemptId,
 			"--",
-			...TASK.check,
+			...study.task.check,
 		);
 		say(`check at the candidate commit: exit ${check.status}`);
 	} else say("not committed; no check was run");
@@ -1154,18 +1233,61 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		`${JSON.stringify({ package: ponytail, ...ponytailObserved, perRequest: undefined, requestModes: ponytailObserved.perRequest }, null, 2)}\n`,
 	);
 	say(`Ponytail: declared ${declared ?? "unset"}, observed ${ponytailObserved.effective} (${ponytailObserved.basis})`);
-	const written = writeReconstruction(layout, prepared);
+	const written = writeReconstruction(layout, { ...prepared, study: study.id });
 	const leaked = processesOfRun(layout);
 	writeFileSync(join(layout.evidence, "cleanup.json"), `${JSON.stringify({ leaked }, null, 2)}\n`);
 	say(`processes of this run still alive: ${leaked.length}`);
 	say(`reconstruction: ${written}`);
+	const worksheet = writeReviewWorksheet(layout, prepared, study);
+	if (worksheet !== null)
+		say(
+			`review worksheet: ${worksheet}. Fill it in BEFORE moving the task to done; the decision itself stays a status move.`,
+		);
 	say("The decision is yours, separately. For example:");
 	say(
-		`    ENDO_DIGEST_KEY_FILE=${layout.digestKeyFile} node ${ENDO_CLI} task status --root ${layout.store} --project ${prepared.projectId} --task ${prepared.taskId} --to in-progress`,
+		`    ENDO_DIGEST_KEY_FILE=${shellWord(layout.digestKeyFile)} node ${shellWord(ENDO_CLI)} task status --root ${shellWord(layout.store)} --project ${prepared.projectId} --task ${prepared.taskId} --to in-progress`,
 	);
 	say(
 		'    … then --to review, then --to done --note "…" (each its own act), and rerun: driver.ts reconstruct --run <dir>',
 	);
+}
+
+/**
+ * The study's review worksheet, filled with this run's ids and commands, written once into the evidence (never over an earlier one). Null
+ * for a study without one. It holds no answers: the operator writes them.
+ */
+/** One shell word, whatever the text holds (spaces, quotes): single-quoted, with each single quote closed, escaped and reopened. */
+export const shellWord = (text: string): string =>
+	/^[\w./:=@+-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`;
+
+export function writeReviewWorksheet(layout: RunLayout, ids: RunIds, study: Study): string | null {
+	if (study.worksheet === null) return null;
+	const q = shellWord;
+	const env = `ENDO_DIGEST_KEY_FILE=${q(layout.digestKeyFile)}`;
+	const cli = `node ${q(ENDO_CLI)}`;
+	// Not committed (the operator answered no, or there was nothing): the candidate is only in the working tree, and base..HEAD is empty.
+	// The working tree against the fixture commit shows it, new files included (the driver marked them intent-to-add).
+	const committed = git(layout.project, "rev-parse", "HEAD").trim() !== ids.baseCommit;
+	const values: Record<string, string> = {
+		attemptId: ids.attemptId,
+		taskId: ids.taskId,
+		projectId: ids.projectId,
+		baseCommit: ids.baseCommit,
+		run: layout.run,
+		acceptance: study.task.acceptance,
+		evidenceCommand: `${env} ${cli} attempt evidence --root ${q(layout.store)} --attempt ${ids.attemptId} --cwd ${q(layout.project)}`,
+		taskCommand: `${env} ${cli} task show --root ${q(layout.store)} --project ${ids.projectId} --task ${ids.taskId}`,
+		diffCommand: committed
+			? `git -C ${q(layout.project)} diff ${ids.baseCommit} HEAD`
+			: `git -C ${q(layout.project)} diff ${ids.baseCommit}   # not committed: the working tree against the fixture commit (also in evidence/candidate.diff)`,
+	};
+	const text = readFileSync(study.worksheet, "utf8").replace(
+		/\{\{(\w+)\}\}/g,
+		(whole, key: string) => values[key] ?? whole,
+	);
+	const out = join(layout.evidence, "review-worksheet.md");
+	writeFileSync(out, text, { flag: "wx" });
+	return out;
 }
 
 /** Write a reconstruction beside the earlier ones (never over them), and return the markdown file's path. */

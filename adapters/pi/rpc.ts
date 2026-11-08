@@ -6,6 +6,7 @@
 // Correlation is by the IDs the connection assigns, never by arrival order (Pi may emit an event such as queue_update
 // before the response to the steer that caused it). Session events carry no command ID and are delivered as they arrive.
 
+import type { ProcessScopeV0 } from "../rpc-jsonl/process-group.ts";
 import {
 	RpcConnectionV0,
 	type RpcDiagnosticV0,
@@ -96,6 +97,8 @@ export interface PiRpcLaunchOptionsV0 {
 	readonly closeTimeoutMs?: number;
 	readonly maxOutputBytes?: number;
 	readonly onDiagnostic?: (diagnostic: RpcDiagnosticV0) => void;
+	/** Run Pi and everything it starts in this scope (LIVE-PROCESS-CONTAINMENT-001); one per client. */
+	readonly scope?: ProcessScopeV0;
 }
 
 const SESSION_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/;
@@ -256,6 +259,7 @@ export class PiRpcClientV0 {
 			...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
 			...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
 			...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+			...(options.scope === undefined ? {} : { scope: options.scope }),
 		});
 	}
 

@@ -3,9 +3,10 @@
 // events in order, and shuts the process down within a bounded time. It interprets no event: the runtime's vocabulary
 // stays raw here, for a runtime-specific semantic adapter above it (adapters/prime, adapters/pi) to validate and map.
 // Node-side and runtime-neutral; never part of the browser-facing contract surface.
+
 import { encodeJsonlRecordV0, JsonlDecoderV0, type JsonlFaultV0 } from "./jsonl.ts";
 import { checkSize, checkTimeout } from "./limits.ts";
-import { ProcessGroupV0 } from "./process-group.ts";
+import { type ProcessCleanupV0, ProcessGroupV0, type ProcessScopeV0 } from "./process-group.ts";
 
 /** One command response, correlated to the request that caused it. `success: false` is a refusal, not an error. */
 export interface RpcResponseV0 {
@@ -133,6 +134,11 @@ export interface RpcConnectionOptionsV0 {
 	/** Optional hard bound on all stdout bytes from this owned runtime process. */
 	readonly maxOutputBytes?: number;
 	readonly onDiagnostic?: (diagnostic: RpcDiagnosticV0) => void;
+	/**
+	 * Run the runtime and everything it starts in this scope, one per connection (LIVE-PROCESS-CONTAINMENT-001,
+	 * docs/live-process-containment.md). Without it, cleanup() can report at most `unverified`.
+	 */
+	readonly scope?: ProcessScopeV0;
 }
 
 /** A failure the connection itself describes: it names commands, IDs and categories, never the runtime's text. */
@@ -224,7 +230,7 @@ export class RpcConnectionV0 {
 	/** When the process group is due SIGKILL, once SIGTERM was sent to it. */
 	#sigkillAt: number | undefined;
 	/** Settles once the process group is reaped after termination (see #reapGroup). */
-	readonly #reaped: Promise<void>;
+	readonly #reaped: Promise<ProcessCleanupV0>;
 	#resolveExited!: (exit: RpcExitV0) => void;
 	#resolveTerminated!: (termination: RpcTerminationV0) => void;
 
@@ -278,7 +284,12 @@ export class RpcConnectionV0 {
 		this.#group = new ProcessGroupV0(
 			launch.command,
 			[...launch.leadingArgs, "--mode", "rpc", ...(options.args ?? [])],
-			{ cwd: options.cwd, env: options.env, stderr: capture ? "pipe" : "ignore" },
+			{
+				cwd: options.cwd,
+				env: options.env,
+				stderr: capture ? "pipe" : "ignore",
+				...(options.scope === undefined ? {} : { scope: options.scope }),
+			},
 		);
 		const { stdout, stdin } = this.#group;
 		if (capture) {
@@ -533,6 +544,20 @@ export class RpcConnectionV0 {
 		}
 	}
 
+	/**
+	 * How the runtime and what it started were cleaned up, once the connection terminated and its group was released. Only
+	 * `{ boundary: "scope", result: "confirmed" }` says that nothing the runtime started is still running: a runtime's exit alone never
+	 * does (LIVE-PROCESS-CONTAINMENT-001).
+	 */
+	cleanup(): Promise<ProcessCleanupV0> {
+		return this.#reaped;
+	}
+
+	/** Live scope unit the runtime runs in, if any. */
+	get scopeUnit(): string | undefined {
+		return this.#group.scopeUnit;
+	}
+
 	/** Stop this connection's owned process group immediately, then drain and reap it. No RPC response is required. */
 	terminate(): Promise<RpcTerminationV0> {
 		if (!this.#terminationRequested) {
@@ -585,7 +610,7 @@ export class RpcConnectionV0 {
 	 * group already did) and SIGKILL when the grace expires; the group is then released, which SIGKILLs anything left.
 	 * Where members cannot be observed (no /proc), the group is released at once.
 	 */
-	async #reapGroup(): Promise<void> {
+	async #reapGroup(): Promise<ProcessCleanupV0> {
 		if (this.#group.liveMembers() === true) {
 			if (this.#sigkillAt === undefined) {
 				this.#diagnose({ kind: "forced-termination", signal: "SIGTERM" });
@@ -597,7 +622,7 @@ export class RpcConnectionV0 {
 			}
 			if (this.#group.liveMembers() === true) this.#diagnose({ kind: "forced-termination", signal: "SIGKILL" });
 		}
-		await this.#group.release();
+		return this.#group.release();
 	}
 
 	#onStdinFailure(): void {

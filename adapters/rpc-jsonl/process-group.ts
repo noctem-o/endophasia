@@ -11,10 +11,38 @@
 // The boundary is the process group. A descendant that deliberately leaves it (setsid(2), or a Node child spawned with
 // `detached: true`) is outside what a process group can contain: once its parent exits it is reparented to init, and
 // nothing links it back. Containing such processes needs OS facilities Node does not expose (Linux cgroups or a child
-// subreaper, Windows job objects); this module does not claim to.
+// subreaper, Windows job objects); this module does not claim to on its own.
+//
+// LIVE-PROCESS-CONTAINMENT-001 (docs/live-process-containment.md): given a scope (made outside this transport, by
+// adapters/sandbox/containment.ts liveScopeV0: a transient systemd user scope), the keeper is started inside it. A scope is
+// a cgroup: every descendant stays in it whatever pid, process group or session it moves to. Release then also stops the
+// scope and confirms that it holds no process; a keeper whose owner died has the scope stopped before ending its group.
+// Without a scope, release reports cleanup as `unverified`: a descendant that left the group cannot be seen, so none is
+// claimed gone.
 import { type ChildProcess, spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import type { Readable, Writable } from "node:stream";
+
+/**
+ * A scope for one process group (LIVE-PROCESS-CONTAINMENT-001): a boundary every descendant stays inside whatever pid, process group or
+ * session it moves to. Made outside this transport (adapters/sandbox/containment.ts, liveScopeV0), one per group.
+ */
+export interface ProcessScopeV0 {
+	/** The scope's name, for reports. */
+	readonly unit: string;
+	/** The executable, arguments and complete environment that run `command` inside the new scope, in place (same pid, same descriptors). */
+	wrap(command: readonly string[]): {
+		readonly command: string;
+		readonly args: readonly string[];
+		readonly env: Readonly<Record<string, string>>;
+	};
+	/** The command the keeper runs, if its owner dies, to have the scope stopped without waiting for the stop (which ends the keeper). */
+	readonly stopWithoutWaiting: readonly string[];
+	/** Stop the scope and confirm that it holds no process; bounded. */
+	stop(): Promise<"confirmed" | "unconfirmed">;
+	/** How many processes the scope holds now (read-only), or null when that cannot be read. */
+	remaining(): number | null;
+}
 
 export interface ProcessExitV0 {
 	readonly code: number | null;
@@ -22,6 +50,24 @@ export interface ProcessExitV0 {
 	/** True when the command could not be started at all. */
 	readonly spawnFailed: boolean;
 }
+
+/**
+ * How release() left the command and everything it started. Only `confirmed` says that nothing remains:
+ * - `scope` / `confirmed`: the user manager no longer runs the scope and its cgroup holds no process;
+ * - `scope` / `incomplete`: the manager gave up, or the cgroup still held processes when the bound expired (`remaining`, when readable);
+ * - `process-group` / `incomplete`: a member of the group was still running when the bound expired;
+ * - `process-group` / `unverified`: no group member is seen running (or /proc cannot say), but a descendant that left the group would
+ *   not be seen either, so this is not a confirmation.
+ */
+export type ProcessCleanupV0 =
+	| { readonly boundary: "scope"; readonly unit: string; readonly result: "confirmed" }
+	| {
+			readonly boundary: "scope";
+			readonly unit: string;
+			readonly result: "incomplete";
+			readonly remaining: number | null;
+	  }
+	| { readonly boundary: "process-group"; readonly result: "incomplete" | "unverified" };
 
 /**
  * The keeper. It reads one JSON line (command, arguments, environment) from its control socket (fd 3), so none of
@@ -37,7 +83,14 @@ const { Socket } = require("node:net");
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => {});
 const control = new Socket({ fd: 3, readable: true, writable: true });
 const report = (message) => { try { control.write(JSON.stringify(message) + "\\n"); } catch {} };
-const end = () => { try { process.kill(-process.pid, "SIGKILL"); } catch {} process.exit(0); };
+// A scoped keeper (LIVE-PROCESS-CONTAINMENT-001) first asks the user manager to stop its scope (--no-block: the stop kills this keeper
+// too), so that what left the group ends with it; then it ends its own group, which the stop would also do.
+let scope;
+const end = () => {
+	if (scope !== undefined) { try { require("node:child_process").spawnSync(scope[0], scope.slice(1), { stdio: "ignore", timeout: 5000 }); } catch {} }
+	try { process.kill(-process.pid, "SIGKILL"); } catch {}
+	process.exit(0);
+};
 let child;
 let exited = false;
 const exit = (message) => { if (exited) return; exited = true; report({ type: "exit", ...message }); };
@@ -63,7 +116,7 @@ control.on("data", (chunk) => {
 	while (newline !== -1) {
 		const line = buffer.slice(0, newline);
 		buffer = buffer.slice(newline + 1);
-		if (!started) { started = true; start(JSON.parse(line)); }
+		if (!started) { started = true; const config = JSON.parse(line); scope = config.scope; start(config); }
 		newline = buffer.indexOf("\\n");
 	}
 });
@@ -92,7 +145,8 @@ export class ProcessGroupV0 {
 	/** Set once this side ends the group (release or killGroup); a keeper exit without it was unexpected. */
 	#ending = false;
 	#commandPid: number | undefined;
-	#released: Promise<void> | undefined;
+	#released: Promise<ProcessCleanupV0> | undefined;
+	readonly #scope: ProcessScopeV0 | undefined;
 	#resolveExited!: (exit: ProcessExitV0) => void;
 	#exit: ProcessExitV0 | undefined;
 	readonly #gone: Promise<void>;
@@ -105,23 +159,43 @@ export class ProcessGroupV0 {
 			/** The command's complete environment. The keeper itself runs with an empty one. */
 			readonly env: Readonly<Record<string, string>>;
 			readonly stderr: "pipe" | "ignore";
+			/**
+			 * Run the keeper, and so the command and every descendant, in this scope (LIVE-PROCESS-CONTAINMENT-001). POSIX only; ignored
+			 * on Windows. Without it, release() reports `unverified`, never `confirmed`.
+			 */
+			readonly scope?: ProcessScopeV0;
 		},
 	) {
 		this.exited = new Promise((resolve) => {
 			this.#resolveExited = resolve;
 		});
 		this.#keeper = process.platform !== "win32";
+		this.#scope = this.#keeper ? options.scope : undefined;
 		if (this.#keeper) {
-			this.#process = spawn(process.execPath, ["--no-warnings", "-e", KEEPER], {
+			// Scoped: the wrapper registers the scope, with itself in it, then execs the keeper in place (same pid, same descriptors, the
+			// process group made by `detached`). The keeper's environment is then only what the wrapper needs.
+			const keeper = [process.execPath, "--no-warnings", "-e", KEEPER];
+			const start =
+				this.#scope === undefined
+					? { command: process.execPath, args: keeper.slice(1), env: {} }
+					: this.#scope.wrap(keeper);
+			this.#process = spawn(start.command, [...start.args], {
 				cwd: options.cwd,
-				env: {},
+				env: { ...start.env },
 				stdio: ["pipe", "pipe", options.stderr, "pipe"],
 				detached: true,
 				windowsHide: true,
 			});
 			const control = this.#process.stdio[3] as (Readable & Writable) | null | undefined;
 			control?.on("error", () => {});
-			control?.write(`${JSON.stringify({ command, args: [...args], env: { ...options.env } })}\n`);
+			control?.write(
+				`${JSON.stringify({
+					command,
+					args: [...args],
+					env: { ...options.env },
+					...(this.#scope === undefined ? {} : { scope: [...this.#scope.stopWithoutWaiting] }),
+				})}\n`,
+			);
 			let buffer = "";
 			control?.setEncoding("utf8");
 			control?.on("data", (chunk: string) => {
@@ -170,6 +244,11 @@ export class ProcessGroupV0 {
 	/** The command's PID, once it started. */
 	get pid(): number | undefined {
 		return this.#commandPid;
+	}
+
+	/** The live scope's unit name when the group runs in one (LIVE-PROCESS-CONTAINMENT-001); undefined otherwise. */
+	get scopeUnit(): string | undefined {
+		return this.#scope?.unit;
 	}
 
 	/** The process-group ID (the keeper's PID) on POSIX; undefined on Windows. */
@@ -237,31 +316,34 @@ export class ProcessGroupV0 {
 
 	/**
 	 * SIGKILL everything left in the group, the keeper included, and wait for keeper exit and observable live members
-	 * to stop, within RELEASE_TIMEOUT_MS. No group is signalled after keeper exit. Idempotent. On Windows only the
-	 * command can be killed and awaited; without /proc, POSIX can observe only the keeper's exit.
+	 * to stop, within RELEASE_TIMEOUT_MS. No group is signalled after keeper exit. Then, in a scope, stop the scope and
+	 * confirm that it holds no process (bounded by the scope). Idempotent: every call returns the same cleanup. On Windows
+	 * only the command can be killed and awaited; without /proc, POSIX can observe only the keeper's exit.
 	 */
-	release(): Promise<void> {
-		this.#released ??= (async () => {
-			if (!this.#alive && !this.#keeper) return;
-			this.#ending = true;
-			if (!this.#keeper) {
-				// Windows: no group. The command is killed and its exit awaited (bounded), so nothing outlives the release.
-				if (this.#exit === undefined) this.#process.kill("SIGKILL");
-				let timer: ReturnType<typeof setTimeout> | undefined;
-				await Promise.race([
-					this.#gone,
-					new Promise<void>((resolve) => {
-						timer = setTimeout(resolve, RELEASE_TIMEOUT_MS);
-					}),
-				]);
-				clearTimeout(timer);
-				return;
+	release(): Promise<ProcessCleanupV0> {
+		this.#released ??= (async (): Promise<ProcessCleanupV0> => {
+			await this.#releaseGroup();
+			const scope = this.#scope;
+			if (scope !== undefined) {
+				if ((await scope.stop()) === "confirmed")
+					return { boundary: "scope", unit: scope.unit, result: "confirmed" };
+				return { boundary: "scope", unit: scope.unit, result: "incomplete", remaining: scope.remaining() };
 			}
-			// The whole group, keeper included, is SIGKILLed directly rather than by asking the keeper: the keeper could die
-			// or stall between being asked and acting. It is this process's unreaped child until #gone settles, so the
-			// group ID is still this group's at this kill.
-			const deadline = Date.now() + RELEASE_TIMEOUT_MS;
-			this.killGroup();
+			const group = this.groupId;
+			return {
+				boundary: "process-group",
+				result: group !== undefined && liveGroupMembers(group) === true ? "incomplete" : "unverified",
+			};
+		})();
+		return this.#released;
+	}
+
+	async #releaseGroup(): Promise<void> {
+		if (!this.#alive && !this.#keeper) return;
+		this.#ending = true;
+		if (!this.#keeper) {
+			// Windows: no group. The command is killed and its exit awaited (bounded), so nothing outlives the release.
+			if (this.#exit === undefined) this.#process.kill("SIGKILL");
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			await Promise.race([
 				this.#gone,
@@ -270,15 +352,28 @@ export class ProcessGroupV0 {
 				}),
 			]);
 			clearTimeout(timer);
-			// A group SIGKILL does not make every member exit at once. The keeper can be reaped before a command
-			// processes its fatal signal. Observe survivors (including after killGroup() already reaped the keeper),
-			// but never signal the now-reusable group ID again. Zombies are already stopped and do not delay release.
-			const group = this.groupId;
-			while (group !== undefined && Date.now() < deadline && liveGroupMembers(group) === true) {
-				await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10, Math.max(0, deadline - Date.now()))));
-			}
-		})();
-		return this.#released;
+			return;
+		}
+		// The whole group, keeper included, is SIGKILLed directly rather than by asking the keeper: the keeper could die
+		// or stall between being asked and acting. It is this process's unreaped child until #gone settles, so the
+		// group ID is still this group's at this kill.
+		const deadline = Date.now() + RELEASE_TIMEOUT_MS;
+		this.killGroup();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		await Promise.race([
+			this.#gone,
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, RELEASE_TIMEOUT_MS);
+			}),
+		]);
+		clearTimeout(timer);
+		// A group SIGKILL does not make every member exit at once. The keeper can be reaped before a command
+		// processes its fatal signal. Observe survivors (including after killGroup() already reaped the keeper),
+		// but never signal the now-reusable group ID again. Zombies are already stopped and do not delay release.
+		const group = this.groupId;
+		while (group !== undefined && Date.now() < deadline && liveGroupMembers(group) === true) {
+			await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10, Math.max(0, deadline - Date.now()))));
+		}
 	}
 
 	#onKeeperMessage(line: string): void {

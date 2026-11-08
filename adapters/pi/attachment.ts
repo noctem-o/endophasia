@@ -35,6 +35,7 @@ import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
 import { endoDigestKeyFromEnvironmentV0 } from "../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 import { type EndoHarnessRegistryV0, openEndoHarnessRegistryV0 } from "../../storage/harness-registry.ts";
+import type { ProcessCleanupV0, ProcessScopeV0 } from "../rpc-jsonl/process-group.ts";
 import {
 	type RpcDiagnosticV0,
 	type RpcEventV0,
@@ -115,6 +116,12 @@ export interface PiAttachmentOptionsV0 {
 	 * (storage/digest-key.ts), and the installation key is refused. Keeps the two digest domains from mixing.
 	 */
 	readonly digestDomain?: "private" | "fixture";
+	/**
+	 * A new scope for each Pi of the operator's session, which runs in it with everything it starts (LIVE-PROCESS-CONTAINMENT-001,
+	 * docs/live-process-containment.md; the CLI gives adapters/sandbox/containment.ts liveScopeV0). Without it, the session's
+	 * processCleanup() reports `unverified`, never `confirmed`.
+	 */
+	readonly processScope?: () => ProcessScopeV0;
 }
 
 export interface PiIdentificationV0 {
@@ -595,6 +602,8 @@ export class PiSessionAttachmentV0 {
 	#storeClosed = false;
 	#outputLimitExceeded = false;
 	#lastExit: RpcExitV0 | null = null;
+	/** One per Pi process this session started, settled when that process's group (and scope) was released. */
+	readonly #cleanups: Promise<ProcessCleanupV0>[] = [];
 	readonly #exitWaiters = new Set<() => void>();
 
 	constructor(owner: PiAttachmentV0, fingerprint: EndoHarnessFingerprintRecordV0, state: EndoCapabilityStateV0) {
@@ -811,6 +820,7 @@ export class PiSessionAttachmentV0 {
 			...(options.governedToolFree === true ? { offline: true } : {}),
 			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
 			...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
+			...(options.processScope === undefined ? {} : { scope: options.processScope() }),
 			onDiagnostic: (diagnostic) => {
 				// Exit can be observed before stdout drains. Keep diagnostics from that instance until it is
 				// superseded or its store closes, including a limit breach in the remaining stdout bytes.
@@ -845,6 +855,7 @@ export class PiSessionAttachmentV0 {
 			if (this.#client === client) this.#onEvent(event);
 		});
 		void client.connection.exited.then((exit) => this.#onExit(client, exit));
+		this.#cleanups.push(client.connection.cleanup());
 		let state: Awaited<ReturnType<PiRpcClientV0["getState"]>>;
 		try {
 			state = await client.getState();
@@ -926,6 +937,15 @@ export class PiSessionAttachmentV0 {
 		this.#fingerprint = fingerprint;
 		this.#capabilityState = state;
 		await this.connect();
+	}
+
+	/**
+	 * How every Pi process this session started was cleaned up, in start order, once each was released. A Pi's exit is not its cleanup:
+	 * only a `confirmed` scope says nothing it started is still running (LIVE-PROCESS-CONTAINMENT-001). Call after close() or
+	 * terminate(); before that, it waits for them.
+	 */
+	processCleanup(): Promise<ProcessCleanupV0[]> {
+		return Promise.all(this.#cleanups);
 	}
 
 	/** Resolves when the current Pi process has exited (immediately if it already has). */

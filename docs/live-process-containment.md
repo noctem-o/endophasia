@@ -132,7 +132,7 @@ On this host (Arch Linux, systemd 262, cgroup v2, Node 26.12.1), 2026-11-08:
   process, such as a dev server started with `nohup … &` from Pi's bash tool: it ends when the session ends. That is the meaning of
   owning the session's processes. If a workflow needs a process to outlive the session, it must be started outside Pi.
 - **The work-cycle driver passes `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`** (when set) into the attach's environment, which is
-  also Pi's. They name the user manager, not any configuration. `DRIVER_VERSION` is now `work-cycle-001b.2`, so runs made before and after
+  also Pi's. They name the user manager, not any configuration. `DRIVER_VERSION` is now `review-pilot-001.2`, so runs made before and after
   are distinguishable.
 - **`ProcessGroupV0.release()` resolves to a `ProcessCleanupV0`** instead of `void`. Callers that ignore the value are unaffected.
 - **Nothing persisted changed:** no event, record or schema. The cleanup is reported on the terminal and through the API only (see §6).

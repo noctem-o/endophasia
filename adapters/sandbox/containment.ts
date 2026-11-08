@@ -331,25 +331,50 @@ export function scopeProcessesV0(c: Pick<EndoContainmentV0, "systemctl" | "env">
 }
 
 /**
- * The live scopes the user manager still runs, each with the owner its description names and whether that owner (exactly that pid and
- * start time) still exists. A scope whose owner is gone was left by a controller and keeper that both died: it is reported, never
- * stopped here (docs/live-process-containment.md, "When both the owner and the keeper die").
+ * The live scopes the user manager still knows, active or failed, each with its state, the owner its description names, and whether
+ * that owner (exactly that pid and start time) still exists. A scope whose owner is gone was left by a controller and keeper that both
+ * died; a failed one may still hold processes its stop could not end (Codex, #133). Either is reported, never stopped here
+ * (docs/live-process-containment.md, "When both the owner and the keeper die").
  */
-export function liveScopesV0(
-	c: Pick<EndoContainmentV0, "systemctl" | "env">,
-): { unit: string; owner: { pid: number; startTime: string } | null; ownerAlive: boolean }[] {
+export function liveScopesV0(c: Pick<EndoContainmentV0, "systemctl" | "env">): {
+	unit: string;
+	state: "active" | "failed";
+	owner: { pid: number; startTime: string } | null;
+	ownerAlive: boolean;
+}[] {
 	const r = spawnSync(
 		c.systemctl,
-		["--user", "list-units", "--type=scope", "--state=active", "--plain", "--no-legend", "--no-pager", "endo-live-*"],
+		[
+			"--user",
+			"list-units",
+			"--type=scope",
+			"--all",
+			"--state=active,failed",
+			"--plain",
+			"--no-legend",
+			"--no-pager",
+			"endo-live-*",
+		],
 		{ env: c.env, encoding: "utf8", timeout: 10_000 },
 	);
-	const found: { unit: string; owner: { pid: number; startTime: string } | null; ownerAlive: boolean }[] = [];
+	const found: {
+		unit: string;
+		state: "active" | "failed";
+		owner: { pid: number; startTime: string } | null;
+		ownerAlive: boolean;
+	}[] = [];
 	for (const line of (r.stdout ?? "").split("\n")) {
 		const unit = /^(endo-live-[0-9a-f]{24})\.scope\s/.exec(line)?.[1];
 		if (unit === undefined) continue;
+		const state = /\sfailed\s/.test(line) ? "failed" : "active";
 		const m = /\(owner pid ([0-9]+) start ([0-9]+)\)$/.exec(show(c, unit, ["Description"]).Description ?? "");
 		const owner = m === null ? null : { pid: Number(m[1]), startTime: m[2] as string };
-		found.push({ unit, owner, ownerAlive: owner !== null && processStartTimeV0(owner.pid) === owner.startTime });
+		found.push({
+			unit,
+			state,
+			owner,
+			ownerAlive: owner !== null && processStartTimeV0(owner.pid) === owner.startTime,
+		});
 	}
 	return found;
 }

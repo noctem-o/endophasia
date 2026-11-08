@@ -270,6 +270,35 @@ suite("the DEVELOP workbench", () => {
 		expect([await done(0), await done(1)]).toEqual(["true", "false"]);
 	});
 
+	it("will not ask for a message that is the terminal's own command, says where it goes, and asks once it is a message (REVIEW-PILOT-001)", async () => {
+		const { page, session, broker, approval } = await open();
+		await pairWith(page, broker);
+		const sendDisabled = () => page.eval<boolean>("document.querySelector('[data-testid=send]').disabled");
+		await fill(page, "[data-testid=composer]", `attempt endo.attempt.${"0".repeat(32)}`);
+		await page.waitFor("!!document.querySelector('[data-testid=composer-command]')");
+		expect(await page.text("[data-testid=composer-command]")).toContain(
+			"This is the workbench terminal's `attempt` command, not a message.",
+		);
+		expect(await sendDisabled()).toBe(true);
+		// Ctrl+Enter asks for nothing either.
+		await page.eval(
+			"document.querySelector('[data-testid=composer]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }))",
+		);
+		await settle(300);
+		expect(await page.eval<boolean>("!document.querySelector('[data-testid=command-card]')")).toBe(true);
+		await fill(page, "[data-testid=composer]", "pair");
+		await page.waitFor("document.querySelector('[data-testid=composer-command]')?.textContent.includes('`pair`')");
+		// Ordinary words that start the same way are a message: the note goes, and the request is offered and asked.
+		await fill(page, "[data-testid=composer]", "attempt it again");
+		await page.waitFor("!document.querySelector('[data-testid=composer-command]')");
+		expect(await sendDisabled()).toBe(false);
+		await page.click("[data-testid=send]");
+		expect((await approval.waitForRequest()).message).toBe("attempt it again");
+		approval.answer("deny");
+		expect(session.promptCalls).toEqual([]);
+		expect(page.seen.problems).toEqual([]);
+	});
+
 	it("gates the composer on what is offered and explains why not, and offers no intervention without a desk", async () => {
 		const { page, session, broker } = await open();
 		await pairWith(page, broker);

@@ -24,7 +24,10 @@ export interface EndoLiveContainmentV0 {
  */
 export async function liveContainmentV0(
 	detect: typeof detectContainmentV0 = detectContainmentV0,
+	scan: { liveScopes?: typeof liveScopesV0; scopeProcesses?: typeof scopeProcessesV0 } = {},
 ): Promise<EndoLiveContainmentV0> {
+	const liveScopes = scan.liveScopes ?? liveScopesV0;
+	const scopeProcesses = scan.scopeProcesses ?? scopeProcessesV0;
 	const detected = await detect();
 	if (!detected.ok)
 		return {
@@ -35,11 +38,17 @@ export async function liveContainmentV0(
 			],
 		};
 	const notes: string[] = [];
-	for (const scope of liveScopesV0(detected.containment)) {
-		if (scope.ownerAlive) continue;
-		const count = scopeProcessesV0(detected.containment, scope.unit)?.length ?? null;
+	for (const scope of liveScopes(detected.containment)) {
+		const count = scopeProcesses(detected.containment, scope.unit)?.length ?? null;
+		if (scope.state === "active" && scope.ownerAlive) continue; // another live session's own scope
+		if (scope.state === "failed" && count === 0) continue; // failed, but nothing is left in it
+		const left = count === null ? "" : ` with ${count} process${count === 1 ? "" : "es"}`;
+		const why =
+			scope.state === "failed"
+				? "its stop failed and processes are still in it"
+				: `its owner${scope.owner === null ? "" : ` (pid ${scope.owner.pid})`} is gone`;
 		notes.push(
-			`warning: an earlier live session left scope ${scope.unit} running${count === null ? "" : ` with ${count} process${count === 1 ? "" : "es"}`}; its owner${scope.owner === null ? "" : ` (pid ${scope.owner.pid})`} is gone. \`systemctl --user stop ${scope.unit}.scope\` ends ${count === 1 ? "it" : "them"}.`,
+			`warning: an earlier live session left scope ${scope.unit}${scope.state === "failed" ? " (failed)" : " running"}${left}; ${why}. \`systemctl --user stop ${scope.unit}.scope\` ends ${count === 1 ? "it" : "them"}.`,
 		);
 	}
 	return { containment: detected.containment, unavailable: null, notes };

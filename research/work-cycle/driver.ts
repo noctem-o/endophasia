@@ -41,7 +41,7 @@ import { endoControlSocketV0 } from "../../cli/control.ts";
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ENDO_CLI = resolve(HERE, "../../cli/index.ts");
 export const FIXTURE = join(HERE, "fixture");
-export const DRIVER_VERSION = "review-pilot-001.1";
+export const DRIVER_VERSION = "review-pilot-001.2";
 
 /** The task the cycle carries. Its acceptance criterion is a command anyone can rerun at the recorded commit. */
 export const TASK = {
@@ -383,6 +383,11 @@ export function piEnv(layout: RunLayout, ponytailMode: string | null): NodeJS.Pr
 		ENDO_DIGEST_KEY_FILE: layout.digestKeyFile,
 	};
 	if (process.env.TERM !== undefined) env.TERM = process.env.TERM;
+	// LIVE-PROCESS-CONTAINMENT-001: `endo harness attach` contains Pi in a systemd user scope only when it can reach the user manager.
+	// These name the manager, not any configuration; Pi, as the same user, could reach /run/user/<uid> by path anyway. Without them the
+	// attach says cleanup is UNVERIFIED (docs/live-process-containment.md).
+	for (const name of ["XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"] as const)
+		if (process.env[name] !== undefined) env[name] = process.env[name];
 	if (ponytailMode !== null) env.PONYTAIL_DEFAULT_MODE = ponytailMode;
 	return env;
 }

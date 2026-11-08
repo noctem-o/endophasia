@@ -197,6 +197,9 @@ The pilot is in [`research/review-pilot/`](../review-pilot/README.md) (run 2026-
    attachment's launcher stops its own process group; Pi's tool child is not in it. This is not fixed here: Endophasia does not own Pi's
    children, and reaching them is a process-ownership design question (a cgroup or a subreaper, for example). The test pins the current
    behaviour, so a fix will show.
+   *Later (2026-11-08):* addressed by LIVE-PROCESS-CONTAINMENT-001 ([docs/live-process-containment.md](../../docs/live-process-containment.md)):
+   where a systemd user manager is reachable, the session's Pi runs in a scope of its own, and the same test now finds nothing left. The
+   observation above stands as recorded, and is still what happens without a user manager.
 3. **A candidate revision.**
    - No record names one.
    - An operator-declared candidate (approach 2) waits for a real review that needs it.

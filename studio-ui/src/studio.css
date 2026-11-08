@@ -2542,6 +2542,15 @@ table.fields thead th {
 	max-width: 96ch;
 }
 
+/* The composer's text is the terminal's own command: said in full, never clamped (REVIEW-PILOT-001, run 1). */
+.composer-command {
+	max-width: 96ch;
+	margin: 6px 0;
+	padding-left: 8px;
+	border-left: 2px solid var(--attention);
+	color: var(--fg-1);
+}
+
 .composer-hint {
 	display: -webkit-box;
 	-webkit-box-orient: vertical;

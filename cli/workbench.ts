@@ -16,6 +16,7 @@ import type { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { type WorkbenchApproverV0, WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
 import { cockpitAliasesV0 } from "../cockpit/index.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
+import { endoWorkbenchTerminalCommandInV0 } from "../protocol/workbench.ts";
 import {
 	DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0,
 	DevelopAttemptDispatchV0,
@@ -114,6 +115,12 @@ export async function startWorkbenchV0(
 	): Promise<"allow" | "deny" | null> => {
 		const what = request.operation;
 		if (signal.aborted) return null;
+		// A message that is this terminal's own command reaches Pi as chat, not as the command (REVIEW-PILOT-001, run 1): said before the
+		// phrase, so the one word that differs (PROMPT, not ATTEMPT) is not the only sign.
+		const asCommand =
+			what === "attempt" || what === "stop" || request.message === null
+				? null
+				: endoWorkbenchTerminalCommandInV0(request.message);
 		write(
 			[
 				"",
@@ -146,6 +153,15 @@ export async function startWorkbenchV0(
 					: what === "attempt"
 						? ["--- the exact brief, sent as the prompt ---", request.message, "--- end of brief ---"]
 						: [`--- the exact ${what} ---`, request.message, `--- end of ${what} ---`]),
+				...(asCommand === null
+					? []
+					: [
+							`NOTE: this ${what} is the text of this terminal's \`${asCommand.command}\` command. Approving sends it to Pi as a chat message. ${
+								asCommand.command === "attempt"
+									? "It does NOT send any attempt's brief, and records no authorisation for one. To send the attempt, decline this, then type the command at the `>` prompt here."
+									: "It does NOT pair the page. To pair, decline this, then type `pair` at the `>` prompt here."
+							}`,
+						]),
 				EFFECT_WORDS[what],
 				`Type ${request.phrase} to ${request.message === null ? "send it" : what === "attempt" ? "send exactly this brief" : `send exactly this ${what}`}; anything else declines.`,
 				"",
@@ -282,6 +298,10 @@ export async function startWorkbenchV0(
 		const words = line.trim().split(/\s+/);
 		if (line.trim() === "pair") showCode();
 		else if (words[0] === "attempt" && words.length === 2) requestAttempt(words[1] as string);
+		else if (words[0] === "attempt")
+			write(
+				"workbench: `attempt` takes one attempt id, typed here: `attempt endo.attempt.<32 hex digits>`. `endo attempt list --project <id>` lists a project's attempts; the page's Task view can also ask for one.\n",
+			);
 		else if (line.trim() !== "")
 			write(
 				"workbench: type `pair` for a new pairing code, or `attempt <id>` to ask to send a prepared attempt's brief; approvals are typed when a request is waiting\n",

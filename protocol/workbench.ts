@@ -22,6 +22,24 @@ import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 
 export const ENDO_WORKBENCH_SCHEMA_V0 = "endo.workbench.v0";
 
+/**
+ * The workbench terminal's own command, when a message's whole text is one: `pair`, or `attempt` alone or with an attempt id. A message
+ * like that typed into the page's composer reaches the agent as chat, not as the command: it sends no attempt's brief and records no
+ * authorisation (REVIEW-PILOT-001, run 1). The page refuses to ask for it, and the terminal warns when asked to approve one anyway. Plain
+ * English such as "attempt it" is not a command: only an argument that starts like an attempt id is.
+ */
+export function endoWorkbenchTerminalCommandInV0(
+	text: string,
+): { command: "attempt" | "pair"; argument: string | null } | null {
+	const words = text.trim().split(/\s+/);
+	if (words.length === 1 && words[0] === "pair") return { command: "pair", argument: null };
+	if (words[0] !== "attempt") return null;
+	if (words.length === 1) return { command: "attempt", argument: null };
+	return words.length === 2 && /^endo\.attempt\./.test(words[1] as string)
+		? { command: "attempt", argument: words[1] as string }
+		: null;
+}
+
 export const ENDO_WORKBENCH_KINDS_V0 = {
 	"workbench.prompt-proposed": "policy-conclusion",
 	"workbench.prompt-authorized": "authority-decision",

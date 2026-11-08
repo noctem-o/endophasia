@@ -82,11 +82,14 @@ One JSON document per attempt, derived and sealed. Fields, each with a `source` 
 ```text
 bundle
   schemaVersion, extractor, derivedFrom: [{ path, sha256, version }], bundleSha256
-  task        { id, revision?, acceptance: { kind: "evaluator" | "check-argv" | "text", digest }, family, difficultyTier? }
+  task        { id, revision?, acceptance: { kind: "evaluator" | "check-argv" | "text", digest },
+                family: { name, catalog: { path, sha256 } } | unknown, difficultyTier?: { tier, catalog } | unknown }
   initial     { workspace: { kind: "archive" | "tree-digest" | "commit" | unknown, digest }, environment: { pinned?, runtimeSet } }
   actor       { harness: { name, version, fingerprint }, model: { name, servedDigest? | unknown }, sampling?: { keyed digest } }
   conditions  { study?, condition?, randomized: boolean, assignment: "plan" | "operator", limits?, isolation: { boundary, profileSha256 } | unknown }
   trajectory  { source: "capture-log" | "event-log", exchanges, toolCalls: [{ name, status, argsDigest }], turns, endedBy }
+                | unknown("output-digest-only")       // an offline protected trial (P1) records only its stdout digest
+  outcome     { kind: "evaluated" | "failed-without-submission" | "check" | "declared" | unknown, ... }
   artifacts   [{ path, sha256, bytes, collectedAfter: "confirmed-termination" | "operator-commit" | unknown }]
   verification{ kind: "independent-evaluator" | "in-workspace-check" | "receipt" | none, outcome, cases?: { passed, failed }, outputDigest? }
   decisions   [{ kind: "authorisation" | "status" | "exclusion", by: "operator" | "study", at, revisionReviewed: unknown }]
@@ -94,12 +97,29 @@ bundle
   caveats     [ "pilot-stage" | "task-examined" | "runtime-set-limited" | ... ]
 ```
 
+**Where `family` and `difficultyTier` come from.** No existing task format carries them: a run names task ids, nothing more. They come
+from a **task catalog**, written by the task author before any trial and sealed by digest:
+- one research file, for example `endo.task-catalog.v0`, mapping each task id to its family, its tier and the stated rules its evaluator's
+  cases exercise;
+- named in each bundle's `derivedFrom`.
+
+A bundle whose task is not in a catalog has `family: unknown`. It is then not counted toward any cross-family criterion (§5), rather than
+being assigned a family after the fact.
+
+**Unknown trajectories.** A source that records no trajectory gets `trajectory: unknown` with its reason, never an empty list. An offline
+protected trial (P1) records its stdout digest only. Its bundle carries the reason `trajectory-unavailable`, which removes `symptom` and
+`lesson` uses that read the agent's actions. It keeps `descriptive`, and `causal-policy` too: the outcome and the assignment are recorded,
+and that contrast does not need the path taken.
+
 **New eligibility reasons this would add** (each from a gap in §2):
 - `acceptance-text-only`: a DEVELOP attempt whose acceptance has no machine check bound to it. It removes `lesson` as evidence of success,
   not `descriptive`.
 - `baseline-unrecorded`: the initial state cannot be re-materialised. It removes `causal-policy` and any replay use.
-- `candidate-unbound`: no record binds the artifact to the attempt. It is MEM-000's `artifact-unbound`, generalised to protected trials
-  without a submission.
+- `candidate-unbound`: an artifact exists, but no record binds it to the attempt. Examples: a DEVELOP commit the operator made, or a
+  workspace a run left without a collection. It is MEM-000's `artifact-unbound`, generalised. It is **not** used for a protected trial with
+  no submission. There, EVAL-ISO-001 has already observed and recorded the outcome: an absent or unacceptable submission is the agent's
+  qualified failure (`failed-without-submission`), collected after confirmed termination. Such a bundle has `artifacts: []` and that outcome,
+  and it stays eligible for learning as the failure it is.
 - `model-unidentified`: the model's name is known but not the served weights. It removes `causal-policy` across model contrasts.
 - `runtime-set-limited`: the agent asked for tools its runtime does not hold (observed in EVAL-ISO-002's real trial: 4 of 9 tool calls
   exited 127). A **caveat**, not an exclusion: the condition is part of what was measured.
@@ -143,8 +163,9 @@ Either way, every trial needs:
 - a sealed record.
 
 **Design:**
-- **Task families: 8 new**, written for this study and never shown to any agent or reviewer before the main run. Each family has 3
-  difficulty tiers, with function-case evaluators (EVAL-ISO-001's kind), a reference and a negative.
+- **Task families: 8 new for the main run**, written for this study and never shown to any agent before it. Each family has 3 difficulty
+  tiers, with function-case evaluators (EVAL-ISO-001's kind), a reference and a negative, and is entered in the sealed task catalog (§3)
+  before any trial.
   - Families are chosen so that failure modes can recur *across* families. Examples: boundary handling, stated precedence between rules,
     stateful iteration, parsing with escapes, numeric edge cases, and API contracts with optional fields.
   - The **acceptance criteria are executable** (the evaluator's cases), and the **brief states every rule**, so that a failure is a failure
@@ -156,9 +177,13 @@ Either way, every trial needs:
 - **Completion:** a cap that does not bind (MEM-000's first lesson); reasoning on.
 - **Plan:** blocked randomization over family × tier × model, 3 trials per cell: 8 × 3 × 2 × 3 = **144 trials**. Every planned trial
   stays in the denominator.
-- **Pilot first:** 2 families × 3 tiers × 2 models × 2 trials (24 trials) to calibrate tiers. The main run proceeds only if each model's
-  pilot failure rate is between 20% and 70% overall, so that neither model passes nearly everything nor fails nearly everything.
-  Otherwise the tiers are revised, and the pilot is reported as development data (`task-examined`).
+- **Pilot first, on 2 further families that are not among the 8:** 2 families × 3 tiers × 2 models × 2 trials (24 trials), to calibrate
+  how hard the tiers are.
+  - The pilot's families are development data (`task-examined`). They are never part of the main sample, so the main bank stays unseen.
+  - The main run proceeds only if each model's pilot failure rate is between 20% and 70% overall, so that neither model passes nearly
+    everything nor fails nearly everything.
+  - Otherwise the tier rules are revised for the 8 main families, by the author, without running them, and the pilot is repeated on its
+    own families.
 
 **Measured, with acceptance criteria fixed in advance:**
 
@@ -179,8 +204,8 @@ Either way, every trial needs:
 - an interruption after an agent started is final attrition (EVAL-ISO-001's rule).
 
 **What it costs:** local compute only. At about 25 s per trial with Glimmer (EVAL-ISO-002's real trial), the main run is on the order of
-an hour or two of model time, plus the 1.7B model's time. The real cost is writing 8 families with evaluators, and their independent
-review.
+an hour or two of model time, plus the 1.7B model's time. The real cost is writing 10 families with evaluators (the 8 for the main run and
+the pilot's 2), and their independent review.
 
 **What it would not show:** that any card helps (that is MEM-001), or anything about cloud models or other harnesses.
 

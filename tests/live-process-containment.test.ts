@@ -246,6 +246,20 @@ describe.runIf(linux)("LIVE-PROCESS-CONTAINMENT-001: incomplete cleanup is repor
 		expect(lines[3]).toMatch(/UNVERIFIED/);
 	});
 
+	it.runIf(contained !== null)(
+		"a host where a live scope's cgroup.events cannot be read is refused: a missing file must never read as an empty scope (Codex, #133)",
+		async () => {
+			const refused = await detectContainmentV0({
+				cgroupRoot: join(temp("endo-lpc-nocgroup-"), "not-a-cgroup-root"),
+			});
+			expect(refused).toMatchObject({ ok: false, reason: "containment-unavailable" });
+			expect((refused as { detail: string }).detail).toMatch(
+				/cgroup\.events is not readable in a unified cgroup v2 hierarchy/,
+			);
+			expect((await detectContainmentV0()).ok).toBe(true);
+		},
+	);
+
 	it("without a user manager, the operator is told before the session starts that cleanup will be unverified", async () => {
 		const live = await liveContainmentV0(async () => ({
 			ok: false,

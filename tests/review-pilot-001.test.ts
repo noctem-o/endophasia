@@ -1,8 +1,10 @@
 // REVIEW-PILOT-001 (research/review-pilot/README.md): the study's fixture, task and worksheet, through the same driver as WORK-CYCLE-001A.
 // No agent and no approval here: the run itself is the operator's. The candidate edits below are the test's own.
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	endo,
@@ -12,6 +14,7 @@ import {
 	REVIEW_PILOT_001,
 	type RunLayout,
 	reconstruct,
+	renderReconstruction,
 	runEnv,
 	runGit,
 	STUDIES,
@@ -93,10 +96,27 @@ describe("REVIEW-PILOT-001: a task the check does not settle", () => {
 		const check = commitAndCheck(layout, prepared.attemptId);
 		expect(check.status).toBe(0);
 		expect(json(check).receipt.outcome).toBe("passed");
-		const r = reconstruct(layout, prepared);
+		const r = reconstruct(layout, { ...prepared, study: REVIEW_PILOT_001.id });
+		expect(r.study).toBe("review-pilot-001");
+		expect(renderReconstruction(r).split("\n")[0]).toBe("# REVIEW-PILOT-001 reconstruction");
 		expect(r.artifact).toMatchObject({ clean: true, changedFiles: ["src/duration.mjs"], testsChanged: false });
 		// The task is not done because a check passed: only the operator moves it.
 		expect(r.task.status).toBe("open");
+	});
+
+	it("`driver.ts reconstruct --run` labels a reconstruction with the study its run.json records; older runs read as 001A (Codex P2)", () => {
+		const layout = freshRun();
+		const prepared = prepareJourney(layout, runEnv(layout), REVIEW_PILOT_001);
+		const driver = fileURLToPath(new URL("../research/work-cycle/driver.ts", import.meta.url));
+		const heading = (runJson: object) => {
+			writeFileSync(join(layout.run, "run.json"), JSON.stringify(runJson));
+			const out = spawnSync(process.execPath, [driver, "reconstruct", "--run", layout.run], { encoding: "utf8" });
+			expect(out.status, out.stderr).toBe(0);
+			return out.stdout.split("\n")[0];
+		};
+		expect(heading({ ...prepared, study: "review-pilot-001" })).toBe("# REVIEW-PILOT-001 reconstruction");
+		// A run.json written before REVIEW-PILOT-001 has no study: every such run carried the WORK-CYCLE-001A fixture.
+		expect(heading(prepared)).toBe("# WORK-CYCLE-001A reconstruction");
 	});
 
 	it("writes the worksheet once, filled with this run's ids and commands, and with no answers", () => {

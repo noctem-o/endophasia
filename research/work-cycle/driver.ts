@@ -627,6 +627,8 @@ export function processesOfRun(layout: RunLayout): { pid: number; cmd: string }[
 // Evidence: reconstruct the cycle from what is stored, in new processes, with no agent running. Every fact says where it came from.
 
 export interface RunIds {
+	/** The study the run carried, as `run.json` records it. Absent in runs made before REVIEW-PILOT-001: those all carried WORK-CYCLE-001A. */
+	readonly study?: Study["id"];
 	readonly projectId: string;
 	readonly taskId: string;
 	readonly attemptId: string;
@@ -635,6 +637,7 @@ export interface RunIds {
 
 export interface Reconstruction {
 	readonly driver: string;
+	readonly study: Study["id"];
 	readonly readAt: string;
 	readonly liveProcesses: readonly { pid: number; cmd: string }[];
 	readonly task: {
@@ -904,6 +907,7 @@ export function reconstruct(
 	);
 	return {
 		driver: DRIVER_VERSION,
+		study: ids.study ?? WORK_CYCLE_001A.id,
 		readAt: new Date().toISOString(),
 		liveProcesses: processesOfRun(layout),
 		task: {
@@ -969,7 +973,7 @@ export function renderReconstruction(r: Reconstruction): string {
 		.map(([name, t]) => `${name} ×${t.started}${t.errors > 0 ? ` (${t.errors} returned an error)` : ""}`)
 		.join(", ");
 	const lines = [
-		`# WORK-CYCLE-001A reconstruction`,
+		`# ${r.study.toUpperCase()} reconstruction`,
 		"",
 		`Read ${r.readAt} by ${r.driver}, from stored records only. Processes of the run still alive: ${r.liveProcesses.length}.`,
 		"",
@@ -1224,7 +1228,7 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		`${JSON.stringify({ package: ponytail, ...ponytailObserved, perRequest: undefined, requestModes: ponytailObserved.perRequest }, null, 2)}\n`,
 	);
 	say(`Ponytail: declared ${declared ?? "unset"}, observed ${ponytailObserved.effective} (${ponytailObserved.basis})`);
-	const written = writeReconstruction(layout, prepared);
+	const written = writeReconstruction(layout, { ...prepared, study: study.id });
 	const leaked = processesOfRun(layout);
 	writeFileSync(join(layout.evidence, "cleanup.json"), `${JSON.stringify({ leaked }, null, 2)}\n`);
 	say(`processes of this run still alive: ${leaked.length}`);

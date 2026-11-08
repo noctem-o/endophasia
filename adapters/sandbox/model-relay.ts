@@ -160,14 +160,9 @@ export async function startModelRelayV0(options: {
 			return verdict.admitted;
 		},
 	});
-	const directory = mkdtempSync(join(options.runtimeDirectory, "endo-relay-"));
-	chmodSync(directory, 0o700);
-	const socketPath = join(directory, "model.sock");
-	if (Buffer.byteLength(socketPath) > 107) {
-		await proxy.close();
-		rmSync(directory, { recursive: true, force: true });
-		throw new TypeError(`the relay socket's path is too long for a Unix socket (${socketPath})`);
-	}
+	// From here on, any failure closes what was already started (the proxy, the socket's directory), so a caller that catches it and
+	// retries leaves nothing listening (Codex, #134).
+	let directory: string | null = null;
 	const open = new Set<Socket>();
 	const clients = new Set<Socket>();
 	const server: Server = createServer((client) => {
@@ -194,14 +189,29 @@ export async function startModelRelayV0(options: {
 		client.pipe(upstream);
 		upstream.pipe(client);
 	});
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(socketPath, () => resolve());
-	});
-	chmodSync(socketPath, 0o600);
-	const made = lstatSync(socketPath);
-	if (!made.isSocket() || made.uid !== process.getuid?.())
-		throw new TypeError("the relay socket is not this process's");
+	let socketPath: string;
+	try {
+		directory = mkdtempSync(join(options.runtimeDirectory, "endo-relay-"));
+		chmodSync(directory, 0o700);
+		socketPath = join(directory, "model.sock");
+		if (Buffer.byteLength(socketPath) > 107)
+			throw new TypeError(`the relay socket's path is too long for a Unix socket (${socketPath})`);
+		const path = socketPath;
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(path, () => resolve());
+		});
+		chmodSync(socketPath, 0o600);
+		const made = lstatSync(socketPath);
+		if (!made.isSocket() || made.uid !== process.getuid?.())
+			throw new TypeError("the relay socket is not this process's");
+	} catch (error) {
+		if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
+		await proxy.close();
+		if (directory !== null) rmSync(directory, { recursive: true, force: true });
+		throw error;
+	}
+	const ownDirectory = directory;
 	let closing: Promise<void> | undefined;
 	return {
 		socketPath,
@@ -213,10 +223,13 @@ export async function startModelRelayV0(options: {
 		transferredBytes: () => proxy.transferredBytes,
 		close: () => {
 			closing ??= (async () => {
-				await new Promise<void>((resolve) => server.close(() => resolve()));
+				// Stop accepting, and drop every open connection BEFORE waiting: server.close() calls back only once its connections ended,
+				// so a client holding one open would otherwise make close() wait forever (Codex, #134).
+				const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
 				for (const socket of open) socket.destroy();
+				await stopped;
 				await proxy.close();
-				rmSync(directory, { recursive: true, force: true });
+				rmSync(ownDirectory, { recursive: true, force: true });
 			})();
 			return closing;
 		},

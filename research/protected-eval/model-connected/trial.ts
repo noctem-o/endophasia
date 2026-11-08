@@ -27,6 +27,7 @@ import {
 } from "../../../adapters/sandbox/bubblewrap.ts";
 import { detectContainmentV0 } from "../../../adapters/sandbox/containment.ts";
 import {
+	admitModelRequestV0,
 	bridgedCommandV0,
 	ENDO_PI_MODEL_ROUTES_V0,
 	type EndoModelRelayPolicyV0,
@@ -36,6 +37,7 @@ import {
 } from "../../../adapters/sandbox/model-relay.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
+import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 
 export const TRIAL_RECORD_VERSION = "endo.model-connected-trial.v0";
 const PORT = 18080;
@@ -48,7 +50,7 @@ const flag = (args: string[], name: string, fallback?: string): string => {
 	return v;
 };
 
-const seal = (record: Record<string, unknown>): string =>
+export const seal = (record: Record<string, unknown>): string =>
 	sha256HexV0(canonicalEndoJsonV0({ ...record, recordSha256: null }));
 
 /** The workspace's tree digest, or why it has none (a link or special file the agent left: the digest refuses them). */
@@ -218,6 +220,32 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 	}
 }
 
+/**
+ * Every recorded exchange whose request the policy would refuse, judged again from the recorded body (decoded from the trial's blob
+ * store under its key) by the same judge the relay used: route, size, a JSON object, the model. Empty when all of them are admissible.
+ */
+export function exchangesOutsidePolicyV0(
+	store: string,
+	key: ReturnType<typeof endoDigestKeyV0>,
+	policy: EndoModelRelayPolicyV0,
+): { exchange: number; reason: string }[] {
+	const cassette = loadEndoCassetteV0(store, key);
+	const blobs = createEndoBlobStoreV0(join(store, "capture"), key, { readOnly: true });
+	const outside: { exchange: number; reason: string }[] = [];
+	for (const e of cassette.exchanges) {
+		let body: Uint8Array;
+		try {
+			body = blobs.get(e.requestBody.digest);
+		} catch {
+			outside.push({ exchange: e.exchange, reason: "body-unreadable" });
+			continue;
+		}
+		const verdict = admitModelRequestV0(policy, { method: e.method, path: e.path, body });
+		if (!verdict.admitted) outside.push({ exchange: e.exchange, reason: verdict.reason });
+	}
+	return outside;
+}
+
 export interface VerifyFindingV0 {
 	check: string;
 	ok: boolean;
@@ -273,10 +301,13 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 			cassette.exchanges.every((e) => e.truncated === null || e.response?.outcome !== "complete"),
 			"every complete exchange's bodies verify against the blob store",
 		);
+		const outside = exchangesOutsidePolicyV0(join(dir, "store"), key, policy);
 		add(
-			"routes-within-policy",
-			cassette.exchanges.every((e) => policy.routes.some((r) => r.method === e.method && r.path === e.path)),
-			"every recorded exchange is a route the policy admits",
+			"requests-within-policy",
+			outside.length === 0,
+			outside.length === 0
+				? "every recorded request, body included (route, model, size, a JSON object), is one the policy admits"
+				: `exchanges the policy would refuse: ${outside.map((o) => `${o.exchange} (${o.reason})`).join(", ")}`,
 		);
 		add(
 			"admitted-count",
@@ -289,8 +320,15 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 		["stderr", "stderr.txt"],
 	] as const)
 		add(`${name}-digest`, sha256HexV0(readFileSync(join(dir, file))) === record.agent?.[name]?.sha256, file);
+	// A workspace with no digest (a link or special file the agent left) cannot be checked: that is a failure of this check, never a match
+	// of two nulls (Codex, #134).
 	const ws = workspaceDigest(join(dir, "work"));
-	add("workspace-digest", ws.sha256 === record.workspace?.sha256, ws.problem ?? "the workspace as kept");
+	add(
+		"workspace-digest",
+		ws.sha256 !== null && ws.sha256 === record.workspace?.sha256,
+		ws.problem ??
+			(record.workspace?.sha256 == null ? "the record holds no workspace digest" : "the workspace as kept"),
+	);
 	if (options.piDist !== undefined) {
 		const current = endoTreeDigestV0(realpathSync(options.piDist));
 		add(

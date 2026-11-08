@@ -111,12 +111,14 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
   - Four of its nine tool calls asked for commands the minimal runtime does not hold (`hexdump`, `od`, `python3`, `wc`; exit 127). **The
     runtime set is part of a trial's condition** and visibly shapes the agent's behaviour. A study must declare it and keep it fixed.
   - The trial's directory is under `~/projects/endophasia-research/eval-iso-002/`, outside the repository.
-- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. On the real trial all 14 checks pass:
+- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. On the real trial all 14 checks pass.
+  After Codex's review, every recorded request **body** is judged again against the policy (route, model, size, a JSON object), not only
+  its route, and a workspace with no digest fails instead of matching a null. The real trial still passes all 14. The checks:
   - the record's seal;
   - the policy's digest;
   - the boundary and termination;
   - the cassette loads, matches the record exchange by exchange (route, request digest, integrity), and verifies;
-  - every exchange is within the policy;
+  - every recorded request is within the policy, body included;
   - stdout and stderr digests;
   - the workspace digest;
   - the installed Pi is unchanged.

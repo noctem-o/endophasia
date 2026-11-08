@@ -298,6 +298,72 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(existsSync(dir)).toBe(false);
 	});
 
+	it("close() does not wait for a client that keeps its connection open (Codex, #134)", async () => {
+		const { relay } = await relayed();
+		const net = await import("node:net");
+		const held = net.connect(relay.socketPath);
+		cleanup.push(() => {
+			held.destroy();
+		});
+		await new Promise((r) => held.once("connect", r));
+		const dir = join(relay.socketPath, "..");
+		const outcome = await Promise.race([
+			relay.close().then(() => "closed"),
+			new Promise((r) => setTimeout(() => r("hung"), 5000)),
+		]);
+		expect(outcome).toBe("closed");
+		expect(existsSync(dir)).toBe(false);
+	});
+
+	it("a relay that cannot make its socket leaves nothing listening (Codex, #134)", async () => {
+		const listeners = () => process.getActiveResourcesInfo().filter((r) => r === "TCPServerWrap").length;
+		const log = new EndoCaptureLogV0(fresh("store"), KEY, "record", { async: true });
+		cleanup.push(() => log.close());
+		// Earlier tests' servers finish closing asynchronously: let them settle, so that only a listener left by this call is counted.
+		await new Promise((r) => setTimeout(r, 200));
+		const before = listeners();
+		await expect(
+			startModelRelayV0({
+				upstream: "http://127.0.0.1:9",
+				policy: policy(),
+				log,
+				runtimeDirectory: join(runtimeBase, "does-not-exist"),
+			}),
+		).rejects.toThrow();
+		// A closed server's handle is released shortly after close() resolves; one left listening would stay.
+		for (let i = 0; i < 50 && listeners() > before; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(listeners()).toBeLessThanOrEqual(before);
+	});
+
+	it("the verifier judges every recorded request body again: a recording with another model or an oversized body is caught (Codex, #134)", async () => {
+		const { exchangesOutsidePolicyV0 } = await import("../research/protected-eval/model-connected/trial.ts");
+		const { startEndoRecordingProxyV0 } = await import("../adapters/openai-proxy/record.ts");
+		// An ungoverned recording: what a relay that failed to enforce its policy would have left.
+		const upstream = await startFakeOpenAiServer();
+		const store = fresh("ungoverned");
+		const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
+		const proxy = await startEndoRecordingProxyV0({ upstream: new URL(upstream.baseUrl).origin, log });
+		const send = (body: string) =>
+			fetch(`${proxy.origin}/v1/chat/completions`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body,
+			}).then((r) => r.text());
+		await send(chat());
+		await send(chat("other-model"));
+		await send(JSON.stringify({ model: MODEL, pad: "x".repeat(2048) }));
+		await proxy.close();
+		log.close();
+		await upstream.close();
+		expect(exchangesOutsidePolicyV0(store, KEY, policy({ maxRequestBytes: 1024 }))).toEqual([
+			{ exchange: 2, reason: "model" },
+			{ exchange: 3, reason: "size" },
+		]);
+		expect(exchangesOutsidePolicyV0(store, KEY, policy({ model: "other-model" })).map((o) => o.exchange)).toEqual([
+			1, 3,
+		]);
+	});
+
 	it("a cassette whose recorded body was altered does not verify", async () => {
 		const { relay, log, store } = await relayed();
 		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat())).toMatchObject({ status: 200 });
@@ -685,6 +751,18 @@ describe.runIf(REAL && PI_DIST.length > 0)(
 				readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
 			for (const f of walk(join(dir, "store", "capture", "blobs"))) writeFileSync(f, Buffer.from("tampered"));
 			expect(failed()).toEqual(expect.arrayContaining(["cassette-matches-record"]));
+			expect(failed()).not.toContain("seal");
+
+			// A trial whose agent left a link in the workspace has no workspace digest: verification fails that check, never matching null to
+			// null (Codex, #134). Built from the same record, resealed with no workspace digest.
+			const { seal } = await import("../research/protected-eval/model-connected/trial.ts");
+			const linked = JSON.parse(original) as Record<string, unknown>;
+			linked.workspace = { sha256: null, problem: "a link the agent left" };
+			linked.recordSha256 = seal(linked);
+			writeFileSync(recordFile, JSON.stringify(linked));
+			const { symlinkSync } = await import("node:fs");
+			symlinkSync("/etc/hostname", join(dir, "work", "link"));
+			expect(failed()).toContain("workspace-digest");
 			expect(failed()).not.toContain("seal");
 		}, 300_000);
 	},

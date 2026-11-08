@@ -13,7 +13,7 @@
 // keyed digests are not), tool-call sequences (names and argument digests), workspace and answer digests, and for a replay the cassette's
 // served/miss counters and where the first replayed request diverged from the recorded one. No prompt, answer or body text.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../../adapters/openai-proxy/capture-log.ts";
 import {
@@ -21,10 +21,60 @@ import {
 	loadEndoCassetteV0,
 	startEndoCassetteServerV0,
 } from "../../adapters/openai-proxy/cassette.ts";
+import { endoTreeDigestV0 } from "../../adapters/sandbox/bubblewrap.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
 import { runTrial } from "../protected-eval/model-connected/trial.ts";
+
+/**
+ * Make `dir` (and any missing parents) and leave it private to this user, whatever the umask: it holds raw prompts, model replies and
+ * tool output (the replay's capture log, the trials' stores). An existing directory is accepted only if it is a real directory this user
+ * owns, and it is then made 0700 too. The mode is checked after the fact, never assumed from the requested one (Codex, #136).
+ */
+export function privateDirectoryV0(dir: string): void {
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const s = lstatSync(dir);
+	if (!s.isDirectory()) throw new TypeError(`${dir} is not a directory (a link is refused)`);
+	if (s.uid !== process.getuid?.()) throw new TypeError(`${dir} is not this user's`);
+	chmodSync(dir, 0o700);
+	if ((lstatSync(dir).mode & 0o077) !== 0) throw new TypeError(`${dir} could not be made private`);
+}
+
+/**
+ * Where a repeat's inputs differ from its source trial's: the Pi distribution (by tree digest) and the model endpoint (by normalised
+ * origin). A repeat under either difference would confound a change of agent build or endpoint with the model's own variation, so the
+ * probe refuses it (Codex, #136). Empty when both match.
+ */
+export function repeatProvenanceMismatchesV0(
+	source: { subject?: { pi?: { distSha256?: unknown } }; relay?: { upstream?: { origin?: unknown } } },
+	given: { piDistSha256: string; upstream: string | null },
+): string[] {
+	const mismatches: string[] = [];
+	if (source.subject?.pi?.distSha256 !== given.piDistSha256) mismatches.push("pi-dist");
+	if (given.upstream !== null) {
+		let origin: string | null = null;
+		try {
+			origin = new URL(given.upstream).origin;
+		} catch {
+			origin = null;
+		}
+		const recorded = typeof source.relay?.upstream?.origin === "string" ? source.relay.upstream.origin : null;
+		if (origin === null || recorded === null || origin !== new URL(recorded).origin) mismatches.push("upstream");
+	}
+	return mismatches;
+}
+
+function requireProvenance(sourceRecord: unknown, piDist: string, upstream: string | null): void {
+	const mismatches = repeatProvenanceMismatchesV0(sourceRecord as Parameters<typeof repeatProvenanceMismatchesV0>[0], {
+		piDistSha256: endoTreeDigestV0(realpathSync(piDist)),
+		upstream,
+	});
+	if (mismatches.length > 0)
+		throw new TypeError(
+			`these inputs are not the source trial's: ${mismatches.join(", ")} (a repeat must change nothing but the run)`,
+		);
+}
 
 const flag = (args: string[], name: string, fallback?: string): string => {
 	const i = args.indexOf(name);
@@ -82,7 +132,8 @@ async function repeat(args: string[]) {
 	const sourceRecord = JSON.parse(readFileSync(join(source, "record.json"), "utf8"));
 	if (sha256HexV0(prompt) !== sourceRecord.subject.prompt.sha256)
 		throw new TypeError("--prompt is not the source trial's prompt");
-	mkdirSync(out, { recursive: true });
+	requireProvenance(sourceRecord, flag(args, "--pi-dist"), flag(args, "--upstream"));
+	privateDirectoryV0(out);
 	const runs = [trajectoryOf(source)];
 	for (let i = 1; i <= times; i++) {
 		const dir = join(out, `repeat-${i}`);
@@ -125,7 +176,9 @@ async function replay(args: string[]) {
 	if (sha256HexV0(prompt) !== sourceRecord.subject.prompt.sha256)
 		throw new TypeError("--prompt is not the source trial's prompt");
 	if (existsSync(out)) throw new TypeError(`${out} exists`);
-	mkdirSync(out, { recursive: true });
+	// A replay's upstream is the cassette by design; its Pi must still be the source's.
+	requireProvenance(sourceRecord, flag(args, "--pi-dist"), null);
+	privateDirectoryV0(out);
 	const key = keyOf(source);
 	const cassette = loadEndoCassetteV0(join(source, "store"), key);
 	const replayStore = join(out, "cassette-server");

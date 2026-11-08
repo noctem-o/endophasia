@@ -12,7 +12,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import type { ProcessScopeV0 } from "../rpc-jsonl/process-group.ts";
 
 export const ENDO_SYSTEMD_RUN_V0 = "/usr/bin/systemd-run";
@@ -24,6 +24,8 @@ export const ENDO_SANDBOX_TASKS_MAX_V0 = 512;
  * how long the manager waits for the kill to take before it gives up on the unit (and the controller then records `unconfirmed`).
  */
 export const ENDO_SCOPE_STOP_TIMEOUT_SEC_V0 = 5;
+/** Where the unified cgroup v2 hierarchy is read (read-only): a scope's emptiness is confirmed from its `cgroup.events` there. */
+export const ENDO_CGROUP_ROOT_V0 = "/sys/fs/cgroup";
 
 export interface EndoContainmentV0 {
 	mechanism: "systemd-user-scope";
@@ -77,7 +79,7 @@ function show(c: Pick<EndoContainmentV0, "systemctl" | "env">, unit: string, pro
  * creates with the required properties, reports with them applied, and stops on request. Anything else is a refusal.
  */
 export async function detectContainmentV0(
-	tools: { systemdRun?: string; systemctl?: string } = {},
+	tools: { systemdRun?: string; systemctl?: string; cgroupRoot?: string } = {},
 ): Promise<{ ok: true; containment: EndoContainmentV0 } | EndoContainmentRefusalV0> {
 	const systemdRun = tools.systemdRun ?? ENDO_SYSTEMD_RUN_V0;
 	const systemctl = tools.systemctl ?? ENDO_SYSTEMCTL_V0;
@@ -152,6 +154,22 @@ export async function detectContainmentV0(
 				ok: false,
 				reason: "containment-unavailable",
 				detail: "the probe scope does not carry the required properties",
+			};
+		// Emptiness is confirmed from a scope's cgroup.events in the unified (v2) hierarchy, and a cgroup that is gone holds nothing. Both
+		// readings are trustworthy only where that file is really there for a live scope: check it on this one, which is populated now.
+		// Elsewhere (cgroup v1, a hybrid layout, a hierarchy not mounted where it is read) a missing file would read as "gone".
+		const root = tools.cgroupRoot ?? ENDO_CGROUP_ROOT_V0;
+		let events = "";
+		try {
+			events = readFileSync(`${root}${props.ControlGroup}/cgroup.events`, "utf8");
+		} catch {
+			// unreadable: refused below
+		}
+		if (!existsSync(`${root}/cgroup.controllers`) || !/^populated 1$/m.test(events))
+			return {
+				ok: false,
+				reason: "containment-unavailable",
+				detail: `a live scope's cgroup.events is not readable in a unified cgroup v2 hierarchy at ${root}: an empty scope could not be confirmed`,
 			};
 		const ended = await stopScopeV0({ systemctl, env } as EndoContainmentV0, unit);
 		if (ended !== "confirmed")
@@ -303,7 +321,7 @@ export function scopeProcessesV0(c: Pick<EndoContainmentV0, "systemctl" | "env">
 	if (group === "") return [];
 	if (!group.endsWith(`/${unit}.scope`) || group.includes("..")) return null;
 	try {
-		return readFileSync(`/sys/fs/cgroup${group}/cgroup.procs`, "utf8")
+		return readFileSync(`${ENDO_CGROUP_ROOT_V0}${group}/cgroup.procs`, "utf8")
 			.split("\n")
 			.filter((line) => /^[0-9]+$/.test(line))
 			.map(Number);
@@ -399,13 +417,16 @@ export async function stopScopeV0(
 	}
 }
 
-/** Read-only: whether a scope's cgroup holds no process. A cgroup that no longer exists holds none. */
+/**
+ * Read-only: whether a scope's cgroup holds no process. A cgroup that no longer exists holds none, but only its directory's absence says
+ * so: a missing `cgroup.events` in a cgroup that is still there is not emptiness (detectContainmentV0 refuses hosts where it is missing).
+ */
 function cgroupEmpty(group: string, unit: string): boolean {
 	if (group === "") return true;
 	if (!group.endsWith(`/${unit}.scope`) || group.includes("..")) return false;
 	try {
-		return /^populated 0$/m.test(readFileSync(`/sys/fs/cgroup${group}/cgroup.events`, "utf8"));
+		return /^populated 0$/m.test(readFileSync(`${ENDO_CGROUP_ROOT_V0}${group}/cgroup.events`, "utf8"));
 	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === "ENOENT";
+		return (error as NodeJS.ErrnoException).code === "ENOENT" && !existsSync(`${ENDO_CGROUP_ROOT_V0}${group}`);
 	}
 }

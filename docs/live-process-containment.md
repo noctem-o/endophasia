@@ -28,6 +28,10 @@ every protected sandbox (`adapters/sandbox/containment.ts`; docs/protected-exper
 
 - `detectContainmentV0`. Trusted root-owned `systemd-run` and `systemctl`, a reachable user manager, and a real probe scope created with
   the required properties, read back, and stopped. Anything else is a refusal with a reason.
+  - Since Codex's review of this PR, detection also requires that the probe's `cgroup.events` reads `populated 1` in a unified cgroup v2
+    hierarchy while it runs. On cgroup v1 or a hybrid layout the file is never there, and its absence would have read as "gone".
+  - A missing `cgroup.events` now means empty only when the cgroup's directory is gone too.
+  - This also tightens EVAL-ISO-001's protected sandboxes, which share the code.
 - `stopScopeV0`. It stops the scope through the manager, never by writing cgroup files. It returns `confirmed` only when the manager no
   longer runs the unit and the cgroup's `cgroup.events` says `populated 0` (or the cgroup is gone).
 - The `KillSignal=SIGKILL` and `TimeoutStopSec=5s` properties: a scope ends with SIGKILL, with no 90-second grace.
@@ -135,8 +139,8 @@ On this host (Arch Linux, systemd 262, cgroup v2, Node 26.12.1), 2026-11-08:
 
 ## 5. Limitations
 
-- **Linux with a systemd user manager only.** macOS, Windows, containers without a user manager, and CI runners get `unverified`, as
-  before but now said.
+- **Linux with a systemd user manager and the unified cgroup v2 hierarchy only.** macOS, Windows, cgroup v1 hosts, containers without a
+  user manager, and CI runners get `unverified`, as before but now said.
 - **Only the operator's session Pi is contained.** These are not:
   - the identification run (`pi --version`);
   - the local protocol checks (offline, with `--tools none`);

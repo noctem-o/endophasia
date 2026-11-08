@@ -304,6 +304,25 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(relay.refusals()).toMatchObject({ size: 1, unjudged: 2 });
 	});
 
+	it("a client that gives up mid-upload takes no exchange number: a later request is exchange 1, and the recording still loads (Codex, #134)", async () => {
+		const { upstream, relay, log, store } = await relayed();
+		const net = await import("node:net");
+		const partial = net.connect(relay.socketPath);
+		await new Promise((r) => partial.once("connect", r));
+		partial.write(
+			`POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 500\r\n\r\n{"model":`,
+		);
+		await new Promise((r) => setTimeout(r, 100));
+		partial.destroy();
+		await new Promise((r) => setTimeout(r, 100));
+		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat())).toMatchObject({ status: 200 });
+		await relay.close();
+		log.close();
+		const cassette = loadEndoCassetteV0(store, KEY);
+		expect(cassette.exchanges.map((e) => [e.exchange, e.response?.outcome])).toEqual([[1, "complete"]]);
+		expect(upstream.requests).toHaveLength(1);
+	});
+
 	it("bounds the connections open at once through the socket", async () => {
 		const { relay } = await relayed({ maxConnections: 2 });
 		const net = await import("node:net");
@@ -789,6 +808,29 @@ describe.runIf(REAL && PI_DIST.length > 0)(
 			// A trial whose agent left a link in the workspace has no workspace digest: verification fails that check, never matching null to
 			// null (Codex, #134). Built from the same record, resealed with no workspace digest.
 			const { seal } = await import("../research/protected-eval/model-connected/trial.ts");
+			// A recording with a failed capture write, or a runtime file that differs on this host, fails its own check (Codex, #134).
+			for (const [change, check] of [
+				[
+					(r: any) => {
+						r.relay.recordingFailures = 1;
+					},
+					"recording-complete",
+				],
+				[
+					(r: any) => {
+						r.isolation.runtime[0].sha256 = "0".repeat(64);
+					},
+					"runtime-unchanged",
+				],
+			] as const) {
+				const altered = JSON.parse(original) as Record<string, unknown>;
+				change(altered);
+				altered.recordSha256 = seal(altered);
+				writeFileSync(recordFile, JSON.stringify(altered));
+				expect(failed()).toContain(check);
+				expect(failed()).not.toContain("seal");
+			}
+			writeFileSync(recordFile, original);
 			// A trial that hit the transfer cap fails its own check (Codex, #134).
 			const capped = JSON.parse(original) as {
 				relay: { transferredBytes: number; policy: { maxTransferredBytes: number } };

@@ -15,6 +15,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { detectContainmentV0 } from "../adapters/sandbox/containment.ts";
 import {
 	attachArgs,
 	capturedChatBodies,
@@ -45,6 +46,8 @@ import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 const hasScript = spawnSync("script", ["--version"]).status === 0;
 const linuxPty = hasScript && process.platform === "linux";
 const realPi = process.env.ENDO_PI_EXECUTABLE ?? "";
+/** Whether `endo harness attach` will run Pi in a live scope here (LIVE-PROCESS-CONTAINMENT-001): a systemd user manager is reachable. */
+const liveScope = process.platform === "linux" && (await detectContainmentV0()).ok;
 const modelEndpoint = process.env.ENDO_WORK_CYCLE_ENDPOINT ?? "";
 const modelId = process.env.ENDO_WORK_CYCLE_MODEL ?? "";
 const keep = process.env.ENDO_WORK_CYCLE_EVIDENCE_DIR ?? "";
@@ -704,12 +707,20 @@ describe.runIf(linuxPty && realPi.length > 0)(
 			await pty.exit;
 			expect(read.execution.send).toBe("runtime-accepted");
 			expect(["interrupted", "open"]).toContain(read.execution.run);
-			// What outlived the kill and the workbench's own exit (observed with Pi 1.5.0): the tool process Pi started, which is not in the
-			// process group the attachment's launcher stops. Pinned here as the known gap (README §5); then stopped by the test.
+			// Without a live scope (no systemd user manager), what outlives the kill and the workbench's own exit (observed with Pi 1.5.0) is
+			// the tool process Pi started, which is not in the process group the attachment's launcher stops: the known gap (001B §5), pinned
+			// here, then stopped by the test. With one (LIVE-PROCESS-CONTAINMENT-001), the scope Pi ran in was stopped when Pi was released:
+			// nothing of the run is left, and the operator was told so.
 			await sleep(500);
 			const left = processesOfRun(layout);
-			expect(left.length).toBeGreaterThan(0);
-			expect(left.every((p) => /sleep 20/.test(p.cmd))).toBe(true);
+			if (liveScope) {
+				expect(left).toEqual([]);
+				expect(pty.output).toMatch(/harness: Pi and every process it started have ended \(scope endo-live-/);
+			} else {
+				expect(left.length).toBeGreaterThan(0);
+				expect(left.every((p) => /sleep 20/.test(p.cmd))).toBe(true);
+				expect(pty.output).toMatch(/UNVERIFIED/);
+			}
 			for (const p of left)
 				try {
 					process.kill(p.pid, "SIGKILL");

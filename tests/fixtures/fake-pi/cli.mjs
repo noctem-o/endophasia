@@ -110,6 +110,14 @@ const sessionDir = flag("--session-dir");
 const requestedId = flag("--session-id");
 if (has("record-rpc-pid") && packageDirectory !== undefined)
 	writeFileSync(join(packageDirectory, "rpc-pid"), String(process.pid));
+// LIVE-PROCESS-CONTAINMENT-001: start a tool-like process the way Pi's bash tool does (detached: its own process group), and keep its
+// pid in the named file. It outlives this process unless something other than the process group ends it. Only for a persistent session
+// (the operator's), not the ephemeral local checks.
+if (option("detached-child:") !== undefined && !ephemeral) {
+	const child = spawn("sleep", ["300"], { detached: true, stdio: "ignore" });
+	child.unref();
+	writeFileSync(option("detached-child:"), String(child.pid));
+}
 const sessionId = requestedId ?? `fake-${Math.random().toString(16).slice(2, 10)}`;
 const sessionFile = !ephemeral && sessionDir !== undefined ? join(sessionDir, `${sessionId}.json`) : undefined;
 const provider = flag("--provider") ?? "fake";
@@ -537,6 +545,8 @@ async function handle(command) {
 	}
 	switch (type) {
 		case "get_state":
+			// LIVE-PROCESS-CONTAINMENT-001: Pi starts (and may have started a detached child), then its startup read fails.
+			if (has("refuse-get-state")) return refuse(id, type, "fake pi: state unavailable");
 			if (has("startup-lock")) {
 				const lock = join(process.env.PI_CODING_AGENT_DIR, "temporary.lock");
 				writeFileSync(lock, "");

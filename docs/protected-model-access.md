@@ -71,7 +71,7 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
 
 | Change | Where | Why |
 | :-- | :-- | :-- |
-| **Governed rejections no longer consume an exchange number** | `adapters/openai-proxy/record.ts` | **Found by this work.** A bodiless request refused by the governed profile, such as an agent's `GET /slots`, was recorded as `capture.unparsed` with no exchange, but its number was taken. The cassette loader requires contiguous exchanges, so one refused GET made the **whole recording unreadable as a cassette**. Now a head is numbered only once it is an exchange. Readers are unaffected, and the ungoverned proxy is unchanged. The regression test is the relay's own recording test. Moving the increment back makes it fail. |
+| **Governed rejections no longer consume an exchange number**, and neither does a governed upload that never completes (numbered when complete; Codex) | `adapters/openai-proxy/record.ts` | **Found by this work.** A bodiless request refused by the governed profile, such as an agent's `GET /slots`, was recorded as `capture.unparsed` with no exchange, but its number was taken. The cassette loader requires contiguous exchanges, so one refused GET made the **whole recording unreadable as a cassette**. Now a head is numbered only once it is an exchange. Readers are unaffected, and the ungoverned proxy is unchanged. The regression test is the relay's own recording test. Moving the increment back makes it fail. |
 | **Resource limits on a sandbox's scope** (optional) | `adapters/sandbox/containment.ts`, `runSandboxV0` | `MemoryMax` with `MemorySwapMax=0`, and `CPUQuota`, are set on the scope, so the kernel enforces them on the whole cgroup. A limited scope is not `--collect`ed, so a failure's result (`oom-kill`) can be read before the unit is reset. Without limits, nothing changes: EVAL-ISO-001's arguments are identical. |
 | **The `socket` mount kind and `network: "model-relay"`** | `adapters/sandbox/bubblewrap.ts` | Described in §1. `endo.protected-trial.v0`'s writer refuses any network other than `none`, so an offline record can never describe a relay sandbox. |
 
@@ -111,23 +111,35 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
   - Four of its nine tool calls asked for commands the minimal runtime does not hold (`hexdump`, `od`, `python3`, `wc`; exit 127). **The
     runtime set is part of a trial's condition** and visibly shapes the agent's behaviour. A study must declare it and keep it fixed.
   - The trial's directory is under `~/projects/endophasia-research/eval-iso-002/`, outside the repository.
-- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. On the real trial all 14 checks pass.
-  After Codex's review, every recorded request **body** is judged again against the policy (route, model, size, a JSON object), not only
-  its route, and a workspace with no digest fails instead of matching a null. The real trial still passes all 14. The checks:
+- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. It runs 17 checks, three rounds of Codex
+  review having added to the first 14:
   - the record's seal;
-  - the policy's digest;
+  - the policy's digest, computed independently of the locale;
   - the boundary and termination;
+  - **the recording is complete**: no capture write failed, and every exchange has its response, complete and verified;
+  - the bytes through the relay are within the policy's bound;
   - the cassette loads, matches the record exchange by exchange (route, request digest, integrity), and verifies;
-  - every recorded request is within the policy, body included;
+  - every recorded request is within the policy, **body included**: route, model, size, a JSON object, no repeated top-level key;
+  - no more complete exchanges than admitted requests;
   - stdout and stderr digests;
-  - the workspace digest;
+  - the workspace digest, which must exist: a workspace with no digest fails instead of matching a null;
+  - the runtime files on this host still match the recorded ones;
   - the installed Pi is unchanged.
 
-  An opt-in test runs a fake-model trial, then tampers with it four ways. Each fails its own check:
+  A second real trial (`trial-20261108-215630`: the same task, Glimmer, 8 exchanges) passes all 17. The first trial (`…-195634`) passes
+  every check except `recording-complete`, which it fails as **unknown**: its record predates the recording-failure count. That is the
+  intended reading of a missing field.
+
+  An opt-in test runs a fake-model trial, then tampers with it. Each change fails its own check, and the seal stays valid wherever the
+  record was resealed:
   - an edited record fails `seal` and `termination`;
   - appended stdout fails `stdout-digest`;
   - a file planted in the workspace fails `workspace-digest`;
-  - damaged blobs fail `cassette-matches-record`.
+  - damaged blobs fail `cassette-matches-record`;
+  - a failed capture write fails `recording-complete`;
+  - a changed runtime digest fails `runtime-unchanged`;
+  - a transfer over the cap fails `transfer-within-policy`;
+  - a workspace with no digest fails `workspace-digest`.
 - **Mutations**, each restored afterwards; each made the suite fail:
 
   | Mutation | Tests failed |
@@ -138,6 +150,7 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
   | Exchange numbering moved back before the governed check | 1 |
   | Any file accepted as a `socket` mount | 1 |
   | Limits dropped from the scope | 1 |
+  | (review fixes) Each of Codex's ten findings on this PR, reverted one at a time | 1 each |
 
 ## 5. Threat model: what this does and does not stop
 

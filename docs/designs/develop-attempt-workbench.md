@@ -123,6 +123,18 @@ page.
 
 Unchanged: the composer, its modes and its draft; Changes; the context column; Focus (Field only); keyboard navigation between tabs.
 
+**Later (REVIEW-PILOT-001, run 1): a terminal command typed into the composer.** An operator typed `attempt <id>` into the composer. The
+page asked for it as a prompt, the terminal's request differed only by `prompt`/`PROMPT`, and the operator approved it. Pi got one line of
+chat, and the attempt was never sent (its records said so correctly). Now:
+
+- **The composer** does not ask for a message whose whole text is the terminal's `attempt` or `pair` command. It says where the command
+  goes instead. Ordinary words that start the same way ("attempt it again") are still messages.
+- **The terminal**, asked to approve a prompt, steer or queue whose text is such a command, says before the phrase that approving sends
+  it to Pi as chat and does not send any attempt.
+- **A bare `attempt`** at the terminal says it takes one attempt id, and where ids are listed.
+
+One rule decides what counts as a command (`endoWorkbenchTerminalCommandInV0`). The page keeps a copy, and a test keeps the two equal.
+
 **One existing bug fixed.** When the page learns there is no worktree to read (a late `absent` answer from the project route), it used to
 reset the whole project state, including the view the operator had chosen. Someone reading Task could be moved back to the conversation.
 The view is now kept; only Changes, which is not offered then, falls back to the conversation. The browser tests found this under load,

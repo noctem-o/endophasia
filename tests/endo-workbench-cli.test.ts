@@ -201,6 +201,81 @@ describe.runIf(hasScript && process.platform === "linux")(
 			expect(JSON.stringify(events)).not.toContain("Count to forty");
 		}, 120_000);
 
+		it("says when a page's message is this terminal's own command, and what a bare `attempt` needs (REVIEW-PILOT-001, run 1)", async () => {
+			const install = installFakePi("1.0.0");
+			cleanup.push(() => install.remove());
+			const root = temp("endo-wbcli-root-");
+			const cwd = temp("endo-wbcli-cwd-");
+			const xdg = temp("endo-wbcli-xdg-");
+			const env = { ...process.env, XDG_DATA_HOME: xdg, ...fakePiEnv({ FAKE_PI_STEP_MS: "30" }) };
+			const pty = new Pty(
+				`${process.execPath} ${CLI} harness attach ${root} --pi ${install.bin} --cwd ${cwd} --control --workbench`,
+				env,
+			);
+			const address = (await pty.waitFor(/workbench: (http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)/))[1]!;
+			const code = (await pty.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})/))[1]!;
+			const origin = new URL(address).origin;
+			const api = `${address}api/v0/workbench/`;
+			const post = (route: string, body: unknown, grant?: string) =>
+				fetch(`${api}${route}`, {
+					method: "POST",
+					headers: {
+						Origin: origin,
+						"Content-Type": "application/json",
+						...(grant ? { "X-Endo-Grant": grant } : {}),
+					},
+					body: JSON.stringify(body),
+				});
+			const getJson = async (route: string, grant?: string) =>
+				(await fetch(`${api}${route}`, { headers: grant ? { "X-Endo-Grant": grant } : {} })).json() as Promise<
+					Record<string, any>
+				>;
+			const grant = ((await (await post("pair", { code })).json()) as { grant: string }).grant;
+
+			// A bare `attempt` at the terminal: what it takes, and where the id comes from; nothing is asked or sent.
+			pty.type("attempt");
+			await pty.waitFor(/`attempt` takes one attempt id, typed here: `attempt endo\.attempt\.<32 hex digits>`/);
+
+			// The page asks for a prompt whose whole text is the terminal's attempt command: the approval says so before the phrase.
+			const id = `endo.attempt.${"0".repeat(32)}`;
+			const asked = (await (await post("prompt/propose", { message: `attempt ${id}` }, grant)).json()) as {
+				proposalId: string;
+			};
+			await pty.waitFor(/Type APPROVE PROMPT [0-9a-f]{16} to send exactly this prompt/);
+			const screen = pty.output.slice(pty.output.lastIndexOf("=== WORKBENCH: approve this prompt? ==="));
+			expect(screen).toContain(
+				"NOTE: this prompt is the text of this terminal's `attempt` command. Approving sends it to Pi as a chat message. It does NOT send any attempt's brief",
+			);
+			expect(screen.indexOf("NOTE:")).toBeLessThan(screen.indexOf("Type APPROVE PROMPT"));
+			pty.type("no");
+			let view: Record<string, any> = {};
+			for (let i = 0; i < 100 && view.state !== "refused"; i++) {
+				await sleep(50);
+				view = await getJson(`prompt/${asked.proposalId}`, grant);
+			}
+			expect(view).toMatchObject({ state: "refused", reason: "authorization-denied" });
+
+			// An ordinary prompt gets no such note.
+			const plain = (await (
+				await post("prompt/propose", { message: "attempt it again, carefully" }, grant)
+			).json()) as {
+				proposalId: string;
+			};
+			await pty.waitFor(/Type APPROVE PROMPT [0-9a-f]{16} to send exactly this prompt/);
+			const second = pty.output.slice(pty.output.lastIndexOf("=== WORKBENCH: approve this prompt? ==="));
+			expect(second).toContain("attempt it again, carefully");
+			expect(second).not.toContain("NOTE:");
+			pty.type("no");
+			view = {};
+			for (let i = 0; i < 100 && view.state !== "refused"; i++) {
+				await sleep(50);
+				view = await getJson(`prompt/${plain.proposalId}`, grant);
+			}
+			expect(view).toMatchObject({ state: "refused", reason: "authorization-denied" });
+			pty.child.stdin.write("\x03");
+			expect(await pty.exit).toBe(0);
+		}, 60_000);
+
 		it("steers, then stops, an open run only on the exact phrase for that operation, typed on the terminal", async () => {
 			const install = installFakePi("1.0.0");
 			cleanup.push(() => install.remove());

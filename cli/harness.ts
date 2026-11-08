@@ -24,6 +24,7 @@ import { piAssessmentV0, renderPiAssessmentV0 } from "../adapters/pi/assessment.
 import { type PiAttachmentOptionsV0, PiAttachmentV0 } from "../adapters/pi/attachment.ts";
 import { PiInterventionDeskV0 } from "../adapters/pi/intervention.ts";
 import { piVersionStandingV0 } from "../adapters/pi/version.ts";
+import { type EndoContainmentV0, liveScopeV0 } from "../adapters/sandbox/containment.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../protocol/develop-tasks.ts";
 import type { EndoHarnessNotificationV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -33,6 +34,7 @@ import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
+import { describeProcessCleanupV0, liveContainmentV0 } from "./process-cleanup.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 import { requireWorkbenchTerminalV0, startWorkbenchV0, type WorkbenchHandleV0 } from "./workbench.ts";
 
@@ -90,6 +92,11 @@ function options(parsed: ParsedV0): PiAttachmentOptionsV0 {
 		...(parsed.flags.has("--cwd") ? { cwd: parsed.flags.get("--cwd")! } : {}),
 		...(tools === undefined ? {} : { tools: tools === "none" ? "none" : tools.split(",") }),
 	};
+}
+
+/** After the session closed: how each Pi it started, and what that Pi started, was cleaned up (never just "Pi exited"). */
+async function reportCleanup(session: { processCleanup(): Promise<Parameters<typeof describeProcessCleanupV0>[0]> }) {
+	for (const line of describeProcessCleanupV0(await session.processCleanup())) process.stderr.write(`${line}\n`);
 }
 
 /** Print a notification to stderr as text. */
@@ -233,12 +240,27 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 	if (project !== undefined && !ENDO_PROJECT_ID_PATTERN_V0.test(project))
 		throw new TypeError("--project is a project id (endo.project.…) from `endo project add` or `endo project list`");
 	if (parsed.switches.has("--workbench")) requireWorkbenchTerminalV0();
-	const pi = new PiAttachmentV0(options(parsed));
+	// LIVE-PROCESS-CONTAINMENT-001: Pi, and whatever it starts, runs in a scope of its own where the host can give one.
+	const selected = options(parsed);
+	const live = await liveContainmentV0();
+	for (const note of live.notes) process.stderr.write(`${note}\n`);
+	const pi = new PiAttachmentV0({
+		...selected,
+		...(live.containment === null ? {} : { processScope: () => liveScopeV0(live.containment as EndoContainmentV0) }),
+	});
 	const identified = await pi.identify();
 	printNotificationV0(identified.notification);
 	const checked = await pi.checkLocal();
 	if (parsed.flags.has("--prompt")) process.stderr.write(`note: ${ENDO_PROMPT_COST_NOTICE_V0}\n`);
-	const session = await pi.openSession();
+	let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>;
+	try {
+		session = await pi.openSession();
+	} catch (error) {
+		// A start that failed after launching Pi still reports what it left (Codex, #133), then fails as before.
+		const failed = pi.failedStartCleanup();
+		if (failed !== null) await reportCleanup({ processCleanup: () => failed });
+		throw error;
+	}
 	if (parsed.switches.has("--control")) return attachWithControl(parsed, identified.change, checked.state, session);
 	let disposition: string | null = null;
 	let settled: boolean | null = null;
@@ -250,6 +272,7 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 		}
 	} finally {
 		await session.close();
+		await reportCleanup(session);
 	}
 	print({
 		change: identified.change,
@@ -298,6 +321,7 @@ async function attachWithControl(
 		await workbench?.stop();
 		await server?.close();
 		await session.close();
+		await reportCleanup(session);
 	}
 	print({
 		change,

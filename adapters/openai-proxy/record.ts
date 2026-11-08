@@ -371,6 +371,13 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			entry.ended = true;
 			open -= 1;
 			const target = current();
+			// A governed request that never completed was never an exchange: it leaves a trace, not a numbered end (see head, above).
+			if (entry.exchange === 0) {
+				if (target !== null)
+					hold(() => target.record("capture.unparsed", { detail: "governed request not completed" }));
+				progress(entry);
+				return;
+			}
 			if (target !== null) {
 				const wire = Buffer.concat(entry.segments.map((segment) => segment.bytes));
 				let kept: { bytes: Buffer; scrubbed: string[] } = { bytes: wire, scrubbed: [] };
@@ -880,12 +887,14 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 						head.raw.length + admissionLength > GOVERNED_REQUEST_MAX_BYTES_V0)
 				)
 					throw new Error("unsupported or oversized governed request");
-				// Numbered only once it is an exchange: a head the governed profile rejects (recorded as capture.unparsed) takes no number, so
-				// the recording's exchanges stay contiguous and it still loads as a cassette (EVAL-ISO-002: a GET to an administration path,
-				// refused, used to leave a gap that made the whole recording unreadable as one).
-				counter += 1;
+				// Numbered only once it is an exchange, so a recording's exchanges stay contiguous and it still loads as a cassette
+				// (EVAL-ISO-002). A head the governed profile rejects takes no number. Nor does a governed request whose upload never completes
+				// (the client gave up mid-body; Codex, #134): the governed profile forwards only complete requests, so there it is numbered when
+				// the request is complete (end, below). The transparent relay numbers at the head, as before.
+				const governed = options.admitRequest !== undefined;
+				if (!governed) counter += 1;
 				const entry: Exchange = {
-					exchange: counter,
+					exchange: governed ? 0 : counter,
 					start: performance.now(),
 					method: head.method!,
 					path: head.target!,
@@ -909,8 +918,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 						(/HTTP\/1\.0$/.test(head.startLine) && !connection.includes("keep-alive")),
 				};
 				slot.entry = entry;
-				exchanges.set(entry.exchange, entry);
-				latest = entry;
+				if (entry.exchange !== 0) {
+					exchanges.set(entry.exchange, entry);
+					latest = entry;
+				}
 				open += 1;
 			},
 			body(bytes) {
@@ -924,6 +935,12 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				receiving = null;
 				if (entry === null) return;
 				entry.requestOpen = false;
+				if (entry.exchange === 0) {
+					counter += 1;
+					entry.exchange = counter;
+					exchanges.set(entry.exchange, entry);
+					latest = entry;
+				}
 				const target = current();
 				if (target === null) return;
 				entry.requested = true;

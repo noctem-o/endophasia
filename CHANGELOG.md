@@ -26,6 +26,15 @@
   - Fixed: a refused request in a governed recording no longer leaves a gap in exchange numbers. Before, one refused GET made the recording
     unreadable as a cassette.
   - See [docs/protected-model-access.md](docs/protected-model-access.md).
+- **LIVE-PROCESS-CONTAINMENT-001: a live Pi session's processes are owned, and their cleanup is reported, never assumed.**
+  - `endo harness attach` (and the workbench) runs Pi in a transient systemd user scope of its own where a user manager is reachable,
+    reusing EVAL-ISO-001's containment. A process Pi's bash tool starts detached is in the scope too.
+  - When the session ends, the scope is stopped and its cgroup confirmed empty, and stderr says so. Otherwise it says `CLEANUP INCOMPLETE`
+    (with what is left and the command that ends it), or `UNVERIFIED` where there is no user manager (with a note before the session).
+  - If `endo` is killed, Pi's keeper has the scope stopped. If both are killed, the next attach names the orphaned scope.
+  - A deliberate background process started from Pi now ends with the session. No event, record or schema changed.
+  - The work-cycle driver passes `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` to the attach (`DRIVER_VERSION` `review-pilot-001.2`).
+  - See [docs/live-process-containment.md](docs/live-process-containment.md).
 - **`endo attempt evidence --attempt <id> [--cwd <dir>]` (WORK-CYCLE-001B).** One attempt's records, read together and read-only. It
   shows what was sent and what Pi reported, the latest check of each command with its relation to the working tree now, the operator's
   status moves, a fixed list of gaps (missing, unconfirmed, stale or undecided), and what no record establishes. Every section names its

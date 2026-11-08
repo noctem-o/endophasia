@@ -158,6 +158,8 @@ export interface EndoModelRelayV0 {
 	admitted(): number;
 	/** All bytes the recording proxy saw, both ways. */
 	transferredBytes(): number;
+	/** Capture writes that failed (the store full, for example): a recording with any is incomplete, whatever it still shows. */
+	recordingFailures(): number;
 	/** Stops accepting, drops every connection, stops the proxy (which flushes its recording), and removes the socket's directory. */
 	close(): Promise<void>;
 }
@@ -258,6 +260,7 @@ export async function startModelRelayV0(options: {
 		refusals: () => ({ ...refused, unjudged: Math.max(0, proxy.refusedRequests - (judged - admitted)) }),
 		admitted: () => admitted,
 		transferredBytes: () => proxy.transferredBytes,
+		recordingFailures: () => proxy.recordingFailures,
 		close: () => {
 			closing ??= (async () => {
 				// Stop accepting, and drop every open connection BEFORE waiting: server.close() calls back only once its connections ended,

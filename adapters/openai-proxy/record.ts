@@ -851,7 +851,6 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		let requestEnds: { slot: Slot; offset: number }[] = [];
 		const requestParser = new Http1ParserV0("request", {
 			head(head) {
-				counter += 1;
 				const slot = ensureReceiving();
 				const connection = head.headers
 					.filter(([name]) => name.toLowerCase() === "connection")
@@ -881,6 +880,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 						head.raw.length + admissionLength > GOVERNED_REQUEST_MAX_BYTES_V0)
 				)
 					throw new Error("unsupported or oversized governed request");
+				// Numbered only once it is an exchange: a head the governed profile rejects (recorded as capture.unparsed) takes no number, so
+				// the recording's exchanges stay contiguous and it still loads as a cassette (EVAL-ISO-002: a GET to an administration path,
+				// refused, used to leave a gap that made the whole recording unreadable as one).
+				counter += 1;
 				const entry: Exchange = {
 					exchange: counter,
 					start: performance.now(),

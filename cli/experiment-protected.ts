@@ -360,7 +360,11 @@ function recordBase(
 			profileSha256: profile.sha256,
 			requested: {
 				namespaces: profile.logical.namespaces,
-				network: profile.logical.network,
+				// endo.protected-trial.v0 records offline sandboxes only; a relay (EVAL-ISO-002) is never written into one.
+				network: ((network) => {
+					if (network !== "none") throw new TypeError("endo.protected-trial.v0 records an offline sandbox only");
+					return network;
+				})(profile.logical.network),
 				rootReadOnly: profile.logical.rootReadOnly,
 				userNamespacesDisabled: profile.logical.userNamespacesDisabled,
 				environment: profile.logical.environment,

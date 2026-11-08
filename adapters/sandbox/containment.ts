@@ -172,19 +172,47 @@ export async function detectContainmentV0(
 	};
 }
 
+/**
+ * Optional resource limits on a sandbox's scope (EVAL-ISO-002): the kernel enforces them on the whole cgroup. `memoryMaxBytes` sets
+ * MemoryMax and MemorySwapMax=0 (exceeding it is an OOM kill inside the scope, not swapping); `cpuQuotaPercent` sets CPUQuota (100 is one
+ * CPU). Absent, nothing is set, as in EVAL-ISO-001.
+ */
+export interface EndoScopeLimitsV0 {
+	readonly memoryMaxBytes?: number;
+	readonly cpuQuotaPercent?: number;
+}
+
+const limitArgs = (limits: EndoScopeLimitsV0 | undefined): string[] => {
+	const args: string[] = [];
+	if (limits?.memoryMaxBytes !== undefined) {
+		if (!Number.isSafeInteger(limits.memoryMaxBytes) || limits.memoryMaxBytes < 16 * 1024 * 1024)
+			throw new TypeError("memoryMaxBytes must be an integer of at least 16 MiB");
+		args.push("-p", `MemoryMax=${limits.memoryMaxBytes}`, "-p", "MemorySwapMax=0");
+	}
+	if (limits?.cpuQuotaPercent !== undefined) {
+		if (!Number.isSafeInteger(limits.cpuQuotaPercent) || limits.cpuQuotaPercent < 1 || limits.cpuQuotaPercent > 6400)
+			throw new TypeError("cpuQuotaPercent must be an integer from 1 to 6400");
+		args.push("-p", `CPUQuota=${limits.cpuQuotaPercent}%`);
+	}
+	return args;
+};
+
 /** The arguments that run `command` inside a new scope `unit`, ended by the user manager after `runtimeMaxSec` whatever happens. */
 export function scopeArgsV0(
 	c: EndoContainmentV0,
 	unit: string,
 	runtimeMaxSec: number,
 	command: readonly string[],
+	limits?: EndoScopeLimitsV0,
 ): string[] {
 	if (!unitPattern.test(unit)) throw new TypeError("a scope unit name must be one the controller made");
+	const limited = limitArgs(limits);
 	return [
 		"--user",
 		"--scope",
 		"--quiet",
-		"--collect",
+		// A limited scope is kept after it ends, so that its result (an OOM kill) can be read; scopeResultV0 then has it forgotten.
+		...(limited.length > 0 ? [] : ["--collect"]),
 		`--unit=${unit}`,
 		"-p",
 		`RuntimeMaxSec=${Math.max(1, Math.ceil(runtimeMaxSec))}`,
@@ -194,9 +222,26 @@ export function scopeArgsV0(
 		"KillSignal=SIGKILL",
 		"-p",
 		`TimeoutStopSec=${ENDO_SCOPE_STOP_TIMEOUT_SEC_V0}s`,
+		...limited,
 		"--",
 		...command,
 	];
+}
+
+/**
+ * A limited scope's result once it ended, read from the user manager, which then forgets the unit (`reset-failed`). A limited scope is not
+ * collected on its own (scopeArgsV0), so a failed one is kept with its result (`oom-kill`, `timeout`, `signal`, …). Null when the manager
+ * no longer knows the unit: it unloads a scope that ended without failing, so null is also what success looks like.
+ */
+export function scopeResultV0(c: Pick<EndoContainmentV0, "systemctl" | "env">, unit: string): string | null {
+	if (!unitPattern.test(unit)) return null;
+	const p = show(c, unit, ["LoadState", "Result"]);
+	spawnSync(c.systemctl, ["--user", "reset-failed", `${unit}.scope`], {
+		env: c.env,
+		stdio: "ignore",
+		timeout: 10_000,
+	});
+	return p.LoadState === "loaded" && typeof p.Result === "string" && /^[a-z-]{1,32}$/.test(p.Result) ? p.Result : null;
 }
 
 /** Whether a process is in exactly this scope (its cgroup, read from /proc). Supplementary: the scope itself is the guarantee. */

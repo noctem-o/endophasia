@@ -178,6 +178,39 @@ describe("EVAL-ISO-002: the judge", () => {
 			expect(judge("POST", "/v1/chat/completions", body)).toEqual({ admitted: false, reason: "body" });
 	});
 
+	it("refuses a body whose top-level keys repeat, escaped or not; nested repeats and quoted braces are not keys (Codex, #134)", () => {
+		const path = "/v1/chat/completions";
+		expect(judge("POST", path, `{"model":"other-model","model":"${MODEL}"}`)).toEqual({
+			admitted: false,
+			reason: "body",
+		});
+		expect(judge("POST", path, `{"model":"other-model","mod\\u0065l":"${MODEL}"}`)).toEqual({
+			admitted: false,
+			reason: "body",
+		});
+		expect(judge("POST", path, `{"model":"${MODEL}","stream":true,"stream":false}`)).toEqual({
+			admitted: false,
+			reason: "body",
+		});
+		expect(judge("POST", path, `{"model":"${MODEL}","messages":[{"role":"a","role":"b"}]}`)).toEqual({
+			admitted: true,
+		});
+		expect(judge("POST", path, `{"model":"${MODEL}","x":"{\\"model\\":\\"y\\"}"}`)).toEqual({ admitted: true });
+	});
+
+	it("a policy's digest does not depend on the locale it is computed in (Codex, #134)", async () => {
+		const { execFileSync } = await import("node:child_process");
+		const module = new URL("../adapters/sandbox/model-relay.ts", import.meta.url).href;
+		const script = `import(${JSON.stringify(module)}).then((m) => process.stdout.write(m.modelRelayPolicyDigestV0({ routes: [{ method: "POST", path: "/v1/b" }, { method: "POST", path: "/v1/B" }], model: "m", maxRequestBytes: 1, maxTransferredBytes: 1, maxConnections: 1 })))`;
+		const digest = (locale: string) =>
+			execFileSync(process.execPath, ["-e", script], {
+				env: { ...process.env, LANG: locale, LC_ALL: locale },
+				encoding: "utf8",
+			});
+		// Danish collation puts "B" before "b"; English puts it after. The digest must be the same.
+		expect(digest("da_DK.UTF-8")).toBe(digest("en_US.UTF-8"));
+	});
+
 	it("refuses a body over the bound before reading it", () => {
 		expect(judge("POST", "/v1/chat/completions", Buffer.alloc(p.maxRequestBytes + 1, 0x20))).toEqual({
 			admitted: false,
@@ -756,6 +789,20 @@ describe.runIf(REAL && PI_DIST.length > 0)(
 			// A trial whose agent left a link in the workspace has no workspace digest: verification fails that check, never matching null to
 			// null (Codex, #134). Built from the same record, resealed with no workspace digest.
 			const { seal } = await import("../research/protected-eval/model-connected/trial.ts");
+			// A trial that hit the transfer cap fails its own check (Codex, #134).
+			const capped = JSON.parse(original) as {
+				relay: { transferredBytes: number; policy: { maxTransferredBytes: number } };
+			};
+			capped.relay.transferredBytes = capped.relay.policy.maxTransferredBytes + 1;
+			(capped as unknown as Record<string, unknown>).recordSha256 = seal(
+				capped as unknown as Record<string, unknown>,
+			);
+			writeFileSync(recordFile, JSON.stringify(capped));
+			// (The blobs are already damaged by the step above, so only this check's own failure and the intact seal are asserted.)
+			expect(failed()).toContain("transfer-within-policy");
+			expect(failed()).not.toContain("seal");
+			writeFileSync(recordFile, original);
+
 			const linked = JSON.parse(original) as Record<string, unknown>;
 			linked.workspace = { sha256: null, problem: "a link the agent left" };
 			linked.recordSha256 = seal(linked);

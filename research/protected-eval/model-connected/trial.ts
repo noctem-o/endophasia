@@ -118,6 +118,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 		maxRequestBytes: 1024 * 1024,
 		maxTransferredBytes: 256 * 1024 * 1024,
 		maxConnections: 8,
+		maxTotalConnections: 1024,
 	};
 	const store = join(out, "store");
 	const log = new EndoCaptureLogV0(store, key, "record", { async: true });
@@ -189,6 +190,8 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 				upstream: { origin: upstream },
 			},
 			agent: {
+				// The run's own deadline: part of its condition, so that a repeat can hold it (research/counterfactual-replay/probe.ts).
+				timeoutMs,
 				started: run.started,
 				exitCode: run.exitCode,
 				signal: run.signal,

@@ -51,6 +51,12 @@ export interface EndoModelRelayPolicyV0 {
 	readonly maxTransferredBytes: number;
 	/** Connections open at once through the socket. */
 	readonly maxConnections: number;
+	/**
+	 * Connections accepted through the socket over the relay's whole life. Each accepted connection is recorded (its close is a durable
+	 * capture event), even one that sends nothing and so counts against no byte bound: without this, a sandbox could grow the host's log
+	 * without limit by connecting and closing (Codex, #134).
+	 */
+	readonly maxTotalConnections: number;
 }
 
 export type EndoModelRefusalReasonV0 = "route" | "size" | "body" | "model";
@@ -124,6 +130,9 @@ const policyJson = (policy: EndoModelRelayPolicyV0) => ({
 	maxRequestBytes: policy.maxRequestBytes,
 	maxTransferredBytes: policy.maxTransferredBytes,
 	maxConnections: policy.maxConnections,
+	// Absent from policies recorded before the lifetime bound existed: their digest is computed as it was then. A running relay always has
+	// it (checkPolicy requires it).
+	...(policy.maxTotalConnections === undefined ? {} : { maxTotalConnections: policy.maxTotalConnections }),
 });
 
 /** A deep, frozen copy of a policy: only its declared fields, so nothing the caller holds is shared with the running relay. */
@@ -134,6 +143,7 @@ function snapshotPolicy(policy: EndoModelRelayPolicyV0): EndoModelRelayPolicyV0 
 		maxRequestBytes: policy.maxRequestBytes,
 		maxTransferredBytes: policy.maxTransferredBytes,
 		maxConnections: policy.maxConnections,
+		maxTotalConnections: policy.maxTotalConnections,
 	});
 }
 
@@ -150,6 +160,7 @@ function checkPolicy(policy: EndoModelRelayPolicyV0): void {
 		["maxRequestBytes", policy.maxRequestBytes, GOVERNED_REQUEST_MAX_BYTES_V0],
 		["maxTransferredBytes", policy.maxTransferredBytes, Number.MAX_SAFE_INTEGER],
 		["maxConnections", policy.maxConnections, 64],
+		["maxTotalConnections", policy.maxTotalConnections, 1_000_000],
 	] as const)
 		if (!Number.isSafeInteger(value) || value < 1 || value > max) throw new TypeError(`${name} must be 1..${max}`);
 }
@@ -162,7 +173,7 @@ export interface EndoModelRelayV0 {
 	/**
 	 * Requests refused before reaching the model server, by reason. `unjudged`: refused by the governed proxy before the judge saw them,
 	 * because they were not one complete request with a declared body length (a GET or DELETE without a body, CONNECT, an unparseable
-	 * stream). `connections`: connections refused at the connection bound.
+	 * stream). `connections`: connections refused at either connection bound (open at once, or over the relay's life).
 	 */
 	refusals(): Readonly<Record<EndoModelRefusalReasonV0 | "unjudged" | "connections", number>>;
 	/** Requests admitted to the model server. */
@@ -217,12 +228,14 @@ export async function startModelRelayV0(options: {
 	let directory: string | null = null;
 	const open = new Set<Socket>();
 	const clients = new Set<Socket>();
+	let accepted = 0;
 	const server: Server = createServer((client) => {
-		if (clients.size >= policy.maxConnections) {
+		if (clients.size >= policy.maxConnections || accepted >= policy.maxTotalConnections) {
 			refused.connections += 1;
 			client.destroy();
 			return;
 		}
+		accepted += 1;
 		const upstream = netConnect(proxy.port, proxy.host);
 		clients.add(client);
 		open.add(client);
@@ -314,7 +327,8 @@ server.listen(Number(port), "127.0.0.1", () => {
 	const child = spawn(command[0], command.slice(1), { stdio: "inherit" });
 	for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => child.kill(signal));
 	child.on("error", () => process.exit(127));
-	child.on("exit", (code, signal) => { server.close(); process.exit(code ?? (signal === null ? 1 : 128)); });
+	// Killed by a signal: exit as a shell does, 128 + its number, so the trial's record still says which signal ended the command.
+	child.on("exit", (code, signal) => { server.close(); process.exit(code ?? (signal === null ? 1 : 128 + (require("node:os").constants.signals[signal] ?? 0))); });
 });
 `;
 

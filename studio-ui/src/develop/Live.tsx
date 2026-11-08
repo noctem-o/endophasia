@@ -35,6 +35,8 @@ import {
 	RUN_END_WORDS,
 	runStripWords,
 	stopInFlight,
+	terminalCommandIn,
+	terminalCommandWords,
 } from "../model/workbench.ts";
 import type {
 	MessagePart,
@@ -654,7 +656,9 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 	const id = useId();
 	const offer = wb.state.status?.offers[mode] ?? { offered: false, reason: "Not read yet." };
 	const promptOpen = mode === "prompt" && commandOpen(wb.state.command);
-	const ok = offer.offered && !sending && !promptOpen && draft.trim() !== "";
+	// The terminal's own command is not a message: from here it would reach the agent as chat (REVIEW-PILOT-001, run 1).
+	const asCommand = terminalCommandIn(draft);
+	const ok = offer.offered && !sending && !promptOpen && asCommand === null && draft.trim() !== "";
 	const label = MODES.find((m) => m.id === mode)!.label;
 	const send = async () => {
 		if (!ok) return;
@@ -732,6 +736,11 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 					}
 				}}
 			/>
+			{asCommand === null ? null : (
+				<p className="small composer-command" role="alert" data-testid="composer-command">
+					{terminalCommandWords(asCommand)}
+				</p>
+			)}
 			<p
 				className="dim small composer-hint"
 				id={`${id}-hint`}

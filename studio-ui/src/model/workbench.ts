@@ -83,6 +83,27 @@ export type WorkbenchAction =
 	| { type: "view"; view: "live" | "recorded" }
 	| { type: "unpair" };
 
+/**
+ * The workbench terminal's own command, when the composer's whole text is one (a mirror of protocol/workbench.ts,
+ * `endoWorkbenchTerminalCommandInV0`; a test keeps them equal). Sent from here it would reach the agent as chat, so the page does not ask.
+ */
+export function terminalCommandIn(text: string): { command: "attempt" | "pair"; argument: string | null } | null {
+	const words = text.trim().split(/\s+/);
+	if (words.length === 1 && words[0] === "pair") return { command: "pair", argument: null };
+	if (words[0] !== "attempt") return null;
+	if (words.length === 1) return { command: "attempt", argument: null };
+	return words.length === 2 && /^endo\.attempt\./.test(words[1] as string)
+		? { command: "attempt", argument: words[1] as string }
+		: null;
+}
+
+/** Why the composer will not ask for a message that is a terminal command: where that command goes instead. */
+export function terminalCommandWords(found: { command: "attempt" | "pair" }): string {
+	return found.command === "pair"
+		? "This is the workbench terminal's `pair` command, not a message. Sent from here it would go to the agent as chat. Type it at the attached terminal."
+		: "This is the workbench terminal's `attempt` command, not a message. Sent from here it would go to the agent as chat: it would not send the attempt's brief, and nothing would record it as the attempt. Type it at the attached terminal, or use \"Request sending … to Pi\" under the attempt in Task.";
+}
+
 export const commandOpen = (c: WorkbenchCommand | null): boolean =>
 	c !== null && (c.state === "awaiting-approval" || c.state === "dispatching");
 

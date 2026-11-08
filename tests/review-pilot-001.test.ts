@@ -119,6 +119,38 @@ describe("REVIEW-PILOT-001: a task the check does not settle", () => {
 		expect(heading(prepared)).toBe("# WORK-CYCLE-001A reconstruction");
 	});
 
+	it("the worksheet's commands run as printed from a path with spaces, and its diff shows an uncommitted candidate (Codex P2 ×2)", () => {
+		const parent = realpathSync(mkdtempSync(join(tmpdir(), "endo rp ")));
+		cleanup.push(() => rmSync(parent, { recursive: true, force: true }));
+		const commandsOf = (layout: RunLayout, prepared: Parameters<typeof writeReviewWorksheet>[1]) => {
+			const text = readFileSync(writeReviewWorksheet(layout, prepared, REVIEW_PILOT_001) as string, "utf8");
+			const block = /```sh\n([\s\S]*?)```/.exec(text)?.[1] ?? "";
+			return block.trim().split("\n");
+		};
+		const sh = (line: string) => spawnSync("bash", ["-c", line], { encoding: "utf8" });
+
+		// Not committed: the operator answered no. HEAD is still the fixture commit; the candidate is in the working tree only.
+		const open = launchRun(join(parent, "run one"), REVIEW_PILOT_001);
+		const p1 = prepareJourney(open, runEnv(open), REVIEW_PILOT_001);
+		addDaysToSource(open.project);
+		const [evidence, task, diff] = commandsOf(open, p1) as [string, string, string];
+		const ran = [sh(evidence), sh(task)];
+		for (const r of ran) expect(r.status, r.stderr).toBe(0);
+		expect(ran[0]?.stderr).toContain(p1.attemptId);
+		const uncommitted = sh(diff);
+		expect(uncommitted.status, uncommitted.stderr).toBe(0);
+		expect(uncommitted.stdout).toContain('+\t["d", 86400],');
+
+		// Committed: the diff is the candidate commit against the fixture commit.
+		const done = launchRun(join(parent, "run two"), REVIEW_PILOT_001);
+		const p2 = prepareJourney(done, runEnv(done), REVIEW_PILOT_001);
+		addDaysToSource(done.project);
+		expect(commitAndCheck(done, p2.attemptId).status).toBe(0);
+		const committed = sh((commandsOf(done, p2) as string[])[2] as string);
+		expect(committed.status, committed.stderr).toBe(0);
+		expect(committed.stdout).toContain('+\t["d", 86400],');
+	});
+
 	it("writes the worksheet once, filled with this run's ids and commands, and with no answers", () => {
 		const layout = freshRun();
 		const prepared = prepareJourney(layout, runEnv(layout), REVIEW_PILOT_001);
@@ -132,7 +164,8 @@ describe("REVIEW-PILOT-001: a task the check does not settle", () => {
 		expect(text).toContain(
 			`task show --root ${layout.store} --project ${prepared.projectId} --task ${prepared.taskId}`,
 		);
-		expect(text).toContain(`git -C ${layout.project} diff ${prepared.baseCommit} HEAD`);
+		// Nothing committed in this run: the diff is the working tree against the fixture commit.
+		expect(text).toContain(`git -C ${layout.project} diff ${prepared.baseCommit}   # not committed`);
 		expect(text).toContain(`ENDO_DIGEST_KEY_FILE=${layout.digestKeyFile}`);
 		for (const line of REVIEW_PILOT_001.task.acceptance.split("\n")) expect(text).toContain(line);
 		// Never over an earlier one: a second write is refused and the first is left as it was.

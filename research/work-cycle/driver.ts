@@ -1240,7 +1240,7 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
 		);
 	say("The decision is yours, separately. For example:");
 	say(
-		`    ENDO_DIGEST_KEY_FILE=${layout.digestKeyFile} node ${ENDO_CLI} task status --root ${layout.store} --project ${prepared.projectId} --task ${prepared.taskId} --to in-progress`,
+		`    ENDO_DIGEST_KEY_FILE=${shellWord(layout.digestKeyFile)} node ${shellWord(ENDO_CLI)} task status --root ${shellWord(layout.store)} --project ${prepared.projectId} --task ${prepared.taskId} --to in-progress`,
 	);
 	say(
 		'    … then --to review, then --to done --note "…" (each its own act), and rerun: driver.ts reconstruct --run <dir>',
@@ -1251,9 +1251,18 @@ async function operatorRun(argv: readonly string[]): Promise<void> {
  * The study's review worksheet, filled with this run's ids and commands, written once into the evidence (never over an earlier one). Null
  * for a study without one. It holds no answers: the operator writes them.
  */
+/** One shell word, whatever the text holds (spaces, quotes): single-quoted, with each single quote closed, escaped and reopened. */
+export const shellWord = (text: string): string =>
+	/^[\w./:=@+-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`;
+
 export function writeReviewWorksheet(layout: RunLayout, ids: RunIds, study: Study): string | null {
 	if (study.worksheet === null) return null;
-	const env = `ENDO_DIGEST_KEY_FILE=${layout.digestKeyFile}`;
+	const q = shellWord;
+	const env = `ENDO_DIGEST_KEY_FILE=${q(layout.digestKeyFile)}`;
+	const cli = `node ${q(ENDO_CLI)}`;
+	// Not committed (the operator answered no, or there was nothing): the candidate is only in the working tree, and base..HEAD is empty.
+	// The working tree against the fixture commit shows it, new files included (the driver marked them intent-to-add).
+	const committed = git(layout.project, "rev-parse", "HEAD").trim() !== ids.baseCommit;
 	const values: Record<string, string> = {
 		attemptId: ids.attemptId,
 		taskId: ids.taskId,
@@ -1261,9 +1270,11 @@ export function writeReviewWorksheet(layout: RunLayout, ids: RunIds, study: Stud
 		baseCommit: ids.baseCommit,
 		run: layout.run,
 		acceptance: study.task.acceptance,
-		evidenceCommand: `${env} node ${ENDO_CLI} attempt evidence --root ${layout.store} --attempt ${ids.attemptId} --cwd ${layout.project}`,
-		taskCommand: `${env} node ${ENDO_CLI} task show --root ${layout.store} --project ${ids.projectId} --task ${ids.taskId}`,
-		diffCommand: `git -C ${layout.project} diff ${ids.baseCommit} HEAD`,
+		evidenceCommand: `${env} ${cli} attempt evidence --root ${q(layout.store)} --attempt ${ids.attemptId} --cwd ${q(layout.project)}`,
+		taskCommand: `${env} ${cli} task show --root ${q(layout.store)} --project ${ids.projectId} --task ${ids.taskId}`,
+		diffCommand: committed
+			? `git -C ${q(layout.project)} diff ${ids.baseCommit} HEAD`
+			: `git -C ${q(layout.project)} diff ${ids.baseCommit}   # not committed: the working tree against the fixture commit (also in evidence/candidate.diff)`,
 	};
 	const text = readFileSync(study.worksheet, "utf8").replace(
 		/\{\{(\w+)\}\}/g,

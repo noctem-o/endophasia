@@ -210,7 +210,12 @@ Either way, every trial needs:
 
 **Stopping rules:**
 - the pilot gate above;
-- a family whose evaluator fails its reference or passes its negative is withdrawn before the main run;
+- every family's evaluator is qualified, passing its reference and failing its negative, **before the plan is fixed and before any main
+  trial runs**. A family that fails qualification is replaced before the plan is fixed, by a reserve family written with the bank, then
+  qualified the same way and entered in the sealed catalog. The plan, its 144 trials and its denominator are therefore fixed only over 8
+  qualified families, and nothing is withdrawn from a fixed plan.
+  - If the reserves run out, the study stops and is re-registered with its new bank and criteria. It never continues with fewer families
+    under the old thresholds (Codex, #135);
 - an interruption after an agent started is final attrition (EVAL-ISO-001's rule).
 
 **What it costs:** local compute only. At about 25 s per trial with Glimmer (EVAL-ISO-002's real trial), the main run is on the order of

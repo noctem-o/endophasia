@@ -4,7 +4,13 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, write
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { privateDirectoryV0, repeatProvenanceMismatchesV0 } from "../research/counterfactual-replay/probe.ts";
+import {
+	firstRequestIdenticalV0,
+	privateDirectoryV0,
+	repeatCountV0,
+	repeatProvenanceMismatchesV0,
+	sourceConditionV0,
+} from "../research/counterfactual-replay/probe.ts";
 
 const base = mkdtempSync(join(tmpdir(), "endo-cf-probe-"));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
@@ -84,5 +90,55 @@ describe("a repeat must use the source trial's Pi and model endpoint", () => {
 		expect(repeatProvenanceMismatchesV0(source, { piDistSha256: "c".repeat(64), upstream: null })).toEqual([
 			"pi-dist",
 		]);
+	});
+});
+
+describe("a run made from a source trial holds the source's execution condition (Codex, #136)", () => {
+	const limits = { memoryMaxBytes: 1024 * 1024 * 1024, cpuQuotaPercent: 200 };
+	it("limits and timeout come from the record", () => {
+		expect(
+			sourceConditionV0({ isolation: { containment: { limits } }, agent: { timeoutMs: 240_000 } }, null),
+		).toEqual({
+			ok: true,
+			memoryMib: 1024,
+			cpuPercent: 200,
+			timeoutS: 240,
+			timeoutFrom: "record",
+		});
+	});
+	it("a record without its timeout needs the operator to state it, and says so; a contradicting statement is refused", () => {
+		const old = { isolation: { containment: { limits } }, agent: {} };
+		expect(sourceConditionV0(old, null)).toMatchObject({ ok: false });
+		expect(sourceConditionV0(old, "abc")).toMatchObject({ ok: false });
+		expect(sourceConditionV0(old, "600")).toMatchObject({ ok: true, timeoutS: 600, timeoutFrom: "operator" });
+		expect(
+			sourceConditionV0({ isolation: { containment: { limits } }, agent: { timeoutMs: 600_000 } }, "300"),
+		).toMatchObject({
+			ok: false,
+		});
+	});
+	it("a record without usable limits is refused", () => {
+		for (const bad of [
+			{},
+			{ isolation: { containment: { limits: { memoryMaxBytes: 1.5, cpuQuotaPercent: 100 } } } },
+			{ isolation: { containment: { limits: { memoryMaxBytes: 1 << 30 } } } },
+		])
+			expect(sourceConditionV0({ ...bad, agent: { timeoutMs: 1000 } }, null)).toMatchObject({ ok: false });
+	});
+});
+
+describe("the repeat count is bounded, and a first request is compared only when every run made one (Codex, #136)", () => {
+	it("--times accepts 1 to 20 only", () => {
+		expect(repeatCountV0("3")).toBe(3);
+		expect(repeatCountV0("20")).toBe(20);
+		for (const bad of ["0", "21", "Infinity", "three", "3.5", "-1", "", "1e1", " 3"])
+			expect(() => repeatCountV0(bad)).toThrow(/1 to 20/);
+	});
+	it("identical, different, or unavailable when any run made no request", () => {
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a", "b"] }, { requestSha256: ["a"] }])).toBe(true);
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a"] }, { requestSha256: ["b"] }])).toBe(false);
+		expect(firstRequestIdenticalV0([{ requestSha256: [] }, { requestSha256: [] }])).toBeNull();
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a"] }, { requestSha256: [] }])).toBeNull();
+		expect(firstRequestIdenticalV0([])).toBeNull();
 	});
 });

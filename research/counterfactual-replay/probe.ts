@@ -65,6 +65,78 @@ export function repeatProvenanceMismatchesV0(
 	return mismatches;
 }
 
+/**
+ * The source trial's execution condition, to hold in every run made from it: its memory and CPU limits, and its timeout. A run under
+ * other limits or another deadline could differ for those reasons (an OOM kill, a throttled tool, a timeout) and be mistaken for the
+ * model's variation (Codex, #136). Limits come from the record only. The timeout too, unless the record predates keeping it: then the
+ * operator must state it (`--source-timeout-s`), and the summary says the timeout was declared, not recorded. Anything else is refused.
+ */
+export function sourceConditionV0(
+	record: {
+		isolation?: { containment?: { limits?: { memoryMaxBytes?: unknown; cpuQuotaPercent?: unknown } } };
+		agent?: { timeoutMs?: unknown };
+	},
+	declaredTimeoutS: string | null,
+):
+	| { ok: true; memoryMib: number; cpuPercent: number; timeoutS: number; timeoutFrom: "record" | "operator" }
+	| { ok: false; reason: string } {
+	const limits = record.isolation?.containment?.limits;
+	const memory = Number(limits?.memoryMaxBytes) / (1024 * 1024);
+	const cpu = Number(limits?.cpuQuotaPercent);
+	if (!Number.isSafeInteger(memory) || memory < 16 || !Number.isSafeInteger(cpu) || cpu < 1)
+		return {
+			ok: false,
+			reason: "the source record does not state its memory and CPU limits in whole MiB and percent",
+		};
+	const recorded = Number(record.agent?.timeoutMs);
+	if (record.agent?.timeoutMs !== undefined) {
+		if (!Number.isSafeInteger(recorded) || recorded <= 0 || recorded % 1000 !== 0)
+			return { ok: false, reason: "the source record's timeout is not a whole number of seconds" };
+		if (declaredTimeoutS !== null && Number(declaredTimeoutS) * 1000 !== recorded)
+			return { ok: false, reason: "--source-timeout-s contradicts the timeout the source record states" };
+		return { ok: true, memoryMib: memory, cpuPercent: cpu, timeoutS: recorded / 1000, timeoutFrom: "record" };
+	}
+	if (declaredTimeoutS === null || !/^[1-9][0-9]{0,5}$/.test(declaredTimeoutS))
+		return {
+			ok: false,
+			reason:
+				"the source record predates keeping its timeout: state it with --source-timeout-s <seconds>, or use a newer source",
+		};
+	return { ok: true, memoryMib: memory, cpuPercent: cpu, timeoutS: Number(declaredTimeoutS), timeoutFrom: "operator" };
+}
+
+/** `--times`: a whole number of repeats from 1 to 20, never Infinity, NaN or a typo silently read as 0 (Codex, #136). */
+export function repeatCountV0(text: string): number {
+	if (!/^[1-9][0-9]?$/.test(text) || Number(text) > 20) throw new TypeError("--times is a whole number from 1 to 20");
+	return Number(text);
+}
+
+/** Whether every run's first request is the same: null (unavailable) when any run made none, never "identical" over nothing (Codex, #136). */
+export function firstRequestIdenticalV0(runs: readonly { requestSha256: readonly string[] }[]): boolean | null {
+	const firsts = runs.map((r) => r.requestSha256[0]);
+	if (firsts.length === 0 || firsts.some((f) => f === undefined)) return null;
+	return firsts.every((f) => f === firsts[0]);
+}
+
+function conditionOrThrow(record: unknown, args: string[]) {
+	const i = args.indexOf("--source-timeout-s");
+	const c = sourceConditionV0(
+		record as Parameters<typeof sourceConditionV0>[0],
+		i === -1 ? null : (args[i + 1] ?? ""),
+	);
+	if (!c.ok) throw new TypeError(c.reason);
+	return c;
+}
+
+const conditionArgs = (c: { memoryMib: number; cpuPercent: number; timeoutS: number }) => [
+	"--memory-mib",
+	String(c.memoryMib),
+	"--cpu-percent",
+	String(c.cpuPercent),
+	"--timeout-s",
+	String(c.timeoutS),
+];
+
 function requireProvenance(sourceRecord: unknown, piDist: string, upstream: string | null): void {
 	const mismatches = repeatProvenanceMismatchesV0(sourceRecord as Parameters<typeof repeatProvenanceMismatchesV0>[0], {
 		piDistSha256: endoTreeDigestV0(realpathSync(piDist)),
@@ -127,12 +199,13 @@ export function trajectoryOf(trial: string) {
 async function repeat(args: string[]) {
 	const source = resolve(flag(args, "--source"));
 	const out = resolve(flag(args, "--out"));
-	const times = Number(flag(args, "--times", "3"));
+	const times = repeatCountV0(flag(args, "--times", "3"));
 	const prompt = flag(args, "--prompt");
 	const sourceRecord = JSON.parse(readFileSync(join(source, "record.json"), "utf8"));
 	if (sha256HexV0(prompt) !== sourceRecord.subject.prompt.sha256)
 		throw new TypeError("--prompt is not the source trial's prompt");
 	requireProvenance(sourceRecord, flag(args, "--pi-dist"), flag(args, "--upstream"));
+	const condition = conditionOrThrow(sourceRecord, args);
 	privateDirectoryV0(out);
 	const runs = [trajectoryOf(source)];
 	for (let i = 1; i <= times; i++) {
@@ -149,16 +222,17 @@ async function repeat(args: string[]) {
 			sourceRecord.subject.model,
 			"--prompt",
 			prompt,
+			...conditionArgs(condition),
 		]);
 		runs.push(trajectoryOf(dir));
 	}
-	const first = (r: (typeof runs)[number]) => r.requestSha256[0];
 	const summary = {
 		measurement: "repeat",
 		source,
 		model: sourceRecord.subject.model,
 		runs,
-		firstRequestIdentical: runs.every((r) => first(r) === first(runs[0] as (typeof runs)[number])),
+		condition,
+		firstRequestIdentical: firstRequestIdenticalV0(runs),
 		distinctToolSequences: new Set(runs.map((r) => r.toolCalls.join(" "))).size,
 		distinctWorkspaces: new Set(runs.map((r) => r.workspaceSha256)).size,
 		distinctAnswers: new Set(runs.map((r) => r.answerSha256)).size,
@@ -178,6 +252,7 @@ async function replay(args: string[]) {
 	if (existsSync(out)) throw new TypeError(`${out} exists`);
 	// A replay's upstream is the cassette by design; its Pi must still be the source's.
 	requireProvenance(sourceRecord, flag(args, "--pi-dist"), null);
+	const condition = conditionOrThrow(sourceRecord, args);
 	privateDirectoryV0(out);
 	const key = keyOf(source);
 	const cassette = loadEndoCassetteV0(join(source, "store"), key);
@@ -204,8 +279,7 @@ async function replay(args: string[]) {
 			sourceRecord.subject.model,
 			"--prompt",
 			prompt,
-			"--timeout-s",
-			"120",
+			...conditionArgs(condition),
 		]);
 	} finally {
 		await server.close();
@@ -230,6 +304,7 @@ async function replay(args: string[]) {
 		.map((e) => ({ reason: (e.payload as { reason?: string }).reason ?? null }));
 	const summary = {
 		measurement: "replay",
+		condition,
 		source,
 		recordedExchanges: recorded.length,
 		replayedRequests: replayed.length,

@@ -16,10 +16,13 @@ import {
 	type EndoScopeLimitsV0,
 	newScopeUnitV0,
 	processInScopeV0,
+	processStartTimeV0,
 	scopeArgsV0,
 	scopeResultV0,
 	stopScopeV0,
 } from "./containment.ts";
+
+export { processStartTimeV0 };
 
 /** The only places the executable is looked for: never PATH, which trial content or the operator's shell could shape. */
 export const ENDO_BUBBLEWRAP_CANDIDATES_V0 = ["/usr/bin/bwrap"] as const;
@@ -376,19 +379,6 @@ export interface EndoSandboxRunV0 {
 export interface EndoProcessIdentityV0 {
 	pid: number;
 	startTime: string;
-}
-
-/** The start time of a host process, or null when there is no such process. */
-export function processStartTimeV0(pid: number): string | null {
-	try {
-		const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-		// The command name (field 2) is in parentheses and may contain spaces: count the fields after its closing parenthesis.
-		const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-		const start = rest[19];
-		return start !== undefined && /^[0-9]+$/.test(start) ? start : null;
-	} catch {
-		return null;
-	}
 }
 
 /** Whether exactly this process (pid and start time) still exists. */

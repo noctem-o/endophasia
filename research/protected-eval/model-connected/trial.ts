@@ -248,6 +248,46 @@ export function exchangesOutsidePolicyV0(
 	return outside;
 }
 
+/**
+ * What a trial's cassette must show, judged from its exchanges alone (pure, so each case is tested without a sandbox):
+ * - `cassette-verifies`: every exchange's bodies verify against the blob store (`truncated` null). An exchange the loader could not verify
+ *   is a failure whatever its outcome (Codex, #134: the earlier predicate excused any exchange that was not complete);
+ * - `admitted-count`: no more complete exchanges than requests the relay admitted;
+ * - `model-exchange`: at least one complete, verified exchange, and at least one admitted request. A model-connected trial whose agent
+ *   never reached the model is not one: over no exchanges every other check is vacuously true (Codex, #134).
+ */
+export function cassetteFindingsV0(
+	exchanges: readonly { truncated: string | null; response: { outcome: string } | null }[],
+	admitted: number,
+): VerifyFindingV0[] {
+	const unverified = exchanges.filter((e) => e.truncated !== null).length;
+	const complete = exchanges.filter((e) => e.truncated === null && e.response?.outcome === "complete").length;
+	const admittedOk = Number.isSafeInteger(admitted) && admitted >= 0;
+	return [
+		{
+			check: "cassette-verifies",
+			ok: unverified === 0,
+			detail:
+				unverified === 0
+					? "every exchange's bodies verify against the blob store"
+					: `${unverified} exchange(s) whose bodies do not verify, or that the recording does not end`,
+		},
+		{
+			check: "admitted-count",
+			ok: admittedOk && complete <= admitted,
+			detail: `${complete} complete exchange(s), ${admittedOk ? admitted : "an unreadable number of"} admitted request(s)`,
+		},
+		{
+			check: "model-exchange",
+			ok: admittedOk && complete >= 1 && admitted >= 1,
+			detail:
+				complete >= 1 && admitted >= 1
+					? `${complete} complete model exchange(s)`
+					: "no complete, admitted model exchange: the agent never reached the model through the relay",
+		},
+	];
+}
+
 export interface VerifyFindingV0 {
 	check: string;
 	ok: boolean;
@@ -316,11 +356,8 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 			JSON.stringify(now) === JSON.stringify(then),
 			"exchanges, routes, request digests, integrity",
 		);
-		add(
-			"cassette-verifies",
-			cassette.exchanges.every((e) => e.truncated === null || e.response?.outcome !== "complete"),
-			"every complete exchange's bodies verify against the blob store",
-		);
+		for (const f of cassetteFindingsV0(cassette.exchanges, Number(record.relay?.admitted)))
+			add(f.check, f.ok, f.detail);
 		const outside = exchangesOutsidePolicyV0(join(dir, "store"), key, policy);
 		add(
 			"requests-within-policy",
@@ -328,11 +365,6 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 			outside.length === 0
 				? "every recorded request, body included (route, model, size, a JSON object), is one the policy admits"
 				: `exchanges the policy would refuse: ${outside.map((o) => `${o.exchange} (${o.reason})`).join(", ")}`,
-		);
-		add(
-			"admitted-count",
-			cassette.exchanges.filter((e) => e.response?.outcome === "complete").length <= Number(record.relay?.admitted),
-			"no more complete exchanges than admitted requests",
 		);
 	}
 	for (const [name, file] of [

@@ -188,7 +188,7 @@ Evidence is kept outside the repository, under `~/projects/endophasia-research/w
 
 ## 5. Limitations, and what is left (for REVIEW-PILOT-001)
 
-The pilot is prepared in [`research/review-pilot/`](../review-pilot/README.md).
+The pilot is in [`research/review-pilot/`](../review-pilot/README.md) (run 2026-11-08; the review is pending).
 
 1. **One human-governed run, by one operator, on one task.**
    - The approval phrase's 16-hex code caught a partial phrase, as designed.

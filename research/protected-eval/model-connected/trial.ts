@@ -184,6 +184,8 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 				admitted: relay.admitted(),
 				refusals: relay.refusals(),
 				transferredBytes: relay.transferredBytes(),
+				// Read after close(), which flushes the recording: a failed write is kept here, and verification rejects it (Codex, #134).
+				recordingFailures: relay.recordingFailures(),
 				upstream: { origin: upstream },
 			},
 			agent: {
@@ -271,6 +273,16 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 		String(record.isolation?.requested?.network),
 	);
 	add("termination", record.agent?.termination === "confirmed", String(record.agent?.termination));
+	// The recording must be whole: no capture write failed, and every recorded exchange has its response, complete and verified. A trial
+	// with a lost write or a response missing is never presented as verified (Codex, #134).
+	add(
+		"recording-complete",
+		record.relay?.recordingFailures === 0 &&
+			(record.cassette?.exchanges ?? []).every(
+				(e: { outcome: unknown; truncated: unknown }) => e.outcome === "complete" && e.truncated === null,
+			),
+		`${record.relay?.recordingFailures ?? "unknown"} failed capture writes; every exchange complete and verified, or not`,
+	);
 	// The proxy drops a session's connections once the bytes through it exceed the policy's bound, after counting the bytes that crossed
 	// it: a trial that hit the cap did not run to its own end, whatever else it shows (Codex, #134).
 	const transferred = Number(record.relay?.transferredBytes);
@@ -336,6 +348,26 @@ export function verifyTrial(dir: string, options: { piDist?: string } = {}): Ver
 		ws.sha256 !== null && ws.sha256 === record.workspace?.sha256,
 		ws.problem ??
 			(record.workspace?.sha256 == null ? "the record holds no workspace digest" : "the workspace as kept"),
+	);
+	// The runtime is part of the trial's condition: each recorded runtime file, at its path on this host now, against its recorded digest.
+	// A difference means this host no longer holds the trial's runtime (an update, or another host); it does not make the trial wrong,
+	// but a repetition here would not be the same condition (Codex, #134).
+	const runtime = (record.isolation?.runtime ?? []) as { target: string; sha256: string }[];
+	const changed = runtime.filter((f) => {
+		try {
+			return sha256HexV0(readFileSync(realpathSync(f.target))) !== f.sha256;
+		} catch {
+			return true;
+		}
+	});
+	add(
+		"runtime-unchanged",
+		runtime.length > 0 && changed.length === 0,
+		runtime.length === 0
+			? "the record names no runtime files"
+			: changed.length === 0
+				? `${runtime.length} runtime files match this host`
+				: `changed or missing on this host: ${changed.map((f) => f.target).join(", ")}`,
 	);
 	if (options.piDist !== undefined) {
 		const current = endoTreeDigestV0(realpathSync(options.piDist));

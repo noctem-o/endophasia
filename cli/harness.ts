@@ -252,7 +252,15 @@ export async function harnessAttachCommand(argv: readonly string[]): Promise<voi
 	printNotificationV0(identified.notification);
 	const checked = await pi.checkLocal();
 	if (parsed.flags.has("--prompt")) process.stderr.write(`note: ${ENDO_PROMPT_COST_NOTICE_V0}\n`);
-	const session = await pi.openSession();
+	let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>;
+	try {
+		session = await pi.openSession();
+	} catch (error) {
+		// A start that failed after launching Pi still reports what it left (Codex, #133), then fails as before.
+		const failed = pi.failedStartCleanup();
+		if (failed !== null) await reportCleanup({ processCleanup: () => failed });
+		throw error;
+	}
 	if (parsed.switches.has("--control")) return attachWithControl(parsed, identified.change, checked.state, session);
 	let disposition: string | null = null;
 	let settled: boolean | null = null;

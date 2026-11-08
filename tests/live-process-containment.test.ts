@@ -4,7 +4,7 @@
 //
 // Real containment needs a systemd user manager (this suite detects one and says so when it skips); GitHub's runners have none, so
 // there only the uncontained reproduction, the reporting and the end-to-end attach in its uncontained form run.
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -260,6 +260,29 @@ describe.runIf(linux)("LIVE-PROCESS-CONTAINMENT-001: incomplete cleanup is repor
 		},
 	);
 
+	it("a failed live scope that still holds processes is reported at the next attach; a failed empty one is not (Codex, #133)", async () => {
+		const stub = async () =>
+			({ ok: true, containment: { systemctl: "/usr/bin/systemctl", env: {} } }) as unknown as Awaited<
+				ReturnType<typeof detectContainmentV0>
+			>;
+		const scope = (unit: string, state: "active" | "failed") => ({
+			unit,
+			state,
+			owner: { pid: process.pid, startTime: "1" },
+			ownerAlive: true,
+		});
+		const populated = "endo-live-cccccccccccccccccccccccc";
+		const empty = "endo-live-dddddddddddddddddddddddd";
+		const ownLive = "endo-live-eeeeeeeeeeeeeeeeeeeeeeee";
+		const live = await liveContainmentV0(stub, {
+			liveScopes: () => [scope(populated, "failed"), scope(empty, "failed"), scope(ownLive, "active")],
+			scopeProcesses: (_c, unit) => (unit === populated ? [101, 102] : unit === ownLive ? [7] : []),
+		});
+		expect(live.notes).toEqual([
+			`warning: an earlier live session left scope ${populated} (failed) with 2 processes; its stop failed and processes are still in it. \`systemctl --user stop ${populated}.scope\` ends them.`,
+		]);
+	});
+
 	it("without a user manager, the operator is told before the session starts that cleanup will be unverified", async () => {
 		const live = await liveContainmentV0(async () => ({
 			ok: false,
@@ -272,6 +295,32 @@ describe.runIf(linux)("LIVE-PROCESS-CONTAINMENT-001: incomplete cleanup is repor
 });
 
 describe.runIf(linux)("LIVE-PROCESS-CONTAINMENT-001: Ctrl-C on `endo harness attach --control` (fake Pi)", () => {
+	it("a session whose start fails after Pi launched still reports its cleanup (Codex, #133)", async () => {
+		const install = installFakePi("1.0.0");
+		cleanup.push(() => install.remove());
+		const root = temp("endo-lpc-failstart-");
+		const cwd = temp("endo-lpc-failstart-cwd-");
+		const pidFile = join(temp("endo-lpc-failstart-pid-"), "descendant.pid");
+		const run = spawnSync(process.execPath, [CLI, "harness", "attach", root, "--pi", install.bin, "--cwd", cwd], {
+			env: { ...process.env, ...fakePiEnv({ FAKE_PI_SCENARIO: `refuse-get-state,detached-child:${pidFile}` }) },
+			encoding: "utf8",
+			timeout: 60_000,
+		});
+		expect(run.status).not.toBe(0);
+		const descendant = await descendantOf(pidFile);
+		if (contained === null) {
+			expect(run.stderr).toMatch(
+				/^harness: Pi has exited; whether every process it started has ended is UNVERIFIED/m,
+			);
+			expect(running(descendant)).toBe(true);
+		} else {
+			expect(run.stderr).toMatch(
+				/^harness: Pi and every process it started have ended \(scope endo-live-[0-9a-f]{24} stopped/m,
+			);
+			expect(running(descendant)).toBe(false);
+		}
+	}, 60_000);
+
 	it(`the session ends, and the report says ${contained === null ? "UNVERIFIED (no user manager here)" : "every process Pi started has ended, and none has"}`, async () => {
 		const install = installFakePi("1.0.0");
 		cleanup.push(() => install.remove());

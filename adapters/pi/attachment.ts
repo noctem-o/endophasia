@@ -388,7 +388,18 @@ export class PiAttachmentV0 {
 	}
 
 	/** Open the operator's persistent Pi session and record it. identify() runs first when it has not. */
+	#failedStartCleanup: Promise<ProcessCleanupV0[]> | null = null;
+
+	/**
+	 * After openSession() threw: how each Pi process the failed start launched was cleaned up (settles once released), or null when the
+	 * last start did not fail after launching one. A failed start's processes are reported like a closed session's, never assumed gone.
+	 */
+	failedStartCleanup(): Promise<ProcessCleanupV0[]> | null {
+		return this.#failedStartCleanup;
+	}
+
 	async openSession(signal?: AbortSignal): Promise<PiSessionAttachmentV0> {
+		this.#failedStartCleanup = null;
 		if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		if (!this.#identified) await this.identify();
 		if (signal?.aborted) throw new Error("Pi session startup cancelled");
@@ -406,6 +417,8 @@ export class PiAttachmentV0 {
 			await session.connect();
 			if (signal?.aborted) throw new Error("Pi session startup cancelled");
 		} catch (error) {
+			// What the failed start left is reported like any session's (LIVE-PROCESS-CONTAINMENT-001; Codex, #133): kept for the caller.
+			this.#failedStartCleanup = session.processCleanup();
 			try {
 				stopping ??= session.terminate();
 				await stopping;

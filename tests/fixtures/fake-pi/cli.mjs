@@ -545,6 +545,8 @@ async function handle(command) {
 	}
 	switch (type) {
 		case "get_state":
+			// LIVE-PROCESS-CONTAINMENT-001: Pi starts (and may have started a detached child), then its startup read fails.
+			if (has("refuse-get-state")) return refuse(id, type, "fake pi: state unavailable");
 			if (has("startup-lock")) {
 				const lock = join(process.env.PI_CODING_AGENT_DIR, "temporary.lock");
 				writeFileSync(lock, "");

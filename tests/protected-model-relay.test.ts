@@ -245,6 +245,57 @@ describe("EVAL-ISO-002: the judge", () => {
 	});
 });
 
+describe("EVAL-ISO-002: what a trial's cassette must show (pure; Codex, #134)", () => {
+	const ok = { truncated: null, response: { outcome: "complete" } };
+	const verdicts = async (
+		exchanges: Parameters<typeof import("../research/protected-eval/model-connected/trial.ts").cassetteFindingsV0>[0],
+		admitted: number,
+	) => {
+		const { cassetteFindingsV0 } = await import("../research/protected-eval/model-connected/trial.ts");
+		return Object.fromEntries(cassetteFindingsV0(exchanges, admitted).map((f) => [f.check, f.ok]));
+	};
+	it("a valid, complete, verified exchange passes every check", async () => {
+		expect(await verdicts([ok], 1)).toEqual({
+			"cassette-verifies": true,
+			"admitted-count": true,
+			"model-exchange": true,
+		});
+		expect(await verdicts([ok, ok, ok], 3)).toEqual({
+			"cassette-verifies": true,
+			"admitted-count": true,
+			"model-exchange": true,
+		});
+	});
+	it("an exchange whose bodies do not verify fails, whether or not it completed", async () => {
+		const damaged = {
+			truncated: "a recorded body is missing from the blob store, or does not verify",
+			response: { outcome: "complete" },
+		};
+		const unended = { truncated: "the recording has no end for this exchange", response: null };
+		expect((await verdicts([ok, damaged], 2))["cassette-verifies"]).toBe(false);
+		expect((await verdicts([ok, unended], 2))["cassette-verifies"]).toBe(false);
+	});
+	it("no model exchange fails: an empty cassette, or only incomplete exchanges, or nothing admitted", async () => {
+		expect((await verdicts([], 0))["model-exchange"]).toBe(false);
+		expect(
+			(await verdicts([{ truncated: null, response: { outcome: "client-disconnected" } }], 1))["model-exchange"],
+		).toBe(false);
+		expect(
+			(await verdicts([{ truncated: null, response: { outcome: "upstream-error" } }], 0))["model-exchange"],
+		).toBe(false);
+		expect((await verdicts([ok], 0))["model-exchange"]).toBe(false);
+	});
+	it("more complete exchanges than admitted requests, or an unreadable admitted count, fail", async () => {
+		expect((await verdicts([ok, ok], 1))["admitted-count"]).toBe(false);
+		expect(await verdicts([ok], Number.NaN)).toEqual({
+			"cassette-verifies": true,
+			"admitted-count": false,
+			"model-exchange": false,
+		});
+		expect((await verdicts([ok], 2))["admitted-count"]).toBe(true);
+	});
+});
+
 describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording proxy, capture log)", () => {
 	it("forwards and records the admitted request; refuses every other one without contacting the model server", async () => {
 		const { upstream, relay, log, store } = await relayed();
@@ -338,6 +389,41 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		});
 		expect(closed).toBe(true);
 		expect(relay.refusals().connections).toBe(1);
+	});
+
+	it("the policy is a frozen snapshot: changing the caller's object afterwards changes neither admission nor the digest (Codex, #134)", async () => {
+		const mine = { ...policy(), routes: [...ENDO_PI_MODEL_ROUTES_V0] } as {
+			-readonly [K in keyof EndoModelRelayPolicyV0]: EndoModelRelayPolicyV0[K];
+		} & {
+			routes: { method: string; path: string }[];
+		};
+		const upstream = await startFakeOpenAiServer();
+		const log = new EndoCaptureLogV0(fresh("store"), KEY, "record", { async: true });
+		const relay = await startModelRelayV0({
+			upstream: new URL(upstream.baseUrl).origin,
+			policy: mine,
+			log,
+			runtimeDirectory: runtimeBase,
+		});
+		cleanup.push(async () => {
+			await relay.close();
+			log.close();
+			await upstream.close();
+		});
+		const digest = relay.policyDigest;
+		mine.routes.push({ method: "POST", path: "/models/load" });
+		mine.model = "other-model";
+		mine.maxRequestBytes = 1;
+		expect(await overSocket(relay, "POST", "/models/load", JSON.stringify({ model: MODEL }))).toHaveProperty(
+			"closed",
+		);
+		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat("other-model"))).toHaveProperty("closed");
+		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat())).toMatchObject({ status: 200 });
+		expect(upstream.requests.map((r) => r.url)).toEqual(["/v1/chat/completions"]);
+		expect(relay.policyDigest).toBe(digest);
+		expect(modelRelayPolicyDigestV0(relay.policy)).toBe(digest);
+		expect(Object.isFrozen(relay.policy) && Object.isFrozen(relay.policy.routes)).toBe(true);
+		expect(relay.policy).not.toBe(mine);
 	});
 
 	it("the socket is private: its directory 0700 and the socket 0600, and both are gone after close", async () => {

@@ -111,22 +111,24 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
   - Four of its nine tool calls asked for commands the minimal runtime does not hold (`hexdump`, `od`, `python3`, `wc`; exit 127). **The
     runtime set is part of a trial's condition** and visibly shapes the agent's behaviour. A study must declare it and keep it fixed.
   - The trial's directory is under `~/projects/endophasia-research/eval-iso-002/`, outside the repository.
-- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. It runs 17 checks, three rounds of Codex
+- **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. It runs 18 checks, four rounds of Codex
   review having added to the first 14:
   - the record's seal;
-  - the policy's digest, computed independently of the locale;
+  - the policy's digest, computed independently of the locale. The relay judges by a frozen copy of the policy taken at start, so a
+    caller changing its own object afterwards changes neither admission nor the digest;
   - the boundary and termination;
   - **the recording is complete**: no capture write failed, and every exchange has its response, complete and verified;
   - the bytes through the relay are within the policy's bound;
   - the cassette loads, matches the record exchange by exchange (route, request digest, integrity), and verifies;
   - every recorded request is within the policy, **body included**: route, model, size, a JSON object, no repeated top-level key;
-  - no more complete exchanges than admitted requests;
+  - no more complete exchanges than admitted requests, and **at least one** complete, admitted model exchange: over an empty cassette
+    every other check would hold vacuously;
   - stdout and stderr digests;
   - the workspace digest, which must exist: a workspace with no digest fails instead of matching a null;
   - the runtime files on this host still match the recorded ones;
   - the installed Pi is unchanged.
 
-  A second real trial (`trial-20261108-215630`: the same task, Glimmer, 8 exchanges) passes all 17. The first trial (`…-195634`) passes
+  A second real trial (`trial-20261108-215630`: the same task, Glimmer, 8 exchanges) passes all 18. The first trial (`…-195634`) passes
   every check except `recording-complete`, which it fails as **unknown**: its record predates the recording-failure count. That is the
   intended reading of a missing field.
 

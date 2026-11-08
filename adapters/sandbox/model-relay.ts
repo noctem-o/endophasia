@@ -126,6 +126,17 @@ const policyJson = (policy: EndoModelRelayPolicyV0) => ({
 	maxConnections: policy.maxConnections,
 });
 
+/** A deep, frozen copy of a policy: only its declared fields, so nothing the caller holds is shared with the running relay. */
+function snapshotPolicy(policy: EndoModelRelayPolicyV0): EndoModelRelayPolicyV0 {
+	return Object.freeze({
+		routes: Object.freeze(policy.routes.map((route) => Object.freeze({ method: route.method, path: route.path }))),
+		model: policy.model,
+		maxRequestBytes: policy.maxRequestBytes,
+		maxTransferredBytes: policy.maxTransferredBytes,
+		maxConnections: policy.maxConnections,
+	});
+}
+
 function checkPolicy(policy: EndoModelRelayPolicyV0): void {
 	if (policy.routes.length === 0) throw new TypeError("a model relay admits at least one route");
 	for (const route of policy.routes) {
@@ -175,7 +186,9 @@ export async function startModelRelayV0(options: {
 	readonly log: EndoCaptureLogV0;
 	readonly runtimeDirectory: string;
 }): Promise<EndoModelRelayV0> {
-	const policy = options.policy;
+	// One immutable snapshot, validated, judged by and digested: a caller that keeps and changes its own policy object afterwards cannot
+	// change what is admitted, nor make the digest describe another policy than the one enforced (Codex, #134).
+	const policy = snapshotPolicy(options.policy);
 	checkPolicy(policy);
 	const refused: Record<EndoModelRefusalReasonV0 | "unjudged" | "connections", number> = {
 		route: 0,

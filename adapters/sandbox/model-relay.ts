@@ -70,8 +70,40 @@ export function admitModelRequestV0(
 		return { admitted: false, reason: "body" };
 	}
 	if (body === null || typeof body !== "object" || Array.isArray(body)) return { admitted: false, reason: "body" };
+	// The relay forwards the original bytes. With a key repeated (`{"model":"x","model":"y"}`), JSON.parse keeps the last value, but
+	// another parser may keep the first (RFC 8259 §4): a request whose top-level keys repeat is refused (Codex, #134).
+	if (topLevelKeysRepeat(Buffer.from(request.body).toString("utf8"))) return { admitted: false, reason: "body" };
 	if ((body as { model?: unknown }).model !== policy.model) return { admitted: false, reason: "model" };
 	return { admitted: true };
+}
+
+/**
+ * Whether a JSON object's top-level keys repeat, comparing keys after their escapes are decoded (`"model"` and `"mod\u0065l"` are the
+ * same key). The text is already known to parse as an object.
+ */
+function topLevelKeysRepeat(text: string): boolean {
+	const seen = new Set<string>();
+	let depth = 0;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (ch === '"') {
+			let j = i + 1;
+			while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+			const literal = text.slice(i, j + 1);
+			if (depth === 1) {
+				let k = j + 1;
+				while (k < text.length && /\s/.test(text[k] as string)) k++;
+				if (text[k] === ":") {
+					const key = JSON.parse(literal) as string;
+					if (seen.has(key)) return true;
+					seen.add(key);
+				}
+			}
+			i = j;
+		} else if (ch === "{" || ch === "[") depth++;
+		else if (ch === "}" || ch === "]") depth--;
+	}
+	return false;
 }
 
 /** A policy's identity: the digest of its canonical JSON. A record names the policy by it. */
@@ -82,7 +114,12 @@ export function modelRelayPolicyDigestV0(policy: EndoModelRelayPolicyV0): string
 const policyJson = (policy: EndoModelRelayPolicyV0) => ({
 	routes: [...policy.routes]
 		.map((route) => ({ method: route.method, path: route.path }))
-		.sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`)),
+		// By UTF-16 code units, never the locale: a digest must not depend on where it is computed (Codex, #134).
+		.sort((a, b) => {
+			const x = `${a.method} ${a.path}`;
+			const y = `${b.method} ${b.path}`;
+			return x < y ? -1 : x > y ? 1 : 0;
+		}),
 	model: policy.model,
 	maxRequestBytes: policy.maxRequestBytes,
 	maxTransferredBytes: policy.maxTransferredBytes,

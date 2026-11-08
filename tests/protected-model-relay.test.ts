@@ -79,6 +79,7 @@ const policy = (change: Partial<EndoModelRelayPolicyV0> = {}): EndoModelRelayPol
 	maxRequestBytes: 256 * 1024,
 	maxTransferredBytes: 64 * 1024 * 1024,
 	maxConnections: 8,
+	maxTotalConnections: 256,
 	...change,
 });
 const chat = (model = MODEL) =>
@@ -113,6 +114,8 @@ function overSocket(
 		const req = httpRequest(
 			{
 				socketPath: relay.socketPath,
+				// A new connection per request: Node's default agent would otherwise keep one alive and reuse it.
+				agent: false,
 				method,
 				path,
 				headers:
@@ -201,7 +204,7 @@ describe("EVAL-ISO-002: the judge", () => {
 	it("a policy's digest does not depend on the locale it is computed in (Codex, #134)", async () => {
 		const { execFileSync } = await import("node:child_process");
 		const module = new URL("../adapters/sandbox/model-relay.ts", import.meta.url).href;
-		const script = `import(${JSON.stringify(module)}).then((m) => process.stdout.write(m.modelRelayPolicyDigestV0({ routes: [{ method: "POST", path: "/v1/b" }, { method: "POST", path: "/v1/B" }], model: "m", maxRequestBytes: 1, maxTransferredBytes: 1, maxConnections: 1 })))`;
+		const script = `import(${JSON.stringify(module)}).then((m) => process.stdout.write(m.modelRelayPolicyDigestV0({ routes: [{ method: "POST", path: "/v1/b" }, { method: "POST", path: "/v1/B" }], model: "m", maxRequestBytes: 1, maxTransferredBytes: 1, maxConnections: 1, maxTotalConnections: 1 })))`;
 		const digest = (locale: string) =>
 			execFileSync(process.execPath, ["-e", script], {
 				env: { ...process.env, LANG: locale, LC_ALL: locale },
@@ -228,6 +231,10 @@ describe("EVAL-ISO-002: the judge", () => {
 		const reversed = policy({ routes: [...twoRoutes.routes].reverse() });
 		expect(modelRelayPolicyDigestV0(twoRoutes)).toBe(modelRelayPolicyDigestV0(reversed));
 		expect(modelRelayPolicyDigestV0(twoRoutes)).not.toBe(modelRelayPolicyDigestV0(policy()));
+		// A policy recorded before the lifetime bound existed still has a digest, computed as it was then.
+		const { maxTotalConnections: _dropped, ...older } = policy();
+		expect(modelRelayPolicyDigestV0(older as EndoModelRelayPolicyV0)).toMatch(/^[0-9a-f]{64}$/);
+		expect(modelRelayPolicyDigestV0(older as EndoModelRelayPolicyV0)).not.toBe(modelRelayPolicyDigestV0(policy()));
 		const log = new EndoCaptureLogV0(fresh("store"), KEY, "record", { async: true });
 		cleanup.push(() => log.close());
 		for (const bad of [
@@ -238,6 +245,7 @@ describe("EVAL-ISO-002: the judge", () => {
 			policy({ model: "" }),
 			policy({ maxRequestBytes: 2 * 1024 * 1024 }),
 			policy({ maxConnections: 0 }),
+			policy({ maxTotalConnections: 0 }),
 		])
 			await expect(
 				startModelRelayV0({ upstream: "http://127.0.0.1:9", policy: bad, log, runtimeDirectory: runtimeBase }),
@@ -424,6 +432,26 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(modelRelayPolicyDigestV0(relay.policy)).toBe(digest);
 		expect(Object.isFrozen(relay.policy) && Object.isFrozen(relay.policy.routes)).toBe(true);
 		expect(relay.policy).not.toBe(mine);
+	});
+
+	it("bounds the connections accepted over the relay's life, even ones that send nothing (Codex, #134)", async () => {
+		const { relay, upstream } = await relayed({ maxTotalConnections: 3 });
+		const net = await import("node:net");
+		const connectAndClose = () =>
+			new Promise<void>((resolve) => {
+				const s = net.connect(relay.socketPath);
+				s.on("connect", () => s.end());
+				s.on("close", () => resolve());
+				s.on("error", () => resolve());
+			});
+		for (let i = 0; i < 2; i++) await connectAndClose();
+		expect(relay.refusals().connections).toBe(0);
+		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat())).toMatchObject({ status: 200 });
+		// The cap is reached: an empty connection, and then a real request, are both refused, and the model server sees nothing more.
+		await connectAndClose();
+		expect(await overSocket(relay, "POST", "/v1/chat/completions", chat())).toHaveProperty("closed");
+		expect(relay.refusals().connections).toBe(2);
+		expect(upstream.requests).toHaveLength(1);
 	});
 
 	it("the socket is private: its directory 0700 and the socket 0600, and both are gone after close", async () => {
@@ -614,6 +642,32 @@ describe.runIf(REAL)("EVAL-ISO-002 real isolation: a sandbox with the relay", ()
 		expect(run.termination).toBe("confirmed");
 		// The model server saw the one admitted request, nothing else.
 		expect(upstream.requests.map((r) => `${r.method} ${r.url}`)).toEqual(["POST /v1/chat/completions"]);
+	});
+
+	it("a command behind the bridge that a signal ends is recorded as 128 + that signal's number (Codex, #136)", async () => {
+		const { relay } = await relayed();
+		const runtime = resolveRuntimeV0([NODE]);
+		if (!runtime.ok) throw new Error(runtime.detail);
+		const profile = buildSandboxProfileV0({
+			runtime: runtime.files,
+			mounts: relayMounts(relay),
+			env: { HOME: "/home/agent", PATH: "/usr/bin", TMPDIR: "/tmp" },
+			cwd: "/tmp",
+			tmpfsBytes: 1 << 20,
+		});
+		for (const [signal, expected] of [
+			["SIGTERM", 143],
+			["SIGKILL", 137],
+		] as const) {
+			const run = await runSandboxV0(
+				bw.ok ? bw.bwrap : (null as never),
+				profile,
+				bridged([NODE, "-e", `process.kill(process.pid, "${signal}")`]),
+				{ timeoutMs: 30_000, outputBytes: 4096, containment },
+			);
+			expect(run.exitCode, signal).toBe(expected);
+			expect(run.termination).toBe("confirmed");
+		}
 	});
 
 	it("a socket mount must be a model relay's socket: any other file or role is refused when the profile is built", () => {

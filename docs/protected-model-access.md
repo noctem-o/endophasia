@@ -32,6 +32,8 @@ sandbox (own network namespace: lo only)                          host
 - **The policy is enforced on the host, not in the sandbox.** The bridge is about 20 lines of trusted code that the controller writes
   and mounts read-only by digest. It only makes the socket reachable over TCP, because Pi speaks HTTP to a base URL. It enforces nothing:
   an agent that kills or bypasses it can still reach only the same socket.
+  When a signal ends the command it runs, the bridge exits as a shell would (128 + the signal's number), so the record keeps which
+  signal ended Pi.
 - **The relay reuses the recording proxy unchanged in its governed profile** (`adapters/openai-proxy/record.ts`, already used by the
   initial-continuation studies):
   - a complete request is buffered and judged **before any upstream connection is opened**;
@@ -50,6 +52,7 @@ sandbox (own network namespace: lo only)                          host
 | **A declared body length** (no chunked framing, no `Expect`, no `Upgrade`) | the governed proxy, before the judge (`unjudged`) | GET, DELETE, CONNECT and anything unparseable are refused |
 | **Bytes through the relay**, both ways, for the session | the proxy's `maxTransferredBytes` | 256 MiB in the driver |
 | **Connections open at once** | the relay's socket server | 8 |
+| **Connections over the relay's life**, including ones that send nothing (each is still recorded) | the relay's socket server | 1024 in the driver |
 
 **The route list was measured, not guessed.** Real Pi 1.5.0 was run inside the sandbox, against a fake model server that logs every
 request, through a scripted tool run. It made only `POST /v1/chat/completions`. No `GET /v1/models` and no health check were seen (§4).

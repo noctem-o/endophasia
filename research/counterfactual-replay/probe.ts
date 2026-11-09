@@ -76,11 +76,20 @@ export function repeatProvenanceMismatchesV0(
 export function sourceConditionV0(
 	record: {
 		isolation?: { containment?: { limits?: { memoryMaxBytes?: unknown; cpuQuotaPercent?: unknown } } };
-		agent?: { timeoutMs?: unknown };
+		agent?: { timeoutMs?: unknown; umask?: unknown };
 	},
 	declaredTimeoutS: string | null,
+	declaredUmask: string | null = null,
 ):
-	| { ok: true; memoryMib: number; cpuPercent: number; timeoutS: number; timeoutFrom: "record" | "operator" }
+	| {
+			ok: true;
+			memoryMib: number;
+			cpuPercent: number;
+			timeoutS: number;
+			timeoutFrom: "record" | "operator";
+			umask: string;
+			umaskFrom: "record" | "operator";
+	  }
 	| { ok: false; reason: string } {
 	const limits = record.isolation?.containment?.limits;
 	const memory = Number(limits?.memoryMaxBytes) / (1024 * 1024);
@@ -90,13 +99,39 @@ export function sourceConditionV0(
 			ok: false,
 			reason: "the source record does not state its memory and CPU limits in whole MiB and percent",
 		};
+	// The umask sets the modes of the files the agent makes, which the workspace digest includes (Codex, #136). Held like the timeout:
+	// from the record, or for a record that predates keeping it, as the operator states it (`--source-umask`), and the summary says which.
+	const octal = /^0[0-7]{3}$/;
+	const recordedUmask = record.agent?.umask;
+	let umask: { umask: string; umaskFrom: "record" | "operator" };
+	if (recordedUmask !== undefined) {
+		if (typeof recordedUmask !== "string" || !octal.test(recordedUmask))
+			return { ok: false, reason: "the source record's umask is not four octal digits" };
+		if (declaredUmask !== null && declaredUmask !== recordedUmask)
+			return { ok: false, reason: "--source-umask contradicts the umask the source record states" };
+		umask = { umask: recordedUmask, umaskFrom: "record" };
+	} else if (declaredUmask !== null && octal.test(declaredUmask))
+		umask = { umask: declaredUmask, umaskFrom: "operator" };
+	else
+		return {
+			ok: false,
+			reason:
+				"the source record predates keeping its umask: state it with --source-umask <four octal digits>, or use a newer source",
+		};
 	const recorded = Number(record.agent?.timeoutMs);
 	if (record.agent?.timeoutMs !== undefined) {
 		if (!Number.isSafeInteger(recorded) || recorded <= 0 || recorded % 1000 !== 0)
 			return { ok: false, reason: "the source record's timeout is not a whole number of seconds" };
 		if (declaredTimeoutS !== null && Number(declaredTimeoutS) * 1000 !== recorded)
 			return { ok: false, reason: "--source-timeout-s contradicts the timeout the source record states" };
-		return { ok: true, memoryMib: memory, cpuPercent: cpu, timeoutS: recorded / 1000, timeoutFrom: "record" };
+		return {
+			ok: true,
+			memoryMib: memory,
+			cpuPercent: cpu,
+			timeoutS: recorded / 1000,
+			timeoutFrom: "record",
+			...umask,
+		};
 	}
 	if (declaredTimeoutS === null || !/^[1-9][0-9]{0,5}$/.test(declaredTimeoutS))
 		return {
@@ -104,7 +139,14 @@ export function sourceConditionV0(
 			reason:
 				"the source record predates keeping its timeout: state it with --source-timeout-s <seconds>, or use a newer source",
 		};
-	return { ok: true, memoryMib: memory, cpuPercent: cpu, timeoutS: Number(declaredTimeoutS), timeoutFrom: "operator" };
+	return {
+		ok: true,
+		memoryMib: memory,
+		cpuPercent: cpu,
+		timeoutS: Number(declaredTimeoutS),
+		timeoutFrom: "operator",
+		...umask,
+	};
 }
 
 /** `--times`: a whole number of repeats from 1 to 20, never Infinity, NaN or a typo silently read as 0 (Codex, #136). */
@@ -122,15 +164,20 @@ export function firstRequestIdenticalV0(runs: readonly { requestSha256: readonly
 
 function conditionOrThrow(record: unknown, args: string[]) {
 	const i = args.indexOf("--source-timeout-s");
+	const u = args.indexOf("--source-umask");
 	const c = sourceConditionV0(
 		record as Parameters<typeof sourceConditionV0>[0],
 		i === -1 ? null : (args[i + 1] ?? ""),
+		u === -1 ? null : (args[u + 1] ?? ""),
 	);
 	if (!c.ok) throw new TypeError(c.reason);
 	return c;
 }
 
-const conditionArgs = (c: { memoryMib: number; cpuPercent: number; timeoutS: number }) => [
+/** The run flags that hold a source's condition: its limits, timeout and umask, each passed to the trial driver (Codex, #136). */
+export const conditionArgsV0 = (c: { memoryMib: number; cpuPercent: number; timeoutS: number; umask: string }) => [
+	"--umask",
+	c.umask,
 	"--memory-mib",
 	String(c.memoryMib),
 	"--cpu-percent",
@@ -359,7 +406,7 @@ async function repeat(args: string[]) {
 			sourceRecord.subject.model,
 			"--prompt",
 			prompt,
-			...conditionArgs(condition),
+			...conditionArgsV0(condition),
 		]);
 		runs.push(trajectoryOf(dir));
 	}
@@ -417,7 +464,7 @@ async function replay(args: string[]) {
 			sourceRecord.subject.model,
 			"--prompt",
 			prompt,
-			...conditionArgs(condition),
+			...conditionArgsV0(condition),
 		]);
 	} finally {
 		await finishReplayLogV0(server, log);

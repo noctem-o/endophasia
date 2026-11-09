@@ -8,6 +8,7 @@ import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
+	conditionArgsV0,
 	distinctToolSequencesV0,
 	finishReplayLogV0,
 	firstRequestIdenticalV0,
@@ -107,24 +108,33 @@ describe("a run made from a source trial holds the source's execution condition 
 	const limits = { memoryMaxBytes: 1024 * 1024 * 1024, cpuQuotaPercent: 200 };
 	it("limits and timeout come from the record", () => {
 		expect(
-			sourceConditionV0({ isolation: { containment: { limits } }, agent: { timeoutMs: 240_000 } }, null),
+			sourceConditionV0(
+				{ isolation: { containment: { limits } }, agent: { timeoutMs: 240_000, umask: "0022" } },
+				null,
+			),
 		).toEqual({
 			ok: true,
 			memoryMib: 1024,
 			cpuPercent: 200,
 			timeoutS: 240,
 			timeoutFrom: "record",
+			umask: "0022",
+			umaskFrom: "record",
 		});
 	});
 	it("a record without its timeout needs the operator to state it, and says so; a contradicting statement is refused", () => {
-		const old = { isolation: { containment: { limits } }, agent: {} };
-		expect(sourceConditionV0(old, null)).toMatchObject({ ok: false });
-		expect(sourceConditionV0(old, "abc")).toMatchObject({ ok: false });
+		const old = { isolation: { containment: { limits } }, agent: { umask: "0022" } };
+		expect(sourceConditionV0(old, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/timeout/) });
+		expect(sourceConditionV0(old, "abc")).toMatchObject({ ok: false, reason: expect.stringMatching(/timeout/) });
 		expect(sourceConditionV0(old, "600")).toMatchObject({ ok: true, timeoutS: 600, timeoutFrom: "operator" });
 		expect(
-			sourceConditionV0({ isolation: { containment: { limits } }, agent: { timeoutMs: 600_000 } }, "300"),
+			sourceConditionV0(
+				{ isolation: { containment: { limits } }, agent: { timeoutMs: 600_000, umask: "0022" } },
+				"300",
+			),
 		).toMatchObject({
 			ok: false,
+			reason: expect.stringMatching(/contradicts/),
 		});
 	});
 	it("a record without usable limits is refused", () => {
@@ -133,7 +143,56 @@ describe("a run made from a source trial holds the source's execution condition 
 			{ isolation: { containment: { limits: { memoryMaxBytes: 1.5, cpuQuotaPercent: 100 } } } },
 			{ isolation: { containment: { limits: { memoryMaxBytes: 1 << 30 } } } },
 		])
-			expect(sourceConditionV0({ ...bad, agent: { timeoutMs: 1000 } }, null)).toMatchObject({ ok: false });
+			expect(sourceConditionV0({ ...bad, agent: { timeoutMs: 1000, umask: "0022" } }, null)).toMatchObject({
+				ok: false,
+				reason: expect.stringMatching(/limits/),
+			});
+	});
+});
+
+describe("a run made from a source trial holds the source's umask (Codex, #136)", () => {
+	const limits = { memoryMaxBytes: 1024 * 1024 * 1024, cpuQuotaPercent: 200 };
+	const rec = (agent: Record<string, unknown>) => ({ isolation: { containment: { limits } }, agent });
+	it("from the record; a contradicting or malformed statement is refused", () => {
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null)).toMatchObject({
+			ok: true,
+			umask: "0077",
+			umaskFrom: "record",
+		});
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null, "0077")).toMatchObject({ ok: true });
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null, "0022")).toMatchObject({
+			ok: false,
+			reason: expect.stringMatching(/contradicts/),
+		});
+		for (const bad of ["22", 18, "0o22", "0088"])
+			expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: bad }), null)).toMatchObject({
+				ok: false,
+				reason: expect.stringMatching(/umask/),
+			});
+	});
+	it("every held part of the condition is passed to the trial driver", () => {
+		expect(conditionArgsV0({ memoryMib: 1536, cpuPercent: 300, timeoutS: 300, umask: "0077" })).toEqual([
+			"--umask",
+			"0077",
+			"--memory-mib",
+			"1536",
+			"--cpu-percent",
+			"300",
+			"--timeout-s",
+			"300",
+		]);
+	});
+	it("a record that predates keeping it needs the operator to state it, and says so", () => {
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null)).toMatchObject({
+			ok: false,
+			reason: expect.stringMatching(/--source-umask/),
+		});
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null, "022")).toMatchObject({ ok: false });
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null, "0022")).toMatchObject({
+			ok: true,
+			umask: "0022",
+			umaskFrom: "operator",
+		});
 	});
 });
 

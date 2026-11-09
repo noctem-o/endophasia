@@ -104,7 +104,10 @@ then gets. Fixing `..` too is part of the pinned clock below (§5.1, 1).
   (`runtime-unchanged`). The earliest trial (`trial-20261108-195634`) predates the `recording-complete` check, so it fails it and can no
   longer be a source;
 - another Pi build, or another model endpoint, than the source's;
-- other limits or another timeout than the source's (the timeout is the operator's to state for records that predate keeping it);
+- other limits, another timeout or another umask than the source's. The umask sets the modes of the files the agent makes, which the
+  workspace digest includes (Codex, #136). The timeout and umask are the operator's to state (`--source-timeout-s`, `--source-umask`)
+  for records that predate keeping them, and the summary says which were stated. Checked end to end: under a caller's 0077, a repeat of
+  a 0022 source ran under 0022, made `hello.txt` 0644, and matched the source's workspace digest;
 - `--times` outside 1 to 20.
 Every run in a summary carries its own failed checks (`failedChecks`), and a replay reads its miss reasons only after its log is flushed,
 reporting the log's failed writes (`replayLogWriteFailures`).

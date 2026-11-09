@@ -142,6 +142,10 @@ describe("a verification plan: its invariants make an invalid plan unrepresentab
 			],
 			["a line separator in an argument", (p) => Object.assign(p.checks[0]!, { argv: ["node", "a\u2028b"] })],
 			["a newline in an argument", (p) => Object.assign(p.checks[0]!, { argv: ["node", "a\nb"] })],
+			// The two characters the page's display-safe form puts in: a planned argument holding one could look like a receipt's cut or
+			// cleaned argument, and the page could no longer count a check's receipts itself (Codex, #139).
+			["a replacement character in an argument", (p) => Object.assign(p.checks[0]!, { argv: ["node", "a\ufffdb"] })],
+			["an ellipsis in an argument", (p) => Object.assign(p.checks[0]!, { argv: ["node", "test\u2026"] })],
 			["an argument the page would cut", (p) => Object.assign(p.checks[0]!, { argv: ["node", "x".repeat(401)] })],
 			[
 				"a check no criterion names",
@@ -636,6 +640,21 @@ describe("the page's gate re-derives the ledger and refuses any claim the receip
 				"a receipt's relation moved off HEAD",
 				(a) => Object.assign(a.receipts.list[1]!, { relation: "head-differs" }),
 			],
+			// Codex, #139: a disagreement dropped from the counts, so the check and its criterion read as a clean pass.
+			[
+				"a mixed check claiming passed, its failure dropped from the counts",
+				(a) => {
+					Object.assign(a.verification!.checks[0]!, {
+						state: "passed",
+						atHead: { passed: 1, failed: 0, inconclusive: 0 },
+					});
+					// Every criterion re-derived consistently from the forged states, as Codex's payload did: only the counts can tell.
+					Object.assign(a.verification!.criteria[0]!, { state: "passed" });
+					Object.assign(a.verification!.criteria[1]!, { state: "not-shown" });
+				},
+			],
+			["a run dropped from a check's count", (a) => Object.assign(a.verification!.checks[0]!, { runs: 1 })],
+			["an unplanned receipt hidden", (a) => Object.assign(a.verification!, { unplanned: 0 })],
 		];
 		for (const [name, forge] of forgeries) {
 			const a = viewWith([...mixed]);
@@ -656,6 +675,43 @@ describe("the page's gate re-derives the ledger and refuses any claim the receip
 		for (const c of a.verification!.checks) c.state = "passed";
 		for (const c of a.verification!.criteria) c.state = c.checks.length === 0 ? "judgment" : "passed";
 		expect(readAttempts(body(a))).toBeNull();
+	});
+
+	it("the largest brief a plan can produce is still one the page accepts (Codex, #139)", () => {
+		const w = workspace();
+		const ticks = (n: number) => "`".repeat(n);
+		const big = ok(
+			w.tasks.createTask(
+				w.project.id,
+				{ title: ticks(120), description: ticks(4000), acceptance: ticks(4000) },
+				{ select: true },
+			),
+		);
+		// Every text a run of backticks, so each fence is as long as it can be; the plan as close to 16 KiB as the validator allows.
+		const plan: EndoVerificationPlanV0 = { checks: [], criteria: [] };
+		for (let i = 0; i < 8; i += 1)
+			plan.checks.push({ name: `c${i}`, argv: [`${i}${ticks(399)}`, ticks(400), ticks(400)], shows: ticks(280) });
+		for (let i = 0; i < 12; i += 1)
+			plan.criteria.push({
+				text: `${String.fromCharCode(97 + i)}${ticks(279)}`,
+				checks: i === 0 ? plan.checks.map((c) => c.name) : [],
+			});
+		expect(refused(plan)).toBe(false);
+		const size = new TextEncoder().encode(JSON.stringify(plan)).length;
+		expect(size).toBeGreaterThan(14 * 1024);
+		const a = ok(
+			w.service.prepare(w.project.id, big.id, {
+				objective: ticks(4000),
+				constraints: ticks(4000),
+				reportBack: ticks(4000),
+				verification: plan,
+			}),
+		);
+		const brief = renderEndoDevelopBriefV0(a);
+		expect(brief.length).toBeGreaterThan(64_000);
+		const view = { ...viewWith([]), id: a.id, brief, verification: endoAttemptVerificationViewV0(a, [], CLEAN) };
+		expect(readAttempts(body(view))).not.toBeNull();
+		expect(brief.length).toBeLessThan(160_000);
 	});
 
 	it("an unavailable ledger cannot sit beside a result", () => {

@@ -25,9 +25,11 @@ export const ENDO_CHECK_NAME_PATTERN_V0 = /^[a-z][a-z0-9-]{0,31}$/;
 
 /**
  * A planned argument must be shown exactly wherever the plan is shown (the brief, the page, the terminal): no character the page would
- * replace, and no argument the page would cut. So two planned checks can never look alike, and what the operator reads is what is matched.
+ * replace, and no argument the page would cut. Nor may it hold the two characters the page's display-safe form puts in (U+FFFD for a
+ * replaced character, U+2026 ending a cut argument), so a receipt's argv as the page shows it equals a planned argv only when it IS that
+ * argv: the page can count a planned check's receipts itself, exactly. Two planned checks can never look alike.
  */
-const SHOWN_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/;
+const SHOWN_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd\u2026]/;
 export const ENDO_PLANNED_ARG_MAX_CHARS_V0 = 400;
 
 export interface EndoPlannedCheckV0 {

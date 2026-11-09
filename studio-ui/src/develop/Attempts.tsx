@@ -80,6 +80,13 @@ export function AttemptsSection({
 		details.open = true;
 		const receipt = item?.querySelector<HTMLElement>(`[data-receipt-id="${focus.receiptId}"]`);
 		if (receipt != null) {
+			// With a plan, the receipt list is itself a disclosure inside the attempt: open every one around the receipt, or it stays hidden.
+			for (
+				let d = receipt.closest("details");
+				d !== null && item?.contains(d);
+				d = d.parentElement?.closest("details") ?? null
+			)
+				d.open = true;
 			receipt.dataset.focused = "true";
 			receipt.scrollIntoView({ block: "center" });
 			receipt.focus({ preventScroll: true });

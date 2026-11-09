@@ -132,8 +132,11 @@ export function seedAttention(root: string, projectId: string, current: EndoRece
 	const service = new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
 	const receipts = new DevelopReceiptsStoreV0(root);
 	const attempts: Record<string, string> = {};
-	const prepare = (key: string, objective: string, handoff?: string) => {
-		const made = service.prepare(projectId, tasks[key]!, { objective });
+	const prepare = (key: string, objective: string, handoff?: string, verification?: unknown) => {
+		const made = service.prepare(projectId, tasks[key]!, {
+			objective,
+			...(verification === undefined ? {} : { verification }),
+		});
 		if (!made.ok) throw new Error(`prepare refused: ${made.code}`);
 		attempts[key] = made.value.id;
 		if (handoff !== undefined && !service.handoff(made.value.id, { target: handoff }).ok) throw new Error("handoff");
@@ -173,7 +176,15 @@ export function seedAttention(root: string, projectId: string, current: EndoRece
 	write("resolved", minutes(10), { execution: { kind: "exited", code: 1 } });
 	write("resolved", minutes(20));
 
-	prepare("regressed", "Treat CRLF as one line ending everywhere.", "Claude Code");
+	// With a verification plan, so its receipts sit inside the attempt's own "every check recorded" disclosure: opening a receipt from the
+	// overview must open that too (Codex, #139).
+	prepare("regressed", "Treat CRLF as one line ending everywhere.", "Claude Code", {
+		checks: [
+			{ name: "unit", argv: ["npm", "test"], shows: "the unit tests pass" },
+			{ name: "lint", argv: ["npm", "run", "lint"], shows: "the linter reports nothing" },
+		],
+		criteria: [{ text: "CRLF is one line ending, tested and lint-clean", checks: ["unit", "lint"] }],
+	});
 	write("regressed", minutes(30));
 	write("regressed", minutes(31), { check: lint });
 	write("regressed", minutes(40), { execution: { kind: "exited", code: 1 } });

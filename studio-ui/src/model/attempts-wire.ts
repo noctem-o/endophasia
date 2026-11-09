@@ -294,8 +294,10 @@ const attempt: Check = (v) =>
 		),
 		taskWordsChanged: (x) =>
 			list(one("title", "description", "acceptance"))(x) && new Set(x as unknown[]).size === (x as unknown[]).length,
-		// The brief is rendered by the broker from the attempt's record; bounded, and it names its own attempt.
-		brief: (x) => multiline(64_000)(x),
+		// The brief is rendered by the broker from the attempt's record; bounded, and it names its own attempt. v0's six fenced texts reach
+		// about 61 000 characters with fence expansion; a v1 plan section adds at most about three times its 16 KiB (each text inside a fence
+		// at most one longer than its longest backtick run, on both sides) plus its fixed lines. A test renders a worst case under this.
+		brief: (x) => multiline(160_000)(x),
 		receipts: (x) =>
 			shape(x, {
 				state: one("ready", "unreadable"),
@@ -361,7 +363,6 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV3, "receipts
 	}
 	const unavailable = v.checks.filter((c) => c.state === "unavailable").length;
 	if (unavailable !== 0 && unavailable !== v.checks.length) return false;
-	if (v.unplanned > a.receipts.list.length) return false;
 	const listed = new Map(a.receipts.list.map((r) => [r.id, r]));
 	const resolves = (x: LedgerReceipt | null, argv: readonly string[], relations: readonly string[]): boolean => {
 		if (x === null) return true;
@@ -376,7 +377,20 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV3, "receipts
 			relations.includes(r.relation)
 		);
 	};
+	// Counted from the receipts listed beside the ledger, never taken from it: a planned argument cannot hold a character the display-safe
+	// form puts in (protocol/develop-verification.ts), so a listed argv equals a planned one only when it is that argv.
+	const ofCheck = (argv: readonly string[]) => a.receipts.list.filter((r) => sameList(r.argv, argv));
+	if (v.unplanned !== a.receipts.list.filter((r) => !v.checks.some((c) => sameList(r.argv, c.argv))).length)
+		return false;
 	for (const c of v.checks) {
+		const mine = ofCheck(c.argv);
+		if (c.runs !== mine.length) return false;
+		for (const o of ["passed", "failed", "inconclusive"] as const)
+			if (
+				c.atHead[o] !==
+				mine.filter((r) => (r.relation === "at-head" || r.relation === "at-head-changed") && r.outcome === o).length
+			)
+				return false;
 		const total = c.atHead.passed + c.atHead.failed + c.atHead.inconclusive;
 		const relation = c.current === null ? null : listed.get(c.current.receiptId)?.relation;
 		if (!resolves(c.current, c.argv, ["at-head", "at-head-changed"])) return false;

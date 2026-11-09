@@ -90,7 +90,7 @@ Invariants (`validateEndoVerificationPlanV0`; anything else is refused, so an in
 - a check `name` matches `^[a-z][a-z0-9-]{0,31}$` and is unique;
 - an `argv` follows the receipt's own rule (`checkEndoReceiptArgvV0`: 1–64 arguments, ≤ 8 KiB, well-formed, no NUL), so any planned
   check can be recorded. Each argument is also at most 400 characters and contains no character the page would replace (C0/C1 controls,
-  line and paragraph separators, bidirectional marks). So every argv is shown exactly wherever it appears, and two planned checks can
+  line and paragraph separators, bidirectional marks). Nor may it hold U+FFFD or U+2026, the two characters the page's display-safe form puts into a receipt's argv, so a listed receipt's argv equals a planned argv only when it *is* that argv, and the page can count a check's receipts itself. So every argv is shown exactly wherever it appears, and two planned checks can
   never look alike. No two checks share an argv: identity is the argv, and two names for one check would be ambiguous;
 - every check is named by at least one criterion; every name a criterion gives is a check of the plan, at most once;
 - `text` and `shows` are one trimmed, non-blank line of at most 280 characters (the task protocol's `note` rule);
@@ -195,7 +195,8 @@ of a planned check may be among the files that could not be read. The evidence r
   - each check's `current` receipt to be in this attempt's list, by id, with the same argv, commit, outcome and times, at the relation its
     state needs (`at-head` for a result or `mixed`, `at-head-changed` for `tree-changed`);
   - `otherCommit` to be a listed `head-differs` receipt;
-  - the counts at HEAD to agree with the state: a single outcome for a result, a disagreement for `mixed`;
+  - the counts at HEAD, each check's `runs` and the `unplanned` count to equal what the gate itself counts from the listed receipts
+    (Codex, #139), and to agree with the state: a single outcome for a result, a disagreement for `mixed`;
   - `stale`, `elsewhere`, `not-run` and `unavailable` to name no receipt at HEAD;
   - all checks or none to be `unavailable`;
   - names to be unique and resolved, and argv to be distinct and showable.
@@ -256,7 +257,7 @@ left rule carries the state.
 
 ## 9. Testing
 
-`tests/develop-verification.test.ts` (26 tests):
+`tests/develop-verification.test.ts` (27 tests):
 
 - **The plan:** each invariant refused, including bidirectional, separator and newline characters, a 401-character argument, an unnamed
   check, a duplicate argv and a 16 KiB overflow.
@@ -268,7 +269,7 @@ left rule carries the state.
   unreadable receipts, in the view and in the evidence reading; unplanned receipts.
 - **The contract:** the page's rule equals the protocol's over 820 combinations; labels and sentences are equal, and none says met,
   verified, satisfied, done or succeeded.
-- **The gate:** seven real views in every state are accepted; seventeen forgeries are refused, each starting from a view the gate
+- **The gate:** seven real views in every state are accepted; twenty forgeries are refused, each starting from a view the gate
   accepts.
 - **End to end, real Git and the real CLI:**
   - `--plan-file` refusals (not JSON, a check named by no criterion, an argv that cannot be shown exactly), with nothing written;
@@ -343,3 +344,14 @@ used three personas; this slice used one combined zoom-out and adversarial brief
 | **r1/r2** The ledger and gate were underspecified | **Fixed.** §5 states the rules the gate checks; tests cover each. |
 | **r3** "Criteria left to judgment" is not a gap | **Accepted.** Neither it nor "no plan" is a gap. |
 | Nits: "Status: implemented" while a draft; the digest exists only for workbench dispatch; the brief invites the agent to run `endo attempt check` | Status fixed; §2 and §7 say "a workbench authorisation's". Agent-run receipts would still be genuine observations, linked by whoever ran them; the brief says the operator runs the checks. |
+
+### Codex review on the PR
+
+The repository's automated Codex review of `219db6f27` left three findings. All three were reproduced by tests that fail without the fix
+and pass with it, and all three were fixed in one push.
+
+| Finding | Disposition |
+| :-- | :-- |
+| Opening a receipt from the attention overview opened only the attempt's first disclosure; with a plan, the receipt sits inside the nested "every check recorded" disclosure, so it was focused while hidden | **Fixed.** Every disclosure around the receipt is opened. One attention fixture attempt now carries a plan, so the existing overview-focus browser test covers it (it fails without the fix). |
+| The gate compared a check's `atHead` counts only with each other: a body could drop a failure from the counts, rewrite the check and its criteria as passed, and be accepted beside the failing receipt | **Fixed.** The gate counts at-HEAD outcomes, `runs` and `unplanned` from the listed receipts and requires equality. Exact counting needed one more plan invariant: no U+FFFD or U+2026 in a planned argument (§4). The forgery test now re-derives every criterion consistently, as the reported payload did; it is accepted without the fix and refused with it. |
+| The page's 64 000-character brief bound predates plans; fence expansion lets a valid v1 brief exceed it, and the page then refused the whole attempts view | **Fixed.** The bound is 160 000, with its derivation beside it. A test renders a worst-case v1 brief (every text a run of backticks, a plan of 15 898 bytes) over 64 000 characters and has the page accept it. |

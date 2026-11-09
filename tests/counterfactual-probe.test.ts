@@ -4,9 +4,11 @@ import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { afterAll, describe, expect, it } from "vitest";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
+	distinctToolSequencesV0,
 	finishReplayLogV0,
 	firstRequestIdenticalV0,
 	privateDirectoryV0,
@@ -227,5 +229,33 @@ describe("a run's decisions are read from its responses, not from its last reque
 			toolCalls: [`read:${h("{}")}`, `bash:${h('{"command":"ls"}')}`, `write:${h('{"path":"a"}')}`],
 			responsesUnread: 1,
 		});
+	});
+
+	it("a compressed response is decoded first; an unknown encoding or an undecodable body is unread, never 'no tool call' (Codex, #136)", () => {
+		const body = sse(
+			delta([{ index: 0, function: { name: "bash", arguments: '{"command":' } }]),
+			delta([{ index: 0, function: { arguments: '"ls"}' } }]),
+		);
+		const encoded = (coding: string, bytes: Buffer) =>
+			Buffer.concat([
+				Buffer.from(
+					`HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-encoding: ${coding}\r\ncontent-length: ${bytes.length}\r\n\r\n`,
+				),
+				bytes,
+			]);
+		const expected = [`bash:${h('{"command":"ls"}')}`];
+		expect(toolCallsOfResponseV0(encoded("gzip", gzipSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("deflate", deflateSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("br", brotliCompressSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("gzip, br", brotliCompressSync(gzipSync(body))))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("zstd", Buffer.from(body)))).toBeNull();
+		expect(toolCallsOfResponseV0(encoded("gzip", Buffer.from(body)))).toBeNull();
+		expect(runToolCallsV0([encoded("zstd", Buffer.from(body)), streamed])).toMatchObject({ responsesUnread: 1 });
+	});
+
+	it("tool sequences are compared only when every run's responses were all read", () => {
+		const run = (toolCalls: string[], responsesUnread = 0) => ({ toolCalls, responsesUnread });
+		expect(distinctToolSequencesV0([run(["a"]), run(["a"]), run(["b"])])).toBe(2);
+		expect(distinctToolSequencesV0([run(["a"]), run([], 1)])).toBeNull();
 	});
 });

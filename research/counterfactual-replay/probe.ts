@@ -15,6 +15,7 @@
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../../adapters/openai-proxy/capture-log.ts";
 import {
 	endoRequestDivergenceV0,
@@ -213,13 +214,37 @@ function requestBodies(
  * HTTP framing removed; a streamed response's `tool_calls` deltas joined by index, or a whole response's message). A run's decisions are
  * its responses' calls, exchange by exchange. The last request's history is not that: once Pi compacts its context, earlier assistant
  * turns are no longer in it, and the last response is never in any request (Codex, #136).
+ *
+ * Null when the response cannot be read: a content encoding other than gzip, deflate or br (each decoded first), a body that does not
+ * decode or parse. Such a response is never read as one that called no tool (Codex, #136: a gzip body read as text found no calls).
  */
-export function toolCallsOfResponseV0(wire: Uint8Array): string[] {
+export function toolCallsOfResponseV0(wire: Uint8Array): string[] | null {
+	try {
+		return toolCallsOfReadableResponse(wire);
+	} catch {
+		return null;
+	}
+}
+
+const DECODERS_V0: Record<string, (b: Buffer) => Buffer> = {
+	gzip: gunzipSync,
+	"x-gzip": gunzipSync,
+	deflate: inflateSync,
+	br: brotliDecompressSync,
+};
+
+function toolCallsOfReadableResponse(wire: Uint8Array): string[] {
 	const chunks: Buffer[] = [];
 	let contentType = "";
+	let encodings: string[] = [];
 	const parser = new Http1ParserV0("response", {
 		head: (head) => {
 			contentType = head.headers.find(([n]) => n.toLowerCase() === "content-type")?.[1] ?? "";
+			encodings = head.headers
+				.filter(([n]) => n.toLowerCase() === "content-encoding")
+				.flatMap(([, v]) => v.split(","))
+				.map((v) => v.trim().toLowerCase())
+				.filter((v) => v !== "" && v !== "identity");
 		},
 		body: (bytes) => chunks.push(bytes),
 		end: () => {},
@@ -227,7 +252,14 @@ export function toolCallsOfResponseV0(wire: Uint8Array): string[] {
 	parser.pendingMethods.push("POST");
 	parser.push(Buffer.from(wire));
 	parser.close();
-	const text = Buffer.concat(chunks).toString("utf8");
+	// Codings are listed in the order applied: undo them last first. An unknown one throws, and the response is unread.
+	let body: Buffer = Buffer.concat(chunks);
+	for (const coding of [...encodings].reverse()) {
+		const decode = DECODERS_V0[coding];
+		if (decode === undefined) throw new TypeError(`content encoding ${coding} is not one the probe decodes`);
+		body = decode(body);
+	}
+	const text = body.toString("utf8");
 	type Call = { function?: { name?: string; arguments?: string }; index?: number };
 	const sha = (args: string) => sha256HexV0(args).slice(0, 12);
 	if (!contentType.includes("text/event-stream") && !text.trimStart().startsWith("data:")) {
@@ -261,10 +293,20 @@ export function runToolCallsV0(responses: readonly (Uint8Array | null)[]): {
 	toolCalls: string[];
 	responsesUnread: number;
 } {
+	const read = responses.map((r) => (r === null ? null : toolCallsOfResponseV0(r)));
 	return {
-		toolCalls: responses.flatMap((r) => (r === null ? [] : toolCallsOfResponseV0(r))),
-		responsesUnread: responses.filter((r) => r === null).length,
+		toolCalls: read.flatMap((calls) => calls ?? []),
+		// No complete response recorded, or one that could not be decoded or parsed: counted, never read as "no tool call".
+		responsesUnread: read.filter((calls) => calls === null).length,
 	};
+}
+
+/** How many different tool sequences the runs made: null (unavailable) when any run has a response that could not be read (Codex, #136). */
+export function distinctToolSequencesV0(
+	runs: readonly { toolCalls: readonly string[]; responsesUnread: number }[],
+): number | null {
+	if (runs.some((r) => r.responsesUnread !== 0)) return null;
+	return new Set(runs.map((r) => r.toolCalls.join(" "))).size;
 }
 
 /** What a trial did, comparable across trials: plain digests only. */
@@ -328,7 +370,7 @@ async function repeat(args: string[]) {
 		runs,
 		condition,
 		firstRequestIdentical: firstRequestIdenticalV0(runs),
-		distinctToolSequences: new Set(runs.map((r) => r.toolCalls.join(" "))).size,
+		distinctToolSequences: distinctToolSequencesV0(runs),
 		distinctWorkspaces: new Set(runs.map((r) => r.workspaceSha256)).size,
 		distinctAnswers: new Set(runs.map((r) => r.answerSha256)).size,
 		exchangeCounts: runs.map((r) => r.exchanges),

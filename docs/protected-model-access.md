@@ -53,6 +53,7 @@ sandbox (own network namespace: lo only)                          host
 | **Bytes through the relay**, both ways, for the session | the proxy's `maxTransferredBytes` | 256 MiB in the driver |
 | **Connections open at once** | the relay's socket server | 8 |
 | **Connections over the relay's life**, including ones that send nothing (each is still recorded) | the relay's socket server | 1024 in the driver |
+| **Exchanges admitted over the relay's life**, on one kept-alive connection too (each writes several durable events and its bodies, so many small requests could grow the host's log far past the bytes on the wire); the verifier refuses any recorded exchange past it | the judge, before the policy's other rules | 512 in the driver |
 
 **The route list was measured, not guessed.** Real Pi 1.5.0 was run inside the sandbox, against a fake model server that logs every
 request, through a scripted tool run. It made only `POST /v1/chat/completions`. No `GET /v1/models` and no health check were seen (§4).
@@ -115,8 +116,9 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
     runtime set is part of a trial's condition** and visibly shapes the agent's behaviour. A study must declare it and keep it fixed.
   - The trial's directory is under `~/projects/endophasia-research/eval-iso-002/`, outside the repository.
 - **The trial directory and the workspace's starting state** (Codex, #136):
-  - the trial directory is made by one non-recursive mkdir when it is used, then checked to be a real directory of this user's with no
-    access for others. A name taken meanwhile (another user's directory, a link) is refused, never adopted;
+  - the trial directory is made by one non-recursive mkdir when it is used, then checked to be a real directory of this user's, and set
+    to exactly 0700. A name taken meanwhile (another user's directory, a link) is refused, never adopted. Its missing parents are made
+    one at a time and each set to 0700, so a umask that removes the owner's own bits (0177) cannot leave an unusable directory;
   - the workspace root's time is set to 2000-01-01T00:00:00Z before Pi starts, and recorded (`workspace.initialRootMtimeS`): the agent
     sees it (`ls -la`), and a clock time would make identical runs differ. **One difference remains:** the sandbox's own root (`..` from
     `/work`) is made by bubblewrap at each run and shows that run's setup time. Measured: two runs a minute apart printed the same `.`

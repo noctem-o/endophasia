@@ -57,6 +57,13 @@ export interface EndoModelRelayPolicyV0 {
 	 * without limit by connecting and closing (Codex, #134).
 	 */
 	readonly maxTotalConnections: number;
+	/**
+	 * Requests admitted to the model server over the relay's whole life. Each admitted exchange writes several durable capture events and
+	 * its bodies, so many small requests over one kept-alive connection could grow the host's log far beyond the bytes on the wire, within
+	 * both the transfer and the connection bounds. Past this, a request is refused like any other: its connection is closed and the model
+	 * server never sees it (Codex, #134).
+	 */
+	readonly maxExchanges: number;
 }
 
 export type EndoModelRefusalReasonV0 = "route" | "size" | "body" | "model";
@@ -133,6 +140,8 @@ const policyJson = (policy: EndoModelRelayPolicyV0) => ({
 	// Absent from policies recorded before the lifetime bound existed: their digest is computed as it was then. A running relay always has
 	// it (checkPolicy requires it).
 	...(policy.maxTotalConnections === undefined ? {} : { maxTotalConnections: policy.maxTotalConnections }),
+	// Likewise for the exchange bound, added later still.
+	...(policy.maxExchanges === undefined ? {} : { maxExchanges: policy.maxExchanges }),
 });
 
 /** A deep, frozen copy of a policy: only its declared fields, so nothing the caller holds is shared with the running relay. */
@@ -144,6 +153,7 @@ function snapshotPolicy(policy: EndoModelRelayPolicyV0): EndoModelRelayPolicyV0 
 		maxTransferredBytes: policy.maxTransferredBytes,
 		maxConnections: policy.maxConnections,
 		maxTotalConnections: policy.maxTotalConnections,
+		maxExchanges: policy.maxExchanges,
 	});
 }
 
@@ -161,6 +171,7 @@ function checkPolicy(policy: EndoModelRelayPolicyV0): void {
 		["maxTransferredBytes", policy.maxTransferredBytes, Number.MAX_SAFE_INTEGER],
 		["maxConnections", policy.maxConnections, 64],
 		["maxTotalConnections", policy.maxTotalConnections, 1_000_000],
+		["maxExchanges", policy.maxExchanges, 1_000_000],
 	] as const)
 		if (!Number.isSafeInteger(value) || value < 1 || value > max) throw new TypeError(`${name} must be 1..${max}`);
 }
@@ -173,9 +184,10 @@ export interface EndoModelRelayV0 {
 	/**
 	 * Requests refused before reaching the model server, by reason. `unjudged`: refused by the governed proxy before the judge saw them,
 	 * because they were not one complete request with a declared body length (a GET or DELETE without a body, CONNECT, an unparseable
-	 * stream). `connections`: connections refused at either connection bound (open at once, or over the relay's life).
+	 * stream). `connections`: connections refused at either connection bound (open at once, or over the relay's life). `exchanges`:
+	 * requests refused because the relay had already admitted `maxExchanges`.
 	 */
-	refusals(): Readonly<Record<EndoModelRefusalReasonV0 | "unjudged" | "connections", number>>;
+	refusals(): Readonly<Record<EndoModelRefusalReasonV0 | "unjudged" | "connections" | "exchanges", number>>;
 	/** Requests admitted to the model server. */
 	admitted(): number;
 	/** All bytes the recording proxy saw, both ways. */
@@ -201,13 +213,14 @@ export async function startModelRelayV0(options: {
 	// change what is admitted, nor make the digest describe another policy than the one enforced (Codex, #134).
 	const policy = snapshotPolicy(options.policy);
 	checkPolicy(policy);
-	const refused: Record<EndoModelRefusalReasonV0 | "unjudged" | "connections", number> = {
+	const refused: Record<EndoModelRefusalReasonV0 | "unjudged" | "connections" | "exchanges", number> = {
 		route: 0,
 		size: 0,
 		body: 0,
 		model: 0,
 		unjudged: 0,
 		connections: 0,
+		exchanges: 0,
 	};
 	let admitted = 0;
 	let judged = 0;
@@ -217,6 +230,10 @@ export async function startModelRelayV0(options: {
 		maxTransferredBytes: policy.maxTransferredBytes,
 		admitRequest: (request) => {
 			judged += 1;
+			if (admitted >= policy.maxExchanges) {
+				refused.exchanges += 1;
+				return false;
+			}
 			const verdict = admitModelRequestV0(policy, request);
 			if (verdict.admitted) admitted += 1;
 			else refused[verdict.reason] += 1;

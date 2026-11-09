@@ -82,6 +82,7 @@ const policy = (change: Partial<EndoModelRelayPolicyV0> = {}): EndoModelRelayPol
 	maxTransferredBytes: 64 * 1024 * 1024,
 	maxConnections: 8,
 	maxTotalConnections: 256,
+	maxExchanges: 256,
 	...change,
 });
 const chat = (model = MODEL) =>
@@ -237,6 +238,9 @@ describe("EVAL-ISO-002: the judge", () => {
 		const { maxTotalConnections: _dropped, ...older } = policy();
 		expect(modelRelayPolicyDigestV0(older as EndoModelRelayPolicyV0)).toMatch(/^[0-9a-f]{64}$/);
 		expect(modelRelayPolicyDigestV0(older as EndoModelRelayPolicyV0)).not.toBe(modelRelayPolicyDigestV0(policy()));
+		// And one recorded before the exchange bound: its digest is the one it had then, and differs from one that states the bound.
+		const { maxExchanges: _alsoDropped, ...beforeExchanges } = policy();
+		expect(modelRelayPolicyDigestV0(beforeExchanges as EndoModelRelayPolicyV0)).not.toBe(modelRelayPolicyDigestV0(policy()));
 		const log = new EndoCaptureLogV0(fresh("store"), KEY, "record", { async: true });
 		cleanup.push(() => log.close());
 		for (const bad of [
@@ -248,6 +252,8 @@ describe("EVAL-ISO-002: the judge", () => {
 			policy({ maxRequestBytes: 2 * 1024 * 1024 }),
 			policy({ maxConnections: 0 }),
 			policy({ maxTotalConnections: 0 }),
+			policy({ maxExchanges: 0 }),
+			policy({ maxExchanges: 1.5 }),
 		])
 			await expect(
 				startModelRelayV0({ upstream: "http://127.0.0.1:9", policy: bad, log, runtimeDirectory: runtimeBase }),
@@ -284,6 +290,20 @@ describe("EVAL-ISO-002: the trial directory and the workspace's starting state (
 		const link = join(base, "link");
 		symlinkSync(target, link);
 		expect(() => newPrivateTrialDirectoryV0(link)).toThrow(/EEXIST/);
+	});
+
+	it("an owner-restricting umask (0177) still leaves the directory and its new parents 0700 and usable (Codex, #134)", async () => {
+		const { newPrivateTrialDirectoryV0 } = await trialModule();
+		const previous = process.umask(0o177);
+		try {
+			const out = join(base, "masked", "deeper", "trial");
+			newPrivateTrialDirectoryV0(out);
+			for (const d of [out, join(base, "masked", "deeper"), join(base, "masked")])
+				expect(statSync(d).mode & 0o777).toBe(0o700);
+			writeFileSync(join(out, "digest-key"), "k", { mode: 0o600, flag: "wx" });
+		} finally {
+			process.umask(previous);
+		}
 	});
 
 	it("the workspace root starts at the same time in every trial, whatever the clock", async () => {
@@ -365,7 +385,7 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(upstream.requests.map((r) => `${r.method} ${r.url}`)).toEqual(["POST /v1/chat/completions"]);
 		expect(relay.admitted()).toBe(1);
 		// GET /slots, GET /v1/models and DELETE carry no body length: the governed proxy refuses them before the judge (unjudged).
-		expect(relay.refusals()).toEqual({ route: 1, model: 1, body: 1, size: 0, unjudged: 3, connections: 0 });
+		expect(relay.refusals()).toEqual({ route: 1, model: 1, body: 1, size: 0, unjudged: 3, connections: 0, exchanges: 0 });
 		await relay.close();
 		log.close();
 		// The recording is a cassette: the admitted exchange, complete and verified against the blob store.
@@ -497,6 +517,43 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(upstream.requests).toHaveLength(1);
 	});
 
+	it("bounds the exchanges admitted over the relay's life, on one kept-alive connection too (Codex, #134)", async () => {
+		const { relay, upstream } = await relayed({ maxExchanges: 2 });
+		const { Agent } = await import("node:http");
+		const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+		cleanup.push(() => agent.destroy());
+		const reused: boolean[] = [];
+		const send = () =>
+			new Promise<{ status: number } | { closed: string }>((resolve) => {
+				const body = chat();
+				const req = httpRequest(
+					{
+						socketPath: relay.socketPath,
+						agent,
+						method: "POST",
+						path: "/v1/chat/completions",
+						headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+					},
+					(res) => {
+						res.resume();
+						res.on("end", () => resolve({ status: res.statusCode ?? 0 }));
+						res.on("error", (e) => resolve({ closed: (e as NodeJS.ErrnoException).code ?? "error" }));
+					},
+				);
+				reused.push(req.reusedSocket);
+				req.on("error", (e) => resolve({ closed: (e as NodeJS.ErrnoException).code ?? "error" }));
+				req.end(body);
+			});
+		expect(await send()).toMatchObject({ status: 200 });
+		expect(await send()).toMatchObject({ status: 200 });
+		expect(await send()).toHaveProperty("closed");
+		// The second and third rode the first's connection: no connection bound was involved.
+		expect(reused.slice(1)).toEqual([true, true]);
+		expect(relay.refusals()).toMatchObject({ exchanges: 1, connections: 0 });
+		expect(relay.admitted()).toBe(2);
+		expect(upstream.requests).toHaveLength(2);
+	});
+
 	it("the socket is private: its directory 0700 and the socket 0600, and both are gone after close", async () => {
 		const { relay } = await relayed();
 		const { statSync } = await import("node:fs");
@@ -570,6 +627,11 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		]);
 		expect(exchangesOutsidePolicyV0(store, KEY, policy({ model: "other-model" })).map((o) => o.exchange)).toEqual([
 			1, 3,
+		]);
+		// Past the lifetime exchange bound, an exchange is outside the policy whatever its body.
+		expect(exchangesOutsidePolicyV0(store, KEY, policy({ maxExchanges: 1, maxRequestBytes: 1024 }))).toEqual([
+			{ exchange: 2, reason: "exchanges" },
+			{ exchange: 3, reason: "exchanges" },
 		]);
 	});
 

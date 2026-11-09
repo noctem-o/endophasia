@@ -14,7 +14,7 @@
 // product command reads it. Turning it into one is an owner decision (docs/protected-model-access.md §7).
 
 import { randomBytes } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { EndoCaptureLogV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { loadEndoCassetteV0 } from "../../../adapters/openai-proxy/cassette.ts";
@@ -59,12 +59,25 @@ export const seal = (record: Record<string, unknown>): string =>
  * real directory this user owns with no access for anyone else, checked after the fact. An early existence check before awaited work
  * proves nothing: another local user could create a readable `out` in between, and a recursive mkdir would accept it (Codex, #136).
  */
+function makeParentsPrivate(dir: string): void {
+	if (existsSync(dir)) return;
+	makeParentsPrivate(dirname(dir));
+	// One component at a time, each set to 0700 as it is made: a recursive mkdir under a umask that removes the owner's search bit could
+	// not make the next level at all.
+	mkdirSync(dir, { mode: 0o700 });
+	chmodSync(dir, 0o700);
+}
+
 export function newPrivateTrialDirectoryV0(out: string): void {
-	mkdirSync(dirname(out), { recursive: true, mode: 0o700 });
+	makeParentsPrivate(dirname(out));
 	mkdirSync(out, { mode: 0o700 });
-	const s = lstatSync(out);
-	if (!s.isDirectory() || s.uid !== process.getuid?.() || (s.mode & 0o077) !== 0)
+	// The umask can take bits from the owner too (0177 leaves 0600, which this user cannot enter): the mode is set, not left to it, and
+	// then checked to be exactly 0700 (Codex, #134).
+	const made = lstatSync(out);
+	if (!made.isDirectory() || made.uid !== process.getuid?.())
 		throw new TypeError(`${out} is not a private directory of this user's`);
+	chmodSync(out, 0o700);
+	if ((lstatSync(out).mode & 0o777) !== 0o700) throw new TypeError(`${out} could not be made 0700`);
 }
 
 /**
@@ -148,6 +161,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 		maxTransferredBytes: 256 * 1024 * 1024,
 		maxConnections: 8,
 		maxTotalConnections: 1024,
+		maxExchanges: 512,
 	};
 	const store = join(out, "store");
 	const log = new EndoCaptureLogV0(store, key, "record", { async: true });
@@ -273,6 +287,11 @@ export function exchangesOutsidePolicyV0(
 			body = blobs.get(e.requestBody.digest);
 		} catch {
 			outside.push({ exchange: e.exchange, reason: "body-unreadable" });
+			continue;
+		}
+		// The relay's lifetime exchange bound (absent from policies recorded before it existed): an exchange past it was never admissible.
+		if (policy.maxExchanges !== undefined && e.exchange > policy.maxExchanges) {
+			outside.push({ exchange: e.exchange, reason: "exchanges" });
 			continue;
 		}
 		const verdict = admitModelRequestV0(policy, { method: e.method, path: e.path, body });

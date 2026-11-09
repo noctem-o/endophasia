@@ -4648,6 +4648,223 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	padding-left: 1.2em;
 }
 
+/* DEVELOP-VERIFY-001: the acceptance ledger. A criterion's state is derived from observed receipts under the plan's declared coverage, so
+   it takes the receipt's own colours: observed when every planned check passed at HEAD, fault when one failed, attention (dashed) when one
+   was inconclusive, attention (dotted) when nothing at HEAD shows it, neutral for the operator's judgment and unavailable when nothing could
+   be compared. Nothing is coloured merely because nothing failed. */
+.attempt-acceptance {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.attempt-acceptance h4,
+.attempt-brief-block > summary {
+	margin: 0;
+	font-weight: 600;
+}
+
+.acceptance-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	border-top: 1px solid var(--line-subtle);
+}
+
+.acceptance-list > li {
+	display: grid;
+	grid-template-columns: 2ch minmax(0, 1fr);
+	gap: 10px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--line-subtle);
+	border-left: 2px solid transparent;
+	padding-left: 6px;
+}
+
+.acceptance-list > li[data-state="failed"] {
+	border-left-color: var(--fault);
+}
+
+.acceptance-list > li[data-state="inconclusive"],
+.acceptance-list > li[data-state="not-shown"] {
+	border-left-color: var(--attention);
+}
+
+.acceptance-list > li[data-state="passed"] {
+	border-left-color: var(--obs);
+}
+
+.criterion-n {
+	text-align: right;
+	padding-top: 1px;
+}
+
+.criterion-body {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.criterion-text {
+	color: var(--fg-1);
+	overflow-wrap: anywhere;
+}
+
+.criterion-state {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 12px;
+}
+
+.criterion-check {
+	color: var(--fg-2);
+	overflow-wrap: anywhere;
+}
+
+.criterion-check[data-check-state="failed"] {
+	color: var(--fault);
+}
+
+.criterion-check[data-check-state="inconclusive"],
+.criterion-check[data-check-state="mixed"],
+.criterion-check[data-check-state="tree-changed"],
+.criterion-check[data-check-state="stale"] {
+	color: var(--attention);
+}
+
+.chip-ref[data-criterion="passed"],
+.chip-ref[data-check-state="passed"] {
+	color: var(--obs);
+}
+
+.chip-ref[data-criterion="failed"],
+.chip-ref[data-check-state="failed"] {
+	color: var(--fault);
+}
+
+.chip-ref[data-criterion="inconclusive"],
+.chip-ref[data-check-state="inconclusive"],
+.chip-ref[data-check-state="mixed"] {
+	border-style: dashed;
+	color: var(--attention);
+}
+
+.chip-ref[data-criterion="not-shown"],
+.chip-ref[data-check-state="tree-changed"],
+.chip-ref[data-check-state="stale"] {
+	border-style: dotted;
+	color: var(--attention);
+}
+
+.chip-ref[data-criterion="unavailable"],
+.chip-ref[data-check-state="unavailable"],
+.chip-ref[data-check-state="elsewhere"],
+.chip-ref[data-check-state="not-run"] {
+	border-style: dotted;
+	color: var(--na);
+}
+
+.chip-ref[data-criterion="judgment"] {
+	color: var(--fg-2);
+}
+
+.plan-summary {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 2px 8px;
+}
+
+.plan-count + .plan-count::before {
+	content: "·";
+	margin-right: 8px;
+	color: var(--fg-4);
+}
+
+.plan-count[data-criterion="failed"] {
+	color: var(--fault);
+}
+
+.plan-count[data-criterion="inconclusive"],
+.plan-count[data-criterion="not-shown"] {
+	color: var(--attention);
+}
+
+.plan-count[data-criterion="passed"] {
+	color: var(--obs);
+}
+
+.plan-count[data-criterion="judgment"],
+.plan-count[data-criterion="unavailable"] {
+	color: var(--fg-3);
+}
+
+.planned-checks > li {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--line-subtle);
+}
+
+.planned-name {
+	color: var(--fg-1);
+	font-weight: 600;
+}
+
+/* The whole command, wrapped, so it can be read and selected without a sideways scroll. */
+.task-command.planned-command {
+	margin: 2px 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.receipt-all > summary,
+.attempt-brief-block > summary {
+	cursor: pointer;
+	padding: 2px 0;
+}
+
+.attempt-brief-block {
+	border-top: 1px solid var(--line-subtle);
+	padding-top: 4px;
+}
+
+.attempt-brief-block[open] > summary {
+	margin-bottom: 4px;
+}
+
+.develop[data-appearance="field"] .criterion-text,
+.develop[data-appearance="field"] .planned-name {
+	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .acceptance-list,
+.develop[data-appearance="field"] .acceptance-list > li,
+.develop[data-appearance="field"] .planned-checks > li {
+	border-color: var(--f-hair);
+}
+
+.develop[data-appearance="field"] .acceptance-list > li[data-state="failed"] {
+	border-left-color: var(--fault);
+}
+
+.develop[data-appearance="field"] .acceptance-list > li[data-state="inconclusive"],
+.develop[data-appearance="field"] .acceptance-list > li[data-state="not-shown"] {
+	border-left-color: var(--f-amber);
+}
+
+.develop[data-appearance="field"] .acceptance-list > li[data-state="passed"] {
+	border-left-color: var(--obs);
+}
+
+.develop[data-appearance="field"] .acceptance-list > li[data-state="judgment"],
+.develop[data-appearance="field"] .acceptance-list > li[data-state="unavailable"] {
+	border-left-color: transparent;
+}
+
 .task-ref-head {
 	display: flex;
 	flex-wrap: wrap;

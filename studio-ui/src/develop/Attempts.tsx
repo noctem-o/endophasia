@@ -10,19 +10,28 @@
 // Above them, when the operator authorised sending the attempt's brief to Pi from the live workbench's terminal, what the session's own
 // records say happened (docs/designs/develop-attempt-execution.md): sent or not, Pi's reply, and how the run after it ended, as Pi reported
 // it. It is a historical reading: nothing here reaches the session, and nothing here can send, re-send or retry an attempt.
+//
+// An attempt prepared with a verification plan (docs/designs/develop-verification-plans.md) opens on its acceptance ledger: each criterion
+// as the plan lists it, with what has been observed at the current HEAD for the checks the plan says address it, or that it rests on the
+// operator's judgment. The body is ordered by the operator's questions: what is established, what was run, what happened, then the brief.
+// Nothing here runs a check; each planned check shows the exact terminal command that would.
 import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
 import {
 	ATTEMPT_LABELS,
 	type Attempt,
+	CRITERION_LABELS,
+	CRITERION_TEXT,
 	EXECUTION_RUN_LABELS,
 	EXECUTION_SEND_LABELS,
 	type Execution,
 	executionSent,
+	PLANNED_CHECK_LABELS,
 	RECEIPT_LIMITATION_TEXT,
 	RECEIPT_OUTCOME_LABELS,
 	RECEIPT_REASON_TEXT,
 	RECEIPT_RELATION_LABELS,
 	type Receipt,
+	type Verification,
 } from "../model/attempts-wire.ts";
 import type { ReceiptFocus } from "../model/attention.ts";
 import type { Task } from "../model/workspace-wire.ts";
@@ -175,7 +184,11 @@ function AttemptItem({
 								{executionSent(a.execution) ? "Sent to Pi" : "Authorised for Pi"}
 							</span>
 						)}
-						<LatestCheck attempt={a} />
+						{a.verification === null ? (
+							<LatestCheck attempt={a} />
+						) : (
+							<PlanSummary verification={a.verification} />
+						)}
 					</span>
 				</summary>
 				<div className="attempt-body">
@@ -203,31 +216,47 @@ function AttemptItem({
 							{a.outcome.note === "" ? null : <p className="task-text">{a.outcome.note}</p>}
 						</div>
 					)}
+					{a.verification === null ? (
+						<p className="dim small" data-testid="attempt-no-plan">
+							Prepared without a verification plan, so which acceptance criteria a check addresses is not
+							recorded: each check below stands alone. A plan is given when an attempt is prepared (
+							<span className="mono">--plan-file</span>).
+						</p>
+					) : (
+						<Acceptance attempt={a} verification={a.verification} />
+					)}
+					<Receipts attempt={a} />
 					{a.execution === null ? null : <ExecutionBlock execution={a.execution} />}
-					<div className="attempt-brief-head">
-						<span className="dim small">
-							Brief: select it, or copy it, and paste it into your agent yourself.
-						</span>
-						<CopyButton label={`brief ${short(a.id)}`} value={a.brief} />
-					</div>
-					<textarea
-						className="mono task-command attempt-brief"
-						data-testid="attempt-brief"
-						aria-label={`Brief ${short(a.id)}`}
-						readOnly
-						rows={14}
-						spellCheck={false}
-						value={a.brief}
-					/>
 					{request?.(a)}
-					<p className="dim small">
-						A copied brief holds your private task text; a clipboard manager may keep it. Record what happened in
-						a terminal:
-					</p>
+					<details
+						className="attempt-brief-block"
+						data-testid="attempt-brief-block"
+						open={a.state === "prepared" && a.receipts.list.length === 0}
+					>
+						<summary className="small">
+							Brief{" "}
+							<span className="dim">what the agent is given; select or copy it to paste into your agent</span>
+						</summary>
+						<div className="attempt-brief-head">
+							<CopyButton label={`brief ${short(a.id)}`} value={a.brief} />
+							<span className="dim small">
+								A copied brief holds your private task text; a clipboard manager may keep it.
+							</span>
+						</div>
+						<textarea
+							className="mono task-command attempt-brief"
+							data-testid="attempt-brief"
+							aria-label={`Brief ${short(a.id)}`}
+							readOnly
+							rows={14}
+							spellCheck={false}
+							value={a.brief}
+						/>
+					</details>
+					<p className="dim small">Record what happened in a terminal:</p>
 					<pre className="mono task-command">
 						{`endo attempt handoff --root <store> --attempt ${a.id} --to "<agent>"\nendo attempt report  --root <store> --attempt ${a.id} --note "<what was reported>"\nendo attempt abandon --root <store> --attempt ${a.id}`}
 					</pre>
-					<Receipts attempt={a} />
 				</div>
 			</details>
 		</li>
@@ -321,26 +350,46 @@ function LatestCheck({ attempt: a }: { attempt: Attempt }): ReactElement | null 
 
 function Receipts({ attempt: a }: { attempt: Attempt }): ReactElement {
 	const { receipts } = a;
+	const list =
+		receipts.list.length === 0 ? null : (
+			<ul className="plain task-refs" data-testid="receipt-list">
+				{receipts.list.map((r) => (
+					<ReceiptItem key={r.id} receipt={r} />
+				))}
+			</ul>
+		);
 	return (
 		<div className="attempt-receipts" data-testid="attempt-receipts">
 			<h4 className="small">
 				Checks Endophasia observed{" "}
 				<span className="dim task-clause">what ran, at which commit; not the task's acceptance</span>
 			</h4>
+			{a.verification === null ? null : <PlannedChecks attempt={a} verification={a.verification} />}
 			{receipts.state === "unreadable" ? (
 				<p className="dim small" data-testid="receipts-unreadable">
 					This attempt's receipts cannot be read now. Nothing was changed.
 				</p>
-			) : receipts.list.length === 0 ? (
+			) : list === null ? (
 				<p className="dim small" data-testid="receipts-none">
 					No checks recorded for this attempt.
 				</p>
+			) : a.verification === null ? (
+				list
 			) : (
-				<ul className="plain task-refs" data-testid="receipt-list">
-					{receipts.list.map((r) => (
-						<ReceiptItem key={r.id} receipt={r} />
-					))}
-				</ul>
+				<details className="receipt-all" data-testid="receipt-all">
+					<summary className="small">
+						Every check recorded for this attempt ({receipts.list.length})
+						{a.verification.unplanned === 0 ? (
+							""
+						) : (
+							<span className="dim" data-testid="receipts-unplanned">
+								{" "}
+								· {a.verification.unplanned} not in the plan
+							</span>
+						)}
+					</summary>
+					{list}
+				</details>
 			)}
 			{receipts.problems > 0 ? (
 				<p className="dim small" data-testid="receipts-problems">
@@ -349,13 +398,196 @@ function Receipts({ attempt: a }: { attempt: Attempt }): ReactElement {
 				</p>
 			) : null}
 			<p className="dim small">
-				Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs your command, not
-				one from a brief or an agent:
+				Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you
+				type after <span className="mono">--</span>, never one from a record, a brief or an agent:
 			</p>
 			<pre className="mono task-command">
 				{`endo attempt check --root <store> --attempt ${a.id} -- <command> [args...]\nendo attempt receipts --root <store> --attempt ${a.id}`}
 			</pre>
 		</div>
+	);
+}
+
+// ---- the plan and its ledger ---------------------------------------------------------------------------------------------------------
+
+/** An argument as a POSIX shell would need it typed: bare when it is plainly safe, else in single quotes. For the command shown to copy. */
+const shellWord = (arg: string): string =>
+	/^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`;
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** The summary line's count of criteria by state, in the ledger's order of urgency. Counts of the plan's own criteria, nothing more. */
+const SUMMARY_ORDER = ["failed", "inconclusive", "not-shown", "unavailable", "passed", "judgment"] as const;
+const SUMMARY_WORDS: Readonly<Record<(typeof SUMMARY_ORDER)[number], string>> = {
+	failed: "check failed",
+	inconclusive: "inconclusive",
+	"not-shown": "not shown",
+	unavailable: "not compared",
+	passed: "checks passed",
+	judgment: "your judgment",
+};
+
+function PlanSummary({ verification: v }: { verification: Verification }): ReactElement {
+	const counts = new Map<string, number>();
+	for (const c of v.criteria) counts.set(c.state, (counts.get(c.state) ?? 0) + 1);
+	const parts = SUMMARY_ORDER.filter((s) => (counts.get(s) ?? 0) > 0);
+	return (
+		<span className="small plan-summary" data-testid="attempt-plan-summary">
+			<span className="dim">{plural(v.criteria.length, "criterion", "criteria")} at HEAD:</span>
+			{parts.map((s) => (
+				<span key={s} className="plan-count" data-criterion={s}>
+					{SUMMARY_WORDS[s]} {counts.get(s)}
+				</span>
+			))}
+		</span>
+	);
+}
+
+const checkLine = (c: Verification["checks"][number]): string => {
+	const at = c.current === null ? "" : ` (${c.current.outcome} at ${commitOf(c.current.commit)})`;
+	return `${PLANNED_CHECK_LABELS[c.state]}${c.state === "tree-changed" || c.state === "mixed" ? at : ""}`;
+};
+
+/** The criteria as the plan lists them, each with the state its checks give it. Never "met": coverage is the plan's statement. */
+function Acceptance({ attempt: a, verification: v }: { attempt: Attempt; verification: Verification }): ReactElement {
+	const byName = new Map(v.checks.map((c) => [c.name, c]));
+	return (
+		<div className="attempt-acceptance" data-testid="attempt-acceptance">
+			<h4 className="small">
+				Acceptance{" "}
+				<span className="dim task-clause">criteria as listed in your plan, against this working tree now</span>
+			</h4>
+			<ol className="plain acceptance-list" data-testid="acceptance-list">
+				{v.criteria.map((c, i) => (
+					<li
+						// biome-ignore lint/suspicious/noArrayIndexKey: criteria are a fixed, ordered list in an immutable record
+						key={i}
+						data-testid="criterion"
+						data-state={c.state}
+						aria-label={`Criterion ${i + 1}: ${CRITERION_LABELS[c.state]}`}
+					>
+						<span className="criterion-n mono dim" aria-hidden="true">
+							{i + 1}
+						</span>
+						<div className="criterion-body">
+							<p className="criterion-text">{c.text}</p>
+							<p className="criterion-state small">
+								<span className="chip-ref" data-criterion={c.state} title={CRITERION_TEXT[c.state]}>
+									{CRITERION_LABELS[c.state]}
+								</span>
+								{c.checks.length === 0 ? (
+									<span className="dim"> no check addresses it in the plan</span>
+								) : (
+									c.checks.map((name) => {
+										const check = byName.get(name);
+										return check === undefined ? null : (
+											<span key={name} className="criterion-check" data-check-state={check.state}>
+												<span className="mono">{name}</span>: {checkLine(check)}
+											</span>
+										);
+									})
+								)}
+							</p>
+						</div>
+					</li>
+				))}
+			</ol>
+			<p className="dim small">
+				That a check addresses a criterion is your plan's statement; nothing observed establishes it. A pass is a
+				command that exited 0 at this commit; whether the criterion holds is still yours to judge.
+			</p>
+			{a.receipts.problems > 0 ? (
+				<p className="small attempt-changed" data-testid="acceptance-receipt-problems">
+					Some of this attempt's receipt files could not be read: a later result of a planned check may be among
+					them, and is not counted here.
+				</p>
+			) : null}
+			{a.taskWordsChanged.includes("acceptance") ? (
+				<p className="small attempt-changed" data-testid="acceptance-task-changed">
+					The task's acceptance criteria have changed since this plan was written: compare them with the list
+					above.
+				</p>
+			) : null}
+		</div>
+	);
+}
+
+/** Each planned check: its exact argv, your sentence of what it shows, its state here, and the command that runs it. */
+function PlannedChecks({
+	attempt: a,
+	verification: v,
+}: {
+	attempt: Attempt;
+	verification: Verification;
+}): ReactElement {
+	if (v.checks.length === 0)
+		return (
+			<p className="dim small" data-testid="planned-checks-none">
+				The plan names no check: every criterion rests on your judgment.
+			</p>
+		);
+	return (
+		<ul className="plain planned-checks" data-testid="planned-checks">
+			{v.checks.map((c) => {
+				const others = c.current === null ? null : c.atHead;
+				const disagreeing =
+					others === null
+						? []
+						: (["passed", "failed", "inconclusive"] as const).filter(
+								(o) => o !== c.current?.outcome && others[o] > 0,
+							);
+				return (
+					<li key={c.name} data-testid="planned-check" data-state={c.state} data-name={c.name}>
+						<span className="task-ref-head">
+							<span className="mono planned-name">{c.name}</span>
+							<span className="chip-ref" data-check-state={c.state}>
+								{PLANNED_CHECK_LABELS[c.state]}
+							</span>
+							{c.current === null ? null : (
+								<span className="mono small" title={c.current.commit}>
+									{commitOf(c.current.commit)}
+								</span>
+							)}
+						</span>
+						<p className="small mono receipt-argv" data-testid="planned-argv" title="The exact argument list">
+							{JSON.stringify(c.argv)}
+						</p>
+						<p className="small">
+							<span className="dim">You said it shows:</span> {c.shows}
+						</p>
+						{c.state === "tree-changed" && c.current !== null ? (
+							<p className="small attempt-changed">
+								It {c.current.outcome} at this HEAD; the working tree has changed since, so it is not counted.
+							</p>
+						) : null}
+						{disagreeing.length === 0 ? null : (
+							<p className="small attempt-changed" data-testid="planned-disagree">
+								At this commit it also{" "}
+								{disagreeing
+									.map((o) => `${o === "inconclusive" ? "was inconclusive" : o} ${others?.[o]}×`)
+									.join(", ")}
+								: the latest run is shown, and the results do not agree.
+							</p>
+						)}
+						{c.otherCommit === null ? null : (
+							<p className="small dim" data-testid="planned-other-commit">
+								At another commit ({commitOf(c.otherCommit.commit)}) its latest run{" "}
+								{c.current !== null && c.current.outcome === c.otherCommit.outcome
+									? `also ${c.otherCommit.outcome}.`
+									: c.current === null
+										? `${c.otherCommit.outcome}; it has not run at this HEAD.`
+										: `${c.otherCommit.outcome}; what accounts for the difference is not observed.`}
+							</p>
+						)}
+						{c.state === "passed" ? null : (
+							<pre className="mono task-command planned-command" data-testid="planned-command">
+								{`endo attempt check --root <store> --attempt ${a.id} -- ${c.argv.map(shellWord).join(" ")}`}
+							</pre>
+						)}
+					</li>
+				);
+			})}
+		</ul>
 	);
 }
 

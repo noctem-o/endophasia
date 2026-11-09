@@ -240,7 +240,9 @@ describe("EVAL-ISO-002: the judge", () => {
 		expect(modelRelayPolicyDigestV0(older as EndoModelRelayPolicyV0)).not.toBe(modelRelayPolicyDigestV0(policy()));
 		// And one recorded before the exchange bound: its digest is the one it had then, and differs from one that states the bound.
 		const { maxExchanges: _alsoDropped, ...beforeExchanges } = policy();
-		expect(modelRelayPolicyDigestV0(beforeExchanges as EndoModelRelayPolicyV0)).not.toBe(modelRelayPolicyDigestV0(policy()));
+		expect(modelRelayPolicyDigestV0(beforeExchanges as EndoModelRelayPolicyV0)).not.toBe(
+			modelRelayPolicyDigestV0(policy()),
+		);
 		const log = new EndoCaptureLogV0(fresh("store"), KEY, "record", { async: true });
 		cleanup.push(() => log.close());
 		for (const bad of [
@@ -325,6 +327,41 @@ describe("EVAL-ISO-002: the trial directory and the workspace's starting state (
 		for (const bad of [0o177, 0o277, 0o477, 0o777]) expect(umaskRefusalV0(bad)).toMatch(/owner/);
 	});
 
+	it("--umask is four octal digits; the trial runs under it, and the caller's umask is restored whatever happens (Codex, #136)", async () => {
+		const { parseUmaskV0, runTrial } = await trialModule();
+		expect(parseUmaskV0(null)).toBeNull();
+		expect(parseUmaskV0("0022")).toBe(0o022);
+		expect(parseUmaskV0("0077")).toBe(0o077);
+		for (const bad of ["22", "022", "0o22", "0088", "00022", "", "0022 "])
+			expect(() => parseUmaskV0(bad)).toThrow(/four octal digits/);
+		const previous = process.umask(0o022);
+		try {
+			const args = (umask: string) => [
+				"run",
+				"--out",
+				join(base, `never-${umask}`),
+				"--pi-dist",
+				base,
+				"--upstream",
+				"http://127.0.0.1:9",
+				"--model",
+				"m",
+				"--prompt",
+				"p",
+				"--umask",
+				umask,
+			];
+			// The given umask is the one judged (the caller's 0022 would pass), and nothing is made.
+			await expect(runTrial(args("0177"))).rejects.toThrow(/umask 0177/);
+			expect(existsSync(join(base, "never-0177"))).toBe(false);
+			expect(process.umask(0o022)).toBe(0o022);
+			await expect(runTrial(args("0x"))).rejects.toThrow(/four octal digits/);
+			expect(process.umask(0o022)).toBe(0o022);
+		} finally {
+			process.umask(previous);
+		}
+	});
+
 	it("the workspace root starts at the same time in every trial, whatever the clock", async () => {
 		const { pinWorkspaceRootTimeV0, WORKSPACE_ROOT_TIME_V0 } = await trialModule();
 		const work = join(base, "work");
@@ -404,7 +441,15 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(upstream.requests.map((r) => `${r.method} ${r.url}`)).toEqual(["POST /v1/chat/completions"]);
 		expect(relay.admitted()).toBe(1);
 		// GET /slots, GET /v1/models and DELETE carry no body length: the governed proxy refuses them before the judge (unjudged).
-		expect(relay.refusals()).toEqual({ route: 1, model: 1, body: 1, size: 0, unjudged: 3, connections: 0, exchanges: 0 });
+		expect(relay.refusals()).toEqual({
+			route: 1,
+			model: 1,
+			body: 1,
+			size: 0,
+			unjudged: 3,
+			connections: 0,
+			exchanges: 0,
+		});
 		await relay.close();
 		log.close();
 		// The recording is a cassette: the admitted exchange, complete and verified against the blob store.

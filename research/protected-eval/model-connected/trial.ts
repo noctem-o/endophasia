@@ -1,7 +1,8 @@
 // EVAL-ISO-002 research driver (docs/protected-model-access.md): one model-connected protected trial, and its independent verification.
 //
 //   node research/protected-eval/model-connected/trial.ts run --out <new dir> --pi-dist <Pi's dist directory> \
-//        --upstream http://127.0.0.1:8081 --model <id> --prompt <text> [--memory-mib 2048] [--cpu-percent 400] [--timeout-s 600]
+//        --upstream http://127.0.0.1:8081 --model <id> --prompt <text> [--memory-mib 2048] [--cpu-percent 400] [--timeout-s 600] \
+//        [--umask 0022]
 //   node research/protected-eval/model-connected/trial.ts verify <dir>
 //
 // `run` starts the relay (its policy: Pi's measured route, this model, size and transfer bounds), runs real Pi inside the EVAL-ISO-001
@@ -14,7 +15,16 @@
 // product command reads it. Turning it into one is an owner decision (docs/protected-model-access.md §7).
 
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { EndoCaptureLogV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { loadEndoCassetteV0 } from "../../../adapters/openai-proxy/cassette.ts";
@@ -124,7 +134,35 @@ function workspaceDigest(dir: string): { sha256: string | null; problem: string 
 	}
 }
 
+/**
+ * `--umask`: four octal digits (0022, 0077…), or null when not given. Anything else is refused, never read loosely: the umask is part
+ * of the trial's condition (below).
+ */
+export function parseUmaskV0(text: string | null): number | null {
+	if (text === null) return null;
+	if (!/^0[0-7]{3}$/.test(text)) throw new TypeError("--umask is four octal digits, for example 0022");
+	return Number.parseInt(text, 8);
+}
+
+/**
+ * Run one trial under a umask: the one given (`--umask`), or the caller's. It is part of the trial's condition and is recorded
+ * (`agent.umask`): Pi, in the sandbox, inherits it, so it sets the modes of the files the agent makes, which the workspace digest
+ * includes and `ls -l` shows. A repeat holds its source's (research/counterfactual-replay/probe.ts), so identical tool calls cannot
+ * yield different workspaces for this reason (Codex, #136). The caller's umask is restored afterwards, whatever happens.
+ */
 export async function runTrial(args: string[]): Promise<Record<string, unknown>> {
+	const i = args.indexOf("--umask");
+	const given = parseUmaskV0(i === -1 ? null : (args[i + 1] ?? ""));
+	const previous = process.umask(given ?? 0o077);
+	if (given === null) process.umask(previous);
+	try {
+		return await runTrialUnder(args, given ?? previous);
+	} finally {
+		process.umask(previous);
+	}
+}
+
+async function runTrialUnder(args: string[], mask: number): Promise<Record<string, unknown>> {
 	const out = resolve(flag(args, "--out"));
 	const piDist = realpathSync(flag(args, "--pi-dist"));
 	const upstream = new URL(flag(args, "--upstream")).origin;
@@ -136,8 +174,6 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 	};
 	const timeoutMs = Number(flag(args, "--timeout-s", "600")) * 1000;
 	if (existsSync(out)) throw new TypeError(`${out} exists: a trial directory is new`);
-	const mask = process.umask(0o077);
-	process.umask(mask);
 	const masked = umaskRefusalV0(mask);
 	if (masked !== null) throw new TypeError(masked);
 	const bw = detectBubblewrapV0();
@@ -260,6 +296,8 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 			agent: {
 				// The run's own deadline: part of its condition, so that a repeat can hold it (research/counterfactual-replay/probe.ts).
 				timeoutMs,
+				// The umask the agent ran under (four octal digits): part of its condition, held by a repeat (Codex, #136).
+				umask: mask.toString(8).padStart(4, "0"),
 				started: run.started,
 				exitCode: run.exitCode,
 				signal: run.signal,

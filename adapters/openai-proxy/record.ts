@@ -1110,10 +1110,15 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		flush,
 		async close() {
 			await flush();
-			return new Promise<void>((resolve) => {
+			await new Promise<void>((resolve) => {
 				server.close(() => resolve());
 				for (const socket of sockets) socket.destroy();
 			});
+			// Dropping a connection with an exchange in flight records its end (the exchange ended, the connection closed) as new jobs,
+			// after the first flush. Let those close handlers run, then drain them and the log again: close() resolves only once the
+			// recording is whole on disk, and a write that failed during shutdown is counted before a caller reads the count (Codex, #136).
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await flush();
 		},
 	};
 }

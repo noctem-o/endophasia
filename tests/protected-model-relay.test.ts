@@ -618,6 +618,40 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 		expect(upstream.requests).toHaveLength(2);
 	});
 
+	it("close() resolves only once a request still in flight is recorded to its end, on disk (Codex, #136)", async () => {
+		const { createServer } = await import("node:http");
+		const { readEndoCaptureEventsV0 } = await import("../adapters/openai-proxy/capture-log.ts");
+		// An upstream that takes the request and never answers: the trial ends with the model's reply still pending.
+		let arrived: () => void = () => {};
+		const reached = new Promise<void>((resolve) => {
+			arrived = resolve;
+		});
+		const hanging = createServer(() => arrived());
+		await new Promise<void>((resolve) => hanging.listen(0, "127.0.0.1", () => resolve()));
+		cleanup.push(() => new Promise<void>((resolve) => hanging.close(() => resolve())));
+		cleanup.push(() => hanging.closeAllConnections());
+		const store = fresh("in-flight");
+		const log = new EndoCaptureLogV0(store, KEY, "record", { async: true });
+		cleanup.push(() => log.close());
+		const address = hanging.address() as { port: number };
+		const relay = await startModelRelayV0({
+			upstream: `http://127.0.0.1:${address.port}`,
+			policy: policy(),
+			log,
+			runtimeDirectory: runtimeBase,
+		});
+		const pending = overSocket(relay, "POST", "/v1/chat/completions", chat());
+		await reached;
+		await relay.close();
+		// Read straight after close(), with no flush of our own: what the trial driver seals must already be there.
+		const kinds = readEndoCaptureEventsV0(store).map((e) => e.kind);
+		expect(kinds).toContain("capture.request");
+		expect(kinds).toContain("capture.exchange-ended");
+		expect(kinds).toContain("capture.connection-closed");
+		expect(relay.recordingFailures()).toBe(0);
+		expect(await pending).toHaveProperty("closed");
+	});
+
 	it("the socket is private: its directory 0700 and the socket 0600, and both are gone after close", async () => {
 		const { relay } = await relayed();
 		const { statSync } = await import("node:fs");

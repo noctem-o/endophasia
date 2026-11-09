@@ -14,8 +14,8 @@
 // product command reads it. Turning it into one is an owner decision (docs/protected-model-access.md §7).
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { EndoCaptureLogV0 } from "../../../adapters/openai-proxy/capture-log.ts";
 import { loadEndoCassetteV0 } from "../../../adapters/openai-proxy/cassette.ts";
 import {
@@ -53,6 +53,35 @@ const flag = (args: string[], name: string, fallback?: string): string => {
 export const seal = (record: Record<string, unknown>): string =>
 	sha256HexV0(canonicalEndoJsonV0({ ...record, recordSha256: null }));
 
+/**
+ * Make the trial directory `out`, new and private, at the moment it is used: its parents may already exist, but `out` itself is made
+ * with one non-recursive mkdir, which fails if anything (another user's directory, a link) took the name meanwhile. It must then be a
+ * real directory this user owns with no access for anyone else, checked after the fact. An early existence check before awaited work
+ * proves nothing: another local user could create a readable `out` in between, and a recursive mkdir would accept it (Codex, #136).
+ */
+export function newPrivateTrialDirectoryV0(out: string): void {
+	mkdirSync(dirname(out), { recursive: true, mode: 0o700 });
+	mkdirSync(out, { mode: 0o700 });
+	const s = lstatSync(out);
+	if (!s.isDirectory() || s.uid !== process.getuid?.() || (s.mode & 0o077) !== 0)
+		throw new TypeError(`${out} is not a private directory of this user's`);
+}
+
+/**
+ * The workspace root's modification and access time before Pi starts, the same for every trial (2000-01-01T00:00:00Z). The agent sees
+ * it (`ls -la` prints it), so a time taken from the clock would make otherwise identical runs differ for a reason the tree digest does
+ * not see (Codex, #136). The sandbox's own root (`..` from /work) is made by bubblewrap at each run and still shows that time: that
+ * difference remains, and is recorded as such (docs/protected-model-access.md).
+ */
+export const WORKSPACE_ROOT_TIME_V0 = 946_684_800;
+
+export function pinWorkspaceRootTimeV0(dir: string): number {
+	utimesSync(dir, WORKSPACE_ROOT_TIME_V0, WORKSPACE_ROOT_TIME_V0);
+	const seconds = Math.floor(lstatSync(dir).mtimeMs / 1000);
+	if (seconds !== WORKSPACE_ROOT_TIME_V0) throw new TypeError("the workspace root's time could not be set");
+	return seconds;
+}
+
 /** The workspace's tree digest, or why it has none (a link or special file the agent left: the digest refuses them). */
 function workspaceDigest(dir: string): { sha256: string | null; problem: string | null } {
 	try {
@@ -81,7 +110,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 	const runtimeDirectory = process.env.XDG_RUNTIME_DIR;
 	if (runtimeDirectory === undefined) throw new TypeError("XDG_RUNTIME_DIR is needed for the relay's private socket");
 
-	mkdirSync(out, { recursive: true, mode: 0o700 });
+	newPrivateTrialDirectoryV0(out);
 	const keyBytes = randomBytes(32);
 	writeFileSync(join(out, "digest-key"), keyBytes.toString("hex"), { mode: 0o600, flag: "wx" });
 	const key = endoDigestKeyV0(keyBytes, "installation");
@@ -151,6 +180,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 			cwd: "/work",
 			tmpfsBytes: 256 * 1024 * 1024,
 		});
+		const workspaceRootTime = pinWorkspaceRootTimeV0(work);
 		const startedAt = new Date().toISOString();
 		const run = await runSandboxV0(
 			bw.bwrap,
@@ -214,7 +244,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 					truncated: e.truncated,
 				})),
 			},
-			workspace: workspaceDigest(work),
+			workspace: { ...workspaceDigest(work), initialRootMtimeS: workspaceRootTime },
 		};
 		record.recordSha256 = seal(record);
 		writeFileSync(join(out, "record.json"), `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });

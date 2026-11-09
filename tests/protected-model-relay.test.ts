@@ -15,6 +15,8 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -250,6 +252,47 @@ describe("EVAL-ISO-002: the judge", () => {
 			await expect(
 				startModelRelayV0({ upstream: "http://127.0.0.1:9", policy: bad, log, runtimeDirectory: runtimeBase }),
 			).rejects.toThrow(TypeError);
+	});
+});
+
+describe("EVAL-ISO-002: the trial directory and the workspace's starting state (Codex, #136)", () => {
+	const trialModule = () => import("../research/protected-eval/model-connected/trial.ts");
+	const base = mkdtempSync(join(tmpdir(), "endo-trial-dir-"));
+	afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+	it("a new trial directory is made private under a permissive umask, with its parents", async () => {
+		const { newPrivateTrialDirectoryV0 } = await trialModule();
+		const previous = process.umask(0o022);
+		try {
+			const out = join(base, "a", "b", "trial");
+			newPrivateTrialDirectoryV0(out);
+			expect(statSync(out).mode & 0o777).toBe(0o700);
+		} finally {
+			process.umask(previous);
+		}
+	});
+
+	it("a directory or link that took the name first is refused, never adopted", async () => {
+		const { newPrivateTrialDirectoryV0 } = await trialModule();
+		const taken = join(base, "taken");
+		mkdirSync(taken);
+		chmodSync(taken, 0o755);
+		expect(() => newPrivateTrialDirectoryV0(taken)).toThrow(/EEXIST/);
+		expect(statSync(taken).mode & 0o777).toBe(0o755);
+		const target = join(base, "elsewhere");
+		mkdirSync(target);
+		const link = join(base, "link");
+		symlinkSync(target, link);
+		expect(() => newPrivateTrialDirectoryV0(link)).toThrow(/EEXIST/);
+	});
+
+	it("the workspace root starts at the same time in every trial, whatever the clock", async () => {
+		const { pinWorkspaceRootTimeV0, WORKSPACE_ROOT_TIME_V0 } = await trialModule();
+		const work = join(base, "work");
+		mkdirSync(work);
+		expect(pinWorkspaceRootTimeV0(work)).toBe(WORKSPACE_ROOT_TIME_V0);
+		expect(statSync(work).mtimeMs).toBe(WORKSPACE_ROOT_TIME_V0 * 1000);
+		expect(new Date(WORKSPACE_ROOT_TIME_V0 * 1000).toISOString()).toBe("2000-01-01T00:00:00.000Z");
 	});
 });
 

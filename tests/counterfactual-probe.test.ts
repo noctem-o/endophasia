@@ -1,0 +1,320 @@
+// COUNTERFACTUAL-REPLAY-001 probe (research/counterfactual-replay/probe.ts): its output stays private, and a repeat refuses inputs that
+// differ from its source trial's (Codex, #136). The measurements themselves need a real model and are not run here.
+import { randomBytes } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
+import { afterAll, describe, expect, it } from "vitest";
+import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
+import {
+	conditionArgsV0,
+	distinctToolSequencesV0,
+	finishReplayLogV0,
+	firstRequestIdenticalV0,
+	privateDirectoryV0,
+	repeatCountV0,
+	repeatProvenanceMismatchesV0,
+	runToolCallsV0,
+	sourceConditionV0,
+	sourceRefusalsV0,
+	toolCallsOfResponseV0,
+} from "../research/counterfactual-replay/probe.ts";
+import { sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
+
+const base = mkdtempSync(join(tmpdir(), "endo-cf-probe-"));
+afterAll(() => rmSync(base, { recursive: true, force: true }));
+const mode = (p: string) => statSync(p).mode & 0o777;
+
+describe("the probe's output directory is private, whatever the umask", () => {
+	it("a new directory, and the parents it makes, are 0700 under a permissive umask", () => {
+		const previous = process.umask(0o022);
+		try {
+			const dir = join(base, "new", "nested", "out");
+			privateDirectoryV0(dir);
+			expect(mode(dir)).toBe(0o700);
+			expect(mode(join(base, "new", "nested"))).toBe(0o700);
+		} finally {
+			process.umask(previous);
+		}
+	});
+
+	it("an existing directory left open to others is made 0700, and checked after", () => {
+		const dir = join(base, "existing");
+		mkdirSync(dir);
+		chmodSync(dir, 0o755);
+		privateDirectoryV0(dir);
+		expect(mode(dir)).toBe(0o700);
+	});
+
+	it("a link or a file in its place is refused, never followed", () => {
+		const target = join(base, "target");
+		mkdirSync(target);
+		chmodSync(target, 0o755);
+		const link = join(base, "link");
+		symlinkSync(target, link);
+		expect(() => privateDirectoryV0(link)).toThrow(/not a directory/);
+		expect(mode(target)).toBe(0o755);
+		const file = join(base, "file");
+		writeFileSync(file, "x");
+		expect(() => privateDirectoryV0(file)).toThrow();
+	});
+});
+
+describe("a repeat must use the source trial's Pi and model endpoint", () => {
+	const source = {
+		subject: { pi: { distSha256: "a".repeat(64) } },
+		relay: { upstream: { origin: "http://127.0.0.1:8081" } },
+	};
+
+	it("matching inputs, the endpoint compared by normalised origin", () => {
+		for (const upstream of ["http://127.0.0.1:8081", "http://127.0.0.1:8081/", "http://127.0.0.1:8081/v1"])
+			expect(repeatProvenanceMismatchesV0(source, { piDistSha256: "a".repeat(64), upstream })).toEqual([]);
+	});
+
+	it("another Pi build is refused", () => {
+		expect(
+			repeatProvenanceMismatchesV0(source, { piDistSha256: "b".repeat(64), upstream: "http://127.0.0.1:8081" }),
+		).toEqual(["pi-dist"]);
+	});
+
+	it("another endpoint (port, host or scheme), or one that is not a URL, is refused", () => {
+		for (const upstream of ["http://127.0.0.1:8082", "http://localhost:8081", "https://127.0.0.1:8081", "not a url"])
+			expect(repeatProvenanceMismatchesV0(source, { piDistSha256: "a".repeat(64), upstream })).toEqual(["upstream"]);
+	});
+
+	it("both differing are both named; a source with no recorded endpoint never matches one", () => {
+		expect(
+			repeatProvenanceMismatchesV0(source, { piDistSha256: "b".repeat(64), upstream: "http://127.0.0.1:9" }),
+		).toEqual(["pi-dist", "upstream"]);
+		expect(
+			repeatProvenanceMismatchesV0(
+				{ subject: source.subject },
+				{ piDistSha256: "a".repeat(64), upstream: "http://127.0.0.1:8081" },
+			),
+		).toEqual(["upstream"]);
+	});
+
+	it("a replay (its upstream is the cassette by design) checks the Pi build only", () => {
+		expect(repeatProvenanceMismatchesV0(source, { piDistSha256: "a".repeat(64), upstream: null })).toEqual([]);
+		expect(repeatProvenanceMismatchesV0(source, { piDistSha256: "c".repeat(64), upstream: null })).toEqual([
+			"pi-dist",
+		]);
+	});
+});
+
+describe("a run made from a source trial holds the source's execution condition (Codex, #136)", () => {
+	const limits = { memoryMaxBytes: 1024 * 1024 * 1024, cpuQuotaPercent: 200 };
+	it("limits and timeout come from the record", () => {
+		expect(
+			sourceConditionV0(
+				{ isolation: { containment: { limits } }, agent: { timeoutMs: 240_000, umask: "0022" } },
+				null,
+			),
+		).toEqual({
+			ok: true,
+			memoryMib: 1024,
+			cpuPercent: 200,
+			timeoutS: 240,
+			timeoutFrom: "record",
+			umask: "0022",
+			umaskFrom: "record",
+		});
+	});
+	it("a record without its timeout needs the operator to state it, and says so; a contradicting statement is refused", () => {
+		const old = { isolation: { containment: { limits } }, agent: { umask: "0022" } };
+		expect(sourceConditionV0(old, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/timeout/) });
+		expect(sourceConditionV0(old, "abc")).toMatchObject({ ok: false, reason: expect.stringMatching(/timeout/) });
+		expect(sourceConditionV0(old, "600")).toMatchObject({ ok: true, timeoutS: 600, timeoutFrom: "operator" });
+		expect(
+			sourceConditionV0(
+				{ isolation: { containment: { limits } }, agent: { timeoutMs: 600_000, umask: "0022" } },
+				"300",
+			),
+		).toMatchObject({
+			ok: false,
+			reason: expect.stringMatching(/contradicts/),
+		});
+	});
+	it("a record without usable limits is refused", () => {
+		for (const bad of [
+			{},
+			{ isolation: { containment: { limits: { memoryMaxBytes: 1.5, cpuQuotaPercent: 100 } } } },
+			{ isolation: { containment: { limits: { memoryMaxBytes: 1 << 30 } } } },
+		])
+			expect(sourceConditionV0({ ...bad, agent: { timeoutMs: 1000, umask: "0022" } }, null)).toMatchObject({
+				ok: false,
+				reason: expect.stringMatching(/limits/),
+			});
+	});
+});
+
+describe("a run made from a source trial holds the source's umask (Codex, #136)", () => {
+	const limits = { memoryMaxBytes: 1024 * 1024 * 1024, cpuQuotaPercent: 200 };
+	const rec = (agent: Record<string, unknown>) => ({ isolation: { containment: { limits } }, agent });
+	it("from the record; a contradicting or malformed statement is refused", () => {
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null)).toMatchObject({
+			ok: true,
+			umask: "0077",
+			umaskFrom: "record",
+		});
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null, "0077")).toMatchObject({ ok: true });
+		expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: "0077" }), null, "0022")).toMatchObject({
+			ok: false,
+			reason: expect.stringMatching(/contradicts/),
+		});
+		for (const bad of ["22", 18, "0o22", "0088"])
+			expect(sourceConditionV0(rec({ timeoutMs: 1000, umask: bad }), null)).toMatchObject({
+				ok: false,
+				reason: expect.stringMatching(/umask/),
+			});
+	});
+	it("every held part of the condition is passed to the trial driver", () => {
+		expect(conditionArgsV0({ memoryMib: 1536, cpuPercent: 300, timeoutS: 300, umask: "0077" })).toEqual([
+			"--umask",
+			"0077",
+			"--memory-mib",
+			"1536",
+			"--cpu-percent",
+			"300",
+			"--timeout-s",
+			"300",
+		]);
+	});
+	it("a record that predates keeping it needs the operator to state it, and says so", () => {
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null)).toMatchObject({
+			ok: false,
+			reason: expect.stringMatching(/--source-umask/),
+		});
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null, "022")).toMatchObject({ ok: false });
+		expect(sourceConditionV0(rec({ timeoutMs: 1000 }), null, "0022")).toMatchObject({
+			ok: true,
+			umask: "0022",
+			umaskFrom: "operator",
+		});
+	});
+});
+
+describe("the repeat count is bounded, and a first request is compared only when every run made one (Codex, #136)", () => {
+	it("--times accepts 1 to 20 only", () => {
+		expect(repeatCountV0("3")).toBe(3);
+		expect(repeatCountV0("20")).toBe(20);
+		for (const bad of ["0", "21", "Infinity", "three", "3.5", "-1", "", "1e1", " 3"])
+			expect(() => repeatCountV0(bad)).toThrow(/1 to 20/);
+	});
+	it("identical, different, or unavailable when any run made no request", () => {
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a", "b"] }, { requestSha256: ["a"] }])).toBe(true);
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a"] }, { requestSha256: ["b"] }])).toBe(false);
+		expect(firstRequestIdenticalV0([{ requestSha256: [] }, { requestSha256: [] }])).toBeNull();
+		expect(firstRequestIdenticalV0([{ requestSha256: ["a"] }, { requestSha256: [] }])).toBeNull();
+		expect(firstRequestIdenticalV0([])).toBeNull();
+	});
+});
+
+describe("a source trial is a baseline only if it verifies, and a replay's log is read only once flushed (Codex, #136)", () => {
+	const check = (name: string, ok: boolean) => ({ check: name, ok, detail: "" });
+	it("every failed check is named; none is excused; no checks at all is a refusal", () => {
+		expect(sourceRefusalsV0([check("seal", true), check("termination", true)])).toEqual([]);
+		expect(
+			sourceRefusalsV0([check("seal", true), check("termination", false), check("runtime-unchanged", false)]),
+		).toEqual(["termination", "runtime-unchanged"]);
+		expect(sourceRefusalsV0([check("recording-complete", false)])).toEqual(["recording-complete"]);
+		expect(sourceRefusalsV0([])).toEqual(["no-checks"]);
+	});
+
+	it("an event recorded just before the end is on disk when the replay's log is read", async () => {
+		const store = join(base, "replay-log");
+		const key = endoDigestKeyV0(randomBytes(32), "installation");
+		const log = new EndoCaptureLogV0(store, key, "replay", { async: true });
+		let serverClosed = false;
+		log.record("capture.cassette-miss", { reason: "no-matching-exchange" });
+		const failures = await finishReplayLogV0(
+			{
+				close: async () => {
+					serverClosed = true;
+				},
+			},
+			log,
+		);
+		expect(serverClosed).toBe(true);
+		expect(failures).toBe(0);
+		expect(readEndoCaptureEventsV0(store).filter((e) => e.kind === "capture.cassette-miss")).toHaveLength(1);
+	});
+});
+
+describe("a run's decisions are read from its responses, not from its last request's history (Codex, #136)", () => {
+	const h = (text: string) => sha256HexV0(text).slice(0, 12);
+	const chunked = (body: string) => {
+		const half = Math.floor(body.length / 2);
+		const part = (t: string) => `${Buffer.byteLength(t).toString(16)}\r\n${t}\r\n`;
+		return Buffer.from(
+			`HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n${part(body.slice(0, half))}${part(body.slice(half))}0\r\n\r\n`,
+		);
+	};
+	const sse = (...events: unknown[]) =>
+		`${events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("")}data: [DONE]\n\n`;
+	const delta = (tool_calls: unknown) => ({ choices: [{ delta: { tool_calls } }] });
+	const streamed = chunked(
+		sse(
+			delta([{ index: 0, function: { name: "bash", arguments: '{"command":' } }]),
+			delta([{ index: 0, function: { arguments: '"ls"}' } }]),
+			delta([{ index: 1, function: { name: "write", arguments: '{"path":"a"}' } }]),
+		),
+	);
+	const whole = (body: unknown) => {
+		const text = JSON.stringify(body);
+		return Buffer.from(
+			`HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(text)}\r\n\r\n${text}`,
+		);
+	};
+
+	it("a streamed response's deltas are joined by index, across chunk boundaries", () => {
+		expect(toolCallsOfResponseV0(streamed)).toEqual([`bash:${h('{"command":"ls"}')}`, `write:${h('{"path":"a"}')}`]);
+	});
+
+	it("a whole response's message, and a response with no tool call", () => {
+		const call = { function: { name: "read", arguments: '{"path":"b"}' } };
+		expect(toolCallsOfResponseV0(whole({ choices: [{ message: { tool_calls: [call] } }] }))).toEqual([
+			`read:${h('{"path":"b"}')}`,
+		]);
+		expect(toolCallsOfResponseV0(whole({ choices: [{ message: { content: "done" } }] }))).toEqual([]);
+		expect(toolCallsOfResponseV0(chunked(sse({ choices: [{ delta: { content: "done" } }] })))).toEqual([]);
+	});
+
+	it("every exchange's decisions, in order, an unread response counted; none depends on what a later request still holds", () => {
+		const read = whole({ choices: [{ message: { tool_calls: [{ function: { name: "read", arguments: "{}" } }] } }] });
+		expect(runToolCallsV0([read, streamed, null])).toEqual({
+			toolCalls: [`read:${h("{}")}`, `bash:${h('{"command":"ls"}')}`, `write:${h('{"path":"a"}')}`],
+			responsesUnread: 1,
+		});
+	});
+
+	it("a compressed response is decoded first; an unknown encoding or an undecodable body is unread, never 'no tool call' (Codex, #136)", () => {
+		const body = sse(
+			delta([{ index: 0, function: { name: "bash", arguments: '{"command":' } }]),
+			delta([{ index: 0, function: { arguments: '"ls"}' } }]),
+		);
+		const encoded = (coding: string, bytes: Buffer) =>
+			Buffer.concat([
+				Buffer.from(
+					`HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-encoding: ${coding}\r\ncontent-length: ${bytes.length}\r\n\r\n`,
+				),
+				bytes,
+			]);
+		const expected = [`bash:${h('{"command":"ls"}')}`];
+		expect(toolCallsOfResponseV0(encoded("gzip", gzipSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("deflate", deflateSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("br", brotliCompressSync(body)))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("gzip, br", brotliCompressSync(gzipSync(body))))).toEqual(expected);
+		expect(toolCallsOfResponseV0(encoded("zstd", Buffer.from(body)))).toBeNull();
+		expect(toolCallsOfResponseV0(encoded("gzip", Buffer.from(body)))).toBeNull();
+		expect(runToolCallsV0([encoded("zstd", Buffer.from(body)), streamed])).toMatchObject({ responsesUnread: 1 });
+	});
+
+	it("tool sequences are compared only when every run's responses were all read", () => {
+		const run = (toolCalls: string[], responsesUnread = 0) => ({ toolCalls, responsesUnread });
+		expect(distinctToolSequencesV0([run(["a"]), run(["a"]), run(["b"])])).toBe(2);
+		expect(distinctToolSequencesV0([run(["a"]), run([], 1)])).toBeNull();
+	});
+});

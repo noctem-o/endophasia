@@ -111,6 +111,7 @@ describe("EVAL-ISO-003: the generation bound (refused, never rewritten)", () => 
 		expect(judge(p, { ...unbounded, n: 1, max_tokens: 1 })).toEqual({ admitted: true });
 		expect(judge(p, { ...unbounded, n_predict: 64 })).toEqual({ admitted: true });
 		expect(judge(p, chat({ n_predict: 16 }))).toEqual({ admitted: true });
+		expect(judge(p, chat({ n_cmpl: 1 }))).toEqual({ admitted: true });
 		for (const [name, body] of [
 			["no bound at all", unbounded],
 			["max_tokens over the bound", chat({ max_tokens: 65 })],
@@ -126,6 +127,11 @@ describe("EVAL-ISO-003: the generation bound (refused, never rewritten)", () => 
 			["an unbounded n_predict beside a bounded max_tokens", chat({ n_predict: -1 })],
 			["n_predict over the bound", chat({ n_predict: 65 })],
 			["n as a string", chat({ n: "1" })],
+			// llama.cpp's own name for the choice count, with `n` only its fallback alias (b11429: tools/server/server-schema.cpp, `n_cmpl`,
+			// limited to the server's slots): `{"n":1,"n_cmpl":4}` asks for four completions (Stage 0 review).
+			["several completions by llama.cpp's n_cmpl", chat({ n_cmpl: 2 })],
+			["n_cmpl beside n 1", chat({ n: 1, n_cmpl: 4 })],
+			["n_cmpl as a string", chat({ n_cmpl: "1" })],
 		] as const)
 			expect(judge(p, body), name).toEqual({ admitted: false, reason: "generation" });
 		// The route, the model and the body's shape are judged first, as before.
@@ -967,6 +973,30 @@ describe("EVAL-ISO-003: the recording, read again by the independent reader", ()
 		expect(
 			verifyModelEvidenceV0({ store: r.store, key: r.key, policy: r.policy, recorded: summary, admitted }),
 		).toBeNull();
+	});
+
+	it("a response the relay's own transfer bound cuts is transfer-bound, the agent's traffic: never a model failure, never attrition (Stage 0 review)", async () => {
+		// The bound is reached mid-response: the relay destroys every connection (countTransfer). The model server did not fail.
+		const r = await recorded({ slowChunkMs: 20 }, { maxTransferredBytes: 3000 });
+		const body = JSON.stringify(chat({ stream: true, messages: [{ role: "user", content: "count to forty" }] }));
+		expect(await overSocket(r.relay, "/v1/chat/completions", body)).toHaveProperty("closed");
+		const { summary, admitted } = await r.finish();
+		expect(r.relay.transferredBytes()).toBeGreaterThan(3000);
+		expect(summary.exchanges.map((e) => [e.class, e.status, e.verified])).toEqual([["transfer-bound", 200, true]]);
+		expect(admitted).toBe(1);
+		expect(
+			verifyModelEvidenceV0({ store: r.store, key: r.key, policy: r.policy, recorded: summary, admitted }),
+		).toBeNull();
+		// As a record: not invalidating and not successful, so the trial is judged (here, too few successful exchanges).
+		const record = passedV1();
+		record.recording.exchanges = summary.exchanges;
+		record.network.relay.admitted = 1;
+		const sealed = seal(record);
+		expect(sealed.invalidating).toEqual([]);
+		expect(endoProtectedTrialOutcomeV0(sealed)).toEqual({
+			outcome: "failed",
+			reason: "model-exchanges-below-minimum",
+		});
 	});
 
 	it("closing the relay while a response is still streaming records that exchange's end, on disk, before close() resolves", async () => {

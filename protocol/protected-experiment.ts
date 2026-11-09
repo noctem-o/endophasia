@@ -327,6 +327,7 @@ export const ENDO_PROTECTED_EXCHANGE_CLASSES_V1 = [
 	"answered",
 	"client-disconnected",
 	"model-failed",
+	"transfer-bound",
 	"refused",
 	"not-forwarded",
 	"unended",
@@ -1140,7 +1141,10 @@ function recordingOf(v: unknown): EndoProtectedRecordingV1 {
 
 /** Requests the recording shows forwarded for certain (adapters/sandbox/model-evidence.ts), and those it shows possibly forwarded. */
 const certainlyForwarded = (e: EndoProtectedModelExchangeV1) =>
-	e.class === "answered" || e.class === "model-failed" || (e.class === "client-disconnected" && e.status !== null);
+	e.class === "answered" ||
+	e.class === "model-failed" ||
+	e.class === "transfer-bound" ||
+	(e.class === "client-disconnected" && e.status !== null);
 const possiblyForwarded = (e: EndoProtectedModelExchangeV1) => e.class === "client-disconnected" && e.status === null;
 
 /** A version 1 record's model facts, against each other and the rest of the record. */

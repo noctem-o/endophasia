@@ -326,6 +326,7 @@ Each exchange's **class** comes from the recording itself:
 | `answered` | the model server's response relayed to its end | |
 | `client-disconnected` | the agent's side closed first. With a status, it was forwarded (the model server answered). Without one, the recording cannot say whether it was forwarded (awaiting the answer) or still queued behind another request on the connection (never judged) | the agent |
 | `model-failed` | forwarded (or its connection attempted); the model server's side failed | the model server: **attrition** |
+| `transfer-bound` | forwarded; ended by the relay when the session's traffic reached `maxTransferredBytes`, which destroys every connection. The model server did not fail | the agent, as a refusal is |
 | `refused` | not forwarded because of a governed refusal on its connection, the judge's or one ahead of it that the agent pipelined | the agent |
 | `not-forwarded` | queued behind another request on a connection that ended first; never judged | |
 | `unended` | no end recorded | an incomplete recording: **attrition** |
@@ -380,7 +381,8 @@ rewrote both (EVAL-ISO-001 §8).
 ### 9.6 The generation bound (§7.2, §7.3)
 
 **Refusal, never rewriting.** A request is admitted only if it states a bound, in `max_tokens`, `max_completion_tokens` or llama.cpp's
-`n_predict` (every one present an integer from 1 to `maxCompletionTokens`), for one choice (`n` absent or 1). A rewritten request would no longer be what the
+`n_predict` (every one present an integer from 1 to `maxCompletionTokens`), for one choice (`n` and llama.cpp's `n_cmpl` each absent
+or 1). A rewritten request would no longer be what the
 agent sent, and the recording is byte for byte. Version 1 requires the bound: there is no unbounded production mode. Policies without it
 (the research driver's, and every one recorded before) judge and digest exactly as before.
 
@@ -391,6 +393,11 @@ agent sent, and the recording is byte for byte. Version 1 requires the bound: th
 **`n_predict` is llama.cpp's own field, and it wins** (measured, same build): `max_tokens: 3` alone stopped at 3; with `n_predict: -1`
 beside it, the same prompt ran to 311; with `n_predict: 40`, to 40, also beside `max_completion_tokens: 3`. Before the review (§9.8), a
 request with `max_tokens: 1, n_predict: -1` was admitted and ran unbounded. `n_predict` is now judged like the other two.
+
+**`n_cmpl` is llama.cpp's choice count, and `n` only its fallback alias** (source: `tools/server/server-schema.cpp`; the b11429 library
+carries the same field and description; not measured against a running server). It is limited to the server's slots (`--parallel`), so
+`{"n": 1, "n_cmpl": 4}` would ask a four-slot server for four completions of up to the bound each. Found in the Stage 0 review (§9.8),
+it is now refused like `n` over 1.
 
 **What it does not bound:**
 - a server that ignores these fields, or reads yet another one (the cap is then only a stated one; the three were measured for this
@@ -509,6 +516,14 @@ before it was acted on:
 | Docs: an unfilled evidence placeholder; `client-disconnected` described as forwarded; the record-unreadable claim; `GET /v1/models` declarable; §9 before §8 | confirmed | corrected (this section) |
 | A thrown agent launch left no `model-ended.json`, so a resume would misreport the relay | confirmed by reading | written in the `finally` that closes the relay |
 | Leftover directories; `net-model-server-direct` proves little | agreed | documented (§9.7), not changed |
+
+**Stage 0 review** (a later, separate review of this branch, 2026-11-09). Each was reproduced on this branch's earlier head, and its
+regression test fails there:
+
+| Finding | Checked | Remediation |
+| :-- | :-- | :-- |
+| **Medium.** Reaching the relay's transfer bound mid-response was recorded `model-failed`, so the trial became `model-upstream-error` attrition: a false account of the model server, and a way for the agent's own traffic (honest or not) to remove a trial from the judged denominator | reproduced through a real relay: a stream cut at a 3000-byte bound, recorded `model-failed`, status 200 | the proxy records an exchange its transfer bound ended as such, and the reader classes it `transfer-bound`: forwarded, the agent's doing, never successful, never invalidating |
+| **Low-medium.** llama.cpp's `n_cmpl` (with `n` as its alias) multiplies generation past the one-choice rule, up to the server's slots | read in the llama.cpp source, matched in the b11429 library; not measured live (no model was loaded for it) | `n_cmpl` judged with `n`; tested |
 
 The reviewer also reported as sound: version 0's reading, sealing and digests; the policy digest without the bound; the proxy's new
 `close()` (no hang, and in-flight exchanges now end the same way every time); the relay's ordering; retries; and the report's checks.

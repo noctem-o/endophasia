@@ -8,7 +8,7 @@
 
 import { join } from "node:path";
 import { loadEndoCassetteV0 } from "../../adapters/openai-proxy/cassette.ts";
-import { GOVERNED_REFUSAL_ERROR_V0 } from "../../adapters/openai-proxy/record.ts";
+import { GOVERNED_REFUSAL_ERROR_V0, TRANSFER_LIMIT_ERROR_V0 } from "../../adapters/openai-proxy/record.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
@@ -21,6 +21,8 @@ import { admitModelRequestV0, type EndoModelRelayPolicyV0 } from "./model-relay.
  *   forwarded (the model server answered); without one, it may have been (awaiting the answer) or not (queued behind another request
  *   on the same connection, never judged): the recording does not say which;
  * - `model-failed`: forwarded (or its connection to the model server attempted), and the model server's side failed;
+ * - `transfer-bound`: forwarded, and ended by the relay at the policy's transfer bound, which the agent's own traffic reached (the agent's
+ *   doing, as a refusal is; the model server did not fail);
  * - `refused`: not forwarded because of a governed refusal on its connection: the judge refused it, or a request ahead of it that the agent
  *   pipelined on the same connection (the agent's doing);
  * - `not-forwarded`: queued behind another request on a connection that ended before it was forwarded, never judged;
@@ -30,6 +32,7 @@ export type EndoModelExchangeClassV0 =
 	| "answered"
 	| "client-disconnected"
 	| "model-failed"
+	| "transfer-bound"
 	| "refused"
 	| "not-forwarded"
 	| "unended";
@@ -38,6 +41,7 @@ export const ENDO_MODEL_EXCHANGE_CLASSES_V0: readonly EndoModelExchangeClassV0[]
 	"answered",
 	"client-disconnected",
 	"model-failed",
+	"transfer-bound",
 	"refused",
 	"not-forwarded",
 	"unended",
@@ -57,11 +61,14 @@ export interface EndoModelExchangeSummaryV0 {
 }
 
 /**
- * Exchanges the recording shows forwarded for certain (so admitted by the judge): answered; failed by the model server; or ended by the
- * agent after the model server's answer began (a status).
+ * Exchanges the recording shows forwarded for certain (so admitted by the judge): answered; failed by the model server; ended at the
+ * transfer bound; or ended by the agent after the model server's answer began (a status).
  */
 export const certainlyForwardedV0 = (e: Pick<EndoModelExchangeSummaryV0, "class" | "status">): boolean =>
-	e.class === "answered" || e.class === "model-failed" || (e.class === "client-disconnected" && e.status !== null);
+	e.class === "answered" ||
+	e.class === "model-failed" ||
+	e.class === "transfer-bound" ||
+	(e.class === "client-disconnected" && e.status !== null);
 /** Exchanges that may or may not have been forwarded: ended by the agent before any answer (see `client-disconnected`). */
 export const possiblyForwardedV0 = (e: Pick<EndoModelExchangeSummaryV0, "class" | "status">): boolean =>
 	e.class === "client-disconnected" && e.status === null;
@@ -101,7 +108,9 @@ export function summarizeModelRecordingV0(
 								? r.error === GOVERNED_REFUSAL_ERROR_V0
 									? "refused"
 									: "not-forwarded"
-								: "model-failed";
+								: r.error === TRANSFER_LIMIT_ERROR_V0
+									? "transfer-bound"
+									: "model-failed";
 			return {
 				exchange: e.exchange,
 				method: e.method,

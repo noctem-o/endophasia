@@ -210,6 +210,12 @@ export const GOVERNED_REQUEST_MAX_BYTES_V0 = 1024 * 1024;
  * it (adapters/sandbox/model-evidence.ts).
  */
 export const GOVERNED_REFUSAL_ERROR_V0 = "governed request refused before forwarding";
+/**
+ * The error recorded on an exchange the proxy's own transfer bound ended (`upstream-error`, after it was forwarded): reaching
+ * `maxTransferredBytes` destroys every connection, so the model server's side did not fail. A reader tells it from a model server's
+ * failure by it (adapters/sandbox/model-evidence.ts; Stage 0 review of EVAL-ISO-003).
+ */
+export const TRANSFER_LIMIT_ERROR_V0 = "transfer limit reached";
 const GOVERNED_REQUEST_IDLE_MS = 5000;
 
 /** How long a retired hop may take to send request bytes the upstream has not read yet before it is dropped. */
@@ -382,6 +388,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (entry.ended) return;
 			entry.ended = true;
 			open -= 1;
+			// Once the transfer bound is reached every connection is destroyed (countTransfer): a forwarded exchange that then ends on the
+			// model server's side ended by the bound, not by a failure there.
+			if (transferLimitExceeded && outcome === "upstream-error" && transport?.phase !== "not-forwarded")
+				error = TRANSFER_LIMIT_ERROR_V0;
 			const target = current();
 			// A governed request that never completed was never an exchange: it leaves a trace, not a numbered end (see head, above).
 			if (entry.exchange === 0) {

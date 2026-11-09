@@ -68,7 +68,7 @@ export interface EndoModelRelayPolicyV0 {
 	 * The generation bound (EVAL-ISO-003). When set, a request is admitted only if it asks for at most this many generated tokens, in
 	 * `max_tokens`, `max_completion_tokens` or llama.cpp's own `n_predict` (at least one present, every one present an integer from 1 to
 	 * this: llama.cpp reads `n_predict` before the others, so `{"max_tokens":1,"n_predict":-1}` ran unbounded, measured), and for one
-	 * choice (`n` absent or 1). Requests are refused, never rewritten: the recording keeps what the agent sent. It bounds what is asked of the
+	 * choice (`n` and llama.cpp's `n_cmpl` each absent or 1). Requests are refused, never rewritten: the recording keeps what the agent sent. It bounds what is asked of the
 	 * model server, which is a hard cap only where the server honours the field (measured for llama.cpp b11429, both fields:
 	 * docs/protected-model-access.md). Absent: no bound, as in policies recorded before it existed.
 	 */
@@ -118,7 +118,9 @@ function generationBounded(body: Record<string, unknown>, max: number): boolean 
 		const value = body[field];
 		if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > max) return false;
 	}
-	return !Object.hasOwn(body, "n") || body.n === 1;
+	// One choice, by either name: llama.cpp reads `n_cmpl` first and `n` only as its fallback alias (b11429, tools/server/server-schema.cpp;
+	// up to the server's slots), so `{"n":1,"n_cmpl":4}` asks for four completions (Stage 0 review).
+	return ["n", "n_cmpl"].every((field) => !Object.hasOwn(body, field) || body[field] === 1);
 }
 
 /**

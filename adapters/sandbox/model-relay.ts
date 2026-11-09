@@ -64,9 +64,24 @@ export interface EndoModelRelayPolicyV0 {
 	 * server never sees it (Codex, #134).
 	 */
 	readonly maxExchanges: number;
+	/**
+	 * The generation bound (EVAL-ISO-003). When set, a request is admitted only if it asks for at most this many generated tokens, in
+	 * `max_tokens`, `max_completion_tokens` or llama.cpp's own `n_predict` (at least one present, every one present an integer from 1 to
+	 * this: llama.cpp reads `n_predict` before the others, so `{"max_tokens":1,"n_predict":-1}` ran unbounded, measured), and for one
+	 * choice (`n` and llama.cpp's `n_cmpl` each absent or 1). Requests are refused, never rewritten: the recording keeps what the agent sent. It bounds what is asked of the
+	 * model server, which is a hard cap only where the server honours the field (measured for llama.cpp b11429, both fields:
+	 * docs/protected-model-access.md). Absent: no bound, as in policies recorded before it existed.
+	 */
+	readonly maxCompletionTokens?: number;
 }
 
-export type EndoModelRefusalReasonV0 = "route" | "size" | "body" | "model";
+export type EndoModelRefusalReasonV0 = "route" | "size" | "body" | "model" | "generation";
+
+/**
+ * The request fields that bound generation, as the servers known here read them: OpenAI's two, and llama.cpp's `n_predict`, which it
+ * prefers to both (measured, b11429). A server that reads yet another field is not bounded by this policy.
+ */
+const GENERATION_FIELDS_V0 = ["max_tokens", "max_completion_tokens", "n_predict"] as const;
 
 /** The judge, pure: whether one complete request may reach the model server. */
 export function admitModelRequestV0(
@@ -87,7 +102,25 @@ export function admitModelRequestV0(
 	// another parser may keep the first (RFC 8259 §4): a request whose top-level keys repeat is refused (Codex, #134).
 	if (topLevelKeysRepeat(Buffer.from(request.body).toString("utf8"))) return { admitted: false, reason: "body" };
 	if ((body as { model?: unknown }).model !== policy.model) return { admitted: false, reason: "model" };
+	if (
+		policy.maxCompletionTokens !== undefined &&
+		!generationBounded(body as Record<string, unknown>, policy.maxCompletionTokens)
+	)
+		return { admitted: false, reason: "generation" };
 	return { admitted: true };
+}
+
+/** Whether a request body asks for at most `max` generated tokens, for one choice (see EndoModelRelayPolicyV0.maxCompletionTokens). */
+function generationBounded(body: Record<string, unknown>, max: number): boolean {
+	const present = GENERATION_FIELDS_V0.filter((field) => Object.hasOwn(body, field));
+	if (present.length === 0) return false;
+	for (const field of present) {
+		const value = body[field];
+		if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > max) return false;
+	}
+	// One choice, by either name: llama.cpp reads `n_cmpl` first and `n` only as its fallback alias (b11429, tools/server/server-schema.cpp;
+	// up to the server's slots), so `{"n":1,"n_cmpl":4}` asks for four completions (Stage 0 review).
+	return ["n", "n_cmpl"].every((field) => !Object.hasOwn(body, field) || body[field] === 1);
 }
 
 /**
@@ -142,6 +175,8 @@ const policyJson = (policy: EndoModelRelayPolicyV0) => ({
 	...(policy.maxTotalConnections === undefined ? {} : { maxTotalConnections: policy.maxTotalConnections }),
 	// Likewise for the exchange bound, added later still.
 	...(policy.maxExchanges === undefined ? {} : { maxExchanges: policy.maxExchanges }),
+	// And for the generation bound (EVAL-ISO-003): a policy without one keeps its earlier digest.
+	...(policy.maxCompletionTokens === undefined ? {} : { maxCompletionTokens: policy.maxCompletionTokens }),
 });
 
 /** A deep, frozen copy of a policy: only its declared fields, so nothing the caller holds is shared with the running relay. */
@@ -154,6 +189,7 @@ function snapshotPolicy(policy: EndoModelRelayPolicyV0): EndoModelRelayPolicyV0 
 		maxConnections: policy.maxConnections,
 		maxTotalConnections: policy.maxTotalConnections,
 		maxExchanges: policy.maxExchanges,
+		...(policy.maxCompletionTokens === undefined ? {} : { maxCompletionTokens: policy.maxCompletionTokens }),
 	});
 }
 
@@ -174,6 +210,13 @@ function checkPolicy(policy: EndoModelRelayPolicyV0): void {
 		["maxExchanges", policy.maxExchanges, 1_000_000],
 	] as const)
 		if (!Number.isSafeInteger(value) || value < 1 || value > max) throw new TypeError(`${name} must be 1..${max}`);
+	if (
+		policy.maxCompletionTokens !== undefined &&
+		(!Number.isSafeInteger(policy.maxCompletionTokens) ||
+			policy.maxCompletionTokens < 1 ||
+			policy.maxCompletionTokens > 1_000_000)
+	)
+		throw new TypeError("maxCompletionTokens must be 1..1000000");
 }
 
 export interface EndoModelRelayV0 {
@@ -185,7 +228,7 @@ export interface EndoModelRelayV0 {
 	 * Requests refused before reaching the model server, by reason. `unjudged`: refused by the governed proxy before the judge saw them,
 	 * because they were not one complete request with a declared body length (a GET or DELETE without a body, CONNECT, an unparseable
 	 * stream). `connections`: connections refused at either connection bound (open at once, or over the relay's life). `exchanges`:
-	 * requests refused because the relay had already admitted `maxExchanges`.
+	 * requests refused because the relay had already admitted `maxExchanges`. `generation`: requests over the policy's generation bound.
 	 */
 	refusals(): Readonly<Record<EndoModelRefusalReasonV0 | "unjudged" | "connections" | "exchanges", number>>;
 	/** Requests admitted to the model server. */
@@ -218,6 +261,7 @@ export async function startModelRelayV0(options: {
 		size: 0,
 		body: 0,
 		model: 0,
+		generation: 0,
 		unjudged: 0,
 		connections: 0,
 		exchanges: 0,

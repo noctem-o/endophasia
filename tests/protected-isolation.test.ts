@@ -121,7 +121,8 @@ function specWith(agents: Record<string, string>, change: Partial<EndoProtectedS
 		...change,
 	});
 	if (!read.ok) throw new Error(read.message);
-	return read.value;
+	// A version 0 spec, read as one (the reader reads either version, each by its own rules).
+	return read.value as EndoProtectedSpecV0;
 }
 
 const recordOf = (dir: string, condition: string, trial = 0, attempt = 1): EndoProtectedTrialV0 => {
@@ -129,7 +130,7 @@ const recordOf = (dir: string, condition: string, trial = 0, attempt = 1): EndoP
 		join(dir, "trials", "merge-intervals", condition, String(trial), `attempt-${attempt}`, "record.json"),
 	);
 	if (!r.ok) throw new Error(r.reason);
-	return r.value;
+	return r.value as EndoProtectedTrialV0;
 };
 const workOf = (dir: string, condition: string, trial = 0, attempt = 1) =>
 	join(dir, "trials", "merge-intervals", condition, String(trial), `attempt-${attempt}`, "work");

@@ -204,6 +204,18 @@ const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
 /** Complete request wire (head plus fixed-length body), inclusive, for governed admission only. */
 export const GOVERNED_REQUEST_MAX_BYTES_V0 = 1024 * 1024;
+/**
+ * The error a governed refusal records on every exchange it ends (`upstream-error`, transport `not-forwarded`): the judge refused the front
+ * request, and nothing queued behind it on that connection was forwarded either. A reader tells a refusal from a model server's failure by
+ * it (adapters/sandbox/model-evidence.ts).
+ */
+export const GOVERNED_REFUSAL_ERROR_V0 = "governed request refused before forwarding";
+/**
+ * The error recorded on an exchange the proxy's own transfer bound ended (`upstream-error`, after it was forwarded): reaching
+ * `maxTransferredBytes` destroys every connection, so the model server's side did not fail. A reader tells it from a model server's
+ * failure by it (adapters/sandbox/model-evidence.ts; Stage 0 review of EVAL-ISO-003).
+ */
+export const TRANSFER_LIMIT_ERROR_V0 = "transfer limit reached";
 const GOVERNED_REQUEST_IDLE_MS = 5000;
 
 /** How long a retired hop may take to send request bytes the upstream has not read yet before it is dropped. */
@@ -231,6 +243,8 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 	let latest: Exchange | null = null;
 	let open = 0;
 	const sockets = new Set<Socket>();
+	/** The client connections alone (also in `sockets`): close() ends them first (EVAL-ISO-003). */
+	const clientSockets = new Set<Socket>();
 	let transferredBytes = 0;
 	let transferLimitExceeded = false;
 	let refusedRequests = 0;
@@ -308,7 +322,11 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (holdTimer === null) holdTimer = setTimeout(release, HOLD_MS);
 		};
 		sockets.add(client);
-		client.on("close", () => sockets.delete(client));
+		clientSockets.add(client);
+		client.on("close", () => {
+			sockets.delete(client);
+			clientSockets.delete(client);
+		});
 		if (sink === null) {
 			client.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 			return;
@@ -370,6 +388,10 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (entry.ended) return;
 			entry.ended = true;
 			open -= 1;
+			// Once the transfer bound is reached every connection is destroyed (countTransfer): a forwarded exchange that then ends on the
+			// model server's side ended by the bound, not by a failure there.
+			if (transferLimitExceeded && outcome === "upstream-error" && transport?.phase !== "not-forwarded")
+				error = TRANSFER_LIMIT_ERROR_V0;
 			const target = current();
 			// A governed request that never completed was never an exchange: it leaves a trace, not a numbered end (see head, above).
 			if (entry.exchange === 0) {
@@ -459,7 +481,15 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 			if (ending) return;
 			refusedRequests += 1;
 			ending = true;
-			failQueued("governed request refused before forwarding");
+			// A request already forwarded (its slot has a hop: the judge admitted it earlier) was not refused: the client's later bytes
+			// ended it. It ends as the client's (client-disconnected), never relabelled a refusal that was never forwarded (EVAL-ISO-003).
+			for (const slot of slots)
+				if (slot.hop !== null && slot.entry !== null && !slot.entry.ended) {
+					flushDeferred(slot.entry);
+					slot.hop.socket.destroy();
+					finish(slot.entry, "client-disconnected", null);
+				}
+			failQueued(GOVERNED_REFUSAL_ERROR_V0);
 			client.destroy();
 		};
 
@@ -1110,13 +1140,26 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 		flush,
 		async close() {
 			await flush();
-			await new Promise<void>((resolve) => {
-				server.close(() => resolve());
-				for (const socket of sockets) socket.destroy();
-			});
+			const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
 			// Dropping a connection with an exchange in flight records its end (the exchange ended, the connection closed) as new jobs,
-			// after the first flush. Let those close handlers run, then drain them and the log again: close() resolves only once the
-			// recording is whole on disk, and a write that failed during shutdown is counted before a caller reads the count (Codex, #136).
+			// after the first flush. A destroyed socket's 'close' comes in a later phase of the event loop than an immediate, so each one is
+			// awaited, not assumed (EVAL-ISO-003: a response still streaming lost its end). The clients go first: each one's going ends the
+			// exchanges in flight on it as the client's (client-disconnected), and their hops with them; then whatever is left. Then the
+			// jobs and the log are drained again: close() resolves only once the recording is whole on disk, and a write that failed
+			// during shutdown is counted before a caller reads the count (Codex, #136).
+			const ended = (set: ReadonlySet<Socket>) =>
+				Promise.all(
+					[...set].map((socket) =>
+						socket.closed ? undefined : new Promise<void>((resolve) => socket.once("close", () => resolve())),
+					),
+				);
+			const clientsEnded = ended(clientSockets);
+			for (const socket of clientSockets) socket.destroy();
+			await clientsEnded;
+			const restEnded = ended(sockets);
+			for (const socket of sockets) socket.destroy();
+			await restEnded;
+			await stopped;
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			await flush();
 		},

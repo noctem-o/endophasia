@@ -107,9 +107,11 @@ Commands that run a prompted agent session or an experiment:
   harness study <root> ...           a live study: requires --authorize-live-study
   experiment <run|report> ...
   experiment protected-run <spec> --out <dir> [--retry-interrupted] [--max-attempts n]
-                                     an offline protected experiment: each attempt runs in a Bubblewrap sandbox checked from inside
+                                     a protected experiment: each attempt runs in a Bubblewrap sandbox checked from inside
                                      before it starts, and is judged by a separate evaluator sandbox; refuses rather than run
-                                     unprotected. No model connection yet (docs/protected-experiments.md)
+                                     unprotected (docs/protected-experiments.md). A version 1 spec is model-connected: one
+                                     declared local model, reached only through a recording relay of the attempt's own
+                                     (docs/protected-model-access.md §9)
   experiment protected-report <dir>  every planned trial, attempt and attrition of a protected run, read independently
   replay, proxy <record|replay> ...
   A prompted agent session can call the model provider Pi is configured with, and may incur cost. Live studies are

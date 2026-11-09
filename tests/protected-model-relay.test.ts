@@ -446,6 +446,8 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 			model: 1,
 			body: 1,
 			size: 0,
+			// EVAL-ISO-003: the generation bound's refusals, none under a policy without one.
+			generation: 0,
 			unjudged: 3,
 			connections: 0,
 			exchanges: 0,

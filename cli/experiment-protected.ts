@@ -6,12 +6,20 @@
 // leaves a sealed endo.protected-trial.v0 record; a retry is a new attempt that names the one it retries. Nothing here ever runs an agent
 // outside a sandbox: if the boundary cannot be established, the attempt is recorded as refused and the agent is not started.
 //
+// A version 1 spec (EVAL-ISO-003, docs/protected-model-access.md §9) is a model-connected experiment: the same runner, with each attempt's
+// agent reaching one declared model only through a recording relay of its own (adapters/sandbox/model-relay.ts), started once the
+// boundary is established and closed (its recording flushed) once the agent's scope has ended. Its records are endo.protected-trial.v1,
+// read again by the report against the recording itself (adapters/sandbox/model-evidence.ts). A version 0 spec runs as before.
+//
 // Layout of a run directory:
 //   protected-run.json                                    endo.protected-run.v0: spec, seed, plan, isolation, profiles, evaluators
 //   trials/<task>/<condition>/<trial>/attempt-<n>/        one attempt: started.json, preflight.json, agent-started.json, agent.log,
 //                                                         work/ (the agent's workspace), submission/ (the trusted copy), record.json
+//                                                         model/ (v1: digest-key and store/, the relay's recording), relay.json,
+//                                                         model-ended.json
+//   model-session.json                                    v1: the session's private directory (probe socket, bridge), for cleanup
 
-import { randomInt } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import {
 	chmodSync,
 	closeSync,
@@ -20,6 +28,7 @@ import {
 	linkSync,
 	lstatSync,
 	mkdirSync,
+	mkdtempSync,
 	openSync,
 	readdirSync,
 	readFileSync,
@@ -29,9 +38,11 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EndoCaptureLogV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
@@ -55,17 +66,42 @@ import {
 	loadEvaluatorV0,
 	qualifyEvaluatorV0,
 } from "../adapters/sandbox/evaluator.ts";
+import {
+	type EndoModelExchangeSummaryV0,
+	summarizeModelRecordingV0,
+	verifyModelEvidenceV0,
+} from "../adapters/sandbox/model-evidence.ts";
+import {
+	bridgedCommandV0,
+	ENDO_MODEL_SOCKET_TARGET_V0,
+	type EndoModelRelayPolicyV0,
+	type EndoModelRelayV0,
+	modelRelayMountsV0,
+	modelRelayPolicyDigestV0,
+	startModelRelayV0,
+} from "../adapters/sandbox/model-relay.ts";
 import { type EndoPreflightV0, preflightV0 } from "../adapters/sandbox/preflight.ts";
 import { exportSubmissionV0 } from "../adapters/sandbox/submission.ts";
 import {
-	type EndoProtectedRunV0,
-	type EndoProtectedSpecV0,
+	ENDO_PROTECTED_RUN_V1,
+	ENDO_PROTECTED_SPEC_V1,
+	ENDO_PROTECTED_TRIAL_V1,
+	type EndoProtectedModelAccessV1,
+	type EndoProtectedRecordingV1,
+	type EndoProtectedRelayV1,
+	type EndoProtectedRun,
+	type EndoProtectedSpec,
+	type EndoProtectedSpecV1,
+	type EndoProtectedTrial,
 	type EndoProtectedTrialV0,
+	type EndoProtectedTrialV1,
 	endoProtectedTrialOutcomeV0,
 	expectedInvalidating,
+	expectedInvalidatingV1,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import {
 	checkEndoProtectedRunV0,
 	readEndoProtectedTrialFileV0,
@@ -74,7 +110,7 @@ import {
 import { writeAllSyncV0 } from "../runtime/contracts/write-all.ts";
 import { ENDO_EXPERIMENT_ORDERING_V0, planEndoExperimentV0 } from "./experiment.ts";
 
-export const ENDO_PROTECTED_RUNNER_V0 = "endo-protected-runner.1";
+export const ENDO_PROTECTED_RUNNER_V0 = "endo-protected-runner.2";
 const REPOSITORY = fileURLToPath(new URL("../", import.meta.url));
 
 /** Why a protected run did not start. Nothing was run; any record already written is left as it is. */
@@ -86,7 +122,8 @@ export class EndoProtectedRefusalV0 extends Error {
 }
 
 export interface EndoProtectedRunOptionsV0 {
-	spec: EndoProtectedSpecV0;
+	/** A version 0 spec (offline) or a version 1 spec (model-connected); each runs only as itself. */
+	spec: EndoProtectedSpec;
 	dir: string;
 	/** Start a new attempt, naming the one it retries, for an attempt that was interrupted. Off by default: attrition stays attrition. */
 	retryInterrupted?: boolean;
@@ -100,6 +137,10 @@ export interface EndoProtectedRunOptionsV0 {
 	unsafeForTests?: Record<string, EndoSandboxProfileInputV0["unsafeForTests"]>;
 	/** For tests: called with an attempt directory once the agent's sandbox has started. */
 	onAgentStarted?: (attemptDir: string) => void;
+	/** For tests: called with an attempt directory once a model-connected agent's sandbox has ended, before its relay is closed. */
+	onAgentEnded?: (attemptDir: string) => void;
+	/** For tests only: a relay that fails to start (to show the attempt is recorded, and the agent never runs). Never reachable from the CLI. */
+	relayFailsForTests?: boolean;
 }
 
 export interface EndoProtectedRunSummaryV0 {
@@ -138,6 +179,49 @@ const writeJsonOnce = (path: string, value: unknown) => {
 
 const AGENT_ENV = { HOME: "/home/agent", PATH: "/usr/bin", TMPDIR: "/tmp" } as const;
 
+/** Inside a model-connected sandbox, the bridge listens here and passes each connection to the relay's socket. */
+const MODEL_BRIDGE_PORT = 18080;
+
+/** What a model-connected agent is told, by name only: where to reach the model, which model, and the generation bound it must state. */
+const modelEnv = (m: EndoProtectedModelAccessV1) => ({
+	ENDO_MODEL_ORIGIN: `http://127.0.0.1:${MODEL_BRIDGE_PORT}`,
+	ENDO_MODEL_ID: m.model,
+	ENDO_MODEL_MAX_COMPLETION_TOKENS: String(m.maxCompletionTokens),
+});
+
+/** The relay policy a spec's model access declares (adapters/sandbox/model-relay.ts). Its digest is what each record must name. */
+export function endoProtectedRelayPolicyV1(m: EndoProtectedModelAccessV1): EndoModelRelayPolicyV0 {
+	return {
+		routes: m.routes.map((r) => ({ method: r.method, path: r.path })),
+		model: m.model,
+		maxRequestBytes: m.maxRequestBytes,
+		maxTransferredBytes: m.maxTransferredBytes,
+		maxConnections: m.maxConnections,
+		maxTotalConnections: m.maxTotalConnections,
+		maxExchanges: m.maxExchanges,
+		maxCompletionTokens: m.maxCompletionTokens,
+	};
+}
+
+/**
+ * A model-connected run's session resources: the declared policy and its digest, the user's runtime directory (for each attempt's relay
+ * socket), and a private directory there holding the bridge (mounted read-only by digest) and a probe socket. The probe socket stands in
+ * for the relay's in the preflight and in the run's profile digest: it is mounted at the same place, as the same kind and role, so the
+ * logical profile (and its digest) is the agent's exactly; it accepts a connection and closes it. Each attempt's own relay is started only
+ * once its boundary is established.
+ */
+interface PreparedModel {
+	access: EndoProtectedModelAccessV1;
+	policy: EndoModelRelayPolicyV0;
+	policySha256: string;
+	runtimeDirectory: string;
+	directory: string;
+	probeSocket: string;
+	probe: Server;
+	bridge: { source: string; sha256: string };
+	aliases: EndoRuntimeFileV0[];
+}
+
 interface Prepared {
 	bwrap: EndoBubblewrapV0;
 	containment: EndoContainmentV0;
@@ -148,16 +232,49 @@ interface Prepared {
 	agents: Map<string, string>;
 	/** Per condition, the controller-private copy that is mounted (made once the run directory is locked). */
 	agentCopies: Map<string, string>;
+	/** A model-connected run's session resources; null for an offline (version 0) run. */
+	model: PreparedModel | null;
 }
 
-/** The agent's profile for one attempt. Its digest depends on roles, not paths, so it is the same for every attempt of a condition. */
+/**
+ * The agent's profile for one attempt. Its digest depends on roles, not paths, so it is the same for every attempt of a condition. A
+ * model-connected profile also mounts the relay's socket (`socket`: the attempt's relay, or the session's probe socket, which have the same
+ * logical mount), the bridge and the runtime's aliases, and names the model in the environment.
+ */
 function agentProfile(
 	p: Prepared,
-	spec: EndoProtectedSpecV0,
-	condition: EndoProtectedSpecV0["conditions"][number],
+	spec: EndoProtectedSpec,
+	condition: EndoProtectedSpec["conditions"][number],
 	work: string,
 	unsafe: EndoSandboxProfileInputV0["unsafeForTests"],
+	socket?: string,
 ): EndoSandboxProfileV0 {
+	const model = p.model;
+	const modelMounts: EndoSandboxProfileInputV0["mounts"] =
+		model === null
+			? []
+			: [
+					{
+						target: ENDO_MODEL_SOCKET_TARGET_V0,
+						kind: "socket",
+						role: "model-relay",
+						source: socket ?? model.probeSocket,
+					},
+					{
+						target: "/run/endo/bridge.cjs",
+						kind: "ro-file",
+						role: "model-bridge",
+						source: model.bridge.source,
+						sha256: model.bridge.sha256,
+					},
+					...model.aliases.map((a) => ({
+						target: a.target,
+						kind: "ro-file" as const,
+						role: "runtime-alias",
+						source: a.source,
+						sha256: a.sha256,
+					})),
+				];
 	return buildSandboxProfileV0({
 		runtime: p.runtime,
 		mounts: [
@@ -169,8 +286,9 @@ function agentProfile(
 				sha256: p.agents.get(condition.id) as string,
 			},
 			{ target: "/work", kind: "rw-dir", role: "workspace", source: work },
+			...modelMounts,
 		],
-		env: AGENT_ENV,
+		env: model === null ? AGENT_ENV : { ...AGENT_ENV, ...modelEnv(model.access) },
 		cwd: "/work",
 		tmpfsBytes: spec.limits.tmpfsBytes,
 		...(unsafe === undefined ? {} : { unsafeForTests: unsafe }),
@@ -244,7 +362,7 @@ function agentOverlap(agentDir: string, dir: string, evaluatorPaths: readonly st
 const researchData = () => resolve(process.env.ENDO_RESEARCH_DATA ?? join(REPOSITORY, "..", "endophasia-research"));
 
 async function prepare(
-	spec: EndoProtectedSpecV0,
+	spec: EndoProtectedSpec,
 	candidates: readonly string[] | undefined,
 	dir: string,
 	containmentTools: { systemdRun?: string; systemctl?: string } | undefined,
@@ -289,6 +407,8 @@ async function prepare(
 			throw new EndoProtectedRefusalV0(`condition ${c.id}: ${(error as Error).message}`);
 		}
 	}
+	// Last, once nothing else can refuse: a model-connected run's session resources (closed by the caller, whatever happens).
+	const model = spec.schemaVersion === ENDO_PROTECTED_SPEC_V1 ? await prepareModel(spec, runtime.files) : null;
 	return {
 		bwrap: detected.bwrap,
 		runtime: runtime.files,
@@ -297,7 +417,70 @@ async function prepare(
 		agents,
 		agentCopies: new Map(),
 		containment: contained.containment,
+		model,
 	};
+}
+
+/** A model-connected run's session resources (PreparedModel). Refuses, naming why, when the host cannot hold a private relay socket. */
+async function prepareModel(spec: EndoProtectedSpecV1, runtime: readonly EndoRuntimeFileV0[]): Promise<PreparedModel> {
+	// Each relay's socket lives in a new private directory under the user's runtime directory: private to this user, and short enough for a
+	// socket's path (107 bytes).
+	const runtimeDirectory = process.env.XDG_RUNTIME_DIR;
+	const rd =
+		runtimeDirectory?.startsWith("/") === true ? lstatSync(runtimeDirectory, { throwIfNoEntry: false }) : undefined;
+	if (
+		runtimeDirectory === undefined ||
+		rd === undefined ||
+		!rd.isDirectory() ||
+		rd.uid !== process.getuid?.() ||
+		(rd.mode & 0o077) !== 0
+	)
+		throw new EndoProtectedRefusalV0(
+			"model access unavailable: the relay's socket needs XDG_RUNTIME_DIR, a directory private to this user",
+		);
+	const aliases: EndoRuntimeFileV0[] = [];
+	for (const a of spec.runtime.aliases) {
+		const file = runtime.find((f) => f.target === a.executable);
+		if (file === undefined)
+			throw new EndoProtectedRefusalV0(`runtime alias ${a.target}: ${a.executable} was not resolved`);
+		aliases.push({ target: a.target, source: file.source, sha256: file.sha256 });
+	}
+	const policy = endoProtectedRelayPolicyV1(spec.modelAccess);
+	const directory = mkdtempSync(join(runtimeDirectory, "endo-run-"));
+	chmodSync(directory, 0o700);
+	const probe = createServer((socket) => socket.destroy());
+	try {
+		const probeSocket = join(directory, "probe.sock");
+		await new Promise<void>((resolveListen, reject) => {
+			probe.once("error", reject);
+			probe.listen(probeSocket, () => resolveListen());
+		});
+		chmodSync(probeSocket, 0o600);
+		const bridge = modelRelayMountsV0({ socketPath: probeSocket }, directory).find((m) => m.role === "model-bridge");
+		if (bridge?.sha256 === undefined) throw new TypeError("the bridge was not written");
+		return {
+			access: spec.modelAccess,
+			policy,
+			policySha256: modelRelayPolicyDigestV0(policy),
+			runtimeDirectory,
+			directory,
+			probeSocket,
+			probe,
+			bridge: { source: bridge.source, sha256: bridge.sha256 },
+			aliases,
+		};
+	} catch (error) {
+		probe.close();
+		rmSync(directory, { recursive: true, force: true });
+		throw error;
+	}
+}
+
+/** Close a model-connected run's session resources. */
+async function closeModel(model: PreparedModel | null): Promise<void> {
+	if (model === null) return;
+	await new Promise<void>((done) => model.probe.close(() => done()));
+	rmSync(model.directory, { recursive: true, force: true });
 }
 
 const attemptsOf = (trialDir: string): number[] =>
@@ -310,7 +493,13 @@ const attemptsOf = (trialDir: string): number[] =>
 		: [];
 
 /** Host paths whose objects the sandbox must not see (by identity: an unrelated inside path of the same name, such as /work, passes). */
-function protectedTargets(dir: string, task: EndoLoadedEvaluatorV0, spec: EndoProtectedSpecV0, condition: string) {
+function protectedTargets(
+	dir: string,
+	task: EndoLoadedEvaluatorV0,
+	spec: EndoProtectedSpec,
+	condition: string,
+	model: PreparedModel | null,
+) {
 	const uid = process.getuid?.() ?? 0;
 	const agentSource = spec.conditions.find((c) => c.id === condition)?.agent.directory ?? "/";
 	return {
@@ -324,10 +513,10 @@ function protectedTargets(dir: string, task: EndoLoadedEvaluatorV0, spec: EndoPr
 			"evaluator-directory": task.directory,
 			"agent-source": agentSource,
 		},
-		readOnlyRuntime: [...spec.runtime.executables],
+		readOnlyRuntime: [...spec.runtime.executables, ...(model?.aliases.map((a) => a.target) ?? [])],
 		readOnlyMounts: ["/agent/.endo-probe", "/usr/.endo-probe"],
 		writable: "/work",
-		environment: [...Object.keys(AGENT_ENV), "PWD"],
+		environment: [...Object.keys(AGENT_ENV), ...(model === null ? [] : Object.keys(modelEnv(model.access))), "PWD"],
 		sockets: [
 			`/run/user/${uid}`,
 			"/run/dbus/system_bus_socket",
@@ -337,19 +526,28 @@ function protectedTargets(dir: string, task: EndoLoadedEvaluatorV0, spec: EndoPr
 			"/tmp/.X11-unix",
 			...(process.env.SSH_AUTH_SOCK?.startsWith("/") ? [process.env.SSH_AUTH_SOCK] : []),
 		],
+		...(model === null
+			? {}
+			: {
+					model: {
+						socket: ENDO_MODEL_SOCKET_TARGET_V0,
+						upstreamPort: Number(new URL(model.access.upstream).port),
+					},
+				}),
 	};
 }
 
 function recordBase(
-	run: EndoProtectedRunV0,
-	entry: EndoProtectedRunV0["plan"][number],
+	run: EndoProtectedRun,
+	entry: EndoProtectedRun["plan"][number],
 	attempt: number,
 	retryOf: number | null,
 	profile: EndoSandboxProfileV0,
 	evaluator: EndoLoadedEvaluatorV0,
 ) {
+	const v1 = run.schemaVersion === ENDO_PROTECTED_RUN_V1;
 	return {
-		schemaVersion: "endo.protected-trial.v0" as const,
+		schemaVersion: v1 ? ENDO_PROTECTED_TRIAL_V1 : ("endo.protected-trial.v0" as const),
 		run: { id: run.spec.id, specSha256: run.specSha256, seed: run.seed },
 		trial: { ...entry, attempt, retryOf },
 		isolation: {
@@ -360,10 +558,16 @@ function recordBase(
 			profileSha256: profile.sha256,
 			requested: {
 				namespaces: profile.logical.namespaces,
-				// endo.protected-trial.v0 records offline sandboxes only; a relay (EVAL-ISO-002) is never written into one.
+				// endo.protected-trial.v0 records offline sandboxes only; a relay (EVAL-ISO-002) is never written into one. A version 1
+				// record is of a relay sandbox only.
 				network: ((network) => {
-					if (network !== "none") throw new TypeError("endo.protected-trial.v0 records an offline sandbox only");
-					return network;
+					if (network !== (v1 ? "model-relay" : "none"))
+						throw new TypeError(
+							v1
+								? "endo.protected-trial.v1 records a model-connected sandbox only"
+								: "endo.protected-trial.v0 records an offline sandbox only",
+						);
+					return network as "none";
 				})(profile.logical.network),
 				rootReadOnly: profile.logical.rootReadOnly,
 				userNamespacesDisabled: profile.logical.userNamespacesDisabled,
@@ -375,50 +579,130 @@ function recordBase(
 					sha256: m.sha256,
 				})),
 			},
+			...(v1
+				? {
+						limits: {
+							memoryMaxBytes: (run.spec as EndoProtectedSpecV1).limits.memoryMaxBytes,
+							cpuQuotaPercent: (run.spec as EndoProtectedSpecV1).limits.cpuQuotaPercent,
+						},
+					}
+				: {}),
 		},
 		evaluationIdentity: { definitionSha256: evaluator.sha256, driverSha256: ENDO_EVALUATOR_DRIVER_SHA256_V0 },
 	};
 }
 
 /** Seal and write a record, deriving its invalidating conditions from its facts. */
+/** A model-connected attempt's facts of the model access: its relay, and what its recording shows. */
+interface ModelFacts {
+	relay: EndoProtectedRelayV1;
+	recording: EndoProtectedRecordingV1;
+}
+
+/** The agent's facts, as either version records them (a version 1 scope also carries its result). */
+type AgentFacts = Omit<EndoProtectedTrialV0["agent"], "scope"> & {
+	scope: { unit: string; established: boolean; ended: "confirmed" | "unconfirmed"; result?: string | null } | null;
+};
+
+/** Seal and write a record, deriving its invalidating conditions from its facts. A version 1 record needs its model facts. */
 function finish(
 	path: string,
 	base: ReturnType<typeof recordBase>,
-	facts: Pick<EndoProtectedTrialV0, "preflight" | "agent" | "submission" | "controller"> & {
+	facts: Pick<EndoProtectedTrialV0, "preflight" | "submission" | "controller"> & {
+		agent: AgentFacts;
 		evaluation: Pick<EndoProtectedTrialV0["evaluation"], "status" | "cases" | "reason" | "outputSha256">;
+		model?: ModelFacts;
 	},
-): EndoProtectedTrialV0 {
+): EndoProtectedTrial {
 	const { evaluationIdentity, ...rest } = base;
-	const network = {
-		mode: "none" as const,
-		relay: null,
-		status:
-			facts.preflight.status === "established"
-				? ("established" as const)
-				: facts.preflight.status === "failed"
-					? ("failed" as const)
-					: ("unavailable" as const),
-	};
-	const record = sealEndoProtectedTrialV0({
-		...rest,
+	const status =
+		facts.preflight.status === "established"
+			? ("established" as const)
+			: facts.preflight.status === "failed"
+				? ("failed" as const)
+				: ("unavailable" as const);
+	const common = {
 		preflight: facts.preflight,
-		network,
-		agent: facts.agent,
 		submission: facts.submission,
 		evaluation: { ...evaluationIdentity, ...facts.evaluation },
 		controller: facts.controller,
-		invalidating: expectedInvalidating(
-			facts.controller.finalized,
-			facts.preflight.status,
-			facts.agent,
-			facts.submission,
-			facts.evaluation.status,
-		),
 		recordedAt: new Date().toISOString(),
-	});
+	};
+	const scope = facts.agent.scope;
+	let record: EndoProtectedTrial;
+	if (rest.schemaVersion === ENDO_PROTECTED_TRIAL_V1) {
+		const model = facts.model;
+		if (model === undefined) throw new TypeError("a model-connected record needs its model facts");
+		const agent = { ...facts.agent, scope: scope === null ? null : { ...scope, result: scope.result ?? null } };
+		const seal = (recording: EndoProtectedRecordingV1) =>
+			sealEndoProtectedTrialV0<EndoProtectedTrialV1>({
+				...(rest as unknown as Omit<EndoProtectedTrialV1, "recordSha256">),
+				...common,
+				network: { mode: "model-relay", relay: model.relay, status },
+				agent,
+				recording,
+				invalidating: expectedInvalidatingV1(
+					facts.controller.finalized,
+					facts.preflight.status,
+					agent,
+					facts.submission,
+					facts.evaluation.status,
+					model.relay,
+					recording,
+				),
+			});
+		try {
+			record = seal(model.recording);
+		} catch (error) {
+			// A recording an agent shaped must never stop the controller (nor every resume after it): a summary that does not make a
+			// consistent record is written as inconsistent, claiming no exchange, and the trial is attrition. The store is kept as it is.
+			if (model.relay.status !== "ran" && model.relay.status !== "interrupted") throw error;
+			record = seal({
+				status: "inconsistent",
+				keyId: model.recording.keyId,
+				required: model.recording.required,
+				exchanges: [],
+			});
+		}
+	} else {
+		const agent = {
+			...facts.agent,
+			scope: scope === null ? null : { unit: scope.unit, established: scope.established, ended: scope.ended },
+		};
+		record = sealEndoProtectedTrialV0<EndoProtectedTrialV0>({
+			...(rest as unknown as Omit<EndoProtectedTrialV0, "recordSha256">),
+			...common,
+			network: { mode: "none", relay: null, status },
+			agent,
+			invalidating: expectedInvalidating(
+				facts.controller.finalized,
+				facts.preflight.status,
+				agent,
+				facts.submission,
+				facts.evaluation.status,
+			),
+		});
+	}
 	writeJsonOnce(path, record);
 	return record;
 }
+
+/** A relay that did not run: the declared policy, nothing counted, nothing recorded. */
+const relayNotRun = (
+	model: PreparedModel,
+	status: "not-started" | "failed-to-start",
+	required: number,
+): ModelFacts => ({
+	relay: {
+		policySha256: model.policySha256,
+		status,
+		admitted: null,
+		refusals: null,
+		transferredBytes: null,
+		recordingFailures: null,
+	},
+	recording: { status: "none", keyId: null, required, exchanges: [] },
+});
 
 /**
  * Durable scope records for one sandbox of an attempt (`<name>-scope.json`): the unit, written before anything is started, then the
@@ -468,7 +752,7 @@ const containmentRecord = (c: EndoContainmentV0) => ({
 const NOT_COLLECTED = { status: "not-collected" as const, files: [], sha256: null, refusals: [] };
 
 /** An attempt that may be retried: the controller was interrupted before the agent started. */
-export const retryable = (r: EndoProtectedTrialV0): boolean =>
+export const retryable = (r: EndoProtectedTrial): boolean =>
 	r.invalidating.includes("controller-interrupted") && r.agent.status === "not-run";
 
 /**
@@ -495,7 +779,8 @@ async function finalizeOnResume(
 	p: Prepared,
 	attemptDir: string,
 	base: ReturnType<typeof recordBase>,
-): Promise<EndoProtectedTrialV0> {
+	required: number,
+): Promise<EndoProtectedTrial> {
 	// Every sandbox of the attempt that recorded a scope (the preflight, the agent, the evaluation) is ended first: its launcher by
 	// identity, its scope through the user manager.
 	const scopes = await endAttemptScopes(p, attemptDir);
@@ -504,7 +789,10 @@ async function finalizeOnResume(
 	const preflight: EndoPreflightV0 = existsSync(join(attemptDir, "preflight.json"))
 		? (readJson(join(attemptDir, "preflight.json")) as EndoPreflightV0)
 		: { status: "unavailable", probes: [], reason: "the controller stopped before the boundary was checked" };
-	let agent: EndoProtectedTrialV0["agent"];
+	// A model-connected attempt's relay died with its controller: its socket's directory is removed, and the model facts are those its
+	// directory shows (modelFactsOnResume).
+	const model = p.model === null ? undefined : modelFactsOnResume(p.model, attemptDir, required);
+	let agent: AgentFacts;
 	// The agent's scope is recorded synchronously before anything is spawned: without that record, the agent never started (whatever the
 	// preflight said), and the attempt stays retryable.
 	if (preflight.status !== "established" || !existsSync(join(attemptDir, "agent-scope.json")))
@@ -519,14 +807,14 @@ async function finalizeOnResume(
 		};
 	else if (existsSync(join(attemptDir, "agent-ended.json")))
 		// The agent had ended, and the controller stopped later (collecting or evaluating): its facts are known, so they are kept.
-		agent = readJson(join(attemptDir, "agent-ended.json")) as EndoProtectedTrialV0["agent"];
+		agent = readJson(join(attemptDir, "agent-ended.json")) as AgentFacts;
 	else {
 		// The agent may have started. Its scope was recorded before anything started: the user manager stops exactly that scope, which
 		// ends every process it holds (an orphaned launcher, a process stranded in bubblewrap's launch window, a detached descendant), and
 		// confirms it. The init's identity, when recorded, is ended too, as a supplementary observation only.
-		let scope: EndoProtectedTrialV0["agent"]["scope"] = null;
+		let scope: AgentFacts["scope"] = null;
 		const ended = scopes.agent;
-		if (ended !== undefined) scope = { unit: ended.unit, established: false, ended: ended.ended };
+		if (ended !== undefined) scope = { unit: ended.unit, established: false, ended: ended.ended, result: null };
 		if (existsSync(join(attemptDir, "agent-started.json")))
 			await endSandboxV0((readJson(join(attemptDir, "agent-started.json")) as { init: EndoProcessIdentityV0 }).init);
 		agent = {
@@ -545,29 +833,87 @@ async function finalizeOnResume(
 		submission: NOT_COLLECTED,
 		evaluation: NOT_RUN,
 		controller: { finalized: "on-resume" },
+		...(model === undefined ? {} : { model }),
 	});
 }
 
+/**
+ * A model-connected attempt's model facts on resume, from its directory: the relay's own account when it was closed before the controller
+ * stopped (`model-ended.json`); otherwise, if it had started (`relay.json`), an interrupted relay whose counters are lost, and the
+ * exchanges its recording shows, with completeness unknown (an asynchronous capture log can lose its last writes with its process). The
+ * relay's socket directory, which its process could not remove, is removed here.
+ */
+function modelFactsOnResume(model: PreparedModel, attemptDir: string, required: number): ModelFacts {
+	const relayFile = join(attemptDir, "relay.json");
+	if (existsSync(relayFile)) {
+		const socketDirectory = (readJson(relayFile) as { socketDirectory?: unknown }).socketDirectory;
+		// Only a directory of the shape the relay makes, under this user's runtime directory: never a path taken on trust.
+		if (
+			typeof socketDirectory === "string" &&
+			dirname(socketDirectory) === model.runtimeDirectory &&
+			/^endo-relay-[A-Za-z0-9]{6}$/.test(socketDirectory.slice(model.runtimeDirectory.length + 1))
+		)
+			rmSync(socketDirectory, { recursive: true, force: true });
+	}
+	if (existsSync(join(attemptDir, "model-ended.json")))
+		return readJson(join(attemptDir, "model-ended.json")) as ModelFacts;
+	if (!existsSync(relayFile)) return relayNotRun(model, "not-started", required);
+	let shown: { keyId: string | null; exchanges: EndoModelExchangeSummaryV0[] } = { keyId: null, exchanges: [] };
+	try {
+		shown = summarizeModelRecordingV0(join(attemptDir, "model", "store"), attemptKey(attemptDir));
+	} catch {
+		// Nothing readable was recorded: no exchange is claimed.
+	}
+	return {
+		relay: {
+			policySha256: model.policySha256,
+			status: "interrupted",
+			admitted: null,
+			refusals: null,
+			transferredBytes: null,
+			recordingFailures: null,
+		},
+		recording: { status: "unknown", keyId: shown.keyId, required, exchanges: shown.exchanges },
+	};
+}
+
+/** An attempt's digest key (model/digest-key, 0600): the domain its recording's digests and blobs were made in. */
+const attemptKey = (attemptDir: string) =>
+	endoDigestKeyV0(
+		Buffer.from(readFileSync(join(attemptDir, "model", "digest-key"), "utf8").trim(), "hex"),
+		"installation",
+	);
+
 async function runAttempt(
 	p: Prepared,
-	run: EndoProtectedRunV0,
-	entry: EndoProtectedRunV0["plan"][number],
+	run: EndoProtectedRun,
+	entry: EndoProtectedRun["plan"][number],
 	attemptDir: string,
 	base: ReturnType<typeof recordBase>,
 	profile: EndoSandboxProfileV0,
 	options: EndoProtectedRunOptionsV0,
-): Promise<EndoProtectedTrialV0> {
+): Promise<EndoProtectedTrial> {
 	const spec = run.spec;
 	const task = spec.tasks.find((t) => t.id === entry.task)!;
 	const condition = spec.conditions.find((c) => c.id === entry.condition)!;
 	const evaluator = p.evaluators.get(task.id)!;
 	const work = join(attemptDir, "work");
 	const record = join(attemptDir, "record.json");
+	const required = p.model?.access.minExchanges ?? 0;
+	const notRun: AgentFacts = {
+		status: "not-run",
+		exitCode: null,
+		signal: null,
+		durationMs: null,
+		termination: "not-applicable",
+		outputSha256: null,
+		scope: null,
+	};
 	const preflight = await preflightV0(
 		p.bwrap,
 		profile,
 		p.node,
-		protectedTargets(options.dir, evaluator, spec, condition.id),
+		protectedTargets(options.dir, evaluator, spec, condition.id, p.model),
 		p.containment,
 		scopeRecorder(attemptDir, "preflight"),
 	);
@@ -575,55 +921,116 @@ async function runAttempt(
 	if (preflight.status !== "established")
 		return finish(record, base, {
 			preflight,
-			agent: {
-				status: "not-run",
-				exitCode: null,
-				signal: null,
-				durationMs: null,
-				termination: "not-applicable",
-				outputSha256: null,
-				scope: null,
-			},
+			agent: notRun,
 			submission: NOT_COLLECTED,
 			evaluation: NOT_RUN,
 			controller: { finalized: "normally" },
+			...(p.model === null ? {} : { model: relayNotRun(p.model, "not-started", required) }),
 		});
-	const ran = await runSandboxV0(p.bwrap, profile, condition.agent.argv, {
-		timeoutMs: spec.limits.agentTimeoutMs,
-		outputBytes: spec.limits.outputBytes,
-		containment: p.containment,
-		// The scope's unit is recorded before anything is started: a resume can always end exactly that scope.
-		...scopeRecorder(attemptDir, "agent"),
-		onStarted: (init) => {
-			writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
-			options.onAgentStarted?.(attemptDir);
-		},
-	});
-	const output = Buffer.concat([ran.stdout, ran.stderr]);
-	writeFileSync(join(attemptDir, "agent.log"), output, { mode: 0o600 });
-	const agent: EndoProtectedTrialV0["agent"] = {
-		status: !ran.started
-			? "failed-to-start"
-			: ran.timedOut
-				? "timed-out"
-				: ran.exitCode === 0
-					? "completed"
-					: "exited-nonzero",
-		exitCode: ran.exitCode !== null && ran.exitCode >= 0 && ran.exitCode <= 255 ? ran.exitCode : null,
-		signal: ran.signal,
-		durationMs: ran.durationMs,
-		termination: ran.termination,
-		outputSha256: sha256HexV0(output),
-		scope: { unit: ran.scope.unit, established: ran.scope.established, ended: ran.scope.ended },
-	};
-	writeJsonAtomically(join(attemptDir, "agent-ended.json"), agent);
-	if (agent.termination !== "confirmed" || !ran.started)
+	// A model-connected attempt: its own relay, started now that the boundary is established, recording into this attempt's own store
+	// under a new key. Failing to start it is recorded, and the agent never runs.
+	let relayed: Awaited<ReturnType<typeof startAttemptRelay>> | null = null;
+	let agentProfileUsed = profile;
+	if (p.model !== null) {
+		try {
+			relayed = await startAttemptRelay(p.model, attemptDir, options.relayFailsForTests === true);
+		} catch {
+			return finish(record, base, {
+				preflight,
+				agent: notRun,
+				submission: NOT_COLLECTED,
+				evaluation: NOT_RUN,
+				controller: { finalized: "normally" },
+				model: relayNotRun(p.model, "failed-to-start", required),
+			});
+		}
+		// The agent's profile mounts this attempt's relay socket where the preflight's had the probe's: the same logical profile, which is
+		// checked, never assumed.
+		agentProfileUsed = agentProfile(
+			p,
+			spec,
+			condition,
+			work,
+			options.unsafeForTests?.[condition.id],
+			relayed.relay.socketPath,
+		);
+		if (agentProfileUsed.sha256 !== profile.sha256) {
+			await relayed.close();
+			throw new TypeError("the agent's profile with its relay is not the profile its boundary was checked in");
+		}
+	}
+	let agent: AgentFacts;
+	let started = false;
+	let modelFacts: ModelFacts | undefined;
+	try {
+		const ran = await runSandboxV0(
+			p.bwrap,
+			agentProfileUsed,
+			p.model === null ? condition.agent.argv : bridgedCommandV0(p.node, MODEL_BRIDGE_PORT, condition.agent.argv),
+			{
+				timeoutMs: spec.limits.agentTimeoutMs,
+				outputBytes: spec.limits.outputBytes,
+				containment: p.containment,
+				...(spec.schemaVersion === ENDO_PROTECTED_SPEC_V1
+					? {
+							limits: {
+								memoryMaxBytes: spec.limits.memoryMaxBytes,
+								cpuQuotaPercent: spec.limits.cpuQuotaPercent,
+							},
+						}
+					: {}),
+				// The scope's unit is recorded before anything is started: a resume can always end exactly that scope.
+				...scopeRecorder(attemptDir, "agent"),
+				onStarted: (init) => {
+					writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
+					options.onAgentStarted?.(attemptDir);
+				},
+			},
+		);
+		const output = Buffer.concat([ran.stdout, ran.stderr]);
+		writeFileSync(join(attemptDir, "agent.log"), output, { mode: 0o600 });
+		started = ran.started;
+		agent = {
+			status: !ran.started
+				? "failed-to-start"
+				: ran.timedOut
+					? "timed-out"
+					: ran.exitCode === 0
+						? "completed"
+						: "exited-nonzero",
+			exitCode: ran.exitCode !== null && ran.exitCode >= 0 && ran.exitCode <= 255 ? ran.exitCode : null,
+			signal: ran.signal,
+			durationMs: ran.durationMs,
+			termination: ran.termination,
+			outputSha256: sha256HexV0(output),
+			scope: {
+				unit: ran.scope.unit,
+				established: ran.scope.established,
+				ended: ran.scope.ended,
+				...(p.model === null ? {} : { result: ran.scope.result ?? null }),
+			},
+		};
+		// The agent's facts are durable before its relay is closed: a controller stopped while closing it leaves them known.
+		writeJsonAtomically(join(attemptDir, "agent-ended.json"), agent);
+		if (relayed !== null) options.onAgentEnded?.(attemptDir);
+	} finally {
+		// The relay is closed once the agent's sandbox has ended (or failed): its open connections are dropped, and its recording is
+		// flushed to disk before anything is read from it.
+		if (relayed !== null) {
+			modelFacts = await relayed.close();
+			// Written whatever ended the agent's run (a thrown launch too), so a resume keeps the relay's own account.
+			writeJsonAtomically(join(attemptDir, "model-ended.json"), modelFacts);
+		}
+	}
+	const model = modelFacts === undefined ? {} : { model: modelFacts };
+	if (agent.termination !== "confirmed" || !started)
 		return finish(record, base, {
 			preflight,
 			agent,
 			submission: NOT_COLLECTED,
 			evaluation: NOT_RUN,
 			controller: { finalized: "normally" },
+			...model,
 		});
 	// Nothing the agent left in its workspace can stop the controller: collection maps every filesystem error to a refusal, and any
 	// other failure here is the controller's, recorded as an evaluation that could not run (never as an interruption to retry).
@@ -668,7 +1075,100 @@ async function runAttempt(
 		// The job directory holds the cases' inputs: removed once evaluated, so no run directory keeps hidden material.
 		rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
 	}
-	return finish(record, base, { preflight, agent, submission, evaluation, controller: { finalized: "normally" } });
+	return finish(record, base, {
+		preflight,
+		agent,
+		submission,
+		evaluation,
+		controller: { finalized: "normally" },
+		...model,
+	});
+}
+
+/**
+ * Start one attempt's relay: a new private directory for its recording (`model/`, with a new digest key, 0600), its capture log, and the
+ * relay itself with the run's declared policy. The relay's socket directory is recorded at once (`relay.json`), so that a resume can
+ * remove it if the controller stops. `close()` closes the relay (which flushes its recording), then derives the model facts from the
+ * recording on disk, never from the relay's own word alone.
+ */
+async function startAttemptRelay(
+	model: PreparedModel,
+	attemptDir: string,
+	failForTests: boolean,
+): Promise<{ relay: EndoModelRelayV0; close: () => Promise<ModelFacts> }> {
+	const dir = join(attemptDir, "model");
+	mkdirSync(dir, { mode: 0o700 });
+	chmodSync(dir, 0o700);
+	const keyBytes = randomBytes(32);
+	writeFileSync(join(dir, "digest-key"), keyBytes.toString("hex"), { mode: 0o600, flag: "wx" });
+	const key = endoDigestKeyV0(keyBytes, "installation");
+	const store = join(dir, "store");
+	const log = new EndoCaptureLogV0(store, key, "record", { async: true });
+	let relay: EndoModelRelayV0;
+	try {
+		if (failForTests) throw new TypeError("the relay was made to fail for a test");
+		relay = await startModelRelayV0({
+			upstream: model.access.upstream,
+			policy: model.policy,
+			log,
+			runtimeDirectory: model.runtimeDirectory,
+		});
+	} catch (error) {
+		log.close();
+		throw error;
+	}
+	try {
+		writeJsonAtomically(join(attemptDir, "relay.json"), { socketDirectory: dirname(relay.socketPath) });
+		// The relay judges by its own frozen copy of the policy: its digest must be the one the run declares.
+		if (relay.policyDigest !== model.policySha256)
+			throw new TypeError("the relay's policy is not the run's declared policy");
+	} catch (error) {
+		await relay.close();
+		log.close();
+		throw error;
+	}
+	let closed: Promise<ModelFacts> | undefined;
+	const close = () => {
+		closed ??= (async (): Promise<ModelFacts> => {
+			let closeFailed = 0;
+			try {
+				await relay.close();
+			} catch {
+				// A relay that could not close cleanly may not have flushed: counted as a failed write, so the recording is incomplete.
+				closeFailed = 1;
+			}
+			log.close();
+			const relayFacts: EndoProtectedRelayV1 = {
+				policySha256: relay.policyDigest,
+				status: "ran",
+				admitted: relay.admitted(),
+				refusals: { ...relay.refusals() },
+				transferredBytes: relay.transferredBytes(),
+				recordingFailures: relay.recordingFailures() + closeFailed,
+			};
+			let shown: { keyId: string | null; exchanges: EndoModelExchangeSummaryV0[] } = { keyId: null, exchanges: [] };
+			try {
+				shown = summarizeModelRecordingV0(store, key);
+			} catch {
+				// The recording does not load: no exchange is claimed, and the recording is incomplete (it has no key).
+			}
+			const whole =
+				relayFacts.recordingFailures === 0 &&
+				shown.keyId !== null &&
+				shown.exchanges.every((e) => e.verified && e.class !== "unended");
+			return {
+				relay: relayFacts,
+				recording: {
+					status: whole ? "complete" : "incomplete",
+					keyId: shown.keyId,
+					required: model.access.minExchanges,
+					exchanges: shown.exchanges,
+				},
+			};
+		})();
+		return closed;
+	};
+	return { relay, close };
 }
 
 /** Run, or resume, a protected experiment. Refuses (EndoProtectedRefusalV0) before running anything when anything it needs is wrong. */
@@ -676,16 +1176,30 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 	const spec = options.spec;
 	const dir = resolve(options.dir);
 	const p = await prepare(spec, options.bwrapCandidates, dir, options.containmentTools);
+	try {
+		return await runPrepared(p, options, dir);
+	} finally {
+		// A model-connected run's probe socket and bridge, whatever happened.
+		await closeModel(p.model);
+	}
+}
+
+async function runPrepared(
+	p: Prepared,
+	options: EndoProtectedRunOptionsV0,
+	dir: string,
+): Promise<EndoProtectedRunSummaryV0> {
+	const spec = options.spec;
 	const specSha256 = sha256HexV0(canonicalEndoJsonV0(spec as unknown as Record<string, unknown>));
 	const profiles = spec.conditions.map((c) => ({
 		condition: c.id,
 		sha256: agentProfile(p, spec, c, "/nonexistent-workspace", options.unsafeForTests?.[c.id]).sha256,
 	}));
 	const runPath = join(dir, "protected-run.json");
-	let run: EndoProtectedRunV0;
+	let run: EndoProtectedRun;
 	const scratch = join(dir, ".qualification", `session-${process.pid}-${Date.now()}`);
 	const qualify = async () => {
-		const out: EndoProtectedRunV0["evaluators"] = [];
+		const out: EndoProtectedRun["evaluators"] = [];
 		try {
 			for (const t of spec.tasks) {
 				const ev = p.evaluators.get(t.id)!;
@@ -714,6 +1228,22 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 	mkdirSync(dir, { recursive: true });
 	const releaseLock = lockRunDirectory(dir);
 	try {
+		// A model-connected session's private directory (its probe socket and bridge) is named in the run directory, so that a later
+		// session (holding the lock) removes one a killed controller left behind.
+		if (p.model !== null) {
+			const sessionFile = join(dir, "model-session.json");
+			const previous = existsSync(sessionFile)
+				? (readJson(sessionFile) as { directory?: unknown }).directory
+				: undefined;
+			if (
+				typeof previous === "string" &&
+				previous !== p.model.directory &&
+				dirname(previous) === p.model.runtimeDirectory &&
+				/^endo-run-[A-Za-z0-9]{6}$/.test(previous.slice(p.model.runtimeDirectory.length + 1))
+			)
+				rmSync(previous, { recursive: true, force: true });
+			writeJsonAtomically(sessionFile, { directory: p.model.directory });
+		}
 		// The agent directory is mounted as a copy the controller makes now and checks against its digest, never the live directory.
 		for (const c of spec.conditions) {
 			const copy = join(dir, ".agents", c.id);
@@ -742,6 +1272,11 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 			const read = checkEndoProtectedRunV0(readJson(runPath));
 			if (!read.ok) throw new EndoProtectedRefusalV0(`the existing run record is not readable: ${read.reason}`);
 			run = read.value;
+			// A run resumes only as the version it began as: an offline run is never continued as a model-connected one, nor the reverse.
+			if ((run.schemaVersion === ENDO_PROTECTED_RUN_V1) !== (spec.schemaVersion === ENDO_PROTECTED_SPEC_V1))
+				throw new EndoProtectedRefusalV0(
+					`the run directory holds a ${run.schemaVersion} run; a ${spec.schemaVersion} spec cannot resume it`,
+				);
 			const same =
 				run.specSha256 === specSha256 &&
 				run.isolation.executableSha256 === p.bwrap.sha256 &&
@@ -764,7 +1299,8 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 			const seed = spec.seed ?? randomInt(0, 0x100000000);
 			const evaluators = await qualify();
 			run = {
-				schemaVersion: "endo.protected-run.v0",
+				schemaVersion:
+					spec.schemaVersion === ENDO_PROTECTED_SPEC_V1 ? ENDO_PROTECTED_RUN_V1 : "endo.protected-run.v0",
 				runner: ENDO_PROTECTED_RUNNER_V0,
 				spec,
 				specSha256,
@@ -781,7 +1317,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 				profiles,
 				evaluators,
 				createdAt: new Date().toISOString(),
-			};
+			} as EndoProtectedRun;
 			const back = checkEndoProtectedRunV0(run);
 			if (!back.ok) throw new EndoProtectedRefusalV0(`refusing to write an unreadable run record: ${back.reason}`);
 			writeJsonAtomically(runPath, run);
@@ -798,7 +1334,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 			const latest = attempts.at(-1);
 			if (latest !== undefined) {
 				const latestDir = join(trialDir, `attempt-${latest}`);
-				let rec: EndoProtectedTrialV0;
+				let rec: EndoProtectedTrial;
 				if (existsSync(join(latestDir, "record.json"))) {
 					const read = readEndoProtectedTrialFileV0(join(latestDir, "record.json"));
 					if (!read.ok) throw new EndoProtectedRefusalV0(`attempt ${latestDir}: ${read.reason}`);
@@ -824,7 +1360,12 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 					)
 						throw new EndoProtectedRefusalV0(`${latestDir} is still being run by another controller`);
 					const started = marker.retryOf;
-					rec = await finalizeOnResume(p, latestDir, recordBase(run, entry, latest, started, profile, evaluator));
+					rec = await finalizeOnResume(
+						p,
+						latestDir,
+						recordBase(run, entry, latest, started, profile, evaluator),
+						p.model?.access.minExchanges ?? 0,
+					);
 					summary.finalizedOnResume++;
 				}
 				// Only an attempt whose agent never started may be retried: an interruption while or after the agent ran is final attrition, so
@@ -946,8 +1487,11 @@ function lockRunDirectory(dir: string): () => void {
 // ---- the report -----------------------------------------------------------------------------------------------------------------------------
 
 export interface EndoProtectedReportV0 {
-	schemaVersion: "endo.protected-report.v0";
-	run: { id: string; specSha256: string; seed: number; isolation: EndoProtectedRunV0["isolation"] };
+	/** `v1` for a model-connected run: its cells also count failures for too few model exchanges, and it states the model access. */
+	schemaVersion: "endo.protected-report.v0" | "endo.protected-report.v1";
+	run: { id: string; specSha256: string; seed: number; isolation: EndoProtectedRun["isolation"] };
+	/** A model-connected run's declared model access: the upstream, the model, the policy's digest and the required exchanges. */
+	modelAccess?: { upstream: string; model: string; policySha256: string; minExchanges: number };
 	/** How each kind of outcome enters an analysis. */
 	rules: string[];
 	cells: {
@@ -963,6 +1507,8 @@ export interface EndoProtectedReportV0 {
 		failed: number;
 		/** Of `failed`: the agent left no acceptable submission (missing, a link, a special file, unreadable, too large). */
 		failedWithoutSubmission: number;
+		/** Of `failed`, a model-connected run only: fewer successful model exchanges than the spec requires, whatever the evaluator found. */
+		failedBelowMinimumExchanges?: number;
 		attrition: Record<string, number>;
 	}[];
 	refusedRecords: { path: string; reason: string }[];
@@ -974,6 +1520,10 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 	const read = checkEndoProtectedRunV0(readJson(join(dir, "protected-run.json")));
 	if (!read.ok) throw new EndoProtectedRefusalV0(`the run record is not readable: ${read.reason}`);
 	const run = read.value;
+	// A model-connected run's records are read against the policy its spec declares, never against the one a record names.
+	const v1 = run.schemaVersion === ENDO_PROTECTED_RUN_V1;
+	const declared = v1 ? endoProtectedRelayPolicyV1((run.spec as EndoProtectedSpecV1).modelAccess) : null;
+	const declaredSha256 = declared === null ? null : modelRelayPolicyDigestV0(declared);
 	const refusedRecords: EndoProtectedReportV0["refusedRecords"] = [];
 	const cells = new Map<string, EndoProtectedReportV0["cells"][number]>();
 	for (const t of run.spec.tasks)
@@ -990,6 +1540,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 				passed: 0,
 				failed: 0,
 				failedWithoutSubmission: 0,
+				...(v1 ? { failedBelowMinimumExchanges: 0 } : {}),
 				attrition: {},
 			});
 	for (const entry of run.plan) {
@@ -1002,7 +1553,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			continue;
 		}
 		cell.attempted++;
-		let final: EndoProtectedTrialV0 | null = null;
+		let final: EndoProtectedTrial | null = null;
 		for (const n of attempts) {
 			cell.attempts++;
 			// The trial's outcome is its last attempt's; an unreadable last record is attrition, never replaced by an earlier one.
@@ -1024,29 +1575,40 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			const profile = run.profiles.find((x) => x.condition === entry.condition)?.sha256;
 			const ev = run.evaluators.find((x) => x.task === entry.task);
 			const problem =
-				v.trial.position !== entry.position ||
-				v.trial.task !== entry.task ||
-				v.trial.condition !== entry.condition ||
-				v.trial.trial !== entry.trial ||
-				v.trial.attempt !== n
-					? "the record is not this run's attempt at these coordinates"
-					: v.run.specSha256 !== run.specSha256 || v.run.seed !== run.seed || v.run.id !== run.spec.id
-						? "the record names another run"
-						: v.isolation.version !== run.isolation.version ||
-								v.isolation.executableSha256 !== run.isolation.executableSha256
-							? "the record names another isolation executable"
-							: v.isolation.profileSha256 !== profile
-								? "the record names another agent profile"
-								: v.evaluation.definitionSha256 !== ev?.definitionSha256 ||
-										v.evaluation.driverSha256 !== ev?.driverSha256
-									? "the record names another evaluator"
-									: n !== attempts.indexOf(n) + 1
-										? "the attempts are not numbered from 1 without gaps"
-										: (n === 1) !== (v.trial.retryOf === null) || (n > 1 && v.trial.retryOf !== n - 1)
-											? "the attempt does not retry the attempt before it"
-											: n > 1 && (previous === null || !retryable(previous))
-												? "the attempt retries one that may not be retried (its agent ran, or its record is unreadable)"
-												: null;
+				// Each record of the run's own version only: an offline record is never read as a model-connected one, nor the reverse.
+				(v.schemaVersion === ENDO_PROTECTED_TRIAL_V1) !== v1
+					? "the record's version is not the run's"
+					: v.trial.position !== entry.position ||
+							v.trial.task !== entry.task ||
+							v.trial.condition !== entry.condition ||
+							v.trial.trial !== entry.trial ||
+							v.trial.attempt !== n
+						? "the record is not this run's attempt at these coordinates"
+						: v.run.specSha256 !== run.specSha256 || v.run.seed !== run.seed || v.run.id !== run.spec.id
+							? "the record names another run"
+							: v.isolation.version !== run.isolation.version ||
+									v.isolation.executableSha256 !== run.isolation.executableSha256
+								? "the record names another isolation executable"
+								: v.isolation.profileSha256 !== profile
+									? "the record names another agent profile"
+									: v.evaluation.definitionSha256 !== ev?.definitionSha256 ||
+											v.evaluation.driverSha256 !== ev?.driverSha256
+										? "the record names another evaluator"
+										: n !== attempts.indexOf(n) + 1
+											? "the attempts are not numbered from 1 without gaps"
+											: (n === 1) !== (v.trial.retryOf === null) || (n > 1 && v.trial.retryOf !== n - 1)
+												? "the attempt does not retry the attempt before it"
+												: n > 1 && (previous === null || !retryable(previous))
+													? "the attempt retries one that may not be retried (its agent ran, or its record is unreadable)"
+													: v.schemaVersion === ENDO_PROTECTED_TRIAL_V1
+														? modelEvidenceProblem(
+																v,
+																join(trialDir, `attempt-${n}`),
+																run.spec as EndoProtectedSpecV1,
+																declared as EndoModelRelayPolicyV0,
+																declaredSha256 as string,
+															)
+														: null;
 			if (problem !== null) {
 				refusedRecords.push({ path: rel, reason: problem });
 				continue;
@@ -1065,23 +1627,82 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			if (o.outcome === "passed") cell.passed++;
 			else {
 				cell.failed++;
-				if (final.evaluation.status !== "failed") cell.failedWithoutSubmission++;
+				if (o.reason === "model-exchanges-below-minimum")
+					cell.failedBelowMinimumExchanges = (cell.failedBelowMinimumExchanges ?? 0) + 1;
+				else if (final.evaluation.status !== "failed") cell.failedWithoutSubmission++;
 			}
 		}
 	}
+	const access = v1 ? (run.spec as EndoProtectedSpecV1).modelAccess : null;
 	return {
-		schemaVersion: "endo.protected-report.v0",
+		schemaVersion: v1 ? "endo.protected-report.v1" : "endo.protected-report.v0",
 		run: { id: run.spec.id, specSha256: run.specSha256, seed: run.seed, isolation: run.isolation },
+		...(access === null
+			? {}
+			: {
+					modelAccess: {
+						upstream: access.upstream,
+						model: access.model,
+						policySha256: declaredSha256 as string,
+						minExchanges: access.minExchanges,
+					},
+				}),
 		rules: [
 			"planned counts every randomized trial; none is ever removed",
 			"qualified (judged): the boundary was established and checked and the agent's termination confirmed, and then either the independent evaluator ran, or the agent left no acceptable submission",
 			"passed and failed are counted among qualified trials only; a failure is the evaluator's, or the agent's own missing or unacceptable submission (failedWithoutSubmission), never inferred from missing evidence",
 			"attrition (by its first invalidating condition) and notAttempted are reported beside them, never as failures, and stay in the planned denominator",
 			"a retry is a new attempt naming the one it retries; the trial's outcome is its last attempt's (an unreadable one is attrition), and every attempt stays counted",
+			...(v1
+				? [
+						"model-connected: each record's recording is read again from its attempt's store, and a record whose exchanges, policy, limits or counts do not match it is refused (record-refused attrition)",
+						"model-connected: a trial with fewer successful model exchanges (answered 2xx, verified) than the spec's minimum is a failure (failedBelowMinimumExchanges), whatever the evaluator found; never a pass, never attrition",
+						"model-connected: a refused request is the agent's doing and does not invalidate a trial; a failed relay, an incomplete recording or a model server's failure on a forwarded request is attrition",
+					]
+				: []),
 		],
 		cells: [...cells.values()],
 		refusedRecords,
 	};
+}
+
+/**
+ * Why a model-connected attempt's record does not match its own evidence, or null. The record must name the run's declared policy (the
+ * relay enforced exactly it), its limits and required exchanges; and its recording, derived again from the attempt's store under the
+ * attempt's key, must be the one the record summarizes, with every forwarded request one the declared policy admits
+ * (verifyModelEvidenceV0). Nothing the record concludes is taken on its word.
+ */
+function modelEvidenceProblem(
+	v: EndoProtectedTrialV1,
+	attemptDir: string,
+	spec: EndoProtectedSpecV1,
+	declared: EndoModelRelayPolicyV0,
+	declaredSha256: string,
+): string | null {
+	if (v.network.relay.policySha256 !== declaredSha256)
+		return "the record's relay enforced another policy than the run declares";
+	if (v.recording.required !== spec.modelAccess.minExchanges)
+		return "the record requires another number of model exchanges than the run declares";
+	if (
+		v.isolation.limits.memoryMaxBytes !== spec.limits.memoryMaxBytes ||
+		v.isolation.limits.cpuQuotaPercent !== spec.limits.cpuQuotaPercent
+	)
+		return "the record names other resource limits than the run declares";
+	// Nothing recorded, or nothing claimed (an inconsistent summary, already attrition): there is no summary to check.
+	if (v.recording.status === "none" || v.recording.status === "inconsistent") return null;
+	let key: ReturnType<typeof attemptKey>;
+	try {
+		key = attemptKey(attemptDir);
+	} catch {
+		return "the attempt's digest key is not readable";
+	}
+	return verifyModelEvidenceV0({
+		store: join(attemptDir, "model", "store"),
+		key,
+		policy: declared,
+		recorded: v.recording,
+		admitted: v.network.relay.admitted,
+	});
 }
 
 // ---- commands ---------------------------------------------------------------------------------------------------------------------------------

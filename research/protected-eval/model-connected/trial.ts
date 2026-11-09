@@ -36,8 +36,8 @@ import {
 	runSandboxV0,
 } from "../../../adapters/sandbox/bubblewrap.ts";
 import { detectContainmentV0 } from "../../../adapters/sandbox/containment.ts";
+import { exchangesOutsidePolicyV0 } from "../../../adapters/sandbox/model-evidence.ts";
 import {
-	admitModelRequestV0,
 	bridgedCommandV0,
 	ENDO_PI_MODEL_ROUTES_V0,
 	type EndoModelRelayPolicyV0,
@@ -47,7 +47,6 @@ import {
 } from "../../../adapters/sandbox/model-relay.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../../../runtime/contracts/keyed-digest.ts";
-import { createEndoBlobStoreV0 } from "../../../storage/blob-store.ts";
 
 export const TRIAL_RECORD_VERSION = "endo.model-connected-trial.v0";
 const PORT = 18080;
@@ -331,36 +330,9 @@ async function runTrialUnder(args: string[], mask: number): Promise<Record<strin
 	}
 }
 
-/**
- * Every recorded exchange whose request the policy would refuse, judged again from the recorded body (decoded from the trial's blob
- * store under its key) by the same judge the relay used: route, size, a JSON object, the model. Empty when all of them are admissible.
- */
-export function exchangesOutsidePolicyV0(
-	store: string,
-	key: ReturnType<typeof endoDigestKeyV0>,
-	policy: EndoModelRelayPolicyV0,
-): { exchange: number; reason: string }[] {
-	const cassette = loadEndoCassetteV0(store, key);
-	const blobs = createEndoBlobStoreV0(join(store, "capture"), key, { readOnly: true });
-	const outside: { exchange: number; reason: string }[] = [];
-	for (const e of cassette.exchanges) {
-		let body: Uint8Array;
-		try {
-			body = blobs.get(e.requestBody.digest);
-		} catch {
-			outside.push({ exchange: e.exchange, reason: "body-unreadable" });
-			continue;
-		}
-		// The relay's lifetime exchange bound (absent from policies recorded before it existed): an exchange past it was never admissible.
-		if (policy.maxExchanges !== undefined && e.exchange > policy.maxExchanges) {
-			outside.push({ exchange: e.exchange, reason: "exchanges" });
-			continue;
-		}
-		const verdict = admitModelRequestV0(policy, { method: e.method, path: e.path, body });
-		if (!verdict.admitted) outside.push({ exchange: e.exchange, reason: verdict.reason });
-	}
-	return outside;
-}
+// Every recorded exchange whose request the policy would refuse: moved to adapters/sandbox/model-evidence.ts (EVAL-ISO-003), where the
+// protected runner's reader uses it too. Re-exported here unchanged.
+export { exchangesOutsidePolicyV0 };
 
 /**
  * What a trial's cassette must show, judged from its exchanges alone (pure, so each case is tested without a sandbox):

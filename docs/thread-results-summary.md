@@ -23,7 +23,7 @@ docs and research notes are the records.
 
 ## The DEVELOP workbench (late October – early November)
 
-A governed, evidence-preserving agent workstation, built in slices (#101–#125): Studio session desk;
+A governed, evidence-preserving agent workstation, built in slices (#101–#125, besides the harness and CI PRs listed elsewhere): Studio session desk;
 the governed live Pi workbench; live interventions; a harness-neutral session surface; project and
 worktree context; Field; model-provided reasoning in the conversation; a persistent project/task
 workspace; a shared workspace service; Oh My Pi saved-session observation and its v0 → v1 upgrade;
@@ -43,11 +43,16 @@ requesting a prepared attempt from the paired page.
 | Workbench command fix | Found by REVIEW-PILOT-001 run 1: a terminal command typed into the page was sent to Pi as chat; one rule now catches `pair`/`attempt` texts on page and terminal | #132 |
 | LIVE-PROCESS-CONTAINMENT-001 | A live Pi session's processes are owned: each session runs in its own transient systemd user scope; cleanup is stopped and the cgroup confirmed empty, reported as `confirmed` / `CLEANUP INCOMPLETE` / `UNVERIFIED` — never assumed. Result of the "Mission 01" containment review threads (review A–D) and the minimal correctness patch thread | #133, `docs/live-process-containment.md` |
 | EVAL-ISO-002 | Model access for a protected sandbox through one narrow Unix-socket relay: governed admission of only `POST /v1/chat/completions` for the declared model, every admitted exchange recorded as a verifiable cassette; real Pi ran inside the sandbox against a real local model | #134, `docs/protected-model-access.md` |
-| EXPERIENCE-DATASET-V1 | Research design (no prototype, deliberately): qualified experience bundles as a derived, versioned projection; protected-trial records are the first full-bundle source; why MEM-000 lacked eligible diversity; EXPERIENCE-DIVERSITY-001 pre-registered experiment proposed | #135, `research/experience-dataset/EXPERIENCE-DATASET-V1.md` |
+| EXPERIENCE-001 (experience dataset v1) | Research design (no prototype, deliberately): qualified experience bundles as a derived, versioned projection; protected-trial records are the first full-bundle source; why MEM-000 lacked eligible diversity; EXPERIENCE-DIVERSITY-001 proposed (not prepared: an owner decision, after EVAL-ISO-002's integration) | #135, `research/experience-dataset/EXPERIENCE-DATASET-V1.md` |
 | COUNTERFACTUAL-REPLAY-001 | Feasibility probed with two measurements on a real model: cassette replay of a real run misses at exchange 2 (environment class: file mtimes); decision reproduction gives four different trajectories from an identical first request, all reaching the same workspace and answer; Pi sends no `seed`/`temperature`. Verdict: counterfactuals feasible at the initial checkpoint now; mid-run needs a pinned clock and prefix-then-live upstream; attribution is distributional only, no causal claims from traces | #136, `research/counterfactual-replay/COUNTERFACTUAL-REPLAY-001.md` |
 
-## Open threads as of this summary
+## Open threads as of this summary (2026-11-09)
 
-- The REVIEW-PILOT-001 operator review and decision are still pending (#131).
-- EVAL-ISO-002 is a mechanism, not yet wired into `endo experiment protected-run` (#134).
-- Owner decisions are queued in EXPERIENCE-DATASET-V1 §8 and COUNTERFACTUAL-REPLAY-001 §7.
+- **Open integration, not merged:** EVAL-ISO-003 (#137) proposes wiring EVAL-ISO-002's relay into
+  `endo experiment protected-run` as a version 1, model-connected spec. As merged (#134), EVAL-ISO-002
+  is a mechanism used by its research driver only. #137's status is on the PR, not here.
+- **Human decisions pending:** the REVIEW-PILOT-001 operator review and acceptance decision (#131;
+  the run is done, the worksheet is unfilled); the owner decisions in EXPERIENCE-001 §8 and
+  COUNTERFACTUAL-REPLAY-001 §7.
+- **Proposed, not built:** EXPERIENCE-DIVERSITY-001 (EXPERIENCE-001 §5) and CF-001
+  (COUNTERFACTUAL-REPLAY-001 §5).

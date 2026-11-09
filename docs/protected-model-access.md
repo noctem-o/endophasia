@@ -118,7 +118,9 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
 - **The trial directory and the workspace's starting state** (Codex, #136):
   - the trial directory is made by one non-recursive mkdir when it is used, then checked to be a real directory of this user's, and set
     to exactly 0700. A name taken meanwhile (another user's directory, a link) is refused, never adopted. Its missing parents are made
-    one at a time and each set to 0700, so a umask that removes the owner's own bits (0177) cannot leave an unusable directory;
+    one at a time and each set to 0700, and so are the trial's own subdirectories. A umask that
+    removes the owner's own bits (0177) is refused before anything is made: Pi, in the sandbox, inherits it, so such a trial could only
+    fail part way. The umask is not overridden instead, because the workspace digest includes file modes;
   - the workspace root's time is set to 2000-01-01T00:00:00Z before Pi starts, and recorded (`workspace.initialRootMtimeS`): the agent
     sees it (`ls -la`), and a clock time would make identical runs differ. **One difference remains:** the sandbox's own root (`..` from
     `/work`) is made by bubblewrap at each run and shows that run's setup time. Measured: two runs a minute apart printed the same `.`

@@ -68,6 +68,26 @@ function makeParentsPrivate(dir: string): void {
 	chmodSync(dir, 0o700);
 }
 
+/**
+ * Why a umask cannot run a trial, or null. A umask that removes any of the owner's own bits (0177, say) leaves new directories the owner
+ * cannot enter: the driver's own capture store, and everything Pi makes inside the sandbox, which inherits it. Such a trial could only
+ * fail part way and leave a directory that blocks a retry, so it is refused before anything is made (Codex, #134). The umask is not
+ * changed instead: the workspace digest includes each file's mode, so it is part of what the agent's files look like.
+ */
+export function umaskRefusalV0(mask: number): string | null {
+	return (mask & 0o700) === 0
+		? null
+		: `the umask ${mask.toString(8).padStart(4, "0")} removes the owner's own permissions: a trial needs one that keeps them (0022 or 0077, say)`;
+}
+
+/** A directory inside the new trial directory, made 0700 whatever the umask, and checked (Codex, #134). */
+export function privateChildDirectoryV0(dir: string): void {
+	mkdirSync(dir, { mode: 0o700 });
+	chmodSync(dir, 0o700);
+	const s = lstatSync(dir);
+	if (!s.isDirectory() || (s.mode & 0o777) !== 0o700) throw new TypeError(`${dir} could not be made 0700`);
+}
+
 export function newPrivateTrialDirectoryV0(out: string): void {
 	makeParentsPrivate(dirname(out));
 	mkdirSync(out, { mode: 0o700 });
@@ -116,6 +136,10 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 	};
 	const timeoutMs = Number(flag(args, "--timeout-s", "600")) * 1000;
 	if (existsSync(out)) throw new TypeError(`${out} exists: a trial directory is new`);
+	const mask = process.umask(0o077);
+	process.umask(mask);
+	const masked = umaskRefusalV0(mask);
+	if (masked !== null) throw new TypeError(masked);
 	const bw = detectBubblewrapV0();
 	if (!bw.ok) throw new TypeError(`isolation unavailable: ${bw.detail}`);
 	const contained = await detectContainmentV0();
@@ -130,7 +154,7 @@ export async function runTrial(args: string[]): Promise<Record<string, unknown>>
 	const controller = join(out, "controller");
 	const work = join(out, "work");
 	const agent = join(out, "pi-agent");
-	for (const d of [controller, work, agent]) mkdirSync(d, { mode: 0o700 });
+	for (const d of [controller, work, agent]) privateChildDirectoryV0(d);
 	writeFileSync(
 		join(agent, "models.json"),
 		JSON.stringify({

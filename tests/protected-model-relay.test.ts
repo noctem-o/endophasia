@@ -306,6 +306,25 @@ describe("EVAL-ISO-002: the trial directory and the workspace's starting state (
 		}
 	});
 
+	it("the trial's own child directories are 0700 under an owner-restricting umask, and such a umask is refused before a trial starts (Codex, #134)", async () => {
+		const { privateChildDirectoryV0, umaskRefusalV0 } = await trialModule();
+		const parent = join(base, "children");
+		mkdirSync(parent, { mode: 0o700 });
+		const previous = process.umask(0o177);
+		try {
+			for (const name of ["controller", "work", "pi-agent"]) {
+				const d = join(parent, name);
+				privateChildDirectoryV0(d);
+				expect(statSync(d).mode & 0o777).toBe(0o700);
+				writeFileSync(join(d, "models.json"), "{}", { flag: "wx" });
+			}
+		} finally {
+			process.umask(previous);
+		}
+		for (const ok of [0o022, 0o077, 0o027, 0o002]) expect(umaskRefusalV0(ok)).toBeNull();
+		for (const bad of [0o177, 0o277, 0o477, 0o777]) expect(umaskRefusalV0(bad)).toMatch(/owner/);
+	});
+
 	it("the workspace root starts at the same time in every trial, whatever the clock", async () => {
 		const { pinWorkspaceRootTimeV0, WORKSPACE_ROOT_TIME_V0 } = await trialModule();
 		const work = join(base, "work");

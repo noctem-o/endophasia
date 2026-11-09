@@ -333,7 +333,7 @@ describe("endo attempt evidence: the reading", () => {
 			readAtMs: 1,
 		});
 		const text = renderEndoAttemptEvidenceV0(v).split("\n");
-		expect(text.slice(0, 10)).toEqual([
+		expect(text.slice(0, 11)).toEqual([
 			"attempt endo.attempt.0123456789abcdef0123456789abcdef (task endo.task.t): Fix slugify",
 			"  handoff   [operator] said they handed it to Pi",
 			"  outcome   [operator] recorded as reported, not verified: all tests pass",
@@ -342,6 +342,7 @@ describe("endo attempt evidence: the reading", () => {
 			`  candidate [none] no record names one; checked at: ${"a".repeat(12)}, ${"b".repeat(12)}`,
 			`  tree now  [observed] ${"b".repeat(12)}, clean (/work/project)`,
 			`  check     [observed; linked to this attempt by the operator] node --test: Observed check passed at ${"b".repeat(12)}; Recorded at this working tree's current HEAD`,
+			"  plan      [none] prepared without a verification plan",
 			"  decision  [operator] status review",
 			"  gap       The task's status is not done: the operator has not recorded accepting it.",
 		]);

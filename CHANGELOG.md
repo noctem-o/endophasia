@@ -14,6 +14,19 @@
   - `endo attempt show` carries the same record states. Damaged files are left as found.
 
 ### Added
+- **DEVELOP-VERIFY-001: verification plans and the acceptance ledger** ([design](docs/designs/develop-verification-plans.md)).
+  - `endo attempt prepare --plan-file plan.json` writes the plan into the attempt (`endo.develop-attempt.v1`). The plan names checks (an
+    exact argv and what the operator says it shows) and the criteria each addresses, or none ("your judgment"). The brief (`v1`) tells
+    the agent how its work will be checked. Attempts without a plan are unchanged (`v0`).
+  - The acceptance ledger is derived from the receipts already recorded, never stored. Per planned check it gives the result at the
+    current HEAD: passed, failed, inconclusive, `mixed` (runs at this commit disagree), tree changed since, stale, elsewhere, not run, or
+    not compared. Per criterion it follows one rule, and never says "met".
+  - The Task view opens an attempt on its acceptance ledger and planned checks, each with the exact command that would run it, and
+    folds the brief once there is evidence. `endo.develop-attempts-view.v3`; the page's gate re-derives the ledger.
+  - `endo attempt evidence` (`endo.develop-attempt-evidence.v2`) carries the ledger and one new gap,
+    `planned-check-not-passed-at-current-head`.
+  - Nothing new runs anything: checks are still run only from the argv typed after `endo attempt check … --`.
+
 - **EVAL-ISO-002: model access for a protected sandbox, through a narrow recording relay** (mechanism; not yet in
   `endo experiment protected-run`).
   - A sandbox's only way out is one Unix socket, bind-mounted alone (`socket` mount kind, `network: "model-relay"`). Behind it, the

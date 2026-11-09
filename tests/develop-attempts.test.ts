@@ -23,7 +23,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
 	ENDO_DEVELOP_ATTEMPT_LABELS_V0,
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
-	type EndoDevelopAttemptsViewV2,
+	type EndoDevelopAttemptsViewV3,
 	type EndoDevelopAttemptV0,
 	renderEndoDevelopBriefV0,
 	validateEndoDevelopAttemptV0,
@@ -169,7 +169,10 @@ describe("write-once records", () => {
 		});
 		write(`${other}.prepared.json`, record); // a copy under another attempt's name
 		writeFileSync(join(dir, `endo.attempt.${"4".repeat(32)}.prepared.json`), "{not json");
-		writeFileSync(join(dir, `endo.attempt.${"5".repeat(32)}.prepared.json`), "x".repeat(81 * 1024));
+		writeFileSync(
+			join(dir, `endo.attempt.${"5".repeat(32)}.prepared.json`),
+			"x".repeat(ENDO_DEVELOP_ATTEMPT_LIMITS_V0.maxPreparedBytes + 1),
+		);
 		write(`endo.attempt.${"6".repeat(32)}.outcome.json`, {
 			schemaVersion: "endo.develop-attempt-outcome.v0",
 			attemptId: `endo.attempt.${"6".repeat(32)}`,
@@ -590,7 +593,7 @@ describe("the workbench route and the page's gate", () => {
 		const call = route(w);
 		const reply = await call("GET", "attempts");
 		expect(reply.status).toBe(200);
-		const view = reply.body as EndoDevelopAttemptsViewV2;
+		const view = reply.body as EndoDevelopAttemptsViewV3;
 		expect([view.state, view.taskId, view.attempts.map((x) => x.id)]).toEqual(["ready", w.taskId, [a.id]]);
 		expect(readAttempts(JSON.parse(JSON.stringify(view)))).toEqual(view);
 		const text = JSON.stringify(view);
@@ -619,7 +622,7 @@ describe("the workbench route and the page's gate", () => {
 		const w = seeded();
 		const a = ok(w.service.prepare(w.projectId, w.taskId, { objective: "o" }));
 		ok(w.service.handoff(a.id, { target: "Codex" }));
-		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV2;
+		const good = JSON.parse(JSON.stringify(w.service.viewFor(w.projectId))) as EndoDevelopAttemptsViewV3;
 		expect(readAttempts(good)).not.toBeNull();
 		const bad = (mutate: (v: any) => void) => {
 			const copy = JSON.parse(JSON.stringify(good));

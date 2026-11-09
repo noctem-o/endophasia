@@ -23,15 +23,19 @@ import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
-	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
+	ENDO_DEVELOP_ATTEMPT_SCHEMA_V1,
+	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
 	ENDO_DEVELOP_BRIEF_V0,
+	ENDO_DEVELOP_BRIEF_V1,
+	type EndoAttemptVerificationViewV0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
 	type EndoDevelopAttemptStateV0,
-	type EndoDevelopAttemptsViewV2,
+	type EndoDevelopAttemptsViewV3,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV2,
+	type EndoDevelopAttemptViewV3,
 	type EndoDevelopTaskWordV0,
+	endoAttemptPlanV0,
 	endoDevelopAttemptStateV0,
 	endoDevelopTaskWordsChangedV0,
 	renderEndoDevelopBriefV0,
@@ -39,7 +43,11 @@ import {
 	validateEndoDevelopAttemptOutcomeV0,
 	validateEndoDevelopAttemptV0,
 } from "../../protocol/develop-attempts.ts";
-import { type EndoReceiptCurrentV0, endoReceiptRelationV0 } from "../../protocol/develop-receipts.ts";
+import {
+	type EndoDevelopReceiptV0,
+	type EndoReceiptCurrentV0,
+	endoReceiptRelationV0,
+} from "../../protocol/develop-receipts.ts";
 import {
 	checkEndoDevelopTextV0,
 	ENDO_PROJECT_ID_PATTERN_V0,
@@ -57,6 +65,7 @@ import { endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { type EndoSessionLogReadV0, endoAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
+import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
 
 /**
  * Why an operation was refused. Nothing was written for any of them.
@@ -137,15 +146,18 @@ export const endoShownTextV0 = (text: string, max: number): string => {
 	return safe.length > max ? `${safe.slice(0, max - 1)}\u2026` : safe;
 };
 
-/** One attempt's receipts as the workbench shows them: no path, each related to the reader's working tree. */
+/**
+ * One attempt's receipts as the workbench shows them: no path, each related to the reader's working tree. `records` are the receipts as
+ * read (for the ledger), null when the directory could not be read.
+ */
 function receiptsOf(
 	attemptId: string,
 	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
-): EndoDevelopAttemptViewV2["receipts"] {
-	if (receipts === null) return { state: "ready", list: [], problems: 0 };
+): { view: EndoDevelopAttemptViewV3["receipts"]; records: EndoDevelopReceiptV0[] | null } {
+	if (receipts === null) return { view: { state: "ready", list: [], problems: 0 }, records: null };
 	const read = receipts.store.read(attemptId);
-	if (!read.ok) return { state: "unreadable", list: [], problems: 0 };
-	return {
+	if (!read.ok) return { view: { state: "unreadable", list: [], problems: 0 }, records: null };
+	const view: EndoDevelopAttemptViewV3["receipts"] = {
 		state: "ready",
 		list: read.receipts.map((r) => ({
 			id: r.id,
@@ -161,6 +173,43 @@ function receiptsOf(
 			relation: endoReceiptRelationV0(r, receipts.current),
 		})),
 		problems: read.problems.length,
+	};
+	return { view, records: read.receipts };
+}
+
+/**
+ * The plan and its ledger as the page shows them. Without readable receipts (no receipt store, or its directory unreadable) nothing is
+ * compared: every check is `unavailable`, never `not-run`, since a receipt that could not be read may exist.
+ */
+export function endoAttemptVerificationViewV0(
+	attempt: EndoDevelopAttemptV0,
+	receipts: readonly EndoDevelopReceiptV0[] | null,
+	current: EndoReceiptCurrentV0 | null,
+): EndoAttemptVerificationViewV0 | null {
+	const plan = endoAttemptPlanV0(attempt);
+	if (plan === null) return null;
+	const ledger = endoAcceptanceLedgerV0({
+		plan,
+		receipts: receipts ?? [],
+		current: receipts === null ? null : current,
+	});
+	return {
+		checks: ledger.checks.map((c, i) => {
+			const planned = plan.checks[i] as (typeof plan.checks)[number];
+			return {
+				name: c.name,
+				// Planned arguments are refused unless they can be shown exactly (protocol/develop-verification.ts): this is the argv itself.
+				argv: [...planned.argv],
+				shows: planned.shows,
+				state: c.state,
+				current: c.current,
+				atHead: c.atHead,
+				otherCommit: c.otherCommit,
+				runs: c.runs,
+			};
+		}),
+		criteria: ledger.criteria,
+		unplanned: ledger.unplanned,
 	};
 }
 
@@ -325,9 +374,9 @@ export class DevelopAttemptsServiceV0 {
 		projectId: string,
 		receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null = null,
 		aliasOf?: (sessionId: string) => string,
-	): EndoDevelopAttemptsViewV2 {
-		const empty = (state: EndoDevelopAttemptsViewV2["state"], taskId: string | null): EndoDevelopAttemptsViewV2 => ({
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
+	): EndoDevelopAttemptsViewV3 {
+		const empty = (state: EndoDevelopAttemptsViewV3["state"], taskId: string | null): EndoDevelopAttemptsViewV3 => ({
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
 			state,
 			taskId,
 			attempts: [],
@@ -342,13 +391,14 @@ export class DevelopAttemptsServiceV0 {
 		if (!read.ok) return empty("unreadable", taskId);
 		const log = this.#logOnce();
 		return {
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V2,
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
 			state: "ready",
 			taskId,
 			attempts: read.entries
 				.filter((e) => e.attempt.projectId === projectId && e.attempt.taskId === taskId)
 				.map((e) => {
 					const r = this.#report(e, file, () => ({ state: "unavailable" }));
+					const seen = receiptsOf(e.attempt.id, receipts);
 					return {
 						id: e.attempt.id,
 						state: r.state,
@@ -365,9 +415,10 @@ export class DevelopAttemptsServiceV0 {
 								: { recordedAtMs: e.outcome.recordedAtMs, kind: e.outcome.kind, note: e.outcome.note },
 						taskWordsChanged: r.taskWordsChanged,
 						brief: renderEndoDevelopBriefV0(e.attempt),
-						receipts: receiptsOf(e.attempt.id, receipts),
+						receipts: seen.view,
 						// The session is shown by its presented alias: a label, never a handle to it.
 						execution: this.#execution(e, log, aliasOf),
+						verification: endoAttemptVerificationViewV0(e.attempt, seen.records, receipts?.current ?? null),
 					};
 				}),
 			problems: read.problems.length,
@@ -383,7 +434,7 @@ export class DevelopAttemptsServiceV0 {
 	prepare(
 		projectId: string,
 		taskId: string,
-		input: { objective: unknown; constraints?: unknown; reportBack?: unknown },
+		input: { objective: unknown; constraints?: unknown; reportBack?: unknown; verification?: unknown },
 	): DevelopAttemptsResultV0<EndoDevelopAttemptV0> {
 		if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId) || !ENDO_TASK_ID_PATTERN_V0.test(taskId))
 			return refuse("bad-request");
@@ -405,8 +456,10 @@ export class DevelopAttemptsServiceV0 {
 			return refuse("limit");
 		let attempt: EndoDevelopAttemptV0;
 		try {
+			// With a verification plan, a v1 record (brief v1, which renders the plan); without one, exactly the v0 record as before.
+			const planned = input.verification !== undefined;
 			attempt = validateEndoDevelopAttemptV0({
-				schemaVersion: ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
+				schemaVersion: planned ? ENDO_DEVELOP_ATTEMPT_SCHEMA_V1 : ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
 				id: `endo.attempt.${randomBytes(16).toString("hex")}`,
 				projectId,
 				taskId,
@@ -421,9 +474,10 @@ export class DevelopAttemptsServiceV0 {
 				objective: checked.objective,
 				constraints: checked.constraints,
 				reportBack: checked.reportBack,
-				brief: ENDO_DEVELOP_BRIEF_V0,
+				brief: planned ? ENDO_DEVELOP_BRIEF_V1 : ENDO_DEVELOP_BRIEF_V0,
 				recordedBy: "operator",
 				via: "cli",
+				...(planned ? { verification: input.verification } : {}),
 			});
 		} catch {
 			return refuse("bad-request");

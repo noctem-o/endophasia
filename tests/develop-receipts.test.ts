@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
-import type { EndoDevelopAttemptsViewV2 } from "../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV3 } from "../protocol/develop-attempts.ts";
 import {
 	ENDO_RECEIPT_LIMITATION_TEXT_V0,
 	ENDO_RECEIPT_LIMITATIONS_V0,
@@ -1107,7 +1107,7 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 		const r = await check(w, ["sh", "check.sh", CANARY]);
 		const reply = await routes(w, w.project).route(["workspace", "attempts"], "GET", "", null);
 		expect(reply.status).toBe(200);
-		const view = reply.body as EndoDevelopAttemptsViewV2;
+		const view = reply.body as EndoDevelopAttemptsViewV3;
 		const attempt = view.attempts.find((a) => a.id === w.attemptId);
 		expect(attempt?.receipts).toEqual({
 			state: "ready",
@@ -1135,12 +1135,12 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 		expect(text).not.toContain("/.git");
 		// Compared with ANOTHER launch directory (a different repository): not compared, never "stale".
 		const elsewhere = await routes(w, w.otherRepo).route(["workspace", "attempts"], "GET", "", null);
-		const shown = (elsewhere.body as EndoDevelopAttemptsViewV2).attempts.find((a) => a.id === w.attemptId);
+		const shown = (elsewhere.body as EndoDevelopAttemptsViewV3).attempts.find((a) => a.id === w.attemptId);
 		expect(shown?.receipts.list.map((x) => x.relation)).toEqual(["other-repository"]);
 		commit(w.project, "z.txt", "z");
 		const after_ = await routes(w, w.project).route(["workspace", "attempts"], "GET", "", null);
 		expect(
-			(after_.body as EndoDevelopAttemptsViewV2).attempts.find((a) => a.id === w.attemptId)?.receipts.list[0]
+			(after_.body as EndoDevelopAttemptsViewV3).attempts.find((a) => a.id === w.attemptId)?.receipts.list[0]
 				?.relation,
 		).toBe("head-differs");
 	});

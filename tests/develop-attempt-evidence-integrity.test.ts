@@ -200,7 +200,7 @@ describe("EVIDENCE-INTEGRITY-001: an authorisation record that cannot be read is
 		expect(text).toContain(
 			"  sent      [observed] No send to Pi through the workbench was authorised for this attempt.",
 		);
-		expect(view.schemaVersion).toBe("endo.develop-attempt-evidence.v1");
+		expect(view.schemaVersion).toBe("endo.develop-attempt-evidence.v2");
 	});
 
 	it("2. a valid authorisation and a confirmed dispatch: observed present, joined to the log", () => {

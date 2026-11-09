@@ -42,7 +42,7 @@ Every section of the reading names its source. The categories are never merged.
 endo attempt evidence [--root dir] --attempt <id> [--cwd <dir>]
 ```
 
-It prints canonical JSON (`endo.develop-attempt-evidence.v1`; see [Damaged records](#damaged-records-evidence-integrity-001)) on stdout and a short labelled summary on stderr. It always exits 0
+It prints canonical JSON (`endo.develop-attempt-evidence.v2`; v1 added the [damaged-record states](#damaged-records-evidence-integrity-001), v2 the verification plan and its ledger, [develop-verification-plans.md](develop-verification-plans.md)) on stdout and a short labelled summary on stderr. It always exits 0
 when the attempt exists. It reads, in one process:
 
 - the attempt and its records (`DevelopAttemptsServiceV0.get`, which already includes the execution reading);

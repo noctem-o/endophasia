@@ -26,7 +26,7 @@ import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { removeTempRoots } from "./cockpit-fixtures.ts";
 import { serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
-import { cleanGitFixtures, demoRepo, haveGit } from "./git-fixtures.ts";
+import { cleanGitFixtures, demoRepo, git, haveGit } from "./git-fixtures.ts";
 import { developStore } from "./studio-develop-fixtures.ts";
 import { Approval, FakeDesk, FakeSession, textMessage } from "./workbench-fixtures.ts";
 
@@ -827,6 +827,159 @@ suite("work attempts in the Task view: read-only, copyable, honest about what wa
 			);
 			noAgentTraffic(api);
 			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?/.test(r))).toEqual([]);
+			expect(page.seen.problems).toEqual([]);
+		});
+});
+
+// DEVELOP-VERIFY-001 (docs/designs/develop-verification-plans.md): an attempt prepared with a verification plan opens on its acceptance
+// ledger. The operator's questions, in order: which criteria have something observed behind them at this HEAD, which do not, and which
+// rest on their judgment. Checked in a tree with uncommitted changes (nothing counts), then at a clean commit (a pass, a disagreement at
+// HEAD, a check not run, a criterion left to judgment). Nothing on the page can run a check; no criterion is ever called met or verified.
+suite("an attempt with a verification plan: the acceptance ledger in the Task view", () => {
+	const attemptsOf = (root: string) =>
+		new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
+	const refresh = (page: Page) => page.click("[data-testid=tasks-refresh]");
+	const PLAN = {
+		checks: [
+			{ name: "unit", argv: ["npm", "test"], shows: "the parser's unit tests pass" },
+			{ name: "lint", argv: ["npm", "run", "lint"], shows: "the linter reports nothing" },
+			{ name: "cli", argv: ["node", "bin/parse.mjs", "f(a, b,)"], shows: "the real CLI parses a trailing comma" },
+		],
+		criteria: [
+			{ text: "npm test passes at a clean commit", checks: ["unit"] },
+			{ text: "The code is lint-clean", checks: ["lint"] },
+			{ text: "The CLI accepts f(a, b,) and prints the same tree as f(a, b)", checks: ["cli"] },
+			{ text: "The README's grammar section documents trailing commas", checks: [] },
+		],
+	};
+	const criteria = (page: Page) =>
+		page.eval<string[]>("[...document.querySelectorAll('[data-testid=criterion]')].map((c) => c.dataset.state)");
+	const checks = (page: Page) =>
+		page.eval<string[]>(
+			"[...document.querySelectorAll('[data-testid=planned-check]')].map((c) => c.dataset.name + ':' + c.dataset.state)",
+		);
+
+	for (const [appearance, width, height] of [
+		["instrument", 1440, 900],
+		["field", 1440, 900],
+		["instrument", 390, 844],
+	] as const)
+		it(`shows what is observed per criterion, what is not, and what is the operator's, in ${appearance} at ${width} px`, async () => {
+			const api = await launch(width, height);
+			const { page } = api;
+			if (appearance === "field") {
+				await page.click("[data-testid=appearance-field]");
+				await page.waitFor("document.querySelector('#develop-workspace').dataset.appearance === 'field'");
+			}
+			await ready(page);
+			await openTab(page);
+			await create(page, "Accept trailing commas", "", "Tests, lint, the CLI and the README (see the plan)");
+			const stored = new DevelopTasksStoreV0(api.state.root).read();
+			if (!stored.ok) throw new Error("unreadable");
+			const task = stored.file.tasks[0]!;
+			const service = attemptsOf(api.state.root);
+			const attempt = service.prepare(task.projectId, task.id, {
+				objective: "Make the parser accept a trailing comma in argument lists.",
+				verification: PLAN,
+			});
+			if (!attempt.ok) throw new Error(attempt.code);
+			const id = attempt.value.id;
+			const receipts = new DevelopReceiptsStoreV0(api.state.root);
+			const write = (current: EndoReceiptCurrentV0, n: number, argv: string[], code: number) =>
+				expect(
+					receipts.write(
+						receiptIn(current, id, task.projectId, n, {
+							check: { argv, executable: "/usr/bin/x", realExecutable: "/usr/bin/x", timeoutMs: 600_000 },
+							execution: { kind: "exited", code },
+						}),
+					),
+				).toBe("created");
+
+			// 1. The demo working tree has uncommitted changes: results at its HEAD are shown, never counted.
+			const dirty = await currentOf(api.state.cwd);
+			if (dirty === null || dirty.clean) throw new Error("the demo repository should have changes");
+			write(dirty, 1, ["npm", "test"], 1);
+			write(dirty, 2, ["npm", "run", "lint"], 0);
+			await refresh(page);
+			// Wait for the read that carries both receipts: a read already in flight may show the attempt without them.
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 2");
+			expect(await page.text("[data-testid=attempt-plan-summary]")).toBe(
+				"4 criteria at HEAD:not shown 3your judgment 1",
+			);
+			await page.click("[data-testid=attempt] summary");
+			await page.waitFor("document.querySelector('[data-testid=attempt-acceptance]')?.offsetHeight > 0");
+			expect(await criteria(page)).toEqual(["not-shown", "not-shown", "not-shown", "judgment"]);
+			expect(await checks(page)).toEqual(["unit:tree-changed", "lint:tree-changed", "cli:not-run"]);
+			const changed = await page.text("[data-testid=planned-checks]");
+			expect(changed).toContain("It failed at this HEAD; the working tree has changed since, so it is not counted.");
+			expect(changed).toContain("It passed at this HEAD; the working tree has changed since, so it is not counted.");
+			// The brief is folded once there is evidence to read; it is still there, whole.
+			expect(await page.eval<boolean>("document.querySelector('[data-testid=attempt-brief-block]').open")).toBe(
+				false,
+			);
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval(
+				"document.querySelector('[data-testid=attempt-acceptance]').scrollIntoView({ block: 'center' })",
+			);
+			await shot(page, `plan-${appearance}-tree-changed-${width}`);
+
+			// 2. The operator commits; the tree is clean at a new HEAD. The earlier results are now at another commit.
+			git(api.state.cwd, "add", "-A");
+			git(api.state.cwd, "commit", "-q", "-m", "trailing commas");
+			const clean = await currentOf(api.state.cwd);
+			if (clean === null || !clean.clean) throw new Error("the demo repository should be clean now");
+			write(clean, 3, ["npm", "test"], 0);
+			write(clean, 4, ["npm", "run", "lint"], 1);
+			write(clean, 5, ["npm", "run", "lint"], 0);
+			write(clean, 6, ["npm", "run", "format"], 0);
+			await refresh(page);
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 6");
+			expect(await criteria(page)).toEqual(["passed", "inconclusive", "not-shown", "judgment"]);
+			expect(await checks(page)).toEqual(["unit:passed", "lint:mixed", "cli:not-run"]);
+			expect(await page.text("[data-testid=attempt-plan-summary]")).toBe(
+				"4 criteria at HEAD:inconclusive 1not shown 1checks passed 1your judgment 1",
+			);
+			const acceptance = await page.text("[data-testid=attempt-acceptance]");
+			expect(acceptance).toContain("Planned checks passed at HEAD");
+			expect(acceptance).toContain("no check addresses it in the plan");
+			expect(acceptance).toContain("That a check addresses a criterion is your plan's statement");
+			const planned = await page.text("[data-testid=planned-checks]");
+			expect(planned).toContain('["node","bin/parse.mjs","f(a, b,)"]');
+			expect(planned).toContain("At this commit it also failed 1×");
+			expect(planned).toMatch(
+				/At another commit \([0-9a-f]{12}\) its latest run failed; what accounts for the difference is not observed\./,
+			);
+			// The exact command that would run a check that has not passed here, quoted for a shell; none for the one that passed.
+			expect(
+				await page.eval<string[]>(
+					"[...document.querySelectorAll('[data-testid=planned-command]')].map((c) => c.textContent)",
+				),
+			).toEqual([
+				`endo attempt check --root <store> --attempt ${id} -- npm run lint`,
+				`endo attempt check --root <store> --attempt ${id} -- node bin/parse.mjs 'f(a, b,)'`,
+			]);
+			expect(await page.text("[data-testid=receipt-all] summary")).toBe(
+				"Every check recorded for this attempt (6) · 1 not in the plan",
+			);
+			for (const text of [acceptance, planned, await page.text("[data-testid=attempt-plan-summary]")]) {
+				expect(text).not.toMatch(/\bmet\b|verified|satisfied|succeeded/i);
+				expect(text).not.toContain(api.state.root);
+				expect(text).not.toContain(api.state.cwd);
+			}
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval(
+				"document.querySelector('[data-testid=attempt-acceptance]').scrollIntoView({ block: 'center' })",
+			);
+			await shot(page, `plan-${appearance}-ledger-${width}`);
+			await page.eval("document.querySelector('[data-testid=planned-checks]').scrollIntoView({ block: 'center' })");
+			await shot(page, `plan-${appearance}-checks-${width}`);
+			await page.eval("document.querySelector('[data-testid=attempt]').scrollIntoView({ block: 'center' })");
+			await page.click("[data-testid=attempt] > details > summary");
+			await shot(page, `plan-${appearance}-summary-${width}`);
+			// Nothing here ran, sent or changed anything.
+			expect(await statusOf(page)).toBe("open");
+			noAgentTraffic(api);
+			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?|check/.test(r))).toEqual([]);
 			expect(page.seen.problems).toEqual([]);
 		});
 });

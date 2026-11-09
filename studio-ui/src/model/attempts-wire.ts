@@ -7,6 +7,11 @@
 // Each attempt carries its verification receipts (protocol/develop-receipts.ts): what Endophasia observed when the operator ran a check.
 // A receipt's outcome must be the one its execution and reasons imply ("passed" only for exit 0 with no reason; "failed" only for another
 // exit code with no reason; anything else "inconclusive"); a receipt that claims more is refused with the whole body. There is no path.
+//
+// An attempt prepared with a verification plan carries the plan and the acceptance ledger derived from it
+// (docs/designs/develop-verification-plans.md). The gate re-derives each criterion's state from its checks' states by the protocol's one
+// rule, requires each check's state to agree with the receipts it names (by id, in this attempt's own list, at the relation the state
+// needs), and refuses the body whole otherwise: a ledger cannot claim a pass the receipts beside it do not show.
 import type {
 	EndoAttemptRunStateV0,
 	EndoAttemptSendStateV0,
@@ -14,8 +19,8 @@ import type {
 } from "../../../protocol/develop-attempt-execution.ts";
 import type {
 	EndoDevelopAttemptStateV0,
-	EndoDevelopAttemptsViewV2,
-	EndoDevelopAttemptViewV2,
+	EndoDevelopAttemptsViewV3,
+	EndoDevelopAttemptViewV3,
 } from "../../../protocol/develop-attempts.ts";
 import type {
 	EndoDevelopReceiptViewV0,
@@ -24,20 +29,22 @@ import type {
 	EndoReceiptReasonV0,
 	EndoReceiptRelationV0,
 } from "../../../protocol/develop-receipts.ts";
+import type { EndoCriterionStateV0, EndoPlannedCheckStateV0 } from "../../../protocol/develop-verification.ts";
 import { type Check, count, eitherNull, list, one, shape } from "./compare-wire.ts";
 
 export type { EndoDevelopAttemptExecutionViewV0 as Execution } from "../../../protocol/develop-attempt-execution.ts";
 export type {
+	EndoAttemptVerificationViewV0 as Verification,
 	EndoDevelopAttemptStateV0 as AttemptState,
-	EndoDevelopAttemptsViewV2 as AttemptsView,
-	EndoDevelopAttemptViewV2 as Attempt,
+	EndoDevelopAttemptsViewV3 as AttemptsView,
+	EndoDevelopAttemptViewV3 as Attempt,
 } from "../../../protocol/develop-attempts.ts";
 export type {
 	EndoDevelopReceiptViewV0 as Receipt,
 	EndoReceiptRelationV0 as ReceiptRelation,
 } from "../../../protocol/develop-receipts.ts";
 
-export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v2";
+export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v3";
 
 /** These mirror the protocol's closed lists and labels; a contract test holds them equal. */
 export const ATTEMPT_STATES: readonly EndoDevelopAttemptStateV0[] = ["prepared", "handed-off", "reported", "abandoned"];
@@ -103,6 +110,49 @@ export const RECEIPT_RELATION_LABELS: Readonly<Record<EndoReceiptRelationV0, str
 	"other-repository": "Recorded in a different repository; not compared",
 	unavailable: "Current revision unavailable; not compared",
 };
+/** These mirror protocol/develop-verification.ts; a contract test holds them equal. None of them says a criterion is met. */
+export const CRITERION_LABELS: Readonly<Record<EndoCriterionStateV0, string>> = {
+	judgment: "Your judgment",
+	failed: "A planned check failed at HEAD",
+	inconclusive: "A planned check was inconclusive at HEAD",
+	passed: "Planned checks passed at HEAD",
+	unavailable: "Not compared",
+	"not-shown": "Not shown at HEAD",
+};
+export const CRITERION_TEXT: Readonly<Record<EndoCriterionStateV0, string>> = {
+	judgment:
+		"No check addresses this criterion in the plan: it rests on your judgment, and nothing observed bears on it.",
+	failed: "A check you planned for this criterion failed at the current HEAD.",
+	inconclusive:
+		"A check you planned for this criterion was inconclusive at the current HEAD, or its results at this commit disagree.",
+	passed:
+		"Every check you planned for this criterion passed at the current HEAD. That they address it is your plan's statement, not something observed.",
+	unavailable: "The working tree could not be read, so no result is compared with it.",
+	"not-shown":
+		"A check you planned for this criterion has no result at the current HEAD of this clean working tree: not run here, run only at another commit or in another tree, or the tree has changed since.",
+};
+export const PLANNED_CHECK_LABELS: Readonly<Record<EndoPlannedCheckStateV0, string>> = {
+	passed: "Passed at HEAD",
+	failed: "Failed at HEAD",
+	inconclusive: "Inconclusive at HEAD",
+	mixed: "Results at HEAD disagree",
+	"tree-changed": "At HEAD, but the tree has changed since",
+	stale: "Not run at HEAD (only at other commits)",
+	elsewhere: "Run only in another working tree",
+	"not-run": "Not run",
+	unavailable: "Not compared",
+};
+
+/** The protocol's one rule (endoCriterionStateV0), mirrored; a contract test holds them equal over every combination. */
+export function criterionState(checks: readonly EndoPlannedCheckStateV0[]): EndoCriterionStateV0 {
+	if (checks.length === 0) return "judgment";
+	if (checks.includes("failed")) return "failed";
+	if (checks.includes("inconclusive") || checks.includes("mixed")) return "inconclusive";
+	if (checks.every((s) => s === "passed")) return "passed";
+	if (checks.includes("unavailable")) return "unavailable";
+	return "not-shown";
+}
+
 /** These mirror protocol/develop-attempt-execution.ts; a contract test holds them equal. None of them says the work succeeded. */
 export const EXECUTION_SEND_LABELS: Readonly<Record<EndoAttemptSendStateV0, string>> = {
 	"evidence-unavailable":
@@ -244,8 +294,10 @@ const attempt: Check = (v) =>
 		),
 		taskWordsChanged: (x) =>
 			list(one("title", "description", "acceptance"))(x) && new Set(x as unknown[]).size === (x as unknown[]).length,
-		// The brief is rendered by the broker from the attempt's record; bounded, and it names its own attempt.
-		brief: (x) => multiline(64_000)(x),
+		// The brief is rendered by the broker from the attempt's record; bounded, and it names its own attempt. v0's six fenced texts reach
+		// about 61 000 characters with fence expansion; a v1 plan section adds at most about three times its 16 KiB (each text inside a fence
+		// at most one longer than its longest backtick run, on both sides) plus its fixed lines. A test renders a worst case under this.
+		brief: (x) => multiline(160_000)(x),
 		receipts: (x) =>
 			shape(x, {
 				state: one("ready", "unreadable"),
@@ -253,9 +305,128 @@ const attempt: Check = (v) =>
 				problems: count,
 			}),
 		execution: eitherNull(execution_),
+		verification: eitherNull(verification_),
 	});
 
-export function readAttempts(v: unknown): EndoDevelopAttemptsViewV2 | null {
+const outcomes = one("passed", "failed", "inconclusive");
+const ledgerReceipt: Check = (v) =>
+	shape(v, { receiptId, commit: objectId, outcome: outcomes, startedAtMs: stamp, endedAtMs: stamp });
+const verification_: Check = (v) =>
+	shape(v, {
+		checks: (x) =>
+			list((c) =>
+				shape(c, {
+					name: (n) => typeof n === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(n),
+					argv: (a) => list(oneLine(400))(a) && (a as unknown[]).length >= 1 && (a as unknown[]).length <= 64,
+					shows: (t) => oneLine(280)(t) && (t as string) !== "",
+					state: one(...keysOf(PLANNED_CHECK_LABELS)),
+					current: eitherNull(ledgerReceipt),
+					atHead: (a) => shape(a, { passed: count, failed: count, inconclusive: count }),
+					otherCommit: eitherNull(ledgerReceipt),
+					runs: count,
+				}),
+			)(x) && (x as unknown[]).length <= 8,
+		criteria: (x) =>
+			list((c) =>
+				shape(c, {
+					text: (t) => oneLine(280)(t) && (t as string) !== "",
+					checks: (l) => list((n) => typeof n === "string")(l) && distinct(l),
+					state: one(...keysOf(CRITERION_LABELS)),
+				}),
+			)(x) &&
+			(x as unknown[]).length >= 1 &&
+			(x as unknown[]).length <= 12,
+		unplanned: count,
+	});
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean =>
+	a.length === b.length && a.every((x, i) => x === b[i]);
+
+type LedgerReceipt = { receiptId: string; commit: string; outcome: string; startedAtMs: number; endedAtMs: number };
+
+/**
+ * Whether an attempt's ledger agrees with itself and with the receipts listed beside it: every check is named by a criterion and every
+ * name resolves; each criterion's state follows from its checks' states; each check's state agrees with the receipts it names (by id, in
+ * this list, with the same argv, commit, outcome and times, at the relation the state needs) and with its counts at HEAD.
+ */
+export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV3, "receipts" | "verification">): boolean {
+	const v = a.verification;
+	if (v === null) return true;
+	const names = v.checks.map((c) => c.name);
+	if (!distinct(names)) return false;
+	if (!distinct(v.checks.map((c) => JSON.stringify(c.argv)))) return false;
+	if (!names.every((n) => v.criteria.some((c) => c.checks.includes(n)))) return false;
+	const stateOf = new Map(v.checks.map((c) => [c.name, c.state]));
+	for (const c of v.criteria) {
+		if (!c.checks.every((n) => stateOf.has(n))) return false;
+		if (c.state !== criterionState(c.checks.map((n) => stateOf.get(n) as EndoPlannedCheckStateV0))) return false;
+	}
+	const unavailable = v.checks.filter((c) => c.state === "unavailable").length;
+	if (unavailable !== 0 && unavailable !== v.checks.length) return false;
+	const listed = new Map(a.receipts.list.map((r) => [r.id, r]));
+	const resolves = (x: LedgerReceipt | null, argv: readonly string[], relations: readonly string[]): boolean => {
+		if (x === null) return true;
+		const r = listed.get(x.receiptId);
+		return (
+			r !== undefined &&
+			sameList(r.argv, argv) &&
+			r.commit === x.commit &&
+			r.outcome === x.outcome &&
+			r.startedAtMs === x.startedAtMs &&
+			r.endedAtMs === x.endedAtMs &&
+			relations.includes(r.relation)
+		);
+	};
+	// Counted from the receipts listed beside the ledger, never taken from it: a planned argument cannot hold a character the display-safe
+	// form puts in (protocol/develop-verification.ts), so a listed argv equals a planned one only when it is that argv.
+	const ofCheck = (argv: readonly string[]) => a.receipts.list.filter((r) => sameList(r.argv, argv));
+	if (v.unplanned !== a.receipts.list.filter((r) => !v.checks.some((c) => sameList(r.argv, c.argv))).length)
+		return false;
+	for (const c of v.checks) {
+		const mine = ofCheck(c.argv);
+		if (c.runs !== mine.length) return false;
+		for (const o of ["passed", "failed", "inconclusive"] as const)
+			if (
+				c.atHead[o] !==
+				mine.filter((r) => (r.relation === "at-head" || r.relation === "at-head-changed") && r.outcome === o).length
+			)
+				return false;
+		const total = c.atHead.passed + c.atHead.failed + c.atHead.inconclusive;
+		const relation = c.current === null ? null : listed.get(c.current.receiptId)?.relation;
+		if (!resolves(c.current, c.argv, ["at-head", "at-head-changed"])) return false;
+		if (!resolves(c.otherCommit, c.argv, ["head-differs"])) return false;
+		if ((c.current === null) !== (total === 0)) return false;
+		if (c.runs < total + (c.otherCommit === null ? 0 : 1)) return false;
+		switch (c.state) {
+			case "passed":
+			case "failed":
+			case "inconclusive":
+				if (relation !== "at-head" || c.current?.outcome !== c.state || c.atHead[c.state] !== total) return false;
+				break;
+			case "mixed":
+				if (relation !== "at-head" || c.current === null || c.atHead[c.current.outcome] === total) return false;
+				break;
+			case "tree-changed":
+				if (relation !== "at-head-changed") return false;
+				break;
+			case "stale":
+				if (c.current !== null || c.otherCommit === null) return false;
+				break;
+			case "elsewhere":
+				if (c.current !== null || c.otherCommit !== null || c.runs === 0) return false;
+				break;
+			case "not-run":
+				if (c.current !== null || c.otherCommit !== null || c.runs !== 0) return false;
+				break;
+			case "unavailable":
+				if (c.current !== null || c.otherCommit !== null) return false;
+				break;
+		}
+	}
+	return true;
+}
+
+export function readAttempts(v: unknown): EndoDevelopAttemptsViewV3 | null {
 	if (
 		!shape(v, {
 			schemaVersion: one(ATTEMPTS_SCHEMA),
@@ -267,12 +438,12 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV2 | null {
 		})
 	)
 		return null;
-	const view = v as unknown as EndoDevelopAttemptsViewV2;
+	const view = v as unknown as EndoDevelopAttemptsViewV3;
 	if (view.state !== "ready" && view.attempts.length > 0) return null;
 	if ((view.state === "ready" || view.state === "no-task") && (view.taskId === null) !== (view.state === "no-task"))
 		return null;
 	if (new Set(view.attempts.map((a) => a.id)).size !== view.attempts.length) return null;
-	for (const a of view.attempts as EndoDevelopAttemptViewV2[]) {
+	for (const a of view.attempts as EndoDevelopAttemptViewV3[]) {
 		const implied = a.outcome !== null ? a.outcome.kind : a.handoff !== null ? "handed-off" : "prepared";
 		if (a.state !== implied) return null;
 		if (a.outcome?.kind === "reported" && a.outcome.note.trim() === "") return null;
@@ -281,11 +452,12 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV2 | null {
 		if (new Set(a.receipts.list.map((r) => r.id)).size !== a.receipts.list.length) return null;
 		if (!a.receipts.list.every(coherent)) return null;
 		if (a.execution !== null && !executionCoherent(a.execution)) return null;
+		if (!verificationCoherent(a)) return null;
 	}
 	return view;
 }
 
 export type AttemptsReply =
-	| { kind: "attempts"; record: EndoDevelopAttemptsViewV2 }
+	| { kind: "attempts"; record: EndoDevelopAttemptsViewV3 }
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: "grant-required" | "invalid" | "unreachable" | "other" };

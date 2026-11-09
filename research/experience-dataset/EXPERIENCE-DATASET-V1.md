@@ -188,12 +188,21 @@ Either way, every trial needs:
 - **Pilot first, on 2 further families that are not among the 8:** 2 families × 3 tiers × 2 models × 2 trials (24 trials), to calibrate
   how hard the tiers are.
   - The pilot's families are development data (`task-examined`). They are never part of the main sample, so the main bank stays unseen.
-  - The main run proceeds only if each model's pilot failure rate is between 20% and 70% overall, so that neither model passes nearly
-    everything nor fails nearly everything.
+  - The main run proceeds only if **both** of these hold, the overall gate and the tier gate:
+    - **overall:** each model's pilot failure rate is between 20% and 70%, so that neither model passes nearly everything nor fails
+      nearly everything;
+    - **by tier:** an overall rate in range can hide tiers that do not differ, for example every failure in the easiest tier. So, for
+      each model, its failures (of 4 trials per tier: 2 families × 2 trials) must not decrease from tier 1 to tier 2 to tier 3, and tier 3
+      must have more failures than tier 1. And for each tier, pooled over both models (8 trials), at least one trial must fail and at
+      least one must pass, so that every tier discriminates.
+  - With 4 trials a cell, the tier gate checks the **ordering** of the tiers, not their calibrated rates. The main run reports each
+    tier's failure rate as measured, and no claim rests on a tier having a particular rate.
   - Otherwise the author revises the **tier rubric**, the rules that make a task harder, and applies it to both the pilot's 2 families and
     the 8 main families. The main families are never run in the meantime. The pilot is then repeated on its own families **under the
     revised rubric**, so the repeat tests the change that the main run will use.
   - The gate is passed only by a pilot run under the rubric the main run uses.
+  - The rubric may be revised **at most twice**. If the third pilot also fails either gate, the study stops and is re-registered, so
+    that repeated small pilots cannot be retried until one passes by chance.
 
 **Measured, with acceptance criteria fixed in advance:**
 
@@ -206,10 +215,10 @@ Either way, every trial needs:
 | Hand-written candidate cards for which **selection matters**, by MEM-000's rule (`selectionMatters` in `research/evidence-eligibility/readiness.ts`) | **all of:** at least 2 usable cards; at least one separable pair; and either their total over the shared allowance **or** a found counterexample outside a card's conditions | MEM-000's own bar. A study that meets only part of it has not shown that selection matters |
 | Contamination | 0 hidden-material reads (the boundary makes this structural; the probes record it) | MEM-000's cap study recorded one |
 
-**Reported, not judged:** the per-model failure distributions, the runtime-set misses, and the trajectories' tool use.
+**Reported, not judged:** the per-model and per-tier failure distributions, the runtime-set misses, and the trajectories' tool use.
 
 **Stopping rules:**
-- the pilot gate above;
+- the pilot gate above, overall and by tier, with at most two rubric revisions;
 - every family's evaluator is qualified, passing its reference and failing its negative, **before the plan is fixed and before any main
   trial runs**. A family that fails qualification is replaced before the plan is fixed, by a reserve family written with the bank, then
   qualified the same way and entered in the sealed catalog. The plan, its 144 trials and its denominator are therefore fixed only over 8

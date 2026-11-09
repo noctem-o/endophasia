@@ -34,8 +34,14 @@ const READ_ORDER: Readonly<Record<Exclude<EndoDevelopTaskStatusV0, "done">, numb
 	open: 3,
 };
 
-/** Later is greater: by start time, then end time, then id (a fixed order for receipts that started in the same millisecond). */
-const later = (a: EndoDevelopReceiptV0, b: EndoDevelopReceiptV0): boolean =>
+/**
+ * Later is greater: by start time, then end time, then id (a fixed order for receipts that started in the same millisecond). Shared with the
+ * acceptance ledger (develop-verification.ts), so "the latest receipt of a check" means one thing everywhere.
+ */
+export const endoReceiptLaterV0 = (
+	a: Pick<EndoDevelopReceiptV0, "startedAtMs" | "endedAtMs" | "id">,
+	b: Pick<EndoDevelopReceiptV0, "startedAtMs" | "endedAtMs" | "id">,
+): boolean =>
 	a.startedAtMs !== b.startedAtMs
 		? a.startedAtMs > b.startedAtMs
 		: a.endedAtMs !== b.endedAtMs
@@ -65,7 +71,7 @@ export function endoLatestChecksV0(
 		});
 		const pool = atHead.length > 0 ? atHead : group;
 		let latest = pool[0] as EndoDevelopReceiptV0;
-		for (const r of pool) if (later(r, latest)) latest = r;
+		for (const r of pool) if (endoReceiptLaterV0(r, latest)) latest = r;
 		const others = { passed: 0, failed: 0, inconclusive: 0 };
 		for (const r of group) if (r !== latest) others[r.outcome] += 1;
 		checks.push({

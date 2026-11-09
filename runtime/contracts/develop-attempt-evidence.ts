@@ -20,6 +20,7 @@ import {
 	ENDO_ATTEMPT_SEND_LABELS_V0,
 	type EndoDevelopAttemptExecutionViewV0,
 } from "../../protocol/develop-attempt-execution.ts";
+import { endoAttemptPlanV0 } from "../../protocol/develop-attempts.ts";
 import {
 	ENDO_RECEIPT_OUTCOME_LABELS_V0,
 	ENDO_RECEIPT_REASON_TEXT_V0,
@@ -30,15 +31,24 @@ import {
 	type EndoReceiptRelationV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopStatusChangeV0, EndoDevelopTaskStatusV0 } from "../../protocol/develop-tasks.ts";
+import {
+	ENDO_CRITERION_LABELS_V0,
+	ENDO_PLANNED_CHECK_LABELS_V0,
+	type EndoAcceptanceLedgerV0,
+} from "../../protocol/develop-verification.ts";
 import type { DevelopAttemptReportV0 } from "./develop-attempts.ts";
 import { endoLatestChecksV0 } from "./develop-attention.ts";
+import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
 
 /**
  * v1 (EVIDENCE-INTEGRITY-001): `sent.authorizationRecord` says whether the authorisation record is recorded, absent or damaged. In v0 a
  * damaged record read as absent, so `authorizedAtMs: null` claimed "never authorised"; in v1 it means only "no readable record", and the
  * record's state says which. A new major version, so a v0 reader is not silently given the wider meaning.
+ *
+ * v2 (DEVELOP-VERIFY-001): `verification`, the operator's plan and the acceptance ledger derived from it (null without a plan), and the gap
+ * `planned-check-not-passed-at-current-head`.
  */
-export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v1";
+export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v2";
 
 /**
  * What this reading found missing, stale, unconfirmed or not yet decided, in a fixed order. Each is a fact about the records, never a
@@ -63,6 +73,7 @@ export const ENDO_ATTEMPT_EVIDENCE_GAPS_V0 = [
 	"check-not-passed-at-current-head",
 	"stale-check",
 	"checked-in-another-tree",
+	"planned-check-not-passed-at-current-head",
 	"task-unavailable",
 	"not-accepted",
 ] as const;
@@ -98,6 +109,8 @@ export const ENDO_ATTEMPT_EVIDENCE_GAP_TEXT_V0: Readonly<Record<EndoAttemptEvide
 		"For at least one command, the latest check was at another commit: that command has not been run at the current HEAD.",
 	"checked-in-another-tree":
 		"Some checks ran in another working tree or repository; they are not compared with this one.",
+	"planned-check-not-passed-at-current-head":
+		"At least one planned check has no passing result at the current HEAD of this clean working tree (it failed, was inconclusive or disagreed with another run there, was not run here, or the tree has changed since).",
 	"task-unavailable": "The task could not be read now, so its status and history are not shown.",
 	"not-accepted": "The task's status is not done: the operator has not recorded accepting it.",
 });
@@ -208,6 +221,16 @@ export interface EndoAttemptEvidenceV0 {
 		/** The last move to `done`, if the task is done now. */
 		movedToDone: { atMs: number; note: string | null } | null;
 	};
+	/**
+	 * The operator's verification plan (frozen in the prepared record) and the acceptance ledger derived from it against `checks.current`.
+	 * Null for an attempt prepared without a plan. Coverage is the plan's declaration; the states are observations of receipts.
+	 */
+	verification: {
+		source: "operator-plan";
+		checks: (EndoAcceptanceLedgerV0["checks"][number] & { argv: string[]; shows: string; label: string })[];
+		criteria: (EndoAcceptanceLedgerV0["criteria"][number] & { label: string })[];
+		unplanned: number;
+	} | null;
 	gaps: { code: EndoAttemptEvidenceGapV0; text: string }[];
 	notEstablished: readonly string[];
 }
@@ -291,6 +314,14 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 		if ([...relationOf.values()].some((r) => r === "other-worktree" || r === "other-repository"))
 			found.add("checked-in-another-tree");
 	}
+	const plan = endoAttemptPlanV0(a);
+	// Without readable receipts nothing is compared: every check is unavailable, never "not run".
+	const ledger =
+		plan === null
+			? null
+			: endoAcceptanceLedgerV0({ plan, receipts, current: input.receipts === null ? null : current });
+	// Without a plan there is nothing to add: `verification` is null, and the terminal text says so. Not a gap: most attempts have none.
+	if (ledger?.checks.some((c) => c.state !== "passed")) found.add("planned-check-not-passed-at-current-head");
 	if (task === null) found.add("task-unavailable");
 	else if (task.status !== "done") found.add("not-accepted");
 
@@ -379,6 +410,20 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 				task === null ? [] : task.history.map((h) => ({ atMs: h.atMs, from: h.from, to: h.to, note: h.note })),
 			movedToDone: lastDone === undefined ? null : { atMs: lastDone.atMs, note: lastDone.note },
 		},
+		verification:
+			plan === null || ledger === null
+				? null
+				: {
+						source: "operator-plan",
+						checks: ledger.checks.map((c, i) => ({
+							...c,
+							argv: [...(plan.checks[i]?.argv ?? [])],
+							shows: plan.checks[i]?.shows ?? "",
+							label: ENDO_PLANNED_CHECK_LABELS_V0[c.state],
+						})),
+						criteria: ledger.criteria.map((c) => ({ ...c, label: ENDO_CRITERION_LABELS_V0[c.state] })),
+						unplanned: ledger.unplanned,
+					},
 		gaps: ENDO_ATTEMPT_EVIDENCE_GAPS_V0.filter((g) => found.has(g)).map((code) => ({
 			code,
 			text: ENDO_ATTEMPT_EVIDENCE_GAP_TEXT_V0[code],
@@ -426,6 +471,21 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 		...(e.checks.problems === 0
 			? []
 			: [`  receipts  [observed] ${e.checks.problems} file(s) are not usable receipts and are not shown`]),
+		...(e.verification === null
+			? ["  plan      [none] prepared without a verification plan"]
+			: [
+					...e.verification.checks.map(
+						(c) =>
+							`  planned   [observed] ${c.name} ${JSON.stringify(c.argv)}: ${c.label}${c.current === null ? "" : ` (${short(c.current.commit)}, latest ${c.current.outcome})`}${c.otherCommit === null ? "" : `; at another commit, ${short(c.otherCommit.commit)}: ${c.otherCommit.outcome}`}`,
+					),
+					...e.verification.criteria.map(
+						(c, i) =>
+							`  criterion [plan: ${c.checks.length === 0 ? "your judgment" : c.checks.join(", ")}] ${i + 1}. ${c.text}: ${c.label}`,
+					),
+					...(e.verification.unplanned === 0
+						? []
+						: [`  unplanned [observed] ${e.verification.unplanned} receipt(s) of commands not in the plan`]),
+				]),
 		`  decision  [operator] ${e.operator.status === null ? "the task cannot be read" : `status ${e.operator.status}`}${e.operator.movedToDone === null ? "" : `, moved to done${e.operator.movedToDone.note === null ? "" : ` ("${e.operator.movedToDone.note}")`}`}`,
 		...e.gaps.map((g) => `  gap       ${g.text}`),
 		"  not established by any record:",

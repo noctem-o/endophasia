@@ -31,6 +31,7 @@ import {
 	type EndoReceiptRelationV0,
 	endoReceiptRelationV0,
 } from "../protocol/develop-receipts.ts";
+import { validateEndoVerificationPlanV0 } from "../protocol/develop-verification.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoAttemptEvidenceV0, renderEndoAttemptEvidenceV0 } from "../runtime/contracts/develop-attempt-evidence.ts";
 import {
@@ -52,7 +53,7 @@ import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -185,6 +186,7 @@ function prepare(argv: readonly string[]): void {
 			"--constraints-file",
 			"--report-back",
 			"--report-back-file",
+			"--plan-file",
 		],
 		USAGE,
 	);
@@ -192,12 +194,29 @@ function prepare(argv: readonly string[]): void {
 	const task = flags.get("--task");
 	const objective = textOf(flags, "objective");
 	if (project === undefined || task === undefined || objective === undefined) throw new TypeError(USAGE);
+	// A verification plan (docs/designs/develop-verification-plans.md): JSON the operator wrote, checked whole by the plan's validator.
+	const planFile = flags.get("--plan-file");
+	let verification: unknown;
+	if (planFile !== undefined) {
+		try {
+			verification = JSON.parse(readInputFile("--plan-file", planFile));
+		} catch (error) {
+			if (error instanceof SyntaxError) throw new TypeError("--plan-file: the file is not JSON");
+			throw error;
+		}
+		try {
+			validateEndoVerificationPlanV0(verification);
+		} catch (error) {
+			throw new TypeError(`--plan-file: ${error instanceof Error ? error.message : "not a verification plan"}`);
+		}
+	}
 	const service = serviceAt(root);
 	const attempt = unwrap(
 		service.prepare(project, task, {
 			objective,
 			constraints: textOf(flags, "constraints"),
 			reportBack: textOf(flags, "report-back"),
+			...(verification === undefined ? {} : { verification }),
 		}),
 	);
 	print({ attempt: shown(unwrap(service.get(attempt.id))) });

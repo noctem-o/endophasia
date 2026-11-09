@@ -13,6 +13,11 @@ endo experiment protected-report <dir>
 **This version is offline.** The agent has no network at all, so it cannot call a model; Pi with a local model is the subject of
 EVAL-ISO-002 (§9). The unprotected `endo experiment run` is unchanged.
 
+*Later (2026-11-09, EVAL-ISO-003):* the same command also runs a **version 1 spec**, a model-connected experiment: each attempt's agent
+reaches one declared local model only through a recording relay of its own, and each trial is an `endo.protected-trial.v1` record that
+the report checks against the recording itself ([protected-model-access.md](protected-model-access.md) §9). Everything below still
+describes version 0, which is unchanged; version 1 adds to it.
+
 ## 1. Audit: what existed, and what this changes
 
 | Existing (reused unchanged) | Where |
@@ -375,8 +380,9 @@ Only the refusal and logic tests run there. They are run on a host that supports
 ## 10. EVAL-ISO-002: what model-connected studies need
 
 *Later (2026-11-08):* implemented as a mechanism, with real Pi and a real local model: [protected-model-access.md](protected-model-access.md).
-The relay is the recording proxy's governed profile behind a Unix socket, and the plan below held. It is not yet part of
-`endo experiment protected-run`, and `endo.protected-trial.v0` still refuses any relay. The plan as written:
+The relay is the recording proxy's governed profile behind a Unix socket, and the plan below held. *Later still (2026-11-09):* part of
+`endo experiment protected-run` through a version 1 spec and `endo.protected-trial.v1` (that document's §9); `endo.protected-trial.v0`
+still refuses any relay. The plan as written:
 
 - **Relay:** a host-side relay listening on a Unix socket bind-mounted into the agent's sandbox, forwarding to the existing recording proxy
   (so capture and cassettes are unchanged). It allows only the methods and paths Pi actually uses, measured from Pi itself, bounds request
@@ -395,4 +401,4 @@ The relay is the recording proxy's governed profile behind a Unix socket, and th
 | Execution isolation | **READY** for the filesystem, network, environment and descriptor boundary (offline, on a host where bubblewrap, user namespaces and a systemd user manager are available) | 29 probes per attempt in the example (the count depends on the paths protected), each kind with a negative test; the adversarial agent's observations and independent reviewers' attacks, on this host; refusal elsewhere |
 | Process lifetime | **READY with limits**: verified on this host, every sandbox in its own scope, established before bubblewrap runs, recorded with its launcher, killed with SIGKILL through the user manager and confirmed by an empty cgroup, bounded by `RuntimeMaxSec` and `TasksMax`, and ended on resume. **NOT DEMONSTRATED** for a process stranded in bubblewrap's launch window (#633): its reproduction exists and runs only in a disposable environment (§2). Not protected: a process in uninterruptible I/O; the user's own account stopping the user manager | non-destructive scope tests on this host (properties, deadline, SIGTERM-ignoring processes, TasksMax, setsid children, resume), each sandbox's scope confirmed ended in every real run |
 | Independent evaluation | **READY** (function-case evaluators) | qualified against a reference and a negative; not deceived by forged frames, faked results or early exit; exact copy identity |
-| Protected model-connected studies | **MECHANISM READY, NOT INTEGRATED** (EVAL-ISO-002): relay, bridge, socket mount, limits and a research driver with independent verification, shown with real Pi 1.5.0 and a real local model; `endo experiment protected-run` and its record do not use it yet (an owner decision) | [protected-model-access.md](protected-model-access.md) §4 |
+| Protected model-connected studies | **INTEGRATED, with limits** (EVAL-ISO-003): `endo experiment protected-run` with a version 1 spec, a relay per attempt, `endo.protected-trial.v1`, and a report that checks every record against its recording. Not established: the served weights' identity and the server's sampling settings; the generation bound is a hard cap only where the server honours it (measured for llama.cpp b11429) | [protected-model-access.md](protected-model-access.md) §9 |

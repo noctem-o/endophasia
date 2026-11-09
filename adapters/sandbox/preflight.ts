@@ -31,6 +31,12 @@ export interface EndoPreflightTargetsV0 {
 	environment: string[];
 	/** Host paths where privileged sockets commonly live. */
 	sockets: string[];
+	/**
+	 * A model-connected sandbox (EVAL-ISO-003): the relay socket's path inside, which must accept a connection (the declared way out is
+	 * there), and the model server's port on the host's loopback, which must be refused from inside (the model server is reachable only
+	 * through the relay). Absent for an offline sandbox, whose probes are unchanged.
+	 */
+	model?: { socket: string; upstreamPort: number };
 }
 
 export interface EndoPreflightV0 {
@@ -68,6 +74,10 @@ out["net-host-loopback"] = await attempt({ host: "127.0.0.1", port: c.loopbackPo
 out["net-external"] = await attempt({ host: "192.0.2.1", port: 80 });
 out["net-host-abstract-socket"] = await attempt({ path: "\0" + c.abstractName });
 out["net-host-path-socket"] = await attempt({ path: c.pathSocket });
+if (c.model) {
+	out["net-model-relay"] = await attempt({ path: c.model.socket });
+	out["net-model-server-direct"] = await attempt({ host: "127.0.0.1", port: c.model.upstreamPort });
+}
 process.stdout.write("ENDO-PREFLIGHT " + JSON.stringify(out) + "\n");
 `;
 
@@ -109,6 +119,10 @@ export function preflightPassesV0(id: string, observed: string): boolean {
 	if (id === "net-host-loopback" || id === "net-host-abstract-socket") return observed === "ECONNREFUSED";
 	if (id === "net-external") return observed === "ENETUNREACH";
 	if (id === "net-host-path-socket") return observed === "ENOENT";
+	// A model-connected sandbox: the relay's socket is there and accepts (a positive control), and the model server's own port, on the
+	// sandbox's loopback (its own namespace), is refused.
+	if (id === "net-model-relay") return observed === "connected";
+	if (id === "net-model-server-direct") return observed === "ECONNREFUSED";
 	return false;
 }
 
@@ -169,6 +183,7 @@ export async function preflightV0(
 			pathSocket,
 			// A new name, created exclusively and removed: a task's own files in the workspace are never touched.
 			probeName: `.endo-preflight-${randomBytes(12).toString("hex")}`,
+			...(targets.model === undefined ? {} : { model: targets.model }),
 		};
 		const run = await runSandboxV0(
 			bwrap,
@@ -211,7 +226,8 @@ export async function preflightV0(
 			targets.readOnlyRuntime.length +
 			targets.readOnlyMounts.length +
 			targets.sockets.length +
-			13;
+			13 +
+			(targets.model === undefined ? 0 : 2);
 		if (probes.length !== expectedCount)
 			return { status: "failed", probes, reason: "the probe did not report every check" };
 		return probes.every((p) => p.passed)

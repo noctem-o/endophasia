@@ -14,11 +14,12 @@ interface Call {
 }
 
 const view = (taskId: string): AttemptsView => ({
-	schemaVersion: "endo.develop-attempts-view.v3",
+	schemaVersion: "endo.develop-attempts-view.v4",
 	state: "ready",
 	taskId,
 	attempts: [],
 	problems: 0,
+	head: null,
 });
 const ok = (taskId: string): AttemptsReply => ({ kind: "attempts", record: view(taskId) });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));

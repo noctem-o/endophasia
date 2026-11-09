@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- At one column, the docked run strip had no background, so scrolled Task content showed through it.
 - **EVIDENCE-INTEGRITY-001: a damaged authorisation record no longer reads as "never authorised".**
   - Before: `endo attempt evidence` read a malformed, invalid, misnamed, oversized, linked or unreadable `<id>.authorized.json` as no
     authorisation (`not-authorized`).
@@ -14,6 +15,16 @@
   - `endo attempt show` carries the same record states. Damaged files are left as found.
 
 ### Added
+- **DEVELOP-PROVENANCE-001: what the working tree was around an attempt** ([design](docs/designs/develop-candidate-provenance.md)).
+  - Observations (`endo.develop-observation.v0`, `develop/observations/`) record HEAD and, for each changed path, the Git blob id and
+    mode the working tree held, never contents. The live workbench records one just before it sends an approved attempt and one when
+    the run that followed settles; `endo attempt observe` records one whenever you ask.
+  - Each read compares them by content: what changed between them, whether the tree now holds the same content as the last one, and
+    whether each commit a check ran at holds exactly what was observed. `endo attempt provenance` reads it; the Task view shows "Working
+    tree around this attempt". It never says who changed anything.
+  - `endo.develop-attempts-view.v4` names the HEAD (and its read time) every relation in it was compared with, and the page's gate
+    checks every receipt's relation against it. The Context panel's changes are a separate read; the page now says so.
+
 - **DEVELOP-VERIFY-001: verification plans and the acceptance ledger** ([design](docs/designs/develop-verification-plans.md)).
   - `endo attempt prepare --plan-file plan.json` writes the plan into the attempt (`endo.develop-attempt.v1`). The plan names checks (an
     exact argv and what the operator says it shows) and the criteria each addresses, or none ("your judgment"). The brief (`v1`) tells

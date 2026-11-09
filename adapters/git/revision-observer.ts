@@ -18,6 +18,7 @@ import {
 	type GitRunV0,
 	gitEnvV0,
 	parseStatusV2,
+	type RawChangeV0,
 	repositoryOverridesV0,
 	runGitV0,
 } from "./readonly-git.ts";
@@ -65,7 +66,15 @@ export interface EndoRevisionObservationV0 {
 	 * the second "clean" was judged under different rules.
 	 */
 	rules: string;
+	/**
+	 * Only when asked (`{ changes: true }`): every entry of the status this observation was judged on, as Git listed it (staged, unstaged,
+	 * untracked, conflicted), and whether the list was cut.
+	 */
+	changes?: { list: RawChangeV0[]; truncated: boolean };
 }
+
+/** One entry of a commit's tree at a path: a file (mode and blob id), a directory or a submodule (`other`), or nothing. */
+export type GitTreeEntryV0 = { kind: "file"; mode: string; oid: string } | { kind: "other" } | { kind: "absent" };
 
 export type EndoRevisionObservedV0 =
 	| { ok: true; observation: EndoRevisionObservationV0 }
@@ -162,7 +171,10 @@ export class GitRevisionObserverV0 {
 	 * Observe the working tree whose TOP is `directory`. A subdirectory is refused (`not-top-level`): what is observed is what runs. With
 	 * `{ within: true }` the directory may be anywhere inside a working tree (for comparing a receipt with the tree a reader is in).
 	 */
-	async observe(directory: string, options: { within?: boolean } = {}): Promise<EndoRevisionObservedV0> {
+	async observe(
+		directory: string,
+		options: { within?: boolean; changes?: boolean } = {},
+	): Promise<EndoRevisionObservedV0> {
 		const fail = (reason: EndoRevisionUnavailableV0): EndoRevisionObservedV0 => ({ ok: false, reason });
 		const failed = (run: GitRunV0): EndoRevisionObservedV0 | null => {
 			const reason = failureReasonV0(run);
@@ -383,8 +395,95 @@ export class GitRevisionObserverV0 {
 					branch: branch === null ? null : await this.#reflog(cwd, branch, keys),
 				},
 				rules,
+				...(options.changes === true
+					? { changes: { list: parsed.changes, truncated: parsed.truncated || status.truncated } }
+					: {}),
 			},
 		};
+	}
+
+	/** The overrides every read of this repository needs (its program-bearing keys switched off), or null when it cannot be read safely. */
+	async #keys(cwd: string): Promise<(readonly [string, string])[] | null> {
+		const overrides = await repositoryOverridesV0((args, maxBytes) => this.#read(cwd, args, maxBytes));
+		return typeof overrides === "string" ? null : [...overrides.keys, ...OBSERVER_CONFIG];
+	}
+
+	/**
+	 * What `commit`'s tree holds at each of `paths` (relative to the top of the tree), read with `ls-tree` in batches. Null when Git could
+	 * not answer (the commit is gone, the repository cannot be read safely, the output was cut). Reads objects only, never the working tree.
+	 */
+	async treeEntries(
+		worktree: string,
+		commit: string,
+		paths: readonly string[],
+	): Promise<Map<string, GitTreeEntryV0> | null> {
+		if (!HEX.test(commit)) return null;
+		const keys = await this.#keys(worktree);
+		if (keys === null) return null;
+		const found = new Map<string, GitTreeEntryV0>(paths.map((p) => [p, { kind: "absent" }]));
+		for (let i = 0; i < paths.length; i += 200) {
+			const batch = paths.slice(i, i + 200);
+			const run = await this.#read(
+				worktree,
+				["ls-tree", "-z", "--full-tree", commit, "--", ...batch],
+				GIT_LIMITS_V0.listBytes,
+				keys,
+			);
+			if (run.code !== 0 || run.truncated) return null;
+			for (let start = 0, at = run.stdout.indexOf(0); at !== -1; start = at + 1, at = run.stdout.indexOf(0, start)) {
+				const record = run.stdout.subarray(start, at).toString("utf8");
+				const match = /^(\d{6}) (blob|tree|commit) ([0-9a-f]+)\t(.+)$/s.exec(record);
+				if (match === null) return null;
+				const [, mode, type, oid, path] = match as unknown as [string, string, string, string, string];
+				if (!found.has(path)) continue;
+				found.set(path, type === "blob" ? { kind: "file", mode, oid } : { kind: "other" });
+			}
+		}
+		return found;
+	}
+
+	/**
+	 * The paths whose entries differ between two commits' trees (`diff-tree -r`, no renames, no programs), or null when Git could not
+	 * answer. `cut`: more output than the bound; the list is a prefix.
+	 */
+	async changedPaths(worktree: string, from: string, to: string): Promise<{ paths: string[]; cut: boolean } | null> {
+		if (!HEX.test(from) || !HEX.test(to)) return null;
+		if (from === to) return { paths: [], cut: false };
+		const keys = await this.#keys(worktree);
+		if (keys === null) return null;
+		const run = await this.#read(
+			worktree,
+			["diff-tree", "-r", "-z", "--no-renames", "--no-abbrev", "--name-only", "--no-commit-id", from, to, "--"],
+			GIT_LIMITS_V0.listBytes,
+			keys,
+		);
+		if (run.code !== 0 && !run.truncated) return null;
+		const paths: string[] = [];
+		const out = run.stdout;
+		let start = 0;
+		for (let at = out.indexOf(0); at !== -1; start = at + 1, at = out.indexOf(0, start)) {
+			const path = out.subarray(start, at).toString("utf8");
+			if (path !== "") paths.push(path);
+		}
+		return { paths, cut: run.truncated };
+	}
+
+	/** How `to` stands to `from`: the number of commits reachable from `to` and not `from`, and whether `from` is an ancestor of `to`. */
+	async ancestry(worktree: string, from: string, to: string): Promise<{ ahead: number; descends: boolean } | null> {
+		if (!HEX.test(from) || !HEX.test(to)) return null;
+		const keys = await this.#keys(worktree);
+		if (keys === null) return null;
+		const count = await this.#read(
+			worktree,
+			["rev-list", "--count", `${from}..${to}`, "--"],
+			GIT_LIMITS_V0.listBytes,
+			keys,
+		);
+		const text = count.stdout.toString("utf8");
+		if (count.code !== 0 || !/^[0-9]+\n$/.test(text)) return null;
+		const base = await this.#read(worktree, ["merge-base", "--is-ancestor", from, to], GIT_LIMITS_V0.listBytes, keys);
+		if (base.code !== 0 && base.code !== 1) return null;
+		return { ahead: Number(text.trim()), descends: base.code === 0 };
 	}
 
 	/**

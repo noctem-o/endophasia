@@ -52,14 +52,16 @@ const attempt = (over: Partial<Attempt> = {}): Attempt => ({
 	receipts: { state: "ready", list: [], problems: 0 },
 	execution: null,
 	verification: null,
+	provenance: null,
 	...over,
 });
 const view = (...attempts: Attempt[]): AttemptsView => ({
-	schemaVersion: "endo.develop-attempts-view.v3",
+	schemaVersion: "endo.develop-attempts-view.v4",
 	state: "ready",
 	taskId: "endo.task.x",
 	attempts,
 	problems: 0,
+	head: null,
 });
 const receipt = { id: "r" } as unknown as Receipt;
 const NEVER = /(?<!not a )success\b|succeeded|task is done|completed the task|(?<!not )verified|accepted the work/i;

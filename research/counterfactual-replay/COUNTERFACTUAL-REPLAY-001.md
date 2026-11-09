@@ -109,6 +109,11 @@ then gets. Fixing `..` too is part of the pinned clock below (§5.1, 1).
 Every run in a summary carries its own failed checks (`failedChecks`), and a replay reads its miss reasons only after its log is flushed,
 reporting the log's failed writes (`replayLogWriteFailures`).
 
+**Tool sequences are read from the responses** (Codex, #136): each exchange's response, its streamed `tool_calls` joined, in exchange
+order. They were read from the last request's history, which Pi's context compaction can shorten and which never holds the last
+response. On the trials here, which never compacted, both readings give the same sequence (checked on `trial-20261108-215630`: the same
+7 calls, the same argument digests), so the table above stands.
+
 Data: `~/projects/endophasia-research/counterfactual-replay/` (`replay-*/summary.json`, `repeat-*/summary.json` and the trial directories).
 It is kept outside the repository, like all raw data. The probe is [probe.ts](probe.ts).
 

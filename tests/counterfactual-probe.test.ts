@@ -12,9 +12,12 @@ import {
 	privateDirectoryV0,
 	repeatCountV0,
 	repeatProvenanceMismatchesV0,
+	runToolCallsV0,
 	sourceConditionV0,
 	sourceRefusalsV0,
+	toolCallsOfResponseV0,
 } from "../research/counterfactual-replay/probe.ts";
+import { sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
 const base = mkdtempSync(join(tmpdir(), "endo-cf-probe-"));
@@ -176,5 +179,53 @@ describe("a source trial is a baseline only if it verifies, and a replay's log i
 		expect(serverClosed).toBe(true);
 		expect(failures).toBe(0);
 		expect(readEndoCaptureEventsV0(store).filter((e) => e.kind === "capture.cassette-miss")).toHaveLength(1);
+	});
+});
+
+describe("a run's decisions are read from its responses, not from its last request's history (Codex, #136)", () => {
+	const h = (text: string) => sha256HexV0(text).slice(0, 12);
+	const chunked = (body: string) => {
+		const half = Math.floor(body.length / 2);
+		const part = (t: string) => `${Buffer.byteLength(t).toString(16)}\r\n${t}\r\n`;
+		return Buffer.from(
+			`HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n${part(body.slice(0, half))}${part(body.slice(half))}0\r\n\r\n`,
+		);
+	};
+	const sse = (...events: unknown[]) =>
+		`${events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("")}data: [DONE]\n\n`;
+	const delta = (tool_calls: unknown) => ({ choices: [{ delta: { tool_calls } }] });
+	const streamed = chunked(
+		sse(
+			delta([{ index: 0, function: { name: "bash", arguments: '{"command":' } }]),
+			delta([{ index: 0, function: { arguments: '"ls"}' } }]),
+			delta([{ index: 1, function: { name: "write", arguments: '{"path":"a"}' } }]),
+		),
+	);
+	const whole = (body: unknown) => {
+		const text = JSON.stringify(body);
+		return Buffer.from(
+			`HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(text)}\r\n\r\n${text}`,
+		);
+	};
+
+	it("a streamed response's deltas are joined by index, across chunk boundaries", () => {
+		expect(toolCallsOfResponseV0(streamed)).toEqual([`bash:${h('{"command":"ls"}')}`, `write:${h('{"path":"a"}')}`]);
+	});
+
+	it("a whole response's message, and a response with no tool call", () => {
+		const call = { function: { name: "read", arguments: '{"path":"b"}' } };
+		expect(toolCallsOfResponseV0(whole({ choices: [{ message: { tool_calls: [call] } }] }))).toEqual([
+			`read:${h('{"path":"b"}')}`,
+		]);
+		expect(toolCallsOfResponseV0(whole({ choices: [{ message: { content: "done" } }] }))).toEqual([]);
+		expect(toolCallsOfResponseV0(chunked(sse({ choices: [{ delta: { content: "done" } }] })))).toEqual([]);
+	});
+
+	it("every exchange's decisions, in order, an unread response counted; none depends on what a later request still holds", () => {
+		const read = whole({ choices: [{ message: { tool_calls: [{ function: { name: "read", arguments: "{}" } }] } }] });
+		expect(runToolCallsV0([read, streamed, null])).toEqual({
+			toolCalls: [`read:${h("{}")}`, `bash:${h('{"command":"ls"}')}`, `write:${h('{"path":"a"}')}`],
+			responsesUnread: 1,
+		});
 	});
 });

@@ -21,6 +21,7 @@ import {
 	loadEndoCassetteV0,
 	startEndoCassetteServerV0,
 } from "../../adapters/openai-proxy/cassette.ts";
+import { Http1ParserV0 } from "../../adapters/openai-proxy/http1.ts";
 import { endoTreeDigestV0 } from "../../adapters/sandbox/bubblewrap.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
@@ -192,8 +193,10 @@ const flag = (args: string[], name: string, fallback?: string): string => {
 const keyOf = (trial: string) =>
 	endoDigestKeyV0(Buffer.from(readFileSync(join(trial, "digest-key"), "utf8").trim(), "hex"), "installation");
 
-/** Every exchange's request body, decoded, in order: from a trial's own capture log under its own key. */
-function requestBodies(trial: string): { exchange: number; status: number | null; body: Uint8Array }[] {
+/** Every exchange's request body, decoded, in order, and its response's wire bytes when it has any: from a trial's own capture log under its own key. */
+function requestBodies(
+	trial: string,
+): { exchange: number; status: number | null; body: Uint8Array; responseWire: Uint8Array | null }[] {
 	const key = keyOf(trial);
 	const cassette = loadEndoCassetteV0(join(trial, "store"), key);
 	const blobs = createEndoBlobStoreV0(join(trial, "store", "capture"), key, { readOnly: true });
@@ -201,21 +204,75 @@ function requestBodies(trial: string): { exchange: number; status: number | null
 		exchange: e.exchange,
 		status: e.response?.status ?? null,
 		body: blobs.get(e.requestBody.digest),
+		responseWire: e.response === null || e.truncated !== null ? null : blobs.get(e.response.wire.digest),
 	}));
+}
+
+/**
+ * The tool calls one model response decided, as `name:<first 12 hex of sha256(arguments)>`, in order: read from the response itself (its
+ * HTTP framing removed; a streamed response's `tool_calls` deltas joined by index, or a whole response's message). A run's decisions are
+ * its responses' calls, exchange by exchange. The last request's history is not that: once Pi compacts its context, earlier assistant
+ * turns are no longer in it, and the last response is never in any request (Codex, #136).
+ */
+export function toolCallsOfResponseV0(wire: Uint8Array): string[] {
+	const chunks: Buffer[] = [];
+	let contentType = "";
+	const parser = new Http1ParserV0("response", {
+		head: (head) => {
+			contentType = head.headers.find(([n]) => n.toLowerCase() === "content-type")?.[1] ?? "";
+		},
+		body: (bytes) => chunks.push(bytes),
+		end: () => {},
+	});
+	parser.pendingMethods.push("POST");
+	parser.push(Buffer.from(wire));
+	parser.close();
+	const text = Buffer.concat(chunks).toString("utf8");
+	type Call = { function?: { name?: string; arguments?: string }; index?: number };
+	const sha = (args: string) => sha256HexV0(args).slice(0, 12);
+	if (!contentType.includes("text/event-stream") && !text.trimStart().startsWith("data:")) {
+		const calls = (JSON.parse(text) as { choices?: { message?: { tool_calls?: Call[] } }[] }).choices?.[0]?.message
+			?.tool_calls;
+		return (calls ?? []).map((c) => `${c.function?.name ?? ""}:${sha(c.function?.arguments ?? "")}`);
+	}
+	const byIndex = new Map<number, { name: string; arguments: string }>();
+	for (const line of text.split(/\r?\n/)) {
+		if (!line.startsWith("data:")) continue;
+		const data = line.slice(5).trim();
+		if (data === "" || data === "[DONE]") continue;
+		const deltas = (JSON.parse(data) as { choices?: { delta?: { tool_calls?: Call[] } }[] }).choices?.[0]?.delta
+			?.tool_calls;
+		for (const d of deltas ?? []) {
+			const index = d.index ?? 0;
+			const call = byIndex.get(index) ?? { name: "", arguments: "" };
+			if (d.function?.name) call.name += d.function.name;
+			if (d.function?.arguments) call.arguments += d.function.arguments;
+			byIndex.set(index, call);
+		}
+	}
+	return [...byIndex.entries()].sort(([a], [b]) => a - b).map(([, c]) => `${c.name}:${sha(c.arguments)}`);
+}
+
+/**
+ * A run's decision sequence: every response's tool calls, in exchange order, whatever the requests' history still shows. An exchange
+ * with no complete response is counted in `responsesUnread`, never skipped silently.
+ */
+export function runToolCallsV0(responses: readonly (Uint8Array | null)[]): {
+	toolCalls: string[];
+	responsesUnread: number;
+} {
+	return {
+		toolCalls: responses.flatMap((r) => (r === null ? [] : toolCallsOfResponseV0(r))),
+		responsesUnread: responses.filter((r) => r === null).length,
+	};
 }
 
 /** What a trial did, comparable across trials: plain digests only. */
 export function trajectoryOf(trial: string) {
 	const record = JSON.parse(readFileSync(join(trial, "record.json"), "utf8"));
 	const bodies = requestBodies(trial);
-	const last = bodies.at(-1);
-	const messages = last === undefined ? [] : (JSON.parse(Buffer.from(last.body).toString("utf8")).messages ?? []);
-	const toolCalls = messages.flatMap(
-		(m: { role?: string; tool_calls?: { function: { name: string; arguments: string } }[] }) =>
-			m.role === "assistant" && Array.isArray(m.tool_calls)
-				? m.tool_calls.map((t) => `${t.function.name}:${sha256HexV0(t.function.arguments).slice(0, 12)}`)
-				: [],
-	);
+	// Every response's decisions, in exchange order; an exchange with no complete response is counted, never skipped silently.
+	const { toolCalls, responsesUnread } = runToolCallsV0(bodies.map((b) => b.responseWire));
 	const canonical = (b: Uint8Array) => sha256HexV0(canonicalEndoJsonV0(JSON.parse(Buffer.from(b).toString("utf8"))));
 	return {
 		trial,
@@ -225,6 +282,7 @@ export function trajectoryOf(trial: string) {
 		statuses: bodies.map((b) => b.status),
 		requestSha256: bodies.map((b) => canonical(b.body).slice(0, 16)),
 		toolCalls,
+		responsesUnread,
 		// Every run is verified as its source was; a run that fails a check is named here, never silently counted (Codex, #136).
 		failedChecks: sourceRefusalsV0(verifyTrial(trial)),
 		workspaceSha256: record.workspace.sha256,

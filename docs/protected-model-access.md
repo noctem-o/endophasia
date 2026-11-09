@@ -114,6 +114,13 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
   - Four of its nine tool calls asked for commands the minimal runtime does not hold (`hexdump`, `od`, `python3`, `wc`; exit 127). **The
     runtime set is part of a trial's condition** and visibly shapes the agent's behaviour. A study must declare it and keep it fixed.
   - The trial's directory is under `~/projects/endophasia-research/eval-iso-002/`, outside the repository.
+- **The trial directory and the workspace's starting state** (Codex, #136):
+  - the trial directory is made by one non-recursive mkdir when it is used, then checked to be a real directory of this user's with no
+    access for others. A name taken meanwhile (another user's directory, a link) is refused, never adopted;
+  - the workspace root's time is set to 2000-01-01T00:00:00Z before Pi starts, and recorded (`workspace.initialRootMtimeS`): the agent
+    sees it (`ls -la`), and a clock time would make identical runs differ. **One difference remains:** the sandbox's own root (`..` from
+    `/work`) is made by bubblewrap at each run and shows that run's setup time. Measured: two runs a minute apart printed the same `.`
+    and different `..` lines. Removing it would mean changing the sandbox's root, which this change does not do.
 - **Independent verification:** `trial.ts verify <dir>` reads the trial again in a new process. It runs 18 checks, four rounds of Codex
   review having added to the first 14:
   - the record's seal;

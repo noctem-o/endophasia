@@ -14,6 +14,18 @@
   - `endo attempt show` carries the same record states. Damaged files are left as found.
 
 ### Added
+- **EVAL-ISO-002: model access for a protected sandbox, through a narrow recording relay** (mechanism; not yet in
+  `endo experiment protected-run`).
+  - A sandbox's only way out is one Unix socket, bind-mounted alone (`socket` mount kind, `network: "model-relay"`). Behind it, the
+    recording proxy's governed admission admits only `POST /v1/chat/completions`, measured from Pi 1.5.0, for the declared model, within
+    size, transfer and connection bounds. It refuses the model server's administration endpoints and everything else before any upstream
+    connection. Every admitted exchange is recorded as a verifiable cassette.
+  - Optional `MemoryMax`/`CPUQuota` limits on a sandbox's scope, with an OOM kill reported as `oom-kill`.
+  - Real Pi ran inside the sandbox against a fake and a real local model. A research driver
+    (`research/protected-eval/model-connected/trial.ts`) keeps a sealed trial record and verifies it independently.
+  - Fixed: a refused request in a governed recording no longer leaves a gap in exchange numbers. Before, one refused GET made the recording
+    unreadable as a cassette.
+  - See [docs/protected-model-access.md](docs/protected-model-access.md).
 - **LIVE-PROCESS-CONTAINMENT-001: a live Pi session's processes are owned, and their cleanup is reported, never assumed.**
   - `endo harness attach` (and the workbench) runs Pi in a transient systemd user scope of its own where a user manager is reachable,
     reusing EVAL-ISO-001's containment. A process Pi's bash tool starts detached is in the scope too.

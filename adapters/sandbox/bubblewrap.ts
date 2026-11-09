@@ -13,10 +13,12 @@ import { dirname } from "node:path";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	type EndoContainmentV0,
+	type EndoScopeLimitsV0,
 	newScopeUnitV0,
 	processInScopeV0,
 	processStartTimeV0,
 	scopeArgsV0,
+	scopeResultV0,
 	stopScopeV0,
 } from "./containment.ts";
 
@@ -184,7 +186,11 @@ export const ENDO_SANDBOX_NAMESPACES_V0 = ["cgroup", "ipc", "mnt", "net", "pid",
 
 export interface EndoSandboxMountV0 {
 	target: string;
-	kind: "ro-file" | "ro-dir" | "rw-dir";
+	/**
+	 * `socket`: one Unix socket the controller created (EVAL-ISO-002, adapters/sandbox/model-relay.ts), bound alone, never its directory. It
+	 * is the only way out of a sandbox that has one, and the profile then says `network: "model-relay"`.
+	 */
+	kind: "ro-file" | "ro-dir" | "rw-dir" | "socket";
 	/** The role of the host source: recorded and digested instead of its path. */
 	role: string;
 	source: string;
@@ -236,7 +242,8 @@ export interface EndoSandboxProfileV0 {
 	/** What the profile requests, as recorded: no host path, every file by digest. */
 	logical: {
 		namespaces: string[];
-		network: "none";
+		/** `none`: only `lo`, nothing mounted to reach out through. `model-relay`: the same, plus one relay socket (EVAL-ISO-002). */
+		network: "none" | "model-relay";
 		rootReadOnly: true;
 		userNamespacesDisabled: true;
 		environment: string[];
@@ -288,6 +295,11 @@ export function buildSandboxProfileV0(input: EndoSandboxProfileInputV0): EndoSan
 		check(m.target);
 		if (m.kind === "ro-file" && m.sha256 === undefined)
 			throw new TypeError(`read-only file ${m.target} needs its digest`);
+		if (
+			m.kind === "socket" &&
+			(m.role !== "model-relay" || lstatSync(m.source, { throwIfNoEntry: false })?.isSocket() !== true)
+		)
+			throw new TypeError(`${m.target}: only a model relay's socket is mounted as a socket`);
 		args.push(m.kind === "rw-dir" ? "--bind" : "--ro-bind", m.source, m.target);
 		mounts.push({
 			target: m.target,
@@ -306,7 +318,7 @@ export function buildSandboxProfileV0(input: EndoSandboxProfileInputV0): EndoSan
 	if (input.unsafeForTests?.writableRoot !== true) args.push("--remount-ro", "/", "--remount-ro", "/dev");
 	const logical: EndoSandboxProfileV0["logical"] = {
 		namespaces: [...ENDO_SANDBOX_NAMESPACES_V0],
-		network: "none",
+		network: input.mounts.some((m) => m.kind === "socket") ? "model-relay" : "none",
 		rootReadOnly: true,
 		userNamespacesDisabled: true,
 		environment: Object.keys(input.env).sort(),
@@ -344,7 +356,16 @@ export interface EndoSandboxRunV0 {
 	 * The sandbox's scope (containment.ts): its unit, whether bubblewrap was seen running inside it, and whether the user manager confirmed
 	 * it ended (every process of its cgroup gone).
 	 */
-	scope: { unit: string; established: boolean; ended: "confirmed" | "unconfirmed" };
+	scope: {
+		unit: string;
+		established: boolean;
+		ended: "confirmed" | "unconfirmed";
+		/**
+		 * With limits only: the user manager's result for a scope that failed (`oom-kill` when the memory limit killed a process). Null when
+		 * the manager no longer knows the unit, which is what a scope that ended without failing looks like (it unloads inactive scopes).
+		 */
+		result?: string | null;
+	};
 	/** Supplementary: whether the sandbox's init (that pid with that start time) is gone. Not, on its own, the termination guarantee. */
 	initGone: boolean | null;
 	/**
@@ -398,6 +419,8 @@ export async function runSandboxV0(
 		outputBytes: number;
 		/** The containment the sandbox runs in. Required: a protected sandbox never runs outside a scope. */
 		containment: EndoContainmentV0;
+		/** Resource limits on the sandbox's scope (EVAL-ISO-002). Absent: none beyond TasksMax, as in EVAL-ISO-001. */
+		limits?: EndoScopeLimitsV0;
 		stdin?: Buffer;
 		/** Called with the scope's unit before anything is started, so a caller can record it durably first. */
 		onScope?: (unit: string) => void;
@@ -422,7 +445,7 @@ export async function runSandboxV0(
 	const runtimeMaxSec = options.timeoutMs / 1000 + 30;
 	const child = spawn(
 		options.containment.systemdRun,
-		scopeArgsV0(options.containment, unit, runtimeMaxSec, [bwrap.path, "--args", "4", "--", ...argv]),
+		scopeArgsV0(options.containment, unit, runtimeMaxSec, [bwrap.path, "--args", "4", "--", ...argv], options.limits),
 		{
 			env: { ...options.containment.env },
 			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe"],
@@ -520,6 +543,7 @@ export async function runSandboxV0(
 	const known = init as EndoProcessIdentityV0 | null;
 	// The guarantee: the user manager confirms the scope ended. The init's identity is kept as a supplementary observation.
 	const ended = await stopScopeV0(options.containment, unit);
+	const result = options.limits === undefined ? undefined : scopeResultV0(options.containment, unit);
 	// Only now, with the scope stopped, may the release pipe close (an EOF on it would release a blocked init).
 	(release as NodeJS.WritableStream & { destroy?: () => void }).destroy?.();
 	const initGone = known === null ? null : (await endSandboxV0(known)) === "confirmed";
@@ -537,7 +561,7 @@ export async function runSandboxV0(
 		stderr: e.bytes,
 		truncated: { stdout: o.dropped, stderr: e.dropped },
 		init: known,
-		scope: { unit, established, ended },
+		scope: { unit, established, ended, ...(result === undefined ? {} : { result }) },
 		initGone,
 		termination,
 	};

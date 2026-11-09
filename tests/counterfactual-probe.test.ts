@@ -1,16 +1,21 @@
 // COUNTERFACTUAL-REPLAY-001 probe (research/counterfactual-replay/probe.ts): its output stays private, and a repeat refuses inputs that
 // differ from its source trial's (Codex, #136). The measurements themselves need a real model and are not run here.
+import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { EndoCaptureLogV0, readEndoCaptureEventsV0 } from "../adapters/openai-proxy/capture-log.ts";
 import {
+	finishReplayLogV0,
 	firstRequestIdenticalV0,
 	privateDirectoryV0,
 	repeatCountV0,
 	repeatProvenanceMismatchesV0,
 	sourceConditionV0,
+	sourceRefusalsV0,
 } from "../research/counterfactual-replay/probe.ts";
+import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 
 const base = mkdtempSync(join(tmpdir(), "endo-cf-probe-"));
 afterAll(() => rmSync(base, { recursive: true, force: true }));
@@ -140,5 +145,36 @@ describe("the repeat count is bounded, and a first request is compared only when
 		expect(firstRequestIdenticalV0([{ requestSha256: [] }, { requestSha256: [] }])).toBeNull();
 		expect(firstRequestIdenticalV0([{ requestSha256: ["a"] }, { requestSha256: [] }])).toBeNull();
 		expect(firstRequestIdenticalV0([])).toBeNull();
+	});
+});
+
+describe("a source trial is a baseline only if it verifies, and a replay's log is read only once flushed (Codex, #136)", () => {
+	const check = (name: string, ok: boolean) => ({ check: name, ok, detail: "" });
+	it("every failed check is named; none is excused; no checks at all is a refusal", () => {
+		expect(sourceRefusalsV0([check("seal", true), check("termination", true)])).toEqual([]);
+		expect(
+			sourceRefusalsV0([check("seal", true), check("termination", false), check("runtime-unchanged", false)]),
+		).toEqual(["termination", "runtime-unchanged"]);
+		expect(sourceRefusalsV0([check("recording-complete", false)])).toEqual(["recording-complete"]);
+		expect(sourceRefusalsV0([])).toEqual(["no-checks"]);
+	});
+
+	it("an event recorded just before the end is on disk when the replay's log is read", async () => {
+		const store = join(base, "replay-log");
+		const key = endoDigestKeyV0(randomBytes(32), "installation");
+		const log = new EndoCaptureLogV0(store, key, "replay", { async: true });
+		let serverClosed = false;
+		log.record("capture.cassette-miss", { reason: "no-matching-exchange" });
+		const failures = await finishReplayLogV0(
+			{
+				close: async () => {
+					serverClosed = true;
+				},
+			},
+			log,
+		);
+		expect(serverClosed).toBe(true);
+		expect(failures).toBe(0);
+		expect(readEndoCaptureEventsV0(store).filter((e) => e.kind === "capture.cassette-miss")).toHaveLength(1);
 	});
 });

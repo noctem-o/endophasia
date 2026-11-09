@@ -25,7 +25,7 @@ import { endoTreeDigestV0 } from "../../adapters/sandbox/bubblewrap.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
-import { runTrial } from "../protected-eval/model-connected/trial.ts";
+import { runTrial, type VerifyFindingV0, verifyTrial } from "../protected-eval/model-connected/trial.ts";
 
 /**
  * Make `dir` (and any missing parents) and leave it private to this user, whatever the umask: it holds raw prompts, model replies and
@@ -148,6 +148,40 @@ function requireProvenance(sourceRecord: unknown, piDist: string, upstream: stri
 		);
 }
 
+/**
+ * Why a source trial cannot be a baseline: every check `verifyTrial` failed, by name; empty when all passed. A source whose record or
+ * capture is damaged, whose termination is unconfirmed, whose exchanges fall outside its policy, or whose runtime files on this host
+ * are no longer the ones it recorded (`runtime-unchanged`) would put another condition, or no valid run at all, into the comparison and
+ * have it read as the model's variation (Codex, #136). No check is excused: an older record that cannot show a check fails it.
+ */
+export function sourceRefusalsV0(findings: readonly VerifyFindingV0[]): string[] {
+	if (findings.length === 0) return ["no-checks"];
+	return findings.filter((f) => !f.ok).map((f) => f.check);
+}
+
+/**
+ * End a replay's recording before reading it: close the cassette server (it waits for its sockets), then wait for the asynchronous log's
+ * queued writes, a cassette miss among them, to reach disk, then close the log. Read before the flush, the miss reasons could be missing
+ * or partial and disagree with the server's own counters (Codex, #136). Returns the log's failed writes, which the summary reports.
+ */
+export async function finishReplayLogV0(
+	server: { close(): Promise<void> },
+	log: { flush(): Promise<void>; close(): void; readonly writeFailures: number },
+): Promise<number> {
+	await server.close();
+	await log.flush();
+	log.close();
+	return log.writeFailures;
+}
+
+function requireVerifiedSource(source: string, piDist: string): void {
+	const refused = sourceRefusalsV0(verifyTrial(source, { piDist: realpathSync(piDist) }));
+	if (refused.length > 0)
+		throw new TypeError(
+			`the source trial does not verify on this host (${refused.join(", ")}): it cannot be a baseline`,
+		);
+}
+
 const flag = (args: string[], name: string, fallback?: string): string => {
 	const i = args.indexOf(name);
 	const v = i === -1 ? fallback : args[i + 1];
@@ -191,6 +225,8 @@ export function trajectoryOf(trial: string) {
 		statuses: bodies.map((b) => b.status),
 		requestSha256: bodies.map((b) => canonical(b.body).slice(0, 16)),
 		toolCalls,
+		// Every run is verified as its source was; a run that fails a check is named here, never silently counted (Codex, #136).
+		failedChecks: sourceRefusalsV0(verifyTrial(trial)),
 		workspaceSha256: record.workspace.sha256,
 		answerSha256: record.agent.stdout.sha256,
 	};
@@ -204,6 +240,7 @@ async function repeat(args: string[]) {
 	const sourceRecord = JSON.parse(readFileSync(join(source, "record.json"), "utf8"));
 	if (sha256HexV0(prompt) !== sourceRecord.subject.prompt.sha256)
 		throw new TypeError("--prompt is not the source trial's prompt");
+	requireVerifiedSource(source, flag(args, "--pi-dist"));
 	requireProvenance(sourceRecord, flag(args, "--pi-dist"), flag(args, "--upstream"));
 	const condition = conditionOrThrow(sourceRecord, args);
 	privateDirectoryV0(out);
@@ -251,6 +288,7 @@ async function replay(args: string[]) {
 		throw new TypeError("--prompt is not the source trial's prompt");
 	if (existsSync(out)) throw new TypeError(`${out} exists`);
 	// A replay's upstream is the cassette by design; its Pi must still be the source's.
+	requireVerifiedSource(source, flag(args, "--pi-dist"));
 	requireProvenance(sourceRecord, flag(args, "--pi-dist"), null);
 	const condition = conditionOrThrow(sourceRecord, args);
 	privateDirectoryV0(out);
@@ -282,8 +320,7 @@ async function replay(args: string[]) {
 			...conditionArgs(condition),
 		]);
 	} finally {
-		await server.close();
-		log.close();
+		await finishReplayLogV0(server, log);
 	}
 	const recorded = requestBodies(source);
 	const replayed = requestBodies(trialDir);
@@ -311,6 +348,8 @@ async function replay(args: string[]) {
 		served: server.served,
 		misses: server.misses,
 		missReasons: misses,
+		// Failed writes of the replay's own log: its miss reasons are complete only when this is 0.
+		replayLogWriteFailures: log.writeFailures,
 		firstDivergence,
 		source_trajectory: trajectoryOf(source),
 		replay_trajectory: trajectoryOf(trialDir),

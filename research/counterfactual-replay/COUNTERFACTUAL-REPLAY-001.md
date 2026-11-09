@@ -94,6 +94,21 @@ trace, however detailed (§6).
 - So a counterfactual must hold the clock fixed for its prefix, and must treat the post-checkpoint continuation as a sample from a
   distribution.
 
+**Since these runs, the trial driver pins the workspace root's time** (2000-01-01T00:00:00Z, recorded as `workspace.initialRootMtimeS`),
+so `ls -la`'s line for `.` is the same in every run. Its line for `..`, the sandbox's own root, still shows each run's setup time
+(measured: two runs a minute apart differ there only). The probe runs above predate the pin; a re-run is needed to see how far replay
+then gets. Fixing `..` too is part of the pinned clock below (§5.1, 1).
+
+**What the probe refuses** (the runs above passed these checks, or predate them as noted):
+- a source trial that does not verify on this host: any failed check of `trial.ts verify`, its runtime files among them
+  (`runtime-unchanged`). The earliest trial (`trial-20261108-195634`) predates the `recording-complete` check, so it fails it and can no
+  longer be a source;
+- another Pi build, or another model endpoint, than the source's;
+- other limits or another timeout than the source's (the timeout is the operator's to state for records that predate keeping it);
+- `--times` outside 1 to 20.
+Every run in a summary carries its own failed checks (`failedChecks`), and a replay reads its miss reasons only after its log is flushed,
+reporting the log's failed writes (`replayLogWriteFailures`).
+
 Data: `~/projects/endophasia-research/counterfactual-replay/` (`replay-*/summary.json`, `repeat-*/summary.json` and the trial directories).
 It is kept outside the repository, like all raw data. The probe is [probe.ts](probe.ts).
 

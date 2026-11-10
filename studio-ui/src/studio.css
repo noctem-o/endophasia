@@ -4822,6 +4822,33 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	font-weight: 600;
 }
 
+/* A behavioural check: the declared behaviour, what was observed, and where the output first differs. */
+.behaviour {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding-left: 8px;
+	border-left: 1px solid var(--line-subtle);
+}
+.behaviour p {
+	margin: 0;
+}
+.behaviour-diff {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.behaviour-text {
+	margin: 2px 0;
+	padding: 4px 6px;
+	max-height: 16em;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	background: var(--surface-2);
+	border: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
+}
+
 /* The whole command, wrapped, so it can be read and selected without a sideways scroll. */
 .task-command.planned-command {
 	margin: 2px 0 0;

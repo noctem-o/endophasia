@@ -32,11 +32,13 @@ export const ENDO_DEVELOP_ATTEMPT_SCHEMA_V1 = "endo.develop-attempt.v1";
 export const ENDO_DEVELOP_ATTEMPT_HANDOFF_SCHEMA_V0 = "endo.develop-attempt-handoff.v0";
 export const ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0 = "endo.develop-attempt-outcome.v0";
 /**
- * v3 (DEVELOP-VERIFY-001): each attempt carries its verification plan and the acceptance ledger derived from it (null without a plan).
+ * v5 (DEVELOP-BEHAVIOUR-001): each receipt carries its standard output's digest and size (`stdout`), and each planned check its declared
+ * behaviour (`expect`) and what the latest receipt at HEAD observed of it (`behaviour`). v4 (DEVELOP-PROVENANCE-001) added `head` and each
+ * attempt's provenance. v3 (DEVELOP-VERIFY-001): each attempt carries its verification plan and the acceptance ledger derived from it (null without a plan).
  * v2 (Slice I) added its execution, when it was sent to Pi through the workbench (protocol/develop-attempt-execution.ts). v1 (Slice F)
  * added verification receipts; v0 (Slice E), v1 and v2 are no longer served.
  */
-export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4 = "endo.develop-attempts-view.v4";
+export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V5 = "endo.develop-attempts-view.v5";
 /** The renderer an attempt is shown with. A later renderer is a new value: an old attempt's brief never changes under it. */
 export const ENDO_DEVELOP_BRIEF_V0 = "endo.develop-brief.v0";
 /** v0's sections, plus "How the result will be checked" from the attempt's verification plan. Used only by v1 attempts. */
@@ -351,6 +353,24 @@ export function renderEndoDevelopBriefV0(attempt: EndoDevelopAttemptV0): string 
 }
 
 /**
+ * A behavioural check's expectation, as the brief states it. The fence cannot show whether the text ends with a line break, so Endophasia
+ * says so outside it, with the byte count.
+ */
+function expectedLines(e: { exitCode: number; stdout: string }): string[] {
+	const bytes = new TextEncoder().encode(e.stdout).length;
+	if (bytes === 0)
+		return [
+			`What the operator expects it to do: exit with code ${e.exitCode} and write nothing to standard output. Endophasia compares the`,
+			"output byte for byte; standard error is not compared.",
+		];
+	return [
+		`What the operator expects it to do: exit with code ${e.exitCode} and write exactly this to standard output (${bytes} bytes as UTF-8; it ${e.stdout.endsWith("\n") ? "ends with a line break" : "does not end with a line break"}).`,
+		"Endophasia compares the output byte for byte; standard error is not compared.",
+		fenced(e.stdout),
+	];
+}
+
+/**
  * Brief v1's one extra section: the verification plan. Endophasia's words are outside the fences, the operator's (argv, what a check shows,
  * each criterion) inside; check names are validated identifiers and are written outside. The argv is written as a JSON list, so its exact
  * arguments are unambiguous.
@@ -368,6 +388,7 @@ function planSection(plan: EndoVerificationPlanV0): string[] {
 			fenced(JSON.stringify(c.argv)),
 			"What the operator says it shows:",
 			fenced(c.shows),
+			...(c.expect === undefined ? [] : expectedLines(c.expect)),
 			"",
 		);
 	plan.criteria.forEach((c, i) => {
@@ -391,7 +412,7 @@ function planSection(plan: EndoVerificationPlanV0): string[] {
  * follows from its checks. Derived at the read, never stored. `current` and `otherCommit` name receipts in the attempt's own `receipts.list`.
  */
 export interface EndoAttemptVerificationViewV0 {
-	checks: (Pick<EndoLedgerCheckV0, "name" | "current" | "atHead" | "otherCommit" | "runs"> & {
+	checks: (Pick<EndoLedgerCheckV0, "name" | "current" | "atHead" | "otherCommit" | "runs" | "behaviour"> & {
 		argv: string[];
 		shows: string;
 		state: EndoPlannedCheckStateV0;
@@ -400,7 +421,7 @@ export interface EndoAttemptVerificationViewV0 {
 	unplanned: number;
 }
 
-export interface EndoDevelopAttemptViewV4 {
+export interface EndoDevelopAttemptViewV5 {
 	id: string;
 	state: EndoDevelopAttemptStateV0;
 	preparedAtMs: number;
@@ -436,11 +457,11 @@ export interface EndoDevelopAttemptViewV4 {
  * `GET workspace/attempts`: the attempts of the task the project has SELECTED (chosen from the task file, never from the request). No path,
  * session id or scope: attempts carry none. `problems` counts files in the directory that could not be used (they are not shown).
  */
-export interface EndoDevelopAttemptsViewV4 {
-	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4;
+export interface EndoDevelopAttemptsViewV5 {
+	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V5;
 	state: "ready" | "no-task" | "unreadable";
 	taskId: string | null;
-	attempts: EndoDevelopAttemptViewV4[];
+	attempts: EndoDevelopAttemptViewV5[];
 	problems: number;
 	/**
 	 * The working tree every receipt relation, ledger state and "now" in this view was compared with: its HEAD and whether it was clean,

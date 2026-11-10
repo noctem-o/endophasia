@@ -15,6 +15,15 @@
   - `endo attempt show` carries the same record states. Damaged files are left as found.
 
 ### Added
+- **DEVELOP-BEHAVIOUR-001: behavioural checks** ([design](docs/designs/develop-behavioural-checks.md)).
+  - A planned check may declare what its command should DO: `"expect": {"exitCode": 0, "stdout": "14\n"}` in the plan file. The brief
+    states it; the ledger then reads each receipt of that command by its exit code and its output's SHA-256 against the declaration, so
+    a command that exits 0 with the wrong output **fails** the check, and one expected to exit 2 can pass it.
+  - Receipts are now `endo.develop-receipt.v1`: every check records its standard output's SHA-256; `endo attempt check --keep-output`
+    also stores its first 8 KiB, so the page and `endo attempt evidence` can show the first line where it differs. v0 receipts are still
+    read (their output reads "not recorded").
+  - `endo.develop-attempts-view.v5` and `endo.develop-attempt-evidence.v3` carry the expectation and what was observed. Execution is
+    unchanged: a check still runs only from the argv typed after `--`.
 - **DEVELOP-PROVENANCE-001: what the working tree was around an attempt** ([design](docs/designs/develop-candidate-provenance.md)).
   - Observations (`endo.develop-observation.v0`, `develop/observations/`) record HEAD and, for each changed path, the Git blob id and
     mode the working tree held, never contents. The live workbench records one just before it sends an approved attempt and one when

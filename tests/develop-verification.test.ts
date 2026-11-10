@@ -25,7 +25,7 @@ import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV4,
+	type EndoDevelopAttemptViewV5,
 	renderEndoDevelopBriefV0,
 	validateEndoDevelopAttemptV0,
 } from "../protocol/develop-attempts.ts";
@@ -527,10 +527,10 @@ const COMPARED = new WeakMap<object, EndoReceiptCurrentV0 | null>();
 function viewWith(
 	receipts: EndoDevelopReceiptV0[],
 	current: EndoReceiptCurrentV0 | null = CLEAN,
-): EndoDevelopAttemptViewV4 {
+): EndoDevelopAttemptViewV5 {
 	const w = workspace();
 	const a = ok(w.service.prepare(w.project.id, w.task.id, { objective: "x", verification: clone(PLAN) }));
-	const view: EndoDevelopAttemptViewV4 = {
+	const view: EndoDevelopAttemptViewV5 = {
 		id: a.id,
 		state: "prepared",
 		preparedAtMs: a.preparedAtMs,
@@ -554,6 +554,8 @@ function viewWith(
 				reasons: [...r.reasons],
 				limitations: [...r.limitations],
 				relation: endoReceiptRelationV0(r, current),
+				// No check of this plan declares a behaviour: no digest is served.
+				stdout: null,
 			})),
 			problems: 0,
 		},
@@ -564,10 +566,10 @@ function viewWith(
 	COMPARED.set(view, current);
 	return view;
 }
-const body = (a: EndoDevelopAttemptViewV4) => {
+const body = (a: EndoDevelopAttemptViewV5) => {
 	const current = COMPARED.has(a) ? (COMPARED.get(a) ?? null) : CLEAN;
 	return clone({
-		schemaVersion: "endo.develop-attempts-view.v4",
+		schemaVersion: "endo.develop-attempts-view.v5",
 		state: "ready",
 		taskId: `endo.task.${"0".repeat(32)}`,
 		attempts: [a],
@@ -595,7 +597,7 @@ describe("the page's gate re-derives the ledger and refuses any claim the receip
 	});
 
 	it("refuses each forgery", () => {
-		const forgeries: [string, (a: EndoDevelopAttemptViewV4) => void][] = [
+		const forgeries: [string, (a: EndoDevelopAttemptViewV5) => void][] = [
 			[
 				"a criterion claiming passed over a not-run check",
 				(a) => Object.assign(a.verification!.criteria[1]!, { state: "passed" }),
@@ -837,7 +839,7 @@ describe.skipIf(!haveGit)(
 
 			const read = () => JSON.parse(endo(["attempt", "evidence", "--root", root, "--attempt", id]).stdout).evidence;
 			let e = read();
-			expect(e.schemaVersion).toBe("endo.develop-attempt-evidence.v2");
+			expect(e.schemaVersion).toBe("endo.develop-attempt-evidence.v3");
 			expect(e.verification.checks.map((c: { name: string; state: string }) => [c.name, c.state])).toEqual([
 				["unit", "passed"],
 				["lint", "not-run"],

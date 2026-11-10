@@ -8,8 +8,13 @@
 // (runtime/contracts/develop-verification.ts). It says what has been observed at the current HEAD for each planned check, and, for each
 // criterion, a state that follows from its checks by one fixed rule (`endoCriterionStateV0`). It never says a criterion is met: that a
 // command addresses a criterion is the plan's declaration, not an observation.
+//
+// A planned check may also declare what the command is expected to DO (DEVELOP-BEHAVIOUR-001, docs/designs/develop-behavioural-checks.md):
+// the exit code and the exact standard output. Its receipts are then read by what they observed of that behaviour, not by their exit
+// status: a receipt passes the check only when its exit code is the expected one and its output's SHA-256 is the expected output's. The
+// expectation is the operator's, frozen in the prepared record before the attempt is sent; it is an oracle they declared, not ground truth.
 
-import type { EndoReceiptOutcomeV0 } from "./develop-receipts.ts";
+import type { EndoReceiptExecutionV0, EndoReceiptOutcomeV0 } from "./develop-receipts.ts";
 import { checkEndoReceiptArgvV0 } from "./develop-receipts.ts";
 import { checkEndoDevelopTextV0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
@@ -19,6 +24,8 @@ export const ENDO_VERIFICATION_PLAN_LIMITS_V0 = Object.freeze({
 	maxCriteria: 12,
 	/** The plan as JSON (UTF-8). Each argv is bounded by the receipt's own rule as well. */
 	maxPlanBytes: 16 * 1024,
+	/** One check's expected standard output, in UTF-8 bytes. */
+	maxExpectedStdoutBytes: 4 * 1024,
 });
 
 export const ENDO_CHECK_NAME_PATTERN_V0 = /^[a-z][a-z0-9-]{0,31}$/;
@@ -31,6 +38,18 @@ export const ENDO_CHECK_NAME_PATTERN_V0 = /^[a-z][a-z0-9-]{0,31}$/;
  */
 const SHOWN_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd\u2026]/;
 export const ENDO_PLANNED_ARG_MAX_CHARS_V0 = 400;
+/** Expected output may hold line breaks and tabs, and nothing else the page would replace (a carriage return included). */
+const EXPECTED_UNSAFE =
+	/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd]/;
+
+/**
+ * What the operator expects a check's command to do: exit with `exitCode` and write exactly `stdout` (as UTF-8, byte for byte, including
+ * a final newline or its absence) to standard output. Standard error is not compared.
+ */
+export interface EndoExpectedBehaviourV0 {
+	exitCode: number;
+	stdout: string;
+}
 
 export interface EndoPlannedCheckV0 {
 	/** The operator's name for this command, unique in the plan. */
@@ -39,6 +58,8 @@ export interface EndoPlannedCheckV0 {
 	argv: string[];
 	/** The operator's sentence of what this check shows. Their words; never interpreted. */
 	shows: string;
+	/** Present for a behavioural check: what the command is expected to do. Absent: its receipts are read by their exit status. */
+	expect?: EndoExpectedBehaviourV0;
 }
 
 export interface EndoPlannedCriterionV0 {
@@ -79,6 +100,21 @@ function line(v: unknown, what: string): string {
 	return checked.text;
 }
 
+/** An expected behaviour, checked: an exit code of 0 to 255, and output that can be shown exactly, at most its bound. */
+function expectation(v: unknown, what: string): EndoExpectedBehaviourV0 {
+	const r = closed(v, ["exitCode", "stdout"], what);
+	if (typeof r.exitCode !== "number" || !Number.isSafeInteger(r.exitCode) || r.exitCode < 0 || r.exitCode > 255)
+		return bad(`${what}.exitCode is not an exit code`);
+	if (
+		typeof r.stdout !== "string" ||
+		!r.stdout.isWellFormed() ||
+		EXPECTED_UNSAFE.test(r.stdout) ||
+		new TextEncoder().encode(r.stdout).length > ENDO_VERIFICATION_PLAN_LIMITS_V0.maxExpectedStdoutBytes
+	)
+		return bad(`${what}.stdout is not text that can be shown exactly, within its bound`);
+	return { exitCode: r.exitCode, stdout: r.stdout };
+}
+
 /**
  * A plan, checked. Throws `EndoInvalidRecordV0` for anything that breaks an invariant, so an invalid plan cannot be written or read:
  * unique, well-formed names; distinct argv, each one a receipt could hold; every check named by some criterion; every name a criterion
@@ -87,14 +123,25 @@ function line(v: unknown, what: string): string {
 export function validateEndoVerificationPlanV0(value: unknown): EndoVerificationPlanV0 {
 	const r = closed(value, ["checks", "criteria"], "verification");
 	const checks = array(r.checks, ENDO_VERIFICATION_PLAN_LIMITS_V0.maxChecks, "verification.checks").map((c, i) => {
-		const x = closed(c, ["name", "argv", "shows"], `verification.checks[${i}]`);
+		const behavioural = typeof c === "object" && c !== null && Object.hasOwn(c, "expect") && !Array.isArray(c);
+		const x = closed(
+			c,
+			behavioural ? ["name", "argv", "shows", "expect"] : ["name", "argv", "shows"],
+			`verification.checks[${i}]`,
+		);
 		if (typeof x.name !== "string" || !ENDO_CHECK_NAME_PATTERN_V0.test(x.name))
 			return bad(`verification.checks[${i}].name is not a check name`);
 		if (!checkEndoReceiptArgvV0(x.argv))
 			return bad(`verification.checks[${i}].argv is not an argv a receipt can hold`);
 		if (x.argv.some((arg) => arg.length > ENDO_PLANNED_ARG_MAX_CHARS_V0 || SHOWN_UNSAFE.test(arg)))
 			return bad(`verification.checks[${i}].argv has an argument that cannot be shown exactly`);
-		return { name: x.name, argv: [...x.argv], shows: line(x.shows, `verification.checks[${i}].shows`) };
+		const check: EndoPlannedCheckV0 = {
+			name: x.name,
+			argv: [...x.argv],
+			shows: line(x.shows, `verification.checks[${i}].shows`),
+		};
+		if (behavioural) check.expect = expectation(x.expect, `verification.checks[${i}].expect`);
+		return check;
 	});
 	const names = new Set(checks.map((c) => c.name));
 	if (names.size !== checks.length) return bad("verification.checks has two checks with one name");
@@ -220,6 +267,74 @@ export const ENDO_PLANNED_CHECK_LABELS_V0: Readonly<Record<EndoPlannedCheckState
 	unavailable: "Not compared",
 });
 
+// ---- behaviour ----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * How a behavioural check reads one receipt, by one rule (the page's gate re-derives it):
+ * - the receipt is inconclusive: inconclusive (it says why);
+ * - its output's digest is not recorded (a v0 receipt) or not whole: inconclusive, since nothing can be compared;
+ * - processes of the check were still running when it exited, or that could not be seen (`strays`): inconclusive, since they were
+ *   stopped and what they would have printed is unknown (review: the verdict would otherwise depend on timing);
+ * - its exit code is the expected one and its output's SHA-256 is the expected output's: passed;
+ * - otherwise: failed, whatever its exit status (a command that exits 0 with the wrong output fails the check).
+ */
+export function endoBehaviourOutcomeV0(
+	receipt: {
+		outcome: EndoReceiptOutcomeV0;
+		execution: EndoReceiptExecutionV0;
+		stdoutSha256: string | null;
+		strays: boolean;
+	},
+	expected: { exitCode: number; stdoutSha256: string },
+): EndoReceiptOutcomeV0 {
+	if (
+		receipt.outcome === "inconclusive" ||
+		receipt.stdoutSha256 === null ||
+		receipt.strays ||
+		receipt.execution.kind !== "exited"
+	)
+		return "inconclusive";
+	return receipt.execution.code === expected.exitCode && receipt.stdoutSha256 === expected.stdoutSha256
+		? "passed"
+		: "failed";
+}
+
+/**
+ * The first line at which two texts differ (1-based), with that line of each, or null when they are equal. A line is what lies between
+ * line breaks; `null` for a side that has no such line (it ended earlier). Used to point at a difference, never to decide one: the
+ * digest decides.
+ */
+export function endoFirstDifferenceV0(
+	expected: string,
+	observed: string,
+): { line: number; expected: string | null; observed: string | null } | null {
+	if (expected === observed) return null;
+	const a = expected.split("\n");
+	const b = observed.split("\n");
+	for (let i = 0; i < Math.max(a.length, b.length); i += 1)
+		if (a[i] !== b[i]) return { line: i + 1, expected: a[i] ?? null, observed: b[i] ?? null };
+	return { line: a.length, expected: a.at(-1) ?? null, observed: b.at(-1) ?? null };
+}
+
+/**
+ * What a behavioural check's latest receipt at the current HEAD observed, beside what was expected. `kept` is the output itself only when
+ * the operator kept it (`--keep-output`), made display-safe and at most `maxKeptStdoutBytes`; the comparison is the digest's, never the
+ * text's.
+ */
+export interface EndoBehaviourObservedV0 {
+	receiptId: string;
+	/** The exit code, or null when the command did not exit by itself. */
+	exitCode: number | null;
+	stdoutBytes: number;
+	/** Null when the receipt recorded no digest (v0) or the output was not read whole. */
+	stdoutSha256: string | null;
+	kept:
+		| { state: "not-recorded" }
+		| { state: "off" }
+		| { state: "not-text" }
+		| { state: "text"; text: string; truncated: boolean };
+}
+
 /** A receipt of a planned check, as the ledger names it. */
 export interface EndoLedgerReceiptV0 {
 	receiptId: string;
@@ -231,6 +346,7 @@ export interface EndoLedgerReceiptV0 {
 
 export interface EndoLedgerCheckV0 {
 	name: string;
+	/** For a behavioural check, every outcome here (`state`, `current`, `atHead`, `otherCommit`) is the behaviour's, by `endoBehaviourOutcomeV0`. */
 	state: EndoPlannedCheckStateV0;
 	/** The latest receipt at the current HEAD of this working tree (`at-head` or `at-head-changed`); null when there is none. */
 	current: EndoLedgerReceiptV0 | null;
@@ -244,6 +360,14 @@ export interface EndoLedgerCheckV0 {
 	otherCommit: EndoLedgerReceiptV0 | null;
 	/** Every receipt of this argv for this attempt, in any tree. */
 	runs: number;
+	/**
+	 * Null for a check that declares no behaviour. Otherwise what was expected (its SHA-256 computed from the plan's text) and what the
+	 * latest receipt at the current HEAD observed (null when there is none).
+	 */
+	behaviour: {
+		expected: { exitCode: number; stdout: string; stdoutSha256: string };
+		observed: EndoBehaviourObservedV0 | null;
+	} | null;
 }
 
 export interface EndoLedgerCriterionV0 {

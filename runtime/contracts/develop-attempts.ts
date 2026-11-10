@@ -24,16 +24,16 @@ import {
 	ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V1,
-	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
+	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V5,
 	ENDO_DEVELOP_BRIEF_V0,
 	ENDO_DEVELOP_BRIEF_V1,
 	type EndoAttemptVerificationViewV0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
 	type EndoDevelopAttemptStateV0,
-	type EndoDevelopAttemptsViewV4,
+	type EndoDevelopAttemptsViewV5,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV4,
+	type EndoDevelopAttemptViewV5,
 	type EndoDevelopTaskWordV0,
 	endoAttemptPlanV0,
 	endoDevelopAttemptStateV0,
@@ -65,7 +65,7 @@ import { endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { type EndoSessionLogReadV0, endoAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
-import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
+import { endoAcceptanceLedgerV0, endoReceiptStdoutShaV0 } from "./develop-verification.ts";
 
 /**
  * Why an operation was refused. Nothing was written for any of them.
@@ -151,13 +151,21 @@ export const endoShownTextV0 = (text: string, max: number): string => {
  * read (for the ledger), null when the directory could not be read.
  */
 function receiptsOf(
-	attemptId: string,
+	attempt: EndoDevelopAttemptV0,
 	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
-): { view: EndoDevelopAttemptViewV4["receipts"]; records: EndoDevelopReceiptV0[] | null } {
+): { view: EndoDevelopAttemptViewV5["receipts"]; records: EndoDevelopReceiptV0[] | null } {
 	if (receipts === null) return { view: { state: "ready", list: [], problems: 0 }, records: null };
+	const attemptId = attempt.id;
 	const read = receipts.store.read(attemptId);
+	// Only a behavioural check's receipts carry their output digest to the page: a digest of short output (a PIN, a yes/no) can be
+	// guessed back, and no other check needs it (review).
+	const plan = endoAttemptPlanV0(attempt);
+	const behavioural = (argv: readonly string[]): boolean =>
+		plan?.checks.some(
+			(c) => c.expect !== undefined && c.argv.length === argv.length && c.argv.every((x, i) => x === argv[i]),
+		) ?? false;
 	if (!read.ok) return { view: { state: "unreadable", list: [], problems: 0 }, records: null };
-	const view: EndoDevelopAttemptViewV4["receipts"] = {
+	const view: EndoDevelopAttemptViewV5["receipts"] = {
 		state: "ready",
 		list: read.receipts.map((r) => ({
 			id: r.id,
@@ -171,6 +179,13 @@ function receiptsOf(
 			reasons: [...r.reasons],
 			limitations: [...r.limitations],
 			relation: endoReceiptRelationV0(r, receipts.current),
+			stdout: behavioural(r.check.argv)
+				? {
+						sha256: endoReceiptStdoutShaV0(r),
+						bytes: r.output.stdoutBytes,
+						recorded: r.output.stdout !== undefined,
+					}
+				: null,
 		})),
 		problems: read.problems.length,
 	};
@@ -206,6 +221,7 @@ export function endoAttemptVerificationViewV0(
 				atHead: c.atHead,
 				otherCommit: c.otherCommit,
 				runs: c.runs,
+				behaviour: c.behaviour,
 			};
 		}),
 		criteria: ledger.criteria,
@@ -374,8 +390,8 @@ export class DevelopAttemptsServiceV0 {
 		projectId: string,
 		receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null = null,
 		aliasOf?: (sessionId: string) => string,
-	): EndoDevelopAttemptsViewV4 {
-		const head: EndoDevelopAttemptsViewV4["head"] =
+	): EndoDevelopAttemptsViewV5 {
+		const head: EndoDevelopAttemptsViewV5["head"] =
 			receipts === null
 				? null
 				: {
@@ -383,8 +399,8 @@ export class DevelopAttemptsServiceV0 {
 						commit: receipts.current?.commit ?? null,
 						clean: receipts.current?.clean ?? null,
 					};
-		const empty = (state: EndoDevelopAttemptsViewV4["state"], taskId: string | null): EndoDevelopAttemptsViewV4 => ({
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
+		const empty = (state: EndoDevelopAttemptsViewV5["state"], taskId: string | null): EndoDevelopAttemptsViewV5 => ({
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V5,
 			state,
 			taskId,
 			attempts: [],
@@ -400,14 +416,14 @@ export class DevelopAttemptsServiceV0 {
 		if (!read.ok) return empty("unreadable", taskId);
 		const log = this.#logOnce();
 		return {
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V5,
 			state: "ready",
 			taskId,
 			attempts: read.entries
 				.filter((e) => e.attempt.projectId === projectId && e.attempt.taskId === taskId)
 				.map((e) => {
 					const r = this.#report(e, file, () => ({ state: "unavailable" }));
-					const seen = receiptsOf(e.attempt.id, receipts);
+					const seen = receiptsOf(e.attempt, receipts);
 					return {
 						id: e.attempt.id,
 						state: r.state,

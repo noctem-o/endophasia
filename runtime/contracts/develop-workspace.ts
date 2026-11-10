@@ -28,7 +28,7 @@
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
-import type { EndoDevelopAttemptsViewV4 } from "../../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV5 } from "../../protocol/develop-attempts.ts";
 import type { EndoDevelopAttentionViewV0 } from "../../protocol/develop-attention.ts";
 import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import {
@@ -423,7 +423,7 @@ export class DevelopLaunchWorkspaceV0 {
 	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either. Each attempt's receipts are
 	 * compared with the HEAD of this launch's own directory, observed now (read-only Git), when this launch was given receipts.
 	 */
-	async attemptsView(): Promise<EndoDevelopAttemptsViewV4 | null> {
+	async attemptsView(): Promise<EndoDevelopAttemptsViewV5 | null> {
 		if (this.#attempts === null) return null;
 		const receipts = this.#receipts;
 		const aliasOf = this.#host.aliasOf;

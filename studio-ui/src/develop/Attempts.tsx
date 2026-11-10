@@ -23,12 +23,14 @@ import {
 	ATTEMPT_LABELS,
 	type Attempt,
 	type AttemptsView,
+	behaviourOutcome,
 	CRITERION_LABELS,
 	CRITERION_TEXT,
 	EXECUTION_RUN_LABELS,
 	EXECUTION_SEND_LABELS,
 	type Execution,
 	executionSent,
+	firstDifference,
 	PLANNED_CHECK_LABELS,
 	RECEIPT_LIMITATION_TEXT,
 	RECEIPT_OUTCOME_LABELS,
@@ -369,9 +371,24 @@ function Receipts({ attempt: a }: { attempt: Attempt }): ReactElement {
 	const list =
 		receipts.list.length === 0 ? null : (
 			<ul className="plain task-refs" data-testid="receipt-list">
-				{receipts.list.map((r) => (
-					<ReceiptItem key={r.id} receipt={r} />
-				))}
+				{receipts.list.map((r) => {
+					// A receipt of a behavioural check: its label is its exit status; the plan reads it by what it did, said beside it.
+					const planned = a.verification?.checks.find(
+						(c) =>
+							c.behaviour !== null && c.argv.length === r.argv.length && c.argv.every((x, i) => x === r.argv[i]),
+					);
+					return (
+						<ReceiptItem
+							key={r.id}
+							receipt={r}
+							behaviour={
+								planned?.behaviour == null
+									? null
+									: { name: planned.name, outcome: behaviourOutcome(r, planned.behaviour.expected) }
+							}
+						/>
+					);
+				})}
 			</ul>
 		);
 	return (
@@ -534,7 +551,8 @@ function Acceptance({ attempt: a, verification: v }: { attempt: Attempt; verific
 			</ol>
 			<p className="dim small">
 				That a check addresses a criterion is your plan's statement; nothing observed establishes it. A pass is a
-				command that exited 0 at this commit; whether the criterion holds is still yours to judge.
+				command that exited 0 at this commit or, for a check with an expected behaviour, one whose exit code and
+				output were the ones you declared; whether the criterion holds is still yours to judge.
 			</p>
 			{a.receipts.problems > 0 ? (
 				<p className="small attempt-changed" data-testid="acceptance-receipt-problems">
@@ -595,6 +613,7 @@ function PlannedChecks({
 						<p className="small">
 							<span className="dim">You said it shows:</span> {c.shows}
 						</p>
+						{c.behaviour === null ? null : <Behaviour check={c} behaviour={c.behaviour} />}
 						{c.state === "tree-changed" && c.current !== null ? (
 							<p className="small attempt-changed">
 								It {c.current.outcome} at this HEAD; the working tree has changed since, so it is not counted.
@@ -621,8 +640,14 @@ function PlannedChecks({
 						)}
 						{c.state === "passed" ? null : (
 							<pre className="mono task-command planned-command" data-testid="planned-command">
-								{`endo attempt check --root <store> --attempt ${a.id} -- ${c.argv.map(shellWord).join(" ")}`}
+								{`endo attempt check --root <store> --attempt ${a.id}${c.behaviour === null ? "" : " --keep-output"} -- ${c.argv.map(shellWord).join(" ")}`}
 							</pre>
+						)}
+						{c.state === "passed" || c.behaviour === null ? null : (
+							<p className="dim small">
+								--keep-output stores the first 8 KiB of its standard output in the receipt, so this page can
+								show where it differs; leave it out for a command that can print a secret.
+							</p>
 						)}
 					</li>
 				);
@@ -631,7 +656,99 @@ function PlannedChecks({
 	);
 }
 
-function ReceiptItem({ receipt: r }: { receipt: Receipt }): ReactElement {
+const bytesOf = (text: string): number => new TextEncoder().encode(text).length;
+const shownLine = (line: string | null): string => (line === null ? "(no such line)" : JSON.stringify(line));
+
+/**
+ * A behavioural check: what you declared it should do, and what its latest receipt at this HEAD observed. The digest decides; the kept
+ * text, when there is any, only shows where. Your expectation is labelled as yours: it is not ground truth.
+ */
+function Behaviour({
+	check: c,
+	behaviour: b,
+}: {
+	check: Verification["checks"][number];
+	behaviour: NonNullable<Verification["checks"][number]["behaviour"]>;
+}): ReactElement {
+	const o = b.observed;
+	const matched = o !== null && o.stdoutSha256 !== null && o.stdoutSha256 === b.expected.stdoutSha256;
+	const kept = o?.kept.state === "text" ? o.kept : null;
+	const diff = o === null || matched || kept === null ? null : firstDifference(b.expected.stdout, kept.text);
+	const expectedBytes = bytesOf(b.expected.stdout);
+	return (
+		<div className="behaviour small" data-testid="behaviour" data-matched={String(matched)}>
+			<p>
+				<span className="dim">You declared it should:</span> exit {b.expected.exitCode} and print{" "}
+				{expectedBytes === 0 ? "nothing" : `exactly ${expectedBytes} bytes`} on standard output
+				<span className="dim"> (compared byte for byte; standard error is not compared)</span>
+			</p>
+			{expectedBytes === 0 ? null : (
+				<details className="behaviour-expected">
+					<summary className="dim">Expected output</summary>
+					<pre className="mono behaviour-text" data-testid="behaviour-expected">
+						{b.expected.stdout}
+					</pre>
+				</details>
+			)}
+			{o === null ? null : (
+				<p data-testid="behaviour-observed">
+					<span className="dim">Observed at {c.current === null ? "HEAD" : commitOf(c.current.commit)}:</span>{" "}
+					{o.exitCode === null ? "it did not exit by itself" : `exit ${o.exitCode}`}
+					{o.exitCode !== null && o.exitCode !== b.expected.exitCode ? " (not the one declared)" : ""},{" "}
+					{o.stdoutBytes} bytes;{" "}
+					{o.stdoutSha256 === null ? (
+						<span className="attempt-changed">
+							{o.kept.state === "not-recorded"
+								? "its output was not recorded (an older receipt), so nothing is compared"
+								: "its output was not read whole, so nothing is compared"}
+						</span>
+					) : matched ? (
+						<span data-testid="behaviour-same">the output is the one declared</span>
+					) : (
+						<span className="attempt-changed" data-testid="behaviour-different">
+							the output differs from the one declared
+						</span>
+					)}
+				</p>
+			)}
+			{diff === null ? null : (
+				<p className="mono behaviour-diff" data-testid="behaviour-diff">
+					line {diff.line}: expected {shownLine(diff.expected)}, observed {shownLine(diff.observed)}
+					{kept?.truncated === true ? " (the kept output is cut)" : ""}
+				</p>
+			)}
+			{o !== null && !matched && o.stdoutSha256 !== null && kept === null ? (
+				<p className="dim" data-testid="behaviour-not-kept">
+					{o.kept.state === "not-text"
+						? "The output was kept but is not text, so it is not shown."
+						: "The output was not kept: run the check again with --keep-output to see where it differs."}
+				</p>
+			) : null}
+			{kept === null ? null : (
+				<details className="behaviour-kept">
+					<summary className="dim">Observed output, as kept{kept.truncated ? " (cut at 8 KiB)" : ""}</summary>
+					<pre className="mono behaviour-text" data-testid="behaviour-kept">
+						{kept.text}
+					</pre>
+				</details>
+			)}
+		</div>
+	);
+}
+
+const BEHAVIOUR_WORDS = {
+	passed: "its exit code and output are the ones declared",
+	failed: "its exit code or output is not the one declared",
+	inconclusive: "its behaviour could not be compared",
+} as const;
+
+function ReceiptItem({
+	receipt: r,
+	behaviour,
+}: {
+	receipt: Receipt;
+	behaviour: { name: string; outcome: keyof typeof BEHAVIOUR_WORDS } | null;
+}): ReactElement {
 	return (
 		<li
 			data-testid="receipt"
@@ -657,6 +774,16 @@ function ReceiptItem({ receipt: r }: { receipt: Receipt }): ReactElement {
 				It {ended(r)}
 				{because(r)}.
 			</p>
+			{behaviour === null ? null : (
+				<p
+					className={behaviour.outcome === "passed" ? "small" : "small attempt-changed"}
+					data-testid="receipt-behaviour"
+					data-behaviour={behaviour.outcome}
+				>
+					For the planned check <span className="mono">{behaviour.name}</span>:{" "}
+					{BEHAVIOUR_WORDS[behaviour.outcome]}. The label above is its exit status.
+				</p>
+			)}
 			<p className={r.relation === "at-head" ? "dim small" : "small attempt-changed"} data-testid="receipt-relation">
 				{RECEIPT_RELATION_LABELS[r.relation]}.
 			</p>

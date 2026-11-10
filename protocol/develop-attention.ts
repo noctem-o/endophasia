@@ -25,7 +25,7 @@ export const ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0 = "endo.develop-attention-vie
  */
 export const ENDO_DEVELOP_ATTENTION_LIMITS_V0 = Object.freeze({
 	maxReceiptFiles: 1000,
-	/** The receipt bytes read in all (by the files' sizes before they are read): a receipt is a few KiB, its bound 64 KiB. */
+	/** The receipt bytes read in all (by the files' sizes before they are read): a receipt is a few KiB, its bound 128 KiB (one with kept output can be about 50 KiB). */
 	maxReceiptBytes: 8 * 1024 * 1024,
 	maxChecksPerTask: 5,
 	maxCommandChars: 160,

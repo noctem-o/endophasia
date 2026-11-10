@@ -13,20 +13,32 @@
 // a file whose verdict does not follow from its own facts is invalid. A receipt is a local, unsigned file: whoever can write the store
 // can write one. It is evidence for the operator, not an attestation.
 //
-// What is never stored: the check's output, its environment, file contents, a configuration value.
+// What is never stored: the check's environment, file contents, a configuration value. Its standard output is stored only when the
+// operator asks (`--keep-output`, receipt v1, at most `maxKeptStdoutBytes`); a v1 receipt always records the output's SHA-256, which a
+// behavioural check (protocol/develop-verification.ts) compares with the plan's expected output.
 
 import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "./develop-attempts.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
 
 export const ENDO_DEVELOP_RECEIPT_SCHEMA_V0 = "endo.develop-receipt.v0";
+/**
+ * v1 (DEVELOP-BEHAVIOUR-001): `output.stdout`, the standard output's SHA-256 and, when the operator asked, its first bytes. Written by
+ * every check from this version on; v0 receipts are still read, and their output is "not recorded".
+ */
+export const ENDO_DEVELOP_RECEIPT_SCHEMA_V1 = "endo.develop-receipt.v1";
 export const ENDO_RECEIPT_ID_PATTERN_V0 = /^endo\.receipt\.[0-9a-f]{32}$/;
 
 export const ENDO_DEVELOP_RECEIPT_LIMITS_V0 = Object.freeze({
 	/** Receipts kept for one attempt (checked before a check starts, lock-free: a bound on growth, not a security boundary). */
 	maxPerAttempt: 100,
-	/** One receipt file. A check whose receipt could not fit is refused before it runs. */
-	maxFileBytes: 64 * 1024,
+	/**
+	 * One receipt file. A check whose receipt could not fit is refused before it runs. 64 KiB for v0; 128 KiB since v1, so that kept
+	 * output at its worst JSON escaping (six bytes a byte) fits beside the largest argv.
+	 */
+	maxFileBytes: 128 * 1024,
+	/** The most standard output a receipt keeps, in UTF-8 bytes, when the operator asks for it (`--keep-output`). */
+	maxKeptStdoutBytes: 8 * 1024,
 	maxArgs: 64,
 	/** All arguments together, in UTF-16 units. */
 	maxArgvChars: 8 * 1024,
@@ -46,6 +58,19 @@ export type EndoReceiptExecutionV0 =
 	| { kind: "interrupted" }
 	| { kind: "output-limit" }
 	| { kind: "spawn-failed" };
+
+/**
+ * The check's standard output, as a v1 receipt records it. `sha256` is the digest of every byte of it that was read, or null when it was
+ * not read whole (the output limit cut it off, or a process outside the group held the pipe); a receipt with a null digest is always
+ * inconclusive. `keep` says whether the output itself is in the receipt:
+ * - `off`: the operator did not ask for it (the default): only the digest;
+ * - `text`: its first bytes (at most `maxKeptStdoutBytes`, cut at a character boundary), `truncated` when that is not all of it;
+ * - `not-text`: asked for, but those bytes are not UTF-8 text, so nothing was kept.
+ */
+export type EndoReceiptStdoutV1 =
+	| { sha256: string | null; keep: "off" }
+	| { sha256: string | null; keep: "text"; text: string; truncated: boolean }
+	| { sha256: string | null; keep: "not-text" };
 
 /** The second observation, after the process group was stopped. */
 export type EndoReceiptAfterV0 =
@@ -103,7 +128,8 @@ export type EndoReceiptLimitationV0 = (typeof ENDO_RECEIPT_LIMITATIONS_V0)[numbe
 
 /** `<root>/develop/receipts/<attemptId>/<id>.json`: immutable. */
 export interface EndoDevelopReceiptV0 {
-	schemaVersion: typeof ENDO_DEVELOP_RECEIPT_SCHEMA_V0;
+	/** v0 has no `output.stdout`; v1 always has it. */
+	schemaVersion: typeof ENDO_DEVELOP_RECEIPT_SCHEMA_V0 | typeof ENDO_DEVELOP_RECEIPT_SCHEMA_V1;
 	id: string;
 	attemptId: string;
 	/** The attempt's project; the check ran in a working tree of that project's repository. */
@@ -128,7 +154,7 @@ export interface EndoDevelopReceiptV0 {
 		timeoutMs: number;
 	};
 	execution: EndoReceiptExecutionV0;
-	output: { stdoutBytes: number; stderrBytes: number };
+	output: { stdoutBytes: number; stderrBytes: number; stdout?: EndoReceiptStdoutV1 };
 	/**
 	 * Members of the check's process group were still running when its leader exited; they were stopped before the second observation.
 	 * Null where that cannot be seen (no /proc): unknown, never "none".
@@ -382,6 +408,32 @@ function after(v: unknown): EndoReceiptAfterV0 {
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
 
+const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
+
+/**
+ * A v1 receipt's standard output, checked against its byte count: kept text is at most the bound and at most what was read; it is cut
+ * (`truncated`) exactly when it is less than what was read, and then, when the output was read whole, only at the bound (less at most a
+ * split character's three bytes). That kept text which is all of it has the recorded digest needs a hash, so the store checks it
+ * (storage/develop-receipts.ts: `endoKeptStdoutMatchesV0`); this module stays free of Node, since the page's types import it.
+ */
+function stdoutOf(v: unknown, stdoutBytes: number): EndoReceiptStdoutV1 {
+	if (typeof v !== "object" || v === null) return bad("output.stdout is not an object");
+	const keep = oneOf((v as Record<string, unknown>).keep, ["off", "text", "not-text"] as const, "output.stdout.keep");
+	const r = closed(v, keep === "text" ? ["sha256", "keep", "text", "truncated"] : ["sha256", "keep"], "output.stdout");
+	const sha256 = r.sha256 === null ? null : matching(r.sha256, /^[0-9a-f]{64}$/, "output.stdout.sha256");
+	if (keep !== "text") return { sha256, keep };
+	if (typeof r.text !== "string" || !r.text.isWellFormed()) return bad("output.stdout.text is not text");
+	const text = r.text;
+	const truncated = flag(r.truncated, "output.stdout.truncated");
+	const bytes = utf8Bytes(text);
+	const max = ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes;
+	if (bytes > max || bytes > stdoutBytes) return bad("output.stdout.text is longer than its bound or than the output");
+	if (truncated !== bytes < stdoutBytes) return bad("output.stdout.truncated does not follow from the counts");
+	// Read whole, a cut is only ever at the bound (less a split character); cut off by the output limit, it can be anywhere.
+	if (truncated && sha256 !== null && bytes < max - 3) return bad("output.stdout.text was cut short of its bound");
+	return { sha256, keep, text, truncated };
+}
+
 export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceiptV0 {
 	const r = closed(
 		value,
@@ -415,7 +467,18 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 	const repository = closed(r.repository, ["worktree", "commonDir", "linked"], "repository");
 	const revision = closed(r.revision, ["commit", "tree", "branch"], "revision");
 	const check = closed(r.check, ["argv", "executable", "realExecutable", "timeoutMs"], "check");
-	const output = closed(r.output, ["stdoutBytes", "stderrBytes"], "output");
+	const schemaVersion = oneOf(
+		r.schemaVersion,
+		[ENDO_DEVELOP_RECEIPT_SCHEMA_V0, ENDO_DEVELOP_RECEIPT_SCHEMA_V1] as const,
+		"schemaVersion",
+	);
+	const v1 = schemaVersion === ENDO_DEVELOP_RECEIPT_SCHEMA_V1;
+	const output = closed(
+		r.output,
+		v1 ? ["stdoutBytes", "stderrBytes", "stdout"] : ["stdoutBytes", "stderrBytes"],
+		"output",
+	);
+	const stdoutBytes = count(output.stdoutBytes, "output.stdoutBytes");
 	if (!checkEndoReceiptArgvV0(check.argv)) return bad("check.argv is not an acceptable argument list");
 	const timeoutMs = count(check.timeoutMs, "check.timeoutMs");
 	if (
@@ -437,7 +500,7 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 	const endedAtMs = stamp(r.endedAtMs, "endedAtMs");
 	if (endedAtMs < startedAtMs) return bad("endedAtMs is before startedAtMs");
 	const receipt: EndoDevelopReceiptV0 = {
-		schemaVersion: exact(r.schemaVersion, ENDO_DEVELOP_RECEIPT_SCHEMA_V0, "schemaVersion"),
+		schemaVersion,
 		id: matching(r.id, ENDO_RECEIPT_ID_PATTERN_V0, "id"),
 		attemptId: matching(r.attemptId, ENDO_ATTEMPT_ID_PATTERN_V0, "attemptId"),
 		projectId: matching(r.projectId, ENDO_PROJECT_ID_PATTERN_V0, "projectId"),
@@ -469,8 +532,9 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 		},
 		execution: execution(r.execution),
 		output: {
-			stdoutBytes: count(output.stdoutBytes, "output.stdoutBytes"),
+			stdoutBytes,
 			stderrBytes: count(output.stderrBytes, "output.stderrBytes"),
+			...(v1 ? { stdout: stdoutOf(output.stdout, stdoutBytes) } : {}),
 		},
 		strayProcesses: r.strayProcesses === null ? null : flag(r.strayProcesses, "strayProcesses"),
 		escapedProcess: flag(r.escapedProcess, "escapedProcess"),
@@ -491,6 +555,9 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 		!sameList(derived.limitations, receipt.limitations)
 	)
 		return bad("the outcome, reasons or limitations do not follow from the recorded facts");
+	// Output that was not read whole cannot be compared: only an inconclusive receipt may lack its digest.
+	if (receipt.output.stdout?.sha256 === null && receipt.outcome !== "inconclusive")
+		return bad("output.stdout.sha256 is missing from a conclusive receipt");
 	return receipt;
 }
 
@@ -509,4 +576,10 @@ export interface EndoDevelopReceiptViewV0 {
 	reasons: EndoReceiptReasonV0[];
 	limitations: EndoReceiptLimitationV0[];
 	relation: EndoReceiptRelationV0;
+	/**
+	 * For a receipt of a behavioural check only (attempts view v5), the standard output's digest and size: `sha256` null for a v0 receipt
+	 * (not recorded) or output not read whole. Null for every other receipt: its digest is not served. The output itself is never in this
+	 * list; a behavioural check shows its latest kept output in the ledger.
+	 */
+	stdout: { sha256: string | null; bytes: number; recorded: boolean } | null;
 }

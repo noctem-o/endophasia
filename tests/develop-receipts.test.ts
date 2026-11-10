@@ -26,8 +26,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
-import type { EndoDevelopAttemptsViewV4 } from "../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV5 } from "../protocol/develop-attempts.ts";
 import {
+	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
 	ENDO_RECEIPT_LIMITATION_TEXT_V0,
 	ENDO_RECEIPT_LIMITATIONS_V0,
 	ENDO_RECEIPT_OUTCOME_LABELS_V0,
@@ -414,7 +415,7 @@ describe("the receipts store", () => {
 			unknown: "notes.txt",
 		};
 		writeFileSync(join(dir, names.corrupt), "{ not json");
-		writeFileSync(join(dir, names.oversize), " ".repeat(70 * 1024));
+		writeFileSync(join(dir, names.oversize), " ".repeat(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxFileBytes + 1));
 		writeFileSync(join(dir, names.misnamed), JSON.stringify(good));
 		symlinkSync(outside, join(dir, names.linked));
 		const forgedReceipt = {
@@ -1107,7 +1108,7 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 		const r = await check(w, ["sh", "check.sh", CANARY]);
 		const reply = await routes(w, w.project).route(["workspace", "attempts"], "GET", "", null);
 		expect(reply.status).toBe(200);
-		const view = reply.body as EndoDevelopAttemptsViewV4;
+		const view = reply.body as EndoDevelopAttemptsViewV5;
 		const attempt = view.attempts.find((a) => a.id === w.attemptId);
 		expect(attempt?.receipts).toEqual({
 			state: "ready",
@@ -1125,6 +1126,8 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 					reasons: [],
 					limitations: r.limitations,
 					relation: "at-head",
+					// Not a behavioural check: its output's digest is not served (v5), and the output never is.
+					stdout: null,
 				},
 			],
 		});
@@ -1135,12 +1138,12 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 		expect(text).not.toContain("/.git");
 		// Compared with ANOTHER launch directory (a different repository): not compared, never "stale".
 		const elsewhere = await routes(w, w.otherRepo).route(["workspace", "attempts"], "GET", "", null);
-		const shown = (elsewhere.body as EndoDevelopAttemptsViewV4).attempts.find((a) => a.id === w.attemptId);
+		const shown = (elsewhere.body as EndoDevelopAttemptsViewV5).attempts.find((a) => a.id === w.attemptId);
 		expect(shown?.receipts.list.map((x) => x.relation)).toEqual(["other-repository"]);
 		commit(w.project, "z.txt", "z");
 		const after_ = await routes(w, w.project).route(["workspace", "attempts"], "GET", "", null);
 		expect(
-			(after_.body as EndoDevelopAttemptsViewV4).attempts.find((a) => a.id === w.attemptId)?.receipts.list[0]
+			(after_.body as EndoDevelopAttemptsViewV5).attempts.find((a) => a.id === w.attemptId)?.receipts.list[0]
 				?.relation,
 		).toBe("head-differs");
 	});

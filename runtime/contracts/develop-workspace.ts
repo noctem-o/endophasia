@@ -66,6 +66,7 @@ import { endoDevelopAttentionViewV0 } from "./develop-attention.ts";
 import {
 	type DevelopObservationsServiceV0,
 	type DevelopTakenObservationV0,
+	developObservationsSnapshotV0,
 	endoReceiptCurrentOfV0,
 } from "./develop-observations.ts";
 
@@ -432,6 +433,8 @@ export class DevelopLaunchWorkspaceV0 {
 		// the receipts are compared with that same observation.
 		let now: DevelopTakenObservationV0 | null = null;
 		let observed = false;
+		// One read of each attempt's observations for this whole answer, not one per attempt shown (Codex, #140).
+		const snapshot = developObservationsSnapshotV0();
 		if (observations !== null && records !== null) {
 			const file = this.#store.read();
 			const taskId = file.ok
@@ -444,7 +447,7 @@ export class DevelopLaunchWorkspaceV0 {
 							(e) =>
 								e.attempt.projectId === this.#config.projectId &&
 								e.attempt.taskId === taskId &&
-								(e.authorized !== null || observations.has(e.attempt.id)),
+								(e.authorized !== null || observations.has(e.attempt.id, snapshot)),
 						)
 					: [];
 			if (relevant.length > 0) {
@@ -469,8 +472,8 @@ export class DevelopLaunchWorkspaceV0 {
 					? read.receipts.filter((r) => listed.has(r.id))
 					: null;
 			attempt.provenance =
-				observed && (attempt.execution !== null || observations.has(attempt.id))
-					? await observations.provenance(attempt.id, now, same).catch(() => null)
+				observed && (attempt.execution !== null || observations.has(attempt.id, snapshot))
+					? await observations.provenance(attempt.id, now, same, snapshot).catch(() => null)
 					: null;
 		}
 		return view;

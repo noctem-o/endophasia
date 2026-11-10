@@ -59,6 +59,8 @@ export const PROVENANCE_NOTE_TEXT: Readonly<Record<EndoProvenanceNoteV0, string>
 		"The observations were made in a different working tree from the one read now; now is not compared.",
 	"run-end-not-observed":
 		"The last observation was taken as the workbench closed with the run still open, not when the run ended: what the run did after it is not in it.",
+	"over-limit":
+		"More observations are recorded for this attempt than are shown (two were recorded at once at the limit): the earliest 50 are used.",
 	problems: "Some files in the observations directory are not usable observations.",
 };
 

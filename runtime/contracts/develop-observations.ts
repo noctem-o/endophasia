@@ -78,6 +78,19 @@ export type DevelopObservationRecordResultV0 =
 	| { ok: true; observation: EndoDevelopObservationV0 }
 	| { ok: false; code: DevelopObservationRefusalV0 };
 
+/**
+ * The reads one response shares: the attempts file and each attempt's observations, read at most once. Not a cache across responses: a
+ * snapshot is made for one answer and dropped, so nothing it holds outlives the answer it was read for.
+ */
+export interface DevelopObservationsSnapshotV0 {
+	attempts?: ReturnType<DevelopAttemptsStoreV0["read"]>;
+	readonly reads: Map<string, EndoObservationsReadV0>;
+}
+
+export function developObservationsSnapshotV0(): DevelopObservationsSnapshotV0 {
+	return { reads: new Map() };
+}
+
 export class DevelopObservationsServiceV0 {
 	readonly #tasks: DevelopTasksStoreV0;
 	readonly #attempts: DevelopAttemptsStoreV0;
@@ -204,29 +217,44 @@ export class DevelopObservationsServiceV0 {
 		return this.#store.read(attemptId);
 	}
 
+	/** An attempt's observations, read once per snapshot. */
+	#read(attemptId: string, snapshot: DevelopObservationsSnapshotV0 | undefined): EndoObservationsReadV0 {
+		if (snapshot === undefined) return this.#store.read(attemptId);
+		let read = snapshot.reads.get(attemptId);
+		if (read === undefined) {
+			read = this.#store.read(attemptId);
+			snapshot.reads.set(attemptId, read);
+		}
+		return read;
+	}
+
 	/** Whether there is anything to read for this attempt (an observation, a problem, or a directory that cannot be read). */
-	has(attemptId: string): boolean {
-		const read = this.#store.read(attemptId);
+	has(attemptId: string, snapshot?: DevelopObservationsSnapshotV0): boolean {
+		const read = this.#read(attemptId, snapshot);
 		return !read.ok || read.observations.length + read.problems.length > 0;
 	}
 
 	/**
 	 * One attempt's provenance, read now: its observations, compared with `now` (the reader's own directory, observed by the caller) and with
 	 * the commits its receipts ran at. Null when the attempt is not in the store. Other attempts of the same project are read for overlaps.
+	 * A caller building several attempts' provenance in one response passes one snapshot, so each directory is read once, not once per
+	 * attempt (Codex, #140).
 	 */
 	async provenance(
 		attemptId: string,
 		now: DevelopTakenObservationV0 | null,
 		receipts: readonly EndoDevelopReceiptV0[] | null,
+		snapshot?: DevelopObservationsSnapshotV0,
 	): Promise<EndoAttemptProvenanceViewV0 | null> {
-		const read = this.#attempts.read();
+		if (snapshot !== undefined) snapshot.attempts ??= this.#attempts.read();
+		const read = snapshot?.attempts ?? this.#attempts.read();
 		if (!read.ok) return null;
 		const entry = read.entries.find((e) => e.attempt.id === attemptId);
 		if (entry === undefined) return null;
 		const others: { attemptId: string; observations: EndoDevelopObservationV0[] }[] = [];
 		for (const other of read.entries) {
 			if (other.attempt.id === attemptId || other.attempt.projectId !== entry.attempt.projectId) continue;
-			const seen = this.#store.read(other.attempt.id);
+			const seen = this.#read(other.attempt.id, snapshot);
 			if (seen.ok && seen.observations.length > 0)
 				others.push({ attemptId: other.attempt.id, observations: seen.observations });
 		}
@@ -239,7 +267,7 @@ export class DevelopObservationsServiceV0 {
 							proposalId: entry.authorized.proposalId,
 							authorizationEventId: entry.authorized.authorizationEventId,
 						},
-			read: this.#store.read(attemptId),
+			read: this.#read(attemptId, snapshot),
 			now,
 			receipts,
 			others,
@@ -350,11 +378,16 @@ export async function endoAttemptProvenanceV0(input: EndoProvenanceInputV0): Pro
 		notes: input.authorized !== null && state === "none" ? ["authorized-without-before"] : [],
 	});
 	if (!input.read.ok) return empty("unreadable");
-	const all = [...input.read.observations].sort(bySecond);
+	// Two writers can both pass the count check before either links its record (the limit is checked before writing, not enforced
+	// atomically), so a directory can hold more than the limit. The earliest are used, the rest named in a note, so a successful write can
+	// never make the page refuse the attempts answer (Codex, #140).
+	const sorted = [...input.read.observations].sort(bySecond);
+	const all = sorted.slice(0, ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxPerAttempt);
 	const nowState = input.now?.result.state === "observed" ? input.now.result : null;
 	const views = all.map((o) => viewOf(o, input.authorized, nowState?.repository.worktree ?? null));
 	const notes = new Set<EndoProvenanceNoteV0>();
 	if (input.read.problems.length > 0) notes.add("problems");
+	if (sorted.length > all.length) notes.add("over-limit");
 	if (all.length === 0) {
 		const none = empty("none");
 		return { ...none, notes: [...new Set([...none.notes, ...notes])] };
@@ -508,6 +541,7 @@ const ORDER: readonly EndoProvenanceNoteV0[] = [
 	"other-send-observations",
 	"frame-elsewhere",
 	"run-end-not-observed",
+	"over-limit",
 	"problems",
 ];
 

@@ -197,6 +197,15 @@ Browser (`tests/endo-studio-tasks-browser.test.ts`, "the working tree around an 
 receipt and one more edit, the checked commit reads "the same content as your latest observation" and now "1 path differs"; nothing on
 the page says who changed anything, and nothing was sent.
 
+**Screenshots** (synthetic fixtures from that browser test, the real built page): two operator observations and the paths that differ
+between them ([1440](../images/develop-provenance-observed-1440.png)); after a commit, a receipt and one more edit, the checked commit has
+the same content as the latest observation and now one path differs ([1440](../images/develop-provenance-now-differs-1440.png),
+[390](../images/develop-provenance-now-differs-390.png), [Field 1440](../images/develop-provenance-field-1440.png)); every observation, with
+what it does not establish ([1440](../images/develop-provenance-details-1440.png)). At 390 the run strip no longer draws over the content.
+
+**Full suite** on the branch before push: 262 files, 6 697 tests passed, 73 skipped, 0 failed; `npm run typecheck` and `biome check` clean
+(one pre-existing warning in `tests/endo-cockpit-eighteenth-review.test.ts`).
+
 ## 10. Limitations
 
 *   **Not authorship, not continuity.** Two equal observations do not mean nothing happened between them.

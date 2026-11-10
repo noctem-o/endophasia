@@ -3,6 +3,21 @@
 ## Unreleased
 
 ### Fixed
+- **DEVELOP-ATTENTION-002: the attention overview reads a planned check as its attempt's ledger does** (U1, B1 and F1 of
+  [DEVELOP-VALIDATION-001](research/develop-validation/DEVELOP-VALIDATION-001.md); follow-up result in
+  [DEVELOP-VALIDATION-002](research/develop-validation/DEVELOP-VALIDATION-002.md)).
+  - Before, the overview read every receipt by its exit status. A planned behavioural check that exited 0 with the wrong output needed
+    no attention, one that exited with its declared non-zero code was "Check failed", and disagreeing results at HEAD were hidden behind
+    the latest one.
+  - Now each attempt with a plan is read by its own acceptance ledger (`endo.develop-attention-view.v1`, `planned`), the same function
+    the Task view and `endo attempt evidence` use, in the Task view's words. A failure, an inconclusive result or a disagreement at HEAD
+    needs attention. A recorded failure stays there when the tree has changed since, or when it was recorded at an older commit. A check
+    with no current result is said, never called a pass. Receipts no plan reads keep the exit-status reading, and say so where the task
+    also has plans. The browser's gate refuses a planned entry that its receipt, counts or HEAD do not allow.
+  - `endo attempt check` adds a labelled line for a planned behavioural check: whether this run matches the declaration. Its exit code
+    is still the exit status. `endo attempt receipts` and `receipt` add `outcomeIs` and, per receipt, how the plan reads it (`planned`).
+  - `endo attempt evidence` and the Task view now say that a check's environment (variables such as `NODE_OPTIONS`) was inherited and
+    not recorded, and that `requestedBy` is not who ran the check. Nothing in this change isolates or attests the environment.
 - At one column, the docked run strip had no background, so scrolled Task content showed through it.
 - **EVIDENCE-INTEGRITY-001: a damaged authorisation record no longer reads as "never authorised".**
   - Before: `endo attempt evidence` read a malformed, invalid, misnamed, oversized, linked or unreadable `<id>.authorized.json` as no

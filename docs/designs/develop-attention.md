@@ -208,6 +208,30 @@ the pane and the focus, as it already reset tasks and drafts.
 | --- | --- | --- |
 | ![](../images/develop-attention-overview-field-1440.png) | ![](../images/develop-attention-overview-instrument-390.png) | ![](../images/develop-attention-stale-instrument-1440.png) |
 
+## 6a. v1: planned checks are read by their attempt's ledger (DEVELOP-ATTENTION-002)
+
+DEVELOP-VALIDATION-001 showed the overview contradicting the Task view (U1): it read every receipt by exit status, including a planned
+behavioural check's. In `endo.develop-attention-view.v1`:
+
+- **Each attempt with a plan is read by its own ledger**: `endoAcceptanceLedgerV0` over that attempt's receipts and the read's one HEAD
+  observation. It is the same function the Task view and `endo attempt evidence` use, so there is no second evaluator. A plan belongs to
+  its attempt, so two attempts that run one argv are read separately, each by its own rule.
+- **Which planned checks are listed**: the newest attempt's, and any other attempt's with at least one readable receipt. An attempt whose
+  receipts could not be read, or were skipped by the read limit, contributes none; it stays counted in `unreadable` or `skipped`, so missing
+  evidence never becomes "not run" or "passed". At most 8 per task are listed, worst first; the rest are counted in `morePlanned`.
+- **Receipts no plan reads** (an attempt without a plan, or a command its plan does not name) keep v0's exit-status reading under `checks`.
+  Where the task also has planned checks, their lines say so.
+- **Triage**:
+  - failed, inconclusive and disagreeing (`mixed`) need attention;
+  - a check whose tree changed since its runs at HEAD (`tree-changed`), or that ran only at another commit (`stale`), says how the plan
+    read its latest run there, and still needs attention if that run failed or the runs disagree (as v0 did for a failure);
+  - every other state with no current result is said on the row, and a review is asked to recheck it;
+  - the summary never says "no planned check failed" without also saying when some have no current result.
+- **The gate** refuses a planned entry whose state its receipt, counts and the observed HEAD do not allow, as it already did for checks.
+
+The overview is still triage, not acceptance: a planned check that passed at HEAD says only that, and the criterion stays the Task view's
+and the operator's.
+
 ## 7. Limitations
 
 - **"Latest" means the most recent start time.** It follows the recording machine's wall clock. Two overlapping runs of one command

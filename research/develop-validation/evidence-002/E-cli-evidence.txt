@@ -1,0 +1,30 @@
+attempt endo.attempt.fb2442d86733bf79422764c40c0b0da5 (task endo.task.ff1a1e95a26f1474a9430eaaa25eb3f6): validation case E
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 0e8ccdf981a9
+  tree now  [observed] 0e8ccdf981a9, clean (/work/E/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at 0e8ccdf981a9; Recorded in a different working tree; not compared (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Run only in another working tree
+  behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; no receipt at the current HEAD
+  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run
+  behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; no receipt at the current HEAD
+  planned   [observed] runs ["node","roman.mjs","14"]: Not run
+  criterion [plan: subtractive-1994] 1. Numerals use standard subtractive notation (1994 is MCMXCIV): Not shown at HEAD
+  criterion [plan: rejects-zero] 2. Input outside 1..3999 is refused with exit 2 and nothing on stdout: Not shown at HEAD
+  criterion [plan: runs] 3. The program still runs for ordinary input: Not shown at HEAD
+  criterion [plan: your judgment] 4. It stays one small file with no dependencies: Your judgment
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       No check was recorded at the working tree's current HEAD: the current revision is unchecked.
+  gap       Some checks ran in another working tree or repository; they are not compared with this one.
+  gap       At least one planned check has no passing result at the current HEAD of this clean working tree (it failed, was inconclusive or disagreed with another run there, was not run here, or the tree has changed since).
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+    - That a check's environment could not change its result. A receipt records the command's exit status and a digest of its standard output (the output itself only with --keep-output); the comparison with your plan is made when it is read. The environment it ran in (variables such as NODE_OPTIONS or PATH, tool versions, the home directory) was inherited and not recorded, and nothing established it was trustworthy. Its requestedBy names who the record says asked for the check, not who ran it: anything that can run endo as you, an agent included, can record one.

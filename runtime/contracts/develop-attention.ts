@@ -18,6 +18,7 @@ import {
 	type EndoDevelopAttentionPlannedV1,
 	type EndoDevelopAttentionTaskV0,
 	type EndoDevelopAttentionViewV0,
+	endoPlannedTriageV1,
 } from "../../protocol/develop-attention.ts";
 import {
 	type EndoDevelopReceiptV0,
@@ -25,12 +26,11 @@ import {
 	endoReceiptRelationV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopTaskStatusV0 } from "../../protocol/develop-tasks.ts";
-import type { EndoPlannedCheckStateV0 } from "../../protocol/develop-verification.ts";
 import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { endoShownTextV0 } from "./develop-attempts.ts";
-import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
+import { endoAcceptanceLedgerV0, endoPlannedReadingV0 } from "./develop-verification.ts";
 
 /** The order receipts are read in, so a limit always falls on the least pressing tasks first. Done tasks are not read. */
 const READ_ORDER: Readonly<Record<Exclude<EndoDevelopTaskStatusV0, "done">, number>> = {
@@ -107,58 +107,71 @@ export function endoLatestChecksV0(
 	);
 }
 
-/** A planned check's triage rank: failed; inconclusive or disagreeing; without a current result; passed at the current clean HEAD. */
-const PLANNED_RANK: Readonly<Record<EndoPlannedCheckStateV0, number>> = {
-	failed: 0,
-	inconclusive: 1,
-	mixed: 1,
-	unavailable: 2,
-	"tree-changed": 2,
-	stale: 2,
-	elsewhere: 2,
-	"not-run": 2,
-	passed: 3,
-};
+/** A planned check's triage rank (endoPlannedTriageV1): the per-task limit can only cut entries no more telling than those it lists. */
+const TRIAGE_RANK = { failed: 0, inconclusive: 1, unsettled: 2, passed: 3 } as const;
+const rankOf = (p: EndoDevelopAttentionPlannedV1): number => TRIAGE_RANK[endoPlannedTriageV1(p)];
 
 const sameArgv = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** The planned checks of one attempt, as its own ledger reads them over its own receipts. */
+/**
+ * The planned checks of one attempt, as its own ledger reads them over its own receipts, each with its argv (to tell commands apart across
+ * attempts). For a check without a current result whose ledger names no run in this working tree (elsewhere, or HEAD not read), the run
+ * behind it is its latest anywhere, read by the same rule the ledger uses (endoPlannedReadingV0).
+ */
 function plannedOf(
 	attemptId: string,
 	plan: NonNullable<ReturnType<typeof endoAttemptPlanV0>>,
 	receipts: readonly EndoDevelopReceiptV0[],
 	current: EndoReceiptCurrentV0 | null,
-): EndoDevelopAttentionPlannedV1[] {
+	incomplete: boolean,
+): { entry: EndoDevelopAttentionPlannedV1; argv: readonly string[] }[] {
 	const ledger = endoAcceptanceLedgerV0({ plan, receipts, current });
 	return ledger.checks.map((c, i) => {
 		const planned = plan.checks[i] as (typeof plan.checks)[number];
-		const behind = c.current ?? c.otherCommit;
+		let behind: EndoDevelopAttentionPlannedV1["receipt"] = null;
+		const named = c.current ?? c.otherCommit;
+		if (named !== null)
+			behind = {
+				receiptId: named.receiptId,
+				commit: named.commit,
+				startedAtMs: named.startedAtMs,
+				endedAtMs: named.endedAtMs,
+				outcome: named.outcome,
+			};
+		else if (c.state === "elsewhere" || c.state === "unavailable") {
+			let latest: EndoDevelopReceiptV0 | null = null;
+			for (const r of receipts)
+				if (sameArgv(r.check.argv, planned.argv) && (latest === null || endoReceiptLaterV0(r, latest))) latest = r;
+			if (latest !== null)
+				behind = {
+					receiptId: latest.id,
+					commit: latest.revision.commit,
+					startedAtMs: latest.startedAtMs,
+					endedAtMs: latest.endedAtMs,
+					outcome: endoPlannedReadingV0(planned, latest),
+				};
+		}
 		return {
-			attemptId,
-			name: c.name,
-			command: endoShownTextV0(planned.argv.join(" "), ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars),
-			behavioural: planned.expect !== undefined,
-			state: c.state,
-			atHead: { ...c.atHead },
-			receipt:
-				behind === null
-					? null
-					: {
-							receiptId: behind.receiptId,
-							commit: behind.commit,
-							startedAtMs: behind.startedAtMs,
-							endedAtMs: behind.endedAtMs,
-							outcome: behind.outcome,
-						},
+			argv: planned.argv,
+			entry: {
+				attemptId,
+				name: c.name,
+				command: endoShownTextV0(planned.argv.join(" "), ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars),
+				behavioural: planned.expect !== undefined,
+				state: c.state,
+				atHead: { ...c.atHead },
+				receipt: behind,
+				incomplete,
+			},
 		};
 	});
 }
 
-/** The triage order of planned checks: by rank, then the most recent receipt, then attempt and name (a total order). */
+/** The triage order of planned checks: by triage, then the most recent run, then attempt and name (a total order). */
 export function endoPlannedOrderV1(a: EndoDevelopAttentionPlannedV1, b: EndoDevelopAttentionPlannedV1): number {
 	return (
-		PLANNED_RANK[a.state] - PLANNED_RANK[b.state] ||
+		rankOf(a) - rankOf(b) ||
 		(b.receipt?.startedAtMs ?? -1) - (a.receipt?.startedAtMs ?? -1) ||
 		(a.attemptId < b.attemptId ? -1 : a.attemptId > b.attemptId ? 1 : 0) ||
 		(a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
@@ -238,6 +251,8 @@ export function endoDevelopAttentionViewV0(
 		let problems = 0;
 		const receipts: EndoDevelopReceiptV0[] = [];
 		const planned: EndoDevelopAttentionPlannedV1[] = [];
+		// Commands a newer attempt of this task has run (attempts are read newest first).
+		const ran = new Set<string>();
 		if (sources.receipts !== null)
 			for (const e of entries) {
 				if (truncated) {
@@ -260,10 +275,23 @@ export function endoDevelopAttentionViewV0(
 					receipts.push(...got.receipts);
 					continue;
 				}
-				// Its plan reads the receipts of the commands it names; any other receipt of it is read by exit status, as in v0. An old
-				// attempt's plan with nothing checked is not listed: only the newest attempt's, or one with receipts.
-				if (e === newest || got.receipts.length > 0)
-					planned.push(...plannedOf(e.attempt.id, plan, got.receipts, current));
+				// Its plan reads the receipts of the commands it names; any other receipt of it is read by exit status, as in v0. The newest
+				// attempt lists every planned check. An older one lists only the checks it ran, for commands no newer attempt has run: the
+				// latest run of a command decides, as v0's rule did, and an old plan's unrun checks are history, not work.
+				const ranNow = new Set<string>();
+				for (const { entry, argv } of plannedOf(
+					e.attempt.id,
+					plan,
+					got.receipts,
+					current,
+					got.problems.length > 0,
+				)) {
+					const key = JSON.stringify(argv);
+					if (e !== newest && (entry.state === "not-run" || ran.has(key))) continue;
+					planned.push(entry);
+					if (entry.state !== "not-run") ranNow.add(key);
+				}
+				for (const key of ranNow) ran.add(key);
 				for (const r of got.receipts)
 					if (!plan.checks.some((c) => sameArgv(c.argv, r.check.argv))) receipts.push(r);
 			}
@@ -292,8 +320,8 @@ export function endoDevelopAttentionViewV0(
 			planned: plannedShown,
 			morePlanned: {
 				checks: plannedRest.length,
-				notPassing: plannedRest.filter((c) => PLANNED_RANK[c.state] < 2).length,
-				notCurrent: plannedRest.filter((c) => PLANNED_RANK[c.state] === 2).length,
+				notPassing: plannedRest.filter((c) => rankOf(c) < 2).length,
+				notCurrent: plannedRest.filter((c) => rankOf(c) === 2).length,
 			},
 			more: {
 				commands: rest.length,

@@ -72,6 +72,7 @@ const planned: Check = (v) =>
 				endedAtMs: stamp,
 				outcome: one(...keysOf(RECEIPT_OUTCOME_LABELS)),
 			}),
+		incomplete: (x) => typeof x === "boolean",
 	});
 
 /** Whether a planned entry's state is one its receipt, its counts and the observed HEAD allow (the ledger's own rules). */
@@ -79,7 +80,8 @@ function plannedCoherent(p: EndoDevelopAttentionPlannedV1, head: EndoDevelopAtte
 	const total = p.atHead.passed + p.atHead.failed + p.atHead.inconclusive;
 	const r = p.receipt;
 	if (r !== null && r.endedAtMs < r.startedAtMs) return false;
-	if (head === null) return p.state === "unavailable" && r === null && total === 0;
+	// Without a HEAD nothing is compared; the latest run anywhere may still be named (a recorded failure stays visible).
+	if (head === null) return p.state === "unavailable" && total === 0;
 	const here = r !== null && r.commit === head.commit;
 	switch (p.state) {
 		case "unavailable":
@@ -99,6 +101,8 @@ function plannedCoherent(p: EndoDevelopAttentionPlannedV1, head: EndoDevelopAtte
 		case "stale":
 			return r !== null && r.commit !== head.commit && total === 0;
 		case "elsewhere":
+			// Its latest run in another working tree or repository, at any commit (or none named).
+			return total === 0;
 		case "not-run":
 			return r === null && total === 0;
 	}

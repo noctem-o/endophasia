@@ -334,10 +334,18 @@ const CHECK_REFUSALS: Readonly<Record<DevelopCheckRefusalV0, string>> = {
 const RISK =
 	"endo attempt check: this runs the command below with your permissions and your environment. Whatever it invokes from the repository (package.json scripts, test files, a Makefile) is the repository's code, which an agent may have written: running a repository's tests is running that repository. Endophasia cannot tell whether anything else (an agent still working, an editor) writes the tree while it runs; stop them first.";
 
-/** The attempt's verification plan, read now from its prepared record; null without one, or when the attempts directory cannot be read. */
+/**
+ * The attempt's verification plan, read now from its prepared record; null without one. When the attempts directory cannot be read, says
+ * so on stderr, so a missing plan reading is never mistaken for "this command is not planned".
+ */
 function planOf(root: string, attemptId: string): EndoVerificationPlanV0 | null {
 	const read = new DevelopAttemptsStoreV0(root).read();
-	if (!read.ok) return null;
+	if (!read.ok) {
+		process.stderr.write(
+			"plan: the attempt records could not be read, so how the plan reads these receipts is not shown.\n",
+		);
+		return null;
+	}
 	const entry = read.entries.find((e) => e.attempt.id === attemptId);
 	return entry === undefined ? null : endoAttemptPlanV0(entry.attempt);
 }
@@ -357,7 +365,7 @@ function plannedSummary(plan: EndoVerificationPlanV0 | null, receipt: EndoDevelo
 		check: check.name,
 		readBy: check.expect === undefined ? "exit status" : "declared exit code and output",
 		outcome: reading,
-		label: `${ENDO_RECEIPT_OUTCOME_LABELS_V0[reading]}, as the plan reads it`,
+		label: `The plan's reading of this run: ${reading}`,
 	};
 }
 

@@ -44,8 +44,9 @@ export interface Line {
 	parts: readonly (string | { code: string })[];
 	/** The receipt this line is about, when it is about one (the row opens it). */
 	receipt?: { attemptId: string; receiptId: string };
-	/** For a planned check's line: its ledger state. */
+	/** For a planned check's line: its ledger state, and whether it has no current result to show (the triage's `unsettled`). */
 	planned?: EndoPlannedCheckStateV0;
+	unsettled?: boolean;
 }
 
 export interface Item {
@@ -73,15 +74,6 @@ export interface Overview {
 	/** Some task not done has a planned check with no current result (not run here, stale, elsewhere, or its tree changed since). */
 	unsettled: boolean;
 }
-
-/** Planned states with no current result: said on the row, and a reason for a review to recheck; never "passed". */
-const UNSETTLED: ReadonlySet<EndoPlannedCheckStateV0> = new Set([
-	"tree-changed",
-	"stale",
-	"elsewhere",
-	"not-run",
-	"unavailable",
-]);
 
 const short = (sha: string): string => sha.slice(0, 7);
 
@@ -184,14 +176,26 @@ const READ: Readonly<Record<EndoReceiptOutcomeV0, string>> = {
 };
 
 /**
- * A planned check's line, in the Task view's words (PLANNED_CHECK_LABELS): its state is the attempt's ledger's. A behavioural check says it
- * is read by its declared exit code and output, so an exit 0 is never read as a pass, nor a declared non-zero exit as a failure.
- *
- * A check without a current result (the tree changed since its runs at HEAD, or it ran only at another commit) says how the plan read its
- * latest run there. If that run failed, or its runs at HEAD disagree, the row still needs attention, as before plans: a recorded failure
- * is never dropped because the tree moved on. It is never called a current pass.
+ * The protocol's triage rule for a planned check (endoPlannedTriageV1, protocol/develop-attention.ts), mirrored; a contract test holds them
+ * equal over every state, reading and count. A recorded failure is never dropped because the tree, the commit or the worktree moved on.
  */
-function plannedLine(p: AttentionPlanned, review: boolean): Line {
+export function plannedTriage(p: AttentionPlanned): "failed" | "inconclusive" | "unsettled" | "passed" {
+	if (p.state === "failed") return "failed";
+	if (p.state === "inconclusive" || p.state === "mixed") return "inconclusive";
+	if (p.state === "passed") return p.incomplete ? "unsettled" : "passed";
+	if (p.state === "not-run") return "unsettled";
+	const reading = p.receipt?.outcome ?? null;
+	const disagree = [p.atHead.passed, p.atHead.failed, p.atHead.inconclusive].filter((n) => n > 0).length >= 2;
+	if (reading === "failed") return "failed";
+	if (reading === "inconclusive" || disagree) return "inconclusive";
+	return "unsettled";
+}
+
+/**
+ * A planned check's line, in the Task view's words (PLANNED_CHECK_LABELS): its state is the attempt's ledger's, its kind the triage's.
+ * Without a current result it says how the plan read the run behind it, and where. `attempt`: name the attempt (more than one is listed).
+ */
+function plannedLine(p: AttentionPlanned, review: boolean, attempt: boolean): Line {
 	const by = p.behavioural ? " (read by its declared exit code and output)" : "";
 	const { passed, failed, inconclusive } = p.atHead;
 	const runs = [
@@ -202,33 +206,44 @@ function plannedLine(p: AttentionPlanned, review: boolean): Line {
 		.filter((x) => x !== "")
 		.join(", ");
 	const disagree = [passed, failed, inconclusive].filter((n) => n > 0).length >= 2;
-	const latest = p.receipt?.outcome ?? null;
+	const r = p.receipt;
 	const detail =
 		p.state === "mixed"
 			? ` (${runs})`
-			: p.state === "tree-changed" && latest !== null
-				? ` (its latest run at HEAD ${READ[latest]}${disagree ? `; runs there: ${runs}` : ""})`
-				: p.state === "stale" && p.receipt !== null && latest !== null
-					? ` (its latest run, at ${short(p.receipt.commit)}, ${READ[latest]})`
-					: "";
-	const lingering = p.state === "tree-changed" || p.state === "stale";
+			: p.state === "passed" && p.incomplete
+				? " (some of this attempt's receipt files could not be read; a later result may be among them)"
+				: r === null
+					? ""
+					: p.state === "tree-changed"
+						? ` (its latest run at HEAD ${READ[r.outcome]}${disagree ? `; runs there: ${runs}` : ""})`
+						: p.state === "stale"
+							? ` (its latest run, at ${short(r.commit)}, ${READ[r.outcome]})`
+							: p.state === "elsewhere"
+								? ` (its latest run there ${READ[r.outcome]})`
+								: p.state === "unavailable"
+									? ` (its latest run ${READ[r.outcome]}; this worktree's HEAD could not be read)`
+									: "";
+	const triage = plannedTriage(p);
 	const kind: Line["kind"] =
-		p.state === "failed" || (lingering && latest === "failed")
+		triage === "failed"
 			? "failed"
-			: p.state === "inconclusive" ||
-					p.state === "mixed" ||
-					(lingering && (latest === "inconclusive" || (p.state === "tree-changed" && disagree)))
+			: triage === "inconclusive"
 				? "inconclusive"
-				: p.state === "passed"
+				: triage === "passed"
 					? "evidence"
 					: review
 						? "reconsider"
 						: "note";
 	return {
 		kind,
-		parts: ["Planned check ", { code: p.name }, `: ${PLANNED_CHECK_LABELS[p.state]}${detail}${by}.`],
-		...(p.receipt === null ? {} : { receipt: { attemptId: p.attemptId, receiptId: p.receipt.receiptId } }),
+		parts: [
+			"Planned check ",
+			{ code: p.name },
+			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${by}${attempt ? ` (attempt ${p.attemptId.slice(13, 20)})` : ""}.`,
+		],
+		...(r === null ? {} : { receipt: { attemptId: p.attemptId, receiptId: r.receiptId } }),
 		planned: p.state,
+		unsettled: triage === "unsettled",
 	};
 }
 
@@ -314,7 +329,7 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 					? l
 					: { ...l, parts: [...l.parts, " No plan reads this check; this is its exit status."] };
 			const checks = [
-				...e.planned.map((p) => plannedLine(p, review)),
+				...e.planned.map((p) => plannedLine(p, review, new Set(e.planned.map((x) => x.attemptId)).size > 1)),
 				...e.checks.map((c) => unplanned(checkLine(c, review, head))),
 			];
 			if (e.morePlanned.checks > 0)
@@ -446,9 +461,7 @@ export function overviewOf(
 		evidence: usable ? "shown" : state,
 		gaps: (usable && view.unattributed > 0) || items.some((i) => i.lines.some((l) => l.kind === "warn")),
 		notes,
-		unsettled: items.some(
-			(i) => i.section !== "done" && i.lines.some((l) => l.planned !== undefined && UNSETTLED.has(l.planned)),
-		),
+		unsettled: items.some((i) => i.section !== "done" && i.lines.some((l) => l.unsettled === true)),
 	};
 }
 

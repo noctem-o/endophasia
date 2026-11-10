@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { type EndoDevelopAttentionPlannedV1, endoPlannedTriageV1 } from "../protocol/develop-attention.ts";
 import type { EndoDevelopReceiptV0, EndoReceiptCurrentV0, EndoReceiptFactsV0 } from "../protocol/develop-receipts.ts";
-import type { EndoVerificationPlanV0 } from "../protocol/develop-verification.ts";
+import { ENDO_PLANNED_CHECK_STATES_V0, type EndoVerificationPlanV0 } from "../protocol/develop-verification.ts";
 import { ENDO_ATTEMPT_EVIDENCE_NOT_ESTABLISHED_V0 } from "../runtime/contracts/develop-attempt-evidence.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { endoDevelopAttentionViewV0 } from "../runtime/contracts/develop-attention.ts";
@@ -20,7 +21,7 @@ import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspac
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
-import { type Item, lineText, type Overview, overviewOf } from "../studio-ui/src/model/attention.ts";
+import { type Item, lineText, type Overview, overviewOf, plannedTriage } from "../studio-ui/src/model/attention.ts";
 import { readAttention } from "../studio-ui/src/model/attention-wire.ts";
 import type { Task } from "../studio-ui/src/model/workspace-wire.ts";
 import { removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
@@ -359,12 +360,9 @@ describe("the overview reads a planned check as its attempt's ledger does", () =
 			.view()
 			.tasks.find((t) => t.taskId === task)
 			?.planned.filter((c) => c.name === "refuses");
-		expect(both?.map((c) => [c.attemptId, c.state]).sort()).toEqual(
-			[
-				[planned, "passed"],
-				[third, "failed"],
-			].sort(),
-		);
+		// The newest attempt's plan reads its own run its own way (exit 1 expected, exit 2 observed: failed). It ran this command, so the older
+		// attempt's reading of it is superseded, as v0's "the latest run of a command decides" rule did; it never borrows the other's verdict.
+		expect(both?.map((c) => [c.attemptId, c.state])).toEqual([[third, "failed"]]);
 	});
 
 	it("F1: a passing comparison does not establish the environment, and the evidence says so", () => {
@@ -377,6 +375,166 @@ describe("the overview reads a planned check as its attempt's ledger does", () =
 		expect(limit).toMatch(/NODE_OPTIONS/);
 		expect(limit).toMatch(/inherited and not recorded/);
 		expect(limit).toMatch(/requestedBy names who the record says asked for the check, not who ran it/);
+	});
+});
+
+// The adversarial review of DEVELOP-ATTENTION-002 (research/develop-validation/DEVELOP-VALIDATION-002.md): each case below dropped a
+// recorded planned failure out of attention in the first cut, where v0 had flagged it, or contradicted the newest attempt's Task view.
+describe("a recorded planned failure is never dropped from attention", () => {
+	const OTHER_TREE = { worktree: "/work/calc-agent", commonDir: "/work/calc/.git", linked: true };
+	it("R2: a failure recorded in another working tree still needs attention, and says where", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Agent worktree", "in-progress");
+		p.ran(p.attempt(task), 1, PRECEDENCE, 0, "20\n", { repository: OTHER_TREE });
+		expect(stateOf(p, task, "precedence")).toBe("elsewhere");
+		const item = itemOf(p.overview(), task);
+		expect(item.flags).toEqual(["failed"]);
+		expect(texts(item)).toContain(
+			"Planned check `precedence`: Run only in another working tree (its latest run there failed) (read by its declared exit code and output).",
+		);
+	});
+
+	it("R1: with HEAD unreadable, a recorded failure still needs attention", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "No HEAD", "in-progress");
+		p.ran(p.attempt(task), 1, PRECEDENCE, 0, "20\n");
+		const item = itemOf(p.overview(null), task);
+		expect(item.flags).toEqual(["failed"]);
+		expect(texts(item)).toContain(
+			"Planned check `precedence`: Not compared (its latest run failed; this worktree's HEAD could not be read) (read by its declared exit code and output).",
+		);
+	});
+
+	it("R3: the per-task limit never cuts a failure while listing passes", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Many checks", "in-progress");
+		const older = {
+			revision: { commit: OLD, tree: "e".repeat(40), branch: "refs/heads/main" },
+			after: {
+				state: "observed" as const,
+				sameRepository: true,
+				commit: OLD,
+				tree: "e".repeat(40),
+				clean: true,
+				reflogsUnchanged: true,
+				rulesUnchanged: true,
+			},
+		};
+		const wide: EndoVerificationPlanV0 = {
+			checks: Array.from({ length: 8 }, (_, i) => ({
+				name: `c${i}`,
+				argv: ["node", "calc.mjs", `${i}+${i}`],
+				shows: "x",
+			})),
+			criteria: [{ text: "all", checks: Array.from({ length: 8 }, (_, i) => `c${i}`) }],
+		};
+		const a1 = p.attempt(task);
+		p.ran(a1, 1, PRECEDENCE, 0, "20\n", older);
+		const a2 = p.attempt(task, wide);
+		for (let i = 0; i < 8; i++) p.ran(a2, 2 + i, ["node", "calc.mjs", `${i}+${i}`], 0, "ok\n", older);
+		const v = p.view().tasks.find((t) => t.taskId === task);
+		expect(v?.planned[0]).toMatchObject({ attemptId: a1, name: "precedence", state: "stale" });
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+	});
+
+	it("R4: an older attempt lists only checks it ran, a newer attempt's run supersedes it, and lines name their attempt", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Superseded", "in-progress");
+		const older = {
+			revision: { commit: OLD, tree: "e".repeat(40), branch: "refs/heads/main" },
+			after: {
+				state: "observed" as const,
+				sameRepository: true,
+				commit: OLD,
+				tree: "e".repeat(40),
+				clean: true,
+				reflogsUnchanged: true,
+				rulesUnchanged: true,
+			},
+		};
+		const a1 = p.attempt(task);
+		p.ran(a1, 1, PRECEDENCE, 0, "20\n", older);
+		const a2 = p.attempt(task);
+		p.ran(a2, 2, PRECEDENCE, 0, "14\n");
+		p.ran(a2, 3, REFUSES, 2, "");
+		p.ran(a2, 4, TESTS, 0, "ok\n");
+		const v = p.view().tasks.find((t) => t.taskId === task);
+		// The newer attempt ran precedence: the older failure of that command is superseded, as v0's "latest receipt" rule did.
+		// Passes are listed most recent first.
+		expect(v?.planned.map((c) => [c.attemptId === a2 ? "newest" : "older", c.name, c.state])).toEqual([
+			["newest", "tests", "passed"],
+			["newest", "refuses", "passed"],
+			["newest", "precedence", "passed"],
+		]);
+		expect(itemOf(p.overview(), task).flags).toEqual([]);
+		// An older attempt's failure of a command the newest has not run stays listed, named by its attempt; its unrun checks are not.
+		const t2 = taskIn(p.root, p.projectId, "Older failure, newest not run", "in-progress");
+		const b1 = p.attempt(t2);
+		p.ran(b1, 5, PRECEDENCE, 0, "20\n", older);
+		const b2 = p.attempt(t2);
+		p.ran(b2, 6, REFUSES, 2, "");
+		const w = p.view().tasks.find((t) => t.taskId === t2);
+		expect(w?.planned.map((c) => [c.attemptId === b2 ? "newest" : "older", c.name, c.state])).toEqual([
+			["older", "precedence", "stale"],
+			["newest", "precedence", "not-run"],
+			["newest", "tests", "not-run"],
+			["newest", "refuses", "passed"],
+		]);
+		const lines = texts(itemOf(p.overview(), t2));
+		expect(lines.some((l) => l.includes("`precedence`") && l.includes(`attempt ${b1.slice(13, 20)}`))).toBe(true);
+	});
+
+	it("R5: a pass beside receipt files that could not be read is not a current pass", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Damaged beside a pass", "review");
+		const a = p.attempt(task);
+		p.ran(a, 1, REFUSES, 2, "");
+		writeFileSync(join(p.root, "develop", "receipts", a, `endo.receipt.${"f".repeat(32)}.json`), "{not json");
+		const refuses = plannedOf(p, task).find((c) => c.name === "refuses");
+		expect(refuses).toMatchObject({ state: "passed", incomplete: true });
+		const item = itemOf(p.overview(), task);
+		expect(item.flags).toEqual(["decision", "reconsider"]);
+		expect(texts(item)).toContain(
+			"Planned check `refuses`: Passed at HEAD (some of this attempt's receipt files could not be read; a later result may be among them) (read by its declared exit code and output).",
+		);
+	});
+});
+
+describe("one triage rule", () => {
+	it("the page's mirror equals the protocol's over every state, reading, count and completeness", () => {
+		let n = 0;
+		for (const state of ENDO_PLANNED_CHECK_STATES_V0)
+			for (const outcome of [null, "passed", "failed", "inconclusive"] as const)
+				for (const atHead of [
+					{ passed: 0, failed: 0, inconclusive: 0 },
+					{ passed: 1, failed: 0, inconclusive: 0 },
+					{ passed: 1, failed: 1, inconclusive: 0 },
+					{ passed: 0, failed: 2, inconclusive: 1 },
+				])
+					for (const incomplete of [false, true]) {
+						const p: EndoDevelopAttentionPlannedV1 = {
+							attemptId: `endo.attempt.${"1".repeat(32)}`,
+							name: "x",
+							command: "x",
+							behavioural: true,
+							state,
+							atHead,
+							receipt:
+								outcome === null
+									? null
+									: {
+											receiptId: `endo.receipt.${"2".repeat(32)}`,
+											commit: HEAD,
+											startedAtMs: 1,
+											endedAtMs: 2,
+											outcome,
+										},
+							incomplete,
+						};
+						expect(plannedTriage(p), JSON.stringify(p)).toBe(endoPlannedTriageV1(p));
+						n += 1;
+					}
+		expect(n).toBe(ENDO_PLANNED_CHECK_STATES_V0.length * 4 * 4 * 2);
 	});
 });
 
@@ -521,7 +679,7 @@ describe.skipIf(!haveGit)("B1 and F1 at the terminal: what endo attempt check an
 
 		// The evidence reading names the environment as not established.
 		const evidence = endo(repo, ["attempt", "evidence", "--root", root, "--attempt", A]);
-		expect(evidence.stderr).toContain("the environment it ran in (variables such as NODE_OPTIONS or PATH");
+		expect(evidence.stderr).toContain("The environment it ran in (variables such as NODE_OPTIONS or PATH");
 
 		// The same store through the attention projection: the exit-0 failure needs attention; the refusal does not.
 		const view = endoDevelopAttentionViewV0(

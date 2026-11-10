@@ -1,0 +1,19 @@
+attempt endo.attempt.874953046bc697afe0301a4932e10fd3 (task endo.task.71fee8ce943abbe357d46b881f0ea707): validation case P
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: ff2670e8a13b
+  tree now  [observed] ff2670e8a13b, clean (/work/P/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at ff2670e8a13b; Recorded at this working tree's current HEAD
+  plan      [none] prepared without a verification plan
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+    - That a check's environment could not change its result. A receipt records the command's exit status and a digest of its standard output (the output itself only with --keep-output); the comparison with your plan is made when it is read. The environment it ran in (variables such as NODE_OPTIONS or PATH, tool versions, the home directory) was inherited and not recorded, and nothing established it was trustworthy. Its requestedBy names who the record says asked for the check, not who ran it: anything that can run endo as you, an agent included, can record one.

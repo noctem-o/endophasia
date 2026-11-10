@@ -6,6 +6,8 @@
 #   S2   1994 passes under the hook, then an unrelated commit           D    1994 passes under the hook, then roman.mjs is edited (dirty)
 #   N    prepared, never checked                                        X    the refusal passes, then a receipt file is damaged
 #   P    an attempt without a plan: 1994 exits 0 (exit-status reading)  TWO  one argv, two attempts: one with the plan, one without
+#   E    1994 fails in a linked worktree (an agent's), read from the main checkout
+#   O    an older attempt's 1994 fails at the old commit; a newer attempt runs the refusal (passes) and leaves 1994 unrun
 # Usage (from the repository root, after npm run build): research/develop-validation/rebuild-attention-cases.sh <empty-dir>
 # Needs a Git identity and Chromium. Stops every host it starts.
 set -euo pipefail
@@ -56,4 +58,9 @@ printf '{not json' > "$W/X/store/develop/receipts/$A/endo.receipt.ffffffffffffff
 repo P; P=$(project P); T=$(task P "$P"); A=$(attempt P "$P" "$T"); check P "$A" -- node roman.mjs 1994; capture P "$P" "$A" no-plan
 repo TWO; P=$(project TWO); T=$(task TWO "$P"); A=$(attempt TWO "$P" "$T" "$PLAN"); B=$(attempt TWO "$P" "$T")
 check TWO "$A" -- node roman.mjs 0; check TWO "$B" -- node roman.mjs 0; capture TWO "$P" "$A"
+setup E; (cd "$W/E/repo" && git worktree add -q "$W/E/agent" 2>/dev/null)
+(cd "$W/E/agent" && node "$R/dist/cli/index.js" attempt check --root "$W/E/store" --attempt "$A" --cwd "$W/E/agent" --keep-output -- node roman.mjs 1994 >/dev/null 2>&1 || true)
+capture E "$P" "$A"
+setup O; A1=$A; check O "$A1" -- node roman.mjs 1994; unrelated O; A2=$(attempt O "$P" "$T" "$PLAN"); check O "$A2" -- node roman.mjs 0
+capture O "$P" "$A2"
 echo "captured: $W/out"

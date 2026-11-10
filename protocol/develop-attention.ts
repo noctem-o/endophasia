@@ -64,9 +64,13 @@ export interface EndoDevelopAttentionCheckV0 {
 
 /**
  * One planned check of one attempt, as that attempt's acceptance ledger reads it (protocol/develop-verification.ts). `state` is the ledger's
- * own. `receipt` is the receipt behind it: the latest at the current HEAD, else the latest at another commit (null when there is none), with
- * `outcome` as the PLAN reads it (behaviour for a behavioural check), not its exit status. `behavioural`: the plan declares an expected exit
- * code and output for it.
+ * own. `receipt` is the run behind it, with `outcome` as the PLAN reads it (behaviour for a behavioural check), not its exit status:
+ * - passed, failed, inconclusive, mixed, tree-changed: the latest run at the current HEAD;
+ * - stale: the latest run in this working tree, at another commit;
+ * - elsewhere: the latest run in another working tree or repository; unavailable (HEAD not read): the latest run anywhere;
+ * - not-run: none.
+ * `incomplete`: some of this attempt's receipt files could not be used, so a later result may be among them. `behavioural`: the plan
+ * declares an expected exit code and output for it.
  */
 export interface EndoDevelopAttentionPlannedV1 {
 	attemptId: string;
@@ -83,6 +87,29 @@ export interface EndoDevelopAttentionPlannedV1 {
 		endedAtMs: number;
 		outcome: EndoReceiptOutcomeV0;
 	} | null;
+	incomplete: boolean;
+}
+
+/**
+ * The overview's one triage rule for a planned check (the page mirrors it; a contract test holds them equal):
+ * - `failed` | `inconclusive`: the ledger says so at HEAD (`mixed` is inconclusive); or there is no current result (tree changed,
+ *   stale, elsewhere, HEAD not read) and the latest run behind it failed, was inconclusive, or the runs at HEAD disagree. A recorded
+ *   failure is never dropped because the tree, the commit or the worktree moved on, nor because HEAD could not be read.
+ * - `unsettled`: no current result otherwise (including never run), or a pass whose attempt has receipt files that could not be read.
+ * - `passed`: passed at the current clean HEAD, every receipt file of its attempt read.
+ */
+export function endoPlannedTriageV1(
+	p: EndoDevelopAttentionPlannedV1,
+): "failed" | "inconclusive" | "unsettled" | "passed" {
+	if (p.state === "failed") return "failed";
+	if (p.state === "inconclusive" || p.state === "mixed") return "inconclusive";
+	if (p.state === "passed") return p.incomplete ? "unsettled" : "passed";
+	if (p.state === "not-run") return "unsettled";
+	const reading = p.receipt?.outcome ?? null;
+	const disagree = [p.atHead.passed, p.atHead.failed, p.atHead.inconclusive].filter((n) => n > 0).length >= 2;
+	if (reading === "failed") return "failed";
+	if (reading === "inconclusive" || disagree) return "inconclusive";
+	return "unsettled";
 }
 
 export interface EndoDevelopAttentionTaskV0 {
@@ -101,11 +128,12 @@ export interface EndoDevelopAttentionTaskV0 {
 	/** Receipts no plan reads (an attempt without a plan, or a command its plan does not name), by exit status as in v0. */
 	checks: EndoDevelopAttentionCheckV0[];
 	/**
-	 * Planned checks of this task's attempts that have a plan and whose receipts were read: the newest attempt's, and any other attempt's
-	 * that has at least one receipt. An attempt whose receipts could not be read is in `unreadable` or `skipped`, never here.
+	 * Planned checks of this task's attempts that have a plan and whose receipts were read: every check of the newest attempt; of an older
+	 * attempt, only the checks it ran, and only for a command no newer attempt has run (v0's "the latest run of a command" rule). An
+	 * attempt whose receipts could not be read is in `unreadable` or `skipped`, never here. Listed by triage, worst first.
 	 */
 	planned: EndoDevelopAttentionPlannedV1[];
-	/** Further planned checks not listed: how many, how many failed, were inconclusive or disagree, and how many have no current pass otherwise. */
+	/** Further planned checks not listed: how many, how many triage as failed or inconclusive, and how many as unsettled (endoPlannedTriageV1). */
 	morePlanned: { checks: number; notPassing: number; notCurrent: number };
 	/**
 	 * Further commands not listed: how many, how many of those did not pass, and how many passed but not at the current clean HEAD (so a

@@ -1,0 +1,15 @@
+{
+  "checks": [
+    { "name": "subtractive-1994", "argv": ["node", "roman.mjs", "1994"], "shows": "standard subtractive notation",
+      "expect": { "exitCode": 0, "stdout": "MCMXCIV\n" } },
+    { "name": "rejects-zero", "argv": ["node", "roman.mjs", "0"], "shows": "out-of-range input is refused with nothing on stdout",
+      "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "runs", "argv": ["node", "roman.mjs", "14"], "shows": "the program runs for ordinary input" }
+  ],
+  "criteria": [
+    { "text": "Numerals use standard subtractive notation (1994 is MCMXCIV)", "checks": ["subtractive-1994"] },
+    { "text": "Input outside 1..3999 is refused with exit 2 and nothing on stdout", "checks": ["rejects-zero"] },
+    { "text": "The program still runs for ordinary input", "checks": ["runs"] },
+    { "text": "It stays one small file with no dependencies", "checks": [] }
+  ]
+}

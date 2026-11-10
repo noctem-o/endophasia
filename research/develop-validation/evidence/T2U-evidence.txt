@@ -1,0 +1,55 @@
+# T2U — attempt endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e
+# repo log:
+#   08c3fb8 duration: tidy comment
+#   0dd67e6 duration: add days (planted candidate: a repeated d is accepted)
+#   943346f duration: fixture (copy of review-pilot fixture)
+
+attempt endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e (task endo.task.3b103bed6f677eb54a0629ae16e3d8d7): Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.
+  handoff   [operator] said they handed it to a coding agent
+  outcome   [operator] recorded as reported, not verified: Agent reported: added d to parse and format, documented it in README; node --test passes; the sample checks print the expected values; test/ untouched; nothing left undone. (Recorded by the validation study.)
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 943346f180cb, 0dd67e6a4489, 08c3fb827066
+  tree now  [observed] 08c3fb827066, clean (/work/T2U/repo)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } }): Observed check passed at 08c3fb827066; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } }): Observed check passed at 08c3fb827066; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } }): Observed check passed at 08c3fb827066; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } }): Observed check passed at 08c3fb827066; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node --test: Observed check passed at 08c3fb827066; Recorded at this working tree's current HEAD
+  planned   [observed] tests ["node","--test"]: Passed at HEAD (08c3fb827066, latest passed); at another commit, 0dd67e6a4489: passed
+  planned   [observed] days-parse ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"]: Passed at HEAD (08c3fb827066, latest passed); at another commit, 0dd67e6a4489: passed
+  behaviour [plan: expected; observed] expected exit 0 and 6 byte(s) of output; observed exit 0, 6 byte(s), output the same
+  planned   [observed] days-format ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"]: Passed at HEAD (08c3fb827066, latest passed); at another commit, 0dd67e6a4489: passed
+  behaviour [plan: expected; observed] expected exit 0 and 9 byte(s) of output; observed exit 0, 9 byte(s), output the same
+  planned   [observed] no-d-unchanged ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"]: Passed at HEAD (08c3fb827066, latest passed); at another commit, 0dd67e6a4489: passed
+  behaviour [plan: expected; observed] expected exit 0 and 5 byte(s) of output; observed exit 0, 5 byte(s), output the same
+  planned   [observed] still-rejects-repeat ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"]: Passed at HEAD (08c3fb827066, latest passed); at another commit, 0dd67e6a4489: passed
+  behaviour [plan: expected; observed] expected exit 0 and 9 byte(s) of output; observed exit 0, 9 byte(s), output the same
+  criterion [plan: days-parse, days-format] 1. d (86400 seconds) is parsed and formatted, largest unit first: Planned checks passed at HEAD
+  criterion [plan: tests] 2. node --test exits 0 at a clean commit, and test/ is unchanged: Planned checks passed at HEAD
+  criterion [plan: your judgment] 3. README.md's Format section documents d: Your judgment
+  criterion [plan: no-d-unchanged, still-rejects-repeat] 4. Inputs without d behave exactly as before, and rejected inputs stay rejected: Planned checks passed at HEAD
+  criterion [plan: your judgment] 5. No new files and no new dependencies: Your judgment
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+
+provenance: what Git showed of the working tree around this attempt; not who changed it
+  start   2026-11-10T18:37:29.139Z  When you asked: HEAD 08c3fb827066 (refs/heads/main), no changes
+  frame   your first and latest observations (they say nothing about when the work happened)
+  now     read 2026-11-10T18:39:57.012Z; HEAD stayed at 08c3fb827066; against the start: same content
+  checked 08c3fb827066 (5 receipts) against the start: same content
+  checked 0dd67e6a4489 (5 receipts) against the start: 1 path differs: M src/duration.mjs
+  checked 943346f180cb (5 receipts) against the start: 2 paths differ: M README.md, M src/duration.mjs
+  limit   Git's view at one moment: who or what changed the tree (the agent, you, an editor, a hook, another process) is not known.
+  limit   Two observations that read the same do not mean nothing changed between them.
+  limit   Ignored files are not part of a state; their contents were not read.
+  limit   Content is compared by Git blob id over the raw bytes; Git's line-ending or filter conversion, if the repository uses any, is not applied.

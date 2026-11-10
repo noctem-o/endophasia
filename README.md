@@ -72,8 +72,8 @@ conditions. Pi is the reference runtime and the only live integration today; Pi 
 
 ## Quick start
 
-Requires **Node.js >= 22.19.0** and Git, with a Git identity set (`git config --global user.name` and `user.email`): the
-tour makes commits, and checks run only at a commit.
+Requires **Node.js >= 22.19.0** and Git, with a Git identity set (`git config --global user.name` and
+`user.email`): the tour makes commits, and checks run only at a commit.
 
 ```sh
 git clone https://github.com/noctem-o/endophasia.git
@@ -165,9 +165,8 @@ endo attempt provenance --attempt endo.attempt.<id>
 ```
 
 The planned check now reads *Passed at HEAD*, followed by *at another commit … failed*: the earlier failure stays
-on record. `observe` records what Git shows of the working tree now, and `provenance` compares that observation with each
-commit you checked. The task is
-still `open`, because accepting the work is your decision: `endo task status`.
+on record. `observe` records what Git shows of the working tree now, and `provenance` compares that observation
+with each commit you checked. The task is still `open`, because accepting the work is your decision: `endo task status`.
 
 **6. See it in a browser.**
 

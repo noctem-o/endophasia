@@ -1,0 +1,220 @@
+opened=true
+Skip to the content
+ENDOPHASIA
+Observe
+Compare
+Develop
+Capabilities · later
+Evolve · later
+Develop appearance
+Instrument
+Field
+Workspace · paired
+Workspace · no agent attached
+SESSIONS
+
+recorded, grouped by source
+
+Reload list
+YOUR WORK (1)
+Roman
+1 task
+tasks and evidence · no agent attached
+
+absent
+ Nothing exists at this source's location. Reading never creates it.
+
+No event store here
+
+Sessions appear here once a Pi attachment or a DSH import has recorded them in the store this page reads. An empty list is not evidence that nothing ran: it says only that this store holds no such recording.
+
+This page only reads. It cannot start, attach to or steer an agent.
+
+TASKS
+CHANGES
+Read again
+Roman
+✓ matches
+Task
+Roman numerals use subtractive notation
+▾
+○
+Open
+repo
+branch main f3969fd
+clean
+read 18:39:34 (broker clock)
+Refresh worktree
+Workspace
+No agent attached · read from the store when you ask · statuses change only when you set them
+
+‹ Overview
+
+Roman numerals use subtractive notation
+○
+Open
+updated 18:39:26 · revision 0
+Edit
+DESCRIPTION
+
+No description.
+
+ACCEPTANCE CRITERIA
+
+None written.
+
+STATUS recorded by you; a finished run does not change it
+Start work
+Mark blocked
+SESSIONS
+
+No session linked. Never inferred from a name, a time or a directory.
+
+This workspace runs no agent, so it has no session to link. A live workbench links the session it serves; endo task link links an Oh My Pi saved session.
+
+History (1)
+ATTEMPTS briefs you prepared; nothing here sends one
+
+Compared with HEAD f3969fd4cdde of this working tree, with nothing uncommitted, read 2026-11-10 18:39 UTC. The Context panel is read separately.
+
+Prepared
+7fd36dde
+Make roman.mjs subtractive
+prepared 2026-11-10 18:39 UTC
+4 criteria at HEAD:
+check failed 1
+not shown 2
+your judgment 1
+Acceptance criteria as listed in your plan, against the HEAD named above
+1
+
+Numerals use standard subtractive notation (1994 is MCMXCIV)
+
+A planned check failed at HEAD
+subtractive-1994: Failed at HEAD
+
+2
+
+Input outside 1..3999 is refused with exit 2 and nothing on stdout
+
+Not shown at HEAD
+rejects-zero: Not run
+
+3
+
+The program still runs for ordinary input
+
+Not shown at HEAD
+runs: Not run
+
+4
+
+It stays one small file with no dependencies
+
+Your judgment
+no check addresses it in the plan
+
+That a check addresses a criterion is your plan's statement; nothing observed establishes it. A pass is a command that exited 0 at this commit or, for a check with an expected behaviour, one whose exit code and output were the ones you declared; whether the criterion holds is still yours to judge.
+
+Checks Endophasia observed what ran, at which commit; not the task's acceptance
+subtractive-1994
+Failed at HEAD
+f3969fd4cdde
+
+["node","roman.mjs","1994"]
+
+You said it shows: standard subtractive notation
+
+You declared it should: exit 0 and print exactly 8 bytes on standard output (compared byte for byte; standard error is not compared)
+
+Expected output
+
+Observed at f3969fd4cdde: exit 0, 16 bytes; the output differs from the one declared
+
+The output was not kept: run the check again with --keep-output to see where it differs.
+
+endo attempt check --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde --keep-output -- node roman.mjs 1994
+
+--keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
+
+rejects-zero
+Not run
+
+["node","roman.mjs","0"]
+
+You said it shows: out-of-range input is refused with nothing on stdout
+
+You declared it should: exit 2 and print nothing on standard output (compared byte for byte; standard error is not compared)
+
+endo attempt check --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde --keep-output -- node roman.mjs 0
+
+--keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
+
+runs
+Not run
+
+["node","roman.mjs","14"]
+
+You said it shows: the program runs for ordinary input
+
+endo attempt check --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde -- node roman.mjs 14
+Every check recorded for this attempt (1)
+Observed check passed
+f3969fd4cdde
+2026-11-10 18:39 UTC
+
+node roman.mjs 1994
+
+It exited with code 0.
+
+For the planned check subtractive-1994: its exit code or output is not the one declared. The label above is its exit status.
+
+Recorded at this working tree's current HEAD.
+
+What this does not show
+
+Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you type after --, never one from a record, a brief or an agent:
+
+endo attempt check --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde -- <command> [args...]
+endo attempt receipts --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde
+Brief what the agent is given; select or copy it to paste into your agent
+
+Record what happened in a terminal:
+
+endo attempt handoff --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde --to "<agent>"
+endo attempt report  --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde --note "<what was reported>"
+endo attempt abandon --root <store> --attempt endo.attempt.53d19fbec18e76c5f8e2866c7fd36dde
+
+read 18:39:34 (browser clock) Refresh tasks
+
+CONTEXT
+
+where the work is, and what this page can do
+
+CHANGES
+
+Clean: nothing staged, unstaged or untracked.
+
+Changes in the Git working tree. Git does not show who made them: nothing here attributes them to the agent.
+
+PROJECT
+name
+Roman
+registered
+/work/U/repo
+launched in
+the registered directory
+Git, now
+the worktree recorded at registration
+
+A project is a directory you registered, not a session, and it grants no access. The launch directory is the registered one, and Git reports the worktree recorded at registration.
+
+THIS WORKSPACE
+host
+endo workspace open
+agent
+none attached, none needed
+pairing
+this page is paired
+
+It reads your tasks, attempts and verification receipts from the store, and changes a task only when you ask. It cannot send a prompt, steer or stop an agent, link a session, or run a command or a check. The terminal that started it issues pairing codes (pair), ends the grant (revoke) and stops it (Ctrl-C).

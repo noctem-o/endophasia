@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
+import { endoDevelopObservationsV0 } from "../cli/develop-service.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import {
 	type EndoDevelopReceiptV0,
@@ -120,6 +121,7 @@ async function launch(
 							new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(root), {
 								attempts: new DevelopAttemptsStoreV0(root),
 								receipts: { store: new DevelopReceiptsStoreV0(root), current: currentOf },
+								observations: endoDevelopObservationsV0(root),
 							}).forLaunch(
 								{
 									projectId: mode === "unknown" ? `endo.project.${"0".repeat(32)}` : project,
@@ -934,6 +936,11 @@ suite("an attempt with a verification plan: the acceptance ledger in the Task vi
 			write(clean, 6, ["npm", "run", "format"], 0);
 			await refresh(page);
 			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 6");
+			// "At HEAD" names the HEAD it means and when it was read: the Context panel's changes are a separate read (here, still the one
+			// from before the commit), so the two can differ for a moment without either being wrong.
+			expect(await page.text("[data-testid=attempts-head]")).toContain(
+				`Compared with HEAD ${clean.commit.slice(0, 12)} of this working tree, with nothing uncommitted, read `,
+			);
 			expect(await criteria(page)).toEqual(["passed", "inconclusive", "not-shown", "judgment"]);
 			expect(await checks(page)).toEqual(["unit:passed", "lint:mixed", "cli:not-run"]);
 			expect(await page.text("[data-testid=attempt-plan-summary]")).toBe(
@@ -980,6 +987,123 @@ suite("an attempt with a verification plan: the acceptance ledger in the Task vi
 			expect(await statusOf(page)).toBe("open");
 			noAgentTraffic(api);
 			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?|check/.test(r))).toEqual([]);
+			expect(page.seen.problems).toEqual([]);
+		});
+});
+
+suite("the working tree around an attempt: what Git showed, never who changed it", () => {
+	const attemptsOf = (root: string) =>
+		new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
+	const refresh = (page: Page) => page.click("[data-testid=tasks-refresh]");
+	const relationOf = (page: Page, testid: string) =>
+		page.eval<string | null>(`document.querySelector('[data-testid=${testid}]')?.dataset.relation ?? null`);
+
+	for (const [appearance, width, height] of [
+		["instrument", 1440, 900],
+		["field", 1440, 900],
+		["instrument", 390, 844],
+	] as const)
+		it(`shows the frame, what changed in it, and how now and the checked commit relate to it, in ${appearance} at ${width} px`, async () => {
+			const api = await launch(width, height);
+			const { page } = api;
+			if (appearance === "field") {
+				await page.click("[data-testid=appearance-field]");
+				await page.waitFor("document.querySelector('#develop-workspace').dataset.appearance === 'field'");
+			}
+			await ready(page);
+			await openTab(page);
+			await create(page, "Accept trailing commas", "", "npm test passes");
+			const stored = new DevelopTasksStoreV0(api.state.root).read();
+			if (!stored.ok) throw new Error("unreadable");
+			const task = stored.file.tasks[0]!;
+			const cwd = api.state.cwd;
+			// The operator starts from a clean commit, prepares an attempt, observes the tree and hands the brief to another agent.
+			git(cwd, "add", "-A");
+			git(cwd, "commit", "-q", "-m", "streaming work so far");
+			const attempt = attemptsOf(api.state.root).prepare(task.projectId, task.id, {
+				objective: "Make the parser accept a trailing comma in argument lists.",
+			});
+			if (!attempt.ok) throw new Error(attempt.code);
+			const id = attempt.value.id;
+			const observations = endoDevelopObservationsV0(api.state.root);
+			const observe = async () => {
+				const r = await observations.observeForOperator(id);
+				if (!r.ok) throw new Error(r.code);
+			};
+			await observe();
+			expect(attemptsOf(api.state.root).handoff(id, { target: "codex" }).ok).toBe(true);
+			// Some time later the agent says it is done: the tree has two changes. The operator observes again.
+			writeFileSync(join(cwd, "src/parser/tokenizer.ts"), "export const trailing = true;\n");
+			writeFileSync(join(cwd, "tests/trailing.test.ts"), "test('f(a, b,)', () => {});\n");
+			await observe();
+			await refresh(page);
+			await page.waitFor("document.querySelector('[data-testid=attempt-provenance]')");
+			await page.click("[data-testid=attempt] summary");
+			await page.waitFor("document.querySelector('[data-testid=attempt-provenance]')?.offsetHeight > 0");
+			const first = await page.text("[data-testid=attempt-provenance]");
+			expect(first).toContain("Your own observations; they say nothing about when the work happened");
+			expect(await relationOf(page, "provenance-span-relation")).toBe("different");
+			expect(await page.text("[data-testid=provenance-span]")).toContain("2 paths differ between them");
+			expect(await relationOf(page, "provenance-now")).toBe("same");
+			expect(first).toContain("not who changed it");
+			await page.click("[data-testid=provenance-span-paths] summary");
+			expect(await page.text("[data-testid=provenance-span-paths]")).toContain("A tests/trailing.test.ts");
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval(
+				"document.querySelector('[data-testid=attempt-provenance]').scrollIntoView({ block: 'center' })",
+			);
+			await shot(page, `provenance-${appearance}-observed-${width}`);
+
+			// The operator commits what they observed and runs a check there; then someone edits one more file. The checked commit holds
+			// what was observed; the tree now does not, and the page says by which path.
+			git(cwd, "add", "-A");
+			git(cwd, "commit", "-q", "-m", "trailing commas");
+			const checked = await currentOf(cwd);
+			if (checked === null || !checked.clean) throw new Error("the demo repository should be clean");
+			expect(new DevelopReceiptsStoreV0(api.state.root).write(receiptIn(checked, id, task.projectId, 1, {}))).toBe(
+				"created",
+			);
+			writeFileSync(join(cwd, "README.md"), "# Parser\n\nTrailing commas are accepted.\n");
+			await refresh(page);
+			await page.waitFor("document.querySelector('[data-testid=provenance-checked-commit]')");
+			expect(await relationOf(page, "provenance-checked-commit")).toBe("same");
+			expect(await page.text("[data-testid=provenance-checked]")).toContain(
+				`Checked at ${checked.commit.slice(0, 12)} (1 receipt): the same content as your latest observation (ignored files are not compared)`,
+			);
+			expect(await relationOf(page, "provenance-now")).toBe("different");
+			expect(await page.text("[data-testid=provenance-now]")).toContain(
+				"1 path differs from your latest observation",
+			);
+			// The HEAD every comparison used is named, with its time; it is the one the provenance's "now" read.
+			expect(await page.text("[data-testid=attempts-head]")).toContain("with uncommitted changes");
+			const text = await page.text("[data-testid=attempt-provenance]");
+			expect(text).not.toMatch(/\b(the agent (changed|wrote|made)|authored by|verified|succeeded)\b/i);
+			expect(text).not.toContain(api.state.root);
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval(
+				"document.querySelector('[data-testid=attempt-provenance]').scrollIntoView({ block: 'center' })",
+			);
+			await shot(page, `provenance-${appearance}-now-differs-${width}`);
+			if (width < 1024) {
+				// In one column the run strip stays docked at the top while the page scrolls under it: it has a ground of its own, so the
+				// scrolled text does not show through it (it did, before: a transparent sticky strip).
+				expect(
+					await page.eval<string>(
+						"getComputedStyle(document.querySelector('[data-testid=run-strip]')).position + ' ' + getComputedStyle(document.querySelector('[data-testid=run-strip]')).backgroundColor",
+					),
+				).toMatch(/^sticky rgb\(/);
+			}
+			// Every observation can be opened, with what it does not establish.
+			await page.click("[data-testid=provenance-details] summary");
+			expect(
+				await page.eval<number>("document.querySelectorAll('[data-testid=provenance-observation]').length"),
+			).toBe(2);
+			expect(await page.text("[data-testid=provenance-details]")).toContain(
+				"Two observations that read the same do not mean nothing changed between them.",
+			);
+			await shot(page, `provenance-${appearance}-details-${width}`);
+			// Reading it ran, sent and changed nothing.
+			noAgentTraffic(api);
 			expect(page.seen.problems).toEqual([]);
 		});
 });

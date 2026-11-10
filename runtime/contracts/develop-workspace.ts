@@ -28,7 +28,7 @@
 // other than the task file, run Git or a shell, or approve anything. (Registering a project asks the caller's own read-only Git observation.)
 
 import { realpathSync, statSync } from "node:fs";
-import type { EndoDevelopAttemptsViewV3 } from "../../protocol/develop-attempts.ts";
+import type { EndoDevelopAttemptsViewV4 } from "../../protocol/develop-attempts.ts";
 import type { EndoDevelopAttentionViewV0 } from "../../protocol/develop-attention.ts";
 import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import {
@@ -63,6 +63,12 @@ import type {
 import type { EndoSessionLogReadV0 } from "./develop-attempt-execution.ts";
 import { DevelopAttemptsServiceV0 } from "./develop-attempts.ts";
 import { endoDevelopAttentionViewV0 } from "./develop-attention.ts";
+import {
+	type DevelopObservationsServiceV0,
+	type DevelopTakenObservationV0,
+	developObservationsSnapshotV0,
+	endoReceiptCurrentOfV0,
+} from "./develop-observations.ts";
 
 export type EndoDevelopReadOnlyReasonV0 = NonNullable<EndoDevelopWorkspaceViewV1["readOnlyReason"]>;
 
@@ -140,6 +146,12 @@ export interface DevelopWorkspaceServiceOptionsV0 {
 	 * what their sessions recorded is shown under them. Not given, their execution reads as `evidence-unavailable`.
 	 */
 	sessionLog?: () => EndoSessionLogReadV0;
+	/**
+	 * The attempt observations (runtime/contracts/develop-observations.ts), read-only here: each attempt's provenance in `attemptsView()`,
+	 * compared with the launch's own directory, observed once for the read. When given, that ONE observation is also what the receipts are
+	 * compared with, so a view never mixes two readings of "now". Nothing here records an observation.
+	 */
+	observations?: Pick<DevelopObservationsServiceV0, "take" | "provenance" | "has">;
 }
 
 const realpath = (path: string): string | null => {
@@ -189,6 +201,7 @@ export class DevelopWorkspaceServiceV0 {
 	readonly #attempts: DevelopAttemptsStoreV0 | null;
 	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
 	readonly #sessionLog: (() => EndoSessionLogReadV0) | null;
+	readonly #observations: DevelopWorkspaceServiceOptionsV0["observations"] | null;
 
 	constructor(store: DevelopTasksStoreV0, options: DevelopWorkspaceServiceOptionsV0 = {}) {
 		this.#store = store;
@@ -196,6 +209,7 @@ export class DevelopWorkspaceServiceV0 {
 		this.#attempts = options.attempts ?? null;
 		this.#receipts = options.receipts ?? null;
 		this.#sessionLog = options.sessionLog ?? null;
+		this.#observations = options.observations ?? null;
 	}
 
 	/** The whole file (as the v1 model), read now; an unreadable file is a refusal with its closed reason (and it was not changed). */
@@ -338,6 +352,7 @@ export class DevelopWorkspaceServiceV0 {
 			this.#attempts,
 			this.#receipts,
 			this.#sessionLog,
+			this.#observations,
 		);
 	}
 }
@@ -353,6 +368,7 @@ export class DevelopLaunchWorkspaceV0 {
 	readonly #attempts: DevelopAttemptsServiceV0 | null;
 	readonly #attemptRecords: DevelopAttemptsStoreV0 | null;
 	readonly #receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null;
+	readonly #observations: DevelopWorkspaceServiceOptionsV0["observations"] | null;
 
 	/** Opened only by `DevelopWorkspaceServiceV0.forLaunch`: the token is private to this module. */
 	constructor(
@@ -363,6 +379,7 @@ export class DevelopLaunchWorkspaceV0 {
 		attempts: DevelopAttemptsStoreV0 | null = null,
 		receipts: DevelopWorkspaceServiceOptionsV0["receipts"] | null = null,
 		sessionLog: (() => EndoSessionLogReadV0) | null = null,
+		observations: DevelopWorkspaceServiceOptionsV0["observations"] | null = null,
 	) {
 		if (token !== OPEN) throw new TypeError("a launch scope is opened by DevelopWorkspaceServiceV0.forLaunch");
 		this.#store = store;
@@ -374,6 +391,7 @@ export class DevelopLaunchWorkspaceV0 {
 				: new DevelopAttemptsServiceV0(store, attempts, sessionLog === null ? {} : { sessionLog });
 		this.#attemptRecords = attempts;
 		this.#receipts = receipts;
+		this.#observations = observations;
 	}
 
 	/** The launch directory's HEAD for comparing receipts, observed now (read-only Git); null when there is no observer or it failed. */
@@ -405,17 +423,60 @@ export class DevelopLaunchWorkspaceV0 {
 	 * is this launch's and the task is the one selected in the task file; nothing a request says chooses either. Each attempt's receipts are
 	 * compared with the HEAD of this launch's own directory, observed now (read-only Git), when this launch was given receipts.
 	 */
-	async attemptsView(): Promise<EndoDevelopAttemptsViewV3 | null> {
+	async attemptsView(): Promise<EndoDevelopAttemptsViewV4 | null> {
 		if (this.#attempts === null) return null;
 		const receipts = this.#receipts;
 		const aliasOf = this.#host.aliasOf;
-		if (receipts === null || receipts === undefined)
-			return this.#attempts.viewFor(this.#config.projectId, null, aliasOf);
-		return this.#attempts.viewFor(
+		const observations = this.#observations ?? null;
+		const records = this.#attemptRecords;
+		// With observations: the launch directory is observed ONCE, when any attempt of the selected task has observations or was authorised;
+		// the receipts are compared with that same observation.
+		let now: DevelopTakenObservationV0 | null = null;
+		let observed = false;
+		// One read of each attempt's observations for this whole answer, not one per attempt shown (Codex, #140).
+		const snapshot = developObservationsSnapshotV0();
+		if (observations !== null && records !== null) {
+			const file = this.#store.read();
+			const taskId = file.ok
+				? (file.file.projects.find((p) => p.id === this.#config.projectId)?.selectedTaskId ?? null)
+				: null;
+			const read = records.read();
+			const relevant =
+				taskId !== null && read.ok
+					? read.entries.filter(
+							(e) =>
+								e.attempt.projectId === this.#config.projectId &&
+								e.attempt.taskId === taskId &&
+								(e.authorized !== null || observations.has(e.attempt.id, snapshot)),
+						)
+					: [];
+			if (relevant.length > 0) {
+				observed = true;
+				now = await observations.take(this.#config.launchDirectory, { within: true }).catch(() => null);
+			}
+		}
+		const current = observed ? endoReceiptCurrentOfV0(now) : await this.#current();
+		const view = this.#attempts.viewFor(
 			this.#config.projectId,
-			{ store: receipts.store, current: await this.#current() },
+			receipts === null || receipts === undefined ? null : { store: receipts.store, current },
 			aliasOf,
 		);
+		if (observations === null || records === null) return view;
+		for (const attempt of view.attempts) {
+			const read = receipts?.store.read(attempt.id);
+			// Only the receipts this view already lists: one written since that read (a check finishing now) must not put a commit in the
+			// provenance that the list beside it does not show, or the page would refuse the whole answer (Codex, #140).
+			const listed = new Set(attempt.receipts.list.map((r) => r.id));
+			const same =
+				read?.ok === true && attempt.receipts.state === "ready"
+					? read.receipts.filter((r) => listed.has(r.id))
+					: null;
+			attempt.provenance =
+				observed && (attempt.execution !== null || observations.has(attempt.id, snapshot))
+					? await observations.provenance(attempt.id, now, same, snapshot).catch(() => null)
+					: null;
+		}
+		return view;
 	}
 
 	/** The connected session, when the host speaks for a LIVE source this file can record. An observed source is never connected. */

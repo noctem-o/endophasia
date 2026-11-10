@@ -14,6 +14,7 @@
 // What is never stored here: a transcript, model output, a prompt sent to a model, a session handle, a path, a credential.
 
 import type { EndoDevelopAttemptExecutionViewV0 } from "./develop-attempt-execution.ts";
+import type { EndoAttemptProvenanceViewV0 } from "./develop-provenance.ts";
 import type { EndoDevelopReceiptViewV0 } from "./develop-receipts.ts";
 import { checkEndoDevelopTextV0, ENDO_PROJECT_ID_PATTERN_V0, ENDO_TASK_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import type {
@@ -35,7 +36,7 @@ export const ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0 = "endo.develop-attempt-outc
  * v2 (Slice I) added its execution, when it was sent to Pi through the workbench (protocol/develop-attempt-execution.ts). v1 (Slice F)
  * added verification receipts; v0 (Slice E), v1 and v2 are no longer served.
  */
-export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3 = "endo.develop-attempts-view.v3";
+export const ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4 = "endo.develop-attempts-view.v4";
 /** The renderer an attempt is shown with. A later renderer is a new value: an old attempt's brief never changes under it. */
 export const ENDO_DEVELOP_BRIEF_V0 = "endo.develop-brief.v0";
 /** v0's sections, plus "How the result will be checked" from the attempt's verification plan. Used only by v1 attempts. */
@@ -399,7 +400,7 @@ export interface EndoAttemptVerificationViewV0 {
 	unplanned: number;
 }
 
-export interface EndoDevelopAttemptViewV3 {
+export interface EndoDevelopAttemptViewV4 {
 	id: string;
 	state: EndoDevelopAttemptStateV0;
 	preparedAtMs: number;
@@ -423,16 +424,28 @@ export interface EndoDevelopAttemptViewV3 {
 	execution: EndoDevelopAttemptExecutionViewV0 | null;
 	/** The operator's verification plan and the ledger derived from it; null for an attempt prepared without a plan. */
 	verification: EndoAttemptVerificationViewV0 | null;
+	/**
+	 * What Git showed of the working tree around this attempt, and how that relates to the tree now and to the commits its checks ran at
+	 * (docs/designs/develop-candidate-provenance.md). Null when this reader does not read observations, or the attempt was neither
+	 * authorised nor observed. Never authorship.
+	 */
+	provenance: EndoAttemptProvenanceViewV0 | null;
 }
 
 /**
  * `GET workspace/attempts`: the attempts of the task the project has SELECTED (chosen from the task file, never from the request). No path,
  * session id or scope: attempts carry none. `problems` counts files in the directory that could not be used (they are not shown).
  */
-export interface EndoDevelopAttemptsViewV3 {
-	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3;
+export interface EndoDevelopAttemptsViewV4 {
+	schemaVersion: typeof ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4;
 	state: "ready" | "no-task" | "unreadable";
 	taskId: string | null;
-	attempts: EndoDevelopAttemptViewV3[];
+	attempts: EndoDevelopAttemptViewV4[];
 	problems: number;
+	/**
+	 * The working tree every receipt relation, ledger state and "now" in this view was compared with: its HEAD and whether it was clean,
+	 * as read for THIS view, and when. Null when this reader compares with nothing (no receipts); `commit` null when it could not be
+	 * observed. Other panels (the Context panel's changes) are separate reads at their own times.
+	 */
+	head: { readAtMs: number; commit: string | null; clean: boolean | null } | null;
 }

@@ -15,10 +15,14 @@
 // as the plan lists it, with what has been observed at the current HEAD for the checks the plan says address it, or that it rests on the
 // operator's judgment. The body is ordered by the operator's questions: what is established, what was run, what happened, then the brief.
 // Nothing here runs a check; each planned check shows the exact terminal command that would.
+//
+// Between the ledger and the checks, when the attempt was authorised or observed: what Git showed of the working tree around it, and
+// whether the tree now and each commit checked hold the same content as the last observation (Provenance.tsx). Never authorship.
 import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
 import {
 	ATTEMPT_LABELS,
 	type Attempt,
+	type AttemptsView,
 	CRITERION_LABELS,
 	CRITERION_TEXT,
 	EXECUTION_RUN_LABELS,
@@ -37,6 +41,7 @@ import type { ReceiptFocus } from "../model/attention.ts";
 import type { Task } from "../model/workspace-wire.ts";
 import { CopyButton, Note } from "../ui/text.tsx";
 import type { AttemptsState } from "../use-attempts.ts";
+import { Provenance } from "./Provenance.tsx";
 
 const when = (ms: number): string => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 const short = (id: string): string => id.slice(-8);
@@ -146,11 +151,14 @@ export function AttemptsSection({
 							<pre className="mono task-command">{prepare}</pre>
 						</>
 					) : (
-						<ul className="plain task-refs" data-testid="attempt-list" ref={list}>
-							{view.attempts.map((a) => (
-								<AttemptItem key={a.id} attempt={a} request={request} />
-							))}
-						</ul>
+						<>
+							<Head head={view.head} />
+							<ul className="plain task-refs" data-testid="attempt-list" ref={list}>
+								{view.attempts.map((a) => (
+									<AttemptItem key={a.id} attempt={a} request={request} />
+								))}
+							</ul>
+						</>
 					)}
 					{view.problems > 0 ? (
 						<p className="dim small" data-testid="attempts-problems">
@@ -232,6 +240,7 @@ function AttemptItem({
 					) : (
 						<Acceptance attempt={a} verification={a.verification} />
 					)}
+					{a.provenance === null ? null : <Provenance provenance={a.provenance} attemptId={a.id} />}
 					<Receipts attempt={a} />
 					{a.execution === null ? null : <ExecutionBlock execution={a.execution} />}
 					{request?.(a)}
@@ -455,6 +464,30 @@ const checkLine = (c: Verification["checks"][number]): string => {
 	return `${PLANNED_CHECK_LABELS[c.state]}${c.state === "tree-changed" || c.state === "mixed" ? at : ""}`;
 };
 
+/**
+ * The one reading of this working tree that every "at HEAD", "stale" and "now" below was compared with: its commit, whether it was clean,
+ * and when it was read. The Context panel's changes are a separate read with its own time, so the two can differ for a moment; naming the
+ * commit and the time here makes that visible instead of a contradiction.
+ */
+function Head({ head }: { head: AttemptsView["head"] }): ReactElement | null {
+	if (head === null) return null;
+	return (
+		<p className="dim small attempts-head" data-testid="attempts-head" data-clean={String(head.clean)}>
+			{head.commit === null ? (
+				<>
+					This working tree's HEAD could not be read ({when(head.readAtMs)}), so nothing below is compared with it.
+				</>
+			) : (
+				<>
+					Compared with HEAD <span className="mono">{head.commit.slice(0, 12)}</span> of this working tree,{" "}
+					{head.clean ? "with nothing uncommitted" : "with uncommitted changes"}, read {when(head.readAtMs)}. The
+					Context panel is read separately.
+				</>
+			)}
+		</p>
+	);
+}
+
 /** The criteria as the plan lists them, each with the state its checks give it. Never "met": coverage is the plan's statement. */
 function Acceptance({ attempt: a, verification: v }: { attempt: Attempt; verification: Verification }): ReactElement {
 	const byName = new Map(v.checks.map((c) => [c.name, c]));
@@ -462,7 +495,7 @@ function Acceptance({ attempt: a, verification: v }: { attempt: Attempt; verific
 		<div className="attempt-acceptance" data-testid="attempt-acceptance">
 			<h4 className="small">
 				Acceptance{" "}
-				<span className="dim task-clause">criteria as listed in your plan, against this working tree now</span>
+				<span className="dim task-clause">criteria as listed in your plan, against the HEAD named above</span>
 			</h4>
 			<ol className="plain acceptance-list" data-testid="acceptance-list">
 				{v.criteria.map((c, i) => (

@@ -95,6 +95,13 @@ Commands that write to a store:
                                      read one attempt's records together: what was sent, what Pi reported, the latest check of each
                                      command and whether it still applies to --cwd, the task's status moves, and what is missing.
                                      Read-only; names no revision as the attempt's result (docs/designs/develop-attempt-evidence.md)
+  attempt observe ... --attempt <id> [--cwd <dir>]
+                                     record what Git shows of the attempt's working tree now (HEAD and each changed path's blob id;
+                                     no contents). The live workbench records one just before a send and one when the run ends.
+                                     Not authorship (docs/designs/develop-candidate-provenance.md)
+  attempt provenance ... --attempt <id> [--cwd <dir>]
+                                     read the observations: what changed between them, whether the tree now and the commits checked
+                                     hold the same content as the last one. Read-only
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

@@ -12,6 +12,9 @@
 // (docs/designs/develop-verification-plans.md). The gate re-derives each criterion's state from its checks' states by the protocol's one
 // rule, requires each check's state to agree with the receipts it names (by id, in this attempt's own list, at the relation the state
 // needs), and refuses the body whole otherwise: a ledger cannot claim a pass the receipts beside it do not show.
+//
+// An attempt that was authorised or observed carries its provenance (model/provenance-wire.ts): what Git showed of the working tree around
+// it. Its own coherence is checked there; here, that every commit it says was checked is one a receipt in this attempt's list names.
 import type {
 	EndoAttemptRunStateV0,
 	EndoAttemptSendStateV0,
@@ -19,8 +22,8 @@ import type {
 } from "../../../protocol/develop-attempt-execution.ts";
 import type {
 	EndoDevelopAttemptStateV0,
-	EndoDevelopAttemptsViewV3,
-	EndoDevelopAttemptViewV3,
+	EndoDevelopAttemptsViewV4,
+	EndoDevelopAttemptViewV4,
 } from "../../../protocol/develop-attempts.ts";
 import type {
 	EndoDevelopReceiptViewV0,
@@ -31,20 +34,21 @@ import type {
 } from "../../../protocol/develop-receipts.ts";
 import type { EndoCriterionStateV0, EndoPlannedCheckStateV0 } from "../../../protocol/develop-verification.ts";
 import { type Check, count, eitherNull, list, one, shape } from "./compare-wire.ts";
+import { provenance_, provenanceCoherent } from "./provenance-wire.ts";
 
 export type { EndoDevelopAttemptExecutionViewV0 as Execution } from "../../../protocol/develop-attempt-execution.ts";
 export type {
 	EndoAttemptVerificationViewV0 as Verification,
 	EndoDevelopAttemptStateV0 as AttemptState,
-	EndoDevelopAttemptsViewV3 as AttemptsView,
-	EndoDevelopAttemptViewV3 as Attempt,
+	EndoDevelopAttemptsViewV4 as AttemptsView,
+	EndoDevelopAttemptViewV4 as Attempt,
 } from "../../../protocol/develop-attempts.ts";
 export type {
 	EndoDevelopReceiptViewV0 as Receipt,
 	EndoReceiptRelationV0 as ReceiptRelation,
 } from "../../../protocol/develop-receipts.ts";
 
-export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v3";
+export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v4";
 
 /** These mirror the protocol's closed lists and labels; a contract test holds them equal. */
 export const ATTEMPT_STATES: readonly EndoDevelopAttemptStateV0[] = ["prepared", "handed-off", "reported", "abandoned"];
@@ -306,6 +310,7 @@ const attempt: Check = (v) =>
 			}),
 		execution: eitherNull(execution_),
 		verification: eitherNull(verification_),
+		provenance: eitherNull(provenance_),
 	});
 
 const outcomes = one("passed", "failed", "inconclusive");
@@ -349,7 +354,7 @@ type LedgerReceipt = { receiptId: string; commit: string; outcome: string; start
  * name resolves; each criterion's state follows from its checks' states; each check's state agrees with the receipts it names (by id, in
  * this list, with the same argv, commit, outcome and times, at the relation the state needs) and with its counts at HEAD.
  */
-export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV3, "receipts" | "verification">): boolean {
+export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV4, "receipts" | "verification">): boolean {
 	const v = a.verification;
 	if (v === null) return true;
 	const names = v.checks.map((c) => c.name);
@@ -426,7 +431,30 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV3, "receipts
 	return true;
 }
 
-export function readAttempts(v: unknown): EndoDevelopAttemptsViewV3 | null {
+/**
+ * Whether a receipt's relation is the one the view's HEAD implies: at HEAD only at that commit (clean or not, as read), another commit only
+ * when it differs, and "unavailable" only when nothing was read. Another worktree or repository cannot be told here (no paths are sent).
+ */
+export function relationAgrees(
+	r: Pick<EndoDevelopReceiptViewV0, "commit" | "relation">,
+	head: EndoDevelopAttemptsViewV4["head"],
+): boolean {
+	const commit = head?.commit ?? null;
+	switch (r.relation) {
+		case "unavailable":
+			return commit === null;
+		case "at-head":
+			return commit === r.commit && head?.clean === true;
+		case "at-head-changed":
+			return commit === r.commit && head?.clean === false;
+		case "head-differs":
+			return commit !== null && commit !== r.commit;
+		default:
+			return commit !== null;
+	}
+}
+
+export function readAttempts(v: unknown): EndoDevelopAttemptsViewV4 | null {
 	if (
 		!shape(v, {
 			schemaVersion: one(ATTEMPTS_SCHEMA),
@@ -435,15 +463,23 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV3 | null {
 			// A sanity bound only: the per-task cap is checked without a lock and can be passed, and a read never refuses because of it.
 			attempts: (x) => list(attempt)(x) && (x as unknown[]).length <= 500,
 			problems: count,
+			head: eitherNull((h) =>
+				shape(h, {
+					readAtMs: stamp,
+					commit: eitherNull(objectId),
+					clean: eitherNull((c) => typeof c === "boolean"),
+				}),
+			),
 		})
 	)
 		return null;
-	const view = v as unknown as EndoDevelopAttemptsViewV3;
+	const view = v as unknown as EndoDevelopAttemptsViewV4;
 	if (view.state !== "ready" && view.attempts.length > 0) return null;
 	if ((view.state === "ready" || view.state === "no-task") && (view.taskId === null) !== (view.state === "no-task"))
 		return null;
 	if (new Set(view.attempts.map((a) => a.id)).size !== view.attempts.length) return null;
-	for (const a of view.attempts as EndoDevelopAttemptViewV3[]) {
+	if (view.head !== null && (view.head.commit === null) !== (view.head.clean === null)) return null;
+	for (const a of view.attempts as EndoDevelopAttemptViewV4[]) {
 		const implied = a.outcome !== null ? a.outcome.kind : a.handoff !== null ? "handed-off" : "prepared";
 		if (a.state !== implied) return null;
 		if (a.outcome?.kind === "reported" && a.outcome.note.trim() === "") return null;
@@ -451,13 +487,23 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV3 | null {
 		if (a.receipts.state === "unreadable" && a.receipts.list.length > 0) return null;
 		if (new Set(a.receipts.list.map((r) => r.id)).size !== a.receipts.list.length) return null;
 		if (!a.receipts.list.every(coherent)) return null;
+		if (!a.receipts.list.every((r) => relationAgrees(r, view.head))) return null;
 		if (a.execution !== null && !executionCoherent(a.execution)) return null;
 		if (!verificationCoherent(a)) return null;
+		if (a.provenance !== null) {
+			if (!provenanceCoherent(a.provenance)) return null;
+			// A commit the provenance says was checked is one a receipt listed here names.
+			const commits = new Set(a.receipts.list.map((r) => r.commit));
+			if (a.provenance.checked.some((c) => !commits.has(c.commit))) return null;
+			// "Now" in the provenance is the same reading of the tree as the view's HEAD.
+			if (a.provenance.now !== null && view.head !== null && a.provenance.now.commit !== view.head.commit)
+				return null;
+		}
 	}
 	return view;
 }
 
 export type AttemptsReply =
-	| { kind: "attempts"; record: EndoDevelopAttemptsViewV3 }
+	| { kind: "attempts"; record: EndoDevelopAttemptsViewV4 }
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: "grant-required" | "invalid" | "unreachable" | "other" };

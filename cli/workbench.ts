@@ -24,7 +24,7 @@ import {
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
-import { endoDevelopServiceV0 } from "./develop-service.ts";
+import { endoDevelopObservationsV0, endoDevelopServiceV0 } from "./develop-service.ts";
 import { endoStudioUiDirectoryV0 } from "./studio.ts";
 
 /** A Linux dev_t as /proc/<pid>/stat spells a terminal number (the kernel's `new_encode_dev`). */
@@ -219,6 +219,14 @@ export async function startWorkbenchV0(
 						new DevelopAttemptsStoreV0(session.owner.options.root),
 						{ projectId, launchDirectory: options.cwd },
 					),
+					// What Git shows of this launch's directory just before an attempt is sent and when its run ends. Never a gate on the send.
+					provenance: (() => {
+						const observations = endoDevelopObservationsV0(session.owner.options.root, { timeoutMs: 15_000 });
+						return {
+							take: () => observations.take(options.cwd, { within: true }),
+							record: (attemptId, input) => observations.record(attemptId, input),
+						};
+					})(),
 				}),
 		aliasOf: (id) => aliasOf(id),
 	});

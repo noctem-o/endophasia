@@ -25,7 +25,7 @@ import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV3,
+	type EndoDevelopAttemptViewV4,
 	renderEndoDevelopBriefV0,
 	validateEndoDevelopAttemptV0,
 } from "../protocol/develop-attempts.ts";
@@ -520,14 +520,17 @@ describe("the criterion rule and its labels, mirrored by the page (a contract te
 
 // ---- the page's gate ----------------------------------------------------------------------------------------------------------------
 
+/** The working tree each view below was compared with, so its body carries the same HEAD (the page checks every relation against it). */
+const COMPARED = new WeakMap<object, EndoReceiptCurrentV0 | null>();
+
 /** One attempt as the view carries it, built by the real view code from synthetic receipts. */
 function viewWith(
 	receipts: EndoDevelopReceiptV0[],
 	current: EndoReceiptCurrentV0 | null = CLEAN,
-): EndoDevelopAttemptViewV3 {
+): EndoDevelopAttemptViewV4 {
 	const w = workspace();
 	const a = ok(w.service.prepare(w.project.id, w.task.id, { objective: "x", verification: clone(PLAN) }));
-	return {
+	const view: EndoDevelopAttemptViewV4 = {
 		id: a.id,
 		state: "prepared",
 		preparedAtMs: a.preparedAtMs,
@@ -556,16 +559,22 @@ function viewWith(
 		},
 		execution: null,
 		verification: endoAttemptVerificationViewV0(a, receipts, current),
+		provenance: null,
 	};
+	COMPARED.set(view, current);
+	return view;
 }
-const body = (a: EndoDevelopAttemptViewV3) =>
-	clone({
-		schemaVersion: "endo.develop-attempts-view.v3",
+const body = (a: EndoDevelopAttemptViewV4) => {
+	const current = COMPARED.has(a) ? (COMPARED.get(a) ?? null) : CLEAN;
+	return clone({
+		schemaVersion: "endo.develop-attempts-view.v4",
 		state: "ready",
 		taskId: `endo.task.${"0".repeat(32)}`,
 		attempts: [a],
 		problems: 0,
+		head: { readAtMs: 1, commit: current?.commit ?? null, clean: current?.clean ?? null },
 	});
+};
 
 describe("the page's gate re-derives the ledger and refuses any claim the receipts beside it do not show", () => {
 	const mixed = [receipt(UNIT, { code: 1 }), receipt(UNIT), receipt(LINT, { commit: OLD }), receipt(["make"])];
@@ -586,7 +595,7 @@ describe("the page's gate re-derives the ledger and refuses any claim the receip
 	});
 
 	it("refuses each forgery", () => {
-		const forgeries: [string, (a: EndoDevelopAttemptViewV3) => void][] = [
+		const forgeries: [string, (a: EndoDevelopAttemptViewV4) => void][] = [
 			[
 				"a criterion claiming passed over a not-run check",
 				(a) => Object.assign(a.verification!.criteria[1]!, { state: "passed" }),

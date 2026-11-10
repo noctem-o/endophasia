@@ -24,16 +24,16 @@ import {
 	ENDO_DEVELOP_ATTEMPT_OUTCOME_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V0,
 	ENDO_DEVELOP_ATTEMPT_SCHEMA_V1,
-	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
+	ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
 	ENDO_DEVELOP_BRIEF_V0,
 	ENDO_DEVELOP_BRIEF_V1,
 	type EndoAttemptVerificationViewV0,
 	type EndoDevelopAttemptHandoffV0,
 	type EndoDevelopAttemptOutcomeV0,
 	type EndoDevelopAttemptStateV0,
-	type EndoDevelopAttemptsViewV3,
+	type EndoDevelopAttemptsViewV4,
 	type EndoDevelopAttemptV0,
-	type EndoDevelopAttemptViewV3,
+	type EndoDevelopAttemptViewV4,
 	type EndoDevelopTaskWordV0,
 	endoAttemptPlanV0,
 	endoDevelopAttemptStateV0,
@@ -153,11 +153,11 @@ export const endoShownTextV0 = (text: string, max: number): string => {
 function receiptsOf(
 	attemptId: string,
 	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
-): { view: EndoDevelopAttemptViewV3["receipts"]; records: EndoDevelopReceiptV0[] | null } {
+): { view: EndoDevelopAttemptViewV4["receipts"]; records: EndoDevelopReceiptV0[] | null } {
 	if (receipts === null) return { view: { state: "ready", list: [], problems: 0 }, records: null };
 	const read = receipts.store.read(attemptId);
 	if (!read.ok) return { view: { state: "unreadable", list: [], problems: 0 }, records: null };
-	const view: EndoDevelopAttemptViewV3["receipts"] = {
+	const view: EndoDevelopAttemptViewV4["receipts"] = {
 		state: "ready",
 		list: read.receipts.map((r) => ({
 			id: r.id,
@@ -374,13 +374,22 @@ export class DevelopAttemptsServiceV0 {
 		projectId: string,
 		receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null = null,
 		aliasOf?: (sessionId: string) => string,
-	): EndoDevelopAttemptsViewV3 {
-		const empty = (state: EndoDevelopAttemptsViewV3["state"], taskId: string | null): EndoDevelopAttemptsViewV3 => ({
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
+	): EndoDevelopAttemptsViewV4 {
+		const head: EndoDevelopAttemptsViewV4["head"] =
+			receipts === null
+				? null
+				: {
+						readAtMs: Date.now(),
+						commit: receipts.current?.commit ?? null,
+						clean: receipts.current?.clean ?? null,
+					};
+		const empty = (state: EndoDevelopAttemptsViewV4["state"], taskId: string | null): EndoDevelopAttemptsViewV4 => ({
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
 			state,
 			taskId,
 			attempts: [],
 			problems: 0,
+			head,
 		});
 		const file = this.#taskFile();
 		if (file === null) return empty("unreadable", null);
@@ -391,7 +400,7 @@ export class DevelopAttemptsServiceV0 {
 		if (!read.ok) return empty("unreadable", taskId);
 		const log = this.#logOnce();
 		return {
-			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V3,
+			schemaVersion: ENDO_DEVELOP_ATTEMPTS_VIEW_SCHEMA_V4,
 			state: "ready",
 			taskId,
 			attempts: read.entries
@@ -419,9 +428,12 @@ export class DevelopAttemptsServiceV0 {
 						// The session is shown by its presented alias: a label, never a handle to it.
 						execution: this.#execution(e, log, aliasOf),
 						verification: endoAttemptVerificationViewV0(e.attempt, seen.records, receipts?.current ?? null),
+						// Read by the launch scope, which observes the launch directory (runtime/contracts/develop-workspace.ts).
+						provenance: null,
 					};
 				}),
 			problems: read.problems.length,
+			head,
 		};
 	}
 

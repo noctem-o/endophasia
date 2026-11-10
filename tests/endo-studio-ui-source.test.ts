@@ -57,6 +57,8 @@ describe("the frontend's source", () => {
 				"develop/AttemptRequest.tsx",
 				"model/attempt-request.ts",
 				"model/attempts-wire.ts",
+				"develop/Provenance.tsx",
+				"model/provenance-wire.ts",
 				"use-attempts.ts",
 				"model/attempts-reader.ts",
 				"develop/Attention.tsx",
@@ -332,7 +334,14 @@ describe("the frontend's source", () => {
 		expect(sources["model/attempt-request.ts"]).not.toMatch(/Date\.now|new Date|fetch|from "react"|localStorage/);
 		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
-		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v3"');
+		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v4"');
+		// The working tree around an attempt: a reading of observations, never authorship, and nothing in it observes or runs anything.
+		const provenance = sources["develop/Provenance.tsx"]!;
+		expect(provenance).not.toMatch(/from "\.\.\/api\.ts"|fetch|propose|intervene|composer|use-workbench/);
+		expect(provenance).not.toMatch(/\b(by the agent|the agent (changed|wrote|made)|authored|authorship (is|was) )/i);
+		expect(provenance).toContain("not who changed it");
+		for (const text of [provenance, sources["model/provenance-wire.ts"]!])
+			expect(text).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
 		// The attention hook: no timer, read beside the attempts by the same reader (one at a time, obsolete when the launch or pairing goes);
 		// it is the only caller of its route. The overview imports no api, no workbench command and no composer: a row only chooses a task.
 		const attentionHook = sources["use-attention.ts"]!;

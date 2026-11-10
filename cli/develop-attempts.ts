@@ -1,5 +1,5 @@
 /**
- * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
+ * `endo attempt prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence|observe|provenance`: the operator's work attempts on a task (docs/designs/develop-work-attempts.md),
  * kept in the store root's `develop/attempts/` as write-once records (storage/develop-attempts.ts).
  *
  * An attempt is one request the operator prepared on one task. `brief` prints it as plain text for the operator to copy into any coding
@@ -11,6 +11,10 @@
  * typed after `--`, nothing else, never from a record. It records what Endophasia observed as a receipt (develop/receipts/), which is
  * neither the task's acceptance nor a change of anything's status. `receipts` and `receipt` read receipts back, each compared with the HEAD
  * of a working tree the operator chose.
+ *
+ * `observe` records what Git shows of the attempt's working tree now (develop/observations/); `provenance` reads every observation of the
+ * attempt back, compared with the tree now and with the commits its receipts ran at (docs/designs/develop-candidate-provenance.md). Neither
+ * runs a command or says who changed anything.
  *
  * These commands are a translation of flags and refusals around the shared services (runtime/contracts/develop-attempts.ts and
  * develop-receipts.ts).
@@ -40,6 +44,7 @@ import {
 	type DevelopAttemptsResultV0,
 	DevelopAttemptsServiceV0,
 } from "../runtime/contracts/develop-attempts.ts";
+import { renderEndoProvenanceV0 } from "../runtime/contracts/develop-observations.ts";
 import {
 	type DevelopCheckRefusalV0,
 	type DevelopReceiptsReadResultV0,
@@ -48,12 +53,12 @@ import {
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
-import { endoSessionLogV0 } from "./develop-service.ts";
+import { endoDevelopObservationsV0, endoSessionLogV0 } from "./develop-service.ts";
 import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -507,6 +512,72 @@ async function evidence(argv: readonly string[]): Promise<void> {
 	process.stderr.write(renderEndoAttemptEvidenceV0(view));
 }
 
+// ---- observations around an attempt ---------------------------------------------------------------------------------------------------
+
+const OBSERVE_REFUSALS: Readonly<Record<string, string>> = {
+	"bad-request": "that is not an attempt id",
+	"not-found": "no such attempt in this store",
+	unreadable: "the attempts or observations directory cannot be used; nothing was recorded",
+	limit: "that attempt already has as many observations as it may; nothing was recorded",
+	"storage-failed": "the observation could not be written; nothing was recorded",
+	"other-repository": "--cwd is not a working tree of the attempt's project's repository; nothing was recorded",
+	"no-project":
+		"the attempt's project is not in the task file, so there is no directory to observe; nothing was recorded",
+};
+
+/**
+ * `observe`: record what Git shows of the attempt's project directory (or --cwd, a working tree of the same repository) now, as the
+ * operator's observation. Reads the tree and writes one record; runs no command. Use it before handing an attempt to another agent and
+ * when it says it is done, or when the workbench ended before the run did.
+ */
+async function observe(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
+	const recorded = await endoDevelopObservationsV0(root).observeForOperator(attemptOf(flags), flags.get("--cwd"));
+	if (!recorded.ok) throw new Error(OBSERVE_REFUSALS[recorded.code] ?? recorded.code);
+	const o = recorded.observation;
+	print({
+		id: o.id,
+		attemptId: o.attemptId,
+		point: o.point,
+		startedAtMs: o.startedAtMs,
+		result:
+			o.result.state === "observed"
+				? {
+						state: "observed",
+						commit: o.result.revision.commit,
+						branch: o.result.revision.branch,
+						changes: o.result.changes.length,
+						complete: o.result.complete,
+						digest: o.result.digest,
+					}
+				: o.result,
+	});
+	process.stderr.write(
+		o.result.state === "observed"
+			? `recorded an observation of ${o.result.repository.worktree}: HEAD ${o.result.revision.commit.slice(0, 12)}, ${o.result.changes.length} changed path(s)${o.result.complete ? "" : " (incomplete: not every change could be read)"}. It is Git's view now; it does not say who changed anything.\n`
+			: `recorded that the tree could not be observed (${o.result.reason}).\n`,
+	);
+}
+
+/**
+ * `provenance`: what was observed around the attempt, compared with the working tree now (the project's directory, or --cwd) and with the
+ * commits its receipts ran at. Read-only: it observes the tree to compare and records nothing.
+ */
+async function provenance(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
+	const attemptId = attemptOf(flags);
+	unwrap(serviceAt(root).get(attemptId));
+	const observations = endoDevelopObservationsV0(root);
+	const receiptsService = receiptsAt(root);
+	const directory = flags.get("--cwd") ?? receiptsService.defaultDirectory(attemptId);
+	const now = directory === null ? null : await observations.take(directory, { within: true });
+	const read = new DevelopReceiptsStoreV0(root).read(attemptId);
+	const view = await observations.provenance(attemptId, now, read.ok ? read.receipts : null);
+	if (view === null) throw new Error(REFUSALS["not-found"]);
+	print({ comparedWith: directory, provenance: view });
+	process.stderr.write(renderEndoProvenanceV0(view));
+}
+
 export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	prepare,
 	brief,
@@ -519,4 +590,6 @@ export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => vo
 	receipts,
 	receipt,
 	evidence,
+	observe,
+	provenance,
 };

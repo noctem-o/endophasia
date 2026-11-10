@@ -66,6 +66,7 @@ import type {
 	DevelopAttemptDispatchRefusalV0,
 	DevelopAttemptDispatchV0,
 } from "../../runtime/contracts/develop-attempt-dispatch.ts";
+import type { DevelopTakenObservationV0 } from "../../runtime/contracts/develop-observations.ts";
 import type { DevelopLaunchHostV0, DevelopLaunchWorkspaceV0 } from "../../runtime/contracts/develop-workspace.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { EndoPairingV0 } from "../../runtime/contracts/workbench-pairing.ts";
@@ -83,6 +84,14 @@ import {
 	type WorkbenchEvidenceBudgetV0,
 	WorkbenchInterventionsV0,
 } from "./workbench-interventions.ts";
+
+/** An attempt's send whose run the broker watches, to observe the tree when it ends. */
+interface WatchedRunV0 {
+	attemptId: string;
+	binding: { proposalId: string; authorizationEventId: string };
+	/** The run that followed the send has started. */
+	started: boolean;
+}
 
 export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 
@@ -163,6 +172,23 @@ export interface WorkbenchOptionsV0 {
 	 * Without it, attempts cannot be sent from this workbench.
 	 */
 	attempts?: Pick<DevelopAttemptDispatchV0, "check" | "authorize">;
+	/**
+	 * Observing the launch directory around an attempt (runtime/contracts/develop-observations.ts): just before its send, and when the run
+	 * that followed ended. Optional; it never decides whether anything is sent. The broker supplies the binding; the directory is the
+	 * launch's own.
+	 */
+	provenance?: {
+		take(): Promise<DevelopTakenObservationV0>;
+		record(
+			attemptId: string,
+			input: {
+				point: "before-send" | "after-run";
+				trigger: "send-approved" | "run-settled" | "workbench-closing";
+				binding: { proposalId: string; authorizationEventId: string };
+				taken: DevelopTakenObservationV0;
+			},
+		): unknown;
+	};
 	now?: () => number;
 	/** How long the operator has to approve a prompt. Default 5 minutes. */
 	approvalWindowMs?: number;
@@ -258,6 +284,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	/** The page's pairing (runtime/contracts/workbench-pairing.ts): one code at a time from the terminal, one grant at a time for the page. */
 	readonly #pairing: EndoPairingV0;
 	#command: Proposal | null = null;
+	/** An attempt's send whose run is watched for its end (see `#watchRun`). */
+	#afterRun: WatchedRunV0 | null = null;
+	/** Observations being made now, awaited (bounded) on disposal. */
+	readonly #observing = new Set<Promise<void>>();
 	readonly #interventions: WorkbenchInterventionsV0 | null;
 	readonly #tasks: EndoWorkspaceRoutesV0 | null;
 	/** The desk's final finish began: no prompt is offered or sent from here on, and one waiting for the terminal is withdrawn. */
@@ -324,6 +354,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		options.session.onLiveEvent = (event) => {
 			this.transcript.push(event);
 			this.#interventions?.observe(event);
+			this.#watchRun(event.type);
 		};
 	}
 
@@ -674,7 +705,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#discard(proposalId: unknown): { status: number; body: unknown } {
 		const proposal = this.#command;
 		if (proposal === null || proposal.view.proposalId !== proposalId) return refuse(404, "not-found");
-		if (proposal.view.state !== "awaiting-approval") return refuse(409, "not-withdrawable");
+		// Once the operator approved it on the terminal it is no longer the page's to withdraw: the broker may be observing the tree before
+		// the send (an await), and a 200 here must never sit beside a send that follows.
+		if (proposal.view.state !== "awaiting-approval" || proposal.view.approved === true)
+			return refuse(409, "not-withdrawable");
 		proposal.abort.abort();
 		return reply(200, proposal.view);
 	}
@@ -750,13 +784,29 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (answer === "deny") return settle("authorization-denied", authorized.id);
 		p.view = { ...p.view, approved: true };
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
-		const piId = session.piSessionId;
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
-		if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
-			return settle("session-ended", authorized.id);
-		// A page's request needs its grant still held; a request the operator made on the terminal needs none.
-		if (p.grant !== null && !this.#granted(p.grant)) return settle("not-authorized", authorized.id);
-		if (session.runActive) return settle("run-active", authorized.id);
+		const gate = (): "session-ended" | "not-authorized" | "run-active" | null => {
+			// Withdrawn (by the page before approval, or by closing): never sent, whatever else holds.
+			if (p.abort.signal.aborted) return "not-authorized";
+			const piId = session.piSessionId;
+			if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
+				return "session-ended";
+			// A page's request needs its grant still held; a request the operator made on the terminal needs none.
+			if (p.grant !== null && !this.#granted(p.grant)) return "not-authorized";
+			if (session.runActive) return "run-active";
+			return null;
+		};
+		const closed = gate();
+		if (closed !== null) return settle(closed, authorized.id);
+		// For an attempt, the launch directory is observed now, before anything is bound or sent (docs/designs/develop-candidate-provenance.md).
+		// It never decides whether the attempt is sent: a failure is recorded as such, or not at all. The observation takes time, so the gate
+		// is checked again after it (not the approval's expiry: the approval was given in time, and the wait is this process's own).
+		let before: DevelopTakenObservationV0 | null = null;
+		if (p.attempt !== null && this.#o.provenance !== undefined) {
+			before = await this.#o.provenance.take().catch(() => null);
+			const still = gate();
+			if (still !== null) return settle(still, authorized.id);
+		}
 		// An attempt is bound to this request now: after the approval and the gate, BEFORE the send is recorded. The attempt is checked again
 		// (its task, project and brief may have changed while the operator read it), and its authorisation is written once. From here a send
 		// may follow; the log, which records the send before it is made, says whether one was.
@@ -796,6 +846,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				...p.view,
 				attempt: { ...(p.view.attempt as NonNullable<WorkbenchCommandViewV0["attempt"]>), bound: true },
 			};
+			if (before !== null)
+				this.#recordObservation(p.attempt.attemptId, "before-send", "send-approved", authorized.id, p, before);
 		}
 		p.view = { ...p.view, state: "dispatching" };
 		let dispatched: EndoEventV0;
@@ -810,11 +862,26 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		}
 		const text = p.message as string;
 		p.message = null; // sent from here on: the broker keeps no copy
+		// The run that follows this send is watched for its end, to observe the tree then (only the next run started after it). Every send
+		// replaces the watch, an ordinary prompt included: a watch left by an earlier attempt's send must never credit this send's run to it.
+		this.#afterRun =
+			p.attempt !== null && p.attemptBound && this.#o.provenance !== undefined
+				? {
+						attemptId: p.attempt.attemptId,
+						binding: { proposalId: p.view.proposalId, authorizationEventId: authorized.id },
+						started: false,
+					}
+				: null;
+		/** The answer is unknown: a run that has not started yet may never be this send's, so it is not watched (the reading says less). */
+		const forgetUnstarted = (): void => {
+			if (this.#afterRun?.binding.proposalId === p.view.proposalId && !this.#afterRun.started) this.#afterRun = null;
+		};
 		try {
 			const disposition = await session.prompt(text);
 			if (!(ENDO_WORKBENCH_DISPOSITIONS_V0 as readonly string[]).includes(disposition)) {
 				// Pi answered, in a form this version does not know: not an acceptance, and not a refusal either.
 				p.view = { ...p.view, state: "unknown" };
+				forgetUnstarted();
 				return;
 			}
 			p.view = { ...p.view, state: "accepted", disposition };
@@ -830,9 +897,72 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		} catch (error) {
 			// Only Pi's own explicit refusal is a refusal. A timeout, a lost connection or a protocol fault rejected a request that was
 			// already written: the work may have started, so the outcome is unknown, never "not sent".
-			if (error instanceof PiRpcRefusalV0) settle("runtime-refused", dispatched.id);
-			else p.view = { ...p.view, state: "unknown" };
+			if (error instanceof PiRpcRefusalV0) {
+				// Pi refused it: no run follows this send.
+				if (this.#afterRun?.binding.proposalId === p.view.proposalId) this.#afterRun = null;
+				settle("runtime-refused", dispatched.id);
+			} else {
+				p.view = { ...p.view, state: "unknown" };
+				forgetUnstarted();
+			}
 		}
+	}
+
+	// --- observations around an attempt's run ---------------------------------------------------------------------------------
+
+	/** Record one observation for an attempt. Never throws, never blocks or changes the send: provenance is evidence, not a gate. */
+	#recordObservation(
+		attemptId: string,
+		point: "before-send" | "after-run",
+		trigger: "send-approved" | "run-settled" | "workbench-closing",
+		authorizationEventId: string,
+		p: { view: { proposalId: string } },
+		taken: DevelopTakenObservationV0,
+	): void {
+		try {
+			this.#o.provenance?.record(attemptId, {
+				point,
+				trigger,
+				binding: { proposalId: p.view.proposalId, authorizationEventId },
+				taken,
+			});
+		} catch {
+			// not recorded: readers say no observation was made
+		}
+	}
+
+	/**
+	 * Pi's raw events, as they come (before they are recorded). The first run that starts after an attempt's send is that send's run (the
+	 * broker sends only while idle); when it settles, the tree is observed once, a turn of the loop later, so the settle is recorded first.
+	 */
+	#watchRun(type: string): void {
+		const watched = this.#afterRun;
+		if (watched === null) return;
+		if (type === "agent_start") watched.started = true;
+		else if (type === "agent_settled" && watched.started) {
+			this.#afterRun = null;
+			this.#observeAfter(watched, "run-settled");
+		}
+	}
+
+	#observeAfter(watched: WatchedRunV0, trigger: "run-settled" | "workbench-closing"): Promise<void> {
+		const provenance = this.#o.provenance;
+		if (provenance === undefined) return Promise.resolve();
+		const task = (async () => {
+			await new Promise((resolve) => setImmediate(resolve));
+			const taken = await provenance.take();
+			this.#recordObservation(
+				watched.attemptId,
+				"after-run",
+				trigger,
+				watched.binding.authorizationEventId,
+				{ view: { proposalId: watched.binding.proposalId } },
+				taken,
+			);
+		})().catch(() => {});
+		this.#observing.add(task);
+		void task.finally(() => this.#observing.delete(task));
+		return task;
 	}
 
 	// --- disposal ------------------------------------------------------------------------------------------------------------
@@ -846,6 +976,16 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();
 		await this.#command?.done.catch(() => {});
+		// A run that followed an attempt's send and is still open: the tree is observed once more, as the workbench closes. Bounded, as is
+		// any observation still being made.
+		const open = this.#afterRun;
+		this.#afterRun = null;
+		if (open?.started === true) void this.#observeAfter(open, "workbench-closing");
+		if (this.#observing.size > 0)
+			await Promise.race([
+				Promise.all([...this.#observing]),
+				new Promise((resolve) => setTimeout(resolve, 35_000).unref?.()),
+			]);
 		// Bounded: a STOP Pi answers only once idle must not hold the process (the desk's `finish` has already waited for it).
 		await this.#interventions?.settle(2_000);
 		this.transcript.clear();

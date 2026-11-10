@@ -3006,6 +3006,14 @@ table.fields thead th {
 	padding: 6px 14px;
 }
 
+/* In one column the strip stays at the top while the page scrolls under it (sticky, above): it needs the panel's own ground, or the
+	scrolled text shows through it. Field gives it its slab below. */
+@media (max-width: 1023.98px) {
+	.develop-live .run-strip {
+		background: var(--surface-1);
+	}
+}
+
 /* A back button duplicates the tab and Escape where the tabs are always in view. */
 @media (min-width: 1024px) {
 	[data-testid="diff-back"] {
@@ -5267,4 +5275,119 @@ body:has(.develop[data-appearance="field"]) .topbar {
 .develop[data-appearance="field"] .develop-live .host-strip {
 	padding: 9px 22px 11px;
 	background: transparent;
+}
+
+/* ---- an attempt's provenance: what Git showed of the working tree around it (Provenance.tsx) ---- */
+
+.attempt-provenance {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.attempt-provenance h4 {
+	margin: 0;
+	font-weight: 600;
+}
+
+.provenance-frame {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0 0 0 6px;
+	border-left: 2px solid var(--line-subtle);
+}
+
+.provenance-frame > li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 10px;
+	padding: 4px 0;
+	min-width: 0;
+}
+
+.provenance-what {
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.provenance-between {
+	padding-left: 12px !important;
+	color: var(--fg-2);
+}
+
+.provenance-relation[data-relation="same"] {
+	color: var(--obs);
+}
+
+.provenance-relation[data-relation="different"] {
+	color: var(--attention);
+}
+
+.provenance-relation[data-relation="not-compared"] {
+	color: var(--na);
+}
+
+.provenance-now,
+.provenance-checked > li {
+	overflow-wrap: anywhere;
+}
+
+.provenance-checked {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+}
+
+.provenance-paths > summary,
+.provenance-details > summary {
+	cursor: pointer;
+	color: var(--fg-2);
+}
+
+.provenance-paths ul,
+.provenance-all ul {
+	margin: 2px 0 4px 12px;
+	overflow-wrap: anywhere;
+}
+
+.provenance-letter {
+	display: inline-block;
+	width: 1.5ch;
+	color: var(--fg-2);
+}
+
+.provenance-all > li {
+	padding: 4px 0;
+	border-bottom: 1px solid var(--line-subtle);
+}
+
+.provenance-all p,
+.provenance-limits {
+	margin: 0;
+}
+
+.chip-ref[data-observation="unavailable"] {
+	color: var(--na);
+	border-style: dashed;
+}
+
+/* Inside an attempt (a .task-refs item), the provenance's own lists are lines of text, not stacked reference rows. */
+.task-refs .attempt-provenance li {
+	display: block;
+	padding: 1px 0;
+	margin: 0;
+	border-bottom: 0;
+}
+
+.task-refs .attempt-provenance .provenance-frame > li {
+	display: flex;
+	padding: 4px 0;
+}
+
+.task-refs .attempt-provenance .provenance-all > li {
+	padding: 4px 0;
+	border-bottom: 1px solid var(--line-subtle);
 }

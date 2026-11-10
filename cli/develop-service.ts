@@ -6,14 +6,18 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
+import { gitStateReaderV0 } from "../adapters/git/state-observer.ts";
 import type { EndoReceiptCurrentV0 } from "../protocol/develop-receipts.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import type { EndoSessionLogReadV0 } from "../runtime/contracts/develop-attempt-execution.ts";
+import { DevelopObservationsServiceV0 } from "../runtime/contracts/develop-observations.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
+import { DevelopObservationsStoreV0 } from "../storage/develop-observations.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { endoVersionV0 } from "./help.ts";
 
 /**
  * The store's event log, opened READ-ONLY (nothing is created, cut or repaired) and read whole, for the attempt-execution view
@@ -53,6 +57,26 @@ export async function endoReceiptCurrentV0(directory: string): Promise<EndoRecei
 	return { worktree: o.worktree, commonDir: o.commonDir, commit: o.commit, clean: o.dirty.length === 0 };
 }
 
+/**
+ * The attempt observations over `root` (docs/designs/develop-candidate-provenance.md), with the read-only Git state reader. `timeoutMs`
+ * bounds one observation (the workbench gives a shorter one before a send, so a slow tree never holds an approved send for long).
+ */
+export function endoDevelopObservationsV0(
+	root: string,
+	options: { timeoutMs?: number } = {},
+): DevelopObservationsServiceV0 {
+	return new DevelopObservationsServiceV0(
+		new DevelopTasksStoreV0(root),
+		new DevelopAttemptsStoreV0(root),
+		new DevelopObservationsStoreV0(root),
+		{
+			reader: gitStateReaderV0(new GitRevisionObserverV0()),
+			version: endoVersionV0(),
+			...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+		},
+	);
+}
+
 /** The service over `root`'s task file, with its attempts and their receipts read-only beside it. */
 export function endoDevelopServiceV0(root: string): DevelopWorkspaceServiceV0 {
 	return new DevelopWorkspaceServiceV0(new DevelopTasksStoreV0(root), {
@@ -62,5 +86,7 @@ export function endoDevelopServiceV0(root: string): DevelopWorkspaceServiceV0 {
 		receipts: { store: new DevelopReceiptsStoreV0(root), current: endoReceiptCurrentV0 },
 		// The session log, read-only, for attempts that were authorised to be sent to Pi: what their sessions recorded. Nothing is written.
 		sessionLog: () => endoSessionLogV0(root),
+		// What Git showed around each attempt, read-only, compared with the launch's own directory. Nothing here records an observation.
+		observations: endoDevelopObservationsV0(root),
 	});
 }

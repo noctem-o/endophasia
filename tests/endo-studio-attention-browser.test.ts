@@ -218,8 +218,11 @@ suite("the overview: what needs the operator, and why", () => {
 		expect(needs.map(([, flag]) => flag)).toEqual(["decision", "decision", "decision", "failed", "inconclusive"]);
 		expect(needs.slice(3).map(([title]) => title)).toEqual(["Normalize CRLF line endings", "Unicode identifiers"]);
 		const text = await page.text("[data-testid=attention-needs]");
-		expect(text).toContain("Latest observed npm test exited with code 1");
-		expect(text).toContain("Other runs of it here: 1 passed.");
+		// The CRLF task has a plan: its npm test is read by that attempt's ledger. The demo tree has changes, so the runs at HEAD are not
+		// current; the latest failed and they disagree, so the row still needs attention (DEVELOP-ATTENTION-002).
+		expect(text).toContain(
+			"Planned check unit: At HEAD, but the tree has changed since (its latest run at HEAD failed; runs there: 1 passed, 1 failed).",
+		);
 		expect(text).toContain("Passing npm test belongs to an earlier commit (fffffff)");
 		expect(text).toContain("Latest attempt: Result reported, not verified.");
 		expect(text).toContain("No attempts or observed checks recorded.");

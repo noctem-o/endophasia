@@ -552,7 +552,9 @@ function Acceptance({ attempt: a, verification: v }: { attempt: Attempt; verific
 			<p className="dim small">
 				That a check addresses a criterion is your plan's statement; nothing observed establishes it. A pass is a
 				command that exited 0 at this commit or, for a check with an expected behaviour, one whose exit code and
-				output were the ones you declared; whether the criterion holds is still yours to judge.
+				output were the ones you declared; whether the criterion holds is still yours to judge. A receipt records
+				what the command printed and how it compares with your plan; the environment it ran in was inherited and not
+				recorded, so nothing here establishes that it could not change the result, or who ran the check.
 			</p>
 			{a.receipts.problems > 0 ? (
 				<p className="small attempt-changed" data-testid="acceptance-receipt-problems">

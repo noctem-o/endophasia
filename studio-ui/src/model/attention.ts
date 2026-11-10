@@ -3,16 +3,21 @@
 // sections in the same order. No clock, no network, no model, no score. Every line follows from one recorded fact:
 //
 //   the operator's status        review -> a decision waits on them; blocked -> recorded by them (it may be waiting on someone else)
-//   an observed check            the LATEST receipt of each command: failed or inconclusive, and how its commit relates to HEAD now
+//   a planned check              v1: an attempt with a plan, read by its own acceptance ledger (the Task view's states and words): failed,
+//                                inconclusive or disagreeing at HEAD; without a current result it is said, and a review rechecks it
+//   an observed check            the LATEST receipt of each other command (by exit status): failed or inconclusive, and how its commit
+//                                relates to HEAD now
 //   the operator's records       the newest attempt's state ("Result reported, not verified" stays exactly that)
 //   what could not be read       counted and said, never taken as "nothing to see"
 //
 // It never says a task is accepted, failing, being worked on or approved: a status is the operator's, a check is evidence about one command
 // at one commit, a handoff is the operator's statement, and a missing check is only missing.
 
+import type { EndoReceiptOutcomeV0 } from "../../../protocol/develop-receipts.ts";
+import type { EndoPlannedCheckStateV0 } from "../../../protocol/develop-verification.ts";
 import type { LaunchReadState } from "./attempts-reader.ts";
-import { ATTEMPT_LABELS } from "./attempts-wire.ts";
-import type { AttentionCheck, AttentionTask, AttentionView } from "./attention-wire.ts";
+import { ATTEMPT_LABELS, PLANNED_CHECK_LABELS } from "./attempts-wire.ts";
+import type { AttentionCheck, AttentionPlanned, AttentionTask, AttentionView } from "./attention-wire.ts";
 import type { Task } from "./workspace-wire.ts";
 
 /** Why a task needs the operator. The order is the precedence: a task appears once, ranked by its first flag. */
@@ -39,6 +44,8 @@ export interface Line {
 	parts: readonly (string | { code: string })[];
 	/** The receipt this line is about, when it is about one (the row opens it). */
 	receipt?: { attemptId: string; receiptId: string };
+	/** For a planned check's line: its ledger state. */
+	planned?: EndoPlannedCheckStateV0;
 }
 
 export interface Item {
@@ -63,7 +70,18 @@ export interface Overview {
 	gaps: boolean;
 	/** Sentences about the read as a whole (HEAD not observed, a limit reached, the tasks changed since). */
 	notes: string[];
+	/** Some task not done has a planned check with no current result (not run here, stale, elsewhere, or its tree changed since). */
+	unsettled: boolean;
 }
+
+/** Planned states with no current result: said on the row, and a reason for a review to recheck; never "passed". */
+const UNSETTLED: ReadonlySet<EndoPlannedCheckStateV0> = new Set([
+	"tree-changed",
+	"stale",
+	"elsewhere",
+	"not-run",
+	"unavailable",
+]);
 
 const short = (sha: string): string => sha.slice(0, 7);
 
@@ -158,6 +176,62 @@ function checkLine(c: AttentionCheck, review: boolean, head: string | null): Lin
 
 const plural = (n: number, one: string, many: string): string => (n === 1 ? one : `${n} ${many}`);
 
+/** How the plan read a run, in a few words. */
+const READ: Readonly<Record<EndoReceiptOutcomeV0, string>> = {
+	passed: "passed",
+	failed: "failed",
+	inconclusive: "was inconclusive",
+};
+
+/**
+ * A planned check's line, in the Task view's words (PLANNED_CHECK_LABELS): its state is the attempt's ledger's. A behavioural check says it
+ * is read by its declared exit code and output, so an exit 0 is never read as a pass, nor a declared non-zero exit as a failure.
+ *
+ * A check without a current result (the tree changed since its runs at HEAD, or it ran only at another commit) says how the plan read its
+ * latest run there. If that run failed, or its runs at HEAD disagree, the row still needs attention, as before plans: a recorded failure
+ * is never dropped because the tree moved on. It is never called a current pass.
+ */
+function plannedLine(p: AttentionPlanned, review: boolean): Line {
+	const by = p.behavioural ? " (read by its declared exit code and output)" : "";
+	const { passed, failed, inconclusive } = p.atHead;
+	const runs = [
+		passed > 0 ? `${passed} passed` : "",
+		failed > 0 ? `${failed} failed` : "",
+		inconclusive > 0 ? `${inconclusive} inconclusive` : "",
+	]
+		.filter((x) => x !== "")
+		.join(", ");
+	const disagree = [passed, failed, inconclusive].filter((n) => n > 0).length >= 2;
+	const latest = p.receipt?.outcome ?? null;
+	const detail =
+		p.state === "mixed"
+			? ` (${runs})`
+			: p.state === "tree-changed" && latest !== null
+				? ` (its latest run at HEAD ${READ[latest]}${disagree ? `; runs there: ${runs}` : ""})`
+				: p.state === "stale" && p.receipt !== null && latest !== null
+					? ` (its latest run, at ${short(p.receipt.commit)}, ${READ[latest]})`
+					: "";
+	const lingering = p.state === "tree-changed" || p.state === "stale";
+	const kind: Line["kind"] =
+		p.state === "failed" || (lingering && latest === "failed")
+			? "failed"
+			: p.state === "inconclusive" ||
+					p.state === "mixed" ||
+					(lingering && (latest === "inconclusive" || (p.state === "tree-changed" && disagree)))
+				? "inconclusive"
+				: p.state === "passed"
+					? "evidence"
+					: review
+						? "reconsider"
+						: "note";
+	return {
+		kind,
+		parts: ["Planned check ", { code: p.name }, `: ${PLANNED_CHECK_LABELS[p.state]}${detail}${by}.`],
+		...(p.receipt === null ? {} : { receipt: { attemptId: p.attemptId, receiptId: p.receipt.receiptId } }),
+		planned: p.state,
+	};
+}
+
 /** What could not be read for this task: said, never taken as "nothing". */
 function gaps(e: AttentionTask): Line[] {
 	const lines: Line[] = [];
@@ -233,7 +307,22 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			});
 		else {
 			const head = view?.head?.commit ?? null;
-			const checks = e.checks.map((c) => checkLine(c, review, head));
+			const checks = [
+				...e.planned.map((p) => plannedLine(p, review)),
+				...e.checks.map((c) => checkLine(c, review, head)),
+			];
+			if (e.morePlanned.checks > 0)
+				checks.push({
+					kind:
+						e.morePlanned.notPassing > 0
+							? "warn"
+							: review && e.morePlanned.notCurrent > 0
+								? "reconsider"
+								: "note",
+					parts: [
+						`${plural(e.morePlanned.checks, "One more planned check is", "more planned checks are")} not listed${e.morePlanned.notPassing > 0 ? `, ${e.morePlanned.notPassing} failed, inconclusive or disagreeing` : ""}${e.morePlanned.notCurrent > 0 ? `, ${e.morePlanned.notCurrent} without a current result` : ""}; open the task to see every planned check.`,
+					],
+				});
 			// A pass that is not current was cut by the per-task limit: a review still has to recheck it, and says so.
 			if (review && e.more.notCurrent > 0)
 				checks.push({
@@ -247,7 +336,10 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			// A row ranked by a check is ordered by when that kind of check last ended; a decision, by when the task entered review.
 			const by = flags[0];
 			if (by === "failed" || by === "inconclusive")
-				at = Math.max(...e.checks.filter((_, i) => checks[i]?.kind === by).map((c) => c.endedAtMs));
+				at = Math.max(
+					...e.planned.filter((_, i) => checks[i]?.kind === by).map((p) => p.receipt?.endedAtMs ?? 0),
+					...e.checks.filter((_, i) => checks[e.planned.length + i]?.kind === by).map((c) => c.endedAtMs),
+				);
 			lines.push(...checks);
 			if (e.more.commands > 0)
 				lines.push({
@@ -271,7 +363,7 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			// Absence is claimed only where everything was read; otherwise the gap lines below say what was not.
 			// An attempt record that could not be placed may be this task's, so even "no attempts" is then only "none read".
 			const complete = e.unreadable + e.skipped + e.problems + e.records === 0 && (view?.unattributed ?? 0) === 0;
-			if (review && e.checks.length === 0)
+			if (review && e.checks.length === 0 && e.planned.every((p) => p.receipt === null))
 				lines.push({
 					kind: "note",
 					parts: [
@@ -348,6 +440,9 @@ export function overviewOf(
 		evidence: usable ? "shown" : state,
 		gaps: (usable && view.unattributed > 0) || items.some((i) => i.lines.some((l) => l.kind === "warn")),
 		notes,
+		unsettled: items.some(
+			(i) => i.section !== "done" && i.lines.some((l) => l.planned !== undefined && UNSETTLED.has(l.planned)),
+		),
 	};
 }
 

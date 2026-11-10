@@ -101,6 +101,20 @@ function outcomeFor(expect: (EndoExpectedBehaviourV0 & { stdoutSha256: string })
 }
 
 /**
+ * How one planned check reads one receipt of its argv: by exit status, or for a behavioural check by its declared exit code and output
+ * (endoBehaviourOutcomeV0). The ledger reads every receipt this way; the CLI uses it to say how the plan reads a single receipt. It is not a
+ * check's state: that also weighs every other run at the same commit (endoAcceptanceLedgerV0).
+ */
+export function endoPlannedReadingV0(
+	check: EndoVerificationPlanV0["checks"][number],
+	receipt: EndoDevelopReceiptV0,
+): EndoReceiptOutcomeV0 {
+	return outcomeFor(
+		check.expect === undefined ? null : { ...check.expect, stdoutSha256: endoSha256HexV0(check.expect.stdout) },
+	)(receipt);
+}
+
+/**
  * The ledger. `receipts` are this attempt's; `current` is the working tree the reader chose, observed now (null when it could not be).
  */
 export function endoAcceptanceLedgerV0(input: {

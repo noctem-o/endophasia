@@ -6,12 +6,16 @@
 // Bounded: done tasks' receipts are not read; receipt files read in all are capped (ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxReceiptFiles), and
 // an attempt directory larger than what is left is not read at all (its attempt is `skipped`, the view `truncated`). The order receipts are
 // read in is fixed (review, in progress, blocked, open; newest attempt first), so a limit falls on the same attempts every time.
+//
+// v1: an attempt with a verification plan is read by its own acceptance ledger (endoAcceptanceLedgerV0, the function the Task view and the
+// CLI evidence reading use): one entry per planned check, in the ledger's state. Only receipts no plan reads go through endoLatestChecksV0.
 
-import { endoDevelopAttemptStateV0 } from "../../protocol/develop-attempts.ts";
+import { endoAttemptPlanV0, endoDevelopAttemptStateV0 } from "../../protocol/develop-attempts.ts";
 import {
 	ENDO_DEVELOP_ATTENTION_LIMITS_V0,
-	ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0,
+	ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V1,
 	type EndoDevelopAttentionCheckV0,
+	type EndoDevelopAttentionPlannedV1,
 	type EndoDevelopAttentionTaskV0,
 	type EndoDevelopAttentionViewV0,
 } from "../../protocol/develop-attention.ts";
@@ -21,10 +25,12 @@ import {
 	endoReceiptRelationV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopTaskStatusV0 } from "../../protocol/develop-tasks.ts";
+import type { EndoPlannedCheckStateV0 } from "../../protocol/develop-verification.ts";
 import type { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { endoShownTextV0 } from "./develop-attempts.ts";
+import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
 
 /** The order receipts are read in, so a limit always falls on the least pressing tasks first. Done tasks are not read. */
 const READ_ORDER: Readonly<Record<Exclude<EndoDevelopTaskStatusV0, "done">, number>> = {
@@ -101,6 +107,64 @@ export function endoLatestChecksV0(
 	);
 }
 
+/** A planned check's triage rank: failed; inconclusive or disagreeing; without a current result; passed at the current clean HEAD. */
+const PLANNED_RANK: Readonly<Record<EndoPlannedCheckStateV0, number>> = {
+	failed: 0,
+	inconclusive: 1,
+	mixed: 1,
+	unavailable: 2,
+	"tree-changed": 2,
+	stale: 2,
+	elsewhere: 2,
+	"not-run": 2,
+	passed: 3,
+};
+
+const sameArgv = (a: readonly string[], b: readonly string[]): boolean =>
+	a.length === b.length && a.every((x, i) => x === b[i]);
+
+/** The planned checks of one attempt, as its own ledger reads them over its own receipts. */
+function plannedOf(
+	attemptId: string,
+	plan: NonNullable<ReturnType<typeof endoAttemptPlanV0>>,
+	receipts: readonly EndoDevelopReceiptV0[],
+	current: EndoReceiptCurrentV0 | null,
+): EndoDevelopAttentionPlannedV1[] {
+	const ledger = endoAcceptanceLedgerV0({ plan, receipts, current });
+	return ledger.checks.map((c, i) => {
+		const planned = plan.checks[i] as (typeof plan.checks)[number];
+		const behind = c.current ?? c.otherCommit;
+		return {
+			attemptId,
+			name: c.name,
+			command: endoShownTextV0(planned.argv.join(" "), ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars),
+			behavioural: planned.expect !== undefined,
+			state: c.state,
+			atHead: { ...c.atHead },
+			receipt:
+				behind === null
+					? null
+					: {
+							receiptId: behind.receiptId,
+							commit: behind.commit,
+							startedAtMs: behind.startedAtMs,
+							endedAtMs: behind.endedAtMs,
+							outcome: behind.outcome,
+						},
+		};
+	});
+}
+
+/** The triage order of planned checks: by rank, then the most recent receipt, then attempt and name (a total order). */
+export function endoPlannedOrderV1(a: EndoDevelopAttentionPlannedV1, b: EndoDevelopAttentionPlannedV1): number {
+	return (
+		PLANNED_RANK[a.state] - PLANNED_RANK[b.state] ||
+		(b.receipt?.startedAtMs ?? -1) - (a.receipt?.startedAtMs ?? -1) ||
+		(a.attemptId < b.attemptId ? -1 : a.attemptId > b.attemptId ? 1 : 0) ||
+		(a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+	);
+}
+
 export interface DevelopAttentionSourcesV0 {
 	tasks: DevelopTasksStoreV0;
 	attempts: DevelopAttemptsStoreV0;
@@ -118,7 +182,7 @@ export function endoDevelopAttentionViewV0(
 	limits: { maxReceiptFiles: number; maxReceiptBytes: number } = ENDO_DEVELOP_ATTENTION_LIMITS_V0,
 ): EndoDevelopAttentionViewV0 {
 	const base = {
-		schemaVersion: ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V0,
+		schemaVersion: ENDO_DEVELOP_ATTENTION_VIEW_SCHEMA_V1,
 		launchId: scope.launchId,
 		head: current === null ? null : { commit: current.commit, clean: current.clean },
 		tasks: [],
@@ -173,6 +237,7 @@ export function endoDevelopAttentionViewV0(
 		let skipped = 0;
 		let problems = 0;
 		const receipts: EndoDevelopReceiptV0[] = [];
+		const planned: EndoDevelopAttentionPlannedV1[] = [];
 		if (sources.receipts !== null)
 			for (const e of entries) {
 				if (truncated) {
@@ -190,8 +255,21 @@ export function endoDevelopAttentionViewV0(
 				left -= got.receipts.length + got.problems.length;
 				leftBytes -= got.bytes ?? 0;
 				problems += got.problems.length;
-				receipts.push(...got.receipts);
+				const plan = endoAttemptPlanV0(e.attempt);
+				if (plan === null) {
+					receipts.push(...got.receipts);
+					continue;
+				}
+				// Its plan reads the receipts of the commands it names; any other receipt of it is read by exit status, as in v0. An old
+				// attempt's plan with nothing checked is not listed: only the newest attempt's, or one with receipts.
+				if (e === newest || got.receipts.length > 0)
+					planned.push(...plannedOf(e.attempt.id, plan, got.receipts, current));
+				for (const r of got.receipts)
+					if (!plan.checks.some((c) => sameArgv(c.argv, r.check.argv))) receipts.push(r);
 			}
+		planned.sort(endoPlannedOrderV1);
+		const plannedShown = planned.slice(0, ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxPlannedPerTask);
+		const plannedRest = planned.slice(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxPlannedPerTask);
 		const checks = endoLatestChecksV0(receipts, current);
 		const shown = checks.slice(0, ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxChecksPerTask);
 		const rest = checks.slice(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxChecksPerTask);
@@ -211,6 +289,12 @@ export function endoDevelopAttentionViewV0(
 			problems,
 			records: records.get(task.id) ?? 0,
 			checks: shown,
+			planned: plannedShown,
+			morePlanned: {
+				checks: plannedRest.length,
+				notPassing: plannedRest.filter((c) => PLANNED_RANK[c.state] < 2).length,
+				notCurrent: plannedRest.filter((c) => PLANNED_RANK[c.state] === 2).length,
+			},
 			more: {
 				commands: rest.length,
 				notPassing: rest.filter((c) => c.outcome !== "passed").length,

@@ -359,7 +359,7 @@ describe("the frontend's source", () => {
 		expect(sources["develop/Attention.tsx"]).not.toMatch(
 			/verified (task|work)|agent succeeded|accepted|approved|priority|score/i,
 		);
-		expect(sources["model/attention-wire.ts"]).toContain('ATTENTION_SCHEMA = "endo.develop-attention-view.v0"');
+		expect(sources["model/attention-wire.ts"]).toContain('ATTENTION_SCHEMA = "endo.develop-attention-view.v1"');
 		const tasks = sources["develop/Tasks.tsx"]!;
 		expect(tasks).not.toMatch(/from "\.\.\/api\.ts"|use-workbench|propose|intervene|withdraw|\.prompt\b|fetch/);
 		expect(sources["model/workspace.ts"]).not.toMatch(/prompt|intervene|propose/i);

@@ -128,6 +128,7 @@ export const ENDO_ATTEMPT_EVIDENCE_NOT_ESTABLISHED_V0 = Object.freeze([
 	"That Pi's report of its run is true. It is what Pi reported, not verified.",
 	"Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.",
 	"That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.",
+	"That a check's environment could not change its result. A receipt records the command's output and its comparison with your plan; the environment it ran in (variables such as NODE_OPTIONS or PATH, tool versions, the home directory) was inherited and not recorded, and nothing established it was trustworthy. Its requestedBy names who the record says asked for the check, not who ran it: anything that can run endo as you, an agent included, can record one.",
 ] as const);
 
 export interface EndoAttemptEvidenceCheckV0 {

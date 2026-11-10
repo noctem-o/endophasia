@@ -554,6 +554,11 @@ function viewWith(
 				reasons: [...r.reasons],
 				limitations: [...r.limitations],
 				relation: endoReceiptRelationV0(r, current),
+				stdout: {
+					sha256: r.output.stdout?.sha256 ?? null,
+					bytes: r.output.stdoutBytes,
+					recorded: r.output.stdout !== undefined,
+				},
 			})),
 			problems: 0,
 		},

@@ -28,6 +28,7 @@ import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import type { EndoDevelopAttemptsViewV5 } from "../protocol/develop-attempts.ts";
 import {
+	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
 	ENDO_RECEIPT_LIMITATION_TEXT_V0,
 	ENDO_RECEIPT_LIMITATIONS_V0,
 	ENDO_RECEIPT_OUTCOME_LABELS_V0,
@@ -414,7 +415,7 @@ describe("the receipts store", () => {
 			unknown: "notes.txt",
 		};
 		writeFileSync(join(dir, names.corrupt), "{ not json");
-		writeFileSync(join(dir, names.oversize), " ".repeat(70 * 1024));
+		writeFileSync(join(dir, names.oversize), " ".repeat(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxFileBytes + 1));
 		writeFileSync(join(dir, names.misnamed), JSON.stringify(good));
 		symlinkSync(outside, join(dir, names.linked));
 		const forgedReceipt = {
@@ -1125,6 +1126,8 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 					reasons: [],
 					limitations: r.limitations,
 					relation: "at-head",
+					// v1: the output's digest and size are shown; the output itself never is in this list.
+					stdout: { sha256: r.output.stdout?.sha256 ?? null, bytes: r.output.stdoutBytes, recorded: true },
 				},
 			],
 		});

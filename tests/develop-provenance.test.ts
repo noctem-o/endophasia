@@ -224,6 +224,42 @@ describe.skipIf(!haveGit)("comparing two states", () => {
 		});
 	});
 
+	it("claims nothing about a path that is not UTF-8 text: the commits differ there, so 'same' would be false (review, #140)", async () => {
+		const root = commitedRepo();
+		// A name Git holds as bytes that do not decode: a decoded copy would name no path in either commit.
+		const name = Buffer.concat([Buffer.from(`${root}/caf`), Buffer.from([0xe9]), Buffer.from(".txt")]);
+		writeFileSync(name, "one\n");
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "one");
+		const first = await observed(root);
+		writeFileSync(name, "two, different\n");
+		git(root, "commit", "-q", "-a", "-m", "two");
+		const second = await observed(root);
+		expect(first.complete && second.complete).toBe(true);
+		expect(await compareEndoStatesV0(observer, root, endoComparableOfV0(first), endoComparableOfV0(second))).toEqual({
+			relation: "not-compared",
+			reason: "path-not-text",
+		});
+	});
+
+	it("does not read through a parent directory that is a link: the file is absent, as Git sees it (review, #140)", async () => {
+		const root = commitedRepo();
+		mkdirSync(join(root, "dir"));
+		write(root, "dir/f", "tracked\n");
+		git(root, "add", "-A");
+		git(root, "commit", "-q", "-m", "dir");
+		const outside = fixtureDir();
+		writeFileSync(join(outside, "f"), "a file outside the working tree\n");
+		rmSync(join(root, "dir"), { recursive: true });
+		symlinkSync(outside, join(root, "dir"));
+		const s = await observed(root);
+		const f = s.changes.find((c) => c.path === "dir/f");
+		expect(f?.content).toEqual({ kind: "absent" });
+		// Nothing outside the tree was hashed into the record.
+		const outsideId = git(root, "hash-object", join(outside, "f")).trim();
+		expect(JSON.stringify(s)).not.toContain(outsideId);
+	});
+
 	it("claims nothing for an incomplete state, another repository, or a commit Git does not have", async () => {
 		const root = commitedRepo();
 		const s = await observed(root);
@@ -775,6 +811,25 @@ describe.skipIf(!haveGit)("the workbench observes around an attempt it sends", (
 		// Nothing was bound: the attempt can still be sent.
 		w.session.runActive = false;
 		expect(w.broker.requestAttempt(w.attempt.id).ok).toBe(true);
+		await w.broker.dispose();
+	});
+
+	it("watches no run after a send whose answer is unknown and whose run never started: a later run is not credited to it (review, #140)", async () => {
+		const repo = commitedRepo();
+		const w = brokerOver(repo);
+		w.session.promptResult = async () => {
+			throw new Error("timed out waiting for Pi's answer");
+		};
+		w.broker.requestAttempt(w.attempt.id);
+		await w.approval.waitForRequest();
+		w.approval.answer("allow");
+		await until(() => w.session.promptCalls.length === 1 && recorded(w, w.attempt.id).length === 1);
+		await settle(50);
+		// Someone else's run (another client, a later prompt) starts and settles: it is not this attempt's.
+		w.session.live_({ type: "agent_start", record: {} });
+		w.session.live_({ type: "agent_settled", record: {} });
+		await settle(200);
+		expect(recorded(w, w.attempt.id).map((o) => o.point)).toEqual(["before-send"]);
 		await w.broker.dispose();
 	});
 

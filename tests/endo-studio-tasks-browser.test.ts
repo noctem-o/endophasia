@@ -1068,7 +1068,7 @@ suite("the working tree around an attempt: what Git showed, never who changed it
 			await page.waitFor("document.querySelector('[data-testid=provenance-checked-commit]')");
 			expect(await relationOf(page, "provenance-checked-commit")).toBe("same");
 			expect(await page.text("[data-testid=provenance-checked]")).toContain(
-				`Checked at ${checked.commit.slice(0, 12)} (1 receipt): the same content as your latest observation`,
+				`Checked at ${checked.commit.slice(0, 12)} (1 receipt): the same content as your latest observation (ignored files are not compared)`,
 			);
 			expect(await relationOf(page, "provenance-now")).toBe("different");
 			expect(await page.text("[data-testid=provenance-now]")).toContain(

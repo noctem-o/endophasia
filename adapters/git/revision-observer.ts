@@ -410,13 +410,14 @@ export class GitRevisionObserverV0 {
 
 	/**
 	 * What `commit`'s tree holds at each of `paths` (relative to the top of the tree), read with `ls-tree` in batches. Null when Git could
-	 * not answer (the commit is gone, the repository cannot be read safely, the output was cut). Reads objects only, never the working tree.
+	 * not answer (the commit is gone, the repository cannot be read safely, the output was cut). `not-text` when Git printed a path that is
+	 * not UTF-8 text: it cannot be matched to a path exactly, so nothing is claimed about it. Reads objects only, never the working tree.
 	 */
 	async treeEntries(
 		worktree: string,
 		commit: string,
 		paths: readonly string[],
-	): Promise<Map<string, GitTreeEntryV0> | null> {
+	): Promise<Map<string, GitTreeEntryV0> | null | "not-text"> {
 		if (!HEX.test(commit)) return null;
 		const keys = await this.#keys(worktree);
 		if (keys === null) return null;
@@ -431,7 +432,9 @@ export class GitRevisionObserverV0 {
 			);
 			if (run.code !== 0 || run.truncated) return null;
 			for (let start = 0, at = run.stdout.indexOf(0); at !== -1; start = at + 1, at = run.stdout.indexOf(0, start)) {
-				const record = run.stdout.subarray(start, at).toString("utf8");
+				const bytes = run.stdout.subarray(start, at);
+				const record = bytes.toString("utf8");
+				if (!Buffer.from(record, "utf8").equals(bytes)) return "not-text";
 				const match = /^(\d{6}) (blob|tree|commit) ([0-9a-f]+)\t(.+)$/s.exec(record);
 				if (match === null) return null;
 				const [, mode, type, oid, path] = match as unknown as [string, string, string, string, string];
@@ -444,9 +447,14 @@ export class GitRevisionObserverV0 {
 
 	/**
 	 * The paths whose entries differ between two commits' trees (`diff-tree -r`, no renames, no programs), or null when Git could not
-	 * answer. `cut`: more output than the bound; the list is a prefix.
+	 * answer. `cut`: more output than the bound; the list is a prefix. `notText`: a path is not UTF-8 text (a decoded copy would name a
+	 * different path, and match nothing), so the two commits cannot be compared exactly.
 	 */
-	async changedPaths(worktree: string, from: string, to: string): Promise<{ paths: string[]; cut: boolean } | null> {
+	async changedPaths(
+		worktree: string,
+		from: string,
+		to: string,
+	): Promise<{ paths: string[]; cut: boolean; notText?: true } | null> {
 		if (!HEX.test(from) || !HEX.test(to)) return null;
 		if (from === to) return { paths: [], cut: false };
 		const keys = await this.#keys(worktree);
@@ -462,7 +470,9 @@ export class GitRevisionObserverV0 {
 		const out = run.stdout;
 		let start = 0;
 		for (let at = out.indexOf(0); at !== -1; start = at + 1, at = out.indexOf(0, start)) {
-			const path = out.subarray(start, at).toString("utf8");
+			const bytes = out.subarray(start, at);
+			const path = bytes.toString("utf8");
+			if (!Buffer.from(path, "utf8").equals(bytes)) return { paths: [], cut: run.truncated, notText: true };
 			if (path !== "") paths.push(path);
 		}
 		return { paths, cut: run.truncated };

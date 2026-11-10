@@ -84,7 +84,10 @@ export interface EndoObservedStateV0 {
 	 * (the validator recomputes it).
 	 */
 	complete: boolean;
-	/** sha256 over the commit and every change's path and content: equal digests, equal observed states. Derived. */
+	/**
+	 * sha256 over the commit and every change's path and content: equal digests, equal commit and changes (not the tree, branch or flags).
+	 * A display aid, derived; comparisons never use it.
+	 */
 	digest: string;
 }
 

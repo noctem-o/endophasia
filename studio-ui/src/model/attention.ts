@@ -307,9 +307,15 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			});
 		else {
 			const head = view?.head?.commit ?? null;
+			// Where the task also has planned checks, a line no plan reads says so: its receipt belongs to an attempt without a plan, or to a
+			// command its plan does not name, and is read by exit status (an attempt's plan never decides another attempt's receipt).
+			const unplanned = (l: Line): Line =>
+				e.planned.length === 0
+					? l
+					: { ...l, parts: [...l.parts, " No plan reads this check; this is its exit status."] };
 			const checks = [
 				...e.planned.map((p) => plannedLine(p, review)),
-				...e.checks.map((c) => checkLine(c, review, head)),
+				...e.checks.map((c) => unplanned(checkLine(c, review, head))),
 			];
 			if (e.morePlanned.checks > 0)
 				checks.push({

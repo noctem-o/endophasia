@@ -344,6 +344,10 @@ describe("the overview reads a planned check as its attempt's ledger does", () =
 		});
 		// The other attempt has no plan: its receipt is read by exit status, as before, and is not counted by the first attempt's plan.
 		expect(v?.checks.map((c) => [c.attemptId, c.outcome])).toEqual([[plain, "failed"]]);
+		// The row says the failing line is not a plan's reading.
+		expect(texts(itemOf(p.overview(), task))).toContain(
+			"Latest observed `node calc.mjs x` exited with code 2 at the current HEAD. No plan reads this check; this is its exit status.",
+		);
 		// A second plan that expects something else reads the same command its own way.
 		const other: EndoVerificationPlanV0 = {
 			checks: [{ name: "refuses", argv: REFUSES, shows: "x", expect: { exitCode: 1, stdout: "" } }],
@@ -396,15 +400,47 @@ describe("the page's gate refuses a planned entry its facts do not allow", () =>
 		// A pass at HEAD (the triage order lists the unrun check first, so pick by state).
 		const passed = (v: ReturnType<typeof real>) => v.tasks[0]?.planned.find((c) => c.state === "passed") as Planned;
 		const notRun = (v: ReturnType<typeof real>) => v.tasks[0]?.planned.find((c) => c.state === "not-run") as Planned;
-		expect(mutate((v) => (passed(v).state = "failed"))).toBeNull(); // a pass's receipt and counts, called failed
-		expect(mutate((v) => ((passed(v).receipt as NonNullable<Planned["receipt"]>).commit = OLD))).toBeNull(); // at HEAD, receipt elsewhere
-		expect(mutate((v) => (passed(v).state = "not-run"))).toBeNull(); // not run, with a receipt
-		expect(mutate((v) => (notRun(v).state = "passed"))).toBeNull(); // passed, with no receipt
-		expect(mutate((v) => (passed(v).atHead.failed = 1))).toBeNull(); // passed, with a failure at HEAD counted
-		expect(mutate((v) => (v.head = { commit: HEAD, clean: false }))).toBeNull(); // passed, though the tree is not clean
-		expect(mutate((v) => (v.head = null))).toBeNull(); // compared, without a HEAD
+		expect(
+			mutate((v) => {
+				passed(v).state = "failed";
+			}),
+		).toBeNull(); // a pass's receipt and counts, called failed
+		expect(
+			mutate((v) => {
+				(passed(v).receipt as NonNullable<Planned["receipt"]>).commit = OLD;
+			}),
+		).toBeNull(); // at HEAD, receipt elsewhere
+		expect(
+			mutate((v) => {
+				passed(v).state = "not-run";
+			}),
+		).toBeNull(); // not run, with a receipt
+		expect(
+			mutate((v) => {
+				notRun(v).state = "passed";
+			}),
+		).toBeNull(); // passed, with no receipt
+		expect(
+			mutate((v) => {
+				passed(v).atHead.failed = 1;
+			}),
+		).toBeNull(); // passed, with a failure at HEAD counted
+		expect(
+			mutate((v) => {
+				v.head = { commit: HEAD, clean: false };
+			}),
+		).toBeNull(); // passed, though the tree is not clean
+		expect(
+			mutate((v) => {
+				v.head = null;
+			}),
+		).toBeNull(); // compared, without a HEAD
 		expect(mutate((v) => v.tasks[0]?.planned.push({ ...passed(v) }))).toBeNull(); // listed twice
-		expect(mutate((v) => (v.schemaVersion = "endo.develop-attention-view.v0" as never))).toBeNull();
+		expect(
+			mutate((v) => {
+				v.schemaVersion = "endo.develop-attention-view.v0" as never;
+			}),
+		).toBeNull();
 	});
 });
 

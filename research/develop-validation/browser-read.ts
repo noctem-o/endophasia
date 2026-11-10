@@ -71,10 +71,21 @@ try {
 	await page.waitFor("document.querySelector('[data-testid=task-detail]')");
 	// The plan's checks render beside the task's detail, so wait on the page's text for a per-check verdict line such as
 	// "subtractive-1994: Failed at HEAD" (a summary such as "4 criteria at HEAD" does not count).
-	await page.waitFor(
-		"/[a-z0-9-]+: (Passed|Failed|Not run|Results at HEAD|At HEAD)/.test(document.body.innerText)",
-		20_000,
-	);
+	// A freshly prepared attempt is shown collapsed, and attempts load after the task opens: each poll expands every attempt, as a reader
+	// would, before looking for the ledger's verdicts.
+	// An attempt without a plan has no per-check verdicts: then wait for its receipt list instead (pass "no-plan" as a fifth argument).
+	try {
+		await page.waitFor(
+			process.argv[6] === "no-plan"
+				? "(document.querySelectorAll('details').forEach((d) => { d.open = true; }), /Observed check (passed|failed)/.test(document.body.innerText))"
+				: "(document.querySelectorAll('details').forEach((d) => { d.open = true; }), /[a-z0-9-]+: (Passed|Failed|Not run|Results at HEAD|At HEAD)/.test(document.body.innerText))",
+			20_000,
+		);
+	} catch (error) {
+		// Keep what the page did show, for diagnosis; the capture is still refused.
+		writeFileSync(join(out!, "task-refused.txt"), await page.eval<string>("document.body.innerText"));
+		throw error;
+	}
 	await page.settled();
 	writeFileSync(join(out!, "task.txt"), await page.eval<string>("document.body.innerText"));
 	const full = await page.eval<number>("document.documentElement.scrollHeight");

@@ -21,9 +21,17 @@ endo task add --project endo.project.<id> --title "Roman numerals use subtractiv
 endo attempt prepare --project endo.project.<id> --task endo.task.<id> --objective "Make roman.mjs subtractive" \
   --plan-file $V/fixtures/roman/plan.json
 endo attempt check --attempt endo.attempt.<id> --keep-output -- node roman.mjs 1994   # exits 0: "Observed check passed" (B1)
+endo attempt evidence --attempt endo.attempt.<id>   # criterion 1: "A planned check failed at HEAD"
+endo workspace open --project endo.project.<id>     # pair; the overview says "Needs your attention (0)": the missed failure (U1)
+# Stop the workspace, then run the second check. Run it after opening the overview, or the overview shows (1) for it instead:
 endo attempt check --attempt endo.attempt.<id> --keep-output -- node roman.mjs 0      # exits 3: "Observed check failed" (B1)
-endo attempt evidence --attempt endo.attempt.<id>   # criterion 1 failed, criterion 2 passed: the opposite, and correct
-endo workspace open --project endo.project.<id>     # pair; the overview says "Needs your attention (0)" (U1)
+endo attempt evidence --attempt endo.attempt.<id>   # criterion 2: passed. The overview now flags it "Check failed": the false alarm
+```
+
+All three page cases (the missed failure, the false alarm with F1, and T2U's agreement) can also be rebuilt and captured in one step:
+
+```sh
+research/develop-validation/rebuild-page-cases.sh "$(mktemp -d)"
 ```
 
 ## T2 and T2U: identical ledgers for a correct and an incorrect candidate (B2)

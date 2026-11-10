@@ -57,11 +57,11 @@ Severity is for a human pilot: **high** would mislead a decision; **medium** con
 **A1 (medium, fixed in this PR): Git identity is an undocumented prerequisite.** In a fresh `HOME` with no Git identity, step 1's
 `git commit` fails (exit 128), and every later check is refused with "that directory cannot be observed as the top of a Git working
 tree (unborn). Nothing was run and nothing was recorded." Endophasia's refusal is correct; the README listed only "Node.js and Git".
-Reproducer: [evidence/A1-tour-no-git-identity.log](evidence/A1-tour-no-git-identity.log).
+Reproducer: [evidence/A1-tour-no-git-identity.txt](evidence/A1-tour-no-git-identity.txt).
 
 **A2 (none): with an identity set, every step matches the README.** Both quoted ledger excerpts are reproduced exactly: *Failed at
 HEAD … first difference at line 1: expected "14", observed "20"*, then *Passed at HEAD … at another commit … failed*. The task stays
-`open`. [evidence/A2-tour-with-identity.log](evidence/A2-tour-with-identity.log).
+`open`. [evidence/A2-tour-with-identity.txt](evidence/A2-tour-with-identity.txt).
 
 **A3 (medium, fixed in this PR): step 5's `provenance` sentence was false.** The tour never records an observation, so
 `endo attempt provenance` prints `[none] no observation is recorded for this attempt`, not a comparison with the checked commits. With
@@ -157,8 +157,13 @@ ledger in 0 of 2. Four model reviewers are not human participants and not a samp
 
 ### E. The page
 
-- **The Task view agrees with the CLI line for line** for T2U, T1, U and F (per-check and per-criterion verdicts, judgment criteria, the
-  coverage caveat). [evidence/E-T2U-page-task.txt](evidence/E-T2U-page-task.txt).
+- **The Task view agrees with the CLI line for line** for U, F and T2U, on every per-check and per-criterion verdict, and on the
+  judgment criteria. Each was captured by [rebuild-page-cases.sh](rebuild-page-cases.sh), which rebuilds the three stores from scratch
+  and refuses a capture that lacks the Task view's verdicts.
+  - Page and CLI pairs: [T2U page](evidence/E-T2U-page-task.txt) and [T2U CLI](evidence/E-T2U-cli-evidence.txt);
+    [U page](evidence/U1-page-task.txt) and [U CLI](evidence/U1-cli-evidence.txt); [F page](evidence/F-page-task.txt) and
+    [F CLI](evidence/F-cli-evidence.txt).
+  - The first T2U capture is withdrawn (deviation 10). It recorded the task picker and the overview, not the Task view.
 - **U1 (high): the overview contradicts the ledger in both directions.** It reads only each command's latest exit status.
   - **Missed failure.** The seeded Roman numerals is checked once (exit 0, wrong output). The overview says **Needs your attention (0)**
     and *no command's latest observed check failed or was inconclusive*. The Task view on the same page says **A planned check failed
@@ -238,6 +243,11 @@ ledger in 0 of 2. Four model reviewers are not human participants and not a samp
    is the study's judgment, made after the fact.
 9. **The decision changed after the adversarial review.** The draft said CONDITIONALLY READY, filing U1 under H7. The adversarial
    reviewer pointed out that the preregistered H2 rule covers the page. The decision now follows that rule.
+10. **A page capture was wrong, and its claim is now re-established.** Codex found that the first `E-T2U-page-task.txt` contained
+   the task picker and the overview, not the Task view: the reader clicked the first button whose text matched, which was the picker.
+   The reader now clicks the overview row and refuses a capture without per-check verdicts. U, F and T2U were rebuilt from scratch and
+   recaptured. Separately, the two tour logs were first saved as `.log` files, which `.gitignore` excludes, so they were missing from
+   the PR; they are now `.txt` files.
 
 ## 7. Readiness and the next step
 

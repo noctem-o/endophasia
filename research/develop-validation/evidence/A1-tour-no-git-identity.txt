@@ -1,0 +1,149 @@
+
+===== block0
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got '<user>@<host>.(none)')
+commit exit=128
+fatal: your current branch 'master' does not have any commits yet
+
+===== block1
+
+===== block2a project add
+exit=0
+registered. Start a workbench for it from that directory with: endo harness attach --root /work/A/home/endo-tour/store --cwd /work/A/home/endo-tour/calc --control --workbench --project endo.project.87fb2aa8a4702c97f54b0e59db4922b5
+the workbench may change this project's tasks only when launched in exactly this directory (/work/A/home/endo-tour/calc); from a subdirectory or elsewhere it shows them read-only. Register the subdirectory instead if that is where you work.
+with no agent running, open its tasks and evidence in a browser with: endo workspace open --root /work/A/home/endo-tour/store --project endo.project.87fb2aa8a4702c97f54b0e59db4922b5
+{
+	"project": {
+		"createdAtMs": 1794335518836,
+		"id": "endo.project.87fb2aa8a4702c97f54b0e59db4922b5",
+		"name": "Calculator",
+		"observedGitRoot": "/work/A/home/endo-tour/calc",
+		"path": "/work/A/home/endo-tour/calc",
+		"revision": 0,
+		"selectedTaskId": null,
+		"updatedAtMs": 1794335518836
+	}
+}
+
+
+===== block2b task add (endo.project.87fb2aa8a4702c97f54b0e59db4922b5)
+exit=0
+{
+	"task": {
+		"id": "endo.task.72a76e8e8014b8b5105d8ea7a8e33436",
+		"revision": 0,
+		"sessionReferences": 0,
+		"status": "open",
+		"title": "Fix operator precedence",
+		"updatedAtMs": 1794335518978
+	}
+}
+
+
+===== block2c prepare (endo.task.72a76e8e8014b8b5105d8ea7a8e33436)
+exit=0
+prepared. Nothing was sent to any agent. Print the brief to copy with: endo attempt brief --root /work/A/home/endo-tour/store --attempt endo.attempt.71839c9fcd0a82bf09a8ae1131b69c1d
+A=endo.attempt.71839c9fcd0a82bf09a8ae1131b69c1d
+
+===== brief
+```
+
+Criterion 1:
+```text
+2+3*4 is 14
+```
+Checked by: `precedence`.
+
+## What to report back
+(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.
+
+End of brief endo.attempt.71839c9fcd0a82bf09a8ae1131b69c1d.
+
+===== block3 check
+that directory cannot be observed as the top of a Git working tree (unborn). Nothing was run and nothing was recorded.
+exit=2
+
+===== block3 evidence
+attempt endo.attempt.71839c9fcd0a82bf09a8ae1131b69c1d (task endo.task.72a76e8e8014b8b5105d8ea7a8e33436): Make multiplication bind tighter than addition
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: nothing
+  tree now  [observed] unavailable (/work/A/home/endo-tour/calc)
+  planned   [observed] precedence ["node","calc.mjs","2+3*4"]: Not compared
+  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output; no receipt at the current HEAD
+  criterion [plan: precedence] 1. 2+3*4 is 14: Not compared
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       No check has been recorded for this attempt.
+  gap       At least one planned check has no passing result at the current HEAD of this clean working tree (it failed, was inconclusive or disagreed with another run there, was not run here, or the tree has changed since).
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+exit=0
+
+===== block4
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got '<user>@<host>.(none)')
+commit exit=128
+that directory cannot be observed as the top of a Git working tree (unborn). Nothing was run and nothing was recorded.
+exit=2
+attempt endo.attempt.71839c9fcd0a82bf09a8ae1131b69c1d (task endo.task.72a76e8e8014b8b5105d8ea7a8e33436): Make multiplication bind tighter than addition
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: nothing
+  tree now  [observed] unavailable (/work/A/home/endo-tour/calc)
+  planned   [observed] precedence ["node","calc.mjs","2+3*4"]: Not compared
+  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output; no receipt at the current HEAD
+  criterion [plan: precedence] 1. 2+3*4 is 14: Not compared
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       No check has been recorded for this attempt.
+  gap       At least one planned check has no passing result at the current HEAD of this clean working tree (it failed, was inconclusive or disagreed with another run there, was not run here, or the tree has changed since).
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+exit=0
+provenance: what Git showed of the working tree around this attempt; not who changed it
+  [none] no observation is recorded for this attempt
+  limit   Git's view at one moment: who or what changed the tree (the agent, you, an editor, a hook, another process) is not known.
+  limit   Two observations that read the same do not mean nothing changed between them.
+  limit   Ignored files are not part of a state; their contents were not read.
+  limit   Content is compared by Git blob id over the raw bytes; Git's line-ending or filter conversion, if the repository uses any, is not applied.
+exit=0
+
+===== task status
+"status": "open"

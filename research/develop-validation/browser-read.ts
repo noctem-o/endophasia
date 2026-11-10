@@ -61,13 +61,22 @@ try {
 	writeFileSync(join(out!, "overview-evidence.txt"), evidence);
 	writeFileSync(join(out!, "overview.txt"), await page.eval<string>("document.body.innerText"));
 	writeFileSync(join(out!, "overview-1440.png"), await page.screenshot());
-	// Open the task from the overview: the first element whose text is the task's title.
-	const opened = await page.eval<boolean>(
-		`(() => { const el = [...document.querySelectorAll('button, a, [role=button]')].find((e) => e.innerText.includes(${JSON.stringify(title)})); if (!el) return false; el.click(); return true; })()`,
+	// Open the task through its overview row (not the header's task picker), and wait for the Task view's evidence: the ledger's
+	// criteria. A capture without them is refused, so a picker or an overview can never be saved as task evidence.
+	const taskId = await page.eval<string | null>(
+		`[...document.querySelectorAll('[data-testid=attention-row]')].find((e) => e.innerText.includes(${JSON.stringify(title)}))?.dataset.task ?? null`,
+	);
+	if (taskId === null) throw new Error(`no overview row for ${JSON.stringify(title)}`);
+	await page.click(`[data-testid=attention-row][data-task="${taskId}"]`);
+	await page.waitFor("document.querySelector('[data-testid=task-detail]')");
+	// The plan's checks render beside the task's detail, so wait on the page's text for a per-check verdict line such as
+	// "subtractive-1994: Failed at HEAD" (a summary such as "4 criteria at HEAD" does not count).
+	await page.waitFor(
+		"/[a-z0-9-]+: (Passed|Failed|Not run|Results at HEAD|At HEAD)/.test(document.body.innerText)",
+		20_000,
 	);
 	await page.settled();
-	await new Promise((r) => setTimeout(r, 800));
-	writeFileSync(join(out!, "task.txt"), `opened=${opened}\n${await page.eval<string>("document.body.innerText")}`);
+	writeFileSync(join(out!, "task.txt"), await page.eval<string>("document.body.innerText"));
 	const full = await page.eval<number>("document.documentElement.scrollHeight");
 	await page.resize(1440, Math.min(full, 6000));
 	writeFileSync(join(out!, "task-1440.png"), await page.screenshot());

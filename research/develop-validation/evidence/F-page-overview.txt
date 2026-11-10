@@ -16,7 +16,7 @@ recorded, grouped by source
 
 Reload list
 YOUR WORK (1)
-Roman
+F
 1 task · 1 needs attention
 tasks and evidence · no agent attached
 
@@ -32,32 +32,32 @@ This page only reads. It cannot start, attach to or steer an agent.
 TASKS
 CHANGES
 Read again
-Roman
+F
 ✓ matches
 Task
 none selected
 ▾
 1 needs attention
 repo
-branch main 2411686
+branch master d1f3b95
 clean
-read 18:50:18 (broker clock)
+read 21:41:46 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD 2411686
+checks compared with HEAD d1f3b95
 NEEDS YOUR ATTENTION (1)decisions waiting on you; checks whose latest run failed or was inconclusive
-Roman
+F task
 ○
 Open
 Check failed
 Latest observed node roman.mjs 0 exited with code 2 at the current HEAD.
 One attempt prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 18:50:17 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 21:41:46 (browser clock). Refresh
 
-read 18:50:17 (browser clock) Refresh tasks
+read 21:41:46 (browser clock) Refresh tasks
 
 CONTEXT
 
@@ -71,7 +71,7 @@ Changes in the Git working tree. Git does not show who made them: nothing here a
 
 PROJECT
 name
-Roman
+F
 registered
 /work/F/repo
 launched in

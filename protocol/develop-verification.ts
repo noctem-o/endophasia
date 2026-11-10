@@ -39,7 +39,8 @@ export const ENDO_CHECK_NAME_PATTERN_V0 = /^[a-z][a-z0-9-]{0,31}$/;
 const SHOWN_UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd\u2026]/;
 export const ENDO_PLANNED_ARG_MAX_CHARS_V0 = 400;
 /** Expected output may hold line breaks and tabs, and nothing else the page would replace (a carriage return included). */
-const EXPECTED_UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd]/;
+const EXPECTED_UNSAFE =
+	/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\ufffd]/;
 
 /**
  * What the operator expects a check's command to do: exit with `exitCode` and write exactly `stdout` (as UTF-8, byte for byte, including
@@ -122,8 +123,7 @@ function expectation(v: unknown, what: string): EndoExpectedBehaviourV0 {
 export function validateEndoVerificationPlanV0(value: unknown): EndoVerificationPlanV0 {
 	const r = closed(value, ["checks", "criteria"], "verification");
 	const checks = array(r.checks, ENDO_VERIFICATION_PLAN_LIMITS_V0.maxChecks, "verification.checks").map((c, i) => {
-		const behavioural =
-			typeof c === "object" && c !== null && Object.hasOwn(c, "expect") && !Array.isArray(c);
+		const behavioural = typeof c === "object" && c !== null && Object.hasOwn(c, "expect") && !Array.isArray(c);
 		const x = closed(
 			c,
 			behavioural ? ["name", "argv", "shows", "expect"] : ["name", "argv", "shows"],

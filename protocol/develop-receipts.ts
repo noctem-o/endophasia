@@ -17,7 +17,6 @@
 // operator asks (`--keep-output`, receipt v1, at most `maxKeptStdoutBytes`); a v1 receipt always records the output's SHA-256, which a
 // behavioural check (protocol/develop-verification.ts) compares with the plan's expected output.
 
-
 import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "./develop-attempts.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
@@ -474,7 +473,11 @@ export function validateEndoDevelopReceiptV0(value: unknown): EndoDevelopReceipt
 		"schemaVersion",
 	);
 	const v1 = schemaVersion === ENDO_DEVELOP_RECEIPT_SCHEMA_V1;
-	const output = closed(r.output, v1 ? ["stdoutBytes", "stderrBytes", "stdout"] : ["stdoutBytes", "stderrBytes"], "output");
+	const output = closed(
+		r.output,
+		v1 ? ["stdoutBytes", "stderrBytes", "stdout"] : ["stdoutBytes", "stderrBytes"],
+		"output",
+	);
 	const stdoutBytes = count(output.stdoutBytes, "output.stdoutBytes");
 	if (!checkEndoReceiptArgvV0(check.argv)) return bad("check.argv is not an acceptable argument list");
 	const timeoutMs = count(check.timeoutMs, "check.timeoutMs");

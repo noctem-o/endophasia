@@ -3,6 +3,7 @@
 // conversation, record progress, close, come back. And what must NOT happen: choosing a task sends nothing, changes no session, worktree,
 // status or draft; a mismatch or a damaged file is read-only; a restart makes a session link historical. Set ENDO_SHOTS_DIR to also write
 // screenshots (of these synthetic fixtures; no private text is ever on screen).
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -985,6 +986,155 @@ suite("an attempt with a verification plan: the acceptance ledger in the Task vi
 			await shot(page, `plan-${appearance}-summary-${width}`);
 			// Nothing here ran, sent or changed anything.
 			expect(await statusOf(page)).toBe("open");
+			noAgentTraffic(api);
+			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?|check/.test(r))).toEqual([]);
+			expect(page.seen.problems).toEqual([]);
+		});
+});
+
+// DEVELOP-BEHAVIOUR-001 (docs/designs/develop-behavioural-checks.md): a planned check that declares what the command should DO. The page
+// shows the declaration as the operator's, what the latest receipt at HEAD observed, and, when output was kept, the first line where it
+// differs. The negative control: a receipt that EXITED 0 with the wrong output fails the check. Nothing here runs anything.
+suite("a behavioural check: what was declared, what was observed, and where it differs", () => {
+	const attemptsOf = (root: string) =>
+		new DevelopAttemptsServiceV0(new DevelopTasksStoreV0(root), new DevelopAttemptsStoreV0(root));
+	const refresh = (page: Page) => page.click("[data-testid=tasks-refresh]");
+	const sha = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+	const EXPECTED = "call f\n  args: a, b\n";
+	const BROKEN = "call f\n  args: a, b, <empty>\n";
+	const PLAN = {
+		checks: [
+			{
+				name: "cli",
+				argv: ["node", "bin/parse.mjs", "f(a, b,)"],
+				shows: "a trailing comma adds no argument",
+				expect: { exitCode: 0, stdout: EXPECTED },
+			},
+		],
+		criteria: [{ text: "f(a, b,) parses as f(a, b)", checks: ["cli"] }],
+	};
+	const behaviourOf = (page: Page) =>
+		page.eval<string>("document.querySelector('[data-testid=behaviour]')?.textContent ?? ''");
+
+	for (const [appearance, width, height] of [
+		["instrument", 1440, 900],
+		["field", 1440, 900],
+		["instrument", 390, 844],
+	] as const)
+		it(`fails an exit 0 with the wrong output, points at the line, then passes the fix, in ${appearance} at ${width} px`, async () => {
+			const api = await launch(width, height);
+			const { page } = api;
+			if (appearance === "field") {
+				await page.click("[data-testid=appearance-field]");
+				await page.waitFor("document.querySelector('#develop-workspace').dataset.appearance === 'field'");
+			}
+			await ready(page);
+			await openTab(page);
+			await create(page, "Accept trailing commas", "", "f(a, b,) parses as f(a, b)");
+			const stored = new DevelopTasksStoreV0(api.state.root).read();
+			if (!stored.ok) throw new Error("unreadable");
+			const task = stored.file.tasks[0]!;
+			const attempt = attemptsOf(api.state.root).prepare(task.projectId, task.id, {
+				objective: "Make the parser accept a trailing comma in argument lists.",
+				verification: PLAN,
+			});
+			if (!attempt.ok) throw new Error(attempt.code);
+			const id = attempt.value.id;
+			const receipts = new DevelopReceiptsStoreV0(api.state.root);
+			git(api.state.cwd, "add", "-A");
+			git(api.state.cwd, "commit", "-q", "-m", "trailing commas, first try");
+			const first = await currentOf(api.state.cwd);
+			if (first === null || !first.clean) throw new Error("the demo repository should be clean");
+			const write = (current: EndoReceiptCurrentV0, n: number, out: string, keep: boolean) => {
+				const r = receiptIn(current, id, task.projectId, n, {
+					check: {
+						argv: PLAN.checks[0]!.argv,
+						executable: "/usr/bin/node",
+						realExecutable: "/usr/bin/node",
+						timeoutMs: 600_000,
+					},
+					execution: { kind: "exited", code: 0 },
+				});
+				const bytes = Buffer.byteLength(out);
+				expect(
+					receipts.write({
+						...r,
+						schemaVersion: "endo.develop-receipt.v1",
+						output: {
+							stdoutBytes: bytes,
+							stderrBytes: 0,
+							stdout: keep
+								? { sha256: sha(out), keep: "text", text: out, truncated: false }
+								: { sha256: sha(out), keep: "off" },
+						},
+					}),
+				).toBe("created");
+			};
+
+			// 1. The negative control: the command exited 0, its output kept, and it is not the declared output.
+			write(first, 1, BROKEN, true);
+			await refresh(page);
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 1");
+			await page.click("[data-testid=attempt] summary");
+			await page.waitFor("document.querySelector('[data-testid=behaviour]')?.offsetHeight > 0");
+			expect(await page.eval<string>("document.querySelector('[data-testid=planned-check]').dataset.state")).toBe(
+				"failed",
+			);
+			expect(await page.eval<string>("document.querySelector('[data-testid=criterion]').dataset.state")).toBe(
+				"failed",
+			);
+			// The receipt itself still says what it saw: the command exited 0.
+			expect(await page.text("[data-testid=receipt] .chip-ref")).toBe("Observed check passed");
+			expect(
+				await page.eval<string>("document.querySelector('[data-testid=receipt-behaviour]').dataset.behaviour"),
+			).toBe("failed");
+			let text = await behaviourOf(page);
+			expect(text).toContain("You declared it should: exit 0 and print exactly 20 bytes on standard output");
+			expect(text).toContain("exit 0, 29 bytes; the output differs from the one declared");
+			expect(await page.text("[data-testid=behaviour-diff]")).toBe(
+				'line 2: expected "  args: a, b", observed "  args: a, b, <empty>"',
+			);
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval("document.querySelector('[data-testid=behaviour]').scrollIntoView({ block: 'center' })");
+			await shot(page, `behaviour-${appearance}-failed-${width}`);
+
+			// 2. Another run at the same HEAD, output not kept: still different (by digest), and the page says how to see where.
+			write(first, 2, BROKEN, false);
+			await refresh(page);
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 2");
+			await page.waitFor("document.querySelector('[data-testid=behaviour-not-kept]') !== null");
+			expect(await page.text("[data-testid=behaviour-not-kept]")).toBe(
+				"The output was not kept: run the check again with --keep-output to see where it differs.",
+			);
+			expect(await page.text("[data-testid=planned-command]")).toBe(
+				`endo attempt check --root <store> --attempt ${id} --keep-output -- node bin/parse.mjs 'f(a, b,)'`,
+			);
+			if (appearance === "instrument" && width === 1440)
+				await shot(page, `behaviour-${appearance}-not-kept-${width}`);
+
+			// 3. The fix, committed; a run whose output is the declared one.
+			writeFileSync(join(api.state.cwd, "FIXED"), "yes\n");
+			git(api.state.cwd, "add", "-A");
+			git(api.state.cwd, "commit", "-q", "-m", "trailing commas, fixed");
+			const fixed = await currentOf(api.state.cwd);
+			if (fixed === null || !fixed.clean) throw new Error("the demo repository should be clean");
+			write(fixed, 3, EXPECTED, false);
+			await refresh(page);
+			await page.waitFor("document.querySelectorAll('[data-testid=receipt]').length === 3");
+			await page.waitFor("document.querySelector('[data-testid=behaviour-same]') !== null");
+			expect(await page.eval<string>("document.querySelector('[data-testid=planned-check]').dataset.state")).toBe(
+				"passed",
+			);
+			text = await behaviourOf(page);
+			expect(text).toContain("exit 0, 20 bytes; the output is the one declared");
+			expect(await page.text("[data-testid=planned-other-commit]")).toMatch(/its latest run failed/);
+			for (const t of [text, await page.text("[data-testid=attempt-acceptance]")]) {
+				expect(t).not.toMatch(/\bmet\b|verified|satisfied|correct\b/i);
+				expect(t).not.toContain(api.state.root);
+			}
+			expect(await noOverflow(page)).toBe(true);
+			await page.eval("document.querySelector('[data-testid=behaviour]').scrollIntoView({ block: 'center' })");
+			await shot(page, `behaviour-${appearance}-passed-${width}`);
 			noAgentTraffic(api);
 			expect(page.seen.requests.filter((r) => /attempts\/|attempts\?|check/.test(r))).toEqual([]);
 			expect(page.seen.problems).toEqual([]);

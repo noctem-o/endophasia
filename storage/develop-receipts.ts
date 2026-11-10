@@ -170,7 +170,9 @@ export class DevelopReceiptsStoreV0 {
 /** Kept output that is all of the output has the recorded digest (the one receipt fact the Node-free validator cannot check). */
 export function endoKeptStdoutMatchesV0(receipt: EndoDevelopReceiptV0): boolean {
 	const o = receipt.output.stdout;
-	return o === undefined || o.keep !== "text" || o.truncated || o.sha256 === null || endoSha256HexV0(o.text) === o.sha256;
+	return (
+		o === undefined || o.keep !== "text" || o.truncated || o.sha256 === null || endoSha256HexV0(o.text) === o.sha256
+	);
 }
 
 export const endoSha256HexV0 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");

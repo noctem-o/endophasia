@@ -29,11 +29,11 @@ import {
 	checkEndoReceiptArgvV0,
 	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
 	ENDO_DEVELOP_RECEIPT_SCHEMA_V1,
-	type EndoReceiptStdoutV1,
 	ENDO_RECEIPT_ID_PATTERN_V0,
 	type EndoDevelopReceiptV0,
 	type EndoReceiptCurrentV0,
 	type EndoReceiptRelationV0,
+	type EndoReceiptStdoutV1,
 	endoReceiptRelationV0,
 	endoReceiptVerdictV0,
 	validateEndoDevelopReceiptV0,
@@ -316,9 +316,7 @@ export class DevelopReceiptsServiceV0 {
 				// Kept output at its worst: every byte a control character, which JSON writes as six.
 				stdout: {
 					sha256: null,
-					kept: plan.keepOutput
-						? Buffer.alloc(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes, 1)
-						: null,
+					kept: plan.keepOutput ? Buffer.alloc(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes, 1) : null,
 				},
 				strayProcesses: true,
 				escapedProcess: true,

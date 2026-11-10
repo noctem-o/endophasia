@@ -254,6 +254,19 @@ export function coherent(
 	return r.outcome === ((r.execution as { code: number }).code === 0 ? "passed" : "failed");
 }
 
+/** The protocol's first-difference pointer (endoFirstDifferenceV0), mirrored for the page; a contract test holds the two equal. */
+export function firstDifference(
+	expected: string,
+	observed: string,
+): { line: number; expected: string | null; observed: string | null } | null {
+	if (expected === observed) return null;
+	const a = expected.split("\n");
+	const b = observed.split("\n");
+	for (let i = 0; i < Math.max(a.length, b.length); i += 1)
+		if (a[i] !== b[i]) return { line: i + 1, expected: a[i] ?? null, observed: b[i] ?? null };
+	return { line: a.length, expected: a.at(-1) ?? null, observed: b.at(-1) ?? null };
+}
+
 /** A recorded digest is missing only from an inconclusive receipt (its output was not read whole). */
 export const stdoutCoherent = (r: Pick<EndoDevelopReceiptViewV0, "outcome" | "stdout">): boolean =>
 	!(r.stdout.recorded && r.stdout.sha256 === null && r.outcome !== "inconclusive");
@@ -425,11 +438,7 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV5, "receipts
 		(c: Planned) =>
 		(r: Listed): string =>
 			c.behaviour === null ? r.outcome : behaviourOutcome(r, c.behaviour.expected);
-	const resolves = (
-		x: LedgerReceipt | null,
-		c: Planned,
-		relations: readonly string[],
-	): boolean => {
+	const resolves = (x: LedgerReceipt | null, c: Planned, relations: readonly string[]): boolean => {
 		if (x === null) return true;
 		const r = listed.get(x.receiptId);
 		return (
@@ -461,7 +470,10 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV5, "receipts
 		const relation = c.current === null ? null : listed.get(c.current.receiptId)?.relation;
 		if (!resolves(c.current, c, ["at-head", "at-head-changed"])) return false;
 		if (!resolves(c.otherCommit, c, ["head-differs"])) return false;
-		if (c.behaviour !== null && !behaviourAgrees(c.behaviour, c.current === null ? undefined : listed.get(c.current.receiptId)))
+		if (
+			c.behaviour !== null &&
+			!behaviourAgrees(c.behaviour, c.current === null ? undefined : listed.get(c.current.receiptId))
+		)
 			return false;
 		if ((c.current === null) !== (total === 0)) return false;
 		if (c.runs < total + (c.otherCommit === null ? 0 : 1)) return false;

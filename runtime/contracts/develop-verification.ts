@@ -14,18 +14,18 @@ import {
 	type EndoReceiptOutcomeV0,
 	endoReceiptRelationV0,
 } from "../../protocol/develop-receipts.ts";
-import { endoSha256HexV0 } from "../../storage/develop-receipts.ts";
 import {
 	type EndoAcceptanceLedgerV0,
 	type EndoBehaviourObservedV0,
 	type EndoExpectedBehaviourV0,
-	endoBehaviourOutcomeV0,
 	type EndoLedgerCheckV0,
 	type EndoLedgerReceiptV0,
 	type EndoPlannedCheckStateV0,
 	type EndoVerificationPlanV0,
+	endoBehaviourOutcomeV0,
 	endoCriterionStateV0,
 } from "../../protocol/develop-verification.ts";
+import { endoSha256HexV0 } from "../../storage/develop-receipts.ts";
 import { endoReceiptLaterV0 } from "./develop-attention.ts";
 
 const sameArgv = (a: readonly string[], b: readonly string[]): boolean =>
@@ -50,7 +50,10 @@ const named = (r: EndoDevelopReceiptV0, outcome: EndoReceiptOutcomeV0): EndoLedg
  * page's argv form replaces). It is already within its bound, so nothing is cut.
  */
 export const endoShownOutputV0 = (text: string): string =>
-	text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g, "\ufffd");
+	text.replace(
+		/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g,
+		"\ufffd",
+	);
 
 /** A receipt's output digest as the behaviour rule reads it: null for a v0 receipt (not recorded) or output not read whole. */
 export const endoReceiptStdoutShaV0 = (r: EndoDevelopReceiptV0): string | null => r.output.stdout?.sha256 ?? null;
@@ -109,9 +112,7 @@ export function endoAcceptanceLedgerV0(input: {
 		const base = { name: check.name, runs: all.length };
 		const none = { passed: 0, failed: 0, inconclusive: 0 };
 		const behaviour = (latest: EndoDevelopReceiptV0 | null): EndoLedgerCheckV0["behaviour"] =>
-			expected === null
-				? null
-				: { expected, observed: latest === null ? null : endoBehaviourObservedV0(latest) };
+			expected === null ? null : { expected, observed: latest === null ? null : endoBehaviourObservedV0(latest) };
 		if (current === null)
 			return {
 				...base,

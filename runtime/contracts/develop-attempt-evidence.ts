@@ -147,6 +147,8 @@ export interface EndoAttemptEvidenceCheckV0 {
 	authorization: "before" | "overlapping" | "after" | null;
 	/** The other receipts of the same check (argv, working tree, repository), by outcome. */
 	others: { passed: number; failed: number; inconclusive: number };
+	/** The plan declares this command's behaviour: its outcome here is its exit status only, and the ledger reads it by what it did (v3). */
+	plannedBehaviour: boolean;
 }
 
 export interface EndoAttemptEvidenceV0 {
@@ -284,6 +286,22 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 				: r.startedAtMs < x.authorizedAtMs
 					? "overlapping"
 					: "after";
+	const plan = endoAttemptPlanV0(a);
+	// A behavioural check's receipts are read by the ledger, by what the command did: its exit status alone is not a gap (an expected exit
+	// 2 "failed"), and a pass of it is not one either. Its own gap is `planned-check-not-passed-at-current-head`.
+	const behavioural = (receiptId: string): boolean => {
+		const r = receipts.find((y) => y.id === receiptId);
+		return (
+			r !== undefined &&
+			(plan?.checks.some(
+				(c) =>
+					c.expect !== undefined &&
+					c.argv.length === r.check.argv.length &&
+					c.argv.every((x, i) => x === r.check.argv[i]),
+			) ??
+				false)
+		);
+	};
 	const latest: EndoAttemptEvidenceCheckV0[] = endoLatestChecksV0(receipts, current).map((c) => {
 		const r = receipts.find((y) => y.id === c.receiptId) as EndoDevelopReceiptV0;
 		return {
@@ -298,6 +316,7 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			relationLabel: ENDO_RECEIPT_RELATION_LABELS_V0[c.relation],
 			authorization: order(r),
 			others: c.others,
+			plannedBehaviour: behavioural(c.receiptId),
 		};
 	});
 
@@ -311,14 +330,15 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 			if (!current.clean) found.add("current-tree-changed");
 			const atHead = receipts.filter((r) => AT_HEAD.includes(relationOf.get(r.id) as EndoReceiptRelationV0));
 			if (atHead.length === 0) found.add("no-check-at-current-head");
-			else if (latest.some((c) => AT_HEAD.includes(c.relation) && c.outcome !== "passed"))
+			else if (
+				latest.some((c) => AT_HEAD.includes(c.relation) && c.outcome !== "passed" && !behavioural(c.receiptId))
+			)
 				found.add("check-not-passed-at-current-head");
 			if (latest.some((c) => c.relation === "head-differs")) found.add("stale-check");
 		}
 		if ([...relationOf.values()].some((r) => r === "other-worktree" || r === "other-repository"))
 			found.add("checked-in-another-tree");
 	}
-	const plan = endoAttemptPlanV0(a);
 	// Without readable receipts nothing is compared: every check is unavailable, never "not run".
 	const ledger =
 		plan === null
@@ -495,7 +515,7 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 		`  tree now  [observed] ${e.checks.current === null ? "unavailable" : `${short(e.checks.current.commit)}${e.checks.current.clean ? ", clean" : ", with uncommitted changes"}`}${e.checks.comparedWith === null ? "" : ` (${e.checks.comparedWith})`}`,
 		...e.checks.latest.map(
 			(c) =>
-				`  check     [observed; linked to this attempt by the operator] ${c.command}: ${c.label} at ${short(c.commit)}; ${c.relationLabel}${order[c.authorization ?? "none"]}`,
+				`  check     [observed; linked to this attempt by the operator] ${c.command}: ${c.label} at ${short(c.commit)}; ${c.relationLabel}${order[c.authorization ?? "none"]}${c.plannedBehaviour ? " (exit status only: the plan reads this command by its behaviour, below)" : ""}`,
 		),
 		...(e.checks.problems === 0
 			? []
@@ -505,7 +525,9 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 			: [
 					...e.verification.checks.flatMap((c) => [
 						`  planned   [observed] ${c.name} ${JSON.stringify(c.argv)}: ${c.label}${c.current === null ? "" : ` (${short(c.current.commit)}, latest ${c.current.outcome})`}${c.otherCommit === null ? "" : `; at another commit, ${short(c.otherCommit.commit)}: ${c.otherCommit.outcome}`}`,
-						...(c.behaviour === null ? [] : [`  behaviour [plan: expected; observed] ${endoBehaviourLineV0(c.behaviour)}`]),
+						...(c.behaviour === null
+							? []
+							: [`  behaviour [plan: expected; observed] ${endoBehaviourLineV0(c.behaviour)}`]),
 					]),
 					...e.verification.criteria.map(
 						(c, i) =>

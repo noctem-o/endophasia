@@ -153,9 +153,29 @@ output not kept ([1440](../images/develop-behaviour-instrument-not-kept-1440.png
 *   **The attention overview reads exit status.** Its cross-task list of failed or inconclusive checks does not read plans, so a
     behavioural check that exits 0 with the wrong output shows there as an observed pass (labelled, as everywhere, "Observed check
     passed"). The Task view and `endo attempt evidence` read behaviour. Making attention plan-aware is a follow-up.
+*   **Stray processes make a behavioural check inconclusive.** Where `/proc` is missing (macOS) leftovers cannot be seen, so every
+    behavioural check there is inconclusive: honest, and unusable on macOS until processes can be observed there.
+*   **The page trusts the broker's expected digest.** Its gate checks every behavioural outcome against the listed receipts, but it
+    cannot hash the expected text synchronously, so a broker that sent a wrong `expected.stdoutSha256` would not be caught there.
 *   **An older build** refuses a plan with `expect` (closed keys) and a v1 receipt; it reports them as invalid files, never as passes.
 
-## 8. Tests
+## 8. Independent review
+
+A fresh-context subagent (Claude Code `Agent`, read-only) reviewed the commit adversarially. It found no way to read a pass from output
+not read whole, a timeout or a v0 receipt, and confirmed `--keep-output` never touches the command after `--`. Dispositions:
+
+| Finding (its severity) | Disposition |
+| :-- | :-- |
+| Output of processes still running when the leader exited decided the verdict by timing (`echo ok; (sleep .05; echo EXTRA) &` passed or failed by the sleep) (medium) | **Fixed.** Strays stopped, or not observable, make a behavioural outcome `inconclusive` (protocol rule and page copy; the page reads it from the receipt's limitations). Tests over every combination. |
+| The pre-run size projection used a null digest and could under-count reasons, so a check at the 128 KiB edge could run and then fail to record (low) | **Fixed.** It projects a 64-hex digest and must fit with 1 KiB to spare. |
+| `endo attempt receipt` printed kept output raw; JSON escapes C0 but not C1 or bidi characters (low-medium) | **Fixed.** The terminal copy is made display-safe like the page's; the file keeps the bytes. No dedicated test. |
+| The page's gate trusts the expected digest (low-medium) | **Documented** in §7. |
+| Every receipt's output digest went to the page, behavioural or not (low) | **Fixed.** Only a behavioural check's receipts carry `stdout`; the gate refuses a digest on any other receipt and a behavioural receipt without one. Test. |
+| The copy command includes `--keep-output` by default (low) | **Kept, deliberately**: showing where the output differs is the point of the row, and the sentence on what it stores is always shown with the command. |
+| `--keep-output` given as a flag's value was removed, shifting the flags (low) | **Fixed.** It is recognised only where a flag can stand. No dedicated test. |
+| A stale "64 KiB" comment (nit) | **Fixed.** |
+
+## 9. Tests
 
 `tests/develop-behaviour.test.ts` (14): the plan's expectation invariants and their refusals; the brief's wording; v1 receipt invariants
 (and v0 still read); the store refusing kept text whose digest is not the recorded one; UTF-8 cut at a character boundary and `not-text`;
@@ -165,7 +185,7 @@ views each refused by the page's gate. `tests/endo-studio-tasks-browser.test.ts`
 Instrument at 390): the real built page shows the negative control as failed while the receipt says it exited 0, the not-kept state, and
 the fix.
 
-## 9. Next
+## 10. Next
 
 1.  A second behaviour shape, chosen when needed: a stdin fixture (operator-supplied file, digested into the receipt), or a server probe
     (start, request, stop), which is where a separate evidence-artifact store starts to pay.

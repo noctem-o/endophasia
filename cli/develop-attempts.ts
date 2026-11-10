@@ -50,6 +50,7 @@ import {
 	type DevelopReceiptsReadResultV0,
 	DevelopReceiptsServiceV0,
 } from "../runtime/contracts/develop-receipts.ts";
+import { endoShownOutputV0 } from "../runtime/contracts/develop-verification.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
@@ -344,10 +345,21 @@ const receiptSummary = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRela
 	relationLabel: ENDO_RECEIPT_RELATION_LABELS_V0[relation],
 });
 
+/**
+ * A receipt for the terminal: kept output is the checked program's own text, so its control, separator and direction characters are
+ * replaced (as on the page) before it is printed; the file keeps it exactly. JSON escapes C0 controls but not C1 or bidi marks.
+ */
+const terminalSafe = (receipt: EndoDevelopReceiptV0): EndoDevelopReceiptV0 => {
+	const out = receipt.output.stdout;
+	return out?.keep !== "text"
+		? receipt
+		: { ...receipt, output: { ...receipt.output, stdout: { ...out, text: endoShownOutputV0(out.text) } } };
+};
+
 const receiptShown = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRelationV0) => ({
 	...receiptSummary(receipt, relation),
 	limitations: receipt.limitations.map((l) => ENDO_RECEIPT_LIMITATION_TEXT_V0[l]),
-	receipt,
+	receipt: terminalSafe(receipt),
 });
 
 /** Exit codes of `check`: what was observed, or that nothing ran. */
@@ -366,15 +378,22 @@ async function check(argv: readonly string[]): Promise<void> {
 	const command = argv.slice(split + 1);
 	if (command.length === 0) throw new TypeError(`endo attempt check needs an executable after --\n${USAGE}`);
 	// `--keep-output` takes no value, and only BEFORE `--`: what follows `--` is the operator's command, exactly.
+	// Only where a flag can stand: never as the value of a flag that takes one (`--cwd --keep-output` is a directory named so).
 	const options = argv.slice(0, split);
-	const keepOutput = options.includes("--keep-output");
-	if (options.filter((a) => a === "--keep-output").length > 1)
-		throw new TypeError("--keep-output was given more than once");
-	const { root, flags } = flagsOf(
-		options.filter((a) => a !== "--keep-output"),
-		["--attempt", "--cwd", "--timeout"],
-		USAGE,
-	);
+	const VALUED = new Set(["--attempt", "--cwd", "--timeout", "--root"]);
+	const rest: string[] = [];
+	let keepOutput = false;
+	for (let i = 0; i < options.length; i += 1) {
+		const arg = options[i] as string;
+		if (arg === "--keep-output") {
+			if (keepOutput) throw new TypeError("--keep-output was given more than once");
+			keepOutput = true;
+			continue;
+		}
+		rest.push(arg);
+		if (VALUED.has(arg) && i + 1 < options.length) rest.push(options[++i] as string);
+	}
+	const { root, flags } = flagsOf(rest, ["--attempt", "--cwd", "--timeout"], USAGE);
 	const timeout = flags.get("--timeout");
 	if (timeout !== undefined && !/^[1-9][0-9]{0,5}$/.test(timeout))
 		throw new TypeError("--timeout takes whole seconds");

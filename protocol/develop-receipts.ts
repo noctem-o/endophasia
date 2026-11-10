@@ -577,8 +577,9 @@ export interface EndoDevelopReceiptViewV0 {
 	limitations: EndoReceiptLimitationV0[];
 	relation: EndoReceiptRelationV0;
 	/**
-	 * The standard output's digest and size (attempts view v5): null for a v0 receipt (output not recorded) or output not read whole. The
-	 * output itself is never in this list; a behavioural check shows its latest kept output in the ledger.
+	 * For a receipt of a behavioural check only (attempts view v5), the standard output's digest and size: `sha256` null for a v0 receipt
+	 * (not recorded) or output not read whole. Null for every other receipt: its digest is not served. The output itself is never in this
+	 * list; a behavioural check shows its latest kept output in the ledger.
 	 */
-	stdout: { sha256: string | null; bytes: number; recorded: boolean };
+	stdout: { sha256: string | null; bytes: number; recorded: boolean } | null;
 }

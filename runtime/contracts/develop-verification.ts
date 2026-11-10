@@ -90,7 +90,12 @@ function outcomeFor(expect: (EndoExpectedBehaviourV0 & { stdoutSha256: string })
 		expect === null
 			? r.outcome
 			: endoBehaviourOutcomeV0(
-					{ outcome: r.outcome, execution: r.execution, stdoutSha256: endoReceiptStdoutShaV0(r) },
+					{
+						outcome: r.outcome,
+						execution: r.execution,
+						stdoutSha256: endoReceiptStdoutShaV0(r),
+						strays: r.strayProcesses !== false,
+					},
 					expect,
 				);
 }

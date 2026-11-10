@@ -315,7 +315,7 @@ export class DevelopReceiptsServiceV0 {
 				output: { stdoutBytes: Number.MAX_SAFE_INTEGER, stderrBytes: Number.MAX_SAFE_INTEGER },
 				// Kept output at its worst: every byte a control character, which JSON writes as six.
 				stdout: {
-					sha256: null,
+					sha256: "f".repeat(64),
 					kept: plan.keepOutput ? Buffer.alloc(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes, 1) : null,
 				},
 				strayProcesses: true,
@@ -331,7 +331,10 @@ export class DevelopReceiptsServiceV0 {
 		} catch {
 			return refuse("unrecordable");
 		}
-		if (DevelopReceiptsStoreV0.encode(largest) === null) return refuse("unrecordable");
+		// The projection cannot hold every reason at once (an observed "after" contradicts some of them): it must fit with room for them.
+		const projected = DevelopReceiptsStoreV0.encode(largest);
+		if (projected === null || projected.length + 1024 > ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxFileBytes)
+			return refuse("unrecordable");
 		return { ok: true, plan };
 	}
 

@@ -273,14 +273,26 @@ export const ENDO_PLANNED_CHECK_LABELS_V0: Readonly<Record<EndoPlannedCheckState
  * How a behavioural check reads one receipt, by one rule (the page's gate re-derives it):
  * - the receipt is inconclusive: inconclusive (it says why);
  * - its output's digest is not recorded (a v0 receipt) or not whole: inconclusive, since nothing can be compared;
+ * - processes of the check were still running when it exited, or that could not be seen (`strays`): inconclusive, since they were
+ *   stopped and what they would have printed is unknown (review: the verdict would otherwise depend on timing);
  * - its exit code is the expected one and its output's SHA-256 is the expected output's: passed;
  * - otherwise: failed, whatever its exit status (a command that exits 0 with the wrong output fails the check).
  */
 export function endoBehaviourOutcomeV0(
-	receipt: { outcome: EndoReceiptOutcomeV0; execution: EndoReceiptExecutionV0; stdoutSha256: string | null },
+	receipt: {
+		outcome: EndoReceiptOutcomeV0;
+		execution: EndoReceiptExecutionV0;
+		stdoutSha256: string | null;
+		strays: boolean;
+	},
 	expected: { exitCode: number; stdoutSha256: string },
 ): EndoReceiptOutcomeV0 {
-	if (receipt.outcome === "inconclusive" || receipt.stdoutSha256 === null || receipt.execution.kind !== "exited")
+	if (
+		receipt.outcome === "inconclusive" ||
+		receipt.stdoutSha256 === null ||
+		receipt.strays ||
+		receipt.execution.kind !== "exited"
+	)
 		return "inconclusive";
 	return receipt.execution.code === expected.exitCode && receipt.stdoutSha256 === expected.stdoutSha256
 		? "passed"

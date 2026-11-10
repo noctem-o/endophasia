@@ -151,11 +151,19 @@ export const endoShownTextV0 = (text: string, max: number): string => {
  * read (for the ledger), null when the directory could not be read.
  */
 function receiptsOf(
-	attemptId: string,
+	attempt: EndoDevelopAttemptV0,
 	receipts: { store: DevelopReceiptsStoreV0; current: EndoReceiptCurrentV0 | null } | null,
 ): { view: EndoDevelopAttemptViewV5["receipts"]; records: EndoDevelopReceiptV0[] | null } {
 	if (receipts === null) return { view: { state: "ready", list: [], problems: 0 }, records: null };
+	const attemptId = attempt.id;
 	const read = receipts.store.read(attemptId);
+	// Only a behavioural check's receipts carry their output digest to the page: a digest of short output (a PIN, a yes/no) can be
+	// guessed back, and no other check needs it (review).
+	const plan = endoAttemptPlanV0(attempt);
+	const behavioural = (argv: readonly string[]): boolean =>
+		plan?.checks.some(
+			(c) => c.expect !== undefined && c.argv.length === argv.length && c.argv.every((x, i) => x === argv[i]),
+		) ?? false;
 	if (!read.ok) return { view: { state: "unreadable", list: [], problems: 0 }, records: null };
 	const view: EndoDevelopAttemptViewV5["receipts"] = {
 		state: "ready",
@@ -171,11 +179,13 @@ function receiptsOf(
 			reasons: [...r.reasons],
 			limitations: [...r.limitations],
 			relation: endoReceiptRelationV0(r, receipts.current),
-			stdout: {
-				sha256: endoReceiptStdoutShaV0(r),
-				bytes: r.output.stdoutBytes,
-				recorded: r.output.stdout !== undefined,
-			},
+			stdout: behavioural(r.check.argv)
+				? {
+						sha256: endoReceiptStdoutShaV0(r),
+						bytes: r.output.stdoutBytes,
+						recorded: r.output.stdout !== undefined,
+					}
+				: null,
 		})),
 		problems: read.problems.length,
 	};
@@ -413,7 +423,7 @@ export class DevelopAttemptsServiceV0 {
 				.filter((e) => e.attempt.projectId === projectId && e.attempt.taskId === taskId)
 				.map((e) => {
 					const r = this.#report(e, file, () => ({ state: "unavailable" }));
-					const seen = receiptsOf(e.attempt.id, receipts);
+					const seen = receiptsOf(e.attempt, receipts);
 					return {
 						id: e.attempt.id,
 						state: r.state,

@@ -237,10 +237,12 @@ const receipt: Check = (v) =>
 		reasons: (x) => list(one(...keysOf(RECEIPT_REASON_TEXT)))(x) && distinct(x),
 		limitations: (x) => list(one(...keysOf(RECEIPT_LIMITATION_TEXT)))(x) && distinct(x),
 		relation: one(...keysOf(RECEIPT_RELATION_LABELS)),
-		stdout: (x) =>
-			shape(x, { sha256: eitherNull(sha256), bytes: count, recorded: (b) => typeof b === "boolean" }) &&
-			// Not recorded (a v0 receipt) has no digest; a digest missing from a recorded one only on an inconclusive receipt.
-			((x as { recorded: boolean }).recorded || (x as { sha256: unknown }).sha256 === null),
+		stdout: eitherNull(
+			(x) =>
+				shape(x, { sha256: eitherNull(sha256), bytes: count, recorded: (b) => typeof b === "boolean" }) &&
+				// Not recorded (a v0 receipt) has no digest; a digest missing from a recorded one only on an inconclusive receipt.
+				((x as { recorded: boolean }).recorded || (x as { sha256: unknown }).sha256 === null),
+		),
 	});
 
 /** Whether a receipt's outcome is the one its execution and reasons imply. */
@@ -269,15 +271,19 @@ export function firstDifference(
 
 /** A recorded digest is missing only from an inconclusive receipt (its output was not read whole). */
 export const stdoutCoherent = (r: Pick<EndoDevelopReceiptViewV0, "outcome" | "stdout">): boolean =>
-	!(r.stdout.recorded && r.stdout.sha256 === null && r.outcome !== "inconclusive");
+	r.stdout === null || !(r.stdout.recorded && r.stdout.sha256 === null && r.outcome !== "inconclusive");
 
 /** The protocol's behaviour rule (endoBehaviourOutcomeV0), mirrored; a contract test holds the two equal. */
 export function behaviourOutcome(
-	r: Pick<EndoDevelopReceiptViewV0, "outcome" | "execution" | "stdout">,
+	r: Pick<EndoDevelopReceiptViewV0, "outcome" | "execution" | "stdout" | "limitations">,
 	expected: { exitCode: number; stdoutSha256: string },
 ): EndoReceiptOutcomeV0 {
-	if (r.outcome === "inconclusive" || r.stdout.sha256 === null || r.execution.kind !== "exited") return "inconclusive";
-	return r.execution.code === expected.exitCode && r.stdout.sha256 === expected.stdoutSha256 ? "passed" : "failed";
+	// Stray processes, stopped or not observable, are in the receipt's limitations (the protocol re-derives them from the facts).
+	const strays =
+		r.limitations.includes("stray-processes-stopped") || r.limitations.includes("stray-processes-not-observable");
+	const sha = r.stdout?.sha256 ?? null;
+	if (r.outcome === "inconclusive" || sha === null || strays || r.execution.kind !== "exited") return "inconclusive";
+	return r.execution.code === expected.exitCode && sha === expected.stdoutSha256 ? "passed" : "failed";
 }
 
 const execution_: Check = (v) =>
@@ -456,6 +462,11 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV5, "receipts
 	const ofCheck = (argv: readonly string[]) => a.receipts.list.filter((r) => sameList(r.argv, argv));
 	if (v.unplanned !== a.receipts.list.filter((r) => !v.checks.some((c) => sameList(r.argv, c.argv))).length)
 		return false;
+	// A digest is served for exactly the receipts of behavioural checks: present on each of theirs, absent on every other.
+	for (const r of a.receipts.list) {
+		const planned = v.checks.find((c) => sameList(c.argv, r.argv));
+		if ((r.stdout !== null) !== (planned !== undefined && planned.behaviour !== null)) return false;
+	}
 	for (const c of v.checks) {
 		const mine = ofCheck(c.argv);
 		if (c.runs !== mine.length) return false;
@@ -520,6 +531,7 @@ function behaviourAgrees(
 	return (
 		o.receiptId === r.id &&
 		o.exitCode === (r.execution.kind === "exited" ? r.execution.code : null) &&
+		r.stdout !== null &&
 		o.stdoutBytes === r.stdout.bytes &&
 		o.stdoutSha256 === r.stdout.sha256 &&
 		(o.kept.state === "not-recorded") === !r.stdout.recorded
@@ -583,6 +595,8 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV5 | null {
 		if (new Set(a.receipts.list.map((r) => r.id)).size !== a.receipts.list.length) return null;
 		if (!a.receipts.list.every(coherent)) return null;
 		if (!a.receipts.list.every(stdoutCoherent)) return null;
+		// Without a plan nothing is behavioural, so no receipt carries a digest.
+		if (a.verification === null && a.receipts.list.some((r) => r.stdout !== null)) return null;
 		if (!a.receipts.list.every((r) => relationAgrees(r, view.head))) return null;
 		if (a.execution !== null && !executionCoherent(a.execution)) return null;
 		if (!verificationCoherent(a)) return null;

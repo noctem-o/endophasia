@@ -358,17 +358,25 @@ describe("one rule reads a receipt against an expected behaviour", () => {
 	const E = { exitCode: 0, stdoutSha256: sha("14\n") };
 	it("passes only the expected exit code with the expected output; exit 0 with the wrong output FAILS", () => {
 		const r = (outcome: EndoReceiptOutcomeV0, execution: EndoReceiptExecutionV0, stdoutSha256: string | null) =>
-			endoBehaviourOutcomeV0({ outcome, execution, stdoutSha256 }, E);
+			endoBehaviourOutcomeV0({ outcome, execution, stdoutSha256, strays: false }, E);
 		expect(r("passed", { kind: "exited", code: 0 }, sha("14\n"))).toBe("passed");
 		expect(r("passed", { kind: "exited", code: 0 }, sha("20\n"))).toBe("failed");
 		expect(r("failed", { kind: "exited", code: 1 }, sha("14\n"))).toBe("failed");
 		expect(r("passed", { kind: "exited", code: 0 }, null)).toBe("inconclusive");
 		expect(r("inconclusive", { kind: "exited", code: 0 }, sha("14\n"))).toBe("inconclusive");
 		expect(r("inconclusive", { kind: "timed-out" }, null)).toBe("inconclusive");
+		// Processes of the check were still running when it exited (or that could not be seen): they were stopped, and what they would
+		// have printed is unknown, so the same program could pass or fail by timing. Not compared (review).
+		expect(
+			endoBehaviourOutcomeV0(
+				{ outcome: "passed", execution: { kind: "exited", code: 0 }, stdoutSha256: sha("14\n"), strays: true },
+				E,
+			),
+		).toBe("inconclusive");
 		// An expected failure: exiting 2 with the expected (empty) output passes the behaviour, though the receipt "failed".
 		expect(
 			endoBehaviourOutcomeV0(
-				{ outcome: "failed", execution: { kind: "exited", code: 2 }, stdoutSha256: sha("") },
+				{ outcome: "failed", execution: { kind: "exited", code: 2 }, stdoutSha256: sha(""), strays: false },
 				{ exitCode: 2, stdoutSha256: sha("") },
 			),
 		).toBe("passed");
@@ -385,14 +393,23 @@ describe("one rule reads a receipt against an expected behaviour", () => {
 		for (const outcome of ["passed", "failed", "inconclusive"] as const)
 			for (const execution of executions)
 				for (const digest of [sha("14\n"), sha("20\n"), null])
-					for (const expected of [E, { exitCode: 2, stdoutSha256: sha("20\n") }]) {
-						const protocol = endoBehaviourOutcomeV0({ outcome, execution, stdoutSha256: digest }, expected);
-						const page = behaviourOutcome(
-							{ outcome, execution, stdout: { sha256: digest, bytes: 3, recorded: true } },
-							expected,
-						);
-						expect(page, JSON.stringify([outcome, execution, digest, expected])).toBe(protocol);
-					}
+					for (const expected of [E, { exitCode: 2, stdoutSha256: sha("20\n") }])
+						for (const strays of [false, true]) {
+							const protocol = endoBehaviourOutcomeV0(
+								{ outcome, execution, stdoutSha256: digest, strays },
+								expected,
+							);
+							const page = behaviourOutcome(
+								{
+									outcome,
+									execution,
+									stdout: { sha256: digest, bytes: 3, recorded: true },
+									limitations: strays ? ["stray-processes-stopped"] : [],
+								},
+								expected,
+							);
+							expect(page, JSON.stringify([outcome, execution, digest, expected, strays])).toBe(protocol);
+						}
 	});
 
 	it("points at the first differing line, and never decides anything", () => {
@@ -614,7 +631,11 @@ describe.skipIf(!haveGit)(
 				],
 				[
 					"no digest on a pass",
-					(v) => Object.assign(v.attempts[0]!.receipts.list.at(-2)!.stdout, { sha256: null }),
+					(v) => Object.assign(v.attempts[0]!.receipts.list.at(-2)!.stdout as object, { sha256: null }),
+				],
+				[
+					"a behavioural receipt without its digest",
+					(v) => Object.assign(v.attempts[0]!.receipts.list[0]!, { stdout: null }),
 				],
 				[
 					"an observation with no receipt at HEAD",

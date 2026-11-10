@@ -554,11 +554,8 @@ function viewWith(
 				reasons: [...r.reasons],
 				limitations: [...r.limitations],
 				relation: endoReceiptRelationV0(r, current),
-				stdout: {
-					sha256: r.output.stdout?.sha256 ?? null,
-					bytes: r.output.stdoutBytes,
-					recorded: r.output.stdout !== undefined,
-				},
+				// No check of this plan declares a behaviour: no digest is served.
+				stdout: null,
 			})),
 			problems: 0,
 		},

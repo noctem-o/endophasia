@@ -1126,8 +1126,8 @@ describe.skipIf(!haveGit)("the workbench's view of receipts", () => {
 					reasons: [],
 					limitations: r.limitations,
 					relation: "at-head",
-					// v1: the output's digest and size are shown; the output itself never is in this list.
-					stdout: { sha256: r.output.stdout?.sha256 ?? null, bytes: r.output.stdoutBytes, recorded: true },
+					// Not a behavioural check: its output's digest is not served (v5), and the output never is.
+					stdout: null,
 				},
 			],
 		});

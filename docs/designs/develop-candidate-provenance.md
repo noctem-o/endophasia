@@ -215,6 +215,11 @@ what it does not establish ([1440](../images/develop-provenance-details-1440.png
 *   **Pi's settle is the run's end.** Pi reports no run id; the first run after the send is taken as its run, as the execution reading does.
 *   **The before-send observation adds up to 15 s** between approval and send for a very large tree (typically well under a second).
 *   **An older build reading a newer store** shows no provenance; it does not read `develop/observations/`.
+*   **Not an atomic snapshot.** Status is read first, then each listed file. A path that is clean when status runs and changes before
+    it is read is taken from HEAD; a same-size rewrite within one file-timestamp tick can pass the before/after stamp check. Both are
+    narrow; neither can be closed without a filesystem snapshot.
+*   **Records are not authenticated.** The validator re-derives `complete` and `digest`, but `truncated`, the flags and the changes are as
+    written: anyone who can write the store can write a convincing observation (as for receipts).
 *   **Not exercised against real Pi** in this PR (the fake Pi and the stand-in session only); the observation does not depend on what Pi
     does beyond the two events it already reports.
 
@@ -224,3 +229,20 @@ what it does not establish ([1440](../images/develop-provenance-details-1440.png
     attempt was sent (the next PR, stacked on this one).
 2.  `endo attempt evidence` v3 with the provenance section (the CLI has `endo attempt provenance` for now).
 3.  A declared candidate (the operator names the commit under review), shown beside the observed and checked ones, never merged with them.
+
+## 12. Independent review
+
+A fresh-context subagent (Claude Code `Agent`, general-purpose, read-only, no conversation history) reviewed this PR adversarially after
+it was opened. It wrote real-Git reproductions for its two strongest findings. Dispositions:
+
+| Finding (its severity) | Disposition |
+| :-- | :-- |
+| A path that is not UTF-8 is decoded lossily in `diff-tree`/`ls-tree` output; the decoded name matches nothing in either commit, so two commits that differ there read **`same`** (high) | **Fixed.** Each path's bytes must survive the decode; otherwise the comparison is `not-compared` with the new reason `path-not-text`. Test: a `caf\xe9.txt` changed between two commits. |
+| A parent directory replaced by a link made the observer read a file **outside** the working tree and record its blob id (medium) | **Fixed.** Every parent is `lstat`ed before and after the read: a link or non-directory parent means the path is `absent` (Git does not follow it); a parent that changed during the read means `not-read`. Test: `dir -> outside`. |
+| A send whose answer was unknown (a timeout) left the run watch armed, so a later, unrelated run could be recorded as this attempt's `after-run` (medium) | **Fixed.** Every send replaces the watch (an ordinary prompt clears an attempt's), and an unknown answer drops a watch whose run has not started. Test: unknown answer, then another run. |
+| "The same content" on the page did not say ignored files are left out (low-medium) | **Fixed.** Each "same content" phrase says "(ignored files are not compared)". |
+| An observation over its 512 KiB file bound failed to write and vanished (low) | **Fixed.** The observer budgets the record's paths; past it the state is truncated (incomplete, recorded and shown). |
+| A same-size rewrite within a timestamp tick; the snapshot is not atomic (low) | **Documented** in §10; not closable without a filesystem snapshot. |
+| The validator does not authenticate `truncated`/flags; the digest comment overclaimed (low) | **Documented** in §10 (as for receipts: an unsigned local record); the comment now says what the digest covers and that comparisons never use it. |
+
+Each of the three fixes' tests was run against the unfixed sources: all three failed, and pass with the fixes.

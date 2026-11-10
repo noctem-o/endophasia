@@ -209,7 +209,7 @@ export function Provenance({
 								<span className="dim">{headWords(p.head)};</span>{" "}
 								<Relation
 									comparison={p.span}
-									same="the same content at every path either lists"
+									same="the same content at every path either lists (ignored files are not compared)"
 									different="between them"
 									testid="provenance-span-relation"
 								/>
@@ -230,7 +230,7 @@ export function Provenance({
 							) : null}
 							<Relation
 								comparison={p.now.comparison}
-								same={`the same content as ${latestName}`}
+								same={`the same content as ${latestName} (ignored files are not compared)`}
 								different={`from ${latestName}`}
 								testid="provenance-now-relation"
 							/>
@@ -249,7 +249,7 @@ export function Provenance({
 									<span className="dim">({plural(c.receipts, "receipt", "receipts")})</span>:{" "}
 									<Relation
 										comparison={c.comparison}
-										same={`the same content as ${latestName}`}
+										same={`the same content as ${latestName} (ignored files are not compared)`}
 										different={`from ${latestName}`}
 										testid="provenance-checked-relation"
 									/>

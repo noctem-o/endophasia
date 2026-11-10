@@ -45,12 +45,56 @@ export function gitBlobIdV0(bytes: Buffer, length: 40 | 64): string {
 		.digest("hex");
 }
 
+/** The bytes an observation's changes may take in its file, and the most one change's fields other than its path take (a sha256 id). */
+const RECORD_BUDGET = ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxFileRecordBytes - 64 * 1024;
+const PER_CHANGE = 256;
+
 interface Budget {
 	left: number;
 }
 
-/** What the working tree holds at `path` (under `root`), as Git would store it, or why it was not read. Never follows a link. */
+/**
+ * The parent directories of `path` under `root`, each as `lstat` sees it: their identities when every one is a real directory, "absent"
+ * when one is missing, a link or not a directory (Git does not follow a link to a directory: nothing under it is in the working tree), or
+ * null when one cannot be read.
+ */
+async function parentsOf(root: string, path: string): Promise<string | "absent" | null> {
+	const parts = path.split("/").slice(0, -1);
+	const ids: string[] = [];
+	for (let i = 1; i <= parts.length; i += 1) {
+		try {
+			const s = await lstat(join(root, ...parts.slice(0, i)), { bigint: false });
+			if (s.isSymbolicLink() || !s.isDirectory()) return "absent";
+			ids.push(`${s.dev}:${s.ino}`);
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			return code === "ENOENT" || code === "ENOTDIR" ? "absent" : null;
+		}
+	}
+	return ids.join("/");
+}
+
+/**
+ * What the working tree holds at `path` (under `root`), as Git would store it, or why it was not read. Never follows a link: not the last
+ * component (O_NOFOLLOW, lstat) and not a parent directory (each is lstat'ed before and after the read, and must be the same directory).
+ */
 async function contentAt(root: string, path: string, length: 40 | 64, budget: Budget): Promise<EndoObservedContentV0> {
+	const notRead = (why: EndoNotReadV0): EndoObservedContentV0 => ({ kind: "not-read", why });
+	const parents = await parentsOf(root, path);
+	if (parents === "absent") return { kind: "absent" };
+	if (parents === null) return notRead("unreadable");
+	const read = await contentBelow(root, path, length, budget);
+	// A parent swapped for a link (or another directory) while the file was read: what was read may not be this path's.
+	if (read.kind !== "absent" && (await parentsOf(root, path)) !== parents) return notRead("changing");
+	return read;
+}
+
+async function contentBelow(
+	root: string,
+	path: string,
+	length: 40 | 64,
+	budget: Budget,
+): Promise<EndoObservedContentV0> {
 	const full = join(root, path);
 	const notRead = (why: EndoNotReadV0): EndoObservedContentV0 => ({ kind: "not-read", why });
 	let before: Awaited<ReturnType<typeof lstat>>;
@@ -133,6 +177,17 @@ export async function observeEndoStateV0(
 		truncated = true;
 		paths.length = ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxChanges;
 	}
+	// The record must fit its file: each change costs its path as JSON plus at most PER_CHANGE bytes of fixed fields. Past the budget the
+	// state is truncated (incomplete, recorded and shown) rather than an observation that could not be written at all.
+	let recordBytes = 0;
+	for (let i = 0; i < paths.length; i += 1) {
+		recordBytes += Buffer.byteLength(JSON.stringify(paths[i])) + PER_CHANGE;
+		if (recordBytes > RECORD_BUDGET) {
+			truncated = true;
+			paths.length = i;
+			break;
+		}
+	}
 	const budget: Budget = { left: ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxReadBytes };
 	const changes: EndoObservedChangeV0[] = [];
 	for (const path of paths) {
@@ -205,6 +260,7 @@ export async function compareEndoStatesV0(
 	if (!a.complete || !b.complete) return not("incomplete");
 	const committed = await observer.changedPaths(worktree, a.commit, b.commit);
 	if (committed === null) return not("commit-unavailable");
+	if (committed.notText === true) return not("path-not-text");
 	if (committed.cut) return not("too-many-paths");
 	const overlayA = new Map(a.changes.map((c) => [c.path, c.content]));
 	const overlayB = new Map(b.changes.map((c) => [c.path, c.content]));
@@ -217,9 +273,10 @@ export async function compareEndoStatesV0(
 	const treeB =
 		needB.length === 0
 			? new Map()
-			: a.commit === b.commit && treeA !== null && needB.every((p) => treeA.has(p))
+			: a.commit === b.commit && treeA !== null && treeA !== "not-text" && needB.every((p) => treeA.has(p))
 				? treeA
 				: await observer.treeEntries(worktree, b.commit, needB);
+	if (treeA === "not-text" || treeB === "not-text") return not("path-not-text");
 	if (treeA === null || treeB === null) return not("commit-unavailable");
 	const differing: { path: string; change: EndoPathChangeV0 }[] = [];
 	for (const path of paths) {

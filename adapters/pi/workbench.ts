@@ -857,18 +857,26 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		}
 		const text = p.message as string;
 		p.message = null; // sent from here on: the broker keeps no copy
-		// The run that follows this send is watched for its end, to observe the tree then (only the next run started after it).
-		if (p.attempt !== null && p.attemptBound && this.#o.provenance !== undefined)
-			this.#afterRun = {
-				attemptId: p.attempt.attemptId,
-				binding: { proposalId: p.view.proposalId, authorizationEventId: authorized.id },
-				started: false,
-			};
+		// The run that follows this send is watched for its end, to observe the tree then (only the next run started after it). Every send
+		// replaces the watch, an ordinary prompt included: a watch left by an earlier attempt's send must never credit this send's run to it.
+		this.#afterRun =
+			p.attempt !== null && p.attemptBound && this.#o.provenance !== undefined
+				? {
+						attemptId: p.attempt.attemptId,
+						binding: { proposalId: p.view.proposalId, authorizationEventId: authorized.id },
+						started: false,
+					}
+				: null;
+		/** The answer is unknown: a run that has not started yet may never be this send's, so it is not watched (the reading says less). */
+		const forgetUnstarted = (): void => {
+			if (this.#afterRun?.binding.proposalId === p.view.proposalId && !this.#afterRun.started) this.#afterRun = null;
+		};
 		try {
 			const disposition = await session.prompt(text);
 			if (!(ENDO_WORKBENCH_DISPOSITIONS_V0 as readonly string[]).includes(disposition)) {
 				// Pi answered, in a form this version does not know: not an acceptance, and not a refusal either.
 				p.view = { ...p.view, state: "unknown" };
+				forgetUnstarted();
 				return;
 			}
 			p.view = { ...p.view, state: "accepted", disposition };
@@ -888,7 +896,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				// Pi refused it: no run follows this send.
 				if (this.#afterRun?.binding.proposalId === p.view.proposalId) this.#afterRun = null;
 				settle("runtime-refused", dispatched.id);
-			} else p.view = { ...p.view, state: "unknown" };
+			} else {
+				p.view = { ...p.view, state: "unknown" };
+				forgetUnstarted();
+			}
 		}
 	}
 

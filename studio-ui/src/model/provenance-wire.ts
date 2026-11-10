@@ -41,6 +41,7 @@ export const NOT_COMPARED_TEXT: Readonly<Record<EndoNotComparedV0, string>> = {
 	incomplete: "one of the two states was not fully read (too many changes, a file not read, or hidden index entries)",
 	"other-repository": "the two were observed in different repositories",
 	"commit-unavailable": "Git no longer has one of the commits",
+	"path-not-text": "a path that differs between the commits is not UTF-8 text, so it cannot be compared exactly",
 	"too-many-paths": "too many paths differ to compare",
 	"git-failed": "Git could not answer",
 	unavailable: "one of the two could not be observed",

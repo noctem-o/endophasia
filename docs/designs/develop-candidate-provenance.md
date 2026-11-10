@@ -260,3 +260,10 @@ from the code and fixed in one push:
 | A `workbench-closing` observation framed as "when the run had ended" (P2) | The note `run-end-not-observed`, and the frame's words now say "after the run that followed (when it ended, or as the workbench closed)". |
 | The workspace read receipts twice; a check finishing in between put a commit in `checked` that the listed receipts lacked, and the page refused the whole answer (P2) | Provenance uses only the receipts the view already lists. (No dedicated test: the fix is the one filter.) |
 | Two operator observations made at once produced a frame the page's gate refuses (P2) | The end is the latest operator observation that began after the first ended, or none. Test. |
+
+Codex's third review (of the push above) found two more, both P2, both fixed in one further push:
+
+| Finding | Fix |
+| :-- | :-- |
+| Two writers at 49 records both pass the count check (it is checked before writing, not enforced atomically), leaving 51; the page refuses more than 50, so the task's attempts answer was refused on every refresh from then on | The reader uses the earliest 50 and adds the note `over-limit`; a later writer is still refused. Test: the store's `beforeLink` hook nests a second write inside the first, as Codex did; 51 records remain and the provenance passes the page's gate. It fails on the unfixed reader. |
+| Each attempt's provenance re-read every other attempt's observations, so one attempts answer read N² directories | A snapshot made once per answer (`developObservationsSnapshotV0`) holds the attempts file and each directory's read; the workspace passes it to `has` and `provenance`. Test: five attempts read 25 directories without it and 5 with it, with equal results. It fails without the snapshot. |

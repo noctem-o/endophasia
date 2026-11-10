@@ -51,6 +51,7 @@ import {
 	type DevelopObservationReaderV0,
 	DevelopObservationsServiceV0,
 	type DevelopTakenObservationV0,
+	developObservationsSnapshotV0,
 	endoAttemptProvenanceV0,
 	renderEndoProvenanceV0,
 } from "../runtime/contracts/develop-observations.ts";
@@ -454,6 +455,70 @@ describe.skipIf(!haveGit)("the observations service", () => {
 		for (let i = 0; i < ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxPerAttempt - 1; i++)
 			writeFileSync(join(dir, `junk-${i}`), "");
 		expect(await w.service.observeForOperator(w.attempt.id)).toEqual({ ok: false, code: "limit" });
+	});
+
+	it("two writers at the limit leave 51 records; the page still reads the attempt, from the earliest 50, and says so (Codex, #140)", async () => {
+		const repo = commitedRepo();
+		const w = workspace(repo);
+		let nested: (() => void) | null = null;
+		const store = new DevelopObservationsStoreV0(w.root, {
+			beforeLink: () => {
+				const run = nested;
+				nested = null;
+				run?.();
+			},
+		});
+		const service = new DevelopObservationsServiceV0(w.tasks, w.attempts, store, { reader, version: "0.1.0-test" });
+		const taken = await service.take(repo, { within: true });
+		const one = () =>
+			service.record(w.attempt.id, { point: "operator", trigger: "operator-command", binding: null, taken });
+		for (let i = 0; i < ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxPerAttempt - 1; i++) expect(one().ok).toBe(true);
+		// The second writer counts 49 while the first is between its count and its link: both succeed.
+		let second: ReturnType<typeof one> | null = null;
+		nested = () => {
+			second = one();
+		};
+		expect(one().ok).toBe(true);
+		expect(second).toMatchObject({ ok: true });
+		expect(recorded({ store }, w.attempt.id)).toHaveLength(ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxPerAttempt + 1);
+		const p = await service.provenance(w.attempt.id, null, null);
+		if (p === null) throw new Error("no provenance");
+		expect(p.observations).toHaveLength(ENDO_DEVELOP_OBSERVATION_LIMITS_V0.maxPerAttempt);
+		expect(p.notes).toContain("over-limit");
+		expect(provenance_(p) && provenanceCoherent(p)).toBe(true);
+		expect(renderEndoProvenanceV0(p)).toContain("the earliest 50 are used");
+		// And the next writer is refused, as before.
+		expect(one()).toEqual({ ok: false, code: "limit" });
+	});
+
+	it("reads each attempt's observations once per answer when given a snapshot, not once per attempt shown (Codex, #140)", async () => {
+		const repo = commitedRepo();
+		const w = workspace(repo);
+		const attempts = [w.attempt];
+		const t = ok(w.tasks.createTask(w.projectId, { title: "More", acceptance: "ok" }, { select: false }));
+		for (let i = 0; i < 4; i++)
+			attempts.push(
+				ok(new DevelopAttemptsServiceV0(w.tasks, w.attempts).prepare(w.projectId, t.id, { objective: `n${i}` })),
+			);
+		for (const a of attempts) expect((await w.service.observeForOperator(a.id)).ok).toBe(true);
+		let reads = 0;
+		const real = w.store.read.bind(w.store);
+		w.store.read = (id: string) => {
+			reads++;
+			return real(id);
+		};
+		const without = [];
+		for (const a of attempts) without.push(await w.service.provenance(a.id, null, null));
+		expect(reads).toBe(attempts.length * attempts.length);
+		reads = 0;
+		const snapshot = developObservationsSnapshotV0();
+		const withIt = [];
+		for (const a of attempts) {
+			expect(w.service.has(a.id, snapshot)).toBe(true);
+			withIt.push(await w.service.provenance(a.id, null, null, snapshot));
+		}
+		expect(reads).toBe(attempts.length);
+		expect(withIt).toEqual(without);
 	});
 
 	it("records an observation that timed out as unavailable, never as a state", async () => {

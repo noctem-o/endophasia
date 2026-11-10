@@ -36,19 +36,21 @@ code that was checked? Endophasia answers from records, not from the agent's rep
 
 ```console
 $ node calc.mjs '2+3*4'
-20                                          # wrong: it should be 14. The exit status is still 0.
+20                      # wrong: it should be 14, and the exit status is still 0
 
 $ endo attempt check --attempt <id> --keep-output -- node calc.mjs '2+3*4'
 recorded: Observed check passed, at 6712eae5bcc3…
 
 $ endo attempt evidence --attempt <id>
-  planned   [observed] precedence ["node","calc.mjs","2+3*4"]: Failed at HEAD (6712eae5bcc3, latest failed)
-  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output; observed exit 0, 3 byte(s),
-            output different; first difference at line 1: expected "14", observed "20"
+  planned   [observed] precedence ["node","calc.mjs","2+3*4"]:
+            Failed at HEAD (6712eae5bcc3, latest failed)
+  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output;
+            observed exit 0, 3 byte(s), output different;
+            first difference at line 1: expected "14", observed "20"
   criterion [plan: precedence] 1. 2+3*4 is 14: A planned check failed at HEAD
 ```
 
-<p align="center"><sub>Real output from the <a href="#take-the-five-minute-tour">five-minute tour</a> below, abridged. The comment on the second line is added.</sub></p>
+<p align="center"><sub>Real output from the <a href="#take-the-five-minute-tour">five-minute tour</a> below, abridged and re-wrapped. The comment on the second line is added.</sub></p>
 
 The command exited 0, so its receipt says the check passed. The plan said what the command should *print*, so the
 ledger says the criterion failed and shows the first line that differs.
@@ -149,8 +151,9 @@ The criterion reads *A planned check failed at HEAD*, as in the excerpt at the t
 ```sh
 cat > calc.mjs <<'EOF'
 // Multiplication first, then addition.
-const sum = process.argv[2].split("+").map((term) => term.split("*").reduce((a, b) => a * Number(b), 1));
-console.log(sum.reduce((a, b) => a + b, 0));
+const terms = process.argv[2].split("+");
+const products = terms.map((term) => term.split("*").reduce((a, b) => a * Number(b), 1));
+console.log(products.reduce((a, b) => a + b, 0));
 EOF
 git commit -qam "Multiplication binds tighter"
 
@@ -309,16 +312,22 @@ and none of the DEVELOP features above. Full installation, store selection and p
 You stay the operator throughout. Endophasia keeps records; it does not decide, and nothing runs on its own.
 
 ```mermaid
-flowchart LR
-    T["Task<br/>what you want done"] --> A["Attempt<br/>objective and plan"]
-    A --> B["Brief"]
-    B -->|"you paste it, or approve the send"| G["Coding agent"]
-    G --> W["Working tree"]
-    W -->|"endo attempt check"| R["Receipt<br/>what your command did"]
-    W -.->|"observed around the run"| P["Provenance<br/>what Git showed"]
-    R --> L["Ledger<br/>each criterion, read from receipts"]
-    L --> D{"You decide"}
-    P --> D
+flowchart TB
+    subgraph ask["1 · You ask"]
+        direction LR
+        T["Task<br/>what you want done"] --> A["Attempt<br/>objective and plan"] --> B["Brief<br/>plain text for the agent"]
+    end
+    subgraph work["2 · The agent works"]
+        direction LR
+        G["Coding agent"] --> W["Working tree"]
+    end
+    subgraph check["3 · You check and decide"]
+        direction LR
+        R["Receipt<br/>what your command did"] --> L["Ledger<br/>each criterion, read from receipts"] --> D{"You decide"}
+        P["Provenance<br/>what Git showed"] --> D
+    end
+    ask -->|"you paste the brief, or approve its send"| work
+    work -->|"endo attempt check, and Git observed around the run"| check
 ```
 
 | Record | What it says | What it never says |

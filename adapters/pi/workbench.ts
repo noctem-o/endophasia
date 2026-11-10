@@ -705,7 +705,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#discard(proposalId: unknown): { status: number; body: unknown } {
 		const proposal = this.#command;
 		if (proposal === null || proposal.view.proposalId !== proposalId) return refuse(404, "not-found");
-		if (proposal.view.state !== "awaiting-approval") return refuse(409, "not-withdrawable");
+		// Once the operator approved it on the terminal it is no longer the page's to withdraw: the broker may be observing the tree before
+		// the send (an await), and a 200 here must never sit beside a send that follows.
+		if (proposal.view.state !== "awaiting-approval" || proposal.view.approved === true)
+			return refuse(409, "not-withdrawable");
 		proposal.abort.abort();
 		return reply(200, proposal.view);
 	}
@@ -783,6 +786,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
 		const gate = (): "session-ended" | "not-authorized" | "run-active" | null => {
+			// Withdrawn (by the page before approval, or by closing): never sent, whatever else holds.
+			if (p.abort.signal.aborted) return "not-authorized";
 			const piId = session.piSessionId;
 			if (this.#closing || this.#ended || !session.live || piId === null || `endo.session.pi.${piId}` !== p.session)
 				return "session-ended";

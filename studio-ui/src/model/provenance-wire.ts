@@ -57,6 +57,8 @@ export const PROVENANCE_NOTE_TEXT: Readonly<Record<EndoProvenanceNoteV0, string>
 		"Some observations name a send other than this attempt's authorisation; they are listed and not used.",
 	"frame-elsewhere":
 		"The observations were made in a different working tree from the one read now; now is not compared.",
+	"run-end-not-observed":
+		"The last observation was taken as the workbench closed with the run still open, not when the run ended: what the run did after it is not in it.",
 	problems: "Some files in the observations directory are not usable observations.",
 };
 
@@ -82,7 +84,8 @@ export const BASIS_POINTS: Readonly<
 };
 
 export const BASIS_TEXT: Readonly<Record<EndoProvenanceBasisV0, string>> = {
-	"send-and-run": "Just before the brief was sent, and when the run had ended",
+	"send-and-run":
+		"Just before the brief was sent, and after the run that followed (when it ended, or as the workbench closed)",
 	"send-only": "Just before the brief was sent; nothing observed since",
 	"send-and-operator":
 		"Just before the brief was sent, and your latest observation since (none was made when the run ended)",
@@ -107,6 +110,7 @@ const UNAVAILABLE = [
 	"output-too-large",
 	"other-repository",
 	"timed-out",
+	"head-moved",
 ] as const;
 export const OBSERVATION_UNAVAILABLE: readonly string[] = UNAVAILABLE;
 const TRIGGERS: Readonly<Record<EndoObservationPointV0, readonly EndoObservationTriggerV0[]>> = {

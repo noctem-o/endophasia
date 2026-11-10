@@ -246,3 +246,17 @@ it was opened. It wrote real-Git reproductions for its two strongest findings. D
 | The validator does not authenticate `truncated`/flags; the digest comment overclaimed (low) | **Documented** in §10 (as for receipts: an unsigned local record); the comment now says what the digest covers and that comparisons never use it. |
 
 Each of the three fixes' tests was run against the unfixed sources: all three failed, and pass with the fixes.
+
+### Codex review on the PR
+
+Codex reviewed both pushes (7 findings; the lossy-path one duplicated the subagent's, already fixed). All six others were reproduced
+from the code and fixed in one push:
+
+| Finding (Codex's priority) | Fix |
+| :-- | :-- |
+| A withdrawal from the page while the before-send observation was running was answered 200, and the brief was still sent (P1) | Once the operator approved on the terminal, `prompt/discard` answers 409 `not-withdrawable`; the gate checked after the observation also refuses any aborted request. Test: hold the observation, withdraw (409), release (sent once). It fails on the unfixed broker (200). The window was new in this PR: before it, nothing awaited between approval and dispatch. |
+| A commit between the observer's HEAD read and its status read gave the old commit with the new (empty) change list, recorded as complete (P2) | HEAD is read again after the changes; if it moved the observation is `unavailable` (`head-moved`). A move and a move back is not seen. |
+| A single operator observation was named "the observation just before the send" (P2) | The page names the latest observation by its own point and trigger. |
+| A `workbench-closing` observation framed as "when the run had ended" (P2) | The note `run-end-not-observed`, and the frame's words now say "after the run that followed (when it ended, or as the workbench closed)". |
+| The workspace read receipts twice; a check finishing in between put a commit in `checked` that the listed receipts lacked, and the page refused the whole answer (P2) | Provenance uses only the receipts the view already lists. (No dedicated test: the fix is the one filter.) |
+| Two operator observations made at once produced a frame the page's gate refuses (P2) | The end is the latest operator observation that began after the first ended, or none. Test. |

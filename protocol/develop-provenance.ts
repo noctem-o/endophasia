@@ -29,6 +29,8 @@ export const ENDO_OBSERVATION_UNAVAILABLE_V0 = [
 	"output-too-large",
 	"other-repository",
 	"timed-out",
+	/** HEAD named another commit after the changes were read than before: the two do not make one state (Codex, #140). */
+	"head-moved",
 ] as const;
 export type EndoObservationUnavailableV0 = (typeof ENDO_OBSERVATION_UNAVAILABLE_V0)[number];
 
@@ -187,6 +189,7 @@ export type EndoProvenanceNoteV0 =
 	| "observation-unavailable"
 	| "other-send-observations"
 	| "frame-elsewhere"
+	| "run-end-not-observed"
 	| "problems";
 
 export const ENDO_PROVENANCE_NOTE_TEXT_V0: Readonly<Record<EndoProvenanceNoteV0, string>> = Object.freeze({
@@ -199,5 +202,7 @@ export const ENDO_PROVENANCE_NOTE_TEXT_V0: Readonly<Record<EndoProvenanceNoteV0,
 		"Some observations name a send other than this attempt's authorisation; they are listed and not used.",
 	"frame-elsewhere":
 		"The observations were made in a different working tree from the one read now; now is not compared.",
+	"run-end-not-observed":
+		"The last observation was taken as the workbench closed with the run still open, not when the run ended: what the run did after it is not in it.",
 	problems: "Some files in the observations directory are not usable observations.",
 });

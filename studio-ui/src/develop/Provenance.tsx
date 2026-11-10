@@ -168,12 +168,18 @@ export function Provenance({
 	const start = find(p.start);
 	const end = find(p.end);
 	const latest = end ?? start;
+	// Named by what the latest observation IS (its point and trigger), never by the frame's shape: a lone operator observation is not
+	// "before the send", and one taken as the workbench closed with the run open is not "when the run ended".
 	const latestName =
-		end === null
-			? "the observation just before the send"
-			: end.point === "after-run"
-				? "the observation when the run ended"
-				: "your latest observation";
+		latest === null
+			? "the latest observation"
+			: latest.point === "before-send"
+				? "the observation just before the send"
+				: latest.point === "after-run"
+					? latest.trigger === "workbench-closing"
+						? "the observation taken as the workbench closed (the run had not ended)"
+						: "the observation when the run ended"
+					: "your latest observation";
 	return (
 		<div
 			className="attempt-provenance"

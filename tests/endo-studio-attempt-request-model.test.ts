@@ -56,7 +56,7 @@ const attempt = (over: Partial<Attempt> = {}): Attempt => ({
 	...over,
 });
 const view = (...attempts: Attempt[]): AttemptsView => ({
-	schemaVersion: "endo.develop-attempts-view.v4",
+	schemaVersion: "endo.develop-attempts-view.v5",
 	state: "ready",
 	taskId: "endo.task.x",
 	attempts,

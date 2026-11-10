@@ -28,7 +28,8 @@ import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../../protocol/develop-attempts.ts";
 import {
 	checkEndoReceiptArgvV0,
 	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
-	ENDO_DEVELOP_RECEIPT_SCHEMA_V0,
+	ENDO_DEVELOP_RECEIPT_SCHEMA_V1,
+	type EndoReceiptStdoutV1,
 	ENDO_RECEIPT_ID_PATTERN_V0,
 	type EndoDevelopReceiptV0,
 	type EndoReceiptCurrentV0,
@@ -89,6 +90,8 @@ export interface DevelopCheckPlanV0 {
 	readonly executable: string;
 	readonly realExecutable: string;
 	readonly timeoutMs: number;
+	/** The operator asked to keep the check's standard output in its receipt (`--keep-output`). */
+	readonly keepOutput: boolean;
 	readonly before: EndoRevisionObservationV0;
 }
 
@@ -187,6 +190,29 @@ export function resolveEndoCheckExecutableV0(
 	return null;
 }
 
+/**
+ * The receipt's record of standard output, from what the runner read: the digest, and, when output was kept, its first bytes as text, cut
+ * back to the last whole UTF-8 character when they are not all of it. Bytes that are not UTF-8 text are not kept (`not-text`).
+ */
+export function keptStdoutV0(result: Pick<CheckRunResultV0, "output" | "stdout">): EndoReceiptStdoutV1 {
+	const sha256 = result.stdout.sha256;
+	const kept = result.stdout.kept;
+	if (kept === null) return { sha256, keep: "off" };
+	const whole = kept.length >= result.output.stdoutBytes;
+	const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+	// A cut can split one character of at most four bytes: try the bytes as kept, then up to three fewer.
+	for (let drop = 0; drop <= (whole ? 0 : Math.min(3, kept.length)); drop += 1) {
+		try {
+			const text = decoder.decode(kept.subarray(0, kept.length - drop));
+			if (!text.isWellFormed()) break;
+			return { sha256, keep: "text", text, truncated: !whole || drop > 0 };
+		} catch {
+			// not a boundary (or not text): try one byte fewer
+		}
+	}
+	return { sha256, keep: "not-text" };
+}
+
 const refuse = (
 	code: DevelopCheckRefusalV0,
 	extra: {
@@ -240,7 +266,7 @@ export class DevelopReceiptsServiceV0 {
 	 */
 	async plan(
 		attemptId: string,
-		input: { argv: unknown; cwd?: string; timeoutMs?: number },
+		input: { argv: unknown; cwd?: string; timeoutMs?: number; keepOutput?: boolean },
 	): Promise<DevelopCheckPlanResultV0> {
 		if ((this.#o.platform ?? process.platform) === "win32") return refuse("unsupported-platform");
 		if (!ENDO_ATTEMPT_ID_PATTERN_V0.test(attemptId) || !checkEndoReceiptArgvV0(input.argv))
@@ -278,6 +304,7 @@ export class DevelopReceiptsServiceV0 {
 			executable: resolved.executable,
 			realExecutable: resolved.realExecutable,
 			timeoutMs,
+			keepOutput: input.keepOutput === true,
 			before,
 		};
 		// The receipt must be able to hold this check, whatever its end: refused now, before anything runs, if it could not.
@@ -286,6 +313,13 @@ export class DevelopReceiptsServiceV0 {
 			{
 				execution: { kind: "signaled", signal: "SIGXXXXXXXXXXXX" },
 				output: { stdoutBytes: Number.MAX_SAFE_INTEGER, stderrBytes: Number.MAX_SAFE_INTEGER },
+				// Kept output at its worst: every byte a control character, which JSON writes as six.
+				stdout: {
+					sha256: null,
+					kept: plan.keepOutput
+						? Buffer.alloc(ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes, 1)
+						: null,
+				},
 				strayProcesses: true,
 				escapedProcess: true,
 				durationMs: Number.MAX_SAFE_INTEGER,
@@ -319,6 +353,7 @@ export class DevelopReceiptsServiceV0 {
 			env: endoCheckEnvironmentV0(process.env),
 			timeoutMs: plan.timeoutMs,
 			maxOutputBytes: ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxOutputBytes,
+			keepStdoutBytes: plan.keepOutput ? ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes : 0,
 			...io,
 		});
 		const endedAtMs = Math.max(startedAtMs, this.#now());
@@ -370,7 +405,7 @@ export class DevelopReceiptsServiceV0 {
 						},
 		};
 		return {
-			schemaVersion: ENDO_DEVELOP_RECEIPT_SCHEMA_V0,
+			schemaVersion: ENDO_DEVELOP_RECEIPT_SCHEMA_V1,
 			id: `endo.receipt.${randomBytes(16).toString("hex")}`,
 			attemptId: plan.attemptId,
 			projectId: plan.projectId,
@@ -381,7 +416,7 @@ export class DevelopReceiptsServiceV0 {
 			endedAtMs,
 			durationMs: result.durationMs,
 			...facts,
-			output: result.output,
+			output: { ...result.output, stdout: keptStdoutV0(result) },
 			...endoReceiptVerdictV0(facts),
 		};
 	}

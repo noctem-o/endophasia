@@ -4,7 +4,8 @@
 // group signal never reaches a reused group ID, and the keeper ends the group if this process dies).
 //
 //   stdin       closed at once (an empty pipe): a check cannot wait for input
-//   output      passed through to the operator's sinks as it comes, never buffered whole, counted, never kept
+//   output      passed through to the operator's sinks as it comes, never buffered whole, counted; standard output is hashed (SHA-256)
+//               as it comes, and its first `keepStdoutBytes` bytes are kept only when the caller asks (the operator's --keep-output)
 //   time        `timeoutMs`; then SIGTERM to the group, and SIGKILL after `graceMs`
 //   interrupt   the same, at once; a second interrupt skips the grace
 //   end         when the command exits by itself, whatever of its group still runs is noted (`strayProcesses`) and killed
@@ -12,6 +13,7 @@
 //               holds them (`escapedProcess`), and they are closed from this side
 //
 // It reports what it saw. It decides nothing about passing or failing (protocol/develop-receipts.ts does, from these facts and Git's).
+import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { Readable, Writable } from "node:stream";
 import type { EndoReceiptExecutionV0 } from "../../protocol/develop-receipts.ts";
@@ -26,6 +28,8 @@ export interface CheckRunOptionsV0 {
 	env: Readonly<Record<string, string>>;
 	timeoutMs: number;
 	maxOutputBytes: number;
+	/** How many of standard output's first bytes to keep; 0 (the default) keeps none. Never more than this is held in memory. */
+	keepStdoutBytes?: number;
 	/** Where the check's stdout and stderr go as they come (the CLI sends both to its own stderr). */
 	stdout: Writable;
 	stderr: Writable;
@@ -40,6 +44,11 @@ export interface CheckRunOptionsV0 {
 export interface CheckRunResultV0 {
 	execution: EndoReceiptExecutionV0;
 	output: { stdoutBytes: number; stderrBytes: number };
+	/**
+	 * Standard output's SHA-256, or null when it was not read whole (cut off at the output limit, or its pipe closed from this side
+	 * because a process outside the group held it); its first bytes when asked for, else null.
+	 */
+	stdout: { sha256: string | null; kept: Buffer | null };
 	/** Null where it cannot be seen (no /proc): never "none" for "unknown". */
 	strayProcesses: boolean | null;
 	escapedProcess: boolean;
@@ -80,6 +89,12 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 	};
 
 	const counts = { stdoutBytes: 0, stderrBytes: 0 };
+	const digest = createHash("sha256");
+	/** Standard output was not read whole: its digest is not the output's. */
+	let stdoutCut = false;
+	const keepBytes = Math.max(0, options.keepStdoutBytes ?? 0);
+	const kept: Buffer[] = [];
+	let keptBytes = 0;
 	const ended: Promise<void>[] = [];
 	const paused = new Set<Readable>();
 	/** Once the group is gone, nothing is held back: what is left in a pipe is drained at once, so a slow sink is never an escape. */
@@ -105,6 +120,7 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 		from.on("data", (chunk: Buffer) => {
 			counts[key] += chunk.length;
 			if (counts.stdoutBytes + counts.stderrBytes > options.maxOutputBytes) {
+				stdoutCut = true;
 				// Over the limit at any time, also while the pipes drain after the group is gone (a process outside it still writing): the
 				// check is stopped if it runs, its output is no longer read, and the receipt says so.
 				overLimit = true;
@@ -114,6 +130,14 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 					group.stderr?.destroy();
 				}
 				return;
+			}
+			if (key === "stdoutBytes") {
+				digest.update(chunk);
+				if (keptBytes < keepBytes) {
+					const part = chunk.subarray(0, keepBytes - keptBytes);
+					kept.push(Buffer.from(part));
+					keptBytes += part.length;
+				}
 			}
 			if (broken.has(to)) return;
 			// Backpressure while the check runs: a slow terminal pauses the check's output rather than growing a buffer here.
@@ -161,6 +185,7 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 	]);
 	clearTimeout(waitTimer);
 	if (!closed) {
+		stdoutCut = true;
 		group.stdout?.destroy();
 		group.stderr?.destroy();
 	}
@@ -175,5 +200,15 @@ export async function runCheckV0(options: CheckRunOptionsV0): Promise<CheckRunRe
 				: exit.code !== null
 					? { kind: "exited", code: exit.code }
 					: { kind: "signaled", signal: exit.signal ?? "SIGKILL" };
-	return { execution, output: counts, strayProcesses, escapedProcess: !closed, durationMs };
+	return {
+		execution,
+		output: counts,
+		stdout: {
+			sha256: stdoutCut ? null : digest.digest("hex"),
+			kept: keepBytes === 0 ? null : Buffer.concat(kept, keptBytes),
+		},
+		strayProcesses,
+		escapedProcess: !closed,
+		durationMs,
+	};
 }

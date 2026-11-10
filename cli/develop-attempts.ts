@@ -58,7 +58,7 @@ import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] [--keep-output] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -365,7 +365,16 @@ async function check(argv: readonly string[]): Promise<void> {
 	if (split === -1) throw new TypeError(`endo attempt check needs the command after --\n${USAGE}`);
 	const command = argv.slice(split + 1);
 	if (command.length === 0) throw new TypeError(`endo attempt check needs an executable after --\n${USAGE}`);
-	const { root, flags } = flagsOf(argv.slice(0, split), ["--attempt", "--cwd", "--timeout"], USAGE);
+	// `--keep-output` takes no value, and only BEFORE `--`: what follows `--` is the operator's command, exactly.
+	const options = argv.slice(0, split);
+	const keepOutput = options.includes("--keep-output");
+	if (options.filter((a) => a === "--keep-output").length > 1)
+		throw new TypeError("--keep-output was given more than once");
+	const { root, flags } = flagsOf(
+		options.filter((a) => a !== "--keep-output"),
+		["--attempt", "--cwd", "--timeout"],
+		USAGE,
+	);
 	const timeout = flags.get("--timeout");
 	if (timeout !== undefined && !/^[1-9][0-9]{0,5}$/.test(timeout))
 		throw new TypeError("--timeout takes whole seconds");
@@ -375,6 +384,7 @@ async function check(argv: readonly string[]): Promise<void> {
 		argv: command,
 		...(cwd === undefined ? {} : { cwd }),
 		...(timeout === undefined ? {} : { timeoutMs: Number(timeout) * 1000 }),
+		keepOutput,
 	});
 	if (!planned.ok) {
 		const why = [planned.reason, ...(planned.dirty ?? [])].filter((x) => x !== undefined).join(", ");
@@ -386,7 +396,7 @@ async function check(argv: readonly string[]): Promise<void> {
 	}
 	const plan = planned.plan;
 	process.stderr.write(
-		`${RISK}\n  command:   ${JSON.stringify(plan.argv)}\n  spawned:   ${plan.executable}${plan.realExecutable === plan.executable ? "" : ` (${plan.realExecutable})`}\n  in:        ${plan.before.worktree}\n  at:        ${plan.before.commit} (tree ${plan.before.tree})\n  time limit ${plan.timeoutMs / 1000} s\n--- the check's own output follows ---\n`,
+		`${RISK}\n  command:   ${JSON.stringify(plan.argv)}\n  spawned:   ${plan.executable}${plan.realExecutable === plan.executable ? "" : ` (${plan.realExecutable})`}\n  in:        ${plan.before.worktree}\n  at:        ${plan.before.commit} (tree ${plan.before.tree})\n  time limit ${plan.timeoutMs / 1000} s\n  output     ${plan.keepOutput ? `its first ${ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxKeptStdoutBytes / 1024} KiB of standard output WILL BE STORED in the receipt and shown on the paired page: do not use --keep-output for a command that can print a secret` : "standard output is hashed (SHA-256), not stored; --keep-output stores its first bytes"}\n--- the check's own output follows ---\n`,
 	);
 	// The check's output goes to this process's stderr. If that goes away (the terminal closed, a pipe reader exited), writing to it fails:
 	// the failure must not end this process before the receipt is written.

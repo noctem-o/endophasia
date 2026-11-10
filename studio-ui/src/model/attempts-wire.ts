@@ -13,6 +13,10 @@
 // rule, requires each check's state to agree with the receipts it names (by id, in this attempt's own list, at the relation the state
 // needs), and refuses the body whole otherwise: a ledger cannot claim a pass the receipts beside it do not show.
 //
+// A behavioural check (DEVELOP-BEHAVIOUR-001) declares an expected exit code and output; the gate reads each of its receipts by the protocol's
+// behaviour rule (re-derived here, held equal by a contract test) from the receipt's exit code and output digest, so a ledger cannot claim
+// a behaviour passed when the digest beside it differs.
+//
 // An attempt that was authorised or observed carries its provenance (model/provenance-wire.ts): what Git showed of the working tree around
 // it. Its own coherence is checked there; here, that every commit it says was checked is one a receipt in this attempt's list names.
 import type {
@@ -21,9 +25,10 @@ import type {
 	EndoDevelopAttemptExecutionViewV0,
 } from "../../../protocol/develop-attempt-execution.ts";
 import type {
+	EndoAttemptVerificationViewV0,
 	EndoDevelopAttemptStateV0,
-	EndoDevelopAttemptsViewV4,
-	EndoDevelopAttemptViewV4,
+	EndoDevelopAttemptsViewV5,
+	EndoDevelopAttemptViewV5,
 } from "../../../protocol/develop-attempts.ts";
 import type {
 	EndoDevelopReceiptViewV0,
@@ -40,15 +45,15 @@ export type { EndoDevelopAttemptExecutionViewV0 as Execution } from "../../../pr
 export type {
 	EndoAttemptVerificationViewV0 as Verification,
 	EndoDevelopAttemptStateV0 as AttemptState,
-	EndoDevelopAttemptsViewV4 as AttemptsView,
-	EndoDevelopAttemptViewV4 as Attempt,
+	EndoDevelopAttemptsViewV5 as AttemptsView,
+	EndoDevelopAttemptViewV5 as Attempt,
 } from "../../../protocol/develop-attempts.ts";
 export type {
 	EndoDevelopReceiptViewV0 as Receipt,
 	EndoReceiptRelationV0 as ReceiptRelation,
 } from "../../../protocol/develop-receipts.ts";
 
-export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v4";
+export const ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v5";
 
 /** These mirror the protocol's closed lists and labels; a contract test holds them equal. */
 export const ATTEMPT_STATES: readonly EndoDevelopAttemptStateV0[] = ["prepared", "handed-off", "reported", "abandoned"];
@@ -212,6 +217,7 @@ export const taskId: Check = (v) => typeof v === "string" && /^endo\.task\.[0-9a
 
 export const receiptId: Check = (v) => typeof v === "string" && /^endo\.receipt\.[0-9a-f]{32}$/.test(v);
 export const objectId: Check = (v) => typeof v === "string" && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(v);
+const sha256: Check = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 export const execution: Check = (v) =>
 	shape(v, { kind: one("exited"), code: (x) => count(x) && x <= 255 }) ||
 	shape(v, { kind: one("signaled"), signal: (x) => typeof x === "string" && /^SIG[A-Z0-9]{1,12}$/.test(x) }) ||
@@ -231,6 +237,10 @@ const receipt: Check = (v) =>
 		reasons: (x) => list(one(...keysOf(RECEIPT_REASON_TEXT)))(x) && distinct(x),
 		limitations: (x) => list(one(...keysOf(RECEIPT_LIMITATION_TEXT)))(x) && distinct(x),
 		relation: one(...keysOf(RECEIPT_RELATION_LABELS)),
+		stdout: (x) =>
+			shape(x, { sha256: eitherNull(sha256), bytes: count, recorded: (b) => typeof b === "boolean" }) &&
+			// Not recorded (a v0 receipt) has no digest; a digest missing from a recorded one only on an inconclusive receipt.
+			((x as { recorded: boolean }).recorded || (x as { sha256: unknown }).sha256 === null),
 	});
 
 /** Whether a receipt's outcome is the one its execution and reasons imply. */
@@ -242,6 +252,19 @@ export function coherent(
 	if (!exited && !r.reasons.includes(r.execution.kind as EndoReceiptReasonV0)) return false;
 	if (r.reasons.length > 0 || !exited) return r.outcome === "inconclusive";
 	return r.outcome === ((r.execution as { code: number }).code === 0 ? "passed" : "failed");
+}
+
+/** A recorded digest is missing only from an inconclusive receipt (its output was not read whole). */
+export const stdoutCoherent = (r: Pick<EndoDevelopReceiptViewV0, "outcome" | "stdout">): boolean =>
+	!(r.stdout.recorded && r.stdout.sha256 === null && r.outcome !== "inconclusive");
+
+/** The protocol's behaviour rule (endoBehaviourOutcomeV0), mirrored; a contract test holds the two equal. */
+export function behaviourOutcome(
+	r: Pick<EndoDevelopReceiptViewV0, "outcome" | "execution" | "stdout">,
+	expected: { exitCode: number; stdoutSha256: string },
+): EndoReceiptOutcomeV0 {
+	if (r.outcome === "inconclusive" || r.stdout.sha256 === null || r.execution.kind !== "exited") return "inconclusive";
+	return r.execution.code === expected.exitCode && r.stdout.sha256 === expected.stdoutSha256 ? "passed" : "failed";
 }
 
 const execution_: Check = (v) =>
@@ -314,6 +337,31 @@ const attempt: Check = (v) =>
 	});
 
 const outcomes = one("passed", "failed", "inconclusive");
+const behaviour_: Check = (v) =>
+	shape(v, {
+		expected: (e) =>
+			shape(e, {
+				exitCode: (x) => count(x) && x <= 255,
+				// 4 KiB of UTF-8 is at most 4 096 UTF-16 units; line breaks and tabs only.
+				stdout: (x) => multiline(4096)(x) && !/[\r\u200e\u200f\u061c\ufffd]/.test(x as string),
+				stdoutSha256: sha256,
+			}),
+		observed: eitherNull((o) =>
+			shape(o, {
+				receiptId,
+				exitCode: eitherNull((x) => count(x) && x <= 255),
+				stdoutBytes: count,
+				stdoutSha256: eitherNull(sha256),
+				kept: (k) =>
+					shape(k, { state: one("not-recorded", "off", "not-text") }) ||
+					shape(k, {
+						state: one("text"),
+						text: (t) => typeof t === "string" && t.length <= 8192 && !UNSAFE.test(t),
+						truncated: (b) => typeof b === "boolean",
+					}),
+			}),
+		),
+	});
 const ledgerReceipt: Check = (v) =>
 	shape(v, { receiptId, commit: objectId, outcome: outcomes, startedAtMs: stamp, endedAtMs: stamp });
 const verification_: Check = (v) =>
@@ -329,6 +377,7 @@ const verification_: Check = (v) =>
 					atHead: (a) => shape(a, { passed: count, failed: count, inconclusive: count }),
 					otherCommit: eitherNull(ledgerReceipt),
 					runs: count,
+					behaviour: eitherNull(behaviour_),
 				}),
 			)(x) && (x as unknown[]).length <= 8,
 		criteria: (x) =>
@@ -354,7 +403,7 @@ type LedgerReceipt = { receiptId: string; commit: string; outcome: string; start
  * name resolves; each criterion's state follows from its checks' states; each check's state agrees with the receipts it names (by id, in
  * this list, with the same argv, commit, outcome and times, at the relation the state needs) and with its counts at HEAD.
  */
-export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV4, "receipts" | "verification">): boolean {
+export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV5, "receipts" | "verification">): boolean {
 	const v = a.verification;
 	if (v === null) return true;
 	const names = v.checks.map((c) => c.name);
@@ -369,14 +418,25 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV4, "receipts
 	const unavailable = v.checks.filter((c) => c.state === "unavailable").length;
 	if (unavailable !== 0 && unavailable !== v.checks.length) return false;
 	const listed = new Map(a.receipts.list.map((r) => [r.id, r]));
-	const resolves = (x: LedgerReceipt | null, argv: readonly string[], relations: readonly string[]): boolean => {
+	type Listed = (typeof a.receipts.list)[number];
+	type Planned = (typeof v.checks)[number];
+	/** How this check reads a listed receipt: its exit status, or for a behavioural check the behaviour rule. */
+	const outcomeOf =
+		(c: Planned) =>
+		(r: Listed): string =>
+			c.behaviour === null ? r.outcome : behaviourOutcome(r, c.behaviour.expected);
+	const resolves = (
+		x: LedgerReceipt | null,
+		c: Planned,
+		relations: readonly string[],
+	): boolean => {
 		if (x === null) return true;
 		const r = listed.get(x.receiptId);
 		return (
 			r !== undefined &&
-			sameList(r.argv, argv) &&
+			sameList(r.argv, c.argv) &&
 			r.commit === x.commit &&
-			r.outcome === x.outcome &&
+			outcomeOf(c)(r) === x.outcome &&
 			r.startedAtMs === x.startedAtMs &&
 			r.endedAtMs === x.endedAtMs &&
 			relations.includes(r.relation)
@@ -393,13 +453,16 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV4, "receipts
 		for (const o of ["passed", "failed", "inconclusive"] as const)
 			if (
 				c.atHead[o] !==
-				mine.filter((r) => (r.relation === "at-head" || r.relation === "at-head-changed") && r.outcome === o).length
+				mine.filter((r) => (r.relation === "at-head" || r.relation === "at-head-changed") && outcomeOf(c)(r) === o)
+					.length
 			)
 				return false;
 		const total = c.atHead.passed + c.atHead.failed + c.atHead.inconclusive;
 		const relation = c.current === null ? null : listed.get(c.current.receiptId)?.relation;
-		if (!resolves(c.current, c.argv, ["at-head", "at-head-changed"])) return false;
-		if (!resolves(c.otherCommit, c.argv, ["head-differs"])) return false;
+		if (!resolves(c.current, c, ["at-head", "at-head-changed"])) return false;
+		if (!resolves(c.otherCommit, c, ["head-differs"])) return false;
+		if (c.behaviour !== null && !behaviourAgrees(c.behaviour, c.current === null ? undefined : listed.get(c.current.receiptId)))
+			return false;
 		if ((c.current === null) !== (total === 0)) return false;
 		if (c.runs < total + (c.otherCommit === null ? 0 : 1)) return false;
 		switch (c.state) {
@@ -432,12 +495,32 @@ export function verificationCoherent(a: Pick<EndoDevelopAttemptViewV4, "receipts
 }
 
 /**
+ * Whether a behavioural check's observation is the listed receipt's: present exactly when the check has a receipt at HEAD, that receipt,
+ * with its exit code, size and digest; output "not recorded" exactly when the receipt recorded none. And the expectation's digest is a
+ * digest (the broker computed it from the plan's text; the page cannot hash synchronously).
+ */
+function behaviourAgrees(
+	b: NonNullable<EndoAttemptVerificationViewV0["checks"][number]["behaviour"]>,
+	r: EndoDevelopReceiptViewV0 | undefined,
+): boolean {
+	const o = b.observed;
+	if (o === null || r === undefined) return o === null && r === undefined;
+	return (
+		o.receiptId === r.id &&
+		o.exitCode === (r.execution.kind === "exited" ? r.execution.code : null) &&
+		o.stdoutBytes === r.stdout.bytes &&
+		o.stdoutSha256 === r.stdout.sha256 &&
+		(o.kept.state === "not-recorded") === !r.stdout.recorded
+	);
+}
+
+/**
  * Whether a receipt's relation is the one the view's HEAD implies: at HEAD only at that commit (clean or not, as read), another commit only
  * when it differs, and "unavailable" only when nothing was read. Another worktree or repository cannot be told here (no paths are sent).
  */
 export function relationAgrees(
 	r: Pick<EndoDevelopReceiptViewV0, "commit" | "relation">,
-	head: EndoDevelopAttemptsViewV4["head"],
+	head: EndoDevelopAttemptsViewV5["head"],
 ): boolean {
 	const commit = head?.commit ?? null;
 	switch (r.relation) {
@@ -454,7 +537,7 @@ export function relationAgrees(
 	}
 }
 
-export function readAttempts(v: unknown): EndoDevelopAttemptsViewV4 | null {
+export function readAttempts(v: unknown): EndoDevelopAttemptsViewV5 | null {
 	if (
 		!shape(v, {
 			schemaVersion: one(ATTEMPTS_SCHEMA),
@@ -473,13 +556,13 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV4 | null {
 		})
 	)
 		return null;
-	const view = v as unknown as EndoDevelopAttemptsViewV4;
+	const view = v as unknown as EndoDevelopAttemptsViewV5;
 	if (view.state !== "ready" && view.attempts.length > 0) return null;
 	if ((view.state === "ready" || view.state === "no-task") && (view.taskId === null) !== (view.state === "no-task"))
 		return null;
 	if (new Set(view.attempts.map((a) => a.id)).size !== view.attempts.length) return null;
 	if (view.head !== null && (view.head.commit === null) !== (view.head.clean === null)) return null;
-	for (const a of view.attempts as EndoDevelopAttemptViewV4[]) {
+	for (const a of view.attempts as EndoDevelopAttemptViewV5[]) {
 		const implied = a.outcome !== null ? a.outcome.kind : a.handoff !== null ? "handed-off" : "prepared";
 		if (a.state !== implied) return null;
 		if (a.outcome?.kind === "reported" && a.outcome.note.trim() === "") return null;
@@ -487,6 +570,7 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV4 | null {
 		if (a.receipts.state === "unreadable" && a.receipts.list.length > 0) return null;
 		if (new Set(a.receipts.list.map((r) => r.id)).size !== a.receipts.list.length) return null;
 		if (!a.receipts.list.every(coherent)) return null;
+		if (!a.receipts.list.every(stdoutCoherent)) return null;
 		if (!a.receipts.list.every((r) => relationAgrees(r, view.head))) return null;
 		if (a.execution !== null && !executionCoherent(a.execution)) return null;
 		if (!verificationCoherent(a)) return null;
@@ -504,6 +588,6 @@ export function readAttempts(v: unknown): EndoDevelopAttemptsViewV4 | null {
 }
 
 export type AttemptsReply =
-	| { kind: "attempts"; record: EndoDevelopAttemptsViewV4 }
+	| { kind: "attempts"; record: EndoDevelopAttemptsViewV5 }
 	| { kind: "absent" }
 	| { kind: "failure"; status: number; code: "grant-required" | "invalid" | "unreachable" | "other" };

@@ -334,7 +334,7 @@ describe("the frontend's source", () => {
 		expect(sources["model/attempt-request.ts"]).not.toMatch(/Date\.now|new Date|fetch|from "react"|localStorage/);
 		// No word on the page calls an observed check "verified", or a receipt the task's acceptance.
 		expect(sources["develop/Attempts.tsx"]).not.toMatch(/verified (task|work)|agent succeeded|accepted/i);
-		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v4"');
+		expect(sources["model/attempts-wire.ts"]).toContain('ATTEMPTS_SCHEMA = "endo.develop-attempts-view.v5"');
 		// The working tree around an attempt: a reading of observations, never authorship, and nothing in it observes or runs anything.
 		const provenance = sources["develop/Provenance.tsx"]!;
 		expect(provenance).not.toMatch(/from "\.\.\/api\.ts"|fetch|propose|intervene|composer|use-workbench/);

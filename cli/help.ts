@@ -84,11 +84,13 @@ Commands that write to a store:
   attempt brief ... --attempt <id>   print the attempt's brief, plain text to copy into any coding agent yourself
   attempt handoff|report|abandon ... record, once each, your own statement: handed over, what was reported (not verified), stopped;
                                      the task's status is unchanged. attempt list|show read them
-  attempt check ... --attempt <id> [--cwd <dir>] [--timeout <s>] -- <executable> [args...]
+  attempt check ... --attempt <id> [--cwd <dir>] [--timeout <s>] [--keep-output] -- <executable> [args...]
                                      run YOUR command (no shell) at the top of a clean, committed working tree of the attempt's
                                      project and record what was observed as a receipt; exit 0 passed, 3 failed, 4 inconclusive,
                                      2 refused (nothing ran), 5 ran but not recorded. A receipt is not acceptance: no status moves
-                                     (docs/designs/develop-verification-receipts.md)
+                                     (docs/designs/develop-verification-receipts.md). Standard output is hashed; --keep-output also
+                                     stores its first 8 KiB, so a behavioural check can show where it differs
+                                     (docs/designs/develop-behavioural-checks.md)
   attempt receipts ... --attempt <id> [--cwd <dir>] | attempt receipt ... --receipt <id> [--cwd <dir>]
                                      read receipts, each compared with HEAD of --cwd (default: the project's registered path)
   attempt evidence ... --attempt <id> [--cwd <dir>]

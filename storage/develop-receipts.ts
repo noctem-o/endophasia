@@ -9,6 +9,7 @@
 // malformed, invalid (its verdict does not follow from its facts, among others), over its bound, misnamed, of another attempt or not a
 // receipt at all is reported as a problem by name and left exactly as found.
 
+import { createHash } from "node:crypto";
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../protocol/develop-attempts.ts";
@@ -125,6 +126,10 @@ export class DevelopReceiptsStoreV0 {
 				problems.push({ name, reason: "invalid" });
 				continue;
 			}
+			if (!endoKeptStdoutMatchesV0(receipt)) {
+				problems.push({ name, reason: "invalid" });
+				continue;
+			}
 			// A receipt is the one its name says, of the attempt whose directory holds it: a copy elsewhere is not that attempt's.
 			if (receipt.id !== match[1] || receipt.attemptId !== attemptId) {
 				problems.push({ name, reason: "misnamed" });
@@ -161,3 +166,11 @@ export class DevelopReceiptsStoreV0 {
 		return written === "created" ? "created" : "failed";
 	}
 }
+
+/** Kept output that is all of the output has the recorded digest (the one receipt fact the Node-free validator cannot check). */
+export function endoKeptStdoutMatchesV0(receipt: EndoDevelopReceiptV0): boolean {
+	const o = receipt.output.stdout;
+	return o === undefined || o.keep !== "text" || o.truncated || o.sha256 === null || endoSha256HexV0(o.text) === o.sha256;
+}
+
+export const endoSha256HexV0 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");

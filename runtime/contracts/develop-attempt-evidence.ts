@@ -35,6 +35,7 @@ import {
 	ENDO_CRITERION_LABELS_V0,
 	ENDO_PLANNED_CHECK_LABELS_V0,
 	type EndoAcceptanceLedgerV0,
+	endoFirstDifferenceV0,
 } from "../../protocol/develop-verification.ts";
 import type { DevelopAttemptReportV0 } from "./develop-attempts.ts";
 import { endoLatestChecksV0 } from "./develop-attention.ts";
@@ -47,8 +48,11 @@ import { endoAcceptanceLedgerV0 } from "./develop-verification.ts";
  *
  * v2 (DEVELOP-VERIFY-001): `verification`, the operator's plan and the acceptance ledger derived from it (null without a plan), and the gap
  * `planned-check-not-passed-at-current-head`.
+ *
+ * v3 (DEVELOP-BEHAVIOUR-001): each planned check carries `behaviour` (null unless the plan declares one): the expected exit code and output,
+ * and what the latest receipt at HEAD observed. For such a check every state and outcome is the behaviour's, not the exit status's.
  */
-export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v2";
+export const ENDO_ATTEMPT_EVIDENCE_SCHEMA_V0 = "endo.develop-attempt-evidence.v3";
 
 /**
  * What this reading found missing, stale, unconfirmed or not yet decided, in a fixed order. Each is a fact about the records, never a
@@ -432,6 +436,31 @@ export function endoAttemptEvidenceV0(input: EndoAttemptEvidenceInputV0): EndoAt
 	};
 }
 
+/**
+ * One line on a behavioural check: what the plan expected, and what its latest receipt at HEAD observed, with the first differing line when
+ * the output was kept. The expectation is the operator's declaration; the comparison is of digests.
+ */
+export function endoBehaviourLineV0(b: NonNullable<EndoAcceptanceLedgerV0["checks"][number]["behaviour"]>): string {
+	const bytes = new TextEncoder().encode(b.expected.stdout).length;
+	const expected = `expected exit ${b.expected.exitCode} and ${bytes} byte(s) of output`;
+	const o = b.observed;
+	if (o === null) return `${expected}; no receipt at the current HEAD`;
+	const exit = o.exitCode === null ? "did not exit by itself" : `exit ${o.exitCode}`;
+	if (o.stdoutSha256 === null)
+		return `${expected}; observed ${exit}, ${o.kept.state === "not-recorded" ? "output not recorded (an older receipt)" : "output not read whole"}`;
+	const same = o.stdoutSha256 === b.expected.stdoutSha256;
+	const where =
+		same || o.kept.state !== "text"
+			? ""
+			: (() => {
+					const d = endoFirstDifferenceV0(b.expected.stdout, o.kept.text);
+					return d === null
+						? ""
+						: `; first difference at line ${d.line}: expected ${JSON.stringify(d.expected)}, observed ${JSON.stringify(d.observed)}${o.kept.truncated ? " (kept output is cut)" : ""}`;
+				})();
+	return `${expected}; observed ${exit}, ${o.stdoutBytes} byte(s), output ${same ? "the same" : "different"}${!same && o.kept.state !== "text" ? " (not kept: run again with --keep-output to see it)" : ""}${where}`;
+}
+
 /** The reading as a few lines of plain text for a terminal: each line says whose it is. */
 export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 	const short = (c: string) => c.slice(0, 12);
@@ -474,10 +503,10 @@ export function renderEndoAttemptEvidenceV0(e: EndoAttemptEvidenceV0): string {
 		...(e.verification === null
 			? ["  plan      [none] prepared without a verification plan"]
 			: [
-					...e.verification.checks.map(
-						(c) =>
-							`  planned   [observed] ${c.name} ${JSON.stringify(c.argv)}: ${c.label}${c.current === null ? "" : ` (${short(c.current.commit)}, latest ${c.current.outcome})`}${c.otherCommit === null ? "" : `; at another commit, ${short(c.otherCommit.commit)}: ${c.otherCommit.outcome}`}`,
-					),
+					...e.verification.checks.flatMap((c) => [
+						`  planned   [observed] ${c.name} ${JSON.stringify(c.argv)}: ${c.label}${c.current === null ? "" : ` (${short(c.current.commit)}, latest ${c.current.outcome})`}${c.otherCommit === null ? "" : `; at another commit, ${short(c.otherCommit.commit)}: ${c.otherCommit.outcome}`}`,
+						...(c.behaviour === null ? [] : [`  behaviour [plan: expected; observed] ${endoBehaviourLineV0(c.behaviour)}`]),
+					]),
 					...e.verification.criteria.map(
 						(c, i) =>
 							`  criterion [plan: ${c.checks.length === 0 ? "your judgment" : c.checks.join(", ")}] ${i + 1}. ${c.text}: ${c.label}`,

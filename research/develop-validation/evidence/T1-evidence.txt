@@ -1,0 +1,46 @@
+# T1 — attempt endo.attempt.23cfe54513a31e3fea27278a5ac76d78
+# repo log:
+#   67c2ed4 roman: use subtractive notation
+#   4ca5d19 roman: seeded additive version
+
+attempt endo.attempt.23cfe54513a31e3fea27278a5ac76d78 (task endo.task.b3d3cf14dd4b39c723194fc7fb223e47): Make roman.mjs print standard subtractive Roman numerals (4 is IV, 1994 is MCMXCIV), keeping its handling of invalid input
+  handoff   [operator] said they handed it to Claude subagent (sonnet), fresh context, disposable repo
+  outcome   [operator] recorded as reported, not verified: Agent reported: committed 67c2ed4; ran 1994->MCMXCIV, 0 refused exit 2, 14->XIV by hand; nothing left undone. (Recorded by the validation study.)
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 4ca5d19726a3, 67c2ed495db6
+  tree now  [observed] 67c2ed495db6, clean (/work/T1/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 0: Observed check failed at 67c2ed495db6; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 14: Observed check passed at 67c2ed495db6; Recorded at this working tree's current HEAD
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at 67c2ed495db6; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Passed at HEAD (67c2ed495db6, latest passed); at another commit, 4ca5d19726a3: failed
+  behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; observed exit 0, 8 byte(s), output the same
+  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Passed at HEAD (67c2ed495db6, latest passed); at another commit, 4ca5d19726a3: passed
+  behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; observed exit 2, 0 byte(s), output the same
+  planned   [observed] runs ["node","roman.mjs","14"]: Passed at HEAD (67c2ed495db6, latest passed); at another commit, 4ca5d19726a3: passed
+  criterion [plan: subtractive-1994] 1. Numerals use standard subtractive notation (1994 is MCMXCIV): Planned checks passed at HEAD
+  criterion [plan: rejects-zero] 2. Input outside 1..3999 is refused with exit 2 and nothing on stdout: Planned checks passed at HEAD
+  criterion [plan: runs] 3. The program still runs for ordinary input: Planned checks passed at HEAD
+  criterion [plan: your judgment] 4. It stays one small file with no dependencies: Your judgment
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+
+provenance: what Git showed of the working tree around this attempt; not who changed it
+  start   2026-11-10T18:36:59.225Z  When you asked: HEAD 67c2ed495db6 (refs/heads/main), no changes
+  frame   your first and latest observations (they say nothing about when the work happened)
+  now     read 2026-11-10T18:39:55.828Z; HEAD stayed at 67c2ed495db6; against the start: same content
+  checked 67c2ed495db6 (3 receipts) against the start: same content
+  checked 4ca5d19726a3 (4 receipts) against the start: 1 path differs: M roman.mjs
+  limit   Git's view at one moment: who or what changed the tree (the agent, you, an editor, a hook, another process) is not known.
+  limit   Two observations that read the same do not mean nothing changed between them.
+  limit   Ignored files are not part of a state; their contents were not read.
+  limit   Content is compared by Git blob id over the raw bytes; Git's line-ending or filter conversion, if the repository uses any, is not applied.

@@ -1,0 +1,94 @@
+{
+ "checks": [
+  {
+   "name": "tests",
+   "argv": [
+    "node",
+    "--test"
+   ],
+   "shows": "the existing test suite passes"
+  },
+  {
+   "name": "days-parse",
+   "argv": [
+    "node",
+    "-e",
+    "import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"
+   ],
+   "shows": "1d2h parses to 93600 seconds",
+   "expect": {
+    "exitCode": 0,
+    "stdout": "93600\n"
+   }
+  },
+  {
+   "name": "days-format",
+   "argv": [
+    "node",
+    "-e",
+    "import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"
+   ],
+   "shows": "90061 seconds formats as 1d1h1m1s",
+   "expect": {
+    "exitCode": 0,
+    "stdout": "1d1h1m1s\n"
+   }
+  },
+  {
+   "name": "no-d-unchanged",
+   "argv": [
+    "node",
+    "-e",
+    "import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"
+   ],
+   "shows": "an input without d parses as before",
+   "expect": {
+    "exitCode": 0,
+    "stdout": "5400\n"
+   }
+  },
+  {
+   "name": "still-rejects-repeat",
+   "argv": [
+    "node",
+    "-e",
+    "import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"
+   ],
+   "shows": "a repeated unit is still rejected",
+   "expect": {
+    "exitCode": 0,
+    "stdout": "rejected\n"
+   }
+  }
+ ],
+ "criteria": [
+  {
+   "text": "d (86400 seconds) is parsed and formatted, largest unit first",
+   "checks": [
+    "days-parse",
+    "days-format"
+   ]
+  },
+  {
+   "text": "node --test exits 0 at a clean commit, and test/ is unchanged",
+   "checks": [
+    "tests"
+   ]
+  },
+  {
+   "text": "README.md's Format section documents d",
+   "checks": []
+  },
+  {
+   "text": "Inputs without d behave exactly as before, and rejected inputs stay rejected",
+   "checks": [
+    "no-d-unchanged",
+    "still-rejects-repeat"
+   ]
+  },
+  {
+   "text": "No new files and no new dependencies",
+   "checks": []
+  }
+ ]
+}

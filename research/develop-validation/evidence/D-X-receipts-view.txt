@@ -1,0 +1,641 @@
+=== brief.txt
+# Work brief endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e
+
+Prepared by the operator in Endophasia on 2026-11-10T18:34:44.018Z, for endo.task.3b103bed6f677eb54a0629ae16e3d8d7 (revision 0).
+This brief is the operator's request. It is not an approval: it grants no tools, permissions or access. Endophasia does not read your
+reply; the operator records the outcome. The text inside each section's fence is the operator's, quoted exactly; Endophasia's own
+words are outside the fences.
+
+## Task and project
+```text
+Add days to durations
+Duration
+```
+
+## Objective
+```text
+Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.
+```
+
+## Task description
+(empty)
+
+## Acceptance criteria
+(empty)
+
+## Constraints and exclusions
+(empty)
+
+## How the result will be checked
+The operator's verification plan. After your work, the operator may run these checks through Endophasia, in a clean, committed
+working tree, and judges the criteria that no check addresses. Your own report of running them is not taken as their result.
+
+Check `tests`, the command as an argument list:
+```text
+["node","--test"]
+```
+What the operator says it shows:
+```text
+the existing test suite passes
+```
+
+Check `days-parse`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+1d2h parses to 93600 seconds
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (6 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+93600
+```
+
+Check `days-format`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+90061 seconds formats as 1d1h1m1s
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (9 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+1d1h1m1s
+```
+
+Check `no-d-unchanged`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+an input without d parses as before
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (5 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+5400
+```
+
+Check `still-rejects-repeat`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+a repeated unit is still rejected
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (9 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+rejected
+```
+
+Criterion 1:
+```text
+d (86400 seconds) is parsed and formatted, largest unit first
+```
+Checked by: `days-parse`, `days-format`.
+
+Criterion 2:
+```text
+node --test exits 0 at a clean commit, and test/ is unchanged
+```
+Checked by: `tests`.
+
+Criterion 3:
+```text
+README.md's Format section documents d
+```
+Checked by: the operator's judgment (no check).
+
+Criterion 4:
+```text
+Inputs without d behave exactly as before, and rejected inputs stay rejected
+```
+Checked by: `no-d-unchanged`, `still-rejects-repeat`.
+
+Criterion 5:
+```text
+No new files and no new dependencies
+```
+Checked by: the operator's judgment (no check).
+
+## What to report back
+(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.
+
+End of brief endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e.
+=== candidate diff (fixture commit to the checked HEAD)
+diff --git a/README.md b/README.md
+index a5331c1..43289db 100644
+--- a/README.md
++++ b/README.md
+@@ -12,6 +12,7 @@ duration, `5s2h` and `1h1h` are not. Nothing else is allowed: no spaces, signs,
+ 
+ | Unit | Meaning | Seconds |
+ | :-- | :-- | --: |
++| `d` | days | 86400 |
+ | `h` | hours | 3600 |
+ | `m` | minutes | 60 |
+ | `s` | seconds | 1 |
+diff --git a/src/duration.mjs b/src/duration.mjs
+index 67058f6..c6b5f95 100644
+--- a/src/duration.mjs
++++ b/src/duration.mjs
+@@ -1,10 +1,11 @@
+-// Durations such as "1h30m": whole numbers, each with its unit, largest unit first, each unit at most once (README.md, Format).
++// Durations such as "1d1h30m": whole numbers, each with its unit, largest unit first, each unit at most once (README.md, Format).
+ const UNITS = [
++	["d", 86400],
+ 	["h", 3600],
+ 	["m", 60],
+ 	["s", 1],
+ ];
+-const PATTERN = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
++const PATTERN = /^(?:(\d+)d)*(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
+ 
+ /** The whole number of seconds in a duration. Throws a RangeError for anything else, including the empty string. */
+ export function parseDuration(text) {
+ README.md        | 1 +
+ src/duration.mjs | 5 +++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+=== endo attempt show
+{
+	"attempt": {
+		"attempt": {
+			"brief": "endo.develop-brief.v1",
+			"constraints": "",
+			"id": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"objective": "Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.",
+			"preparedAtMs": 1794335684018,
+			"projectId": "endo.project.5e6b2e6080812d81eb9d4415384ae0a1",
+			"recordedBy": "operator",
+			"reportBack": "",
+			"schemaVersion": "endo.develop-attempt.v1",
+			"task": {
+				"acceptance": "",
+				"description": "",
+				"projectName": "Duration",
+				"revision": 0,
+				"title": "Add days to durations"
+			},
+			"taskId": "endo.task.3b103bed6f677eb54a0629ae16e3d8d7",
+			"verification": {
+				"checks": [
+					{
+						"argv": [
+							"node",
+							"--test"
+						],
+						"name": "tests",
+						"shows": "the existing test suite passes"
+					},
+					{
+						"argv": [
+							"node",
+							"-e",
+							"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"
+						],
+						"expect": {
+							"exitCode": 0,
+							"stdout": "93600\n"
+						},
+						"name": "days-parse",
+						"shows": "1d2h parses to 93600 seconds"
+					},
+					{
+						"argv": [
+							"node",
+							"-e",
+							"import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"
+						],
+						"expect": {
+							"exitCode": 0,
+							"stdout": "1d1h1m1s\n"
+						},
+						"name": "days-format",
+						"shows": "90061 seconds formats as 1d1h1m1s"
+					},
+					{
+						"argv": [
+							"node",
+							"-e",
+							"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"
+						],
+						"expect": {
+							"exitCode": 0,
+							"stdout": "5400\n"
+						},
+						"name": "no-d-unchanged",
+						"shows": "an input without d parses as before"
+					},
+					{
+						"argv": [
+							"node",
+							"-e",
+							"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"
+						],
+						"expect": {
+							"exitCode": 0,
+							"stdout": "rejected\n"
+						},
+						"name": "still-rejects-repeat",
+						"shows": "a repeated unit is still rejected"
+					}
+				],
+				"criteria": [
+					{
+						"checks": [
+							"days-parse",
+							"days-format"
+						],
+						"text": "d (86400 seconds) is parsed and formatted, largest unit first"
+					},
+					{
+						"checks": [
+							"tests"
+						],
+						"text": "node --test exits 0 at a clean commit, and test/ is unchanged"
+					},
+					{
+						"checks": [],
+						"text": "README.md's Format section documents d"
+					},
+					{
+						"checks": [
+							"no-d-unchanged",
+							"still-rejects-repeat"
+						],
+						"text": "Inputs without d behave exactly as before, and rejected inputs stay rejected"
+					},
+					{
+						"checks": [],
+						"text": "No new files and no new dependencies"
+					}
+				]
+			},
+			"via": "cli"
+		},
+		"authorized": null,
+		"damaged": [],
+		"execution": null,
+		"handoff": {
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"note": "Validation study acting in the operator's role; not the human operator",
+			"recordedAtMs": 1794335847114,
+			"recordedBy": "operator",
+			"schemaVersion": "endo.develop-attempt-handoff.v0",
+			"target": "a coding agent",
+			"via": "cli"
+		},
+		"id": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+		"label": "Result reported, not verified",
+		"objective": "Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.",
+		"outcome": {
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"kind": "reported",
+			"note": "Agent reported: added d to parse and format, documented it in README; node --test passes; the sample checks print the expected values; test/ untouched; nothing left undone. (Recorded by the validation study.)",
+			"recordedAtMs": 1794335847249,
+			"recordedBy": "operator",
+			"schemaVersion": "endo.develop-attempt-outcome.v0",
+			"via": "cli"
+		},
+		"preparedAtMs": 1794335684018,
+		"records": {
+			"authorized": "absent",
+			"handoff": "recorded",
+			"outcome": "recorded"
+		},
+		"state": "reported",
+		"target": "a coding agent",
+		"task": "present",
+		"taskId": "endo.task.3b103bed6f677eb54a0629ae16e3d8d7",
+		"taskWordsChanged": [],
+		"unattributedWorkbenchSends": null
+	}
+}
+
+=== endo attempt receipts
+{
+	"comparedWith": "/work/T2U/repo",
+	"problems": [],
+	"receipts": [
+		{
+			"argv": [
+				"node",
+				"--test"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": null,
+			"commit": "943346f180cb7fb2dd0c909c38969f63e54d2f21",
+			"execution": {
+				"code": 1,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.47340bd7d94ac62224667a072aef14dc",
+			"label": "Observed check failed",
+			"outcome": "failed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335684234
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": null,
+			"commit": "943346f180cb7fb2dd0c909c38969f63e54d2f21",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.677ddb9c0156493407a32db5f856444f",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335684620
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": null,
+			"commit": "943346f180cb7fb2dd0c909c38969f63e54d2f21",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.bdf9271f25e12b6eba602a9eeb565e7b",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335684937
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": null,
+			"commit": "943346f180cb7fb2dd0c909c38969f63e54d2f21",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.0d964c93c12005390919b20949afcce4",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335685255
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": null,
+			"commit": "943346f180cb7fb2dd0c909c38969f63e54d2f21",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.6626ef0b3c39e650ef8cf7481596622d",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335685578
+		},
+		{
+			"argv": [
+				"node",
+				"--test"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "0dd67e6a4489a596f011e800b21e2510c28146b0",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.fe6bfc5f53fd199726b5d24045c0e1fa",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335685925
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "0dd67e6a4489a596f011e800b21e2510c28146b0",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.3c4fc09a8ca5ca79920c88428519eac3",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335686332
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "0dd67e6a4489a596f011e800b21e2510c28146b0",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.4845d9cb36f680f4f28b21e72df5b6e7",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335686673
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "0dd67e6a4489a596f011e800b21e2510c28146b0",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.fb8fdc0b2093c3d1e2722458e5f16abf",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335687008
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "0dd67e6a4489a596f011e800b21e2510c28146b0",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.ed4a8ebc470ff49983f89de69869bf94",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "head-differs",
+			"relationLabel": "Stale: this working tree's HEAD is now a different commit",
+			"startedAtMs": 1794335687343
+		},
+		{
+			"argv": [
+				"node",
+				"--test"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "08c3fb8270665970f49579f6dffd62df46468fde",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.2e7aa25ca42cd1a565358ddccd03fc8a",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "at-head",
+			"relationLabel": "Recorded at this working tree's current HEAD",
+			"startedAtMs": 1794335847475
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "08c3fb8270665970f49579f6dffd62df46468fde",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.2f1c61adeb39eefd3db4b8dbb4b61a8a",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "at-head",
+			"relationLabel": "Recorded at this working tree's current HEAD",
+			"startedAtMs": 1794335847882
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "08c3fb8270665970f49579f6dffd62df46468fde",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.042ab19c8eabb396c7377ddd90a58c5b",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "at-head",
+			"relationLabel": "Recorded at this working tree's current HEAD",
+			"startedAtMs": 1794335848215
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "08c3fb8270665970f49579f6dffd62df46468fde",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.552c4efedca026b8d42e4e0be58b8d65",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "at-head",
+			"relationLabel": "Recorded at this working tree's current HEAD",
+			"startedAtMs": 1794335848545
+		},
+		{
+			"argv": [
+				"node",
+				"-e",
+				"import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"
+			],
+			"attemptId": "endo.attempt.d42ce0c6000c49dda5ce0bef9b4c0c2e",
+			"branch": "refs/heads/main",
+			"commit": "08c3fb8270665970f49579f6dffd62df46468fde",
+			"execution": {
+				"code": 0,
+				"kind": "exited"
+			},
+			"id": "endo.receipt.320b2d41c24b96c394e85d6f153a4903",
+			"label": "Observed check passed",
+			"outcome": "passed",
+			"reasons": [],
+			"relation": "at-head",
+			"relationLabel": "Recorded at this working tree's current HEAD",
+			"startedAtMs": 1794335848882
+		}
+	]
+}
+

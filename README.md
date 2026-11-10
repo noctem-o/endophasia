@@ -72,7 +72,8 @@ conditions. Pi is the reference runtime and the only live integration today; Pi 
 
 ## Quick start
 
-Requires **Node.js >= 22.19.0** and Git.
+Requires **Node.js >= 22.19.0** and Git, with a Git identity set (`git config --global user.name` and
+`user.email`): the tour makes commits, and checks run only at a commit.
 
 ```sh
 git clone https://github.com/noctem-o/endophasia.git
@@ -159,12 +160,13 @@ git commit -qam "Multiplication binds tighter"
 
 endo attempt check --attempt endo.attempt.<id> --keep-output -- node calc.mjs '2+3*4'
 endo attempt evidence --attempt endo.attempt.<id>
+endo attempt observe --attempt endo.attempt.<id>
 endo attempt provenance --attempt endo.attempt.<id>
 ```
 
 The planned check now reads *Passed at HEAD*, followed by *at another commit … failed*: the earlier failure stays
-on record. `provenance` compares what Git showed of the working tree with each commit you checked. The task is
-still `open`, because accepting the work is your decision: `endo task status`.
+on record. `observe` records what Git shows of the working tree now, and `provenance` compares that observation
+with each commit you checked. The task is still `open`, because accepting the work is your decision: `endo task status`.
 
 **6. See it in a browser.**
 

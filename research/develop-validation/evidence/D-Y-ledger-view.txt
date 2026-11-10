@@ -1,0 +1,226 @@
+=== brief.txt
+# Work brief endo.attempt.4dece081a3c5e1cc4edfed96da63ce1d
+
+Prepared by the operator in Endophasia on 2026-11-10T18:33:24.556Z, for endo.task.41922d543ab07b8e395bda80bfd595a5 (revision 0).
+This brief is the operator's request. It is not an approval: it grants no tools, permissions or access. Endophasia does not read your
+reply; the operator records the outcome. The text inside each section's fence is the operator's, quoted exactly; Endophasia's own
+words are outside the fences.
+
+## Task and project
+```text
+Add days to durations
+Duration
+```
+
+## Objective
+```text
+Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.
+```
+
+## Task description
+(empty)
+
+## Acceptance criteria
+(empty)
+
+## Constraints and exclusions
+(empty)
+
+## How the result will be checked
+The operator's verification plan. After your work, the operator may run these checks through Endophasia, in a clean, committed
+working tree, and judges the criteria that no check addresses. Your own report of running them is not taken as their result.
+
+Check `tests`, the command as an argument list:
+```text
+["node","--test"]
+```
+What the operator says it shows:
+```text
+the existing test suite passes
+```
+
+Check `days-parse`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+1d2h parses to 93600 seconds
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (6 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+93600
+```
+
+Check `days-format`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+90061 seconds formats as 1d1h1m1s
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (9 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+1d1h1m1s
+```
+
+Check `no-d-unchanged`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+an input without d parses as before
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (5 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+5400
+```
+
+Check `still-rejects-repeat`, the command as an argument list:
+```text
+["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"]
+```
+What the operator says it shows:
+```text
+a repeated unit is still rejected
+```
+What the operator expects it to do: exit with code 0 and write exactly this to standard output (9 bytes as UTF-8; it ends with a line break).
+Endophasia compares the output byte for byte; standard error is not compared.
+```text
+rejected
+```
+
+Criterion 1:
+```text
+d (86400 seconds) is parsed and formatted, largest unit first
+```
+Checked by: `days-parse`, `days-format`.
+
+Criterion 2:
+```text
+node --test exits 0 at a clean commit, and test/ is unchanged
+```
+Checked by: `tests`.
+
+Criterion 3:
+```text
+README.md's Format section documents d
+```
+Checked by: the operator's judgment (no check).
+
+Criterion 4:
+```text
+Inputs without d behave exactly as before, and rejected inputs stay rejected
+```
+Checked by: `no-d-unchanged`, `still-rejects-repeat`.
+
+Criterion 5:
+```text
+No new files and no new dependencies
+```
+Checked by: the operator's judgment (no check).
+
+## What to report back
+(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.
+
+End of brief endo.attempt.4dece081a3c5e1cc4edfed96da63ce1d.
+=== candidate diff (fixture commit to the checked HEAD)
+diff --git a/README.md b/README.md
+index a5331c1..6f02c31 100644
+--- a/README.md
++++ b/README.md
+@@ -1,17 +1,18 @@
+ # duration
+ 
+-Reads and writes durations such as `1h30m`.
++Reads and writes durations such as `1d2h` or `1h30m`.
+ 
+ - `parseDuration(text)` returns the whole number of seconds, or throws a `RangeError`.
+ - `formatDuration(seconds)` returns the shortest text for a whole, non-negative number of seconds (`0s` for zero).
+ 
+ ## Format
+ 
+-A duration is one or more whole numbers, each followed by its unit. Units come largest first, and each at most once: `2h5s` is a
++A duration is one or more whole numbers, each followed by its unit. Units come largest first, and each at most once: `1d2h5s` is a
+ duration, `5s2h` and `1h1h` are not. Nothing else is allowed: no spaces, signs, fractions or empty text.
+ 
+ | Unit | Meaning | Seconds |
+ | :-- | :-- | --: |
++| `d` | days | 86400 |
+ | `h` | hours | 3600 |
+ | `m` | minutes | 60 |
+ | `s` | seconds | 1 |
+diff --git a/src/duration.mjs b/src/duration.mjs
+index 67058f6..f2f59a1 100644
+--- a/src/duration.mjs
++++ b/src/duration.mjs
+@@ -1,10 +1,11 @@
+ // Durations such as "1h30m": whole numbers, each with its unit, largest unit first, each unit at most once (README.md, Format).
+ const UNITS = [
++	["d", 86400],
+ 	["h", 3600],
+ 	["m", 60],
+ 	["s", 1],
+ ];
+-const PATTERN = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
++const PATTERN = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
+ 
+ /** The whole number of seconds in a duration. Throws a RangeError for anything else, including the empty string. */
+ export function parseDuration(text) {
+ README.md        | 5 +++--
+ src/duration.mjs | 3 ++-
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+=== endo attempt evidence
+attempt endo.attempt.4dece081a3c5e1cc4edfed96da63ce1d (task endo.task.41922d543ab07b8e395bda80bfd595a5): Add a day unit d (86400 seconds) to parseDuration and formatDuration, largest unit first, and document it in README.md's Format section. Do not change test/ and add no files or dependencies.
+  handoff   [operator] said they handed it to Claude subagent (sonnet), fresh context, disposable repo
+  outcome   [operator] recorded as reported, not verified: Agent reported: committed 5abbdac; node --test 5/5; the four sample checks printed the expected values; README documents d; test/ untouched; nothing left undone. (Recorded by the validation study.)
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 943346f180cb, 5abbdac42dfe
+  tree now  [observed] 5abbdac42dfe, clean (/work/T2/repo)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } }): Observed check passed at 5abbdac42dfe; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } }): Observed check passed at 5abbdac42dfe; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } }): Observed check passed at 5abbdac42dfe; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node -e import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } }): Observed check passed at 5abbdac42dfe; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node --test: Observed check passed at 5abbdac42dfe; Recorded at this working tree's current HEAD
+  planned   [observed] tests ["node","--test"]: Passed at HEAD (5abbdac42dfe, latest passed); at another commit, 943346f180cb: failed
+  planned   [observed] days-parse ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1d2h')); } catch { console.log('rejected'); } })"]: Passed at HEAD (5abbdac42dfe, latest passed); at another commit, 943346f180cb: failed
+  behaviour [plan: expected; observed] expected exit 0 and 6 byte(s) of output; observed exit 0, 6 byte(s), output the same
+  planned   [observed] days-format ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.formatDuration(90061)); } catch { console.log('rejected'); } })"]: Passed at HEAD (5abbdac42dfe, latest passed); at another commit, 943346f180cb: failed
+  behaviour [plan: expected; observed] expected exit 0 and 9 byte(s) of output; observed exit 0, 9 byte(s), output the same
+  planned   [observed] no-d-unchanged ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h30m')); } catch { console.log('rejected'); } })"]: Passed at HEAD (5abbdac42dfe, latest passed); at another commit, 943346f180cb: passed
+  behaviour [plan: expected; observed] expected exit 0 and 5 byte(s) of output; observed exit 0, 5 byte(s), output the same
+  planned   [observed] still-rejects-repeat ["node","-e","import('./src/duration.mjs').then((m) => { try { console.log(m.parseDuration('1h1h')); } catch { console.log('rejected'); } })"]: Passed at HEAD (5abbdac42dfe, latest passed); at another commit, 943346f180cb: passed
+  behaviour [plan: expected; observed] expected exit 0 and 9 byte(s) of output; observed exit 0, 9 byte(s), output the same
+  criterion [plan: days-parse, days-format] 1. d (86400 seconds) is parsed and formatted, largest unit first: Planned checks passed at HEAD
+  criterion [plan: tests] 2. node --test exits 0 at a clean commit, and test/ is unchanged: Planned checks passed at HEAD
+  criterion [plan: your judgment] 3. README.md's Format section documents d: Your judgment
+  criterion [plan: no-d-unchanged, still-rejects-repeat] 4. Inputs without d behave exactly as before, and rejected inputs stay rejected: Planned checks passed at HEAD
+  criterion [plan: your judgment] 5. No new files and no new dependencies: Your judgment
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+=== endo attempt provenance
+provenance: what Git showed of the working tree around this attempt; not who changed it
+  start   2026-11-10T18:37:01.450Z  When you asked: HEAD 5abbdac42dfe (refs/heads/main), no changes
+  frame   your first and latest observations (they say nothing about when the work happened)
+  now     read 2026-11-10T18:37:30.823Z; HEAD stayed at 5abbdac42dfe; against the start: same content
+  checked 5abbdac42dfe (5 receipts) against the start: same content
+  checked 943346f180cb (5 receipts) against the start: 2 paths differ: M README.md, M src/duration.mjs
+  limit   Git's view at one moment: who or what changed the tree (the agent, you, an editor, a hook, another process) is not known.
+  limit   Two observations that read the same do not mean nothing changed between them.
+  limit   Ignored files are not part of a state; their contents were not read.
+  limit   Content is compared by Git blob id over the raw bytes; Git's line-ending or filter conversion, if the repository uses any, is not applied.

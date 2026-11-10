@@ -1,0 +1,121 @@
+
+===== block0
+commit exit=0
+750667c A calculator
+
+===== block1
+
+===== block2a project add
+exit=0
+registered. Start a workbench for it from that directory with: endo harness attach --root /work/A2/home/endo-tour/store --cwd /work/A2/home/endo-tour/calc --control --workbench --project endo.project.01ec74f25953ddacf6f3f3c37dfddb12
+the workbench may change this project's tasks only when launched in exactly this directory (/work/A2/home/endo-tour/calc); from a subdirectory or elsewhere it shows them read-only. Register the subdirectory instead if that is where you work.
+with no agent running, open its tasks and evidence in a browser with: endo workspace open --root /work/A2/home/endo-tour/store --project endo.project.01ec74f25953ddacf6f3f3c37dfddb12
+
+
+===== block2b task add (endo.project.01ec74f25953ddacf6f3f3c37dfddb12)
+exit=0
+
+
+===== block2c prepare (endo.task.a6e9ccab7f85ebcf920a15cba5e682f0)
+exit=0
+prepared. Nothing was sent to any agent. Print the brief to copy with: endo attempt brief --root /work/A2/home/endo-tour/store --attempt endo.attempt.99e757727ade5d2a8098a4afe1d85ac1
+A=endo.attempt.99e757727ade5d2a8098a4afe1d85ac1
+
+===== brief
+```
+
+Criterion 1:
+```text
+2+3*4 is 14
+```
+Checked by: `precedence`.
+
+## What to report back
+(empty; Endophasia's default request:) Tell the operator what you changed (files, commits), what you ran to check it and what it printed, and what is left undone. The operator checks your report separately; it is not taken as verification.
+
+End of brief endo.attempt.99e757727ade5d2a8098a4afe1d85ac1.
+
+===== block3 check
+endo attempt check: this runs the command below with your permissions and your environment. Whatever it invokes from the repository (package.json scripts, test files, a Makefile) is the repository's code, which an agent may have written: running a repository's tests is running that repository. Endophasia cannot tell whether anything else (an agent still working, an editor) writes the tree while it runs; stop them first.
+  command:   ["node","calc.mjs","2+3*4"]
+  spawned:   /usr/bin/node
+  in:        /work/A2/home/endo-tour/calc
+  at:        750667c38d73119be20245280727acc95c0ec976 (tree 5a8db2a6c5f884164e8f2f8376e1e0857dbc28ad)
+  time limit 600 s
+  output     its first 8 KiB of standard output WILL BE STORED in the receipt and shown on the paired page: do not use --keep-output for a command that can print a secret
+--- the check's own output follows ---
+20
+--- end of the check's output ---
+
+recorded: Observed check passed, at 750667c38d73119be20245280727acc95c0ec976. This is what Endophasia observed of that command in that working tree; it is not acceptance of the task, whose status is unchanged.
+exit=0
+
+===== block3 evidence
+attempt endo.attempt.99e757727ade5d2a8098a4afe1d85ac1 (task endo.task.a6e9ccab7f85ebcf920a15cba5e682f0): Make multiplication bind tighter than addition
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 750667c38d73
+  tree now  [observed] 750667c38d73, clean (/work/A2/home/endo-tour/calc)
+  check     [observed; linked to this attempt by the operator] node calc.mjs 2+3*4: Observed check passed at 750667c38d73; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] precedence ["node","calc.mjs","2+3*4"]: Failed at HEAD (750667c38d73, latest failed)
+  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output; observed exit 0, 3 byte(s), output different; first difference at line 1: expected "14", observed "20"
+  criterion [plan: precedence] 1. 2+3*4 is 14: A planned check failed at HEAD
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       At least one planned check has no passing result at the current HEAD of this clean working tree (it failed, was inconclusive or disagreed with another run there, was not run here, or the tree has changed since).
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+exit=0
+
+===== block4
+commit exit=0
+endo attempt check: this runs the command below with your permissions and your environment. Whatever it invokes from the repository (package.json scripts, test files, a Makefile) is the repository's code, which an agent may have written: running a repository's tests is running that repository. Endophasia cannot tell whether anything else (an agent still working, an editor) writes the tree while it runs; stop them first.
+  command:   ["node","calc.mjs","2+3*4"]
+  spawned:   /usr/bin/node
+  in:        /work/A2/home/endo-tour/calc
+  at:        013570724a2b92ae10285cdfbec13958ef5703e3 (tree 94bd646a297006ff0a6d572386d3734d4b1c0bf4)
+  time limit 600 s
+  output     its first 8 KiB of standard output WILL BE STORED in the receipt and shown on the paired page: do not use --keep-output for a command that can print a secret
+--- the check's own output follows ---
+14
+--- end of the check's output ---
+
+recorded: Observed check passed, at 013570724a2b92ae10285cdfbec13958ef5703e3. This is what Endophasia observed of that command in that working tree; it is not acceptance of the task, whose status is unchanged.
+exit=0
+attempt endo.attempt.99e757727ade5d2a8098a4afe1d85ac1 (task endo.task.a6e9ccab7f85ebcf920a15cba5e682f0): Make multiplication bind tighter than addition
+  sent      [observed] No send to Pi through the workbench was authorised for this attempt.
+  run       [none] No run is attributed: no send through the workbench was authorised.
+  candidate [none] no record names one; checked at: 750667c38d73, 013570724a2b
+  tree now  [observed] 013570724a2b, clean (/work/A2/home/endo-tour/calc)
+  check     [observed; linked to this attempt by the operator] node calc.mjs 2+3*4: Observed check passed at 013570724a2b; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] precedence ["node","calc.mjs","2+3*4"]: Passed at HEAD (013570724a2b, latest passed); at another commit, 750667c38d73: failed
+  behaviour [plan: expected; observed] expected exit 0 and 3 byte(s) of output; observed exit 0, 3 byte(s), output the same
+  criterion [plan: precedence] 1. 2+3*4 is 14: Planned checks passed at HEAD
+  decision  [operator] status open
+  gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.
+  gap       The task's status is not done: the operator has not recorded accepting it.
+  not established by any record:
+    - Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.
+    - Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.
+    - That nothing else wrote the working tree between the observations shown here.
+    - That a passing check satisfies the acceptance criteria: the command decides what is checked.
+    - That Pi's report of its run is true. It is what Pi reported, not verified.
+    - Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.
+    - That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.
+exit=0
+provenance: what Git showed of the working tree around this attempt; not who changed it
+  [none] no observation is recorded for this attempt
+  limit   Git's view at one moment: who or what changed the tree (the agent, you, an editor, a hook, another process) is not known.
+  limit   Two observations that read the same do not mean nothing changed between them.
+  limit   Ignored files are not part of a state; their contents were not read.
+  limit   Content is compared by Git blob id over the raw bytes; Git's line-ending or filter conversion, if the repository uses any, is not applied.
+exit=0
+
+===== task status

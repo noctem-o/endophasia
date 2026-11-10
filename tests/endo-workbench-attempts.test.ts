@@ -75,7 +75,9 @@ class OrderedSession extends FakeSession {
 	}
 }
 
-function fakeBroker(options: { attempts?: boolean } = {}) {
+function fakeBroker(
+	options: { attempts?: boolean; provenance?: ConstructorParameters<typeof WorkbenchBrokerV0>[0]["provenance"] } = {},
+) {
 	const root = temp("endo-wba-");
 	const cwd = temp("endo-wba-cwd-");
 	const s = store(root, cwd);
@@ -88,6 +90,7 @@ function fakeBroker(options: { attempts?: boolean } = {}) {
 		attachment: "pi.default",
 		approver: approval.approver,
 		...(options.attempts === false ? {} : { attempts: s.dispatch }),
+		...(options.provenance === undefined ? {} : { provenance: options.provenance }),
 	});
 	cleanup.push(() => broker.dispose());
 	const call = (method: "GET" | "POST", route: string, body: unknown = null, grant: string | null = null) =>
@@ -164,6 +167,40 @@ describe("the broker: an attempt is requested on the terminal and approved as it
 			// The attempt stays sendable after a decline: nothing ambiguous happened.
 			if (ending !== "session-ends") expect(w.dispatch.check(w.attempt.id).ok, ending).toBe(true);
 		}
+	});
+
+	it("once approved, it cannot be withdrawn from the page while the tree is observed before the send (Codex, #140)", async () => {
+		let release: (() => void) | null = null;
+		let taking = false;
+		const w = fakeBroker({
+			provenance: {
+				take: () =>
+					new Promise((resolve) => {
+						taking = true;
+						release = () =>
+							resolve({ startedAtMs: 1, endedAtMs: 2, result: { state: "unavailable", reason: "git-timeout" } });
+					}),
+				record: () => ({ ok: true }) as never,
+			},
+		});
+		const asked = w.broker.requestAttempt(w.attempt.id);
+		if (!asked.ok) throw new Error(asked.code);
+		await w.approval.waitForRequest();
+		w.approval.answer("allow");
+		while (!taking) await settle(5);
+		// The approved request is held in the observation: a withdrawal now is refused, so no "withdrawn" answer sits beside a send.
+		const pair = await w.call("POST", "pair", { code: w.broker.issuePairingCode().code });
+		const discard = await w.call(
+			"POST",
+			"prompt/discard",
+			{ proposalId: asked.view.proposalId },
+			(pair.body as any).grant,
+		);
+		expect(discard.status).toBe(409);
+		(release as unknown as () => void)();
+		const view = await w.broker.settled(asked.view.proposalId);
+		expect(view?.state).toBe("accepted");
+		expect(w.session.promptCalls).toHaveLength(1);
 	});
 
 	it("a change while the operator read the brief, or another workbench binding it first, refuses at the moment of sending", async () => {

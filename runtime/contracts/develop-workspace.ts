@@ -461,11 +461,16 @@ export class DevelopLaunchWorkspaceV0 {
 		if (observations === null || records === null) return view;
 		for (const attempt of view.attempts) {
 			const read = receipts?.store.read(attempt.id);
+			// Only the receipts this view already lists: one written since that read (a check finishing now) must not put a commit in the
+			// provenance that the list beside it does not show, or the page would refuse the whole answer (Codex, #140).
+			const listed = new Set(attempt.receipts.list.map((r) => r.id));
+			const same =
+				read?.ok === true && attempt.receipts.state === "ready"
+					? read.receipts.filter((r) => listed.has(r.id))
+					: null;
 			attempt.provenance =
 				observed && (attempt.execution !== null || observations.has(attempt.id))
-					? await observations
-							.provenance(attempt.id, now, read?.ok === true ? read.receipts : null)
-							.catch(() => null)
+					? await observations.provenance(attempt.id, now, same).catch(() => null)
 					: null;
 		}
 		return view;

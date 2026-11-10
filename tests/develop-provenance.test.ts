@@ -152,6 +152,28 @@ describe.skipIf(!haveGit)("the observed state", () => {
 		expect(f.complete).toBe(false);
 	});
 
+	it("is unavailable when HEAD moved while the changes were read: the old commit and the new change list are no state (Codex, #140)", async () => {
+		const root = commitedRepo();
+		write(root, "a.txt", "pending\n");
+		let calls = 0;
+		const racing = {
+			...observer,
+			observe: async (dir: string, options?: Parameters<typeof observer.observe>[1]) => {
+				const seen = await observer.observe(dir, options);
+				calls += 1;
+				// Someone commits the pending change right after the first read (HEAD and the changes).
+				if (calls === 1) {
+					git(root, "add", "-A");
+					git(root, "commit", "-q", "-m", "meanwhile");
+				}
+				return seen;
+			},
+			treeEntries: observer.treeEntries.bind(observer),
+			changedPaths: observer.changedPaths.bind(observer),
+		};
+		expect(await observeEndoStateV0(racing, root)).toEqual({ state: "unavailable", reason: "head-moved" });
+	});
+
 	it("is unavailable, with the observer's reason, outside a repository", async () => {
 		const dir = fixtureDir("plain");
 		expect(await observeEndoStateV0(observer, dir)).toEqual({ state: "unavailable", reason: "not-a-repository" });
@@ -610,6 +632,34 @@ describe.skipIf(!haveGit)("an attempt's provenance", () => {
 		});
 		expect(o).toMatchObject({ basis: "operator", start: record(s, {}, 1).id, end: record(s, {}, 3).id });
 		expect(o.span).toEqual({ relation: "same" });
+
+		// Two operator observations made at once (overlapping) frame nothing: the latest one that began after the first ended is the end,
+		// or there is none, so the page never gets a frame it must refuse (Codex, #140).
+		const overlapping = await endoAttemptProvenanceV0({
+			reader,
+			authorized: null,
+			read: read(
+				record(s, { startedAtMs: 1000, endedAtMs: 3000 }, 1),
+				record(s, { startedAtMs: 2000, endedAtMs: 4000 }, 2),
+			),
+			now: null,
+			receipts: null,
+			others: [],
+		});
+		expect(overlapping).toMatchObject({ basis: "operator", start: record(s, {}, 1).id, end: null });
+		expect(provenanceCoherent(overlapping)).toBe(true);
+
+		// The workbench closed with the run open: its last observation is not the run's end, and the reading says so (Codex, #140).
+		const closing = await endoAttemptProvenanceV0({
+			reader,
+			authorized,
+			read: read(before(s, 1), after(s, 2, "workbench-closing")),
+			now: null,
+			receipts: null,
+			others: [],
+		});
+		expect(closing).toMatchObject({ basis: "send-and-run", notes: ["run-end-not-observed"] });
+		expect(renderEndoProvenanceV0(closing)).toContain("not when the run ended");
 
 		// Unreadable: there may be observations; nothing is claimed.
 		const u = await endoAttemptProvenanceV0({

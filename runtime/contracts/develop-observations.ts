@@ -380,15 +380,19 @@ export async function endoAttemptProvenanceV0(input: EndoProvenanceInputV0): Pro
 	let basis: EndoProvenanceBasisV0;
 	let start: EndoDevelopObservationV0 | null;
 	let end: EndoDevelopObservationV0 | null;
+	if (after?.trigger === "workbench-closing") notes.add("run-end-not-observed");
 	if (before !== null && after !== null) [basis, start, end] = ["send-and-run", before, after];
 	else if (before !== null) {
 		notes.add("no-after-run");
 		const later = operator.filter((o) => o.startedAtMs >= before.endedAtMs).at(-1) ?? null;
 		[basis, start, end] = later === null ? ["send-only", before, null] : ["send-and-operator", before, later];
 	} else if (after !== null) [basis, start, end] = ["run-only", null, after];
-	else if (operator.length > 0)
-		[basis, start, end] = ["operator", operator[0] ?? null, operator.length > 1 ? (operator.at(-1) ?? null) : null];
-	else
+	else if (operator.length > 0) {
+		// The latest operator observation that began after the first had ended: two that overlap (run at once) cannot frame anything.
+		const first = operator[0] as EndoDevelopObservationV0;
+		const last = operator.filter((o) => o !== first && o.startedAtMs >= first.endedAtMs).at(-1) ?? null;
+		[basis, start, end] = ["operator", first, last];
+	} else
 		return {
 			...empty("observed"),
 			observations: views,
@@ -503,6 +507,7 @@ const ORDER: readonly EndoProvenanceNoteV0[] = [
 	"observation-unavailable",
 	"other-send-observations",
 	"frame-elsewhere",
+	"run-end-not-observed",
 	"problems",
 ];
 
@@ -538,7 +543,8 @@ export function endoHeadMoveWordsV0(h: EndoHeadMoveV0): string {
 }
 
 const BASIS_TEXT: Readonly<Record<EndoProvenanceBasisV0, string>> = {
-	"send-and-run": "just before the brief was sent, and when the run had ended",
+	"send-and-run":
+		"just before the brief was sent, and after the run that followed (when it ended, or as the workbench closed)",
 	"send-only": "just before the brief was sent (nothing observed since)",
 	"send-and-operator": "just before the brief was sent, and your latest observation since",
 	"run-only": "when the run had ended (nothing observed before the send)",

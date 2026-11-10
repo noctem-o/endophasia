@@ -200,6 +200,11 @@ export async function observeEndoStateV0(
 				: { kind: "not-read", why: "path-not-exact" },
 		});
 	}
+	// HEAD is read before the changes: a commit made in between would pair the old commit with the new (empty) change list, a state the
+	// tree never held. HEAD is read again after; if it moved, nothing is claimed (Codex, #140). A move and a move back is not seen.
+	const again = await observer.observe(directory, options);
+	if (!again.ok || again.observation.commit !== o.commit || again.observation.worktree !== o.worktree)
+		return { state: "unavailable", reason: "head-moved" };
 	const flaggedEntries = o.dirty.includes("flagged-entries");
 	const submodule = o.dirty.includes("submodule");
 	const base = {

@@ -19,7 +19,7 @@ $V/oracles/roman.sh .                         # ORACLE FAIL: 4 â†’ IIII, 1994 â†
 endo project add --name Roman --path "$PWD"
 endo task add --project endo.project.<id> --title "Roman numerals use subtractive notation"
 endo attempt prepare --project endo.project.<id> --task endo.task.<id> --objective "Make roman.mjs subtractive" \
-  --plan-file $V/fixtures/roman/plan.json
+  --plan-file $V/fixtures/roman/verification-plan.json
 endo attempt check --attempt endo.attempt.<id> --keep-output -- node roman.mjs 1994   # exits 0: "Observed check passed" (B1)
 endo attempt evidence --attempt endo.attempt.<id>   # criterion 1: "A planned check failed at HEAD"
 endo workspace open --project endo.project.<id>     # pair; the overview says "Needs your attention (0)": the missed failure (U1)
@@ -38,7 +38,7 @@ research/develop-validation/rebuild-page-cases.sh "$(mktemp -d)"
 
 ```sh
 mkdir $W/dur && cp -r research/review-pilot/fixture/. $W/dur/ && cd $W/dur && git init -q && git add . && git commit -qm fixture
-# Prepare an attempt with --plan-file $V/fixtures/duration-plan/plan.json, then run each planned argv with attempt check.
+# Prepare an attempt with --plan-file $V/fixtures/duration-plan/verification-plan.json, then run each planned argv with attempt check.
 # T2U: in src/duration.mjs add ["d", 86400] first in UNITS, change the pattern's start to (?:(\d+)d)* , add a README row, commit.
 node $V/oracles/duration.mjs .                # ORACLE FAIL: reject "1d1d" -> 86400
 # Run every planned check again: all pass, and every check-covered criterion reads "Planned checks passed at HEAD".

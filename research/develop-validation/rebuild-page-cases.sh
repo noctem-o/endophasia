@@ -25,11 +25,11 @@ capture() { # <name> <project>
 }
 roman() { mkdir -p "$W/$1/repo" && cp "$V/fixtures/roman/roman.mjs" "$W/$1/repo/" && (cd "$W/$1/repo" && git init -q && git add . && git commit -qm seeded); }
 
-C=U; roman U; read -r P T A < <(setup U "$W/U/repo" "$V/fixtures/roman/plan.json")
+C=U; roman U; read -r P T A < <(setup U "$W/U/repo" "$V/fixtures/roman/verification-plan.json")
 (cd "$W/U/repo" && endo attempt check --root "$W/$C/store" --attempt "$A" --keep-output -- node roman.mjs 1994 >/dev/null 2>&1 || true)
 capture U "$P" "$A"
 
-C=F; roman F; read -r P T A < <(setup F "$W/F/repo" "$V/fixtures/roman/plan.json")
+C=F; roman F; read -r P T A < <(setup F "$W/F/repo" "$V/fixtures/roman/verification-plan.json")
 (cd "$W/F/repo" && NODE_OPTIONS="--import=$V/fixtures/env-hook.mjs" endo attempt check --root "$W/$C/store" --attempt "$A" --keep-output -- node roman.mjs 1994 >/dev/null 2>&1 || true)
 (cd "$W/F/repo" && endo attempt check --root "$W/$C/store" --attempt "$A" --keep-output -- node roman.mjs 0 >/dev/null 2>&1 || true)
 capture F "$P" "$A"
@@ -45,8 +45,8 @@ let r = fs.readFileSync("README.md", "utf8");
 fs.writeFileSync("README.md", r.replace("| `h` | hours | 3600 |", "| `d` | days | 86400 |\n| `h` | hours | 3600 |"));'
 git commit -qam "add days"
 node "$V/oracles/duration.mjs" . | grep -q "ORACLE FAIL" || { echo "T2U: expected the oracle to fail" >&2; exit 1; }
-C=T2U; read -r P T A < <(setup T2U "$W/T2U/repo" "$V/fixtures/duration-plan/plan.json")
-python3 -c "import json,sys,shlex;[print(shlex.join(c['argv'])) for c in json.load(open(sys.argv[1]))['checks']]" "$V/fixtures/duration-plan/plan.json" |
+C=T2U; read -r P T A < <(setup T2U "$W/T2U/repo" "$V/fixtures/duration-plan/verification-plan.json")
+python3 -c "import json,sys,shlex;[print(shlex.join(c['argv'])) for c in json.load(open(sys.argv[1]))['checks']]" "$V/fixtures/duration-plan/verification-plan.json" |
 	while read -r line; do eval "set -- $line"; endo attempt check --root "$W/$C/store" --attempt "$A" --keep-output -- "$@" >/dev/null 2>&1 < /dev/null || true; done
 capture T2U "$P" "$A"
 echo "captured: $W/out"

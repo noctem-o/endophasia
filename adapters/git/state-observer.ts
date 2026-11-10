@@ -77,7 +77,12 @@ async function contentAt(root: string, path: string, length: 40 | 64, budget: Bu
 	try {
 		handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 		const opened = await handle.stat();
-		if (!opened.isFile() || opened.ino !== before.ino || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs)
+		if (
+			!opened.isFile() ||
+			opened.ino !== before.ino ||
+			opened.size !== before.size ||
+			opened.mtimeMs !== before.mtimeMs
+		)
 			return notRead("changing");
 		const bytes = Buffer.alloc(before.size);
 		let at = 0;

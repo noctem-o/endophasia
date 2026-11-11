@@ -1,7 +1,7 @@
 // Workbench polish after the first real-task session (2026-11-11): the reasoning reveal's rule, and the not-clean refusal of
 // `endo attempt check` naming what is uncommitted and how to commit it.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,35 @@ describe.skipIf(!haveGit)(
 				timeout: 60_000,
 			});
 
+		it("never runs a program the repository's configuration names while listing what is uncommitted (Codex, #145)", () => {
+			const root = join(base, "store-fsmonitor");
+			const repo = join(base, "repo-fsmonitor");
+			mkdirSync(repo);
+			git(repo, "init", "-q", "-b", "main");
+			writeFileSync(join(repo, "README.md"), "x\n");
+			git(repo, "add", ".");
+			git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "start");
+			// A repository an agent could have configured: Git would run this program on `git status`.
+			const marker = join(base, "fsmonitor-ran");
+			const hook = join(base, "fsmonitor.sh");
+			writeFileSync(hook, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, { mode: 0o755 });
+			git(repo, "config", "core.fsmonitor", hook);
+			const id = (out: string, kind: string) =>
+				out.match(new RegExp(`endo\\.${kind}\\.[0-9a-f]{32}`))?.[0] as string;
+			const P = id(endo(repo, ["project", "add", "--root", root, "--name", "F", "--path", repo]).stdout, "project");
+			const T = id(endo(repo, ["task", "add", "--root", root, "--project", P, "--title", "T"]).stdout, "task");
+			const A = id(
+				endo(repo, ["attempt", "prepare", "--root", root, "--project", P, "--task", T, "--objective", "x"]).stdout,
+				"attempt",
+			);
+			rmSync(marker, { force: true });
+			writeFileSync(join(repo, "index.html"), "<p>hi</p>\n");
+			const refused = endo(repo, ["attempt", "check", "--root", root, "--attempt", A, "--", "node", "--version"]);
+			expect(refused.status).toBe(2);
+			expect(refused.stderr).toMatch(/^ {2}untracked +index\.html$/m);
+			expect(existsSync(marker)).toBe(false);
+		});
+
 		it("lists the untracked file and the commands, and still runs and records nothing", () => {
 			const root = join(base, "store");
 			const repo = join(base, "repo");
@@ -70,7 +99,7 @@ describe.skipIf(!haveGit)(
 			expect(refused.status).toBe(2);
 			expect(refused.stderr).toContain("Nothing was run and nothing was recorded.");
 			expect(refused.stderr).toContain(`Not committed in ${repo}`);
-			expect(refused.stderr).toContain("  ?? index.html");
+			expect(refused.stderr).toMatch(/^ {2}untracked +index\.html$/m);
 			expect(refused.stderr).toContain(
 				`git -C ${JSON.stringify(repo)} add -A && git -C ${JSON.stringify(repo)} commit -m "<message>"`,
 			);

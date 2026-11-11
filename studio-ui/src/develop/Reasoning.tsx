@@ -54,6 +54,11 @@ export type ReasoningView = ReturnType<typeof useReasoningView>;
  * opening a long trace near the bottom moves the reader away from it, and the next arrival must not pull them back down.
  */
 export const ReflowContext = createContext<(() => void) | null>(null);
+/**
+ * Called when text still being written grows on screen (its reveal, ui/use-reveal.ts): the conversation stays at the bottom if the reader
+ * was there, and keeps their place if they had scrolled up. Provided by the conversation's scroller (Live.tsx).
+ */
+export const GrowContext = createContext<(() => void) | null>(null);
 
 /** Fine horizontal strata: the trace's mark. Drawn, not a glyph, so it needs no font. */
 function Strata(): ReactElement {
@@ -93,6 +98,11 @@ export function ReasoningBlock({
 	}, [disclosure]);
 	// A trace still being written appears as it grows, not in blocks (display only; see ui/use-reveal.ts).
 	const revealed = useRevealed(part.state === "supplied" ? part.text : "", partial);
+	const grow = useContext(GrowContext);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `revealed` stands for "the trace grew on screen"
+	useLayoutEffect(() => {
+		if (partial) grow?.();
+	}, [revealed]);
 	const meta = traceMeta(part, ordinal, count);
 	if (part.state !== "supplied")
 		return (

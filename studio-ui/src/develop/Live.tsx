@@ -9,6 +9,7 @@ import {
 	type ReactElement,
 	type ReactNode,
 	useCallback,
+	useContext,
 	useId,
 	useLayoutEffect,
 	useRef,
@@ -55,7 +56,7 @@ import type { useWorkbench } from "../use-workbench.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
 import { AttemptRequest } from "./AttemptRequest.tsx";
 import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
-import { ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
+import { GrowContext, ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 import { ProjectBlock, TaskCluster, TaskPanel } from "./Tasks.tsx";
 
@@ -248,6 +249,11 @@ function TurnMeta({ item }: { item: TranscriptMessage }): ReactElement | null {
 /** A message's text: a message still being written appears as it grows, not in blocks (display only; see ui/use-reveal.ts). */
 function RevealedText({ text, partial }: { text: string; partial: boolean }): ReactElement {
 	const shown = useRevealed(text, partial);
+	const grow = useContext(GrowContext);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `shown` stands for "the text grew on screen"
+	useLayoutEffect(() => {
+		if (partial) grow?.();
+	}, [shown]);
 	return (
 		<p className="turn-text" data-partial={partial}>
 			{shown}
@@ -882,33 +888,40 @@ function LiveScroll({
 			setBelow(true);
 		}
 	}, [signature, visible]);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `tail` stands for "the message being written grew"
-	useLayoutEffect(() => {
+	// Follow growth of the message being written: at the bottom if the reader was there, else their place kept. On each new block, and on
+	// each frame of its reveal (GrowContext), since the reveal grows the text after the block arrived (Codex, #145).
+	const grow = useCallback(() => {
 		const el = box.current;
-		if (el === null || !visible) return;
+		if (el === null || !shown.current) return;
 		if (stick.current) el.scrollTop = el.scrollHeight;
 		else el.scrollTop = saved.current;
+	}, []);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `tail` stands for "the message being written grew"
+	useLayoutEffect(() => {
+		grow();
 	}, [tail]);
 	return (
 		<ReflowContext.Provider value={judge}>
-			<div className="live-scroll" ref={box} onScroll={onScroll}>
-				{children}
-				{below ? (
-					<button
-						type="button"
-						className="btn small-btn new-below"
-						data-testid="new-below"
-						onClick={() => {
-							const el = box.current;
-							if (el !== null) el.scrollTop = el.scrollHeight;
-							stick.current = true;
-							setBelow(false);
-						}}
-					>
-						New items below ↓
-					</button>
-				) : null}
-			</div>
+			<GrowContext.Provider value={grow}>
+				<div className="live-scroll" ref={box} onScroll={onScroll}>
+					{children}
+					{below ? (
+						<button
+							type="button"
+							className="btn small-btn new-below"
+							data-testid="new-below"
+							onClick={() => {
+								const el = box.current;
+								if (el !== null) el.scrollTop = el.scrollHeight;
+								stick.current = true;
+								setBelow(false);
+							}}
+						>
+							New items below ↓
+						</button>
+					) : null}
+				</div>
+			</GrowContext.Provider>
 		</ReflowContext.Provider>
 	);
 }

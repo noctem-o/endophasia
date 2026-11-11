@@ -1,12 +1,12 @@
-attempt endo.attempt.89f9c3d78490cc6e80f92b59ddeb8ce5 (task endo.task.6ba699a7fcce8ce87c22168b4049824d): validation case O
+attempt endo.attempt.d6c3919175e1c0d06a1fcc835655ca51 (task endo.task.4bd9fb3be71033d050dae4465c70a5b6): validation case O
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: c849a6069b7a
-  tree now  [observed] c849a6069b7a, clean (/work/O/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 0: Observed check failed at c849a6069b7a; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  candidate [none] no record names one; checked at: 7e00385d1a8d
+  tree now  [observed] 7e00385d1a8d, clean (/work/O/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 0: Observed check failed at 7e00385d1a8d; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
   planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Not run
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; no receipt at the current HEAD
-  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Passed at HEAD (c849a6069b7a, latest passed)
+  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Passed at HEAD (7e00385d1a8d, latest passed)
   behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; observed exit 2, 0 byte(s), output the same
   planned   [observed] runs ["node","roman.mjs","14"]: Not run
   criterion [plan: subtractive-1994] 1. Numerals use standard subtractive notation (1994 is MCMXCIV): Not shown at HEAD

@@ -401,7 +401,13 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			// Absence is claimed only where everything was read; otherwise the gap lines below say what was not.
 			// An attempt record that could not be placed may be this task's, so even "no attempts" is then only "none read".
 			const complete = e.unreadable + e.skipped + e.problems + e.records === 0 && (view?.unattributed ?? 0) === 0;
-			if (review && e.checks.length === 0 && e.planned.every((p) => p.receipt === null))
+			// Planned entries cut by the display limit may hold receipts, so absence is claimed only when none was cut (Codex, #144).
+			if (
+				review &&
+				e.checks.length === 0 &&
+				e.planned.every((p) => p.receipt === null) &&
+				e.morePlanned.checks === 0
+			)
 				lines.push({
 					kind: "note",
 					parts: [

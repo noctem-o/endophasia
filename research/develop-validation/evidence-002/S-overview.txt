@@ -39,27 +39,27 @@ none selected
 ▾
 1 needs attention
 repo
-branch master 751f618
+branch master acf1a94
 clean
-read 00:39:22 (broker clock)
+read 00:55:31 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD 751f618
+checks compared with HEAD acf1a94
 NEEDS YOUR ATTENTION (1)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 S task
 ○
 Open
 Check failed
-Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at bece8f2, failed) (read by its declared exit code and output).
+Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at b7f7f81, failed) (read by its declared exit code and output).
 Planned check rejects-zero: Not run (read by its declared exit code and output).
 Planned check runs: Not run.
 One attempt prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:39:22 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:55:31 (browser clock). Refresh
 
-read 00:39:22 (browser clock) Refresh tasks
+read 00:55:31 (browser clock) Refresh tasks
 
 CONTEXT
 

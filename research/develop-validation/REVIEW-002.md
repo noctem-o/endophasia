@@ -53,3 +53,13 @@ another.
 | P2 | A row flagged by one line could open another line's receipt (a stale planned pass before an unplanned failure) (P2) | **Reproduced, fixed.** A row opens the receipt behind the flag that put it in its section |
 
 The triage contract test now also covers the `elsewhere` outcomes (1 152 combinations).
+
+## Codex on the PR, second round (on `add543847`)
+
+| # | Finding (priority) | Disposition |
+| :-- | :-- | :-- |
+| N1 | A command run only in other worktrees took its latest run globally, so a pass in tree C hid a failure in tree B, also with HEAD unread (P1) | **Reproduced, fixed.** For `elsewhere` and `unavailable`, the run behind the entry is chosen by the same per-tree rule as `elsewhere`: each tree's latest run is its own check, the latest failed or inconclusive one first |
+| N2 | Superseding an older attempt looked only at its local run, so it dropped an entry whose other-worktree run had failed (P1) | **Reproduced, fixed.** Superseding weighs this tree's evidence only: an entry whose other-tree run failed or was inconclusive is never dropped by it. This is conservative: an old failure elsewhere stays until a later run settles it in a way the overview can see |
+| N3 | A review row said "No observed checks recorded" when recorded planned entries had been cut by the display limit (P2) | **Reproduced, fixed.** Absence is claimed only when no planned entry was cut |
+
+Codex also repeated its first-round P1 and P2 on the new commit; both were already fixed in `add543847`.

@@ -1,9 +1,9 @@
-attempt endo.attempt.a8eeb0b4e448c6895d09e1fde4d5d6ea (task endo.task.149a159b70e13a612656b26593c39b3e): validation case E
+attempt endo.attempt.50c5d49039aed5555c30a95564231232 (task endo.task.120b4204fcacb4b8a071fd40dc12f676): validation case E
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: c41a75789b06
-  tree now  [observed] c41a75789b06, clean (/work/E/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at c41a75789b06; Recorded in a different working tree; not compared (exit status only: the plan reads this command by its behaviour, below)
+  candidate [none] no record names one; checked at: fee199d846a4
+  tree now  [observed] fee199d846a4, clean (/work/E/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at fee199d846a4; Recorded in a different working tree; not compared (exit status only: the plan reads this command by its behaviour, below)
   planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Run only in another working tree
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; no receipt at the current HEAD
   planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run

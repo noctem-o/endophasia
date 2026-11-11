@@ -114,6 +114,37 @@ const rankOf = (p: EndoDevelopAttentionPlannedV1): number => TRIAGE_RANK[endoPla
 const sameArgv = (a: readonly string[], b: readonly string[]): boolean =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
 
+type Run = NonNullable<EndoDevelopAttentionPlannedV1["receipt"]>;
+
+/**
+ * Of `runs` (one planned command's receipts), each working tree's latest run is its own check, as v0 kept them: the latest of those that
+ * the plan reads as failed or inconclusive, else the latest of them. A pass in one tree never hides a failure in another. Null for none.
+ */
+function worstPerTree(
+	runs: readonly EndoDevelopReceiptV0[],
+	planned: Parameters<typeof endoPlannedReadingV0>[0],
+): Run | null {
+	const perTree = new Map<string, EndoDevelopReceiptV0>();
+	for (const r of runs) {
+		const tree = JSON.stringify([r.repository.commonDir, r.repository.worktree]);
+		const seen = perTree.get(tree);
+		if (seen === undefined || endoReceiptLaterV0(r, seen)) perTree.set(tree, r);
+	}
+	const read = [...perTree.values()].map((r) => ({ r, outcome: endoPlannedReadingV0(planned, r) }));
+	const pick = (xs: typeof read) =>
+		xs.reduce<(typeof read)[number] | null>((a, x) => (a === null || endoReceiptLaterV0(x.r, a.r) ? x : a), null);
+	const chosen = pick(read.filter((x) => x.outcome !== "passed")) ?? pick(read);
+	return chosen === null
+		? null
+		: {
+				receiptId: chosen.r.id,
+				commit: chosen.r.revision.commit,
+				startedAtMs: chosen.r.startedAtMs,
+				endedAtMs: chosen.r.endedAtMs,
+				outcome: chosen.outcome,
+			};
+}
+
 /**
  * The planned checks of one attempt, as its own ledger reads them over its own receipts, each with its argv (to tell commands apart across
  * attempts). For a check without a current result whose ledger names no run in this working tree (elsewhere, or HEAD not read), the run
@@ -139,48 +170,25 @@ function plannedOf(
 				endedAtMs: named.endedAtMs,
 				outcome: named.outcome,
 			};
-		else if (c.state === "elsewhere" || c.state === "unavailable") {
-			let latest: EndoDevelopReceiptV0 | null = null;
-			for (const r of receipts)
-				if (sameArgv(r.check.argv, planned.argv) && (latest === null || endoReceiptLaterV0(r, latest))) latest = r;
-			if (latest !== null)
-				behind = {
-					receiptId: latest.id,
-					commit: latest.revision.commit,
-					startedAtMs: latest.startedAtMs,
-					endedAtMs: latest.endedAtMs,
-					outcome: endoPlannedReadingV0(planned, latest),
-				};
-		}
+		else if (c.state === "elsewhere" || c.state === "unavailable")
+			// Every run of it is in another tree (or HEAD was not read, so no tree is "here"): each tree is its own check.
+			behind = worstPerTree(
+				receipts.filter((r) => sameArgv(r.check.argv, planned.argv)),
+				planned,
+			);
 		// This command's runs in other working trees or repositories: the ledger of this tree does not read them, and a pass here must not
 		// hide a failure there (v0 kept each tree's latest run as its own check).
-		let elsewhere: EndoDevelopAttentionPlannedV1["elsewhere"] = null;
-		if (current !== null && c.state !== "elsewhere") {
-			const perTree = new Map<string, EndoDevelopReceiptV0>();
-			for (const r of receipts) {
-				if (!sameArgv(r.check.argv, planned.argv)) continue;
-				const relation = endoReceiptRelationV0(r, current);
-				if (relation !== "other-worktree" && relation !== "other-repository") continue;
-				const tree = JSON.stringify([r.repository.commonDir, r.repository.worktree]);
-				const seen = perTree.get(tree);
-				if (seen === undefined || endoReceiptLaterV0(r, seen)) perTree.set(tree, r);
-			}
-			const latest = [...perTree.values()].map((r) => ({ r, outcome: endoPlannedReadingV0(planned, r) }));
-			const pick = (xs: typeof latest) =>
-				xs.reduce<(typeof latest)[number] | null>(
-					(a, x) => (a === null || endoReceiptLaterV0(x.r, a.r) ? x : a),
-					null,
-				);
-			const chosen = pick(latest.filter((x) => x.outcome !== "passed")) ?? pick(latest);
-			if (chosen !== null)
-				elsewhere = {
-					receiptId: chosen.r.id,
-					commit: chosen.r.revision.commit,
-					startedAtMs: chosen.r.startedAtMs,
-					endedAtMs: chosen.r.endedAtMs,
-					outcome: chosen.outcome,
-				};
-		}
+		const elsewhere: EndoDevelopAttentionPlannedV1["elsewhere"] =
+			current === null || c.state === "elsewhere"
+				? null
+				: worstPerTree(
+						receipts.filter((r) => {
+							if (!sameArgv(r.check.argv, planned.argv)) return false;
+							const relation = endoReceiptRelationV0(r, current);
+							return relation === "other-worktree" || relation === "other-repository";
+						}),
+						planned,
+					);
 		return {
 			argv: planned.argv,
 			entry: {
@@ -236,6 +244,12 @@ function supersede(candidates: readonly Candidate[]): EndoDevelopAttentionPlanne
 			if (x.newest) return true;
 			const r = x.entry.receipt;
 			if (x.entry.state === "not-run" || r === null) return false;
+			// Superseding weighs this tree's evidence only: a failed or inconclusive run in another tree is never dropped by it (Codex, #144).
+			const away =
+				x.entry.state === "elsewhere" || x.entry.state === "unavailable"
+					? r.outcome
+					: (x.entry.elsewhere?.outcome ?? "passed");
+			if (away !== "passed") return true;
 			const attempt = x.entry.attemptId;
 			return !candidates.some(
 				(y) =>

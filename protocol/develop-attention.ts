@@ -67,7 +67,8 @@ export interface EndoDevelopAttentionCheckV0 {
  * own. `receipt` is the run behind it, with `outcome` as the PLAN reads it (behaviour for a behavioural check), not its exit status:
  * - passed, failed, inconclusive, mixed, tree-changed: the latest run at the current HEAD;
  * - stale: the latest run in this working tree, at another commit;
- * - elsewhere: the latest run in another working tree or repository; unavailable (HEAD not read): the latest run anywhere;
+ * - elsewhere: in another working tree or repository; unavailable (HEAD not read): anywhere. Each tree's latest run is its own check:
+ *   the latest of those the plan reads as failed or inconclusive, else the latest;
  * - not-run: none.
  * `incomplete`: some of this attempt's receipt files could not be used, so a later result may be among them. `behavioural`: the plan
  * declares an expected exit code and output for it.

@@ -607,6 +607,59 @@ describe("one attempt, several working trees; and which receipt a row opens", ()
 	});
 });
 
+// Codex on #144, second round.
+describe("each other worktree is its own check, everywhere", () => {
+	const TREE_B = { worktree: "/work/calc-b", commonDir: "/work/calc/.git", linked: true };
+	const TREE_C = { worktree: "/work/calc-c", commonDir: "/work/calc/.git", linked: true };
+	it("N1: run only elsewhere, a later pass in tree C does not hide a failure in tree B (and with HEAD unread)", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Two other trees", "in-progress");
+		const a = p.attempt(task);
+		p.ran(a, 1, PRECEDENCE, 0, "20\n", { repository: TREE_B });
+		p.ran(a, 5, PRECEDENCE, 0, "14\n", { repository: TREE_C });
+		expect(stateOf(p, task, "precedence")).toBe("elsewhere");
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+		expect(itemOf(p.overview(null), task).flags).toEqual(["failed"]);
+	});
+
+	it("N2: an older attempt whose other-worktree run failed is not superseded by a newer attempt's pass here", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Old failure elsewhere", "in-progress");
+		const a1 = p.attempt(task);
+		const a2 = p.attempt(task);
+		p.ran(a1, 1, PRECEDENCE, 0, "14\n");
+		p.ran(a2, 2, PRECEDENCE, 0, "14\n");
+		p.ran(a1, 3, PRECEDENCE, 0, "20\n", { repository: TREE_B });
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+	});
+
+	it("N3: a review row does not say no checks were recorded when recorded ones were cut by the display limit", () => {
+		const p = project();
+		const wide: EndoVerificationPlanV0 = {
+			checks: Array.from({ length: 8 }, (_, i) => ({
+				name: `c${i}`,
+				argv: ["node", "calc.mjs", `${i}+${i}`],
+				shows: "x",
+			})),
+			criteria: [{ text: "all", checks: Array.from({ length: 8 }, (_, i) => `c${i}`) }],
+		};
+		// The older attempt planned old.mjs; the newest plans eight checks it has not run.
+		const oldPlan: EndoVerificationPlanV0 = {
+			checks: [{ name: "old", argv: ["node", "old.mjs"], shows: "x" }],
+			criteria: [{ text: "old", checks: ["old"] }],
+		};
+		const t2 = taskIn(p.root, p.projectId, "Cut by the limit, planned", "review");
+		const b1 = p.attempt(t2, oldPlan);
+		p.ran(b1, 2, ["node", "old.mjs"], 0, "ok\n");
+		p.attempt(t2, wide);
+		const v = p.view().tasks.find((t) => t.taskId === t2);
+		expect(v?.morePlanned.checks).toBeGreaterThan(0);
+		expect(texts(itemOf(p.overview(), t2)).join("\n")).not.toMatch(
+			/No observed checks recorded|No observed checks were read/,
+		);
+	});
+});
+
 describe("one triage rule", () => {
 	it("the page's mirror equals the protocol's over every state, reading, count and completeness", () => {
 		let n = 0;

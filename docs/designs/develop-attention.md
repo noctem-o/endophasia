@@ -234,7 +234,9 @@ behavioural check's. In `endo.develop-attention-view.v1`:
   other worktrees count as equally current, so a later run in one can stand for an earlier run in another.
 - **Other worktrees of one attempt**: the ledger reads only the launch's worktree, so an entry decided here also carries `elsewhere`, the
   run in another worktree that matters most (a failed or inconclusive latest run, else the latest). The triage is raised to at least it:
-  a pass here never hides a failure there. A row opens the receipt behind the flag that put it in its section.
+  a pass here never hides a failure there. The same per-tree rule picks the run behind an entry run only elsewhere, or with HEAD unread.
+  Superseding weighs this tree's evidence only: an entry whose run in another tree failed is never dropped by it. A row opens the receipt
+  behind the flag that put it in its section.
 
 The overview is still triage, not acceptance: a planned check that passed at HEAD says only that, and the criterion stays the Task view's
 and the operator's.

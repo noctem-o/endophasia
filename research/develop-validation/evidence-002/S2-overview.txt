@@ -38,14 +38,14 @@ Task
 none selected
 ▾
 repo
-branch master 06c31c9
+branch master 530f03a
 clean
-read 00:39:24 (broker clock)
+read 00:55:33 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD 06c31c9
+checks compared with HEAD 530f03a
 NEEDS YOUR ATTENTION (0)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 
 Nothing is in review, and no planned check failed, was inconclusive or disagrees at HEAD, and no other command's latest observed check failed or was inconclusive. Some planned checks have no current result (not run here, run only at another commit or in another working tree, not compared, the tree has changed since, or some receipt files could not be read); the tasks below say which. That is not a pass.
@@ -54,14 +54,14 @@ OPEN (1)not started
 S2 task
 ○
 Open
-Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at 4927dc1, passed) (read by its declared exit code and output).
+Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at cea6950, passed) (read by its declared exit code and output).
 Planned check rejects-zero: Not run (read by its declared exit code and output).
 Planned check runs: Not run.
 One attempt prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:39:24 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:55:33 (browser clock). Refresh
 
-read 00:39:24 (browser clock) Refresh tasks
+read 00:55:33 (browser clock) Refresh tasks
 
 CONTEXT
 

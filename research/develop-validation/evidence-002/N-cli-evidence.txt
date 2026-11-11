@@ -1,8 +1,8 @@
-attempt endo.attempt.2f13aeb6f90cba6ff682c43066256e88 (task endo.task.cc1e2e0535deb3fd9c0eab9b131e7f1b): validation case N
+attempt endo.attempt.8f9265c936eacb03e7a127e556415b13 (task endo.task.7286d6a3135ff1f92ebe5839a6c2f5e5): validation case N
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
   candidate [none] no record names one; checked at: nothing
-  tree now  [observed] a9d89676d12f, clean (/work/N/repo)
+  tree now  [observed] b5e42088f03d, clean (/work/N/repo)
   planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Not run
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; no receipt at the current HEAD
   planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run

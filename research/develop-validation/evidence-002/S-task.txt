@@ -41,9 +41,9 @@ S task
 Open
 1 needs attention
 repo
-branch master 751f618
+branch master acf1a94
 clean
-read 00:39:22 (broker clock)
+read 00:55:31 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
@@ -53,7 +53,7 @@ No agent attached · read from the store when you ask · statuses change only wh
 S task
 ○
 Open
-updated 00:39:21 · revision 0
+updated 00:55:30 · revision 0
 Edit
 DESCRIPTION
 
@@ -73,15 +73,15 @@ No session linked. Never inferred from a name, a time or a directory.
 This workspace runs no agent, so it has no session to link. A live workbench links the session it serves; endo task link links an Oh My Pi saved session.
 
 History (1)
-00:39:21 created as open
+00:55:30 created as open
 ATTEMPTS briefs you prepared; nothing here sends one
 
-Compared with HEAD 751f618508de of this working tree, with nothing uncommitted, read 2026-11-11 00:39 UTC. The Context panel is read separately.
+Compared with HEAD acf1a9488f9a of this working tree, with nothing uncommitted, read 2026-11-11 00:55 UTC. The Context panel is read separately.
 
 Prepared
-82ae394c
+c352d3d8
 validation case S
-prepared 2026-11-11 00:39 UTC
+prepared 2026-11-11 00:55 UTC
 4 criteria at HEAD:
 not shown 3
 your judgment 1
@@ -130,9 +130,9 @@ Expected output
 MCMXCIV
 
 
-At another commit (bece8f2986c7) its latest run failed; it has not run at this HEAD.
+At another commit (b7f7f81b487e) its latest run failed; it has not run at this HEAD.
 
-endo attempt check --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c --keep-output -- node roman.mjs 1994
+endo attempt check --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 --keep-output -- node roman.mjs 1994
 
 --keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
 
@@ -145,7 +145,7 @@ You said it shows: out-of-range input is refused with nothing on stdout
 
 You declared it should: exit 2 and print nothing on standard output (compared byte for byte; standard error is not compared)
 
-endo attempt check --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c --keep-output -- node roman.mjs 0
+endo attempt check --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 --keep-output -- node roman.mjs 0
 
 --keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
 
@@ -156,11 +156,11 @@ Not run
 
 You said it shows: the program runs for ordinary input
 
-endo attempt check --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c -- node roman.mjs 14
+endo attempt check --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 -- node roman.mjs 14
 Every check recorded for this attempt (1)
 Observed check passed
-bece8f2986c7
-2026-11-11 00:39 UTC
+b7f7f81b487e
+2026-11-11 00:55 UTC
 
 node roman.mjs 1994
 
@@ -183,19 +183,19 @@ A local, unsigned file: anyone who can write the store can write a receipt.
 
 Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you type after --, never one from a record, a brief or an agent:
 
-endo attempt check --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c -- <command> [args...]
-endo attempt receipts --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c
+endo attempt check --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 -- <command> [args...]
+endo attempt receipts --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8
 Brief what the agent is given; select or copy it to paste into your agent
 copy
 A copied brief holds your private task text; a clipboard manager may keep it.
 
 Record what happened in a terminal:
 
-endo attempt handoff --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c --to "<agent>"
-endo attempt report  --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c --note "<what was reported>"
-endo attempt abandon --root <store> --attempt endo.attempt.c61d2e746f9b353c7748493c82ae394c
+endo attempt handoff --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 --to "<agent>"
+endo attempt report  --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8 --note "<what was reported>"
+endo attempt abandon --root <store> --attempt endo.attempt.74f261c02b7c0fc4466e2a71c352d3d8
 
-read 00:39:22 (browser clock) Refresh tasks
+read 00:55:31 (browser clock) Refresh tasks
 
 CONTEXT
 

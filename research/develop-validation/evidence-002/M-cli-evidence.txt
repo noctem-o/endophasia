@@ -1,10 +1,10 @@
-attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be (task endo.task.9095b6320d6a1bcf1bc61c35aca08ec8): validation case M
+attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 (task endo.task.dbc5dca41dbd4d2131dbab18d082b8a4): validation case M
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: d31c0f9eb73c
-  tree now  [observed] d31c0f9eb73c, clean (/work/M/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at d31c0f9eb73c; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
-  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Results at HEAD disagree (d31c0f9eb73c, latest failed)
+  candidate [none] no record names one; checked at: 3a9a49d68ecf
+  tree now  [observed] 3a9a49d68ecf, clean (/work/M/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at 3a9a49d68ecf; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Results at HEAD disagree (3a9a49d68ecf, latest failed)
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; observed exit 0, 16 byte(s), output different; first difference at line 1: expected "MCMXCIV", observed "MDCCCCLXXXXIIII"
   planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run
   behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; no receipt at the current HEAD

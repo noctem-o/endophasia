@@ -38,14 +38,14 @@ Task
 none selected
 ▾
 repo
-branch master ea626ab
+branch master 2ffbb32
 clean
-read 23:53:28 (broker clock)
+read 00:02:07 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD ea626ab
+checks compared with HEAD 2ffbb32
 NEEDS YOUR ATTENTION (0)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 
 Nothing is in review, and among the checks that were read, no planned check failed, was inconclusive or disagrees at HEAD, and no other command's latest observed check failed or was inconclusive. Some tasks below say what could not be read. Some planned checks have no current result (not run here, run only at another commit or in another working tree, not compared, the tree has changed since, or some receipt files could not be read); the tasks below say which. That is not a pass.
@@ -61,9 +61,9 @@ One attempt prepared.
 Incomplete
 One file among its checks could not be used.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 23:53:28 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:02:07 (browser clock). Refresh
 
-read 23:53:28 (browser clock) Refresh tasks
+read 00:02:07 (browser clock) Refresh tasks
 
 CONTEXT
 

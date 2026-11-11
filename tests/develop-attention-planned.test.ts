@@ -500,6 +500,66 @@ describe("a recorded planned failure is never dropped from attention", () => {
 	});
 });
 
+// The re-verification of the review fixes: a newer attempt supersedes an older one's entry only with a LATER run that is at least as
+// current (same tree, HEAD before other commits before other worktrees). Each case hid a later failure in the first superseding rule.
+describe("a newer attempt never hides a later or more current failure", () => {
+	const OTHER_TREE = { worktree: "/work/calc-agent", commonDir: "/work/calc/.git", linked: true };
+	const atOld = {
+		revision: { commit: OLD, tree: "e".repeat(40), branch: "refs/heads/main" },
+		after: {
+			state: "observed" as const,
+			sameRepository: true,
+			commit: OLD,
+			tree: "e".repeat(40),
+			clean: true,
+			reflogsUnchanged: true,
+			rulesUnchanged: true,
+		},
+	};
+	const setup = (title: string) => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, title, "in-progress");
+		const a1 = p.attempt(task);
+		const a2 = p.attempt(task);
+		return { p, task, a1, a2 };
+	};
+	it("C1: an older attempt's later failure at HEAD is not hidden by a newer attempt's earlier pass there", () => {
+		const { p, task, a1, a2 } = setup("C1");
+		p.ran(a2, 1, PRECEDENCE, 0, "14\n");
+		p.ran(a1, 5, PRECEDENCE, 0, "20\n");
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+	});
+	it("C2: a pass in another worktree does not hide a failure here", () => {
+		const { p, task, a1, a2 } = setup("C2");
+		p.ran(a1, 1, PRECEDENCE, 0, "20\n");
+		p.ran(a2, 5, PRECEDENCE, 0, "14\n", { repository: OTHER_TREE });
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+	});
+	it("C3: a stale pass does not hide a later failure at HEAD", () => {
+		const { p, task, a1, a2 } = setup("C3");
+		p.ran(a2, 1, PRECEDENCE, 0, "14\n", atOld);
+		p.ran(a1, 5, PRECEDENCE, 0, "20\n");
+		expect(itemOf(p.overview(), task).flags).toEqual(["failed"]);
+	});
+	it("C4: with HEAD unreadable, an earlier pass elsewhere does not hide a later failure", () => {
+		const { p, task, a1, a2 } = setup("C4");
+		p.ran(a2, 1, PRECEDENCE, 0, "14\n", { repository: OTHER_TREE });
+		p.ran(a1, 5, PRECEDENCE, 0, "20\n");
+		expect(itemOf(p.overview(null), task).flags).toEqual(["failed"]);
+	});
+	it("a newer attempt's later, current pass does supersede an older failure (v0's latest-run rule)", () => {
+		const { p, task, a1, a2 } = setup("Supersede");
+		p.ran(a1, 1, PRECEDENCE, 0, "20\n", atOld);
+		p.ran(a2, 5, PRECEDENCE, 0, "14\n");
+		expect(itemOf(p.overview(), task).flags).toEqual([]);
+		// The same later pass, but in another worktree: the older failure here stays.
+		const q = setup("Not superseded from elsewhere");
+		q.p.ran(q.a1, 1, PRECEDENCE, 0, "20\n");
+		q.p.ran(q.a2, 5, PRECEDENCE, 0, "14\n", { repository: OTHER_TREE });
+		expect(itemOf(q.p.overview(), q.task).flags).toEqual(["failed"]);
+	});
+});
+
 describe("one triage rule", () => {
 	it("the page's mirror equals the protocol's over every state, reading, count and completeness", () => {
 		let n = 0;

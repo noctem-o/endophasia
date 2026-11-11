@@ -39,27 +39,27 @@ none selected
 ▾
 1 needs attention
 repo
-branch master d7b9d29
+branch master cea6610
 clean
-read 23:53:38 (broker clock)
+read 00:02:17 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD d7b9d29
+checks compared with HEAD cea6610
 NEEDS YOUR ATTENTION (1)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 O task
 ○
 Open
 Check failed
-Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at 1298a96, failed) (read by its declared exit code and output) (attempt f47ed49).
-Planned check runs: Not run (attempt bf39639).
-Planned check subtractive-1994: Not run (read by its declared exit code and output) (attempt bf39639).
+Planned check subtractive-1994: Not run at HEAD (only at other commits) (its latest run, at e6089da, failed) (read by its declared exit code and output) (attempt 56965c1).
+Planned check runs: Not run (attempt bf1082c).
+Planned check subtractive-1994: Not run (read by its declared exit code and output) (attempt bf1082c).
 2 attempts prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 23:53:38 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:02:17 (browser clock). Refresh
 
-read 23:53:38 (browser clock) Refresh tasks
+read 00:02:17 (browser clock) Refresh tasks
 
 CONTEXT
 

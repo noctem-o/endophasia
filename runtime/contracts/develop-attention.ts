@@ -168,6 +168,58 @@ function plannedOf(
 	});
 }
 
+interface Candidate {
+	entry: EndoDevelopAttentionPlannedV1;
+	/** The planned argv, as JSON: the command, across attempts. */
+	key: string;
+	newest: boolean;
+	/** The order read in: attempts newest first, then the plan's order. */
+	order: number;
+}
+
+/** How current the run behind an entry is: a clean HEAD, then HEAD with a changed tree, then another commit here, then elsewhere. */
+const CURRENCY: Readonly<Record<EndoDevelopAttentionPlannedV1["state"], number>> = {
+	passed: 3,
+	failed: 3,
+	inconclusive: 3,
+	mixed: 3,
+	"tree-changed": 2,
+	stale: 1,
+	elsewhere: 0,
+	unavailable: 0,
+	"not-run": -1,
+};
+
+/**
+ * Which planned entries a task lists. The newest attempt's are all listed. An older attempt's entry is listed only if it ran (an old plan's
+ * unrun checks are history, not work) and no NEWER attempt has a LATER run of the same command that is at least as current (a clean HEAD,
+ * then a changed tree, then another commit, then another worktree or no HEAD). That is v0's "the latest run of a command decides", without
+ * ever letting an earlier run, a stale run or a run in another worktree hide a later or more current one.
+ */
+function supersede(candidates: readonly Candidate[]): EndoDevelopAttentionPlannedV1[] {
+	const later = (
+		a: NonNullable<EndoDevelopAttentionPlannedV1["receipt"]>,
+		b: NonNullable<EndoDevelopAttentionPlannedV1["receipt"]>,
+	) => endoReceiptLaterV0({ ...a, id: a.receiptId }, { ...b, id: b.receiptId });
+	return candidates
+		.filter((x) => {
+			if (x.newest) return true;
+			const r = x.entry.receipt;
+			if (x.entry.state === "not-run" || r === null) return false;
+			const attempt = x.entry.attemptId;
+			return !candidates.some(
+				(y) =>
+					y.order < x.order &&
+					y.entry.attemptId !== attempt &&
+					y.key === x.key &&
+					y.entry.receipt !== null &&
+					later(y.entry.receipt, r) &&
+					CURRENCY[y.entry.state] >= CURRENCY[x.entry.state],
+			);
+		})
+		.map((x) => x.entry);
+}
+
 /** The triage order of planned checks: by triage, then the most recent run, then attempt and name (a total order). */
 export function endoPlannedOrderV1(a: EndoDevelopAttentionPlannedV1, b: EndoDevelopAttentionPlannedV1): number {
 	return (
@@ -250,9 +302,8 @@ export function endoDevelopAttentionViewV0(
 		let skipped = 0;
 		let problems = 0;
 		const receipts: EndoDevelopReceiptV0[] = [];
-		const planned: EndoDevelopAttentionPlannedV1[] = [];
-		// Commands a newer attempt of this task has run (attempts are read newest first).
-		const ran = new Set<string>();
+		// Every planned entry of every planned attempt read, newest attempt first; `supersede` picks what is listed.
+		const candidates: Candidate[] = [];
 		if (sources.receipts !== null)
 			for (const e of entries) {
 				if (truncated) {
@@ -275,26 +326,14 @@ export function endoDevelopAttentionViewV0(
 					receipts.push(...got.receipts);
 					continue;
 				}
-				// Its plan reads the receipts of the commands it names; any other receipt of it is read by exit status, as in v0. The newest
-				// attempt lists every planned check. An older one lists only the checks it ran, for commands no newer attempt has run: the
-				// latest run of a command decides, as v0's rule did, and an old plan's unrun checks are history, not work.
-				const ranNow = new Set<string>();
-				for (const { entry, argv } of plannedOf(
-					e.attempt.id,
-					plan,
-					got.receipts,
-					current,
-					got.problems.length > 0,
-				)) {
-					const key = JSON.stringify(argv);
-					if (e !== newest && (entry.state === "not-run" || ran.has(key))) continue;
-					planned.push(entry);
-					if (entry.state !== "not-run") ranNow.add(key);
-				}
-				for (const key of ranNow) ran.add(key);
+				// Its plan reads the receipts of the commands it names; any other receipt of it is read by exit status, as in v0. Which of its
+				// entries are listed is decided once every attempt is read (supersede, below).
+				for (const { entry, argv } of plannedOf(e.attempt.id, plan, got.receipts, current, got.problems.length > 0))
+					candidates.push({ entry, key: JSON.stringify(argv), newest: e === newest, order: candidates.length });
 				for (const r of got.receipts)
 					if (!plan.checks.some((c) => sameArgv(c.argv, r.check.argv))) receipts.push(r);
 			}
+		const planned = supersede(candidates);
 		planned.sort(endoPlannedOrderV1);
 		const plannedShown = planned.slice(0, ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxPlannedPerTask);
 		const plannedRest = planned.slice(ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxPlannedPerTask);

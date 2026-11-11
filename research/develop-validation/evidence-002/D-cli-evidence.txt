@@ -1,10 +1,10 @@
-attempt endo.attempt.93ec7861f9d7c54c17642e189c3b7dd9 (task endo.task.671973ec5a9abce61705e42743e1cf2c): validation case D
+attempt endo.attempt.8c0ba3c0728fc6cd8e893794a911e0ff (task endo.task.d52e988a7acaf55a4437d3f731b75e1c): validation case D
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: cea0f8de179f
-  tree now  [observed] cea0f8de179f, with uncommitted changes (/work/D/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at cea0f8de179f; Recorded at the current HEAD, but the working tree has changed since (exit status only: the plan reads this command by its behaviour, below)
-  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: At HEAD, but the tree has changed since (cea0f8de179f, latest passed)
+  candidate [none] no record names one; checked at: 2cb5ef8bd96d
+  tree now  [observed] 2cb5ef8bd96d, with uncommitted changes (/work/D/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at 2cb5ef8bd96d; Recorded at the current HEAD, but the working tree has changed since (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: At HEAD, but the tree has changed since (2cb5ef8bd96d, latest passed)
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; observed exit 0, 8 byte(s), output the same
   planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run
   behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; no receipt at the current HEAD

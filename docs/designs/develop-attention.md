@@ -120,7 +120,7 @@ the same tasks and evidence always give the same sections in the same order (tes
 The selected-task attempts response cannot be turned into a project-wide list, because it covers one task. So this slice adds one
 projection:
 
-- **`GET workspace/attention`** returns `endo.develop-attention-view.v0`, from `protocol/develop-attention.ts`, computed by
+- **`GET workspace/attention`** returns `endo.develop-attention-view.v1` (v0 until DEVELOP-ATTENTION-002, §6a), from `protocol/develop-attention.ts`, computed by
   `runtime/contracts/develop-attention.ts`.
 - **The project** is the launch's own, taken from `--project`. The directory compared with is the launch's own. The request carries no
   query, path or body.
@@ -228,6 +228,10 @@ behavioural check's. In `endo.develop-attention-view.v1`:
   - every other state with no current result is said on the row, and a review is asked to recheck it;
   - the summary never says "no planned check failed" without also saying when some have no current result.
 - **The gate** refuses a planned entry whose state its receipt, counts and the observed HEAD do not allow, as it already did for checks.
+- **Older attempts**: an older attempt lists only the checks it ran, and an entry of it is dropped only when a NEWER attempt has a LATER
+  run of the same command that is at least as current (a clean HEAD, then a changed tree, then another commit, then another worktree or
+  no HEAD). An earlier pass, a stale pass or a pass in another worktree never hides a later or more current failure. Limitation: two
+  other worktrees count as equally current, so a later run in one can stand for an earlier run in another.
 
 The overview is still triage, not acceptance: a planned check that passed at HEAD says only that, and the criterion stays the Task view's
 and the operator's.

@@ -1,10 +1,10 @@
-attempt endo.attempt.4fcfc7f1a0fe49f75e023120f3f8d970 (task endo.task.6b511d4aaa42f1e7860735241d60117a): validation case S
+attempt endo.attempt.62d26fd5f7b754ae076cfcdea307ef5d (task endo.task.662fa01930d0ac71ae7c68d860548eb7): validation case S
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: 53b7093afbc9
-  tree now  [observed] 00e5710c5cc0, clean (/work/S/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at 53b7093afbc9; Stale: this working tree's HEAD is now a different commit (exit status only: the plan reads this command by its behaviour, below)
-  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Not run at HEAD (only at other commits); at another commit, 53b7093afbc9: failed
+  candidate [none] no record names one; checked at: e8472d1d24eb
+  tree now  [observed] 4f1c2ead6f93, clean (/work/S/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at e8472d1d24eb; Stale: this working tree's HEAD is now a different commit (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Not run at HEAD (only at other commits); at another commit, e8472d1d24eb: failed
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; no receipt at the current HEAD
   planned   [observed] rejects-zero ["node","roman.mjs","0"]: Not run
   behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; no receipt at the current HEAD

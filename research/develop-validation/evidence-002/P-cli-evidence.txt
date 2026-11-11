@@ -1,9 +1,9 @@
-attempt endo.attempt.874953046bc697afe0301a4932e10fd3 (task endo.task.71fee8ce943abbe357d46b881f0ea707): validation case P
+attempt endo.attempt.1111ce7dd46e5d16f407ac6a83876ec2 (task endo.task.407263c3d422322f32f5d65c1611ecd8): validation case P
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: ff2670e8a13b
-  tree now  [observed] ff2670e8a13b, clean (/work/P/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at ff2670e8a13b; Recorded at this working tree's current HEAD
+  candidate [none] no record names one; checked at: d3bf0335e6ff
+  tree now  [observed] d3bf0335e6ff, clean (/work/P/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at d3bf0335e6ff; Recorded at this working tree's current HEAD
   plan      [none] prepared without a verification plan
   decision  [operator] status open
   gap       No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement.

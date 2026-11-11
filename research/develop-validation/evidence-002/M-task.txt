@@ -41,9 +41,9 @@ M task
 Open
 1 needs attention
 repo
-branch master d31c0f9
+branch master 3a9a49d
 clean
-read 23:53:17 (broker clock)
+read 00:01:55 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
@@ -53,7 +53,7 @@ No agent attached · read from the store when you ask · statuses change only wh
 M task
 ○
 Open
-updated 23:53:15 · revision 0
+updated 00:01:54 · revision 0
 Edit
 DESCRIPTION
 
@@ -73,15 +73,15 @@ No session linked. Never inferred from a name, a time or a directory.
 This workspace runs no agent, so it has no session to link. A live workbench links the session it serves; endo task link links an Oh My Pi saved session.
 
 History (1)
-23:53:15 created as open
+00:01:54 created as open
 ATTEMPTS briefs you prepared; nothing here sends one
 
-Compared with HEAD d31c0f9eb73c of this working tree, with nothing uncommitted, read 2026-11-10 23:53 UTC. The Context panel is read separately.
+Compared with HEAD 3a9a49d68ecf of this working tree, with nothing uncommitted, read 2026-11-11 00:01 UTC. The Context panel is read separately.
 
 Prepared
-17b0d2be
+b1a7af74
 validation case M
-prepared 2026-11-10 23:53 UTC
+prepared 2026-11-11 00:01 UTC
 4 criteria at HEAD:
 inconclusive 1
 not shown 2
@@ -92,7 +92,7 @@ Acceptance criteria as listed in your plan, against the HEAD named above
 Numerals use standard subtractive notation (1994 is MCMXCIV)
 
 A planned check was inconclusive at HEAD
-subtractive-1994: Results at HEAD disagree (failed at d31c0f9eb73c)
+subtractive-1994: Results at HEAD disagree (failed at 3a9a49d68ecf)
 
 2
 
@@ -120,7 +120,7 @@ That a check addresses a criterion is your plan's statement; nothing observed es
 Checks Endophasia observed what ran, at which commit; not the task's acceptance
 subtractive-1994
 Results at HEAD disagree
-d31c0f9eb73c
+3a9a49d68ecf
 
 ["node","roman.mjs","1994"]
 
@@ -132,7 +132,7 @@ Expected output
 MCMXCIV
 
 
-Observed at d31c0f9eb73c: exit 0, 16 bytes; the output differs from the one declared
+Observed at 3a9a49d68ecf: exit 0, 16 bytes; the output differs from the one declared
 
 line 1: expected "MCMXCIV", observed "MDCCCCLXXXXIIII"
 
@@ -142,7 +142,7 @@ MDCCCCLXXXXIIII
 
 At this commit it also passed 1×: the latest run is shown, and the results do not agree.
 
-endo attempt check --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be --keep-output -- node roman.mjs 1994
+endo attempt check --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 --keep-output -- node roman.mjs 1994
 
 --keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
 
@@ -155,7 +155,7 @@ You said it shows: out-of-range input is refused with nothing on stdout
 
 You declared it should: exit 2 and print nothing on standard output (compared byte for byte; standard error is not compared)
 
-endo attempt check --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be --keep-output -- node roman.mjs 0
+endo attempt check --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 --keep-output -- node roman.mjs 0
 
 --keep-output stores the first 8 KiB of its standard output in the receipt, so this page can show where it differs; leave it out for a command that can print a secret.
 
@@ -166,11 +166,11 @@ Not run
 
 You said it shows: the program runs for ordinary input
 
-endo attempt check --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be -- node roman.mjs 14
+endo attempt check --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 -- node roman.mjs 14
 Every check recorded for this attempt (2)
 Observed check passed
-d31c0f9eb73c
-2026-11-10 23:53 UTC
+3a9a49d68ecf
+2026-11-11 00:01 UTC
 
 node roman.mjs 1994
 
@@ -191,8 +191,8 @@ A process that left the check's process group (setsid, a daemon) was not tracked
 The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.
 A local, unsigned file: anyone who can write the store can write a receipt.
 Observed check passed
-d31c0f9eb73c
-2026-11-10 23:53 UTC
+3a9a49d68ecf
+2026-11-11 00:01 UTC
 
 node roman.mjs 1994
 
@@ -215,19 +215,19 @@ A local, unsigned file: anyone who can write the store can write a receipt.
 
 Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you type after --, never one from a record, a brief or an agent:
 
-endo attempt check --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be -- <command> [args...]
-endo attempt receipts --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be
+endo attempt check --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 -- <command> [args...]
+endo attempt receipts --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74
 Brief what the agent is given; select or copy it to paste into your agent
 copy
 A copied brief holds your private task text; a clipboard manager may keep it.
 
 Record what happened in a terminal:
 
-endo attempt handoff --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be --to "<agent>"
-endo attempt report  --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be --note "<what was reported>"
-endo attempt abandon --root <store> --attempt endo.attempt.148b5038239c8dfa9f3e71a817b0d2be
+endo attempt handoff --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 --to "<agent>"
+endo attempt report  --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74 --note "<what was reported>"
+endo attempt abandon --root <store> --attempt endo.attempt.dbd5070037bebce170f2626ab1a7af74
 
-read 23:53:17 (browser clock) Refresh tasks
+read 00:01:55 (browser clock) Refresh tasks
 
 CONTEXT
 

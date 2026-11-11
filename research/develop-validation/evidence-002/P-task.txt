@@ -1,0 +1,156 @@
+Skip to the content
+ENDOPHASIA
+Observe
+Compare
+Develop
+Capabilities · later
+Evolve · later
+Develop appearance
+Instrument
+Field
+Workspace · paired
+Workspace · no agent attached
+SESSIONS
+
+recorded, grouped by source
+
+Reload list
+YOUR WORK (1)
+P
+1 task
+tasks and evidence · no agent attached
+
+absent
+ Nothing exists at this source's location. Reading never creates it.
+
+No event store here
+
+Sessions appear here once a Pi attachment or a DSH import has recorded them in the store this page reads. An empty list is not evidence that nothing ran: it says only that this store holds no such recording.
+
+This page only reads. It cannot start, attach to or steer an agent.
+
+TASKS
+CHANGES
+Read again
+P
+✓ matches
+Task
+P task
+▾
+○
+Open
+repo
+branch master 838c627
+clean
+read 00:55:43 (broker clock)
+Refresh worktree
+Workspace
+No agent attached · read from the store when you ask · statuses change only when you set them
+
+‹ Overview
+
+P task
+○
+Open
+updated 00:55:42 · revision 0
+Edit
+DESCRIPTION
+
+No description.
+
+ACCEPTANCE CRITERIA
+
+None written.
+
+STATUS recorded by you; a finished run does not change it
+Start work
+Mark blocked
+SESSIONS
+
+No session linked. Never inferred from a name, a time or a directory.
+
+This workspace runs no agent, so it has no session to link. A live workbench links the session it serves; endo task link links an Oh My Pi saved session.
+
+History (1)
+00:55:42 created as open
+ATTEMPTS briefs you prepared; nothing here sends one
+
+Compared with HEAD 838c627978f1 of this working tree, with nothing uncommitted, read 2026-11-11 00:55 UTC. The Context panel is read separately.
+
+Prepared
+42f3e91f
+validation case P
+prepared 2026-11-11 00:55 UTC
+Observed check passed
+
+Prepared without a verification plan, so which acceptance criteria a check addresses is not recorded: each check below stands alone. A plan is given when an attempt is prepared (--plan-file).
+
+Checks Endophasia observed what ran, at which commit; not the task's acceptance
+Observed check passed
+838c627978f1
+2026-11-11 00:55 UTC
+
+node roman.mjs 1994
+
+It exited with code 0.
+
+Recorded at this working tree's current HEAD.
+
+What this does not show
+The command decides what is checked: its exit status says nothing about the task's acceptance criteria.
+Ignored files (dependencies, build output, .env) were inputs; their contents were not recorded or compared.
+The environment (variables, tool versions, network, home directory) was inherited and not recorded.
+A file changed and restored between the two observations is not detected; nothing watched the files.
+Nothing prevented another process (an agent still working, an editor) from writing the tree during the check.
+Clean means Git reported no changes, under the repository's own settings and its index's file stamps.
+A process that left the check's process group (setsid, a daemon) was not tracked.
+The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.
+A local, unsigned file: anyone who can write the store can write a receipt.
+
+Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you type after --, never one from a record, a brief or an agent:
+
+endo attempt check --root <store> --attempt endo.attempt.916570b902b927e887d265e642f3e91f -- <command> [args...]
+endo attempt receipts --root <store> --attempt endo.attempt.916570b902b927e887d265e642f3e91f
+Brief what the agent is given; select or copy it to paste into your agent
+copy
+A copied brief holds your private task text; a clipboard manager may keep it.
+
+Record what happened in a terminal:
+
+endo attempt handoff --root <store> --attempt endo.attempt.916570b902b927e887d265e642f3e91f --to "<agent>"
+endo attempt report  --root <store> --attempt endo.attempt.916570b902b927e887d265e642f3e91f --note "<what was reported>"
+endo attempt abandon --root <store> --attempt endo.attempt.916570b902b927e887d265e642f3e91f
+
+read 00:55:43 (browser clock) Refresh tasks
+
+CONTEXT
+
+where the work is, and what this page can do
+
+CHANGES
+
+Clean: nothing staged, unstaged or untracked.
+
+Changes in the Git working tree. Git does not show who made them: nothing here attributes them to the agent.
+
+PROJECT
+name
+P
+registered
+/work/P/repo
+launched in
+the registered directory
+Git, now
+the worktree recorded at registration
+
+A project is a directory you registered, not a session, and it grants no access. The launch directory is the registered one, and Git reports the worktree recorded at registration.
+
+THIS WORKSPACE
+host
+endo workspace open
+agent
+none attached, none needed
+pairing
+this page is paired
+
+It reads your tasks, attempts and verification receipts from the store, and changes a task only when you ask. It cannot send a prompt, steer or stop an agent, link a session, or run a command or a check. The terminal that started it issues pairing codes (pair), ends the grant (revoke) and stops it (Ctrl-C).

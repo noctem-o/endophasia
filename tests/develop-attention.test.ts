@@ -447,6 +447,7 @@ describe("the page's wire gate", () => {
 		expect(readAttention(real())).not.toBeNull();
 		expect(ATTENTION_LIMITS).toEqual({
 			maxChecksPerTask: ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxChecksPerTask,
+			maxPlannedPerTask: ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxPlannedPerTask,
 			maxCommandChars: ENDO_DEVELOP_ATTENTION_LIMITS_V0.maxCommandChars,
 		});
 	});
@@ -542,7 +543,7 @@ function evidence(
 		};
 	};
 	return {
-		schemaVersion: "endo.develop-attention-view.v0",
+		schemaVersion: "endo.develop-attention-view.v1",
 		launchId: LAUNCH,
 		state: "ready",
 		taskRevision: 7,
@@ -563,6 +564,8 @@ function evidence(
 				problems: 0,
 				records: 0,
 				checks: (checks[t.id] ?? []).map(check),
+				planned: [],
+				morePlanned: { checks: 0, notPassing: 0, notCurrent: 0 },
 				more: { commands: 0, notPassing: 0, notCurrent: 0 },
 				...options.extra?.[t.id],
 			})),

@@ -238,13 +238,11 @@ export function AttentionOverview({ workspace }: { workspace: WorkspaceApi }): R
 			<Group
 				id="needs"
 				title="Needs your attention"
-				hint="decisions waiting on you; checks whose latest run failed or was inconclusive"
+				hint="decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive"
 				items={overview.attention}
 				empty={
 					overview.evidence === "shown"
-						? overview.gaps
-							? "Nothing is in review, and among the checks that were read, no command's latest observed check failed or was inconclusive. Some tasks below say what could not be read."
-							: "Nothing is in review, and no command's latest observed check failed or was inconclusive."
+						? `Nothing is in review, and ${overview.gaps ? "among the checks that were read, " : ""}no planned check failed, was inconclusive or disagrees at HEAD, and no other command's latest observed check failed or was inconclusive.${overview.gaps ? " Some tasks below say what could not be read." : ""}${overview.unsettled ? " Some planned checks have no current result (not run here, run only at another commit or in another working tree, not compared, the tree has changed since, or some receipt files could not be read); the tasks below say which. That is not a pass." : ""}`
 						: "Nothing is in review. Checks are not shown (see above), so this says nothing about them."
 				}
 				onOpen={onOpen}

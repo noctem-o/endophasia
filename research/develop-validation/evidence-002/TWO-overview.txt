@@ -1,0 +1,92 @@
+Skip to the content
+ENDOPHASIA
+Observe
+Compare
+Develop
+Capabilities · later
+Evolve · later
+Develop appearance
+Instrument
+Field
+Workspace · paired
+Workspace · no agent attached
+SESSIONS
+
+recorded, grouped by source
+
+Reload list
+YOUR WORK (1)
+TWO
+1 task · 1 needs attention
+tasks and evidence · no agent attached
+
+absent
+ Nothing exists at this source's location. Reading never creates it.
+
+No event store here
+
+Sessions appear here once a Pi attachment or a DSH import has recorded them in the store this page reads. An empty list is not evidence that nothing ran: it says only that this store holds no such recording.
+
+This page only reads. It cannot start, attach to or steer an agent.
+
+TASKS
+CHANGES
+Read again
+TWO
+✓ matches
+Task
+none selected
+▾
+1 needs attention
+repo
+branch master f6d3ad7
+clean
+read 00:55:45 (broker clock)
+Refresh worktree
+Workspace
+No agent attached · read from the store when you ask · statuses change only when you set them
+Overview
+checks compared with HEAD f6d3ad7
+NEEDS YOUR ATTENTION (1)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
+TWO task
+○
+Open
+Check failed
+Latest observed node roman.mjs 0 exited with code 2 at the current HEAD. No plan reads this check; this is its exit status.
+2 attempts prepared.
+
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:55:45 (browser clock). Refresh
+
+read 00:55:45 (browser clock) Refresh tasks
+
+CONTEXT
+
+where the work is, and what this page can do
+
+CHANGES
+
+Clean: nothing staged, unstaged or untracked.
+
+Changes in the Git working tree. Git does not show who made them: nothing here attributes them to the agent.
+
+PROJECT
+name
+TWO
+registered
+/work/TWO/repo
+launched in
+the registered directory
+Git, now
+the worktree recorded at registration
+
+A project is a directory you registered, not a session, and it grants no access. The launch directory is the registered one, and Git reports the worktree recorded at registration.
+
+THIS WORKSPACE
+host
+endo workspace open
+agent
+none attached, none needed
+pairing
+this page is paired
+
+It reads your tasks, attempts and verification receipts from the store, and changes a task only when you ask. It cannot send a prompt, steer or stop an agent, link a session, or run a command or a check. The terminal that started it issues pairing codes (pair), ends the grant (revoke) and stops it (Ctrl-C).

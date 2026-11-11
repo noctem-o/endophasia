@@ -3,16 +3,21 @@
 // sections in the same order. No clock, no network, no model, no score. Every line follows from one recorded fact:
 //
 //   the operator's status        review -> a decision waits on them; blocked -> recorded by them (it may be waiting on someone else)
-//   an observed check            the LATEST receipt of each command: failed or inconclusive, and how its commit relates to HEAD now
+//   a planned check              v1: an attempt with a plan, read by its own acceptance ledger (the Task view's states and words): failed,
+//                                inconclusive or disagreeing at HEAD; without a current result it is said, and a review rechecks it
+//   an observed check            the LATEST receipt of each other command (by exit status): failed or inconclusive, and how its commit
+//                                relates to HEAD now
 //   the operator's records       the newest attempt's state ("Result reported, not verified" stays exactly that)
 //   what could not be read       counted and said, never taken as "nothing to see"
 //
 // It never says a task is accepted, failing, being worked on or approved: a status is the operator's, a check is evidence about one command
 // at one commit, a handoff is the operator's statement, and a missing check is only missing.
 
+import type { EndoReceiptOutcomeV0 } from "../../../protocol/develop-receipts.ts";
+import type { EndoPlannedCheckStateV0 } from "../../../protocol/develop-verification.ts";
 import type { LaunchReadState } from "./attempts-reader.ts";
-import { ATTEMPT_LABELS } from "./attempts-wire.ts";
-import type { AttentionCheck, AttentionTask, AttentionView } from "./attention-wire.ts";
+import { ATTEMPT_LABELS, PLANNED_CHECK_LABELS } from "./attempts-wire.ts";
+import type { AttentionCheck, AttentionPlanned, AttentionTask, AttentionView } from "./attention-wire.ts";
 import type { Task } from "./workspace-wire.ts";
 
 /** Why a task needs the operator. The order is the precedence: a task appears once, ranked by its first flag. */
@@ -39,6 +44,9 @@ export interface Line {
 	parts: readonly (string | { code: string })[];
 	/** The receipt this line is about, when it is about one (the row opens it). */
 	receipt?: { attemptId: string; receiptId: string };
+	/** For a planned check's line: its ledger state, and whether it has no current result to show (the triage's `unsettled`). */
+	planned?: EndoPlannedCheckStateV0;
+	unsettled?: boolean;
 }
 
 export interface Item {
@@ -63,6 +71,8 @@ export interface Overview {
 	gaps: boolean;
 	/** Sentences about the read as a whole (HEAD not observed, a limit reached, the tasks changed since). */
 	notes: string[];
+	/** Some task not done has a planned check with no current result (not run here, stale, elsewhere, or its tree changed since). */
+	unsettled: boolean;
 }
 
 const short = (sha: string): string => sha.slice(0, 7);
@@ -158,6 +168,102 @@ function checkLine(c: AttentionCheck, review: boolean, head: string | null): Lin
 
 const plural = (n: number, one: string, many: string): string => (n === 1 ? one : `${n} ${many}`);
 
+/** How the plan read a run, in a few words. */
+const READ: Readonly<Record<EndoReceiptOutcomeV0, string>> = {
+	passed: "passed",
+	failed: "failed",
+	inconclusive: "was inconclusive",
+};
+
+/**
+ * The protocol's triage rule for a planned check (endoPlannedTriageV1, protocol/develop-attention.ts), mirrored; a contract test holds them
+ * equal over every state, reading and count. A recorded failure is never dropped because the tree, the commit or the worktree moved on.
+ */
+export function plannedTriage(p: AttentionPlanned): "failed" | "inconclusive" | "unsettled" | "passed" {
+	const there = p.elsewhere?.outcome ?? null;
+	const here = plannedHere(p);
+	if (there === "failed") return "failed";
+	if (there === "inconclusive" && here !== "failed") return "inconclusive";
+	return here;
+}
+
+function plannedHere(p: AttentionPlanned): "failed" | "inconclusive" | "unsettled" | "passed" {
+	if (p.state === "failed") return "failed";
+	if (p.state === "inconclusive" || p.state === "mixed") return "inconclusive";
+	if (p.state === "passed") return p.incomplete ? "unsettled" : "passed";
+	if (p.state === "not-run") return "unsettled";
+	const reading = p.receipt?.outcome ?? null;
+	const disagree = [p.atHead.passed, p.atHead.failed, p.atHead.inconclusive].filter((n) => n > 0).length >= 2;
+	if (reading === "failed") return "failed";
+	if (reading === "inconclusive" || disagree) return "inconclusive";
+	return "unsettled";
+}
+
+/**
+ * A planned check's line, in the Task view's words (PLANNED_CHECK_LABELS): its state is the attempt's ledger's, its kind the triage's.
+ * Without a current result it says how the plan read the run behind it, and where. `attempt`: name the attempt (more than one is listed).
+ */
+function plannedLine(p: AttentionPlanned, review: boolean, attempt: boolean): Line {
+	const by = p.behavioural ? " (read by its declared exit code and output)" : "";
+	const { passed, failed, inconclusive } = p.atHead;
+	const runs = [
+		passed > 0 ? `${passed} passed` : "",
+		failed > 0 ? `${failed} failed` : "",
+		inconclusive > 0 ? `${inconclusive} inconclusive` : "",
+	]
+		.filter((x) => x !== "")
+		.join(", ");
+	const disagree = [passed, failed, inconclusive].filter((n) => n > 0).length >= 2;
+	const r = p.receipt;
+	const detail =
+		p.state === "mixed"
+			? ` (${runs})`
+			: p.state === "passed" && p.incomplete
+				? " (some of this attempt's receipt files could not be read; a later result may be among them)"
+				: r === null
+					? ""
+					: p.state === "tree-changed"
+						? ` (its latest run at HEAD ${READ[r.outcome]}${disagree ? `; runs there: ${runs}` : ""})`
+						: p.state === "stale"
+							? ` (its latest run, at ${short(r.commit)}, ${READ[r.outcome]})`
+							: p.state === "elsewhere"
+								? ` (its latest run there ${READ[r.outcome]})`
+								: p.state === "unavailable"
+									? ` (its latest run ${READ[r.outcome]}; this worktree's HEAD could not be read)`
+									: "";
+	const triage = plannedTriage(p);
+	// A run in another working tree is said when it is what raised the triage (a pass there adds nothing to a line about here).
+	const there = p.elsewhere;
+	const raised = there !== null && there.outcome !== "passed" && plannedHere(p) !== triage;
+	const away = raised ? `; in another working tree its latest run ${READ[there.outcome]}` : "";
+	const kind: Line["kind"] =
+		triage === "failed"
+			? "failed"
+			: triage === "inconclusive"
+				? "inconclusive"
+				: triage === "passed"
+					? "evidence"
+					: review
+						? "reconsider"
+						: "note";
+	return {
+		kind,
+		parts: [
+			"Planned check ",
+			{ code: p.name },
+			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${away}${by}${attempt ? ` (attempt ${p.attemptId.slice(13, 20)})` : ""}.`,
+		],
+		// The row opens the run that raised it: the one elsewhere when that is what did.
+		...(raised
+			? { receipt: { attemptId: p.attemptId, receiptId: there.receiptId } }
+			: r === null
+				? {}
+				: { receipt: { attemptId: p.attemptId, receiptId: r.receiptId } }),
+		planned: p.state,
+		unsettled: triage === "unsettled",
+	};
+}
+
 /** What could not be read for this task: said, never taken as "nothing". */
 function gaps(e: AttentionTask): Line[] {
 	const lines: Line[] = [];
@@ -233,7 +339,28 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			});
 		else {
 			const head = view?.head?.commit ?? null;
-			const checks = e.checks.map((c) => checkLine(c, review, head));
+			// Where the task also has planned checks, a line no plan reads says so: its receipt belongs to an attempt without a plan, or to a
+			// command its plan does not name, and is read by exit status (an attempt's plan never decides another attempt's receipt).
+			const unplanned = (l: Line): Line =>
+				e.planned.length === 0
+					? l
+					: { ...l, parts: [...l.parts, " No plan reads this check; this is its exit status."] };
+			const checks = [
+				...e.planned.map((p) => plannedLine(p, review, new Set(e.planned.map((x) => x.attemptId)).size > 1)),
+				...e.checks.map((c) => unplanned(checkLine(c, review, head))),
+			];
+			if (e.morePlanned.checks > 0)
+				checks.push({
+					kind:
+						e.morePlanned.notPassing > 0
+							? "warn"
+							: review && e.morePlanned.notCurrent > 0
+								? "reconsider"
+								: "note",
+					parts: [
+						`${plural(e.morePlanned.checks, "One more planned check is", "more planned checks are")} not listed${e.morePlanned.notPassing > 0 ? `, ${e.morePlanned.notPassing} failed, inconclusive or disagreeing` : ""}${e.morePlanned.notCurrent > 0 ? `, ${e.morePlanned.notCurrent} without a current result` : ""}; open the task to see every planned check.`,
+					],
+				});
 			// A pass that is not current was cut by the per-task limit: a review still has to recheck it, and says so.
 			if (review && e.more.notCurrent > 0)
 				checks.push({
@@ -247,7 +374,10 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			// A row ranked by a check is ordered by when that kind of check last ended; a decision, by when the task entered review.
 			const by = flags[0];
 			if (by === "failed" || by === "inconclusive")
-				at = Math.max(...e.checks.filter((_, i) => checks[i]?.kind === by).map((c) => c.endedAtMs));
+				at = Math.max(
+					...e.planned.filter((_, i) => checks[i]?.kind === by).map((p) => p.receipt?.endedAtMs ?? 0),
+					...e.checks.filter((_, i) => checks[e.planned.length + i]?.kind === by).map((c) => c.endedAtMs),
+				);
 			lines.push(...checks);
 			if (e.more.commands > 0)
 				lines.push({
@@ -271,7 +401,13 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 			// Absence is claimed only where everything was read; otherwise the gap lines below say what was not.
 			// An attempt record that could not be placed may be this task's, so even "no attempts" is then only "none read".
 			const complete = e.unreadable + e.skipped + e.problems + e.records === 0 && (view?.unattributed ?? 0) === 0;
-			if (review && e.checks.length === 0)
+			// Planned entries cut by the display limit may hold receipts, so absence is claimed only when none was cut (Codex, #144).
+			if (
+				review &&
+				e.checks.length === 0 &&
+				e.planned.every((p) => p.receipt === null) &&
+				e.morePlanned.checks === 0
+			)
 				lines.push({
 					kind: "note",
 					parts: [
@@ -295,7 +431,11 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 	if (!review && flags.length > 0) lines.splice(0, lines.length, ...lines.filter((l) => l.kind !== "evidence"));
 	const section: Section =
 		task.status === "done" ? "done" : flags.length > 0 ? "attention" : task.status === "open" ? "open" : "waiting";
-	const first = lines.find((l) => l.receipt !== undefined && l.kind !== "evidence") ?? lines.find((l) => l.receipt);
+	// The row opens the receipt behind the flag that put it in its section (Codex, #144), then any other non-pass line's, then any.
+	const first =
+		lines.find((l) => l.receipt !== undefined && l.kind === flags.find((f) => f !== "decision")) ??
+		lines.find((l) => l.receipt !== undefined && l.kind !== "evidence") ??
+		lines.find((l) => l.receipt);
 	return {
 		task,
 		section,
@@ -348,6 +488,7 @@ export function overviewOf(
 		evidence: usable ? "shown" : state,
 		gaps: (usable && view.unattributed > 0) || items.some((i) => i.lines.some((l) => l.kind === "warn")),
 		notes,
+		unsettled: items.some((i) => i.section !== "done" && i.lines.some((l) => l.unsettled === true)),
 	};
 }
 

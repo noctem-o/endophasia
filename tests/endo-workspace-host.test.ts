@@ -195,12 +195,19 @@ suite("the workspace host: reads and changes the project's work with no agent", 
 		const attention = json<{
 			state: string;
 			head: { commit: string } | null;
-			tasks: { checks: { outcome: string; relation: string; command: string }[] }[];
+			tasks: {
+				checks: { outcome: string; relation: string; command: string }[];
+				planned: { state: string; receipt: { outcome: string } | null }[];
+			}[];
 		}>(await w.call("workspace/attention"));
 		expect(attention.state).toBe("ready");
 		expect(attention.head).not.toBeNull();
 		const checks = attention.tasks.flatMap((t) => t.checks);
-		expect(checks.map((c) => c.outcome)).toEqual(expect.arrayContaining(["failed", "inconclusive", "passed"]));
+		// v1: the CRLF task has a plan, so its receipts are read by its own ledger under `planned` (its latest run at HEAD failed).
+		const planned = attention.tasks.flatMap((t) => t.planned);
+		expect([...checks.map((c) => c.outcome), ...planned.flatMap((p) => p.receipt?.outcome ?? [])]).toEqual(
+			expect.arrayContaining(["failed", "inconclusive", "passed"]),
+		);
 		// Revision-aware, unchanged: the stale pass is at another commit; the other worktree's check is not compared as local.
 		expect(checks.map((c) => c.relation)).toEqual(
 			expect.arrayContaining(["head-differs", "at-head-changed", "other-worktree"]),
@@ -439,13 +446,13 @@ suite("the workspace host: reads and changes the project's work with no agent", 
 		// The receipts of an OPEN task's attempt (a done task's receipts are not read at all, by design): named, never "the first directory".
 		const attempt = w.attempts.regressed!;
 		writeFileSync(join(w.root, "develop", "receipts", attempt, "torn.json"), "{ not a receipt");
-		const attention = json<{ tasks: { taskId: string; problems: number; checks: unknown[] }[] }>(
+		const attention = json<{ tasks: { taskId: string; problems: number; checks: unknown[]; planned: unknown[] }[] }>(
 			await w.call("workspace/attention"),
 		);
 		const regressed = attention.tasks.find((t) => t.problems > 0);
 		expect(regressed?.problems).toBe(1);
 		// The usable receipts beside it are still read: a torn file is counted, not taken as "no checks".
-		expect(regressed?.checks.length).toBeGreaterThan(0);
+		expect((regressed?.checks.length ?? 0) + (regressed?.planned.length ?? 0)).toBeGreaterThan(0);
 		// The task file damaged: an explicit unreadable state, not an empty project.
 		writeFileSync(join(w.root, "develop", "tasks.json"), "{ torn");
 		const view = json<{ state: string; reason: string; tasks: unknown[] }>(await w.call("workspace"));

@@ -24,7 +24,11 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { ENDO_ATTEMPT_RUN_LABELS_V0, ENDO_ATTEMPT_SEND_LABELS_V0 } from "../protocol/develop-attempt-execution.ts";
-import { ENDO_DEVELOP_ATTEMPT_LABELS_V0, ENDO_DEVELOP_ATTEMPT_LIMITS_V0 } from "../protocol/develop-attempts.ts";
+import {
+	ENDO_DEVELOP_ATTEMPT_LABELS_V0,
+	ENDO_DEVELOP_ATTEMPT_LIMITS_V0,
+	endoAttemptPlanV0,
+} from "../protocol/develop-attempts.ts";
 import {
 	ENDO_DEVELOP_RECEIPT_LIMITS_V0,
 	ENDO_RECEIPT_LIMITATION_TEXT_V0,
@@ -35,7 +39,7 @@ import {
 	type EndoReceiptRelationV0,
 	endoReceiptRelationV0,
 } from "../protocol/develop-receipts.ts";
-import { validateEndoVerificationPlanV0 } from "../protocol/develop-verification.ts";
+import { type EndoVerificationPlanV0, validateEndoVerificationPlanV0 } from "../protocol/develop-verification.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoAttemptEvidenceV0, renderEndoAttemptEvidenceV0 } from "../runtime/contracts/develop-attempt-evidence.ts";
 import {
@@ -50,7 +54,7 @@ import {
 	type DevelopReceiptsReadResultV0,
 	DevelopReceiptsServiceV0,
 } from "../runtime/contracts/develop-receipts.ts";
-import { endoShownOutputV0 } from "../runtime/contracts/develop-verification.ts";
+import { endoPlannedReadingV0, endoShownOutputV0 } from "../runtime/contracts/develop-verification.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
@@ -330,7 +334,50 @@ const CHECK_REFUSALS: Readonly<Record<DevelopCheckRefusalV0, string>> = {
 const RISK =
 	"endo attempt check: this runs the command below with your permissions and your environment. Whatever it invokes from the repository (package.json scripts, test files, a Makefile) is the repository's code, which an agent may have written: running a repository's tests is running that repository. Endophasia cannot tell whether anything else (an agent still working, an editor) writes the tree while it runs; stop them first.";
 
-const receiptSummary = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRelationV0) => ({
+/**
+ * The attempt's verification plan, read now from its prepared record; null without one. When the attempts directory cannot be read, says
+ * so on stderr, so a missing plan reading is never mistaken for "this command is not planned".
+ */
+function planOf(root: string, attemptId: string): EndoVerificationPlanV0 | null {
+	const read = new DevelopAttemptsStoreV0(root).read();
+	if (!read.ok) {
+		process.stderr.write(
+			"plan: the attempt records could not be read, so how the plan reads these receipts is not shown.\n",
+		);
+		return null;
+	}
+	const entry = read.entries.find((e) => e.attempt.id === attemptId);
+	return entry === undefined ? null : endoAttemptPlanV0(entry.attempt);
+}
+
+/**
+ * How the attempt's plan reads this one receipt, when the plan names its argv (null otherwise). For a behavioural check that is its declared
+ * exit code and output, so it can differ from `outcome` (the exit status). It is one run's reading, not the check's state: the ledger
+ * (`endo attempt evidence`) also weighs every other run at the same commit.
+ */
+function plannedSummary(plan: EndoVerificationPlanV0 | null, receipt: EndoDevelopReceiptV0) {
+	const check = plan?.checks.find(
+		(c) => c.argv.length === receipt.check.argv.length && c.argv.every((a, i) => a === receipt.check.argv[i]),
+	);
+	if (check === undefined) return null;
+	const reading = endoPlannedReadingV0(check, receipt);
+	return {
+		check: check.name,
+		readBy: check.expect === undefined ? "exit status" : "declared exit code and output",
+		outcome: reading,
+		label: `The plan's reading of this run: ${reading}`,
+	};
+}
+
+/** What `outcome` and `label` mean in every receipt summary: the exit status, never a comparison with a plan's expected output. */
+const OUTCOME_IS =
+	"outcome and label are the command's exit status (and whether the observation was clean); they never compare its output with anything. Where the attempt's plan names the command, planned says how the plan reads that run; the ledger, which also weighs every other run at the same commit, is endo attempt evidence.";
+
+const receiptSummary = (
+	receipt: EndoDevelopReceiptV0,
+	relation: EndoReceiptRelationV0,
+	plan: EndoVerificationPlanV0 | null,
+) => ({
 	id: receipt.id,
 	attemptId: receipt.attemptId,
 	startedAtMs: receipt.startedAtMs,
@@ -343,6 +390,7 @@ const receiptSummary = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRela
 	reasons: receipt.reasons.map((r) => ENDO_RECEIPT_REASON_TEXT_V0[r]),
 	relation,
 	relationLabel: ENDO_RECEIPT_RELATION_LABELS_V0[relation],
+	planned: plannedSummary(plan, receipt),
 });
 
 /**
@@ -356,8 +404,12 @@ const terminalSafe = (receipt: EndoDevelopReceiptV0): EndoDevelopReceiptV0 => {
 		: { ...receipt, output: { ...receipt.output, stdout: { ...out, text: endoShownOutputV0(out.text) } } };
 };
 
-const receiptShown = (receipt: EndoDevelopReceiptV0, relation: EndoReceiptRelationV0) => ({
-	...receiptSummary(receipt, relation),
+const receiptShown = (
+	receipt: EndoDevelopReceiptV0,
+	relation: EndoReceiptRelationV0,
+	plan: EndoVerificationPlanV0 | null,
+) => ({
+	...receiptSummary(receipt, relation, plan),
 	limitations: receipt.limitations.map((l) => ENDO_RECEIPT_LIMITATION_TEXT_V0[l]),
 	receipt: terminalSafe(receipt),
 });
@@ -453,10 +505,18 @@ async function check(argv: readonly string[]): Promise<void> {
 	}
 	// Its relation to the tree as it is now, observed again (the same working tree): never assumed.
 	const now = await service.current(plan.before.worktree);
-	print({ receipt: receiptShown(receipt, endoReceiptRelationV0(receipt, now)) });
+	const attemptPlan = planOf(root, receipt.attemptId);
+	print({ outcomeIs: OUTCOME_IS, receipt: receiptShown(receipt, endoReceiptRelationV0(receipt, now), attemptPlan) });
 	process.stderr.write(
 		`recorded: ${ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome]}${receipt.reasons.length === 0 ? "" : ` (${receipt.reasons.map((r) => ENDO_RECEIPT_REASON_TEXT_V0[r]).join("; ")})`}, at ${receipt.revision.commit}. This is what Endophasia observed of that command in that working tree; it is not acceptance of the task, whose status is unchanged.\n`,
 	);
+	// A planned behavioural check is read by its declared exit code and output, which the exit status above does not show (B1,
+	// DEVELOP-VALIDATION-001). Say how the plan reads this run, labelled as derived; the exit code below stays the exit status's.
+	const reading = plannedSummary(attemptPlan, receipt);
+	if (reading !== null && reading.readBy !== "exit status")
+		process.stderr.write(
+			`plan: this is planned check "${reading.check}", which your plan reads by its declared exit code and output, not by its exit status. Compared with that declaration, this run ${reading.outcome === "passed" ? "matches it" : reading.outcome === "failed" ? "does NOT match it" : "is inconclusive"} (derived from this receipt; "${ENDO_RECEIPT_OUTCOME_LABELS_V0[receipt.outcome]}" above is the exit status, and this command's exit code follows that). The check's state, which also weighs other runs at this commit: endo attempt evidence --attempt ${receipt.attemptId}\n`,
+		);
 	// 130 only when the check itself was stopped by the interruption: a signal after it ended does not change what was recorded.
 	process.exitCode =
 		receipt.execution.kind === "interrupted"
@@ -489,9 +549,11 @@ async function readReceipts(
 async function receipts(argv: readonly string[]): Promise<void> {
 	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd"], USAGE);
 	const { directory, read } = await readReceipts(receiptsAt(root), attemptOf(flags), flags.get("--cwd"));
+	const plan = planOf(root, attemptOf(flags));
 	print({
 		comparedWith: directory,
-		receipts: read.receipts.map((r) => receiptSummary(r.receipt, r.relation)),
+		outcomeIs: OUTCOME_IS,
+		receipts: read.receipts.map((r) => receiptSummary(r.receipt, r.relation, plan)),
 		problems: read.problems,
 	});
 }
@@ -506,7 +568,11 @@ async function receipt(argv: readonly string[]): Promise<void> {
 	const { directory, read } = await readReceipts(service, found.attemptId, flags.get("--cwd"));
 	const one = read.receipts.find((r) => r.receipt.id === id);
 	if (one === undefined) throw new Error(READ_REFUSALS["not-found"]);
-	print({ comparedWith: directory, receipt: receiptShown(one.receipt, one.relation) });
+	print({
+		comparedWith: directory,
+		outcomeIs: OUTCOME_IS,
+		receipt: receiptShown(one.receipt, one.relation, planOf(root, found.attemptId)),
+	});
 }
 
 /**

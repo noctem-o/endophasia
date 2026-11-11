@@ -79,6 +79,7 @@ describe("the frontend's source", () => {
 				"develop/FieldCanvas.tsx",
 				"develop/Reasoning.tsx",
 				"model/reasoning.ts",
+				"model/reveal.ts",
 				"model/field.ts",
 				"model/ledger.ts",
 				"model/develop.ts",
@@ -106,6 +107,7 @@ describe("the frontend's source", () => {
 				"ui/marks.tsx",
 				"ui/text.tsx",
 				"ui/use-narrow.ts",
+				"ui/use-reveal.ts",
 				"use-observe.ts",
 			].sort(),
 		);
@@ -175,11 +177,12 @@ describe("the frontend's source", () => {
 		];
 		for (const [name, text] of Object.entries(sources))
 			for (const [what, pattern] of forbidden) expect(text, `${name}: ${what}`).not.toMatch(pattern);
-		// An animation frame is drawn in one module only: the Field renderer (see the next test for what it may touch).
+		// Animation frames are drawn in two modules only: the Field renderer (see the next test for what it may touch), and the reveal of
+		// text still being written (ui/use-reveal.ts), which only changes how fast already-read text appears and honours reduced motion.
 		const animated = Object.entries(sources)
 			.filter(([, text]) => /\b(requestAnimationFrame|cancelAnimationFrame)\b/.test(text))
 			.map(([name]) => name);
-		expect(animated).toEqual(["develop/FieldCanvas.tsx"]);
+		expect(animated).toEqual(["develop/FieldCanvas.tsx", "ui/use-reveal.ts"]);
 		// A style prop is set through the CSS object model, which the page policy allows. It is used in two places and no others.
 		const styled = Object.entries(sources)
 			.filter(([, text]) => /\bstyle=\{/.test(text))

@@ -22,6 +22,7 @@ import {
 	wordCount,
 } from "../model/reasoning.ts";
 import type { ReasoningPart, ReasoningRelay } from "../model/workbench-wire.ts";
+import { useRevealed } from "../ui/use-reveal.ts";
 
 /**
  * The operator's choice (fold every trace, or show every trace as it arrives) and the traces they opened or folded by hand. Memory only.
@@ -90,6 +91,8 @@ export function ReasoningBlock({
 		if (mounted.current) reflow?.();
 		mounted.current = true;
 	}, [disclosure]);
+	// A trace still being written appears as it grows, not in blocks (display only; see ui/use-reveal.ts).
+	const revealed = useRevealed(part.state === "supplied" ? part.text : "", partial);
 	const meta = traceMeta(part, ordinal, count);
 	if (part.state !== "supplied")
 		return (
@@ -104,7 +107,7 @@ export function ReasoningBlock({
 	const open = disclosure !== "folded";
 	const long = isLong(part.text);
 	const words = wordCount(part.text);
-	const shown = open ? visibleText(part.text, disclosure) : "";
+	const shown = open ? visibleText(revealed, disclosure) : "";
 	return (
 		<div
 			className="reasoning"

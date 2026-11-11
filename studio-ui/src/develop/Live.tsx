@@ -49,6 +49,7 @@ import { ConnectionGlyph } from "../ui/marks.tsx";
 import { Panel, PanelBoundary } from "../ui/Panel.tsx";
 import { Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
+import { useRevealed } from "../ui/use-reveal.ts";
 import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
@@ -154,9 +155,7 @@ function Parts({
 				if (part.kind === "text")
 					return part.text === "" ? null : (
 						// biome-ignore lint/suspicious/noArrayIndexKey: parts are positional and never reordered
-						<p key={index} className="turn-text" data-partial={partial}>
-							{part.text}
-						</p>
+						<RevealedText key={index} text={part.text} partial={partial} />
 					);
 				const ordinal = ordinals.get(index) ?? 0;
 				const key = reasoningKey(owner, ordinal);
@@ -242,6 +241,16 @@ function TurnMeta({ item }: { item: TranscriptMessage }): ReactElement | null {
 			) : null}
 			{item.stopReason === "error" ? <span className="flag flag-anomaly"> run error (reported)</span> : null}
 			{aborted ? <span className="flag"> aborted (reported): what is shown may be incomplete</span> : null}
+		</p>
+	);
+}
+
+/** A message's text: a message still being written appears as it grows, not in blocks (display only; see ui/use-reveal.ts). */
+function RevealedText({ text, partial }: { text: string; partial: boolean }): ReactElement {
+	const shown = useRevealed(text, partial);
+	return (
+		<p className="turn-text" data-partial={partial}>
+			{shown}
 		</p>
 	);
 }
@@ -812,6 +821,7 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 				className={showAll ? "dim small" : "dim small sr-only"}
 				id="stop-reason"
 				data-testid="stop-reason"
+				data-offered={grant !== null && offer.offered}
 				title={offer.offered ? OPERATION_WORDS.stop.delivery : (offer.reason ?? "")}
 				data-supersedes={superseded?.operation ?? ""}
 			>

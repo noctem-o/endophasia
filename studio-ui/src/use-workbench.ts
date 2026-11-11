@@ -1,5 +1,5 @@
 // The workbench's reads and commands, one at a time. A read happens when DEVELOP is first opened, when the operator asks (Refresh, pair,
-// send, withdraw), and, only while a prompt or an intervention is open (waiting, being sent, or waiting for Pi) or the operator has switched Follow on, every few seconds from one timer that is
+// send, withdraw), and, only while a prompt or an intervention is open (waiting, being sent, or waiting for Pi) or the operator has switched Follow on, every few seconds (every second while a message is being written) from one timer that is
 // set after each read ends (never two at once, never while the page is hidden, never by hover). It reads the broker's memory, not the
 // store. A grant is held in this hook's state only.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
@@ -8,6 +8,8 @@ import { anyOpen, initialWorkbench, reduceWorkbench } from "./model/workbench.ts
 import type { InterventionOperation, WorkbenchReply, WorkbenchRequest } from "./model/workbench-wire.ts";
 
 const FOLLOW_MS = 3000;
+/** Following while a message is being written: often enough that its text (revealed gradually, ui/use-reveal.ts) reads as a flow. */
+const FOLLOW_WRITING_MS = 1000;
 const WAITING_MS = 1500;
 // Enough pages for anything the broker can hold (400 items and 2 MiB, pages of 200 items or 512 KiB, a message at most 128 KiB: at most
 // seven pages). A read that still finds more after them reads again at once, as long as it made progress.
@@ -69,7 +71,7 @@ export function useWorkbench(active: boolean) {
 			() => {
 				if (shown.current) void reading.current?.();
 			},
-			s.follow ? FOLLOW_MS : WAITING_MS,
+			s.follow ? (s.open !== null ? FOLLOW_WRITING_MS : FOLLOW_MS) : WAITING_MS,
 		);
 	}, []);
 

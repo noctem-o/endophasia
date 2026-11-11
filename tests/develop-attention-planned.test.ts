@@ -481,7 +481,7 @@ describe("a recorded planned failure is never dropped from attention", () => {
 			["newest", "refuses", "passed"],
 		]);
 		const lines = texts(itemOf(p.overview(), t2));
-		expect(lines.some((l) => l.includes("`precedence`") && l.includes(`attempt ${b1.slice(13, 20)}`))).toBe(true);
+		expect(lines.some((l) => l.includes("`precedence`") && l.includes(`attempt ${b1.slice(-8)}`))).toBe(true);
 	});
 
 	it("R5: a pass beside receipt files that could not be read is not a current pass", () => {

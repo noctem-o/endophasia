@@ -71,6 +71,9 @@ export interface EndoDevelopAttentionCheckV0 {
  * - not-run: none.
  * `incomplete`: some of this attempt's receipt files could not be used, so a later result may be among them. `behavioural`: the plan
  * declares an expected exit code and output for it.
+ * `elsewhere`: for a state decided in this working tree, this command's runs in other working trees or repositories, which the ledger
+ * (of this tree) does not read: of the latest run in each, the latest that failed or was inconclusive, else the latest. Null when there
+ * are none, and for `elsewhere` and `unavailable` (whose `receipt` already is such a run). A pass here never hides a failure there.
  */
 export interface EndoDevelopAttentionPlannedV1 {
 	attemptId: string;
@@ -88,10 +91,18 @@ export interface EndoDevelopAttentionPlannedV1 {
 		outcome: EndoReceiptOutcomeV0;
 	} | null;
 	incomplete: boolean;
+	elsewhere: {
+		receiptId: string;
+		commit: string;
+		startedAtMs: number;
+		endedAtMs: number;
+		outcome: EndoReceiptOutcomeV0;
+	} | null;
 }
 
 /**
- * The overview's one triage rule for a planned check (the page mirrors it; a contract test holds them equal):
+ * The overview's one triage rule for a planned check (the page mirrors it; a contract test holds them equal). A failed or inconclusive
+ * run in another working tree (`elsewhere`) raises it to at least that; otherwise:
  * - `failed` | `inconclusive`: the ledger says so at HEAD (`mixed` is inconclusive); or there is no current result (tree changed,
  *   stale, elsewhere, HEAD not read) and the latest run behind it failed, was inconclusive, or the runs at HEAD disagree. A recorded
  *   failure is never dropped because the tree, the commit or the worktree moved on, nor because HEAD could not be read.
@@ -101,6 +112,16 @@ export interface EndoDevelopAttentionPlannedV1 {
 export function endoPlannedTriageV1(
 	p: EndoDevelopAttentionPlannedV1,
 ): "failed" | "inconclusive" | "unsettled" | "passed" {
+	// A run in another working tree is its own check (as v0 kept it): its failure or inconclusive result is never hidden by this tree's.
+	const there = p.elsewhere?.outcome ?? null;
+	const here = plannedHereV1(p);
+	if (there === "failed") return "failed";
+	if (there === "inconclusive" && here !== "failed") return "inconclusive";
+	return here;
+}
+
+/** The triage of what this working tree shows (endoPlannedTriageV1 without `elsewhere`). */
+function plannedHereV1(p: EndoDevelopAttentionPlannedV1): "failed" | "inconclusive" | "unsettled" | "passed" {
 	if (p.state === "failed") return "failed";
 	if (p.state === "inconclusive" || p.state === "mixed") return "inconclusive";
 	if (p.state === "passed") return p.incomplete ? "unsettled" : "passed";

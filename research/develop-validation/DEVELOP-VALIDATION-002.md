@@ -62,10 +62,11 @@ No horizontal overflow at 390 px in any case. Screenshots:
 
 ## 4. Tests
 
-- `tests/develop-attention-planned.test.ts`, 24 tests:
+- `tests/develop-attention-planned.test.ts`, 26 tests:
   - the brief's ten cases;
   - the review's R1-R5 and C1-C4, plus the positive superseding case;
-  - a contract test holding the page's triage equal to the protocol's over 288 combinations;
+  - Codex's P1 (a pass here hiding a failure in another worktree) and P2 (a row opening the wrong receipt);
+  - a contract test holding the page's triage equal to the protocol's over 1 152 combinations;
   - a gate test;
   - an end-to-end CLI test.
 - **Before the fix:** run against the pre-fix implementation, 11 of the first 12 failed. The twelfth (an unreadable receipt) guards
@@ -73,11 +74,10 @@ No horizontal overflow at 390 px in any case. Screenshots:
 - **Existing tests updated, and why:**
   - the attention fixture, the source test and the limits contract test, for the v1 schema;
   - two workspace-host assertions and one browser text: the seeded CRLF task has a plan, so its receipts are now read under `planned`.
-- **Full suite on the final code, run locally the way CI runs it (Chromium required):** 6 744 passed, 1 failed and 73 skipped.
-  - The failure is `tests/aa-operator.test.ts`, a research operator test this change does not touch. It passed alone twice (35/35).
-  - An earlier full run had `protected-isolation` as its one failure instead; it passed alone (47/47).
-  - Both are the load-dependent flakes seen in this repository before. Typecheck, lint (one warning, already on `main`) and build are
-    clean.
+- **Full suite on the final code, run locally the way CI runs it (Chromium required):** 6 747 passed, 0 failed and 73 skipped.
+  - Typecheck, lint (one warning, already on `main`) and build are clean.
+  - Earlier full runs on this branch each had one load-dependent failure in a file this change does not touch: `protected-isolation`,
+    then `aa-operator`. Each passed alone (47/47; 35/35 twice).
 
 ## 5. Independent review
 
@@ -91,6 +91,9 @@ A fresh-context adversarial reviewer worked in its own copy, in two rounds. Its 
 
 Every one was reproduced as a failing test, then fixed. The reviewer could not make the page's gate refuse anything the projection
 produces (0 of 450 fuzzed views, both rounds), and it confirmed the three U1 cases end to end. A third round was not run.
+
+Codex then found two more on the PR: a pass here hid a later failure of the same planned command in a linked worktree (P1), and a row
+could open the wrong receipt (P2). Both were reproduced as failing tests and fixed.
 
 ## 6. What this establishes, and what it does not
 

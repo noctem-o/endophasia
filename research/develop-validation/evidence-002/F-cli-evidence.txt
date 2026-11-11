@@ -1,13 +1,13 @@
-attempt endo.attempt.d532cd5f5c380029bb627d22eba08035 (task endo.task.7e0984386321c5bce4621dffba6bf01e): validation case F
+attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf (task endo.task.fa9ec9d07f32f3adc0c7f5a2ca9a8aa6): validation case F
   sent      [observed] No send to Pi through the workbench was authorised for this attempt.
   run       [none] No run is attributed: no send through the workbench was authorised.
-  candidate [none] no record names one; checked at: ddee7bbb0879
-  tree now  [observed] ddee7bbb0879, clean (/work/F/repo)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 0: Observed check failed at ddee7bbb0879; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
-  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at ddee7bbb0879; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
-  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Passed at HEAD (ddee7bbb0879, latest passed)
+  candidate [none] no record names one; checked at: f0b6d641319d
+  tree now  [observed] f0b6d641319d, clean (/work/F/repo)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 0: Observed check failed at f0b6d641319d; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  check     [observed; linked to this attempt by the operator] node roman.mjs 1994: Observed check passed at f0b6d641319d; Recorded at this working tree's current HEAD (exit status only: the plan reads this command by its behaviour, below)
+  planned   [observed] subtractive-1994 ["node","roman.mjs","1994"]: Passed at HEAD (f0b6d641319d, latest passed)
   behaviour [plan: expected; observed] expected exit 0 and 8 byte(s) of output; observed exit 0, 8 byte(s), output the same
-  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Passed at HEAD (ddee7bbb0879, latest passed)
+  planned   [observed] rejects-zero ["node","roman.mjs","0"]: Passed at HEAD (f0b6d641319d, latest passed)
   behaviour [plan: expected; observed] expected exit 2 and 0 byte(s) of output; observed exit 2, 0 byte(s), output the same
   planned   [observed] runs ["node","roman.mjs","14"]: Not run
   criterion [plan: subtractive-1994] 1. Numerals use standard subtractive notation (1994 is MCMXCIV): Planned checks passed at HEAD

@@ -39,14 +39,14 @@ none selected
 ▾
 1 needs attention
 repo
-branch master 3a9a49d
+branch master f2ebb1a
 clean
-read 00:01:55 (broker clock)
+read 00:39:20 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD 3a9a49d
+checks compared with HEAD f2ebb1a
 NEEDS YOUR ATTENTION (1)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 M task
 ○
@@ -57,9 +57,9 @@ Planned check rejects-zero: Not run (read by its declared exit code and output).
 Planned check runs: Not run.
 One attempt prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:01:55 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:39:20 (browser clock). Refresh
 
-read 00:01:55 (browser clock) Refresh tasks
+read 00:39:20 (browser clock) Refresh tasks
 
 CONTEXT
 

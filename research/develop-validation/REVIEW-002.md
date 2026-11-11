@@ -44,3 +44,12 @@ stale failure.
 another.
 
 **Round 2 verdict:** not ready to merge until C1 to C3 were fixed. They are fixed and tested. A third review round was not run.
+
+## Codex on the PR (on `efce987aa`)
+
+| # | Finding (priority) | Disposition |
+| :-- | :-- | :-- |
+| P1 | Within one attempt, a pass here hid a later failure of the same planned command in a linked worktree. The ledger reads only this tree, and the projection had moved all of the attempt's planned receipts out of the per-worktree list (P1) | **Reproduced, fixed.** An entry decided in this tree now carries `elsewhere`: of the latest run in each other tree, the latest that failed or was inconclusive, else the latest. The one triage rule raises the entry to at least that, the line says so, and the row opens that run. v0's promise holds again: a pass in one worktree never hides a failure in another |
+| P2 | A row flagged by one line could open another line's receipt (a stale planned pass before an unplanned failure) (P2) | **Reproduced, fixed.** A row opens the receipt behind the flag that put it in its section |
+
+The triage contract test now also covers the `elsewhere` outcomes (1 152 combinations).

@@ -73,6 +73,15 @@ const planned: Check = (v) =>
 				outcome: one(...keysOf(RECEIPT_OUTCOME_LABELS)),
 			}),
 		incomplete: (x) => typeof x === "boolean",
+		elsewhere: (x) =>
+			x === null ||
+			shape(x, {
+				receiptId,
+				commit: objectId,
+				startedAtMs: stamp,
+				endedAtMs: stamp,
+				outcome: one(...keysOf(RECEIPT_OUTCOME_LABELS)),
+			}),
 	});
 
 /** Whether a planned entry's state is one its receipt, its counts and the observed HEAD allow (the ledger's own rules). */
@@ -80,6 +89,11 @@ function plannedCoherent(p: EndoDevelopAttentionPlannedV1, head: EndoDevelopAtte
 	const total = p.atHead.passed + p.atHead.failed + p.atHead.inconclusive;
 	const r = p.receipt;
 	if (r !== null && r.endedAtMs < r.startedAtMs) return false;
+	// A run elsewhere is named only beside a state decided in this tree, and never as the receipt itself.
+	if (p.elsewhere !== null) {
+		if (p.state === "elsewhere" || p.state === "unavailable" || head === null) return false;
+		if (p.elsewhere.endedAtMs < p.elsewhere.startedAtMs || p.elsewhere.receiptId === r?.receiptId) return false;
+	}
 	// Without a HEAD nothing is compared; the latest run anywhere may still be named (a recorded failure stays visible).
 	if (head === null) return p.state === "unavailable" && total === 0;
 	const here = r !== null && r.commit === head.commit;

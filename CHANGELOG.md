@@ -11,7 +11,7 @@
     the latest one.
   - Now each attempt with a plan is read by its own acceptance ledger (`endo.develop-attention-view.v1`, `planned`), the same function
     the Task view and `endo attempt evidence` use, in the Task view's words. A failure, an inconclusive result or a disagreement at HEAD
-    needs attention. A recorded failure stays there when the tree has changed since, or when it was recorded at an older commit. A check
+    needs attention. A recorded failure stays there when the tree has changed since, when it was recorded at an older commit, or when it was recorded in another working tree (even beside a pass here). A check
     with no current result is said, never called a pass. Receipts no plan reads keep the exit-status reading, and say so where the task
     also has plans. The browser's gate refuses a planned entry that its receipt, counts or HEAD do not allow.
   - `endo attempt check` adds a labelled line for a planned behavioural check: whether this run matches the declaration. Its exit code

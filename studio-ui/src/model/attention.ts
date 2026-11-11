@@ -180,6 +180,14 @@ const READ: Readonly<Record<EndoReceiptOutcomeV0, string>> = {
  * equal over every state, reading and count. A recorded failure is never dropped because the tree, the commit or the worktree moved on.
  */
 export function plannedTriage(p: AttentionPlanned): "failed" | "inconclusive" | "unsettled" | "passed" {
+	const there = p.elsewhere?.outcome ?? null;
+	const here = plannedHere(p);
+	if (there === "failed") return "failed";
+	if (there === "inconclusive" && here !== "failed") return "inconclusive";
+	return here;
+}
+
+function plannedHere(p: AttentionPlanned): "failed" | "inconclusive" | "unsettled" | "passed" {
 	if (p.state === "failed") return "failed";
 	if (p.state === "inconclusive" || p.state === "mixed") return "inconclusive";
 	if (p.state === "passed") return p.incomplete ? "unsettled" : "passed";
@@ -224,6 +232,10 @@ function plannedLine(p: AttentionPlanned, review: boolean, attempt: boolean): Li
 									? ` (its latest run ${READ[r.outcome]}; this worktree's HEAD could not be read)`
 									: "";
 	const triage = plannedTriage(p);
+	// A run in another working tree is said when it is what raised the triage (a pass there adds nothing to a line about here).
+	const there = p.elsewhere;
+	const raised = there !== null && there.outcome !== "passed" && plannedHere(p) !== triage;
+	const away = raised ? `; in another working tree its latest run ${READ[there.outcome]}` : "";
 	const kind: Line["kind"] =
 		triage === "failed"
 			? "failed"
@@ -239,9 +251,14 @@ function plannedLine(p: AttentionPlanned, review: boolean, attempt: boolean): Li
 		parts: [
 			"Planned check ",
 			{ code: p.name },
-			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${by}${attempt ? ` (attempt ${p.attemptId.slice(13, 20)})` : ""}.`,
+			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${away}${by}${attempt ? ` (attempt ${p.attemptId.slice(13, 20)})` : ""}.`,
 		],
-		...(r === null ? {} : { receipt: { attemptId: p.attemptId, receiptId: r.receiptId } }),
+		// The row opens the run that raised it: the one elsewhere when that is what did.
+		...(raised
+			? { receipt: { attemptId: p.attemptId, receiptId: there.receiptId } }
+			: r === null
+				? {}
+				: { receipt: { attemptId: p.attemptId, receiptId: r.receiptId } }),
 		planned: p.state,
 		unsettled: triage === "unsettled",
 	};
@@ -408,7 +425,11 @@ function classify(task: Task, evidence: EvidenceState, view: AttentionView | nul
 	if (!review && flags.length > 0) lines.splice(0, lines.length, ...lines.filter((l) => l.kind !== "evidence"));
 	const section: Section =
 		task.status === "done" ? "done" : flags.length > 0 ? "attention" : task.status === "open" ? "open" : "waiting";
-	const first = lines.find((l) => l.receipt !== undefined && l.kind !== "evidence") ?? lines.find((l) => l.receipt);
+	// The row opens the receipt behind the flag that put it in its section (Codex, #144), then any other non-pass line's, then any.
+	const first =
+		lines.find((l) => l.receipt !== undefined && l.kind === flags.find((f) => f !== "decision")) ??
+		lines.find((l) => l.receipt !== undefined && l.kind !== "evidence") ??
+		lines.find((l) => l.receipt);
 	return {
 		task,
 		section,

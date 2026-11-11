@@ -39,14 +39,14 @@ none selected
 ▾
 1 needs attention
 repo
-branch master 0996e9d
+branch master b85e934
 clean
-read 00:02:12 (broker clock)
+read 00:39:36 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
 Overview
-checks compared with HEAD 0996e9d
+checks compared with HEAD b85e934
 NEEDS YOUR ATTENTION (1)decisions waiting on you; planned checks that failed, were inconclusive or disagree at HEAD; other checks whose latest run failed or was inconclusive
 TWO task
 ○
@@ -55,9 +55,9 @@ Check failed
 Latest observed node roman.mjs 0 exited with code 2 at the current HEAD. No plan reads this check; this is its exit status.
 2 attempts prepared.
 
-A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:02:12 (browser clock). Refresh
+A status is yours; a check is evidence about one command at one commit, not the task's acceptance. Nothing here changes a task or runs anything. Tasks read 00:39:36 (browser clock). Refresh
 
-read 00:02:12 (browser clock) Refresh tasks
+read 00:39:36 (browser clock) Refresh tasks
 
 CONTEXT
 

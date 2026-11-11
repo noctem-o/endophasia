@@ -40,9 +40,9 @@ F task
 ○
 Open
 repo
-branch master ddee7bb
+branch master f0b6d64
 clean
-read 00:01:53 (broker clock)
+read 00:39:17 (broker clock)
 Refresh worktree
 Workspace
 No agent attached · read from the store when you ask · statuses change only when you set them
@@ -52,7 +52,7 @@ No agent attached · read from the store when you ask · statuses change only wh
 F task
 ○
 Open
-updated 00:01:51 · revision 0
+updated 00:39:16 · revision 0
 Edit
 DESCRIPTION
 
@@ -72,15 +72,15 @@ No session linked. Never inferred from a name, a time or a directory.
 This workspace runs no agent, so it has no session to link. A live workbench links the session it serves; endo task link links an Oh My Pi saved session.
 
 History (1)
-00:01:51 created as open
+00:39:16 created as open
 ATTEMPTS briefs you prepared; nothing here sends one
 
-Compared with HEAD ddee7bbb0879 of this working tree, with nothing uncommitted, read 2026-11-11 00:01 UTC. The Context panel is read separately.
+Compared with HEAD f0b6d641319d of this working tree, with nothing uncommitted, read 2026-11-11 00:39 UTC. The Context panel is read separately.
 
 Prepared
-eba08035
+2a4a5ccf
 validation case F
-prepared 2026-11-11 00:01 UTC
+prepared 2026-11-11 00:39 UTC
 4 criteria at HEAD:
 not shown 1
 checks passed 2
@@ -119,7 +119,7 @@ That a check addresses a criterion is your plan's statement; nothing observed es
 Checks Endophasia observed what ran, at which commit; not the task's acceptance
 subtractive-1994
 Passed at HEAD
-ddee7bbb0879
+f0b6d641319d
 
 ["node","roman.mjs","1994"]
 
@@ -131,14 +131,14 @@ Expected output
 MCMXCIV
 
 
-Observed at ddee7bbb0879: exit 0, 8 bytes; the output is the one declared
+Observed at f0b6d641319d: exit 0, 8 bytes; the output is the one declared
 
 Observed output, as kept
 MCMXCIV
 
 rejects-zero
 Passed at HEAD
-ddee7bbb0879
+f0b6d641319d
 
 ["node","roman.mjs","0"]
 
@@ -146,7 +146,7 @@ You said it shows: out-of-range input is refused with nothing on stdout
 
 You declared it should: exit 2 and print nothing on standard output (compared byte for byte; standard error is not compared)
 
-Observed at ddee7bbb0879: exit 2, 0 bytes; the output is the one declared
+Observed at f0b6d641319d: exit 2, 0 bytes; the output is the one declared
 
 Observed output, as kept
 runs
@@ -156,11 +156,11 @@ Not run
 
 You said it shows: the program runs for ordinary input
 
-endo attempt check --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035 -- node roman.mjs 14
+endo attempt check --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf -- node roman.mjs 14
 Every check recorded for this attempt (2)
 Observed check passed
-ddee7bbb0879
-2026-11-11 00:01 UTC
+f0b6d641319d
+2026-11-11 00:39 UTC
 
 node roman.mjs 1994
 
@@ -181,8 +181,8 @@ A process that left the check's process group (setsid, a daemon) was not tracked
 The operator linked this check to the attempt; Endophasia does not know which revision the attempt's work produced.
 A local, unsigned file: anyone who can write the store can write a receipt.
 Observed check failed
-ddee7bbb0879
-2026-11-11 00:01 UTC
+f0b6d641319d
+2026-11-11 00:39 UTC
 
 node roman.mjs 0
 
@@ -205,19 +205,19 @@ A local, unsigned file: anyone who can write the store can write a receipt.
 
 Run a check yourself in a terminal, at the top of a clean, committed working tree; it runs the command you type after --, never one from a record, a brief or an agent:
 
-endo attempt check --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035 -- <command> [args...]
-endo attempt receipts --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035
+endo attempt check --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf -- <command> [args...]
+endo attempt receipts --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf
 Brief what the agent is given; select or copy it to paste into your agent
 copy
 A copied brief holds your private task text; a clipboard manager may keep it.
 
 Record what happened in a terminal:
 
-endo attempt handoff --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035 --to "<agent>"
-endo attempt report  --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035 --note "<what was reported>"
-endo attempt abandon --root <store> --attempt endo.attempt.d532cd5f5c380029bb627d22eba08035
+endo attempt handoff --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf --to "<agent>"
+endo attempt report  --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf --note "<what was reported>"
+endo attempt abandon --root <store> --attempt endo.attempt.e96d0eb9548de5c6348c9ce32a4a5ccf
 
-read 00:01:53 (browser clock) Refresh tasks
+read 00:39:17 (browser clock) Refresh tasks
 
 CONTEXT
 

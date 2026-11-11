@@ -152,6 +152,35 @@ function plannedOf(
 					outcome: endoPlannedReadingV0(planned, latest),
 				};
 		}
+		// This command's runs in other working trees or repositories: the ledger of this tree does not read them, and a pass here must not
+		// hide a failure there (v0 kept each tree's latest run as its own check).
+		let elsewhere: EndoDevelopAttentionPlannedV1["elsewhere"] = null;
+		if (current !== null && c.state !== "elsewhere") {
+			const perTree = new Map<string, EndoDevelopReceiptV0>();
+			for (const r of receipts) {
+				if (!sameArgv(r.check.argv, planned.argv)) continue;
+				const relation = endoReceiptRelationV0(r, current);
+				if (relation !== "other-worktree" && relation !== "other-repository") continue;
+				const tree = JSON.stringify([r.repository.commonDir, r.repository.worktree]);
+				const seen = perTree.get(tree);
+				if (seen === undefined || endoReceiptLaterV0(r, seen)) perTree.set(tree, r);
+			}
+			const latest = [...perTree.values()].map((r) => ({ r, outcome: endoPlannedReadingV0(planned, r) }));
+			const pick = (xs: typeof latest) =>
+				xs.reduce<(typeof latest)[number] | null>(
+					(a, x) => (a === null || endoReceiptLaterV0(x.r, a.r) ? x : a),
+					null,
+				);
+			const chosen = pick(latest.filter((x) => x.outcome !== "passed")) ?? pick(latest);
+			if (chosen !== null)
+				elsewhere = {
+					receiptId: chosen.r.id,
+					commit: chosen.r.revision.commit,
+					startedAtMs: chosen.r.startedAtMs,
+					endedAtMs: chosen.r.endedAtMs,
+					outcome: chosen.outcome,
+				};
+		}
 		return {
 			argv: planned.argv,
 			entry: {
@@ -163,6 +192,7 @@ function plannedOf(
 				atHead: { ...c.atHead },
 				receipt: behind,
 				incomplete,
+				elsewhere,
 			},
 		};
 	});

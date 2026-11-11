@@ -560,6 +560,53 @@ describe("a newer attempt never hides a later or more current failure", () => {
 	});
 });
 
+// Codex on #144.
+describe("one attempt, several working trees; and which receipt a row opens", () => {
+	const OTHER_TREE = { worktree: "/work/calc-agent", commonDir: "/work/calc/.git", linked: true };
+	it("P1: a failure in another working tree is not hidden by a pass here in the same attempt", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Here and elsewhere", "in-progress");
+		const a = p.attempt(task);
+		p.ran(a, 1, PRECEDENCE, 0, "14\n");
+		p.ran(a, 5, PRECEDENCE, 0, "20\n", { repository: OTHER_TREE });
+		expect(stateOf(p, task, "precedence")).toBe("passed");
+		const item = itemOf(p.overview(), task);
+		expect(item.flags).toEqual(["failed"]);
+		expect(texts(item)).toContain(
+			"Planned check `precedence`: Passed at HEAD; in another working tree its latest run failed (read by its declared exit code and output).",
+		);
+		// And the row opens the failing run, not the pass.
+		const failing = p
+			.view()
+			.tasks.find((t) => t.taskId === task)
+			?.planned.find((c) => c.name === "precedence")?.elsewhere;
+		expect(item.focus?.receiptId).toBe(failing?.receiptId);
+	});
+
+	it("P2: a row opens the receipt behind the flag that put it there, not an earlier line's", () => {
+		const p = project();
+		const task = taskIn(p.root, p.projectId, "Stale pass, unplanned failure", "in-progress");
+		const a = p.attempt(task);
+		const atOld = {
+			revision: { commit: OLD, tree: "e".repeat(40), branch: "refs/heads/main" },
+			after: {
+				state: "observed" as const,
+				sameRepository: true,
+				commit: OLD,
+				tree: "e".repeat(40),
+				clean: true,
+				reflogsUnchanged: true,
+				rulesUnchanged: true,
+			},
+		};
+		p.ran(a, 1, PRECEDENCE, 0, "14\n", atOld);
+		const failure = p.ran(a, 2, ["node", "lint.mjs"], 1, "");
+		const item = itemOf(p.overview(), task);
+		expect(item.flags).toEqual(["failed"]);
+		expect(item.focus?.receiptId).toBe(failure.id);
+	});
+});
+
 describe("one triage rule", () => {
 	it("the page's mirror equals the protocol's over every state, reading, count and completeness", () => {
 		let n = 0;
@@ -571,30 +618,41 @@ describe("one triage rule", () => {
 					{ passed: 1, failed: 1, inconclusive: 0 },
 					{ passed: 0, failed: 2, inconclusive: 1 },
 				])
-					for (const incomplete of [false, true]) {
-						const p: EndoDevelopAttentionPlannedV1 = {
-							attemptId: `endo.attempt.${"1".repeat(32)}`,
-							name: "x",
-							command: "x",
-							behavioural: true,
-							state,
-							atHead,
-							receipt:
-								outcome === null
-									? null
-									: {
-											receiptId: `endo.receipt.${"2".repeat(32)}`,
-											commit: HEAD,
-											startedAtMs: 1,
-											endedAtMs: 2,
-											outcome,
-										},
-							incomplete,
-						};
-						expect(plannedTriage(p), JSON.stringify(p)).toBe(endoPlannedTriageV1(p));
-						n += 1;
-					}
-		expect(n).toBe(ENDO_PLANNED_CHECK_STATES_V0.length * 4 * 4 * 2);
+					for (const incomplete of [false, true])
+						for (const away of [null, "passed", "failed", "inconclusive"] as const) {
+							const p: EndoDevelopAttentionPlannedV1 = {
+								attemptId: `endo.attempt.${"1".repeat(32)}`,
+								name: "x",
+								command: "x",
+								behavioural: true,
+								state,
+								atHead,
+								receipt:
+									outcome === null
+										? null
+										: {
+												receiptId: `endo.receipt.${"2".repeat(32)}`,
+												commit: HEAD,
+												startedAtMs: 1,
+												endedAtMs: 2,
+												outcome,
+											},
+								incomplete,
+								elsewhere:
+									away === null
+										? null
+										: {
+												receiptId: `endo.receipt.${"3".repeat(32)}`,
+												commit: HEAD,
+												startedAtMs: 3,
+												endedAtMs: 4,
+												outcome: away,
+											},
+							};
+							expect(plannedTriage(p), JSON.stringify(p)).toBe(endoPlannedTriageV1(p));
+							n += 1;
+						}
+		expect(n).toBe(ENDO_PLANNED_CHECK_STATES_V0.length * 4 * 4 * 2 * 4);
 	});
 });
 

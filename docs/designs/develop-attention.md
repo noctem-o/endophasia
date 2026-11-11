@@ -232,6 +232,9 @@ behavioural check's. In `endo.develop-attention-view.v1`:
   run of the same command that is at least as current (a clean HEAD, then a changed tree, then another commit, then another worktree or
   no HEAD). An earlier pass, a stale pass or a pass in another worktree never hides a later or more current failure. Limitation: two
   other worktrees count as equally current, so a later run in one can stand for an earlier run in another.
+- **Other worktrees of one attempt**: the ledger reads only the launch's worktree, so an entry decided here also carries `elsewhere`, the
+  run in another worktree that matters most (a failed or inconclusive latest run, else the latest). The triage is raised to at least it:
+  a pass here never hides a failure there. A row opens the receipt behind the flag that put it in its section.
 
 The overview is still triage, not acceptance: a planned check that passed at HEAD says only that, and the criterion stays the Task view's
 and the operator's.
